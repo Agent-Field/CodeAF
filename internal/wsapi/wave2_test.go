@@ -128,6 +128,40 @@ func TestApplyActionPlanStaleRevisionIsConflict(t *testing.T) {
 	}
 }
 
+func TestApplyActionPlanSecondActionConflictRollsBack(t *testing.T) {
+	ctx := context.Background()
+	svc := openSQLiteService(t)
+	billing := createFolder(t, svc, "Billing")
+	security := createFolder(t, svc, "Security")
+	chat := conv("chat-partial")
+	plan := ActionPlan{
+		Kind: PlanAdd, ChatID: chat.ID, SourceRev: "1", Model: "organize-test",
+		Actions: []Action{
+			{
+				Kind: PlanAdd, CollectionID: billing.ID, Ref: chat,
+				ExpectedRevision: billing.Revision, Evidence: cite("hash-a"), Reason: "related",
+			},
+			{
+				Kind: PlanAdd, CollectionID: security.ID, Ref: chat,
+				ExpectedRevision: security.Revision + 9, Evidence: cite("hash-a"), Reason: "related",
+			},
+		},
+	}
+	_, err := svc.ApplyActionPlan(ctx, plan)
+	if err == nil {
+		t.Fatal("second-action conflict must refuse")
+	}
+	if !errors.Is(err, workspace.ErrConflict) {
+		t.Fatalf("want conflict, got %v", err)
+	}
+	if ids := membershipIDs(t, svc, billing.ID); len(ids) != 0 {
+		t.Fatalf("first action stayed after the second conflicted: %v", ids)
+	}
+	if ids := membershipIDs(t, svc, security.ID); len(ids) != 0 {
+		t.Fatalf("second action wrote membership: %v", ids)
+	}
+}
+
 func TestOrganizerCannotRemovePersonPlacement(t *testing.T) {
 	ctx := context.Background()
 	svc := testService(t, nil)

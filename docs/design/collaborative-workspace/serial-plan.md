@@ -1,6 +1,8 @@
 # Collaborative workspace — four serial usable slices
 
-**Status:** branch-local implementation plan. The previous GitHub issues are closed; all four waves continue here and in PlanDB. No new issues or PR before verification. See [publication policy](PUBLICATION-POLICY.md).
+**Latest owner instruction · 18 September 2026. Automatic continuation is authorized.** After a wave’s `releases/wave-N/ready.json` exists, start the next wave immediately with parallel workers. Do not pause for the owner to try the immutable binary. Do not start a dependent wave before that receipt. No GitHub issues/comments/PRs before owner verification of the whole feature; branch push is allowed.
+
+**Status:** branch-local implementation plan. The previous GitHub issues are closed; all four waves continue here and in PlanDB.
 
 | | |
 |---|---|
@@ -192,7 +194,7 @@ For every issue:
 7. **Commit the candidate.** Then `make test-touched BASE=610a32ba4cdf04053e61e0e14703304842e4b844` (or the recorded pre-issue source) plus applicable laws/packed manual. If a fix changes the tree, commit again and rerun. Receipt HEAD must equal tested source.
 8. **Live tmux TUI journey** against an isolated `CODEAF_HOME` (recipe below). Fake-model tests are necessary but not completion. A missing key or skipped live test is a blocker.
 9. Record journey IDs, SHA, fleet session, Cursor session, tmux names, commands, exit codes, log paths. Update TRY.md for the wave.
-10. Review, push the branch. Do not merge. Do not close the GitHub issue merely because code is written. Only then start issue N+1.
+10. Review, push the branch. Do not merge. Do not close a GitHub issue merely because code is written. After `releases/wave-N/ready.json` is written and the PlanDB wave root is marked done, **immediately start wave N+1**. Do not wait for the owner to try the immutable binary.
 
 **Isolated live-home recipe (all four issues):**
 

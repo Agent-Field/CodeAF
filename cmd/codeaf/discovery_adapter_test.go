@@ -117,6 +117,24 @@ func TestSQLiteHybridSearchThroughWsapi(t *testing.T) {
 	}
 }
 
+func TestEmptyIndexWithLiveEmbedderIsDelayed(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	wire := &scriptedEmbedWire{vector: []float32{1, 0}, model: "openai/text-embedding-3-small"}
+	client := embed.New(wire, "openai/text-embedding-3-small", nil)
+	svc, adapter := openV3FolderServiceWith(client)
+	if svc == nil || adapter == nil {
+		t.Fatal("Open must bind both stores")
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	view, err := svc.IndexProgress(context.Background())
+	if err != nil || !view.Delayed || view.Passages != 0 {
+		t.Fatalf("uningested chats must not look caught-up: %+v %v", view, err)
+	}
+	if view.Detail != embed.LabelDelayed {
+		t.Fatalf("empty index detail %+v", view)
+	}
+}
+
 func TestSQLiteDownEmbedderIsDegradedNotDummy(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	svc, adapter := openV3FolderServiceWith(nil)

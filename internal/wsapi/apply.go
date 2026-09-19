@@ -8,8 +8,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
+type batchStore interface {
+	ApplyBatch(ctx context.Context, ops []workspace.BatchOp, proposal workspace.Proposal) (workspace.Proposal, []workspace.MembershipEvent, error)
+}
+
 // ApplyActionPlan validates, then applies. Revalidate happens immediately
 // before the writes because organize ran outside the collections transaction.
+// Production (*workspace.Store) applies the action-set plus the proposal row
+// in one writer transaction. A fake store still walks per-op methods.
 func (s *Service) ApplyActionPlan(ctx context.Context, plan ActionPlan) (ApplyResult, error) {
 	if err := s.ValidateActionPlan(ctx, plan); err != nil {
 		return ApplyResult{}, err
@@ -17,11 +23,56 @@ func (s *Service) ApplyActionPlan(ctx context.Context, plan ActionPlan) (ApplyRe
 	if plan.Kind == PlanNoAction {
 		return s.recordProposal(ctx, plan, "no-action", nil)
 	}
+	if err := s.ValidateActionPlan(ctx, plan); err != nil {
+		return ApplyResult{}, err
+	}
+	if batcher, ok := s.store.(batchStore); ok {
+		return s.applyThroughBatch(ctx, plan, batcher)
+	}
 	applied, err := s.applyActions(ctx, plan)
 	if err != nil {
 		return ApplyResult{}, err
 	}
 	return s.recordProposal(ctx, plan, "applied", applied)
+}
+
+func (s *Service) applyThroughBatch(ctx context.Context, plan ActionPlan, batcher batchStore) (ApplyResult, error) {
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	stored, applied, err := batcher.ApplyBatch(ctx, batchOpsOf(plan), workspace.Proposal{
+		ChatID:         plan.ChatID,
+		SourceRev:      plan.SourceRev,
+		PlanJSON:       string(raw),
+		Result:         "applied",
+		IdempotencyKey: proposalKey(plan),
+	})
+	if err != nil {
+		return ApplyResult{}, wrapStoreError(err)
+	}
+	if applied == nil {
+		applied = []workspace.MembershipEvent{}
+	}
+	return ApplyResult{PlanID: stored.ID, Applied: applied}, nil
+}
+
+func batchOpsOf(plan ActionPlan) []workspace.BatchOp {
+	actor := organizerActor(plan)
+	ops := make([]workspace.BatchOp, 0, len(plan.Actions))
+	for _, action := range plan.Actions {
+		ops = append(ops, workspace.BatchOp{
+			Kind:         action.Kind,
+			CollectionID: action.CollectionID,
+			FromID:       action.FromID,
+			ToID:         action.ToID,
+			Ref:          normalizeRef(action.Ref),
+			FolderName:   action.FolderName,
+			ParentIDs:    append([]string(nil), action.ParentIDs...),
+			Provenance:   organizerProvenance(plan, action, actor),
+		})
+	}
+	return ops
 }
 
 func (s *Service) applyActions(ctx context.Context, plan ActionPlan) ([]workspace.MembershipEvent, error) {

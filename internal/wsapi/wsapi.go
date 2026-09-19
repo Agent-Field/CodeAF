@@ -162,6 +162,30 @@ func (s *Service) RemovePlacement(ctx context.Context, collectionID string, ref 
 	return wrapStoreError(s.store.RemoveWith(ctx, collectionID, ref, normalize(p)))
 }
 
+type suppressRemover interface {
+	RemoveAndSuppress(ctx context.Context, id string, ref workspace.Ref, evidenceHash string, p workspace.Provenance) error
+}
+
+// RemovePlacementSuppressing detaches the edge and records the evidence hash
+// in the same store transaction when the hash is set. A suppress error does
+// not report a successful remove.
+func (s *Service) RemovePlacementSuppressing(ctx context.Context, collectionID string, ref workspace.Ref, evidenceHash string, p workspace.Provenance) error {
+	if err := s.ready(ctx); err != nil {
+		return err
+	}
+	p = normalize(p)
+	if remover, ok := s.store.(suppressRemover); ok {
+		return wrapStoreError(remover.RemoveAndSuppress(ctx, collectionID, ref, evidenceHash, p))
+	}
+	if err := s.store.RemoveWith(ctx, collectionID, ref, p); err != nil {
+		return wrapStoreError(err)
+	}
+	if evidenceHash == "" {
+		return nil
+	}
+	return wrapStoreError(s.store.Suppress(ctx, collectionID, ref, evidenceHash, p))
+}
+
 // MovePlacement adds the destination and removes the source in the store's
 // one writer transaction. Other placements of the same ref stay.
 func (s *Service) MovePlacement(ctx context.Context, fromID, toID string, ref workspace.Ref, p workspace.Provenance) error {

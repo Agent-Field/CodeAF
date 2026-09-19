@@ -206,12 +206,14 @@ collections cannot open. It refuses a cycle or an unknown id in its result text.
 
 ## Automatic organization — does it file chats automatically, organizer, why here, no keyword-only file
 
-After a substantive message is already in the journal, codeaf may file that chat
-in another folder while you are elsewhere. Filing needs no approval card. `w`
-why here shows origin `organizer` plus the evidence reason, skipping empty
-parts. Person-filed chats still show `person`. Similarity scores are never
-membership: a keyword-only file is refused, so it does not file by keywords.
-Lexical overlap alone does not add a placement. The profile row `workspace.organize` (on once this store is
+After a substantive message is already in the journal, codeaf enqueues an
+`observe_and_organize` job. Filing happens when the standing pass or `codeaf tick`
+is bound to the organizer and applies a validated plan — enqueue alone does not
+place the chat. Filing needs no approval card. `w` why here shows origin
+`organizer` plus the evidence reason, skipping empty parts. Person-filed chats
+still show `person`. Similarity scores are never membership: a keyword-only file
+is refused, so it does not file by keywords. Lexical overlap alone does not add a
+placement. The profile row `workspace.organize` (on once this store is
 v3) pauses automatic placements when off; manual `/folders create` / add / nest
 and ordinary chat stay. Automatic remove only touches edges whose latest origin
 is `organizer` (or recovery). Your placements stay.

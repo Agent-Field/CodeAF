@@ -41,7 +41,11 @@ Live tmux proof: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue
 
 ## Wave 2 — discovery and instructions
 
-Status: **integrated** on SHA `f2de6878de6ae54d60ff4f98d97cb9b8f766e416`. Live J09–J18 is `t-w2-live`, not done. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Use the wave-2 launch script only after `releases/wave-2/ready.json`.
+Status: **remediations in progress** after integrate SHA `f2de6878de6ae54d60ff4f98d97cb9b8f766e416`. Independent reviews were `ok: false` (unbound organizer, no journal ingest, J11 double-hash, ApplyActionPlan not one txn). Affected `pr-ready` failed the lock-defer law on `SetEmbedder`. Live J09–J18 is `t-w2-live` after remediations, reintegrate, and a passing affected run. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Use the wave-2 launch script only after `releases/wave-2/ready.json`. Wave 1 remains:
+
+```
+ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b3b407a676efca3282b9834f05ea956c98a89cd/launch.sh'
+```
 
 ### What you should see (frozen names)
 

@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"path/filepath"
 	"testing"
 
@@ -122,22 +120,42 @@ func TestPersonRemoveOfAnOrganizerPlacementSuppressesThatEvidence(t *testing.T) 
 		t.Fatal(err)
 	}
 	chat := workspace.Ref{Kind: workspace.ConversationKind, ID: "aaaaaaaaaaaaaaaa"}
-	evidence := "customers must authenticate"
-	if err := svc.AddPlacement(ctx, billing.ID, chat, workspace.Provenance{
-		Origin:   workspace.OriginOrganizer,
-		Actor:    "organizer",
-		Reason:   "related",
-		Evidence: evidence,
-	}); err != nil {
-		t.Fatal(err)
+	got, err := svc.ApplyActionPlan(ctx, wsapi.ActionPlan{
+		Kind: wsapi.PlanAdd, ChatID: chat.ID, SourceRev: "1", Model: "organize-test",
+		Actions: []wsapi.Action{{
+			Kind: wsapi.PlanAdd, CollectionID: billing.ID, Ref: chat,
+			ExpectedRevision: billing.Revision, Reason: "related",
+			Evidence: []wsapi.EvidenceRef{{SourceRef: "chat:old", PassageHash: "same-passages"}},
+		}},
+	})
+	if err != nil || len(got.Applied) != 1 {
+		t.Fatalf("apply %+v %v", got, err)
+	}
+	hash := got.Applied[0].Evidence
+	if hash == "" {
+		t.Fatal("applied organizer event stored no evidence hash")
 	}
 	if err := adapter.RemovePlacement(ctx, billing.ID, chat.ID); err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256([]byte(evidence))
-	blocked, err := jobs.IsSuppressed(ctx, billing.ID, chat, hex.EncodeToString(sum[:]))
+	blocked, err := jobs.IsSuppressed(ctx, billing.ID, chat, hash)
 	if err != nil || !blocked {
 		t.Fatalf("organizer evidence was not suppressed: blocked=%v err=%v", blocked, err)
+	}
+	folder, _, err := svc.FolderSnapshot(ctx, billing.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again := wsapi.ActionPlan{
+		Kind: wsapi.PlanAdd, ChatID: chat.ID, SourceRev: "2", Model: "organize-test",
+		Actions: []wsapi.Action{{
+			Kind: wsapi.PlanAdd, CollectionID: billing.ID, Ref: chat,
+			ExpectedRevision: folder.Revision, Reason: "related",
+			Evidence: []wsapi.EvidenceRef{{SourceRef: "chat:old", PassageHash: "same-passages"}},
+		}},
+	}
+	if err := svc.ValidateActionPlan(ctx, again); err == nil {
+		t.Fatal("identical evidence must stay suppressed after TUI remove")
 	}
 }
 
@@ -167,8 +185,7 @@ func TestPersonRemoveOfAPersonPlacementDoesNotSuppress(t *testing.T) {
 		t.Fatal(err)
 	}
 	chat := workspace.Ref{Kind: workspace.ConversationKind, ID: "aaaaaaaaaaaaaaaa"}
-	sum := sha256.Sum256(nil)
-	blocked, err := jobs.IsSuppressed(ctx, billing.ID, chat, hex.EncodeToString(sum[:]))
+	blocked, err := jobs.IsSuppressed(ctx, billing.ID, chat, "unused")
 	if err != nil {
 		t.Fatal(err)
 	}
