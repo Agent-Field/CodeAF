@@ -54,8 +54,9 @@ type v3Process struct {
 	// the same one: with CODEAF_PROFILE_DIR set, a panel writing ~/.codeaf while
 	// the session read the named profile is a gate turned off in the sheet that
 	// stays on with nothing on screen saying why.
-	Settings   config.Config
-	ProfileDir string
+	Settings          config.Config
+	ProfileDir        string
+	UnreadProfileKeys []string
 	// Models is ONE lazy warm and one cache on disk. N catalogs would be N
 	// network round trips for one answer.
 	Models *catalog.Catalog
@@ -184,15 +185,16 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
 	return &v3Process{
-		Settings:   settings,
-		ProfileDir: settings.ProfileDir,
-		Models:     models,
-		Shelf:      shelf,
-		Harnesses:  subharness.Default(),
-		Memory:     v3Memory(settings.ProfileDir),
-		Artifacts:  artifactsIndexPath(),
-		Conns:      v3Connect(settings.ProfileDir),
-		LaunchDir:  launchDir,
+		Settings:          settings,
+		ProfileDir:        settings.ProfileDir,
+		UnreadProfileKeys: append([]string(nil), settings.UnreadProfileKeys...),
+		Models:            models,
+		Shelf:             shelf,
+		Harnesses:         subharness.Default(),
+		Memory:            v3Memory(settings.ProfileDir),
+		Artifacts:         artifactsIndexPath(),
+		Conns:             v3Connect(settings.ProfileDir),
+		LaunchDir:         launchDir,
 	}, nil
 }
 

@@ -159,7 +159,8 @@ type Engine struct {
 	// carried in Welcome so a linked-local surface writes every local row back
 	// to the profile the running conversation actually reads. A remote surface
 	// does not use the path for local writes.
-	ProfileDir string
+	ProfileDir        string
+	UnreadProfileKeys []string
 	// Workspace is the directory the engine resolved and works in — the answer
 	// to the path the hello asked for, which the welcome carries back.
 	Workspace string
@@ -1159,6 +1160,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		ApprovalMode:               sess.engine.ApprovalMode,
 		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,
 		ProfileDir:                 sess.engine.ProfileDir,
+		UnreadProfileKeys:          append([]string(nil), sess.engine.UnreadProfileKeys...),
 		PlacesRoot:                 sess.engine.PlacesRoot,
 		Live:                       sess.liveLocked(),
 		Held:                       sess.heldWaitingLocked(s.arrived),

@@ -937,7 +937,8 @@ type Welcome struct {
 	// surface falls back to its own resolved directory; linked-local launches
 	// retire a daemon whose build differs, so that compatibility reading is
 	// theoretical on the road that consumes it. No protocol version moves.
-	ProfileDir string `json:"profileDir,omitempty"`
+	ProfileDir        string   `json:"profileDir,omitempty"`
+	UnreadProfileKeys []string `json:"unreadProfileKeys,omitempty"`
 	// Encoding is the one frame payload encoding selected from Hello.Encodings,
 	// or empty when this connection stays on ordinary JSON payloads.
 	Encoding string `json:"encoding,omitempty"`
