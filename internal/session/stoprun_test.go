@@ -165,6 +165,9 @@ func TestAStoppedRunThatChangedNothingSaysSo(t *testing.T) {
 	if !strings.Contains(said, "stopped · it had changed nothing") || strings.Contains(said, "kept on") {
 		t.Fatalf("a run stopped before it changed anything says:\n%s", said)
 	}
+	if rows := agent.graph().runRows(71); len(rows) != 1 || rows[0].Branch != "" || !rows[0].Stopped {
+		t.Fatalf("a run stopped before it changed anything draws %+v, want a stopped row naming no branch", rows)
+	}
 }
 
 // A HAND-OFF AFTER A STOPPED RUN IS A FRESH RUN. A store whose run task is open
