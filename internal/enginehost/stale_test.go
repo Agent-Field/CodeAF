@@ -44,20 +44,14 @@ func liveHost(t *testing.T, workspace string) {
 }
 
 // waitForHostQuietly waits until the host accepts a connection and completes
-// the remote handshake. A socket pathname and a held lock can coexist during
-// startup before the host has replaced a stale socket and begun accepting.
+// the remote whois handshake. A socket pathname and a held lock can coexist
+// during startup before the host has replaced a stale socket and begun accepting.
 func waitForHostQuietly(t *testing.T, workspace string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		conn, err := Dial(workspace)
-		if err == nil {
-			surface, handshakeErr := remote.Dial(conn, "test readiness", remote.Hello{Version: remote.Version})
-			if handshakeErr == nil {
-				_ = surface.Close()
-				return
-			}
-			_ = conn.Close()
+		if _, err := Ask(workspace, remote.WhoIs{}); err == nil {
+			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("no host came up")
