@@ -401,6 +401,59 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 // block is DRAWN FROM the lines, so nil is the whole of what a person meets —
 // the page simply has no seat rows, exactly as it had none before the door
 // crossed.
+// TestPlanSteeringCrossesTheWire proves every verb and its typed arguments travel,
+// and that the protocol does not decorate the store sentence a person reads.
+func TestPlanSteeringCrossesTheWire(t *testing.T) {
+	client, e := newEngine(t)
+	agent := client.Agent()
+
+	if err := agent.PlanNote("t-note", "look here"); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.PlanPause("t-pause"); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.PlanResume("t-resume"); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.PlanAmend("t-amend", "new constraint"); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.PlanPriority("t-priority", 7); err != nil {
+		t.Fatal(err)
+	}
+	const refusal = `task "done-one" is already terminal`
+	e.fails[MethodPlanCancel] = refusal
+	if err := agent.PlanCancel("t-done-one"); err == nil || err.Error() != refusal {
+		t.Fatalf("PlanCancel refusal = %v, want byte-for-byte %q", err, refusal)
+	}
+
+	checks := []struct {
+		method string
+		want   any
+	}{
+		{MethodPlanNote, PlanTextArgs{ID: "t-note", Text: "look here"}},
+		{MethodPlanPause, PlanTaskArgs{ID: "t-pause"}},
+		{MethodPlanResume, PlanTaskArgs{ID: "t-resume"}},
+		{MethodPlanCancel, PlanTaskArgs{ID: "t-done-one"}},
+		{MethodPlanAmend, PlanTextArgs{ID: "t-amend", Text: "new constraint"}},
+		{MethodPlanPriority, PlanPriorityArgs{ID: "t-priority", Priority: 7}},
+	}
+	for _, check := range checks {
+		calls := e.calls(check.method)
+		if len(calls) != 1 {
+			t.Fatalf("%s travelled %d times, want 1", check.method, len(calls))
+		}
+		got := reflect.New(reflect.TypeOf(check.want))
+		if err := json.Unmarshal(calls[0].Payload, got.Interface()); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got.Elem().Interface(), check.want) {
+			t.Fatalf("%s args = %+v, want %+v", check.method, got.Elem().Interface(), check.want)
+		}
+	}
+}
+
 func TestPlanSpendIsEmptyForAnEngineWithoutTheDoor(t *testing.T) {
 	client, e := newEngine(t)
 	e.fails[MethodPlanSpend] = `engine: no such method "PlanSpend"`
