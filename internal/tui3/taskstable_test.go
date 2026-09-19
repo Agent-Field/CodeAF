@@ -207,8 +207,9 @@ func TestAShutRootCountsEveryRowItHides(t *testing.T) {
 	world, win, now := tasksTableFixture()
 	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	lines := reading.lay(122)
-	// A plan-backed reading draws runs directly; this law applies only when a
-	// conversation root is present, and checks each such root below.
+	if work := tasksWorkLines(lines); len(work) != 0 {
+		t.Fatalf("a fresh reading drew %d rows of work, and every conversation opens shut", len(work))
+	}
 	for _, line := range lines {
 		if line.kind != tasksLineChat {
 			continue

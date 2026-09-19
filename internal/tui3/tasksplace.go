@@ -197,16 +197,12 @@ type tasksReading struct {
 	// empty — `work codeaf ran on its own. nothing.` across the top of a machine
 	// that had run ten pieces of work. The news that nothing matches already has
 	// its own home on the note line ([taskSheetFilterLine]).
-	whole     int
-	wholeCost float64
-	// sectionCounts is the number of top-level store runs in each work group.
-	// It is computed with the reading so the head never re-groups at paint time.
-	sectionCounts [tasksSectionCount]int
-	hasRuns       bool
-	win           session.UsageWindow
-	seen          time.Time
-	now           time.Time
-	summaryNow    string
+	whole      int
+	wholeCost  float64
+	win        session.UsageWindow
+	seen       time.Time
+	now        time.Time
+	summaryNow string
 	// open is what a person has SET about the folds on this page, and it is the
 	// PLACE'S state handed in rather than the reading's own: a snapshot is
 	// replaced whole every time a node lands (place_tasks.go), and a fold that
@@ -381,15 +377,6 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	tree := tasksTreeOf(visible, now, by, r.chats...)
 	r.items = tree.order()
 	r.shape = &tree
-	for _, group := range tree.groups {
-		for _, root := range group.roots {
-			if root.plan == nil || root.plan.Parent != "" {
-				continue
-			}
-			r.hasRuns = true
-			r.sectionCounts[group.section]++
-		}
-	}
 	// WHAT THE PLACE IS HOLDING IS COUNTED HERE, ONCE, off the rows before any
 	// query has touched them ([tasksReading.whole] states why).
 	r.whole = len(r.items)
@@ -786,11 +773,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 			add(tasksLineFold, workOlderFold(tree.held(section)))
 			continue
 		}
-		heading := tasksSectionHead(section, tree.held(section), tree.shown(r, section))
-		if r.hasRuns {
-			heading = tasksRunSectionHead(section, len(groups))
-		}
-		add(tasksLineWord, heading)
+		add(tasksLineWord, tasksSectionHead(section, tree.held(section), tree.shown(r, section)))
 		// THE PAGE'S UNIT IS A RUN, not the conversation it came from. Gather
 		// every root before ordering so activity interleaves runs from different
 		// conversations. The rail retains its established grouped projection.
@@ -1712,16 +1695,6 @@ func (r tasksReading) nameAt(lines []tasksLine, i int) (tasksKey, bool) {
 // fold at the foot of every section, which is one number in two places and the
 // drift the one-source-of-truth law exists to stop.
 func (r tasksReading) head(width int, edge bool) string {
-	if r.hasRuns {
-		order := [...]tasksSection{tasksRunning, tasksParked, tasksNeeds, tasksToday}
-		parts := make([]string, 0, len(order))
-		for _, section := range order {
-			if count := r.sectionCounts[section]; count > 0 {
-				parts = append(parts, itoa(count)+" "+tasksSectionWord(section))
-			}
-		}
-		return strings.Join(parts, railSep)
-	}
 	// A WINDOW HOLDING NONE OF IT SAYS SO IN WORDS AND NOT AS A ZERO. The
 	// emptiness law reaches this sentence: `0 since aug 12` is the figure the law
 	// exists to forbid, and `nothing since aug 12` is the same fact a person can
@@ -1882,10 +1855,6 @@ func tasksSectionHead(section tasksSection, held, shown int) string {
 		return word
 	}
 	return word + railSep + itoa(held-shown) + " folded away"
-}
-
-func tasksRunSectionHead(section tasksSection, runs int) string {
-	return tasksSectionWord(section) + railSep + itoa(runs)
 }
 
 func tasksSectionWord(section tasksSection) string {
