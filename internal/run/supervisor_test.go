@@ -665,13 +665,11 @@ func TestStartCountsOnlyTheDollarsOfAWorkerWhoseTaskWasCancelled(t *testing.T) {
 // running at that line writes through a handle that is gone — the nil-database
 // panic a real run died on, straight out to the person as a stack trace.
 //
-// THE COORDINATOR'S SEAT IS THE PROOF. It holds its turn until its context
-// ends, and nothing but the run's own drain can end that context here: the
-// task was never cancelled, no ancestor was, and the run's own wall — ten
-// seconds off — is not what ends this run. So a closed `ended` at the moment
-// Start answers is exactly the statement that Start waited, and its absence is
-// the bug: the run would be over, its store about to close, and this worker
-// still going.
+// THE COORDINATOR'S SEAT IS THE PROOF. The leaf records its ending, then
+// returns by itself as a real worker does at its next reading of the store. A
+// closed `ended` at the moment Start answers is exactly the statement that the
+// return was absorbed before the run ended, and its absence is the bug: the run
+// would be over, its store about to close, and this worker still returning.
 func TestStartWaitsForAWorkerTheCompletedTreeLeftBehind(t *testing.T) {
 	store := startOpenStore(t, "the run's own title")
 	ctx := runContext(t)
@@ -698,7 +696,6 @@ func TestStartWaitsForAWorkerTheCompletedTreeLeftBehind(t *testing.T) {
 		if _, err := store.Done("l1", "l1", "did l1", nil, nil); err != nil {
 			return run.Report{}, err
 		}
-		<-ctx.Done()
 		close(ended)
 		return run.Report{Result: "did l1", Steps: 1}, nil
 	}
