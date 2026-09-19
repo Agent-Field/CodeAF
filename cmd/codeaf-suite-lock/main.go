@@ -1,11 +1,29 @@
 // codeaf-suite-lock holds the machine-wide heavy-suite lock while a command runs.
 //
 // The lock is an advisory file lock held on an open descriptor through
-// internal/filelock, so it works on every platform the release ships (build-cross
-// covers Windows too) and, being tied to the inherited descriptor, it follows the suite:
-// a suite killed mid-run leaves the box unlocked with no pid bookkeeping to go
-// stale. The holder writes its pid and start time into the lock file only so a
-// refused contender can name who holds it.
+// internal/filelock, so it works on every platform the release ships
+// (build-cross covers Windows too).
+//
+// THE LOCK'S LIFETIME IS THE SUITE'S. Not this wrapper's: a wrapper killed
+// mid-run must not unlock a box that is still running a suite. And not any
+// descendant's: an advisory lock lives on the open file description, so a
+// descriptor handed to the suite is kept alive by every process the suite
+// leaves behind, and a test's orphaned shell held this box for eight minutes
+// past a green run on 2026-09-19. So the descriptor goes to a HOLDER beside the
+// suite instead (lock_unix.go): a process of ours that execs nothing, watches
+// the suite's pid, and exits when the suite does. The suite never sees the
+// descriptor, and nothing can inherit it.
+//
+// If the holder is killed, the lock frees while the suite may still run. That
+// is the failure we choose. The holder waits and does nothing else, so it dies
+// only to a deliberate kill, an out-of-memory sweep or the box going down; it
+// lives in its own session, so a signal aimed at the suite or at this wrapper
+// misses it; the lock file names both pids so a free lock under a running suite
+// can still be read back; and a lock nothing can release stops the box, where a
+// lock freed early costs one concurrent suite.
+//
+// The lock file carries the suite's pid, when it started, and the holder's pid,
+// only so a refused contender can name who holds it.
 package main
 
 import (
@@ -23,12 +41,51 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
+// errNoHolder says this platform keeps the lock in the wrapper rather than
+// handing it to a holder. Windows has no descriptor to hand over the way unix
+// does, and it also has none of the inheritance the holder exists to avoid:
+// nothing but this process holds the lock there, so the wrapper's own lifetime
+// is the lock's and there is nothing to warn about.
+var errNoHolder = errors.New("this platform holds the heavy-suite lock in the wrapper")
+
+// holdFlag names the hold mode, which is this binary run as its own lock
+// holder. It is not a user-facing flag: the wrapper passes it to itself.
+const holdFlag = "--hold-heavy-suite-lock"
+
+// holdPoll is how often the holder looks at the suite it is waiting for. The
+// lock is held for the whole suite either way, so this is only the delay
+// between the suite ending and the box opening: small enough not to be noticed,
+// large enough that waiting costs nothing.
+const holdPoll = 50 * time.Millisecond
+
 func main() {
-	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: codeaf-suite-lock LOCK COMMAND [ARG...]")
-		os.Exit(2)
+	os.Exit(dispatch(os.Args[1:]))
+}
+
+// dispatch is main's whole body, kept apart from os.Exit so a test that runs
+// this binary as its own fixture reaches the hold mode as well as the wrapper.
+func dispatch(args []string) int {
+	if len(args) > 0 && args[0] == holdFlag {
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: codeaf-suite-lock "+holdFlag+" SUITEPID [STARTTOKEN]")
+			return 2
+		}
+		suite, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "hold heavy-suite lock: suite pid %q: %v\n", args[1], err)
+			return 2
+		}
+		token := ""
+		if len(args) > 2 {
+			token = args[2]
+		}
+		return holdLock(suite, token)
 	}
-	os.Exit(run(os.Args[1], os.Args[2:]))
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: codeaf-suite-lock LOCK COMMAND [ARG...]")
+		return 2
+	}
+	return run(args[0], args[1:])
 }
 
 func run(path string, argv []string) int {
@@ -74,10 +131,21 @@ func run(path string, argv []string) int {
 
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	inheritLock(cmd, lock)
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "start heavy suite: %v\n", err)
 		return 2
+	}
+
+	// The holder takes the descriptor before anything is recorded, so the lock
+	// is already the suite's by the time the file names it. A platform without a
+	// holder (Windows) keeps it here, which is safe there because nothing else
+	// can inherit it.
+	holderPID := 0
+	if holder, err := startHolder(self(), path, lock, cmd.Process.Pid); err == nil {
+		holderPID = holder.Pid
+	} else if !errors.Is(err, errNoHolder) {
+		fmt.Fprintf(os.Stderr, "hold heavy-suite lock beside the suite: %v\n", err)
+		fmt.Fprintln(os.Stderr, "this wrapper is holding it instead, so killing this wrapper would unlock a box that is still running a suite.")
 	}
 
 	since := time.Now().UTC().Format(time.RFC3339)
@@ -89,7 +157,7 @@ func run(path string, argv []string) int {
 		fmt.Fprintf(os.Stderr, "write heavy-suite lock: %v\n", err)
 		return 2
 	}
-	if _, err := fmt.Fprintf(lock, "%d %s\n", cmd.Process.Pid, since); err != nil {
+	if _, err := fmt.Fprintf(lock, "%d %s holder=%d\n", cmd.Process.Pid, since, holderPID); err != nil {
 		fmt.Fprintf(os.Stderr, "write heavy-suite lock: %v\n", err)
 		return 2
 	}
@@ -97,6 +165,14 @@ func run(path string, argv []string) int {
 		fmt.Fprintf(os.Stderr, "write heavy-suite lock: %v\n", err)
 		return 2
 	}
+	if holderPID != 0 {
+		// Dropping our own descriptor is what makes the lock the suite's rather
+		// than this wrapper's: from here the holder's copy is the only one, so
+		// this process can be killed without unlocking a running suite, and the
+		// lock cannot outlive the holder's watch.
+		_ = lock.Close()
+	}
+
 	stops := make(chan os.Signal, 2)
 	signal.Notify(stops, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(stops)
@@ -107,6 +183,7 @@ func run(path string, argv []string) int {
 		case sig := <-stops:
 			_ = cmd.Process.Signal(sig)
 		case err := <-done:
+			reportLingeringHolder(path, holderPID)
 			if err == nil {
 				return 0
 			}
@@ -123,4 +200,62 @@ func run(path string, argv []string) int {
 			return 2
 		}
 	}
+}
+
+// self is this binary, the one the holder runs. os.Executable follows the
+// running image rather than argv[0], so a wrapper invoked through a relative
+// path or a symlink still starts the same binary it is.
+func self() string {
+	path, err := os.Executable()
+	if err != nil {
+		return os.Args[0]
+	}
+	return path
+}
+
+// reportLingeringHolder says so when the lock is still held after the suite has
+// ended, and NEVER ends whoever holds it: the one thing worse than a locked box
+// is a person, or a wrapper, killing a process it has not identified. It names
+// the file-level way to find the holder, which works across pid namespaces
+// where a pid does not.
+func reportLingeringHolder(path string, holderPID int) {
+	deadline := time.Now().Add(lingerGrace)
+	for {
+		free, err := lockIsFree(path)
+		if err != nil || free {
+			return
+		}
+		if !time.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(holdPoll)
+	}
+	fmt.Fprintf(os.Stderr, "the heavy-suite lock is still held %s after this suite ended", lingerGrace)
+	if holderPID != 0 {
+		fmt.Fprintf(os.Stderr, ", and this suite's holder was pid %d", holderPID)
+	}
+	fmt.Fprintf(os.Stderr, ".\nFind who holds it, and end nothing you have not identified: lsof %s\n", path)
+}
+
+// lingerGrace is how long the holder is given to notice the suite has ended
+// before the wrapper says the lock is still held. It is the holder's poll with
+// room for a loaded box, which is exactly when this matters.
+const lingerGrace = 2 * time.Second
+
+// lockIsFree answers whether the lock can be taken right now, and takes nothing:
+// it opens its own descriptor, tries the lock without blocking, and closes it.
+func lockIsFree(path string) (bool, error) {
+	probe, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return false, err
+	}
+	defer probe.Close()
+	if err := filelock.Lock(probe, true, true); err != nil {
+		if filelock.IsBusy(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	_ = filelock.Unlock(probe)
+	return true, nil
 }
