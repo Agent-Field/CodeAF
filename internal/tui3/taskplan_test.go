@@ -247,6 +247,36 @@ func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
 			t.Fatalf("the plan page is missing %q:\n%s", want, page)
 		}
 	}
+	// THE HEAD OPENS ON THE TASK AS GIVEN TO THE PERSON: title, a folded brief,
+	// declared checks, and the folder once. Worker-only addressing and ids never leak.
+	a.taskSheet.plan = session.PlanTaskPage{
+		Row:         rows[0],
+		Description: "first line of the brief\nsecond line\nthird line\nfourth line with t-store-secret and node 47",
+		Checks:      []string{"go test ./internal/tui3"},
+		Folder:      "/tmp/the-run-copy",
+		Steps:       []session.PlanStep{{Step: 1, Command: "cd /tmp/the-run-copy && printf worker-bytes"}},
+	}
+	page = taskSheetText(a)
+	for _, want := range []string{"Alpha", "first line of the brief", "third line", "more lines", "checks", "go test ./internal/tui3", "folder", "/tmp/the-run-copy", "printf worker-bytes"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the plan page head is missing %q:\n%s", want, page)
+		}
+	}
+	for _, forbidden := range []string{"t-alpha", "t-store-secret", "node 47", "is your task in the plan"} {
+		if strings.Contains(page, forbidden) {
+			t.Fatalf("the person-facing page leaked %q:\n%s", forbidden, page)
+		}
+	}
+	if strings.Count(page, "/tmp/the-run-copy") != 1 {
+		t.Fatalf("folder count = %d, want the head only:\n%s", strings.Count(page, "/tmp/the-run-copy"), page)
+	}
+	if strings.Contains(page, "cd /tmp/the-run-copy") {
+		t.Fatalf("the page repeated its own folder in a command row:\n%s", page)
+	}
+	if got := a.taskSheet.plan.Steps[0].Command; got != "cd /tmp/the-run-copy && printf worker-bytes" {
+		t.Fatalf("drawing changed the recorded command to %q", got)
+	}
+
 	// AND esc BACKS OUT ONE LAYER to the list, the card's own bargain.
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
 	if a.taskSheet.planOn || !a.at(pageTasks) {
@@ -933,5 +963,34 @@ func TestTheRunsPlanIsReadAgainOnItsOwnBeat(t *testing.T) {
 	a.taskSheet.regroup(a)
 	if got := len(a.taskSheet.mine.plan); got != 2 {
 		t.Fatalf("a beat later the reading still holds %d plan rows, want the part the run added", got)
+	}
+}
+
+func TestPlanDisplayCommandOmitsOnlyALeadingChangeIntoTheNamedFolder(t *testing.T) {
+	const folder = "/tmp/the run copy"
+	for _, tc := range []struct{ name, command, want string }{
+		{"own folder", "cd '/tmp/the run copy' && go test ./internal/tui3", "go test ./internal/tui3"},
+		{"other folder", "cd /tmp/other && go test ./internal/tui3", "cd /tmp/other && go test ./internal/tui3"},
+		{"not leading", "printf before && cd '/tmp/the run copy' && printf after", "printf before && cd '/tmp/the run copy' && printf after"},
+		{"no following command", "cd '/tmp/the run copy'", "cd '/tmp/the run copy'"},
+		{"several lines", "cd '/tmp/the run copy' && cat > README.md <<'EOF'\n# calc\nEOF", "cat > README.md <<'EOF' …"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := planDisplayCommand(tc.command, folder); got != tc.want {
+				t.Fatalf("planDisplayCommand(%q, %q) = %q, want %q", tc.command, folder, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPlanRailAndTreeOmitTheNamedFolderFromLiveCommands(t *testing.T) {
+	root := livePlanRow()
+	root.Folder = "/tmp/run-copy"
+	root.Live.Command = "cd /tmp/run-copy && go test ./internal/tui3"
+	child := session.PlanTaskRow{ID: "t-child", Title: "Child", Status: "running", Parent: root.ID, Folder: root.Folder}
+	child.Live.Step, child.Live.Command = 1, "cd /tmp/run-copy && go vet ./internal/session"
+	text := planTextFor(t, []session.PlanTaskRow{root, child})
+	if strings.Contains(text, "cd /tmp/run-copy") || !strings.Contains(text, "$ go test ./internal/tui3") || !strings.Contains(text, "$ go vet ./internal/session") {
+		t.Fatalf("rail/tree command display did not omit only the named folder:\n%s", text)
 	}
 }
