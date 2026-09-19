@@ -77,7 +77,8 @@ prints exactly what has not left yet.
 
 ## Turning it off
 
-Any one of these turns the counts off. They are checked in this order:
+Any one of these turns the counts off, and every one of them also stops the
+Model Pool from sending. They are checked in this order:
 
 1. `CODEAF_TELEMETRY=off` — also `0` or `false`.
 2. `DO_NOT_TRACK=1` — also `true`, the ecosystem's own word for it.
@@ -98,12 +99,16 @@ task lands, and one row per seat leaves for
 `https://codeaf.agentfield.ai/pool/v1/rows`: the model slug that held the
 seat, the judge's slug, the seat (worker, high or mastermind), a 0-100 score,
 the door the run came in by (task, do, exec or run), the crew size and the UTC
-day, under a random per-install nonce in an `X-Codeaf-Install` header. No
-prompt, code, path or name rides in a row. `CODEAF_TELEMETRY=off` does NOT
-turn this stream off: its switch is `model_pool` in settings or
-`CODEAF_MODEL_POOL`, with `read` (use the pool, send nothing) and `off` (ask no
-judge at all). `codeaf telemetry show` prints the rows waiting to leave beside
-the usage counts, so the notice's "see exactly what leaves" is true of both.
+day, under a random per-install nonce in an `X-Codeaf-Install` header. No prompt, code, path or name rides in a row. **Every way of turning the
+counts off turns this stream off too** — `CODEAF_TELEMETRY=off`,
+`DO_NOT_TRACK=1`, the project file, `codeaf telemetry off` — by capping the
+pool at `read`: the index is still read and the judge still scores into the
+install's own sheet, but nothing is sent, and `codeaf pool status` says `mode
+read · telemetry`. That cap wins over an explicit `model_pool = on`, because
+the notice's "Turn off" line carries no exception. The pool's own switch,
+`model_pool` in settings or `CODEAF_MODEL_POOL`, adds `off` (ask no judge at
+all). `codeaf telemetry show` prints the rows waiting to leave beside the
+usage counts, so the notice's "see exactly what leaves" is true of both.
 
 ## The command
 

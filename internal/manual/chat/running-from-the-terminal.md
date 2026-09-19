@@ -563,7 +563,10 @@ setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
 does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
 from the shell, and on a CI machine with neither set codeaf reads but does
-not send.
+not send. **The telemetry off switch stops the pool sending too**:
+`CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1` or `codeaf telemetry off` caps the
+pool at `read` — it wins over an explicit `on` — and `codeaf pool status`
+then says `mode read · telemetry`.
 
 ```
 codeaf pool [show|status|verify] [--json] [--key key]
@@ -571,7 +574,8 @@ codeaf pool [show|status|verify] [--json] [--key key]
 
 `show` — also what bare `codeaf pool` prints — is the reading form: the mode
 and the addresses in force with the word saying where each came from
-(`default`, `setting`, `env` or `ci`), then what index is cached, how old
+(`default`, `setting`, `env`, `ci`, or `telemetry` when the telemetry off switch capped
+sending), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
 seed of <date>`. The binary carries a seed index of our own scored runs,
 read until a fresher signed one is cached. `--cells` lists the held
@@ -762,9 +766,10 @@ retracted belief restores, a stopped service starts again, a revoked device pair
 they are on and why not when they are off, `show` prints exactly what is waiting to
 leave the machine — the usage counts AND the Model Pool's rows, each under a line naming
 where it goes or why it is not sent — and `off` and `on` write the answer to your profile.
-`CODEAF_TELEMETRY=off` turns off the usage counts only; the Model Pool has its own switch,
-`model_pool` in `/settings` or `CODEAF_MODEL_POOL`, with `read` (use the pool, send
-nothing) and `off`. It reads and
+`CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
+usage counts go quiet and the Model Pool is capped at `read`, so it still picks models
+from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or
+`CODEAF_MODEL_POOL`, adds `off`, which asks no judge at all. It reads and
 sends nothing of its own — it is a command about the counts, not a session. The
 notice the first session prints names the bargain before the first byte leaves, and
 `CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See

@@ -269,3 +269,56 @@ func TestTelemetryShowDoesNotCreateThePoolOutbox(t *testing.T) {
 		t.Fatalf("an empty pool should print [], got:\n%s", usageOut.(*strings.Builder).String())
 	}
 }
+
+// TestTelemetryOffQuietsThePoolFromTheEnvironment is the notice's promise read
+// end to end: with CODEAF_TELEMETRY=off and the pool explicitly on, the show
+// verb reports the pool sending nothing, from the telemetry switch.
+func TestTelemetryOffQuietsThePoolFromTheEnvironment(t *testing.T) {
+	telemetryHome(t)
+	telemetrySink(t)
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	usageOut = &strings.Builder{}
+	defer func() { usageOut = os.Stdout }()
+	if err := runTelemetry([]string{"show"}); err != nil {
+		t.Fatal(err)
+	}
+	got := usageOut.(*strings.Builder).String()
+	if !strings.Contains(got, "Model Pool (model_pool read, nothing is sent)") {
+		t.Errorf("CODEAF_TELEMETRY=off should quiet the pool, got:\n%s", got)
+	}
+	if !strings.Contains(got, "usage counts (off: CODEAF_TELEMETRY=off)") {
+		t.Errorf("the counts should say the same rung, got:\n%s", got)
+	}
+}
+
+// TestTelemetryOffCommandQuietsThePool is the profile rung: `codeaf telemetry
+// off` writes a row no environment carries, and the pool's resolved config
+// reads it off the disk and sends nothing, whatever the pool setting says.
+func TestTelemetryOffCommandQuietsThePool(t *testing.T) {
+	root := telemetryHome(t)
+	usageOut = &strings.Builder{}
+	defer func() { usageOut = os.Stdout }()
+	poolOn := func(name string) (string, bool) {
+		if name == "CODEAF_MODEL_POOL" {
+			return "on", true
+		}
+		return "", false
+	}
+	if cfg := config.ModelPoolResolved(root, poolOn); !cfg.CanSend() {
+		t.Fatalf("before the command the pool should send, got mode %v from %q", cfg.Mode, cfg.Source.Mode)
+	}
+	if err := runTelemetry([]string{"off"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ModelPoolResolved(root, poolOn)
+	if cfg.CanSend() || cfg.Source.Mode != "telemetry" || !cfg.CanRead() {
+		t.Fatalf("after `telemetry off` the pool should read and not send, got mode %v from %q", cfg.Mode, cfg.Source.Mode)
+	}
+	if err := runTelemetry([]string{"on"}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := config.ModelPoolResolved(root, poolOn); !cfg.CanSend() {
+		t.Fatalf("`telemetry on` should hand the pool back, got mode %v from %q", cfg.Mode, cfg.Source.Mode)
+	}
+}
