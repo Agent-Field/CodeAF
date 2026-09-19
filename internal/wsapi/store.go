@@ -11,7 +11,7 @@ import (
 
 // store matches the frozen workspace.Store methods so tests can inject a fake.
 // Open assigns *workspace.Store directly: AddWith, RemoveWith, Move, WhyHere,
-// and Events are the real methods, and provenance is never discarded.
+// Events, RootState, and Expected* on Provenance are the real methods.
 type store interface {
 	Close() error
 	Create(ctx context.Context, name string) (workspace.Collection, error)
@@ -27,29 +27,23 @@ type store interface {
 	WhyHere(ctx context.Context, id string, ref workspace.Ref) (workspace.MembershipEvent, error)
 	Events(ctx context.Context, id string, ref workspace.Ref) ([]workspace.MembershipEvent, error)
 	SchemaVersion() int
+	RootState(ctx context.Context) (revision int, purpose, updatedAt string, err error)
 }
 
 var _ store = (*workspace.Store)(nil)
 
-// rootStater is the RootState seam. Storage's CAS remediation may still be
-// landing this method; when *workspace.Store grows it, RootSnapshot fills
-// Revision from the same handle Open already bound.
-type rootStater interface {
-	RootState(ctx context.Context) (revision int, purpose, updatedAt string, err error)
-}
-
 func rootRevision(ctx context.Context, s store) (int, error) {
-	rs, ok := s.(rootStater)
-	if !ok {
+	revision, _, _, err := s.RootState(ctx)
+	if errors.Is(err, workspace.ErrNotFound) {
+		// A blank file has no root_state row until the first write. That is
+		// empty, not corrupt: RootSnapshot still returns folders/unfiled.
 		return 0, nil
 	}
-	revision, _, _, err := rs.RootState(ctx)
 	return revision, wrapStoreError(err)
 }
 
 // wrapStoreError keeps expected-revision refusals on workspace.ErrInvalid with
-// a stable "revision" mention. ErrConflict wrapping ErrInvalid (when storage
-// grows it) already satisfies errors.Is(..., ErrInvalid) and is left intact.
+// a stable "revision" mention. ErrConflict already wraps ErrInvalid.
 func wrapStoreError(err error) error {
 	if err == nil {
 		return nil

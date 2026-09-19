@@ -69,3 +69,34 @@ func TestServiceDoesNotImportSessionTUIProviderOrRun(t *testing.T) {
 		}
 	}
 }
+
+func TestNoStoreAdapterFallback(t *testing.T) {
+	files, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".go") {
+			continue
+		}
+		source, err := parser.ParseFile(token.NewFileSet(), file.Name(), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, declaration := range source.Decls {
+			gen, ok := declaration.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				named, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				if named.Name.Name == "storeAdapter" {
+					t.Errorf("%s still declares storeAdapter; Open must use *workspace.Store", file.Name())
+				}
+			}
+		}
+	}
+}
