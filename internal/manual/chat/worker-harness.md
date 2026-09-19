@@ -227,9 +227,11 @@ ends with the reason `4 replies in a row carried no action`.
 
 A parked task stays open and not done, and its claim is released: the runtime runs
 its worker again **once, when its wait is over** (see the next section), with the
-finished work in front of it. A `plandb wait` with nothing open to wait on is
-refused, so a worker cannot park on nothing. The remaining endings are the run's
-step cap, its wall, and an errored turn.
+finished work in front of it. The woken task is claimed under its own agent name
+again, so it can re-plan, add another child and park again, or finish with `done`
+exactly as it could on its first launch. A `plandb wait` with nothing open to wait
+on is refused, so a worker cannot park on nothing. The remaining endings are the
+run's step cap, its wall, and an errored turn.
 
 ## When does a waiting task come back?
 
@@ -294,12 +296,14 @@ named on a door or in the profile:
   way from `--plan-model`, then `CODEAF_PLAN_MODEL`, then the crew; a
   conversation takes it from its mastermind row. A leaf that splits moves onto
   this seat for the turns where it is a coordinator.
-- **The plan seat also answers the check seat.** A check the review round adds
-  reads a finished leaf against its acceptance, and it rides the plan seat
-  (`--plan-model`) the way a coordinator does — so a pinned plan model seats the
-  check too, and the profile's own `high` row is not billed unasked. The **probe**
-  seat is the one the profile's own `low` row answers alone: nothing on a door
-  names it, so a probe runs on the crew you set in `/crew`.
+- **`--check-model` is the check seat**: the model a check the review round
+  adds reads a finished leaf against. `codeaf do` resolves it from
+  `--check-model`, then the `CODEAF_CHECK_MODEL` environment value, then a plan
+  seat pinned by `--plan-model` or `CODEAF_PLAN_MODEL`. A run pinned to two models checks on
+  the plan seat and no third model appears from the profile. Without those pins,
+  the check takes the crew's careful row, the same row a conversation's checker rides. The
+  **probe** seat is the one the profile's own `low` row answers alone: nothing
+  on a door names it, so a probe runs on the crew you set in `/crew`.
 
 The seat a person names is the seat **every** launch takes — a task launched
 after the door resolved the seats still runs on them, not on whichever row the

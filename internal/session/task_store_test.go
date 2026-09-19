@@ -875,3 +875,60 @@ func TestACheckpointAfterTheCloseWritesNothing(t *testing.T) {
 		t.Fatalf("a closed store left its temporary behind: stat err = %v", err)
 	}
 }
+
+// THE READER MAY NOT REFUSE WHAT THE WRITER WRITES. A task out of the plan store
+// is admitted to the tree with the store's id and no acceptance of its own (what
+// it is held to lives in the store), and the checkpoint carrying it has to read
+// back. It did not (2026-09-18): the file was refused whole for "node 5 has no
+// acceptance", the conversation reopened with no tasks, and its next save
+// replaced twenty of them with nothing.
+func TestAPlanBornNodeReadsBackWithoutAnAcceptanceOfItsOwn(t *testing.T) {
+	document := `{"type":"tasks","version":1,"seq":2,"nodes":[
+		{"id":1,"title":"the run","brief":"b","acceptance":"a","state":"done"},
+		{"id":2,"title":"a part","brief":"b","acceptance":"","state":"done","plan_id":"qax3xr"}]}`
+	got, err := decodeTasks([]byte(document))
+	if err != nil {
+		t.Fatalf("a plan-born node made the checkpoint unreadable: %v", err)
+	}
+	if len(got.Nodes) != 2 || got.Nodes[1].PlanID != "qax3xr" {
+		t.Fatalf("nodes read back = %+v", got.Nodes)
+	}
+	ordinary := strings.Replace(document, `,"plan_id":"qax3xr"`, "", 1)
+	if _, err := decodeTasks([]byte(ordinary)); err == nil {
+		t.Fatal("an ordinary node with no acceptance read back")
+	}
+}
+
+// A REFUSED CHECKPOINT IS SET ASIDE, NEVER OVERWRITTEN, AND AN ID IS NEVER
+// REUSED. The graph opens empty and its first save lands on the same path, so
+// the unreadable file has to have moved by then; and the counter lived only in
+// that file, so it is raised past every task that left a journal or a working
+// copy on disk.
+func TestARefusedCheckpointIsKeptBesideItselfAndItsIdsAreNotReused(t *testing.T) {
+	journal, _ := journalIn(t)
+	const refused = `{"type":"tasks","version":1,"seq":23,"nodes":[{"id":23,"title":"t","brief":"b","acceptance":"a","state":"halfway"}]}`
+	place := Place{Dir: filepath.Dir(journal)}
+	checkpoint := place.Tasks()
+	writeFile(t, checkpoint, refused)
+	for _, made := range []string{filepath.Join(place.Trees(), "7"), place.NodeJournals()} {
+		if err := os.MkdirAll(made, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(place.NodeJournals(), "20260918-185601.168777_23.jsonl"), "{}\n")
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = journal
+		config.Place = place
+	})
+	kept, err := filepath.Glob(checkpoint + refusedCheckpointSuffix + "*")
+	if err != nil || len(kept) != 1 {
+		t.Fatalf("the refused checkpoint was not set aside: %v %v", kept, err)
+	}
+	if content, err := os.ReadFile(kept[0]); err != nil || string(content) != refused {
+		t.Fatalf("the file set aside is not the file that was refused: %q %v", content, err)
+	}
+	if next := agent.graph().reserve(); next != 24 {
+		t.Fatalf("the next task id is %d, want 24: the journal on disk already names 23", next)
+	}
+}

@@ -65,6 +65,7 @@ type TaskSpec struct {
 	ID           string          `json:"id"`
 	Title        string          `json:"title"`
 	Description  string          `json:"description,omitempty"`
+	Question     string          `json:"question,omitempty"`
 	Kind         string          `json:"kind,omitempty"`
 	ParentID     string          `json:"parent_id,omitempty"`
 	Dependencies []Dependency    `json:"dependencies,omitempty"`
@@ -103,6 +104,7 @@ type TaskSpec struct {
 type TaskPatch struct {
 	Title                *string
 	Description          *string
+	Question             *string
 	Kind                 *string
 	Priority             *int
 	Capabilities         *[]string

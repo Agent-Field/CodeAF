@@ -183,7 +183,7 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional. Commands that re-establish the result, each one simple command safe to run again. ` +
+	`"description":"Optional. Each ONE rerunnable command re-establishing the result: no leading cd, no &&. ` +
 	`The checker runs these and nothing else; work declaring none is judged by reading. Never the work itself"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
@@ -585,6 +585,22 @@ func runnableChecks(declared []string, own taskCopy) []string {
 // THE SHAPE IS THE ONLY THING ASKED HERE, and the ground is not: a check is
 // declared before the work exists, so a command naming a file the work has yet to
 // write is a perfectly good check and is settled where the door is built.
+// leadsWithDirectoryChange reports a check whose first step changes directory.
+// IT IS REFUSED, NEVER REPAIRED. Dropping the step looked safe for the case
+// that was measured (2026-09-18: a proposal's first call spelled its check as a
+// change into the person's checkout and then the command), and it is
+// meaning-preserving ONLY when the directory is the ground itself. This door
+// does not know the ground, and a check that changes into any other folder
+// (a deliverable written outside the repository is checked exactly that way)
+// would be kept as a command run somewhere its files are not: a wrong verdict
+// on correct work, or a pass on the wrong file. A refusal is annoying and never
+// wrong, so the refusal says the form that passes instead.
+func leadsWithDirectoryChange(said string) bool {
+	step, _, composed := strings.Cut(said, "&&")
+	fields := strings.Fields(step)
+	return composed && len(fields) == 2 && fields[0] == "cd"
+}
+
 func declaredCheckList(raw []string) ([]string, string) {
 	out := make([]string, 0, len(raw))
 	for _, entry := range raw {
@@ -594,8 +610,12 @@ func declaredCheckList(raw []string) ([]string, string) {
 		}
 		command, ok := commandLike(said)
 		if !ok {
-			return nil, "Invalid arguments: checks must each be ONE command with no shell composition — " +
+			refusal := "Invalid arguments: checks must each be ONE command with no shell composition — " +
 				strconv.Quote(clip(said, auditCommandLimit)) + " is not"
+			if leadsWithDirectoryChange(said) {
+				refusal += ". A check runs from the root of the task's own copy: leave the directory change out and name each file by its path"
+			}
+			return nil, refusal
 		}
 		if !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
 			return nil, "Invalid arguments: checks may not name " + strconv.Quote(command) +

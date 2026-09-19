@@ -1737,8 +1737,10 @@ type app struct {
 	chatTabWho tabIdentity
 	// chatTabBar is the strip as it was last laid out, kept from frame to frame
 	// (chattabs.go's [tabBar] states the whole of why).
-	chatTabBar tabBar
-	tabView    tabViewport
+	chatTabBar     tabBar
+	workTabOn      bool
+	workTabSettled string
+	tabView        tabViewport
 	// tabShut is the conversations whose TAB has been dismissed — the whole of
 	// the new state the ✕ on a tab costs (chattabs.go's [app.tabDismiss]). The
 	// conversation itself is untouched: still held, still running, still on the
@@ -2549,6 +2551,13 @@ type app struct {
 	// be a render tuned to a test.
 	clock func() time.Time
 
+	// Run-summary work is commanded from Update, never from the frame. The
+	// attempt stamp provides the named once-a-minute ceiling even on refusal.
+	runSummaryRefreshing  bool
+	runSummaryRefreshedAt time.Time
+	runSummaryShape       string
+	runSummaryNow         string
+
 	// setup is the first-run screen, which precedes the box below on the one
 	// launch that gets it (firstrun.go). Its zero value is every other launch.
 	setup setupFlow
@@ -3210,6 +3219,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if say := a.retitle(); say != nil {
 		cmd = tea.Batch(cmd, say)
 	}
+	if summary := a.refreshRunSummary(); summary != nil {
+		cmd = tea.Batch(cmd, summary)
+	}
 	return model, cmd
 }
 
@@ -3451,6 +3463,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tasksLoadedMsg:
 		return a, a.tasksLoaded(msg.rows, msg.known)
+
+	case runSummaryRefreshedMsg:
+		a.runSummaryRefreshing = false
+		if msg.ok {
+			a.runSummaryNow = strings.TrimSpace(msg.summary.Now)
+			a.taskSheet.mine.now = a.runSummaryNow
+			a.taskSheet.reading.summaryNow = a.runSummaryNow
+			a.touch()
+		}
+		return a, nil
 
 	case taskTailMsg:
 		// One node's journal, read off the loop for the record card and for the

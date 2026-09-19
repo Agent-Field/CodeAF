@@ -73,6 +73,7 @@ var schemaStatements = []string{
 		ord                   INTEGER NOT NULL,
 		title                 TEXT    NOT NULL,
 		description           TEXT    NOT NULL,
+		question              TEXT    NOT NULL DEFAULT '',
 		kind                  TEXT    NOT NULL,
 		parent_id             TEXT    NOT NULL,
 		priority              INTEGER NOT NULL,
@@ -123,6 +124,7 @@ var schemaStatements = []string{
 		ord                   INTEGER NOT NULL,
 		title                 TEXT    NOT NULL,
 		description           TEXT    NOT NULL,
+		question              TEXT    NOT NULL DEFAULT '',
 		kind                  TEXT    NOT NULL,
 		parent_id             TEXT    NOT NULL,
 		priority              INTEGER NOT NULL,
@@ -338,6 +340,9 @@ func migrateColumns(tx *sql.Tx) error {
 	// still opens, its old tasks reading back as not waiting. Both the live
 	// table and the archive carry them.
 	for _, table := range []string{"tasks", "archived_tasks"} {
+		if err := ensureColumn(tx, table, "question", "TEXT", "''"); err != nil {
+			return err
+		}
 		if err := ensureColumn(tx, table, "checks", "TEXT", "'[]'"); err != nil {
 			return err
 		}
@@ -455,7 +460,7 @@ func loadState(tx *sql.Tx) (state, error) {
 // taskColumns is every column a task row carries, in the order scanTask
 // reads them. The archive keeps the same columns and adds archived_at, so the
 // list lives here and both the loader and the archive reader share it.
-const taskColumns = `id, title, description, kind, parent_id, priority, effect,
+const taskColumns = `id, title, description, question, kind, parent_id, priority, effect,
 	parallel, isolation, role, agent, acceptance, checks, capabilities, resources, context_inputs,
 	deliverables, evidence_requirements, status, composite, claimed_by, result, err,
 	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused, owner, seen_at,
@@ -484,7 +489,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		basis                                                        string
 	)
 	dest := []any{
-		&task.ID, &task.Title, &task.Description, &task.Kind, &task.ParentID,
+		&task.ID, &task.Title, &task.Description, &task.Question, &task.Kind, &task.ParentID,
 		&task.Priority, &effect, &parallel, &isolation, &task.Role, &task.Agent, &task.Acceptance,
 		&checks, &capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 		&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
@@ -593,10 +598,10 @@ func loadArchived(q rowQuerier) ([]*Task, error) {
 // move out of the live tables and the copy into the archive commit together.
 func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 	statement, err := tx.Prepare(`INSERT INTO archived_tasks (
-		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
+		id, ord, title, description, question, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -634,7 +639,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 		if err != nil {
 			return err
 		}
-		if _, err := statement.Exec(task.ID, ord, task.Title, task.Description, task.Kind,
+		if _, err := statement.Exec(task.ID, ord, task.Title, task.Description, task.Question, task.Kind,
 			task.ParentID, task.Priority, string(task.Effect), task.Parallel, task.Isolation,
 			task.Role, task.Agent, task.Acceptance, checks, capabilities, resources, contextInputs, deliverables,
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
@@ -744,11 +749,11 @@ func saveState(tx *sql.Tx, value state) error {
 
 func saveTasks(tx *sql.Tx, value state) error {
 	statement, err := tx.Prepare(`INSERT INTO tasks (
-		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
+		id, ord, title, description, question, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
 		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at,
-		verdict_basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		verdict_basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -791,7 +796,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 		if err != nil {
 			return err
 		}
-		if _, err := statement.Exec(task.ID, ord, task.Title, task.Description, task.Kind,
+		if _, err := statement.Exec(task.ID, ord, task.Title, task.Description, task.Question, task.Kind,
 			task.ParentID, task.Priority, string(task.Effect), task.Parallel, task.Isolation,
 			task.Role, task.Agent, task.Acceptance, checks, columns, resources, contextInputs, deliverables,
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,

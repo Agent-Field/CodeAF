@@ -277,3 +277,99 @@ func planRowByID(t *testing.T, rows []PlanTaskRow, id string) PlanTaskRow {
 	t.Fatalf("no row %q among %v", id, rowIDs(rows))
 	return PlanTaskRow{}
 }
+
+// A run root carries progress over every task below it, not its own runtime
+// status. Ready and dependency-held work are both queued; claimed and running
+// work are both running. The figures come from one deterministic store read.
+func TestPlanTaskRootCarriesSubtreeProgress(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a",
+		plandb.TaskSpec{ID: "done", Title: "Done"},
+		plandb.TaskSpec{ID: "running", Title: "Running"},
+		plandb.TaskSpec{ID: "ready", Title: "Ready"},
+		plandb.TaskSpec{ID: "failed", Title: "Failed"},
+		plandb.TaskSpec{ID: "held", Title: "Held", ParentID: "ready", Dependencies: []plandb.Dependency{{TaskID: "running", Kind: plandb.DepBlocks}}},
+	)
+
+	store, err := plandb.Open(path, "", planRootID, "", "")
+	if err != nil {
+		t.Fatalf("reopen the store to move tasks: %v", err)
+	}
+	if _, err := store.Claim("done", "worker-done"); err != nil {
+		t.Fatalf("claim done task: %v", err)
+	}
+	if _, err := store.Done("done", "worker-done", "done", nil, nil); err != nil {
+		t.Fatalf("finish done task: %v", err)
+	}
+	if _, err := store.Claim("running", "worker-running"); err != nil {
+		t.Fatalf("claim running task: %v", err)
+	}
+	if _, err := store.Claim("failed", "worker-failed"); err != nil {
+		t.Fatalf("claim failed task: %v", err)
+	}
+	if _, err := store.Fail("failed", "worker-failed", "boom"); err != nil {
+		t.Fatalf("fail task: %v", err)
+	}
+	_ = store.Close()
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	root := planRowByID(t, agent.PlanTasks(), "t-"+planRootID)
+	if root.Done != 1 || root.Running != 1 || root.Queued != 2 || root.Failed != 1 || root.Total != 5 {
+		t.Fatalf("root progress = done %d, running %d, queued %d, failed %d, total %d; want 1, 1, 2, 1, 5", root.Done, root.Running, root.Queued, root.Failed, root.Total)
+	}
+}
+
+// A REOPENED CONVERSATION FINDS THE RUN IT LEFT. The plan was armed only by the
+// `/task` that seeded it, in the process that seeded it, so closing the terminal
+// and reopening the conversation drew a rail with no run on it while the store
+// sat in the session folder with every row. The store is the memory: a
+// conversation under the belt whose folder holds a plan store reads it, with no
+// `/task` typed in this process.
+func TestPlanTasksFindsTheStoreAReopenedConversationLeft(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	dir := filepath.Join(t.TempDir(), "0123456789abcdef")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("make the session folder: %v", err)
+	}
+	seedPlanStore(t, filepath.Join(dir, planStoreFilename), filepath.Base(dir),
+		plandb.TaskSpec{ID: "alpha", Title: "Alpha"},
+	)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Place = Place{Dir: dir, Workspace: c.Workspace}
+	})
+	rows := agent.PlanTasks()
+	if len(rows) != 2 || rows[1].ID != "t-alpha" {
+		t.Fatalf("PlanTasks in a reopened conversation = %v, want the root and t-alpha", rowIDs(rows))
+	}
+}
+
+// THE RUN'S ROOT IS WHAT THE STORE SAYS IT IS. A run the conversation opens is
+// rooted at the task's own number, never at the word `root`, and its row must
+// carry the run's progress all the same: that row is where the dot row draws.
+func TestPlanTaskRootCarriesProgressWhenTheRootIsATaskNumber(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	store, err := plandb.Open(path, "p", "7", "the run", "the brief", "chat-a")
+	if err != nil {
+		t.Fatalf("open the store: %v", err)
+	}
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "a", Title: "A"}, {ID: "b", Title: "B"}}); err != nil {
+		t.Fatalf("add the run's tasks: %v", err)
+	}
+	if _, err := store.Claim("a", "worker-a"); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if _, err := store.Done("a", "worker-a", "done", nil, nil); err != nil {
+		t.Fatalf("finish: %v", err)
+	}
+	_ = store.Close()
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	root := planRowByID(t, agent.PlanTasks(), "t-7")
+	if root.Total != 2 || root.Done != 1 {
+		t.Fatalf("a numbered root's progress = %d of %d, want 1 of 2", root.Done, root.Total)
+	}
+}

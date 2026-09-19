@@ -40,12 +40,15 @@ comes back to the same home. It writes inside that directory and nowhere else �
 | home | 14 conversations, one archived; one stopped on an answerable consent question, one holding a running task, one named in full-width CJK with an emoji and a combining accent |
 | tasks | 13 rows across the three buckets — one running, one needing your look with a 101-character title, eight landed (one of them a `saved shape`), three failed |
 | a conversation's own work | `Sweeping the Frame Budget` keeps a checkpointed task graph of 6 nodes and 3 background jobs in its session folder — see below |
+| belt runs | the conversation's own session folder (`plandb.db` beside its transcript) holds three runs tied to `Sweeping the Frame Budget`: a running auth-flow rewrite with done, running, pending, dependent, nested and check rows; an older completed poem run; and an older index run with a failed child. Every task has a trajectory, the live rows have commands, and notes and spend make their rows draw. |
 | standing | 4 orders in `v3/standing/*.json` — one needing your look, one fired today with a check line and `earning trust 3/5`, one paused, one rule (`holds`) — plus day ledgers so cost per firing draws |
 | memory | 12 memories over all three shelves in `graph.db`, with varied use and miss counts and one let go |
 | spend | ~57 lines over 14 days across three models, bound to conversations, work and standing orders — every id joins to a row that is really there |
 | search | every turn of every conversation in the message index |
 | home's `since you left` | a `.last-look` stamp twelve hours old under `v3/projects`, which is the ORIGIN news is measured from — without it that panel whispers on a fixture full of landed work, because a machine home has never been closed on has no origin and "the first look marks NOTHING as news" (`internal/session/look.go`) |
 | made for you | 3 deliverables, with the files behind them on the disk |
+
+To add a task to the seeded belt run, add a `plandb.TaskSpec` to the `plan.AddMany` call in `cmd/codeaf-demo-home/seed_plan.go`. Give it a stable fixture ID and `ParentID: demoPlanRoot`; use `Dependencies` or `Role` when the row needs them. The store is opened there with `plandb.Open` and the seeded conversation ID, so tasks added through that plan are stamped for the conversation rail. Also add the task ID and desired step count to `counts`, which writes its `tasks/<id>/trajectory.jsonl` fixture.
 
 ### The work one conversation still has out — the room, the jobs, the hostile names
 
