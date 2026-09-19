@@ -2,7 +2,7 @@
 //
 // The lock is an advisory file lock held on an open descriptor through
 // internal/filelock, so it works on every platform the release ships (build-cross
-// covers Windows too) and, being tied to the descriptor, it dies with the holder:
+// covers Windows too) and, being tied to the inherited descriptor, it follows the suite:
 // a suite killed mid-run leaves the box unlocked with no pid bookkeeping to go
 // stale. The holder writes its pid and start time into the lock file only so a
 // refused contender can name who holds it.
@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -53,10 +54,27 @@ func run(path string, argv []string) int {
 				since = fields[1]
 			}
 			fmt.Fprintf(os.Stderr, "another heavy suite is already running on this box (pid %s, started %s).\n", pid, since)
-			fmt.Fprintln(os.Stderr, "Wait for it, or run one named regression with make test-focus.")
+			if held, convErr := strconv.Atoi(pid); convErr == nil && !holderAlive(held) {
+				// The lock is held on an inherited descriptor whose recorded
+				// holder has exited: a test the suite started leaked the
+				// descriptor into a process that outlived it, so the pid in the
+				// lock file is dead while the lock is not. Name a live way to find
+				// the real holder rather than a pid that points at nothing.
+				fmt.Fprintf(os.Stderr, "pid %s is gone; the lock is held by a process that inherited its descriptor. Find the real holder with: lsof %s\n", pid, path)
+			} else {
+				fmt.Fprintln(os.Stderr, "Wait for it, or run one named regression with make test-focus.")
+			}
 			return 1
 		}
 		fmt.Fprintf(os.Stderr, "take heavy-suite lock: %v\n", err)
+		return 2
+	}
+
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	inheritLock(cmd, lock)
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "start heavy suite: %v\n", err)
 		return 2
 	}
 
@@ -69,19 +87,12 @@ func run(path string, argv []string) int {
 		fmt.Fprintf(os.Stderr, "write heavy-suite lock: %v\n", err)
 		return 2
 	}
-	if _, err := fmt.Fprintf(lock, "%d %s\n", os.Getpid(), since); err != nil {
+	if _, err := fmt.Fprintf(lock, "%d %s\n", cmd.Process.Pid, since); err != nil {
 		fmt.Fprintf(os.Stderr, "write heavy-suite lock: %v\n", err)
 		return 2
 	}
 	if err := lock.Sync(); err != nil {
 		fmt.Fprintf(os.Stderr, "write heavy-suite lock: %v\n", err)
-		return 2
-	}
-
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "start heavy suite: %v\n", err)
 		return 2
 	}
 	stops := make(chan os.Signal, 2)
