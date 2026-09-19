@@ -16,16 +16,16 @@ exists as soon as you press enter. What it does instead is:
 - **answer at once** with the id the store knows the work by, so the conversation
   stays usable while the run goes. The run's own page is the store's root.
 
-**A second `/task` joins the live run.** One store is one run, so the new work
-becomes a child of the run's root rather than a second store, and the supervisor
-already turning picks it up on its next pass.
+**A run works in its own copy, cut from the ground chosen for the hand-off.** Its
+children share that copy. A second `/task` may join the live run only when it stands
+on the same ground, and its answer says that it joined. If it stands elsewhere, it
+is refused and says that it cannot join work already underway on another ground.
 
-When the run ends, the store's root carries the outcome and the landing, and the
-conversation is woken with the same note a landed task sends — the outcome word,
-the result the root reported, and where the work went (`landed on <branch>: N
-files`, or the sentence saying why it did not). The row the run was published
-under settles `done` when the run finished whole and `incomplete` on any other
-ending.
+Finishing a run leaves its work in that copy. Bringing the work back is a separate,
+explicit step. Its note says which branch received how many files; a run that only
+read says there is nothing to bring back and changes no branch. The conversation is
+woken with the run's outcome and result. The row settles `done` when the run
+finished whole and `incomplete` on any other ending.
 
 **With the switch unset, none of this is reached.** `/task` raises an ordinary
 task on this session's own tree, briefed beside its worker and landed through the

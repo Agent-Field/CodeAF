@@ -851,7 +851,7 @@ func taskReceipt(id uint64, spec taskSpec, state TaskState, stand taskStand, els
 		result := fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence)
 		return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
 	}
-	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence)
+	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone in this run’s own copy. Tasks joined to this run share that copy. Its work stays there until you land it. %s", id, on, spec.title, taskHandoffWakeSentence)
 	return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
 }
 
@@ -872,9 +872,9 @@ func taskStandSentence(stand taskStand) string {
 	case stand.dir == "":
 		return ""
 	case stand.rung == taskGroundBrief:
-		return "It works in " + stand.dir + ", the one folder its brief names the work in."
+		return "Its copy is cut from " + stand.dir + ", the one folder its brief names as ground."
 	case stand.rung == taskGroundSaid && !stand.kept:
-		return "It works in " + stand.dir + ", the folder this proposal gave as its ground."
+		return "Its copy is cut from " + stand.dir + ", the folder this proposal gave as its ground."
 	}
 	return ""
 }

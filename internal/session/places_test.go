@@ -469,8 +469,8 @@ func TestTheReceiptSaysWhereATaskWorksInWordsAndNeverTheRungsName(t *testing.T) 
 		stand taskStand
 		want  string
 	}{
-		{taskStand{dir: "/work/one", rung: taskGroundBrief}, "It works in /work/one, the one folder its brief names the work in."},
-		{taskStand{dir: "/work/two", rung: taskGroundSaid}, "It works in /work/two, the folder this proposal gave as its ground."},
+		{taskStand{dir: "/work/one", rung: taskGroundBrief}, "Its copy is cut from /work/one, the one folder its brief names as ground."},
+		{taskStand{dir: "/work/two", rung: taskGroundSaid}, "Its copy is cut from /work/two, the folder this proposal gave as its ground."},
 		{taskStand{dir: "/work/three", rung: taskGroundSaid, kept: true}, ""},
 		{taskStand{dir: "/work/four", rung: taskGroundTouched}, ""},
 		{taskStand{dir: "/work/five", rung: taskGroundStandingIn}, ""},
