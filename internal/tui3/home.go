@@ -1338,6 +1338,9 @@ func (a *app) furnishHome() {
 	// AND THE LOGICAL FOLDERS, on the same beat and never from View or a cursor
 	// move (folders.go's [app.readHomeFolders]).
 	a.readHomeFolders()
+	// AND COORDINATION, on the same beat: marks, activity and participant
+	// labels. View never calls the collab seam (collab.go's [app.readCollab]).
+	a.readCollab()
 	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
 	// has been written and re-reads the file only when something has
 	// (homeband_deliverables.go). It is taken here, with the other readings,

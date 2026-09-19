@@ -488,6 +488,14 @@ type Options struct {
 	// wiring owns the adapter onto *wsapi.Service.
 	Folders Folders
 
+	// Collab is the Wave 3 coordination seam: optional member marks, visible
+	// request/reply/sent activity, and participant labels on a normal chat.
+	// Nil is no mark/coordinate chrome; natural-language "coordinate these"
+	// still works if session.Config.Collab is wired. Marking is never required.
+	// Wiring owns a separate adapter (var _ Collab); Folders does not grow
+	// messaging verbs.
+	Collab Collab
+
 	// ── THE PLACES FOLLOW THE SESSION'S MACHINE ─────────────────────────────
 	//
 	// World is the walk of the conversations and projects on THE MACHINE THAT
