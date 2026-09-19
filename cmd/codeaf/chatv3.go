@@ -909,7 +909,8 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// The runs a live process would have judged but a process death left unjudged,
 	// and the headless doors that never had this hook: at start, on a goroutine
 	// nobody waits on, judge the resumed session's own final-state nodes and the
-	// pending file's rows, each exactly once, bounded so it never holds the prompt.
+	// pending file.s rows, each exactly once, bounded so it never holds the prompt. The
+	// process tracker cancels and joins it at close.
 	poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
 		poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
 			config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
