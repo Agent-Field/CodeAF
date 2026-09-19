@@ -2086,8 +2086,8 @@ Five things are worth knowing about it:
 - **Work is counted once.** A task's own requests are recorded where they were made. Its spend
   is added to the conversation that started it as it arrives, and that addition is deliberately
   not written here, or the same money would be counted twice. **That holds for every kind of
-  work, not only tasks** — the nodes of an adaptive run record their own requests and are
-  added up afterwards the same way. Until this was fixed they were on this file twice, so a
+  work, not only tasks** — the nodes of an adaptive run record their own requests and their
+  spend is added to the conversation as it arrives. Until this was fixed they were on this file twice, so a
   day that included a run read high, and the daily limit was reached before that much had
   actually been spent.
 
