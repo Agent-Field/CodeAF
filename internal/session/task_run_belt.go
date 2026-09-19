@@ -596,6 +596,9 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		state = TaskFailed
 	}
 	report := strings.TrimSpace(summary.Result)
+	if report == "" && summary.Outcome != beltRunOutcomeDone {
+		report = strings.TrimSpace(summary.Outcome)
+	}
 	if line := beltLandingLine(landing); line != "" {
 		if report != "" {
 			report += "\n"

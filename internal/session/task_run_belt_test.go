@@ -400,7 +400,7 @@ func TestDriveBeltRunLimitUsesTheOrdinaryLandingRoad(t *testing.T) {
 	agent, _, run, _ := landingSummaryFixture(t, &scriptedCompleter{})
 	landCalls := 0
 	engine := landingRunDouble{
-		summary:   RunSummary{Outcome: "limit", Result: "a limit you set stopped it"},
+		summary:   RunSummary{Outcome: "a limit you set stopped it"},
 		landing:   RunLanding{Branch: "task/limited", Changed: []string{"kept.txt"}},
 		landCalls: &landCalls,
 	}
@@ -410,8 +410,12 @@ func TestDriveBeltRunLimitUsesTheOrdinaryLandingRoad(t *testing.T) {
 	if landCalls != 1 {
 		t.Fatalf("Land calls = %d, want exactly one ordinary landing", landCalls)
 	}
-	if notice := agent.beltRunNotice(run, engine.summary, engine.landing); notice.State != TaskFailed {
+	notice := agent.beltRunNotice(run, engine.summary, engine.landing)
+	if notice.State != TaskFailed {
 		t.Fatalf("limited run row state = %q, want the same failed state as a cost-limited run", notice.State)
+	}
+	if !strings.Contains(notice.Report, "a limit you set stopped it") {
+		t.Fatalf("limited run row report = %q, want the existing limit ending sentence", notice.Report)
 	}
 }
 
