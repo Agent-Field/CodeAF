@@ -10,6 +10,9 @@ package run_test
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +27,26 @@ type funcWorker func(context.Context, plandb.Task) (run.Report, error)
 
 func (f funcWorker) Run(ctx context.Context, task plandb.Task) (run.Report, error) {
 	return f(ctx, task)
+}
+
+func recordDeclaredCheck(t *testing.T, store *plandb.Store, task plandb.Task) {
+	t.Helper()
+	if len(task.Checks) == 0 {
+		t.Fatal("check fixture has no Checks:")
+	}
+	dir := plandb.TaskDir(filepath.Dir(store.Path()), task.ID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("make check trajectory directory: %v", err)
+	}
+	// A real check run stamps its opening line as a build that records exits,
+	// then records the declared command it ran with a zero exit. Only the first
+	// declared check is recorded, so a leaf that declares more than one exercises
+	// the gate that a holds verdict needs every declared command to have run.
+	lines := "{\"kind\":\"begin\",\"exits_recorded\":true}\n" +
+		fmt.Sprintf("{\"kind\":\"step\",\"step\":1,\"command\":%q,\"exit_code\":0}\n", task.Checks[0])
+	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), []byte(lines), 0o600); err != nil {
+		t.Fatalf("write check trajectory: %v", err)
+	}
 }
 
 // tasksWithRole answers every task the plan holds that carries one seat word.
@@ -163,7 +186,8 @@ func TestSupervisorLeavesADoesNotHoldFindingAsANoteOnTheLeaf(t *testing.T) {
 	finding := "does not hold: the handler still returns 500 under load."
 	factory := func(task plandb.Task) run.Worker {
 		if task.Role == plandb.RoleCheck {
-			return funcWorker(func(context.Context, plandb.Task) (run.Report, error) {
+			return funcWorker(func(_ context.Context, task plandb.Task) (run.Report, error) {
+				recordDeclaredCheck(t, store, task)
 				return run.Report{Result: finding, Steps: 2}, nil
 			})
 		}
@@ -207,6 +231,7 @@ func TestSupervisorRootWaitsOnAnOpenCheckTask(t *testing.T) {
 				ok, why := store.CanFinish(store.RootID())
 				canFinish <- ok
 				reason <- why
+				recordDeclaredCheck(t, store, task)
 				return run.Report{Result: "holds: the acceptance is met", Steps: 1}, nil
 			})
 		}
@@ -287,7 +312,8 @@ func TestSupervisorTurnsADoesNotHoldFindingIntoAFixTask(t *testing.T) {
 	finding := "does not hold: the handler still returns 500 under load."
 	factory := func(task plandb.Task) run.Worker {
 		if task.Role == plandb.RoleCheck {
-			return funcWorker(func(context.Context, plandb.Task) (run.Report, error) {
+			return funcWorker(func(_ context.Context, task plandb.Task) (run.Report, error) {
+				recordDeclaredCheck(t, store, task)
 				return run.Report{Result: finding, Steps: 2}, nil
 			})
 		}
@@ -343,7 +369,8 @@ func TestSupervisorDoesNotAddASecondFixTask(t *testing.T) {
 	finding := "does not hold: the handler still returns 500 under load."
 	factory := func(task plandb.Task) run.Worker {
 		if task.Role == plandb.RoleCheck {
-			return funcWorker(func(context.Context, plandb.Task) (run.Report, error) {
+			return funcWorker(func(_ context.Context, task plandb.Task) (run.Report, error) {
+				recordDeclaredCheck(t, store, task)
 				return run.Report{Result: finding, Steps: 2}, nil
 			})
 		}
@@ -471,7 +498,7 @@ func TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding(t *test
 	}
 }
 
-func TestSupervisorTurnsARootsDoesNotHoldFindingIntoAFix(t *testing.T) {
+func TestSupervisorAcceptsARootsReadingDoesNotHoldConclusion(t *testing.T) {
 	store := runOpenStore(t)
 	seat := newFakeSeat()
 	seat.actions["root"] = rootDoneAction(store, "the root wrote its own ending")
@@ -485,18 +512,16 @@ func TestSupervisorTurnsARootsDoesNotHoldFindingIntoAFix(t *testing.T) {
 	}
 	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, factory)
 	if outcome := supervisor.Run(runContext(t)); outcome != run.OutcomeDone {
-		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+		t.Fatalf("outcome = %q, want the reading conclusion accepted", outcome)
 	}
-	fixes := tasksTitled(store, "fix: The run")
-	if len(fixes) != 1 {
-		t.Fatalf("fix tasks = %d, want exactly one under the root", len(fixes))
+	checks := tasksWithRole(store, plandb.RoleCheck)
+	if len(checks) == 0 {
+		t.Fatal("reading conclusion created no landed check")
 	}
-	fix := fixes[0]
-	if fix.ParentID != store.RootID() || fix.Status != plandb.StatusDone || !seat.launched(fix.ID) {
-		t.Fatalf("fix = parent %q launched %v status %s, want one landed under root", fix.ParentID, seat.launched(fix.ID), fix.Status)
-	}
-	if root := store.Task(store.RootID()); root.CompletedAt.Before(fix.CompletedAt) {
-		t.Fatalf("root completed at %v, before fix at %v", root.CompletedAt, fix.CompletedAt)
+	for _, check := range checks {
+		if check.Status != plandb.StatusDone {
+			t.Fatalf("check %q status = %s, want done", check.ID, check.Status)
+		}
 	}
 }
 
@@ -541,5 +566,40 @@ func TestSupervisorAddsNoCheckWithTheReviewRoundOff(t *testing.T) {
 	}
 	if launches := seat.launches(); len(launches) != 3 {
 		t.Fatalf("launches = %v, want the root, its one leaf, and the root's wake alone", launches)
+	}
+}
+
+// TestReviewConclusionUsesTheEndingSpecificCheckGate proves holds needs every
+// declared command while does not hold can land from reading an empty contract.
+func TestReviewConclusionUsesTheEndingSpecificCheckGate(t *testing.T) {
+	tests := []struct {
+		name       string
+		checks     []string
+		conclusion string
+		ranFirst   bool
+		wantDone   bool
+	}{
+		{name: "holds needs every declared check", checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}, conclusion: "holds: the handler returns 200", ranFirst: true},
+		{name: "does not hold needs no declared check", conclusion: "does not hold: reading found the handler returns 500", wantDone: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := runOpenStore(t)
+			seat := newFakeSeat()
+			seat.actions["root"] = splitRoot(t, store, plandb.TaskSpec{
+				ID: "l1", Title: "the leaf", Description: "the handler returns 200", Checks: tt.checks,
+			})
+			seat.actions[plandb.RoleCheck] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+				if tt.ranFirst {
+					recordDeclaredCheck(t, store, task)
+				}
+				return run.Report{Result: tt.conclusion, Steps: 1}, nil
+			}
+			supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+			outcome := supervisor.Run(runContext(t))
+			if (outcome == run.OutcomeDone) != tt.wantDone {
+				t.Fatalf("outcome = %q, want done %v for %q", outcome, tt.wantDone, tt.conclusion)
+			}
+		})
 	}
 }

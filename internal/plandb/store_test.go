@@ -19,6 +19,7 @@ package plandb
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1854,5 +1855,59 @@ func TestPlandbCliChecksRoundTripAndMigrate(t *testing.T) {
 	defer migrated.Close()
 	if got := migrated.Task("checked").Checks; len(got) != 0 {
 		t.Fatalf("migrated checks = %#v, want []", got)
+	}
+}
+
+func TestPlandbCliCheckConclusionRequiresTheRightDeclaredChecks(t *testing.T) {
+	tests := []struct {
+		name       string
+		checks     []string
+		ran        []string
+		conclusion string
+		wantErr    bool
+	}{
+		// NO DECLARATION MAKES THE CHECKER A READER, SO A READING MAY HOLD: the
+		// old gate demanded a declared contract for any holds verdict, and
+		// [TestReadingCanHoldAndDoesNotHoldIsUngated] replaced that, the
+		// declared contract is the whole contract, and nobody declared one. A
+		// DECLARED contract still demands its every zero-exit audited run, below.
+		{name: "holds empty contract", conclusion: "holds: it works", wantErr: false},
+		{name: "holds no checks run", checks: []string{"go test ./internal/widget"}, conclusion: "holds: it works", wantErr: true},
+		{name: "holds partial contract", checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}, ran: []string{"go test ./internal/widget"}, conclusion: "holds: it works", wantErr: true},
+		{name: "holds whole contract", checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}, ran: []string{"go test ./internal/widget", "go vet ./internal/widget"}, conclusion: "holds: it works"},
+		{name: "does not hold empty contract", conclusion: "does not hold: reading found a defect"},
+		{name: "does not hold no checks run", checks: []string{"go test ./internal/widget"}, conclusion: "does not hold: reading found a defect"},
+		{name: "does not hold partial contract", checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}, ran: []string{"go test ./internal/widget"}, conclusion: "does not hold: the first check failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := planOpen(t, filepath.Join(t.TempDir(), "plan.json"))
+			planAdd(t, store, TaskSpec{ID: "review", Title: "check: leaf", Role: RoleCheck, Checks: tt.checks})
+			if _, err := store.Claim("review", "review"); err != nil {
+				t.Fatalf("claim check task: %v", err)
+			}
+			if len(tt.checks) > 0 {
+				dir := TaskDir(filepath.Dir(store.Path()), "review")
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatalf("make task directory: %v", err)
+				}
+				// A real check run stamps its opening line as a build that records
+				// exits, then records each declared command it ran with a zero exit. A
+				// run that executed no declared check has only the opening line, which
+				// still marks it a new build whose holds the gate must refuse.
+				var trajectory strings.Builder
+				trajectory.WriteString("{\"kind\":\"begin\",\"exits_recorded\":true}\n")
+				for i, command := range tt.ran {
+					trajectory.WriteString(fmt.Sprintf("{\"kind\":\"step\",\"step\":%d,\"command\":\"cd /tmp/tree && %s\",\"exit_code\":0}\n", i+1, command))
+				}
+				if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), []byte(trajectory.String()), 0o600); err != nil {
+					t.Fatalf("write trajectory: %v", err)
+				}
+			}
+			_, err := store.Done("review", "review", tt.conclusion, nil, nil)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Done() error = %v, want error %v", err, tt.wantErr)
+			}
+		})
 	}
 }
