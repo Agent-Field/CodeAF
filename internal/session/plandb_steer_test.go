@@ -131,8 +131,11 @@ func TestPlanSteerRefusesAnotherChatAndAnUnknownID(t *testing.T) {
 	}
 }
 
-// A store refusal travels back as the store wrote it: the root is the
-// harness's own, and a task that already ended cannot be cancelled.
+// A store refusal travels back as the store wrote it: a task that already ended
+// cannot be cancelled. THE RUN'S OWN TASK IS NOT A REFUSAL ANY MORE: a person's
+// stop on it ends the run (stoprun.go), and a hold on it answers in a person's
+// words, because nothing holds a whole run and the store's own sentence for
+// that is about who owns what.
 func TestPlanSteerAnswersTheStoresOwnRefusal(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, planStoreFilename)
@@ -157,11 +160,31 @@ func TestPlanSteerAnswersTheStoresOwnRefusal(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	armPlanStore(t, agent, path, "chat-a")
 
-	if err := agent.PlanCancel("t-root"); err == nil || err.Error() != "the harness owns the root task" {
-		t.Fatalf("PlanCancel on the root = %v, want the store's own sentence", err)
-	}
 	if err := agent.PlanCancel("t-done-one"); err == nil || err.Error() != `task "done-one" is already terminal` {
 		t.Fatalf("PlanCancel on a done task = %v, want the store's terminal refusal", err)
+	}
+	for name, hold := range map[string]func(string) error{"PlanPause": agent.PlanPause, "PlanResume": agent.PlanResume} {
+		err := hold("t-root")
+		if err == nil || err != errPlanRunNotHeld {
+			t.Fatalf("%s on the run's own task = %v, want the sentence that a whole run is not held", name, err)
+		}
+		if word := carriesMachinery(err.Error()); word != "" {
+			t.Fatalf("%s on the run's own task says %q to a person: %v", name, word, err)
+		}
+	}
+	if err := agent.PlanCancel("t-root"); err != nil {
+		t.Fatalf("PlanCancel on the run's own task = %v, want the run ended", err)
+	}
+	after, err := plandb.Open(path, "", planRootID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer after.Close()
+	if root := after.Task(after.RootID()); root == nil || root.Status != plandb.StatusCancelled {
+		t.Fatalf("the run's own task after a person's stop = %+v, want cancelled", root)
+	}
+	if alpha := after.Task("alpha"); alpha == nil || alpha.Status != plandb.StatusCancelled {
+		t.Fatalf("open work under a stopped run = %+v, want cancelled", alpha)
 	}
 }
 

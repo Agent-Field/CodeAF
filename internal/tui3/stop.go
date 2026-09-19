@@ -109,6 +109,12 @@ func (a *app) stopDoors() (stopAgent, bool) {
 // guess from a bare number.
 type stopTarget struct {
 	id string
+	// plan is the store's own id for a run's task, set INSTEAD of id when the
+	// card is raised from that task's page (taskplan.go's [app.taskPlanStop]). A
+	// page speaks the store's ids and knows no row number, so its stop travels
+	// the plan's own door ([session.Agent.PlanCancel]), which ends the run when
+	// the task is the run's own.
+	plan string
 	// noun is what this work is called in the card's question — "run", "task"
 	// or "job" — and detail is the promise under it. They travel together because
 	// a question and the promise that answers it must not be able to disagree
@@ -116,7 +122,7 @@ type stopTarget struct {
 	noun, detail string
 }
 
-func (t stopTarget) empty() bool { return t.id == "" }
+func (t stopTarget) empty() bool { return t.id == "" && t.plan == "" }
 
 // question is the card's whole first line.
 func (t stopTarget) question() string {
@@ -217,7 +223,11 @@ func (a *app) raiseStop(target stopTarget) {
 	if target.empty() {
 		return
 	}
-	if _, ok := a.stopDoors(); !ok {
+	if _, ok := a.stopDoors(); !ok && target.plan == "" {
+		// A RUN'S OWN TASK TRAVELS THE PLAN'S DOOR AND NOT THIS ONE, and the page
+		// that raised the card for it has already found that door
+		// (taskplan.go's [app.taskPlanStop]).
+		//
 		// THE BUILD GUARD (room.go's, roomorch.go's): the door is an assertion
 		// and not a compile-time requirement, so a surface driven by an agent
 		// that cannot stop work says so and changes nothing.
@@ -272,8 +282,7 @@ func (a *app) stopShown(target stopTarget) questionShown {
 		},
 		pick: stopKeepAt,
 		local: func(answer session.Answer) tea.Cmd {
-			a.stopTake(stopAnswerAt(answer.FirstKey()))
-			return nil
+			return a.stopTake(stopAnswerAt(answer.FirstKey()))
 		},
 	}
 }
@@ -329,20 +338,26 @@ func (a *app) dropStopQuestion() {
 
 // stopTake answers the card. Anything but the act is the card simply going
 // away; the act asks the session and reports what it said.
-func (a *app) stopTake(at int) {
+func (a *app) stopTake(at int) tea.Cmd {
 	card := a.stop
 	if card == nil {
-		return
+		return nil
 	}
 	target := card.target
 	a.dropStop()
 	if at != 0 {
-		return
+		return nil
+	}
+	if target.plan != "" {
+		// A RUN'S OWN TASK, STOPPED FROM ITS PAGE, goes through the plan's door
+		// like every other verb that page has, off the loop and in the order it
+		// was pressed ([app.taskPlanStopTaken]).
+		return a.taskPlanStopTaken(target.plan)
 	}
 	doors, ok := a.stopDoors()
 	if !ok {
 		a.note(stopUnavailableWord)
-		return
+		return nil
 	}
 	line, err := doors.Cancel(target.id)
 	if err != nil {
@@ -351,9 +366,10 @@ func (a *app) stopTake(at int) {
 		// a person pressing the same key again (roomorch.go's [app.orchAnswer]
 		// keeps the same rule about the same kind of refusal).
 		a.stopSay(err.Error())
-		return
+		return nil
 	}
 	a.stopSay(line)
+	return nil
 }
 
 // stopSay puts one line where the person is looking: on the run's page when one
