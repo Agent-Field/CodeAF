@@ -481,6 +481,10 @@ func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
 		if !reflect.DeepEqual(record, test.record) || !reflect.DeepEqual(prefix, test.prefix) {
 			t.Errorf("facts for %q: record=%v prefix=%v parts=%#v", test.command, record, prefix, got.Parts)
 		}
+		wantHeadAttributable := len(test.record) == 0
+		if got.ObservationHeadAttributable != wantHeadAttributable {
+			t.Errorf("ObservationHeadAttributable for %q = %v, want %v", test.command, got.ObservationHeadAttributable, wantHeadAttributable)
+		}
 	}
 }
 
