@@ -554,6 +554,13 @@ func TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding(t *test
 		}
 	}
 	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+	rootHeld := make(chan struct{}, 1)
+	run.ObserveTerminalRootHeld(supervisor, func() {
+		select {
+		case rootHeld <- struct{}{}:
+		default:
+		}
+	})
 	outcome := make(chan run.Outcome, 1)
 	go func() { outcome <- supervisor.Run(ctx) }()
 
@@ -563,9 +570,11 @@ func TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding(t *test
 		t.Fatal("root never wrote its own Done")
 	}
 	select {
+	case <-rootHeld:
 	case got := <-outcome:
 		t.Fatalf("outcome = %q before the self-finished root returned, want supervisor blocked", got)
-	default:
+	case <-ctx.Done():
+		t.Fatal("supervisor never exercised the terminal-root in-flight bound")
 	}
 	close(releaseReturn)
 	if got := <-outcome; got != run.OutcomeDone {
