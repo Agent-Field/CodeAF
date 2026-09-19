@@ -411,6 +411,7 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 	var agent *Agent
 	var claims atomic.Int64
 	var queued atomic.Bool
+	var revisionEvents <-chan Event
 	completer := &scriptedCompleter{steps: grindingFinishedScript(40,
 		checkpointNothingLeft, "(done)\nEverything asked for is written.")}
 	// THE DIRECTION IS TYPED IN THE FIRST ORDINARY RESPONSE AFTER THE FIRST DROP.
@@ -427,7 +428,11 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 			}
 			if claims.Load() == 1 && !askedForSketch(messages) && !askedForHandoff(messages) &&
 				!askedToWriteHandoff(messages) && !askedForRemains(messages) && queued.CompareAndSwap(false, true) {
-				queueDirection(agent, revision)
+				events, err := agent.Submit(ctx, revision)
+				if err != nil {
+					return nil, fmt.Errorf("submit revision: %w", err)
+				}
+				revisionEvents = events
 			}
 			if claims.Load() >= 2 && !askedForSketch(messages) && !askedForHandoff(messages) &&
 				!askedToWriteHandoff(messages) && !askedForRemains(messages) {
@@ -444,6 +449,7 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 		t.Fatalf("Submit: %v", err)
 	}
 	collect(t, events)
+	collect(t, revisionEvents)
 
 	if !queued.Load() {
 		t.Fatal("the forced ordering never queued the revision")
