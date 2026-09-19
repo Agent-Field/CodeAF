@@ -49,9 +49,10 @@ type WorkerFactory func(task plandb.Task) Worker
 // Elapsed of zero (or less) sets no corresponding run limit, a StepsPerTask
 // of zero hands the worker no cap, and ReviewRound's false is the run every caller had before it.
 type Limits struct {
-	// CostUSD is what the whole run may spend, as the sum of every Report's
-	// USD. When the counter has reached it no new worker starts and the run
-	// ends on the limit word of the outcome ladder.
+	// CostUSD is what the whole run may spend. Banked calls count while a worker
+	// is still working and reconcile with its final Report. When the counter has
+	// reached it no new worker starts, work in flight ends, and the run ends on
+	// the limit word of the outcome ladder.
 	CostUSD float64
 	// Elapsed is how long the whole run may remain active. When it passes,
 	// workers already in flight are ended and drained, no new worker starts,
@@ -83,6 +84,24 @@ type Limits struct {
 // cap with a typed lookup rather than a string key another package could
 // collide with.
 type stepsPerTaskKey struct{}
+
+// spendBankKey carries the run-owned observer of a worker banking cumulative
+// spend. The cumulative figure is reconciled with the worker return, so the
+// live limit and the final receipt share one account.
+type spendBankKey struct{}
+
+// WithSpendBank returns a context that reports cumulative spend as a worker
+// banks calls. Workers without this property remain valid and report at return.
+func WithSpendBank(ctx context.Context, bank func(float64)) context.Context {
+	return context.WithValue(ctx, spendBankKey{}, bank)
+}
+
+// bankSpend publishes the cumulative spend banked by this worker.
+func bankSpend(ctx context.Context, usd float64) {
+	if bank, _ := ctx.Value(spendBankKey{}).(func(float64)); bank != nil {
+		bank(usd)
+	}
+}
 
 // wakeClauseKey is the type behind the context value that carries a woken
 // parent's resume clause, for the same reason as the step cap beside it: a

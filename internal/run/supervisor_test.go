@@ -609,7 +609,7 @@ func TestStartRefusesADoorBuiltWithoutItsStoreOrItsFactory(t *testing.T) {
 	}
 }
 
-func TestStartCountsNothingFromAWorkerWhoseTaskWasCancelled(t *testing.T) {
+func TestStartCountsOnlyTheDollarsOfAWorkerWhoseTaskWasCancelled(t *testing.T) {
 	store := startOpenStore(t, "the run's own title")
 	ctx := runContext(t)
 	seat := newFakeSeat()
@@ -617,8 +617,9 @@ func TestStartCountsNothingFromAWorkerWhoseTaskWasCancelled(t *testing.T) {
 	// The leaf is cancelled mid-flight and comes home well afterwards, so its
 	// report is a late one carrying a completion, steps and spend. The store
 	// would refuse the write on its own law; what only the drop in absorb does
-	// is keep the run's counters out of it, and the counters are what Start
-	// answers with.
+	// is keep the work's counters out of it, and the counters are what Start
+	// answers with. THE DOLLARS ARE THE EXCEPTION: they were paid whatever way
+	// the task ended, so they are in the run's account.
 	seat.actions["l1"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
 		<-ctx.Done()
 		return run.Report{Result: "late " + task.ID, Steps: 4, USD: 0.30}, nil
@@ -637,14 +638,14 @@ func TestStartCountsNothingFromAWorkerWhoseTaskWasCancelled(t *testing.T) {
 	if outcome != run.OutcomeIncomplete {
 		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeIncomplete)
 	}
-	// The root worker's own figures and the wake's are the whole account: three
-	// workers went out (the root, the cancelled leaf, and the root's wake), and
-	// the cancelled one's 0.30 and four steps counted for nothing.
+	// Three workers went out (the root, the cancelled leaf, and the root's
+	// wake). The cancelled one's four steps count for nothing, and its 0.30 is
+	// counted beside the root's 0.1 and the wake's 0.05.
 	if summary.Nodes != 3 {
 		t.Fatalf("summary nodes = %d, want the root, the cancelled leaf, and the root's wake", summary.Nodes)
 	}
-	if !usdClose(summary.USD, 0.15) {
-		t.Fatalf("summary usd = %v, want the root's 0.1 and the wake's 0.05 alone", summary.USD)
+	if !usdClose(summary.USD, 0.45) {
+		t.Fatalf("summary usd = %v, want the root's 0.1, the wake's 0.05 and the cancelled leaf's 0.30", summary.USD)
 	}
 	if summary.Steps != 2 {
 		t.Fatalf("summary steps = %d, want the root's 1 and the wake's 1 alone", summary.Steps)

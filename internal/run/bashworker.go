@@ -131,6 +131,13 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	// did call a tool resets the run to one — its own trailing words are the
 	// first of the new run — and the fourth in a row fails the task.
 	noAction := 0
+	// banked is the last spend figure this worker told its run. THE RUN'S DOLLAR
+	// LIMIT IS READ WHILE THE WORKER WORKS, so the figure has to move when a
+	// call is paid for and not when a turn ends: a turn is the worker's whole
+	// working life, and its usage arrives with its ending. The agent's own
+	// running total is the one account that moves per paid call, so it is read
+	// as each event comes by and told to the run whenever it has risen.
+	banked := 0.0
 	for {
 		events, err := agent.Submit(runCtx, brief)
 		if err != nil {
@@ -149,6 +156,10 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 			ending     storeEnding
 		)
 		for event := range events {
+			if spent := agent.Usage().CostUSD; spent > banked {
+				banked = spent
+				bankSpend(runCtx, spent)
+			}
 			switch event.Kind {
 			case session.EventToolBegin:
 				// A LIVE STEP IS TRUE ONLY WHILE ITS COMMAND RUNS. The begin event is
