@@ -50,3 +50,7 @@ The smallest deterministic correction belongs in the test: retain and compare pr
 - Detached-child cleanup after leader identity disappears: Linux performs the detached sweep while the leader remains an unreaped zombie.
 - Test reading before leaf teardown: `linear.Run` returns only after the teardown defer completes.
 - A bare count-read race: both first and later close callers wait for publication, and `closedCount` is mutex protected.
+
+## Forced-ordering reproduction plan
+
+Before changing the test, the next step will add the smallest test-only liveness-probe seam beside the existing bare-PID assertion. The test will force the post-reap PID-reuse observation by substituting a successful probe only after `Linear.Run` has returned. This preserves the production close ordering, creates no load or busy loop, and deterministically demonstrates that the current assertion reports a survivor solely from an integer PID that can now denote another process. The focused test is expected to fail with the existing `survived leaf end` message; that failing test-only step will be committed intentionally for the correction task.
