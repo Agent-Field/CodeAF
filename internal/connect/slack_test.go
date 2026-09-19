@@ -43,6 +43,27 @@ func slackManager(t *testing.T) *Manager {
 	return manager
 }
 
+func testDoorListeners(t *testing.T) (net.Listener, net.Listener) {
+	t.Helper()
+	first, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("hold the first test address: %v", err)
+	}
+	second, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		_ = first.Close()
+		t.Fatalf("hold the second test address: %v", err)
+	}
+	saved := localServerAddresses
+	localServerAddresses = []string{first.Addr().String(), second.Addr().String(), "127.0.0.1:0"}
+	t.Cleanup(func() {
+		localServerAddresses = saved
+		_ = first.Close()
+		_ = second.Close()
+	})
+	return first, second
+}
+
 func TestSlackPublicApplicationIsOfferedWithoutASecret(t *testing.T) {
 	manager := slackManager(t)
 	services := manager.Services()
@@ -363,11 +384,15 @@ func TestGrantedReadsSlackCommaSeparatedScopes(t *testing.T) {
 }
 
 func TestSlackBeginAuthUsesTheSecondDoorWhenTheFirstIsBusy(t *testing.T) {
-	first, err := net.Listen("tcp", "127.0.0.1:8765")
-	if err != nil {
-		t.Fatalf("hold the first Slack address: %v", err)
+	_, second := testDoorListeners(t)
+	secondAddress := second.Addr().String()
+	if err := second.Close(); err != nil {
+		t.Fatalf("release the second test address: %v", err)
 	}
-	defer func() { _ = first.Close() }()
+	_, secondPort, err := net.SplitHostPort(secondAddress)
+	if err != nil {
+		t.Fatalf("split the second test address: %v", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {})
@@ -377,8 +402,9 @@ func TestSlackBeginAuthUsesTheSecondDoorWhenTheFirstIsBusy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginAuth: %v", err)
 	}
-	if flow.URL() != "http://localhost:18765/" {
-		t.Fatalf("flow URL = %q", flow.URL())
+	wantURL := "http://localhost:" + secondPort + "/"
+	if flow.URL() != wantURL {
+		t.Fatalf("flow URL = %q, want %q", flow.URL(), wantURL)
 	}
 
 	stop := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -395,8 +421,9 @@ func TestSlackBeginAuthUsesTheSecondDoorWhenTheFirstIsBusy(t *testing.T) {
 		t.Fatalf("parse authorize address: %v", err)
 	}
 	query := outgoing.Query()
-	if query.Get("redirect_uri") != "https://agentfield.ai/connect/slack/18765" {
-		t.Errorf("redirect_uri = %q", query.Get("redirect_uri"))
+	wantRedirect := "https://agentfield.ai/connect/slack/" + secondPort
+	if query.Get("redirect_uri") != wantRedirect {
+		t.Errorf("redirect_uri = %q, want %q", query.Get("redirect_uri"), wantRedirect)
 	}
 	if query.Get("client_id") != "slack-client" || query.Get("code_challenge") == "" {
 		t.Errorf("authorize query = %v", query)
@@ -416,19 +443,10 @@ func TestSlackBeginAuthUsesTheSecondDoorWhenTheFirstIsBusy(t *testing.T) {
 }
 
 func TestSlackBeginAuthSaysBothRegisteredAddressesAreBusy(t *testing.T) {
-	first, err := net.Listen("tcp", "127.0.0.1:8765")
-	if err != nil {
-		t.Fatalf("hold the first Slack address: %v", err)
-	}
-	defer func() { _ = first.Close() }()
-	second, err := net.Listen("tcp", "127.0.0.1:18765")
-	if err != nil {
-		t.Fatalf("hold the second Slack address: %v", err)
-	}
-	defer func() { _ = second.Close() }()
+	testDoorListeners(t)
 
 	manager := slackManager(t)
-	_, err = manager.BeginAuth(context.Background(), "slack", "")
+	_, err := manager.BeginAuth(context.Background(), "slack", "")
 	want := "connect Slack: both of the addresses Slack can send you back to are busy on this machine — finish or cancel the other sign-in and try again"
 	if err == nil || err.Error() != want {
 		t.Fatalf("BeginAuth = %v, want %q", err, want)
@@ -444,16 +462,7 @@ func (fakeDoored) Door(port int) string { return "https://example.test/door/" + 
 // THE BUSY SENTENCE NAMES THE SERVICE, not Slack: the door is a law of auth.go,
 // and the next vendor to need one must not be told about Slack.
 func TestADooredPlugsBusySentenceNamesTheService(t *testing.T) {
-	first, err := net.Listen("tcp", "127.0.0.1:8765")
-	if err != nil {
-		t.Fatalf("hold the first address: %v", err)
-	}
-	defer func() { _ = first.Close() }()
-	second, err := net.Listen("tcp", "127.0.0.1:18765")
-	if err != nil {
-		t.Fatalf("hold the second address: %v", err)
-	}
-	defer func() { _ = second.Close() }()
+	testDoorListeners(t)
 
 	withPlugs(t, fakeDoored{fakePlug{service: Service{ID: "acme", Name: "Acme", Auth: AuthBrowser, Category: categoryCommunication}}})
 	manager, err := NewManager(t.TempDir(), map[string]ClientCredential{"acme": {ID: "acme-id", Public: true}})
