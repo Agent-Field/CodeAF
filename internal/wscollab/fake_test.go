@@ -12,6 +12,7 @@ type memStore struct {
 	rows        map[DeliveryID]Record
 	discussions map[string]Discussion
 	invocations map[string]Invocation
+	archived    map[string]bool
 }
 
 func newMemStore() *memStore {
@@ -19,6 +20,7 @@ func newMemStore() *memStore {
 		rows:        map[DeliveryID]Record{},
 		discussions: map[string]Discussion{},
 		invocations: map[string]Invocation{},
+		archived:    map[string]bool{},
 	}
 }
 
@@ -76,6 +78,18 @@ func (m *memStore) Pending(_ context.Context, conversationID string) ([]Envelope
 		}
 	}
 	return out, nil
+}
+
+func (m *memStore) markArchived(conversationID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.archived[conversationID] = true
+}
+
+func (m *memStore) Archived(_ context.Context, conversationID string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.archived[conversationID], nil
 }
 
 func (m *memStore) PutDiscussion(_ context.Context, d Discussion) error {

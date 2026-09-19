@@ -191,9 +191,11 @@ func mustSubmitTo(t *testing.T, agent *Agent, text string) <-chan Event {
 	return events
 }
 
-// ARCHIVING IS A FACT ABOUT THE META AND NOTHING ELSE: SetArchived flips the
-// one field through the same file every other fact rides, refuses a folder
-// with no conversation in it, and the world's row carries the answer out.
+// ARCHIVING WRITES THE META, AND WHEN COLLAB IS WIRED IT ALSO MAPS ONTO THE
+// PARTICIPANT BIT: SetArchived flips the one field through the same file every
+// other fact rides, refuses a folder with no conversation in it, and the
+// world's row carries the answer out. A registered put-away hook is extra, not
+// a second meta.
 func TestSetArchivedRoundTripsThroughTheMeta(t *testing.T) {
 	dir := t.TempDir()
 	if err := SetArchived(dir, true); err == nil {
@@ -214,5 +216,30 @@ func TestSetArchivedRoundTripsThroughTheMeta(t *testing.T) {
 	}
 	if meta, _ := LoadMeta(dir); meta.Archived {
 		t.Fatalf("the mark did not lift: %+v", meta)
+	}
+}
+
+func TestSetArchivedMapsOntoPutAwayCollab(t *testing.T) {
+	dir := t.TempDir()
+	if err := SaveMeta(dir, Meta{ID: "abcd000000000001", Workspace: dir, Created: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	var seen []bool
+	RegisterPutAwayCollab(func(_ context.Context, id string, archived bool) error {
+		if id != "abcd000000000001" {
+			t.Fatalf("put-away mapped %q", id)
+		}
+		seen = append(seen, archived)
+		return nil
+	})
+	t.Cleanup(func() { RegisterPutAwayCollab(nil) })
+	if err := SetArchived(dir, true); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if err := SetArchived(dir, false); err != nil {
+		t.Fatalf("bring back: %v", err)
+	}
+	if len(seen) != 2 || !seen[0] || seen[1] {
+		t.Fatalf("put-away mapping %v, want archive then restore", seen)
 	}
 }

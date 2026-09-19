@@ -54,6 +54,12 @@ func bindV3Collab(svc *wsapi.Service) {
 	}
 	svc.SetCollaborator(&wsapiCollaborator{router: router})
 	session.RegisterCollabRouter(&sessionCollabRouter{router: router})
+	session.RegisterPutAwayCollab(func(ctx context.Context, conversationID string, archived bool) error {
+		if archived {
+			return svc.ArchiveCoordination(ctx, conversationID)
+		}
+		return svc.RestoreCoordination(ctx, conversationID)
+	})
 	setV3CollabRouter(router)
 }
 
@@ -495,6 +501,19 @@ func (s *workspaceCollabStore) Pending(ctx context.Context, conversationID strin
 		out = append(out, deliveryEnvelope(d))
 	}
 	return out, nil
+}
+
+func (s *workspaceCollabStore) Archived(ctx context.Context, conversationID string) (bool, error) {
+	people, err := s.jobs.ListParticipants(ctx, conversationID)
+	if err != nil {
+		return false, err
+	}
+	for _, row := range people {
+		if row.Status == workspace.ParticipantArchived {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *workspaceCollabStore) PutDiscussion(_ context.Context, d wscollab.Discussion) error {
