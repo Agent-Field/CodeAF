@@ -64,8 +64,9 @@ func (o *doorOrganizer) applyJob(ctx context.Context, svc *wsapi.Service, job wo
 	hits, query := gatherEvidence(ctx, svc, job)
 	plan, err := o.rolePlan(ctx, session.OrganizeRequest{
 		ChatID: job.ChatID, SourceRev: job.SourceRev,
-		Evidence: formatEvidence(query, hits),
-		Degraded: evidenceDegraded(hits),
+		Evidence:  formatEvidence(query, hits),
+		Hierarchy: formatHierarchy(ctx, svc, job.ChatID),
+		Degraded:  evidenceDegraded(hits),
 	})
 	if err != nil {
 		return workspace.JobDeferred, embed.LabelDelayed, nil
@@ -217,6 +218,39 @@ func formatEvidence(query string, hits []wsapi.SearchHit) string {
 	return b.String()
 }
 
+// formatHierarchy is the folder catalog RoleOrganize is contracted to see.
+// Live J11 on SHA 709bf019 completed no-action with Security evidence because
+// the prompt had no collection_id to cite.
+func formatHierarchy(ctx context.Context, svc *wsapi.Service, chatID string) string {
+	if svc == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("folders\n")
+	if store := svc.Workspace(); store != nil {
+		cols, err := store.Collections(ctx)
+		if err == nil {
+			for _, col := range cols {
+				b.WriteString(col.ID)
+				b.WriteByte(' ')
+				b.WriteString(col.Name)
+				b.WriteByte('\n')
+			}
+		}
+	}
+	here, err := svc.PlacementsOf(ctx, workspace.Ref{Kind: workspace.ConversationKind, ID: chatID})
+	if err != nil || len(here) == 0 {
+		return b.String()
+	}
+	b.WriteString("already in")
+	for _, folder := range here {
+		b.WriteByte(' ')
+		b.WriteString(folder.ID)
+	}
+	b.WriteByte('\n')
+	return b.String()
+}
+
 func evidenceDegraded(hits []wsapi.SearchHit) bool {
 	for _, hit := range hits {
 		if hit.Degraded || hit.ScoreKind == wsapi.ScoreExpansion {
@@ -281,6 +315,11 @@ func fillWireAction(action *wsapi.Action, raw json.RawMessage) {
 		Purpose      string   `json:"purpose"`
 		Reason       string   `json:"reason"`
 		ParentIDs    []string `json:"parent_ids"`
+		ObjectID     string   `json:"object_id"`
+		Ref          struct {
+			Kind string `json:"kind"`
+			ID   string `json:"id"`
+		} `json:"ref"`
 	}
 	if json.Unmarshal(raw, &wire) != nil {
 		return
@@ -308,6 +347,20 @@ func fillWireAction(action *wsapi.Action, raw json.RawMessage) {
 	}
 	if len(action.ParentIDs) == 0 {
 		action.ParentIDs = wire.ParentIDs
+	}
+	fillActionRef(action, wire.Ref.Kind, wire.Ref.ID, wire.ObjectID)
+}
+
+func fillActionRef(action *wsapi.Action, kind, id, objectID string) {
+	if action == nil || action.Ref.ID != "" {
+		return
+	}
+	if id != "" {
+		action.Ref = workspace.Ref{Kind: workspace.Kind(kind), ID: id}
+		return
+	}
+	if objectID != "" {
+		action.Ref = workspace.Ref{Kind: workspace.ConversationKind, ID: objectID}
 	}
 }
 

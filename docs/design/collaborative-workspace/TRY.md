@@ -41,7 +41,7 @@ Live tmux proof: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue
 
 ## Wave 2 — discovery and instructions
 
-Status: **affected still running** — remediations through SHA `2412cf7d515906c1fee4aacc629ce24d3f5e574b` (production organizer, journal ingest, one-txn ApplyBatch, J11 stored evidence hash, lock-defer SetEmbedder, organize replay tag). Independent re-reviews `ok: true`. `pr-ready` on that SHA failed `TestTheLaunchesBlockingCatalogReadsDoNotGrow` (13 blocking catalog reads vs the pinned 11) because `v3OrganizePass` constructed the organizer at launch. The organizer is now bound when the pass fires; live J09–J18 is `t-w2-live` after a passing affected run. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Use the wave-2 launch script only after `releases/wave-2/ready.json`. Wave 1 remains:
+Status: **live J09–J18 not verified.** SHA `709bf019724fa3dee640eeb2b3c767af2c43665e` passed affected suites and has an immutable binary, but live J11 automatic Security placement completed `no-action` because RoleOrganize was not handed folder ids. The follow-up candidate hands the live folder catalog and add action shape (`collection_id` + conversation `ref`). Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Use the wave-2 launch script only after `releases/wave-2/ready.json`. Wave 1 remains:
 
 ```
 ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b3b407a676efca3282b9834f05ea956c98a89cd/launch.sh'
