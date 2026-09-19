@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/int128/listener"
 )
 
 func TestConnectingAToolServerAsksItsWayIn(t *testing.T) {
@@ -257,9 +259,19 @@ func TestAServiceThatWillNotBeIntroducedToSaysSoPlainly(t *testing.T) {
 // The identity survives being disconnected, exactly as a client credential does,
 // so that connecting again is one browser trip and not a second registration.
 func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
-	previous := localServerAddresses
-	localServerAddresses = []string{"127.0.0.1:0"}
-	t.Cleanup(func() { localServerAddresses = previous })
+	first := unusedLoopbackAddress(t)
+	second := unusedLoopbackAddress(t)
+	previous := newLocalListener
+	calls := 0
+	newLocalListener = func([]string) (*listener.Listener, error) {
+		address := first
+		if calls > 0 {
+			address = second
+		}
+		calls++
+		return listener.NewOn(address)
+	}
+	t.Cleanup(func() { newLocalListener = previous })
 
 	fake := startFakeToolServer(t, fakeShape{})
 	manager, _ := withToolServer(t, fake)
@@ -272,17 +284,9 @@ func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
 	if manager.Connected("example") {
 		t.Fatalf("the keys are gone")
 	}
-	record, kept := manager.registrations().get("example")
-	if !kept {
+	if _, kept := manager.registrations().get("example"); !kept {
 		t.Errorf("who codeaf is to this service is not a thing to forget")
 	}
-
-	first := strings.Replace(record.Redirects[0], "http://localhost:", "127.0.0.1:", 1)
-	blockFirst, err := net.Listen("tcp", first)
-	if err != nil {
-		t.Fatalf("hold the first redirect: %v", err)
-	}
-	defer blockFirst.Close()
 
 	flow, err := manager.BeginAuth(ctx, "example", "")
 	if err != nil {
@@ -399,4 +403,17 @@ func connectFakeAt(t *testing.T, manager *Manager, answer string) {
 	if _, err := flow.Wait(ctx); err != nil {
 		t.Fatalf("Wait: %v", err)
 	}
+}
+
+func unusedLoopbackAddress(t *testing.T) string {
+	t.Helper()
+	local, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("find an unused loopback address: %v", err)
+	}
+	address := local.Addr().String()
+	if err := local.Close(); err != nil {
+		t.Fatalf("release unused loopback address: %v", err)
+	}
+	return address
 }
