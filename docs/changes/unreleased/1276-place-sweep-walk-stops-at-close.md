@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: closing chat stops the place sweep before it can change the home again
-pr: 1260
+pr: 1276
 surface: [chat, engine]
 invalidates:
   - "The once-per-binary place sweep was started as an unowned background goroutine. Closing the chat process neither cancelled nor joined its folder walk, so the walk could outlive close and rename or remove stale session folders under a later value of `CODEAF_HOME`."
