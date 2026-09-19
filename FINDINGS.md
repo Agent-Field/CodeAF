@@ -103,3 +103,17 @@ ok github.com/Agent-Field/codeaf/internal/run 0.519s
 The forced case now proves the check exists before `Supervisor.Run` returns. The implementation changes only terminal-root handling and review idempotence in `internal/run/run.go`; no `run.Start` line changed. The incidental attempt to pass `FINDINGS.md` to `gofmt` reported its expected Markdown illegal-character error and made no change; both touched Go files were successfully formatted before the passing test.
 
 Next I will commit this passing product step, then exercise the command-level self-finished-root and check-model paths repeatedly as focused reachability checks.
+
+## Repeated focused reachability evidence
+
+The forced supervisor ordering passed 20 of 20 in one process, and the two command paths passed together 15 of 15:
+
+```text
+go test ./internal/run -run '^TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding$' -count=20
+ok github.com/Agent-Field/codeaf/internal/run 7.228s
+
+go test ./cmd/codeaf -run '^(TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds|TestDoOnTheRunEngineSeatsACheckOnTheCheckModel)$' -count=15
+ok github.com/Agent-Field/codeaf/cmd/codeaf 10.332s
+```
+
+This confirms the command-level real `codeaf do` road now seats the self-finished root review before returning, and it gives no evidence that the sibling check-model failure has a separate cause. The sibling is consistent with the repaired seam, not proven uniquely attributable to it. Next I will run the five required pre-PR commands separately, with tree hashes before and after and no amendment afterward.
