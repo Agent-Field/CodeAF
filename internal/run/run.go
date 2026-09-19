@@ -76,6 +76,10 @@ type Supervisor struct {
 	limits    Limits
 	factory   WorkerFactory
 
+	// after provides the run elapsed-limit signal. Production uses time.After;
+	// a test supplies a driven channel so the limit law needs no real sleep.
+	after func(time.Duration) <-chan time.Time
+
 	// staleAfter is how long a claim may go untouched before this pass takes
 	// it over, resolved from Limits (or its default) at the top of Run, so
 	// every pass reads the same window.
@@ -142,6 +146,7 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		slots:     slots,
 		limits:    limits,
 		factory:   factory,
+		after:     time.After,
 		finished:  make(chan workerReturn, slots+1),
 		cancels:   make(map[string]context.CancelFunc),
 		checkOf:   make(map[string]string),
@@ -201,6 +206,10 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 
 	timer := time.NewTimer(passInterval)
 	defer timer.Stop()
+	var elapsed <-chan time.Time
+	if s.limits.Elapsed > 0 {
+		elapsed = s.after(s.limits.Elapsed)
+	}
 	for {
 		if outcome := s.pass(ctx, rootID); outcome != "" {
 			s.drain()
@@ -212,6 +221,14 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			s.absorb(ret)
 		case <-timer.C:
 			timer.Reset(passInterval)
+		case <-elapsed:
+			// TIME AND COST SHARE ONE ENDING. Mark the same limit state the
+			// spend counter marks, end and drain work already in flight, then
+			// let pass return the existing OutcomeLimit without launching again.
+			s.limitHit = true
+			s.drain()
+			s.inFlight = 0
+			elapsed = nil
 		case <-ctx.Done():
 			// The caller's wall: workers still out there were handed this
 			// context and end with it. Their endings are absorbed so their
