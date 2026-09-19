@@ -172,7 +172,7 @@ Do **not** prove only one `CODEAF_TASK_BELT` road. Pause vs stop are two verbs.
 
 ## Folders-entry — dedicated logical Folders place
 
-Status: **live J36–J43 on** `7fb6a803edd9c29a10872ce90d87310728812641` (do not start from `06643b17`). Executable procedure remains `internal/e2e/folders_entry_e2e_test.go` plus untagged needles. Columns + reactive (J44–J49) is a later freeze on that SHA — see below. Do not treat Wave 1’s “`/folders` focuses that panel” as current product law.
+Status: **live J36–J43 on** `7fb6a803edd9c29a10872ce90d87310728812641` (do not start from `06643b17`). Executable procedure remains `internal/e2e/folders_entry_e2e_test.go` plus untagged needles. Columns + reactive (J44–J49) harness is below. Do not treat Wave 1’s “`/folders` focuses that panel” as current product law.
 
 **Do not** use wave-1…4 immutable binaries to prove this. Do not overwrite `releases/wave-{1,2,3,4}/`. Isolated `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`.
 
@@ -189,15 +189,28 @@ Wave 1–4 launches stay for those waves’ verified SHAs.
 
 ## Columns + reactive — Miller columns and event-driven organize
 
-Status: **contracts frozen, not implemented.** Freeze: `CONTRACTS.md` Folders columns + reactive on base `7fb6a803`. Live tmux is `t-rx-validate`. Do not treat filesystem `/folder` Miller columns as this place. Do not write `ready.json` from a contracts SHA.
+Status: **executable harness committed** in `internal/e2e/folders_columns_e2e_test.go`
+plus untagged needles. Live tmux is `t-rx-validate` (and F01–F24 on one SHA is
+`t-ux-validate`). Freeze: `CONTRACTS.md` Folders columns + reactive on base
+`7fb6a803` / this branch `2d781e64`. Do not treat filesystem `/folder` Miller
+columns as this place. Do not write `ready.json` from a proof SHA. A draft
+driver lives at `control/receipts/folders-entry/drive_j44_j49.py` and must not
+report `passed:true` until validate runs it.
 
 Isolated `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`.
+
+```sh
+go test -tags e2e -count=1 -timeout 40m -v -run TestFoldersColumnsJourneys ./internal/e2e/
+```
 
 ### What you should see (frozen names)
 
 1. Wide: Root column → folder children → deeper children as space permits → pinned details. 80-col: one navigation column, breadcrumb, switchable details. Path survives resize.
 2. `→` drills (next column, or details for a leaf). `←` returns. `shift+→` opens the verb strip (`shift+→ actions` in the hint). Other places keep `→` = strip.
-3. `c` is **New folder** (parent = the folder you are in). `g` is **Coordinate selected**. `b` **Add existing chats**. `d` **Manage this folder**. `t` **Organize this chat**. `u` **Undo**. `w` Why.
+3. `c` is **New folder** (parent = the folder you are in). `g` is **Coordinate selected**. `b` **Add existing chats**. `d` **Manage this folder**. `t` **Organize this chat**. `u` **Undo**. `w` Why. `o` **Organize existing chats**.
 4. First visit of a fresh profile lands on Folders Root. Later opens restore the last workspace view. Home stays `alt+1`.
-5. Fresh Root shows a sent chat and does **not** invent topic folders for a greeting. **Organize existing chats** opts into `workspace.reactive`. After that, a meaningful new message organizes in the background without waiting five minutes; the reply does not wait. Compact `Added to Billing · Why · Undo`. No toast flood, no guessed percents.
+5. Fresh Root shows a sent chat and does **not** invent topic folders for a greeting. **Organize existing chats** opts into `workspace.reactive`. After that, a meaningful new message organizes in the background without waiting five minutes; the reply does not wait. Compact `Added to Billing · Why · Undo`. No toast flood, no guessed percents. Scheduler delay is start−enqueue; model latency is commit−start.
 6. Shared object, two paths, one identity, `also in `. Navigation does not call the organizer. `/folder` still a directory.
+7. Survey of more than eight unfiled chats continues via a durable job cursor; it does not rescan the first eight forever.
+
+Visible actions are the pass. Slash `/folders organize` is the same survey, never the only door. J36–J43 remain required.

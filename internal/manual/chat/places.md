@@ -458,17 +458,49 @@ directory. `/folder` `/place` `/dir` still pick a filesystem folder.
 The heading is `folders`. With no generated folders yet it keeps that heading and one dim
 line `logical groups of chats · /folders create Billing`. It never says “no folders yet”.
 Unfiled chats stay visible at virtual Root — two truths. A fresh workspace invents no
-folders until **New folder** or **Organize existing chats**.
+folders until **New folder** or **Organize existing chats**. First visit of a fresh
+profile lands on Folders Root; later opens restore the last workspace view. Home stays
+`alt+1`.
 
-Visible actions, not slash-only: **New folder**, **New chat**, **Organize existing chats**.
-New chat starts at Root or the selected folder; Esc before send creates nothing and
-returns to Folders. Organize reuses `observe_and_organize` and paints `queued` `running`
-`delayed` `done` `cancel` — never `pending` `leased` `completed` `deferred` `cancelled`,
-never `checked`. Quit and reopen leaves that same job queued or running; it does not mint
-a second `organize_existing` row. `/folders organize` is the same survey, never the only door.
+Visible actions, not slash-only: **New folder**, **New chat**, **Organize existing chats**,
+**Organize this chat**, **Manage this folder**, **Add existing chats**, **Coordinate selected**,
+**Open chat**. New chat starts at Root or the selected folder; Esc before send creates
+nothing and returns to Folders. Organize reuses `observe_and_organize` and paints `queued`
+`running` `delayed` `done` `cancel` — never `pending` `leased` `completed` `deferred`
+`cancelled`, never `checked`. Quit and reopen leaves that same job queued or running; it
+does not mint a second `organize_existing` row. `/folders organize` is the same survey,
+never the only door.
 
-`esc` walks back. 80-column sequential. The collections page has create, nest, rename,
-why-here, and `/folder` vs `/folders`.
+Wide Folders is Miller columns over the logical graph with a pinned details pane — not
+80-column sequential drill-in, and not filesystem `/folder` columns. The collections page
+has create, nest, rename, why-here, Also in, and `/folder` vs `/folders`.
+
+## miller columns on folders — Root Billing Receipts details pane, wide folders columns
+
+On a wide terminal the Folders place is columns: Root, then the selected folder's
+children, then deeper children as space permits, then a **pinned details** pane on the
+right. Selecting Billing reveals Receipts in the next column; selecting a chat previews
+it in details. Ancestor columns stay visible and highlighted. If the path is deeper than
+the frame, older ancestor columns are windowed (a breadcrumb remains) — they are never
+squashed into one list. This is the logical membership graph, not a cwd tree.
+
+## right arrow drills folders — right arrow on folders, does right open the strip on folders
+
+On the Folders place, `→` **drills** to the next child column, or focuses details for a
+leaf. `←` returns to the parent column (from details, back to the leaf's column). `↑` `↓`
+choose rows in the focused column. Enter on a folder keeps the drill; Enter on a chat
+opens the existing full conversation. Esc returns without dropping the composer.
+`shift+→` is the strip on this place, not drill — the keys page names that chord.
+
+That is the Folders-place exception. Other places still use `→` for the verb strip.
+Home's folders panel does not grow a second column browser.
+
+## resize folders 80 columns — narrow folders, breadcrumb, switchable details, path survives resize
+
+At 80 columns Folders is one readable navigation column, a breadcrumb, and a switchable
+details view. The selected object and path survive resizing back to wide. Composer text
+is kept. Unlimited columns are still not squashed: the extra depth lives behind the
+window and the breadcrumb, not a flattened list.
 
 ## standing — what runs without being asked, and where to type on the standing page
 
