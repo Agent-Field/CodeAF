@@ -781,10 +781,8 @@ func TaskReasonOf(ending TaskEnding, report string) string {
 		return taskReasonNotes
 	case TaskEndingStale:
 		return taskReasonStale
-	case TaskEndingTimeLimit:
-		return taskReasonTimeLimit
-	case TaskEndingCostLimit:
-		return taskReasonCostLimit
+	case TaskEndingTimeLimit, TaskEndingCostLimit:
+		return taskLimitReason(ending)
 	case TaskEndingRefused:
 		// THE CHECK'S OWN FINDING OUTRANKS THE WORD FOR IT. "Refused" is the
 		// engine's name for both a check that named gaps and a worker that would
@@ -806,6 +804,16 @@ func TaskReasonOf(ending TaskEnding, report string) string {
 		return taskReasonFault + ": " + line
 	}
 	return taskReasonFault
+}
+
+// taskLimitReason names the limit a person set that ended the run. The two are
+// ONE ARM of [TaskReasonOf] because they are one kind of ending, a bound the
+// person chose, and which bound it was is the only thing that differs.
+func taskLimitReason(ending TaskEnding) string {
+	if ending == TaskEndingCostLimit {
+		return taskReasonCostLimit
+	}
+	return taskReasonTimeLimit
 }
 
 // taskGapsOf is what the check said was missing, out of the landing's own report
