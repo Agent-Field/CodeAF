@@ -13,18 +13,24 @@ import (
 type fakeStore struct {
 	mu          sync.Mutex
 	seq         int
+	rootRev     int
 	cols        []workspace.Collection
 	members     map[string][]workspace.Ref
 	events      []workspace.MembershipEvent
-	keys        map[string]struct{}
+	keys        map[string]keyedOp
 	revisionErr error
 	at          string
+}
+
+type keyedOp struct {
+	action, collection, from string
+	ref                      workspace.Ref
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
 		members: map[string][]workspace.Ref{},
-		keys:    map[string]struct{}{},
+		keys:    map[string]keyedOp{},
 		at:      "2026-09-18T00:00:00Z",
 	}
 }
@@ -42,6 +48,7 @@ func (f *fakeStore) Create(_ context.Context, name string) (workspace.Collection
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.seq++
+	f.rootRev++
 	created := workspace.Collection{ID: fmt.Sprintf("c%02d", f.seq), Name: name, Lifecycle: workspace.LifecycleActive, Revision: 1}
 	f.cols = append(f.cols, created)
 	f.members[created.ID] = []workspace.Ref{}
@@ -120,7 +127,7 @@ func (f *fakeStore) AddWith(_ context.Context, id string, ref workspace.Ref, p w
 	if _, ok := f.members[id]; !ok {
 		return workspace.ErrNotFound
 	}
-	if replayed, err := f.replay(p); replayed || err != nil {
+	if replayed, err := f.replay(p, workspace.ActionAdd, id, ref, ""); replayed || err != nil {
 		return err
 	}
 	if ref.Kind == workspace.CollectionKind {
@@ -136,6 +143,7 @@ func (f *fakeStore) AddWith(_ context.Context, id string, ref workspace.Ref, p w
 	}
 	f.members[id] = append(f.members[id], ref)
 	f.record(id, ref, workspace.ActionAdd, p)
+	f.bump(id)
 	return nil
 }
 
@@ -151,7 +159,7 @@ func (f *fakeStore) RemoveWith(_ context.Context, id string, ref workspace.Ref, 
 	if _, ok := f.members[id]; !ok {
 		return workspace.ErrNotFound
 	}
-	if replayed, err := f.replay(p); replayed || err != nil {
+	if replayed, err := f.replay(p, workspace.ActionRemove, id, ref, ""); replayed || err != nil {
 		return err
 	}
 	kept := make([]workspace.Ref, 0, len(f.members[id]))
@@ -166,6 +174,7 @@ func (f *fakeStore) RemoveWith(_ context.Context, id string, ref workspace.Ref, 
 	f.members[id] = kept
 	if found {
 		f.record(id, ref, workspace.ActionRemove, p)
+		f.bump(id)
 	}
 	return nil
 }
@@ -188,7 +197,7 @@ func (f *fakeStore) Move(_ context.Context, fromID, toID string, ref workspace.R
 	if fromID == toID {
 		return nil
 	}
-	if replayed, err := f.replay(p); replayed || err != nil {
+	if replayed, err := f.replay(p, workspace.ActionAdd, toID, ref, fromID); replayed || err != nil {
 		return err
 	}
 	if ref.Kind == workspace.CollectionKind && f.wouldCycle(toID, ref.ID) {
@@ -211,6 +220,8 @@ func (f *fakeStore) Move(_ context.Context, fromID, toID string, ref workspace.R
 	if found {
 		f.record(fromID, ref, workspace.ActionRemove, p)
 	}
+	f.bump(fromID)
+	f.bump(toID)
 	return nil
 }
 
@@ -244,17 +255,40 @@ func (f *fakeStore) Events(_ context.Context, id string, ref workspace.Ref) ([]w
 	return out, nil
 }
 
+func (f *fakeStore) RootState(context.Context) (int, string, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rootRev == 0 {
+		return 0, "", "", workspace.ErrNotFound
+	}
+	return f.rootRev, "", f.at, nil
+}
+
 func (f *fakeStore) refuse() error { return f.revisionErr }
 
-func (f *fakeStore) replay(p workspace.Provenance) (bool, error) {
+func (f *fakeStore) replay(p workspace.Provenance, action, collection string, ref workspace.Ref, from string) (bool, error) {
 	if p.IdempotencyKey == "" {
 		return false, nil
 	}
-	if _, seen := f.keys[p.IdempotencyKey]; seen {
+	prev, seen := f.keys[p.IdempotencyKey]
+	if !seen {
+		f.keys[p.IdempotencyKey] = keyedOp{action: action, collection: collection, from: from, ref: ref}
+		return false, nil
+	}
+	if prev.action == action && prev.collection == collection && prev.from == from && sameRef(prev.ref, ref) {
 		return true, nil
 	}
-	f.keys[p.IdempotencyKey] = struct{}{}
-	return false, nil
+	return false, fmt.Errorf("%w: idempotency key already used for a different operation", workspace.ErrInvalid)
+}
+
+func (f *fakeStore) bump(id string) {
+	f.rootRev++
+	for i, collection := range f.cols {
+		if collection.ID == id {
+			f.cols[i].Revision++
+			return
+		}
+	}
 }
 
 func (f *fakeStore) record(id string, ref workspace.Ref, action string, p workspace.Provenance) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -27,7 +28,9 @@ func (s *Store) AddWith(ctx context.Context, id string, ref Ref, p Provenance) e
 		return storeError(err)
 	}
 	defer tx.Rollback()
-	replay, err := eventKeyUsed(ctx, tx, p.IdempotencyKey)
+	replay, err := replaySameOp(ctx, tx, p.IdempotencyKey, MembershipEvent{
+		CollectionID: id, Kind: ref.Kind, RefID: ref.ID, SessionID: ref.SessionID, Action: ActionAdd,
+	}, "")
 	if err != nil {
 		return storeError(err)
 	}
@@ -62,7 +65,9 @@ func (s *Store) RemoveWith(ctx context.Context, id string, ref Ref, p Provenance
 		return storeError(err)
 	}
 	defer tx.Rollback()
-	replay, err := eventKeyUsed(ctx, tx, p.IdempotencyKey)
+	replay, err := replaySameOp(ctx, tx, p.IdempotencyKey, MembershipEvent{
+		CollectionID: id, Kind: ref.Kind, RefID: ref.ID, SessionID: ref.SessionID, Action: ActionRemove,
+	}, "")
 	if err != nil {
 		return storeError(err)
 	}
@@ -102,7 +107,9 @@ func (s *Store) Move(ctx context.Context, fromID, toID string, ref Ref, p Proven
 		return storeError(err)
 	}
 	defer tx.Rollback()
-	replay, err := eventKeyUsed(ctx, tx, p.IdempotencyKey)
+	replay, err := replaySameOp(ctx, tx, p.IdempotencyKey, MembershipEvent{
+		CollectionID: toID, Kind: ref.Kind, RefID: ref.ID, SessionID: ref.SessionID, Action: ActionAdd,
+	}, fromID)
 	if err != nil {
 		return storeError(err)
 	}
@@ -272,12 +279,65 @@ func refuseCycle(ctx context.Context, tx *sql.Tx, parent, child string) error {
 	return nil
 }
 
-func eventKeyUsed(ctx context.Context, tx *sql.Tx, key string) (bool, error) {
+// replaySameOp is the idempotency gate. A second call with the same key is a
+// no-op only when it is the same collection, ref, and action (and, for Move,
+// the same source). Any other use of that key is refused rather than applied.
+func replaySameOp(ctx context.Context, tx *sql.Tx, key string, want MembershipEvent, moveFrom string) (bool, error) {
 	if key == "" {
 		return false, nil
 	}
+	ev, err := lookupKeyedEvent(ctx, tx, key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if ev.CollectionID != want.CollectionID || ev.Kind != want.Kind || ev.RefID != want.RefID || ev.SessionID != want.SessionID || ev.Action != want.Action {
+		return false, fmt.Errorf("%w: idempotency key already used for a different operation", ErrInvalid)
+	}
+	if want.Action != ActionAdd {
+		return true, nil
+	}
+	moved, err := hasRemoveAt(ctx, tx, Ref{Kind: ev.Kind, ID: ev.RefID, SessionID: ev.SessionID}, ev.At)
+	if err != nil {
+		return false, err
+	}
+	if moveFrom == "" {
+		if moved {
+			return false, fmt.Errorf("%w: idempotency key already used for a different operation", ErrInvalid)
+		}
+		return true, nil
+	}
+	fromMatched, err := hasRemoveFromAt(ctx, tx, moveFrom, Ref{Kind: ev.Kind, ID: ev.RefID, SessionID: ev.SessionID}, ev.At)
+	if err != nil {
+		return false, err
+	}
+	if !fromMatched {
+		return false, fmt.Errorf("%w: idempotency key already used for a different operation", ErrInvalid)
+	}
+	return true, nil
+}
+
+func lookupKeyedEvent(ctx context.Context, tx *sql.Tx, key string) (MembershipEvent, error) {
+	row := tx.QueryRowContext(ctx, `SELECT `+eventColumns+` FROM membership_events WHERE idempotency_key=? LIMIT 1`, key)
+	return scanEvent(row)
+}
+
+func hasRemoveAt(ctx context.Context, tx *sql.Tx, ref Ref, at string) (bool, error) {
 	var found int
-	err := tx.QueryRowContext(ctx, "SELECT 1 FROM membership_events WHERE idempotency_key=? LIMIT 1", key).Scan(&found)
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM membership_events WHERE kind=? AND ref_id=? AND session_id=? AND action=? AND at=? LIMIT 1`,
+		ref.Kind, ref.ID, ref.SessionID, ActionRemove, at).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func hasRemoveFromAt(ctx context.Context, tx *sql.Tx, fromID string, ref Ref, at string) (bool, error) {
+	var found int
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM membership_events WHERE collection_id=? AND kind=? AND ref_id=? AND session_id=? AND action=? AND at=? LIMIT 1`,
+		fromID, ref.Kind, ref.ID, ref.SessionID, ActionRemove, at).Scan(&found)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
