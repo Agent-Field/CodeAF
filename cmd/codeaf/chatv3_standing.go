@@ -172,11 +172,13 @@ func v3MemoryPath(profileDir string) string {
 // collections.db for this pass and closes it afterwards, the same bargain as
 // tidy: a ticker rebuilt every five minutes must not hold a writer all day.
 // A store that will not open is silent — absent, not a stub that claims the
-// workspace was checked. The organizer is the production bind at
-// [v3Organizer]; a nil organizer (construction failed) still leaves pending
-// rows pending rather than inventing membership.
+// workspace was checked. The organizer is bound when the pass FIRES, not when
+// the conversation is assembled: constructing it at launch asked the catalog
+// on the way to the first frame.
 func v3OrganizePass(profileDir string) func(context.Context) error {
-	return v3OrganizePassWith(profileDir, v3Organizer())
+	return func(ctx context.Context) error {
+		return v3OrganizePassWith(profileDir, v3Organizer())(ctx)
+	}
 }
 
 func v3OrganizePassWith(profileDir string, work session.Organizer) func(context.Context) error {

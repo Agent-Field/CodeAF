@@ -198,12 +198,23 @@ func delayedView() wsapi.IndexView {
 }
 
 func (d *discoveryAdapter) embedderDown(ctx context.Context) bool {
-	embedder := d.currentEmbedder()
+	embedder := resolvedEmbedder(d.currentEmbedder())
 	if embedder == nil {
-		return true
+		return d.currentEmbedder() == nil
 	}
 	_, ok, err := embedder.Available(ctx)
 	return err != nil || !ok
+}
+
+// resolvedEmbedder returns a pin that has already asked the catalog. A
+// deferredEmbedder that has not fired yet is treated as not-down: IndexProgress
+// on the home beat must not resolve RoleEmbed on the way to the first frame.
+func resolvedEmbedder(embedder embed.Embedder) embed.Embedder {
+	deferred, ok := embedder.(*deferredEmbedder)
+	if !ok {
+		return embedder
+	}
+	return deferred.peek()
 }
 
 func hitsOf(rows []wsdiscover.Passage, kind string, degraded bool) []wsapi.SearchHit {

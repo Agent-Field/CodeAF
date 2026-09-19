@@ -35,3 +35,19 @@ func TestTheEmbedAdapterIsBoundOrHonestlyAbsent(t *testing.T) {
 		t.Fatal("the fallback must stay labelled degraded")
 	}
 }
+
+func TestTheDeferredEmbedderDoesNotAskTheCatalogUntilUsed(t *testing.T) {
+	deadCatalogEndpoint(t)
+	proc := v3TestProcess(t)
+	before := proc.Models.BlockingReads()
+	deferred := v3DeferredEmbedder(proc.Settings, nil, proc.Models)
+	if deferred == nil {
+		t.Fatal("deferred construction returned nil")
+	}
+	if asked := proc.Models.BlockingReads() - before; asked != 0 {
+		t.Fatalf("constructing the deferred embedder asked the catalog %d times", asked)
+	}
+	if peeked, ok := deferred.(*deferredEmbedder); !ok || peeked.peek() != nil {
+		t.Fatal("construction must not resolve the pin")
+	}
+}
