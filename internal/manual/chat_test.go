@@ -2658,6 +2658,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why do the step numbers skip", "worker-harness"},
 		{"a step is missing and the cd at the front of the command is gone", "worker-harness"},
 		{"a line under steps says refused with no number in front", "worker-harness"},
+		{"why is there no output under a step on the run's page", "worker-harness"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
