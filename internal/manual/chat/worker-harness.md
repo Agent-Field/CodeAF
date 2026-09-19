@@ -22,8 +22,8 @@ on the same ground, and its answer says that it joined. If it stands elsewhere, 
 is refused and says that it cannot join work already underway on another ground.
 
 Finishing a run leaves its work in that copy. Bringing the work back is a separate,
-explicit step. Its note says which branch received how many files; a run that only
-read says there is nothing to bring back and changes no branch. The conversation is
+explicit step. Its note says where the work went and how many files moved; a run that only
+read says there is nothing to bring back and changes no files. The conversation is
 woken with the run's outcome and result. The row settles `done` when the run
 finished whole and `incomplete` on any other ending.
 
