@@ -54,6 +54,12 @@ type workerReturn struct {
 	err    error
 }
 
+type workerEvent struct {
+	ret    *workerReturn
+	taskID string
+	banked float64
+}
+
 // Supervisor is the launch loop over one plan store. It claims ready leaves
 // as the task's own agent — the name its finish command answers to — and
 // records the process that holds the claim beside it, so a run is owned per
@@ -94,7 +100,7 @@ type Supervisor struct {
 	// touched by no one else. cancels maps a running task to the context
 	// cancel that ends its worker, so a pass can end one worker's context
 	// without touching the rest.
-	finished chan workerReturn
+	finished chan workerEvent
 	// workers counts the goroutines launch has started and not yet seen end.
 	// It is the run's one promise to its caller — NO WORKER OUTLIVES ITS RUN —
 	// and drain is its only reader: every road out of Run waits on it before
@@ -103,6 +109,7 @@ type Supervisor struct {
 	workers        sync.WaitGroup
 	inFlight       int
 	spent          float64
+	banked         map[string]float64
 	nodes          int
 	steps          int
 	rootResult     string
@@ -147,7 +154,7 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		limits:    limits,
 		factory:   factory,
 		after:     time.After,
-		finished:  make(chan workerReturn, slots+1),
+		finished:  make(chan workerEvent, slots+1),
 		cancels:   make(map[string]context.CancelFunc),
 		checkOf:   make(map[string]string),
 	}
@@ -183,6 +190,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 		return OutcomeCannotRun
 	}
 	s.spent = 0
+	s.banked = make(map[string]float64)
 	s.nodes = 0
 	s.steps = 0
 	s.rootResult = ""
@@ -216,9 +224,8 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			return outcome
 		}
 		select {
-		case ret := <-s.finished:
-			s.inFlight--
-			s.absorb(ret)
+		case event := <-s.finished:
+			s.consume(event)
 		case <-timer.C:
 			timer.Reset(passInterval)
 		case <-elapsed:
@@ -226,9 +233,8 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			// spend counter marks, so the next pass launches nothing and answers
 			// the existing OutcomeLimit.
 			//
-			// THE DIFFERENCE IS THE WORK IN FLIGHT. A cost limit lets it finish,
-			// because what it will spend is already committed; a time limit
-			// cannot, because the time is gone. So every worker is ended here, and
+			// TIME AND COST BOTH END WORK IN FLIGHT. Once either ceiling is
+			// reached, every worker is ended here, and
 			// ITS ENDING IS ABSORBED, the way the caller's wall below reads its
 			// endings: a return that was dropped would leave its task claimed and
 			// reading as running on a run that is over, and what the worker spent
@@ -239,9 +245,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 				cancel()
 			}
 			for s.inFlight > 0 {
-				ret := <-s.finished
-				s.inFlight--
-				s.absorb(ret)
+				s.consume(<-s.finished)
 			}
 		case <-ctx.Done():
 			// The caller's wall: workers still out there were handed this
@@ -251,9 +255,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			// the endings rather than dropping them, because the run it stops
 			// is one a later pass picks up from the store.
 			for s.inFlight > 0 {
-				ret := <-s.finished
-				s.inFlight--
-				s.absorb(ret)
+				s.consume(<-s.finished)
 			}
 			s.drain()
 			return OutcomeIncomplete
@@ -349,6 +351,12 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 		taskCtx = WithWakeClause(taskCtx, wake)
 	}
 	s.cancels[task.ID] = cancel
+	s.banked[task.ID] = 0
+	if s.limits.CostUSD > 0 {
+		taskCtx = WithSpendBank(taskCtx, func(usd float64) {
+			s.finished <- workerEvent{taskID: task.ID, banked: usd}
+		})
+	}
 	s.inFlight++
 	s.nodes++
 	// THE GOROUTINE IS COUNTED BEFORE IT STARTS, so a drain that begins the
@@ -362,7 +370,8 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 		} else {
 			report, err = worker.Run(WithStepsPerTask(taskCtx, s.limits.StepsPerTask), task)
 		}
-		s.finished <- workerReturn{task: task, report: report, err: err}
+		ret := workerReturn{task: task, report: report, err: err}
+		s.finished <- workerEvent{ret: &ret}
 	}()
 }
 
@@ -391,6 +400,26 @@ func (s *Supervisor) drain() {
 	s.workers.Wait()
 }
 
+// consume serializes live spend and worker returns on the supervisor loop.
+func (s *Supervisor) consume(event workerEvent) {
+	if event.ret != nil {
+		s.inFlight--
+		s.absorb(*event.ret)
+		return
+	}
+	previous := s.banked[event.taskID]
+	if event.banked > previous {
+		s.spent += event.banked - previous
+		s.banked[event.taskID] = event.banked
+	}
+	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && !s.limitHit {
+		s.limitHit = true
+		for _, cancel := range s.cancels {
+			cancel()
+		}
+	}
+}
+
 // absorb writes one worker's ending into the store and keeps the run's
 // counters true. A worker that came home well is done with its result; one
 // that came home with an error fails with that error as the reason. Either
@@ -398,6 +427,14 @@ func (s *Supervisor) drain() {
 // that stays open would stall the whole run: nothing else can make it
 // terminal, and the run would wait on it forever.
 func (s *Supervisor) absorb(ret workerReturn) {
+	banked := s.banked[ret.task.ID]
+	if ret.report.USD > banked {
+		s.spent += ret.report.USD - banked
+	}
+	delete(s.banked, ret.task.ID)
+	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
+		s.limitHit = true
+	}
 	// A RETURN FOR A TASK THE STORE ALREADY ENDED is written as nothing. The
 	// ending the store carries — a cancellation that landed while the worker
 	// ran, which the same write cleared the claim and cascaded down — is the
@@ -412,11 +449,7 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		// task stays open until the run wakes it ([launchWaits]). Nothing is
 		// written over the store's own park, and the spend the worker made is
 		// still the run's.
-		s.spent += ret.report.USD
 		s.steps += ret.report.Steps
-		if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
-			s.limitHit = true
-		}
 		s.completeTree()
 		return
 	}
@@ -429,11 +462,7 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	// counts what the worker spent, and the root's own report is still the
 	// run's result.
 	endedByStore := ret.err == nil && s.store.Task(ret.task.ID).Status == plandb.StatusDone
-	s.spent += ret.report.USD
 	s.steps += ret.report.Steps
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
-		s.limitHit = true
-	}
 	if ret.task.ID == s.store.RootID() {
 		// The harness owns the root, and the store refuses worker writes to it.
 		// Its worker's report is kept for the completion; its error is what

@@ -92,8 +92,23 @@ func TestCostLimitSumsWorkingWorkers(t *testing.T) {
 	}
 }
 
-func TestSpendBankWithoutLimitDoesNotEndWorker(t *testing.T) {
-	ctx := WithSpendBank(context.Background(), func(float64) { t.Fatal("a missing limit must not install a supervisor callback") })
-	bankSpend(context.Background(), 3)
-	_ = ctx
+func TestSpendBankWithoutLimitLetsWorkerReturn(t *testing.T) {
+	store, err := plandb.Open(t.TempDir()+"/plan.json", "unlimited", "root", "root", "finish")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+	factory := func(task plandb.Task) Worker {
+		return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
+			bankSpend(ctx, 3)
+			return Report{Result: "done", USD: 3}, nil
+		})
+	}
+	supervisor := NewSupervisor(store, t.TempDir(), 1, Limits{}, factory)
+	if outcome := supervisor.Run(context.Background()); outcome != OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, OutcomeDone)
+	}
+	if supervisor.spent != 3 {
+		t.Fatalf("run spend = %v, want returned 3 exactly once", supervisor.spent)
+	}
 }
