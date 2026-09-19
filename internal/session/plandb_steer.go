@@ -27,6 +27,11 @@ import (
 // cannot drift apart on the sentence a surface reads back.
 var errPlanOtherChat = errors.New("that task belongs to another conversation")
 
+// errPlanEndedRun is the one sentence every steering verb answers when its
+// task belongs to an earlier run. An ended run stays readable, but is not
+// steered.
+var errPlanEndedRun = errors.New("that task's run has ended")
+
 // planNoTask is the refusal for an id the conversation's plan does not hold,
 // naming the id exactly as the caller wrote it so a surface can echo it.
 func planNoTask(id string) error {
@@ -40,19 +45,29 @@ func planNoTask(id string) error {
 // cancelled, a revision is only for work that has not started — travels back
 // as the store wrote it, because the store is the one that knows its own laws.
 func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) error) error {
-	store, plan, closeStore := a.openPlanHandle()
-	if store == nil {
+	stores, plan, closeStores := a.openPlanReadHandles()
+	if len(stores) == 0 {
 		return errPlanNoStore
 	}
-	defer closeStore()
-	task := store.Task(planTaskID(id))
-	switch {
-	case task == nil:
-		return planNoTask(id)
-	case task.Chat != plan.chat:
-		return errPlanOtherChat
+	defer closeStores()
+
+	key := planTaskID(id)
+	live := stores[len(stores)-1]
+	if task := live.Task(key); task != nil {
+		if task.Chat != plan.chat {
+			return errPlanOtherChat
+		}
+		return write(live, task)
 	}
-	return write(store, task)
+	for _, store := range stores[:len(stores)-1] {
+		if task := store.Task(key); task != nil {
+			if task.Chat != plan.chat {
+				return errPlanOtherChat
+			}
+			return errPlanEndedRun
+		}
+	}
+	return planNoTask(id)
 }
 
 // PlanNote leaves a note in the person's own voice on one task. It is the soft
