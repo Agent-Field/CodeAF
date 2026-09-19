@@ -140,9 +140,10 @@ func run(path string, argv []string) int {
 	// is already the suite's by the time the file names it. A platform without a
 	// holder (Windows) keeps it here, which is safe there because nothing else
 	// can inherit it.
+	var holder *os.Process
 	holderPID := 0
-	if holder, err := startHolder(self(), path, lock, cmd.Process.Pid); err == nil {
-		holderPID = holder.Pid
+	if started, err := startHolder(self(), path, lock, cmd.Process.Pid); err == nil {
+		holder, holderPID = started, started.Pid
 	} else if !errors.Is(err, errNoHolder) {
 		fmt.Fprintf(os.Stderr, "hold heavy-suite lock beside the suite: %v\n", err)
 		fmt.Fprintln(os.Stderr, "this wrapper is holding it instead, so killing this wrapper would unlock a box that is still running a suite.")
@@ -183,7 +184,7 @@ func run(path string, argv []string) int {
 		case sig := <-stops:
 			_ = cmd.Process.Signal(sig)
 		case err := <-done:
-			reportLingeringHolder(path, holderPID)
+			reportLingeringHolder(os.Stderr, path, holder)
 			if err == nil {
 				return 0
 			}
@@ -213,49 +214,46 @@ func self() string {
 	return path
 }
 
-// reportLingeringHolder says so when the lock is still held after the suite has
-// ended, and NEVER ends whoever holds it: the one thing worse than a locked box
-// is a person, or a wrapper, killing a process it has not identified. It names
-// the file-level way to find the holder, which works across pid namespaces
-// where a pid does not.
-func reportLingeringHolder(path string, holderPID int) {
-	deadline := time.Now().Add(lingerGrace)
-	for {
-		free, err := lockIsFree(path)
-		if err != nil || free {
-			return
-		}
-		if !time.Now().Before(deadline) {
-			break
-		}
-		time.Sleep(holdPoll)
+// reportLingeringHolder says so when this suite's holder is still running after
+// the suite has ended, and NEVER ends it: the one thing worse than a locked box
+// is a process killed by someone who has not identified it. It names the
+// file-level way to find the holder, which works across pid namespaces where a
+// pid does not.
+//
+// IT ASKS ABOUT OUR HOLDER, NOT ABOUT THE LOCK. Asking whether the lock is free
+// answers the wrong question twice. On a platform with no holder this wrapper
+// is itself the only owner, so the lock reads held because of us, and every
+// such run would wait the whole grace and then report a holder that is this
+// process. And a contender that takes the lock in the moment after a clean
+// release (a gate that polls, a wrapper that retries) also reads as held, which
+// would name our holder for a lock that is rightfully somebody else's. Whether
+// the holder we started is still alive is the only thing here that means what
+// it says.
+func reportLingeringHolder(report io.Writer, path string, holder *os.Process) {
+	if holder == nil {
+		return
 	}
-	fmt.Fprintf(os.Stderr, "the heavy-suite lock is still held %s after this suite ended", lingerGrace)
-	if holderPID != 0 {
-		fmt.Fprintf(os.Stderr, ", and this suite's holder was pid %d", holderPID)
+	// WAIT FOR IT RATHER THAN LOOK AT ITS PID. The holder is this process's own
+	// child, so once it exits it stays a zombie until it is reaped, and a pid
+	// that is merely unreaped answers every liveness question with yes. Waiting
+	// both reaps it and answers honestly; the grace bounds the wait for the case
+	// this exists to report.
+	finished := make(chan struct{})
+	go func() {
+		_, _ = holder.Wait()
+		close(finished)
+	}()
+	select {
+	case <-finished:
+		return
+	case <-time.After(lingerGrace):
 	}
-	fmt.Fprintf(os.Stderr, ".\nFind who holds it, and end nothing you have not identified: lsof %s\n", path)
+	fmt.Fprintf(report, "this suite has ended but its lock holder, pid %d, is still running after %s.\n", holder.Pid, lingerGrace)
+	fmt.Fprintf(report, "The lock is still held by it. Find who holds it, and end nothing you have not identified: lsof %s\n", path)
 }
 
 // lingerGrace is how long the holder is given to notice the suite has ended
-// before the wrapper says the lock is still held. It is the holder's poll with
-// room for a loaded box, which is exactly when this matters.
-const lingerGrace = 2 * time.Second
-
-// lockIsFree answers whether the lock can be taken right now, and takes nothing:
-// it opens its own descriptor, tries the lock without blocking, and closes it.
-func lockIsFree(path string) (bool, error) {
-	probe, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return false, err
-	}
-	defer probe.Close()
-	if err := filelock.Lock(probe, true, true); err != nil {
-		if filelock.IsBusy(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	_ = filelock.Unlock(probe)
-	return true, nil
-}
+// before the wrapper says it is still running. It is the holder's poll with
+// room for a loaded box, which is exactly when this matters. It is a var only
+// so a test need not spend it.
+var lingerGrace = 2 * time.Second
