@@ -362,7 +362,7 @@ anywhere.
 
 **Its answer goes to the worker that started it, not to you.** The note with its last
 message in it is delivered to its parent, which reads it and carries on — the same road a
-part's report takes. You see the row and can open its room, but the conversation is not
+part's report takes. You see the row and can open its page, but the conversation is not
 handed the answer; what reaches the conversation is what the parent task says when *it*
 lands.
 

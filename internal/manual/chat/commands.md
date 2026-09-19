@@ -1333,7 +1333,7 @@ reads as `sized`.
 ## What happens when I type /task
 
 The task starts. There is no wait to watch: the started-task row appears as soon as you
-press enter and the task's row is on the roster, where you can open its room and see the
+press enter and the task's row is on the rail, where you can open its page and see the
 worker at work. What you used to wait for — `sizing it up…` and then `shaping the brief…`,
 up to half a minute on a thinking model before the task existed — now runs beside the
 worker instead (see */task — start work you can walk away from* above). If starting fails,
