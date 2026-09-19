@@ -84,3 +84,7 @@ The wrapped whole session suite ran once and failed across many unrelated task-s
 ## Change-entry result and law step
 
 `go run ./cmd/codeaf-changes check` passed with 15 well-formed entries. The final independent code check runs the guard and naming-law packages.
+
+## Law result and final tree
+
+`go test ./internal/guard ./internal/namelaw` passed. Four of five required pre-PR commands passed. The wrapped session command ran and failed only in the unrelated task-system surfaces listed in its output; it did not fail the forced pin-wire regression. The ending tree hash is printed below. No source or findings amendment follows this record.
