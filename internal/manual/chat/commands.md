@@ -194,6 +194,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
 | `/folder` | `/place`, `/dir` | — | locally opens the add context sheet; over `--host` says the folder chooser is unavailable |
 | `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
+| `/folders` | — | — | focuses home's `folders` panel — logical groups of chats; **not** an alias of `/folder` |
+| `/folders` | — | `create <name>` | make a logical folder |
+| `/folders` | — | `add <name-or-id>` | file the current chat here |
 | `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
@@ -1068,10 +1071,11 @@ There is no argument form. There are three other ways in: **`alt+1`**, home bein
 of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
-**It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
+**It is eight panels**, in one column under 110 cells, two from 110 and three from 170,
 always in one order: `needs you` (every question waiting on you, a digit answers the top one
 from anywhere), `where you were` (this window's conversation, then the most recent, then a
-`N more` fold that opens the rest), `projects` (every folder, `enter` starts a chat there),
+`N more` fold that opens the rest), `folders` (logical groups of chats; empty it says
+`logical groups of chats · /folders create Billing`), `projects` (every folder, `enter` starts a chat there),
 `running` (every task, job and firing watch), `since you left` (what landed while you were
 away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
 Which column a panel stands in follows what it holds: the panels with rows fill the **field**
@@ -1115,6 +1119,22 @@ conversations this terminal already holds is never a refusal.** Past twelve, a q
 one left alone may be let go of; that is not a refusal of the one you asked for.
 A task another window is running cannot be stopped from home: its `running` row says
 `another window` and offers no stop.
+
+## /folders — not /folder; create and add; logical groups of chats
+
+`/folders` focuses home's `folders` panel. It is **not** an alias of `/folder`. `/folder`,
+`/place` and `/dir` still pick a directory; `/folders` does not.
+
+```
+/folders                    the folders panel on home
+/folders create Billing     make a logical folder
+/folders add <name-or-id>   file the current chat here
+```
+
+The empty panel's dim line is `logical groups of chats · /folders create Billing`. On a
+row, `→` then `n f m w x`: `n` new chat here · `f` add current chat · `m` move this
+placement · `w` why here · `x` remove this placement. The collections page is the rest:
+also in two folders, `/folder` vs `/folders`, and what is not built yet.
 
 ## /permissions — what runs without asking
 
