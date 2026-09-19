@@ -266,6 +266,14 @@ func TestAPinForARoleWithNoTierSurvivesTheRead(t *testing.T) {
 	if stored, _ := persistedString(profile, KeyModelRoles); !strings.Contains(stored, "imagegen") {
 		t.Fatalf("the painter pin was not written back: %q", stored)
 	}
+
+	pins, err = ParseModelRoles("embed:openai/text-embedding-3-small")
+	if err != nil {
+		t.Fatalf("the embed pin was unreadable: %v", err)
+	}
+	if pins["embed"] != "openai/text-embedding-3-small" {
+		t.Fatalf("the embed pin read back as %q", pins["embed"])
+	}
 }
 
 // A ROLE NOBODY RECOGNISES FAILS SILENTLY FOREVER, which is why this row

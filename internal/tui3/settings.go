@@ -1821,6 +1821,8 @@ func roleFilter(role roles.Role) modelFilter {
 		return inspectsImages
 	case roles.RoleImageGen:
 		return drawsImages
+	case roles.RoleEmbed:
+		return embedsVectors
 	}
 	return chatModel
 }

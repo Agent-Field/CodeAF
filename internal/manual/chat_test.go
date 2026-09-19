@@ -1241,6 +1241,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// record of work and not of what was said.
 		{"what did we decide last week", "what-i-remember"},
 		{"search my old conversations", "what-i-remember"},
+		{"what is the embed pin", "what-i-remember"},
+		{"why does discovery say degraded", "what-i-remember"},
+		{"what does discovery delayed mean", "what-i-remember"},
+		{"how do I pin an embeddings model", "models-and-cost"},
 
 		// The third wave: codeaf changing a person's own settings for them.
 		// Both halves have to reach a page — that it can, and the rows where

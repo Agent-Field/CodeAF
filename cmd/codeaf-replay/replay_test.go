@@ -265,6 +265,12 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 			yield(word, "an internal/roles constant, written by internal/session/auxiliary.go")
 		}
 	},
+	// RoleEmbed is a PIN, not a text-tier tenant, so it never reaches the
+	// session door. The media client and the adapter stamp the role word
+	// themselves; the join is callSiteRoles["embed"] → lane.RoleAuxiliary.
+	"string(roles.RoleEmbed)": func(yield func(tag, where string)) {
+		yield("embed", "internal/embed and internal/provider, the RoleEmbed pin")
+	},
 }
 
 // purposeWords and roleWords are the two vocabularies this law joins, each read
