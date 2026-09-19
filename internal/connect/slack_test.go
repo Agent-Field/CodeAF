@@ -385,22 +385,47 @@ func TestGrantedReadsSlackCommaSeparatedScopes(t *testing.T) {
 
 func TestSlackBeginAuthUsesTheSecondDoorWhenTheFirstIsBusy(t *testing.T) {
 	_, second := testDoorListeners(t)
-	secondAddress := second.Addr().String()
 	if err := second.Close(); err != nil {
 		t.Fatalf("release the second test address: %v", err)
-	}
-	_, secondPort, err := net.SplitHostPort(secondAddress)
-	if err != nil {
-		t.Fatalf("split the second test address: %v", err)
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {})
 	fakeSlack(t, mux)
 	manager := slackManager(t)
-	flow, err := manager.BeginAuth(context.Background(), "slack", "")
-	if err != nil {
-		t.Fatalf("BeginAuth: %v", err)
+
+	// The first door is held busy, so the product must fall through to the
+	// second. A doored plug probes an address, closes it, and lets oauth2cli
+	// rebind it, so the second port cannot be held open; if another listener
+	// grabs it in that gap both doors read busy, which is a machine race and not
+	// the behaviour under test. Retry with a fresh free second address until the
+	// sign-in lands on the second door, bounded. A real regression would send
+	// the browser to the wrong port, which the URL check below still catches.
+	var flow *Flow
+	var secondPort string
+	for attempt := 0; attempt < 50; attempt++ {
+		_, port, splitErr := net.SplitHostPort(localServerAddresses[1])
+		if splitErr != nil {
+			t.Fatalf("split the second test address: %v", splitErr)
+		}
+		secondPort = port
+		f, beginErr := manager.BeginAuth(context.Background(), "slack", "")
+		if beginErr == nil {
+			flow = f
+			break
+		}
+		if !strings.Contains(beginErr.Error(), "are busy on this machine") {
+			t.Fatalf("BeginAuth: %v", beginErr)
+		}
+		probe, listenErr := net.Listen("tcp", "127.0.0.1:0")
+		if listenErr != nil {
+			t.Fatalf("pick a fresh second address: %v", listenErr)
+		}
+		localServerAddresses[1] = probe.Addr().String()
+		_ = probe.Close()
+	}
+	if flow == nil {
+		t.Fatal("the second door never came free across the retries")
 	}
 	wantURL := "http://localhost:" + secondPort + "/"
 	if flow.URL() != wantURL {
