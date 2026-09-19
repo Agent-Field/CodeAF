@@ -45,9 +45,7 @@ func (a *Agent) consultCollabParticipant(ctx context.Context, role, source, exce
 		user += "\n" + g
 	}
 	user += "\nexcerpts\n" + strings.TrimSpace(excerpts)
-	a.mu.Lock()
-	floor := a.model
-	a.mu.Unlock()
+	floor := a.collabModelFloor()
 	response, _, err := a.callRoleChecked(ctx, roles.RoleCollabConsult, floor,
 		[]ai.Message{
 			textMessage("system", collabConsultSystem),
@@ -57,6 +55,15 @@ func (a *Agent) consultCollabParticipant(ctx context.Context, role, source, exce
 		return "", err
 	}
 	return strings.TrimSpace(response.Text()), nil
+}
+
+func (a *Agent) collabModelFloor() string {
+	if a == nil {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.model
 }
 
 func (a *Agent) collabSourceExcerpts(ctx context.Context, source string) string {
