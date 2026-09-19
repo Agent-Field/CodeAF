@@ -178,7 +178,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		for _, task := range tasks {
 			row := planTaskRow(store, dir, task, spend, live)
 			row.Folder = a.planTaskRunCopy(task.ID)
-			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, row.Folder, planShimFilename).Parts
+			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, a.planDisplayRunCopy(row.Folder), planShimFilename).Parts
 			rows = append(rows, row)
 			if task.ID == root {
 				applyPlanRootProgress(&rows[len(rows)-1], tasks, root)
@@ -223,7 +223,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	for _, child := range all {
 		row := planTaskRow(store, dir, child, spend, live)
 		row.Folder = a.planTaskRunCopy(child.ID)
-		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, row.Folder, planShimFilename).Parts
+		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, a.planDisplayRunCopy(row.Folder), planShimFilename).Parts
 		rows[child.ID] = row
 		depth, under := depths[child.ParentID]
 		if !under || child.ID == task.ID {
@@ -265,7 +265,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Checks:      append([]string(nil), task.Checks...),
 		Folder:      pageRow.Folder,
 		Notes:       planTaskNotes(store, task.ID),
-		Steps:       planStepDisplayFactsForPage(planTrajectory(dir, task.ID), pageRow.Folder),
+		Steps:       planStepDisplayFactsForPage(planTrajectory(dir, task.ID), a.planDisplayRunCopy(pageRow.Folder)),
 		Children:    children,
 		WaitRows:    waitRows,
 	}, true
@@ -675,7 +675,11 @@ func planSpendByTask(path string) map[string]float64 {
 // planStepDisplayFacts annotates a copy of a recorded step. It never changes
 // the trajectory or Command: these facts are a read-side view only.
 func planStepDisplayFacts(step PlanStep, runCopy, recordCommand string) PlanStep {
-	parts := splitPlanCommandParts(step.Command)
+	approvalParts := approval.SplitBashCommand(step.Command)
+	parts := make([]PlanCommandPart, len(approvalParts))
+	for i, part := range approvalParts {
+		parts[i] = PlanCommandPart{Command: part.Command, Separator: part.Separator}
+	}
 	for i := range parts {
 		words := strings.Fields(parts[i].Command)
 		if len(words) == 0 {
@@ -692,71 +696,9 @@ func planStepDisplayFacts(step PlanStep, runCopy, recordCommand string) PlanStep
 	return step
 }
 
-// splitPlanCommandParts keeps command text and separators while reading quotes
-// as the shell does. Redirection bars and ampersands are not command breaks.
-func splitPlanCommandParts(command string) []PlanCommandPart {
-	if _, composed := approval.FirstCompositionOutsideQuotes(command); !composed {
-		if text := strings.TrimSpace(command); text != "" {
-			return []PlanCommandPart{{Command: text}}
-		}
-		return nil
-	}
-	var out []PlanCommandPart
-	start, quote := 0, byte(0)
-	flush := func(end, separatorEnd int) {
-		text := strings.TrimSpace(command[start:end])
-		if text != "" {
-			out = append(out, PlanCommandPart{Command: text, Separator: command[end:separatorEnd]})
-		}
-		start = separatorEnd
-	}
-	for i := 0; i < len(command); i++ {
-		c := command[i]
-		if quote != 0 {
-			if c == '\\' && quote == '"' && i+1 < len(command) {
-				i++
-				continue
-			}
-			if c == quote {
-				quote = 0
-			}
-			continue
-		}
-		if c == '\\' && i+1 < len(command) {
-			i++
-			continue
-		}
-		if c == '\'' || c == '"' {
-			quote = c
-			continue
-		}
-		end := i + 1
-		switch c {
-		case ';', '\n':
-			flush(i, end)
-		case '&':
-			if (i > 0 && command[i-1] == '>') || (i+1 < len(command) && command[i+1] == '>') {
-				continue
-			}
-			separator := i
-			if i+1 < len(command) && command[i+1] == '&' {
-				end++
-				i++
-			}
-			flush(separator, end)
-		case '|':
-			separator := i
-			if i+1 < len(command) && command[i+1] == '|' {
-				end++
-				i++
-			}
-			flush(separator, end)
-		}
-	}
-	flush(len(command), len(command))
-	return out
-}
-
+// planTaskRunCopy answers the folder the row has always exposed. A belt run's
+// copy is deliberately not this property: Folder keeps the conversation
+// workspace while display suppression follows the live belt run separately.
 func (a *Agent) planTaskRunCopy(planID string) string {
 	g := a.graph()
 	if g == nil {
@@ -770,6 +712,15 @@ func (a *Agent) planTaskRunCopy(planID string) string {
 		}
 	}
 	return a.config.Workspace
+}
+
+func (a *Agent) planDisplayRunCopy(fallback string) string {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	if a.beltRun != nil && a.beltRun.workspace != "" {
+		return a.beltRun.workspace
+	}
+	return fallback
 }
 
 func planStepDisplayFactsForPage(steps []PlanStep, runCopy string) []PlanStep {

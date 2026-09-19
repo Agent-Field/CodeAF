@@ -419,6 +419,42 @@ func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
 	}
 }
 
+// A belt run owns a copy outside the conversation workspace. Display facts come
+// from that live run copy, while Folder keeps naming the landed conversation
+// workspace: the two properties are deliberately independent.
+func TestPlanStepDisplayFactsUseTheBeltRunWorkspaceAndKeepFolder(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha"})
+	runCopy := filepath.Join(t.TempDir(), "trees", "1")
+	other := filepath.Join(t.TempDir(), "trees", "2")
+	writePlanTrajectory(t, dir, "alpha",
+		`{"kind":"step","step":1,"command":"cd `+runCopy+` && echo work"}`,
+		`{"kind":"step","step":2,"command":"cd `+other+` && echo elsewhere"}`,
+	)
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	agent.beltMu.Lock()
+	agent.beltRun = &beltRun{workspace: runCopy}
+	agent.beltMu.Unlock()
+
+	page, ok := agent.PlanTaskPage("t-alpha")
+	if !ok {
+		t.Fatal("the belt run task answered no page")
+	}
+	if page.Folder != agent.config.Workspace {
+		t.Fatalf("page folder = %q, want landed workspace %q", page.Folder, agent.config.Workspace)
+	}
+	if len(page.Steps) != 2 || len(page.Steps[0].Parts) == 0 || !page.Steps[0].Parts[0].RunCopyPrefix {
+		t.Fatalf("belt workspace was not marked as the run-copy prefix: %#v", page.Steps)
+	}
+	if len(page.Steps[1].Parts) == 0 || page.Steps[1].Parts[0].RunCopyPrefix {
+		t.Fatalf("another folder was marked as the run-copy prefix: %#v", page.Steps[1].Parts)
+	}
+}
+
 func TestPlanStepDisplayFactsDoNotRewriteTrajectory(t *testing.T) {
 	dir := t.TempDir()
 	command := "cd /run/trees/1 && plandb done t-1 --agent 1 --result 'done'"
