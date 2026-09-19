@@ -6,6 +6,7 @@ Each completed wave records how to try that exact behavior on Spark. Do not inst
 **Verified SHA (Wave 1):** `4b3b407a676efca3282b9834f05ea956c98a89cd`  
 **Verified SHA (Wave 2):** `e606ec555dbb6be87ea2aefccc98e9a5a26157c7`  
 **Verified SHA (Wave 3):** `18e971de96bdd7c4463642b0a7499e22be8414b1`  
+**Verified SHA (Wave 4):** `b28f36c11cc4b6c90c68659eaaede61c38b6e226`  
 **Baseline:** `santos/dev` `7cda67c9`  
 **Pre-issue-1 design:** `610a32ba`
 
@@ -117,14 +118,18 @@ Quit, reopen with the same isolated home: discussion and deliveries intact.
 
 ## Wave 4 — launch-or-join
 
-Status: **not verified yet**. Live J27–J35 is `t-w4-live`. Do not treat this
-section as a pass. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and
-private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`.
+Status: **live J27–J35 passed** on SHA `b28f36c11cc4b6c90c68659eaaede61c38b6e226` (live tmux + real model; J31 crash-after-admit is automated-primary / fault, not a skipped live marked pass). Isolated home already contains that live graph. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Receipt: `releases/wave-4/ready.json`.
 
-No immutable Wave 4 binary yet. After live J27–J35 pass, the copy-paste Spark
-launch and sha256 will be recorded here the way Waves 1–3 are. Until then use
-the candidate `bin/codeaf` from `make build` under an isolated home — never
-the owner's global binary.
+### Copy-paste launch (Spark)
+
+```
+ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-4/b28f36c11cc4b6c90c68659eaaede61c38b6e226/launch.sh'
+```
+
+**Binary (do not rebuild over it):** `/home/santosh/src/codeaf-workspace-0918-control/releases/wave-4/b28f36c11cc4b6c90c68659eaaede61c38b6e226/codeaf`  
+**sha256:** `a49470ddd01c8696dda4ec2159d8f79836df198500dd3ce5a396f4385784850b`
+
+Live tmux proof: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue-4-b28f36c11cc4b6c90c68659eaaede61c38b6e226-live4/journey.json`.
 
 Wave 1–3 launches stay:
 
@@ -133,8 +138,6 @@ ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b
 ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-2/e606ec555dbb6be87ea2aefccc98e9a5a26157c7/launch.sh'
 ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-3/18e971de96bdd7c4463642b0a7499e22be8414b1/launch.sh'
 ```
-
-Draft live driver: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue-4/drive_j27_j35.py`.
 
 Do **not** prove only one `CODEAF_TASK_BELT` road. Pause vs stop are two verbs.
 
