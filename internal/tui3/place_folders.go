@@ -13,8 +13,8 @@ import (
 // Folders-entry (CONTRACTS.md) is the freeze: the bar word is `folders`,
 // `alt+5` lands here, `/folders` enters this place, `/folder` stays a
 // filesystem chooser, and the home `folders` panel remains the enter-from
-// heading. Sequential drill-in lives here so an 80-column frame never grows a
-// second tree.
+// heading. Wide frames are Miller columns with a pinned details pane.
+// An 80-column frame stays one navigation column plus switchable details.
 //
 // THE SNAPSHOT IS TAKEN ON OPEN AND ON THE PLACE BEAT, never in View, never on
 // a cursor move. Nil Options.Folders is unavailable: the three visible actions
@@ -38,6 +38,15 @@ type foldersPlace struct {
 	renameID                  string
 	note                      string
 	stops                     []folderPlaceStop
+	cols                      []folderColumnView
+	windowFrom                int
+	detailFocus               bool
+	detailGen                 uint64
+	detail                    folderDetailView
+	previewID                 string
+	preview                   []FolderPlacement
+	change                    FolderChange
+	whyLine, whyRef           string
 }
 
 // folderPlaceStop is one restable row of the Folders place. Kind decides what
@@ -60,6 +69,13 @@ const (
 	folderStopBack
 	folderStopFolder
 	folderStopChat
+	folderStopAddExisting
+	folderStopManage
+	folderStopOrganizeThis
+	folderStopOpenChat
+	folderStopCoordinate
+	folderStopUndo
+	folderStopWhy
 )
 
 const (
@@ -71,8 +87,8 @@ const (
 	folderOrganizeFailWord = "could not organize existing chats"
 	folderNameHint         = "type a name · enter create · esc cancel"
 	folderRenameHint       = "type a name · enter rename · esc cancel"
-	folderPlaceHint        = "enter opens · ↑↓ pick · esc back"
-	folderActionHint       = "enter · ↑↓ pick · esc back"
+	folderPlaceHint        = "enter opens · ↑↓ pick · → drill · shift+→ actions · esc back"
+	folderActionHint       = "enter · ↑↓ pick · → drill · shift+→ actions · esc back"
 	folderRootPath         = "root"
 )
 
@@ -86,6 +102,20 @@ func (k folderPlaceKind) actionWord() string {
 		return folderOrganizeWord
 	case folderStopCancel:
 		return folderCancelAction
+	case folderStopAddExisting:
+		return folderAddExistingWord
+	case folderStopManage:
+		return folderManageWord
+	case folderStopOrganizeThis:
+		return folderOrganizeThisWord
+	case folderStopOpenChat:
+		return folderOpenChatWord
+	case folderStopCoordinate:
+		return folderCoordinateAction
+	case folderStopUndo:
+		return folderUndoWord
+	case folderStopWhy:
+		return folderWhyShortWord
 	}
 	return ""
 }
@@ -134,7 +164,14 @@ func (placeFolders) open(a *app) tea.Cmd {
 
 func (placeFolders) close(a *app) {
 	a.leavePage(pageFolders)
-	a.folderSheet = foldersPlace{}
+	// KEEP THE WALK. Enter on a chat leaves this place; coming back must
+	// restore the same object and path (J46), not dump the person at Root.
+	saved := a.folderSheet
+	a.folderSheet = foldersPlace{
+		open: saved.open, trail: saved.trail,
+		selectedID: saved.selectedID, selectedPath: saved.selectedPath,
+		change: saved.change, whyLine: saved.whyLine, whyRef: saved.whyRef,
+	}
 }
 
 func (placeFolders) tick(a *app, _ time.Time) (bool, tea.Cmd) {
@@ -225,10 +262,10 @@ func (placeFolders) hint(a *app) string {
 }
 
 func (placeFolders) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	if a.folderSheet.naming == nil {
-		return nil, false
+	if a.folderSheet.naming != nil {
+		return a.folderPlaceNameKey(msg), true
 	}
-	return a.folderPlaceNameKey(msg), true
+	return a.folderColumnsKey(msg)
 }
 
 func (placeFolders) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.folderPlaceKey(msg) }
@@ -266,6 +303,11 @@ func (a *app) refreshFolderPlace() {
 	a.readFolderPlaceGraph()
 	a.readFolderOrganize()
 	a.folderSheet.stops = a.folderPlaceLayout()
+	a.restoreFolderPlaceCursor()
+	a.readFolderPlacePreview()
+	a.rebuildFolderDetails()
+	a.rebuildFolderColumns()
+	a.folderSheet.stops = append(a.folderPlaceLayout(), a.folderPlaceDetailStops()...)
 	a.restoreFolderPlaceCursor()
 	a.touch()
 }
@@ -318,6 +360,9 @@ func (a *app) folderPlaceActionStops() []folderPlaceStop {
 	}
 	if folderJobLive(a.folderSheet.organize.State) {
 		stops = append(stops, folderPlaceStop{kind: folderStopCancel, id: "cancel", path: base})
+	}
+	if folderAddStart != nil {
+		stops = append(stops, folderPlaceStop{kind: folderStopAddExisting, id: "add-existing", path: base})
 	}
 	return stops
 }
@@ -515,9 +560,16 @@ func (a *app) folderPlaceLines(width int) []folderPlaceLine {
 	if extra := folderIndexCopy(a.folderSheet.reading.index); extra != "" {
 		head += rowSep + extra
 	}
+	if !folderColumnsWide(width) && a.folderSheet.detailFocus {
+		return a.folderNarrowDetailLines(width)
+	}
+	if folderColumnsWide(width) {
+		return a.folderColumnsLines(width)
+	}
 	out := []folderPlaceLine{{text: placeLead + placeHeading(fit(head, inner), pal), stop: -1}}
 	out = append(out, a.folderPlacePaintStops(width)...)
 	out = append(out, a.folderPlacePaintStatus(width)...)
+	out = append(out, a.folderPlacePaintChange(width)...)
 	out = append(out, a.folderPlacePaintWhisper(width)...)
 	return out
 }
@@ -624,6 +676,11 @@ func (a *app) folderPlaceKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (a *app) escFolderPlace() tea.Cmd {
+	if a.folderSheet.detailFocus {
+		a.folderSheet.detailFocus = false
+		a.touch()
+		return nil
+	}
 	if a.clearFolderMove() || a.clearFolderNest() {
 		a.folderSheet.note = ""
 		a.touch()
@@ -702,7 +759,7 @@ func (a *app) finishFolderPlaceName() tea.Cmd {
 	if renameID != "" {
 		return a.renameLogicalFolder(renameID, name)
 	}
-	return a.createLogicalFolder(name)
+	return a.createFolderInPlace(name)
 }
 
 func (a *app) enterFolderPlace() tea.Cmd {
@@ -719,6 +776,13 @@ func (a *app) enterFolderPlace() tea.Cmd {
 		return a.folderPlaceOrganize()
 	case folderStopCancel:
 		return a.folderPlaceCancel()
+	case folderStopAddExisting:
+		if folderAddStart == nil {
+			return nil
+		}
+		return folderAddStart(a)
+	case folderStopManage, folderStopOrganizeThis, folderStopOpenChat, folderStopCoordinate, folderStopUndo, folderStopWhy:
+		return a.enterFolderDetailStop(stop)
 	case folderStopBack:
 		a.leaveFolderPlace()
 		a.refreshFolderPlace()
@@ -865,6 +929,18 @@ func (a *app) folderPlaceVerbs() []verb {
 		{key: 'c', word: folderNewFolderWord, do: func() tea.Cmd { return a.beginFolderPlaceCreate() }},
 		{key: 'n', word: folderNewChatAction, do: func() tea.Cmd { return a.startFolderPlaceChat() }},
 		{key: 'o', word: folderOrganizeWord, do: func() tea.Cmd { return a.folderPlaceOrganize() }},
+		{key: 'd', word: folderManageWord, do: func() tea.Cmd { return a.manageThisFolder() }},
+		{key: 't', word: folderOrganizeThisWord, do: func() tea.Cmd { return a.organizeThisChat() }},
+		{key: 'u', word: folderUndoWord, do: func() tea.Cmd { return a.undoFolderChange() }},
+	}
+	if folderAddStart != nil {
+		verbs = append(verbs, verb{key: 'b', word: folderAddExistingWord, do: func() tea.Cmd { return folderAddStart(a) }})
+	}
+	if a.collab != nil && len(a.collabView.marks) > 0 {
+		verbs = append(verbs, verb{key: 'g', word: folderCoordinateAction, do: func() tea.Cmd { return a.coordinateMarked() }})
+	}
+	if folderChangeLine(a.folderSheet.change) != "" {
+		verbs = append(verbs, verb{key: 'w', word: folderWhyShortWord, do: func() tea.Cmd { return a.folderWhyChange() }})
 	}
 	if folderJobLive(a.folderSheet.organize.State) {
 		verbs = append(verbs, verb{key: 'x', word: folderCancelAction, do: func() tea.Cmd { return a.folderPlaceCancel() }})
@@ -902,7 +978,7 @@ func (a *app) folderPlaceFolderID() string {
 	switch stop.kind {
 	case folderStopFolder:
 		return strings.TrimSpace(stop.id)
-	case folderStopBack, folderStopChat, folderStopNewChat, folderStopNewFolder, folderStopOrganize, folderStopCancel:
+	case folderStopBack, folderStopChat, folderStopNewChat, folderStopNewFolder, folderStopOrganize, folderStopCancel, folderStopAddExisting, folderStopManage, folderStopOrganizeThis, folderStopOpenChat, folderStopCoordinate, folderStopUndo, folderStopWhy:
 		return strings.TrimSpace(a.folderSheet.open)
 	}
 	return strings.TrimSpace(a.folderSheet.open)

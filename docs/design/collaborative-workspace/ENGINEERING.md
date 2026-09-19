@@ -43,3 +43,7 @@ The owner explicitly requested branch-off-`santos/dev` (`7cda67c9`). Stay on `fe
 ## Journeys
 
 [`USER-JOURNEYS.md`](USER-JOURNEYS.md) is the owner acceptance contract (J01–J49). Every issue links its assigned IDs. Folders-entry is [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md). No silently omitted journey. [`TRY.md`](TRY.md) is the owner-facing playable recipe per completed wave.
+
+## Living architecture record
+
+Maintain [SYSTEM-ARCHITECTURE.md](SYSTEM-ARCHITECTURE.md) in the same implementation change. Explicitly record implemented versus planned versus verified behavior. Folder entry, management, cross-conversation communication, triggers, recovery, costs and source-linked acceptance are part of the record.
