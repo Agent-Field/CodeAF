@@ -1,5 +1,7 @@
-# c294 findings
+# Findings
 
-The hosted chat surface receives a `countingAgent` embedding `*remote.Agent`, but the remote client currently exposes only `PlanSpend` from the run API. Consequently the surface cannot satisfy its run-plan agent interface in hosted conversations. This task will carry the complete task reads, steering verbs, and run-summary operations across the engine-host wire, preserve store refusal sentences, honor refresh cancellation, and prove the remote client satisfies the shared interface and reads a seeded real store end to end.
+## Item 1: hosted run task reads
 
-The implementation must keep one method-set source of truth, omit unusable capabilities, add failing tests before implementation, and commit each independently passing step.
+This step adds the remote protocol declarations and client/server methods for `PlanTasks` and `PlanTaskPage`, following the existing `PlanSpend` request path. Scripted-client tests will be written failing first and will compare complete `session.PlanTaskRow` and `session.PlanTaskPage` values so every field survives the wire boundary.
+
+The hosted surface receives a wrapped `*remote.Agent`; therefore these read methods must exist on `remote.Agent` and delegate on the server to the engine's session agent. This step does not change the forbidden task-store or TUI implementation paths.
