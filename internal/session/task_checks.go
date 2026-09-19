@@ -613,9 +613,12 @@ func leadsWithDirectoryChange(said string) bool {
 // tried and drops the step the check needed.
 func checkShapeRefusal(said string) string {
 	refusal := "Invalid arguments: checks must each be ONE rerunnable command"
+	if len(said) > declaredCheckByteLimit {
+		return refusal + ": each check may be at most 4096 bytes"
+	}
 	if offending, composed := approval.FirstCompositionOutsideQuotes(said); composed {
 		refusal += ": " + strconv.Quote(string(offending)) + " joins, redirects or expands commands in " +
-			strconv.Quote(clip(said, auditCommandLimit)) +
+			strconv.Quote(clip(said, auditCommandClipLimit)) +
 			". Such a character may stand only inside a single-quoted argument, where it is text"
 	}
 	if leadsWithDirectoryChange(said) {
@@ -1173,15 +1176,15 @@ func sameFile(one, other string) bool {
 //     backticking `--stdio` is naming a flag and not a check;
 //   - a first word with something in it besides wildcards, because a door
 //     spelled `*` is not a door, it is an open wall;
-//   - short enough to be read back inside a refusal, since a command nobody can
-//     read in the door's own list is a command nobody will type.
+//   - short enough that at most eight declarations cannot crowd the checker
+//     prompt and its evidence out of their shared context.
 //
 // Whitespace is normalized for the reason the gate normalizes it: "go  test" and
 // "go test" are one command, and the door is about which program runs rather
 // than about how it was typed.
 func commandLike(text string) (string, bool) {
 	text, ok := commandShaped(text)
-	if !ok || len(text) > auditCommandLimit {
+	if !ok || len(text) > declaredCheckByteLimit {
 		return "", false
 	}
 	return text, true
