@@ -260,13 +260,17 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	defer stopWakes()
 	callsBeforeLanding := completer.requests()
 	close(double.release)
-	beltRunWaitFor(t, "the run's landing", func() bool {
-		task := beltRunTaskAt(t, dir, rootID)
-		agent.beltMu.Lock()
-		landed := agent.beltRun == nil
-		agent.beltMu.Unlock()
-		return task != nil && task.Status == plandb.StatusDone && landed
-	})
+	<-double.finished
+	agent.beltMu.Lock()
+	waiting := agent.beltRun != nil
+	agent.beltMu.Unlock()
+	if !waiting {
+		t.Fatal("worker completion discarded the run before explicit landing")
+	}
+	landing, err := agent.Land(agent.config.Workspace)
+	if err != nil {
+		t.Fatalf("explicit Land: %v", err)
+	}
 	// THE CONVERSATION TAKES NO TURN AT A LANDING THAT OWES NO ANSWER. The one
 	// call a landing does make is the run's own summary, a small errand on the
 	// worker model that is not a turn, so it is counted out by the page it reads.
@@ -282,16 +286,8 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	if task := beltRunTaskAt(t, dir, rootID); task == nil || task.Status != plandb.StatusDone {
 		t.Fatalf("the run's root did not read done")
 	}
-	if !anyNoteCarries(beltRunNotes(t, dir, rootID), "landed on task/fix-the-nil-map-crash") {
-		t.Fatalf("no note on the root carries the branch: %v", beltRunNotes(t, dir, rootID))
-	}
-	wantDigest := beltRunOutcomeNote(nil, "", double.summary, double.landing)
-	if !strings.Contains(wantDigest, "done") || !strings.Contains(wantDigest, "the run fixed the nil map") ||
-		!strings.Contains(wantDigest, "landed on task/fix-the-nil-map-crash") {
-		t.Fatalf("digest = %q, want outcome, root result, and work destination", wantDigest)
-	}
-	if got := conversationJournalLines(agent, wantDigest); got != 1 {
-		t.Fatalf("the conversation journal carries digest %d times, want one", got)
+	if !strings.Contains(landing.Note, agent.config.Workspace) || !strings.Contains(landing.Note, double.spec.Workspace) {
+		t.Fatalf("landing note %q does not name source %s and destination %s", landing.Note, double.spec.Workspace, agent.config.Workspace)
 	}
 	journal := agent.file.journalPath()
 	if err := agent.Close(); err != nil {
@@ -302,9 +298,6 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	defer reopened.Close()
-	if got := conversationJournalLines(reopened, wantDigest); got != 1 {
-		t.Fatalf("reopened conversation carries digest %d times, want one", got)
-	}
 	// AND THE REOPENED CONVERSATION KNOWS THE RUN ENDED. The ending used to reach
 	// the surface and never the checkpoint, so a finished run came back with a
 	// spinner and was counted as moving for ever.
@@ -358,7 +351,13 @@ func TestStartTaskBashBeltJoinsTheLiveRun(t *testing.T) {
 		t.Fatalf("the second task's parent is %q, want the run's root %d", task.ParentID, first)
 	}
 	close(double.release)
-	beltRunWaitFor(t, "the run's landing", func() bool { return conversationNotes(agent, "landed on ") == 1 })
+	<-double.finished
+	if got := conversationNotes(agent, "landed on "); got != 0 {
+		t.Fatalf("worker completion published %d landing notes, want none", got)
+	}
+	if _, err := agent.Land(agent.config.Workspace); err != nil {
+		t.Fatalf("explicit Land: %v", err)
+	}
 }
 
 // TestStartTaskWithoutBeltKeepsTheLegacyRoad: with the switch unset the door is
