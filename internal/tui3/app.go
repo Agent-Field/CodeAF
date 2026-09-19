@@ -1494,10 +1494,11 @@ type app struct {
 	usageLedger  string
 	ledger       func(time.Time) ([]session.UsageLine, bool, bool)
 	archive      func(string, bool) error
-	// folders is the logical-folder seam the home folders panel reads. Nil
-	// still draws the whisper. pendingFolder is the collection `n` / `/folders
-	// new` will file the next first message into; esc on the start page clears
-	// it and creates no transcript. pendingMoveFrom/Ref are `m` in flight.
+	// folders is the logical-folder seam the home folders panel reads. Nil is
+	// unavailable: mutations refuse rather than drawing the empty-workspace
+	// whisper. pendingFolder is the collection `n` / `/folders new` will file
+	// the next first message into; esc on the start page clears it and creates
+	// no transcript. pendingMoveFrom/Ref are `m` in flight.
 	folders         Folders
 	pendingFolder   string
 	pendingMoveFrom string

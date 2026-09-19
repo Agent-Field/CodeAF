@@ -7,7 +7,7 @@ import (
 
 func TestFoldersPanelDrawsTheEmptyWhisper(t *testing.T) {
 	a := newLiveLab(t).open()
-	a.folders = nil
+	a.folders = &fakeFolders{}
 	a.readHomeFolders()
 	a.home.build()
 	frame := homeText(a)
