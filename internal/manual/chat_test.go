@@ -202,6 +202,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"also in two folders", "collections"},
 		{"nest receipts under billing", "collections"},
 		{"saved chats", "collections"},
+		// Wave 2: automatic organization and inherited instructions, asked in
+		// the words somebody types after the denials came out of the corpus.
+		{"does it file chats automatically", "collections"},
+		{"inherited instructions", "collections"},
+		{"how do I instruct a folder", "collections"},
+		{"does it file by keywords", "collections"},
+		{"I removed an automatic placement", "collections"},
+		{"does automatic organization work with memory off", "collections"},
+		{"discovery delayed", "collections"},
+		{"did it check the workspace", "collections"},
+		{"chats talking to each other", "collections"},
 		// Two codeaf commands on one collections database: the words somebody
 		// types after they have seen the refusal, not the words it is written in.
 		{"collections database is locked", "collections"},

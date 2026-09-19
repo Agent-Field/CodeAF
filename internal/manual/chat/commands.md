@@ -199,6 +199,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/folders` | — | `add <name-or-id>` | file the current chat here |
 | `/folders` | — | `nest <child> [in <parent>]` | place a folder under another |
 | `/folders` | — | `rename <name-or-id> <new-name>` | rename a logical folder |
+| `/folders` | — | `instruct <name-or-id> <text>` | standing guidance for chats in this folder |
 | `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
@@ -1133,13 +1134,17 @@ A task another window is running cannot be stopped from home: its `running` row 
 /folders add <name-or-id>   file the current chat here
 /folders nest Receipts in Billing
 /folders rename Receipts Invoices
+/folders instruct Security <text>
 ```
 
 The empty panel's dim line is `logical groups of chats · /folders create Billing`. On a
-row, `→` then `n f m w x`: `n` new chat here · `f` add current chat · `m` move this
+row, `→` then `n f e i m w x`: `n` new chat here · `f` add current chat · `m` move this
 placement · `w` why here · `x` remove this placement. On a folder row, `e` nests
-that folder; `/folders nest Receipts in Billing` is the typed form. The collections
-page is the rest: also in two folders, `/folder` vs `/folders`, and what is not built yet.
+that folder and `i` is instruct this folder; `/folders nest Receipts in Billing` and
+`/folders instruct <name-or-id> <text>` are the typed forms. The collections
+page is the rest: also in two folders, `/folder` vs `/folders`, automatic
+organization, inherited instructions, suppressions, memory-off search, and
+`discovery delayed` vs `checked`.
 
 ## /permissions — what runs without asking
 
