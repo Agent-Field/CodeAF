@@ -69,8 +69,8 @@ var (
 // flight and never for the walk itself.
 func sealPlaceSweep() {
 	sweepMu.Lock()
+	defer sweepMu.Unlock()
 	sweepSealed = true
-	sweepMu.Unlock()
 }
 
 // noteSweep writes one line, and opens the file only when there is a line to
