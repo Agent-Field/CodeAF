@@ -1,8 +1,8 @@
 # Wave 1 contracts
 
-Frozen 18 September 2026 for parallel lanes on `feat/collaborative-workspace-0918`. Amend only through a PlanDB note on `t-w1-contracts` (or the blocked lane) and a CONTRACTS.md patch at integrate. Do not invent extra tables, tools, or an eighth tab-bar place.
+Coordination baseline 18 September 2026, **reconciled 19 September 2026** (PlanDB notes n-91ee n-uijj n-ludz n-q2mx n-5r0l n-5sbo n-cw71 n-ux5g). The freeze is not an excuse to ship missing invariants: every finding below must have a test, not only a comment. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent extra tables, tools, or an eighth tab-bar place.
 
-GitHub: #1216. Journeys: J01–J08. Pre-wave source: `610a32ba`. Design HEAD at freeze: recorded in PlanDB on `t-w1-contracts` done.
+Wave 1 work package: `docs/design/collaborative-workspace/issue-1.md` (branch-local). PUBLICATION-POLICY.md: no GitHub issues, comments, or PRs before owner verification. Journeys J01–J08. Pre-wave source: `610a32ba`.
 
 ## Lane ownership (disjoint)
 
@@ -11,7 +11,7 @@ GitHub: #1216. Journeys: J01–J08. Pre-wave source: `610a32ba`. Design HEAD at 
 | storage | `t-w1-storage` | `internal/workspace/*` | anything else |
 | service | `t-w1-service` | `internal/wsapi/*` (new package) | workspace internals, tui3, session, cmd |
 | tui | `t-w1-tui` | `internal/tui3/homepanel_folders.go`, `internal/tui3/folders.go`, their tests; `internal/tui3/homegrid.go` (append `panelFolders` to the iota **last** so existing IDs do not shift; insert the slot in `homePanelOrder` after recent; whisper); `internal/tui3/commands.go` (`/folders` rows only); `internal/tui3/homeslash.go` (`homeFate` for `folders`); `internal/tui3/tui3.go` (`Options.Folders` field); `internal/tui3/place_home.go` (`homeRowVerbs` folder case); `internal/tui3/home.go` (folder enter + pending start); `internal/tui3/app.go` (`case "folders"` only) | `internal/workspace`, `internal/wsapi`, `internal/session`, `cmd/codeaf` |
-| wiring | `t-w1-wiring` | `cmd/codeaf/collections.go` (additive `--reason`); `cmd/codeaf/chatv3.go` / `chatv3_local.go` (construct `wsapi.Service`, set `tui3.Options.Folders` and `session.Config.Folders`); `internal/session/tools_folders.go`; `internal/session/session.go` (`Config.Folders`); `internal/session/tools.go` and `internal/session/bashbelt.go` (append `foldersTools` the same way `memoryTools` is appended); `internal/session/prompts/system.md` (mention `folders` only if wired) | `internal/workspace` internals, `internal/tui3` except filling Options |
+| wiring | `t-w1-wiring` | `cmd/codeaf/collections.go` (additive `--reason`); `cmd/codeaf/folders_adapter.go` (`var _ tui3.Folders`); `cmd/codeaf/chatv3.go` / `chatv3_local.go` (construct `wsapi.Service`, set `tui3.Options.Folders` and `session.Config.Folders`); `internal/session/tools_folders.go`; `internal/session/session.go` (`Config.Folders`); `internal/session/tools.go` and `internal/session/bashbelt.go` (append `foldersTools` the same way `memoryTools` is appended); `internal/session/prompts/system.md` (mention `folders` only if wired) | `internal/workspace` internals, `internal/tui3` except filling Options |
 | proof | `t-w1-proof` | `internal/manual/chat/` pages that currently deny folder UI; `internal/manual/chat_test.go` probes; `internal/e2e/tuiwords_test.go` needles; `docs/design/collaborative-workspace/TRY.md`; optional untagged e2e helper. **Not** `internal/tui3/*_test.go` or workspace/wsapi tests unless a lane transfers them in a PlanDB note. | product logic; other packages' unit tests |
 
 Integration (`t-w1-integrate`) applies lane branches onto `feat/collaborative-workspace-0918` in order: storage → service → wiring → tui → proof.
@@ -58,6 +58,9 @@ type Provenance struct {
     ExpectedFrom, ExpectedTo int
 }
 
+// ErrConflict is a stale-write refusal. It wraps ErrInvalid and the error
+// string contains the word "revision".
+
 type MembershipEvent struct {
     CollectionID string
     Kind         Kind
@@ -79,9 +82,9 @@ func (s *Store) SchemaVersion() int
 func (s *Store) RootState(ctx context.Context) (revision int, purpose, updatedAt string, err error)
 ```
 
-Mismatch of a non-zero expected revision returns `ErrConflict` (add this sentinel) wrapping `ErrInvalid` with the word `revision`. Zero expected revision keeps old CLI/add/remove unconditional.
+Mismatch of a non-zero expected revision returns `ErrConflict` wrapping `ErrInvalid` with the word `revision`. Zero expected revision keeps old CLI `Add`/`Remove` unconditional. `Move` checks ExpectedFrom against the source collection and ExpectedTo against the destination **in the same writer transaction** as both membership edits; one mismatch rolls the whole Move back.
 
-`Add`/`Remove` keep their old signatures and mean person origin + empty reason (CLI compatibility). `Move` is add-destination + remove-source + two events in **one** writer transaction; other placements of the same ref stay. Cycle check remains in that transaction. `WhyHere` is the latest event for that active or last edge. Root is not stored as membership. `RootState` reads `root_state` (creating the v2 row only on a write path / ensureSchema).
+`Add`/`Remove` keep their old signatures and mean person origin + empty reason (CLI compatibility). `Move` is add-destination + remove-source + two events in **one** writer transaction; other placements of the same ref stay. Cycle check remains in that transaction. A successful mutating write increments the touched collection revision(s) **and** `root_state.revision` in that same transaction. `WhyHere` is the latest event for that active or last edge. Root is not stored as membership. `RootState` reads `root_state` (creating the v2 row only on a write path / ensureSchema). Listing still does not migrate and does not write.
 
 `Collection` JSON may grow omitempty fields; default CLI text is still `id  name`.
 
@@ -135,7 +138,7 @@ func (s *Service) PlacementsOf(ctx context.Context, ref workspace.Ref) ([]Folder
 func (s *Service) WhyHere(ctx context.Context, collectionID string, ref workspace.Ref) (Why, error)
 ```
 
-Deduplicate conversation IDs in counts. Expected-revision conflicts return `workspace.ErrInvalid` wrapped with a stable `revision` mention until a dedicated error is added (`ErrConflict` allowed if storage introduces it).
+Deduplicate conversation IDs in counts. Pass Provenance through to the store (do not drop Expected* or Origin). Expected-revision conflicts return `workspace.ErrConflict` (or `ErrInvalid` mentioning `revision`). `Open` failure is an error: the service is not constructed, and callers must not invent an empty successful RootView. Corrupt/foreign/future stores are errors, not empty folders. Use `workspace.Provenance` / `workspace.MembershipEvent` after storage lands — do not keep a second look-alike type in this package.
 
 ## TUI (`internal/tui3`)
 
@@ -143,27 +146,57 @@ Deduplicate conversation IDs in counts. Expected-revision conflicts return `work
 - Snapshot is a memo filled on the home **beat** (`readHomeFolders`), never in `View` or on cursor move.
 - `homeFolderRow = 246`, `homeFolderBack = 247`. Member chats reuse `homeSession` with `cell.panel == panelFolders`.
 - `app.pendingFolder` string: set by `n` / `/folders` new; consumed after first-message `renew`/`startChatEnter` via `AddPlacement`. Esc clears it and creates no transcript.
-- `Options.Folders` is `tui3.Folders`, defined in `internal/tui3/folders.go` with **TUI DTOs only** (`folderView`, `folderPlacement`, `folderWhy`). It does **not** use `workspace.Ref` or `wsapi.Folder`. Wiring owns an adapter `tui3.Folders` ← `*wsapi.Service`. `*wsapi.Service` is **not** required to satisfy `tui3.Folders` directly.
-- Nil `Options.Folders` (store unavailable): the panel heading still exists, but it is **not** an empty working workspace. Mutations (`n f m w x`, `/folders create|add`) must refuse with a visible failure, never silent success. Distinct from a working empty store, which uses the emptiness-law whisper.
+- `Options.Folders` is `tui3.Folders`. DTOs are **exported** so `cmd/codeaf` can implement the interface (`FolderView`, `FolderPlacement`, `FolderWhy`, `FolderRoot`). They do **not** use `workspace.Ref` or `wsapi.Folder`. Wiring owns `cmd/codeaf/folders_adapter.go` mapping `*wsapi.Service` → `tui3.Folders`, with a compile-time `var _ tui3.Folders = (*foldersAdapter)(nil)`. `*wsapi.Service` does **not** satisfy `tui3.Folders` directly.
+- Nil `Options.Folders` (open failed / store unavailable / corrupt): the panel heading still exists, but it is **not** an empty working workspace. Mutations (`n f m w x`, `/folders create|add`) must refuse with a visible failure, never silent success. Distinct from a working empty store, which uses the emptiness-law whisper.
 - 80-col: sequential drill-in, `esc` back. No model on paint.
 
-`wsapi.Service` should itself talk to a `store` interface matching the frozen `workspace.Store` methods so service tests can use a fake while storage is in another worktree. `Open` still calls `workspace.Open`.
+```go
+type FolderView struct {
+    ID, Name, Purpose string
+    Revision, MemberCount int
+    ParentIDs, AlsoIn []string
+}
+type FolderPlacement struct {
+    CollectionID, ConversationID, Title string
+    AlsoIn []string
+}
+type FolderWhy struct {
+    Origin, Reason, Actor, At string
+}
+type FolderRoot struct {
+    Folders []FolderView
+    Unfiled []FolderPlacement
+    Revision int
+}
+type Folders interface {
+    Root(ctx context.Context) (FolderRoot, error)
+    Snapshot(ctx context.Context, id string) (FolderView, []FolderPlacement, error)
+    Create(ctx context.Context, name string) (FolderView, error)
+    Add(ctx context.Context, collectionID, conversationID, reason string) error
+    Remove(ctx context.Context, collectionID, conversationID, reason string) error
+    Move(ctx context.Context, fromID, toID, conversationID, reason string) error
+    WhyHere(ctx context.Context, collectionID, conversationID string) (FolderWhy, error)
+}
+```
+
+`wsapi.Service` should itself talk to a `store` interface matching the frozen `workspace.Store` methods so service tests can use a fake while storage is in another worktree. `Open` still calls `workspace.Open`. After storage lands, Open's adapter must call `AddWith`/`Move`/`RootState` on `*workspace.Store`, not discard provenance.
 
 ## Session / CLI (wiring)
 
 - `session.Config.Folders` is an interface with `List/File/Unfile/Move` methods wrapping `wsapi` (define the interface in `session` so `wsapi` does not import `session`).
 - Tool `folders` on the belt only when `Config.Folders != nil`. Actions: `list`, `file`, `unfile`, `move`. Refuses cycles/unknown ids in result text.
+- **Trusted origin at ingress.** The folders tool stamps `OriginOrganizer` (actor = this session) itself. Tool arguments must not carry `origin`; a model cannot claim `person`. Person-facing CLI and TUI verbs stamp `OriginPerson`. `system_fallback` is only for explicit recovery paths, never as a silent default.
 - Conversation id for membership is `session.Place.ID()` (16 hex), never a UI path.
 - CLI: `--reason` optional on `add`/`remove`; default output of old verbs unchanged.
 - First-message order: mint transcript, then `AddPlacement`. Failure leaves the chat unfiled under Root; retry is idempotent.
 
 ## Tests the lanes owe before handoff
 
-- storage: v1 list without migrate; first write → v2; cycle txn; events written; Root not stored; foreign/future/damaged refuse; complexity ≤ 15.
-- service: add/move/remove/idempotency; unique counts; dual placement.
-- tui: emptiness whisper; “also in”; selection/composer stability; 80-col sequential; no store read in View.
-- wiring: tool absent when service nil; present when wired; `/folder` unchanged.
-- proof: committed harness covering J01–J08 actions by frozen names; manual probes “group chats in folders”, “is /folder a logical folder?”, “also in two folders”. Live tmux is `t-w1-live`, not this lane’s pass.
+- storage: v1 list without migrate; first write → v2; cycle txn; events written; Root not stored; foreign/future/damaged refuse; **ExpectedRevision mismatch → ErrConflict**; **Move ExpectedFrom+ExpectedTo atomic (one mismatch rolls both edges back)**; **RootState.revision increments on mutating writes**; complexity ≤ 15.
+- service: add/move/remove/idempotency; unique counts; dual placement; **Open/corrupt error is not an empty RootView**; Provenance expected-revision forwarded; after storage lands, adapter must call real AddWith/Move (no discarded provenance, no two-txn Move).
+- tui: emptiness whisper; “also in”; selection/composer stability; 80-col sequential; no store read in View; **nil Folders mutations refuse** (not empty-success). Package tests live here, not in the proof lane.
+- wiring: tool absent when service nil; present when wired; `/folder` unchanged; **compile-time `var _ tui3.Folders` on the adapter**; **tool-origin is organizer, never person**.
+- proof: e2e/manual/probes/TRY only. **Not** `internal/tui3/*_test.go`. Committed harness covering J01–J08 actions by frozen names; probes “group chats in folders”, “is /folder a logical folder?”, “also in two folders”. Live tmux is `t-w1-live`, not this lane’s pass.
 
 ## Isolation
 
