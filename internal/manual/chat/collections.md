@@ -271,8 +271,9 @@ silently removed.
 Learned memory off leaves `remember` and reflex absent. Conversation history
 is still there: `search_conversations` and the search place still run, and
 automatic organization still files. Hybrid search adds embedding (or labelled
-expansion) candidates beside lexical hits. Abandoned plans and the words that
-rejected them stay searchable.
+expansion) candidates beside lexical hits. Original passages still rank when
+the ask uses different wording; restatements of the query are not the original.
+Abandoned plans and the words that rejected them stay searchable.
 
 ## Discovery delayed vs checked — did it check the workspace, degraded, not checked
 

@@ -117,6 +117,7 @@ func attachSurfaceFolders(options *tui3.Options, folders session.Folders) {
 	options.Folders = surfaceFolders(folders)
 	attachSurfaceCollab(options, folders)
 	attachSurfaceExec(options, folders)
+	options.Search = wrapSearchWithEvidence(options.Search, folders)
 }
 
 func surfaceFolders(folders session.Folders) tui3.Folders {

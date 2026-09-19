@@ -2,6 +2,7 @@ package wsapi
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -70,4 +71,129 @@ func TestSearchEvidenceDegradedExpansion(t *testing.T) {
 	if len(hits) != 2 || hits[1].ScoreKind != ScoreExpansion || !hits[1].Degraded {
 		t.Fatalf("expansion %+v", hits)
 	}
+}
+
+func TestSearchEvidenceDifferentWordingOriginalsBeatParaphraseEchoes(t *testing.T) {
+	// J09/J18 A4: the ask uses new wording. Hits that restate the ask are not
+	// the original passages. Gold is the authenticated-access family.
+	query := "emailed purchase confirmation PDF who may fetch it"
+	var lexical, embed []SearchHit
+	for i := 0; i < 20; i++ {
+		id := "para-" + itoa(i)
+		passage := query + " billing ask"
+		lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreBM25})
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	for i := 0; i < 20; i++ {
+		id := "src-" + itoa(i)
+		passage := "Customers must sign in before a billed-file hyperlink will work. Authenticated session only."
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	svc := testService(t, nil)
+	svc.SetDiscoverer(fakeDiscoverer{lexical: lexical, embed: embed})
+	hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: query, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gold := 0
+	for _, hit := range hits {
+		if strings.HasPrefix(hit.SessionID, "src-") {
+			gold++
+		}
+	}
+	if gold < 14 {
+		t.Fatalf("A4 originals in top-20: %d (want ≥14); paraphrase echoes are not gold: %+v", gold, idsOf(hits))
+	}
+}
+
+func TestSearchEvidenceShortCorrectionCoversTheAskAcrossTurns(t *testing.T) {
+	query := "No the other one signed-in session not bare locator"
+	var lexical, embed []SearchHit
+	for i := 0; i < 20; i++ {
+		id := "a7-" + itoa(i)
+		lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: "No, the other one.", ScoreKind: ScoreBM25})
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: "Switching to the signed-in session requirement. The bare locator is not adopted.", ScoreKind: ScoreEmbed})
+	}
+	for i := 0; i < 20; i++ {
+		id := "src-" + itoa(i)
+		passage := "Customers must sign in. A billed-file hyperlink needs a signed-in session. The bare locator stays refused."
+		lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreBM25})
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	svc := testService(t, nil)
+	svc.SetDiscoverer(fakeDiscoverer{lexical: lexical, embed: embed})
+	hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: query, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gold := 0
+	for _, hit := range hits {
+		if strings.HasPrefix(hit.SessionID, "a7-") {
+			gold++
+		}
+	}
+	if gold < 12 {
+		t.Fatalf("A7 corrections in top-20: %d (want ≥12): %+v", gold, idsOf(hits))
+	}
+}
+
+func TestSearchEvidenceMinorityTopicBeatsTheTopicalMajority(t *testing.T) {
+	query := "billed-file hyperlinks require signed-in session buried in certificate work"
+	var lexical, embed []SearchHit
+	for i := 0; i < 20; i++ {
+		id := "glob-" + itoa(i)
+		passage := "Main work is rotating wildcard certificate and terraform state locks. Side note: billed-file hyperlinks still require a signed-in session."
+		lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreBM25})
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	for i := 0; i < 20; i++ {
+		id := "src-" + itoa(i)
+		passage := "Customers must sign in before a billed-file hyperlink will work. Signed-in session only."
+		lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreBM25})
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	svc := testService(t, nil)
+	svc.SetDiscoverer(fakeDiscoverer{lexical: lexical, embed: embed})
+	hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: query, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gold := 0
+	for _, hit := range hits {
+		if strings.HasPrefix(hit.SessionID, "glob-") {
+			gold++
+		}
+	}
+	if gold < 10 {
+		t.Fatalf("global minority in top-20: %d (want ≥10): %+v", gold, idsOf(hits))
+	}
+}
+
+func TestSearchEvidenceTruncatesToLimit(t *testing.T) {
+	var lexical []SearchHit
+	for i := 0; i < 50; i++ {
+		id := "n-" + itoa(i)
+		lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: "receipt links " + id, ScoreKind: ScoreBM25})
+	}
+	svc := testService(t, nil)
+	svc.SetDiscoverer(fakeDiscoverer{lexical: lexical})
+	hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: "receipt links", Limit: 8})
+	if err != nil || len(hits) != 8 {
+		t.Fatalf("truncated %+v %v", hits, err)
+	}
+}
+
+func itoa(n int) string {
+	if n < 10 {
+		return string(rune('0' + n))
+	}
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+func idsOf(hits []SearchHit) []string {
+	out := make([]string, len(hits))
+	for i, hit := range hits {
+		out[i] = hit.SessionID
+	}
+	return out
 }

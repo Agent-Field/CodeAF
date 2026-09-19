@@ -247,7 +247,7 @@ func TestProductionBindDoesNotUseTheTestFake(t *testing.T) {
 func TestBindFunctionsStayUnderTheCeiling(t *testing.T) {
 	const ceiling = 15
 	set := token.NewFileSet()
-	for _, name := range []string{"discovery_adapter.go", "chatv3_folders.go", "organize_bind.go", "chatv3_embed.go"} {
+	for _, name := range []string{"discovery_adapter.go", "chatv3_folders.go", "organize_bind.go", "chatv3_embed.go", "chatv3_wave2.go"} {
 		source, err := parser.ParseFile(set, name, nil, 0)
 		if err != nil {
 			t.Fatal(err)
