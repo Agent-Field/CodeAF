@@ -44,6 +44,9 @@ type planState struct {
 	// (PlanTasks). It is settled with the path at the seed and never moves.
 	chat    string
 	shimmed bool
+	// archives holds read handles for ended stores. Ended stores are immutable,
+	// so each is opened at most once for the life of this conversation.
+	archives map[string]*plandb.Store
 }
 
 // planStoreFilename is the file name every road agrees on: the runtime's
