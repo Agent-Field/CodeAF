@@ -994,3 +994,38 @@ func TestPlanRailAndTreeOmitTheNamedFolderFromLiveCommands(t *testing.T) {
 		t.Fatalf("rail/tree command display did not omit only the named folder:\n%s", text)
 	}
 }
+
+// A TASK THAT HAS ENDED IS OFFERED NEITHER VERB. The store refuses to stop or
+// hold work that is done or incomplete, so naming both keys under a finished
+// task was two offers that could only be refused.
+func TestAFinishedTasksPageOffersNoVerbItWouldRefuse(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		want   []string
+		never  []string
+	}{
+		{"running", []string{tasksPlanCancelWord, tasksPlanPauseWord}, []string{tasksPlanResumeWord}},
+		{"paused", []string{tasksPlanCancelWord, tasksPlanResumeWord}, []string{tasksPlanPauseWord}},
+		{"done", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
+		{"failed", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
+		{"cancelled", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
+	} {
+		row := session.PlanTaskRow{ID: "t-1", Title: "Alpha", Status: tc.status}
+		a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{"t-1": {Row: row}})
+		a.taskSheet.plan = session.PlanTaskPage{Row: row}
+		keys := a.taskPlanKeys()
+		for _, word := range tc.want {
+			if !strings.Contains(keys, word) {
+				t.Fatalf("a %s task's page does not offer %q: %s", tc.status, word, keys)
+			}
+		}
+		for _, word := range tc.never {
+			if strings.Contains(keys, word) {
+				t.Fatalf("a %s task's page offers %q, which the store would refuse: %s", tc.status, word, keys)
+			}
+		}
+		if !strings.Contains(keys, taskCardBackWord) {
+			t.Fatalf("a %s task's page lost its way back: %s", tc.status, keys)
+		}
+	}
+}
