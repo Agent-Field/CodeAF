@@ -1136,7 +1136,20 @@ func (a *app) openRailRoom(node *taskNode) tea.Cmd {
 // conversation, for a press on a rail row or on one of a run's own rows under
 // it. `missing` is what the gesture does when the store has no such page.
 func (a *app) openRailPlan(id string, missing func() tea.Cmd) tea.Cmd {
-	return a.taskSheetPlanAsk(id, nil, func() { a.railTaskPlanOn = true }, missing)
+	if a.railPlanPending.id == id {
+		return nil
+	}
+	a.beginRailPlan(id)
+	return a.taskSheetPlanAsk(id, nil, func() tea.Cmd { return a.finishRailPlan(id) }, func() tea.Cmd {
+		if a.railPlanPending.id != id {
+			return nil
+		}
+		a.railPlanPending = railPlanPending{}
+		if missing != nil {
+			return missing()
+		}
+		return nil
+	})
 }
 
 // openRoomAt is the KEYBOARD door: enter on a selected proposal row opens that

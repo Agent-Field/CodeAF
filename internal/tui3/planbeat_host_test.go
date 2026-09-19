@@ -1,8 +1,11 @@
 package tui3
 
 import (
+	"sync"
 	"sync/atomic"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -131,11 +134,14 @@ type heldHostedPlanAgent struct {
 	*countedPlanAgent
 	started chan struct{}
 	release chan struct{}
+	once    sync.Once
 }
 
 func (h *heldHostedPlanAgent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
-	close(h.started)
-	<-h.release
+	h.once.Do(func() {
+		close(h.started)
+		<-h.release
+	})
 	return h.Agent.PlanTaskPage(id)
 }
 
