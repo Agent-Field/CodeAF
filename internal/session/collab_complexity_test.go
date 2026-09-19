@@ -18,7 +18,7 @@ func TestCollabFilesDoNotImportTheRouterPackage(t *testing.T) {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".go") || strings.HasSuffix(file.Name(), "_test.go") {
 			continue
 		}
-		if file.Name() != "collab.go" && file.Name() != "tools_coordinate.go" && file.Name() != "mailbox.go" && file.Name() != "collab_consult.go" {
+		if file.Name() != "collab.go" && file.Name() != "tools_coordinate.go" && file.Name() != "mailbox.go" && file.Name() != "collab_consult.go" && file.Name() != "exec.go" {
 			continue
 		}
 		source, err := parser.ParseFile(token.NewFileSet(), file.Name(), nil, parser.ImportsOnly)
@@ -27,8 +27,8 @@ func TestCollabFilesDoNotImportTheRouterPackage(t *testing.T) {
 		}
 		for _, spec := range source.Imports {
 			path := spec.Path.Value
-			if strings.Contains(path, "/internal/wscollab") {
-				t.Errorf("%s imports wscollab; the host binds the router", file.Name())
+			if strings.Contains(path, "/internal/wscollab") || strings.Contains(path, "/internal/wsexec") {
+				t.Errorf("%s imports %s; the host binds the seam", file.Name(), path)
 			}
 		}
 	}
@@ -44,7 +44,7 @@ func TestNewCollabFunctionsStayUnderTheCeiling(t *testing.T) {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".go") || strings.HasSuffix(file.Name(), "_test.go") {
 			continue
 		}
-		if file.Name() != "collab.go" && file.Name() != "tools_coordinate.go" && file.Name() != "collab_consult.go" {
+		if file.Name() != "collab.go" && file.Name() != "tools_coordinate.go" && file.Name() != "collab_consult.go" && file.Name() != "exec.go" {
 			continue
 		}
 		source, err := parser.ParseFile(set, file.Name(), nil, 0)

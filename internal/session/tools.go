@@ -248,7 +248,9 @@ func (a *Agent) belt() []bare.Tool {
 	// conversation whose every call then refuses.
 	tools = append(tools, a.foldersTools()...)
 	// Cross-session coordination (tools_coordinate.go). Absent when
-	// Config.Collab is nil: read/discuss/organize only, never execute.
+	// Config.Collab is nil. Execute actions join the same verb only when
+	// Config.Exec is wired; nil is still read/discuss/organize, never a
+	// dummy launch.
 	tools = append(tools, a.coordinateTools()...)
 	// An owned conversation has no project until the person names one. The
 	// anchoring hand exists only in that state; after it succeeds the rebuilt
