@@ -39,3 +39,7 @@ The ledger must be opened for the profile whose config was loaded. In hosted mod
 ## Implementation step
 
 Implement the shared return value first, then transport it on `v3Process` and `remote.Welcome`, and finally arm the existing notice board with the hashed dynamic gate. Focused tests will cover config classification, wire transport, local and hosted option assembly, and ledger behavior. No downstream layer will read or classify `config.json`.
+
+## Change-note step
+
+This lane owns the user-visible change note after the implementation. The note will be `kind: fixed` on `surface: [chat, engine]`, because the load diagnostic added in pull request 1223 did not reach either chat path and the fix carries the same shared unread-key result through both the hosted engine/client boundary and `--no-host` into the existing conversation notice. Its invalidation will distinguish the old logger-only behavior from the once-per-profile notice, including the changed-key-set rule. No pull request number is assigned yet, so the note filename and `pr` value require reconciliation after the coordinator opens the pull request.
