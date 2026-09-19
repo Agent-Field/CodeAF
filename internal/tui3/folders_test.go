@@ -12,9 +12,9 @@ import (
 type fakeFolders struct {
 	mu      sync.Mutex
 	frozen  bool
-	root    folderRoot
-	members map[string][]folderPlacement
-	whys    map[string]folderWhy
+	root    FolderRoot
+	members map[string][]FolderPlacement
+	whys    map[string]FolderWhy
 	creates int
 	adds    [][2]string
 	removes [][2]string
@@ -35,31 +35,31 @@ func (f *fakeFolders) touch(op string) {
 	}
 }
 
-func (f *fakeFolders) RootSnapshot(context.Context) (folderRoot, error) {
+func (f *fakeFolders) RootSnapshot(context.Context) (FolderRoot, error) {
 	f.touch("RootSnapshot")
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.root, nil
 }
 
-func (f *fakeFolders) FolderSnapshot(_ context.Context, id string) (folderView, []folderPlacement, error) {
+func (f *fakeFolders) FolderSnapshot(_ context.Context, id string) (FolderView, []FolderPlacement, error) {
 	f.touch("FolderSnapshot")
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, folder := range f.root.Folders {
 		if folder.ID == id {
-			return folder, append([]folderPlacement(nil), f.members[id]...), nil
+			return folder, append([]FolderPlacement(nil), f.members[id]...), nil
 		}
 	}
-	return folderView{}, nil, nil
+	return FolderView{}, nil, nil
 }
 
-func (f *fakeFolders) CreateFolder(_ context.Context, name string) (folderView, error) {
+func (f *fakeFolders) CreateFolder(_ context.Context, name string) (FolderView, error) {
 	f.touch("CreateFolder")
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.creates++
-	folder := folderView{ID: "col-" + name, Name: name, Lifecycle: "active"}
+	folder := FolderView{ID: "col-" + name, Name: name, Lifecycle: "active"}
 	f.root.Folders = append(f.root.Folders, folder)
 	return folder, nil
 }
@@ -88,7 +88,7 @@ func (f *fakeFolders) MovePlacement(_ context.Context, fromID, toID, refID strin
 	return nil
 }
 
-func (f *fakeFolders) WhyHere(_ context.Context, collectionID, refID string) (folderWhy, error) {
+func (f *fakeFolders) WhyHere(_ context.Context, collectionID, refID string) (FolderWhy, error) {
 	f.touch("WhyHere")
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -97,22 +97,22 @@ func (f *fakeFolders) WhyHere(_ context.Context, collectionID, refID string) (fo
 			return why, nil
 		}
 	}
-	return folderWhy{Origin: "person", Reason: "filed from home"}, nil
+	return FolderWhy{Origin: "person", Reason: "filed from home"}, nil
 }
 
 func billingSecurityFolders() *fakeFolders {
-	billing := folderView{ID: "col-billing", Name: "Billing", Lifecycle: "active", MemberCount: 1}
-	receipts := folderView{ID: "col-receipts", Name: "Receipts", Lifecycle: "active", ParentIDs: []string{"col-billing", "col-security"}}
-	security := folderView{ID: "col-security", Name: "Security", Lifecycle: "active", MemberCount: 1}
-	place := folderPlacement{
+	billing := FolderView{ID: "col-billing", Name: "Billing", Lifecycle: "active", MemberCount: 1}
+	receipts := FolderView{ID: "col-receipts", Name: "Receipts", Lifecycle: "active", ParentIDs: []string{"col-billing", "col-security"}}
+	security := FolderView{ID: "col-security", Name: "Security", Lifecycle: "active", MemberCount: 1}
+	place := FolderPlacement{
 		CollectionID: "col-billing",
 		RefID:        "aaaa000000000001",
 		Title:        "Porting the Resume Picker",
 		AlsoIn:       []string{"Security"},
 	}
 	return &fakeFolders{
-		root: folderRoot{Folders: []folderView{billing, receipts, security}},
-		members: map[string][]folderPlacement{
+		root: FolderRoot{Folders: []FolderView{billing, receipts, security}},
+		members: map[string][]FolderPlacement{
 			"col-billing":  {place},
 			"col-security": {{CollectionID: "col-security", RefID: "aaaa000000000001", Title: "Porting the Resume Picker", AlsoIn: []string{"Billing"}}},
 		},
@@ -225,7 +225,7 @@ func TestComposerAndSelectionSurviveAMembershipChange(t *testing.T) {
 	if !ok || want.kind != homeFolderRow || want.dir != "col-billing" {
 		t.Fatalf("cursor was not on Billing: %+v", want)
 	}
-	fake.root.Folders = append(fake.root.Folders, folderView{ID: "col-ops", Name: "Ops", Lifecycle: "active"})
+	fake.root.Folders = append(fake.root.Folders, FolderView{ID: "col-ops", Name: "Ops", Lifecycle: "active"})
 	a.readHomeFolders()
 	a.home.build()
 	homeText(a)

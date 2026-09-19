@@ -69,7 +69,7 @@ func folderBackLine(id, name string) homeLine {
 	return homeLine{kind: homeFolderBack, dir: id, project: name, cell: cell}
 }
 
-func folderRowLine(folder folderView) homeLine {
+func folderRowLine(folder FolderView) homeLine {
 	cell := &homeCell{panel: panelFolders, title: folder.Name}
 	if folder.MemberCount > 0 {
 		cell.right = fmt.Sprintf("%d %s", folder.MemberCount, switcherPlural(folder.MemberCount, "chat", "chats"))
@@ -77,7 +77,7 @@ func folderRowLine(folder folderView) homeLine {
 	return homeLine{kind: homeFolderRow, dir: folder.ID, project: folder.Name, cell: cell}
 }
 
-func folderMemberLine(in *homeGridInput, place folderPlacement, collectionID string) (homeLine, bool) {
+func folderMemberLine(in *homeGridInput, place FolderPlacement, collectionID string) (homeLine, bool) {
 	id := strings.TrimSpace(place.RefID)
 	if id == "" {
 		return homeLine{}, false
