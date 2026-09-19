@@ -507,7 +507,8 @@ type usageWrite struct {
 
 // usageWriter is one ledger file's background writer.
 type usageWriter struct {
-	queue chan usageWrite
+	queue       chan usageWrite
+	beforeWrite func()
 }
 
 // usageDropped is how many rows this process could not get onto a ledger — a
@@ -597,6 +598,9 @@ func (w *usageWriter) run(path string) {
 		if work.done != nil {
 			close(work.done)
 			continue
+		}
+		if w.beforeWrite != nil {
+			w.beforeWrite()
 		}
 		if file == nil {
 			file = openUsageLedger(path)
