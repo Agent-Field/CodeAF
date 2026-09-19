@@ -1113,7 +1113,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// v3 door assembles through this function — and the first pass is a whole
 	// interval away, so a launch that exits immediately has ticked nothing.
 	if cfg.Standing != nil && !opts.NoStandingTicks {
-		startStandingTicks(cfg.Standing.Store)
+		proc.startStandingTicks(cfg.Standing.Store)
 	}
 
 	return &v3Launch{

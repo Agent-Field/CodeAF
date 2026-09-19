@@ -5,11 +5,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -366,4 +368,53 @@ func TestOpeningAWorkspaceThatIsNotThereIsRefusedInASentence(t *testing.T) {
 	if viaLink != direct {
 		t.Fatalf("two spellings of one directory are two workspaces: %q and %q", viaLink, direct)
 	}
+}
+
+// Closing a process stops and joins its standing clock. Removing the store after
+// Close makes any late pass observable: taking the tick lock recreates the root.
+func TestCloseAllJoinsStandingTickerAndLaterProcessCanStart(t *testing.T) {
+	const interval = 10 * time.Millisecond
+	oldInterval := standingTickInterval
+	standingTickInterval = interval
+	t.Cleanup(func() { standingTickInterval = oldInterval })
+
+	proc := v3TestProcess(t)
+	root := filepath.Join(t.TempDir(), "v3", "standing")
+	store, err := standing.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc.startStandingTicks(store)
+	waitForStandingTick(t, root, interval)
+
+	proc.closeAll()
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(4 * interval)
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("standing created files after Close returned: %v", err)
+	}
+
+	later := v3TestProcess(t)
+	laterRoot := filepath.Join(t.TempDir(), "v3", "standing")
+	laterStore, err := standing.Open(laterRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	later.startStandingTicks(laterStore)
+	waitForStandingTick(t, laterRoot, interval)
+	later.closeAll()
+}
+
+func waitForStandingTick(t *testing.T, root string, interval time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(20 * interval)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(filepath.Join(root, "tick.lock")); err == nil {
+			return
+		}
+		time.Sleep(interval)
+	}
+	t.Fatal("standing ticker did not take its lock")
 }
