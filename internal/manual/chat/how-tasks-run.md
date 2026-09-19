@@ -3136,16 +3136,30 @@ checkpoint that was in force. A negative value answers `Invalid arguments: max_s
 be negative`. Zero or absent means the default.
 
 **`checks`** — the repeatable verification, described in *What propose_task needs from you*
-above. Each entry must be one simple command with no pipes or `&&`, and one that even a
-permit-everything policy would still stop and ask about is refused outright:
-`Invalid arguments: checks must each be ONE command with no shell composition`. A check that leads with
-a directory change (`cd <folder> && <command>`) is refused like any other composition, and
-its refusal ends with the form that passes: `A check runs from the root of the task's own
-copy: leave the directory change out and name each file by its path`. It is never quietly
-repaired, because the command kept would run where its files may not be. The same
-argument is on `divide_work`, where each part declares what its own checker may run — and a
-check every part declares is taken off all of them and given once to the task that divided
-them, which is the only one that can honestly make it after its parts are home.
+above. Each entry must be ONE rerunnable command, and one that even a permit-everything
+policy would still stop and ask about is refused outright. A character that joins, redirects
+or expands commands (a pipe, `&&`, `;`, a redirection, a dollar, a backtick) refuses the
+entry when the shell would act on it, and is plain text inside a single-quoted argument: a
+search pattern holding a bar, in single quotes, is one command. Inside double quotes a
+dollar, a backtick and a backslash still refuse it, because the shell still expands them
+there. The refusal names the character and says what passes:
+`Invalid arguments: checks must each be ONE rerunnable command: "|" joins, redirects or
+expands commands in "<the check>". Such a character may stand only inside a single-quoted
+argument, where it is text`. The checker's own shell reads a command the same way, so a
+check admitted here is one the checker can run, and what it must never run is stopped at
+both. A check that leads with a directory change
+(`cd <folder> && <command>`) is refused like any other composition, and its refusal ends
+with the form that passes: `A check runs from the root of the task's own copy: leave the
+directory change out and name each file by its path`. It is never quietly repaired, because
+the command kept would run where its files may not be. The same argument is on
+`divide_work`, where each part declares what its own checker may run — and a check every
+part declares is taken off all of them and given once to the task that divided them, which
+is the only one that can honestly make it after its parts are home.
+
+Proposals refused side by side in one reply are ONE attempt, and a refusal they share
+counts once: three refused together for one reason are not three repeats, and a refusal
+whose words changed is not the same failure again, so neither earns the note about
+repeating a call.
 
 That refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
 for you: the row in the conversation reads only `the call was refused`, the task's card
