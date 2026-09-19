@@ -203,7 +203,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		}
 		version = schemaVersion
 	case state == schemaBlank:
-		if err := createV2(ctx, tx, now); err != nil {
+		if err := createCurrent(ctx, tx, now); err != nil {
 			return storeError(err)
 		}
 		version = schemaVersion

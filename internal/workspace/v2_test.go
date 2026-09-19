@@ -104,6 +104,14 @@ func TestV1ListDoesNotMigrate(t *testing.T) {
 	if err != nil || len(events) != 0 {
 		t.Fatalf("v1 events: %v, %v", events, err)
 	}
+	guidance, err := s.ListGuidance(ctx, "")
+	if err != nil || len(guidance) != 0 {
+		t.Fatalf("v1 list guidance: %v, %v", guidance, err)
+	}
+	suppressed, err := s.IsSuppressed(ctx, "billing-v1", Ref{Kind: ConversationKind, ID: "old-chat"}, "hash")
+	if err != nil || suppressed {
+		t.Fatalf("v1 is-suppressed: %v, %v", suppressed, err)
+	}
 	app, version := fileUserVersion(t, path)
 	if app != applicationID || version != 1 {
 		t.Fatalf("list migrated the file: application %d version %d", app, version)
@@ -113,7 +121,7 @@ func TestV1ListDoesNotMigrate(t *testing.T) {
 	}
 }
 
-func TestFirstWriteMigratesV1ToV2(t *testing.T) {
+func TestFirstWriteMigratesV1ToV3(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "v1.db")
 	writeV1Fixture(t, path)
@@ -127,10 +135,10 @@ func TestFirstWriteMigratesV1ToV2(t *testing.T) {
 		t.Fatal(err)
 	}
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 2 {
+	if app != applicationID || version != 3 {
 		t.Fatalf("first write left application %d version %d", app, version)
 	}
-	if s.SchemaVersion() != 2 {
+	if s.SchemaVersion() != 3 {
 		t.Fatalf("handle version %d after write", s.SchemaVersion())
 	}
 	after, err := s.Collections(ctx)
@@ -145,9 +153,9 @@ func TestFirstWriteMigratesV1ToV2(t *testing.T) {
 	if err != nil || why.Origin != OriginPerson || why.Action != ActionAdd {
 		t.Fatalf("migrated add wrote no event: %+v, %v", why, err)
 	}
-	tables := laterPhaseTables(t, path)
-	if len(tables) != 0 {
-		t.Fatalf("wave 1 created later-phase tables: %v", tables)
+	requireTables(t, path, v3TableNames...)
+	if extra := tablesNamed(t, path, laterPhaseTableNames...); len(extra) != 0 {
+		t.Fatalf("wave 2 created later-phase tables: %v", extra)
 	}
 }
 
@@ -387,28 +395,48 @@ func TestUnknownOriginIsRefused(t *testing.T) {
 	}
 }
 
-func laterPhaseTables(t *testing.T, path string) []string {
+var v3TableNames = []string{"guidance", "jobs", "observations", "placement_suppressions", "proposed_actions"}
+
+var laterPhaseTableNames = []string{
+	"participants", "participant", "deliveries", "delivery", "grants", "grant", "execution_bindings", "execution",
+}
+
+func tablesNamed(t *testing.T, path string, names ...string) []string {
 	t.Helper()
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name IN ('guidance','grant','grants','delivery','execution')`)
+	quoted := make([]string, len(names))
+	args := make([]any, len(names))
+	for i, name := range names {
+		quoted[i] = "?"
+		args[i] = name
+	}
+	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name IN (`+strings.Join(quoted, ",")+`)`, args...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
-	var names []string
+	var found []string
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
 			t.Fatal(err)
 		}
-		names = append(names, name)
+		found = append(found, name)
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	return names
+	return found
+}
+
+func requireTables(t *testing.T, path string, names ...string) {
+	t.Helper()
+	found := tablesNamed(t, path, names...)
+	if len(found) != len(names) {
+		t.Fatalf("tables %v, want %v", found, names)
+	}
 }
