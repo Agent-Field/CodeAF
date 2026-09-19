@@ -534,6 +534,28 @@ func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
 	return cloneTask(s.data.Tasks[id]), nil
 }
 
+// refuseParked is the one statement of a law three roads keep: A PARKED TASK IS
+// FINISHED ONLY BY A WORKER WOKEN FOR IT. [Store.Wait] flags the task and
+// releases its claim, and [Store.Wake] is the only place the flag is cleared,
+// immediately before the run launches the task's worker again. So an ending
+// that arrives while the flag is set comes from a worker that has already left:
+// a round it had started before it parked still ends its tool, and when that
+// tool is the task's own finish the store used to admit it. On the run's own
+// task that closed a run over a child nobody had reviewed, and it left the pair
+// nothing legitimate produces, done and still waiting.
+//
+// The refusal changes nothing else. The task stays parked with its claim
+// released, and it is woken the ordinary way when its wait is over. The sentence
+// is for the late worker, which can act on it by doing nothing more. [Store.Done],
+// [Store.Fail] and [Store.CompleteRoot] all ask here, because every one of them
+// writes an ending and an ending spelled three times is a law with three versions.
+func refuseParked(task *Task) error {
+	if task == nil || !task.Waiting {
+		return nil
+	}
+	return fmt.Errorf("task %q is waiting and can only be finished after it is woken", task.ID)
+}
+
 // Done completes a task its agent owns. The root is the runtime's, exactly as
 // the earlier port had it: a worker cannot finish the run, only its own task.
 //
@@ -547,6 +569,9 @@ func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
 // and a worker that is not the root's own is still refused.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if err := refuseParked(task); err != nil {
+			return err
+		}
 		text := strings.TrimSpace(result)
 		// A REVIEW CONCLUSION CARRIES ITS BASIS WITH IT, written by the same
 		// gate that judged it: a holds conclusion is refused unless every
@@ -779,6 +804,9 @@ func (s *Store) SetVerdictBasis(id string, basis VerdictBasis) (*Task, error) {
 // Fail marks a task failed by its owner, with a reason the next reader sees.
 func (s *Store) Fail(id, agent, message string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if err := refuseParked(task); err != nil {
+			return err
+		}
 		if len(message) > 32<<10 {
 			return errors.New("failure reason exceeds 32768 bytes")
 		}
@@ -1451,6 +1479,9 @@ func (s *Store) CompleteRoot(result string) error {
 		root := next.Tasks[next.RootID]
 		if root == nil || terminal(root.Status) {
 			return errNoChange
+		}
+		if err := refuseParked(root); err != nil {
+			return err
 		}
 		if hasOpenDescendants(*next, root.ID) {
 			return errors.New("root has open descendants")
