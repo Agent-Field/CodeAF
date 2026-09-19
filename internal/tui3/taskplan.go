@@ -1323,7 +1323,14 @@ func (a *app) taskPlanBody(width int) []string {
 	if len(page.Notes) > 0 {
 		section("notes")
 		for _, note := range page.Notes {
-			who := strings.TrimSpace(note.Author)
+			// AN AUTHOR IS DRAWN ONLY AS A WORD A PERSON WOULD RECOGNISE. `you` is
+			// one. Every other author the store holds is an id of its own, the
+			// run's number or a worker's handle, and this page has no word for the
+			// kind of task that left the note; a page headed `1 · now` or
+			// `2ytmh2 · now` names nobody. The moment is kept and the id is never
+			// drawn, which is the owner's ruling on this surface: no internal name
+			// on a person's screen.
+			who := ""
 			if note.Person {
 				who = "you"
 			}

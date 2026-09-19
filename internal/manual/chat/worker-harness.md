@@ -56,8 +56,9 @@ same full frame, the same `esc`, and the same way back as a record row's card. I
 shows, in order, each section left out when nothing is behind it:
 
 - `description` — the work order the worker was given;
-- `notes` — every note left on the task, with its author, your own reading `you`,
-  and its moment;
+- `notes` — every note left on the task, with its moment. A note you left reads
+  `you`. A note a worker or the run left names no author: the store knows those
+  only by ids of its own, and an id is never drawn on this page;
 - `steps` — the trajectory its worker recorded: each command with the head of what
   came back, the whole observation on disk behind the row.
 
