@@ -2,7 +2,7 @@
 # THE INSTALLER'S TELEMETRY DUTIES, PROVED WITHOUT A NETWORK.
 #
 # The notice text lives once, byte for byte, in docs/TELEMETRY.md: the full
-# form quoted by the binary and the README, and the two-line form the
+# form quoted by the binary and the README, and the three-line form the
 # installer prints. Only a test notices when one of them drifts. The installer's main body
 # downloads a release, so this test never sources it whole: it lifts out the
 # three telemetry functions and runs them against a temporary state root.
@@ -84,7 +84,7 @@ ok "unwritable state root does not fail the install" 'write_install_marker /proc
 notice="$tmp/notice.txt"
 print_telemetry_notice 2> "$notice"
 # The first fenced block under "The notice" is the binary's full notice, the
-# second is the installer's two-line form; awk counts fences to tell them apart.
+# second is the installer's three-line form; awk counts fences to tell them apart.
 expected=$(awk '
 	/^## The notice$/ {f=1; next}
 	f && /^```$/ {f++; next}
@@ -98,7 +98,8 @@ installer_expected=$(awk '
 body=$(sed 1d "$notice")
 ok "one blank line before the notice" '[ -z "$(head -n 1 "$notice")" ]'
 ok "installer notice matches docs/TELEMETRY.md verbatim" '[ "$body" = "$installer_expected" ]'
-ok "installer notice is two lines" '[ "$(printf "%s\n" "$body" | wc -l | tr -d " ")" = 2 ]'
+ok "installer notice is three lines" '[ "$(printf "%s\n" "$body" | wc -l | tr -d " ")" = 3 ]'
+ok "installer notice names the inspector and the switch" 'case "$body" in *"codeaf telemetry show"*CODEAF_TELEMETRY=off*) true;; *) false;; esac'
 ok "installer notice names what is never shared" 'case "$body" in *"does NOT share your prompts, code, files"*) true;; *) false;; esac'
 readme_block=$(awk '
 	/^```text$/ {f = 1; buf = ""; next}

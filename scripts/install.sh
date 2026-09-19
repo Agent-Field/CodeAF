@@ -6,13 +6,14 @@ REPOSITORY="Agent-Field/codeaf"
 LEGACY_REPOSITORY="Agent-Field/aforge-v2" # Remove after the one-release repository fallback. # legacy-name
 CHANNEL="${CHANNEL:-stable}"
 VERSION="${VERSION:-}"
-# The installer's two-line telemetry notice, verbatim from docs/TELEMETRY.md.
-# The binary prints the full notice, with the opt-out, before the first
-# session's events leave; the installer says only the fact. It writes a local
+# The installer's three-line telemetry notice, verbatim from docs/TELEMETRY.md.
+# The binary prints the full notice before the first session's events leave;
+# the installer says the fact, the inspector and the switch. It writes a local
 # install marker and prints this text, never sends telemetry, and makes no
 # request that the download steps did not already make.
 TELEMETRY_NOTICE='codeaf shares anonymous performance data with AgentField
-codeaf does NOT share your prompts, code, files, or any private information'
+codeaf does NOT share your prompts, code, files, or any private information
+see what is shared: codeaf telemetry show · turn off: CODEAF_TELEMETRY=off'
 VERBOSE="${VERBOSE:-0}"
 NO_MODIFY_PATH="${CODEAF_NO_MODIFY_PATH:-${AFORGE_NO_MODIFY_PATH:-0}}" # legacy-name
 INSTALL_DIR="${CODEAF_INSTALL_DIR:-${AFORGE_INSTALL_DIR:-${HOME}/.codeaf/bin}}" # legacy-name
