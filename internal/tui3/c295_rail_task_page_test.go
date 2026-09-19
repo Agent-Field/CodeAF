@@ -205,3 +205,24 @@ func TestARunIsItsOwnRowWithItsPartsUnderItAndEachOpensItsPage(t *testing.T) {
 		t.Fatalf("the page drawn is not the part's:\n%s", got)
 	}
 }
+
+// A LETTER TYPED INTO THE PAGE'S NOTE IS A LETTER. The page opened from the rail
+// sits over a conversation whose own box is empty, and the key that raises the
+// stop card is read above every page; a note holding that letter raised the card
+// mid-word, and the card then swallowed the rest of the sentence.
+func TestANoteTypedOnARailTaskPageNeverRaisesTheStopCard(t *testing.T) {
+	a, _ := railTaskPageApp(t, true)
+	clickRail(t, a, 0)
+	if !a.railTaskPlanOn {
+		t.Fatal("the rail row did not open its page")
+	}
+	for _, r := range "an example" {
+		drive(t, a, key(string(r)))
+	}
+	if a.stopping() {
+		t.Fatal("a letter in a note raised the stop card")
+	}
+	if got := a.taskSheet.planNote.String(); got != "an example" {
+		t.Fatalf("the note box holds %q, want %q", got, "an example")
+	}
+}
