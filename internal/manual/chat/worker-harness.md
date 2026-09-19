@@ -371,7 +371,7 @@ exactly as it could on its first launch. A `plandb wait` with nothing open to wa
 on is refused, so a worker cannot park on nothing. The remaining endings are the
 run's step cap, its wall, an errored turn, and one ending the worker reaches on
 its own: the same command coming back with the same answer four times in a row,
-which the section after next explains.
+which "Why did my task stop on its own?" explains.
 
 ## When does a waiting task come back?
 
