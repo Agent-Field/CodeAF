@@ -325,6 +325,21 @@ func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (placeBase) box(a *app) *editor { return &a.compose }
 func (placeBase) boxOnBody() bool    { return false }
 
+// carryEditor copies a typed sentence onto another box. Home has its own
+// composer; Folders (and the rooms that share [app.compose]) would otherwise
+// greet a person with the resting prompt after alt+5 from home (J43). The
+// copy is a new slice because [editor.reset] reuses the backing array.
+func carryEditor(dst, src *editor) {
+	if dst == nil || src == nil || src.empty() {
+		return
+	}
+	dst.value = append([]rune(nil), src.value...)
+	dst.cursor = src.cursor
+	if dst.cursor < 0 || dst.cursor > len(dst.value) {
+		dst.cursor = len(dst.value)
+	}
+}
+
 // ── THERE IS NO DEFAULT hint, AND THAT IS THE WHOLE POINT ───────────────────
 //
 // [placeBase] used to answer `hint` with [placeHintWords], and it made a place
