@@ -56,6 +56,12 @@ type beltRunDouble struct {
 	// for the tests that follow the work all the way home.
 	work func(workspace string)
 	real bool
+	// honoursStop makes the double end the way the real engine ends when its
+	// context is cut: early is what its workers had written by then, it returns
+	// without completing the store's root, and it answers the engine's own word
+	// for a run that did not finish.
+	honoursStop bool
+	early       func(workspace string)
 }
 
 func newBeltRunDouble(result string) *beltRunDouble {
@@ -83,8 +89,20 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 			}
 		}
 	}
+	if d.early != nil {
+		d.early(spec.Workspace)
+	}
 	close(d.entered)
-	<-d.release
+	if d.honoursStop {
+		select {
+		case <-d.release:
+		case <-ctx.Done():
+			close(d.finished)
+			return RunSummary{Outcome: "ran and did not finish", Nodes: 1, Steps: 1}
+		}
+	} else {
+		<-d.release
+	}
 	if d.work != nil {
 		d.work(spec.Workspace)
 	}
