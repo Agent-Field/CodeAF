@@ -6,6 +6,10 @@
 // directly so provenance, atomic Move, WhyHere, and Events are the real store's.
 // Wave 2 adds InstructFolder, EffectiveGuidance, SearchEvidence, a typed
 // ActionPlan, and SuppressPlacement. Discovery is an injected interface.
+// Wave 3 adds CoordinateSelected, ManageFolder, Deliver, InviteToDiscussion,
+// and CreateDiscussion. Collaboration is an injected interface — this package
+// never imports wscollab. A missing store door or collaborator leaves those
+// methods absent rather than returning a dummy success.
 package wsapi
 
 import (
@@ -52,12 +56,14 @@ type RootView struct {
 	Revision int // root_state.revision; zero on a blank store before the first write
 }
 
-// Service holds a store, an optional inventory, an optional discoverer, and a clock.
+// Service holds a store, an optional inventory, an optional discoverer, an
+// optional collaborator, and a clock.
 type Service struct {
-	store store
-	inv   Inventory
-	disc  Discoverer
-	now   func() time.Time
+	store  store
+	inv    Inventory
+	disc   Discoverer
+	collab Collaborator
+	now    func() time.Time
 }
 
 // Open wraps workspace.Open. A corrupt, foreign, or unreadable store is an
@@ -112,6 +118,16 @@ func (s *Service) SetDiscoverer(disc Discoverer) {
 		}
 	}
 	s.disc = disc
+}
+
+// SetCollaborator injects the router used by Deliver. Nil means Deliver is
+// absent, not a dummy delivered receipt. This package does not import wscollab;
+// wiring binds the real router later, the same way Inventory and Discoverer land.
+func (s *Service) SetCollaborator(c Collaborator) {
+	if s == nil {
+		return
+	}
+	s.collab = c
 }
 
 // Workspace is the real collections.db handle when Open bound *workspace.Store.
