@@ -54,6 +54,11 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// so the session draws the ending out of the fact and never parses the
 		// sentence back apart.
 		Limit: runLimitOf(summary.Limit),
+		// THE ROWS THE RUN'S OWN ENDING CUT CROSS AS THEMSELVES: the same
+		// one-for-one carrying as the limit fact, so the session draws a row
+		// the person's bound took down from the run's own record of it and
+		// never from the sentence the store was left holding.
+		Cut:   summary.Cut,
 		Nodes: summary.Nodes,
 		Steps: summary.Steps,
 		USD:   summary.USD,

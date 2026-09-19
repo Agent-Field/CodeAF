@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -87,5 +88,48 @@ func TestRunLimitCrossesTheSeamAsItself(t *testing.T) {
 	}
 	if got := runLimitOf(Limit("unheard")); got != "" {
 		t.Fatalf("an unknown limit crossed the seam as %q, want none", got)
+	}
+}
+
+// TestStartNamesTheRowsItsEndingCut keeps the cut fact a fact at the source: a
+// run ended by its time limit answers with the store ids of the tasks its own
+// ending cut mid-flight, and a task that failed on its own before the ending
+// is in no such answer.
+func TestStartNamesTheRowsItsEndingCut(t *testing.T) {
+	store, err := plandb.Open(t.TempDir()+"/plan.json", "cut-fact", "root", "root", "run until the limit")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "leaf", Title: "leaf", Description: "leaf work", ParentID: "root"}}); err != nil {
+		t.Fatalf("add leaf: %v", err)
+	}
+	factory := func(task plandb.Task) Worker {
+		return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
+			if task.ID == "leaf" {
+				// A WORKER THAT FAILED ON ITS OWN, before any limit fired.
+				return Report{}, errors.New("the leaf broke on its own")
+			}
+			<-ctx.Done()
+			return Report{}, ctx.Err()
+		})
+	}
+	outcome, summary := Start(context.Background(), Spec{
+		Store: store, Workspace: t.TempDir(), Title: "run", Brief: "run until the limit",
+		Limits:  Limits{CostUSD: 100, Elapsed: 20 * time.Millisecond},
+		Factory: factory,
+	})
+	if outcome != OutcomeLimit {
+		t.Fatalf("outcome = %q, want %q", outcome, OutcomeLimit)
+	}
+	cut := map[string]bool{}
+	for _, id := range summary.Cut {
+		cut[id] = true
+	}
+	if !cut["root"] {
+		t.Fatalf("cut = %v, want the root the time limit took down", summary.Cut)
+	}
+	if cut["leaf"] {
+		t.Fatal("a task that failed on its own before the ending is recorded as cut by it")
 	}
 }
