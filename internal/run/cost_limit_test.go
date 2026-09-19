@@ -259,3 +259,73 @@ func TestSpendOfAWorkerWhoseTaskTheStoreCancelledStaysInTheRunsCount(t *testing.
 		})
 	}
 }
+
+// A RUN TELLS ITS OWNER WHAT IT HAS SPENT WHILE IT IS STILL WORKING, AND WITH NO
+// DOLLAR LIMIT OF ITS OWN. The conversation that started a run counts the run's
+// dollars in its own total, so its limits hold against a run still going; that
+// needs the figure while the work is live, whether or not the run was handed a
+// limit. What the owner hears only ever rises, and its last word is the run's
+// own total, so an owner that adds up the differences counts every dollar once.
+func TestARunWithNoDollarLimitStillTellsItsOwnerWhatItHasSpent(t *testing.T) {
+	store, err := plandb.Open(t.TempDir()+"/plan.json", "owner-spend", "root", "root", "spend with nobody limiting it")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+
+	heardLive := make(chan struct{})
+	release := make(chan struct{})
+	factory := func(task plandb.Task) Worker {
+		return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
+			bankSpend(ctx, 0.25)
+			// THE WORKER IS HELD OUT until the owner has heard the live figure,
+			// so the first word cannot be the return's.
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return Report{}, ctx.Err()
+			}
+			bankSpend(ctx, 0.75)
+			return Report{Result: "done", USD: 0.75}, nil
+		})
+	}
+	var heard []float64
+	supervisor := NewSupervisor(store, t.TempDir(), 1, Limits{}, factory)
+	supervisor.onSpend = func(total float64) {
+		// Called on the run's own goroutine, like everything else that reads
+		// its account.
+		if len(heard) == 0 || total != heard[len(heard)-1] {
+			heard = append(heard, total)
+		}
+		if len(heard) == 1 {
+			close(heardLive)
+		}
+	}
+	answered := make(chan Outcome, 1)
+	go func() { answered <- supervisor.Run(context.Background()) }()
+	select {
+	case <-heardLive:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the owner heard nothing while the worker was still out")
+	}
+	close(release)
+	select {
+	case outcome := <-answered:
+		if outcome != OutcomeDone {
+			t.Fatalf("outcome = %q, want %q", outcome, OutcomeDone)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run never answered")
+	}
+	if len(heard) == 0 || heard[0] != 0.25 {
+		t.Fatalf("the owner heard %v, want the live 0.25 first", heard)
+	}
+	for i := 1; i < len(heard); i++ {
+		if heard[i] < heard[i-1] {
+			t.Fatalf("the owner heard %v: the figure went down", heard)
+		}
+	}
+	if last := heard[len(heard)-1]; last != 0.75 || supervisor.spent != 0.75 {
+		t.Fatalf("the owner's last word = %v and the run's total = %v, want 0.75 for both", last, supervisor.spent)
+	}
+}
