@@ -256,6 +256,10 @@ func openChatV3Local(launch localLaunch) error {
 	closeClient = fleet.closeAll
 	options, settings := hostOptions(fleet, welcome, launch.pick)
 	localDoors(&options, welcome, settings)
+	// Logical folders for this machine's collections.db. The session side is
+	// wired in openV3Launch (Config.Folders) inside the engine process.
+	// tui3.Options.Folders is the surface half; the TUI lane owns that field.
+	attachSurfaceFolders(&options, openV3Folders())
 	// AND A PLAIN LAUNCH IS STILL GREETED BY HOME ON THIS ROAD. Whether somebody
 	// is being greeted is one fact — a person opened codeaf with no particular
 	// conversation in mind — and [tui3.Options.Landing] is the only place the

@@ -225,7 +225,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 
 	// Changing something that exists.
 	case "edit", "edit_video", "change_setting", "revise_assignment",
-		"revise_design", "forget", "workspace":
+		"revise_design", "forget", "workspace", "folders":
 		return ActionEdit
 
 	// Writing content or generating an artifact.

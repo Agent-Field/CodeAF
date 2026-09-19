@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -150,7 +151,7 @@ func TestCollectionsHelpListsOperationsWithoutOpeningStorage(t *testing.T) {
 	if !errors.Is(err, exitHelped) {
 		t.Fatal(err)
 	}
-	for _, word := range []string{"create", "rename", "show", "add|remove", "find", "--session", "--json", "--db"} {
+	for _, word := range []string{"create", "rename", "show", "add|remove", "find", "--session", "--json", "--db", "--reason"} {
 		if !strings.Contains(out.String(), word) {
 			t.Fatalf("help omits %q: %s", word, out.String())
 		}
@@ -272,6 +273,49 @@ func TestCollectionsListLeavesAnExistingEmptyDatabaseAlone(t *testing.T) {
 	}
 	if info.Size() != 0 {
 		t.Fatalf("list changed the empty database to %d bytes", info.Size())
+	}
+}
+
+func TestCollectionsReasonIsAdditiveAndLeavesOldOutputUnchanged(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "collections.db")
+	product := collectionCreate(t, db, "Product")
+	without := collectionPlain(t, db, "add", product.ID, "conversation", "chat-a")
+	if err := runCollectionsTo([]string{"remove", product.ID, "conversation", "chat-a", "--db", db}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	with := collectionPlain(t, db, "add", product.ID, "conversation", "chat-a", "--reason", "shared with billing")
+	if without != with {
+		t.Fatalf("--reason changed default add output: %q vs %q", without, with)
+	}
+	removeWithout := collectionPlain(t, db, "remove", product.ID, "conversation", "chat-a")
+	if err := runCollectionsTo([]string{"add", product.ID, "conversation", "chat-a", "--db", db}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	removeWith := collectionPlain(t, db, "remove", product.ID, "conversation", "chat-a", "--reason", "no longer billing")
+	if removeWithout != removeWith {
+		t.Fatalf("--reason changed default remove output: %q vs %q", removeWithout, removeWith)
+	}
+}
+
+func TestOpenV3FoldersWiresTheSessionSeam(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	folders := openV3Folders()
+	if folders == nil {
+		t.Fatal("openV3Folders returned nil, so the folders tool would be absent")
+	}
+	listed, err := folders.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("a fresh home listed %+v", listed)
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("CODEAF_HOME"), "v3", "collections.db")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("list created storage: %v", err)
+	}
+	_ = folderWorld{}.ConversationIDs()
+	if title := (folderWorld{}).Title("missing"); title != "" {
+		t.Fatalf("missing conversation titled %q", title)
 	}
 }
 
