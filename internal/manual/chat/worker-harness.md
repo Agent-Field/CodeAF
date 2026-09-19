@@ -16,16 +16,32 @@ exists as soon as you press enter. What it does instead is:
 - **answer at once** with the id the store knows the work by, so the conversation
   stays usable while the run goes. The run's own page is the store's root.
 
-**A second `/task` joins the live run.** One store is one run, so the new work
-becomes a child of the run's root rather than a second store, and the supervisor
-already turning picks it up on its next pass.
+**A run works in a copy of its own, never in your folder.** The copy is cut from the
+folder the task is about, as that folder stands, uncommitted edits and untracked files
+included, so you can keep working in yours while the run goes. Every part of one run
+works in that one copy.
 
-When the run ends, the store's root carries the outcome and the landing, and the
-conversation is woken with the same note a landed task sends — the outcome word,
-the result the root reported, and where the work went (`landed on <branch>: N
-files`, or the sentence saying why it did not). The row the run was published
-under settles `done` when the run finished whole and `incomplete` on any other
-ending.
+**A second `/task` joins the run already underway** when it is about the same folder:
+the new work becomes a child of the run's root, shares the run's copy, and its answer
+says `It joined the work already underway and shares its copy.` A proposed task about
+ANOTHER folder is refused while that run is underway, with both folders named and
+`tasks that run together share one copy of one folder. Propose it again when that work
+has ended`. A task handed off after the run has ended starts a run of its own, in a new
+copy cut from your folder as the first run left it.
+
+**When the run ends its work comes home by itself.** The copy's work is committed and
+merged into the folder it was cut from, the copy is given back, and the run's page
+carries `its work is in <folder> on <branch>`. The conversation is woken with the same
+note a landed task sends: the outcome word, the result the root reported, and where the
+work went (`landed on <branch>: N files`, or the sentence saying why it did not). Work
+that will not go in is never forced: the branch is kept in your repository and the note
+names it, for example `its branch <branch> was kept`, when your checkout moved on after
+the copy was cut. A run that only read says `nothing to land: the run's working copy holds no change` and changes no file. The
+landing card says `merged` when the work is in your folder and `branch kept` only for a
+branch that is waiting. A hand-off that joined the run ends with it: its row settles
+`done` or `incomplete` when the run's does. The
+row the run was published under settles `done` when the run finished whole and
+`incomplete` on any other ending.
 
 **With the switch unset, none of this is reached.** `/task` raises an ordinary
 task on this session's own tree, briefed beside its worker and landed through the
@@ -56,8 +72,9 @@ same full frame, the same `esc`, and the same way back as a record row's card. I
 shows, in order, each section left out when nothing is behind it:
 
 - `description` — the work order the worker was given;
-- `notes` — every note left on the task, with its author, your own reading `you`,
-  and its moment;
+- `notes` — every note left on the task, with its moment. A note you left reads
+  `you`. A note a worker or the run left names no author: the store knows those
+  only by ids of its own, and an id is never drawn on this page;
 - `steps` — the trajectory its worker recorded: each command with the head of what
   came back, the whole observation on disk behind the row.
 
@@ -186,7 +203,9 @@ this conversation's plan**, so a task another chat spawned is never reachable:
 - **priority** — set a task's priority through the store's revision verb.
 
 `x` and `p` are read only over an **empty box**: the moment there is a note to
-type, a letter is a letter.
+type, a letter is a letter. A task that has ended, `done` or `incomplete`, is offered
+neither: its row and its page name no `x stop it` and no `p pause`, because the store
+would refuse both.
 
 Two refusals are this layer's own, and they are the words the pane reads back:
 

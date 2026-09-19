@@ -983,12 +983,31 @@ func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
 // one key that holds the task, named beside the enter clause the foot already
 // draws ([tasksPlace.hint] reaches them). A key nobody can find is a key that
 // does not exist, so both are said where a person reads what a row can do.
+//
+// A TASK THAT HAS ENDED IS OFFERED NEITHER. The store refuses to cancel or hold
+// work that is done or incomplete, so a foot that named both keys under a
+// finished task was two offers that could only be refused, on every finished
+// page a person opened.
 func (a *app) tasksPlanKeyWords(status string) []string {
+	if planEnded(status) {
+		return nil
+	}
 	words := []string{tasksPlanCancelWord}
 	if strings.TrimSpace(status) == "paused" {
 		return append(words, tasksPlanResumeWord)
 	}
 	return append(words, tasksPlanPauseWord)
+}
+
+// planEnded reports whether a plan task has ended, read off the ONE word the
+// row already draws for its state, so the key line and the page's sentences
+// cannot disagree about which tasks can still move.
+func planEnded(status string) bool {
+	switch planStateWord(status) {
+	case "done", "incomplete":
+		return true
+	}
+	return false
 }
 
 // taskPlanKey is the page's keyboard: `esc` and the chord out, the four reading
@@ -1211,7 +1230,15 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 		// is a separate loop, so a note waits in the store until it asks for its
 		// next step — the one thing a person needs to know about the box they are
 		// typing into (taskPlanPickupWord).
-		add(" " + pal.dim(fit(taskPlanPickupWord, width-1)))
+		//
+		// A TASK THAT HAS ENDED TAKES NO NEXT STEP, so the sentence is absent
+		// there rather than false. Its row stays, empty, because the foot's
+		// height is fixed and the caret is placed against it.
+		if planEnded(a.taskSheet.plan.Row.Status) {
+			add("")
+		} else {
+			add(" " + pal.dim(fit(taskPlanPickupWord, width-1)))
+		}
 		add(" " + paintHint(hintFit(a.taskPlanKeys(), width-2), pal, pal.dim))
 	}
 	if len(lines) > height {
@@ -1228,12 +1255,8 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 // by [hintFit], so `esc back` is kept last and the clause a narrow frame drops
 // first is the scroll.
 func (a *app) taskPlanKeys() string {
-	parts := []string{"↑↓ scroll", "enter send", tasksPlanCancelWord}
-	if strings.TrimSpace(a.taskSheet.plan.Row.Status) == "paused" {
-		parts = append(parts, tasksPlanResumeWord)
-	} else {
-		parts = append(parts, tasksPlanPauseWord)
-	}
+	parts := []string{"↑↓ scroll", "enter send"}
+	parts = append(parts, a.tasksPlanKeyWords(a.taskSheet.plan.Row.Status)...)
 	parts = append(parts, taskCardBackWord)
 	return strings.Join(parts, railSep)
 }
@@ -1318,7 +1341,14 @@ func (a *app) taskPlanBody(width int) []string {
 	if len(page.Notes) > 0 {
 		section("notes")
 		for _, note := range page.Notes {
-			who := strings.TrimSpace(note.Author)
+			// AN AUTHOR IS DRAWN ONLY AS A WORD A PERSON WOULD RECOGNISE. `you` is
+			// one. Every other author the store holds is an id of its own, the
+			// run's number or a worker's handle, and this page has no word for the
+			// kind of task that left the note; a page headed `1 · now` or
+			// `2ytmh2 · now` names nobody. The moment is kept and the id is never
+			// drawn, which is the owner's ruling on this surface: no internal name
+			// on a person's screen.
+			who := ""
 			if note.Person {
 				who = "you"
 			}

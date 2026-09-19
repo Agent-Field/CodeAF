@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -82,6 +83,19 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	if err != nil {
 		return Report{}, fmt.Errorf("read the task's trajectory: %w", err)
 	}
+	// A BUILD THAT RECORDS EXITS SAYS SO ON ITS FIRST LINE, before any step, so a
+	// record cut off before its ending (a killed worker, a wall, a window closed
+	// mid-run) is still known to be a new build and its silence is not read as a
+	// passing run. Written once, when the task first runs.
+	if len(past) == 0 {
+		// This write is the record's own proof that it comes from a build that
+		// records exits; if it fails the record would read as an old one and a
+		// declared check could hold unproven, so the run fails here rather than
+		// drop the error.
+		if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryBeginKind, ExitsRecorded: true}); err != nil {
+			return Report{}, fmt.Errorf("stamp the trajectory opening line: %w", err)
+		}
+	}
 	agent, err := session.NewBeltWorker(session.Config{
 		Workspace: w.workspace,
 		Model:     w.model,
@@ -119,7 +133,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 			// A TURN THAT NEVER STARTED RUNS NO COMMAND, so it clears any live step
 			// a predecessor left behind on this task rather than claiming a present.
 			w.clearLiveStep(task.ID)
-			_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the turn never started: " + err.Error()})
+			_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Reason: "the turn never started: " + err.Error()})
 			return Report{Steps: steps}, err
 		}
 		brief = noActionNote
@@ -159,7 +173,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 					// than the run was: that is a failure of the record itself,
 					// and the honest ending is the task failing on it.
 					w.clearLiveStep(task.ID)
-					_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the record failed: " + err.Error()})
+					_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Reason: "the record failed: " + err.Error()})
 					return Report{Steps: steps}, err
 				}
 				// THE STEP IS NO LONGER RUNNING, so its live reading goes with it: the
@@ -215,27 +229,27 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 		w.clearLiveStep(task.ID)
 		switch {
 		case ending.kind == endingDone:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Result: ending.result, Reason: "finished in the store"}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Result: ending.result, Reason: "finished in the store"}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Result: ending.result, Steps: steps, USD: usd}, nil
 		case ending.kind == endingWait:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "waiting"}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "waiting"}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd, Waiting: true}, nil
 		case capped:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "stopped at the step cap"}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "stopped at the step cap"}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, fmt.Errorf("stopped at its step cap after %d steps", capSteps)
 		case ctx.Err() != nil:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "the run's wall stopped it"}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "the run's wall stopped it"}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, fmt.Errorf("the run's wall stopped the worker: %w", ctx.Err())
 		case turnErr != nil:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "the turn errored: " + turnErr.Error()}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "the turn errored: " + turnErr.Error()}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, turnErr
@@ -254,7 +268,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 		}
 		if noAction >= noActionLimit {
 			reason := fmt.Sprintf("%d replies in a row carried no action", noAction)
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: reason}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, errors.New(reason)
@@ -354,7 +368,54 @@ func (r *stepRecorder) record(n int, event session.Event) error {
 		Writes:      planVerbs(command),
 		Children:    r.takeChildren(),
 	}
+	// THE COMMAND'S OWN EXIT IS RECORDED FROM THE EVENT, and only for a bash
+	// command the belt actually ran: an ended bash tool exited zero, a failed one
+	// exited non-zero (the belt appends "Command exited with code N", read back
+	// here when it survived the output cap, otherwise a plain non-zero). A harness
+	// refusal never ran the command and a non-bash tool has no exit, so both leave
+	// the field nil, which a reader treats as unknown rather than as a zero.
+	if event.Tool == "bash" {
+		switch event.Kind {
+		case session.EventToolEnd:
+			zero := 0
+			step.ExitCode = &zero
+		case session.EventToolFailed:
+			if !event.HarnessMade {
+				code := 1
+				if parsed, ok := exitStatusFromOutput(event.Output); ok {
+					code = parsed
+				}
+				step.ExitCode = &code
+			}
+		}
+	}
 	return appendTrajectory(r.storeDir, r.taskID, step)
+}
+
+// exitStatusFromOutput reads the exit code the belt appended to a failed
+// command's output ("Command exited with code N"), taking the last such line
+// so a command whose own output quoted the phrase does not mislead it. It
+// answers false when the phrase is absent, for instance when the output was cut
+// before it, and the caller then records a plain non-zero.
+func exitStatusFromOutput(output string) (int, bool) {
+	const marker = "Command exited with code "
+	idx := strings.LastIndex(output, marker)
+	if idx < 0 {
+		return 0, false
+	}
+	rest := output[idx+len(marker):]
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0, false
+	}
+	code, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return 0, false
+	}
+	return code, true
 }
 
 // stepCommand reads one step's command off the event's display arguments. For

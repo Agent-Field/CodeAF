@@ -503,12 +503,18 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 	if len(childIDs(s.store.Tasks(), leaf.ID)) > 0 {
 		return
 	}
+	checks := append([]string(nil), leaf.Checks...)
+	// THE DECLARED CHECKS ARE THE WHOLE CONTRACT, and an empty declaration is a
+	// reading contract: a review node carries what the worker declared, never a
+	// promise rebuilt from what the worker happened to run (the trajectory's own
+	// backfill died with it, and the gate now refuses a holds verdict it did not
+	// earn, plandb.Done's [checkVerdictBasis]).
 	id := s.store.NextID()
 	spec := plandb.TaskSpec{
 		ID:          id,
 		Title:       checkTitlePrefix + leaf.Title,
-		Description: descriptionWithChecks("Acceptance: "+leaf.Description+"\n\nResult: "+result, leaf.Checks),
-		Checks:      append([]string(nil), leaf.Checks...),
+		Description: descriptionWithChecks("Acceptance: "+leaf.Description+"\n\nResult: "+result, checks),
+		Checks:      checks,
 		ParentID:    leaf.ParentID,
 		Role:        plandb.RoleCheck,
 	}
@@ -555,12 +561,16 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 		return
 	}
 	const doesNotHold = "does not hold:"
+	const checkAnswer = "check:"
 	text := strings.TrimSpace(result)
-	if !strings.HasPrefix(text, doesNotHold) {
+	prefix := doesNotHold
+	if strings.HasPrefix(text, checkAnswer) {
+		prefix = checkAnswer
+	} else if !strings.HasPrefix(text, doesNotHold) {
 		return
 	}
 	leaf := s.checkOf[check.ID]
-	sentence := strings.TrimSpace(strings.TrimPrefix(text, doesNotHold))
+	sentence := strings.TrimSpace(strings.TrimPrefix(text, prefix))
 	if leaf == "" || sentence == "" {
 		return
 	}
@@ -569,7 +579,7 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 		return
 	}
 	_, _ = s.store.AddNote(leaf, "check", sentence)
-	if strings.HasPrefix(checked.Title, fixTitlePrefix) {
+	if prefix == checkAnswer || strings.HasPrefix(checked.Title, fixTitlePrefix) {
 		return
 	}
 	id := s.store.NextID()

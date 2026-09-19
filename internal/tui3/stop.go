@@ -570,8 +570,15 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// (home.go), so at home an `x` is a character somebody is typing — and a stop
 	// card raised over a screen the frame is not drawing would be a question
 	// nobody can see, answered by the next key they press.
+	//
+	// A RUN TASK'S PAGE IS ON IT WHEREVER IT WAS OPENED FROM. The page has a box
+	// of its own and reads this same key itself, over that box when it is empty
+	// ([app.taskPlanKey]). Opened from the side list it sits over a conversation
+	// whose own box is empty, so nothing below stood down, and a note holding
+	// this letter raised the card mid-word and lost the rest of the sentence.
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(), a.guarding(),
+		a.taskSheet.planOn,
 		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.deckShowing(), a.pick.open,
 		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open,
 		a.rew.on, a.rewSheet.open:
