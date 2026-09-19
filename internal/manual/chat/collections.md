@@ -316,14 +316,15 @@ a sibling elsewhere does not enlarge it. `coordinate` action `selected` takes
 those ids; a chat filed later stays out.
 
 **Manage this folder** (`manage-folder`) is dynamic: current descendants and
-future ones, nested and shared children included, shared objects counted once.
+future ones, nested children listed under more than one parent included, each
+object counted once.
 A fifth chat added to Billing after a selected-four snapshot does not join the
 four; start manage-this-folder and it does appear.
 
 Several ordinary chats may coordinate at once. Addressing a folder supplies
-that folder's scope; there is no per-folder daemon. Two folders that share one
-discussion do not merge the rest of their contents. File an optional separate
-discussion with `/folders add` the same way as any other chat.
+that folder's scope; there is no per-folder daemon. Two folders that both hold
+the same discussion do not merge the rest of their contents. Place an optional
+separate discussion with `/folders add` the same way as any other chat.
 
 ## Root escalation — not always ask after two turns, hierarchical parents
 
