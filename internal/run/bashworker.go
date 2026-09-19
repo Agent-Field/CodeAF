@@ -108,11 +108,15 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	defer stop()
 	rec := stepRecorder{store: w.store, storeDir: storeDir, taskID: task.ID, children: childrenOf(w.store, task.ID)}
 	var (
-		steps  int
-		usd    float64
-		inTok  int
-		outTok int
+		steps      int
+		stepNumber int
+		usd        float64
+		inTok      int
+		outTok     int
 	)
+	if len(past) > 0 {
+		stepNumber = past[len(past)-1].Step
+	}
 	// THE SPEND ROW IS WRITTEN ONCE, WHATEVER THE ENDING. A turn that spent money
 	// spent it whether it finished, hit the cap or errored, so the write is
 	// deferred rather than kept to the good path: a person reading the ledger sees
@@ -155,7 +159,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				// [stepCommand] reads off the event, and the moment the store stamps.
 				// The step's own end line clears it, and so does every ending below,
 				// so a task that is not running a command never claims a present.
-				_ = w.store.SetLive(task.ID, steps+1, stepCommand(event))
+				_ = w.store.SetLive(task.ID, stepNumber+1, stepCommand(event))
 			case session.EventToolEnd, session.EventToolFailed:
 				// THE CAP IS THE LAST STEP COUNTED. stop() cancels the turn, but
 				// the agent's loop notices on its next round, and a round it had
@@ -167,8 +171,9 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 					continue
 				}
 				steps++
+				stepNumber++
 				roundSteps++
-				if err := rec.record(steps, event); err != nil {
+				if err := rec.record(stepNumber, event); err != nil {
 					// A step that could not be recorded left the record shorter
 					// than the run was: that is a failure of the record itself,
 					// and the honest ending is the task failing on it.
