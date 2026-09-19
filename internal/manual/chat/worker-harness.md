@@ -547,11 +547,11 @@ completion waits on it like on any other child: a run is not over until its
 checks have landed. A run whose root did the work alone is checked the same way
 before it finishes.
 
-The run counts a task as finished when its worker has come home, not when its
-row first reads done. A worker that marks its task done in the middle of a
+The run counts a task as finished once its worker has come home, which can be a
+moment after its row says so. A worker that ends its task in the middle of a
 command comes home when that command ends, at most 600 seconds later, and only
-then is its check added. The run waits for that, so a run never answers `done`
-over work that was not checked, whatever order the workers came home in. A check
+then is its check added. The run waits for that, so every finished task is
+checked before the run answers, whatever order the workers came home in. A check
 the run cannot add ends the run as `incomplete`; it is never skipped.
 
 A check does not redo the work. It reads the acceptance sentence by sentence,
