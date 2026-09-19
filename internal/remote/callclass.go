@@ -152,6 +152,7 @@ func classify(method string) callClass {
 		MethodStandingResolve, MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
 		MethodTake, MethodAnswerLaneOffer, MethodInterrupt,
+		MethodPlanNote, MethodPlanPause, MethodPlanResume, MethodPlanCancel, MethodPlanAmend, MethodPlanPriority,
 		MethodTyping:
 		return classAct
 	default:

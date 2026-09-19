@@ -538,6 +538,12 @@ const (
 	MethodPlanSpend    = "PlanSpend"    // PlanSpendArgs → []session.PlanSpendLine
 	MethodPlanTasks    = "PlanTasks"    // nothing → []session.PlanTaskRow
 	MethodPlanTaskPage = "PlanTaskPage" // PlanTaskPageArgs → PlanTaskPageResult
+	MethodPlanNote     = "PlanNote"     // PlanTextArgs → nothing
+	MethodPlanPause    = "PlanPause"    // PlanTaskArgs → nothing
+	MethodPlanResume   = "PlanResume"   // PlanTaskArgs → nothing
+	MethodPlanCancel   = "PlanCancel"   // PlanTaskArgs → nothing
+	MethodPlanAmend    = "PlanAmend"    // PlanTextArgs → nothing
+	MethodPlanPriority = "PlanPriority" // PlanPriorityArgs → nothing
 	// The conversation's own place on the thinking ladder (internal/session's
 	// effort.go). Three doors and not one, because the stored rung and the
 	// resolved rung are two different answers: the dial DRAWS the resolved one
@@ -1693,6 +1699,23 @@ func (w EventWire) Unwire() session.Event {
 		ev.Err = errors.New(w.Err)
 	}
 	return ev
+}
+
+// PlanTaskArgs names one task for a steering verb.
+type PlanTaskArgs struct {
+	ID string `json:"id"`
+}
+
+// PlanTextArgs carries the task and prose for note and amend.
+type PlanTextArgs struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+// PlanPriorityArgs carries the task and its new scheduling priority.
+type PlanPriorityArgs struct {
+	ID       string `json:"id"`
+	Priority int    `json:"priority"`
 }
 
 // PlanTaskPageArgs names the task whose complete page is requested.
