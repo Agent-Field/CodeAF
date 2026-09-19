@@ -147,6 +147,12 @@ type PlanStep struct {
 	// Parts are display facts derived from Command. Command remains the byte-for-byte
 	// record; a surface filters parts instead of rewriting that record.
 	Parts []PlanCommandPart `json:"parts,omitempty"`
+	// ObservationHeadWithheld says the head of what came back may not be drawn
+	// under this step's row, because the row leaves out a part that could have
+	// written it ([planStepDisplayFacts] states the law). IT IS THE NEGATIVE ON
+	// PURPOSE: its absence is false, so a step from an engine built before the
+	// field, and a step no display facts were made for, draws its head as it did.
+	ObservationHeadWithheld bool `json:"observation_head_withheld,omitempty"`
 }
 
 // PlanCommandPart is one quote-aware command part and the facts only the
@@ -823,6 +829,28 @@ func planStepDisplayFacts(step PlanStep, copies planRunCopies, recordCommand str
 		i = last + 1
 	}
 	step.Parts = parts
+	// THE HEAD OF WHAT CAME BACK IS DRAWN UNDER A ROW ONLY WHEN EVERY PART LEFT
+	// OUT OF THE ROW CANNOT HAVE WRITTEN TO IT AND STOPS EVERYTHING AFTER IT IF IT
+	// FAILS. The record holds one observation for the whole line, and nothing
+	// anywhere knows where one part's output ends and the next begins, so a head
+	// under a row that left a part out is a guess about whose words they are
+	// unless the left-out part is silent when it works and final when it does
+	// not: then the head is the work's, or it is the failure of a step in which
+	// nothing else ran. A row that leaves nothing out has no such part and keeps
+	// its head. The test is on the two facts a part carries, never on the words a
+	// command prints:
+	//
+	//   - a part addressed to the run's record writes what it likes, so it always
+	//     withholds the head;
+	//   - a leading change into the run's copy has the property only when it is
+	//     joined so that its failure ends the line. Joined any other way, what
+	//     follows runs after a failed change and the head may be that failure's.
+	for _, part := range parts {
+		if part.RecordAddressed || (part.RunCopyPrefix && strings.TrimSpace(part.Separator) != "&&") {
+			step.ObservationHeadWithheld = true
+			break
+		}
+	}
 	return step
 }
 

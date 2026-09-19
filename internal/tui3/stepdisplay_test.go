@@ -107,7 +107,7 @@ func TestTaskPageOmitsOwnRecordIDsAndRunCopyPath(t *testing.T) {
 	const copy = "/private/conversation/trees/1"
 	row := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Status: "done", Folder: copy}
 	steps := []session.PlanStep{
-		{Step: 1, Command: "ls; plandb task overview", Parts: []session.PlanCommandPart{displayPart("ls", "; ", false, false), displayPart("plandb task overview", "", true, false)}, Observation: "files"},
+		{Step: 1, Command: "ls; plandb task overview", Parts: []session.PlanCommandPart{displayPart("ls", "; ", false, false), displayPart("plandb task overview", "", true, false)}, Observation: "files", ObservationHeadWithheld: true},
 		{Step: 2, Command: "plandb done t-1 --agent 1", Parts: []session.PlanCommandPart{displayPart("plandb done t-1 --agent 1", "", true, false)}, Observation: "✓ t-1 done [0/0]"},
 		{Step: 3, Command: "cd " + copy + " && go test ./...", Parts: []session.PlanCommandPart{displayPart("cd "+copy, " && ", false, true), displayPart("go test ./...", "", false, false)}, Observation: "ok"},
 	}
@@ -117,14 +117,80 @@ func TestTaskPageOmitsOwnRecordIDsAndRunCopyPath(t *testing.T) {
 	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
 	page := taskSheetText(a)
-	for _, never := range []string{copy, "t-1", "--agent 1", "✓ t-1"} {
+	// `files` IS ON THE NEVER LIST, AND IT USED TO BE WANTED. Step 1's row left
+	// out a part addressed to the run's record, so the head cannot be told from
+	// that part's print: one shell, one interleaved observation, and the head
+	// belongs to the first part that PRINTED, not the first part shown. The step
+	// carries the fact the engine sets for that shape ([session.PlanStep]'s
+	// ObservationHeadWithheld), and the page draws no dim line under it. Step 3
+	// left out only the change into the run's copy, joined so that its failure
+	// ends the line, and keeps its `ok`.
+	for _, never := range []string{copy, "t-1", "--agent 1", "✓ t-1", "files"} {
 		if strings.Contains(page, never) {
 			t.Fatalf("page contains %q:\n%s", never, page)
 		}
 	}
-	for _, want := range []string{"1  ls", "3  go test ./...", "files", "ok"} {
+	for _, want := range []string{"1  ls", "3  go test ./...", "ok"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("page lacks %q:\n%s", want, page)
 		}
+	}
+}
+
+func TestTaskPageDrawsObservationHeadOnlyWhenOmittedPartsCannotWriteIt(t *testing.T) {
+	const copy = "/private/conversation/trees/1"
+	for _, test := range []struct {
+		name     string
+		command  string
+		parts    []session.PlanCommandPart
+		head     string
+		wantHead bool
+	}{
+		{
+			name:    "record before work",
+			command: "plandb task overview; printf work",
+			parts:   []session.PlanCommandPart{displayPart("plandb task overview", "; ", true, false), displayPart("printf work", "", false, false)},
+			head:    "record-before-print",
+		},
+		{
+			name:    "record after work",
+			command: "printf work; plandb task overview",
+			parts:   []session.PlanCommandPart{displayPart("printf work", "; ", false, false), displayPart("plandb task overview", "", true, false)},
+			head:    "record-after-print",
+		},
+		{
+			name:    "record pipeline before sequenced work",
+			command: "plandb task overview | head -1; printf work",
+			parts:   []session.PlanCommandPart{displayPart("plandb task overview", " | ", true, false), displayPart("head -1", "; ", true, false), displayPart("printf work", "", false, false)},
+			head:    "record-pipeline-print",
+		},
+		{
+			name:     "only leading run copy omitted",
+			command:  "cd " + copy + " && printf work",
+			parts:    []session.PlanCommandPart{displayPart("cd "+copy, " && ", false, true), displayPart("printf work", "", false, false)},
+			head:     "copy-safe-head",
+			wantHead: true,
+		},
+		{
+			name:     "nothing omitted",
+			command:  "printf work",
+			parts:    []session.PlanCommandPart{displayPart("printf work", "", false, false)},
+			head:     "whole-row-head",
+			wantHead: true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			row := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Status: "done", Folder: copy}
+			step := session.PlanStep{Step: 1, Command: test.command, Parts: spannedParts(t, test.command, test.parts...), Observation: test.head, ObservationHeadWithheld: !test.wantHead}
+			a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{"t-alpha": {Row: row, Folder: copy, Steps: []session.PlanStep{step}}})
+			if !openTaskPlaceWithRows(a) {
+				t.Fatal("task place did not open")
+			}
+			drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+			page := taskSheetText(a)
+			if strings.Contains(page, test.head) != test.wantHead {
+				t.Fatalf("head presence = %v, want %v:\n%s", strings.Contains(page, test.head), test.wantHead, page)
+			}
+		})
 	}
 }
