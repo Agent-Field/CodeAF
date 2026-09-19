@@ -657,33 +657,19 @@ func openUsageLedger(path string) *os.File {
 // a flush is asking to be told when the writing is done, and a flush that gave
 // up early would be an answer about nothing. Nothing on a turn path may call it.
 func FlushUsage() {
-	usageWritersMu.Lock()
-	writers := make([]*usageWriter, 0, len(usageWriters))
-	for _, writer := range usageWriters {
-		writers = append(writers, writer)
-	}
-	usageWritersMu.Unlock()
-	// AND IT WAITS UNDER A CEILING, because the one thing it waits on is the
-	// thing this whole file exists to survive. A writer parked inside
-	// [openUsageLedger] on a stalled mount never drains its queue again, so an
-	// unbounded flush never returns — and the caller that pays for it is
-	// [v3Process.closeAll], which means a hung ~/.codeaf stopped the terminal
-	// from coming back. The turn path was carefully kept off the disk and the
-	// exit path was handed to it instead. The bargain at the top of this file
-	// settles it: a spending record is worth less than the turn that earned it,
-	// and it is worth less than the exit as well. One deadline covers the whole
+	dones := enqueueUsageFlush()
+	// IT WAITS UNDER A CEILING, because the one thing it waits on is the thing
+	// this whole file exists to survive. A writer parked inside [openUsageLedger]
+	// on a stalled mount never drains its queue again, so an unbounded flush
+	// never returns, and the caller that pays for it is [v3Process.closeAll],
+	// which means a hung ~/.codeaf stopped the terminal from coming back. The
+	// turn path was kept off the disk and the exit path was handed to it instead.
+	// The bargain settles it: a spending record is worth less than the turn that
+	// earned it, and less than the exit as well. One deadline covers the whole
 	// call rather than each writer, so N stalled ledgers cost what one does.
 	deadline := time.NewTimer(usageFlushLimit)
 	defer deadline.Stop()
-	for _, writer := range writers {
-		done := make(chan struct{})
-		// The ENQUEUE is guarded too, and not only the wait: a full queue in
-		// front of a stalled writer blocks a plain send exactly as long.
-		select {
-		case writer.queue <- usageWrite{done: done}:
-		case <-deadline.C:
-			return
-		}
+	for _, done := range dones {
 		select {
 		case <-done:
 		case <-deadline.C:
@@ -692,22 +678,64 @@ func FlushUsage() {
 	}
 }
 
-// CloseUsage stops every writer the process registry started and waits until
-// each run loop has returned. Closing and detaching happen under the same lock
-// as row enqueue, so no sender can retain a queue after its owner closes it.
-func CloseUsage() {
+// enqueueUsageFlush hands a flush marker to every live writer UNDER the writers
+// lock, the same door [RecordUsage] enqueues through, so a marker is never sent
+// on a queue [CloseUsage] closed under that lock (a send on a closed channel
+// would panic the process). The send is non-blocking for [RecordUsage]'s
+// reason: a full queue is a writer stalled on a disk that is not answering, and
+// a flush will not wait on a marker that cannot land, no more than on a row that
+// cannot. Only the markers that were accepted are waited on.
+func enqueueUsageFlush() []chan struct{} {
 	usageWritersMu.Lock()
+	defer usageWritersMu.Unlock()
+	dones := make([]chan struct{}, 0, len(usageWriters))
+	for _, writer := range usageWriters {
+		done := make(chan struct{})
+		select {
+		case writer.queue <- usageWrite{done: done}:
+			dones = append(dones, done)
+		default:
+		}
+	}
+	return dones
+}
+
+// CloseUsage stops every writer the process registry started and waits, under
+// one ceiling, until each run loop has returned. Closing and detaching happen
+// under the same lock as row enqueue, so no sender can retain a queue after its
+// owner closes it.
+func CloseUsage() {
+	writers := detachUsageWriters()
+	// ONE DEADLINE COVERS THE WHOLE CALL, for [FlushUsage]'s reason: a writer
+	// parked inside [openUsageLedger] on a stalled mount never returns from its
+	// run loop, so an unbounded wait here would be a hung ~/.codeaf holding the
+	// exit open. The bargain holds, a writer still stuck when the ceiling fires
+	// is left behind at that cost, the same one [FlushUsage] already accepts.
+	deadline := time.NewTimer(usageFlushLimit)
+	defer deadline.Stop()
+	for _, writer := range writers {
+		select {
+		case <-writer.stopped:
+		case <-deadline.C:
+			return
+		}
+	}
+}
+
+// detachUsageWriters removes every writer from the registry and closes its
+// queue UNDER the writers lock, so the run loop ends by ranging to completion
+// and a concurrent enqueue ([RecordUsage] or [enqueueUsageFlush]) can never
+// send on the closed queue.
+func detachUsageWriters() []*usageWriter {
+	usageWritersMu.Lock()
+	defer usageWritersMu.Unlock()
 	writers := make([]*usageWriter, 0, len(usageWriters))
 	for path, writer := range usageWriters {
 		writers = append(writers, writer)
 		delete(usageWriters, path)
 		close(writer.queue)
 	}
-	usageWritersMu.Unlock()
-
-	for _, writer := range writers {
-		<-writer.stopped
-	}
+	return writers
 }
 
 // RecordUsage queues one line. Every failure is silence, for
@@ -742,13 +770,13 @@ func RecordUsage(path string, line UsageLine) {
 	// a turn made to wait behind it would be this file's fourth rule broken to
 	// save a record of what the turn cost.
 	usageWritersMu.Lock()
+	defer usageWritersMu.Unlock()
 	writer := usageWriterForLocked(path)
 	select {
 	case writer.queue <- usageWrite{line: append(payload, '\n')}:
 	default:
 		dropUsageRow()
 	}
-	usageWritersMu.Unlock()
 }
 
 // ReadUsage reads the ledger, OLDEST FIRST, keeping only lines at or after
