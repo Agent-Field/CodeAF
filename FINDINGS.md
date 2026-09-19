@@ -76,3 +76,7 @@ The next independent pre-PR check is `go build ./...`. It verifies all packages 
 ## Session-suite result and formatting step
 
 The wrapped whole session suite ran once and failed across many unrelated task-system tests because this checkout's current task belt and audit behavior differ from those fixtures. The target forced regression had already passed 10 times, and the suite output did not report it failing. This broad pre-existing failure is recorded without retry. The next independent check is repository Go formatting.
+
+## Formatting result and change-entry step
+
+`gofmt -l ./cmd ./internal` printed nothing. The next independent check validates the unreleased change-entry corpus.
