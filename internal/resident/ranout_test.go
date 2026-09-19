@@ -323,3 +323,37 @@ func TestTheEndingIsTheGovernorsOwnSentence(t *testing.T) {
 		t.Fatalf("ending = %q", ending)
 	}
 }
+
+// One Tick must not reclaim a leaf that its own dispatch pass just released.
+// Holding the pass until the worker lands forces the ordering seen on the busy
+// gate without adding machine load or relying on scheduler timing.
+func TestDispatchPassDoesNotReclaimItsOwnRanOutLeaf(t *testing.T) {
+	graph := ranOutJob(t)
+	if err := graph.RecordTranscript("task-1", "worker/model", []store.TranscriptEntry{
+		{Turn: 1, Kind: store.TranscriptAssistant, Text: "editing runner.go"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	runner := NewRunner(graph, func(context.Context, store.Node) (ExecResult, error) {
+		calls++
+		return ExecResult{Stop: executor.StopBudget}, nil
+	}, "budget-runner", 1)
+	runner.afterDispatch = runner.Wait
+
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner.Wait()
+
+	node, ok, err := graph.Node("task-1")
+	if err != nil || !ok {
+		t.Fatalf("node: ok=%v err=%v", ok, err)
+	}
+	if calls != 1 {
+		t.Fatalf("one dispatch pass executed the leaf %d times, want 1", calls)
+	}
+	if node.Status != store.Pending {
+		t.Fatalf("a leaf that ran out was settled %q, want it back on the queue", node.Status)
+	}
+}
