@@ -114,6 +114,12 @@ type homeFoldersReading struct {
 	// marked is the optional collab selection copied from [app.collabView]
 	// after the beat. View reads this and never Collab.Marked.
 	marked []CollabMark
+	// works is the software-derived launch-state memo copied from
+	// [app.execView] after the beat. View reads this and never Exec.
+	// execDown is a present seam whose last read failed with no prior works:
+	// the panel names the absence rather than drawing an empty roll-up.
+	works    []ExecWork
+	execDown bool
 }
 
 // The verb strip on a folders row, quoted in the contract and the manual as
@@ -252,7 +258,7 @@ func (a *app) folderVerbs(line homeLine) []verb {
 			verb{key: 'x', word: folderRemoveWord, do: func() tea.Cmd { return a.removeFolderPlacement(line) }},
 		)
 	}
-	return append(verbs, a.folderCollabVerbs(line)...)
+	return append(append(verbs, a.folderCollabVerbs(line)...), a.folderExecVerbs(line)...)
 }
 
 func (a *app) folderIDOf(line homeLine) string {
@@ -572,6 +578,7 @@ func (a *app) refreshFolderMemo() {
 	prev, had := a.home.focusedLine()
 	a.readHomeFolders()
 	a.readCollab()
+	a.readExec()
 	a.home.build()
 	a.explainLostFolderRow(prev, had)
 	a.touch()
@@ -641,6 +648,7 @@ func (a *app) showFoldersPanel() tea.Cmd {
 	}
 	a.readHomeFolders()
 	a.readCollab()
+	a.readExec()
 	a.home.build()
 	a.focusFoldersPanel()
 	a.touch()

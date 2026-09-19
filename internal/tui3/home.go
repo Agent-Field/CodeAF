@@ -1341,6 +1341,9 @@ func (a *app) furnishHome() {
 	// AND COORDINATION, on the same beat: marks, activity and participant
 	// labels. View never calls the collab seam (collab.go's [app.readCollab]).
 	a.readCollab()
+	// AND LAUNCH STATE, on the same beat: software-derived bindings for the
+	// open discussion and folder members. View never calls Exec (exec.go).
+	a.readExec()
 	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
 	// has been written and re-reads the file only when something has
 	// (homeband_deliverables.go). It is taken here, with the other readings,
