@@ -26,6 +26,20 @@ const (
 	OutcomeLimit      Outcome = "a limit you set stopped it"
 )
 
+// Limit is which bound a person set ended a run that reached it. The outcome
+// word above is one sentence for both limits — the exit ladder keeps its one
+// rung — so this fact is what says which limit fired, and it is carried beside
+// the word rather than read out of it: set where the run decides the limit was
+// reached ([Supervisor.limitHit]), read where the ending is drawn.
+type Limit string
+
+const (
+	// LimitTime is the elapsed limit.
+	LimitTime Limit = "time"
+	// LimitCost is the spend ceiling.
+	LimitCost Limit = "cost"
+)
+
 // passInterval is how long the loop idles between passes when no worker has
 // returned. It exists for work the workers did through the store: a worker
 // that added tasks with its own store writes makes them launchable without
@@ -126,11 +140,16 @@ type Supervisor struct {
 	counted   map[string]float64
 	liveMoved chan struct{}
 
-	nodes          int
-	steps          int
-	rootResult     string
-	rootFailed     bool
-	limitHit       bool
+	nodes      int
+	steps      int
+	rootResult string
+	rootFailed bool
+	// limitHit is which limit a person set ended this run, and empty while none
+	// has. It is set the moment the run decides a limit was reached — the
+	// elapsed signal in Run, the spend counters in countLiveSpend and
+	// settleSpend — so the ending can name the limit that caused it rather
+	// than the one sentence both share.
+	limitHit       Limit
 	dispatchedRoot bool
 	cancels        map[string]context.CancelFunc
 	// wakes counts how many times each composite task's worker has been launched
@@ -221,7 +240,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.steps = 0
 	s.rootResult = ""
 	s.rootFailed = false
-	s.limitHit = false
+	s.limitHit = ""
 	s.dispatchedRoot = false
 	s.inFlight = 0
 	s.cancels = make(map[string]context.CancelFunc)
@@ -258,9 +277,11 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 		case <-timer.C:
 			timer.Reset(passInterval)
 		case <-elapsed:
-			// TIME AND COST SHARE ONE ENDING. Mark the same limit state the
-			// spend counter marks, so the next pass launches nothing and answers
-			// the existing OutcomeLimit.
+			// TIME AND COST SHARE ONE OUTCOME WORD, AND THE FACT UNDER IT SAYS
+			// WHICH. The spend counter marks the cost limit where it decides it;
+			// this marks the time one here, so the ending names the limit that
+			// fired and the next pass launches nothing and answers the existing
+			// OutcomeLimit.
 			//
 			// TIME ENDS THE WORK IN FLIGHT, AS DOLLARS DO ([countLiveSpend]): the
 			// time is gone whatever a worker was in the middle of. So every worker
@@ -269,7 +290,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			// endings: a return that was dropped would leave its task claimed and
 			// reading as running on a run that is over, and what the worker spent
 			// before it was cut would be missing from the run's account.
-			s.limitHit = true
+			s.limitHit = LimitTime
 			elapsed = nil
 			for _, cancel := range s.cancels {
 				cancel()
@@ -342,12 +363,13 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		}
 	}
 
-	if s.inFlight == 0 && (s.rootFailed || s.limitHit) {
+	if s.inFlight == 0 && (s.rootFailed || s.limitHit != "") {
 		// Nothing of ours is running and the run cannot complete itself: the
 		// root's own worker failed, or the run has reached a limit a person set,
 		// in dollars or in time.
-		// The word says which; the store keeps whatever the run reached.
-		if s.limitHit {
+		// The word is one for both limits; limitHit is the fact that says which,
+		// and the store keeps whatever the run reached.
+		if s.limitHit != "" {
 			return OutcomeLimit
 		}
 		return OutcomeIncomplete
@@ -358,7 +380,7 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		s.dispatchedRoot = true
 		s.launch(ctx, *root, "")
 	}
-	if !s.limitHit {
+	if s.limitHit == "" {
 		for _, ready := range s.store.ReadySet().Runnable {
 			if s.inFlight >= s.slots {
 				break
@@ -515,8 +537,8 @@ func (s *Supervisor) countLiveSpend() {
 	}
 	s.liveMu.Unlock()
 	s.publishSpend()
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && !s.limitHit {
-		s.limitHit = true
+	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
+		s.limitHit = LimitCost
 		for _, cancel := range s.cancels {
 			cancel()
 		}
@@ -535,7 +557,7 @@ func (s *Supervisor) settleSpend(ret workerReturn) {
 	}
 	s.forgetLive(ret.task.ID)
 	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
-		s.limitHit = true
+		s.limitHit = LimitCost
 	}
 	s.publishSpend()
 }
@@ -903,7 +925,7 @@ func (s *Supervisor) treeTerminal() bool {
 // WAKES COUNT AS WORKERS: each one comes from the same factory, takes a slot and
 // a node, and its spend is counted like any other seat's.
 func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
-	if s.limitHit {
+	if s.limitHit != "" {
 		return
 	}
 	// THE PLAN IS READ ONCE for the whole sweep: every helper below answers out
@@ -970,7 +992,7 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 // through the store's own write and a launch this pass cannot make — no slot,
 // another writer took it — is made on a later one.
 func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
-	if s.limitHit {
+	if s.limitHit != "" {
 		return
 	}
 	tasks := s.store.Tasks()
@@ -1458,7 +1480,11 @@ type Summary struct {
 	Outcome Outcome
 	// Result is the root's own result: what the run's last worker reported
 	// when the tree finished whole, and empty whenever it did not.
-	Result  string
+	Result string
+	// Limit is which bound a person set ended the run, and empty on every
+	// run that did not end on one. The outcome word is the same sentence for
+	// both limits; this is what tells them apart.
+	Limit   Limit
 	Nodes   int
 	Steps   int
 	USD     float64
@@ -1506,6 +1532,7 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	return outcome, Summary{
 		Outcome: outcome,
 		Result:  result,
+		Limit:   supervisor.limitHit,
 		Nodes:   supervisor.nodes,
 		Steps:   supervisor.steps,
 		USD:     supervisor.spent,

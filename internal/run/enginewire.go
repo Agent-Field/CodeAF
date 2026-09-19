@@ -49,10 +49,28 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 	return session.RunSummary{
 		Outcome: string(outcome),
 		Result:  summary.Result,
-		Nodes:   summary.Nodes,
-		Steps:   summary.Steps,
-		USD:     summary.USD,
+		// WHICH LIMIT FIRED IS A FACT AND NOT A WORD IN THE OUTCOME SENTENCE:
+		// the run's own typed answer crosses the seam here, mapped one for one,
+		// so the session draws the ending out of the fact and never parses the
+		// sentence back apart.
+		Limit: runLimitOf(summary.Limit),
+		Nodes: summary.Nodes,
+		Steps: summary.Steps,
+		USD:   summary.USD,
 	}
+}
+
+// runLimitOf is the seam's one mapping of the limit fact: the run's words and
+// the session's are spelled apart because neither package may reach the other,
+// and a limit this build does not know reads as none rather than as a guess.
+func runLimitOf(limit Limit) session.RunLimit {
+	switch limit {
+	case LimitTime:
+		return session.RunLimitTime
+	case LimitCost:
+		return session.RunLimitCost
+	}
+	return ""
 }
 
 func (engine) Land(ctx context.Context, store *plandb.Store, workspace, rootID string) (session.RunLanding, error) {
