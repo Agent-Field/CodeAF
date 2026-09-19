@@ -44,6 +44,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			Work: spec.WorkModel,
 			Plan: spec.PlanModel,
 		}, spec.CompleterFor),
+		OnSpend: spec.OnSpend,
 	})
 	return session.RunSummary{
 		Outcome: string(outcome),
