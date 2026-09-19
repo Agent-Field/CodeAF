@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// Wave 1 J01–J08 and Wave 2 J09–J18 actions, named as CONTRACTS.md froze
-// them. The live tmux journeys are t-w1-live and t-w2-live; this gate is that
-// the chat corpus already quotes those names so a question reaches a true
-// page instead of a denial that the UI does not exist.
+// Wave 1–3 J01–J26 actions, named as CONTRACTS.md froze them. The live tmux
+// journeys are t-w1-live, t-w2-live and t-w3-live; this gate is that the chat
+// corpus already quotes those names so a question reaches a true page instead
+// of a denial that the UI does not exist.
 func TestWave1FolderJourneyNamesStandInTheChatManual(t *testing.T) {
 	text := strings.ToLower(mustPage(t, "collections"))
 	for _, want := range []string{
@@ -33,6 +33,24 @@ func TestWave1FolderJourneyNamesStandInTheChatManual(t *testing.T) {
 		"organizer",
 		"memory off",
 		"checked",
+		// Wave 3: ordinary-chat coordination (J19–J26). Frozen person-facing
+		// names from CONTRACTS.md and internal/tui3/collab.go.
+		"ordinary chats coordinate",
+		"coordinate these",
+		"mark this chat",
+		"unmark this chat",
+		"request",
+		"reply",
+		"sent",
+		"source",
+		"selected",
+		"manage this folder",
+		"pause coordination",
+		"always ask after two turns",
+		"coordinate",
+		"deliver",
+		"invite",
+		"discussion",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("collections.md is missing the frozen journey name %q", want)
