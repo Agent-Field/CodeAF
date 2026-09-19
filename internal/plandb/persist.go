@@ -105,7 +105,8 @@ var schemaStatements = []string{
 		owner                 TEXT    NOT NULL DEFAULT '',
 		seen_at               TEXT    NOT NULL DEFAULT '',
 		waiting               INTEGER NOT NULL DEFAULT 0,
-		waited_at             TEXT    NOT NULL DEFAULT ''
+		waited_at             TEXT    NOT NULL DEFAULT '',
+		verdict_basis         TEXT    NOT NULL DEFAULT 'null'
 	)`,
 	`CREATE TABLE IF NOT EXISTS deps (
 		downstream TEXT    NOT NULL,
@@ -156,6 +157,7 @@ var schemaStatements = []string{
 		seen_at               TEXT    NOT NULL DEFAULT '',
 		waiting               INTEGER NOT NULL DEFAULT 0,
 		waited_at             TEXT    NOT NULL DEFAULT '',
+		verdict_basis         TEXT    NOT NULL DEFAULT 'null',
 		archived_at           TEXT    NOT NULL
 	)`,
 	`CREATE TABLE IF NOT EXISTS notes (
@@ -350,6 +352,9 @@ func migrateColumns(tx *sql.Tx) error {
 		if err := ensureColumn(tx, table, "waited_at", "TEXT", "''"); err != nil {
 			return err
 		}
+		if err := ensureColumn(tx, table, "verdict_basis", "TEXT", "'null'"); err != nil {
+			return err
+		}
 	}
 	return ensureColumn(tx, "notes", "from", "TEXT", "'worker'")
 }
@@ -459,7 +464,7 @@ const taskColumns = `id, title, description, question, kind, parent_id, priority
 	parallel, isolation, role, agent, acceptance, checks, capabilities, resources, context_inputs,
 	deliverables, evidence_requirements, status, composite, claimed_by, result, err,
 	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused, owner, seen_at,
-	waiting, waited_at`
+	waiting, waited_at, verdict_basis`
 
 // rowQuerier is the read half both the database handle and a transaction
 // carry, so the archive reader can share the task scan with the loader
@@ -481,6 +486,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		effect, parallel, isolation                                  string
 		seenAt, waitedAt                                             string
 		waiting                                                      int
+		basis                                                        string
 	)
 	dest := []any{
 		&task.ID, &task.Title, &task.Description, &task.Question, &task.Kind, &task.ParentID,
@@ -488,7 +494,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		&checks, &capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 		&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
 		&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused,
-		&task.Owner, &seenAt, &waiting, &waitedAt,
+		&task.Owner, &seenAt, &waiting, &waitedAt, &basis,
 	}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
@@ -521,6 +527,9 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		return nil, err
 	}
 	if err := decodeJSON(evidence, &task.Evidence); err != nil {
+		return nil, err
+	}
+	if err := decodeJSON(basis, &task.VerdictBasis); err != nil {
 		return nil, err
 	}
 	var err error
@@ -743,7 +752,8 @@ func saveTasks(tx *sql.Tx, value state) error {
 		id, ord, title, description, question, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at,
+		verdict_basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -782,13 +792,17 @@ func saveTasks(tx *sql.Tx, value state) error {
 		if err != nil {
 			return err
 		}
+		basis, err := encodeJSON(task.VerdictBasis)
+		if err != nil {
+			return err
+		}
 		if _, err := statement.Exec(task.ID, ord, task.Title, task.Description, task.Question, task.Kind,
 			task.ParentID, task.Priority, string(task.Effect), task.Parallel, task.Isolation,
 			task.Role, task.Agent, task.Acceptance, checks, columns, resources, contextInputs, deliverables,
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat, boolInt(task.Paused),
-			task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt)); err != nil {
+			task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), basis); err != nil {
 			return err
 		}
 	}

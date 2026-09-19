@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -56,6 +57,12 @@ type Event struct {
 	Propensity float64 `json:"propensity,omitempty"`
 
 	Verdict provider.Reading `json:"verdict"`
+	// VerdictBasis is HOW the verdict was earned, when the row is a task node:
+	// whether the checker read the work or ran the declared proof, and the
+	// recorded exit of every run. It is the same field the project record
+	// persists, so the fit record and the store can never disagree about what
+	// a verdict rests on (internal/plandb's [VerdictBasis]).
+	VerdictBasis *plandb.VerdictBasis `json:"verdictBasis,omitempty"`
 	// Final marks the row that carries the settled verdict. An attempt is
 	// written when it returns, before the call site has had a chance to check
 	// the answer; when the check lands it is appended as a second, short row

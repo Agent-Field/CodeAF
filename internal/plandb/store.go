@@ -3,16 +3,20 @@ package plandb
 import (
 	cryptorand "crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 var idPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
@@ -543,6 +547,19 @@ func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
 // and a worker that is not the root's own is still refused.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		text := strings.TrimSpace(result)
+		// A REVIEW CONCLUSION CARRIES ITS BASIS WITH IT, written by the same
+		// gate that judged it: a holds conclusion is refused unless every
+		// declared check has a recorded zero-exit audited run ([checkVerdictBasis]),
+		// and whatever the verdict is, its basis is recorded on the node so a
+		// later reader sees how it was earned without reopening the trajectory.
+		if task.Role == RoleCheck && isReviewConclusion(text) {
+			basis, earned := s.checkVerdictBasis(task)
+			if strings.HasPrefix(text, "holds:") && !earned {
+				return errors.New("holds conclusion requires every declared Checks: command to have a recorded zero-exit audited run")
+			}
+			task.VerdictBasis = basis
+		}
 		if len(result) > 64<<10 {
 			return errors.New("completion result exceeds 65536 bytes")
 		}
@@ -587,6 +604,174 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 		task.Evidence = cleanStrings(evidence)
 		task.UpdatedAt, task.CompletedAt = now, now
 		promote(next, now)
+		return nil
+	})
+}
+
+func isReviewConclusion(result string) bool {
+	result = strings.TrimSpace(result)
+	return strings.HasPrefix(result, "holds:") || strings.HasPrefix(result, "does not hold:")
+}
+
+// checkVerdictBasis reads HOW a review verdict was earned off the check task's
+// own record, and whether a holds conclusion is EARNED by it. With nothing
+// declared the verdict is a reading one and reading can always hold
+// ([TestReadingCanHoldAndDoesNotHoldIsUngated]); with a declaration, every
+// declared command must have a recorded zero-exit run AND must pass the same
+// read-only audit law the checker's door applies, because a command merely
+// present in some earlier record proves none of those facts. The recorded
+// exits are exactly what the persisted basis carries, runs included, so the
+// proof is on the node rather than in a file a reader would have to reopen.
+func (s *Store) checkVerdictBasis(task *Task) (VerdictBasis, bool) {
+	if len(task.Checks) == 0 {
+		return VerdictBasis{Kind: "reading"}, true
+	}
+	recorded, newBuild, hasRecord := s.recordedRuns(task)
+	if !newBuild {
+		if !hasRecord {
+			// A DECLARATION WITH NOTHING OBSERVED AT ALL cannot hold. The
+			// trajectory is missing or empty, so no declared command was seen to
+			// run: the purest unproven declaration, distinct from an old record,
+			// which has lines and only lacks the exit marker. It is named as
+			// unobserved and refused.
+			return VerdictBasis{Kind: "reading", Unobserved: append([]string(nil), task.Checks...)}, false
+		}
+		// An old record, from before command exits were recorded: lines but no
+		// marker. There is no run to judge and a reader cannot tell a refused or
+		// unrun check from a passing one, so the verdict is a reading one, which
+		// can hold, and it names the declared checks it never observed so no
+		// reader mistakes it for a holds earned by running them.
+		return VerdictBasis{Kind: "reading", Unobserved: append([]string(nil), task.Checks...)}, true
+	}
+	seen := make(map[string]bool, len(task.Checks))
+	runs := make([]VerdictRun, 0, len(task.Checks))
+	earned := true
+	for _, raw := range task.Checks {
+		command := strings.TrimSpace(raw)
+		if command == "" || seen[command] {
+			continue
+		}
+		seen[command] = true
+		if !auditableDeclaredCheck(command) {
+			earned = false
+		}
+		exit, ran := recorded[command]
+		if !ran {
+			earned = false
+			continue
+		}
+		runs = append(runs, VerdictRun{Command: command, ExitCode: exit})
+		if exit != 0 {
+			earned = false
+		}
+	}
+	return VerdictBasis{Kind: "run", Runs: runs}, earned
+}
+
+// recordedRuns is the checker's own record as a map from command to exit code:
+// every `step` the trajectory holds, with the cd wrapper the belt writes around
+// a worker command stripped the same way the session's own reading stripped it.
+// The LAST exit for a command wins, because a command re-run is a later fact
+// about the same check.
+func (s *Store) recordedRuns(task *Task) (map[string]int, bool, bool) {
+	out := map[string]int{}
+	data, err := os.ReadFile(filepath.Join(TaskDir(filepath.Dir(s.path), task.ID), "trajectory.jsonl"))
+	if err != nil {
+		// No trajectory file at all: nothing was observed. This is not an old
+		// record, which has lines and only lacks the exit marker, but the absence
+		// of any record. A new build cannot reach here, because a worker stamps
+		// its opening line before any step and fails the run if that write fails,
+		// so an empty record under a declaration is an unproven declaration.
+		return out, false, false
+	}
+	// newBuild is true when this record was written by a build that records
+	// command exits: a step carried an exit, or any line was stamped
+	// exits_recorded. internal/run/trajectory.go stamps that on the opening line
+	// (before any step) and on the ending line, so a record cut off mid-run is
+	// still known to be new; keep the field name in step with that writer. A
+	// record with no exit and no stamp is genuinely old, and the reader must not
+	// treat its silence as a passing run.
+	newBuild := false
+	hasRecord := false
+	for _, line := range strings.Split(string(data), "\n") {
+		var step struct {
+			Kind          string `json:"kind"`
+			Command       string `json:"command"`
+			ExitCode      *int   `json:"exit_code"`
+			ExitsRecorded bool   `json:"exits_recorded"`
+		}
+		if json.Unmarshal([]byte(line), &step) != nil {
+			continue
+		}
+		// Any parsed line is an observation, so the record exists; this is not the
+		// empty-record case even when no line carries an exit or a marker.
+		hasRecord = true
+		// Any line a build stamped, opening or ending, marks the record new even
+		// when no step ran or the run was cut off before its ending.
+		if step.ExitsRecorded {
+			newBuild = true
+		}
+		if step.Kind != "step" {
+			continue
+		}
+		// AN ABSENT EXIT IS UNKNOWN, NOT ZERO. A step the recorder could not stamp
+		// decodes to a nil pointer here and is not a recorded run at all.
+		if step.ExitCode == nil {
+			continue
+		}
+		newBuild = true
+		command := strings.TrimSpace(step.Command)
+		// The belt wraps a worker command in a cd to the ABSOLUTE root of the
+		// task's own copy. Only that wrapper is stripped, so a check the checker
+		// typed with its own relative cd is a different command and counts as one,
+		// which is the ruling that a check runs from the root of the task's copy.
+		if prefix, inner, ok := strings.Cut(command, " && "); ok {
+			fields := strings.Fields(prefix)
+			if len(fields) == 2 && fields[0] == "cd" && strings.HasPrefix(fields[1], "/") {
+				command = strings.TrimSpace(inner)
+			}
+		}
+		out[command] = *step.ExitCode
+	}
+	return out, newBuild, hasRecord
+}
+
+// auditableDeclaredCheck is the store's half of the check door's law, asked of
+// a persisted declared check before a holds verdict may rest on it. It is the
+// SAME three questions the proposal door asks ([declaredCheckList] in
+// internal/session): one command in shape, a first word with something in it
+// besides wildcards, nothing that starts with an option, and no shell
+// composition, that a blanket-allow gate would still let run. A second
+// reading here would be a second door, which is why every half is asked of the
+// same functions the session asks: [approval.Vouchable], the blanket-allow
+// policy whose critical table is the build's floor, and the one-command
+// reader [approval.FirstCompositionOutsideQuotes] the door reads with too.
+func auditableDeclaredCheck(command string) bool {
+	if !approval.Vouchable(command) || auditAllowAll.CheckBash(command).Action != approval.ActionAllow {
+		return false
+	}
+	fields := strings.Fields(command)
+	if len(fields) == 0 || strings.HasPrefix(fields[0], "-") || strings.Trim(fields[0], "*?[]") == "" {
+		return false
+	}
+	if _, composed := approval.FirstCompositionOutsideQuotes(command); composed {
+		return false
+	}
+	return true
+}
+
+// auditAllowAll is the read-only checker's own policy ([auditAllowed] in
+// internal/session), restated here because the store and the door must agree
+// about what a critical command is or the gate and the door drift apart.
+var auditAllowAll = approval.Policy{Default: approval.ActionAllow}
+
+// SetVerdictBasis records HOW a task's verdict was earned on the task itself.
+// Done writes it by the same gate that judged the verdict; this store method
+// is the seam a reader with a basis it already holds writes through, and the
+// basis persists with the row.
+func (s *Store) SetVerdictBasis(id string, basis VerdictBasis) (*Task, error) {
+	return s.changeTask(id, func(_ *state, task *Task, _ time.Time) error {
+		task.VerdictBasis = basis
 		return nil
 	})
 }
