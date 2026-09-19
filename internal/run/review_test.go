@@ -262,6 +262,67 @@ func tasksTitled(store *plandb.Store, title string) []*plandb.Task {
 	return out
 }
 
+// TestSupervisorSeatsTheCheckAfterAStoreDoneWorkerReturns forces the narrow
+// ordering driven by the do check-model test: the leaf commits Done, but its
+// worker still occupies the run's only slot. No check may start inside that
+// interval; once the return is released, absorb must seat and launch it.
+func TestSupervisorSeatsTheCheckAfterAStoreDoneWorkerReturns(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = splitRoot(t, store,
+		plandb.TaskSpec{ID: "l1", Title: "the leaf", Description: "acceptance: the handler returns 200"})
+
+	doneWritten := make(chan struct{})
+	releaseReturn := make(chan struct{})
+	checkStarted := make(chan struct{}, 1)
+	seat.actions["l1"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		if _, err := store.Done(task.ID, task.ID, "the leaf wrote its own ending", nil, nil); err != nil {
+			return run.Report{}, err
+		}
+		close(doneWritten)
+		select {
+		case <-releaseReturn:
+			return run.Report{Result: "the leaf wrote its own ending", Steps: 1}, nil
+		case <-ctx.Done():
+			return run.Report{}, ctx.Err()
+		}
+	}
+	factory := func(task plandb.Task) run.Worker {
+		worker := seat.workerFor(task)
+		if task.Role != plandb.RoleCheck {
+			return worker
+		}
+		return funcWorker(func(ctx context.Context, task plandb.Task) (run.Report, error) {
+			checkStarted <- struct{}{}
+			return worker.Run(ctx, task)
+		})
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 1, run.Limits{ReviewRound: true}, factory)
+	outcome := make(chan run.Outcome, 1)
+	go func() { outcome <- supervisor.Run(ctx) }()
+
+	select {
+	case <-doneWritten:
+	case <-ctx.Done():
+		t.Fatal("leaf never wrote its own Done")
+	}
+	select {
+	case <-checkStarted:
+		t.Fatal("check started before the store-Done worker returned and freed the sole slot")
+	default:
+	}
+	close(releaseReturn)
+	select {
+	case <-checkStarted:
+	case <-ctx.Done():
+		t.Fatal("check did not start after the store-Done worker returned")
+	}
+	if got := <-outcome; got != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", got, run.OutcomeDone)
+	}
+}
+
 // TestSupervisorChecksALeafThatCompletedItselfInTheStore proves the round fires
 // on the ending real workers write. A leaf whose own `plandb done` already
 // landed in the store is caught by the supervisor's store-ended road, and the
