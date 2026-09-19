@@ -1429,7 +1429,7 @@ func (a *Agent) refreshSystemLocked() {
 		a.recordRead = true
 		a.recordText = DecisionsSection(a.Decisions())
 	}
-	head := a.system + a.placesText + a.standingText
+	head := a.system + a.placesText + a.standingText + a.guidanceText
 	if head != a.systemHead {
 		a.systemHead = head
 		a.recordShown = a.recordText

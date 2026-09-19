@@ -372,7 +372,7 @@ the opaque `ref` from a result, on its own, to open that
 message and up to two messages on either side. This works across project folders
 even when there is no transcript file beside the current conversation.
 
-## Conversation search limits — words, coverage, and memory off
+## Conversation search limits — hybrid search, coverage, and memory off
 
 - Search returns eight matches by default, twenty at most. Each matching passage
   and nearby excerpt is limited to 400 bytes. Opening a message by its source reference returns
@@ -382,21 +382,23 @@ even when there is no transcript file beside the current conversation.
   Message IDs belong to the
   global journal; a gap does not mean a message is missing from this conversation.
   Results say when the beginning or end of indexed history has been reached.
-- This is still word search in the current store. Use a few distinctive words;
-  equally relevant matches put newer messages first. Short words and Unicode
-  words are supported (at most 32 query words). Names and IDs label results;
-  titles are not searched. If a task search misses, codeaf is pointed at
-  conversation search when that tool is available. When embeddings are bound,
-  discovery may add those candidates beside the words; when they are not, that
-  extra path is labelled `degraded` / `discovery delayed` and does not say the
-  workspace was checked.
-- Only messages already indexed in this store are searched. Memory-off history,
-  failed or pending index writes, other stores and spilled file contents are not
-  included. A miss does not prove the subject was never discussed.
-- **It is off when memory is off.** The conversations are kept in the same place
-  the memories are, so the `memory` row in `/settings` turned off means nothing
-  is written and there is nothing to search. Task workers inherit read-only search
-  when their parent has it; this does not enable memory writes or worker-message indexing.
+- Search is hybrid: lexical (BM25) plus embedding or labelled expansion
+  candidates beside those hits. Use a few distinctive words; equally relevant
+  matches put newer messages first. Short words and Unicode words are supported
+  (at most 32 query words). Names and IDs label results; titles are not searched.
+  If a task search misses, codeaf is pointed at conversation search when that
+  tool is available. When embeddings are bound, discovery may add those
+  candidates beside the words; when they are not, that extra path is labelled
+  `degraded` / `discovery delayed` and does not say the workspace was checked.
+- Only messages already indexed in this store are searched. Failed or pending
+  index writes, other stores and spilled file contents are not included. A miss
+  does not prove the subject was never discussed.
+- **Search stays on when memory is off.** Turning the `memory` row off in
+  `/settings` stops `remember` and the reflex that writes durable facts; indexed
+  conversation search and the search place still work. Search is absent only
+  when there is no history store at all. Task workers inherit read-only search
+  when their parent has it; this does not enable memory writes or worker-message
+  indexing.
 - **It is not the same as what is remembered.** The remembered lines are a few
   durable facts, extracted and rewritten; this is the conversation in its own
   words. Asked what was decided, codeaf searches and quotes rather than

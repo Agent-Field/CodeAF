@@ -117,10 +117,16 @@ func (a *Agent) foldersTool(ctx context.Context, args json.RawMessage) (string, 
 	case "list":
 		return a.foldersList(ctx)
 	case "file":
+		if paused, ok := a.foldersPaused(ctx); ok {
+			return paused, true, nil
+		}
 		return a.foldersFile(ctx, id, child)
 	case "unfile":
 		if id == "" {
 			return "Invalid arguments: unfile needs the folder id.", true, nil
+		}
+		if paused, ok := a.foldersPaused(ctx); ok {
+			return paused, true, nil
 		}
 		return a.foldersMutate(ctx, func(chat string) error {
 			return a.config.Folders.Unfile(ctx, id, chat, a.foldersOrganizer())
@@ -128,6 +134,9 @@ func (a *Agent) foldersTool(ctx context.Context, args json.RawMessage) (string, 
 	case "move":
 		if from == "" || id == "" {
 			return "Invalid arguments: move needs from (source folder id) and id (destination folder id).", true, nil
+		}
+		if paused, ok := a.foldersPaused(ctx); ok {
+			return paused, true, nil
 		}
 		return a.foldersMutate(ctx, func(chat string) error {
 			return a.config.Folders.Move(ctx, from, id, chat, a.foldersOrganizer())
@@ -171,6 +180,13 @@ func (a *Agent) foldersList(ctx context.Context) (string, bool, error) {
 		b.WriteString(folder.Name)
 	}
 	return b.String(), false, nil
+}
+
+func (a *Agent) foldersPaused(ctx context.Context) (string, bool) {
+	if err := a.pauseAffectedMutation(ctx); err != nil {
+		return err.Error(), true
+	}
+	return "", false
 }
 
 func (a *Agent) foldersMutate(ctx context.Context, op func(chat string) error) (string, bool, error) {

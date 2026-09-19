@@ -76,6 +76,9 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	if brief == "" {
 		return 0, "", "", errors.New("a task needs a brief")
 	}
+	if err := a.pauseAffectedMutation(ctx); err != nil {
+		return 0, "", "", err
+	}
 	// WHEN THE BASH BELT IS ASKED FOR this door takes its second road: a run on
 	// the run engine, answered AT ONCE with the id the store knows the work by,
 	// so the conversation stays usable while the run goes (task_run_belt.go).

@@ -472,13 +472,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	surfaceOpts := tui3.Options{
 		Agent: agent,
 		Build: buildinfo.String(),
-		// The memory place and the search place read the SAME database the
-		// conversation remembers into, through two seams that fail apart: memory
-		// turned off in the settings opens no store at all and both are then
-		// absent, which is what keeps "memory off makes no calls" a property of
-		// the wiring rather than a branch in every caller (v3Memory).
+		// the memory place and the search place read the SAME database, through
+		// two seams that fail apart: memory turned off leaves Config.Memory nil
+		// (no remember, no reflex) and still sets ConversationHistory so search
+		// stays (v3History / A18).
 		Memory:       v3MemorySeam(cfg.Memory),
-		Search:       v3SearchSeam(cfg.Memory),
+		Search:       v3SearchSeam(historyStore(cfg)),
 		SearchStatus: v3SearchStatus(cfg.SearchProvider, settings.ProfileDir),
 		// The machine-wide spending ledger the spend place adds up. It is the
 		// same file every window on this machine appends a model call to, named
@@ -936,12 +935,11 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// workspace, which is the seam's honest answer for a legacy flat
 		// session.
 		WorktreeRoot: found.Place.Trees(),
-		// The durable memory, on the store this time (internal/session's
-		// memory.go). It is opened once, here, because where a person's state
-		// lives is the door's decision — and it is opened AT ALL only when the
-		// memory row is on, which is what makes "memory off makes no calls" a
-		// fact about the wiring instead of a branch every caller has to keep.
-		Memory: proc.Memory,
+		// The durable store: History is graph.db for search even when memory is
+		// off; Memory is the same handle only when the memory row is on, which
+		// is what keeps remember and reflex absent rather than broken (A18).
+		Memory:              proc.Memory,
+		ConversationHistory: proc.History,
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
 		// than derived down there for the reason every other path is.
@@ -1824,12 +1822,27 @@ func v3Memory(profileDir string) *store.Store {
 	if !config.MemoryEnabledAt(profileDir) {
 		return nil
 	}
+	return v3History()
+}
+
+// v3History opens graph.db for indexed conversation search, even when learned
+// memory is off. A store that will not open costs search, not the conversation.
+func v3History() *store.Store {
 	brain, err := store.Open(defaultChatDB())
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "memory is off for this session: "+err.Error())
+		fmt.Fprintln(os.Stderr, "conversation history is off for this session: "+err.Error())
 		return nil
 	}
 	return brain
+}
+
+// historyStore is the search place's reader: ConversationHistory when the door
+// set one, otherwise Memory. Memory off still searches when History is set.
+func historyStore(cfg session.Config) *store.Store {
+	if brain, ok := cfg.ConversationHistory.(*store.Store); ok && brain != nil {
+		return brain
+	}
+	return cfg.Memory
 }
 
 // ── the two reading seams the places open onto ──────────────────────────────
@@ -1881,11 +1894,10 @@ func v3MemorySeam(brain *store.Store) tui3.MemoryStore {
 	return v3Brain{brain: brain}
 }
 
-// v3SearchSeam is the same store as the search place asks for it: one full-text
-// query across every thread. It is a SECOND seam beside the memory one because
-// the two capabilities fail apart — a build with memory off has neither today,
-// and the day one of them moves to a different store the other does not have to
-// move with it.
+// v3SearchSeam is the search place's store: one full-text query across every
+// thread. It is a SECOND seam beside the memory one because the two
+// capabilities fail apart — memory off leaves remember and reflex absent and
+// still leaves search when History is set (A18).
 func v3SearchSeam(brain *store.Store) tui3.SearchStore {
 	if brain == nil {
 		return nil

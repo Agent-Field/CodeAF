@@ -35,9 +35,9 @@ import (
 // at what was started and watch beside that to be TOLD instead of looking
 // (tools_jobs.go, tools_watch.go), remember carries the person's durable memory
 // (memory.go) when there is a store to keep it in and search_conversations reads
-// the other half of that store — the verbatim words of every earlier
-// conversation, which were indexed and unreachable until it existed
-// (tools_conversations.go) — track, commit and recall hold
+// indexed history independently of that store — the verbatim words of every
+// earlier conversation, which stay searchable when learned memory is off
+// (tools_conversations.go, A18) — track, commit and recall hold
 // the working state a compaction must not lose (state.go — the same file's three
 // records, unconditional because every session compacts), and web_search and web_fetch
 // reach outside the machine (tools_search.go) when a back end was wired, and

@@ -39,9 +39,11 @@ func searchConversations(t *testing.T, agent *Agent, args string) string {
 }
 
 // A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. The index this tool reads
-// is in the store, so a session opened with memory off must not be told it can
-// search anything: a model handed the verb plans a whole answer around it, and
-// one that fails every time it is called is worse than one that was never there.
+// is in the history store, so a session opened with no history reader must not
+// be told it can search anything: a model handed the verb plans a whole answer
+// around it, and one that fails every time it is called is worse than one that
+// was never there. Memory off is no longer that case — ConversationHistory can
+// stand alone (A18).
 func TestSearchingConversationsIsOnTheBeltOnlyWithAStoreBehindIt(t *testing.T) {
 	with, _ := brainAgent(t, &scriptedCompleter{}, nil)
 	if !beltHas(with, "search_conversations") {
@@ -268,7 +270,7 @@ func TestTaskWorkersInheritConversationReadsWithoutMemoryWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer worker.Close()
-		if !historyCarriesTool(worker, "search_conversations") || historyCarriesTool(worker, "remember") || worker.config.Memory != nil || worker.memory != nil {
+		if !historyCarriesTool(worker, "search_conversations") || historyCarriesTool(worker, "remember") || worker.config.Memory != nil || worker.memory != nil || worker.config.journalStore() != nil {
 			t.Fatalf("depth %d: worker must carry read-only history, with no memory writer", depth)
 		}
 		if got := searchConversations(t, worker, `{"query":"SILVER"}`); !strings.Contains(got, "SILVER-731") {
