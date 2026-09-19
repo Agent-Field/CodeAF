@@ -3227,12 +3227,10 @@ piece of work in each of them, and the tasks page can be holding several rows nu
 once — one this window is running, one an earlier conversation ran, one a window next door
 has out.
 
-Pressing a row opens **that row's** task, and the owner is what decides which door it gets:
+Pressing a row opens **that row's** task, and what is available decides which door it gets:
 
-- a row this conversation is holding opens its **room** — the live page, with the box
-  talking to it;
-- a row another conversation ran opens its **card** — the record, and the last thing that
-  task said;
+- a row whose task page is available opens that **page**, whether it is running or finished;
+- a row with no task page follows its earlier **room** or **card** path;
 - a row another codeaf **window** is running opens the card that says which window has it
   (above).
 
@@ -3257,7 +3255,8 @@ is never touched, which is why leaving restores it exactly.
 
 Ways in:
 
-- click a roster row, a strip chip, a proposal card, or a landed card;
+- click a proposal card or a landed card; a rail row or strip chip opens the task page when
+  that page is available, and opens the room only when it is not;
 - click an inline reference in the model's prose — `task 7`, `task #7`, `tasks id 7`,
   `task id #7` become underlined links when the id names a task this session has seen;
 - `enter` on a proposal card or a landed card selected with `↑`/`↓` over an empty box;
@@ -4529,10 +4528,10 @@ What else you can do yourself, on a task that is running:
 
 | what | how |
 | --- | --- |
-| see it | its roster row, its room, an inline `task 7` link, or its strip chip on a narrow frame |
-| see what it is doing this second | the roster row's tool line, or its room, live |
-| see what it is costing | the roster's telemetry row, the room's focus header, the `Σ` |
-| walk into it | click it, `enter` on it, or `→` over an empty box |
+| see it | its rail row, its page, an inline `task 7` link, or its strip chip on a narrow frame |
+| see what it is doing this second | the rail row's tool line, or its page, live |
+| see what it is costing | the rail's telemetry row, the page's focus header, the `Σ` |
+| open its page | click it or press `enter` on it |
 | talk to it | `enter` on a sentence in its room |
 | read its whole transcript | its room |
 | copy text out of it | `ctrl+b` in its room |
@@ -5108,8 +5107,8 @@ holds, and the window's edge is named once in the page header.
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 The one printable keys that are not the filter are `1` and `2` over a row the pane is offering
 those two answers for, which answer it. `↑` and `↓` move among conversation and task rows and skip the head sentence, the blank lines
-and the section words. `enter` on a main chat opens that conversation. On a task it opens its **room** when this conversation
-is holding, and otherwise goes **inside** it — the record card. Rows another window is running
+and the section words. `enter` on a main chat opens that conversation. On a task it opens the task's **page**
+when that page is available, whether the task is running or finished; otherwise it follows the earlier room or record-card path. Rows another window is running
 take the cursor too, and what `enter` does with one is *Opening a task another window is
 running*, below.
 
