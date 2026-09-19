@@ -67,6 +67,13 @@ type Step struct {
 	// off the store after the command rather than parsed out of its output.
 	Children []string `json:"children,omitempty"`
 
+	// ExitCode is the command's own exit status when the belt ran one and the
+	// recorder knew it: zero for a step that ended, the non-zero code for one
+	// that failed. It is a pointer so a step written before this field existed,
+	// or one whose exit is unknown, decodes to nil and is never read as a zero a
+	// real exit could equal. A holds verdict rests only on a recorded zero exit.
+	ExitCode *int `json:"exit_code,omitempty"`
+
 	// The ending line's fields. Steps is the run's whole step count, Result is
 	// the worker's own account of the work, and Reason is why the loop ended —
 	// a turn that ended, a step cap, a wall.

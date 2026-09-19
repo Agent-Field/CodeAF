@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -354,7 +355,54 @@ func (r *stepRecorder) record(n int, event session.Event) error {
 		Writes:      planVerbs(command),
 		Children:    r.takeChildren(),
 	}
+	// THE COMMAND'S OWN EXIT IS RECORDED FROM THE EVENT, and only for a bash
+	// command the belt actually ran: an ended bash tool exited zero, a failed one
+	// exited non-zero (the belt appends "Command exited with code N", read back
+	// here when it survived the output cap, otherwise a plain non-zero). A harness
+	// refusal never ran the command and a non-bash tool has no exit, so both leave
+	// the field nil, which a reader treats as unknown rather than as a zero.
+	if event.Tool == "bash" {
+		switch event.Kind {
+		case session.EventToolEnd:
+			zero := 0
+			step.ExitCode = &zero
+		case session.EventToolFailed:
+			if !event.HarnessMade {
+				code := 1
+				if parsed, ok := exitStatusFromOutput(event.Output); ok {
+					code = parsed
+				}
+				step.ExitCode = &code
+			}
+		}
+	}
 	return appendTrajectory(r.storeDir, r.taskID, step)
+}
+
+// exitStatusFromOutput reads the exit code the belt appended to a failed
+// command's output ("Command exited with code N"), taking the last such line
+// so a command whose own output quoted the phrase does not mislead it. It
+// answers false when the phrase is absent, for instance when the output was cut
+// before it, and the caller then records a plain non-zero.
+func exitStatusFromOutput(output string) (int, bool) {
+	const marker = "Command exited with code "
+	idx := strings.LastIndex(output, marker)
+	if idx < 0 {
+		return 0, false
+	}
+	rest := output[idx+len(marker):]
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0, false
+	}
+	code, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return 0, false
+	}
+	return code, true
 }
 
 // stepCommand reads one step's command off the event's display arguments. For
