@@ -60,7 +60,7 @@ func TestServiceDoesNotImportSessionTUIProviderOrRun(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, owner := range []string{"session", "tui3", "provider", "run"} {
+			for _, owner := range []string{"session", "tui3", "provider", "run", "wsdiscover"} {
 				forbidden := "github.com/Agent-Field/codeaf/internal/" + owner
 				if path == forbidden || strings.HasPrefix(path, forbidden+"/") {
 					t.Errorf("%s imports %s; wsapi talks to workspace only", file.Name(), path)
@@ -96,6 +96,29 @@ func TestNoStoreAdapterFallback(t *testing.T) {
 				if named.Name.Name == "storeAdapter" {
 					t.Errorf("%s still declares storeAdapter; Open must use *workspace.Store", file.Name())
 				}
+			}
+		}
+	}
+}
+
+func TestProductionFilesDoNotWriteSQL(t *testing.T) {
+	needles := []string{"INSERT INTO", "SELECT ", "CREATE TABLE", "DELETE FROM", "PRAGMA "}
+	files, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".go") || strings.HasSuffix(file.Name(), "_test.go") {
+			continue
+		}
+		source, err := os.ReadFile(file.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := string(source)
+		for _, needle := range needles {
+			if strings.Contains(body, needle) {
+				t.Errorf("%s writes SQL (%q); the model never writes SQL and neither does wsapi", file.Name(), needle)
 			}
 		}
 	}
