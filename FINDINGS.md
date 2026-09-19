@@ -60,3 +60,7 @@ The first edit command matched no source text, so that commit changed only this 
 ## Focused verification step
 
 The forced regression is now expected to pass repeatedly because the state owner releases the barrier and calls `FlushUsage` before checking the ledger and returning. Verification will run the single test repeatedly, confirm formatting, and confirm the fenced files remain untouched.
+
+## Focused verification result
+
+`go test ./internal/session -run '^TestAPinTheWireRefusesTellsTheConversationSo$' -count=10` passed. `gofmt -l` printed nothing for both touched Go files. The fenced timeout and issue #1211 file-name check printed nothing. The required pre-PR sequence starts from the tree hash printed below.
