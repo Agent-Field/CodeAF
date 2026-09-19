@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -339,5 +340,44 @@ func TestAStoppedRunBuysNoFurtherSummary(t *testing.T) {
 	}
 	if got := counting.calls.Load() - before; got != 0 {
 		t.Fatalf("a stopped run's summary was asked of a model %d times, want never", got)
+	}
+}
+
+// BETWEEN "STOP IT" AND THE RUN'S ENDING THE ROW SAYS IT IS STOPPING. The engine
+// answers only once every worker is home, and a worker inside a step can take
+// seconds to die: measured on the real binary, a row read `running` for seven
+// seconds after the person had stopped it, which is the one word on the screen
+// they knew to be wrong and an invitation to press again. A stop still going
+// through is still running, and says so, exactly as a stopped task's row does.
+func TestARunBeingStoppedSaysSoUntilItHasEnded(t *testing.T) {
+	agent, double, _, _ := stoppableBeltRun(t, 71)
+	windDown := make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(windDown) }) }
+	// A RED TEST STILL LETS ITS RUN END, or the fixture waits on it for ever.
+	defer release()
+	double.mu.Lock()
+	double.windDown = windDown
+	double.mu.Unlock()
+	if _, err := agent.Cancel(CancelTask + ":71"); err != nil {
+		t.Fatal(err)
+	}
+	rows := agent.graph().runRows(71)
+	if len(rows) != 1 || rows[0].State != TaskRunning || !rows[0].Stopped || !rows[0].EndedAt.IsZero() {
+		t.Fatalf("while its workers wind down the run's row = %+v, want still running and stopped by a person", rows)
+	}
+	again, err := agent.Cancel(CancelTask + ":71")
+	if err != nil || !strings.Contains(again, "is already stopping") {
+		t.Fatalf("a second press while the run winds down answered %q, %v", again, err)
+	}
+	release()
+	beltRunWaitFor(t, "the run to end", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
+	rows = agent.graph().runRows(71)
+	if len(rows) != 1 || rows[0].State != TaskFailed || !rows[0].Stopped || rows[0].EndedAt.IsZero() {
+		t.Fatalf("the run's row after it ended = %+v, want ended and stopped by a person", rows)
 	}
 }

@@ -62,6 +62,9 @@ type beltRunDouble struct {
 	// for a run that did not finish.
 	honoursStop bool
 	early       func(workspace string)
+	// windDown, when set, holds the double between its context being cut and its
+	// return, which is the real engine waiting for a worker's step to die.
+	windDown chan struct{}
 }
 
 func newBeltRunDouble(result string) *beltRunDouble {
@@ -97,6 +100,12 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 		select {
 		case <-d.release:
 		case <-ctx.Done():
+			d.mu.Lock()
+			windDown := d.windDown
+			d.mu.Unlock()
+			if windDown != nil {
+				<-windDown
+			}
 			close(d.finished)
 			return RunSummary{Outcome: "ran and did not finish", Nodes: 1, Steps: 1}
 		}
