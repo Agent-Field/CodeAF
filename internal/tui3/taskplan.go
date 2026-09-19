@@ -732,20 +732,39 @@ func planNamesOf(rows []tasksMineRow, chat string) map[string]bool {
 // A PAGE THE ENGINE WILL NOT ANSWER FOR IS NOT OPENED. A task this chat did not
 // spawn, or one whose store has gone, leaves the list where it was rather than
 // raising a page of blanks.
-func (a *app) taskSheetPlan(id string) tea.Cmd { return a.taskSheetPlanFrom(id, nil) }
+func (a *app) taskSheetPlan(id string) tea.Cmd { return a.taskSheetPlanAsk(id, nil, nil, nil) }
 
 // taskSheetPlanFrom is [app.taskSheetPlan] for a step INTO one of a page's
 // parts: `from` is the page stepped out of, and it goes on the way back when
 // the part's page has opened and not before.
 func (a *app) taskSheetPlanFrom(id string, from *session.PlanTaskPage) tea.Cmd {
+	return a.taskSheetPlanAsk(id, from, nil, nil)
+}
+
+// taskSheetPlanAsk is the ONE door onto a stored page, for every gesture that
+// opens one: enter in the list, a step into a part, a press on a rail row. The
+// read leaves the loop ([app.offLoop]) and what happens next is decided when it
+// comes back: `opened` runs once the page is up, and `missing` is the gesture's
+// own answer for a task the store has no page for, so a rail row whose run's
+// store is gone still opens what it always opened.
+func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened func(), missing func() tea.Cmd) tea.Cmd {
 	agent, ok := a.planReader()
 	if !ok {
+		if missing != nil {
+			return missing()
+		}
 		return nil
 	}
 	return a.offLoop(func() func(bool) tea.Cmd {
 		page, found := agent.PlanTaskPage(id)
 		return func(here bool) tea.Cmd {
-			if !here || !found {
+			if !here {
+				return nil
+			}
+			if !found {
+				if missing != nil {
+					return missing()
+				}
 				return nil
 			}
 			// THE PAGE STEPPED OUT OF GOES ON THE WAY BACK ONLY WHEN THE NEW ONE
@@ -770,6 +789,9 @@ func (a *app) taskSheetPlanFrom(id string, from *session.PlanTaskPage) tea.Cmd {
 			// this page is not that row ([app.taskSheetInside] clears it at the one other
 			// door for the same reason).
 			a.taskSheet.awayOwner = tasksAwayOwner{}
+			if opened != nil {
+				opened()
+			}
 			a.touch()
 			return nil
 		}
@@ -1564,8 +1586,26 @@ func planRailNow(line tasksLine, width int, pal palette, sentence string) []stri
 // run copy named in the page head is omitted. Every other command is returned
 // exactly as recorded apart from surrounding space already discarded by rows.
 func planDisplayCommand(command, folder string) string {
-	command = strings.TrimSpace(command)
-	folder = strings.TrimSpace(folder)
+	return planFirstLine(planWithoutOwnFolder(strings.TrimSpace(command), strings.TrimSpace(folder)))
+}
+
+// planFirstLine is a command as ONE ROW. A command that writes a document is
+// many lines long, and a row that carried them all pushed the rest of the page
+// off the screen: the page's foot and the box a note is typed in were drawn
+// below the last row the terminal has. The first line says what the command is,
+// and the mark says there was more. What ran is untouched; this is what is drawn.
+func planFirstLine(command string) string {
+	first, _, more := strings.Cut(command, "\n")
+	first = strings.TrimRight(first, " \t\r")
+	if more {
+		return first + " …"
+	}
+	return first
+}
+
+// planWithoutOwnFolder drops a leading change into the task's own folder, which
+// the page's head names once, and leaves every other directory change as typed.
+func planWithoutOwnFolder(command, folder string) string {
 	if command == "" || folder == "" {
 		return command
 	}
