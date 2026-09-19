@@ -571,3 +571,29 @@ func TestLoadWarnsOnceForEveryUnreadTopLevelProfileKey(t *testing.T) {
 		t.Errorf("response lift cap = %v, want 0.5", value)
 	}
 }
+
+// TestNoShippedWriterKeyIsReportedUnread guards the property that a key the
+// product itself writes is never named as unread: the notice must not tell a
+// person their config carries an ignored key they never typed. Every settings
+// registry row and every non-setting field the loader writes is a shipped
+// writer; a profile made of all of them yields an empty unread list.
+func TestNoShippedWriterKeyIsReportedUnread(t *testing.T) {
+	dir := t.TempDir()
+	values := map[string]json.RawMessage{}
+	for _, row := range NewSettings(SettingsOptions{ProfileDir: dir}).Rows() {
+		if row.Key == "" {
+			continue
+		}
+		values[row.Key] = json.RawMessage(`"x"`)
+	}
+	for _, key := range []string{
+		KeySetupSeen, KeySplitPct, KeyStandingBackground,
+		KeyResponseAttempts, KeyResponseLiftAfter, KeyResponseLiftCap,
+		keyModelSources,
+	} {
+		values[key] = json.RawMessage(`"x"`)
+	}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("shipped-writer keys reported unread: %v", unread)
+	}
+}
