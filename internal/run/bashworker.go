@@ -88,7 +88,13 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	// mid-run) is still known to be a new build and its silence is not read as a
 	// passing run. Written once, when the task first runs.
 	if len(past) == 0 {
-		_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryBeginKind, ExitsRecorded: true})
+		// This write is the record's own proof that it comes from a build that
+		// records exits; if it fails the record would read as an old one and a
+		// declared check could hold unproven, so the run fails here rather than
+		// drop the error.
+		if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryBeginKind, ExitsRecorded: true}); err != nil {
+			return Report{}, fmt.Errorf("stamp the trajectory opening line: %w", err)
+		}
 	}
 	agent, err := session.NewBeltWorker(session.Config{
 		Workspace: w.workspace,

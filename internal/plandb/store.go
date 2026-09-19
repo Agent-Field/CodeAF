@@ -626,13 +626,21 @@ func (s *Store) checkVerdictBasis(task *Task) (VerdictBasis, bool) {
 	if len(task.Checks) == 0 {
 		return VerdictBasis{Kind: "reading"}, true
 	}
-	recorded, newBuild := s.recordedRuns(task)
+	recorded, newBuild, hasRecord := s.recordedRuns(task)
 	if !newBuild {
-		// A record from before command exits were recorded. There is no run to
-		// judge and a reader cannot tell a refused or unrun check from a passing
-		// one, so the verdict is a reading one, which can hold, and it names the
-		// declared checks it never observed so no reader mistakes it for a holds
-		// earned by running them.
+		if !hasRecord {
+			// A DECLARATION WITH NOTHING OBSERVED AT ALL cannot hold. The
+			// trajectory is missing or empty, so no declared command was seen to
+			// run: the purest unproven declaration, distinct from an old record,
+			// which has lines and only lacks the exit marker. It is named as
+			// unobserved and refused.
+			return VerdictBasis{Kind: "reading", Unobserved: append([]string(nil), task.Checks...)}, false
+		}
+		// An old record, from before command exits were recorded: lines but no
+		// marker. There is no run to judge and a reader cannot tell a refused or
+		// unrun check from a passing one, so the verdict is a reading one, which
+		// can hold, and it names the declared checks it never observed so no
+		// reader mistakes it for a holds earned by running them.
 		return VerdictBasis{Kind: "reading", Unobserved: append([]string(nil), task.Checks...)}, true
 	}
 	seen := make(map[string]bool, len(task.Checks))
@@ -665,11 +673,16 @@ func (s *Store) checkVerdictBasis(task *Task) (VerdictBasis, bool) {
 // a worker command stripped the same way the session's own reading stripped it.
 // The LAST exit for a command wins, because a command re-run is a later fact
 // about the same check.
-func (s *Store) recordedRuns(task *Task) (map[string]int, bool) {
+func (s *Store) recordedRuns(task *Task) (map[string]int, bool, bool) {
 	out := map[string]int{}
 	data, err := os.ReadFile(filepath.Join(TaskDir(filepath.Dir(s.path), task.ID), "trajectory.jsonl"))
 	if err != nil {
-		return out, false
+		// No trajectory file at all: nothing was observed. This is not an old
+		// record, which has lines and only lacks the exit marker, but the absence
+		// of any record. A new build cannot reach here, because a worker stamps
+		// its opening line before any step and fails the run if that write fails,
+		// so an empty record under a declaration is an unproven declaration.
+		return out, false, false
 	}
 	// newBuild is true when this record was written by a build that records
 	// command exits: a step carried an exit, or any line was stamped
@@ -679,6 +692,7 @@ func (s *Store) recordedRuns(task *Task) (map[string]int, bool) {
 	// record with no exit and no stamp is genuinely old, and the reader must not
 	// treat its silence as a passing run.
 	newBuild := false
+	hasRecord := false
 	for _, line := range strings.Split(string(data), "\n") {
 		var step struct {
 			Kind          string `json:"kind"`
@@ -689,6 +703,9 @@ func (s *Store) recordedRuns(task *Task) (map[string]int, bool) {
 		if json.Unmarshal([]byte(line), &step) != nil {
 			continue
 		}
+		// Any parsed line is an observation, so the record exists; this is not the
+		// empty-record case even when no line carries an exit or a marker.
+		hasRecord = true
 		// Any line a build stamped, opening or ending, marks the record new even
 		// when no step ran or the run was cut off before its ending.
 		if step.ExitsRecorded {
@@ -716,7 +733,7 @@ func (s *Store) recordedRuns(task *Task) (map[string]int, bool) {
 		}
 		out[command] = *step.ExitCode
 	}
-	return out, newBuild
+	return out, newBuild, hasRecord
 }
 
 // auditableDeclaredCheck is the store's half of the check door's law, asked of
