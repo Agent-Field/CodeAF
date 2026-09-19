@@ -169,10 +169,12 @@ var tuiWords = map[string]tuiWord{
 	// ── home's panels (docs/design/home-mission-control/DESIGN.md) ────────────
 	//
 	// THE FLAT RANKED LIST IS GONE, and with it the section line, `alt+g`,
-	// `alt+q` and the `quiet since` fold the suite used to wait for. Home is seven
+	// `alt+q` and the `quiet since` fold the suite used to wait for. Home is eight
 	// panels now, each a heading from homegrid.go's order table; an empty one
 	// keeps its heading and one whisper, so a heading on the screen says the
-	// panel is there and says nothing about whether anything is in it.
+	// panel is there and says nothing about whether anything is in it. The eighth
+	// is `folders`: logical groups of chats, not the filesystem `/folder` chooser
+	// and not the projects panel of folders you have opened.
 	"homeNeedsHeading": {
 		screen: "needs you",
 		why:    "the top of the left column: every question on the machine lands in it, and every resting home draws it",
@@ -183,7 +185,11 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homePanelProjects": {
 		screen: "projects",
-		why:    "the panel of folders, never empty, whose enter starts a chat there — the view by project alt+g used to be",
+		why:    "the panel of project folders you have opened, never empty, whose enter starts a chat there — the view by project alt+g used to be, and not the logical `folders` panel",
+	},
+	"homePanelFolders": {
+		screen: "folders",
+		why:    "the eighth home panel: logical groups of chats. It is not `/folder` `/place` `/dir`, and it is not the projects heading",
 	},
 	"homePanelRunning": {
 		screen: "running",
@@ -206,6 +212,30 @@ var tuiWords = map[string]tuiWord{
 		why: "what `running` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
 			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
 			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",
+	},
+	"homeFoldersWhisper": {
+		screen: "logical groups of chats · /folders create Billing",
+		why:    "what `folders` says with a working store and nothing in it — teaching `/folders create`, never that it is empty, and never `/folder`",
+	},
+	"homeFoldersUnwired": {
+		screen: "folders are not wired here",
+		why:    "a nil Folders seam keeps the heading and names the refusal; it must not look like an empty workspace",
+	},
+	"homeFoldersAlsoIn": {
+		screen: "also in ",
+		why:    "a chat that sits in two folders says so on the member row, with the trailing space the other names join onto",
+	},
+	"homeFoldersNewChat": {
+		screen: "new chat here",
+		why:    "the folders-row `n` verb. Live waits for it on a folder row; the projects card spells the same words on `t`",
+	},
+	"foldersSlashWord": {
+		screen: "/folders",
+		why:    "the logical-folder command the empty whisper and the usage line teach. It is not `/folder`",
+	},
+	"folderChooserHelp": {
+		screen: "choose a folder to work in · type a path to browse",
+		why:    "`/folder` `/place` `/dir` is the filesystem chooser on /help; `/folders` is a different command",
 	},
 	"foldMoreWord": {
 		screen: " more",
