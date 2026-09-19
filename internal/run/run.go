@@ -313,10 +313,12 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		// is what seats the review, so do not accept the stored ending first.
 		// Other in-flight workers may be remnants of an already completed tree;
 		// they must be drained rather than mistaken for the root return.
-		_, rootInFlight := s.cancels[rootID]
-		if root.Status != plandb.StatusDone || !rootInFlight {
+		if root.Status != plandb.StatusDone || !s.hasUnlandedDone() {
 			return s.outcomeForRoot(root.Status)
 		}
+		// Preserve an ending written directly through the store while the run
+		// waits for the outstanding return that will seat its review.
+		s.rootResult = root.Result
 		if s.terminalRootHeld != nil {
 			s.terminalRootHeld()
 		}
@@ -709,15 +711,11 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 		Role:        plandb.RoleCheck,
 	}
 	var err error
-	if leaf.ID == s.store.RootID() && s.store.Task(leaf.ID).Status == plandb.StatusDone {
-		_, err = s.store.AddRootCheck(spec)
-	} else {
-		_, err = s.store.AddMany([]plandb.TaskSpec{spec})
-	}
+	_, err = s.store.AddRootCheck(spec)
 	if err != nil {
-		// A check the store would not admit does not replace the task's earned
-		// ending. The terminal-root case has its explicit store seam above; all
-		// other refusals keep the existing outcome and result unchanged.
+		// Refusing a review is a failed run, never a successful ending with the
+		// required round silently absent.
+		s.rootFailed = true
 		return
 	}
 	s.checkOf[id] = leaf.ID
@@ -855,7 +853,7 @@ func (s *Supervisor) rootAwaitingWake() bool {
 func (s *Supervisor) treeTerminal() bool {
 	rootID := s.store.RootID()
 	for _, task := range s.store.Tasks() {
-		if task.ID != rootID && !terminalStatus(task.Status) {
+		if task.ID != rootID && !s.landed(task) {
 			return false
 		}
 	}
@@ -890,7 +888,7 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		if _, running := s.cancels[task.ID]; running {
 			continue
 		}
-		if !childrenAllTerminal(tasks, task.ID) {
+		if !childrenAllLanded(tasks, task.ID, s.cancels) {
 			continue
 		}
 		if s.wakes[task.ID] >= maxWakes {
@@ -1115,7 +1113,7 @@ func needsWake(tasks []*plandb.Task, task *plandb.Task, cancels map[string]conte
 			continue
 		}
 		children++
-		if !terminalStatus(child.Status) {
+		if !landed(child, cancels) {
 			return false
 		}
 		// A CHECK'S LANDING WAKES NOBODY. A check reviews work its parent has
@@ -1145,21 +1143,40 @@ func childIDs(tasks []*plandb.Task, id string) map[string]bool {
 	return set
 }
 
-// childrenAllTerminal answers whether a task has children and every one of them
-// has ended. A composite with no children is not one whose landings can wake it.
-func childrenAllTerminal(tasks []*plandb.Task, id string) bool {
-	has, all := false, true
+// landed distinguishes a terminal store row from a finished worker return the
+// run has absorbed. Failed and cancelled rows are landed immediately; a Done
+// row is not landed while its worker is still out.
+func landed(task *plandb.Task, cancels map[string]context.CancelFunc) bool {
+	if task == nil || !terminalStatus(task.Status) {
+		return false
+	}
+	_, running := cancels[task.ID]
+	return task.Status != plandb.StatusDone || !running
+}
+
+func (s *Supervisor) landed(task *plandb.Task) bool { return landed(task, s.cancels) }
+
+func (s *Supervisor) hasUnlandedDone() bool {
+	for id := range s.cancels {
+		if task := s.store.Task(id); task != nil && task.Status == plandb.StatusDone {
+			return true
+		}
+	}
+	return false
+}
+
+func childrenAllLanded(tasks []*plandb.Task, id string, cancels map[string]context.CancelFunc) bool {
+	has := false
 	for _, child := range tasks {
 		if child.ParentID != id {
 			continue
 		}
 		has = true
-		if !terminalStatus(child.Status) {
-			all = false
-			break
+		if !landed(child, cancels) {
+			return false
 		}
 	}
-	return has && all
+	return has
 }
 
 // waitsForWake answers whether a worker's return is a WAIT rather than an
