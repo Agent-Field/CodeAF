@@ -25,10 +25,18 @@ func TestThePlaceSweepStopsBeforeTheProcessCloses(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	finished := make(chan struct{})
+	waitEntered := make(chan struct{})
+	waitReturned := make(chan struct{})
 	var releaseOnce sync.Once
 	free := func() { releaseOnce.Do(func() { close(release) }) }
 	previousSweep := sweepHome
+	previousWait := waitPlaceSweep
 	sweepOnce = sync.Once{}
+	waitPlaceSweep = func() {
+		close(waitEntered)
+		sweepWaiting.Wait()
+		close(waitReturned)
+	}
 	sweepHome = func(_ string, note func(string)) {
 		close(started)
 		<-release
@@ -39,6 +47,7 @@ func TestThePlaceSweepStopsBeforeTheProcessCloses(t *testing.T) {
 		free()
 		<-finished
 		sweepHome = previousSweep
+		waitPlaceSweep = previousWait
 		sweepOnce = sync.Once{}
 	})
 
@@ -53,13 +62,10 @@ func TestThePlaceSweepStopsBeforeTheProcessCloses(t *testing.T) {
 		close(closed)
 	}()
 
-	select {
-	case <-closed:
-		t.Fatal("closeAll returned while the product-owned place sweep was still running")
-	default:
-	}
+	<-waitEntered
 	free()
 	<-finished
+	<-waitReturned
 	<-closed
 
 	if err := os.RemoveAll(root); err != nil {

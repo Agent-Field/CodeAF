@@ -409,7 +409,7 @@ func (p *v3Process) closeAll() {
 
 	// The process starts its place sweep before it opens any shared state. Join
 	// it before closing that state so its error note cannot write after close.
-	sweepWaiting.Wait()
+	waitPlaceSweep()
 
 	// The start-up errands this process seated on its profile — the pool index
 	// refresh and the outbox push — were started fire-and-forget.
