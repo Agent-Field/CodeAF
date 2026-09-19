@@ -92,3 +92,5 @@ The identity-aware test correction passes 20 consecutive focused runs with `go t
 The correction is committed at `f8e08781f9556d71725d720facbe91fab6a4f549`. Next step: record the committed tree hash and run the first required standalone check, `go build ./...`.
 
 `go build ./...` passed from tree `5bb057600137f6ddb720994ae2698d843a78d926`. Next step: run the required standalone `go test ./internal/exec/...` check.
+
+`go test ./internal/exec/...` passed, including `internal/exec` and `internal/exec/bare`. Next step: run the required standalone `gofmt -l ./cmd ./internal` check; acceptance requires no output.
