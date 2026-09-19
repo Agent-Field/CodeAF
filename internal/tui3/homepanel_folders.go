@@ -53,7 +53,7 @@ func folderRootLines(in *homeGridInput) []homeLine {
 			lines = append(lines, line)
 		}
 	}
-	return lines
+	return append(lines, folderExecLines(in)...)
 }
 
 func folderOpenLines(in *homeGridInput, open string) []homeLine {
@@ -72,6 +72,7 @@ func folderOpenLines(in *homeGridInput, open string) []homeLine {
 	}
 	lines := []homeLine{folderBackLine(open, name)}
 	lines = append(lines, folderInstructLines(in.folders.guidance)...)
+	lines = append(lines, folderExecLines(in)...)
 	seen := map[string]bool{}
 	for _, child := range childFolders(in.folders.root.Folders, open) {
 		seen[child.ID] = true
@@ -140,6 +141,13 @@ func folderMemberLine(in *homeGridInput, place FolderPlacement, collectionID str
 			note = collabMarkedWord + " · " + note
 		} else {
 			note = collabMarkedWord
+		}
+	}
+	if extra := folderExecNote(in, id); extra != "" {
+		if note != "" {
+			note = extra + " · " + note
+		} else {
+			note = extra
 		}
 	}
 	cell := &homeCell{panel: panelFolders, title: title, note: note, key: collectionID}
