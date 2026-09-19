@@ -61,12 +61,14 @@ func v3OpenSession(cfg session.Config) (*session.Agent, error) {
 	// Every conversation this process opens counts its task lanes in one
 	// account, because they are all running on one machine.
 	cfg.TaskLanes = v3MachineLanes
+	cfg.Collab = sessionCollabOf(cfg.Folders, conversationChatIDFrom(cfg.Place, cfg.SessionFile))
 	cfg, runs := v3Adaptive(cfg)
 	agent, err := session.New(cfg)
 	if err != nil {
 		return nil, err
 	}
 	runs.bind(agent)
+	bindAgentCollab(agent, cfg)
 	return agent, nil
 }
 

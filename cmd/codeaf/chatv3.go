@@ -1045,6 +1045,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// the belt: a store that cannot open is unavailable, not a fake empty
 		// graph the model would keep filing into.
 		Folders: proc.Folders,
+		// Cross-chat coordinate tool. Nil takes `coordinate` off the belt the
+		// same way: a missing collections.db is absence, not a dummy bus.
+		Collab: sessionCollabOf(proc.Folders, conversationChatIDFrom(found.Place, transcript)),
 		// THE DIVISION ROAD, on by default (internal/config's DefaultSwarm). A
 		// task that turns out to hold more than one worker's share may split
 		// itself into parts and stay to fold them back together

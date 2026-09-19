@@ -51,6 +51,9 @@ func TestStoreOpenFailureLeavesFoldersNil(t *testing.T) {
 	if options.Folders != nil {
 		t.Fatal("Options.Folders must stay nil when the store cannot open, never a fake empty graph")
 	}
+	if options.Collab != nil {
+		t.Fatal("Options.Collab must stay nil when the store cannot open")
+	}
 }
 
 func TestSurfaceFilesAsPersonAndTheToolSeamFilesAsOrganizer(t *testing.T) {

@@ -16,7 +16,7 @@ func (s *Store) PutParticipant(ctx context.Context, p Participant) (Participant,
 	if err != nil {
 		return Participant{}, storeError(err)
 	}
-	if err := s.writeReady(ctx); err != nil {
+	if err := s.ensureSchema(ctx); err != nil {
 		return Participant{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -53,7 +53,7 @@ func prepareParticipant(p Participant) (Participant, error) {
 	if !validOptionalText(p.FolderID, 4096) || !validOptionalText(p.SnapshotJSON, 64*1024) {
 		return Participant{}, fmt.Errorf("%w: participant scope is too long", ErrInvalid)
 	}
-	prepared, err := prepareProvenance(Provenance{Origin: p.Origin, Actor: p.Actor})
+	prepared, err := prepareCollabProvenance(Provenance{Origin: p.Origin, Actor: p.Actor})
 	if err != nil {
 		return Participant{}, err
 	}
@@ -168,7 +168,7 @@ func (s *Store) PutDelivery(ctx context.Context, d Delivery) (Delivery, error) {
 	if err != nil {
 		return Delivery{}, storeError(err)
 	}
-	if err := s.writeReady(ctx); err != nil {
+	if err := s.ensureSchema(ctx); err != nil {
 		return Delivery{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -202,7 +202,7 @@ func prepareDelivery(d Delivery) (Delivery, error) {
 	if !validOptionalText(d.ID, 4096) || !validOptionalText(d.CauseID, 4096) || !validOptionalText(d.IdempotencyKey, 4096) {
 		return Delivery{}, fmt.Errorf("%w: delivery id is too long", ErrInvalid)
 	}
-	prepared, err := prepareProvenance(Provenance{Origin: d.Origin})
+	prepared, err := prepareCollabProvenance(Provenance{Origin: d.Origin})
 	if err != nil {
 		return Delivery{}, err
 	}

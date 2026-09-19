@@ -21,7 +21,7 @@ type fakeStore struct {
 	guidance     []workspace.Guidance
 	proposals    []workspace.Proposal
 	suppressions map[string]workspace.Suppression
-	participants []collabRow
+	participants []workspace.Participant
 	revisionErr  error
 	at           string
 }
@@ -451,9 +451,9 @@ func sameRef(a, b workspace.Ref) bool {
 	return a.Kind == b.Kind && a.ID == b.ID && a.SessionID == b.SessionID
 }
 
-func (f *fakeStore) PutParticipant(_ context.Context, p collabRow) (collabRow, error) {
+func (f *fakeStore) PutParticipant(_ context.Context, p workspace.Participant) (workspace.Participant, error) {
 	if p.DiscussionID == "" {
-		return collabRow{}, fmt.Errorf("%w: participant needs a discussion id", workspace.ErrInvalid)
+		return workspace.Participant{}, fmt.Errorf("%w: participant needs a discussion id", workspace.ErrInvalid)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -490,10 +490,10 @@ func (f *fakeStore) PutParticipant(_ context.Context, p collabRow) (collabRow, e
 	return p, nil
 }
 
-func (f *fakeStore) ListParticipants(_ context.Context, discussionID string) ([]collabRow, error) {
+func (f *fakeStore) ListParticipants(_ context.Context, discussionID string) ([]workspace.Participant, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := make([]collabRow, 0)
+	out := make([]workspace.Participant, 0)
 	for _, row := range f.participants {
 		if row.DiscussionID == discussionID {
 			out = append(out, row)
