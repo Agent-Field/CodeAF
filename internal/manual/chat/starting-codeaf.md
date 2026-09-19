@@ -142,8 +142,9 @@ comes home the ordinary way. The run's row ends `incomplete` and says
 dollar limit on the same line, so the two limits read apart. A task that was cut part way
 through reads `incomplete` too.
 
-The dollar limit on a run is the conversation's spend ceiling, not `--max-cost`. A run's
-spend is counted as each model call is paid for, while its tasks are still working, so
+A run may spend what remains of every dollar limit set for the conversation. When more
+than one applies, the run receives the smaller remainder. Its spend is counted as each
+model call is paid for, while its tasks are still working, so
 one long task cannot carry the run far past the figure. A run that reaches it ends the
 work still going and its row says `a dollar limit you set stopped it`, just as a
 run its elapsed-time limit ended names the time limit. The call that reached the limit is
