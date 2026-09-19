@@ -19,7 +19,6 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-const schemaVersion = 1
 const applicationID = 0x4146434c // AFCL distinguishes this store from optional memory.
 
 // LOCK WAITS ARE BOUNDED because every door here is a person's command and a
@@ -49,6 +48,8 @@ type Store struct {
 	db       *sql.DB
 	schemaMu sync.Mutex
 	ready    bool
+	version  int
+	clock    func() time.Time
 }
 
 // Open creates a private collection store or checks an existing one. Unknown
@@ -93,8 +94,8 @@ func Open(path string) (*Store, error) {
 		return nil, collectionsOpenFailure(absolute, err)
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
-	state, err := s.snapshotSchema(context.Background())
+	s := &Store{db: db, clock: time.Now}
+	state, version, err := s.snapshotSchema(context.Background())
 	if err != nil {
 		_ = db.Close()
 		if translated := storeError(err); errors.Is(translated, ErrBusy) {
@@ -106,6 +107,7 @@ func Open(path string) (*Store, error) {
 		return nil, collectionsOpenFailure(absolute, err)
 	}
 	s.ready = state == schemaReady
+	s.version = version
 	return s, nil
 }
 
@@ -128,10 +130,10 @@ type schemaQuerier interface {
 // them, and the half-seen commit that comes back — our schema version over an
 // application id that has not landed yet — is indistinguishable from a database
 // belonging to somebody else, which this store refuses rather than touches.
-func (s *Store) snapshotSchema(ctx context.Context) (schemaState, error) {
+func (s *Store) snapshotSchema(ctx context.Context) (schemaState, int, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return schemaBlank, err
+		return schemaBlank, 0, err
 	}
 	defer tx.Rollback()
 	return inspectSchema(ctx, tx)
@@ -140,38 +142,36 @@ func (s *Store) snapshotSchema(ctx context.Context) (schemaState, error) {
 // inspectSchema decides whether the database on the other end of q is ours and
 // built, ours and still blank, or somebody else's. It only ever reads; the
 // caller decides what view it reads through.
-func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
+func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, int, error) {
 	if err := ctx.Err(); err != nil {
-		return schemaBlank, err
+		return schemaBlank, 0, err
 	}
-	var app, version, tables int
-	if err := q.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app); err != nil {
-		return schemaBlank, err
+	app, version, err := readPragmas(ctx, q)
+	if err != nil {
+		return schemaBlank, 0, err
 	}
-	if err := q.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
-		return schemaBlank, err
-	}
-	if app == applicationID && version == schemaVersion {
+	if app == applicationID && version >= minSchemaVersion && version <= schemaVersion {
 		// Preparing the actual reads catches missing tables before reporting a
 		// successful open. We never recreate a damaged initialized schema.
-		if _, err := q.ExecContext(ctx, "SELECT seq,id,name FROM collections LIMIT 0"); err != nil {
-			return schemaReady, err
+		if err := verifyVersionTables(ctx, q, version); err != nil {
+			return schemaReady, version, err
 		}
-		if _, err := q.ExecContext(ctx, "SELECT seq,collection_id,kind,ref_id,session_id,target_collection FROM memberships LIMIT 0"); err != nil {
-			return schemaReady, err
-		}
-		return schemaReady, nil
+		return schemaReady, version, nil
+	}
+	if app == applicationID && version > schemaVersion {
+		return schemaRefused, version, fmt.Errorf("unsupported collections database (application %d, version %d)", app, version)
 	}
 	if app != 0 || version != 0 {
-		return schemaRefused, fmt.Errorf("unsupported collections database (application %d, version %d)", app, version)
+		return schemaRefused, version, fmt.Errorf("unsupported collections database (application %d, version %d)", app, version)
 	}
+	var tables int
 	if err := q.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil {
-		return schemaBlank, err
+		return schemaBlank, 0, err
 	}
 	if tables != 0 {
-		return schemaRefused, errors.New("this database belongs to another feature; choose a separate collections database")
+		return schemaRefused, 0, errors.New("this database belongs to another feature; choose a separate collections database")
 	}
-	return schemaBlank, nil
+	return schemaBlank, 0, nil
 }
 
 // ensureSchema serializes initialization on one handle and then takes SQLite's
@@ -182,7 +182,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	}
 	s.schemaMu.Lock()
 	defer s.schemaMu.Unlock()
-	if s.ready {
+	if s.ready && s.version == schemaVersion {
 		return nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -190,46 +190,31 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		return storeError(err)
 	}
 	defer tx.Rollback()
-	state, err := inspectSchema(ctx, tx)
+	state, version, err := inspectSchema(ctx, tx)
 	if err != nil {
 		return storeError(err)
 	}
-	if state == schemaReady {
-		if err := tx.Commit(); err != nil {
+	now := s.now().UTC().Format(time.RFC3339)
+	switch {
+	case state == schemaReady && version == schemaVersion:
+	case state == schemaReady && version < schemaVersion:
+		if err := migrateToCurrent(ctx, tx, version, now); err != nil {
 			return storeError(err)
 		}
-		s.ready = true
-		return nil
-	}
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE collections (
- seq INTEGER PRIMARY KEY AUTOINCREMENT,
- id TEXT NOT NULL UNIQUE,
- name TEXT NOT NULL
-);
-CREATE TABLE memberships (
- seq INTEGER PRIMARY KEY AUTOINCREMENT,
- collection_id TEXT NOT NULL REFERENCES collections(id),
- kind TEXT NOT NULL CHECK(kind IN ('collection','conversation','task','standing','artifact')),
- ref_id TEXT NOT NULL,
- session_id TEXT NOT NULL,
- target_collection TEXT REFERENCES collections(id),
- CHECK ((kind='collection' AND target_collection IS NOT NULL AND target_collection=ref_id)
-     OR (kind!='collection' AND target_collection IS NULL)),
- UNIQUE(collection_id,kind,ref_id,session_id)
-);
-CREATE INDEX memberships_reference ON memberships(kind,ref_id,session_id);
-`)
-	if err != nil {
-		return storeError(err)
-	}
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion)); err != nil {
-		return storeError(err)
+		version = schemaVersion
+	case state == schemaBlank:
+		if err := createV2(ctx, tx, now); err != nil {
+			return storeError(err)
+		}
+		version = schemaVersion
+	default:
+		return storeError(fmt.Errorf("unsupported collections database"))
 	}
 	if err := tx.Commit(); err != nil {
 		return storeError(err)
 	}
 	s.ready = true
+	s.version = version
 	return nil
 }
 
@@ -244,12 +229,22 @@ func (s *Store) readyForRead(ctx context.Context) (bool, error) {
 	if s.ready {
 		return true, nil
 	}
-	state, err := s.snapshotSchema(ctx)
+	state, version, err := s.snapshotSchema(ctx)
 	if err != nil {
 		return false, storeError(err)
 	}
 	s.ready = state == schemaReady
+	if s.ready {
+		s.version = version
+	}
 	return s.ready, nil
+}
+
+func (s *Store) now() time.Time {
+	if s.clock != nil {
+		return s.clock()
+	}
+	return time.Now()
 }
 
 func (s *Store) Close() error { return s.db.Close() }
@@ -265,9 +260,29 @@ func (s *Store) Create(ctx context.Context, name string) (Collection, error) {
 	if err := s.ensureSchema(ctx); err != nil {
 		return Collection{}, storeError(err)
 	}
-	c := Collection{ID: hex.EncodeToString(random[:]), Name: name}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO collections(id,name) VALUES (?,?)", c.ID, c.Name)
+	now := s.now().UTC().Format(time.RFC3339)
+	c := Collection{
+		ID:        hex.EncodeToString(random[:]),
+		Name:      name,
+		Lifecycle: LifecycleActive,
+		Revision:  1,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT INTO collections(id,name,purpose,lifecycle,revision,created_at,updated_at)
+ VALUES (?,?,?,?,?,?,?)`, c.ID, c.Name, c.Purpose, c.Lifecycle, c.Revision, c.CreatedAt, c.UpdatedAt)
+	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	if err := bumpTouched(ctx, tx, now); err != nil {
+		return Collection{}, storeError(err)
+	}
+	if err := tx.Commit(); err != nil {
 		return Collection{}, storeError(err)
 	}
 	return c, nil
@@ -277,14 +292,16 @@ func (s *Store) Rename(ctx context.Context, id, name string) error {
 	if err := ValidateName(name); err != nil {
 		return storeError(err)
 	}
-	ready, err := s.readyForRead(ctx)
+	if err := s.writeReady(ctx); err != nil {
+		return err
+	}
+	now := s.now().UTC().Format(time.RFC3339)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return storeError(err)
 	}
-	if !ready {
-		return storeError(ErrNotFound)
-	}
-	result, err := s.db.ExecContext(ctx, "UPDATE collections SET name=? WHERE id=?", name, id)
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, "UPDATE collections SET name=?,revision=revision+1,updated_at=? WHERE id=?", name, now, id)
 	if err != nil {
 		return storeError(err)
 	}
@@ -295,7 +312,10 @@ func (s *Store) Rename(ctx context.Context, id, name string) error {
 	if n == 0 {
 		return storeError(ErrNotFound)
 	}
-	return nil
+	if err := bumpTouched(ctx, tx, now); err != nil {
+		return storeError(err)
+	}
+	return storeError(tx.Commit())
 }
 
 func (s *Store) Collections(ctx context.Context) ([]Collection, error) {
@@ -306,25 +326,84 @@ func (s *Store) Collections(ctx context.Context) ([]Collection, error) {
 	if !ready {
 		return make([]Collection, 0), nil
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT id,name FROM collections ORDER BY seq")
+	meta := s.version >= 2
+	cols := "id,name"
+	if meta {
+		cols = collectionColumns("")
+	}
+	rows, err := s.db.QueryContext(ctx, "SELECT "+cols+" FROM collections ORDER BY seq")
 	if err != nil {
 		return nil, storeError(err)
 	}
 	defer rows.Close()
-	result, err := readCollections(rows)
+	result, err := readCollections(rows, meta)
 	return result, storeError(err)
 }
 
-func readCollections(rows *sql.Rows) ([]Collection, error) {
+func collectionColumns(alias string) string {
+	if alias != "" {
+		alias += "."
+	}
+	return alias + "id," + alias + "name," + alias + "purpose," + alias + "lifecycle," + alias + "revision," + alias + "created_at," + alias + "updated_at"
+}
+
+func readCollections(rows *sql.Rows, meta bool) ([]Collection, error) {
 	result := make([]Collection, 0)
 	for rows.Next() {
 		var c Collection
-		if err := rows.Scan(&c.ID, &c.Name); err != nil {
+		var err error
+		if meta {
+			err = rows.Scan(&c.ID, &c.Name, &c.Purpose, &c.Lifecycle, &c.Revision, &c.CreatedAt, &c.UpdatedAt)
+		} else {
+			err = rows.Scan(&c.ID, &c.Name)
+		}
+		if err != nil {
 			return nil, err
 		}
 		result = append(result, c)
 	}
 	return result, rows.Err()
+}
+
+// writeReady admits a mutation against an existing collections file and
+// migrates it to the current schema. A blank file is not initialized here:
+// Create is the only door that may build a database from nothing, because
+// Add/Remove/Rename on a path nobody has used yet must leave every byte alone.
+func (s *Store) writeReady(ctx context.Context) error {
+	ready, err := s.readyForRead(ctx)
+	if err != nil {
+		return err
+	}
+	if !ready {
+		return storeError(ErrNotFound)
+	}
+	return s.ensureSchema(ctx)
+}
+
+// SchemaVersion reports the collections schema this handle last observed.
+// Listing never migrates, so a v1 file stays at 1 until a write runs.
+func (s *Store) SchemaVersion() int {
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	return s.version
+}
+
+// RootState reports the virtual root's revision without writing. Listing and
+// this snapshot must not migrate a v1 file; the v2 row is created only when a
+// write runs ensureSchema.
+func (s *Store) RootState(ctx context.Context) (revision int, purpose, updatedAt string, err error) {
+	ready, err := s.readyForRead(ctx)
+	if err != nil {
+		return 0, "", "", err
+	}
+	if !ready || s.version < 2 {
+		return 0, "", "", storeError(ErrNotFound)
+	}
+	err = s.db.QueryRowContext(ctx, "SELECT revision, purpose, updated_at FROM root_state WHERE id=1").Scan(&revision, &purpose, &updatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", "", storeError(ErrNotFound)
+	}
+	return revision, purpose, updatedAt, storeError(err)
 }
 
 func requireCollection(ctx context.Context, tx *sql.Tx, id string) error {
@@ -334,79 +413,6 @@ func requireCollection(ctx context.Context, tx *sql.Tx, id string) error {
 		return ErrNotFound
 	}
 	return err
-}
-
-func (s *Store) Add(ctx context.Context, id string, ref Ref) error {
-	if err := ref.Validate(); err != nil {
-		return storeError(err)
-	}
-	ready, err := s.readyForRead(ctx)
-	if err != nil {
-		return storeError(err)
-	}
-	if !ready {
-		return storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return storeError(err)
-	}
-	defer tx.Rollback()
-	if err := requireCollection(ctx, tx, id); err != nil {
-		return storeError(err)
-	}
-	var target any
-	if ref.Kind == CollectionKind {
-		if err := requireCollection(ctx, tx, ref.ID); err != nil {
-			return storeError(err)
-		}
-		// THE CYCLE CHECK AND INSERT SHARE THE WRITER TRANSACTION. Two
-		// processes cannot both approve opposite edges against an old snapshot.
-		var cycle bool
-		err := tx.QueryRowContext(ctx, `WITH RECURSIVE descendants(id) AS (
- VALUES (?) UNION
- SELECT m.ref_id FROM memberships m JOIN descendants d ON m.collection_id=d.id WHERE m.kind='collection'
-) SELECT EXISTS(SELECT 1 FROM descendants WHERE id=?)`, ref.ID, id).Scan(&cycle)
-		if err != nil {
-			return storeError(err)
-		}
-		if cycle {
-			return storeError(ErrCycle)
-		}
-		target = ref.ID
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection)
- VALUES (?,?,?,?,?) ON CONFLICT(collection_id,kind,ref_id,session_id) DO NOTHING`, id, ref.Kind, ref.ID, ref.SessionID, target)
-	if err != nil {
-		return storeError(err)
-	}
-	return storeError(tx.Commit())
-}
-
-// Remove detaches a reference; it never removes or stops the referenced work.
-func (s *Store) Remove(ctx context.Context, id string, ref Ref) error {
-	if err := ref.Validate(); err != nil {
-		return storeError(err)
-	}
-	ready, err := s.readyForRead(ctx)
-	if err != nil {
-		return storeError(err)
-	}
-	if !ready {
-		return storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return storeError(err)
-	}
-	defer tx.Rollback()
-	if err := requireCollection(ctx, tx, id); err != nil {
-		return storeError(err)
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM memberships WHERE collection_id=? AND kind=? AND ref_id=? AND session_id=?", id, ref.Kind, ref.ID, ref.SessionID); err != nil {
-		return storeError(err)
-	}
-	return storeError(tx.Commit())
 }
 
 func (s *Store) Members(ctx context.Context, id string) ([]Ref, error) {
@@ -451,13 +457,18 @@ func (s *Store) CollectionsFor(ctx context.Context, ref Ref) ([]Collection, erro
 	if !ready {
 		return make([]Collection, 0), nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.name FROM collections c JOIN memberships m ON m.collection_id=c.id
+	meta := s.version >= 2
+	cols := "c.id,c.name"
+	if meta {
+		cols = collectionColumns("c")
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM collections c JOIN memberships m ON m.collection_id=c.id
  WHERE m.kind=? AND m.ref_id=? AND m.session_id=? ORDER BY c.seq`, ref.Kind, ref.ID, ref.SessionID)
 	if err != nil {
 		return nil, storeError(err)
 	}
 	defer rows.Close()
-	result, err := readCollections(rows)
+	result, err := readCollections(rows, meta)
 	return result, storeError(err)
 }
 
