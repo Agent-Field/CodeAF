@@ -55,3 +55,9 @@ This establishes that when the worker return is absorbed, a self-finished childl
 The focused tests do not force the losing ordering where `pass` reads the terminal root before the return is absorbed. That missing forced-ordering test and any smallest product repair belong to the next investigative step, not this ordering-map output. The code inspection establishes why the observed command flake is product-side and exactly which branch skips review; it does not claim the sibling check-model failure has no other possible cause.
 
 No Go source or test was changed. In particular, `run.Start` at `internal/run/run.go:1231-1236`, including the pull request 1210 stored-root-result fallback, is unchanged.
+
+## Forced-order regression step planned
+
+The deterministic seam needs no product hook. The new run test will make the root worker call `store.Done`, then block on its worker context before returning its report. This guarantees the store exposes a terminal root while the worker return is unavailable. The supervisor timer then starts another `pass`, `pass` returns the terminal outcome, and `drain` cancels the blocked worker. The assertion will require the root check that the current product path skips, so the focused test must fail on this base tree with zero checks.
+
+This delayed worker step directly forces source ordering 2 without load, busy loops, or parallel process spawning. It also avoids `run.Start` and therefore cannot modify or exercise the fenced pull request 1210 stored-result fallback. The command-level tests remain evidence of real reachability, while this smaller `internal/run` test isolates the product seam. Before editing the test, I will commit this checkpoint.
