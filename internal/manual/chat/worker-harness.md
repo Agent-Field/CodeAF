@@ -389,6 +389,11 @@ sibling still runs is **not** a reason to come back, and neither is a dependency
 stirring without landing. The park is a wait on something, and it is over when
 that something has finished — not when it has moved.
 
+A task that comes back **carries on its step numbers from where it stopped**: a page
+that drew steps `1` to `5` before the wait draws the next one as `6`, never a second
+`1`. The step cap is counted afresh each time the worker runs, so the numbers on the
+page can pass the cap without the task having been stopped by it.
+
 ## How does a task decide it is done?
 
 Finishing is not reaching the end of the work — it is proving every requirement
