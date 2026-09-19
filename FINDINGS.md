@@ -23,3 +23,7 @@ The final surface change is only a type alias. The remote surface-door law now f
 ## Verification
 
 The shared capability, legal production assertion, hosted real-store test, formatting, build, vet, and focused remote/enginehost tests pass. `make test-laws` remains red after the previously local plan doors became visible on `remote.Agent`: `internal/tui3/offlooplaw_test.go` now flags seven existing plan call sites. Those calls predate this item and already return Bubble Tea commands, while this task is explicitly limited to compile-fix-only surface changes; restructuring them or increasing the law's debt budget would violate this work order. The law failure is therefore an integration dependency for the run owner, not silently weakened here. The same law run also reports five unrelated `cmd/codeaf` failures.
+
+## Plan-door law integration
+
+The seven findings were real once the shared plan capability crossed the hosted wire: synchronous page reads and steering could now block the Bubble Tea update loop. The integration fix sends each plan read and verb through the existing ordered `offLoop` door line and folds only captured results back into the surface; the paint-clock follower now returns a command, and its one direct test drives that command. No law budget or named debt changed.
