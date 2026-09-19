@@ -1,53 +1,9 @@
 # c293 findings
 
-c293 makes an approved hand-off under the belt run in one copy owned by that run, cut by the existing ground ladder from the ground resolved by the hand-off's stand. The conversation checkout must remain byte-for-byte untouched while workers run and after they finish. Children in one run share that run's copy, while separate runs never share a dirty tree. Landing must be a later, explicit action and its note must say in a person's words what moved where; a read-only run lands nothing and says so.
+This documentation step records the behavior delivered by c293 after reading the named design and implementation sources.
 
-The current belt door resolves and retains the stand for the card and receipt, but `startKnownTaskRun` receives none of it. It sets `RunSpec.Workspace` to the conversation workspace, so work and the automatic `driveBeltRun` landing happen in the person's checkout rather than in `trees/<id>` cut from the selected ground. A second hand-off currently joins any live run and therefore the same dirty workspace without checking its ground.
+An approved hand-off now receives its own copy beneath the conversation's `trees`, cut by the existing ground ladder from the ground chosen by its resolved stand. The run's children all work in that same run-owned copy, while the person's checkout remains untouched until landing.
 
-The shipped task road already records a node's working copy and ground-ladder facts, and its landing returns the copy's committed work to that ground. The belt path should reuse those existing sources of truth: pass the resolved stand into run creation, carve and retain one run copy under the conversation's `trees`, give that path to every worker in the run, and leave bringing it home to the explicit landing step. A second hand-off may join a live run only when it stands on the same ground and the receipt says that it joined; a hand-off on different ground must not join or share that run and must be refused clearly until it can start its own isolated run.
+A second hand-off may join work already underway only when both hand-offs stand on the same ground; its receipt explicitly says that it joined. A hand-off on different ground is refused with the explanation that it cannot join the live run, rather than sharing that run's dirty copy or silently taking another road.
 
-## Belt run working-copy isolation
-
-This task must make an approved hand-off run in a run-owned copy beneath the conversation's `trees`, cut by the existing ground ladder from the ground selected by the resolved stand, and leave the person's checkout unchanged. Today the hand-off door resolves and retains that stand, but `startKnownTaskRun` does not receive it and instead gives `RunSpec.Workspace` the conversation workspace; consequently side-by-side hand-offs can share one dirty tree. The intended boundary is one copy per run, shared only by that run's children, with cross-run hand-off occurring only through an explicitly landed commit.
-
-## Focused tests
-
-The next step fixes the contract at the run door with focused tests. Each fixture sets `CODEAF_TASK_BELT` itself, creates a real committed repository, captures the person's checkout bytes, and records the `RunSpec` handed to the engine. The tests distinguish the conversation ground from an explicitly selected alternate ground, require one run-owned path beneath the conversation's `trees`, require joined children to retain that exact path, and require a different-ground hand-off not to enter the live store.
-
-## Run copy implementation
-
-The focused tests now fail at the intended seam: `startKnownTaskRun` has no stand argument. The implementation step will pass the resolved stand through both task doors, prepare exactly one tree with `prepareTaskTreeOn`, store its ground and workspace on the live run, hand that workspace to every child, and reject a live hand-off whose canonical ground differs. The run engine remains responsible only for driving the shared copy; finishing workers will no longer alter the conversation checkout.
-
-## Verification
-
-The isolated-run tests pass after the door began retaining one prepared tree per run. The live run records the canonical ground and shared workspace; a same-ground hand-off joins and its receipt says why, while a different-ground hand-off is refused before it can enter the store. The next step is verification against the existing belt, stand, ground, receipt, and run tests, followed by the required build, vet, law, formatting, and forbidden-path/history checks.
-
-## Proof results
-
-The required focused session command passes, as do formatting, the whole build, session/run vet, and the run/manual/name-law package tests. `make test-laws` reaches all 120 law files but remains red in five pre-existing `cmd/codeaf` kept-nothing cases: their scripted headless runs stop before any model call with the default model line; every other listed package, including `internal/session`, passes. No implementation or test file outside `internal/session` was changed.
-
-## Review finding: refusal must stay at the hand-off door
-
-The run starter correctly rejects a second hand-off whose resolved ground differs from the live run, but the approved-proposal door currently discards that explanation and admits the proposal to the session tree. The next step adds a door-level regression test and returns the clear same-ground refusal instead, so an approved different-ground hand-off cannot silently take another execution road.
-
-## Review finding resolved
-
-The approved-proposal door now preserves the run starter's different-ground refusal and does not admit a session-tree task. A focused door-level test explicitly sets the belt, opens a live run, approves a proposal on another repository, requires the plain same-ground explanation, and proves that no fallback node exists.
-
-## Verification
-
-Formatting, build, session/run vetting, the focused session suite, the run/manual/name-law packages, and the new isolation/refusal cases pass. `make test-laws` reaches unrelated `cmd/codeaf` kept-nothing tests but those subprocess fixtures exit 2 before running after printing model selection; the changed session tests and all other law packages pass, and this task does not own `cmd/`.
-
-## Explicit run landing
-
-Worker completion must stop at the run-owned copy. The later landing action should call the existing run landing door, which already delegates committing to `session.LandRunTree`; its report needs to identify both the run copy that supplied the work and the person's checkout that receives it. A run with no changes must leave both places alone and report that nothing moved.
-
-The failing focused tests now distinguish the two moments: after the engine returns they observe that landing was already called once (the defect), and an explicit `Agent.Land` cannot find the finished run because it was cleared. The implementation must retain the finished run until `/land`, invoke the engine only there, and translate its answer into the existing folder-landing result.
-
-## Integration correction
-
-The explicit-landing implementation is sound, but two older belt tests still wait for worker completion to land automatically. They must instead prove the run remains available after workers finish, then invoke the person's landing action and retain their existing settlement assertions.
-
-## Final verification
-
-The stale lifecycle assertions now require worker completion to leave the run waiting and invoke explicit landing themselves. The required focused session suite passes, as do formatting, build, vet, and the run/manual/name-law packages. `make test-laws` remains blocked by the pre-existing `cmd/codeaf` kept-nothing subprocess fixtures selecting the default model and exiting 2 rather than reaching their scripted timeout; all other law packages pass.
+Finishing the workers leaves their changes in the run's copy. Landing is a later explicit action that uses the existing run landing path to commit the copy's work and bring it home. The landing note reports the destination branch and number of files moved; when the run changed nothing, it instead reports that there is nothing to land because the run's working copy holds no change.
