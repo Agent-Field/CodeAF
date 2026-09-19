@@ -19,3 +19,7 @@ The final surface change is only a type alias. The remote surface-door law now f
 ## Hosted end-to-end proof
 
 `TestHostedAgentReadsSeededPlanTasksEndToEnd` uses `t.TempDir`, `session.OpenRunPlan`, a real `session.Agent`, the engine host's attach server over a real pipe, and `remote.Dial`. It proves `remote.Agent.PlanTasks` returns the seeded PlanDB row rather than a scripted transport answer.
+
+## Verification
+
+The shared capability, legal production assertion, hosted real-store test, formatting, build, vet, and focused remote/enginehost tests pass. `make test-laws` remains red after the previously local plan doors became visible on `remote.Agent`: `internal/tui3/offlooplaw_test.go` now flags seven existing plan call sites. Those calls predate this item and already return Bubble Tea commands, while this task is explicitly limited to compile-fix-only surface changes; restructuring them or increasing the law's debt budget would violate this work order. The law failure is therefore an integration dependency for the run owner, not silently weakened here. The same law run also reports five unrelated `cmd/codeaf` failures.
