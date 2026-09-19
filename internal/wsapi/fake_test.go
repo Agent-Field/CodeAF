@@ -21,6 +21,7 @@ type fakeStore struct {
 	guidance     []workspace.Guidance
 	proposals    []workspace.Proposal
 	suppressions map[string]workspace.Suppression
+	participants []collabRow
 	revisionErr  error
 	at           string
 }
@@ -40,6 +41,7 @@ func newFakeStore() *fakeStore {
 }
 
 var _ store = (*fakeStore)(nil)
+var _ collabStore = (*fakeStore)(nil)
 
 func (f *fakeStore) Close() error { return nil }
 
@@ -447,6 +449,72 @@ func (f *fakeStore) wouldCycle(parentID, childID string) bool {
 
 func sameRef(a, b workspace.Ref) bool {
 	return a.Kind == b.Kind && a.ID == b.ID && a.SessionID == b.SessionID
+}
+
+func (f *fakeStore) PutParticipant(_ context.Context, p collabRow) (collabRow, error) {
+	if p.DiscussionID == "" {
+		return collabRow{}, fmt.Errorf("%w: participant needs a discussion id", workspace.ErrInvalid)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p.Kind == "" {
+		p.Kind = ActorKindChat
+	}
+	if p.Status == "" {
+		p.Status = ParticipantActive
+	}
+	if p.ID != "" {
+		for i, row := range f.participants {
+			if row.ID == p.ID {
+				f.participants[i].Role = p.Role
+				f.participants[i].Status = p.Status
+				f.participants[i].ScopeKind = p.ScopeKind
+				f.participants[i].FolderID = p.FolderID
+				f.participants[i].SnapshotJSON = p.SnapshotJSON
+				return f.participants[i], nil
+			}
+		}
+	}
+	if p.SourceChatID != "" {
+		for _, row := range f.participants {
+			if row.DiscussionID == p.DiscussionID && row.SourceChatID == p.SourceChatID && row.Status == ParticipantActive {
+				return row, nil
+			}
+		}
+	}
+	f.seq++
+	p.ID = fmt.Sprintf("p%02d", f.seq)
+	f.seq++
+	p.ActorID = fmt.Sprintf("%032d", f.seq)
+	f.participants = append(f.participants, p)
+	return p, nil
+}
+
+func (f *fakeStore) ListParticipants(_ context.Context, discussionID string) ([]collabRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]collabRow, 0)
+	for _, row := range f.participants {
+		if row.DiscussionID == discussionID {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) SetParticipantStatus(_ context.Context, id, status string) error {
+	if id == "" || (status != ParticipantActive && status != ParticipantPaused && status != ParticipantArchived) {
+		return fmt.Errorf("%w: participant status is unknown", workspace.ErrInvalid)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, row := range f.participants {
+		if row.ID == id {
+			f.participants[i].Status = status
+			return nil
+		}
+	}
+	return workspace.ErrNotFound
 }
 
 type orderedInventory struct {
