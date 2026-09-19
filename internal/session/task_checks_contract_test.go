@@ -538,3 +538,86 @@ func TestAProposalCarriesItsDeclaredChecksOntoTheNode(t *testing.T) {
 		t.Fatalf("the refusal does not name the field the model has to repair: %s", problem)
 	}
 }
+
+// THE DOOR AND THE RUNNER ASK ONE READER, END TO END.
+//
+// A check whose quoted argument holds a bar is declared, admitted by the
+// proposal door byte for byte, opens the checker's door, is RUN by the checker's
+// own gate in a real shell, and its exit code comes back: zero on the artifact
+// that holds the word and non-zero on the one that does not. Before the gates
+// shared a reader the door admitted this check and the runner refused it, so
+// correct work could never be found to hold.
+//
+// AND THE FORMS THAT MUST NEVER RUN ARE STOPPED AT BOTH. Each is the admitted
+// check with something the shell would ACT on added to it, so the reading of
+// composition is the only thing standing between it and the shell. The measure
+// is the file none of them may create.
+func TestACheckWithAQuotedBarIsAdmittedRunAndItsExitCodeRecorded(t *testing.T) {
+	const check = `grep -iE 'handoff|vault|wall' walls.md`
+	ground := t.TempDir()
+	writeCheckFile(t, ground, "walls.md", "## the vault\n", 0o644)
+
+	declared, refusal := declaredCheckList([]string{check})
+	if refusal != "" || len(declared) != 1 || declared[0] != check {
+		t.Fatalf("the proposal door: checks = %q, refusal = %q; want the check kept byte for byte", declared, refusal)
+	}
+	door := auditDoorFor(declaringNode(declared[0]), standingOn(ground))
+	if len(door.checks) != 1 {
+		t.Fatalf("the declared check did not open the checker's door: %q", door.checks)
+	}
+	tool := checkerBash(t, door, ground)
+	run := func(command string) (string, bool) {
+		t.Helper()
+		args, err := json.Marshal(struct {
+			Command string `json:"command"`
+		}{Command: command})
+		if err != nil {
+			t.Fatal(err)
+		}
+		text, failed, err := tool.Execute(context.Background(), args)
+		if err != nil {
+			t.Fatalf("executing %q: %v", command, err)
+		}
+		return text, failed
+	}
+
+	text, failed := run(check)
+	if strings.HasPrefix(text, "refused:") {
+		t.Fatalf("the runner refused a check the door admitted:\n%s", text)
+	}
+	if failed || !strings.Contains(text, "the vault") {
+		t.Fatalf("the check did not run to exit 0 on the artifact that holds the word: failed=%v\n%s", failed, text)
+	}
+	writeCheckFile(t, ground, "walls.md", "## nothing here\n", 0o644)
+	if text, failed := run(check); !failed || strings.HasPrefix(text, "refused:") {
+		t.Fatalf("the check did not run to a non-zero exit on the wrong artifact: failed=%v\n%s", failed, text)
+	}
+
+	marker := filepath.Join(ground, "RAN")
+	for _, never := range []struct {
+		said    string
+		refused bool
+	}{
+		{check + ` && touch RAN`, true},
+		{check + ` ; touch RAN`, true},
+		{`grep "$(touch RAN)" walls.md`, true},
+		{"grep \"`touch RAN`\" walls.md", true},
+		{`grep "a\"; touch RAN; \"" walls.md`, true},
+		{`grep 'unclosed walls.md ; touch RAN`, true},
+		// A trailing arrow or a second stage is taken OFF by the runner (what a
+		// line runs is its first stage), so it runs the check and nothing else.
+		{check + ` > RAN`, false},
+		{check + ` | tee RAN`, false},
+	} {
+		if got, refusal := declaredCheckList([]string{never.said}); got != nil || refusal == "" {
+			t.Errorf("the proposal door admitted %s as %q", never.said, got)
+		}
+		text, _ := run(never.said)
+		if refused := strings.HasPrefix(text, "refused:"); refused != never.refused {
+			t.Errorf("the runner: %s: refused = %v, want %v\n%s", never.said, refused, never.refused, text)
+		}
+		if _, err := os.Stat(marker); err == nil {
+			t.Fatalf("%s ran more than the one command: %s exists", never.said, marker)
+		}
+	}
+}
