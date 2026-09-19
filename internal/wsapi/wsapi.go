@@ -2,8 +2,10 @@
 //
 // Storage stays in internal/workspace. This package projects membership into
 // folder snapshots, unique conversation counts, and why-here, and it never
-// imports session, tui3, provider, or run. Open binds *workspace.Store
+// imports session, tui3, provider, run, or wsdiscover. Open binds *workspace.Store
 // directly so provenance, atomic Move, WhyHere, and Events are the real store's.
+// Wave 2 adds InstructFolder, EffectiveGuidance, SearchEvidence, a typed
+// ActionPlan, and SuppressPlacement. Discovery is an injected interface.
 package wsapi
 
 import (
@@ -50,10 +52,11 @@ type RootView struct {
 	Revision int // root_state.revision; zero on a blank store before the first write
 }
 
-// Service holds a store, an optional inventory, and a clock.
+// Service holds a store, an optional inventory, an optional discoverer, and a clock.
 type Service struct {
 	store store
 	inv   Inventory
+	disc  Discoverer
 	now   func() time.Time
 }
 
@@ -82,6 +85,15 @@ func (s *Service) SetInventory(inv Inventory) {
 		return
 	}
 	s.inv = inv
+}
+
+// SetDiscoverer replaces the discovery index used for SearchEvidence and
+// IndexProgress. A nil discoverer is delayed, not a fake empty success.
+func (s *Service) SetDiscoverer(disc Discoverer) {
+	if s == nil {
+		return
+	}
+	s.disc = disc
 }
 
 // CreateFolder makes a logical folder. It is a child of Root until placed.
