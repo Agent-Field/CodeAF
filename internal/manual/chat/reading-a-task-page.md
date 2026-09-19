@@ -360,8 +360,6 @@ Three things that look like the same picture and are not:
 No task page ever draws an empty body under its header. Whatever is true of the task,
 the page says it in one dim line, above whatever else it already knows:
 
-- a finished task whose transcript is gone from the disk keeps its report and says
-  `this task's transcript is not here any more`
 - a task that is queued, or one still working with nothing written for it yet, says
   `nothing on this page yet — it fills in as the task works` — except while a model is
   being asked on its behalf, when the line is that request instead
@@ -607,7 +605,7 @@ result comes back: calls in a batch run together and the result waits for the
 slowest of them, so the figure is the call's own and not the batch's. A call
 too quick to be worth a number gets none. The same figure comes back when you
 open the page after the work has landed — the journal keeps each call's own
-duration, so a finished room still says `3.0s` and `7.0s` on the right rows
+duration, so a finished page still says `3.0s` and `7.0s` on the right rows
 rather than drawing the calls with no clock at all.
 
 **A retry inside a task** shows, in the same words the conversation uses. When

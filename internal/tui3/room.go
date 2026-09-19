@@ -1113,16 +1113,21 @@ func (a *app) openRailRoom(node *taskNode) {
 	if node == nil || a.roomStandingOn(node) {
 		return
 	}
-	// A plan-backed rail row opens the store page at the gesture. The page is
-	// kept as conversation state, so later frames only paint this reading.
-	if a.taskSheetPlan(strconv.FormatUint(node.id, 10)) == nil && a.taskSheet.planOn {
+	// A plan-backed rail row opens the store page at the gesture. Keep the
+	// fallback destination from before that read: the read may refresh the rail,
+	// but an absent page still opens exactly what this gesture selected.
+	id, title, run, part := node.id, node.title, node.run, node.node
+	_, hasPlan := a.planReader()
+	if a.openTaskSheetPlan(strconv.FormatUint(id, 10)) {
 		a.railTaskPlanOn = true
 		return
 	}
-	if node.run != "" {
-		a.openOrchRoom(node.run, node.node)
+	if hasPlan {
+		a.openRoom(id, title)
+	} else if run != "" {
+		a.openOrchRoom(run, part)
 	} else {
-		a.openRoom(node.id, node.title)
+		a.openRoom(id, title)
 	}
 }
 

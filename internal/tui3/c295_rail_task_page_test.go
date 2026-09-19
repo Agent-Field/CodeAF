@@ -26,6 +26,16 @@ func (f *railPlanCounter) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
 	return f.planFake.PlanTaskPage(id)
 }
 
+func (f *railPlanCounter) SteerTask(uint64, string) (session.SteerReceipt, error) {
+	return session.SteerReceipt{}, nil
+}
+
+func (f *railPlanCounter) WatchTask(uint64) (<-chan session.Event, error) {
+	return make(chan session.Event), nil
+}
+
+func (f *railPlanCounter) TaskJournal(uint64) string { return "" }
+
 func railTaskPageApp(t *testing.T, held bool) (*app, *railPlanCounter) {
 	t.Helper()
 	row := session.PlanTaskRow{ID: "2", Title: "land the parser", Status: "running"}
