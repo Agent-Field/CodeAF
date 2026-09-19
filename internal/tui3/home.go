@@ -856,12 +856,16 @@ type homeView struct {
 	spend     homeSpendReading
 	folders   homeFoldersReading
 	// folderOpen is the logical folder somebody drilled into, and "" at Root.
-	// Esc and the back row clear it. It lives as long as the window.
-	folderOpen string
-	grid       homeGrid
-	tilde      string
-	gridX      []int
-	gridMarks  []homeMark
+	// folderTrail is the parents they walked through to get here, so esc from a
+	// nested/shared child returns to that parent instead of jumping to Root
+	// (J02 sequential browse). The back row pops one step. It lives as long as
+	// the window.
+	folderOpen  string
+	folderTrail []string
+	grid        homeGrid
+	tilde       string
+	gridX       []int
+	gridMarks   []homeMark
 
 	// made is the last reading of the files made since the look stamp, which
 	// `since you left` draws a line each for (homepanel_left.go's

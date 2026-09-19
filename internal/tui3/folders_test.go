@@ -59,12 +59,30 @@ func (f *fakeFolders) FolderSnapshot(_ context.Context, id string) (FolderView, 
 	if f.err != nil {
 		return FolderView{}, nil, f.err
 	}
+	folder, ok := f.viewLocked(id)
+	if !ok {
+		return FolderView{}, nil, errors.New("unknown folder")
+	}
+	return folder, append([]FolderPlacement(nil), f.members[id]...), nil
+}
+
+// viewLocked finds a folder that RootSnapshot may have omitted: wsapi lists
+// only parentless collections at Root, and a nested/shared child lives on
+// FolderSnapshot placements whose Kind is collection.
+func (f *fakeFolders) viewLocked(id string) (FolderView, bool) {
 	for _, folder := range f.root.Folders {
 		if folder.ID == id {
-			return folder, append([]FolderPlacement(nil), f.members[id]...), nil
+			return folder, true
 		}
 	}
-	return FolderView{}, nil, nil
+	for _, places := range f.members {
+		for _, place := range places {
+			if folderCollectionPlacement(place) && place.RefID == id {
+				return folderViewFromPlacement(place), true
+			}
+		}
+	}
+	return FolderView{}, false
 }
 
 func (f *fakeFolders) CreateFolder(_ context.Context, name string) (FolderView, error) {
@@ -360,17 +378,35 @@ func TestFolderReadErrorKeepsTheLastGoodSnapshot(t *testing.T) {
 	}
 }
 
-func TestSharedChildFolderShowsUnderBothParents(t *testing.T) {
+// twoParentReceipts is J02: RootSnapshot lists only parentless folders, and
+// Receipts is a Kind=collection member of both Billing and Security. The same
+// chat sits inside Receipts so both paths show the same contents.
+func twoParentReceipts() *fakeFolders {
 	billing := FolderView{ID: "col-billing", Name: "Billing", Lifecycle: "active"}
 	security := FolderView{ID: "col-security", Name: "Security", Lifecycle: "active"}
-	receipts := FolderPlacement{RefID: "col-receipts", Title: "Receipts", Kind: folderCollectionKind}
-	fake := &fakeFolders{
+	underBilling := FolderPlacement{
+		CollectionID: "col-billing", RefID: "col-receipts", Title: "Receipts",
+		Kind: folderCollectionKind, AlsoIn: []string{"Security"},
+	}
+	underSecurity := FolderPlacement{
+		CollectionID: "col-security", RefID: "col-receipts", Title: "Receipts",
+		Kind: folderCollectionKind, AlsoIn: []string{"Billing"},
+	}
+	inside := FolderPlacement{
+		CollectionID: "col-receipts", RefID: "aaaa000000000002", Title: "Emailed receipt links",
+	}
+	return &fakeFolders{
 		root: FolderRoot{Folders: []FolderView{billing, security}},
 		members: map[string][]FolderPlacement{
-			"col-billing":  {receipts},
-			"col-security": {receipts},
+			"col-billing":  {underBilling},
+			"col-security": {underSecurity},
+			"col-receipts": {inside},
 		},
 	}
+}
+
+func TestSharedChildFolderShowsUnderBothParents(t *testing.T) {
+	fake := twoParentReceipts()
 	a := newLiveLab(t).open()
 	a.folders = fake
 	a.readHomeFolders()
@@ -379,37 +415,46 @@ func TestSharedChildFolderShowsUnderBothParents(t *testing.T) {
 	if strings.Contains(frame, "Receipts") {
 		t.Fatalf("Root listed a nested shared folder:\n%s", frame)
 	}
-	a.enterFolder("col-billing")
-	frame = homeText(a)
-	if !strings.Contains(frame, "Receipts") {
-		t.Fatalf("Billing did not show the shared child:\n%s", frame)
+	if strings.Contains(frame, "Emailed receipt links") {
+		t.Fatalf("Root listed a nested folder's chats:\n%s", frame)
 	}
-	a.leaveFolder()
-	a.enterFolder("col-security")
-	frame = homeText(a)
-	if !strings.Contains(frame, "Receipts") {
-		t.Fatalf("Security did not show the shared child:\n%s", frame)
+	for _, parent := range []string{"col-billing", "col-security"} {
+		a.enterFolder(parent)
+		frame = homeText(a)
+		if !strings.Contains(frame, "Receipts") {
+			t.Fatalf("%s did not show the shared child:\n%s", parent, frame)
+		}
+		if folderRowKind(a, "col-receipts") != homeFolderRow {
+			t.Fatalf("%s drew Receipts as %v, want a folder row", parent, folderRowKind(a, "col-receipts"))
+		}
+		if sessionRowOnFolders(a, "col-receipts") {
+			t.Fatalf("%s dropped Kind and drew Receipts as a chat", parent)
+		}
+		a.enterFolder("col-receipts")
+		if a.home.folderOpen != "col-receipts" {
+			t.Fatalf("enter Receipts via %s left folderOpen %q", parent, a.home.folderOpen)
+		}
+		frame = homeText(a)
+		if !strings.Contains(frame, "Emailed receipt links") {
+			t.Fatalf("%s path did not show Receipts' contents:\n%s", parent, frame)
+		}
+		a.leaveFolder()
+		if a.home.folderOpen != parent {
+			t.Fatalf("esc from Receipts via %s jumped to %q", parent, a.home.folderOpen)
+		}
+		a.leaveFolder()
 	}
 }
 
 func TestRenameFolderShowsUnderBothParents(t *testing.T) {
-	billing := FolderView{ID: "col-billing", Name: "Billing", Lifecycle: "active"}
-	security := FolderView{ID: "col-security", Name: "Security", Lifecycle: "active"}
-	receipts := FolderPlacement{RefID: "col-receipts", Title: "Receipts", Kind: folderCollectionKind}
-	fake := &fakeFolders{
-		root: FolderRoot{Folders: []FolderView{billing, security}},
-		members: map[string][]FolderPlacement{
-			"col-billing":  {receipts},
-			"col-security": {receipts},
-		},
-	}
+	fake := twoParentReceipts()
 	a := newLiveLab(t).open()
 	a.folders = fake
 	a.readHomeFolders()
 	a.home.build()
 	homeText(a)
 	a.enterFolder("col-billing")
-	if cmd := a.renameLogicalFolder("Receipts", "Invoices"); cmd != nil {
+	if cmd := a.runFoldersCommand("rename Receipts Invoices"); cmd != nil {
 		t.Fatal("rename returned a command")
 	}
 	if len(fake.renames) != 1 || fake.renames[0] != [2]string{"col-receipts", "Invoices"} {
@@ -420,6 +465,16 @@ func TestRenameFolderShowsUnderBothParents(t *testing.T) {
 	if !strings.Contains(frame, "Invoices") || strings.Contains(frame, "Receipts") {
 		t.Fatalf("Billing still showed the old name:\n%s", frame)
 	}
+	a.enterFolder("col-receipts")
+	a.home.say("", "")
+	frame = homeText(a)
+	if !strings.Contains(frame, "Invoices") {
+		t.Fatalf("opened Billing path still used the old name:\n%s", frame)
+	}
+	if !strings.Contains(frame, "Emailed receipt links") {
+		t.Fatalf("renamed folder lost its contents:\n%s", frame)
+	}
+	a.leaveFolder()
 	a.leaveFolder()
 	a.enterFolder("col-security")
 	a.home.say("", "")
@@ -427,6 +482,49 @@ func TestRenameFolderShowsUnderBothParents(t *testing.T) {
 	if !strings.Contains(frame, "Invoices") || strings.Contains(frame, "Receipts") {
 		t.Fatalf("Security did not show the rename:\n%s", frame)
 	}
+	a.enterFolder("col-receipts")
+	a.home.say("", "")
+	frame = homeText(a)
+	if !strings.Contains(frame, "Invoices") || !strings.Contains(frame, "Emailed receipt links") {
+		t.Fatalf("Security path did not show the renamed folder's contents:\n%s", frame)
+	}
+}
+
+func TestDroppedCollectionKindIsDrawnAsAChat(t *testing.T) {
+	fake := twoParentReceipts()
+	places := fake.members["col-billing"]
+	places[0].Kind = ""
+	fake.members["col-billing"] = places
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	a.enterFolder("col-billing")
+	homeText(a)
+	if folderRowKind(a, "col-receipts") == homeFolderRow {
+		t.Fatal("a Kind-less placement was still a folder row")
+	}
+	if !sessionRowOnFolders(a, "col-receipts") {
+		t.Fatal("dropping Kind did not draw the nested folder as a chat")
+	}
+}
+
+func folderRowKind(a *app, id string) homeRowKind {
+	for _, line := range a.home.lines {
+		if line.kind == homeFolderRow && line.dir == id {
+			return line.kind
+		}
+	}
+	return 0
+}
+
+func sessionRowOnFolders(a *app, refID string) bool {
+	for _, line := range a.home.lines {
+		if line.kind == homeSession && line.cell != nil && line.cell.panel == panelFolders && line.row.ID == refID {
+			return true
+		}
+	}
+	return false
 }
 
 func TestFolderSessionLookupFindsTheWorldRow(t *testing.T) {
