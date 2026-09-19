@@ -1562,8 +1562,14 @@ func (a *app) taskPlanBody(width int) []string {
 				continue
 			}
 			add(pal.ink(itoa(step.Step) + "  " + command))
-			if head := planObservationHead(step.Observation); head != "" {
-				add(pal.dim("   " + head))
+			// THE HEAD IS THE ROW'S OWN OR IT IS NOT DRAWN. The engine says when
+			// the row left out a part that could have written it
+			// ([session.PlanStep.ObservationHeadWithheld]); this surface reads
+			// that fact and never the words that came back.
+			if !step.ObservationHeadWithheld {
+				if head := planObservationHead(step.Observation); head != "" {
+					add(pal.dim("   " + head))
+				}
 			}
 		}
 		// THE LIVE STEP IS DRAWN ONE STEP EARLY: the command whose end line has

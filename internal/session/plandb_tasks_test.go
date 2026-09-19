@@ -456,6 +456,9 @@ func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
 		// An ended run's copy has been given back; a folder directly under the
 		// conversation's folder of copies is still a run's copy.
 		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7 && go vet ./...", nil, []int{0}},
+		// The same change joined so that the work runs even when it fails is still
+		// the prefix, and it withholds the head: its failure would not end the line.
+		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7; go vet ./...", nil, []int{0}},
 		// Further down is somewhere the work went, and that is the work.
 		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7/internal && go vet ./...", nil, nil},
 		{"cat calc.go go.mod notes.txt", nil, nil},
@@ -480,6 +483,15 @@ func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
 		}
 		if !reflect.DeepEqual(record, test.record) || !reflect.DeepEqual(prefix, test.prefix) {
 			t.Errorf("facts for %q: record=%v prefix=%v parts=%#v", test.command, record, prefix, got.Parts)
+		}
+		wantWithheld := len(test.record) > 0
+		for _, at := range test.prefix {
+			if strings.TrimSpace(got.Parts[at].Separator) != "&&" {
+				wantWithheld = true
+			}
+		}
+		if got.ObservationHeadWithheld != wantWithheld {
+			t.Errorf("ObservationHeadWithheld for %q = %v, want %v", test.command, got.ObservationHeadWithheld, wantWithheld)
 		}
 	}
 }
