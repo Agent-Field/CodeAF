@@ -218,29 +218,69 @@ func formatEvidence(query string, hits []wsapi.SearchHit) string {
 	return b.String()
 }
 
-// formatHierarchy is the folder catalog RoleOrganize is contracted to see.
-// Live J11 on SHA 709bf019 completed no-action with Security evidence because
-// the prompt had no collection_id to cite.
+// formatHierarchy is the folder graph RoleOrganize is contracted to see.
+// Live J11 on SHA d993a93c still completed no-action: folder names without
+// member conversation ids left the model unable to map cited chat: ids.
 func formatHierarchy(ctx context.Context, svc *wsapi.Service, chatID string) string {
 	if svc == nil {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("folders\n")
-	if store := svc.Workspace(); store != nil {
-		cols, err := store.Collections(ctx)
-		if err == nil {
-			for _, col := range cols {
-				b.WriteString(col.ID)
-				b.WriteByte(' ')
-				b.WriteString(col.Name)
-				b.WriteByte('\n')
-			}
+	writeFolderCatalog(ctx, svc, &b)
+	writeAlreadyIn(ctx, svc, chatID, &b)
+	return b.String()
+}
+
+func writeFolderCatalog(ctx context.Context, svc *wsapi.Service, b *strings.Builder) {
+	if svc == nil || b == nil {
+		return
+	}
+	store := svc.Workspace()
+	if store == nil {
+		return
+	}
+	cols, err := store.Collections(ctx)
+	if err != nil {
+		return
+	}
+	for _, col := range cols {
+		b.WriteString(col.ID)
+		b.WriteByte(' ')
+		b.WriteString(col.Name)
+		b.WriteByte('\n')
+		writeFolderMembers(ctx, store, col.ID, b)
+	}
+}
+
+func writeFolderMembers(ctx context.Context, store *workspace.Store, folderID string, b *strings.Builder) {
+	if store == nil || b == nil {
+		return
+	}
+	members, err := store.Members(ctx, folderID)
+	if err != nil {
+		return
+	}
+	for _, member := range members {
+		kind := string(member.Kind)
+		if kind == "" {
+			kind = string(workspace.ConversationKind)
 		}
+		b.WriteByte(' ')
+		b.WriteString(kind)
+		b.WriteByte(' ')
+		b.WriteString(member.ID)
+		b.WriteByte('\n')
+	}
+}
+
+func writeAlreadyIn(ctx context.Context, svc *wsapi.Service, chatID string, b *strings.Builder) {
+	if svc == nil || b == nil {
+		return
 	}
 	here, err := svc.PlacementsOf(ctx, workspace.Ref{Kind: workspace.ConversationKind, ID: chatID})
 	if err != nil || len(here) == 0 {
-		return b.String()
+		return
 	}
 	b.WriteString("already in")
 	for _, folder := range here {
@@ -248,7 +288,6 @@ func formatHierarchy(ctx context.Context, svc *wsapi.Service, chatID string) str
 		b.WriteString(folder.ID)
 	}
 	b.WriteByte('\n')
-	return b.String()
 }
 
 func evidenceDegraded(hits []wsapi.SearchHit) bool {

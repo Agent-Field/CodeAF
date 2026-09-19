@@ -76,6 +76,9 @@ func TestDoorOrganizerPassesFolderIds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := svc.AddPlacement(ctx, security.ID, workspace.Ref{Kind: workspace.ConversationKind, ID: organizeSecurityID}, workspace.Provenance{Origin: workspace.OriginPerson, Reason: "file"}); err != nil {
+		t.Fatal(err)
+	}
 	_ = svc.Close()
 
 	enqueueOrganizeJob(t, organizeBillingID, "1:cafe")
@@ -87,6 +90,9 @@ func TestDoorOrganizerPassesFolderIds(t *testing.T) {
 	runOrganizeJob(t, work)
 	if !strings.Contains(got.Hierarchy, security.ID) || !strings.Contains(got.Hierarchy, "Security") {
 		t.Fatalf("RoleOrganize was not handed the folder catalog:\n%s", got.Hierarchy)
+	}
+	if !strings.Contains(got.Hierarchy, "conversation "+organizeSecurityID) {
+		t.Fatalf("RoleOrganize was not handed Security's members:\n%s", got.Hierarchy)
 	}
 }
 
