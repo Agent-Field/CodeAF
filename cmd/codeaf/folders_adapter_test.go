@@ -274,6 +274,7 @@ func TestSessionFoldersFileNestsACollectionRef(t *testing.T) {
 }
 
 func TestAdapterOrganizeExistingCoalescesAndCancels(t *testing.T) {
+	t.Cleanup(swapOrganizeWake(func() {}))
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "collections.db")
 	svc, err := wsapi.Open(path)
@@ -332,5 +333,33 @@ func TestOpenV3FoldersWiresTheSessionSeam(t *testing.T) {
 	_ = folderWorld{}.ConversationIDs()
 	if title := (folderWorld{}).Title("missing"); title != "" {
 		t.Fatalf("missing conversation titled %q", title)
+	}
+}
+
+func TestAdapterCreateFolderInAndOrganizeThisChat(t *testing.T) {
+	t.Cleanup(swapOrganizeWake(func() {}))
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "collections.db")
+	svc, err := wsapi.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	adapter := &foldersAdapter{svc: svc}
+	billing, err := adapter.CreateFolder(ctx, "Billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts, err := adapter.CreateFolderIn(ctx, "Receipts", billing.ID)
+	if err != nil || receipts.Name != "Receipts" {
+		t.Fatalf("CreateFolderIn: %+v, %v", receipts, err)
+	}
+	first, err := adapter.OrganizeThisChat(ctx, "aaaaaaaaaaaaaaaa")
+	if err != nil || first.JobID == "" || first.State != "queued" {
+		t.Fatalf("OrganizeThisChat: %+v, %v", first, err)
+	}
+	second, err := adapter.OrganizeThisChat(ctx, "aaaaaaaaaaaaaaaa")
+	if err != nil || second.JobID != first.JobID {
+		t.Fatalf("coalesce: %+v vs %s, %v", second, first.JobID, err)
 	}
 }

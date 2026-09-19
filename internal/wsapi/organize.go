@@ -3,6 +3,7 @@ package wsapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/workspace"
@@ -53,6 +54,42 @@ func (s *Service) OrganizeExistingChats(ctx context.Context) (OrganizeView, erro
 	})
 	if err != nil {
 		return OrganizeView{}, wrapStoreError(err)
+	}
+	if s.onExisting != nil {
+		s.onExisting()
+	}
+	return organizeViewOf(job), nil
+}
+
+// OrganizeThisChat is visible Organize this chat. CoalesceKey is
+// conversation id plus the latest source revision. Repeated clicks coalesce.
+// This does not opt the workspace into workspace.reactive.
+func (s *Service) OrganizeThisChat(ctx context.Context, conversationID string) (OrganizeView, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return OrganizeView{}, wrapStoreError(fmt.Errorf("%w: organize this chat needs a conversation", workspace.ErrInvalid))
+	}
+	jobs, err := s.jobQueue(ctx)
+	if err != nil {
+		return OrganizeView{}, err
+	}
+	rev := ""
+	if s.chatRev != nil {
+		rev = strings.TrimSpace(s.chatRev(conversationID))
+	}
+	key := workspace.OrganizeChatKey(conversationID, rev)
+	job, err := jobs.EnqueueJob(ctx, workspace.Job{
+		Type:        workspace.JobOrganize,
+		ChatID:      conversationID,
+		SourceRev:   rev,
+		CoalesceKey: key,
+		CauseID:     workspace.OrganizeThisCause,
+	})
+	if err != nil {
+		return OrganizeView{}, wrapStoreError(err)
+	}
+	if inner, ok := s.store.(*workspace.Store); ok && inner != nil {
+		_ = inner.SupersedePendingChatJobs(ctx, conversationID, key)
 	}
 	return organizeViewOf(job), nil
 }

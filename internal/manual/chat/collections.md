@@ -50,13 +50,50 @@ is the same job. Quit and reopen leaves that same row queued or running for the 
 — it does not mint a second `organize_existing` job. A later click after `cancel`
 resumes that durable row. Cancel is visible `cancel`. Foreground chat stays usable.
 It never paints `pending` `leased` `completed` `deferred` `cancelled`, and never
-`checked`. `/folders organize` is the same door, never the only one.
+`checked`. `/folders organize` is the same door, never the only one. A successful
+enqueue writes `workspace.reactive=on`. That is the opt-in for automatic after-message
+graph writes. Manual **New folder** does not opt in.
 
 A fresh Folders tab stays empty of generated folders until New folder / `/folders create`
 or Organize existing chats actually applies. After-message automatic enqueue no longer
 invents the first folder on an empty tab. `workspace.organize` off still pauses automatic
 after-message apply; it does not refuse manual Add/Remove and it does not cancel an
-explicit `organize_existing` job. Upgrade keeps existing placements.
+explicit `organize_existing` job or **Organize this chat**. Upgrade keeps existing placements.
+
+## Organize this chat — targeted rerun, chord t, does not opt in reactive
+
+**Organize this chat** is a visible action on the current chat (chord `t`). It enqueues
+`observe_and_organize` for that conversation id plus the latest source revision. A second
+click while queued or running is the same job. It does **not** write `workspace.reactive=on`.
+`workspace.organize` off still runs this explicit click. Bursts keep the latest revision
+and cancel stale pending rows for that chat; a leased row is left to fail the source-revision
+check rather than being yanked mid-apply.
+
+## workspace.reactive — opt-in automatic organize, unset is off, Organize existing chats turns it on, does it organize while I type
+
+`workspace.reactive` unset is **off**. Automatic after-message graph writes run only when
+**both** `workspace.organize` (unset is on) and `workspace.reactive` are on. Visible
+**Organize existing chats** that successfully enqueues writes `workspace.reactive=on`.
+Related-work discovery stays read-only while reactive is off. Off does not delete
+placements. A greeting, an empty line, or `no-action` does not `CreateFolder` — a fresh
+Root still shows that sent chat with no generated folders. Enqueue kicks the existing
+standing pass; the five-minute tick is crash fallback, not the happy path. Organize
+RoleOrganize and RoleEmbed reserve the same daily budget as standing; a spent rail paints
+`delayed` (`discovery delayed`) rather than spending after standing is blocked.
+
+## Survey of more than eight unfiled chats — cursor, not a wall at eight
+
+`organizeSurveyCap` of eight is a **per-lease slice**, not a wall. The job row keeps a
+cursor of the next unfiled chat id. The next lease continues after that cursor, including
+no-action pages, so eight greeting chats at the front cannot pin the survey on
+`Unfiled[0..]` forever. Restart resumes the same durable row.
+
+## New folder nests in one action — CreateFolderIn, parent is where you stand
+
+Visible **New folder** (`c`) creates at the folder you are standing in, or at Root when
+no folder is selected. That is `CreateFolderIn` in one store transaction — not a Root
+`CreateFolder` plus a later nest. Cancel the name box writes nothing. `/folders create`
+without a parent still makes a Root folder.
 
 ## Saved chats — /folders add, new chat here, verbs n f e r i m w x
 
@@ -268,10 +305,12 @@ collections cannot open. It refuses a cycle or an unknown id in its result text.
 
 ## Automatic organization — does it file chats automatically, organizer, why here, no keyword-only file
 
-After a substantive message is already in the journal, codeaf may enqueue an
+After a substantive message is already in the journal, and after **Organize existing chats**
+has opted the workspace into `workspace.reactive`, codeaf may enqueue an
 `observe_and_organize` job. Filing happens when the standing pass or `codeaf tick`
 is bound to the organizer and applies a validated plan — enqueue alone does not
-place the chat. A **fresh Folders tab** does not invent folders from that automatic
+place the chat. The enqueue kicks that same standing pass; the five-minute interval
+is crash fallback. A **fresh Folders tab** does not invent folders from that automatic
 path; **Organize existing chats** is the explicit survey that may. RoleOrganize is handed the live folder graph (id, name, and
 member conversation ids) plus cited passages; without those ids it can only
 return `no-action`. Filing needs no approval card. `w` why here shows origin

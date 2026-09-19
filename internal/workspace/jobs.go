@@ -77,6 +77,9 @@ func storeJob(ctx context.Context, tx *sql.Tx, job Job, now string) (Job, error)
 		job.ID = id
 	}
 	job.CreatedAt, job.UpdatedAt = now, now
+	if job.EnqueuedAt == "" {
+		job.EnqueuedAt = now
+	}
 	if err := insertJob(ctx, tx, job); err != nil {
 		if job.CoalesceKey != "" && isUniqueConstraint(err) {
 			return lookupCoalesced(ctx, tx, job.Type, job.CoalesceKey)
@@ -168,8 +171,12 @@ func (s *Store) FinishJob(ctx context.Context, id, fence, state, detail string) 
 		if !holdsFence(job, fence, now) {
 			return fenceConflict()
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE jobs SET state=?, error=?, updated_at=? WHERE id=?`,
-			state, detail, now, job.ID)
+		committed := job.CommittedAt
+		if state == JobCompleted {
+			committed = now
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE jobs SET state=?, error=?, committed_at=?, updated_at=? WHERE id=?`,
+			state, detail, committed, now, job.ID)
 		return err
 	})
 }
@@ -315,8 +322,8 @@ func pickPendingJob(ctx context.Context, tx *sql.Tx, types []string) (Job, error
 }
 
 func takeLease(ctx context.Context, tx *sql.Tx, id, owner, fence, until, now string) (Job, error) {
-	result, err := tx.ExecContext(ctx, `UPDATE jobs SET state=?, owner=?, fence=?, lease_until=?, attempt=attempt+1, updated_at=?
- WHERE id=? AND state=?`, JobLeased, owner, fence, until, now, id, JobPending)
+	result, err := tx.ExecContext(ctx, `UPDATE jobs SET state=?, owner=?, fence=?, lease_until=?, attempt=attempt+1, started_at=?, updated_at=?
+ WHERE id=? AND state=?`, JobLeased, owner, fence, until, now, now, id, JobPending)
 	if err != nil {
 		return Job{}, err
 	}
@@ -341,17 +348,47 @@ func lookupCoalesced(ctx context.Context, tx *sql.Tx, jobType, key string) (Job,
 }
 
 func insertJob(ctx context.Context, tx *sql.Tx, job Job) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO jobs(`+jobColumns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := tx.ExecContext(ctx, `INSERT INTO jobs(`+jobColumns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		job.ID, job.Type, job.State, job.Owner, job.Fence, job.CauseID, job.CoalesceKey, job.ChatID,
-		job.SourceRev, job.Error, job.Attempt, job.LeaseUntil, job.CreatedAt, job.UpdatedAt)
+		job.SourceRev, job.Error, job.Attempt, job.LeaseUntil, job.CreatedAt, job.UpdatedAt,
+		job.Cursor, job.EnqueuedAt, job.StartedAt, job.CommittedAt)
 	return err
 }
 
 func scanJob(row eventScanner) (Job, error) {
 	var job Job
 	err := row.Scan(&job.ID, &job.Type, &job.State, &job.Owner, &job.Fence, &job.CauseID, &job.CoalesceKey,
-		&job.ChatID, &job.SourceRev, &job.Error, &job.Attempt, &job.LeaseUntil, &job.CreatedAt, &job.UpdatedAt)
+		&job.ChatID, &job.SourceRev, &job.Error, &job.Attempt, &job.LeaseUntil, &job.CreatedAt, &job.UpdatedAt,
+		&job.Cursor, &job.EnqueuedAt, &job.StartedAt, &job.CommittedAt)
 	return job, err
+}
+
+// SetJobCursor writes the survey checkpoint on a live lease. The next lease
+// continues after that cursor instead of walking Unfiled[0..] again.
+func (s *Store) SetJobCursor(ctx context.Context, id, fence, cursor string) error {
+	return s.withHeldJob(ctx, id, fence, func(tx *sql.Tx, job Job, now string) error {
+		_, err := tx.ExecContext(ctx, `UPDATE jobs SET cursor=?, updated_at=? WHERE id=?`,
+			cursor, now, job.ID)
+		return err
+	})
+}
+
+// SupersedePendingChatJobs cancels pending observe_and_organize rows for this
+// chat whose coalesce key is not keepKey. Leased work is left alone: a stale
+// plan still has to fail the source-revision check rather than be yanked
+// mid-apply.
+func (s *Store) SupersedePendingChatJobs(ctx context.Context, chatID, keepKey string) error {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" {
+		return nil
+	}
+	_, err := s.withJobsTx(ctx, func(tx *sql.Tx, now string) (Job, error) {
+		_, err := tx.ExecContext(ctx, `UPDATE jobs SET state=?, owner='', fence='', lease_until='', updated_at=?
+ WHERE type=? AND chat_id=? AND coalesce_key!=? AND state=?`,
+			JobCancelled, now, JobOrganize, chatID, keepKey, JobPending)
+		return Job{}, err
+	})
+	return err
 }
 
 func placeholders(n int) string {

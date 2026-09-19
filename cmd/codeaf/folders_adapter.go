@@ -138,6 +138,7 @@ func (a *foldersAdapter) OrganizeExisting(ctx context.Context) (tui3.FolderOrgan
 	if err != nil {
 		return tui3.FolderOrganize{}, err
 	}
+	kickOrganizePass()
 	return folderOrganizeOf(view), nil
 }
 
@@ -152,6 +153,33 @@ func (a *foldersAdapter) OrganizeStatus(ctx context.Context) (tui3.FolderOrganiz
 func (a *foldersAdapter) CancelOrganize(ctx context.Context) error {
 	return a.svc.CancelOrganize(ctx)
 }
+
+func (a *foldersAdapter) CreateFolderIn(ctx context.Context, name, parentID string) (tui3.FolderView, error) {
+	folder, err := a.svc.CreateFolderIn(ctx, name, parentID)
+	if err != nil {
+		return tui3.FolderView{}, err
+	}
+	return folderViewOf(folder), nil
+}
+
+func (a *foldersAdapter) OrganizeThisChat(ctx context.Context, conversationID string) (tui3.FolderOrganize, error) {
+	view, err := a.svc.OrganizeThisChat(ctx, conversationID)
+	if err != nil {
+		return tui3.FolderOrganize{}, err
+	}
+	kickOrganizePass()
+	return folderOrganizeOf(view), nil
+}
+
+// foldersRuntimeDoors are the additive Folders methods the UI lane will name
+// on tui3.Folders. The compile-time check stays here until that interface
+// grows; we must not edit internal/tui3.
+type foldersRuntimeDoors interface {
+	CreateFolderIn(ctx context.Context, name, parentID string) (tui3.FolderView, error)
+	OrganizeThisChat(ctx context.Context, conversationID string) (tui3.FolderOrganize, error)
+}
+
+var _ foldersRuntimeDoors = (*foldersAdapter)(nil)
 
 func folderOrganizeOf(view wsapi.OrganizeView) tui3.FolderOrganize {
 	return tui3.FolderOrganize{JobID: view.JobID, State: view.State, Detail: view.Detail}

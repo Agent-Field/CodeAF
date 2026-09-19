@@ -28,6 +28,15 @@ const entryCheck = "check"
 // against anything's run count.
 const entryTidy = "tidy"
 
+// entryEmbed names RoleEmbed spend on the standing daily rail. It counts
+// against the day's money the way tidy does, never against MaxPerDay.
+const entryEmbed = "embed"
+
+// EmbedSpend is one RoleEmbed line for the standing ledger. Fired stays 0.
+func EmbedSpend(usd float64) Entry {
+	return Entry{Kind: entryEmbed, USD: usd}
+}
+
 // Append writes one entry to today's ledger with O_APPEND.
 func (s *Store) Append(entry Entry) error {
 	if entry.At.IsZero() {
@@ -132,7 +141,7 @@ func (s *Store) RunsSince(from time.Time) (map[string]Spend, error) {
 // that rule again is where the daily rail and a card would come to disagree.
 func (s *Spend) count(entry Entry) {
 	s.USD += entry.USD
-	if entry.Kind != entryCheck && entry.Kind != entryTidy {
+	if entry.Kind != entryCheck && entry.Kind != entryTidy && entry.Kind != entryEmbed {
 		s.Fired++
 	}
 }
