@@ -6,8 +6,7 @@ about you or your work ever leaves this machine.
 
 ## The notice
 
-Before the first session's events are sent, codeaf prints this to stderr once;
-the installer prints it too:
+Before the first session's events are sent, codeaf prints this to stderr once:
 
 ```
 codeaf sends anonymous usage counts to AgentField.
@@ -16,6 +15,15 @@ codeaf sends anonymous usage counts to AgentField.
          paths, repo names, keys, email, IP, or machine name.
   See exactly what leaves:  codeaf telemetry show
   Turn off:                 CODEAF_TELEMETRY=off
+```
+
+The installer prints a two-line form of the same fact, to stderr, after the
+`installed codeaf …` receipt and before the `export PATH` line. The full notice
+above, with the opt-out, still arrives at the first session:
+
+```
+codeaf shares anonymous performance data with AgentField
+codeaf does NOT share your prompts, code, files, or any private information
 ```
 
 ## What is sent
