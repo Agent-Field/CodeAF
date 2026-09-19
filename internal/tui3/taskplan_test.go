@@ -215,14 +215,19 @@ func TestThePaneDrawsThisChatsPlanRowsWithTheirStateWords(t *testing.T) {
 }
 
 // ENTER OPENS THE PAGE THE STORE KEEPS: the description, the notes with their
-// author and moment, and the trajectory's steps — each command on its own line.
+// moment and `you` on the person's own, and the trajectory's steps, each command
+// on its own line.
 func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
 	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
 	pages := map[string]session.PlanTaskPage{
 		"t-alpha": {
 			Row:         rows[0],
 			Description: "the work order",
-			Notes:       []session.PlanTaskNote{{Author: "worker-1", Body: "a handoff", At: taskFixtureNow}},
+			Notes: []session.PlanTaskNote{
+				{Author: "worker-1", Body: "a handoff", At: taskFixtureNow},
+				{Author: "7", Body: "landed on work: 2 files", At: taskFixtureNow},
+				{Author: "person-handle", Person: true, Body: "mind the vault", At: taskFixtureNow},
+			},
 			Steps: []session.PlanStep{
 				{Step: 1, Command: "$ echo one", Observation: "one"},
 				{Step: 2, Command: "$ echo two", Observation: "two"},
@@ -242,9 +247,17 @@ func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
 		t.Fatal("enter over a plan row did not open its page")
 	}
 	page := taskSheetText(a)
-	for _, want := range []string{"the work order", "worker-1", "$ echo one", "$ echo two", "$ echo three"} {
+	for _, want := range []string{"the work order", "a handoff", "landed on work: 2 files", "mind the vault", "you", "$ echo one", "$ echo two", "$ echo three"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the plan page is missing %q:\n%s", want, page)
+		}
+	}
+	// AN AUTHOR IS A WORD A PERSON WOULD RECOGNISE OR IT IS NOT DRAWN. The person
+	// is `you`; a worker's handle, the run's own number and the person's store
+	// handle are ids, and no id of the store's is anywhere on the page.
+	for _, never := range []string{"worker-1", "person-handle", "t-alpha", "7 " + strings.TrimSpace(railSep)} {
+		if strings.Contains(page, never) {
+			t.Fatalf("the plan page draws the store's own id %q:\n%s", never, page)
 		}
 	}
 	// THE HEAD OPENS ON THE TASK AS GIVEN TO THE PERSON: title, a folded brief,
