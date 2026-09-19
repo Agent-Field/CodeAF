@@ -11,11 +11,21 @@
 # side list of tasks or a task's page.
 #
 # WHAT IT NEEDS: tmux, git, python3, and a key the product can find, either in
-# the environment or in your profile's config file, which it copies and never
-# writes. Everything it makes is thrown away: a home of its own, a repository of
-# its own, and a tmux server on a socket of its own, which it ends by that
-# socket's name and by nothing else. It never touches your own home folder's
-# state, and it selects no process by the text of a command line.
+# the environment or in your profile's config file. Everything it makes is
+# thrown away: a home of its own, a repository of its own, and a tmux server on
+# a socket of its own. It never writes to your own home folder's state.
+#
+# YOUR KEY: the drive copies your profile's key into a private temporary home,
+# readable by you alone, and removes that copy on every exit: a pass, a failed
+# check, an interrupt. Nothing else the product writes there carries the key.
+# A screen kept from a failed check has any key the drive knows struck out.
+#
+# WHAT IT ENDS, and how it chooses: its own tmux server, by its own socket's
+# name; and the engine the chat started for this home, found as the process
+# holding THIS home's own socket and ended only when its executable is the
+# binary you named. It selects no process by the text of a command line. On a
+# system with neither `lsof` nor a table of sockets to read, the engine is left
+# alone: it leaves by itself once it has been idle, or you can end it.
 #
 # WHAT IT ASSERTS, in the order it happens. It exits with the number that failed.
 #
@@ -50,13 +60,18 @@ BIN=${1:?usage: scripts/hosted-drive.sh <path to bin/codeaf> [folder for failed 
 for tool in tmux git python3; do
 	command -v "$tool" >/dev/null || { echo "this drive needs $tool"; exit 2; }
 done
-BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")
+BIN=$(cd "$(dirname "$BIN")" && pwd -P)/$(basename "$BIN")
+umask 077
 OUT=${2:-$(mktemp -d /tmp/codeaf-drive-screens.XXXXXX)}
 mkdir -p "$OUT"
 SOCK=codeaf-drive-$$
 HOME_DIR=$(mktemp -d /tmp/codeaf-drive-home.XXXXXX)
 WORK=$(mktemp -d /tmp/codeaf-drive-work.XXXXXX)
+# mktemp -d makes a folder only its owner can enter on every system this runs
+# on; said again here because a key is about to be copied into it.
+chmod 700 "$HOME_DIR"
 fails=0
+passed=no
 
 say() { printf '%s\n' "$*"; }
 t() { tmux -L "$SOCK" "$@"; }
@@ -68,13 +83,43 @@ import sys
 sys.stdout.write(''.join('*' if 0xe000 <= ord(c) <= 0xf8ff else c for c in sys.stdin.read()))"
 }
 
+# strike_keys removes every key the drive knows from what passes through it:
+# the ones in the copied profile and the ones in the environment. The drive
+# opens no page that draws a key; this is for the day some page does.
+strike_keys() {
+	python3 -c "
+import json, os, sys
+known = set()
+def walk(node):
+    if isinstance(node, dict):
+        for name, value in node.items():
+            if isinstance(value, str) and 'key' in name.lower() and len(value) > 8:
+                known.add(value)
+            else:
+                walk(value)
+    elif isinstance(node, list):
+        for value in node:
+            walk(value)
+try:
+    walk(json.load(open(sys.argv[1])))
+except Exception:
+    pass
+for name, value in os.environ.items():
+    if name.endswith('_API_KEY') and len(value) > 8:
+        known.add(value)
+text = sys.stdin.read()
+for value in known:
+    text = text.replace(value, '[key struck out]')
+sys.stdout.write(text)" "$HOME_DIR/config.json"
+}
+
 pass() { say "  PASS  $*"; }
 
 # A failed check keeps the screen it judged, so the reader sees what was there.
 fail() {
 	fails=$((fails + 1))
 	say "  FAIL  $*"
-	screen >"$OUT/fail-$fails.txt" 2>/dev/null
+	screen | strike_keys >"$OUT/fail-$fails.txt" 2>/dev/null
 	say "        the screen it judged is kept at $OUT/fail-$fails.txt"
 }
 
@@ -122,8 +167,66 @@ wait_for() {
 	return 1
 }
 
-cleanup() { t kill-server 2>/dev/null; }
+# exe_of is the executable a pid is running, asked of the system and never
+# read out of a command line.
+exe_of() {
+	if [ -e "/proc/$1/exe" ]; then
+		readlink -f "/proc/$1/exe"
+	else
+		lsof -p "$1" -a -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | head -1
+	fi
+}
+
+# end_engine ends the engine the chat started for THIS home. It is found as the
+# holder of this home's own socket, and ended only when its executable is the
+# binary this drive was given: whole-path equality, one pid at a time.
+end_engine() {
+	local sock pid
+	for sock in "$HOME_DIR"/v3/hosts/*/host.sock; do
+		[ -S "$sock" ] || continue
+		for pid in $(holders_of "$sock"); do
+			[ "$(exe_of "$pid")" = "$BIN" ] && kill "$pid" 2>/dev/null
+		done
+	done
+	return 0
+}
+
+# holders_of is every pid holding one socket, by the socket's whole path: asked
+# of `lsof` where there is one, and otherwise read from the system's own table
+# of sockets and each process's open files.
+holders_of() {
+	local inode entry
+	if command -v lsof >/dev/null; then
+		lsof -t -- "$1" 2>/dev/null
+		return 0
+	fi
+	[ -r /proc/net/unix ] || return 0
+	awk -v sock="$1" '$NF == sock { print $7 }' /proc/net/unix | while read -r inode; do
+		for entry in /proc/[0-9]*; do
+			find "$entry/fd" -maxdepth 1 -lname "socket:\[$inode\]" 2>/dev/null | grep -q . &&
+				echo "${entry#/proc/}"
+		done
+	done
+	return 0
+}
+
+# cleanup runs on EVERY exit. The key's copy goes first and goes always; the
+# rest of the home may stay for reading when a check failed.
+#
+# THE ENGINE IS ENDED BEFORE ANYTHING IS REMOVED, because it is found through a
+# socket that lives in the home. A clean pass then removes what the drive made,
+# by the names it made them under and nothing else.
+cleanup() {
+	rm -f "$HOME_DIR/config.json"
+	t kill-server 2>/dev/null
+	end_engine
+	if [ "$passed" = "yes" ]; then
+		case "$HOME_DIR" in /tmp/codeaf-drive-home.*) rm -rf "$HOME_DIR" ;; esac
+		case "$WORK" in /tmp/codeaf-drive-work.*) rm -rf "$WORK" ;; esac
+	fi
+}
 trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 copies() { ls -d "$HOME_DIR"/v3/projects/*/*/trees/* 2>/dev/null; }
 
@@ -210,9 +313,7 @@ check "esc returns to the conversation with your draft as you left it" draft_is_
 say ""
 if [ "$fails" -eq 0 ]; then
 	say "ALL PASS"
-	# Only what this drive made, by the names it made them under.
-	case "$HOME_DIR" in /tmp/codeaf-drive-home.*) rm -rf "$HOME_DIR" ;; esac
-	case "$WORK" in /tmp/codeaf-drive-work.*) rm -rf "$WORK" ;; esac
+	passed=yes
 else
 	say "$fails FAILED: home $HOME_DIR and folder $WORK are left for reading"
 fi
