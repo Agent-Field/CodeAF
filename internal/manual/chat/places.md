@@ -460,15 +460,19 @@ line `logical groups of chats · /folders create Billing`. It never says “no f
 Unfiled chats stay visible at virtual Root — two truths. A fresh workspace invents no
 folders until **New folder** or **Organize existing chats**.
 
-Visible actions, not slash-only: **New folder**, **New chat**, **Organize existing chats**.
+Visible actions, not slash-only: **New folder**, **New chat**, **Organize existing chats**,
+**Add existing chats**, **Organize this chat**, **Manage this folder**,
+**Coordinate selected**, **Open chat**. `c` New folder, `g` Coordinate selected,
+`b` Add existing chats, `d` Manage this folder, `t` Organize this chat, `u` Undo.
 New chat starts at Root or the selected folder; Esc before send creates nothing and
 returns to Folders. Organize reuses `observe_and_organize` and paints `queued` `running`
 `delayed` `done` `cancel` — never `pending` `leased` `completed` `deferred` `cancelled`,
 never `checked`. Quit and reopen leaves that same job queued or running; it does not mint
 a second `organize_existing` row. `/folders organize` is the same survey, never the only door.
 
-`esc` walks back. 80-column sequential. The collections page has create, nest, rename,
-why-here, and `/folder` vs `/folders`.
+A wide Folders place is Miller columns plus pinned details. `→` drills; `shift+→`
+opens the strip. 80-column is one navigation column plus switchable details.
+The collections page has create, nest, rename, why-here, and `/folder` vs `/folders`.
 
 ## standing — what runs without being asked, and where to type on the standing page
 
