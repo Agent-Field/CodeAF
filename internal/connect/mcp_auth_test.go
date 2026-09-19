@@ -4,8 +4,11 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/int128/listener"
 )
@@ -262,7 +265,7 @@ func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
 	first := unusedLoopbackAddress(t)
 	previous := newLocalListener
 	calls := 0
-	newLocalListener = func(addresses []string) (*listener.Listener, error) {
+	newLocalListener = func(addresses []string) (net.Listener, *url.URL, error) {
 		address := first
 		if calls > 0 {
 			if addresses[0] != first {
@@ -271,7 +274,11 @@ func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
 			address = addresses[0]
 		}
 		calls++
-		return listener.NewOn(address)
+		l, err := listener.NewOn(address)
+		if err != nil {
+			return nil, nil, err
+		}
+		return l, l.URL, nil
 	}
 	t.Cleanup(func() { newLocalListener = previous })
 
@@ -418,4 +425,73 @@ func unusedLoopbackAddress(t *testing.T) string {
 		t.Fatalf("release unused loopback address: %v", err)
 	}
 	return address
+}
+
+// gatedListener holds its Close open until release is closed, and signals when
+// Close is first entered, so a test can prove a flow waits for its callback
+// listener to be released.
+type gatedListener struct {
+	net.Listener
+	release <-chan struct{}
+	started func()
+}
+
+func (g *gatedListener) Close() error {
+	g.started()
+	<-g.release
+	return g.Listener.Close()
+}
+
+// A reconnect that follows a finished flow at once must find the callback
+// listener already closed; otherwise it binds a fresh redirect the service does
+// not know and introduces the identity a second time. Flow.Wait must therefore
+// not report done until the listener the flow served on has been released.
+func TestAFinishedFlowReleasesItsCallbackListenerBeforeItReportsDone(t *testing.T) {
+	release := make(chan struct{})
+	closeStarted := make(chan struct{})
+	var once sync.Once
+	previous := newLocalListener
+	first := true
+	newLocalListener = func(addresses []string) (net.Listener, *url.URL, error) {
+		l, u, err := previous(addresses)
+		if err != nil || !first {
+			return l, u, err
+		}
+		first = false
+		return &gatedListener{Listener: l, release: release, started: func() { once.Do(func() { close(closeStarted) }) }}, u, nil
+	}
+	t.Cleanup(func() { newLocalListener = previous })
+
+	fake := startFakeToolServer(t, fakeShape{})
+	manager, _ := withToolServer(t, fake)
+	ctx := context.Background()
+
+	flow, err := manager.BeginAuth(ctx, "example", "")
+	if err != nil {
+		t.Fatalf("BeginAuth: %v", err)
+	}
+	openInBrowser(t, flow)
+
+	waited := make(chan error, 1)
+	go func() { _, e := flow.Wait(ctx); waited <- e }()
+
+	select {
+	case <-closeStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the flow never began closing its callback listener")
+	}
+	select {
+	case e := <-waited:
+		t.Fatalf("Flow.Wait returned before the callback listener was released: %v", e)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case e := <-waited:
+		if e != nil {
+			t.Fatalf("Wait: %v", e)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Flow.Wait did not return after the listener was released")
+	}
 }
