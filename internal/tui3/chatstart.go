@@ -120,6 +120,10 @@ const (
 	// startPageGuest is a task inside another conversation, which this file
 	// reacquires through the original owner rather than the local task graph.
 	startPageGuest
+	// startPageFolders is the Folders place. New chat from that room must
+	// put the person back there on esc, not dump them into the empty
+	// launch conversation (J38).
+	startPageFolders
 )
 
 // startBack is everything the surface was holding when `+` was pressed, kept so
@@ -344,6 +348,8 @@ func (a *app) cancelChatStart() tea.Cmd {
 			return cmd
 		}
 		a.note(startGuestBackWord)
+	case startPageFolders:
+		return a.showPage(pageFolders)
 	}
 	return nil
 }

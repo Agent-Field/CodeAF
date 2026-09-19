@@ -1141,14 +1141,16 @@ Home's `folders` panel stays as enter-from.
 ```
 
 The empty list's dim line is `logical groups of chats · /folders create Billing`. Visible
-actions on the place are **New folder**, **New chat**, **Organize existing chats**. On a
-row, `→` then `n f e i m w x`: `n` new chat here · `f` add current chat · `m` move this
+actions on the place are **New folder**, **New chat**, **Organize existing chats**. Esc
+from New chat before send creates nothing and returns to Folders. On a
+row, `→` then `n f e r i m w x`: `n` new chat here · `f` add current chat · `m` move this
 placement · `w` why here · `x` remove this placement. On a folder row, `e` nests
-that folder and `i` is instruct this folder; `/folders nest Receipts in Billing` and
-`/folders instruct <name-or-id> <text>` are the typed forms. The collections
-page is the rest: also in two folders, `/folder` vs `/folders`, automatic
-organization, inherited instructions, suppressions, memory-off search, and
-`discovery delayed` vs `checked`.
+that folder, `r` (Folders place) is rename this folder, and `i` is instruct this
+folder; `/folders nest Receipts in Billing` and `/folders instruct <name-or-id> <text>`
+are the typed forms — enter on that line runs the command, it is never stored as
+a folder name. The collections page is the rest: also in two folders, `/folder` vs
+`/folders`, automatic organization, inherited instructions, suppressions,
+memory-off search, and `discovery delayed` vs `checked`.
 
 ## /permissions — what runs without asking
 

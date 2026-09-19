@@ -35,6 +35,7 @@ type foldersPlace struct {
 	reading                   homeFoldersReading
 	organize                  FolderOrganize
 	naming                    *editor
+	renameID                  string
 	note                      string
 	stops                     []folderPlaceStop
 }
@@ -69,6 +70,7 @@ const (
 	folderNameResting      = "a name for the folder"
 	folderOrganizeFailWord = "could not organize existing chats"
 	folderNameHint         = "type a name · enter create · esc cancel"
+	folderRenameHint       = "type a name · enter rename · esc cancel"
 	folderPlaceHint        = "enter opens · ↑↓ pick · esc back"
 	folderActionHint       = "enter · ↑↓ pick · esc back"
 	folderRootPath         = "root"
@@ -201,7 +203,16 @@ func (placeFolders) note(a *app, width int) []string {
 
 func (placeFolders) hint(a *app) string {
 	if a.folderSheet.naming != nil {
+		if strings.TrimSpace(a.folderSheet.renameID) != "" {
+			return folderRenameHint
+		}
 		return folderNameHint
+	}
+	if strings.TrimSpace(a.pendingNestChild) != "" {
+		return folderNestHintWord
+	}
+	if strings.TrimSpace(a.pendingMoveRef) != "" {
+		return folderMoveHintWord
 	}
 	stop, ok := a.folderPlaceCursor()
 	if !ok {
@@ -597,6 +608,9 @@ func (a *app) folderPlaceKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.touch()
 		return nil
 	case "enter":
+		if cmd, ok := a.folderPlaceRunSlash(); ok {
+			return cmd
+		}
 		return a.enterFolderPlace()
 	}
 	if box := a.placeBox(); box != nil {
@@ -607,6 +621,11 @@ func (a *app) folderPlaceKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (a *app) escFolderPlace() tea.Cmd {
+	if a.clearFolderMove() || a.clearFolderNest() {
+		a.folderSheet.note = ""
+		a.touch()
+		return nil
+	}
 	p := &a.folderSheet
 	if strings.TrimSpace(p.open) != "" {
 		a.leaveFolderPlace()
@@ -621,17 +640,66 @@ func (a *app) folderPlaceNameKey(msg tea.KeyPressMsg) tea.Cmd {
 	box := a.folderSheet.naming
 	switch msg.String() {
 	case "esc":
-		a.folderSheet.naming = nil
+		a.clearFolderPlaceName()
 		a.touch()
 		return nil
 	case "enter":
-		name := strings.TrimSpace(box.String())
-		a.folderSheet.naming = nil
-		return a.createLogicalFolder(name)
+		return a.finishFolderPlaceName()
 	}
 	listNavigate(msg, box, func(int) {}, func() {}, 1)
 	a.touch()
 	return nil
+}
+
+// folderPlaceRunSlash is enter on a typed /folders (or any) command. The
+// Folders place's enter otherwise activates New folder, so a nest/rename line
+// used to be stored as a collection name (J41).
+func (a *app) folderPlaceRunSlash() (tea.Cmd, bool) {
+	box := a.placeBox()
+	if box == nil {
+		return nil, false
+	}
+	line := strings.TrimSpace(box.String())
+	if !folderPlaceCommandLine(line) {
+		return nil, false
+	}
+	a.clearFolderPlaceName()
+	box.reset()
+	return a.slash(line), true
+}
+
+func folderPlaceCommandLine(text string) bool {
+	text = strings.TrimSpace(text)
+	if !strings.HasPrefix(text, "/") || droppedPathShape(text) {
+		return false
+	}
+	word := strings.TrimPrefix(text, "/")
+	if at := strings.IndexAny(word, " \t"); at >= 0 {
+		word = word[:at]
+	}
+	return knownCommand(word)
+}
+
+func (a *app) clearFolderPlaceName() {
+	a.folderSheet.naming = nil
+	a.folderSheet.renameID = ""
+}
+
+func (a *app) finishFolderPlaceName() tea.Cmd {
+	box := a.folderSheet.naming
+	name := ""
+	if box != nil {
+		name = strings.TrimSpace(box.String())
+	}
+	renameID := strings.TrimSpace(a.folderSheet.renameID)
+	a.clearFolderPlaceName()
+	if folderPlaceCommandLine(name) {
+		return a.slash(name)
+	}
+	if renameID != "" {
+		return a.renameLogicalFolder(renameID, name)
+	}
+	return a.createLogicalFolder(name)
 }
 
 func (a *app) enterFolderPlace() tea.Cmd {
@@ -666,6 +734,28 @@ func (a *app) beginFolderPlaceCreate() tea.Cmd {
 	}
 	box := editor{}
 	a.folderSheet.naming = &box
+	a.folderSheet.renameID = ""
+	a.touch()
+	return nil
+}
+
+func (a *app) beginFolderPlaceRename(line homeLine) tea.Cmd {
+	if a.foldersUnavailable() {
+		return nil
+	}
+	if line.kind != homeFolderRow {
+		return nil
+	}
+	id := strings.TrimSpace(line.dir)
+	if id == "" {
+		return nil
+	}
+	box := editor{}
+	if name := strings.TrimSpace(line.project); name != "" {
+		box.setText(name)
+	}
+	a.folderSheet.naming = &box
+	a.folderSheet.renameID = id
 	a.touch()
 	return nil
 }
@@ -681,8 +771,11 @@ func (a *app) startFolderPlaceChat() tea.Cmd {
 	id := a.folderPlaceChatFolder()
 	a.leavePlace()
 	cmd := a.openChatStart()
-	if a.startingChat() && id != "" {
-		a.pendingFolder = id
+	if a.startingChat() {
+		a.startBack.page = startPageFolders
+		if id != "" {
+			a.pendingFolder = id
+		}
 	}
 	return cmd
 }
@@ -726,6 +819,12 @@ func (a *app) enterFolderPlaceFolder(id string) tea.Cmd {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return nil
+	}
+	if a.pendingMoveRef != "" {
+		return a.completeFolderMove(id)
+	}
+	if a.pendingNestChild != "" {
+		return a.completeFolderNest(id)
 	}
 	p := &a.folderSheet
 	if cur := strings.TrimSpace(p.open); cur != "" {

@@ -934,6 +934,7 @@ func (a *app) raiseHome() tea.Cmd {
 	// and this road adds only what a door has that a greeting does not — the
 	// cursor's memory of where this window was before.
 	a.home = a.newHomeView(world, known)
+	carryEditor(&a.home.box, &a.compose)
 	a.furnishHome()
 	a.home.openAt(a.file)
 	// AND THE CURSOR STANDS ON THE CONVERSATION BEFORE THIS ONE, where this
@@ -1237,6 +1238,7 @@ func (a *app) dropHome() {
 	// [homeView] used to forget folderOpen/folderTrail, so the next /home
 	// landed at Root instead of Receipts (J06/J07).
 	open, trail := a.home.folderOpen, append([]string(nil), a.home.folderTrail...)
+	carryEditor(&a.compose, &a.home.box)
 	a.home = homeView{folderOpen: open, folderTrail: trail}
 	a.touch()
 }
