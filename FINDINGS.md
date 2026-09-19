@@ -64,3 +64,7 @@ The forced regression makes the product process the owner: `openV3ProcessWith` c
 ## Regression review correction
 
 Review established that the first fixed-form regression did not pin the join: deleting the direct `sweepWaiting.Wait` call still passed because the test's nonblocking close check could run before the close goroutine. The corrected seam wraps the wait itself. The test waits until that seam is entered, so ordering is channel-controlled rather than scheduler-controlled, then releases the writer and proves the join returns. Removing the product join now prevents the required seam handshake instead of passing by scheduling luck.
+
+### Corrected regression evidence
+
+The corrected focused regression passed 20 times. A mutation archive with the `waitPlaceSweep` call removed could not complete the required wait-seam handshake, confirming the test now depends on the join. The first full package verification attempt then hit unrelated `TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds`, which reported zero check tasks instead of one. This is outside the sweep paths and the remaining separate checks did not run after that failure. Verification is retried from the unchanged committed implementation.
