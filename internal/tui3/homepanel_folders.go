@@ -118,10 +118,19 @@ func folderMemberLine(in *homeGridInput, place FolderPlacement, collectionID str
 	if title == "" {
 		title = id
 	}
+	note := folderAlsoIn(place.AlsoIn)
 	if !ok {
+		// A GONE WORLD ROW IS UNAVAILABLE, NOT AN ORDINARY CHAT. Synthesizing
+		// a live SessionRow from title-or-id used to draw J08's missing
+		// conversation as a normal session with nothing to tell it apart.
 		row = session.SessionRow{ID: id, Title: title}
+		if note != "" {
+			note = folderUnavailableWord + " · " + note
+		} else {
+			note = folderUnavailableWord
+		}
 	}
-	cell := &homeCell{panel: panelFolders, title: title, note: folderAlsoIn(place.AlsoIn), key: collectionID}
+	cell := &homeCell{panel: panelFolders, title: title, note: note, key: collectionID}
 	return homeLine{kind: homeSession, row: row, dir: row.ProjectDir, project: row.Project, cell: cell}, true
 }
 

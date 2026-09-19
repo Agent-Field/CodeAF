@@ -39,11 +39,25 @@ On a `folders` row, `→` opens the verb strip:
   folder. Repeating the add is harmless.
 - **`m`** moves only the placement you are on. Other folders that already hold
   this chat stay.
-- **`w`** shows why this chat is here — who put it here and the reason — not a
-  score.
-- **`x`** removes that placement only. The chat and its history remain.
+- **`w`** shows why this chat is here as `Origin · Reason · Actor · Evidence · At`,
+  skipping any part that is empty. It is not a score.
+- **`x`** removes that placement only. The chat and its history remain. If that
+  was the row under the cursor, home says `that chat is no longer in this folder`
+  and stays in the folder.
 
 An old chat can be added to a new folder without merging or resuming it.
+
+## Why is this chat in this folder — why here, origin, reason, actor, evidence
+
+`w` on a placement prints the latest membership as `Origin · Reason · Actor · Evidence · At`. Empty parts are omitted, so a person-filed chat with no extra note may show only `person`. There is no TUI history list of every add and remove; `w` is the latest why-here, not a score.
+
+## Open a chat and come back — return to its folder, Receipts not Root
+
+Opening a chat from a folder does not forget the path. Coming back to home (`/home` or the home door) restores that same folder — Receipts, not Root. `esc` on home still walks the trail you drilled (Receipts back to Billing, then Root). If the placement you were on is gone when you return or after `x`, home says `that chat is no longer in this folder` and stays in the folder.
+
+## A chat whose conversation is gone — unavailable
+
+A member whose conversation or world row is gone is labelled `unavailable`. It is not drawn as an ordinary chat, and it does not look empty: the title or id stays, with `unavailable` beside it. Entering that row names `unavailable` rather than opening a missing transcript. `x` still removes the placement.
 
 ## Rename a folder — /folders rename, both parents
 
