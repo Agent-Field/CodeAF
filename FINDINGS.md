@@ -1,14 +1,14 @@
-# c295 findings
+# Findings
 
 ## Task
 
-Make a conversation rail task row open that task's stored task page when the store has it, while preserving the existing room fallback for rows the store does not hold. The page must remain open after a run settles, `esc` must return to the unchanged conversation, task parts must remain openable, and drawing frames must not call the agent. Update the task-page manual and ensure `roomGoneWord` is not drawn for a stored task.
+Make a rail task row open the task page held in the run store, while preserving the existing room fallback and returning to the same conversation on `esc`.
 
-## Bounded findings
+## Known
 
-- A rail click currently travels through `openRailRoom` to `openRoom`, which selects a room rather than consulting the task-page reader.
-- The tasks place already opens a selected plan row with `taskSheetPlan`; `taskPlanBody` draws the stored page and supports opening its parts, while `closeTaskPlan` restores the prior view.
-- `planReader` is the store-facing boundary used for `PlanTaskPage`; the store lookup must happen only in the click or `enter` gesture, never while drawing a frame.
-- `openWorkTab` and `workTabFrame` manage and draw the conversation work rows, while `workTabStable` removes the in-conversation work tab shortly after all rows settle. A task page opened from a rail row therefore must not depend on the work tab remaining live.
-- `roomGoneWord` belongs to the missing-transcript room path and should remain only as fallback behavior when no stored task page exists.
-- Tests should use `planAppWith` and `planFake.pages` to prove page-over-room selection, persistence across ten all-done frames, `esc` restoration, missing-page fallback, and zero agent calls during frame drawing.\n- The current task-page manual still tells people that the rail opens a conversation and recovers a transcript; the requested answer is instead that a rail row opens the stored task page whether the task is running or finished.\n- Current-facing contradictions also appear in the chat manual’s rail legends and task navigation prose (`keys.md`, `places.md`, `tasks.md`, and `task-rooms-after-restart.md`); historical passages may remain historical, but present instructions must say page rather than room.
+- The rail currently routes a row through `openRailRoom` and `openRoom`; a task page is already rendered by `taskPlanBody` through the plan reader.
+- The store task number shown by the rail is sufficient to request that task's page, including its parts.
+- The store lookup must happen only on the click or `enter` gesture. If no page exists, the row must keep opening its room.
+- A task page must remain open after the run settles; frame drawing must neither close it nor call the agent.
+- Tests should use `planAppWith` and `planFake.pages` and cover held and missing pages, ten settled frames, `esc`, no room for held tasks, and no agent call while drawing.
+- The manual must say that a rail row opens the task page for running or finished work, and `roomGoneWord` must not be shown when the store holds the task.
