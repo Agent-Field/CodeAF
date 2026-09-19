@@ -125,8 +125,9 @@ type tasksPlace struct {
 	// that opened it, a follow, the re-read after a note. The follow's beat is
 	// counted from it ([app.taskPlanFollow]).
 	planPageAt time.Time
-	// planReadAt is when the run's plan was last read ([tasksPlace.planDue]).
-	planReadAt time.Time
+	// planGen is the read of the run's rows this reading was filed from
+	// ([app.planRowsGen]); a newer one re-files it ([tasksPlace.regroup]).
+	planGen uint64
 	// tail is the last thing the node said, read off its journal once when the
 	// card opened, and tailRead says the read has happened — an empty tail with
 	// tailRead false is a read still in flight, and one with tailRead true is a
@@ -241,10 +242,11 @@ func (a *app) takeTaskReading() tasksPlace {
 	world := a.readWorld()
 	mine := a.taskSheetMine()
 	return tasksPlace{
-		world:  world,
-		mine:   mine,
-		awayAt: a.elsewhere().Read,
-		mineAt: a.railStamp,
+		world:   world,
+		mine:    mine,
+		awayAt:  a.elsewhere().Read,
+		mineAt:  a.railStamp,
+		planGen: a.planRowsGen,
 		reading: readTasks(world, mine, session.LastDays(now, taskSheetDays), tasksSort{},
 			session.LastLookAt(a.looksRoot(), pageTasks.word()), now),
 	}
@@ -273,33 +275,10 @@ func (a *app) takeTaskReading() tasksPlace {
 //
 // The common frame compares the held stamps and the main chat's own state.
 // A main turn can finish without any worker or other-window notice.
-// planDue reports whether the run's plan is owed a fresh read.
 //
-// THE PLAN HAS A BEAT OF ITS OWN, AND ONLY WHILE SOMETHING CAN MOVE. A run's
-// workers move the store and publish nothing, so the rail learns that a part
-// was added or a check finished only by reading again. That read used to ride
-// on the reading of other windows' work, which takes a new stamp every
-// [elsewhereEvery]; a conversation whose engine is in another process has no
-// such reading, its stamp never moved, and the rail stood on the run's first row
-// until the run ended. The beat is the same length, so a conversation in this
-// process re-reads exactly as often as it did.
-//
-// A CONVERSATION AT REST READS NOTHING. The beat runs while the reading holds a
-// row that can still move by itself, one that is queued or running, and the read
-// that finds every row settled is the last. What starts it again is a row of
-// this window's own graph moving ([app.railStamp]): a hand-off publishes its
-// row after its store is seeded, so that read finds the run. A reader that is
-// always there, as a hosted conversation's is, is not a reason to ask it.
-func (p *tasksPlace) planDue(a *app) bool {
-	if !planCanMove(p.mine.plan) {
-		return false
-	}
-	if _, ok := a.planReader(); !ok {
-		return false
-	}
-	return a.now().Sub(p.planReadAt) >= elsewhereEvery
-}
-
+// IT NEVER ASKS THE ENGINE. The run's rows are read off the loop and held on the
+// surface ([app.refreshPlanRows]); this re-files what is held, and a read that
+// has come back since the last filing is one more stamp to compare.
 // planCanMove reports whether any row of a plan can change without the person
 // touching it: work that is queued or running. A row that is done, incomplete
 // or waiting on the person moves only by a verb, and a verb moves the stamp.
@@ -327,10 +306,9 @@ func (p *tasksPlace) regroup(a *app) {
 	if p.reading.now.IsZero() {
 		p.reading.now = a.now()
 		p.reading.win = session.LastDays(p.reading.now, taskSheetDays)
-	} else if at.Equal(p.awayAt) && stamp == p.mineAt && !selfChanged && !p.planDue(a) {
+	} else if at.Equal(p.awayAt) && stamp == p.mineAt && !selfChanged && p.planGen == a.planRowsGen {
 		return
 	}
-	p.planReadAt = a.now()
 	// THE CURSOR IS REMEMBERED BY WHAT IT IS ON, ACROSS THE REBUILD.
 	//
 	// [tasksPlace.cursor] is a LINE of a layout this replaces whole, and the
@@ -348,7 +326,7 @@ func (p *tasksPlace) regroup(a *app) {
 	// kept. A row that is genuinely gone falls back to the settle every other
 	// rebuild uses, which parks on the nearest row rather than nowhere.
 	was, held := p.rowAt(a, p.cursor)
-	p.awayAt, p.mineAt = at, stamp
+	p.awayAt, p.mineAt, p.planGen = at, stamp, a.planRowsGen
 	p.mine = a.taskSheetMine()
 	p.reading = readTasks(p.world, p.mine, p.reading.win, p.order, p.reading.seen, p.reading.now)
 	if !held {
@@ -484,8 +462,13 @@ func (a *app) taskSheetMine() tasksMine {
 	// own read, narrowed to this chat, and it is the second authority for work
 	// that has not landed: a task the run has added but not yet dispatched is on
 	// this page and nowhere in the index (taskplan.go).
-	if plan, ok := a.planReader(); ok {
-		mine.plan = plan.PlanTasks()
+	//
+	// THE ROWS ARE THE ONES THE SURFACE HOLDS, NEVER A READ MADE HERE. This runs
+	// inside the frame, and over a connection the read is a call to another
+	// process that can take the wire's whole deadline; it is asked for from
+	// Update and folded in when it answers ([app.refreshPlanRows]).
+	if rows, ok := a.heldPlanRows(); ok {
+		mine.plan = rows
 		mine.now = a.runSummaryNow
 	}
 	mine.away = a.taskSheetAwayRows()

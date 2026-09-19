@@ -284,7 +284,7 @@ func agentNames(file *ast.File) map[string]bool {
 		case *ast.CallExpr:
 			if fn, ok := rhs.Fun.(*ast.SelectorExpr); ok {
 				switch fn.Sel.Name {
-				case "questionDoors", "stander", "Agent":
+				case "questionDoors", "stander", "Agent", "planReader":
 					return true
 				}
 			}
