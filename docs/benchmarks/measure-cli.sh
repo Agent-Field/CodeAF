@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# measure-cli.sh — measure ONE agent CLI: startup, first interactive frame, idle cost.
+# measure-cli.sh measures ONE agent CLI: startup, first interactive frame, idle cost.
 #
 #   measure-cli.sh <name> <home> <command...>
 #
@@ -8,14 +8,14 @@
 #   WORKDIR=$PWD docs/benchmarks/measure-cli.sh mine /tmp/bench-home/mine bin/mine chat
 #
 # <name> only labels the output, the tmux session and the run; nothing about the
-# CLI is inferred from it. <home> is the profile the CLI runs under — an
+# CLI is inferred from it. <home> is the profile the CLI runs under, an
 # authenticated one, because an unauthenticated profile measures a login screen
 # (METHODOLOGY.md says why). <command...> is the interactive invocation, launched
 # in a tmux pane whose working directory is WORKDIR.
 #
 # Output is key=value lines, grouped by phase=:
 #
-#   phase=meta      what was run, where, on what — the run's reproducibility.
+#   phase=meta      what was run, where, on what: the run's reproducibility.
 #                   load1/load5/load15 say what the machine was doing at launch.
 #   phase=startup   best-of-N wall clock for `--version`: hyperfine when it is on
 #                   PATH, a `date +%s%3N` loop when it is not. tool= says which.
@@ -43,8 +43,8 @@
 #
 # Dependencies: bash 4+, coreutils (date, sort, awk, grep, tr, sed), tmux, and a
 # /proc with smaps_rollup (Linux 4.14+). hyperfine is used when present and is not
-# required. perf is never used — perf_event_paranoid blocks it on most machines —
-# so idle CPU comes from /proc. Optional knobs, all with defaults:
+# required. perf is never used, because perf_event_paranoid blocks it on most
+# machines, so idle CPU comes from /proc. Optional knobs, all with defaults:
 #
 #   WORKDIR           working directory the CLI is launched in (default $PWD).
 #                     Must be a real repository, not an empty directory.
@@ -64,7 +64,7 @@
 #                     -1 is reported and the run continues.
 #   FRAME_POLL_MS     pane polling interval (default 20). first_paint_ms is
 #                     quantised to roughly this, and each poll is a tmux client.
-#   TRUST             auto (default) | never | always — whether to answer a
+#   TRUST             auto (default) | never | always: whether to answer a
 #                     folder-trust gate. answer_trust_gate says how narrow auto is.
 #   SWEEP             auto (default) | never | always: legacy fallback for
 #                     detached processes in an isolated HOME. always is refused
@@ -72,7 +72,7 @@
 #   SOCKET            tmux socket name. Always a private one: the run must not
 #                     touch the tmux server a person is working in.
 #   BENCH_ENV         space-separated names of variables to pass through from the
-#                     operator's shell into the run — the credentials a CLI
+#                     operator's shell into the run, the credentials a CLI
 #                     authenticates with. Everything else is dropped; see
 #                     env_prefix for why.
 #   PANE_TERM         TERM the pane gets (default xterm-256color). Every CLI in
@@ -188,8 +188,8 @@ shq() {
 # startup probe, the interactive pane and the teardown sweep all see one profile.
 #
 # IT STARTS FROM AN EMPTY ENVIRONMENT. The shell of whoever runs this script
-# carries variables that redirect a CLI's profile — a <TOOL>_HOME, a profile
-# directory, a cached credential — and inheriting them would mean the run measured
+# carries variables that redirect a CLI's profile (a <TOOL>_HOME, a profile
+# directory, a cached credential), and inheriting them would mean the run measured
 # a profile other than the <home> it names, with nothing in the output to say so.
 # So the run gets HOME, the XDG directories under it, a locale, a terminal type and
 # PATH, plus exactly the variables BENCH_ENV names. BENCH_ENV is how a credential
@@ -265,7 +265,7 @@ pane_pid() { "${TMUX[@]}" list-panes -t "$SESS_T" -F '#{pane_pid}' 2>/dev/null |
 
 # tree_pids prints every pid in the pane's tree, the pane process included, by
 # following /proc/<pid>/task/*/children. A pid that vanishes mid-walk is skipped
-# rather than fatal — the walk reports what is in the tree now.
+# rather than fatal: the walk reports what is in the tree now.
 tree_pids() {
   local root="$1"
   [ -n "$root" ] || return 0
@@ -310,7 +310,7 @@ tree_pids() {
 # returns 1 if the process is gone or the line is not what it should be.
 #
 # Fields are counted only AFTER stripping through the last ") ", because a
-# process's comm may contain spaces or parentheses — summing whitespace-separated
+# process's comm may contain spaces or parentheses. Summing whitespace-separated
 # fields from the start of such a line reads the wrong columns and silently
 # reports another process's CPU. ${raw##*) } strips the longest prefix ending in
 # ") ", which is the last one; utime, stime, pgrp and starttime are then fields
@@ -460,8 +460,8 @@ START_JIF=0
 # sweep_home signals every process of ours that carries this run's HOME in its
 # environment AND started after this script did. The start-time test is what makes
 # the sweep safe to leave on: a helper that called setsid and left the pane tree is
-# still caught, while a process the person started themselves during the run — a
-# shell, an editor in the same profile — is not, because it predates us.
+# still caught, while a process the person started themselves during the run (a
+# shell, an editor in the same profile) is not, because it predates us.
 # SWEEP=auto skips the sweep when the run's HOME is the invoking user's own, where
 # matching on HOME would be least specific.
 # shellcheck disable=SC2317  # reached from the EXIT trap, not by a direct call
@@ -791,7 +791,7 @@ line_is_accept() {
 
 # answer_trust_gate answers a folder-trust gate, and only a folder-trust gate.
 #
-# The naive test — does the splash contain the word "trust" — fires on a CLI that
+# The naive test, asking whether the splash contains the word "trust", fires on a CLI that
 # merely mentions trusting anything, and the keystroke meant for a gate then lands
 # in a session that never had one, corrupting whatever it was measuring. So the
 # gate has to show BOTH halves of a question that blocks the session:
@@ -821,7 +821,7 @@ answer_trust_gate() {
   fi
   if [ "$TRUST" != always ]; then
     # half 1: the question is about trusting this location, not about trust in
-    # general — a splash that merely says the word must not be answered
+    # general: a splash that merely says the word must not be answered
     printf '%s' "$text" | grep -Eiq \
       'trust[^.?!|]{0,48}(folder|director|workspace|project|repositor|path|files?)|(folder|director|workspace|project|repositor|path)[^.?!|]{0,48}trust' ||
       return 1

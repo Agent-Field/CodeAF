@@ -15,14 +15,14 @@ session. Numbers from different machines or different days do not belong in one 
 
 ## What it measures
 
-- **Startup** — wall clock for `--version`, the best of `STARTUP_RUNS` measured runs
+- **Startup**: wall clock for `--version`, the best of `STARTUP_RUNS` measured runs
   (default 7) after `STARTUP_WARMUP` (default 2) discarded warm-ups: a warm page-cache
   figure, not a cold one. Every CLI in one comparison needs the same `STARTUP_RUNS`,
   `STARTUP_WARMUP` and tool. It uses `hyperfine` when that is installed and a
   `date +%s%3N` loop when it is not, and says which in its output (`tool=`). Archive the
   run's `phase=meta` lines with any table built from them: that is the only record of
   what was actually run.
-- **First interactive frame** — time from launch until the terminal first paints a
+- **First interactive frame**: time from launch until the terminal first paints a
   non-blank character, measured in a tmux pane on a private socket.
 - **Idle cost** over a 30 s window, sampling the whole process tree: RSS, PSS, peak RSS
   (`VmHWM`), thread count, open file descriptors, CPU from `utime+stime` deltas, and
@@ -36,7 +36,7 @@ everything that does it.
 
 **Use an authenticated profile.** A fresh profile measures a login screen or a
 folder-trust dialog, not a working session. Two of the CLIs compared read more than 120 MB
-higher once actually authenticated in a repository — measured the naive way, every
+higher once actually authenticated in a repository, measured the naive way, every
 competitor is understated.
 
 **The idle figure is the part of the tree still alive at the end of the window.** A
@@ -71,8 +71,8 @@ cannot reach anything else. It contains no `pkill`, `killall` or other kill-by-p
 neither should anything added to it: `pkill -f` matches the whole command line of every
 process the user owns, so a pattern as ordinary as `sleep 60` will take down any unrelated
 job whose arguments happen to contain it. If other work is running on the machine, the
-idle and CPU figures are measuring that work too — wait, do not clear. Every run records
-the machine's load average — one-, five- and fifteen-minute — in `phase=meta`, and again
+idle and CPU figures are measuring that work too: wait, do not clear. Every run records
+the machine's load average (one-, five- and fifteen-minute) in `phase=meta`, and again
 immediately before and after the startup and idle windows (`startup_load1_before` /
 `startup_load1_after` / `idle_load1_before` / `idle_load1_after`). A millisecond figure
 taken under contention is worthless: compare runs taken at similar load, and say so when
@@ -82,7 +82,7 @@ a figure was taken outside the quiet bar you set.
 
 They are a measure of what the binary costs to install and to run: size, startup, and
 memory at rest and during one short turn. They say nothing about whether the work is any
-good. Task quality — pass rate, cost per issue, time per issue — is a separate measurement
+good. Task quality (pass rate, cost per issue, time per issue) is a separate measurement
 and is not in this table.
 
 ## Known limits
