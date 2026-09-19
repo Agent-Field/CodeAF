@@ -1196,8 +1196,21 @@ type Config struct {
 
 	// ConversationHistory grants only indexed history reads. Workers inherit
 	// this interface without receiving memory extraction, writes, or journaling.
-	// Nil falls back to Memory, so a memory-off root grants no history access.
+	// Nil falls back to Memory so a caller that only set Memory still grants
+	// history. A memory-off root still grants history when this field is set
+	// (A18 / J15): search_conversations and the search place follow this reader,
+	// not Memory.
 	ConversationHistory ConversationHistoryReader
+
+	// HybridSearch adds embedding or labelled-expansion candidates beside the
+	// BM25 hits ConversationHistory already returns. Nil keeps lexical search
+	// alone; the verb stays present. Production binds a discoverer; tests inject
+	// a fake. Never a dummy that claims success with empty vectors.
+	HybridSearch HybridSearcher
+
+	// Guidance loads folder instructions for the main turn. Nil is folders or
+	// wsapi unavailable: the turn still runs, with no standing folder text.
+	Guidance GuidanceSource
 
 	// MemoryImport is the legacy memory.md this session carries into the store
 	// on its first turn, once, before it is renamed to memory.md.imported
@@ -2639,6 +2652,13 @@ type Agent struct {
 	// an unchanged set renders the same bytes, so a conversation whose orders
 	// have not moved leaves message[0] exactly as the provider cached it.
 	standingText string
+	// guidanceText is the <guidance> block message[0] currently carries
+	// (guidance.go): folder instructions for this chat, loaded at turn start.
+	// Empty renders nothing. guidanceSnap is the checkpoint the affected
+	// mutations recompute against.
+	guidanceText     string
+	guidanceSnap     GuidanceSnapshot
+	guidanceConflict bool
 	// placesText is the `# Attached folders` block message[0] currently carries
 	// (placescontext.go): the folders the PERSON attached to this conversation,
 	// named absolutely, with each one's own house rules scoped to it. It sits

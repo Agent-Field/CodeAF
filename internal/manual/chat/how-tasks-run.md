@@ -706,7 +706,8 @@ instructions describe the tools it actually carries:
   The task's checker can independently read the same source.
   It can search all indexed places and open an exchange by
   an opaque source reference. It cannot write memories through that interface.
-  If the parent has memory off and no history source, the tool remains absent.
+  If the parent has no history source, the tool remains absent. Memory off no
+  longer takes search away when history is still wired.
   If task preparation falls back to "Complete the brief and report the result and checks run.",
   the checker receives that referenced brief so it can check the actual request.
   A requested final answer is kept as the task's result; checking it does not
