@@ -407,12 +407,17 @@ func (s *Supervisor) consume(event workerEvent) {
 		s.absorb(*event.ret)
 		return
 	}
+	// With no ceiling, live reports are observational: returned workers keep
+	// the shipped accounting semantics, including dropping cancelled work.
+	if s.limits.CostUSD <= 0 {
+		return
+	}
 	previous := s.banked[event.taskID]
 	if event.banked > previous {
 		s.spent += event.banked - previous
 		s.banked[event.taskID] = event.banked
 	}
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && !s.limitHit {
+	if s.spent >= s.limits.CostUSD && !s.limitHit {
 		s.limitHit = true
 		for _, cancel := range s.cancels {
 			cancel()
@@ -427,14 +432,6 @@ func (s *Supervisor) consume(event workerEvent) {
 // that stays open would stall the whole run: nothing else can make it
 // terminal, and the run would wait on it forever.
 func (s *Supervisor) absorb(ret workerReturn) {
-	banked := s.banked[ret.task.ID]
-	if ret.report.USD > banked {
-		s.spent += ret.report.USD - banked
-	}
-	delete(s.banked, ret.task.ID)
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
-		s.limitHit = true
-	}
 	// A RETURN FOR A TASK THE STORE ALREADY ENDED is written as nothing. The
 	// ending the store carries — a cancellation that landed while the worker
 	// ran, which the same write cleared the claim and cascaded down — is the
@@ -443,17 +440,26 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	// hands back no account this run counts. The completion check below still
 	// runs, because the cancellation may be the write that finished the tree.
 	delete(s.cancels, ret.task.ID)
-	if ret.report.Waiting {
-		// A PARKED RETURN IS NOT AN ENDING. The worker called `plandb wait`; the
-		// store already released the claim and flagged the task waiting, and the
-		// task stays open until the run wakes it ([launchWaits]). Nothing is
-		// written over the store's own park, and the spend the worker made is
-		// still the run's.
-		s.steps += ret.report.Steps
+	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
+		// Live spend was provisional. Preserve the existing rule that an
+		// externally cancelled task contributes no report to this run.
+		s.spent -= s.banked[ret.task.ID]
+		delete(s.banked, ret.task.ID)
 		s.completeTree()
 		return
 	}
-	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
+	banked := s.banked[ret.task.ID]
+	if ret.report.USD > banked {
+		s.spent += ret.report.USD - banked
+	}
+	delete(s.banked, ret.task.ID)
+	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
+		s.limitHit = true
+	}
+	if ret.report.Waiting {
+		// A parked return is not an ending. The store already released the
+		// claim, and the spend the worker made is still the run's.
+		s.steps += ret.report.Steps
 		s.completeTree()
 		return
 	}
