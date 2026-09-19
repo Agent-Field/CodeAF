@@ -47,6 +47,7 @@ type foldersPlace struct {
 	preview                   []FolderPlacement
 	change                    FolderChange
 	whyLine, whyRef           string
+	add                       folderAddPick
 }
 
 // folderPlaceStop is one restable row of the Folders place. Kind decides what
@@ -217,6 +218,9 @@ func (placeFolders) enter(a *app) tea.Cmd { return a.enterFolderPlace() }
 func (placeFolders) verbs(a *app) []verb { return a.folderPlaceVerbs() }
 
 func (placeFolders) box(a *app) *editor {
+	if a.folderSheet.add.opened() {
+		return &a.folderSheet.add.filter
+	}
 	if a.folderSheet.naming != nil {
 		return a.folderSheet.naming
 	}
@@ -224,6 +228,9 @@ func (placeFolders) box(a *app) *editor {
 }
 
 func (placeFolders) resting(a *app) string {
+	if a.folderSheet.add.opened() {
+		return folderAddResting
+	}
 	if a.folderSheet.naming != nil {
 		return folderNameResting
 	}
@@ -239,6 +246,9 @@ func (placeFolders) note(a *app, width int) []string {
 }
 
 func (placeFolders) hint(a *app) string {
+	if a.folderSheet.add.opened() {
+		return folderAddHint
+	}
 	if a.folderSheet.naming != nil {
 		if strings.TrimSpace(a.folderSheet.renameID) != "" {
 			return folderRenameHint
@@ -262,6 +272,9 @@ func (placeFolders) hint(a *app) string {
 }
 
 func (placeFolders) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if a.folderSheet.add.opened() {
+		return a.folderAddKey(msg), true
+	}
 	if a.folderSheet.naming != nil {
 		return a.folderPlaceNameKey(msg), true
 	}
@@ -271,6 +284,9 @@ func (placeFolders) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (placeFolders) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.folderPlaceKey(msg) }
 
 func (placeFolders) press(a *app, y int) (tea.Cmd, bool) {
+	if a.folderSheet.add.opened() {
+		return a.folderAddPress(y)
+	}
 	if at, ok := a.folderPlaceHitAt(y); ok {
 		a.folderSheet.cursor = at
 		a.rememberFolderPlace()
@@ -281,6 +297,9 @@ func (placeFolders) press(a *app, y int) (tea.Cmd, bool) {
 }
 
 func (placeFolders) hover(a *app, y int) bool {
+	if a.folderSheet.add.opened() {
+		return a.folderAddHover(y)
+	}
 	next := -1
 	if at, ok := a.folderPlaceHitAt(y); ok {
 		next = at
@@ -289,6 +308,11 @@ func (placeFolders) hover(a *app, y int) bool {
 }
 
 func (placeFolders) wheel(a *app, delta int) (tea.Cmd, bool) {
+	if a.folderSheet.add.opened() {
+		a.folderSheet.add.move(delta)
+		a.touch()
+		return nil, true
+	}
 	a.moveFolderPlace(delta)
 	a.touch()
 	return nil, true
@@ -504,6 +528,9 @@ func (a *app) moveFolderPlace(delta int) {
 // ── paint ───────────────────────────────────────────────────────────────────
 
 func (a *app) folderPlaceBody(width, room int) []placeRow {
+	if a.folderSheet.add.opened() {
+		return a.folderAddBody(width, room)
+	}
 	p := &a.folderSheet
 	lines := a.folderPlaceLines(width)
 	cursorLine := folderPlaceLineOf(lines, p.cursor)

@@ -202,7 +202,7 @@ func TestAddExistingChatsHookIsPreserved(t *testing.T) {
 		called++
 		return nil
 	}
-	defer func() { folderAddStart = nil }()
+	defer func() { folderAddStart = (*app).beginFolderAdd }()
 	a := foldersPlaceApp(t, billingSecurityFolders())
 	frame := foldersPlaceText(a)
 	if !strings.Contains(frame, folderAddExistingWord) {
