@@ -7,10 +7,12 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -424,23 +426,32 @@ func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
 // workspace: the two properties are deliberately independent.
 func TestPlanStepDisplayFactsUseTheBeltRunWorkspaceAndKeepFolder(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("the run did the work")
+	registerBeltRunEngine(t, double)
+
 	dir := t.TempDir()
-	path := filepath.Join(dir, planStoreFilename)
-	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha"})
-	runCopy := filepath.Join(t.TempDir(), "trees", "1")
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "the run did the work"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: dir}
+		config.SessionFile = filepath.Join(dir, placeTranscript)
+		config.AskConsent = false
+	})
+	id, _, _, err := agent.StartTask(context.Background(), "show the run copy", false)
+	if err != nil {
+		t.Fatalf("StartTask: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	runCopy := double.spec.Workspace
+	double.mu.Unlock()
+	rootID := strconv.FormatUint(id, 10)
 	other := filepath.Join(t.TempDir(), "trees", "2")
-	writePlanTrajectory(t, dir, "alpha",
+	writePlanTrajectory(t, dir, rootID,
 		`{"kind":"step","step":1,"command":"cd `+runCopy+` && echo work"}`,
 		`{"kind":"step","step":2,"command":"cd `+other+` && echo elsewhere"}`,
 	)
 
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	armPlanStore(t, agent, path, "chat-a")
-	agent.beltMu.Lock()
-	agent.beltRun = &beltRun{workspace: runCopy}
-	agent.beltMu.Unlock()
-
-	page, ok := agent.PlanTaskPage("t-alpha")
+	page, ok := agent.PlanTaskPage(planStoreID(rootID))
 	if !ok {
 		t.Fatal("the belt run task answered no page")
 	}
@@ -453,6 +464,7 @@ func TestPlanStepDisplayFactsUseTheBeltRunWorkspaceAndKeepFolder(t *testing.T) {
 	if len(page.Steps[1].Parts) == 0 || page.Steps[1].Parts[0].RunCopyPrefix {
 		t.Fatalf("another folder was marked as the run-copy prefix: %#v", page.Steps[1].Parts)
 	}
+	endBeltRun(t, agent, double)
 }
 
 func TestPlanStepDisplayFactsDoNotRewriteTrajectory(t *testing.T) {
