@@ -559,6 +559,48 @@ func TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding(t *test
 	}
 }
 
+// TestSupervisorReviewsASelfFinishedRootWhoseWorkerReturnsAnError proves the
+// store's finished work still gets its review after its worker comes home with
+// an error. The channels force the store write to land before the return without
+// relying on a scheduler delay.
+func TestSupervisorReviewsASelfFinishedRootWhoseWorkerReturnsAnError(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	const result = "the root wrote its own ending before returning an error"
+	doneWritten := make(chan struct{})
+	releaseReturn := make(chan struct{})
+	seat.actions["root"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		if _, err := store.Done(task.ID, task.ID, result, nil, nil); err != nil {
+			return run.Report{}, err
+		}
+		close(doneWritten)
+		<-releaseReturn
+		return run.Report{Result: "worker return must not replace the stored result", Steps: 1}, fmt.Errorf("worker failed after done")
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+	outcome := make(chan run.Outcome, 1)
+	go func() { outcome <- supervisor.Run(runContext(t)) }()
+
+	<-doneWritten
+	if checks := tasksWithRole(store, plandb.RoleCheck); len(checks) != 0 {
+		t.Fatalf("check tasks before worker return = %d, want zero", len(checks))
+	}
+	close(releaseReturn)
+	if got := <-outcome; got != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", got, run.OutcomeDone)
+	}
+	checks := tasksWithRole(store, plandb.RoleCheck)
+	if len(checks) != 1 {
+		t.Fatalf("check tasks = %d, want exactly one for the self-finished root", len(checks))
+	}
+	if !seat.launched(checks[0].ID) || checks[0].Status != plandb.StatusDone {
+		t.Fatalf("check launched = %v status = %s, want landed done", seat.launched(checks[0].ID), checks[0].Status)
+	}
+	if got := store.Task(store.RootID()).Result; got != result {
+		t.Fatalf("root result = %q, want stored result %q", got, result)
+	}
+}
+
 func TestSupervisorAcceptsARootsReadingDoesNotHoldConclusion(t *testing.T) {
 	store := runOpenStore(t)
 	seat := newFakeSeat()
