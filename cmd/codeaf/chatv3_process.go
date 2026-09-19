@@ -60,6 +60,10 @@ type v3Process struct {
 	// Models is ONE lazy warm and one cache on disk. N catalogs would be N
 	// network round trips for one answer.
 	Models *catalog.Catalog
+	// processCtx is the lifetime shared by background work owned by this process.
+	// processStop closes that lifetime before closeAll joins each owned worker.
+	processCtx  context.Context
+	processStop context.CancelFunc
 	// Shelf holds Models until somebody asks /model for today's list, and the
 	// refreshed catalog after (chatv3_modelshelf.go). The picker and the two
 	// session readers that answer about a model somebody may have just picked
@@ -180,7 +184,8 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	discovery := catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	}
-	models := catalog.LoadLazy(context.Background(), discovery)
+	processCtx, processStop := context.WithCancel(context.Background())
+	models := catalog.LoadLazy(processCtx, discovery)
 	// A tier row that says auto is answered from this catalog (config.AutoModels):
 	// the same non-blocking read, never a fetch, and set once at start-up.
 	config.AutoModels = models.ModelsNow
@@ -192,6 +197,8 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		ProfileDir:        settings.ProfileDir,
 		UnreadProfileKeys: append([]string(nil), settings.UnreadProfileKeys...),
 		Models:            models,
+		processCtx:        processCtx,
+		processStop:       processStop,
 		Shelf:             shelf,
 		Harnesses:         subharness.Default(),
 		Memory:            v3Memory(settings.ProfileDir),
@@ -410,6 +417,16 @@ func (p *v3Process) closeAll() {
 	agents, recall, first := p.takeForClose()
 	if !first {
 		return
+	}
+
+	// Cancel the process lifetime first, then join the catalog warm. Catalog.Close
+	// also cancels its derived context, and its join is what makes the promise
+	// that no cache write can happen after closeAll returns airtight.
+	if p.processStop != nil {
+		p.processStop()
+	}
+	if p.Models != nil {
+		p.Models.Close()
 	}
 
 	// The process starts its place sweep before it opens any shared state. Seal

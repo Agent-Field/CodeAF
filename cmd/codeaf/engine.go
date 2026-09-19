@@ -145,6 +145,7 @@ func runRemoteEngine(args []string) error {
 	// its own. The close is the same door [v3Process.closeAll] uses; it drains
 	// the queue before joining, so the last row is on disk as well.
 	session.CloseUsage()
+	closeEngineProcess()
 	return quietRefusal(err)
 }
 
@@ -520,6 +521,7 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 	// (The refusal path above never booted a conversation, so its registry is
 	// empty and this close is a no-op there. It is one owner door, not two.)
 	session.CloseUsage()
+	closeEngineProcess()
 	if errors.Is(err, enginehost.ErrHostRunning) {
 		return nil
 	}
@@ -947,6 +949,15 @@ func openEngineProcess() (*v3Process, error) {
 		engineProcess.proc, engineProcess.err = openV3Process("engine")
 	})
 	return engineProcess.proc, engineProcess.err
+}
+
+// closeEngineProcess closes the once-per-process resources after the serving
+// road has returned. In particular, closeAll cancels and joins model discovery
+// before the engine process can exit or its profile can be reused.
+func closeEngineProcess() {
+	if engineProcess.proc != nil {
+		engineProcess.proc.closeAll()
+	}
 }
 
 // engineStandingItems and engineStandingSave are the two standing doors, or nil.
