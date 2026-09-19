@@ -270,18 +270,42 @@ func (a *app) takeTaskReading() tasksPlace {
 // A main turn can finish without any worker or other-window notice.
 // planDue reports whether the run's plan is owed a fresh read.
 //
-// THE PLAN HAS A BEAT OF ITS OWN. A run's workers move the store and publish
-// nothing, so the rail learns that a part was added or a check finished only by
-// reading again. That read used to ride on the reading of other windows' work,
-// which takes a new stamp every [elsewhereEvery]; a conversation whose engine
-// is in another process has no such reading, its stamp never moved, and the
-// rail stood on the run's first row until the run ended. The beat is the same
-// length, so a conversation in this process re-reads exactly as often as it did.
+// THE PLAN HAS A BEAT OF ITS OWN, AND ONLY WHILE SOMETHING CAN MOVE. A run's
+// workers move the store and publish nothing, so the rail learns that a part
+// was added or a check finished only by reading again. That read used to ride
+// on the reading of other windows' work, which takes a new stamp every
+// [elsewhereEvery]; a conversation whose engine is in another process has no
+// such reading, its stamp never moved, and the rail stood on the run's first row
+// until the run ended. The beat is the same length, so a conversation in this
+// process re-reads exactly as often as it did.
+//
+// A CONVERSATION AT REST READS NOTHING. The beat runs while the reading holds a
+// row that can still move by itself, one that is queued or running, and the read
+// that finds every row settled is the last. What starts it again is a row of
+// this window's own graph moving ([app.railStamp]): a hand-off publishes its
+// row after its store is seeded, so that read finds the run. A reader that is
+// always there, as a hosted conversation's is, is not a reason to ask it.
 func (p *tasksPlace) planDue(a *app) bool {
+	if !planCanMove(p.mine.plan) {
+		return false
+	}
 	if _, ok := a.planReader(); !ok {
 		return false
 	}
 	return a.now().Sub(p.planReadAt) >= elsewhereEvery
+}
+
+// planCanMove reports whether any row of a plan can change without the person
+// touching it: work that is queued or running. A row that is done, incomplete
+// or waiting on the person moves only by a verb, and a verb moves the stamp.
+func planCanMove(rows []session.PlanTaskRow) bool {
+	for _, row := range rows {
+		switch planStateWord(row.Status) {
+		case "queued", "running":
+			return true
+		}
+	}
+	return false
 }
 
 func (p *tasksPlace) regroup(a *app) {
