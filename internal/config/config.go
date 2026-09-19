@@ -5,10 +5,14 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
@@ -352,12 +356,42 @@ func Load() (Config, error) { return load(true) }
 // instead of at the door, where the sentence can be read.
 func LoadKeyless() (Config, error) { return load(false) }
 
+var warnedProfileConfigs sync.Map
+
+func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage) {
+	path := BudgetConfigPath(profileDir)
+	if _, warned := warnedProfileConfigs.LoadOrStore(path, struct{}{}); warned {
+		return
+	}
+	consumed := map[string]bool{
+		KeySetupSeen:          true,
+		KeySplitPct:           true,
+		KeyStandingBackground: true,
+		keyModelSources:       true,
+	}
+	for _, row := range NewSettings(SettingsOptions{ProfileDir: profileDir}).Rows() {
+		consumed[row.Key] = true
+	}
+	var unread []string
+	for key := range values {
+		if !consumed[key] {
+			unread = append(unread, key)
+		}
+	}
+	if len(unread) == 0 {
+		return
+	}
+	sort.Strings(unread)
+	log.Printf("codeaf: %s has unread top-level config key(s): %s", path, strings.Join(unread, ", "))
+}
+
 func load(requireKey bool) (Config, error) {
 	profileDir := ProfileDir()
 	// The default key and model_sources live in the same object. Read that
 	// object once here, then resolve both facts from the snapshot so adding an
 	// empty model_sources field does not add a launch-path read.
 	profileValues, _ := readProfileConfig(profileDir)
+	warnUnreadProfileKeys(profileDir, profileValues)
 	apiKey := apiKeyFrom(profileValues)
 	baseURL := firstNonEmpty(env.Get("CODEAF_BASE_URL"), DefaultBaseURL)
 	config := Config{
