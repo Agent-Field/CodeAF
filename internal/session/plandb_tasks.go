@@ -24,6 +24,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -71,7 +72,8 @@ type PlanTaskRow struct {
 	// that is running nothing, which the emptiness law turns into no line drawn
 	// at all; the worker clears the row the moment the command ends, and every
 	// ending of its loop, so a task that is not running never claims a present.
-	Live plandb.LiveStep
+	Live      plandb.LiveStep
+	LiveParts []PlanCommandPart
 	// TrajectoryPath is the file the task's steps are recorded in, for a reader
 	// that wants the record itself and not only its length.
 	TrajectoryPath string
@@ -131,6 +133,18 @@ type PlanStep struct {
 	FullOutput  string   `json:"full_output,omitempty"`
 	Writes      []string `json:"writes,omitempty"`
 	Children    []string `json:"children,omitempty"`
+	// Parts are display facts derived from Command. Command remains the byte-for-byte
+	// record; a surface filters parts instead of rewriting that record.
+	Parts []PlanCommandPart `json:"-"`
+}
+
+// PlanCommandPart is one quote-aware command part and the facts only the
+// session can establish about it. Separator is the text that followed it.
+type PlanCommandPart struct {
+	Command         string
+	Separator       string
+	RecordAddressed bool
+	RunCopyPrefix   bool
 }
 
 // planTrajectoryFile is the file a task's steps are appended to, under the
@@ -163,7 +177,8 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		root := store.RootID()
 		for _, task := range tasks {
 			row := planTaskRow(store, dir, task, spend, live)
-			row.Folder = a.config.Workspace
+			row.Folder = a.planTaskRunCopy(task.ID)
+			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, row.Folder, planShimFilename).Parts
 			rows = append(rows, row)
 			if task.ID == root {
 				applyPlanRootProgress(&rows[len(rows)-1], tasks, root)
@@ -207,7 +222,8 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	depths := map[string]int{task.ID: -1}
 	for _, child := range all {
 		row := planTaskRow(store, dir, child, spend, live)
-		row.Folder = a.config.Workspace
+		row.Folder = a.planTaskRunCopy(child.ID)
+		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, row.Folder, planShimFilename).Parts
 		rows[child.ID] = row
 		depth, under := depths[child.ParentID]
 		if !under || child.ID == task.ID {
@@ -247,9 +263,9 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Description: task.Description,
 		Result:      task.Result,
 		Checks:      append([]string(nil), task.Checks...),
-		Folder:      a.config.Workspace,
+		Folder:      pageRow.Folder,
 		Notes:       planTaskNotes(store, task.ID),
-		Steps:       planTrajectory(dir, task.ID),
+		Steps:       planStepDisplayFactsForPage(planTrajectory(dir, task.ID), pageRow.Folder),
 		Children:    children,
 		WaitRows:    waitRows,
 	}, true
@@ -654,4 +670,111 @@ func planSpendByTask(path string) map[string]float64 {
 		totals[id] = usd
 	}
 	return totals
+}
+
+// planStepDisplayFacts annotates a copy of a recorded step. It never changes
+// the trajectory or Command: these facts are a read-side view only.
+func planStepDisplayFacts(step PlanStep, runCopy, recordCommand string) PlanStep {
+	parts := splitPlanCommandParts(step.Command)
+	for i := range parts {
+		words := strings.Fields(parts[i].Command)
+		if len(words) == 0 {
+			continue
+		}
+		if strings.Trim(words[0], "'\"") == recordCommand {
+			parts[i].RecordAddressed = true
+		}
+		if i == 0 && len(words) == 2 && words[0] == "cd" && strings.Trim(words[1], "'\"") == runCopy {
+			parts[i].RunCopyPrefix = true
+		}
+	}
+	step.Parts = parts
+	return step
+}
+
+// splitPlanCommandParts keeps command text and separators while reading quotes
+// as the shell does. Redirection bars and ampersands are not command breaks.
+func splitPlanCommandParts(command string) []PlanCommandPart {
+	if _, composed := approval.FirstCompositionOutsideQuotes(command); !composed {
+		if text := strings.TrimSpace(command); text != "" {
+			return []PlanCommandPart{{Command: text}}
+		}
+		return nil
+	}
+	var out []PlanCommandPart
+	start, quote := 0, byte(0)
+	flush := func(end, separatorEnd int) {
+		text := strings.TrimSpace(command[start:end])
+		if text != "" {
+			out = append(out, PlanCommandPart{Command: text, Separator: command[end:separatorEnd]})
+		}
+		start = separatorEnd
+	}
+	for i := 0; i < len(command); i++ {
+		c := command[i]
+		if quote != 0 {
+			if c == '\\' && quote == '"' && i+1 < len(command) {
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c == '\\' && i+1 < len(command) {
+			i++
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			continue
+		}
+		end := i + 1
+		switch c {
+		case ';', '\n':
+			flush(i, end)
+		case '&':
+			if (i > 0 && command[i-1] == '>') || (i+1 < len(command) && command[i+1] == '>') {
+				continue
+			}
+			separator := i
+			if i+1 < len(command) && command[i+1] == '&' {
+				end++
+				i++
+			}
+			flush(separator, end)
+		case '|':
+			separator := i
+			if i+1 < len(command) && command[i+1] == '|' {
+				end++
+				i++
+			}
+			flush(separator, end)
+		}
+	}
+	flush(len(command), len(command))
+	return out
+}
+
+func (a *Agent) planTaskRunCopy(planID string) string {
+	g := a.graph()
+	if g == nil {
+		return ""
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, node := range g.nodes {
+		if node != nil && node.spec.planID == planID {
+			return node.worktree
+		}
+	}
+	return a.config.Workspace
+}
+
+func planStepDisplayFactsForPage(steps []PlanStep, runCopy string) []PlanStep {
+	for i := range steps {
+		steps[i] = planStepDisplayFacts(steps[i], runCopy, planShimFilename)
+	}
+	return steps
 }
