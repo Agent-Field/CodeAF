@@ -270,6 +270,46 @@ var tuiWords = map[string]tuiWord{
 		screen: foldersEntryJobCancel,
 		why:    "visible cancel, and the person-facing spelling of store cancelled. Never cancelled itself",
 	},
+	"foldersOrganizeThisChatWord": {
+		screen: foldersOrganizeThisChatWord,
+		pkg:    "internal/e2e",
+		why:    "J47/F10 visible Organize this chat. Chord t. Targeted rerun; does not by itself opt the workspace in",
+	},
+	"foldersManageThisFolderWord": {
+		screen: foldersManageThisFolderWord,
+		pkg:    "internal/e2e",
+		why:    "J47/F12 details restable. Chord d. Ordinary scoped chat, no manager entity",
+	},
+	"foldersAddExistingWord": {
+		screen: foldersAddExistingWord,
+		pkg:    "internal/e2e",
+		why:    "Add existing chats hook for t-ux-add-old. Chord b. Absent file means the row is absent",
+	},
+	"foldersCoordinateSelectedWord": {
+		screen: foldersCoordinateSelectedWord,
+		pkg:    "internal/e2e",
+		why:    "Folders-place / home-panel chord g. Supersedes Folders-place c/coordinate these; that c stays New folder",
+	},
+	"foldersOpenChatWord": {
+		screen: foldersOpenChatWord,
+		pkg:    "internal/e2e",
+		why:    "J46 details restable after a cached chat preview. Enter also opens the existing full conversation",
+	},
+	"foldersAddedToPrefix": {
+		screen: foldersAddedToPrefix,
+		pkg:    "internal/e2e",
+		why:    "F08/F10 compact activity prefix. Folder name is the real collection; omit the line when nothing committed",
+	},
+	"foldersWhyUndoTail": {
+		screen: foldersWhyUndoTail,
+		pkg:    "internal/e2e",
+		why:    "compact Why · Undo tail on the activity line. Undo calls RemovePlacement OriginPerson",
+	},
+	"foldersShiftRightHint": {
+		screen: foldersShiftRightHint,
+		pkg:    "internal/e2e",
+		why:    "J48 Folders-place hint: shift+→ opens the verb strip. → drills and never opens the strip here",
+	},
 	"foldersSlashWord": {
 		screen: "/folders",
 		why:    "the logical-folder command the empty whisper and the usage line teach. It is not `/folder`",

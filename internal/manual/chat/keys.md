@@ -2222,6 +2222,15 @@ key does anything that is not on the screen.
 The **places** page has the same thing with the pointer's half beside it: *How do I move
 between the tabs with the arrow keys*.
 
+## shift+right folders actions — Folders place arrows, → vs shift+→ on folders
+
+On the Folders place only, `→` drills (next child column, or details for a leaf) and
+never opens the verb strip. `shift+→` opens the strip; the hint includes `shift+→ actions`.
+`←` returns to the parent. `c` is **New folder**, `n` **New chat**, `o` **Organize existing chats**,
+`g` **Coordinate selected**, `b` **Add existing chats**, `d` **Manage this folder**,
+`t` **Organize this chat**, `u` **Undo**, `w` Why. Details actions are also restable rows,
+so the strip is not required. Other places keep today's `→` = strip. Help names both.
+
 ## `b` on the spend place — the letter that opens the limits, and the money figure you can press
 
 On the spend place (`/spend`, or `alt+3`) two things lead to the money limits, and neither
