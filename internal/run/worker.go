@@ -45,14 +45,18 @@ type Worker interface {
 // say no seat exists for this task; the task then fails rather than hangs.
 type WorkerFactory func(task plandb.Task) Worker
 
-// Limits bound a run from the outside. Every field is optional: a CostUSD of
-// zero (or less) sets no cost limit, a StepsPerTask of zero hands the worker
-// no cap, and ReviewRound's false is the run every caller had before it.
+// Limits bound a run from the outside. Every field is optional: a CostUSD or
+// Elapsed of zero (or less) sets no corresponding run limit, a StepsPerTask
+// of zero hands the worker no cap, and ReviewRound's false is the run every caller had before it.
 type Limits struct {
 	// CostUSD is what the whole run may spend, as the sum of every Report's
 	// USD. When the counter has reached it no new worker starts and the run
 	// ends on the limit word of the outcome ladder.
 	CostUSD float64
+	// Elapsed is how long the whole run may remain active. When it passes,
+	// workers already in flight are ended and drained, no new worker starts,
+	// and the run ends on the same limit word as the cost counter.
+	Elapsed time.Duration
 	// StepsPerTask is handed to every worker through its context, so the loop
 	// a worker hosts can cap itself without the supervisor counting its steps.
 	StepsPerTask int

@@ -132,6 +132,19 @@ stale is running.
 and anything that acts in your name still ask, whatever the setting says. See the
 permissions page.
 
+## Does a time limit stop a running task?
+
+Yes. The elapsed-time limit (`--max-hours`) is measured from when this session opened,
+and a run that `/task` starts is handed whatever is left of it. When that time is up the
+run starts nothing new, the work still going is ended where it is, and what had finished
+comes home the ordinary way. The run's row ends `incomplete` and says
+`a limit you set stopped it`, the same sentence a run says when it reaches the
+conversation's spend ceiling. A task that was cut part way through reads `incomplete` too.
+
+The dollar limit on a run is the conversation's spend ceiling, not `--max-cost`. A run
+that reaches it lets the work already going finish, because that money is already
+committed; a time limit cannot wait, so it ends that work.
+
 ## Leaving it running on its own · leaving a headless run going with a budget · --once yolo · no screen · unattended · overnight · nobody watching
 
 `--yolo` changes tool approvals. Normal interactive chat remains a conversation you
