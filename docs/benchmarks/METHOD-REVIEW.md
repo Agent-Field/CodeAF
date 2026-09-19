@@ -405,3 +405,42 @@ table three weeks later: the startup columns came back close enough to believe, 
 column came back systematically different for reasons the committed material cannot settle.
 A competitor's engineer doing the same thing gets the same result, and reaches for the
 simplest explanation available to them, which is not a charitable one.
+
+### Approval given and then declined: why FRESH stays credential free
+
+A controlled FRESH level for each rival needs that rival authenticated, and every rival's
+credential belongs to the operator. So the question went to him directly rather than being
+worked around, and he approved copying minimal credential files under five conditions: one
+directory outside every repository and outside anything published, mode 700; minimal
+credential files only and never whole profiles; nothing containing a credential committed,
+logged, pasted into a note or a message, or left in a tarball; a manifest of file names and
+sizes only; and deletion at the end with the path and an empty `find` reported back.
+
+**The approval was then declined, by the person holding it, because the copies do not buy the
+table.** A sweep of the seven profiles for a minimal credential file, reading names and sizes
+and never contents, found one in two places only:
+
+| CLI | minimal credential file | why it cannot be copied |
+| --- | --- | --- |
+| claude | `~/.claude/.credentials.json` | copyable |
+| codex | `~/.codex/auth.json` | copyable, but codex speaks a websocket transport the stub does not serve, so a credential does not make it measurable here |
+| pi | `~/.pi/agent/auth.json` is 2 bytes | the file exists and holds nothing, so the credential is not in it |
+| omp | none found | no credential file at the profile root |
+| opencode | none found | no credential file at either profile root |
+| cursor-agent | none found | a keyring is present, and reading a keyring is the whole profile copy the approval excludes |
+
+Intersect the copyable set with the set the stub can actually drive and one rival survives,
+claude. One rival is not a comparison, and a level built for one product and denied to the
+others is exactly the asymmetry this review exists to prevent. So the FRESH level and the
+aging curve are credential free and stub driven for the surfaces that start without one, and
+the seven column idle comparison stays read only on the live profiles with profile bytes and
+file count printed beside every row and no claim of comparability across days.
+
+The scratch directory was `/home/santosh/credwork`. Nothing was ever copied into it, and it
+is gone: `find /home/santosh/credwork` returns `No such file or directory`.
+
+**What the episode is worth keeping for.** The permission was not the obstacle. Asking got a
+yes inside an hour, and the work still could not be done, because six products keep their
+credentials in six shapes and three of them keep them somewhere a file copy cannot reach. A
+plan that assumes every rival can be put in a controlled state is a plan that will quietly
+measure whichever rivals happen to cooperate.
