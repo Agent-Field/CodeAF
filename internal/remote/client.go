@@ -1960,6 +1960,32 @@ func (a *Agent) RewindPoints() []session.RewindPoint {
 // the same thing: nothing drawn. An engine older than this door answers "no
 // such method", which lands here as a nil slice — the block is simply absent,
 // which is what a remote conversation drew before the door existed.
+// PlanTasks reads this conversation’s complete plan rows from the engine.
+func (a *Agent) PlanTasks() []session.PlanTaskRow {
+	payload, err := a.c.call(nil, MethodPlanTasks, nil)
+	if err != nil {
+		return nil
+	}
+	var rows []session.PlanTaskRow
+	if json.Unmarshal(payload, &rows) != nil {
+		return nil
+	}
+	return rows
+}
+
+// PlanTaskPage reads one complete task page from the engine.
+func (a *Agent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
+	payload, err := a.c.call(nil, MethodPlanTaskPage, PlanTaskPageArgs{ID: id})
+	if err != nil {
+		return session.PlanTaskPage{}, false
+	}
+	var result PlanTaskPageResult
+	if json.Unmarshal(payload, &result) != nil {
+		return session.PlanTaskPage{}, false
+	}
+	return result.Page, result.OK
+}
+
 func (a *Agent) PlanSpend(since time.Time) []session.PlanSpendLine {
 	payload, err := a.c.call(nil, MethodPlanSpend, PlanSpendArgs{Since: since})
 	if err != nil {
