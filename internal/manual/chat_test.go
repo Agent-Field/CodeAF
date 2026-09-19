@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -893,6 +894,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I leave a headless run going with a budget", "starting-codeaf"},
 		{"my --once yolo run never started a task", "starting-codeaf"},
 		{"does a run with no screen carry its own work on", "starting-codeaf"},
+		{"does a time limit stop a running task", "starting-codeaf"},
 		{"it says needs your look but I ran it with yolo", "tasks"},
 		{"what does taken as it stands mean", "tasks"},
 		{"it says it could not be brought home", "tasks"},
@@ -3036,5 +3038,15 @@ func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
 					section.Page, section.Title, phrase)
 			}
 		}
+	}
+}
+
+func TestStartingCodeafAnswersWhetherATimeLimitStopsARunningTask(t *testing.T) {
+	body, err := os.ReadFile("chat/starting-codeaf.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "## Does a time limit stop a running task") {
+		t.Fatal("starting-codeaf.md has no searchable heading answering whether a time limit stops a running task")
 	}
 }
