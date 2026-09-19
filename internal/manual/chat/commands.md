@@ -1141,12 +1141,17 @@ Home's `folders` panel stays as enter-from.
 ```
 
 The empty list's dim line is `logical groups of chats · /folders create Billing`. Visible
-actions on the place are **New folder**, **New chat**, **Organize existing chats**. Esc
-from New chat before send creates nothing and returns to Folders. On a
-row, `→` then `n f e r i m w x`: `n` new chat here · `f` add current chat · `m` move this
-placement · `w` why here · `x` remove this placement. On a folder row, `e` nests
-that folder, `r` (Folders place) is rename this folder, and `i` is instruct this
-folder; `/folders nest Receipts in Billing` and `/folders instruct <name-or-id> <text>`
+actions on the place are **New folder**, **New chat**, **Organize existing chats**,
+**Organize this chat**, **Manage this folder**, **Add existing chats**, **Coordinate selected**,
+**Open chat**. Esc from New chat before send creates nothing and returns to Folders.
+On a wide frame Folders is columns plus pinned details; at 80 columns it is one
+navigation column, a breadcrumb, and switchable details. On this place `→` drills
+and `shift+→` opens the verb strip (`shift+→ actions`). `c` is New folder; `g` is
+Coordinate selected. On a
+row of another folders surface, `→` then `n f e r i m w x`: `n` new chat here · `f` add
+current chat · `m` move this placement · `w` why here · `x` remove this placement. On a
+folder row, `e` nests that folder, `r` (Folders place) is rename this folder, and `i` is
+instruct this folder; `/folders nest Receipts in Billing` and `/folders instruct <name-or-id> <text>`
 are the typed forms — enter on that line runs the command, it is never stored as
 a folder name. The collections page is the rest: also in two folders, `/folder` vs
 `/folders`, automatic organization, inherited instructions, suppressions,

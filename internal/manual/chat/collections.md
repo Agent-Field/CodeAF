@@ -35,11 +35,12 @@ slash in this build.
 On the Folders place the visible actions are **New folder**, **New chat**,
 **Organize existing chats**, **Add existing chats**, **Organize this chat**,
 **Manage this folder**, **Coordinate selected**, and **Open chat**. They are not
-slash-only. **`c`** is New folder. **`g`** is Coordinate selected. **`b`** is Add
-existing chats. **`d`** is Manage this folder. **`t`** is Organize this chat.
-**`u`** is Undo. New folder creates at Root, or
-inside the selected folder — one action, not a later nest.
-New chat starts at Root or that folder: the first sent
+slash-only. **`c`** is New folder — Folders-place `c` is never coordinate these.
+**`g`** is Coordinate selected. **`b`** is Add existing chats. **`d`** is Manage
+this folder. **`t`** is Organize this chat. **`o`** is Organize existing chats.
+**`u`** is Undo. New folder creates at Root, or inside the folder you are
+standing in, in one action — not a Root orphan plus a later nest you never
+asked for. New chat starts at Root or that folder: the first sent
 message mints the transcript and files it; Esc before send creates nothing and
 returns to Folders from Root and from inside a folder — it does not mint a
 session-header transcript and it does not leave you on `Home new conversation`.
@@ -120,9 +121,12 @@ and never opens the verb strip. **`shift+→`** opens the strip (`shift+→ acti
 `←` returns to the parent column, or from details back to the leaf's column.
 Other places keep `→` as the strip.
 
-On a `folders` row, `shift+→` (Folders place) or `→` (home) opens the verb strip:
+On a `folders` row **outside** the Folders place, `→` opens the verb strip:
 
 `n` new chat here · `f` add current chat · `m` move this placement · `w` why here · `x` remove this placement
+
+On the Folders place itself `→` drills (next column, or details for a leaf) and
+`shift+→` opens that strip (`shift+→ actions` in the hint).
 
 On a **folder** row the strip also has **`e`** nest this folder and **`i`**
 instruct this folder: enter the parent next for nest, or type standing guidance
@@ -221,6 +225,62 @@ paths through the graph.
 A later message sent through one placement is there when you reopen through the
 other. Removing one placement leaves the rest. Moving the Billing placement into
 Receipts does not drop the Security one.
+
+## also in from two paths — shared folder two parents, one identity, path preserved
+
+Receipts can sit under Billing and under Security at once. It is one folder id,
+one history, not a copy. Opening it through Security is the Security path; opening
+it through Billing is the Billing path. `also in ` names the other placement.
+Selecting the same shared node from a different parent keeps **that** path.
+Rollups count unique ids, not paths.
+
+## chat preview in folders details — preview then open chat, open chat from folders details
+
+Selecting a chat on Folders previews it in the pinned details pane from a cached
+snapshot — title, excerpt, current work, folder placements, Why/Undo when there
+is real history. That preview is not a model call. **Open chat** or Enter opens
+the existing full conversation. Esc returns to the same column path and keeps
+the composer. It does not mint a second chat.
+
+## organize this chat — targeted rerun, t organize this chat, does not opt in reactive
+
+**Organize this chat** (`t`) is visible on the current chat's details and on the
+Folders strip. It enqueues `observe_and_organize` for that chat's latest source
+revision and coalesces repeats. It does **not** write `workspace.reactive=on`.
+Tiny, empty, greeting, and no-action input still must not CreateFolder.
+
+## manage this folder — d manage this folder, ordinary scoped chat, no manager entity
+
+**Manage this folder** (`d`) from details opens an ordinary scoped chat with a
+goal composer and visible folder scope (current + future membership, allowed
+actions). If you are already in a coordinating chat for that folder, it reuses
+it. There is no planner/critic template and no manager row type.
+
+## does organization wait five minutes — reactive organization, no five-minute wait, workspace.reactive
+
+No. After **Organize existing chats** opts the workspace in, a meaningful new
+message organizes in the background without waiting for the five-minute standing
+tick. Enqueue kicks the existing standing pass. The five-minute tick is crash
+and restart fallback, not the happy path. The reply does not wait. Compact
+`Added to Billing · Why · Undo` (the folder name is the real collection; omit
+the line when nothing committed). No toast flood, no guessed percents, never
+`checked`. Scheduler delay is start minus enqueue; model latency is commit minus
+start — the product does not promise a wall-clock bound.
+
+## organize existing chats more than eight — survey checkpoint, more than 8 unfiled, cursor past eight
+
+**Organize existing chats** surveys a per-lease slice of eight unfiled chats, not
+a wall. A durable cursor on that same `observe_and_organize` row continues after
+those eight, including no-action pages. Restart resumes the cursor. It does not
+rescan `Unfiled[0..]` forever while eight no-action chats sit in front. You can
+keep chatting while it runs.
+
+## stale folder details — async graph updates, composer held, no teleport
+
+While you are composing, an organize commit from another window rewrites affected
+columns and details in place. Selection, path, and composer hold. It does not
+teleport you into a generated folder and it does not auto-open one. A details
+reply that was requested for a previous selection is dropped.
 
 ## Is /folder a logical folder? — /folders vs /folder, /place, /dir, does /folders open a directory
 
@@ -331,7 +391,12 @@ has opted the workspace into `workspace.reactive`, codeaf may enqueue an
 is bound to the organizer and applies a validated plan — enqueue alone does not
 place the chat. The enqueue kicks that same standing pass; the five-minute interval
 is crash fallback. A **fresh Folders tab** does not invent folders from that automatic
-path; **Organize existing chats** is the explicit survey that may. RoleOrganize is handed the live folder graph (id, name, and
+path; **Organize existing chats** is the explicit survey that may, and a successful
+enqueue writes `workspace.reactive=on` (opt-in). Automatic after-message graph
+writes run only when **both** `workspace.organize` and `workspace.reactive` are on.
+Related-work discovery stays read-only when reactive is off. **Organize this chat**
+is a targeted rerun and does **not** by itself opt the workspace in. Manual New
+folder does not opt in. RoleOrganize is handed the live folder graph (id, name, and
 member conversation ids) plus cited passages; without those ids it can only
 return `no-action`. Filing needs no approval card. `w` why here shows origin
 `organizer` plus the evidence reason, skipping empty parts. Person-filed chats

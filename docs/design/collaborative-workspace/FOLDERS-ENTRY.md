@@ -21,7 +21,7 @@ A person reaches logical Folders from the Home tab bar without treating it as a 
 - Visible keyboard actions, not slash-only: **New folder**, **New chat**, **Organize existing chats**. New chat may start at Root or the selected folder.
 - Empty folder *list* and Root unfiled chats are **two truths**. Never draw “no folders yet”; never hide unfiled chats by pretending the tab is empty of work.
 - Background organize reuses `observe_and_organize` / wsdiscover / standing tick. Honest `queued` `running` `delayed` `done` `cancel`. No second scheduler, no model on paint.
-- 80-column sequential was the Folders-entry layout. **Columns + pinned details** supersede it on the Folders place (CONTRACTS.md Folders columns + reactive). Stable selection by object id + path; composer retained.
+- 80-column sequential was the Folders-entry layout. **Columns + pinned details** supersede it on the Folders place (CONTRACTS.md Folders columns + reactive). Stable selection by object id + path; composer retained. Executable J44–J49 + F09/F10 harness: `internal/e2e/folders_columns_e2e_test.go`. Live tmux is `t-rx-validate`.
 - Home `folders` panel **stays as enter-from** (heading `folders`; enter opens the place).
 - Distinct chords: `c` is **New folder**; `g` is **Coordinate selected**. On this place `→` drills; `shift+→` opens the verb strip.
 - **Organize existing chats** opts the workspace into reactive organization (`workspace.reactive`). No second daemon. No filesystem mirror.
