@@ -59,7 +59,7 @@ Each row requires a detailed sequence in the linked audit/design document.
 | Organize existing / this chat | Explicit wake, bounded checkpointed backfill or recheck; visible progress/error | Reactive contracts, F09–F10 |
 | Edit folder instructions | Persist scoped guidance; resolve inheritance/conflicts; apply at relevant work checkpoints | Engineering, F11 |
 | Manage folder / coordinate selection | Create or reuse ordinary chat; establish dynamic or snapshot scope; show responsibility and controls | UX/architecture audits, F12–F14 |
-| Send / fan-out / invite | Authorize addressed delivery; invoke real participants when needed; record request/reply and attribution; render communication | Engineering, F15 |
+| Send / fan-out / invite | Authorize addressed delivery; invoke real participants when needed; record request/reply and attribution; render communication | Engineering, F15; paint in `collabview.go` |
 | Membership changes / conflict | Reconcile coordination scope and existing commitments; bounded parent/Root discussion; user decision where authority is missing | Engineering, F16–F17 |
 | Launch work / standing wake | Launch-or-join existing assignment; enforce grants/budgets; record results and grounded progress | Engineering, F18–F21 |
 | Pause / stop / restart / failure | Distinguish coordination pause from execution stop; recover durable jobs without duplicate effects; show actionable state | Engineering, F20–F22 |
@@ -68,6 +68,23 @@ For every implemented pipeline record the trigger producer and consumer, data
 and revision, deduplication key, retry policy, cancellation, authority, usage
 accounting, UI event, and recovery behavior. Reading history alone must not
 wake a source chat or grant execution authority.
+
+## F15 communication chrome
+
+Intended: after private request, fan-out, and joint invite, the management chat
+shows attributed `request` / `reply` / `sent` with source titles. Empty optional
+panels stay absent. No manager entity.
+
+Implemented: `internal/tui3/collabview.go` paints those frozen words from
+`ListChatTraffic` deliveries. A coordinating turn re-reads the memo
+(`refreshCollabChrome` on settle) so the pane is not empty until the next home
+beat. Source ids resolve to conversation titles from the snapshotted world.
+Storage, router, and `RoleCollabConsult` are unchanged.
+
+Verified: focused TUI tests that a management-chat frame after request, reply,
+and sent deliveries shows those words and titles, not store states. Live tmux
+on one SHA remains `t-ux-validate` (F24). live5 `03-activity.txt` was home, not
+this pane.
 
 ## AI roles and costs
 
@@ -97,12 +114,10 @@ Visible New folder calls `CreateFolderIn` with parent = standing folder.
 children, chats, `also in`, instructions, busy exec lines, compact
 `Added to … · Why · Undo`, `Manage this folder`, `Organize this chat`,
 `Open chat`. Snapshot on the beat; stale detail generation/id/path is dropped.
-`Add existing chats` remains a nil hook for `t-ux-add-old`. Navigation does
+`Add existing chats` is filled by `folderadd.go` (`t-ux-add-old`). Navigation does
 not call the organizer. No model/disk on paint.
 
-**Planned (other lanes):** `CreateFolderIn` / `OrganizeThisChat` adapter +
-wakeup (`t-rx-runtime`); `beginFolderAdd` (`t-ux-add-old`); painted
-request/reply (`t-ux-collab-chrome`); exec revoke (`t-ux-exec`).
+**Planned (other lanes):** exec revoke (`t-ux-exec`).
 `workspace.reactive` and survey cursor are runtime.
 
 **Verified:** package tests in `./internal/tui3` for J44–J49 shapes and

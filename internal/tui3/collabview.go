@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -28,13 +29,23 @@ func (a *app) collabTranscriptRows(width int) []row {
 	return out
 }
 
+// refreshCollabChrome re-reads deliveries after a coordinating turn. The home
+// beat already snapshots; a management chat that never leaves the conversation
+// would otherwise keep an empty memo and paint nothing after deliver/invite.
+func (a *app) refreshCollabChrome() {
+	if a == nil {
+		return
+	}
+	a.readCollab()
+}
+
 // collabParticipantRows is joint discussion as a normal chat: role labels,
 // then the source they stand for. Planner/critic are labels a person named,
 // not product entities. Nothing is drawn when the list is empty.
 func (a *app) collabParticipantRows(width int) []row {
 	var out []row
 	for _, part := range a.collabView.participants {
-		line := collabParticipantLine(part)
+		line := collabParticipantLine(a.collabAttributedParticipant(part))
 		if line == "" {
 			continue
 		}
@@ -64,7 +75,7 @@ func (a *app) collabActivityRows(width int) []row {
 		if kind == "" {
 			continue
 		}
-		line := a.collabActivityLine(act, kind)
+		line := a.collabActivityLine(a.collabAttributedActivity(act), kind)
 		if line == "" {
 			continue
 		}
@@ -101,6 +112,96 @@ func (a *app) collabActivityLine(act CollabActivity, kind string) string {
 		line += " · " + body
 	}
 	return strings.TrimSpace(line)
+}
+
+func (a *app) collabAttributedParticipant(part CollabParticipant) CollabParticipant {
+	part.SourceTitle = a.collabSourceTitle(a.home.world, part.SourceTitle)
+	return part
+}
+
+func (a *app) collabAttributedActivity(act CollabActivity) CollabActivity {
+	act.ToTitle = a.collabSourceTitle(a.home.world, act.ToTitle)
+	act.SourceRef = a.collabSourceTitle(a.home.world, act.SourceRef)
+	return act
+}
+
+// collabNameMemo writes conversation titles onto the snapshot. Closing home
+// zeros [homeView.world], so naming has to happen on the beat, not in View.
+func (a *app) collabNameMemo() {
+	if len(a.collabView.activity) == 0 && len(a.collabView.participants) == 0 {
+		return
+	}
+	world := a.collabTitleWorld()
+	for i, act := range a.collabView.activity {
+		a.collabView.activity[i].ToTitle = a.collabSourceTitle(world, act.ToTitle)
+		a.collabView.activity[i].SourceRef = a.collabSourceTitle(world, act.SourceRef)
+	}
+	for i, part := range a.collabView.participants {
+		a.collabView.participants[i].SourceTitle = a.collabSourceTitle(world, part.SourceTitle)
+	}
+}
+
+func (a *app) collabTitleWorld() session.World {
+	if a == nil {
+		return session.World{}
+	}
+	if len(a.home.world.Sessions()) > 0 {
+		return a.home.world
+	}
+	world, _ := a.readWorldKnown()
+	return world
+}
+
+// collabSourceTitle is the person-facing source on a painted line. Deliveries
+// cite a chat id; the pane names the conversation when the snapshotted world
+// already knows it. View never asks the store.
+func (a *app) collabSourceTitle(world session.World, ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ""
+	}
+	if title := collabTitleOnWorld(world, ref, a.home.folders); title != "" {
+		return title
+	}
+	return ref
+}
+
+func collabTitleOnWorld(world session.World, id string, folders homeFoldersReading) string {
+	if strings.TrimSpace(id) == "" {
+		return ""
+	}
+	for _, row := range world.Sessions() {
+		if strings.TrimSpace(row.ID) != id {
+			continue
+		}
+		if title := collabTitleIfNamed(id, row.Title); title != "" {
+			return title
+		}
+	}
+	if title := collabPlacementTitle(id, folders.members); title != "" {
+		return title
+	}
+	return collabPlacementTitle(id, folders.root.Unfiled)
+}
+
+func collabPlacementTitle(id string, places []FolderPlacement) string {
+	for _, place := range places {
+		if strings.TrimSpace(place.RefID) != id {
+			continue
+		}
+		if title := collabTitleIfNamed(id, place.Title); title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func collabTitleIfNamed(id, title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" || title == id {
+		return ""
+	}
+	return title
 }
 
 func (a *app) collabKindGlyph(kind string) string {
