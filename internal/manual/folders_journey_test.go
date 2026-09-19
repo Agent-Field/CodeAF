@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// Wave 1–3 J01–J26 actions, named as CONTRACTS.md froze them. The live tmux
-// journeys are t-w1-live, t-w2-live and t-w3-live; this gate is that the chat
+// Wave 1–4 J01–J35 actions, named as CONTRACTS.md froze them. The live tmux
+// journeys are t-w1-live, t-w2-live, t-w3-live and t-w4-live; this gate is that the chat
 // corpus already quotes those names so a question reaches a true page instead
 // of a denial that the UI does not exist.
 func TestWave1FolderJourneyNamesStandInTheChatManual(t *testing.T) {
@@ -51,6 +51,18 @@ func TestWave1FolderJourneyNamesStandInTheChatManual(t *testing.T) {
 		"deliver",
 		"invite",
 		"discussion",
+		// Wave 4: delegated execution (J27–J35). Frozen person-facing
+		// names from CONTRACTS.md. Live tmux is t-w4-live, not this gate.
+		"launch-or-join",
+		"stop work",
+		"pause coordination vs stop work",
+		"closing the terminal does not stop authorized work",
+		"codeaf tick",
+		"codeaf_task_belt",
+		"session-task",
+		"bash-run",
+		"0 runs",
+		"keep running",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("collections.md is missing the frozen journey name %q", want)

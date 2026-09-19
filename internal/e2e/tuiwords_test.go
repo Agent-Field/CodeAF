@@ -309,6 +309,18 @@ var tuiWords = map[string]tuiWord{
 		screen: "stand on a chat · then mark it",
 		why:    "k with no conversation id: refuse rather than mark nothing",
 	},
+	"execLaunchOrJoinWord": {
+		screen: "launch-or-join",
+		why:    "Wave 4 coordinate execute action. Equivalent work is followed; otherwise one owned run/task starts",
+	},
+	"execPauseCoordWord": {
+		screen: "pause coordination",
+		why:    "Wave 4 (and Wave 3) verb: stops new deliver/invite/launch. Closing a view does not pause",
+	},
+	"execStopWorkWord": {
+		screen: "stop work",
+		why:    "Wave 4 explicit stop of existing authorized work. History remains. Not pause coordination. Same spelling as the tab-close answer",
+	},
 	"foldMoreWord": {
 		screen: " more",
 		why:    "every panel's fold counts what it stands over — `14 more` — and is a toggle, not a door",

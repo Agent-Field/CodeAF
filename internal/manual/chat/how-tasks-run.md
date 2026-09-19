@@ -3203,6 +3203,11 @@ of shutdown time, in addition to the existing waits for the current turn, task
 graph and background jobs. A provider that ignores cancellation can outlast
 that grace; this is a bounded wait, not a guarantee about every external process.
 
+That is shutting **this session** down, not closing the TUI. Quitting the
+window does not stop authorized **launch-or-join** work; `codeaf tick` continues
+it under the same `CODEAF_HOME`. `stop work` is the explicit verb that stops
+existing work. `pause coordination` only blocks new launches.
+
 ## Does checking see the full task answer and the right tool results?
 
 Checking receives the worker's full bounded conclusion, not the shortened card summary.
