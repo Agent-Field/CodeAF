@@ -40,7 +40,7 @@ func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	var releaseOnce sync.Once
 	release := func() { releaseOnce.Do(func() { close(releaseWriter) }) }
 	var enteredOnce sync.Once
-	writer := &usageWriter{queue: make(chan usageWrite, usageQueueDepth), beforeWrite: func() {
+	writer := &usageWriter{queue: make(chan usageWrite, usageQueueDepth), stopped: make(chan struct{}), beforeWrite: func() {
 		// beforeWrite runs on EVERY write, so the entered signal is closed once;
 		// a second row through this writer must not close a closed channel.
 		enteredOnce.Do(func() { close(writerEntered) })
@@ -55,7 +55,9 @@ func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 		FlushUsage()
 		usageWritersMu.Lock()
 		delete(usageWriters, ledger)
+		close(writer.queue)
 		usageWritersMu.Unlock()
+		<-writer.stopped
 	})
 	const model = "stub/talk"
 	// THE PINNED MACHINE IS ONE THE ROUTER DOES NOT SERVE FOR THIS MODEL, which

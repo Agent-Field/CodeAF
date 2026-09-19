@@ -43,7 +43,7 @@ func runImage(args []string) error {
 	}
 	// The ledger write is queued, not synchronous; this process must outlive
 	// the queue, or the row it just recorded dies with it.
-	defer session.FlushUsage()
+	defer session.CloseUsage()
 
 	// The same media pair a conversation is wired with: the client from the
 	// profile's key, the default model and the picker from the catalog and the

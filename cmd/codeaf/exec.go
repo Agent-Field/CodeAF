@@ -286,7 +286,7 @@ func recordExecUsage(model string, outcome *exec.Outcome, root, workspace string
 		Workspace: workspace,
 	}
 	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.RoleWorker, session.SeatWorker))
-	session.FlushUsage()
+	session.CloseUsage()
 }
 
 // execEnvFallbacks are the three exec walls a wrapper can set once, in the
