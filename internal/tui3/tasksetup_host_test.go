@@ -70,8 +70,10 @@ func TestCompletedTaskSetupThroughTheRealHostedAgent(t *testing.T) {
 		a.frame()
 		drive(t, a, motionTo(a.width-2, y))
 	}
-	if calls := client.CallsMade() - before; calls != 0 {
-		t.Fatalf("frame/hover made %d network calls", calls)
+	// A running plan page follows its store on the paint clock, so the first
+	// frame may spend one call on that read; hover itself must add none.
+	if calls := client.CallsMade() - before; calls > 1 {
+		t.Fatalf("frame/hover made %d network calls, want at most the plan follow", calls)
 	}
 }
 

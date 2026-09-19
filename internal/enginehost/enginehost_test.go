@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -618,4 +619,58 @@ func TestAPlainHelloJoinsTheConversationThisHostStillHolds(t *testing.T) {
 	if _, found := h.sessions[""]; found {
 		t.Fatal("a conversation is filed under the empty string")
 	}
+}
+
+// A HOSTED CONVERSATION READS THE ENGINE'S REAL PLAN STORE. This test keeps
+// every boundary in the production path: PlanDB on disk, session.Agent reading
+// it, the host's remote server, and remote.Agent on the surface side.
+func TestHostedAgentReadsSeededPlanTasksEndToEnd(t *testing.T) {
+	workspace := t.TempDir()
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	store, err := session.OpenRunPlan(workspace, "Hosted run", "prove the plan crosses the host")
+	if err != nil {
+		t.Fatalf("open run plan: %v", err)
+	}
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "seeded", Title: "Seeded task", Description: "the real row"}}); err != nil {
+		t.Fatalf("seed run plan: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close seeded plan: %v", err)
+	}
+
+	engine, err := session.New(session.Config{
+		Workspace: workspace,
+		Model:     "test/model",
+		APIKey:    "fixture",
+		BaseURL:   "http://127.0.0.1:1/v1",
+		System:    "Test only.",
+	})
+	if err != nil {
+		t.Fatalf("build real session agent: %v", err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+
+	host := &Host{
+		workspace: workspace,
+		opts: Options{Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{Agent: engine, Workspace: workspace}, nil
+		}},
+		sessions: map[string]*remote.Session{},
+		done:     make(chan struct{}),
+	}
+	surface, hosted := net.Pipe()
+	go host.attach(hosted)
+	client, err := remote.Dial(surface, "", remote.Hello{Version: remote.Version, Workspace: workspace})
+	if err != nil {
+		t.Fatalf("dial hosted session: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	rows := client.Agent().PlanTasks()
+	for _, row := range rows {
+		if row.ID == "t-seeded" && row.Title == "Seeded task" {
+			return
+		}
+	}
+	t.Fatalf("PlanTasks over host = %+v, want seeded real-store row", rows)
 }

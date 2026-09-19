@@ -18,7 +18,6 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
-	"context"
 	"sort"
 	"strings"
 	"time"
@@ -30,34 +29,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// planAgent is the slice of [session.Agent] the tasks place reads a run's plan
-// through. It is asserted rather than added to [Agent] for the reason every
-// optional seam here is: a scripted agent offers a tasker and has never heard of
-// a plan store, and a surface driven by one must stay representable.
-type planAgent interface {
-	// PlanTasks is the plan this conversation seeded, as rows ready to draw.
-	// Nil is the honest answer for a conversation with no plan.
-	PlanTasks() []session.PlanTaskRow
-	// PlanTaskPage is one task's description, notes and trajectory, for the id a
-	// row carries. False is the answer for a task this chat did not spawn.
-	PlanTaskPage(id string) (session.PlanTaskPage, bool)
-	// THE SIX VERBS are the person's own door onto a run's plan, the hard
-	// steering beside the note (plandb_steer.go). Each resolves an id inside THIS
-	// conversation's plan and answers the store's own sentence on a refusal — the
-	// root is the harness's, a terminal task cannot be cancelled — which is what
-	// the pane reads back on its one line.
-	PlanNote(id, text string) error
-	PlanPause(id string) error
-	PlanResume(id string) error
-	PlanCancel(id string) error
-	PlanAmend(id, text string) error
-	PlanPriority(id string, n int) error
-	// The summary is stored beside the plan and belongs to the same optional
-	// local-store door. Keeping it on this seam avoids inventing a second door
-	// that the remote road cannot truthfully provide.
-	PlanRunSummary(string) (session.RunPlanSummary, bool)
-	RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool)
-}
+// planAgent aliases the shared optional capability so session remains the one
+// source of its complete method set.
+type planAgent = session.PlanAgent
 
 // planReader is the agent under this surface, when it carries a plan at all.
 func (a *app) planReader() (planAgent, bool) {
@@ -103,16 +77,18 @@ func (a *app) refreshRunSummary() tea.Cmd {
 	a.runSummaryRefreshedAt = now
 	a.runSummaryShape = shape
 	ctx := a.ctx
-	return func() tea.Msg {
+	return a.offLoop(func() func(bool) tea.Cmd {
 		// NOBODY RECORDS A LOOK AT A RUN YET (the run pane will), so the last
 		// look is the zero time and the page's `since` line reads "never".
 		stored, stale := agent.PlanRunSummary(root)
 		if !stale && strings.TrimSpace(stored.What) != "" {
-			return runSummaryRefreshedMsg{summary: stored, ok: true}
+			return func(bool) tea.Cmd { return func() tea.Msg { return runSummaryRefreshedMsg{summary: stored, ok: true} } }
 		}
 		summary, kept := agent.RefreshRunSummary(ctx, root, time.Time{})
-		return runSummaryRefreshedMsg{summary: summary, ok: kept}
-	}
+		return func(bool) tea.Cmd {
+			return func() tea.Msg { return runSummaryRefreshedMsg{summary: summary, ok: kept} }
+		}
+	})
 }
 
 // planStateWord maps one store status onto the ONE state word a row wears
@@ -661,7 +637,7 @@ func planRailLive(line tasksLine, width int, pal palette) string {
 	if room < 1 {
 		return ""
 	}
-	if live := planLiveRow(line.item.plan.Live.Command, room, pal); live != "" {
+	if live := planLiveRow(line.item.plan.Live.Command, line.item.plan.Folder, room, pal); live != "" {
 		return lead + live
 	}
 	return ""
@@ -784,34 +760,76 @@ func planNamesOf(rows []tasksMineRow, chat string) map[string]bool {
 // A PAGE THE ENGINE WILL NOT ANSWER FOR IS NOT OPENED. A task this chat did not
 // spawn, or one whose store has gone, leaves the list where it was rather than
 // raising a page of blanks.
-func (a *app) taskSheetPlan(id string) tea.Cmd {
+func (a *app) taskSheetPlan(id string) tea.Cmd { return a.taskSheetPlanAsk(id, nil, nil, nil) }
+
+// taskSheetPlanFrom is [app.taskSheetPlan] for a step INTO one of a page's
+// parts: `from` is the page stepped out of, and it goes on the way back when
+// the part's page has opened and not before.
+func (a *app) taskSheetPlanFrom(id string, from *session.PlanTaskPage) tea.Cmd {
+	return a.taskSheetPlanAsk(id, from, nil, nil)
+}
+
+// taskSheetPlanAsk is the ONE door onto a stored page, for every gesture that
+// opens one: enter in the list, a step into a part, a press on a rail row. The
+// read leaves the loop ([app.offLoop]) and what happens next is decided when it
+// comes back: `opened` runs once the page is up, and `missing` is the gesture's
+// own answer for a task the store has no page for, so a rail row whose run's
+// store is gone still opens what it always opened.
+func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened func(), missing func() tea.Cmd) tea.Cmd {
 	agent, ok := a.planReader()
 	if !ok {
+		if missing != nil {
+			return missing()
+		}
 		return nil
 	}
-	page, ok := agent.PlanTaskPage(id)
-	if !ok {
-		return nil
-	}
-	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
-	a.taskSheet.planAt = -1
-	a.taskSheet.detailTop = 0
-	// A PAGE OPENS AT THE LIVE EDGE. The newest step is the reason the page
-	// follows at all, so it opens stuck to the bottom and a scroll is what
-	// releases it ([app.taskPlanTopFor], [app.taskPlanScroll]).
-	a.taskSheet.planStick = true
-	a.taskSheet.planNote.reset()
-	// The card's recovery band belongs to the row the CARD was opened from, and
-	// this page is not that row ([app.taskSheetInside] clears it at the one other
-	// door for the same reason).
-	a.taskSheet.awayOwner = tasksAwayOwner{}
-	a.touch()
-	return nil
+	return a.offLoop(func() func(bool) tea.Cmd {
+		page, found := agent.PlanTaskPage(id)
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			if !found {
+				if missing != nil {
+					return missing()
+				}
+				return nil
+			}
+			// THE PAGE STEPPED OUT OF GOES ON THE WAY BACK ONLY WHEN THE NEW ONE
+			// OPENED, and only if the person is still on it: a part with no page
+			// leaves `esc` exactly one step from the list, as it was.
+			if from != nil {
+				if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != from.Row.ID {
+					return nil
+				}
+				a.taskSheet.planBack = append(a.taskSheet.planBack, *from)
+			}
+			a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
+			a.taskSheet.planBriefFull = false
+			a.taskSheet.planAt = -1
+			a.taskSheet.detailTop = 0
+			// A PAGE OPENS AT THE LIVE EDGE. The newest step is the reason the page
+			// follows at all, so it opens stuck to the bottom and a scroll is what
+			// releases it ([app.taskPlanTopFor], [app.taskPlanScroll]).
+			a.taskSheet.planStick = true
+			a.taskSheet.planNote.reset()
+			// The card's recovery band belongs to the row the CARD was opened from, and
+			// this page is not that row ([app.taskSheetInside] clears it at the one other
+			// door for the same reason).
+			a.taskSheet.awayOwner = tasksAwayOwner{}
+			if opened != nil {
+				opened()
+			}
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // closeTaskPlan backs out one layer to the list, which is the card's own `esc`.
 func (a *app) closeTaskPlan() {
 	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = session.PlanTaskPage{}, false, false
+	a.taskSheet.planBriefFull = false
 	a.taskSheet.detailTop, a.taskSheet.planStick = 0, false
 	// A half-typed note does not survive the page it was typed on, which is the
 	// box's own law everywhere here ([app.placeHomeGesture] resets the box it
@@ -850,8 +868,8 @@ const (
 // read FRESH rather than out of the place's own snapshot: a `p` pressed twice
 // must resume what the first press paused, and the pane's held rows are a
 // reading that changes on its own beat ([tasksPlace.regroup]).
-func (a *app) taskPlanPaused(agent planAgent, id string) bool {
-	for _, row := range agent.PlanTasks() {
+func (a *app) taskPlanPaused(rows []session.PlanTaskRow, id string) bool {
+	for _, row := range rows {
 		if row.ID == id {
 			return strings.TrimSpace(row.Status) == "paused"
 		}
@@ -870,23 +888,34 @@ func (a *app) taskPlanVerb(run func(planAgent) error) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if err := run(agent); err != nil {
-		a.pageMsg = err.Error()
-	} else {
-		// A verb that landed clears a refusal a previous one left on the pane's
-		// line, which is what keeps the line about the key just pressed.
-		a.pageMsg = ""
-		// THE STORE MOVED, so the pane takes its plan again on the next frame:
-		// the row a person just steered wears the store's new word. The stamp is
-		// what [tasksPlace.regroup] hangs a re-read on ([app.railStamp]), and this
-		// is the one door that moves it without a node landing.
-		a.railStamp++
+	return a.offLoop(func() func(bool) tea.Cmd {
+		return a.taskPlanVerbFold(run(agent))
+	})
+}
+
+func (a *app) taskPlanVerbFold(err error) func(bool) tea.Cmd {
+	return func(here bool) tea.Cmd {
+		if !here {
+			return nil
+		}
+		if err != nil {
+			a.pageMsg = err.Error()
+		} else {
+			// A verb that landed clears a refusal a previous one left on the pane's
+			// line, which is what keeps the line about the key just pressed.
+			a.pageMsg = ""
+			// THE STORE MOVED, so the pane takes its plan again on the next frame:
+			// the row a person just steered wears the store's new word. The stamp is
+			// what [tasksPlace.regroup] hangs a re-read on ([app.railStamp]), and this
+			// is the one door that moves it without a node landing.
+			a.railStamp++
+		}
+		// The strip is the node row's own way to end work, and it goes away with the
+		// verb it was opened for rather than standing over a row it has acted on.
+		a.closeStrip()
+		a.touch()
+		return nil
 	}
-	// The strip is the node row's own way to end work, and it goes away with the
-	// verb it was opened for rather than standing over a row it has acted on.
-	a.closeStrip()
-	a.touch()
-	return nil
 }
 
 // taskPlanCancel ends a plan task, its descendants and the work hard-depending
@@ -903,10 +932,16 @@ func (a *app) taskPlanToggle(id string) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if a.taskPlanPaused(agent, id) {
-		return a.taskPlanVerb(func(p planAgent) error { return p.PlanResume(id) })
-	}
-	return a.taskPlanVerb(func(p planAgent) error { return p.PlanPause(id) })
+	return a.offLoop(func() func(bool) tea.Cmd {
+		paused := a.taskPlanPaused(agent.PlanTasks(), id)
+		var err error
+		if paused {
+			err = agent.PlanResume(id)
+		} else {
+			err = agent.PlanPause(id)
+		}
+		return a.taskPlanVerbFold(err)
+	})
 }
 
 // taskPlanNoteSend writes what is typed in the page's composer as a person-note
@@ -924,21 +959,30 @@ func (a *app) taskPlanNoteSend() tea.Cmd {
 		return nil
 	}
 	id := a.taskSheet.plan.Row.ID
-	if err := agent.PlanNote(id, text); err != nil {
-		a.pageMsg = err.Error()
-		a.touch()
-		return nil
-	}
-	a.taskSheet.planNote.reset()
-	a.pageMsg = ""
-	a.railStamp++
-	// Read the page again so the note a person just left is on the screen, which
-	// is the receipt the store cannot draw itself.
-	if page, ok := agent.PlanTaskPage(id); ok {
-		a.taskSheet.plan = page
-	}
-	a.touch()
-	return nil
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := agent.PlanNote(id, text)
+		page, found := agent.PlanTaskPage(id)
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			if err != nil {
+				a.pageMsg = err.Error()
+				a.touch()
+				return nil
+			}
+			a.taskSheet.planNote.reset()
+			a.pageMsg = ""
+			a.railStamp++
+			// Read the page again so the note a person just left is on the screen, which
+			// is the receipt the store cannot draw itself.
+			if found {
+				a.taskSheet.plan = page
+			}
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // taskPlanReadingKey gives tab to the open run page before the place router
@@ -1058,16 +1102,19 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "pgdown":
 		a.taskPlanScroll(taskSheetRows)
 		return nil
+	case "ctrl+o":
+		if len(planBriefLines(a.taskSheet.plan.Description, a.bodyWidth())) > briefFoldLines {
+			a.taskSheet.planBriefFull = !a.taskSheet.planBriefFull
+			a.taskSheet.detailTop = 0
+			a.taskSheet.planStick = false
+			a.touch()
+		}
+		return nil
 	case "enter":
 		if a.taskSheet.planNote.empty() && a.taskSheet.planAt >= 0 && a.taskSheet.planAt < len(a.taskSheet.plan.Children) {
 			old := a.taskSheet.plan
 			id := old.Children[a.taskSheet.planAt].ID
-			if cmd := a.taskSheetPlan(id); a.taskSheet.plan.Row.ID == id {
-				a.taskSheet.planBack = append(a.taskSheet.planBack, old)
-			} else {
-				return cmd
-			}
-			return nil
+			return a.taskSheetPlanFrom(id, &old)
 		}
 		return a.taskPlanNoteSend()
 	case "backspace":
@@ -1324,8 +1371,30 @@ func (a *app) taskPlanBody(width int) []string {
 		}
 	}
 	if desc := strings.TrimSpace(page.Description); desc != "" {
-		section("description")
-		addWrapped(desc, pal.ink)
+		section("brief")
+		lines := planBriefLines(desc, width)
+		if !a.taskSheet.planBriefFull && len(lines) > briefFoldLines {
+			for _, line := range lines[:briefFoldLines] {
+				add(pal.ink(line))
+			}
+			add(pal.dim(bandFoldWord(len(lines)-briefFoldLines, briefFoldWhat, true) + railSep + briefFoldKey))
+		} else {
+			for _, line := range lines {
+				add(pal.ink(line))
+			}
+		}
+	}
+	if len(page.Checks) > 0 {
+		section("checks")
+		for _, check := range page.Checks {
+			if check = strings.TrimSpace(check); check != "" {
+				addWrapped(check, pal.ink)
+			}
+		}
+	}
+	if folder := strings.TrimSpace(page.Folder); folder != "" {
+		section("folder")
+		addWrapped(folder, pal.ink)
 	}
 	if len(page.Notes) > 0 {
 		section("notes")
@@ -1349,7 +1418,7 @@ func (a *app) taskPlanBody(width int) []string {
 	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
 		for _, step := range page.Steps {
-			command := strings.TrimSpace(step.Command)
+			command := planDisplayCommand(step.Command, page.Folder)
 			if command == "" {
 				continue
 			}
@@ -1367,7 +1436,7 @@ func (a *app) taskPlanBody(width int) []string {
 		// and the next re-read draws it as an ordinary step (internal/plandb's
 		// live.go states the law, and a live step's zero value draws nothing).
 		if live := page.Live; !live.Empty() {
-			if command := strings.TrimSpace(live.Command); command != "" {
+			if command := planDisplayCommand(live.Command, page.Folder); command != "" {
 				add(pal.ink(pal.glyph(tokens.GStepRunning) + "  $ " + command))
 			}
 			if !live.Since.IsZero() {
@@ -1399,7 +1468,10 @@ func (a *app) taskPlanBody(width int) []string {
 				}
 			}
 		}
-		draw := func(kid session.PlanTaskRow, lead string) {
+		// THE NAME IS NOT `draw`: the frame law walks calls by name with no types,
+		// and a bare `draw(…)` here reads to it as the home bands' seam of that
+		// name, which reaches a disk read this body never makes.
+		drawKid := func(kid session.PlanTaskRow, lead string) {
 			word := planChildWordWithKin(kid, kin)
 			if n := reverse[kid.ID]; n > 0 {
 				word += railSep + itoa(n) + " queued behind it"
@@ -1413,7 +1485,7 @@ func (a *app) taskPlanBody(width int) []string {
 				word += railSep + suffix
 			}
 			add(pal.ink(lead + word))
-			if line := planLiveRow(kid.Live.Command, width-ansi.StringWidth(lead)-2, pal); line != "" {
+			if line := planLiveRow(kid.Live.Command, kid.Folder, width-ansi.StringWidth(lead)-2, pal); line != "" {
 				add(lead + "  " + line)
 			}
 		}
@@ -1434,7 +1506,7 @@ func (a *app) taskPlanBody(width int) []string {
 				if len(group.rows) > 0 {
 					add(pal.dim(group.word + railSep + itoa(len(group.rows))))
 					for _, kid := range group.rows {
-						draw(kid, "")
+						drawKid(kid, "")
 					}
 				}
 			}
@@ -1444,11 +1516,21 @@ func (a *app) taskPlanBody(width int) []string {
 				if at == len(kids)-1 || kids[at+1].Depth <= kid.Depth {
 					mark = tasksKinLast
 				}
-				draw(kid, tasksKin(kid.Depth, tasksKinRoom(width), mark))
+				drawKid(kid, tasksKin(kid.Depth, tasksKinRoom(width), mark))
 			}
 		}
 	}
 	return out
+}
+
+func planBriefLines(text string, width int) []string {
+	var lines []string
+	for _, para := range strings.Split(text, "\n") {
+		if para = strings.TrimSpace(para); para != "" {
+			lines = append(lines, wrap(para, width)...)
+		}
+	}
+	return lines
 }
 
 // planChildWord is one child's own line on the task's page: its state word and
@@ -1478,19 +1560,29 @@ func planChildWord(row session.PlanTaskRow) string {
 // SCREEN is the resolver's question and not this one's ([app.taskPlanTopFor]):
 // a stuck page reads the bottom, a person who scrolled up stays where they
 // were.
-func (a *app) taskPlanFollow() {
-	if !a.taskPlanRunning() {
-		return
+func (a *app) taskPlanFollow() tea.Cmd {
+	if !a.taskPlanRunning() || a.taskSheet.planFollowing {
+		return nil
 	}
 	agent, ok := a.planReader()
 	if !ok {
-		return
+		return nil
 	}
-	page, ok := agent.PlanTaskPage(a.taskSheet.plan.Row.ID)
-	if !ok {
-		return
-	}
-	a.taskSheet.plan = page
+	id := a.taskSheet.plan.Row.ID
+	a.taskSheet.planFollowing = true
+	return a.offLoop(func() func(bool) tea.Cmd {
+		page, found := agent.PlanTaskPage(id)
+		return func(here bool) tea.Cmd {
+			a.taskSheet.planFollowing = false
+			// THE ANSWER IS FOR THE PAGE THAT ASKED. A person who opened another
+			// task, or closed the page, while this read was out is not handed the
+			// page they left.
+			if here && found && a.taskSheet.planOn && a.taskSheet.plan.Row.ID == id {
+				a.taskSheet.plan = page
+			}
+			return nil
+		}
+	})
 }
 
 // taskPlanRunning reports whether the page is open on a task that is still
@@ -1688,4 +1780,45 @@ func planRailNow(line tasksLine, width int, pal palette, sentence string) []stri
 		out = append(out, lead+pal.dim(text))
 	}
 	return out
+}
+
+// planDisplayCommand is the one display rule for a task step on the page, rail,
+// and tree. The record remains untouched: only a leading change into the exact
+// run copy named in the page head is omitted. Every other command is returned
+// exactly as recorded apart from surrounding space already discarded by rows.
+func planDisplayCommand(command, folder string) string {
+	return planFirstLine(planWithoutOwnFolder(strings.TrimSpace(command), strings.TrimSpace(folder)))
+}
+
+// planFirstLine is a command as ONE ROW. A command that writes a document is
+// many lines long, and a row that carried them all pushed the rest of the page
+// off the screen: the page's foot and the box a note is typed in were drawn
+// below the last row the terminal has. The first line says what the command is,
+// and the mark says there was more. What ran is untouched; this is what is drawn.
+func planFirstLine(command string) string {
+	first, _, more := strings.Cut(command, "\n")
+	first = strings.TrimRight(first, " \t\r")
+	if more {
+		return first + " …"
+	}
+	return first
+}
+
+// planWithoutOwnFolder drops a leading change into the task's own folder, which
+// the page's head names once, and leaves every other directory change as typed.
+func planWithoutOwnFolder(command, folder string) string {
+	if command == "" || folder == "" {
+		return command
+	}
+	quotedSingle := "'" + strings.ReplaceAll(folder, "'", "'\\''") + "'"
+	quotedDouble := `"` + strings.ReplaceAll(strings.ReplaceAll(folder, `\`, `\\`), `"`, `\"`) + `"`
+	for _, path := range []string{folder, quotedSingle, quotedDouble} {
+		prefix := "cd " + path + " && "
+		if strings.HasPrefix(command, prefix) {
+			if rest := strings.TrimSpace(strings.TrimPrefix(command, prefix)); rest != "" {
+				return rest
+			}
+		}
+	}
+	return command
 }

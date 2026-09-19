@@ -535,7 +535,17 @@ const (
 	// that as the block being absent HERE — which is exactly what it drew before
 	// this door existed — and the emptiness law is kept. Nothing that was drawn
 	// goes dark, so nothing is refused at the door.
-	MethodPlanSpend = "PlanSpend" // PlanSpendArgs → []session.PlanSpendLine
+	MethodPlanSpend         = "PlanSpend"         // PlanSpendArgs → []session.PlanSpendLine
+	MethodPlanTasks         = "PlanTasks"         // nothing → []session.PlanTaskRow
+	MethodPlanTaskPage      = "PlanTaskPage"      // PlanTaskPageArgs → PlanTaskPageResult
+	MethodPlanNote          = "PlanNote"          // PlanTextArgs → nothing
+	MethodPlanPause         = "PlanPause"         // PlanTaskArgs → nothing
+	MethodPlanResume        = "PlanResume"        // PlanTaskArgs → nothing
+	MethodPlanCancel        = "PlanCancel"        // PlanTaskArgs → nothing
+	MethodPlanAmend         = "PlanAmend"         // PlanTextArgs → nothing
+	MethodPlanPriority      = "PlanPriority"      // PlanPriorityArgs → nothing
+	MethodPlanRunSummary    = "PlanRunSummary"    // PlanRunSummaryArgs → PlanRunSummaryResult
+	MethodRefreshRunSummary = "RefreshRunSummary" // RefreshRunSummaryArgs → PlanRunSummaryResult
 	// The conversation's own place on the thinking ladder (internal/session's
 	// effort.go). Three doors and not one, because the stored rung and the
 	// resolved rung are two different answers: the dial DRAWS the resolved one
@@ -1691,4 +1701,54 @@ func (w EventWire) Unwire() session.Event {
 		ev.Err = errors.New(w.Err)
 	}
 	return ev
+}
+
+// PlanTaskArgs names one task for a steering verb.
+type PlanTaskArgs struct {
+	ID string `json:"id"`
+}
+
+// PlanTextArgs carries the task and prose for note and amend.
+type PlanTextArgs struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+// PlanPriorityArgs carries the task and its new scheduling priority.
+type PlanPriorityArgs struct {
+	ID       string `json:"id"`
+	Priority int    `json:"priority"`
+}
+
+// PlanTaskPageArgs names the task whose complete page is requested.
+type PlanTaskPageArgs struct {
+	ID string
+}
+
+// PlanTaskPageResult preserves both the page and whether the task belongs to the plan.
+type PlanTaskPageResult struct {
+	Page session.PlanTaskPage
+	OK   bool
+}
+
+// PlanRunSummaryArgs names the run whose stored summary is read.
+type PlanRunSummaryArgs struct {
+	RootID string `json:"root_id"`
+}
+
+// RefreshRunSummaryArgs carries the refresh window and caller deadline to the engine.
+type RefreshRunSummaryArgs struct {
+	RootID   string    `json:"root_id"`
+	LastLook time.Time `json:"last_look,omitempty"`
+	// Budget is HOW LONG the caller will wait, never the instant it stops
+	// waiting: the engine may be on another machine whose clock is not this
+	// one's, and an instant read against a clock a minute ahead is a refresh
+	// that is cut before it starts. Zero is a caller with no deadline.
+	Budget time.Duration `json:"budget,omitempty"`
+}
+
+// PlanRunSummaryResult preserves both the summary and whether one exists.
+type PlanRunSummaryResult struct {
+	Summary session.RunPlanSummary `json:"summary"`
+	OK      bool                   `json:"ok"`
 }

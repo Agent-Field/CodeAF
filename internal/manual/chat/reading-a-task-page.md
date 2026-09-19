@@ -1,11 +1,10 @@
 # Reading a task's page — what is on this task page, what folds, and a page that looks stuck
 
-A task's page is the whole of what the task did, drawn with the conversation's own
-blocks: its instruction, its prose, its captions, its tool calls, and its report. It is
-built for the visit people actually make — a glance to see whether the work is going
-right, and a correction if it is not — so settled work opens first to an outline of
-caption sentences and the machinery is one expand further. This page is about what is
-folded, how to open it, and what to do when the page seems empty or stuck at the top.
+A task's page is the whole of what the task did, drawn in the conversation: its
+brief, its steps, its notes, and its report. It is built for the visit people actually
+make — a glance to see whether the work is going right, and a steer if it is not — so
+settled work opens first to an outline and the folded steps are one key away. This page
+is about what is folded, how to open it, and what to do when the page seems empty or stuck at the top.
 
 Click the task's name in the right-hand list to open its conversation, including
 in the ordinary local window. While it loads, the page says so. Type a correction
@@ -18,8 +17,13 @@ finished tasks can recover their pages too.
 
 ## What is on this task page — everything a task's page shows, in order
 
-The instruction it was given, folded to three lines with a door. The work it did, folded
-into chips it counts. The paragraphs it wrote as it went, each standing above the chip that
+A task opened from the rail starts with its full title, then the opening three lines of
+its brief with a key to unfold the rest, then its declared checks, then the folder where
+it works. A part with nothing in it is absent. The folder is said once in this head and
+is not repeated on every step.
+
+The brief stays in the head, folded to three lines with a key to unfold it. The work it
+did is folded into chips it counts. The paragraphs it wrote as it went, each standing above the chip that
 covers the work behind it. Anything you steered into it, drawn where you said it. The report
 at the end. And pinned above all of it, one line saying what it is doing, how long it has
 been going, what it has cost and how many calls it has made.
@@ -130,8 +134,8 @@ in a task's page exactly as in the conversation.
 
 **Every paragraph the task wrote stays standing**, above the chip that covers the work
 before it, and so does the report at the end. So the page reads as the story of the work
-with the machinery filed, rather than as a scroll of calls you have to read to find out
-what happened.
+with its steps folded, rather than as a scroll you have to read to find out what
+happened.
 
 **What the task is doing right now keeps its caption standing.** Its tool rows may fold
 under that live line; `ctrl+o` or a click opens them. A long live run that has no caption
@@ -341,10 +345,9 @@ Three things that look like the same picture and are not:
   `this task has finished — say it to main, or open its parent, Ship the port`. There is
   nothing more coming; scroll up to read what it did, and the foot names where the words in
   your box can still go, because the box is still there and the worker is not.
-- **A task that has not started** — one still queued behind the running ones — has a
-  page with only its instruction on it, or with no blocks at all when nothing has been
-  written for it yet. In that second case the page says
-  `nothing on this page yet — it fills in as the task works`. The roster's row for it
+- **A task that has not started** — one still queued behind the running ones — opens
+  with its title, brief, declared checks, and folder before any steps have been written. The
+  page then says `nothing on this page yet — it fills in as the task works`. The roster's row for it
   says `queued`; the page fills when it starts.
 - **A row that was never a task.** A background job — a server, a build, a watch, a video
   render — sits in the `jobs` section under `tasks` and `standing`, not among the families,
@@ -380,11 +383,8 @@ It should not, and if it does the version you are on is older than this page. A 
 opened the second it starts has journaled nothing yet — its first message is still being
 written — so there is no transcript to replay for a few seconds.
 
-What the page draws in that gap is what it already holds: **the instruction the task was
-given**, which has been in hand since the task was admitted, and then the sentence naming
-what the work is doing right now where the engine has published one — what it is held
-behind, the gap it is closing, or the call it is on. Then the one line about why there is
-nothing else yet.
+What the page draws in that gap is what it already holds: **the full title, the folded
+brief, the declared checks, and the folder**, followed by a note about what the task is doing now when there is one. Then it says why there are no steps yet.
 
 ```
 Widen the import pipe so the nightly run stops timing out.
@@ -394,9 +394,8 @@ nothing on this page yet — it fills in as the task works
 
 Three things worth knowing about that page:
 
-- **It replaces itself.** Every one of those rows is drawn only while the page has no
-  blocks at all, so the first thing the task writes takes the whole scaffold off at once.
-  There is nothing to dismiss and no second door to press.
+- **The head stays.** The title, brief, declared checks, and folder remain when the first
+  step arrives. Only the note about there being no steps leaves the page.
 - **Opening it starts nothing.** The page is a reader onto work that is already running;
   pressing the row again closes the page rather than starting anything, and no task is
   ever run twice by looking at it.
@@ -631,8 +630,7 @@ looking as though nothing has arrived: `gave up after 4 tries · <what the
 provider said>`. A step that failed once and was never asked again draws
 `error: <what went wrong>` — "gave up" is a claim about a struggle.
 
-**The dim `· ` lines between calls** are the page saying what its own machinery
-did. Three of them reach a task now:
+**The dim `· ` lines between calls** are notes about what happened between steps. Three of them reach a task now:
 
 - `Retry 1/3: removed max_tokens` — the request had to be reshaped to be
   accepted. The work carries on; the line is there so a reply that took three

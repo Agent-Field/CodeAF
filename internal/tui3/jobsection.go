@@ -89,7 +89,7 @@ func (a *app) jobSpots() []railSpot {
 	// Asked from the keyboard walk, never from layout: [app.railView] is the
 	// one picture of which job rows actually drew, and a walk that included a
 	// job behind `▸ N earlier` would land the cursor on a row that is not there.
-	view, _ := a.railView(a.viewHeight())
+	view, _ := a.railDrawnView(a.viewHeight())
 	out := make([]railSpot, 0, 1+len(a.jobs))
 	for _, line := range view {
 		switch {

@@ -1232,6 +1232,11 @@ type userMessage struct {
 	settleModel  string
 	settlePrompt string
 
+	// landingQuestion and landingOutcome preserve the two roles inside an owed
+	// landing document: what was asked and the evidence the run returned.
+	landingQuestion string
+	landingOutcome  string
+
 	// steer is THE PERSON'S WORDS TYPED INTO THIS TURN (steer.go's
 	// [Agent.Steer]): a correction to the question already being worked on,
 	// riding this queue for the reason everything else on it does — a step

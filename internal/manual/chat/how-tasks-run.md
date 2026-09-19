@@ -55,11 +55,28 @@ both roads in: a ground the conversation worked out from what it had been readin
 one you settled yourself when it asked which of two projects the work was for. The set
 lives in the conversation's own folder, so closing the terminal does not lose it.
 
-A folder **you named** stays until you say otherwise. One the conversation merely worked
-out **decays**: if every call since has been in another repository, the fresh evidence wins
-and the old answer stops being offered — the record stays, it just stops deciding. And two
-folders the conversation is about, with nothing in the work to choose between them, are
-the same one-keypress question rung 2 asks, in the two names you already know.
+A folder **you named** stays until you say otherwise. Before conversation evidence is
+weighed, the task's own brief gets a rung: when every existing place its contract writes
+down is held by exactly one ground, the task stands there. A ground is the repository a
+named folder is inside, or the folder itself when it is inside none, so a brief that names
+a repository's subfolder and only files under it stands on that repository. This is a
+rule of properties (existence, containment, exactly one ground), not of a particular tool,
+kind of artifact, or spelling. A named folder that is inside no repository is where output
+goes and does not vote when another named folder is inside one, so a brief that works in
+one repository and writes its report to a scratch folder beside it still has one answer.
+Two grounds that both hold everything are two answers: the rung never picks, and the rungs
+below decide or ask. An aside that introduces an unrelated folder leaves no ground holding
+everything, so it cannot silently win.
+
+One folder the conversation merely worked out **decays**: if every call since has been in
+another repository, the fresh evidence wins and the old answer stops being offered — the
+record stays, it just stops deciding. And two folders the conversation is about, with
+nothing in the work to choose between them, are the same one-keypress question the next
+rung asks, in the two names you already know. An explicit existing `ground` still outranks
+every other rung, even when it is a third folder not offered by that question; the receipt
+says where in words, `It works in <folder>, the folder this proposal gave as its ground.`,
+so a wrong choice is visible immediately. A stand read from the brief is said the same way:
+`It works in <folder>, the one folder its brief names the work in.`
 
 **How it stands on that ground is not asked either — it follows from the work.** A
 repository the task writes in gets a working copy of its own, on a branch cut **from that
@@ -2649,8 +2666,13 @@ open and read. The assembled brief is not in it; it is rebuilt from the prerequi
 reports when a task starts.
 
 It is written after **every** transition, atomically, never only at exit. On load it is
-schema-checked, and **any** violation drops the file whole and starts the session with no
-graph rather than refusing to start.
+schema-checked, and **any** violation starts the session with no graph rather than refusing
+to start. **The file that could not be read is kept, never overwritten**: it is moved beside
+itself as `tasks.json.refused-<seconds>` before anything is saved, and the id counter is
+raised past every task that left a transcript or a working copy in the conversation's
+folder, so a new task never takes a number an old one used. A task that came out of a run's
+plan carries no acceptance of its own in this file (what it is held to is in the plan's
+store), and that is not a violation.
 
 A conversation with **no session file on disk** gets no checkpoint at all, and runs tasks
 anyway.
@@ -3114,12 +3136,30 @@ checkpoint that was in force. A negative value answers `Invalid arguments: max_s
 be negative`. Zero or absent means the default.
 
 **`checks`** — the repeatable verification, described in *What propose_task needs from you*
-above. Each entry must be one simple command with no pipes or `&&`, and one that even a
-permit-everything policy would still stop and ask about is refused outright:
-`Invalid arguments: checks must each be ONE command with no shell composition`. The same
-argument is on `divide_work`, where each part declares what its own checker may run — and a
-check every part declares is taken off all of them and given once to the task that divided
-them, which is the only one that can honestly make it after its parts are home.
+above. Each entry must be ONE rerunnable command, and one that even a permit-everything
+policy would still stop and ask about is refused outright. A character that joins, redirects
+or expands commands (a pipe, `&&`, `;`, a redirection, a dollar, a backtick) refuses the
+entry when the shell would act on it, and is plain text inside a single-quoted argument: a
+search pattern holding a bar, in single quotes, is one command. Inside double quotes a
+dollar, a backtick and a backslash still refuse it, because the shell still expands them
+there. The refusal names the character and says what passes:
+`Invalid arguments: checks must each be ONE rerunnable command: "|" joins, redirects or
+expands commands in "<the check>". Such a character may stand only inside a single-quoted
+argument, where it is text`. The checker's own shell reads a command the same way, so a
+check admitted here is one the checker can run, and what it must never run is stopped at
+both. A check that leads with a directory change
+(`cd <folder> && <command>`) is refused like any other composition, and its refusal ends
+with the form that passes: `A check runs from the root of the task's own copy: leave the
+directory change out and name each file by its path`. It is never quietly repaired, because
+the command kept would run where its files may not be. The same argument is on
+`divide_work`, where each part declares what its own checker may run — and a check every
+part declares is taken off all of them and given once to the task that divided them, which
+is the only one that can honestly make it after its parts are home.
+
+Proposals refused side by side in one reply are ONE attempt, and a refusal they share
+counts once: three refused together for one reason are not three repeats, and a refusal
+whose words changed is not the same failure again, so neither earns the note about
+repeating a call.
 
 That refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
 for you: the row in the conversation reads only `the call was refused`, the task's card
