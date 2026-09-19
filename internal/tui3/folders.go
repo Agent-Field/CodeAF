@@ -140,15 +140,12 @@ const (
 	folderUnavailableWord = "unavailable"
 	logicalFolderGoneWord = "that folder is no longer here"
 	folderFiledWord       = "could not file this chat here"
-	// Wave 2 frozen person-facing copy (CONTRACTS.md). The tui lane draws
-	// these; they stand here so the e2e needle gate can grep the literals
-	// in this worktree before that drawing lands.
-	folderInstructWord         = "instruct this folder"
+	// Wave 2 e2e needle names (internal/e2e/folders_needles_test.go) grep
+	// these identifiers. Values match the drawing constants above.
 	folderInstructSlashWord    = "/folders instruct"
 	folderInstructionsHeading  = "instructions"
 	folderInstructionsWhisper  = "standing guidance for chats in this folder"
 	folderDiscoveryDelayedWord = "discovery delayed"
-	folderDegradedWord         = "degraded"
 	folderOrganizerOriginWord  = "organizer"
 	// folderCollectionKind is workspace.CollectionKind's bytes, quoted here so
 	// this package never imports internal/workspace. A FolderPlacement with
