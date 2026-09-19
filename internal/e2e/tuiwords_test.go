@@ -233,6 +233,26 @@ var tuiWords = map[string]tuiWord{
 		screen: "/folders",
 		why:    "the logical-folder command the empty whisper and the usage line teach. It is not `/folder`",
 	},
+	"folderInstructWord": {
+		screen: "instruct this folder",
+		why:    "Wave 2 folder-row `i` verb. Live waits for it on a folder row after names freeze",
+	},
+	"folderInstructSlashWord": {
+		screen: "/folders instruct",
+		why:    "the typed door for standing guidance; not an alias of `/folder`",
+	},
+	"folderInstructionsWhisper": {
+		screen: "standing guidance for chats in this folder",
+		why:    "what the `instructions` heading says with nothing written yet — emptiness law, never “no instructions yet”",
+	},
+	"folderDiscoveryDelayedWord": {
+		screen: "discovery delayed",
+		why:    "embedder or organizer down. The suite must never wait for `checked` on this path",
+	},
+	"folderOrganizerOriginWord": {
+		screen: "organizer",
+		why:    "why-here origin for an automatic placement; quiet filing, no approval card",
+	},
 	"folderChooserHelp": {
 		screen: "choose a folder to work in · type a path to browse",
 		why:    "`/folder` `/place` `/dir` is the filesystem chooser on /help; `/folders` is a different command",

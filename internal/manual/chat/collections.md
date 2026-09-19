@@ -26,7 +26,7 @@ repository, `/attach`, or which project `/folder` named.
 The CLI `codeaf collections` still files the same graph. There is no `/collections`
 slash in this build.
 
-## Saved chats — /folders add, new chat here, verbs n f m w x
+## Saved chats — /folders add, new chat here, verbs n f e i m w x
 
 A saved chat is one conversation identity (the 16-hex session id). Grouping it
 does not copy the transcript.
@@ -35,8 +35,9 @@ On a `folders` row, `→` opens the verb strip:
 
 `n` new chat here · `f` add current chat · `m` move this placement · `w` why here · `x` remove this placement
 
-On a **folder** row the strip also has **`e`** nest this folder: enter the
-parent next, or `esc` to cancel. Chat rows keep `m w x`. A verb that cannot
+On a **folder** row the strip also has **`e`** nest this folder and **`i`**
+instruct this folder: enter the parent next for nest, or type standing guidance
+for instruct; `esc` to cancel. Chat rows keep `m w x`. A verb that cannot
 work is absent.
 
 - **`n`** opens the start page with that folder pending. The first message mints
@@ -50,6 +51,8 @@ work is absent.
 - **`x`** removes that placement only. The chat and its history remain. If that
   was the row under the cursor, home says `that chat is no longer in this folder`
   and stays in the folder.
+- **`i`** (folder rows) and `/folders instruct <name-or-id> <text>` write
+  standing guidance. Person origin. Not an alias of `/folder`.
 
 An old chat can be added to a new folder without merging or resuming it.
 
@@ -117,6 +120,7 @@ It does not group saved chats.
 | `/folders add <name-or-id>` | the current chat's membership | one placement; not cwd |
 | `/folders nest <child> [in <parent>]` | a folder under another folder | the same child under every parent |
 | `/folders rename <name-or-id> <new-name>` | that folder's display name | the same folder under every parent |
+| `/folders instruct <name-or-id> <text>` | standing guidance for chats in this folder | inherited instructions; person origin |
 
 Logical membership never changes cwd, the repository, or `/attach`. After you
 file a chat, `/folder` still names the same path it named before.
@@ -200,11 +204,58 @@ the current chat the same way. `file` with `child` nests that folder under `id`
 instead of this chat. It is absent rather than present and failing when
 collections cannot open. It refuses a cycle or an unknown id in its result text.
 
-## Automatic organization, inherited instructions, and chats talking to each other
+## Automatic organization — does it file chats automatically, organizer, why here, no keyword-only file
 
-Not in this build. Automatic organization does not file chats for you. A logical
-folder does not attach inherited instructions that descendant chats pick up.
-Conversations do not send each other messages. You create folders and add, move
-or remove placements yourself — from the `folders` panel, `/folders create` /
-`/folders add` / `/folders nest`, the `n f e m w x` verbs, or `codeaf collections`. Collection
-deletion is not implemented by these commands either.
+After a substantive message is already in the journal, codeaf may file that chat
+in another folder while you are elsewhere. Filing needs no approval card. `w`
+why here shows origin `organizer` plus the evidence reason, skipping empty
+parts. Person-filed chats still show `person`. Similarity scores are never
+membership: a keyword-only file is refused, so it does not file by keywords.
+Lexical overlap alone does not add a placement. The profile row `workspace.organize` (on once this store is
+v3) pauses automatic placements when off; manual `/folders create` / add / nest
+and ordinary chat stay. Automatic remove only touches edges whose latest origin
+is `organizer` (or recovery). Your placements stay.
+
+## Inherited instructions — how do I instruct a folder, /folders instruct, standing guidance
+
+A folder can carry standing guidance that descendant chats load on the main
+turn — not as retrieved maybe-relevant text. Folder-detail heading is
+`instructions`. With nothing written yet it keeps that heading and one dim
+line `standing guidance for chats in this folder`; it never says “no
+instructions yet”. `/folders instruct <name-or-id> <text>` stamps person
+origin; it is not an alias of `/folder`. On a folder row, `i` is instruct this
+folder. Purpose text on a collection is a description, not an instruction.
+Agent-inferred observations are not adopted instructions. The `folders` tool
+does not gain `instruct`: a model cannot mint person-origin guidance.
+
+## Suppressions — I removed an automatic placement, it does not come back
+
+`x` on an organizer placement removes that edge and suppresses the evidence
+that put it there (collection + object + evidence hash). Restart and another
+pass with unchanged evidence cannot re-add it. New evidence — a new hash — may
+reconsider with a new reason. Manual `f` / `/folders add` placements are not
+silently removed.
+
+## Memory off — does automatic organization work with memory off
+
+Learned memory off leaves `remember` and reflex absent. Conversation history
+is still there: `search_conversations` and the search place still run, and
+automatic organization still files. Hybrid search adds embedding (or labelled
+expansion) candidates beside lexical hits. Abandoned plans and the words that
+rejected them stay searchable.
+
+## Discovery delayed vs checked — did it check the workspace, degraded, not checked
+
+It did not check the workspace. When the embedder or organizer is down, the UI
+says `discovery delayed` — never `checked`. Expansion-only retrieval is
+labelled `degraded`. Degraded work may cite and search; it must not apply new
+membership. Indexing is software counters (passages and vectors), never a fake
+`100%` while work remains. Delayed, deferred, or failed background work stays
+visible. Foreground chat and manual folders stay usable. Collection deletion
+is not implemented by these commands.
+
+## Chats talking to each other — not in this build
+
+Conversations do not send each other messages. That is a later wave. You still
+create, add, move, instruct, and remove placements yourself from the `folders`
+panel, `/folders`, the `n f e i m w x` verbs, or `codeaf collections`.
