@@ -138,15 +138,16 @@ Yes. The elapsed-time limit (`--max-hours`) is measured from when this session o
 and a run that `/task` starts is handed whatever is left of it. When that time is up the
 run starts nothing new, the work still going is ended where it is, and what had finished
 comes home the ordinary way. The run's row ends `incomplete` and says
-`a limit you set stopped it`, the same sentence a run says when it reaches the
-conversation's spend ceiling. A task that was cut part way through reads `incomplete` too.
+`a time limit you set stopped it`; a run stopped by its spend ceiling names the
+dollar limit on the same line, so the two limits read apart. A task that was cut part way
+through reads `incomplete` too.
 
 The dollar limit on a run is the conversation's spend ceiling, not `--max-cost`. A run's
 spend is counted as each model call is paid for, while its tasks are still working, so
 one long task cannot carry the run far past the figure. A run that reaches it ends the
-work still going and says `a limit you set stopped it`, just as when its elapsed-time
-limit is up. The call that reached the limit is already paid for, so the run can end a
-little over it.
+work still going and its row says `a dollar limit you set stopped it`, just as a
+run its elapsed-time limit ended names the time limit. The call that reached the limit is
+already paid for, so the run can end a little over it.
 
 ## Leaving it running on its own · leaving a headless run going with a budget · --once yolo · no screen · unattended · overnight · nobody watching
 

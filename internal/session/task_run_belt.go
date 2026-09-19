@@ -96,14 +96,37 @@ type RunSpec struct {
 	OnSpend func(float64)
 }
 
+// RunLimit is which bound a person set ended a run. The engine's outcome word
+// is one sentence for every limit; it is the exit ladder's own word and the
+// ladder keeps its one rung, so this fact is what says which limit fired. It
+// is set where the run decides the limit was reached and read where the ending
+// is drawn; it is never parsed back out of a sentence.
+type RunLimit string
+
+const (
+	// RunLimitTime is the elapsed limit: the session's own time bound, of
+	// which a run is given what is left.
+	RunLimitTime RunLimit = "time"
+	// RunLimitCost is the run's spend ceiling, counted while the work is still
+	// going.
+	RunLimitCost RunLimit = "cost"
+)
+
 // RunSummary is what a run came to, folded onto the words this package reads:
-// the engine's outcome word, the root's result, and the run's size.
+// the engine's outcome word, the root's result, the run's size, and the limit
+// that ended it when one did.
 type RunSummary struct {
 	Outcome string
 	Result  string
-	Nodes   int
-	Steps   int
-	USD     float64
+	// Limit is empty on every run that did not end on a bound its person set.
+	Limit RunLimit
+	// Cut is every task the run's own ending cut mid-flight, by store id: the
+	// same typed fact as the limit, read where the run recorded it. A joined
+	// row in this set is drawn with the run's own ending and never as a fault.
+	Cut   []string
+	Nodes int
+	Steps int
+	USD   float64
 }
 
 // RunLanding is what the run's landing answered: the branch the working copy's
@@ -409,7 +432,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	if stopped, why := a.beltRunStopped(run); stopped {
 		// A RUN A PERSON STOPPED IS NOT LANDED. Its work is kept where the stop's
 		// own sentence said it would be, and the ending is the stop's (stoprun.go).
-		a.settleStoppedBeltRun(run, why)
+		a.settleStoppedBeltRun(run, why, summary.Cut)
 		a.beltMu.Lock()
 		if a.beltRun == run {
 			a.beltRun = nil
@@ -571,7 +594,7 @@ func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	a.publishRunRow(g, notice)
-	a.settleJoinedRows(g, run, notice.EndedAt)
+	a.settleJoinedRows(g, run, notice.EndedAt, beltRunLimitEnding(summary.Limit), summary.Cut)
 }
 
 // settleJoinedRows ends the row of every hand-off that joined the run. A JOINED
@@ -580,10 +603,23 @@ func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLandi
 // screen it span beside a finished run for as long as the window stayed open.
 // Its state is what the store says of that task, and the run's landing is said
 // once, on the run's own row.
-func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time) {
+//
+// runEnding is the run's own ending, and cut is the typed record of which
+// tasks that ending took down mid-flight ([RunSummary.Cut]). A row in that set
+// was ended by the run's ending and not by its own work, so the law draws it
+// with that ending and never as a fault: a bound its person set or a stop is
+// theirs ([TaskReasonOf]). A row outside it failed on its own and keeps the
+// reading it always drew.
+func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, runEnding TaskEnding, cut []string) {
 	a.beltMu.Lock()
 	joined := append([]uint64(nil), run.joined...)
 	a.beltMu.Unlock()
+	cutRows := make(map[uint64]bool, len(cut))
+	for _, id := range cut {
+		if n, err := strconv.ParseUint(id, 10, 64); err == nil {
+			cutRows[n] = true
+		}
+	}
 	for _, id := range joined {
 		notice := TaskNotice{ID: id, State: TaskFailed, Parent: run.row, EndedAt: ended}
 		for _, kept := range g.runRows(id) {
@@ -597,6 +633,16 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time) {
 			}
 			notice.Result = strings.TrimSpace(task.Result)
 			notice.Report = notice.Result
+			// THE STORE HOLDS THE ACCOUNT OF WHAT BROKE IN ITS ERROR, and a
+			// failed task carries no result: a fault row with nothing to say
+			// would draw the bare word, so its first line is the store's own
+			// sentence of the break.
+			if notice.Report == "" && task.Status != plandb.StatusDone {
+				notice.Report = strings.TrimSpace(task.Error)
+			}
+		}
+		if notice.State != TaskDone && runEnding != "" && cutRows[id] {
+			notice.Ending = runEnding
 		}
 		a.publishRunRow(g, notice)
 	}
@@ -623,6 +669,12 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 	}
 	notice := TaskNotice{
 		ID: run.row, Title: run.title, State: state,
+		// A LIMIT ITS PERSON SET IS THE ROW'S ENDING, so the reason a surface
+		// draws names which limit stopped the work and carries no fault
+		// ([TaskReasonOf]): the outcome word alone says only that one of them
+		// fired. The ending comes from the summary's own fact and never out of
+		// the outcome sentence.
+		Ending: beltRunLimitEnding(summary.Limit),
 		Report: report, Result: summary.Result,
 		Changed: landing.Changed,
 	}
@@ -637,6 +689,20 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	return notice
+}
+
+// beltRunLimitEnding is the run row's ending for a limit its person set, off
+// the summary's own fact. Empty, which no reading knows as an ending, is the answer for
+// every run that did not end on a bound, which is the reading those runs always
+// drew.
+func beltRunLimitEnding(limit RunLimit) TaskEnding {
+	switch limit {
+	case RunLimitTime:
+		return TaskEndingTimeLimit
+	case RunLimitCost:
+		return TaskEndingCostLimit
+	}
+	return ""
 }
 
 // beltRunOutcomeNote is the one line a run's own page carries about how it

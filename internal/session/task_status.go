@@ -521,7 +521,7 @@ func taskEndingIsFault(ending TaskEnding) bool {
 	switch ending {
 	case TaskEndingStopped, TaskEndingWire, TaskEndingUpstream, TaskEndingCircling,
 		TaskEndingBlocked, TaskEndingSteps, TaskEndingNotes, TaskEndingRefused, TaskEndingStale,
-		TaskEndingInterrupted:
+		TaskEndingInterrupted, TaskEndingTimeLimit, TaskEndingCostLimit:
 		return false
 	}
 	return true
@@ -675,6 +675,14 @@ const (
 	// is the whole of the distinction the ending draws from
 	// [TaskEndingStopped]'s `stopped`.
 	taskReasonInterrupted = "was cut short from outside the work"
+	// taskReasonTimeLimit and taskReasonCostLimit are the two bounds a run's
+	// own person set on it, and they are drawn from the ending alone: the run
+	// answers one outcome sentence for every limit, and this line is where the
+	// two are told apart. Neither is a fault: a limit set by hand stopped the
+	// work rather than breaking it, and each names its own limit so a person
+	// who set both is told which one fired.
+	taskReasonTimeLimit = "a time limit you set stopped it"
+	taskReasonCostLimit = "a dollar limit you set stopped it"
 	// taskReasonGaps and taskReasonFault are the two the ending alone cannot
 	// answer: what the check found, and what broke. Both read the landing's own
 	// report, which is the only place either sentence exists.
@@ -773,6 +781,8 @@ func TaskReasonOf(ending TaskEnding, report string) string {
 		return taskReasonNotes
 	case TaskEndingStale:
 		return taskReasonStale
+	case TaskEndingTimeLimit, TaskEndingCostLimit:
+		return taskLimitReason(ending)
 	case TaskEndingRefused:
 		// THE CHECK'S OWN FINDING OUTRANKS THE WORD FOR IT. "Refused" is the
 		// engine's name for both a check that named gaps and a worker that would
@@ -794,6 +804,16 @@ func TaskReasonOf(ending TaskEnding, report string) string {
 		return taskReasonFault + ": " + line
 	}
 	return taskReasonFault
+}
+
+// taskLimitReason names the limit a person set that ended the run. The two are
+// ONE ARM of [TaskReasonOf] because they are one kind of ending, a bound the
+// person chose, and which bound it was is the only thing that differs.
+func taskLimitReason(ending TaskEnding) string {
+	if ending == TaskEndingCostLimit {
+		return taskReasonCostLimit
+	}
+	return taskReasonTimeLimit
 }
 
 // taskGapsOf is what the check said was missing, out of the landing's own report
