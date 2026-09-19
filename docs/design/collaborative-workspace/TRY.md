@@ -74,7 +74,32 @@ ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b
 
 ## Wave 3 — ordinary chats coordinate
 
-Not yet. After issue 3: selected coordination, a direct message, and visible participants. Not only a group-chat demo.
+Status: **owner-try after** `releases/wave-3/ready.json`. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Copy-paste launch lands beside that receipt (same shape as Wave 2). Wave 1 and Wave 2 launches stay:
+
+```
+ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b3b407a676efca3282b9834f05ea956c98a89cd/launch.sh'
+ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-2/e606ec555dbb6be87ea2aefccc98e9a5a26157c7/launch.sh'
+```
+
+Do **not** prove only a group-chat demo. Selected coordination, a **direct** message, and visible participants are the try.
+
+### What you should see (frozen names)
+
+1. **Ordinary chat hosts roles (J19).** In an existing chat, ask for a planner and a critic on different concerns. Invite them into **this** discussion — no compulsory new chat, no special mode. Distinct labels, actual separate contributions. You can intervene.
+2. **Five-feature selected (J20).** Create five short feature chats. In an **existing** ordinary chat say **coordinate these** for A, B, C, D (or `k` `mark this chat` on four rows, then `c` `coordinate these`). E stays out. That chat becomes the management conversation; originals keep independent histories.
+3. **Direct.** Privately ask A for progress. Pass: `request` / `reply` with a `source` link. A's history is still A's. Not a group conversation.
+4. **Fan-out.** Send one interface decision to B and C separately. Pass: each is `sent` with its own receipt.
+5. **Joint.** Invite B and D into the current management chat. Pass: participant labels on a normal chat; both contribute; you intervene. Empty participants draw nothing — never `0 participants`.
+6. **Optional separate discussion (J22).** Create a distinct discussion only if you want a separate history; file it in Billing and Security. The two folders do not merge. Original chats remain.
+7. **Snapshot vs folder (A16).** Add a fifth chat to Billing after the selected-four. It does **not** join the four. Start **manage this folder**. Pass: the fifth appears in dynamic scope.
+8. **Offline once (J23).** Quit so a recipient can retire. From a second isolated window on the same `CODEAF_HOME`, send a direct line. Reopen the member chat. Pass: the line appears exactly once. You see `sent` / `request` / `reply`, not store words `accepted` `recorded` `processed`.
+9. **Escalation (J24).** Instruct Billing and Security incompatibly. Pass: one conflict discussion, parents may join, Root if needed. **Not** “always ask after two turns” as a ban on parent join. Root cannot exceed you. Missing authority reaches you.
+10. **Pause (J25).** `pause coordination` stops **new** autonomous decisions. Closing a view does not pause. Archive suppresses automatic wake-ups; history remains.
+11. **Attribution (J26).** A participant claims to be the user. Pass: assignment/goal does not move; the line is a representative. Coordinator cannot execute (wave 4).
+
+Marking is optional. From home with no current chat, `c` says `coordinate from this chat · or say coordinate these`. A failed mark says `could not mark that chat`.
+
+Quit, reopen with the same isolated home: discussion and deliveries intact.
 
 ## Wave 4 — launch-or-join
 
