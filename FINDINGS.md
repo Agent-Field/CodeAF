@@ -40,3 +40,18 @@ The smallest prospective repair is to make the terminal-root road absorb a pendi
 ## Evidence checkpoint before focused tests
 
 Next I will run the existing deterministic run-engine tests for a childless self-finished root and for root waiting on its check. Passing them establishes the return-first ordering and review hold behavior. They do not force the terminal-observation-first ordering, so this task will not claim that existing tests deterministically reproduce the losing branch. No implementation or test behavior is being changed in this ordering-map task.
+
+## Established and ruled out after focused execution
+
+Command run:
+
+```text
+go test ./internal/run -run 'TestSupervisor(ChecksAChildlessRootThatCompletedItselfInTheStore|RootWaitsOnAnOpenCheckTask)$' -count=1
+ok github.com/Agent-Field/codeaf/internal/run 0.127s
+```
+
+This establishes that when the worker return is absorbed, a self-finished childless root receives one check and the root is held until that check lands. Together with the synchronous command-test structure, it rules out the store assertion racing an active `doErrand`, and it rules out `AddRootCheck` universally refusing an already-done root.
+
+The focused tests do not force the losing ordering where `pass` reads the terminal root before the return is absorbed. That missing forced-ordering test and any smallest product repair belong to the next investigative step, not this ordering-map output. The code inspection establishes why the observed command flake is product-side and exactly which branch skips review; it does not claim the sibling check-model failure has no other possible cause.
+
+No Go source or test was changed. In particular, `run.Start` at `internal/run/run.go:1231-1236`, including the pull request 1210 stored-root-result fallback, is unchanged.
