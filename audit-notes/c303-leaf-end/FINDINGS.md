@@ -86,3 +86,7 @@ The completer waits at `jobs_test.go:377-389` for `survivor.pid`, so it can capt
 ## Correction result
 
 The identity-aware test correction passes 20 consecutive focused runs with `go test ./internal/exec -run '^TestLeafEndTerminatesSurvivorsAndNotesCount$' -count=20`. The completer now captures the original survivor start time before returning its final answer; after leaf teardown the assertion reports a survivor only when both PID and start identity still match. This preserves leak detection while accepting an absent original or a recycled PID. Only `internal/exec/jobs_test.go` and this run note changed. Next step: commit the passing correction immediately, then run the required checks from the committed tree.
+
+## Pre-PR verification
+
+The correction is committed at `f8e08781f9556d71725d720facbe91fab6a4f549`. Next step: record the committed tree hash and run the first required standalone check, `go build ./...`.
