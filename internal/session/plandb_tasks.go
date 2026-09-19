@@ -135,7 +135,7 @@ type PlanStep struct {
 	Children    []string `json:"children,omitempty"`
 	// Parts are display facts derived from Command. Command remains the byte-for-byte
 	// record; a surface filters parts instead of rewriting that record.
-	Parts []PlanCommandPart `json:"-"`
+	Parts []PlanCommandPart `json:"parts,omitempty"`
 }
 
 // PlanCommandPart is one quote-aware command part and the facts only the
