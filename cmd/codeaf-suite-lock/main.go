@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -53,7 +54,18 @@ func run(path string, argv []string) int {
 				since = fields[1]
 			}
 			fmt.Fprintf(os.Stderr, "another heavy suite is already running on this box (pid %s, started %s).\n", pid, since)
-			fmt.Fprintln(os.Stderr, "Wait for it, or run one named regression with make test-focus.")
+			if held, convErr := strconv.Atoi(pid); convErr == nil && !pidVisibleHere(held) {
+				// The pid in the lock file is meaningful only in the holder's own
+				// pid namespace, so from here it may be a live suite in another
+				// namespace or a holder that exited and left the lock to a process
+				// it started (an inherited descriptor is not close-on-exec). Never
+				// call a live suite gone: say the recorded holder is not visible and
+				// name the file-level way to find whoever really holds it.
+				fmt.Fprintf(os.Stderr, "pid %s is not visible from here: it may be running in another process namespace, or it may have exited and left the lock to a process it started.\n", pid)
+				fmt.Fprintf(os.Stderr, "Find the real holder where every process is visible: lsof %s\n", path)
+			} else {
+				fmt.Fprintln(os.Stderr, "Wait for it, or run one named regression with make test-focus.")
+			}
 			return 1
 		}
 		fmt.Fprintf(os.Stderr, "take heavy-suite lock: %v\n", err)

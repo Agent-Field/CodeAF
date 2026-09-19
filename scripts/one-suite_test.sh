@@ -35,6 +35,15 @@ run_order() {
 		*"another heavy suite is already running on this box (pid ${metadata%% *}, started ${metadata#* })."*) ;;
 		*) printf 'refusal did not name holder metadata %q: %s\n' "$metadata" "$output" >&2; return 1 ;;
 	esac
+	if [ "$first" = host-first ]; then
+		# The contender runs in a fresh pid namespace and cannot see the host
+		# holder's pid, so the refusal must say the recorded holder is not
+		# visible from here rather than call a live suite gone.
+		case "$output" in
+			*"pid ${metadata%% *} is not visible from here"*) ;;
+			*) printf 'a namespace contender was not told the host pid is not visible: %s\n' "$output" >&2; return 1 ;;
+		esac
+	fi
 	kill -TERM "$holder_pid"
 	wait "$holder_pid" || true
 }
