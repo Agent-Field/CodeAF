@@ -379,10 +379,10 @@ running glyph beside it.
 
 ### Why is a step missing from the page?
 
-The page shows every part that does the task, just as it was written. It leaves out the
-repeated move into the task's own copy and any part that only keeps the task's own page up
-to date. If a step has no other part, there is no row for it; the numbers beside the steps you
-can read stay in order. What that last step said is already in the task's report, so the page
+The page shows every part that does the task, just as it was written. It leaves out a leading
+move into the run's own copy and any command part addressed only to the run's record. If a
+step has no other part, there is no row for it; the numbers beside the steps you can read stay
+in order. What that last step said is already in the task's report, so the page
 does not repeat its note or its private names beneath another step.
 
 ## Why is a task I just started showing an empty page
