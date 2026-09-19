@@ -232,3 +232,98 @@ func TestTheLockIsFreeWhenTheSuiteEndsThoughItLeftAProcessBehind(t *testing.T) {
 		t.Fatalf("a suite's leftover still holds the lock: %v\n%s", err, output)
 	}
 }
+
+// WITH NO HOLDER THERE IS NOTHING TO REPORT AND NOTHING TO WAIT FOR.
+//
+// Windows holds the lock in the wrapper, and so does unix when the holder fails
+// to start. The wrapper is then the lock's own owner, so asking whether the lock
+// is free would answer "held" because of this very process: every such run would
+// spend the whole grace and then report itself.
+func TestNoHolderIsNeitherWaitedForNorReported(t *testing.T) {
+	lock := filepath.Join(t.TempDir(), "suite.lock")
+	held, err := os.OpenFile(lock, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	if err := filelock.Lock(held, true, true); err != nil {
+		t.Fatal(err)
+	}
+
+	var said strings.Builder
+	started := time.Now()
+	reportLingeringHolder(&said, lock, nil)
+	if spent := time.Since(started); spent > lingerGrace/4 {
+		t.Fatalf("waited %s with no holder to wait for", spent)
+	}
+	if said.Len() != 0 {
+		t.Fatalf("reported a holder that does not exist: %q", said.String())
+	}
+}
+
+// A CONTENDER TAKING THE LOCK IS NOT OUR HOLDER LINGERING.
+//
+// A gate that polls and a wrapper that retries both take the lock in the moment
+// after a clean release. Reading the lock would call that "still held" and name
+// our holder for a lock that is rightfully somebody else's.
+func TestALockTakenByTheNextSuiteIsNotReportedAsOurs(t *testing.T) {
+	lock := filepath.Join(t.TempDir(), "suite.lock")
+	next, err := os.OpenFile(lock, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close()
+	// The next suite holds the lock, exactly as it would a moment after ours
+	// released it.
+	if err := filelock.Lock(next, true, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Our holder is finished, and unreaped, which is exactly how it reaches this
+	// call in a real run: a pid that answers every liveness question with yes
+	// until somebody waits for it.
+	finished := exec.Command("true")
+	if err := finished.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	var said strings.Builder
+	started := time.Now()
+	reportLingeringHolder(&said, lock, finished.Process)
+	if spent := time.Since(started); spent > lingerGrace/4 {
+		t.Fatalf("waited %s for a holder that had already finished", spent)
+	}
+	if said.Len() != 0 {
+		t.Fatalf("named our holder for a lock the next suite holds: %q", said.String())
+	}
+}
+
+// A HOLDER THAT REALLY IS STILL RUNNING IS NAMED, AND NOT ENDED.
+func TestAHolderStillRunningAfterItsSuiteIsNamedWithLsof(t *testing.T) {
+	previous := lingerGrace
+	lingerGrace = 150 * time.Millisecond
+	defer func() { lingerGrace = previous }()
+
+	lock := filepath.Join(t.TempDir(), "suite.lock")
+	lingering := exec.Command("sleep", "30")
+	if err := lingering.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = lingering.Process.Signal(syscall.SIGKILL)
+		_ = lingering.Wait()
+	}()
+
+	var said strings.Builder
+	reportLingeringHolder(&said, lock, lingering.Process)
+	output := said.String()
+	if !strings.Contains(output, fmt.Sprintf("pid %d, is still running", lingering.Process.Pid)) {
+		t.Fatalf("output %q does not name the lingering holder", output)
+	}
+	if !strings.Contains(output, "lsof "+lock) {
+		t.Fatalf("output %q lacks the lsof hint", output)
+	}
+	if err := syscall.Kill(lingering.Process.Pid, 0); err != nil {
+		t.Fatalf("the holder was ended rather than named: %v", err)
+	}
+}
