@@ -133,3 +133,36 @@ func TestDrainStillEndsAnUnfinishedRemnant(t *testing.T) {
 	s.drain()
 	<-returned
 }
+
+func TestRunDoesNotAcceptARunningRootsFinishBeforeItsFinishedChildReturnLands(t *testing.T) {
+	store := landingStore(t)
+	leaf := finishedLeaf(t, store)
+	if _, err := store.Done("root", "root", "root finished", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	s := NewSupervisor(store, t.TempDir(), 2, Limits{ReviewRound: true}, func(plandb.Task) Worker { return nil })
+	s.dispatchedRoot = true
+	s.cancels["root"] = func() {}
+	s.cancels[leaf.ID] = func() {}
+	s.inFlight = 2
+	if got := s.pass(context.Background(), "root"); got != "" {
+		t.Fatalf("pass = %q while root and child returns are out", got)
+	}
+	delete(s.cancels, "root")
+	s.inFlight--
+	if got := s.pass(context.Background(), "root"); got != "" {
+		t.Fatalf("pass = %q after root return but before child landing", got)
+	}
+}
+
+func TestRefusedReviewSeatingMakesTheRunFailInsteadOfDroppingTheRound(t *testing.T) {
+	store := landingStore(t)
+	s := NewSupervisor(store, t.TempDir(), 1, Limits{ReviewRound: true}, func(plandb.Task) Worker { return nil })
+	s.addReviewCheck(plandb.Task{TaskSpec: plandb.TaskSpec{ID: "lost", Title: "lost", ParentID: "missing"}}, "finished")
+	if !s.rootFailed {
+		t.Fatal("refused review seating did not fail the run")
+	}
+	if len(s.checkOf) != 0 {
+		t.Fatal("refused review was recorded as seated")
+	}
+}
