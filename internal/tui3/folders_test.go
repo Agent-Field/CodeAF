@@ -547,3 +547,128 @@ func TestAlsoInClause(t *testing.T) {
 		t.Fatalf("dual placement said %q", got)
 	}
 }
+
+func TestDropHomeKeepsTheFolderPath(t *testing.T) {
+	fake := twoParentReceipts()
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	a.enterFolder("col-billing")
+	a.enterFolder("col-receipts")
+	if a.home.folderOpen != "col-receipts" {
+		t.Fatalf("setup left folderOpen %q", a.home.folderOpen)
+	}
+	trail := append([]string(nil), a.home.folderTrail...)
+	a.dropHome()
+	if a.home.folderOpen != "col-receipts" {
+		t.Fatalf("dropHome forgot folderOpen: %q", a.home.folderOpen)
+	}
+	if len(a.home.folderTrail) != len(trail) {
+		t.Fatalf("dropHome forgot folderTrail: %v", a.home.folderTrail)
+	}
+	a.raiseHome()
+	if a.home.folderOpen != "col-receipts" {
+		t.Fatalf("returning to home left folderOpen %q, want Receipts", a.home.folderOpen)
+	}
+	frame := homeText(a)
+	if !strings.Contains(frame, "Emailed receipt links") {
+		t.Fatalf("returning to home did not restore Receipts:\n%s", frame)
+	}
+}
+
+func TestGonePlacementSaysFolderLostWord(t *testing.T) {
+	fake := billingSecurityFolders()
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.home.folderOpen = "col-billing"
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	var member homeLine
+	for _, line := range a.home.lines {
+		if line.kind == homeSession && line.cell != nil && line.cell.panel == panelFolders {
+			member = line
+			break
+		}
+	}
+	if member.kind == 0 {
+		t.Fatal("no member row")
+	}
+	if !a.home.pointSame(member) {
+		t.Fatal("could not stand on the member")
+	}
+	fake.members["col-billing"] = nil
+	a.refreshFolderMemo()
+	if a.home.msg != folderLostWord {
+		t.Fatalf("gone placement said %q, want %q", a.home.msg, folderLostWord)
+	}
+	if a.home.folderOpen != "col-billing" {
+		t.Fatalf("gone placement left the folder: %q", a.home.folderOpen)
+	}
+}
+
+func TestGoneWorldRowIsLabelledUnavailable(t *testing.T) {
+	fake := billingSecurityFolders()
+	fake.members["col-billing"] = []FolderPlacement{{
+		CollectionID: "col-billing",
+		RefID:        "dead000000000001",
+		Title:        "Deleted chat",
+	}}
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.home.folderOpen = "col-billing"
+	a.readHomeFolders()
+	a.home.build()
+	frame := homeText(a)
+	if !strings.Contains(frame, folderUnavailableWord) {
+		t.Fatalf("gone world row was not labelled unavailable:\n%s", frame)
+	}
+	if !strings.Contains(frame, "Deleted chat") {
+		t.Fatalf("unavailable row looked empty:\n%s", frame)
+	}
+	var member homeLine
+	for _, line := range a.home.lines {
+		if line.kind == homeSession && line.cell != nil && line.cell.panel == panelFolders && line.row.ID == "dead000000000001" {
+			member = line
+			break
+		}
+	}
+	if member.kind == 0 {
+		t.Fatal("unavailable member was not drawn")
+	}
+	if !folderMemberUnavailable(member) {
+		t.Fatal("gone world row was drawn as an ordinary chat")
+	}
+}
+
+func TestFolderWhyLineKeepsEvidenceAndAt(t *testing.T) {
+	why := FolderWhy{
+		Origin:   "person",
+		Reason:   "filed from home",
+		Actor:    "me",
+		Evidence: "receipt thread",
+		At:       "2026-09-18T12:00:00Z",
+	}
+	got := folderWhyLine(why)
+	for _, want := range []string{"person", "filed from home", "me", "receipt thread", "2026-09-18T12:00:00Z"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("why line %q dropped %q", got, want)
+		}
+	}
+	if got := folderWhyLine(FolderWhy{Origin: "person"}); got != "person" {
+		t.Fatalf("empty why fields drew %q", got)
+	}
+	fake := billingSecurityFolders()
+	fake.whys = map[string]FolderWhy{"col-billing/aaaa000000000001": why}
+	a := newLiveLab(t).open()
+	a.folders = fake
+	member := homeLine{kind: homeSession, row: session.SessionRow{ID: "aaaa000000000001"}, cell: &homeCell{panel: panelFolders, key: "col-billing"}}
+	a.folderWhyHere(member)
+	for _, want := range []string{"person", "filed from home", "me", "receipt thread", "2026-09-18T12:00:00Z"} {
+		if !strings.Contains(a.home.msg, want) {
+			t.Fatalf("w said %q, dropped %q", a.home.msg, want)
+		}
+	}
+}

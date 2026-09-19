@@ -859,7 +859,8 @@ type homeView struct {
 	// folderTrail is the parents they walked through to get here, so esc from a
 	// nested/shared child returns to that parent instead of jumping to Root
 	// (J02 sequential browse). The back row pops one step. It lives as long as
-	// the window.
+	// the window: [app.dropHome] and [app.newHomeView] keep these two fields so
+	// opening a chat and returning to home restores Receipts, not Root (J06/J07).
 	folderOpen  string
 	folderTrail []string
 	grid        homeGrid
@@ -1231,7 +1232,12 @@ func (a *app) dropHome() {
 	// ([app.exchanges]); this assignment takes away the SCREEN and nothing else,
 	// and opening home again finds every one of them still going
 	// (homeexchange.go's header).
-	a.home = homeView{}
+	//
+	// THE FOLDER PATH IS THE WINDOW'S, NOT THE SCREEN'S. Zeroing the whole
+	// [homeView] used to forget folderOpen/folderTrail, so the next /home
+	// landed at Root instead of Receipts (J06/J07).
+	open, trail := a.home.folderOpen, append([]string(nil), a.home.folderTrail...)
+	a.home = homeView{folderOpen: open, folderTrail: trail}
 	a.touch()
 }
 
@@ -1287,6 +1293,11 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		// — and it is the reason this screen can be "typed into" with nothing
 		// typed at all ([homeView.carrying]).
 		carrying: len(a.chips) > 0,
+		// AND THE FOLDER THEY WERE IN. dropHome keeps these on the empty
+		// view so this constructor can put them back; a literal that omitted
+		// them would greet Root after every opened chat (J06/J07).
+		folderOpen:  a.home.folderOpen,
+		folderTrail: append([]string(nil), a.home.folderTrail...),
 	}
 }
 
@@ -1309,6 +1320,7 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 // the bands because a project home knows only through a watch is one of the
 // projects this has to answer for ([homeView.readGone]).
 func (a *app) furnishHome() {
+	prevFolder, hadFolder := a.home.focusedLine()
 	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
 	// the conversation rows above it are one triage order, and two readings taken
 	// a beat apart would sort a firing item against a world that had not heard of
@@ -1345,6 +1357,7 @@ func (a *app) furnishHome() {
 	// [homeView.build] is the one that keeps the cursor on its conversation, so
 	// on the beat this is a rescan and a rebuild and nothing else.
 	a.home.build()
+	a.explainLostFolderRow(prevFolder, hadFolder)
 }
 
 // placesRoot is where the projects live. The field is the test's door and
@@ -2018,7 +2031,12 @@ func (l homeLine) sameRow(other homeLine) bool {
 	}
 	switch l.kind {
 	case homeSession:
-		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript && l.cellKey() == other.cellKey()
+		if l.row.Transcript != "" && l.row.Transcript == other.row.Transcript && l.cellKey() == other.cellKey() {
+			return true
+		}
+		// A folders-panel member whose world row is gone has no transcript.
+		// Identity is then the conversation id plus the collection it sits in.
+		return folderMemberSame(l, other)
 	case homeItem:
 		return l.item.ID != "" && l.item.ID == other.item.ID
 	case homeQuiet, homeItemFold, homeProject, homeProjectRow, homeFolderRow, homeFolderBack:
@@ -3208,6 +3226,10 @@ func (a *app) homeEnter() tea.Cmd {
 // the phone tier had the older one.
 func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 	h := &a.home
+	if folderMemberUnavailable(line) {
+		a.folderNote(folderUnavailableWord)
+		return nil
+	}
 	// THE ORDER OF THESE CHECKS IS THE FEATURE. Identity comes first, because a
 	// transcript THIS PROCESS holds answers [session.InUse] true about itself —
 	// a flock rides the open file description rather than the process — so a

@@ -97,6 +97,7 @@ const (
 	folderNoStandWord     = "stand on a folder · then n starts a chat there"
 	folderMoveHintWord    = "enter a folder to move it there · esc cancel"
 	folderLostWord        = "that chat is no longer in this folder"
+	folderUnavailableWord = "unavailable"
 	logicalFolderGoneWord = "that folder is no longer here"
 	folderFiledWord       = "could not file this chat here"
 	// folderCollectionKind is workspace.CollectionKind's bytes, quoted here so
@@ -368,7 +369,13 @@ func (a *app) folderWhyHere(line homeLine) tea.Cmd {
 
 func folderWhyLine(why FolderWhy) string {
 	var parts []string
-	for _, p := range []string{strings.TrimSpace(why.Origin), strings.TrimSpace(why.Reason), strings.TrimSpace(why.Actor)} {
+	for _, p := range []string{
+		strings.TrimSpace(why.Origin),
+		strings.TrimSpace(why.Reason),
+		strings.TrimSpace(why.Actor),
+		strings.TrimSpace(why.Evidence),
+		strings.TrimSpace(why.At),
+	} {
 		if p != "" {
 			parts = append(parts, p)
 		}
@@ -445,9 +452,50 @@ func (a *app) leaveFolder() bool {
 }
 
 func (a *app) refreshFolderMemo() {
+	prev, had := a.home.focusedLine()
 	a.readHomeFolders()
 	a.home.build()
+	a.explainLostFolderRow(prev, had)
 	a.touch()
+}
+
+// explainLostFolderRow is J06: when the folders-panel placement under the
+// cursor is gone, stay in this folder and say so. build() would otherwise
+// jump the cursor onto the same chat in another panel.
+func (a *app) explainLostFolderRow(prev homeLine, had bool) {
+	if !had || !folderPanelSession(prev) {
+		return
+	}
+	if folderLineStillHere(a.home, prev) {
+		return
+	}
+	a.pointFolderBack()
+	a.folderNote(folderLostWord)
+}
+
+func folderPanelSession(line homeLine) bool {
+	return line.kind == homeSession && line.cell != nil && line.cell.panel == panelFolders
+}
+
+func folderMemberUnavailable(line homeLine) bool {
+	return folderPanelSession(line) && strings.TrimSpace(line.row.Transcript) == ""
+}
+
+func folderMemberSame(a, b homeLine) bool {
+	if !folderPanelSession(a) || !folderPanelSession(b) {
+		return false
+	}
+	id := strings.TrimSpace(a.row.ID)
+	return id != "" && id == strings.TrimSpace(b.row.ID) && a.cellKey() == b.cellKey()
+}
+
+func folderLineStillHere(h homeView, want homeLine) bool {
+	for _, line := range h.lines {
+		if line.sameRow(want) || folderMemberSame(line, want) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *app) pointFolderBack() {
