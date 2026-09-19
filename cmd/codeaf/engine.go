@@ -134,11 +134,18 @@ func runRemoteEngine(args []string) error {
 			return quietRefusal(remote.Refuse(os.Stdout, stale.reason))
 		}
 	}
-	return quietRefusal(remote.Serve(os.Stdin, os.Stdout, remote.Options{
+	err := remote.Serve(os.Stdin, os.Stdout, remote.Options{
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, *workspace, *file)
 		},
-	}))
+	})
+	// THE USAGE WRITER A REMOTE TURN STARTED HAS AN OWNER ON THIS PATH TOO: the
+	// fallback served the conversation on this pipe, and the ledger writer it
+	// started belongs to this process exactly as the local launch belongs to
+	// its own. The close is the same door [v3Process.closeAll] uses; it drains
+	// the queue before joining, so the last row is on disk as well.
+	session.CloseUsage()
+	return quietRefusal(err)
 }
 
 // quietRefusal is the door's half of [remote.Refusal]: a handshake this engine
@@ -497,7 +504,7 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 	err = enginehost.Run(workspace, enginehost.Options{
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, workspace, sessionFlag)
-		},
+		}, // usage writer owner: see CloseUsage after the host returns
 		// WHICH CONVERSATION A HELLO WANTS is the session file it named, and
 		// naming none is this workspace's latest-or-new — the same meaning
 		// --session has everywhere else. So two surfaces that both say nothing
@@ -507,6 +514,12 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 			return engineHelloKey(hello, workspace, sessionFlag)
 		},
 	})
+	// THE HOST IS GOING AWAY: stop and join the ledger writer a remote turn
+	// started, the same door [v3Process.closeAll] uses. CloseUsage drains the
+	// queue before joining, so the last row is on disk before this returns.
+	// (The refusal path above never booted a conversation, so its registry is
+	// empty and this close is a no-op there. It is one owner door, not two.)
+	session.CloseUsage()
 	if errors.Is(err, enginehost.ErrHostRunning) {
 		return nil
 	}
