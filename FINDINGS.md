@@ -88,3 +88,7 @@ The wrapped whole session suite ran once and failed across many unrelated task-s
 ## Law result and final tree
 
 `go test ./internal/guard ./internal/namelaw` passed. Four of five required pre-PR commands passed. The wrapped session command ran and failed only in the unrelated task-system surfaces listed in its output; it did not fail the forced pin-wire regression. The ending tree hash is printed below. No source or findings amendment follows this record.
+
+## Independent pre-PR verification
+
+The lifecycle fix and forced regression are committed. I will now run the required five checks on Spark as separate commands, with the whole session suite only through scripts/one-suite.sh. The tree hash will be printed before and after all checks, and the worktree must remain clean and unchanged.
