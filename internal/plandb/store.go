@@ -692,8 +692,8 @@ func (s *Store) recordedRuns(task *Task) map[string]int {
 // composition — that a blanket-allow gate would still let run. A second
 // reading here would be a second door, which is why every half is asked of the
 // same functions the session asks: [approval.Vouchable], the blanket-allow
-// policy whose critical table is the build's floor, and the composition
-// characters [commandLike] refuses.
+// policy whose critical table is the build's floor, and the one-command
+// reader [approval.FirstCompositionOutsideQuotes] the door reads with too.
 func auditableDeclaredCheck(command string) bool {
 	if !approval.Vouchable(command) || auditAllowAll.CheckBash(command).Action != approval.ActionAllow {
 		return false
@@ -702,10 +702,8 @@ func auditableDeclaredCheck(command string) bool {
 	if len(fields) == 0 || strings.HasPrefix(fields[0], "-") || strings.Trim(fields[0], "*?[]") == "" {
 		return false
 	}
-	for _, field := range fields {
-		if strings.ContainsAny(field, declaredCheckComposition) {
-			return false
-		}
+	if _, composed := approval.FirstCompositionOutsideQuotes(command); composed {
+		return false
 	}
 	return true
 }
@@ -714,11 +712,6 @@ func auditableDeclaredCheck(command string) bool {
 // internal/session), restated here because the store and the door must agree
 // about what a critical command is or the gate and the door drift apart.
 var auditAllowAll = approval.Policy{Default: approval.ActionAllow}
-
-// declaredCheckComposition is the same character set [commandLike] refuses in
-// internal/session — one command and no shell composition is the gate's own
-// standing law, and a persisted contract must satisfy it.
-const declaredCheckComposition = ";|&<>`$(){}\n\r\\"
 
 // SetVerdictBasis records HOW a task's verdict was earned on the task itself.
 // Done writes it by the same gate that judged the verdict; this store method

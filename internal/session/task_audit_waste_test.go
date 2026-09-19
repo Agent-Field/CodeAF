@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -132,7 +133,7 @@ func TestAnAuditDoesNotSpendTheAuditorOnNamingOrASelfRefusedCommand(t *testing.T
 			if isError || strings.HasPrefix(text, "refused:") {
 				t.Fatalf("%q was refused, which is the self-refusal this test exists to stop:\n%s", typed, text)
 			}
-			if strings.ContainsAny(ran, shellComposition) {
+			if strings.ContainsAny(ran, approval.ShellComposition) {
 				t.Fatalf("%q ran a composed command %q", typed, ran)
 			}
 			if !strings.HasPrefix(ran, "python3 -m pytest") && !strings.HasPrefix(ran, "go test") {

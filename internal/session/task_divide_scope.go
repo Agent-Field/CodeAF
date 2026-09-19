@@ -34,6 +34,8 @@ package session
 import (
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 // scopeCollisions is every path more than one part of this division claims,
@@ -348,9 +350,9 @@ func namesSomethingFindable(word string) bool {
 // the reason the constant was made a constant in the first place
 // (task_audit.go): one question with two answers is two questions.
 func wholeClause(clause string) bool {
-	// ONE READER ([firstCompositionOutsideQuotes]): it refuses a quotation left
+	// ONE READER ([approval.FirstCompositionOutsideQuotes]): it refuses a quotation left
 	// open as well, which is the cut described above.
-	_, composed := firstCompositionOutsideQuotes(clause)
+	_, composed := approval.FirstCompositionOutsideQuotes(clause)
 	return !composed
 }
 

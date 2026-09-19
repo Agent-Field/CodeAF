@@ -610,7 +610,7 @@ func leadsWithDirectoryChange(said string) bool {
 // tried and drops the step the check needed.
 func checkShapeRefusal(said string) string {
 	refusal := "Invalid arguments: checks must each be ONE rerunnable command"
-	if offending, composed := firstCompositionOutsideQuotes(said); composed {
+	if offending, composed := approval.FirstCompositionOutsideQuotes(said); composed {
 		refusal += ": " + strconv.Quote(string(offending)) + " joins, redirects or expands commands in " +
 			strconv.Quote(clip(said, auditCommandLimit)) +
 			". Such a character may stand only inside a single-quoted argument, where it is text"
@@ -879,10 +879,10 @@ func preparedAuditCommand(command string) string {
 		return command
 	}
 	// ONE COMMAND IS LEFT EXACTLY AS IT WAS TYPED. A bar or an arrow inside a
-	// quoted argument is text ([firstCompositionOutsideQuotes]), and a line that
+	// quoted argument is text ([approval.FirstCompositionOutsideQuotes]), and a line that
 	// is already one command has no stage to take: cutting it at that bar would
 	// hand the gate half a quotation, which it then refuses.
-	if _, composed := firstCompositionOutsideQuotes(command); !composed {
+	if _, composed := approval.FirstCompositionOutsideQuotes(command); !composed {
 		return command
 	}
 	if stage, ok := firstStage(command); ok {
@@ -907,7 +907,7 @@ func preparedAuditCommand(command string) string {
 func firstStage(line string) (string, bool) {
 	// THE PIPE THAT ENDS THE FIRST STAGE IS THE FIRST ONE THE SHELL WOULD ACT ON.
 	// A bar inside a quoted argument belongs to the command that carries it.
-	if at := firstBarOutsideQuotes(line); at >= 0 {
+	if at := approval.FirstBarOutsideQuotes(line); at >= 0 {
 		if strings.HasPrefix(line[at+1:], "|") {
 			return "", false
 		}
@@ -1165,7 +1165,7 @@ func sameFile(one, other string) bool {
 // as one command:
 //
 //   - no shell composition, which is the gate's own standing law
-//     ([shellComposition]) asked one step earlier;
+//     ([approval.ShellComposition]) asked one step earlier;
 //   - a first word that is a program rather than an option, because a brief
 //     backticking `--stdio` is naming a flag and not a check;
 //   - a first word with something in it besides wildcards, because a door
@@ -1181,7 +1181,7 @@ func commandLike(text string) (string, bool) {
 	if text == "" {
 		return "", false
 	}
-	if _, composed := firstCompositionOutsideQuotes(text); composed {
+	if _, composed := approval.FirstCompositionOutsideQuotes(text); composed {
 		return "", false
 	}
 	fields := strings.Fields(text)
