@@ -11,3 +11,7 @@ The legal dependency direction is `session` defining the capability, `remote` as
 ## Shared capability
 
 `session.PlanAgent` is now the single method set. The live surface aliases it, and `remote` carries a production compile-time assertion in the legal import direction (`remote` imports `session`).
+
+The surface-door law requires a locally declared interface it can inspect, so `planAgent` embeds `session.PlanAgent` instead of aliasing it. This preserves one source of methods while keeping the repository's static wire coverage law effective.
+
+The final surface change is only a type alias. The remote surface-door law now follows selected interface aliases, preventing the shared-interface extraction from weakening its wire coverage without making shared plan reads look like new update-loop calls.
