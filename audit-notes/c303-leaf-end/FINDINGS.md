@@ -58,3 +58,7 @@ Before changing the test, the next step will add the smallest test-only liveness
 ## Reproduction edit correction
 
 The first test edit committed the test-only probe hook but the exact replacement of its call site was refused because two bare `syscall.Kill(pid, 0)` assertions exist in this file. No focused test ran, so commit `70c49222b` is only the hook half of the reproduction. The next edit will target the named leaf-end assertion with surrounding failure text, then gofmt, run the focused test, and commit the deterministic failing state.
+
+## Forced-ordering result
+
+The deterministic test-only seam is now active at `internal/exec/jobs_test.go:393-403` and the named assertion calls it at `internal/exec/jobs_test.go:419`. After `Linear.Run` returns, the seam first runs the real `kill(pid, 0)` probe and logged `no such process`, proving the original shell was gone. It then returns success to model the same integer PID having been reused before the assertion. The focused command `go test ./internal/exec -run '^TestLeafEndTerminatesSurvivorsAndNotesCount$' -count=1 -v` failed deterministically with `original process probe after leaf end: no such process; forcing reused PID observation` followed by `process 1684 survived leaf end`. This establishes a test-side false positive and rules out a surviving original process in the forced run. No product file was changed, and no load, busy loop, or synthetic CPU was used. Hook commit: `70c49222b`; call-site/failing-state commit: `d15db2c3f`.
