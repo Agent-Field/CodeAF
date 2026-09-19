@@ -140,3 +140,58 @@ func TestActivityPaintsRequestReplySentFromRealStore(t *testing.T) {
 		t.Fatalf("kinds %v, want request, reply, and sent from production deliveries", kinds)
 	}
 }
+
+func TestRealStoreOpenConflictDiscussionInvitesAncestorsAndRoot(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	svc, _ := openV3FolderServiceWith(nil)
+	if svc == nil || svc.Workspace() == nil {
+		t.Fatal("production wsapi.Open must bind collections.db")
+	}
+	ctx := context.Background()
+	billing, err := svc.CreateFolder(ctx, "Billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	security, err := svc.CreateFolder(ctx, "Security")
+	if err != nil {
+		t.Fatal(err)
+	}
+	person := workspace.Provenance{Origin: workspace.OriginPerson}
+	if _, err := svc.InstructFolder(ctx, wsapi.InstructRequest{
+		ScopeID: billing.ID, Text: "always mail receipt links in the clear", Provenance: person,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.InstructFolder(ctx, wsapi.InstructRequest{
+		ScopeID: security.ID, Text: "never mail raw URLs", Provenance: person,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	child := "childchildchild1"
+	if err := svc.AddPlacement(ctx, billing.ID, workspace.Ref{Kind: workspace.ConversationKind, ID: child}, person); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddPlacement(ctx, security.ID, workspace.Ref{Kind: workspace.ConversationKind, ID: child}, person); err != nil {
+		t.Fatal(err)
+	}
+	collab := &sessionCollab{svc: svc, chatID: child}
+	first, err := collab.OpenConflict(ctx, child)
+	if err != nil || first.ChatID == "" || first.Exhausted {
+		t.Fatalf("open %+v, %v", first, err)
+	}
+	again, err := collab.OpenConflict(ctx, child)
+	if err != nil || again.ChatID != first.ChatID {
+		t.Fatalf("reuse %+v, %v", again, err)
+	}
+	people, err := svc.ListParticipants(ctx, first.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, p := range people {
+		seen[p.SourceChatID]++
+	}
+	if seen[billing.ID] != 1 || seen[security.ID] != 1 || seen[wsapi.RootRepresentative] != 1 || seen[child] != 1 {
+		t.Fatalf("want one billing, security, root, and child; got %v", seen)
+	}
+}

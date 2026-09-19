@@ -76,6 +76,41 @@ func TestEffectiveGuidanceLoadsOnTheMainTurn(t *testing.T) {
 	}
 }
 
+func TestGuidanceConflictOpensOneDiscussionInsteadOfAskingAfterTwoTurns(t *testing.T) {
+	src := &fakeGuidance{loaded: EffectiveGuidance{
+		Conflict: true,
+		Items: []GuidanceItem{
+			{ScopeID: "billingbilling00", Name: "Billing", Text: "mail receipt links"},
+			{ScopeID: "securitysecurity", Name: "Security", Text: "never mail raw URLs"},
+		},
+		Snapshot: GuidanceSnapshot{Conflict: true},
+	}}
+	collab := &fakeCollab{}
+	place := filepath.Join(t.TempDir(), "aaaaaaaaaaaaaaaa")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: place}
+		config.Guidance = src
+		config.Collab = collab
+	})
+	agent.refreshGuidanceLocked(context.Background())
+	agent.refreshGuidanceLocked(context.Background())
+	collab.mu.Lock()
+	opened := append([]string{}, collab.conflicts...)
+	collab.mu.Unlock()
+	if len(opened) != 2 || opened[0] != "aaaaaaaaaaaaaaaa" || opened[1] != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("software must keep opening/reusing the conflict room rather than ask after two turns: %v", opened)
+	}
+	agent.mu.Lock()
+	prompt := agent.guidanceText
+	agent.mu.Unlock()
+	if !strings.Contains(prompt, "one conflict discussion") {
+		t.Fatalf("guidance must name the software-opened room:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "always ask after two turns") {
+		t.Fatalf("must keep the hierarchical-escalation wording, not drop the needle:\n%s", prompt)
+	}
+}
+
 func TestGuidanceCheckpointPausesOnlyAffectedMutations(t *testing.T) {
 	src := &fakeGuidance{loaded: EffectiveGuidance{
 		Snapshot: GuidanceSnapshot{

@@ -94,5 +94,5 @@ func (a *Agent) collabSourceGuidance(ctx context.Context, source string) string 
 	if err != nil {
 		return ""
 	}
-	return renderGuidance(loaded)
+	return renderGuidance(loaded, ConflictRoom{})
 }
