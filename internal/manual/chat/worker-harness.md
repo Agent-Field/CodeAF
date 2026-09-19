@@ -455,12 +455,12 @@ requirement in them, and speed is no permission to skip the walk.
 
 ## Costs and limits
 
-- **The cost cap.** A run may spend what remains of every dollar limit set for the
-  conversation. When more than one applies, the run receives the smaller remainder.
-  The conversation's own **spend rail** is one of those limits and is off by default.
-  How much a task will cost depends on the model calls it makes, and that cost counts
-  against the remainder while it works. The run's width is the conversation's own
-  number, so it runs as wide as the conversation may.
+- **The cost cap.** A run may spend what is LEFT of every dollar limit set for the
+  conversation: its own **spend rail** (`/settings` → Spending → **per conversation**,
+  off by default) and `--max-cost` when codeaf was started with one. When both apply
+  the run gets the smaller remainder, and what it spends counts against it while it
+  works. The run's width is the conversation's own number, so it runs as wide as the
+  conversation may.
 - **The time limit.** An elapsed-time limit on the session ends a run too: see
   "Does a time limit stop a running task?" on the page about starting codeaf.
 - **The step cap.** A worker stops at **200** finished tool calls — the same
