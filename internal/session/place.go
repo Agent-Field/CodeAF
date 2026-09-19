@@ -306,8 +306,12 @@ func LoadMeta(dir string) (Meta, error) {
 // SetArchived marks or unmarks one conversation as put away, through the same
 // meta file every other fact about the session rides. A folder with no
 // conversation in it is refused rather than given a meta that claims one.
+// When the host has registered [RegisterPutAwayCollab], the same act writes
+// ParticipantArchived so collaboration Bind/Resume do not treat put-away as
+// an automatic wakeup.
 func SetArchived(dir string, archived bool) error {
-	return withMetaLock(dir, func() error {
+	var id string
+	err := withMetaLock(dir, func() error {
 		meta, err := LoadMeta(dir)
 		if err != nil {
 			return err
@@ -315,12 +319,17 @@ func SetArchived(dir string, archived bool) error {
 		if strings.TrimSpace(meta.ID) == "" {
 			return fmt.Errorf("no conversation at %s", dir)
 		}
+		id = meta.ID
 		if meta.Archived == archived {
 			return nil
 		}
 		meta.Archived = archived
 		return SaveMeta(dir, meta)
 	})
+	if err != nil {
+		return err
+	}
+	return notifyPutAway(id, archived)
 }
 
 func SaveMeta(dir string, meta Meta) error {

@@ -280,6 +280,46 @@ func TestPauseCoordinationDoesNotDropScope(t *testing.T) {
 	}
 }
 
+func TestArchiveCoordinationPreservesRosterAndPendingHistory(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t, nil)
+	if _, err := svc.CoordinateSelected(ctx, CoordinateRequest{CoordinatorID: "mgmt", ChatIDs: []string{"a", "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	router := &recordingCollaborator{}
+	svc.SetCollaborator(router)
+	if _, err := svc.Deliver(ctx, DeliverRequest{FromChatID: "mgmt", Body: "already queued", ToChatIDs: []string{"a"}}); err != nil {
+		t.Fatalf("deliver before archive: %v", err)
+	}
+	if err := svc.ArchiveCoordination(ctx, "mgmt"); err != nil {
+		t.Fatal(err)
+	}
+	inspect, err := svc.InspectScope(ctx, "mgmt")
+	if err != nil || !sameStrings(inspect.ChatIDs, []string{"a", "b"}) {
+		t.Fatalf("archive must not drop the snapshot: %+v, %v", inspect, err)
+	}
+	people, err := svc.ListParticipants(ctx, "mgmt")
+	if err != nil || len(people) != 1 || people[0].Status != ParticipantArchived {
+		t.Fatalf("archived roster %+v, %v", people, err)
+	}
+	if _, err := svc.Deliver(ctx, DeliverRequest{FromChatID: "mgmt", Body: "new after archive", ToChatIDs: []string{"a"}}); err == nil {
+		t.Fatal("archive must refuse new deliver from the coordinator")
+	}
+	if _, err := router.Resume(ctx, "mgmt"); err != nil {
+		t.Fatalf("roster resume of an archive is still readable: %v", err)
+	}
+	if len(router.envelopes()) != 1 {
+		t.Fatalf("new deliver after archive was stored: %+v", router.envelopes())
+	}
+	if err := svc.RestoreCoordination(ctx, "mgmt"); err != nil {
+		t.Fatal(err)
+	}
+	people, err = svc.ListParticipants(ctx, "mgmt")
+	if err != nil || len(people) != 1 || people[0].Status != ParticipantActive {
+		t.Fatalf("restore roster %+v, %v", people, err)
+	}
+}
+
 func TestOpenStoreCoordinatesAndLeavesDeliverAbsentWithoutCollaborator(t *testing.T) {
 	ctx := context.Background()
 	svc := openSQLiteService(t)

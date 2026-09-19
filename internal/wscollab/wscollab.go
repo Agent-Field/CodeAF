@@ -17,7 +17,9 @@
 // THE QUEUE IS NOT THE RECORD. The router writes the outbox, routes to the
 // owning engine host, and appends through that conversation's single-writer
 // journal seam before it offers the line to a live queue. An offline or retired
-// host leaves the envelope pending; Bind plus Resume delivers it once.
+// host leaves the envelope pending; Bind plus Resume delivers it once, except
+// an archived conversation, which stays pending on Bind, Resume, tick, and
+// host spawn so putting it away is not an automatic wakeup.
 //
 // Citing a chat as evidence does not wake it.
 //

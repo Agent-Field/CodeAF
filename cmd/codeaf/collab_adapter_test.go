@@ -7,9 +7,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	"github.com/Agent-Field/codeaf/internal/workspace"
 	"github.com/Agent-Field/codeaf/internal/wsapi"
+	"github.com/Agent-Field/codeaf/internal/wscollab"
 )
 
 func TestWorkingStoreWiresCollabAndCorruptStoreLeavesItAbsent(t *testing.T) {
@@ -139,4 +142,163 @@ func TestActivityPaintsRequestReplySentFromRealStore(t *testing.T) {
 	if kinds["request"] == 0 || kinds["reply"] == 0 || kinds["sent"] == 0 {
 		t.Fatalf("kinds %v, want request, reply, and sent from production deliveries", kinds)
 	}
+}
+
+func TestArchiveSuppressesBindResumeAndHostSpawnOnRealStore(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	svc, _ := openV3FolderServiceWith(nil)
+	if svc == nil || svc.Workspace() == nil {
+		t.Fatal("production wsapi.Open must bind collections.db")
+	}
+	t.Cleanup(func() {
+		session.RegisterCollabRouter(nil)
+		session.RegisterPutAwayCollab(nil)
+		setV3CollabRouter(nil)
+		enginehost.BindFinder(enginehost.Locator{})
+	})
+	ctx := context.Background()
+	mgmt, other, paused := "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "cccccccccccccccc"
+	if _, err := svc.CoordinateSelected(ctx, wsapi.CoordinateRequest{CoordinatorID: mgmt, ChatIDs: []string{other}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CoordinateSelected(ctx, wsapi.CoordinateRequest{CoordinatorID: paused, ChatIDs: []string{other}}); err != nil {
+		t.Fatal(err)
+	}
+	fromOther := &sessionCollab{svc: svc, chatID: other}
+	queued, err := fromOther.Deliver(ctx, []string{mgmt}, "please look", "", "")
+	if err != nil || len(queued) != 1 {
+		t.Fatalf("enqueue before archive: %+v, %v", queued, err)
+	}
+	pauseQueued, err := fromOther.Deliver(ctx, []string{paused}, "still waiting", "", "")
+	if err != nil || len(pauseQueued) != 1 {
+		t.Fatalf("enqueue before pause: %+v, %v", pauseQueued, err)
+	}
+	if err := svc.ArchiveCoordination(ctx, mgmt); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.PauseCoordination(ctx, paused); err != nil {
+		t.Fatal(err)
+	}
+
+	host := &countingCollabHost{alive: true}
+	wscollab.RegisterHostFinder(&countingCollabFinder{host: host})
+	router := currentV3CollabRouter()
+	if router == nil {
+		t.Fatal("bindV3Collab must install the production router")
+	}
+
+	archivedSeam := &countingCollabSeam{}
+	flushed, err := router.Bind(ctx, mgmt, archivedSeam)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flushed) != 0 || archivedSeam.appends != 0 {
+		t.Fatalf("archive Bind flushed: receipts=%+v append=%d", flushed, archivedSeam.appends)
+	}
+	again, err := router.Resume(ctx, mgmt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 0 || archivedSeam.appends != 0 {
+		t.Fatalf("archive Resume flushed: receipts=%+v append=%d", again, archivedSeam.appends)
+	}
+
+	router.Unbind(mgmt)
+	late, err := fromOther.Deliver(ctx, []string{mgmt}, "after archive", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host.wakes != 0 || archivedSeam.appends != 0 {
+		t.Fatalf("archive spawned or appended: wakes=%d append=%d receipts=%+v", host.wakes, archivedSeam.appends, late)
+	}
+
+	pauseSeam := &countingCollabSeam{}
+	pauseFlush, err := router.Bind(ctx, paused, pauseSeam)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pauseFlush) == 0 || pauseSeam.appends == 0 {
+		t.Fatalf("pause must still Resume-flush already-pending: receipts=%+v append=%d", pauseFlush, pauseSeam.appends)
+	}
+
+	people, err := svc.ListParticipants(ctx, mgmt)
+	if err != nil || len(people) != 1 || people[0].Status != wsapi.ParticipantArchived {
+		t.Fatalf("archived roster %+v, %v", people, err)
+	}
+	held, err := svc.Workspace().GetDelivery(ctx, queued[0].DeliveryID)
+	if err != nil || held.Body != "please look" {
+		t.Fatalf("history must remain: %+v, %v", held, err)
+	}
+	pending, err := svc.Workspace().ListPendingDeliveries(ctx, mgmt)
+	if err != nil || len(pending) == 0 {
+		t.Fatalf("archived pending must stay pending: %+v, %v", pending, err)
+	}
+	traffic, err := svc.Workspace().ListChatTraffic(ctx, mgmt)
+	if err != nil || len(traffic) == 0 {
+		t.Fatalf("archived transcript traffic must remain readable: %+v, %v", traffic, err)
+	}
+}
+
+func TestPutAwayMapsOntoArchiveCoordinationOnRealStore(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	svc, _ := openV3FolderServiceWith(nil)
+	if svc == nil {
+		t.Fatal("production wsapi.Open must bind collections.db")
+	}
+	t.Cleanup(func() {
+		session.RegisterPutAwayCollab(nil)
+	})
+	ctx := context.Background()
+	mgmt := "aaaaaaaaaaaaaaaa"
+	if _, err := svc.CoordinateSelected(ctx, wsapi.CoordinateRequest{CoordinatorID: mgmt, ChatIDs: []string{"bbbbbbbbbbbbbbbb"}}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := session.SaveMeta(dir, session.Meta{ID: mgmt, Workspace: dir}); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SetArchived(dir, true); err != nil {
+		t.Fatal(err)
+	}
+	people, err := svc.ListParticipants(ctx, mgmt)
+	if err != nil || len(people) != 1 || people[0].Status != wsapi.ParticipantArchived {
+		t.Fatalf("put-away must archive the coordinator: %+v, %v", people, err)
+	}
+	if err := session.SetArchived(dir, false); err != nil {
+		t.Fatal(err)
+	}
+	people, err = svc.ListParticipants(ctx, mgmt)
+	if err != nil || len(people) != 1 || people[0].Status != wsapi.ParticipantActive {
+		t.Fatalf("bringing back must restore active: %+v, %v", people, err)
+	}
+}
+
+type countingCollabSeam struct {
+	appends int
+}
+
+func (s *countingCollabSeam) Recorded(wscollab.DeliveryID) bool { return false }
+func (s *countingCollabSeam) Append(context.Context, wscollab.Envelope) error {
+	s.appends++
+	return nil
+}
+func (s *countingCollabSeam) Accept(context.Context, wscollab.Envelope) string {
+	return wscollab.QueueAccepted
+}
+
+type countingCollabHost struct {
+	alive bool
+	wakes int
+}
+
+func (h *countingCollabHost) Alive() bool { return h.alive }
+func (h *countingCollabHost) Wake(context.Context, string) error {
+	h.wakes++
+	return nil
+}
+
+type countingCollabFinder struct{ host wscollab.Host }
+
+func (f *countingCollabFinder) Find(context.Context, string) (wscollab.Host, error) {
+	return f.host, nil
 }
