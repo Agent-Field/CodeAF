@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"sync"
+
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/embed"
 	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/wsdiscover"
 )
 
 // v3Embedder is the shipped RoleEmbed adapter, or nil when this install
@@ -25,4 +30,64 @@ func v3Embedder(settings config.Config, source roles.Source, models *catalog.Cat
 		return nil
 	}
 	return embed.New(client, model, nil).WithSecret(settings.APIKey)
+}
+
+// deferredEmbedder resolves the RoleEmbed pin the way generate_image does:
+// at the call that needs a vector, not while assembling the first frame.
+// Constructing v3Embedder at launch asked the catalog two blocking questions
+// (ResolveModel → CandidateMediaModel / Supports).
+type deferredEmbedder struct {
+	settings config.Config
+	source   roles.Source
+	models   *catalog.Catalog
+	mu       sync.Mutex
+	inner    embed.Embedder
+	ready    bool
+}
+
+var (
+	_ embed.Embedder      = (*deferredEmbedder)(nil)
+	_ wsdiscover.Embedder = (*deferredEmbedder)(nil)
+)
+
+func v3DeferredEmbedder(settings config.Config, source roles.Source, models *catalog.Catalog) embed.Embedder {
+	return &deferredEmbedder{settings: settings, source: source, models: models}
+}
+
+func (d *deferredEmbedder) bound() embed.Embedder {
+	if d == nil {
+		return nil
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.ready {
+		d.inner = v3Embedder(d.settings, d.source, d.models)
+		d.ready = true
+	}
+	return d.inner
+}
+
+func (d *deferredEmbedder) peek() embed.Embedder {
+	if d == nil {
+		return nil
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.inner
+}
+
+func (d *deferredEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, string, string, int, error) {
+	inner := d.bound()
+	if inner == nil {
+		return nil, "", "", 0, fmt.Errorf("embeddings: unavailable")
+	}
+	return inner.Embed(ctx, texts)
+}
+
+func (d *deferredEmbedder) Available(ctx context.Context) (string, bool, error) {
+	inner := d.bound()
+	if inner == nil {
+		return "", false, nil
+	}
+	return inner.Available(ctx)
 }

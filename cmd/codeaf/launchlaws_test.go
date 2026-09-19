@@ -110,6 +110,25 @@ func TestTheLaunchesBlockingCatalogReadsDoNotGrow(t *testing.T) {
 	}
 }
 
+// TestAssemblingTheOrganizePassDoesNotAskTheCatalog pins the standing
+// organize bind to fire-time. Building the pass at launch used to call
+// v3Organizer → v3TickEmbedder and pay two extra blocking catalog reads
+// before the first frame.
+func TestAssemblingTheOrganizePassDoesNotAskTheCatalog(t *testing.T) {
+	deadCatalogEndpoint(t)
+	proc := v3TestProcess(t)
+
+	before := proc.Models.BlockingReads()
+	pass := v3OrganizePass(t.TempDir())
+	if pass == nil {
+		t.Fatal("the standing pass would skip observe_and_organize")
+	}
+	asked := proc.Models.BlockingReads() - before
+	if asked != 0 {
+		t.Fatalf("constructing the organize pass asked the catalog %d blocking questions; bind the organizer when the pass fires, not when the conversation is assembled.", asked)
+	}
+}
+
 // NOTHING ON THE WAY TO THE FIRST FRAME UNPACKS A CORPUS.
 //
 // internal/packed's whole design is that declaring a folder reads nothing and
