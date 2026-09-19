@@ -28,6 +28,11 @@ type store interface {
 	Events(ctx context.Context, id string, ref workspace.Ref) ([]workspace.MembershipEvent, error)
 	SchemaVersion() int
 	RootState(ctx context.Context) (revision int, purpose, updatedAt string, err error)
+	PutGuidance(ctx context.Context, g workspace.Guidance) (workspace.Guidance, error)
+	ListGuidance(ctx context.Context, scopeID string) ([]workspace.Guidance, error)
+	PutProposal(ctx context.Context, p workspace.Proposal) (workspace.Proposal, error)
+	Suppress(ctx context.Context, collectionID string, ref workspace.Ref, evidenceHash string, p workspace.Provenance) error
+	IsSuppressed(ctx context.Context, collectionID string, ref workspace.Ref, evidenceHash string) (bool, error)
 }
 
 var _ store = (*workspace.Store)(nil)
