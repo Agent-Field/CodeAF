@@ -180,7 +180,8 @@ it ran (role, model, a number, which model judged, door, size bucket, day) under
 a per-install nonce, never code,
 prompts, paths or an identity, and `codeaf pool status` shows exactly what is
 waiting to go. Turn it off with `model_pool = off` on the settings sheet or
-`CODEAF_MODEL_POOL=off`; `read` uses the pool and sends nothing. The relay
+`CODEAF_MODEL_POOL=off`; `read` uses the pool and sends nothing, and
+`CODEAF_TELEMETRY=off` caps it at `read` along with the usage counts. The relay
 publishes a signed index the crew picker reads under `picked from = learn`. The index is mirrored on the `model-pool` branch at
 `pool/index.json`. The design is [Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf);
 the relay's code is under `relay/`, with a [runbook](docs/design/model-pool/RUNBOOK.md)
@@ -267,7 +268,7 @@ codeaf sends anonymous usage counts to AgentField.
   Sent:  version, OS, mode (chat or task), how many sessions, how many errors.
   Never: anything about you or your work. No prompts, code, file names,
          paths, repo names, keys, email, IP, or machine name.
-  See exactly what leaves:  codeaf telemetry show
+  What is collected:        codeaf telemetry info
   Turn off:                 CODEAF_TELEMETRY=off
 ```
 
