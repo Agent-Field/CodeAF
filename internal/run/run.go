@@ -103,6 +103,10 @@ type Supervisor struct {
 	workers  sync.WaitGroup
 	inFlight int
 	spent    float64
+	// onSpend receives the reconciled cumulative run spend whenever it rises.
+	// It observes the same account Summary.USD reads, so live readings and the
+	// final receipt can be folded by a caller without counting a dollar twice.
+	onSpend func(float64)
 	// THE DOLLAR LIMIT IS READ WHILE THE WORK IS GOING, not only when a worker
 	// comes home. live is what each worker in flight says it has banked so far,
 	// a cumulative figure its own goroutine writes under liveMu; counted is how
@@ -401,8 +405,8 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 	}
 	s.cancels[task.ID] = cancel
 	s.counted[task.ID] = 0
-	if s.limits.CostUSD > 0 {
-		// ONLY A RUN WITH A DOLLAR LIMIT LISTENS. A worker launched again for a
+	if s.limits.CostUSD > 0 || s.onSpend != nil {
+		// A RUN WITH A DOLLAR LIMIT OR A LIVE OWNER LISTENS. A worker launched again for a
 		// wake starts its own count from nothing, so the figure a former run of
 		// the same task left behind is cleared before this one can write.
 		id := task.ID
@@ -499,7 +503,7 @@ func (s *Supervisor) bankLive(id string, usd float64) {
 // in flight answers the limit. Nothing is dropped, because drain is not the
 // road: a dropped return would leave its task claimed on a run that is over.
 func (s *Supervisor) countLiveSpend() {
-	if s.limits.CostUSD <= 0 {
+	if s.limits.CostUSD <= 0 && s.onSpend == nil {
 		return
 	}
 	s.liveMu.Lock()
@@ -510,7 +514,8 @@ func (s *Supervisor) countLiveSpend() {
 		}
 	}
 	s.liveMu.Unlock()
-	if s.spent >= s.limits.CostUSD && !s.limitHit {
+	s.publishSpend()
+	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && !s.limitHit {
 		s.limitHit = true
 		for _, cancel := range s.cancels {
 			cancel()
@@ -531,6 +536,14 @@ func (s *Supervisor) settleSpend(ret workerReturn) {
 	s.forgetLive(ret.task.ID)
 	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
 		s.limitHit = true
+	}
+	s.publishSpend()
+}
+
+// publishSpend hands the caller the supervisor's reconciled cumulative total.
+func (s *Supervisor) publishSpend() {
+	if s.onSpend != nil {
+		s.onSpend(s.spent)
 	}
 }
 
@@ -1432,6 +1445,8 @@ type Spec struct {
 	// Factory makes the worker for every task the run dispatches. Start holds
 	// no seat of its own: the root's worker comes from here like the rest.
 	Factory WorkerFactory
+	// OnSpend observes the reconciled cumulative run spend whenever it rises.
+	OnSpend func(float64)
 }
 
 // Summary is what a run came to, in the figures a headless caller prints
@@ -1481,6 +1496,7 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 		}
 	}
 	supervisor := NewSupervisor(store, spec.Workspace, spec.Slots, spec.Limits, spec.Factory)
+	supervisor.onSpend = spec.OnSpend
 	outcome := supervisor.Run(ctx)
 	result := supervisor.rootResult
 	// THE TERMINAL ROOT'S STORED RESULT IS DELIVERABLE even when its worker return lands after the supervisor stops absorbing returns.

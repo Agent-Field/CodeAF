@@ -2083,8 +2083,8 @@ Five things are worth knowing about it:
   happens the spend place's top line and the Spending tab both grow a reading — `3 spending
   records could not be written` — so a figure that is short says so instead of quietly reading
   as a cheaper day. Nothing is drawn when nothing was lost, which is nearly always.
-- **Work is counted once.** A task's own requests are recorded where they were made. Its total
-  is added to the conversation that started it afterwards, and that addition is deliberately
+- **Work is counted once.** A task's own requests are recorded where they were made. Its spend
+  is added to the conversation that started it as it arrives, and that addition is deliberately
   not written here, or the same money would be counted twice. **That holds for every kind of
   work, not only tasks** — the nodes of an adaptive run record their own requests and are
   added up afterwards the same way. Until this was fixed they were on this file twice, so a

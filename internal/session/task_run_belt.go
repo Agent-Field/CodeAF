@@ -38,6 +38,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -91,6 +92,8 @@ type RunSpec struct {
 	// conversation's do — and a nil one lets the engine build each worker's
 	// client itself.
 	CompleterFor func(model string) Completer
+	// OnSpend observes the reconciled cumulative run spend while work is live.
+	OnSpend func(float64)
 }
 
 // RunSummary is what a run came to, folded onto the words this package reads:
@@ -386,7 +389,20 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 // the row the run was published under settles. The store is closed and the run
 // cleared once the work is home, so the next `/task` seeds a fresh plan.
 func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun, spec RunSpec) {
+	var foldedUSD float64
+	foldSpend := func(total float64) {
+		if total <= foldedUSD {
+			return
+		}
+		delta := total - foldedUSD
+		a.addFoldedUsage(&ai.Response{Usage: &ai.Usage{Cost: &delta}}, "", 0)
+		foldedUSD = total
+	}
+	spec.OnSpend = foldSpend
 	summary := engine.Start(ctx, spec)
+	// The final receipt closes any gap between the last live reading and every
+	// ending, before the person-stop road and the ordinary landing road split.
+	foldSpend(summary.USD)
 	if run.cut != nil {
 		defer run.cut()
 	}
