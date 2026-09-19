@@ -647,10 +647,21 @@ func TestThePlanPageFollowsAStepAppendedWhileItIsOpen(t *testing.T) {
 	}
 	// THE STORE MOVES UNDER IT, the way it does while a worker runs.
 	appendPlanStep(fake, "t-alpha", 31)
-	drive(t, a, frameMsg{})
+	planBeat(t, a)
 	if !strings.Contains(taskSheetText(a), planStepCommand(31)) {
 		t.Fatalf("the page did not follow the step appended while it was open:\n%s", taskSheetText(a))
 	}
+}
+
+// planBeat is the paint clock turning once, one beat after the page was last
+// read: the follow is taken on the rail's own beat and not on every tick
+// ([app.taskPlanFollow]), so a fixture that wants the page to have caught up
+// moves its clock a beat on and then offers the frame.
+func planBeat(t *testing.T, a *app) {
+	t.Helper()
+	at := a.now().Add(elsewhereEvery)
+	a.clock = func() time.Time { return at }
+	drive(t, a, frameMsg{})
 }
 
 // AND A SCROLL UP RELEASES THE PIN, so the newest step no longer walks in from
@@ -669,7 +680,7 @@ func TestScrollUpOnThePlanPageStopsTheFollow(t *testing.T) {
 		t.Fatal("scrolling up left the page pinned to the live edge")
 	}
 	appendPlanStep(fake, "t-alpha", 31)
-	drive(t, a, frameMsg{})
+	planBeat(t, a)
 	if strings.Contains(taskSheetText(a), planStepCommand(31)) {
 		t.Fatalf("the page followed a step after somebody scrolled up off the edge:\n%s", taskSheetText(a))
 	}
@@ -681,7 +692,7 @@ func TestScrollUpOnThePlanPageStopsTheFollow(t *testing.T) {
 		t.Fatal("scrolling back to the bottom did not take the pin again")
 	}
 	appendPlanStep(fake, "t-alpha", 32)
-	drive(t, a, frameMsg{})
+	planBeat(t, a)
 	if !strings.Contains(taskSheetText(a), planStepCommand(32)) {
 		t.Fatalf("the page did not resume following at the bottom:\n%s", taskSheetText(a))
 	}
@@ -773,7 +784,7 @@ func TestTheLiveStepLeavesThePlanPageWhenTheTaskEnds(t *testing.T) {
 	ended.Live = plandb.LiveStep{}
 	ended.Row.Status = "done"
 	fake.pages["t-alpha"] = ended
-	drive(t, a, frameMsg{})
+	planBeat(t, a)
 	text = taskSheetText(a)
 	if strings.Contains(text, "go test ./...") {
 		t.Fatalf("the live step outlived the task that was running it:\n%s", text)

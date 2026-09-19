@@ -76,7 +76,9 @@ func (a *app) refreshRunSummary() tea.Cmd {
 	a.runSummaryRefreshedAt = now
 	a.runSummaryShape = shape
 	ctx := a.ctx
-	return a.offLoop(func() func(bool) tea.Cmd {
+	// BESIDE THE LINE, NEVER IN IT: nobody pressed for this, and the second call
+	// below waits on a model for as long as its budget allows ([app.besideLine]).
+	return a.besideLine(func() func(bool) tea.Cmd {
 		// NOBODY RECORDS A LOOK AT A RUN YET (the run pane will), so the last
 		// look is the zero time and the page's `since` line reads "never".
 		stored, stale := agent.PlanRunSummary(root)
@@ -780,6 +782,7 @@ func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened fun
 				a.taskSheet.planBack = append(a.taskSheet.planBack, *from)
 			}
 			a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
+			a.taskSheet.planPageAt = a.now()
 			a.taskSheet.planBriefFull = false
 			a.taskSheet.planAt = -1
 			a.taskSheet.detailTop = 0
@@ -954,6 +957,7 @@ func (a *app) taskPlanNoteSend() tea.Cmd {
 			// is the receipt the store cannot draw itself.
 			if found {
 				a.taskSheet.plan = page
+				a.taskSheet.planPageAt = a.now()
 			}
 			a.touch()
 			return nil
@@ -1472,8 +1476,26 @@ func planChildWord(row session.PlanTaskRow) string {
 // SCREEN is the resolver's question and not this one's ([app.taskPlanTopFor]):
 // a stuck page reads the bottom, a person who scrolled up stays where they
 // were.
+//
+// AND IT IS TAKEN ON A BEAT, NOT ON EVERY TICK. The paint clock offers this read
+// many times a second, and holding back only while one was out meant a fast
+// engine was asked again the moment it answered: 509 reads over the wire in
+// ninety seconds on a real screen, for one open page. A worker lands a step
+// every few seconds at best, so the page learns of it the way the rail learns
+// of the run, once every [elsewhereEvery] and only while the task can still
+// move ([app.taskPlanFollows], place_tasks.go's [tasksPlace.planDue]). The beat
+// is counted from the last time the page was read for any reason, so a page
+// just opened, or just re-read for a note, is not read again at once.
+//
+// IT STAYS IN THE ORDERED LINE although nobody pressed for it ([app.besideLine]
+// says who may leave). Its FOLD replaces the page, and a note a person sends
+// re-reads the page too: outside the line, a follow asked before the note and
+// answered after it would put back a page without the note on it.
 func (a *app) taskPlanFollow() tea.Cmd {
-	if !a.taskPlanRunning() || a.taskSheet.planFollowing {
+	if !a.taskPlanFollows() || a.taskSheet.planFollowing {
+		return nil
+	}
+	if a.now().Sub(a.taskSheet.planPageAt) < elsewhereEvery {
 		return nil
 	}
 	agent, ok := a.planReader()
@@ -1482,6 +1504,7 @@ func (a *app) taskPlanFollow() tea.Cmd {
 	}
 	id := a.taskSheet.plan.Row.ID
 	a.taskSheet.planFollowing = true
+	a.taskSheet.planPageAt = a.now()
 	return a.offLoop(func() func(bool) tea.Cmd {
 		page, found := agent.PlanTaskPage(id)
 		return func(here bool) tea.Cmd {
@@ -1503,6 +1526,21 @@ func (a *app) taskPlanFollow() tea.Cmd {
 // ([app.taskPlanFollow]). It reads the row's own state WORD, so a task that has
 // ended, or one a person has held, takes the page off the clock: a held task is
 // dispatching nothing and a settled one never will again.
+// taskPlanFollows reports whether the open page is on a task that can still
+// move: queued or running, by the ONE state word its row already wears. A page
+// on a task that has ended, or one a person is holding, is a still page and is
+// never read again; the read that opened it was the last.
+func (a *app) taskPlanFollows() bool {
+	if !a.taskSheet.detailOn || !a.taskSheet.planOn {
+		return false
+	}
+	switch planStateWord(a.taskSheet.plan.Row.Status) {
+	case "queued", "running":
+		return true
+	}
+	return false
+}
+
 func (a *app) taskPlanRunning() bool {
 	if !a.taskSheet.detailOn || !a.taskSheet.planOn {
 		return false

@@ -121,6 +121,10 @@ type tasksPlace struct {
 	// frame would stand in the door line in front of the key a person presses
 	// next, and every one of them would answer the same page.
 	planFollowing bool
+	// planPageAt is when the open page was last read, for any reason: the read
+	// that opened it, a follow, the re-read after a note. The follow's beat is
+	// counted from it ([app.taskPlanFollow]).
+	planPageAt time.Time
 	// planReadAt is when the run's plan was last read ([tasksPlace.planDue]).
 	planReadAt time.Time
 	// tail is the last thing the node said, read off its journal once when the
