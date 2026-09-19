@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"sort"
 )
 
 // Head is the latest ingested cursor for a session. A session that was never
@@ -127,7 +126,9 @@ func (s *Store) queryPassages(ctx context.Context, q string, args ...any) ([]Pas
 
 // SearchLexical is BM25 over present passages. Terms are OR-ed so a mixed-topic
 // or multi-turn ask still hits; hostile syntax is a miss, the same way the
-// conversation index treats it — not an error and not a dump.
+// conversation index treats it — not an error and not a dump. The limit is
+// unique sessions: repeating passages from one mailer family used to fill the
+// page and keep a different-wording original out of SearchEvidence.
 func (s *Store) SearchLexical(ctx context.Context, query string, limit int) ([]Passage, error) {
 	ready, err := s.readyForRead(ctx)
 	if err != nil {
@@ -146,7 +147,7 @@ func (s *Store) SearchLexical(ctx context.Context, query string, limit int) ([]P
 		 WHERE passages_fts MATCH ?
 		   AND passages.session_id IN (SELECT session_id FROM sources WHERE state != ?)
 		 ORDER BY bm25(passages_fts, 0.0, 0.0, 1.0), passages.generation, passages.ordinal
-		 LIMIT ?`, match, SourceDeleted, limit)
+		 LIMIT ?`, match, SourceDeleted, wideLimit(limit))
 	if err != nil {
 		return []Passage{}, nil
 	}
@@ -159,17 +160,21 @@ func (s *Store) SearchLexical(ctx context.Context, query string, limit int) ([]P
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return preferSessions(out, limit, sessionExtra), nil
 }
 
 // SearchSimilar is brute-force cosine over vectors that share model, version,
-// and dimension. A mismatch is skipped, never compared.
+// and dimension. A mismatch is skipped, never compared. Ranked hits are then
+// unique-by-session so a nearer duplicate cluster cannot occupy every slot.
 func (s *Store) SearchSimilar(ctx context.Context, query []float32, model, version string, dim, limit int) ([]Passage, error) {
 	ready, err := s.readyForRead(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if !ready || len(query) == 0 || dim < 1 || len(query) != dim {
+	if !ready || !queryFits(query, dim) {
 		return []Passage{}, nil
 	}
 	if limit < 1 {
@@ -184,26 +189,7 @@ func (s *Store) SearchSimilar(ctx context.Context, query []float32, model, versi
 	if err != nil {
 		return nil, err
 	}
-	type scored struct {
-		p Passage
-		s float64
-	}
-	hits := make([]scored, 0, len(candidates))
-	for _, p := range candidates {
-		if !sameEmbedding(p, model, version, dim) {
-			continue
-		}
-		hits = append(hits, scored{p: p, s: cosine(query, p.Vector)})
-	}
-	sort.Slice(hits, func(i, j int) bool { return hits[i].s > hits[j].s })
-	if len(hits) > limit {
-		hits = hits[:limit]
-	}
-	out := make([]Passage, len(hits))
-	for i, h := range hits {
-		out[i] = h.p
-	}
-	return out, nil
+	return preferSessions(scoreSimilar(candidates, query, model, version, dim), limit, sessionExtra), nil
 }
 
 // Progress counts passages and vectors. Zero stays a number here so the
