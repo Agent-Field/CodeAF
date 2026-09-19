@@ -145,6 +145,12 @@ const (
 	kokoroSpeechModel = "hexgrad/kokoro-82m"
 	hostedSpeechModel = "openai/gpt-4o-mini-tts"
 
+	// preferredEmbedModel is the slug Spark's OpenRouter catalog served on
+	// 2026-09-18 (inspected without printing keys). It is a pin default, not
+	// TUI copy. fallbackEmbedModel is the next settled row on that same list.
+	preferredEmbedModel = "openai/text-embedding-3-small"
+	fallbackEmbedModel  = "qwen/qwen3-embedding-8b"
+
 	// preferredMusicModel and fallbackMusicModel are the two Lyria 3 rows. The
 	// CLIP row leads — background music is the thing actually asked of this
 	// slot, and the clip length is the operator's chosen default — with the
@@ -617,9 +623,57 @@ func ModelCandidates(models *catalog.Catalog, slot string) []catalog.Model {
 		return filtered
 	case "video":
 		return models.ModelsWithOutput("video")
+	case "embeddings", "embedding", "embed":
+		return embeddingCandidates(models)
 	default:
 		return nil
 	}
+}
+
+// embeddingCandidates is the catalog reading for RoleEmbed. Spark's provider
+// publishes embedding rows with empty output modalities, so the id words are
+// the published fact — the same marks tui3 already uses to keep those rows
+// off the chat list.
+func embeddingCandidates(models *catalog.Catalog) []catalog.Model {
+	found := models.ModelsWithOutput("embeddings")
+	seen := make(map[string]bool, len(found))
+	for _, candidate := range found {
+		seen[candidate.ID] = true
+	}
+	for _, candidate := range models.ModelsWithOutput("embedding") {
+		if seen[candidate.ID] {
+			continue
+		}
+		seen[candidate.ID] = true
+		found = append(found, candidate)
+	}
+	for _, candidate := range models.ModelsNow() {
+		if seen[candidate.ID] || !EmbeddingModelID(candidate.ID) {
+			continue
+		}
+		seen[candidate.ID] = true
+		found = append(found, candidate)
+	}
+	return found
+}
+
+// EmbeddingModelID reports whether a slug is an embeddings model by its
+// hyphen-separated words. OpenRouter's catalog on Spark (2026-09-18) listed
+// openai/text-embedding-3-small and the qwen/gemini/mistral embed rows with
+// no output modality, so the name is what availability inspect can see
+// without printing a key.
+func EmbeddingModelID(id string) bool {
+	id = strings.ToLower(id)
+	if at := strings.LastIndexByte(id, '/'); at >= 0 {
+		id = id[at+1:]
+	}
+	for _, word := range strings.Split(id, "-") {
+		switch strings.TrimSpace(word) {
+		case "embed", "embedding", "embeddings":
+			return true
+		}
+	}
+	return false
 }
 
 // ResolveVideoModel prefers Seedance 2.5, then Seedance 2.0 Mini as each is
