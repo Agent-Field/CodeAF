@@ -417,14 +417,14 @@ not changed yet, wait for it in one longer action that returns when it has
 changed, and one action may run for up to 600 seconds; or park with
 `plandb wait` when the plan names what it waits on. A worker that changes
 its action after the sentence is never stopped; one that keeps the same
-look three more times is stopped, and the task ends there.
+look three more times is stopped.
 
 Whatever the command was, that is work that has stopped moving, and the
 alternation of one command with one sentence never stacks up the no-action
 ending. The task ends as `incomplete`, and its record closes with the reason
 `the same command came back with the same answer 6 times in a row: the work
 was not moving`. The steps above it on the task page show the command and
-exactly what it got each time.
+what it got each time.
 
 When the thing being waited on is outside the plan, a build, a deploy, a
 job on another machine, the worker cannot park for it: the plan does not
@@ -436,8 +436,7 @@ Two kinds of worker are never stopped this way:
 - **A task blocked on another task is parked, not stopped.** The plan itself
   names what the task is waiting on, a part not finished yet or a
   dependency, so the task waits exactly as if its worker had asked to, and
-  comes back when that thing finishes (see the section above on when a
-  waiting task returns).
+  comes back when that thing finishes.
 - **A task whose repeated command keeps bringing back something different
   is left alone.** When each answer differs, or the task's own notes or one
   of its parts moved between the commands, the work is standing in front of
