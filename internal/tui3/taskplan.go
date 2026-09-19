@@ -989,8 +989,7 @@ func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
 // finished task was two offers that could only be refused, on every finished
 // page a person opened.
 func (a *app) tasksPlanKeyWords(status string) []string {
-	switch planStateWord(status) {
-	case "done", "incomplete":
+	if planEnded(status) {
 		return nil
 	}
 	words := []string{tasksPlanCancelWord}
@@ -998,6 +997,17 @@ func (a *app) tasksPlanKeyWords(status string) []string {
 		return append(words, tasksPlanResumeWord)
 	}
 	return append(words, tasksPlanPauseWord)
+}
+
+// planEnded reports whether a plan task has ended, read off the ONE word the
+// row already draws for its state, so the key line and the page's sentences
+// cannot disagree about which tasks can still move.
+func planEnded(status string) bool {
+	switch planStateWord(status) {
+	case "done", "incomplete":
+		return true
+	}
+	return false
 }
 
 // taskPlanKey is the page's keyboard: `esc` and the chord out, the four reading
@@ -1220,7 +1230,15 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 		// is a separate loop, so a note waits in the store until it asks for its
 		// next step — the one thing a person needs to know about the box they are
 		// typing into (taskPlanPickupWord).
-		add(" " + pal.dim(fit(taskPlanPickupWord, width-1)))
+		//
+		// A TASK THAT HAS ENDED TAKES NO NEXT STEP, so the sentence is absent
+		// there rather than false. Its row stays, empty, because the foot's
+		// height is fixed and the caret is placed against it.
+		if planEnded(a.taskSheet.plan.Row.Status) {
+			add("")
+		} else {
+			add(" " + pal.dim(fit(taskPlanPickupWord, width-1)))
+		}
 		add(" " + paintHint(hintFit(a.taskPlanKeys(), width-2), pal, pal.dim))
 	}
 	if len(lines) > height {

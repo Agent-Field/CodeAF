@@ -725,6 +725,30 @@ func TestThePlanPageSaysWhenANoteIsRead(t *testing.T) {
 	}
 }
 
+// A SENTENCE THAT HAS STOPPED BEING TRUE IS ABSENT. A task that has ended takes
+// no further step, so its page never says a worker reads a note at its next
+// one; a task that can still move keeps the sentence.
+func TestAnEndedTasksPageNeverPromisesANextStep(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		said   bool
+	}{
+		{"claimed", true},
+		{"paused", true},
+		{"done", false},
+		{"failed", false},
+		{"cancelled", false},
+	} {
+		rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: tc.status}}
+		pages := map[string]session.PlanTaskPage{"t-alpha": {Row: rows[0], Description: "the work order"}}
+		a, _ := planAppWith(t, rows, pages)
+		openPlanPage(t, a)
+		if got := strings.Contains(taskSheetText(a), taskPlanPickupWord); got != tc.said {
+			t.Fatalf("a %s task's page says %q: %v, want %v:\n%s", tc.status, taskPlanPickupWord, got, tc.said, taskSheetText(a))
+		}
+	}
+}
+
 // THE LIVE STEP IS DRAWN ONE STEP EARLY and leaves the page when the task ends:
 // the running glyph in place of the number, the command in ink, and the call's
 // own clock dim under it — and the next read after the store cleared the live
