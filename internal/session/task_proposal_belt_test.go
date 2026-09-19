@@ -61,7 +61,7 @@ func TestApprovedProposalBashBeltStartsRunWithoutSessionNode(t *testing.T) {
 	if !strings.Contains(root.Description, "the focused proof passes") {
 		t.Fatalf("root description lost acceptance: %q", root.Description)
 	}
-	close(double.release)
+	endBeltRun(t, agent, double)
 }
 
 func TestApprovedProposalBashBeltJoinsLiveRunWithPlanDependencies(t *testing.T) {
@@ -88,6 +88,9 @@ func TestApprovedProposalBashBeltJoinsLiveRunWithPlanDependencies(t *testing.T) 
 	if err != nil || failed {
 		t.Fatalf("propose_task: failed=%v err=%v answer=%q", failed, err, answer)
 	}
+	if !strings.Contains(answer, "It joined the work already underway and shares its copy.") {
+		t.Fatalf("joined hand-off receipt = %q, want the same-ground join said plainly", answer)
+	}
 
 	store := beltRunStoreAt(t, dir)
 	defer store.Close()
@@ -111,7 +114,7 @@ func TestApprovedProposalBashBeltJoinsLiveRunWithPlanDependencies(t *testing.T) 
 	if agent.graph().node(id) != nil {
 		t.Fatalf("proposal %s also admitted a session-tree node", proposed.ID)
 	}
-	close(double.release)
+	endBeltRun(t, agent, double)
 }
 
 func TestApprovedProposalWithoutBeltKeepsSessionTreeRoad(t *testing.T) {
@@ -180,5 +183,42 @@ func TestApprovedProposalsRunSurvivesTheEndOfTheTurnThatLaunchedIt(t *testing.T)
 	if err := running.Err(); err != nil {
 		t.Fatalf("the run's context ended with the turn that launched it: %v", err)
 	}
-	close(double.release)
+	endBeltRun(t, agent, double)
+}
+
+func TestApprovedProposalBashBeltRefusesDifferentGroundInsteadOfSessionTree(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("the run did the work")
+	registerBeltRunEngine(t, double)
+	dir := t.TempDir()
+	conversation := newTestRepo(t)
+	alternate := newTestRepo(t)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "the run did the work"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: dir}
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	if _, _, _, err := agent.StartTask(context.Background(), "open the run", false); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	args, _ := json.Marshal(taskArguments{
+		Title: "Work elsewhere", Summary: "the proposed work", Brief: "change the proposed behavior",
+		Deliverable: "the changed behavior", Acceptance: "the focused proof passes", Ground: alternate,
+	})
+	staged := agent.stageTask(context.Background(), args)
+	proposal, ok := staged.(*stagedProposal)
+	if !ok {
+		t.Fatalf("the proposal was not staged: %T", staged)
+	}
+	agent.ResolveTask(proposal.id, TaskAnswer{Approved: true})
+	answer, failed, err := proposal.Commit(context.Background())
+	if err != nil || !failed || !strings.Contains(answer, "share one copy of one folder") || !strings.Contains(answer, "Propose it again when that work has ended") {
+		t.Fatalf("different-ground hand-off: failed=%v err=%v answer=%q", failed, err, answer)
+	}
+	if node := agent.graph().node(proposal.id); node != nil {
+		t.Fatalf("different-ground hand-off silently became session-tree task %+v", node)
+	}
+	endBeltRun(t, agent, double)
 }
