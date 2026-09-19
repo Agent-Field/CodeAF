@@ -80,3 +80,7 @@ The wrapped whole session suite ran once and failed across many unrelated task-s
 ## Formatting result and change-entry step
 
 `gofmt -l ./cmd ./internal` printed nothing. The next independent check validates the unreleased change-entry corpus.
+
+## Change-entry result and law step
+
+`go run ./cmd/codeaf-changes check` passed with 15 well-formed entries. The final independent code check runs the guard and naming-law packages.
