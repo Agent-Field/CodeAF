@@ -35,7 +35,11 @@ slash in this build.
 On the Folders place the visible actions are **New folder**, **New chat**, and
 **Organize existing chats**. They are not slash-only. New folder creates at Root, or
 inside the selected folder. New chat starts at Root or that folder: the first sent
-message mints the transcript and files it; Esc before send creates nothing.
+message mints the transcript and files it; Esc before send creates nothing and
+returns to Folders — it does not mint a session-header transcript. Nest, rename,
+and move are keyboard actions (`e` then enter the parent, `r` rename, `m` then
+enter the destination). Typing `/folders nest Receipts in Billing` and pressing
+enter runs that command; it is never stored as a folder name.
 
 **Organize existing chats** surveys saved conversations and may create useful folders
 from evidence. It reuses `observe_and_organize` — no second scheduler. Progress is
@@ -51,7 +55,7 @@ invents the first folder on an empty tab. `workspace.organize` off still pauses 
 after-message apply; it does not refuse manual Add/Remove and it does not cancel an
 explicit `organize_existing` job. Upgrade keeps existing placements.
 
-## Saved chats — /folders add, new chat here, verbs n f e i m w x
+## Saved chats — /folders add, new chat here, verbs n f e r i m w x
 
 A saved chat is one conversation identity (the 16-hex session id). Grouping it
 does not copy the transcript.
@@ -62,11 +66,12 @@ On a `folders` row, `→` opens the verb strip:
 
 On a **folder** row the strip also has **`e`** nest this folder and **`i`**
 instruct this folder: enter the parent next for nest, or type standing guidance
-for instruct; `esc` to cancel. Chat rows keep `m w x`. A verb that cannot
-work is absent.
+for instruct; `esc` to cancel. On the Folders place the strip also has **`r`**
+rename this folder. Chat rows keep `m w x`. A verb that cannot work is absent.
 
 - **`n`** opens the start page with that folder pending. The first message mints
-  a new chat and files it here. `esc` before sending creates no transcript.
+  a new chat and files it here. `esc` before sending creates no transcript and,
+  from the Folders place, returns to Folders.
 - **`f`** and `/folders add <name-or-id>` file the **current** chat in that
   folder. Repeating the add is harmless.
 - **`m`** moves only the placement you are on. Other folders that already hold
@@ -78,6 +83,8 @@ work is absent.
   says `that chat is no longer in this folder` and stays in the folder.
 - **`i`** (folder rows) and `/folders instruct <name-or-id> <text>` write
   standing guidance. Person origin. Not an alias of `/folder`.
+- **`r`** (Folders place, folder rows) and `/folders rename <name-or-id> <new-name>`
+  change the display name. Enter on the name box applies it; esc cancels.
 
 An old chat can be added to a new folder without merging or resuming it.
 
@@ -93,7 +100,7 @@ Opening a chat from a folder does not forget the path. Coming back to home (`/ho
 
 A member whose conversation or world row is gone is labelled `unavailable`. It is not drawn as an ordinary chat, and it does not look empty: the title or id stays, with `unavailable` beside it. Entering that row names `unavailable` rather than opening a missing transcript. `x` still removes the placement.
 
-## Nest a folder — /folders nest, Receipts under Billing and Security
+## Nest a folder — /folders nest, Receipts under Billing and Security, slash nest became a folder name
 
 `/folders nest Receipts in Billing` places Receipts under Billing. `/folders nest
 Receipts in Security` puts the same folder under Security too. Both paths are
@@ -102,17 +109,36 @@ members whose kind is `collection`, not a second copy of a chat.
 
 Without `in <parent>`, nest uses the folder under the cursor (or the one you
 are already in). On a folder row, `e` then enter the parent does the same
-thing. A cycle — making a folder a child of its own descendant — is refused
-with `collection membership would form a cycle` and nothing is half-applied.
-You do not need `codeaf collections add` to nest.
+thing — including on the Folders place, where enter on the parent writes
+membership instead of only drilling in. A cycle — making a folder a child of
+its own descendant — is refused with `collection membership would form a cycle`
+and nothing is half-applied. You do not need `codeaf collections add` to nest.
 
-## Rename a folder — /folders rename, both parents
+Enter on a typed `/folders nest …` (or `/folders rename …`) line runs the
+command. It is not a folder name. The New folder name box does the same: a
+known slash command is dispatched, not CreateFolder'd.
+
+## Rename a folder — /folders rename, both parents, r rename this folder
 
 `/folders rename Receipts Invoices` changes that folder's display name. Receipts
 can sit under Billing and Security at once; the new name shows through both
-paths, and the chats inside it stay. Nested folders are members whose kind is
-`collection`, not a second copy of a chat. A cycle — making a folder a child of
-its own descendant — is refused and nothing is half-applied.
+paths, and the chats inside it stay. On the Folders place, `r` on a folder row
+opens a name box; enter renames, esc cancels. Nested folders are members whose
+kind is `collection`, not a second copy of a chat. A cycle — making a folder a
+child of its own descendant — is refused and nothing is half-applied.
+
+## Esc from new chat on folders — New chat then Esc creates nothing
+
+**New chat** on the Folders place opens the start page. The first sent message
+mints the transcript and files it. Esc before send creates nothing and returns
+to Folders. It does not dump you into the launch conversation and it does not
+write a session-header transcript for that press.
+
+## Composer text gone after folders — home sentence survives alt+5
+
+A sentence typed on home stays in the box after `alt+5` / `/folders` opens the
+Folders place, at 80 columns and when the frame is wide. Selection on a folder
+row survives a beat and a resize. Walking back to home keeps the same sentence.
 
 ## Also in two folders — one chat, also in Billing and Security
 
