@@ -213,6 +213,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"discovery delayed", "collections"},
 		{"did it check the workspace", "collections"},
 		{"chats talking to each other", "collections"},
+		{"ordinary chats coordinate", "collections"},
+		{"coordinate these", "collections"},
+		{"is a group chat required", "collections"},
+		{"direct request reply", "collections"},
+		{"fan-out to several chats", "collections"},
+		{"selected snapshot", "collections"},
+		{"manage this folder", "collections"},
+		{"always ask after two turns", "collections"},
+		{"pause coordination", "collections"},
+		{"mark this chat", "collections"},
 		// Two codeaf commands on one collections database: the words somebody
 		// types after they have seen the refusal, not the words it is written in.
 		{"collections database is locked", "collections"},

@@ -258,8 +258,76 @@ membership. Indexing is software counters (passages and vectors), never a fake
 visible. Foreground chat and manual folders stay usable. Collection deletion
 is not implemented by these commands.
 
-## Chats talking to each other — not in this build
+## Chats talking to each other — ordinary chats coordinate, coordinate these
 
-Conversations do not send each other messages. That is a later wave. You still
-create, add, move, instruct, and remove placements yourself from the `folders`
-panel, `/folders`, the `n f e i m w x` verbs, or `codeaf collections`.
+Ordinary chats coordinate. There is no manager product object and no special
+collaboration mode. In an existing conversation, say **coordinate these** (or
+name the chats). That chat keeps its identity and becomes the management
+conversation. The others keep their own histories.
+
+Marking is a convenience, not a required ritual. On a folders-panel chat row,
+`k` is `mark this chat` (then `unmark this chat`). A marked member is labelled
+`marked`. `c` is `coordinate these`, offered only when something is already
+marked. From home without a current chat it says `coordinate from this chat ·
+or say coordinate these`. Standing on nothing says `stand on a chat · then mark
+it`. A failed mark says `could not mark that chat`; unmark says `could not
+unmark that chat`; coordinate says `could not coordinate these`. Nil collab
+chrome is absent, not broken.
+
+A new **discussion** (a separate chat for a distinct history) is optional. It is
+not a “group chat” product entity. Planner and critic are free role labels you
+name, not product types.
+
+## Direct, fan-out, and joint — three patterns, group chat optional, request reply sent
+
+Three patterns share one router:
+
+1. **Direct** — privately ask one chat. The management chat shows `request` and
+   `reply` with a `source` link. That chat's history stays its own.
+2. **Fan-out** — send one update to several separately. Each is `sent` with its
+   own receipt, not a group conversation.
+3. **Joint** — invite participants into the **current** discussion. It looks
+   like a normal chat with role labels (`planner · Feature B`). Empty
+   participants draw nothing — never `0 participants`.
+
+`accepted`, `recorded`, and `processed` are store words, never painted. The
+person sees `sent`, `request`, `reply`. If a recipient is not running, the line
+waits and appears **once** on resume.
+
+The `coordinate` tool (on the belt only when collab is wired) does this from
+the ordinary chat: actions `deliver`, `invite`, `inspect`, `selected`,
+`manage-folder`, `pause`. One recipient is a request; several are sent
+separately. It does not execute work for them — that is a later wave. Software
+stamps origin as another agent; phrasing “I am the user” does not change a
+goal or grant.
+
+## Selected snapshot vs manage this folder — whole-folder, future descendants
+
+**Selected** coordination is a snapshot of the marked conversation ids. Adding
+a sibling elsewhere does not enlarge it. `coordinate` action `selected` takes
+those ids; a chat filed later stays out.
+
+**Manage this folder** (`manage-folder`) is dynamic: current descendants and
+future ones, nested and shared children included, shared objects counted once.
+A fifth chat added to Billing after a selected-four snapshot does not join the
+four; start manage-this-folder and it does appear.
+
+Several ordinary chats may coordinate at once. Addressing a folder supplies
+that folder's scope; there is no per-folder daemon. Two folders that share one
+discussion do not merge the rest of their contents. File an optional separate
+discussion with `/folders add` the same way as any other chat.
+
+## Root escalation — not always ask after two turns, hierarchical parents
+
+A conflict is **one** discussion with both positions. Relevant parent
+representatives may join, common ancestors counted once, then Root if needed.
+Two turns may be a per-level starting budget. That is **not** “always ask after
+two turns” as a ban on parent join. Root cannot exceed what you delegated.
+Missing authority reaches you. Unrelated work continues.
+
+## Pause coordination — closing a view does not pause, archive
+
+`pause` (the `coordinate` action; person-facing **pause coordination**) stops
+**new** autonomous decisions. Closing a view does not pause. Archive
+suppresses automatic wake-ups; history remains. Coordinators may read, discuss,
+and organize. They cannot execute — launch-or-join is a later wave.
