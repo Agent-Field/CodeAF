@@ -189,7 +189,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homePanelFolders": {
 		screen: "folders",
-		why:    "the eighth home panel: logical groups of chats. It is not `/folder` `/place` `/dir`, and it is not the projects heading",
+		why:    "home's folders panel (enter-from) and the Folders place heading. Logical groups of chats, not `/folder` `/place` `/dir`",
 	},
 	"homePanelRunning": {
 		screen: "running",
@@ -201,7 +201,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homePanelSpend": {
 		screen: "spend",
-		why:    "the day and the fortnight on home, and the third word of the four-place bar",
+		why:    "the day and the fortnight on home, and the third word of the five-place bar",
 	},
 	"homePanelNext": {
 		screen: "scheduled",
@@ -228,6 +228,47 @@ var tuiWords = map[string]tuiWord{
 	"homeFoldersNewChat": {
 		screen: "new chat here",
 		why:    "the folders-row `n` verb. Live waits for it on a folder row; the projects card spells the same words on `t`",
+	},
+	"foldersPlaceNewFolder": {
+		screen: foldersEntryNewFolderWord,
+		pkg:    "internal/e2e",
+		why:    "J38 visible action on the Folders place. Not slash-only. Creates at Root or the selected folder",
+	},
+	"foldersPlaceNewChat": {
+		screen: foldersEntryNewChatWord,
+		pkg:    "internal/e2e",
+		why:    "J38 visible New chat action on the Folders place. Same spelling as the start-page tab. Esc creates nothing",
+	},
+	"foldersOrganizeExistingWord": {
+		screen: foldersEntryOrganizeWord,
+		pkg:    "internal/e2e",
+		why:    "J40/J42 visible survey. Launches observe_and_organize; not a fake countdown; not slash-only",
+	},
+	"foldersOrganizeSlashWord": {
+		screen: foldersEntryOrganizeSlash,
+		pkg:    "internal/e2e",
+		why:    "optional typed door onto Organize existing chats. Same job; never the only door",
+	},
+	"foldersJobQueuedWord": {
+		screen: foldersEntryJobQueued,
+		why:    "person-facing organize progress for store pending. Never pending itself",
+	},
+	"foldersJobRunningWord": {
+		screen: foldersEntryJobRunning,
+		why:    "person-facing organize progress for store leased. Never leased itself",
+	},
+	"foldersJobDelayedWord": {
+		screen: foldersEntryJobDelayed,
+		pkg:    "internal/e2e",
+		why:    "person-facing organize progress for deferred or failed. Honest Detail; never checked",
+	},
+	"foldersJobDoneWord": {
+		screen: foldersEntryJobDone,
+		why:    "person-facing organize progress for store completed. Never completed itself",
+	},
+	"foldersJobCancelWord": {
+		screen: foldersEntryJobCancel,
+		why:    "visible cancel, and the person-facing spelling of store cancelled. Never cancelled itself",
 	},
 	"foldersSlashWord": {
 		screen: "/folders",
@@ -328,7 +369,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"barHomeWord": {
 		screen: "home",
-		why:    "the first of the four words on the tab bar",
+		why:    "the first of the five words on the tab bar",
 	},
 	"barTasksWord": {
 		screen: "tasks",
@@ -336,7 +377,11 @@ var tuiWords = map[string]tuiWord{
 	},
 	"barSettingsWord": {
 		screen: "settings",
-		why:    "the last of the four — standing, memory and search are off the bar and reached by command",
+		why:    "the fourth of the five — Folders is after it; standing, memory and search stay off the bar",
+	},
+	"barFoldersWord": {
+		screen: "folders",
+		why:    "the fifth tab-bar place. Folders-entry: dedicated logical Folders, not only a home panel. alt+5",
 	},
 	"pulseWantWord": {
 		screen: " want you",
