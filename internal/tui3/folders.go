@@ -521,6 +521,7 @@ func (a *app) enterFolder(id string) tea.Cmd {
 	}
 	cur := strings.TrimSpace(a.home.folderOpen)
 	if cur == id {
+		a.home.opened, a.home.openedOn = panelFolders, true
 		a.refreshFolderMemo()
 		a.pointFolderBack()
 		return nil
@@ -531,6 +532,10 @@ func (a *app) enterFolder(id string) tea.Cmd {
 		a.home.folderTrail = append(a.home.folderTrail, cur)
 	}
 	a.home.folderOpen = id
+	// Drilling in is asking to see this folder's members. At 80 columns the
+	// resting folders cap folds chats as `N more`, which made live J11 type
+	// `x` into the composer instead of removing the organizer placement.
+	a.home.opened, a.home.openedOn = panelFolders, true
 	a.refreshFolderMemo()
 	a.pointFolderBack()
 	return nil
