@@ -33,3 +33,7 @@ The run starter correctly rejects a second hand-off whose resolved ground differ
 ## Review finding resolved
 
 The approved-proposal door now preserves the run starter's different-ground refusal and does not admit a session-tree task. A focused door-level test explicitly sets the belt, opens a live run, approves a proposal on another repository, requires the plain same-ground explanation, and proves that no fallback node exists.
+
+## Verification
+
+Formatting, build, session/run vetting, the focused session suite, the run/manual/name-law packages, and the new isolation/refusal cases pass. `make test-laws` reaches unrelated `cmd/codeaf` kept-nothing tests but those subprocess fixtures exit 2 before running after printing model selection; the changed session tests and all other law packages pass, and this task does not own `cmd/`.
