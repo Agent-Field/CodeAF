@@ -631,5 +631,5 @@ func (a *app) showUnreadProfileKeys(keys []string) {
 	a.notices.ledger.show(id)
 	a.notices.ledger.retire(id)
 	a.notices.save()
-	a.note("config.json keys are not read: " + strings.Join(keys, ", ") + "; models fell back to defaults.")
+	a.note("config.json keys are not read: " + strings.Join(keys, ", ") + "; anything set under them is ignored and defaults apply.")
 }
