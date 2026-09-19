@@ -441,13 +441,13 @@ filter — the one exception being `1` and `2` over a row the record pane beside
 offering those two answers for, which answer it — and **the box at the foot says so itself** — it rests on `› type to filter this list`
 rather than the `› say what you want done` every other place shows. It used to show the
 shared prompt with the correction two rows further down on the foot, which meant the loudest
-row on the screen was inviting a message the page cannot send. `enter` opens a task's room
-when this conversation is holding it, and goes inside its record card otherwise. `→` opens
+row on the screen was inviting a message the page cannot send. `enter` opens a task's page
+when this conversation's store holds it, and goes inside its record card otherwise. `→` opens
 the row's verbs, and this place has one — `s stop it`, over a task this conversation is
 holding that is still queued or running. Nothing is behind a fold; the list scrolls and its
 tail fades. The count of what is on the page is written into the rule just above the
 composer — `─ 9 finished today · 191 earlier ───` — and the foot names
-only what is true of the row you are on: `enter open its room · → verbs: stop it`.
+only what is true of the row you are on: `enter open its page · → verbs: stop it`.
 
 ## standing — what runs without being asked, and where to type on the standing page
 

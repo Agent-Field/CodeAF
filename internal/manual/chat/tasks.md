@@ -143,7 +143,7 @@ finish.
 
 ## Steering a quick task — adding an item, changing one, telling it to skip the rest
 
-The same as steering any other task: `enter` on its row opens its room, you type, and your
+The same as steering any other task: `enter` on its rail row opens its page, you type, and your
 line reaches the worker at its next step. Nothing about a quick task's box is different.
 
 What you are usually changing is the checklist, because that is a quick task's whole plan.
@@ -1239,7 +1239,7 @@ was a third to a half of a small question's whole bill, and it almost never foun
 left to do.
 
 **A finished task starts no reply on its own.** Its landing writes one dim line in the
-conversation and does not start a turn. You can open its room and read the task's own report;
+conversation and does not start a turn. You can open its page and read the task's own report;
 what you happened to ask about in between is not part of it, and a slow task landing after you
 have said something else does not overrule what you said.
 
@@ -2995,8 +2995,9 @@ leaving is never modal and nothing on the way out asks about the tasks on it.
 **What `enter` opens depends on the row**, and the last line of the page says which you are
 going to get:
 
-- A task **this session is holding** — wherever on the page it is filed — opens its room,
-  exactly as `enter` on the roster does. The foot reads `enter open its room`.
+- A task whose page the store holds — running or finished, wherever on the list it is filed —
+  opens that page, exactly as `enter` on the conversation rail does. The foot reads
+  `enter open its page`.
 - A task **another conversation ran** has no room to open: a room is a live lane onto a task
   in this session's work, and that session is closed. `enter` **goes inside it** instead —
   the card of everything the record wrote down about that piece of work, over the same
@@ -3078,8 +3079,8 @@ answer a key — but each is reshaped so a finger can do the flow end to end:
    name and state on top, and what it came to with how long ago under it. The list
    **scrolls**: walk it with a swipe or the arrows and the card you reach is drawn whole,
    never clipped at the fold.
-3. **Tap a card to go inside.** A task this session ran opens its room; a task from a
-   conversation that is closed opens its record card.
+3. **Tap a card to go inside.** A task whose page the store holds opens that page;
+   a task with no stored page opens what it opened before.
 4. **Two backs, both bands.** The record card's foot is `‹ back` and `m puts it in your
    message`; `‹ back` returns to the list. The list's own foot is a `‹ back` bar too, and
    it drops you back to the conversation. So the way out is `‹ back`, then `‹ back` — a
@@ -3099,7 +3100,7 @@ door — they are the ones above, reshaped:
 - **The roster's rows** are two-line cards, each a full-width target, and one press opens it
   — a room, or the record card — which is what a click already did at every width.
 - **The roster's foot** is a `‹ back` band in place of the key legend
-  `enter open its room`. Tap it to go back to the conversation.
+  `enter open its page`. Tap it to go back to the conversation.
 - **The record card's foot.** `m puts it in your message · ↑↓ scroll` is a
   sentence about keys; under 60 columns the two things a thumb can do become bands instead —
   `‹ back` and `m puts it in your message`. Tap either, or press the key it names. The
@@ -3189,9 +3190,9 @@ which the outcome above is the first sentence.
   deleted, work that happened on another machine — the card says
   `its transcript is not on this disk any more` where the report would have been.
 
-A task **this** session ran opens its room instead, which is the live thing: the roster's
-`enter`, a strip chip and a `task 7` link all land there. Only work from a conversation that
-is closed opens the card.
+A task whose page the store holds opens that page instead: the conversation rail's
+`enter`, a strip chip, and a `task 7` link all land there whether the task is running or
+finished. Only a row with no stored page follows the older room or record-card path.
 
 ## The one door line at the bottom of the task column: `ctrl+. earlier`, `view more`
 
@@ -5339,13 +5340,13 @@ under the cursor**, and never from a fixed sentence. Over a task this window is 
 reads
 
 ```
-enter open its room · → verbs: stop it · alt+s sort · type to filter · alt+. map · tab next place
+enter open its page · → verbs: stop it · alt+s sort · type to filter · alt+. map · tab next place
 ```
 
 The last two keys are on every place and the router adds them. What comes before them
 changes with the cursor:
 
-- `enter open its room` over a task **this conversation is holding** — it has a room.
+- `enter open its page` over a task whose page this conversation's store holds — running or finished.
 - `enter go inside it` over work **another conversation ran** — no room exists, so `enter`
   opens the record card instead.
 - `enter go to that conversation` over work running in a conversation **this terminal is
@@ -5357,7 +5358,7 @@ changes with the cursor:
   naming where it is.
 - `→ verbs: stop it` **only while the row has that verb** — see below.
 - A row whose work has raised something for you answers on the same line, behind the door:
-  the foot reads `enter open its room · hello.txt · waiting in this conversation · alt+a`,
+  the foot reads `enter open its page · hello.txt · waiting in this conversation · alt+a`,
   with the page's own clauses — the fold, the verbs, the filter, the way out — giving way
   first when the width runs short. The row keeps its door, and the question keeps its way
   in, on the one line the foot draws them on.

@@ -6,14 +6,15 @@ make — a glance to see whether the work is going right, and a steer if it is n
 settled work opens first to an outline and the folded steps are one key away. This page
 is about what is folded, how to open it, and what to do when the page seems empty or stuck at the top.
 
-Click the task's name in the right-hand list to open its conversation, including
-in the ordinary local window. While it loads, the page says so. Type a correction
-there and press Enter to send it to that task; Escape returns to the main
-conversation. Refreshing the task keeps opened blocks open and keeps an accepted
-correction visible while its worker catches up with writing the transcript.
-If reading fails, the page keeps any transcript already shown and says it is
-retrying. A temporary read failure does not mean the task's history is gone;
-finished tasks can recover their pages too.
+## How do I see what a finished task did? — open its row in the rail
+
+Click the task's row in the conversation's rail, or select it and press `enter`.
+The row opens that task's page whether the task is running or finished. The page
+shows its brief, steps, notes, and report; a finished page stays open after the run
+settles. Press `esc` to return to the conversation exactly where you left it.
+
+A task under this one opens from its row on this page in the same way. If a rail row
+has no stored task page, it opens what that row opened before.
 
 ## What is on this task page — everything a task's page shows, in order
 
