@@ -8,8 +8,11 @@
 // ActionPlan, and SuppressPlacement. Discovery is an injected interface.
 // Wave 3 adds CoordinateSelected, ManageFolder, Deliver, InviteToDiscussion,
 // and CreateDiscussion. Collaboration is an injected interface — this package
-// never imports wscollab. A missing store door or collaborator leaves those
-// methods absent rather than returning a dummy success.
+// never imports wscollab. Wave 4 adds IssueGrant, LaunchOrJoin, and the
+// inspect/steer/pause/stop/observe work doors. Execution is an injected
+// interface — this package never imports wsexec. A missing store door,
+// collaborator, or executor leaves those methods absent rather than returning
+// a dummy success.
 package wsapi
 
 import (
@@ -57,12 +60,13 @@ type RootView struct {
 }
 
 // Service holds a store, an optional inventory, an optional discoverer, an
-// optional collaborator, and a clock.
+// optional collaborator, an optional executor, and a clock.
 type Service struct {
 	store  store
 	inv    Inventory
 	disc   Discoverer
 	collab Collaborator
+	exec   Executor
 	now    func() time.Time
 }
 
@@ -130,6 +134,16 @@ func (s *Service) SetCollaborator(c Collaborator) {
 	s.collab = c
 }
 
+// SetExecutor injects the launch-or-join adapter. Nil means LaunchOrJoin is
+// absent, not a dummy completed view. This package does not import wsexec;
+// wiring binds the real adapter later, the same way Collaborator lands.
+func (s *Service) SetExecutor(e Executor) {
+	if s == nil {
+		return
+	}
+	s.exec = e
+}
+
 // Workspace is the real collections.db handle when Open bound *workspace.Store.
 // Tests that inject a fake get nil: job enqueue is then absent, not a second
 // SQLite pool on the same file.
@@ -171,6 +185,7 @@ func (s *Service) AddPlacement(ctx context.Context, collectionID string, ref wor
 }
 
 // RemovePlacement drops one edge. The referenced conversation stays itself.
+// AUTHORIZED WORK IS NOT CANCELLED: this is not StopWork (A16 / J29).
 func (s *Service) RemovePlacement(ctx context.Context, collectionID string, ref workspace.Ref, p workspace.Provenance) error {
 	if err := s.ready(ctx); err != nil {
 		return err
