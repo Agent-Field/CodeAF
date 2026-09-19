@@ -10,6 +10,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -22,14 +24,15 @@ var _ session.Folders = (*sessionFolders)(nil)
 var _ wsapi.Inventory = folderWorld{}
 
 type foldersAdapter struct {
-	svc *wsapi.Service
+	svc  *wsapi.Service
+	jobs *workspace.Store
 }
 
-func newFoldersAdapter(svc *wsapi.Service) tui3.Folders {
+func newFoldersAdapter(svc *wsapi.Service, jobs *workspace.Store) tui3.Folders {
 	if svc == nil {
 		return nil
 	}
-	return &foldersAdapter{svc: svc}
+	return &foldersAdapter{svc: svc, jobs: jobs}
 }
 
 func (a *foldersAdapter) RootSnapshot(ctx context.Context) (tui3.FolderRoot, error) {
@@ -73,7 +76,13 @@ func (a *foldersAdapter) AddFolderPlacement(ctx context.Context, parentID, child
 }
 
 func (a *foldersAdapter) RemovePlacement(ctx context.Context, collectionID, refID string) error {
-	return a.svc.RemovePlacement(ctx, collectionID, conversationRef(refID), personProvenance(""))
+	ref := conversationRef(refID)
+	why, _ := a.svc.WhyHere(ctx, collectionID, ref)
+	if err := a.svc.RemovePlacement(ctx, collectionID, ref, personProvenance("")); err != nil {
+		return err
+	}
+	a.suppressOrganizerPlacement(ctx, collectionID, ref, why)
+	return nil
 }
 
 func (a *foldersAdapter) MovePlacement(ctx context.Context, fromID, toID, refID string) error {
@@ -99,7 +108,8 @@ func (a *foldersAdapter) WhyHere(ctx context.Context, collectionID, refID string
 // service. OriginOrganizer is forced here so a caller of Config.Folders cannot
 // claim person; the tool also stamps that origin at ingress.
 type sessionFolders struct {
-	svc *wsapi.Service
+	svc  *wsapi.Service
+	jobs *workspace.Store
 }
 
 func newSessionFolders(svc *wsapi.Service) session.Folders {
@@ -110,7 +120,14 @@ func newSessionFolders(svc *wsapi.Service) session.Folders {
 }
 
 func (f *sessionFolders) Close() error {
-	if f == nil || f.svc == nil {
+	if f == nil {
+		return nil
+	}
+	if f.jobs != nil {
+		_ = f.jobs.Close()
+		f.jobs = nil
+	}
+	if f.svc == nil {
 		return nil
 	}
 	return f.svc.Close()
@@ -221,4 +238,12 @@ func folderPlacementsOf(places []wsapi.Placement) []tui3.FolderPlacement {
 		out = append(out, folderPlacementOf(place))
 	}
 	return out
+}
+
+func (a *foldersAdapter) suppressOrganizerPlacement(ctx context.Context, collectionID string, ref workspace.Ref, why wsapi.Why) {
+	if a == nil || a.jobs == nil || why.Event.Origin != workspace.OriginOrganizer {
+		return
+	}
+	sum := sha256.Sum256([]byte(why.Event.Evidence))
+	_ = a.jobs.Suppress(ctx, collectionID, ref, hex.EncodeToString(sum[:]), personProvenance("removed"))
 }

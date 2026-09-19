@@ -1196,8 +1196,14 @@ type Config struct {
 
 	// ConversationHistory grants only indexed history reads. Workers inherit
 	// this interface without receiving memory extraction, writes, or journaling.
-	// Nil falls back to Memory, so a memory-off root grants no history access.
+	// Nil falls back to Memory. The v3 door sets this even when Memory is nil,
+	// so search_conversations and the search place still work with memory off.
 	ConversationHistory ConversationHistoryReader
+
+	// EnqueueOrganize is called after a person-authored user message has
+	// already reached the journal. Nil is automatic organize absent. The
+	// callback must not take the agent's lock: it runs off the record path.
+	EnqueueOrganize func(chatID, sourceRev string)
 
 	// MemoryImport is the legacy memory.md this session carries into the store
 	// on its first turn, once, before it is renamed to memory.md.imported

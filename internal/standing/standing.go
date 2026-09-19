@@ -882,6 +882,11 @@ type Ticker struct {
 	// Tidy is the consolidation pass over what is remembered, run once at the
 	// end of a pass and only when the session lane supplied one.
 	Tidy Tidy
+	// Organize is the workspace job pass: lease observe_and_organize work
+	// outside the collections writer, revalidate, apply. Nil is folders or
+	// organize unavailable — absent, not a stub that claims success. The
+	// cadence stays [Interval]; this is not a second daemon.
+	Organize func(ctx context.Context) error
 	// DailyRailUSD is the ceiling on everything standing spends in one day,
 	// from settings. Zero is no rail, which the card says out loud.
 	DailyRailUSD float64

@@ -372,6 +372,16 @@ the opaque `ref` from a result, on its own, to open that
 message and up to two messages on either side. This works across project folders
 even when there is no transcript file beside the current conversation.
 
+## Can I search old chats with memory off — conversation search without remember
+
+Yes. Memory off means no `remember` and no lines carried into the next session.
+Conversation search reads the indexed history, which stays open. Ask what was
+decided last week and `search_conversations` still looks. The search place on
+home is the same index.
+
+It is off only when that history file could not open, which is the sentence
+that names `graph.db` and the disk's reason — not the `memory` row.
+
 ## Conversation search limits — words, coverage, and memory off
 
 - Search returns eight matches by default, twenty at most. Each matching passage
@@ -387,13 +397,15 @@ even when there is no transcript file beside the current conversation.
   words are supported (at most 32 query words). Names and IDs label results;
   titles are not searched. If a task search misses, codeaf is pointed at
   conversation search when that tool is available.
-- Only messages already indexed in this store are searched. Memory-off history,
-  failed or pending index writes, other stores and spilled file contents are not
-  included. A miss does not prove the subject was never discussed.
-- **It is off when memory is off.** The conversations are kept in the same place
-  the memories are, so the `memory` row in `/settings` turned off means nothing
-  is written and there is nothing to search. Task workers inherit read-only search
-  when their parent has it; this does not enable memory writes or worker-message indexing.
+- Only messages already indexed in this store are searched. Failed or pending
+  index writes, other stores and spilled file contents are not included. A miss
+  does not prove the subject was never discussed.
+- **Search still works when memory is off.** Turning the `memory` row off in
+  `/settings` stops remembering and drops `remember`; it does not close the
+  conversation index. `search_conversations` and the search place stay as long
+  as that index opened. The verb is absent only when the history file itself
+  could not be opened. Task workers inherit read-only search when their parent
+  has it; this does not enable memory writes or worker-message indexing.
 - **It is not the same as what is remembered.** The remembered lines are a few
   durable facts, extracted and rewritten; this is the conversation in its own
   words. Asked what was decided, codeaf searches and quotes rather than
