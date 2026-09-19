@@ -5186,7 +5186,7 @@ parents and say `queued · waits: <title>`.
 ## can I ask what a task did without opening its conversation?
 
 Yes. From the run pane, open the ask box and ask about one task. codeaf answers from
-the run's own record: the task rows and results, the run's notes, and, when those are
+the run store: the task rows and results, the run's notes, and, when those are
 not enough, one read-only look at a named task's description, result, notes and last twelve
 steps. The turn is bounded to three rounds. It cannot run commands, write files, change the
 store or redo the work; if the record does not hold the answer, it says so plainly.
