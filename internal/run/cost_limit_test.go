@@ -138,56 +138,50 @@ func TestCostLimitCountsReturnedWorkerBelowCeilingOnce(t *testing.T) {
 }
 
 // A WORKER NEVER WAITS ON THE RUN TO SAY WHAT IT SPENT. The road this pins is
-// the one on which nobody is listening: the tree finished while one worker was
-// still out, so the run drains, and drain waits for that worker and reads
-// nothing. A worker that had to be heard before it could go on would hold the
-// run open for good, which is an engine that never answers. The worker here
+// the one on which nobody is listening: the caller ended the run while one
+// worker was still out, so the run drains, and drain waits for that worker and
+// reads nothing. A worker that had to be heard before it could go on would hold
+// the run open for good, which is an engine that never answers. The worker here
 // reports its spend far more often than any buffer is deep, after its context
 // has ended, and the run must still come home.
+//
+// THE ROAD USED TO BE A TREE THAT FINISHED OVER A WORKER STILL OUT. That state is
+// gone: a worker that has written its own done has not landed until it returns,
+// and the run waits for it ([landed]). The caller's own ending is the road that
+// still leaves a worker behind.
 func TestAWorkerReportingSpendWhileTheRunDrainsDoesNotHoldTheRunOpen(t *testing.T) {
-	store, err := plandb.Open(t.TempDir()+"/plan.json", "cost-limit-drain", "root", "root", "finish while a worker is still out")
+	store, err := plandb.Open(t.TempDir()+"/plan.json", "cost-limit-drain", "root", "root", "end the run while a worker is still out")
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	defer store.Close()
-	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "peer", Title: "peer", ParentID: store.RootID()}}); err != nil {
-		t.Fatalf("add peer: %v", err)
-	}
 
-	peerEnded := make(chan struct{})
+	started := make(chan struct{})
 	var reports atomic.Int32
 	factory := func(task plandb.Task) Worker {
-		if task.ID == "peer" {
-			return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
-				if _, err := store.Done(task.ID, task.ID, "the peer wrote its own ending", nil, nil); err != nil {
-					t.Errorf("peer done: %v", err)
-				}
-				close(peerEnded)
-				<-ctx.Done()
-				for i := 1; i <= 64; i++ {
-					bankSpend(ctx, float64(i)/1000)
-					reports.Add(1)
-				}
-				return Report{USD: 0.064}, ctx.Err()
-			})
-		}
 		return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
-			select {
-			case <-peerEnded:
-			case <-ctx.Done():
-				return Report{}, ctx.Err()
+			close(started)
+			<-ctx.Done()
+			for i := 1; i <= 64; i++ {
+				bankSpend(ctx, float64(i)/1000)
+				reports.Add(1)
 			}
-			return Report{Result: "the tree is finished"}, nil
+			return Report{USD: 0.064}, ctx.Err()
 		})
 	}
 	supervisor := NewSupervisor(store, t.TempDir(), 2, Limits{CostUSD: 100}, factory)
+	ctx, end := context.WithCancel(context.Background())
+	defer end()
 	answered := make(chan Outcome, 1)
-	go func() { answered <- supervisor.Run(context.Background()) }()
+	go func() { answered <- supervisor.Run(ctx) }()
 	select {
-	case outcome := <-answered:
-		if outcome != OutcomeDone {
-			t.Fatalf("outcome = %q, want %q", outcome, OutcomeDone)
-		}
+	case <-started:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run never started its worker")
+	}
+	end()
+	select {
+	case <-answered:
 	case <-time.After(20 * time.Second):
 		t.Fatalf("the run never answered: a worker reporting its spend is holding the drain open (%d of 64 reports made)", reports.Load())
 	}

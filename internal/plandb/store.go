@@ -490,12 +490,22 @@ func (s *Store) ClaimWake(id, agent string, owner ...string) (*Task, error) {
 	})
 }
 
-// AddRootCheck admits the one child a terminal root may still need: its review
-// check. A ROOT IS NOT DONE UNTIL ITS CHECK HAS LANDED, whoever wrote its
-// ending, so this one transaction preserves the root's result, moves it back
-// to waiting on the check, and adds that check beneath it. Every other child of
-// a terminal task continues to be refused by AddMany.
-func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
+// AddReviewCheck seats a review check beneath its parent WHATEVER THE PARENT HAS
+// WRITTEN ABOUT ITSELF MEANWHILE. A finished piece of work is reviewed when its
+// worker's return reaches the run, and that can be after the task above it has
+// written its own done: a worker still in its turn may finish the moment its
+// children's rows read done, and the store admits that because every child it
+// has IS finished. The review then has to go beneath a task that reads done,
+// which [Store.AddMany] refuses for every child, and rightly.
+//
+// A TASK IS NOT DONE UNTIL THE REVIEWS BENEATH IT HAVE LANDED, whoever wrote its
+// ending. So this one transaction adds the check and moves every done ancestor
+// back to waiting on it, each keeping the result it earned. The root is
+// completed again by the run once the tree is whole ([Store.CompleteRoot]); a
+// task between closes the way any composite nobody is working closes, when its
+// children are all terminal ([promote]). NOTHING BUT A CHECK COMES IN THIS WAY:
+// every other child of a terminal task continues to be refused by AddMany.
+func (s *Store) AddReviewCheck(spec TaskSpec) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var id string
@@ -505,26 +515,27 @@ func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
 		if err := validateSpec(spec); err != nil {
 			return err
 		}
-		if spec.Role != RoleCheck || spec.ParentID != next.RootID {
-			return errors.New("a root review child must have role check and the root as parent")
+		if spec.Role != RoleCheck {
+			return errors.New("only a review check is seated this way: the child must have role check")
 		}
 		if next.Tasks[spec.ID] != nil {
 			return fmt.Errorf("duplicate task id %q", spec.ID)
 		}
-		root := next.Tasks[next.RootID]
-		if root == nil || root.Status != StatusDone {
-			return errors.New("root is not done")
-		}
-		for _, task := range next.Tasks {
-			if task.ParentID == root.ID {
-				return errors.New("root is not childless")
-			}
+		parent := next.Tasks[spec.ParentID]
+		if parent == nil {
+			return fmt.Errorf("parent %q does not exist", spec.ParentID)
 		}
 		check := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
 		next.Tasks[spec.ID] = check
 		next.Order = append(next.Order, spec.ID)
-		root.Status, root.Composite = StatusPending, true
-		root.CompletedAt, root.UpdatedAt = time.Time{}, now
+		for ancestor := parent; ancestor != nil; ancestor = next.Tasks[ancestor.ParentID] {
+			ancestor.Composite = true
+			if ancestor.Status == StatusDone {
+				ancestor.Status = StatusPending
+				ancestor.CompletedAt = time.Time{}
+			}
+			ancestor.UpdatedAt = now
+		}
 		promote(next, now)
 		return validateGraphs(*next)
 	})
