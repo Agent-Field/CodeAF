@@ -15,3 +15,7 @@ Each steering verb gets its own method constant and typed argument payload. Clie
 ## Item 2 result
 
 The six steering verbs now cross through typed wire payloads, client methods, optional server dispatch, and the act call class. Focused scripted client and server tests pass and prove the exact store refusal `task "done-one" is already terminal` returns unchanged.
+
+## Verification
+
+`gofmt -l ./cmd ./internal`, `go build ./...`, `go vet ./internal/remote ./internal/enginehost`, and `go test ./internal/remote/ ./internal/enginehost/` pass. `make test-laws` reaches the broader suite but is currently blocked by unrelated headless default-model failures in `cmd/codeaf` and the pre-existing TUI off-loop law now seeing plan calls owned by another item; item 2's remote tests pass both focused and in the full remote package.
