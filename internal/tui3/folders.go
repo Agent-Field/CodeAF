@@ -150,6 +150,7 @@ const (
 	folderNoStandWord     = "stand on a folder · then n starts a chat there"
 	folderMoveHintWord    = "enter a folder to move it there · esc cancel"
 	folderNestWord        = "nest this folder"
+	folderRenameWord      = "rename this folder"
 	folderNestHintWord    = "enter a folder to nest it there · esc cancel"
 	folderInstructWord    = "instruct this folder"
 	folderInstructHead    = "instructions"
@@ -260,6 +261,9 @@ func (a *app) folderVerbs(line homeLine) []verb {
 	}
 	if line.kind == homeFolderRow {
 		verbs = append(verbs, verb{key: 'e', word: folderNestWord, do: func() tea.Cmd { return a.beginFolderNest(line) }})
+		if a.at(pageFolders) {
+			verbs = append(verbs, verb{key: 'r', word: folderRenameWord, do: func() tea.Cmd { return a.beginFolderPlaceRename(line) }})
+		}
 	}
 	if line.kind == homeFolderRow || line.kind == homeFolderBack {
 		verbs = append(verbs, verb{key: 'i', word: folderInstructWord, do: func() tea.Cmd { return a.instructThisFolder(line) }})
@@ -325,7 +329,8 @@ func (a *app) startInFolder(id string) tea.Cmd {
 		a.folderNote(newUnavailableWord)
 		return nil
 	}
-	if a.at(pageFolders) {
+	fromFolders := a.at(pageFolders)
+	if fromFolders {
 		a.leavePlace()
 	} else {
 		a.closeHome()
@@ -333,6 +338,9 @@ func (a *app) startInFolder(id string) tea.Cmd {
 	cmd := a.openChatStart()
 	if a.startingChat() {
 		a.pendingFolder = id
+		if fromFolders {
+			a.startBack.page = startPageFolders
+		}
 	}
 	return cmd
 }
@@ -599,6 +607,10 @@ func (a *app) leaveFolder() bool {
 }
 
 func (a *app) refreshFolderMemo() {
+	if a.at(pageFolders) {
+		a.refreshFolderPlace()
+		return
+	}
 	prev, had := a.home.focusedLine()
 	a.readHomeFolders()
 	a.readCollab()
@@ -840,15 +852,8 @@ func (a *app) resolveFolder(name string) (FolderView, bool) {
 			seen[id] = folder
 		}
 	}
-	for _, folder := range a.home.folders.root.Folders {
-		add(folder)
-	}
-	add(a.home.folders.open)
-	for _, place := range a.home.folders.members {
-		if folderCollectionPlacement(place) {
-			add(folderViewFromPlacement(place))
-		}
-	}
+	addFolderReading(add, a.home.folders)
+	addFolderReading(add, a.folderSheet.reading)
 	var named FolderView
 	var names int
 	for _, folder := range seen {
@@ -864,6 +869,18 @@ func (a *app) resolveFolder(name string) (FolderView, bool) {
 		return named, true
 	}
 	return FolderView{}, false
+}
+
+func addFolderReading(add func(FolderView), reading homeFoldersReading) {
+	for _, folder := range reading.root.Folders {
+		add(folder)
+	}
+	add(reading.open)
+	for _, place := range reading.members {
+		if folderCollectionPlacement(place) {
+			add(folderViewFromPlacement(place))
+		}
+	}
 }
 
 func (a *app) pointFolderID(id string) bool {
