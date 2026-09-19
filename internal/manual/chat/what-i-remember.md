@@ -397,7 +397,9 @@ that names `graph.db` and the disk's reason — not the `memory` row.
   still rank when the ask uses different wording — emailed receipt links can
   find an earlier authenticated-access decision; restatements of the query do
   not occupy every row, and a nearer abandoned-mailer family does not occupy
-  every candidate slot either. Short corrections and a buried note in a mixed-topic
+  every candidate slot either. A session whose decision is signed-in billed-file
+  access outranks one that mentions billed-file only to refuse it (Cafe dinner
+  slip OCR, restaurant paper). Short corrections and a buried note in a mixed-topic
   chat stay findable. Equally relevant matches put newer messages first. Short
   words and Unicode words are supported (at most 32 query words). Names and IDs
   label results; titles are not searched. If a task search misses, codeaf is
@@ -434,12 +436,25 @@ ranking. The candidate list is conversations, not repeated turns of the
 nearest family: an abandoned-mailer cluster that is closer in embedding space
 cannot fill the pool so the original never appears.
 
-Chats that merely restate the ask are not the original. A short correction such
-as “No, the other one.” is findable with the surrounding decision. A buried
+Chats that merely restate the ask are not the original. A Cafe dinner slip OCR
+chat that says restaurant paper, not a billed-file hyperlink policy, named
+billed-file only to refuse it — that is not the access decision, and search
+does not ban cafe, restaurant, abandon, or espresso to hide it. A short
+correction such as “No, the other one.” is findable with the surrounding
+decision. A buried
 note inside a mixed-topic thread (certificate work that still records the
 access rule) stays findable; it is not drowned by a larger family that only
 shares some of the words. When embeddings are down, that extra path is
 `degraded` / `discovery delayed` and does not say the workspace was checked.
+
+## Cafe dinner slip OCR versus signed-in billed-file access — restaurant paper, not a billed-file hyperlink policy
+
+Type emailed purchase confirmation PDF and search still ranks Signed-in
+billed-file access. Cafe dinner slip OCR (restaurant paper, not a billed-file
+hyperlink policy) mentioned billed-file only to refuse it; the original is the
+session whose decision is the authenticated / signed-in fetch rule. Cafe,
+restaurant, abandon, and espresso are not banned words. Abandoned-mailer chats
+stay behind that standing decision unless you asked about the abandoned plan.
 
 ## Embeddings, the embed pin, and discovery delayed
 

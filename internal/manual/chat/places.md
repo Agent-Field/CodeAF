@@ -615,8 +615,20 @@ You do not have to phrase it as a question. Search gathers distinct
 conversations, so a larger family of abandoned-mailer chats that sit closer
 to the words you typed cannot occupy every candidate slot. Rows that only
 restate what you just typed are not that original, and an abandoned plan is
-not that original either. A short correction and a buried note in a mixed-topic
-chat stay findable.
+not that original either. A session whose decision is signed-in billed-file
+access outranks one that mentions billed-file only to refuse it (Cafe dinner
+slip OCR: restaurant paper, not a billed-file hyperlink policy). Cafe,
+restaurant, abandon, and espresso are not banned words. A short correction
+and a buried note in a mixed-topic chat stay findable.
+
+## Cafe dinner slip OCR is not signed-in billed-file access — restaurant paper, not a billed-file hyperlink policy
+
+`/search` for emailed purchase confirmation PDF still lists Signed-in billed-file
+access. Cafe dinner slip OCR that says restaurant paper, not a billed-file
+hyperlink policy, named billed-file only to refuse it; that chat is not the
+access decision. Search does not ban cafe, restaurant, abandon, or espresso.
+The session that decided authenticated / signed-in fetch stays ahead of that
+refusal, and ahead of an abandoned mailer.
 
 ## settings — how this machine is set
 
