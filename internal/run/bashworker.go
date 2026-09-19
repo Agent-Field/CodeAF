@@ -131,11 +131,6 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	// noAction counts replies in a row that carried no tool call. A reply that
 	// did call a tool resets the run to one — its own trailing words are the
 	// first of the new run — and the fourth in a row fails the task.
-	// sameStep is the law below, held for the whole turn: the identity of the
-	// last finished step, how many identical ones have come back in a row, and
-	// the moment the store was last read. The words a worker says between its
-	// actions leave no step and change nothing, so the count runs over the
-	// recorded steps alone.
 	noAction := 0
 	// banked is the last spend figure this worker told its run. THE RUN'S DOLLAR
 	// LIMIT IS READ WHILE THE WORKER WORKS, so the figure has to move when a
@@ -144,6 +139,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	// running total is the one account that moves per paid call, so it is read
 	// as each event comes by and told to the run whenever it has risen.
 	banked := 0.0
+	// sameStep is the law below, held for the whole turn: the identity of the
+	// last finished step, how many identical ones have come back in a row, and
+	// the moment the store was last read. The words a worker says between its
+	// actions leave no step and change nothing, so the count runs over the
+	// recorded steps alone.
 	var (
 		lastStep string
 		same     int
