@@ -158,3 +158,34 @@ func TestJudgeSweepCannotCrossHomesAndLaterProcessStartsItsOwn(t *testing.T) {
 		t.Fatalf("sweep starts = %d, want one per launch across two processes", got)
 	}
 }
+
+// TestJudgeLandingLeftUnjudgedWhenCancelledMidJudge proves the now-cancellable
+// sweep does not burn a landing's judgement: when a close cancels the context
+// mid-judge every candidate fails with no score, and the landing must be left
+// unjudged for the next start rather than marked judged forever.
+func TestJudgeLandingLeftUnjudgedWhenCancelledMidJudge(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	poolDir := config.ProfilePath(profileDir, "pool")
+	settings := config.Config{APIKey: "k"}
+	landing := poolTestLanding()
+	landing.ID = 77
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the close has already cancelled the sweep's context
+	ask := func(string) judge.Ask {
+		return func(actx context.Context, _, _ string) (string, error) {
+			<-actx.Done()
+			return "", actx.Err()
+		}
+	}
+	poolJudgeLandingContext(ctx, settings, profileDir, poolTestCatalog, ask, time.Now, "do", landing)
+
+	if alreadyJudged(poolDir, landing.ID, landing.Attempt) {
+		t.Fatal("a landing cancelled mid-judge was marked judged; it will never be scored or rejudged")
+	}
+}
