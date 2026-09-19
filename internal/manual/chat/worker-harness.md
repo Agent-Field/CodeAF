@@ -192,13 +192,17 @@ things are left out of a step's row, and nothing else is ever changed:
 - any part of the command addressed only to the run's own record of the task, with whatever
   it is piped through. That is the run keeping its page up to date, not doing the task
 
+A call that never ran has no row either. A worker that asks for several commands in one
+answer has only the first one run, and the rest stay in the record with the answer they
+were given but are not drawn as steps, because nothing ran.
+
 Everything that is kept is drawn exactly as it was typed, spacing included. A command with
 nothing left out is drawn whole. A part inside `$( )` or a bracketed group is never left out,
 and neither is work that is piped into something else.
 
 **A step with nothing of the work in it has no row, and the numbers skip over it.** Every
 row keeps the number the step ran as, so a page whose head says `12 steps` may draw rows
-`1` to `4`, then `9`. The missing numbers are the run's own bookkeeping. What the last of
+`1` to `4`, then `9`. The missing numbers are the run's own bookkeeping and calls that never ran. What the last of
 them said is the task's result, which is in the notes above the steps.
 
 ## Why does it say queued?
