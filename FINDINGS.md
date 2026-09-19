@@ -47,3 +47,7 @@ Changing only the anchor test to acquire real 8765 cannot make it immune to an u
 ## Implementation step
 
 The test change will keep the production address order and binding path intact while replacing the package address list during each fixed-port collision test with test-owned loopback ports. The anchor will hold its first test address open and let `BeginAuth` choose and serve on the second test address, so the busy-first-door condition remains forced in-process. The assertions will derive the expected loopback and registered door from the second test port. The two both-busy tests will hold both test addresses. No test will bind 8765 or 18765, so an external holder of either product port cannot affect these proofs.
+
+## Implemented and focused proof
+
+`internal/connect/slack_test.go` now allocates two test-owned dynamic loopback listeners and temporarily supplies their addresses through the existing package address list. The anchor keeps the first listener open, releases the second, and proves the real `BeginAuth` path serves and advertises the second port. The two both-busy tests keep both listeners open. `go test ./internal/connect/...` passes, and none of these tests binds either product port.
