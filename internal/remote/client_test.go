@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
@@ -906,5 +907,44 @@ func TestAStandingCallThatFailsSaysSoRatherThanAnsweringNothing(t *testing.T) {
 	e.fails[MethodStandingSave] = "an item needs a per-run budget"
 	if err := client.SaveStanding(standing.Item{ID: "01HQ"}); err == nil || err.Error() != "an item needs a per-run budget" {
 		t.Fatalf("SaveStanding = %v, want the store's own refusal", err)
+	}
+}
+
+func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
+	client, e := newEngine(t)
+	started := time.Date(2026, 9, 18, 1, 2, 3, 4, time.UTC)
+	ended := started.Add(time.Minute)
+	row := session.PlanTaskRow{
+		Done: 1, Running: 2, Queued: 3, Failed: 4, Total: 10,
+		ID: "t-whole", Title: "whole row", Status: "running", Seat: "work", Parent: "t-root",
+		Depth: 2, Waits: []string{"t-a", "t-b"}, Steps: 7, USD: 1.25,
+		Started: started, Ended: ended, Note: "last note",
+		Live:           plandb.LiveStep{Step: 8, Command: "go test ./internal/remote", Since: started},
+		TrajectoryPath: "/tmp/trajectory.jsonl",
+	}
+	page := session.PlanTaskPage{
+		Row: row, Description: "the complete work order",
+		Notes:    []session.PlanTaskNote{{Author: "worker", Person: true, Body: "note body", At: started}},
+		Steps:    []session.PlanStep{{Kind: "bash", Step: 7, Command: "go test", Observation: "PASS", FullOutput: "/tmp/out", Writes: []string{"wire.go"}, Children: []string{"t-child"}}},
+		Live:     row.Live,
+		Children: []session.PlanTaskRow{row},
+		WaitRows: []session.PlanTaskRow{row},
+	}
+	e.answers[MethodPlanTasks] = []session.PlanTaskRow{row}
+	e.answers[MethodPlanTaskPage] = PlanTaskPageResult{Page: page, OK: true}
+
+	if got := client.Agent().PlanTasks(); !reflect.DeepEqual(got, []session.PlanTaskRow{row}) {
+		t.Fatalf("PlanTasks = %#v, want %#v", got, []session.PlanTaskRow{row})
+	}
+	got, ok := client.Agent().PlanTaskPage(row.ID)
+	if !ok || !reflect.DeepEqual(got, page) {
+		t.Fatalf("PlanTaskPage = (%#v, %v), want (%#v, true)", got, ok, page)
+	}
+	if len(e.calls(MethodPlanTasks)) != 1 || len(e.calls(MethodPlanTaskPage)) != 1 {
+		t.Fatalf("calls: PlanTasks=%d PlanTaskPage=%d", len(e.calls(MethodPlanTasks)), len(e.calls(MethodPlanTaskPage)))
+	}
+	var args PlanTaskPageArgs
+	if err := json.Unmarshal(e.calls(MethodPlanTaskPage)[0].Payload, &args); err != nil || args.ID != row.ID {
+		t.Fatalf("PlanTaskPage args = %+v, %v", args, err)
 	}
 }
