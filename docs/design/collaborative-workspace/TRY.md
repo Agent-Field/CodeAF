@@ -41,7 +41,7 @@ Live tmux proof: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue
 
 ## Wave 2 — discovery and instructions
 
-Status: **names frozen** on this branch. Live J09–J18 is t-w2-live, not this lane. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Use the wave-2 launch script once t-w2-ready cuts the immutable binary next to `releases/wave-2/`.
+Status: **integrated** on SHA `f2de6878de6ae54d60ff4f98d97cb9b8f766e416`. Live J09–J18 is `t-w2-live`, not done. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Use the wave-2 launch script only after `releases/wave-2/ready.json`.
 
 ### What you should see (frozen names)
 
