@@ -42,4 +42,4 @@ The owner explicitly requested branch-off-`santos/dev` (`7cda67c9`). Stay on `fe
 
 ## Journeys
 
-[`USER-JOURNEYS.md`](USER-JOURNEYS.md) is the owner acceptance contract (J01–J43). Every issue links its assigned IDs. Folders-entry is [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md). No silently omitted journey. [`TRY.md`](TRY.md) is the owner-facing playable recipe per completed wave.
+[`USER-JOURNEYS.md`](USER-JOURNEYS.md) is the owner acceptance contract (J01–J49). Every issue links its assigned IDs. Folders-entry is [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md). No silently omitted journey. [`TRY.md`](TRY.md) is the owner-facing playable recipe per completed wave.

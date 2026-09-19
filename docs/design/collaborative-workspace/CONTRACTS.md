@@ -1391,7 +1391,7 @@ New chat may start at Root (no folder selected) or in the selected folder (pendi
 - Bare `/folders` is `showPage(pageFolders)` — fate `opens the page` (`fatePlace`). Subcommands (`create`, `add`, `rename`, `nest`, `instruct`, `new`, optional `organize`) keep working and land on the place when they need a surface. `checkCommands` still refuses aliasing `/folders` to `/folder` `/place` `/dir`.
 - **Keep the home `folders` panel as enter-from.** Heading stays `folders`. Enter on the heading opens `pageFolders`. The place owns sequential drill-in of the graph; the panel is a summary door, not a second competing tree. Nil `Options.Folders` still uses `folders are not wired here`.
 - Snapshot on the home **and Folders-place beat**, never in `View`, never on a mere cursor move. No model, no disk, no API on paint.
-- 80-column sequential; `esc` back. Stable selection by object id + navigation path. Composer text retained (P12 / J06 / J43).
+- 80-column sequential was Folders-entry; **columns + pinned details** (below) supersede that layout on the Folders place. Stable selection by object id + navigation path. Composer text retained (P12 / J06 / J43 / J49).
 - Wave 1–4 `tui3.Folders` methods stay, in the same order. Additive methods and DTO:
 
 ```go
@@ -1473,3 +1473,176 @@ No model in render. Actual job launch, not a fake countdown or a synchronous LLM
 ## Isolation
 
 Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. `mktemp`. Run-unique tmux. Keys via `config.APIKeyAt` / e2e `liveKey`. Synthetic content only. Do not start `codeaf` against the owner's HOME.
+
+# Folders columns + reactive contracts
+
+Coordination freeze 19 September 2026 on Folders-entry SHA `7fb6a803edd9c29a10872ce90d87310728812641` (J36–J43 pass). Do **not** start from `06643b17`. This freeze names **Finder-style columns + pinned details** on the logical Folders place and **reactive organization** after explicit opt-in. Wave 1–4 and Folders-entry types, methods, iota values, origins, and person-facing spellings stay except where this section names a supersession. Amend only through a PlanDB note and a CONTRACTS.md patch. No GitHub issues, comments, or PRs. Do not write `releases/folders-entry/ready.json`.
+
+Inspected live code at this freeze (`feat/cw0918-rx-contracts` at `7fb6a803`): Folders place is sequential (`place_folders.go`); visible actions `New folder` `New chat` `Organize existing chats`; strip `c` is New folder and swallows `coordinate these`; `CreateFolder(name)` is always Root; Right on a place opens the verb strip (`placekeys.go`); organize runs on `standing.Interval` (5m) / `codeaf tick` with no enqueue wakeup; `organize_bind.go` `surveyExisting` recaps `Unfiled[0..]` at `organizeSurveyCap=8`; organize does not consult `v3StandingDailyRail`. Audit overlay: [`COMPLETE-UX-AUDIT.md`](COMPLETE-UX-AUDIT.md). Product-choice source: `FOLDER-FIRST-JOURNEY-AUDIT.md` §choices.
+
+**No second daemon. No filesystem mirroring.** `/folder` `/place` `/dir` stay physical. Logical graph is a DAG of stable IDs, not a cwd/tree. `observe_and_organize` stays the only organize job type. Navigation never calls the organizer.
+
+## Lane ownership (disjoint)
+
+Parallel after this freeze. One serial integrate. Same-SHA live TUI. Do not start a second Folders-place UI worker.
+
+| Lane | PlanDB | Owns | Must not edit |
+|---|---|---|---|
+| runtime | `t-rx-runtime` | `cmd/codeaf/organize_bind.go` (survey cursor >8, greeting/no-action refuse); `cmd/codeaf/chatv3_folders.go` enqueue + wakeup; `cmd/codeaf/chatv3_standing.go` organize DailyRail; `internal/session/organize_jobs.go` kick/coalesce/timings; `internal/wsapi/organize.go` `OrganizeThisChat` + enablement; `internal/wsapi` `CreateFolderIn`; `internal/workspace` job cursor/timing columns on the **existing** jobs table; `internal/config` `workspace.reactive`; RoleEmbed DailyRail reserve. Additive `cmd/codeaf/folders_adapter.go` methods that fill the new `tui3.Folders` doors. | `internal/tui3/**`, `folderadd.go`, `collabview.go` |
+| ui | `t-rx-ui` | `internal/tui3/place_folders.go`; **new** `internal/tui3/foldercolumns.go` + `foldercolumns_test.go`; **new** `internal/tui3/folderdetails.go` + `folderdetails_test.go`; `internal/tui3/folders.go` additive Folders methods + person-facing words; `internal/tui3/collabact.go` chord `g` / `Coordinate selected` (not `collabview.go`); F03 parent New folder; F05/J44–J48 columns+details; F08 Why+Undo compact line; F11/F14/F21 details; F12 `Manage this folder`; F13 chord; `Organize this chat` visible; Right vs strip; J49 stale-detail guard; place/home beat still snapshots, never View. | `cmd/codeaf/organize_bind.go`, `internal/tui3/folderadd.go`, `internal/tui3/collabview.go`, wsexec |
+| proof | `t-rx-proof` | `internal/e2e` harness + `internal/manual/chat` + TRY/amendment for **J44–J49** and F09/F10 first-user timings. Visible actions, not slash-typed as the pass. Measured enqueue/start/commit/visible. **Not** other packages' unit tests. | product logic |
+| add-old | `t-ux-add-old` | **new** `internal/tui3/folderadd.go` + `folderadd_test.go`. May add **one** Folders-place restable hook named below. | column/details rewrite of `place_folders.go`; `organize_bind.go`; `collabview.go` |
+| collab chrome | `t-ux-collab-chrome` | `internal/tui3/collabview.go` (F15 request/reply/sent paint) | `organize_bind.go`, column files |
+| exec | `t-ux-exec` | wsexec / tick LaunchOrJoin / `execact.go` revoke (F18/F19/F20) | organize jobs, `place_folders.go` |
+| integrate | `t-rx-integrate` | apply runtime+ui+proof onto `feat/collaborative-workspace-0918`; must ancestor `t-fe-live-tui3` | feature invention |
+| ux-integrate | `t-ux-integrate` | merge add-old + collab-chrome + exec onto the rx SHA | feature invention |
+| rx-validate | `t-rx-validate` | live columns + reactive on the rx SHA | F24 / whole F01–F24 |
+| ux-validate | `t-ux-validate` | live F01–F24 + affected J01–J49 on **one** SHA; blocks `t-fe-ready` | production except harness |
+
+`t-ux-add-old` waits on this freeze only for the named hook. `t-fe-ready` waits on `t-ux-validate`, not on this document.
+
+## Product choices (explicit defaults)
+
+Settled here. Lanes do not re-decide them.
+
+1. **Startup.** First visit of a fresh profile lands on **Folders Root** (not Home, not last-chat). Thereafter restore the last workspace view: last place, and if that place is Folders, the last navigation path (ancestor ids + selected id + selected path). Home overview stays reachable (`home`, `alt+1`).
+2. **Logical vs physical.** Show the actual repository / working directory when starting work, via existing project selection. Never map a folder name to a disk path. `/folder` unchanged.
+3. **Starting management.** `Manage this folder` from details opens an **ordinary** scoped chat with a goal composer and visible folder scope (current + future membership rule, allowed actions). If the person is already in a coordinating chat for that folder, reuse it. No planner/critic template. No manager entity.
+4. **Details priority** (draw in this order; omit a block that is empty — emptiness law; never a sentence saying it is empty): folder = name/purpose, current activity / needs-you, attached child folders, attached chats, coordinating chats, instructions (own, then inherited), Why/Undo/source **only** with real history; chat = title/excerpt, current status/work, folder placements + `also in `, Why/Undo/source, `Open chat`. No invented manager/decision types, fake counts, or model-derived details on selection. Loading/unavailable/offline are honest.
+5. **Archive / remove / stop.** `remove this placement` is one edge. Archive of a chat/folder is the existing put-away path, not remove. `pause coordination` and `stop work` stay two verbs. Confirm destructive archive/delete. No silent cascade onto the other kinds.
+6. **Shared ordering.** Stable per-container order (the parent). Same node identity across parents. Automatic additions **append** and must not reshuffle the selected row (restore by object id + navigation path).
+7. **Right vs verb-strip (one behavior per context).** On the Folders place, `→` **drills** and never opens the strip; `shift+→` opens the strip. Other places keep today's `→` strip (and home's column walk). Help names both. Details actions are also restable rows, so the strip is not required.
+
+## Product names (person-facing)
+
+Folders-entry names stay. Additive and superseded:
+
+| Surface | Spelling |
+|---|---|
+| Visible actions (not slash-only) | `New folder` · `New chat` · `Organize existing chats` · `Add existing chats` · `Organize this chat` · `Manage this folder` · `Coordinate selected` · `Open chat` |
+| Compact activity | `Added to Billing · Why · Undo` (folder name is the real collection name; omit the line when there is no committed change) |
+| Coordinate chord | **`g`** `Coordinate selected`. Supersedes Folders-place `c`/`coordinate these` (that `c` stays **New folder**). Same `g` on the home folders panel. |
+| New folder chord | **`c`** `New folder` (unchanged) |
+| Add existing chord | **`b`** `Add existing chats` |
+| Manage chord | **`d`** `Manage this folder` |
+| Organize this chat chord | **`t`** `Organize this chat` |
+| Undo chord | **`u`** `Undo` |
+| Why | **`w`** stays `why here` / compact `Why` |
+| Folders place `→` | drill to the next child column, or focus details for a leaf |
+| Folders place `←` | parent column; from details, back to the leaf's column |
+| Folders place `shift+→` | verb strip. Hint includes `shift+→ actions` |
+| Folders place `↑` `↓` | choose rows in the focused column |
+| Folders place Enter | folder: already-drilled focus stays; chat: open the existing full conversation. Esc returns without dropping composer |
+| Job progress | `queued` · `running` · `delayed` · `done` · `cancel` — never `checked`, never guessed percents, no toast/unread flood |
+| Opt-in setting | `workspace.reactive` — unset is **off** |
+
+If a visible-action chord collides, rename the chord, not the action. Record landed chords in the manual and TRY.md.
+
+## TUI (`internal/tui3`) — ui lane
+
+Miller columns over the **logical** membership graph, Finder screenshot as layout reference only.
+
+- **Wide:** Root column → selected folder's children → deeper children as space permits → **pinned** details. Selecting a folder reveals its children in the next column. Selecting a chat previews it in details; Enter opens the existing full chat. Keep the selected ancestor path visible/highlighted. If depth exceeds width, horizontally window older ancestor columns and show a breadcrumb. Never squash unlimited columns into one list.
+- **Narrow / 80-col:** one readable navigation column, breadcrumb, switchable details view. Preserve selected object/path when resizing back to wide (J48).
+- Shared folder/chat is one stable ID at multiple placements, not duplicated history. Navigation path is separate from identity. `also in ` links; selecting the same shared node from a different parent preserves **that** path (J45). Deduplicate rollups.
+- Snapshot on the Folders-place beat (and after a mutation), never in View, never on a cursor move. No model, no disk, no API on paint. Optional empty panels disappear.
+- **J49:** every async detail request carries `selectedID` + `selectedPath` + generation. A result that does not match the current selection is dropped. Graph updates rewrite affected columns/details in place; do not teleport selection, do not auto-open a generated folder, do not drop composer.
+- **F03:** visible `New folder` is one action. Parent is the folder the person is standing in (open / selected folder row). At Root with no folder selected, parent is empty. Cancel the name box = no mutation. Implementation calls `CreateFolderIn`, not Root `CreateFolder` plus a later nest the person never asked for.
+- **F12:** details restable `Manage this folder` (`d`) — ordinary chat, visible scope, no manager row type.
+- **F13:** marked chats + `Coordinate selected` (`g`). Fifth unmarked chat stays excluded. Existing-chat reuse; no history merge.
+- **Organize this chat** (`t`) is visible on the current chat's details (and the strip). Repeated click coalesces.
+- **Add existing chats** hook (exactly one, for `t-ux-add-old`):
+
+```go
+const folderAddExistingWord = "Add existing chats"
+
+// beginFolderAdd is the one Folders-place door t-ux-add-old fills.
+// Defined in folderadd.go. Absent file ⇒ the restable row is absent
+// (capability absent, not a broken button).
+func (a *app) beginFolderAdd() tea.Cmd
+```
+
+Restable stop word is `Add existing chats`. `t-rx-ui` preserves this stop when columns land; `t-ux-add-old` must not rewrite column/details beyond that single call.
+
+- Home `folders` panel stays enter-from. It does not grow a second column browser.
+- Mouse where the existing TUI already supports it. Global tab-bar (`alt+1`…`alt+8`) unchanged. Details actions have an accessible focus route (restable rows; Tab into the details pane).
+
+Additive on `tui3.Folders` **after** `CancelOrganize`, same order. Wiring's adapter must compile `var _ tui3.Folders`:
+
+```go
+// CreateFolderIn is visible New folder. Empty parentID is Root.
+// Non-empty creates and nests in one store transaction (no Root orphan).
+CreateFolderIn(ctx context.Context, name, parentID string) (FolderView, error)
+
+// OrganizeThisChat is visible Organize this chat. CoalesceKey is
+// session.OrganizeCoalesceKey(conversationID, latest source revision).
+OrganizeThisChat(ctx context.Context, conversationID string) (FolderOrganize, error)
+
+// FolderChange is the compact activity line. Empty means draw nothing.
+type FolderChange struct {
+    Action, FolderName, CollectionID, RefID string
+}
+```
+
+`CreateFolder(name)` stays Root-only for `/folders create` without a parent. Nil seam: new methods refuse `folders are not wired here`, never silent success.
+
+Undo is **not** a new store verb: details `Undo` calls existing `RemovePlacement` with `OriginPerson` so J11 suppression holds.
+
+## Organize door + jobs — runtime lane
+
+Do **not** invent a second scheduler, vector DB, job type, or dummy production adapter. Reuse `observe_and_organize` / `internal/wsdiscover` / `session.ProcessOrganizeJobs` / `v3OrganizePass` / `codeaf tick`. `standing.Interval` (5m) remains crash/restart fallback, not the happy-path wake.
+
+```go
+const KeyWorkspaceReactive = "workspace.reactive" // unset = off
+
+func (s *Service) CreateFolderIn(ctx context.Context, name, parentID string) (Folder, error)
+func (s *Service) OrganizeThisChat(ctx context.Context, conversationID string) (OrganizeView, error)
+```
+
+**Enablement.** `workspace.organize` unset remains **on** (pipeline allowed) as Folders-entry. `workspace.reactive` unset is **off**. Visible **Organize existing chats** that successfully enqueues writes `workspace.reactive=on` (opt-in). Do not infer consent from collection count. Manual `New folder` does not opt in. `Organize this chat` is targeted and does **not** by itself opt the workspace in. Off does not delete placements. Automatic after-message graph writes run only when **both** organize and reactive are on. Related-work discovery stays read-only when reactive is off. Fresh Root still shows a sent conversation with **no** generated folders for a greeting.
+
+**Wakeup.** On `EnqueueJob` success and after a `FinishJob` that committed a membership change, kick **one** `v3OrganizePass` through the existing standing pass lock (same constructor as the Interval ticker). Coalesce: at most one in-flight pass plus one dirty follow-up. No goroutine per keystroke, no unbounded workers. Explicit click is urgent in that kick but **cannot** bypass DailyRail, pause, cancellation, or authority. `workspace.organize` off still skips automatic chat:rev jobs; explicit `organize_existing` and `OrganizeThisChat` still run (same Folders-entry explicit law).
+
+**Cross-process UI.** Same-process: the kick may bump the existing Folders-place / home beat. Other windows: existing beat + `RootSnapshot.Revision` short poll. No new fsnotify daemon. No model/disk on render.
+
+**Survey checkpoint (F09).** `organizeSurveyCap=8` is a **per-lease slice**, not a wall. Persist a cursor on the existing jobs row (`workspace.Job.Cursor` additive column, not a new table). Next lease continues after that cursor, including no-action pages. Restart resumes. Never rescan `Unfiled[0..]` forever while eight no-action chats sit in front.
+
+**Greeting / no-action.** Tiny, empty, greeting, and `PlanNoAction` must not `CreateFolder`. That is success without a graph write.
+
+**Coalesce.** Message bursts: latest source revision supersedes stale pending work for that chat (`OrganizeCoalesceKey`). Stale plan must not apply (source revision check stays). Archive/pause semantics unchanged.
+
+**DailyRail + cost.** Organize RoleOrganize **and** RoleEmbed reserve on the same daily rail as standing (`v3StandingDailyRail`). If that rail is exhausted, finish `deferred` and paint `delayed` — organize must not spend after standing is blocked. Fold RoleEmbed into session Account usage when the seam exists; otherwise still reserve the rail and do not imply embeddings are unmetered. Instrument:
+
+| Instant | Who writes | What it is |
+|---|---|---|
+| enqueue | runtime, on `EnqueueJob` | `EnqueuedAt` |
+| start | runtime, on successful lease | `StartedAt` |
+| commit | runtime, on `FinishJob` after apply | `CommittedAt` |
+| visible | ui proof, when the beat draws the new membership | not stored |
+
+Scheduler delay = start − enqueue. Model latency = commit − start. No unsupported wall-clock promise in the product or the manual.
+
+**First-user sequence the runtime+ui together owe (proof measures):** clean logical Root → first sent chat visible, no generated folders → **Organize existing chats** starts promptly while typing/reply stay responsive → useful first folders/placements appear without waiting five minutes → a later meaningful chat links the same way → Why/Undo durable, chat identity intact → **Organize this chat** targeted rerun → bursts/stale/cancel/archive/budget/offline/restart/cross-window do not duplicate or interrupt. Include a no-op greeting and a >8 unfiled/no-action backlog.
+
+## Tests the lanes owe before handoff
+
+- ui: J44 wide Root>folder>subfolder + pinned details; J45 two paths one identity + Also in; J46 preview then full open/return; J47 truthful actionable details; J48 80/wide resize + windowing + help names `→` drill and `shift+→` strip; J49 selection/path/composer + stale detail dropped; F03 New folder nests in one action; `c` New folder and `g` Coordinate selected both reachable; `Add existing chats` hook preserved; no model on paint; package tests here, not in proof.
+- runtime: wakeup on enqueue (not 5m-only); survey cursor past 8; greeting creates no folder; OrganizeThisChat coalesces; reactive unset does not auto-CreateFolder; Organize existing chats sets reactive on; DailyRail blocks organize; timings enqueue/start/commit present; compile-time `var _ tui3.Folders`; no second daemon; no FakeEmbedder in production.
+- proof: executable J44–J49 + F09/F10; measured scheduler vs model; actual tmux wide+80col pane evidence (filesystem `/folder` shots do not count); TRY/manual. Live F24 stays `t-ux-validate`.
+
+## Journeys this freeze names (proof owns the harness)
+
+| ID | Observable |
+|---|---|
+| J44 | Wide Root → folder → subfolder columns + pinned details |
+| J45 | Shared object via two paths, one identity, Also in; path preserved |
+| J46 | Chat preview in details, Enter opens full existing chat, return keeps path |
+| J47 | Folder instructions/activity/attachments truthful and actionable |
+| J48 | Narrow/wide resize, deep-path windowing, keyboard/help (`→` drill, `shift+→` actions) |
+| J49 | Async graph updates preserve selection/path/composer; stale detail cannot overwrite |
+
+J36–J43 remain required. F01–F24 remain required; this freeze does not weaken them.
+
+## Isolation
+
+Same as Folders-entry. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. `mktemp`. Run-unique tmux. Keys via `config.APIKeyAt` / e2e `liveKey`. Synthetic content only. Do not start `codeaf` against the owner's HOME. Do not write `ready.json` from this lane.

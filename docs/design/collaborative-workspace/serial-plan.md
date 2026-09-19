@@ -181,7 +181,7 @@ Feature switch: profile row `workspace.organize` (unset currently **on**). Off p
 
 ### 2.10 Do not optimize for a manual folder demo
 
-Wave 1 is a usable folder TUI because later AI has to land *somewhere*. Semantic discovery, collaboration, and safe execution are issues 2–4. All J01–J35 remain required. Folders-entry adds J36–J43.
+Wave 1 is a usable folder TUI because later AI has to land *somewhere*. Semantic discovery, collaboration, and safe execution are issues 2–4. All J01–J35 remain required. Folders-entry adds J36–J43. Columns + reactive adds J44–J49.
 
 ---
 
@@ -223,8 +223,9 @@ For every issue:
 | 3 | Inspectable collaboration: ordinary chats coordinate, with optional shared discussion | Existing chat coordinates selected chats via direct, fan-out, and optional joint discussion; inspect and intervene; offline then resume delivers once | 1–2 |
 | 4 | Safe execution: launch-or-join, authority, and unattended recovery | Collaboration can launch or join work without duplicate implementation; pause vs stop; tick while TUI closed; both task roads | 1–3 |
 | Folders-entry | Dedicated logical Folders place and explicit Organize existing chats | Tab-bar word `folders`; `/folders` enters the place; fresh tab does not auto-populate; J36–J43 | product refinement after 1–4, **not** a fifth GitHub issue |
+| Columns + reactive | Miller columns + pinned details; event-wakeup organize after explicit opt-in | `→` drills / `shift+→` strip; `c` New folder / `g` Coordinate selected; `workspace.reactive`; J44–J49 | freeze in CONTRACTS.md; not a GitHub issue |
 
-Full bodies: `issue-1.md` … `issue-4.md`, then [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md). Journeys: J01–J43 in `USER-JOURNEYS.md`. Internal release ordinal is 5 only for `ready.json` later; do not overwrite `releases/wave-{1,2,3,4}/`.
+Full bodies: `issue-1.md` … `issue-4.md`, then [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md). Journeys: J01–J49 in `USER-JOURNEYS.md`. Internal release ordinal is 5 only for `ready.json` later; do not overwrite `releases/wave-{1,2,3,4}/`.
 
 ---
 

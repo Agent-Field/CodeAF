@@ -2,7 +2,7 @@
 
 **Owner acceptance contract · 18 September 2026**
 
-The owner requires four serial waves, each playable in the real TUI, plus the Folders-entry refinement (J36–J43). Collectively, these journeys cover the agreed experience from the conversation and the PRD/TDD—not just a happy-path demonstration of each component. This checklist supplements `PRD-TDD.md`, the four issue bodies, [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md), and the supervising architecture corrections. A journey is not complete because its UI exists or a model says it worked.
+The owner requires four serial waves, each playable in the real TUI, plus the Folders-entry refinement (J36–J43) and the columns + reactive freeze (J44–J49). Collectively, these journeys cover the agreed experience from the conversation and the PRD/TDD—not just a happy-path demonstration of each component. This checklist supplements `PRD-TDD.md`, the four issue bodies, [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md), [`COMPLETE-UX-AUDIT.md`](COMPLETE-UX-AUDIT.md), and the supervising architecture corrections. A journey is not complete because its UI exists or a model says it worked.
 
 ## How completion is proved
 
@@ -93,7 +93,22 @@ Product refinement after Wave 4, not a fifth GitHub issue. Freeze: [`CONTRACTS.m
 | J42 | Click Organize existing chats twice; quit/reopen mid-job; cancel; exhaust budget or take the organizer down. | Repeated click while queued/running is idempotent. Restart resumes. States `queued` `running` `delayed` `done` `cancel` are honest. Never `checked`. Manual corrections stick. |
 | J43 | Browse Folders at wide and 80 columns; change membership from another window while composing. | Sequential navigation; selection by object id + path; composer retained. No jump to another chat. |
 
-**Folders-entry gate:** J36–J43 plus affected earlier journeys. Production-state assertions, not word matching alone. Live tmux is `t-fe-validate`, not the proof lane’s pass.
+**Folders-entry gate:** J36–J43 plus affected earlier journeys. Production-state assertions, not word matching alone. Live tmux is `t-fe-validate`, not the proof lane’s pass. Base SHA for columns + reactive work: `7fb6a803edd9c29a10872ce90d87310728812641`.
+
+## Columns + reactive — Miller columns, details, event-driven organize
+
+Product freeze: [`CONTRACTS.md`](CONTRACTS.md) Folders columns + reactive. Does not replace J36–J43 or F01–F24.
+
+| ID | User journey and actions | Observable result and supporting assertion |
+|---|---|---|
+| J44 | Wide terminal: Root → Billing → Receipts columns, then the pinned details pane. | Ancestor columns stay visible/highlighted. Details pin on the right. Unlimited columns are windowed, never squashed. No filesystem tree. |
+| J45 | Place the same folder or chat under two parents; open it through both paths. | One identity and history. `also in ` names the other placement. The current navigation path is the one just walked. Rollups are not doubled. |
+| J46 | Select a chat so details preview it; Enter opens the full existing conversation; return. | Preview is cached snapshot, not a model call. Full open is the existing chat. Return restores the column path and composer. |
+| J47 | Select a folder; inspect instructions, attachments, activity, coordinating chats; use a visible action. | Details are truthful records. Empty blocks omitted. `Manage this folder`, Why, Undo, `Organize this chat` are discoverable. No manager entity. |
+| J48 | Resize 80-col ↔ wide on a deep path; use keyboard; read help. | 80-col is one navigation column + breadcrumb + switchable details. Path survives resize. `→` drills; `shift+→` opens the verb strip; help says so. |
+| J49 | While composing, another window’s organize commit updates the graph; a stale detail reply arrives after a new selection. | Selection, path, and composer hold. No teleport to a generated folder. Stale detail is dropped. |
+
+**Columns + reactive gate:** J44–J49 plus F09/F10 first-user timings. Live tmux is `t-rx-validate`. F01–F24 live on one SHA is `t-ux-validate`, which blocks `t-fe-ready`.
 
 ## Coverage map
 
@@ -108,7 +123,7 @@ Product refinement after Wave 4, not a fifth GitHub issue. Freeze: [`CONTRACTS.m
 | P9 collaboration launches work without duplicate ownership | J27–J33 |
 | P10 source, actor, scope, history, authority | J05, J10–J15, J22–J24, J26, J29–J31, J34 |
 | P11 hundreds of chats without management overload | J07, J18, J25, J34 |
-| P12 stable selection/composer | J06–J07, J35, J43 |
+| P12 stable selection/composer | J06–J07, J35, J43, J49 |
 | A1–A3 | J03, J02, J09 + J28 |
 | A4–A8 | J09 + J18, J12 + J18, J10, J10 + J13 + J29, J11 |
 | A9–A12 | J06 + J13 + J29, J28, J26 + J29 + J30, J23 |

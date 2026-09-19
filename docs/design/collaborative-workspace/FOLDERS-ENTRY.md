@@ -4,7 +4,7 @@
 
 **Contracts:** [`CONTRACTS.md`](CONTRACTS.md) Folders-entry section is the freeze. This page is the short amendment later lanes and TRY point at.
 **Plan:** [`serial-plan.md`](serial-plan.md) §2.1 (superseded).
-**Journeys:** [`USER-JOURNEYS.md`](USER-JOURNEYS.md) **J36–J43** plus affected J01–J35.
+**Journeys:** [`USER-JOURNEYS.md`](USER-JOURNEYS.md) **J36–J43** plus **J44–J49** (columns + reactive) and affected J01–J35.
 **Owner:** Folders is a dedicated registered place on the Home tab bar. The old no-eighth-tab-bar-place law is withdrawn.
 
 ---
@@ -21,8 +21,10 @@ A person reaches logical Folders from the Home tab bar without treating it as a 
 - Visible keyboard actions, not slash-only: **New folder**, **New chat**, **Organize existing chats**. New chat may start at Root or the selected folder.
 - Empty folder *list* and Root unfiled chats are **two truths**. Never draw “no folders yet”; never hide unfiled chats by pretending the tab is empty of work.
 - Background organize reuses `observe_and_organize` / wsdiscover / standing tick. Honest `queued` `running` `delayed` `done` `cancel`. No second scheduler, no model on paint.
-- 80-column sequential; stable selection by object id + path; composer retained.
+- 80-column sequential was the Folders-entry layout. **Columns + pinned details** supersede it on the Folders place (CONTRACTS.md Folders columns + reactive). Stable selection by object id + path; composer retained.
 - Home `folders` panel **stays as enter-from** (heading `folders`; enter opens the place).
+- Distinct chords: `c` is **New folder**; `g` is **Coordinate selected**. On this place `→` drills; `shift+→` opens the verb strip.
+- **Organize existing chats** opts the workspace into reactive organization (`workspace.reactive`). No second daemon. No filesystem mirror.
 
 This is a usable Folders *entry*, not a schema bump. Wave 1–4 interfaces stay.
 
@@ -38,4 +40,4 @@ This is a usable Folders *entry*, not a schema bump. Wave 1–4 interfaces stay.
 - Do not set `HOME` or touch `~/.codeaf`.
 - Do not invent a GitHub issue/PR for this refinement.
 
-Exact signatures, person-facing strings, and file owners: CONTRACTS.md Folders-entry.
+Exact signatures, person-facing strings, and file owners: CONTRACTS.md Folders-entry and Folders columns + reactive.

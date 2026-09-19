@@ -172,11 +172,7 @@ Do **not** prove only one `CODEAF_TASK_BELT` road. Pause vs stop are two verbs.
 
 ## Folders-entry — dedicated logical Folders place
 
-Status: **harness committed, not live yet.** J36–J43 executable procedure is
-`internal/e2e/folders_entry_e2e_test.go` plus untagged needles and production-state
-tests. Live tmux+model is `t-fe-validate`. Do not treat Wave 1’s “`/folders` focuses
-that panel” as current product law. Visible-action chords are not recorded here until
-ui lands them; the contracted digits are below.
+Status: **live J36–J43 on** `7fb6a803edd9c29a10872ce90d87310728812641` (do not start from `06643b17`). Executable procedure remains `internal/e2e/folders_entry_e2e_test.go` plus untagged needles. Columns + reactive (J44–J49) is a later freeze on that SHA — see below. Do not treat Wave 1’s “`/folders` focuses that panel” as current product law.
 
 **Do not** use wave-1…4 immutable binaries to prove this. Do not overwrite `releases/wave-{1,2,3,4}/`. Isolated `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`.
 
@@ -187,6 +183,21 @@ ui lands them; the contracted digits are below.
 3. Fresh workspace: heading `folders` plus `logical groups of chats · /folders create Billing` — never “no folders yet”. Unfiled chats still show at Root. No generated folders until **New folder** or **Organize existing chats**.
 4. Visible **New folder**, **New chat**, **Organize existing chats** — not slash-only. New chat at Root or the selected folder. Esc before send creates nothing. Optional `/folders organize` is the same survey, never the only door.
 5. **Organize existing chats** starts a real background `observe_and_organize` job (`organize_existing`). Person-facing progress: `queued` `running` `delayed` `done` `cancel`. Chat stays usable.
-6. Upgrade keeps existing placements. 80-col sequential; selection and composer survive.
+6. Upgrade keeps existing placements. Selection and composer survive 80-col and wide.
 
 Wave 1–4 launches stay for those waves’ verified SHAs.
+
+## Columns + reactive — Miller columns and event-driven organize
+
+Status: **contracts frozen, not implemented.** Freeze: `CONTRACTS.md` Folders columns + reactive on base `7fb6a803`. Live tmux is `t-rx-validate`. Do not treat filesystem `/folder` Miller columns as this place. Do not write `ready.json` from a contracts SHA.
+
+Isolated `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`.
+
+### What you should see (frozen names)
+
+1. Wide: Root column → folder children → deeper children as space permits → pinned details. 80-col: one navigation column, breadcrumb, switchable details. Path survives resize.
+2. `→` drills (next column, or details for a leaf). `←` returns. `shift+→` opens the verb strip (`shift+→ actions` in the hint). Other places keep `→` = strip.
+3. `c` is **New folder** (parent = the folder you are in). `g` is **Coordinate selected**. `b` **Add existing chats**. `d` **Manage this folder**. `t` **Organize this chat**. `u` **Undo**. `w` Why.
+4. First visit of a fresh profile lands on Folders Root. Later opens restore the last workspace view. Home stays `alt+1`.
+5. Fresh Root shows a sent chat and does **not** invent topic folders for a greeting. **Organize existing chats** opts into `workspace.reactive`. After that, a meaningful new message organizes in the background without waiting five minutes; the reply does not wait. Compact `Added to Billing · Why · Undo`. No toast flood, no guessed percents.
+6. Shared object, two paths, one identity, `also in `. Navigation does not call the organizer. `/folder` still a directory.
