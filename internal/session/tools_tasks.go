@@ -69,7 +69,7 @@ import (
 // stated once, on the page's own routing table, rather than once per tool here —
 // eighteen descriptions each carrying their own routing clause is the same table
 // written eighteen times and billed on every request of every turn.
-const tasksDescription = "Find tasks. A finished task is asked about with `tasks` and is never redone or rechecked by hand. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop; say may be ignored. Never WAIT for handed-off work. Search includes other windows' live work as `another window`, without a reachable id."
+const tasksDescription = "Find tasks. A finished task is asked about with `tasks` and is never redone or rechecked by hand. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop; say may be ignored. Never to WAIT for handed-off work. Search includes other windows' live work as `another window`, with no id here."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
