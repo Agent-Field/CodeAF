@@ -342,16 +342,16 @@ func namesSomethingFindable(word string) bool {
 // nobody wrote. AN UNBALANCED COUNT OF EITHER QUOTE IS THAT CUT, and a clause
 // carrying one is dropped rather than compared.
 //
-// AND A CLAUSE HOLDING ANY OF [shellComposition] IS NOT ONE SIMPLE COMMAND, which
-// is the same reading [commandLike] already makes of a span before it will call
-// it a check. The constant is reused rather than respelled for the reason it was
-// made a constant in the first place (task_audit.go): one question with two
-// answers is two questions.
+// AND A CLAUSE THE SHELL WOULD READ AS MORE THAN ONE COMMAND IS NOT ONE SIMPLE
+// COMMAND, which is the same reading [commandLike] already makes of a span
+// before it will call it a check. The reader is shared rather than respelled for
+// the reason the constant was made a constant in the first place
+// (task_audit.go): one question with two answers is two questions.
 func wholeClause(clause string) bool {
-	if strings.ContainsAny(clause, shellComposition) {
-		return false
-	}
-	return strings.Count(clause, "'")%2 == 0 && strings.Count(clause, `"`)%2 == 0
+	// ONE READER ([firstCompositionOutsideQuotes]): it refuses a quotation left
+	// open as well, which is the cut described above.
+	_, composed := firstCompositionOutsideQuotes(clause)
+	return !composed
 }
 
 // checkClauses cuts a done-condition into the separate things it asks for. A

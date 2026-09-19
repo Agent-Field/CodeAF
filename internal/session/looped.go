@@ -391,6 +391,8 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 	ok := false
 	observed := 0
 	batchFresh := material
+	batchCalls := make(map[string]bool, len(calls))
+	batchFailures := make(map[string]bool, len(calls))
 	for index, call := range calls {
 		// ── A FAILURE THE HARNESS WROTE IS NOT THE MODEL REPEATING ITSELF ──
 		//
@@ -409,9 +411,13 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 		observed++
 		batchFresh = w.count(call, results, index) || batchFresh
 		signature := callSignature(call)
-		w.recent = append(w.recent, signature)
-		if len(w.recent) > loopWindow {
-			w.recent = w.recent[len(w.recent)-loopWindow:]
+		firstCallThisAttempt := !batchCalls[signature]
+		batchCalls[signature] = true
+		if firstCallThisAttempt {
+			w.recent = append(w.recent, signature)
+			if len(w.recent) > loopWindow {
+				w.recent = w.recent[len(w.recent)-loopWindow:]
+			}
 		}
 		run := w.trailingRun(signature)
 
@@ -431,7 +437,7 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 			repair, refused = argumentRepair(results[index].text)
 		}
 		switch {
-		case refused:
+		case refused && firstCallThisAttempt:
 			if run >= loopInvalidRepeats && !ok && w.speakAbout(signature) {
 				found, ok = nudge{
 					call: call, tool: call.Function.Name, count: run,
@@ -443,7 +449,7 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 				// hysteresis exactly as a nudge of its own would have.
 				w.named[errorSignature(results[index].text)] = true
 			}
-		case run >= loopRepeats && !ok && w.speakAbout(signature):
+		case firstCallThisAttempt && run >= loopRepeats && !ok && w.speakAbout(signature):
 			found, ok = nudge{call: call, tool: call.Function.Name, count: run}, true
 		}
 
@@ -451,6 +457,10 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 			continue
 		}
 		failure := errorSignature(results[index].text)
+		if batchFailures[failure] {
+			continue
+		}
+		batchFailures[failure] = true
 		w.errors[failure]++
 		if count := w.errors[failure]; count >= loopRepeats && !ok && w.speakAbout(failure) {
 			found, ok = nudge{call: call, tool: call.Function.Name, count: count, failing: true}, true

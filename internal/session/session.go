@@ -2544,6 +2544,9 @@ type Agent struct {
 	// woken turn owes the request its result belongs to, not whatever was typed
 	// most recently — see [Agent.turnAsk].
 	owedAsks []owedAsk
+	// landingOutcomes are owed landing reports returned in this turn. They are
+	// completion evidence, not another part of the person's ask.
+	landingOutcomes []string
 	// turnResults are the tasks whose RESULTS ARRIVED IN THIS TURN, by id, in
 	// arrival order and cleared with owedAsks when a turn opens.
 	//

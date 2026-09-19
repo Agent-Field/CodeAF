@@ -76,6 +76,9 @@ type PlanTaskRow struct {
 	// TrajectoryPath is the file the task's steps are recorded in, for a reader
 	// that wants the record itself and not only its length.
 	TrajectoryPath string
+	// Folder is the run copy this row works in. A surface says it once in the
+	// page head and may omit only a leading change into this exact directory.
+	Folder string
 }
 
 // PlanTaskNote is one note on a task's page: what was said, who said it, and
@@ -106,6 +109,9 @@ type PlanTaskPage struct {
 	PlanModel   string
 	Questions   []PlanTaskQuestion
 	Description string
+	Result      string
+	Checks      []string
+	Folder      string
 	Notes       []PlanTaskNote
 	Steps       []PlanStep
 	// Live is the step the task is running right now — the same reading
@@ -167,7 +173,9 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	// counted nothing on any real run and its row wore no progress.
 	root := store.RootID()
 	for _, task := range tasks {
-		rows = append(rows, planTaskRow(store, dir, task, spend, live))
+		row := planTaskRow(store, dir, task, spend, live)
+		row.Folder = a.config.Workspace
+		rows = append(rows, row)
 		if task.ID == root {
 			applyPlanRootProgress(&rows[len(rows)-1], tasks, root)
 		}
@@ -199,6 +207,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	depths := map[string]int{task.ID: -1}
 	for _, child := range all {
 		row := planTaskRow(store, dir, child, spend, live)
+		row.Folder = a.config.Workspace
 		rows[child.ID] = row
 		depth, under := depths[child.ParentID]
 		if !under || child.ID == task.ID {
@@ -241,6 +250,9 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		PlanModel:   planModel,
 		Questions:   a.planTaskQuestions(),
 		Description: task.Description,
+		Result:      task.Result,
+		Checks:      append([]string(nil), task.Checks...),
+		Folder:      a.config.Workspace,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
 		Children:    children,

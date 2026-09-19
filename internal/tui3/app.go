@@ -1739,6 +1739,7 @@ type app struct {
 	// (chattabs.go's [tabBar] states the whole of why).
 	chatTabBar     tabBar
 	workTabOn      bool
+	railTaskPlanOn bool
 	workTabSettled string
 	tabView        tabViewport
 	// tabShut is the conversations whose TAB has been dismissed — the whole of
@@ -4742,7 +4743,7 @@ func (a *app) paint() tea.Cmd {
 	// reason: a page left open on a running task follows its newest step
 	// ([app.taskPlanFollow]), and a page on a settled task is not read at all —
 	// the clock stops with the task, one row down.
-	a.taskPlanFollow()
+	kick = tea.Batch(kick, a.taskPlanFollow())
 	// A TOOL THAT HAS JUST ENDED IS ASKED ABOUT ON THIS FRAME, not at the next
 	// tenth ([app.usageOwed]) — the ask alone, because nothing else on this
 	// beat has moved with it. ONLY WHILE THE WORK IS STILL RUNNING: the ask is

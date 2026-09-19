@@ -342,6 +342,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.taskPlanReadingKey(msg.String()) {
 		return nil
 	}
+	if a.railTaskPlanOn {
+		cmd := a.taskPlanKey(msg)
+		if !a.taskSheet.planOn {
+			a.railTaskPlanOn = false
+		}
+		return cmd
+	}
 	if a.workTabOn {
 		return a.workTabKey(msg)
 	}

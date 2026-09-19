@@ -187,6 +187,33 @@ func TestARepeatWithWorkBetweenIsNotALoop(t *testing.T) {
 
 // ── the error rule ──────────────────────────────────────────────────────────
 
+// Calls made side by side are one attempt, and only an unchanged answer across
+// attempts is the same failure. This replays the measured three-by-three refusal.
+func TestParallelSiblingsAndChangedFailuresAreNotRepeatedAttempts(t *testing.T) {
+	watch := newLoopWatch()
+	for round, answer := range []string{
+		`Invalid arguments: checks must each be ONE command with no shell composition`,
+		`Invalid arguments: a quoted argument was refused`,
+		`Invalid arguments: checks need a different shape`,
+	} {
+		calls := make([]ai.ToolCall, 3)
+		results := make([]toolResult, 3)
+		for sibling := range calls {
+			calls[sibling] = ai.ToolCall{
+				ID: fmt.Sprintf("round-%d-sibling-%d", round, sibling),
+				Function: ai.ToolCallFunction{
+					Name:      "propose_task",
+					Arguments: fmt.Sprintf(`{"brief":"sibling %d"}`, sibling),
+				},
+			}
+			results[sibling] = toolResult{text: answer, isError: true}
+		}
+		if got, fired := watch.observe(calls, results, true); fired {
+			t.Fatalf("round %d was called a repeat: %+v", round+1, got)
+		}
+	}
+}
+
 // The same failure three times is a loop even when the model varies the call.
 func TestTheSameErrorThreeTimesIsNudged(t *testing.T) {
 	steps := []step{}
