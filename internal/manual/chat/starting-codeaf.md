@@ -142,8 +142,8 @@ comes home the ordinary way. The run's row ends `incomplete` and says
 conversation's spend ceiling. A task that was cut part way through reads `incomplete` too.
 
 The dollar limit on a run is the conversation's spend ceiling, not `--max-cost`. A run
-that reaches it lets the work already going finish, because that money is already
-committed; a time limit cannot wait, so it ends that work.
+that reaches it ends the work still going and says `a limit you set stopped it`, just
+as when its elapsed-time limit is up.
 
 ## Leaving it running on its own · leaving a headless run going with a budget · --once yolo · no screen · unattended · overnight · nobody watching
 
