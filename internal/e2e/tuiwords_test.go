@@ -257,6 +257,58 @@ var tuiWords = map[string]tuiWord{
 		screen: "choose a folder to work in · type a path to browse",
 		why:    "`/folder` `/place` `/dir` is the filesystem chooser on /help; `/folders` is a different command",
 	},
+	"collabMarkWord": {
+		screen: "mark this chat",
+		why:    "Wave 3 folders-row `k` verb. Marking is a convenience; natural-language coordinate these is the primary path",
+	},
+	"collabUnmarkWord": {
+		screen: "unmark this chat",
+		why:    "the same `k` verb once that chat is already marked",
+	},
+	"collabCoordinateWord": {
+		screen: "coordinate these",
+		why:    "Wave 3 `c` verb and the primary spoken path. An existing ordinary chat becomes the management conversation",
+	},
+	"collabNeedChatWord": {
+		screen: "coordinate from this chat · or say coordinate these",
+		why:    "c with no current conversation: refuse, never a dummy success",
+	},
+	"collabMarkedWord": {
+		screen: "marked",
+		why:    "a folders-panel member that was marked as a convenience says so on the row",
+	},
+	"collabRequestWord": {
+		screen: "request",
+		why:    "direct pattern activity. Live must see a private ask, not infer it from a group demo",
+	},
+	"collabReplyWord": {
+		screen: "reply",
+		why:    "the source-linked answer to a direct request",
+	},
+	"collabSentWord": {
+		screen: "sent",
+		why:    "fan-out activity: one update delivered separately, one receipt per recipient",
+	},
+	"collabSourceWord": {
+		screen: "source",
+		why:    "activity lines name the cited chat; machinery words accepted/recorded/processed are never painted",
+	},
+	"collabCouldNotMark": {
+		screen: "could not mark that chat",
+		why:    "a Mark failure is a visible note, never silent success",
+	},
+	"collabCouldNotUnmark": {
+		screen: "could not unmark that chat",
+		why:    "an Unmark failure is a visible note, never silent success",
+	},
+	"collabCouldNotCoord": {
+		screen: "could not coordinate these",
+		why:    "CoordinateMarked failure is a visible note, never a dummy management chat",
+	},
+	"collabNoStandWord": {
+		screen: "stand on a chat · then mark it",
+		why:    "k with no conversation id: refuse rather than mark nothing",
+	},
 	"foldMoreWord": {
 		screen: " more",
 		why:    "every panel's fold counts what it stands over — `14 more` — and is a toggle, not a door",
