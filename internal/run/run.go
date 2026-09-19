@@ -512,9 +512,12 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	// ending the store carries — a cancellation that landed while the worker
 	// ran, which the same write cleared the claim and cascaded down — is the
 	// one that stands, and no Done or Fail of this run may speak over it. The
-	// report is dropped whole, spend included: a worker stopped mid-flight
-	// hands back no account this run counts. The completion check below still
-	// runs, because the cancellation may be the write that finished the tree.
+	// report's words and its steps are dropped: a worker stopped mid-flight
+	// hands back no work this run counts. ITS DOLLARS ARE NOT DROPPED. What a
+	// run counts as spent never goes down and includes every paid call whatever
+	// way its task ended, because a person's limit is about dollars and not
+	// about how the work came out. The completion check below still runs,
+	// because the cancellation may be the write that finished the tree.
 	delete(s.cancels, ret.task.ID)
 	if ret.report.Waiting {
 		// A PARKED RETURN IS NOT AN ENDING. The worker called `plandb wait`; the
@@ -528,11 +531,7 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		return
 	}
 	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
-		// WHAT WAS COUNTED ON THE WAY IS TAKEN BACK, so the rule above reads the
-		// same with a dollar limit as without one: a worker whose task the store
-		// cancelled under it hands back no account this run counts.
-		s.spent -= s.counted[ret.task.ID]
-		s.forgetLive(ret.task.ID)
+		s.settleSpend(ret)
 		s.completeTree()
 		return
 	}

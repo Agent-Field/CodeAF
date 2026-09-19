@@ -195,3 +195,65 @@ func TestAWorkerReportingSpendWhileTheRunDrainsDoesNotHoldTheRunOpen(t *testing.
 		t.Fatalf("spend reports made = %d, want all 64", got)
 	}
 }
+
+// WHAT A RUN COUNTS AS SPENT NEVER GOES DOWN, and it includes every paid call
+// whatever way its task ended. A person's limit is about dollars, not about how
+// the work came out: a task the store cancelled under its worker hands back no
+// work the run counts, and its dollars were still paid. With a limit the run
+// has already counted them on the way and must not take them back at the
+// return; without one the return is where they are counted.
+func TestSpendOfAWorkerWhoseTaskTheStoreCancelledStaysInTheRunsCount(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		limit float64
+	}{
+		{name: "with a dollar limit", limit: 100},
+		{name: "with no dollar limit", limit: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, err := plandb.Open(t.TempDir()+"/plan.json", "cancelled-spend", "root", "root", "cancel one task part way")
+			if err != nil {
+				t.Fatalf("open store: %v", err)
+			}
+			defer store.Close()
+			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "peer", Title: "peer", ParentID: store.RootID()}}); err != nil {
+				t.Fatalf("add peer: %v", err)
+			}
+			peerPaid := make(chan struct{})
+			var paidOnce atomic.Bool
+			factory := func(task plandb.Task) Worker {
+				if task.ID == "peer" {
+					return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
+						bankSpend(ctx, 0.30)
+						if paidOnce.CompareAndSwap(false, true) {
+							close(peerPaid)
+						}
+						<-ctx.Done()
+						return Report{Result: "late", Steps: 4, USD: 0.30}, ctx.Err()
+					})
+				}
+				return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
+					select {
+					case <-peerPaid:
+					case <-ctx.Done():
+						return Report{}, ctx.Err()
+					}
+					// Already cancelled on a wake of the root: the first cancellation stands.
+					_, _ = store.Cancel("peer", "stopped by hand")
+					return Report{Result: "the root's word"}, nil
+				})
+			}
+			supervisor := NewSupervisor(store, t.TempDir(), 2, Limits{CostUSD: test.limit}, factory)
+			supervisor.Run(context.Background())
+			if peer := store.Task("peer"); peer == nil || peer.Status != plandb.StatusCancelled {
+				t.Fatalf("peer = %#v, want cancelled by the store", peer)
+			}
+			if supervisor.spent != 0.30 {
+				t.Fatalf("run spend = %v, want the cancelled task's 0.30 counted exactly once", supervisor.spent)
+			}
+			if supervisor.steps != 0 {
+				t.Fatalf("run steps = %d, want none of the cancelled task's steps", supervisor.steps)
+			}
+		})
+	}
+}
