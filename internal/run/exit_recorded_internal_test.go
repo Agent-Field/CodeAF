@@ -97,3 +97,39 @@ func runRealBashStep(t *testing.T, ground, command string) session.Event {
 	}
 	return session.Event{Kind: kind, Tool: "bash", Args: string(args), Output: text}
 }
+
+// A NEW BUILD CUT OFF BEFORE ITS ENDING IS REFUSED HOLDS. The run stamped its
+// opening line, then the checker's only attempt was refused (a step with no
+// exit) and the run was cut off before any ending (issue 1224, the window
+// closed mid-run). The opening stamp still marks the record new, so the store
+// refuses a holds verdict rather than fall back to reading.
+func TestANewBuildCutOffBeforeItsEndingIsRefusedHolds(t *testing.T) {
+	const check = "grep vault walls.md"
+	store, err := plandb.Open(filepath.Join(t.TempDir(), "plan.json"), "run-test", "root", "The run", "drive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "review", Title: "check: leaf", Role: plandb.RoleCheck, Checks: []string{check}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Claim("review", "review"); err != nil {
+		t.Fatal(err)
+	}
+	storeDir := filepath.Dir(store.Path())
+	// The run stamps its opening line before any step, through the product's own
+	// append, so a record cut off after it is still known to be new.
+	if err := appendTrajectory(storeDir, "review", Step{Kind: trajectoryBeginKind, ExitsRecorded: true}); err != nil {
+		t.Fatalf("append the opening line: %v", err)
+	}
+	rec := stepRecorder{store: store, storeDir: storeDir, taskID: "review", children: childrenOf(store, "review")}
+	// A harness refusal: the command never ran, so the recorder writes a step
+	// with no exit at all. No ending line follows: the run was cut off.
+	refused := session.Event{Kind: session.EventToolFailed, Tool: "bash", HarnessMade: true, Args: `{"command":"grep vault walls.md"}`, Output: "refused: the check did not run"}
+	if err := rec.record(1, refused); err != nil {
+		t.Fatalf("record the refused step: %v", err)
+	}
+	if _, err := store.Done("review", "review", "holds: the acceptance is met", nil, nil); err == nil {
+		t.Fatal("a new build cut off before its ending earned holds by reading")
+	}
+}

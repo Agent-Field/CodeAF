@@ -114,13 +114,44 @@ func TestCheckVerdictBasisTreatsAnAbsentExitAsUnknown(t *testing.T) {
 	const check = "grep vault walls.md"
 	checkTask := &Task{TaskSpec: TaskSpec{ID: "review", Role: RoleCheck, Checks: []string{check}}}
 
-	t.Run("an old record with no exit reads as a reading that holds", func(t *testing.T) {
+	t.Run("a genuinely old record with no marker holds by reading and names what it did not observe", func(t *testing.T) {
 		store := planOpen(t, filepath.Join(t.TempDir(), "plan.db"))
 		defer store.Close()
 		writeTrajectoryLines(t, store, "review", `{"kind":"step","step":1,"command":"grep vault walls.md"}`)
 		basis, earned := store.checkVerdictBasis(checkTask)
 		if !earned || basis.Kind != "reading" {
-			t.Fatalf("an old trajectory with no exit read as %#v earned=%v, want a reading that holds", basis, earned)
+			t.Fatalf("an old record read as %#v earned=%v, want a reading that holds", basis, earned)
+		}
+		if len(basis.Unobserved) != 1 || basis.Unobserved[0] != check {
+			t.Fatalf("reading basis unobserved = %#v, want the declared check %q", basis.Unobserved, check)
+		}
+	})
+
+	t.Run("a new build that observed no run refuses holds", func(t *testing.T) {
+		store := planOpen(t, filepath.Join(t.TempDir(), "plan.db"))
+		defer store.Close()
+		// The build recorded exits, so its ending line is stamped, but the declared
+		// check has no zero-exit run: holds is refused rather than falling back to
+		// reading, which is the state an old record cannot be told apart from.
+		writeTrajectoryLines(t, store, "review",
+			`{"kind":"step","step":1,"command":"grep vault walls.md"}`,
+			`{"kind":"end","exits_recorded":true}`)
+		if _, earned := store.checkVerdictBasis(checkTask); earned {
+			t.Fatal("a new build that never ran the declared check earned holds by reading")
+		}
+	})
+
+	t.Run("a new build cut off before its ending refuses holds", func(t *testing.T) {
+		store := planOpen(t, filepath.Join(t.TempDir(), "plan.db"))
+		defer store.Close()
+		// The opening line marks the record new; the run was cut off before any
+		// ending and the declared check has no recorded exit, so holds is refused
+		// rather than read as old (issue 1224, the window closed mid-run).
+		writeTrajectoryLines(t, store, "review",
+			`{"kind":"begin","exits_recorded":true}`,
+			`{"kind":"step","step":1,"command":"grep vault walls.md"}`)
+		if _, earned := store.checkVerdictBasis(checkTask); earned {
+			t.Fatal("a new build cut off before its ending earned holds by reading")
 		}
 	})
 

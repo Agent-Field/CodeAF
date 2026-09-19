@@ -37,8 +37,13 @@ func recordDeclaredCheck(t *testing.T, store *plandb.Store, task plandb.Task) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("make check trajectory directory: %v", err)
 	}
-	line := fmt.Sprintf("{\"kind\":\"step\",\"step\":1,\"command\":%q}\n", task.Checks[0])
-	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), []byte(line), 0o600); err != nil {
+	// A real check run stamps its opening line as a build that records exits,
+	// then records the declared command it ran with a zero exit. Only the first
+	// declared check is recorded, so a leaf that declares more than one exercises
+	// the gate that a holds verdict needs every declared command to have run.
+	lines := "{\"kind\":\"begin\",\"exits_recorded\":true}\n" +
+		fmt.Sprintf("{\"kind\":\"step\",\"step\":1,\"command\":%q,\"exit_code\":0}\n", task.Checks[0])
+	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), []byte(lines), 0o600); err != nil {
 		t.Fatalf("write check trajectory: %v", err)
 	}
 }
