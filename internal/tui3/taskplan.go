@@ -983,7 +983,16 @@ func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
 // one key that holds the task, named beside the enter clause the foot already
 // draws ([tasksPlace.hint] reaches them). A key nobody can find is a key that
 // does not exist, so both are said where a person reads what a row can do.
+//
+// A TASK THAT HAS ENDED IS OFFERED NEITHER. The store refuses to cancel or hold
+// work that is done or incomplete, so a foot that named both keys under a
+// finished task was two offers that could only be refused, on every finished
+// page a person opened.
 func (a *app) tasksPlanKeyWords(status string) []string {
+	switch planStateWord(status) {
+	case "done", "incomplete":
+		return nil
+	}
 	words := []string{tasksPlanCancelWord}
 	if strings.TrimSpace(status) == "paused" {
 		return append(words, tasksPlanResumeWord)
@@ -1228,12 +1237,8 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 // by [hintFit], so `esc back` is kept last and the clause a narrow frame drops
 // first is the scroll.
 func (a *app) taskPlanKeys() string {
-	parts := []string{"↑↓ scroll", "enter send", tasksPlanCancelWord}
-	if strings.TrimSpace(a.taskSheet.plan.Row.Status) == "paused" {
-		parts = append(parts, tasksPlanResumeWord)
-	} else {
-		parts = append(parts, tasksPlanPauseWord)
-	}
+	parts := []string{"↑↓ scroll", "enter send"}
+	parts = append(parts, a.tasksPlanKeyWords(a.taskSheet.plan.Row.Status)...)
 	parts = append(parts, taskCardBackWord)
 	return strings.Join(parts, railSep)
 }

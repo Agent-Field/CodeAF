@@ -186,7 +186,9 @@ this conversation's plan**, so a task another chat spawned is never reachable:
 - **priority** — set a task's priority through the store's revision verb.
 
 `x` and `p` are read only over an **empty box**: the moment there is a note to
-type, a letter is a letter.
+type, a letter is a letter. A task that has ended, `done` or `incomplete`, is offered
+neither: its row and its page name no `x stop it` and no `p pause`, because the store
+would refuse both.
 
 Two refusals are this layer's own, and they are the words the pane reads back:
 
