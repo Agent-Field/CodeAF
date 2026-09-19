@@ -7,9 +7,9 @@ with the folder you are standing in browsable in columns. It also answers to `/p
 `/dir`, because people arrive with three different words for the same thing.
 
 **This is not `/folders`.** `/folder` (singular), `/place` and `/dir` pick a directory this
-conversation is about. `/folders` (plural) is a different command: it focuses home's
-`folders` panel of chat groups and is not an alias of `/folder`. Membership there does not
-change which directory `/folder` named.
+conversation is about. `/folders` (plural) is a different command: it enters the logical
+Folders place (`alt+5`) and is not an alias of `/folder`. Home's `folders` panel is
+enter-from. Membership there does not change which directory `/folder` named.
 
 ```
 /folder            the sheet, opened on the folder this conversation is about

@@ -46,21 +46,21 @@ conversation is laid out at the full width of the terminal, running work still d
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
 session has tasks to come back to and no running-turn line owns that slot.
 
-**Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
-standing, memory, spend, search and settings. Four are on the tab bar — `home  tasks
-spend  settings` — and `tab` walks those; `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) jump
-straight to any of the seven from wherever you are standing — a place or a conversation —
+**Eight places take the whole frame instead of sharing it**, at every width: home, tasks,
+spend, settings, folders, standing, memory and search. Five are on the tab bar — `home  tasks
+spend  settings  folders` — and `tab` walks those; `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump
+straight to any of the eight from wherever you are standing — a place or a conversation —
 and each
 has commands of its own (`/home`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
-deliberately not one of the seven — it is something you do to this conversation rather than
+deliberately not one of the eight — it is something you do to this conversation rather than
 a room in the machine.
 
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
 
 Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
-naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule, the place's own count or note, the
+naming the five (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule, the place's own count or note, the
 **composer** with its scope chip (`here ~/codeaf`) at the right of the box row, and the
 hint line last. See the **Places** page.
 
@@ -2811,10 +2811,10 @@ back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 ## alt or option or opt — how the chords are spelled on a Mac, on Linux and on Windows, and why not the option symbol
 
 **It is one key and two spellings, and codeaf picks the spelling from the platform it is
-running on.** On macOS every chord is drawn with `opt+` — `opt+1`…`opt+7`, `opt+.`,
+running on.** On macOS every chord is drawn with `opt+` — `opt+1`…`opt+8`, `opt+.`,
 `opt+enter`, `opt+g`, `opt+q`, `opt+s`, `opt+w`, `opt+o` — because the key that Mac keycap
 calls **option** is the key you press. On Linux, on Windows, and everywhere else the same
-chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint line, the key
+chords are drawn `alt+1`…`alt+8`, `alt+.`, `alt+enter` and so on. Every hint line, the key
 map, the composer layer's rows and the key sheet `/help` draws read that one spelling, so
 what is on your screen is what is on your keyboard.
 
@@ -2847,7 +2847,7 @@ appears under the list:
 
 It names the terminal you are actually in, it is said once, and the first real chord that
 arrives retires it for the rest of the session. The first-run setup says the same thing ahead
-of time, as a condition rather than a diagnosis: `the seven places answer opt+1…opt+7 · if opt types
+of time, as a condition rather than a diagnosis: `the eight places answer opt+1…opt+8 · if opt types
 a character instead, turn on "use option as meta" in …`.
 
 **`alt+b` and `alt+f` do not retire it, and that is deliberate.** iTerm2's Natural Text
@@ -3682,7 +3682,7 @@ nothing for it to open — `nothing made yet.` from `/files`, or
 `no subharnesses here yet — a subharness is a saved program for work that comes round
 again.` from `/subharness`. None of them is ever sent to the model.
 
-The **seven places** are not among them: `/standing`, `/history` and `/memory` open their
+The **eight places** are not among them: `/standing`, `/history` and `/memory` open their
 page whatever is in it and let the page say so, rather than writing a line here (the Places
 page states the law).
 

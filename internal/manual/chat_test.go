@@ -202,6 +202,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"also in two folders", "collections"},
 		{"nest receipts under billing", "collections"},
 		{"saved chats", "collections"},
+		// Folders-entry: dedicated place, not only a home panel.
+		{"folders tab", "places"},
+		{"is there an eighth place", "places"},
+		{"organize existing chats", "collections"},
+		{"alt+5 folders", "places"},
+		{"new folder on the folders place", "collections"},
+		{"does /folders open a directory", "collections"},
+		{"fresh folders tab empty", "collections"},
+		{"no folders yet", "collections"},
 		// Wave 2: automatic organization and inherited instructions, asked in
 		// the words somebody types after the denials came out of the corpus.
 		{"does it file chats automatically", "collections"},
@@ -249,7 +258,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I preview a file before attaching it", "choosing-a-folder"},
 		{"what happens when a folder is too big to show every file", "choosing-a-folder"},
 		// THE CHAT STRIP ON A SMALL OR CROWDED FRAME. These words distinguish it
-		// from the seven-place bar and make the terminal floor discoverable.
+		// from the place bar and make the terminal floor discoverable.
 		{"scroll the tab bar", "screen"},
 		{"why did my tabs disappear on a small terminal", "screen"},
 		// SAVED CONVERSATION IDENTITIES, asked for the two bounds the pages owe:
