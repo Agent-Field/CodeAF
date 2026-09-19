@@ -389,7 +389,17 @@ func (c *backgroundThenFinalCompleter) CompleteWithMessages(ctx context.Context,
 	}
 }
 
+var leafEndProcessProbe = syscall.Kill
+
 func TestLeafEndTerminatesSurvivorsAndNotesCount(t *testing.T) {
+	originalProbe := leafEndProcessProbe
+	leafEndProcessProbe = func(pid int, signal syscall.Signal) error {
+		err := originalProbe(pid, signal)
+		t.Logf("original process probe after leaf end: %v; forcing reused PID observation", err)
+		return nil
+	}
+	defer func() { leafEndProcessProbe = originalProbe }()
+
 	space := workspace(t)
 	client := &backgroundThenFinalCompleter{space: space}
 	linear := NewLinear(client, space, nil, 5, 1_000_000, time.Minute)
