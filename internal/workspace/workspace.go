@@ -42,8 +42,13 @@ type Ref struct {
 }
 
 type Collection struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Purpose   string `json:"purpose,omitempty"`
+	Lifecycle string `json:"lifecycle,omitempty"`
+	Revision  int    `json:"revision,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // Validate checks the reference shape without asking an execution owner to
