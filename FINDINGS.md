@@ -7,3 +7,5 @@ Known before implementation: rail clicks currently flow through `openRailRoom` t
 The implementation seam is the rail gesture: try the existing task-page reader there and only fall back to the room when the store has no page. The page state already owns escape/back behavior; frame rendering must consume cached page state only.
 
 The committed c295 tests fail at the intended seam: neither click nor enter reads `PlanTaskPage`, and no page survives to paint. The rail page needs an explicit conversation-overlay latch rather than the settling work tab, while reusing `taskSheetPlan` and `taskPlanKey`.
+
+The first implementation compile exposed one missing standard-library import only (`strconv` for the rail number). No design change is needed.

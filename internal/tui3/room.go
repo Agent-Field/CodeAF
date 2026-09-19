@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -1110,6 +1111,12 @@ func (a *app) openRoomFor(id uint64, title string) {
 // the page or replace its draft, scroll position and live subscription.
 func (a *app) openRailRoom(node *taskNode) {
 	if node == nil || a.roomStandingOn(node) {
+		return
+	}
+	// A plan-backed rail row opens the store page at the gesture. The page is
+	// kept as conversation state, so later frames only paint this reading.
+	if a.taskSheetPlan(strconv.FormatUint(node.id, 10)) == nil && a.taskSheet.planOn {
+		a.railTaskPlanOn = true
 		return
 	}
 	if node.run != "" {

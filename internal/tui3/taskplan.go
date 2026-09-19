@@ -1423,7 +1423,7 @@ func (a *app) taskPlanFollow() {
 // ended, or one a person has held, takes the page off the clock: a held task is
 // dispatching nothing and a settled one never will again.
 func (a *app) taskPlanRunning() bool {
-	if !a.taskSheet.detailOn || !a.taskSheet.planOn {
+	if a.railTaskPlanOn || !a.taskSheet.detailOn || !a.taskSheet.planOn {
 		return false
 	}
 	return planStateWord(a.taskSheet.plan.Row.Status) == "running"
