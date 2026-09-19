@@ -324,14 +324,9 @@ func (a *Agent) openBeltRunStore(g *TaskGraph, path, rootID, title, brief string
 	// A FINISHED PLAN IS NOT A LIVE ONE. The store is archived beside the
 	// session with its own number and a fresh one is seeded under this run.
 	_ = adopted.Close()
-	for suffix := 1; ; suffix++ {
-		archived := fmt.Sprintf("%s.%d", path, suffix)
-		if _, err := os.Stat(archived); os.IsNotExist(err) {
-			if err := os.Rename(path, archived); err != nil {
-				return nil, nil, err
-			}
-			break
-		}
+	archived := fmt.Sprintf("%s.%d", path, len(planArchivePaths(path))+1)
+	if err := os.Rename(path, archived); err != nil {
+		return nil, nil, err
 	}
 	store, err := plandb.Open(path, title, rootID, title, brief, plan.chat)
 	return plan, store, err
@@ -645,4 +640,21 @@ func (a *Agent) beltRunStandsOn(stand taskStand) bool {
 	a.beltMu.Lock()
 	defer a.beltMu.Unlock()
 	return a.beltRun != nil && a.beltRun.ground == canonicalPath(stand.dir)
+}
+
+// planArchivePaths names the ended run stores beside path in oldest-run-first
+// order. The run door uses the same naming read pages use, so archive creation
+// and discovery cannot drift apart.
+func planArchivePaths(path string) []string {
+	var paths []string
+	for suffix := 1; ; suffix++ {
+		archived := fmt.Sprintf("%s.%d", path, suffix)
+		if _, err := os.Stat(archived); os.IsNotExist(err) {
+			break
+		} else if err != nil {
+			break
+		}
+		paths = append(paths, archived)
+	}
+	return paths
 }
