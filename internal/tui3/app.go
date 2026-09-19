@@ -2920,6 +2920,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// replay and above the door's own notice, and the hints that wait on this
 	// directory having an earlier conversation can see the welcome's list.
 	a.noticeEvent(eventBoot)
+	a.showUnreadProfileKeys(opts.UnreadProfileKeys)
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
 	}

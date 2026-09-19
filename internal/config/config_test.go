@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -533,11 +534,18 @@ func TestLoadWarnsOnceForEveryUnreadTopLevelProfileKey(t *testing.T) {
 	if first.Model != DefaultModel {
 		t.Fatalf("nested model changed resolution: got %q, want %q", first.Model, DefaultModel)
 	}
+	if got, want := first.UnreadProfileKeys, []string{"models", "typo.key"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unread profile keys = %v, want %v", got, want)
+	}
 	if got, ok := persistedString(dir, KeyChatModel); !ok || got != "flat/model" {
 		t.Fatalf("consumed flat key resolved as %q, %v", got, ok)
 	}
-	if _, err := LoadKeyless(); err != nil {
+	second, err := LoadKeyless()
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(second.UnreadProfileKeys, first.UnreadProfileKeys) {
+		t.Fatalf("second unread profile keys = %v, want %v", second.UnreadProfileKeys, first.UnreadProfileKeys)
 	}
 	got := output.String()
 	if strings.Count(got, "unread top-level config key(s)") != 1 {

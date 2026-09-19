@@ -470,8 +470,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// than to this door, and [runSurface] (chatv3_surface.go) is where every
 	// door gets them.
 	err = runSurface(ctx, tui3.Options{
-		Agent: agent,
-		Build: buildinfo.String(),
+		Agent:             agent,
+		Build:             buildinfo.String(),
+		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
 		// The memory place and the search place read the SAME database the
 		// conversation remembers into, through two seams that fail apart: memory
 		// turned off in the settings opens no store at all and both are then

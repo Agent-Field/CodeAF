@@ -1,6 +1,9 @@
 package tui3
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -607,4 +610,26 @@ func (a *app) lastAnswerRunes() int {
 // build time out because rebuilding unchanged source must not repeat old news.
 func buildStamp() string {
 	return buildinfo.Revision()
+}
+
+// showUnreadProfileKeys uses the notice ledger for a profile-scoped, set-scoped
+// conversation note. The keys are the config loader's result; this layer only
+// identifies and renders that result.
+func (a *app) showUnreadProfileKeys(keys []string) {
+	if len(keys) == 0 || !a.notices.enabled {
+		return
+	}
+	encoded, err := json.Marshal(keys)
+	if err != nil {
+		return
+	}
+	digest := sha256.Sum256(encoded)
+	id := "unread-profile-config-keys-" + hex.EncodeToString(digest[:])
+	if a.notices.retired(id) {
+		return
+	}
+	a.notices.ledger.show(id)
+	a.notices.ledger.retire(id)
+	a.notices.save()
+	a.note("config.json keys are not read: " + strings.Join(keys, ", ") + "; models fell back to defaults.")
 }

@@ -697,3 +697,21 @@ func TestBringingAConversationBackCorrectsTheHeldWorldToo(t *testing.T) {
 		t.Fatal("the row came back on the engine's disk and stayed away on the screen")
 	}
 }
+
+func TestHostedWelcomeCarriesUnreadProfileKeysToSurface(t *testing.T) {
+	workspace := t.TempDir()
+	agent := v3TrackedAgent(t, workspace)
+	loop, err := remote.Loopback(remote.Hello{Version: remote.Version, Workspace: workspace}, remote.Options{
+		Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{Agent: agent, Workspace: workspace, UnreadProfileKeys: []string{"models"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	options, _ := hostOptions(onePipeFleet("devbox", loop.Client), loop.Client.Welcome(), false)
+	if got := options.UnreadProfileKeys; len(got) != 1 || got[0] != "models" {
+		t.Fatalf("hosted unread keys = %v", got)
+	}
+}

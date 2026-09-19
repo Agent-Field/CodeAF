@@ -737,6 +737,9 @@ type Options struct {
 	// about to take over.
 	Notice string
 
+	// UnreadProfileKeys names config.json keys the profile loader did not consume.
+	UnreadProfileKeys []string
+
 	// ContextWindow is how many tokens the model this session starts on
 	// accepts, as the door could resolve it. It feeds the status line's meter;
 	// zero draws no meter, because a percentage of an unknown means nothing.
