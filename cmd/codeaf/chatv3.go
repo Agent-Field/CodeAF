@@ -2376,6 +2376,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		return reported(err)
 	}
 	agent.SetReasoning(level)
+	defer session.CloseUsage()
 	if notice != "" {
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
 	}
