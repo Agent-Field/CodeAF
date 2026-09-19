@@ -757,13 +757,19 @@ func planNamesOf(rows []tasksMineRow, chat string) map[string]bool {
 // spawn, or one whose store has gone, leaves the list where it was rather than
 // raising a page of blanks.
 func (a *app) taskSheetPlan(id string) tea.Cmd {
+	a.openTaskSheetPlan(id)
+	return nil
+}
+
+// openTaskSheetPlan reports whether this gesture found and opened a stored page.
+func (a *app) openTaskSheetPlan(id string) bool {
 	agent, ok := a.planReader()
 	if !ok {
-		return nil
+		return false
 	}
 	page, ok := agent.PlanTaskPage(id)
 	if !ok {
-		return nil
+		return false
 	}
 	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
 	a.taskSheet.planBriefFull = false
@@ -779,7 +785,7 @@ func (a *app) taskSheetPlan(id string) tea.Cmd {
 	// door for the same reason).
 	a.taskSheet.awayOwner = tasksAwayOwner{}
 	a.touch()
-	return nil
+	return true
 }
 
 // closeTaskPlan backs out one layer to the list, which is the card's own `esc`.
