@@ -3141,8 +3141,10 @@ policy would still stop and ask about is refused outright. A character that join
 or expands commands (a pipe, `&&`, `;`, a redirection, a dollar, a backtick) refuses the
 entry when the shell would act on it, and is plain text inside a single-quoted argument: a
 search pattern holding a bar, in single quotes, is one command. Inside double quotes a
-dollar, a backtick and a backslash still refuse it, because the shell still expands them
-there. The refusal names the character and says what passes:
+dollar and a backtick still refuse it, because the shell still expands them there. A
+backslash inside double quotes makes the character after it plain text, so an escaped
+quote or an escaped bar there is still one command. A backslash outside quotes, or one
+that ends the line, refuses it. The refusal names the character and says what passes:
 `Invalid arguments: checks must each be ONE rerunnable command: "|" joins, redirects or
 expands commands in "<the check>". Such a character may stand only inside a single-quoted
 argument, where it is text`. The checker's own shell reads a command the same way, so a

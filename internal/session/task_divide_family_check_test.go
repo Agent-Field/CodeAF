@@ -404,6 +404,10 @@ func TestTwoPartsSharingMakeSureTheTestsStillPassAreAdmitted(t *testing.T) {
 // both parts and is one command in neither. Refusing on it is a division lost
 // over a piece of text nobody wrote.
 func TestTwoQuotedCommandsThatDifferInsideTheQuotesAreAdmitted(t *testing.T) {
+	const escapedBar = `ssh spark "cd /home/santosh/src/doe/peer/c341/profile/v3/projects/-home-santosh-src-trees-c341/9749744049d6cbce/trees/1 && git grep -n 'dialTimeout\|waitForHostQuietly\|func Dial' -- internal/enginehost"`
+	if !wholeClause(escapedBar) {
+		t.Fatalf("wholeClause refused one intact command: %q", escapedBar)
+	}
 	nest := newDivideNest(t, wideBrief, 0)
 	answer := nest.divide(t, divideArgsFor(wideEvidence,
 		dividePart{Title: "alpha", Summary: "s", Brief: "write a",
