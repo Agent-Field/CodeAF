@@ -3225,6 +3225,9 @@ type railLine struct {
 	roomSection int
 
 	text string
+	// plan is the stored task this line is a row of, when it is one of a run's
+	// own rows: a press on it opens that task's page ([app.openRailPlan]).
+	plan string
 	// entry indexes [app.railEntries], or -1 for the padding and the footer.
 	entry int
 	// head says this is the entry's FIRST line, which is the one a marker goes
@@ -3544,6 +3547,90 @@ func (a *app) railEntryMoving(e railEntry) bool {
 	return false
 }
 
+// railDrawnView is the column AS IT IS DRAWN: [app.railView] with a run's own
+// rows put in their place. IT IS THE ONE ANSWER TO "WHAT IS ON THIS SCREEN ROW",
+// for the frame and for the pointer alike. The rows used to be spliced in by the
+// frame alone, so a press was answered out of the view from before the splice:
+// with a run on the rail every row below its first was somebody else's, and a
+// press on a task opened nothing or opened its neighbour.
+func (a *app) railDrawnView(height int) ([]railLine, int) {
+	view, focus := a.railView(height)
+	if len(view) == 0 {
+		return nil, focus
+	}
+	// A RUN PLAN IS THE TASKS PLACE'S TREE, not a second rail renderer. The
+	// reading paints every plan row; this column only gives those fitted rows
+	// their place in its existing tasks section.
+	if plan := a.tasksFiltered().planRailRows(a.railRoom(), a.pal); len(plan) > 0 {
+		// THE TITLES COME OUT OF THE READING THE PLACE ALREADY HOLDS, never out
+		// of the store: this is a frame, and a frame never reads the disk. The
+		// reading is refreshed on the paint clock ([tasksPlace.regroup]).
+		//
+		// A NODE ROW GIVES WAY ONLY TO A PLAN ROW THAT IS DRAWN. The reading
+		// leaves the run's own row to the node that carries it (one piece of
+		// work, one row: [planRowShown]), and this column used to drop that node
+		// row as well because the STORE held its title, so a run was drawn as its
+		// parts with nothing over them. The node row stays, and the run's rows
+		// hang under it, which is where a tree's rows go.
+		drawn, owner := make(map[string]bool), make(map[string]bool)
+		for _, row := range plan {
+			drawn[row.title] = true
+		}
+		for _, row := range a.taskSheet.mine.plan {
+			if strings.TrimSpace(row.Parent) == "" {
+				owner[planTitleFor(row.Title)] = true
+			}
+		}
+		entries := a.railEntries()
+		nodeOf := func(line railLine) *taskNode {
+			if line.entry < 0 || line.entry >= len(entries) {
+				return nil
+			}
+			return entries[line.entry].node
+		}
+		// under is the last line of the node row the run hangs under, or -1 when
+		// no row on the column carries the run: the rows then take the place they
+		// always had, ahead of the first entry.
+		under := -1
+		for i, line := range view {
+			if node := nodeOf(line); node != nil && owner[planTitleFor(node.label)] && !drawn[strings.TrimSpace(node.label)] {
+				under = i
+			}
+		}
+		planLines := make([]railLine, 0, len(plan))
+		for _, row := range plan {
+			planLines = append(planLines, railLine{text: row.text, entry: -1, plan: row.id})
+		}
+		next := make([]railLine, 0, len(view)+len(plan))
+		inserted := false
+		for i, line := range view {
+			if under < 0 && !inserted && line.entry >= 0 {
+				next = append(next, planLines...)
+				inserted = true
+			}
+			if node := nodeOf(line); node != nil && drawn[strings.TrimSpace(node.label)] {
+				continue
+			}
+			next = append(next, line)
+			if i == under {
+				next = append(next, planLines...)
+				inserted = true
+			}
+		}
+		if !inserted {
+			next = append(append([]railLine{}, planLines...), next...)
+		}
+		if len(next) > height {
+			next = next[:height]
+		}
+		for len(next) < height {
+			next = append(next, railLine{entry: -1})
+		}
+		view = next
+	}
+	return view, focus
+}
+
 // railRows draws the roster to exactly height rows, or nil when there is none.
 //
 // The rows sit at the TOP of the column: the conversation grows upward from the
@@ -3562,48 +3649,9 @@ func (a *app) railRows(height int) []string {
 	if a.railStowed() {
 		return a.railGripRows(height)
 	}
-	view, focus := a.railView(height)
+	view, focus := a.railDrawnView(height)
 	if len(view) == 0 {
 		return nil
-	}
-	// A RUN PLAN IS THE TASKS PLACE'S TREE, not a second rail renderer. The
-	// reading paints every plan row; this column only gives those fitted rows
-	// their place in its existing tasks section.
-	if plan := a.tasksFiltered().planRows(a.railRoom(), a.pal); len(plan) > 0 {
-		// THE TITLES COME OUT OF THE READING THE PLACE ALREADY HOLDS, never out
-		// of the store: this is a frame, and a frame never reads the disk. The
-		// reading is refreshed on the paint clock ([tasksPlace.regroup]).
-		titles := make(map[string]bool)
-		for _, row := range a.taskSheet.mine.plan {
-			titles[strings.TrimSpace(row.Title)] = true
-		}
-		entries := a.railEntries()
-		next := make([]railLine, 0, len(view)+len(plan))
-		inserted := false
-		for _, line := range view {
-			if !inserted && line.entry >= 0 {
-				for _, text := range plan {
-					next = append(next, railLine{text: text, entry: -1})
-				}
-				inserted = true
-			}
-			if line.entry >= 0 && line.entry < len(entries) && entries[line.entry].node != nil && titles[strings.TrimSpace(entries[line.entry].node.label)] {
-				continue
-			}
-			next = append(next, line)
-		}
-		if !inserted {
-			for at := len(plan) - 1; at >= 0; at-- {
-				next = append([]railLine{{text: plan[at], entry: -1}}, next...)
-			}
-		}
-		if len(next) > height {
-			next = next[:height]
-		}
-		for len(next) < height {
-			next = append(next, railLine{entry: -1})
-		}
-		view = next
 	}
 	// THE SEAM IS A SEAM AND NOT A BORDER, so it is drawn only where there is
 	// something on the other side of it. Over the body there is nothing to the
@@ -3750,7 +3798,7 @@ func (a *app) railEntryAt(y int) (railEntry, bool) {
 // where those landed is a fact only the layout has.
 func (a *app) railLineAt(y int) (railLine, bool) {
 	y -= a.topHeight()
-	view, _ := a.railView(a.viewHeight())
+	view, _ := a.railDrawnView(a.viewHeight())
 	if y < 0 || y >= len(view) {
 		return railLine{}, false
 	}
@@ -4243,8 +4291,7 @@ func (a *app) railEnter() tea.Cmd {
 	if at < 0 || entries[at].node == nil {
 		return nil
 	}
-	a.openRailRoom(entries[at].node)
-	return a.takeRoomPump()
+	return a.openRailRoom(entries[at].node)
 }
 
 // ── the footer ──────────────────────────────────────────────────────────────

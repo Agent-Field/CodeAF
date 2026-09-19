@@ -973,6 +973,7 @@ func TestPlanDisplayCommandOmitsOnlyALeadingChangeIntoTheNamedFolder(t *testing.
 		{"other folder", "cd /tmp/other && go test ./internal/tui3", "cd /tmp/other && go test ./internal/tui3"},
 		{"not leading", "printf before && cd '/tmp/the run copy' && printf after", "printf before && cd '/tmp/the run copy' && printf after"},
 		{"no following command", "cd '/tmp/the run copy'", "cd '/tmp/the run copy'"},
+		{"several lines", "cd '/tmp/the run copy' && cat > README.md <<'EOF'\n# calc\nEOF", "cat > README.md <<'EOF' …"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := planDisplayCommand(tc.command, folder); got != tc.want {
