@@ -611,8 +611,10 @@ would be two rankings that could disagree.
 `/search` (and `alt+8`) uses the same hybrid ranking as conversation search.
 Type emailed receipt links or a purchase confirmation PDF and the original
 authenticated-access passage still ranks, even when it never used those words.
-Rows that only restate what you just typed are not that original. A short
-correction and a buried note in a mixed-topic chat stay findable.
+You do not have to phrase it as a question. Rows that only restate what you
+just typed are not that original, and an abandoned plan is not that original
+either. A short correction and a buried note in a mixed-topic chat stay
+findable.
 
 ## settings — how this machine is set
 

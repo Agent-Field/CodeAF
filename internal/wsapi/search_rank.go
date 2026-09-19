@@ -147,11 +147,30 @@ func sessionScore(c *sessionCand, cover float64) float64 {
 	return lexRRFWeight*rrf(c.lexRank) + rrf(c.embRank) + coverWeight*cover
 }
 
-// querySeeksOriginals is the J09 shape: a new ask ("who may fetch the emailed
-// PDF") looking for an earlier decision that used different words. Keyword
-// phrases such as "No, the other one" are looking for those words, not for a
-// different-wording neighbour.
-func querySeeksOriginals(query string) bool {
+func abandonedPlan(texts []string) bool {
+	return strings.Contains(strings.ToLower(strings.Join(texts, " ")), "abandon")
+}
+
+func queryMentionsAbandoned(query string) bool {
+	return strings.Contains(strings.ToLower(query), "abandon")
+}
+
+// emailedReceiptTopic is the J18 TUI/manual ask: "emailed purchase confirmation
+// PDF" and "emailed receipt links" name the artefact, not a question. Two of
+// these tokens are enough; who|what|why|how|may|can|should|allowed are not
+// required.
+func emailedReceiptTopic(query string) bool {
+	q := strings.ToLower(query)
+	n := 0
+	for _, word := range []string{"emailed", "receipt", "purchase", "confirmation", "pdf"} {
+		if strings.Contains(q, word) {
+			n++
+		}
+	}
+	return n >= 2
+}
+
+func hasAskCue(query string) bool {
 	padded := " " + strings.ToLower(query) + " "
 	for _, cue := range []string{" who ", " what ", " why ", " how ", " may ", " can ", " should ", " allowed "} {
 		if strings.Contains(padded, cue) {
@@ -161,22 +180,34 @@ func querySeeksOriginals(query string) bool {
 	return false
 }
 
+// querySeeksOriginals is true for a different-wording look-up. Question cues
+// still count, but they are not the only path: an emailed-receipt topic
+// without those words also prefers original neighbours. "No, the other one"
+// and a buried certificate note do not match, so they keep coverage ranking.
+func querySeeksOriginals(query string) bool {
+	return hasAskCue(query) || emailedReceiptTopic(query)
+}
+
 type scoredHit struct {
-	hit     SearchHit
-	score   float64
-	cover   float64
-	embRank int
+	hit       SearchHit
+	score     float64
+	cover     float64
+	embRank   int
+	abandoned bool
 }
 
 func originalNeighbor(row scoredHit) bool {
 	return row.embRank > 0 && row.cover < wordingCoverageMax
 }
 
-func betterHit(i, j scoredHit, seekOriginals bool) bool {
+func betterHit(i, j scoredHit, seekOriginals, demoteAbandoned bool) bool {
 	if seekOriginals {
 		io, jo := originalNeighbor(i), originalNeighbor(j)
 		if io != jo {
 			return io
+		}
+		if demoteAbandoned && io && i.abandoned != j.abandoned {
+			return !i.abandoned
 		}
 	}
 	if i.score != j.score {
@@ -187,9 +218,11 @@ func betterHit(i, j scoredHit, seekOriginals bool) bool {
 
 // rankEvidence is the one hybrid ranking. Lexical restatements of a new ask
 // used to occupy every slot (A4). Short corrections and buried notes used to
-// lose to a topical majority (A7, global). A question-shaped ask prefers
-// semantically close passages that do not restate it; a keyword ask prefers
-// sessions that cover its distinctive words.
+// lose to a topical majority (A7, global). A different-wording ask prefers
+// semantically close passages that share few of its tokens; a keyword ask
+// prefers sessions that cover its distinctive words. Abandoned-plan
+// neighbours stay behind the standing decision unless the query is about
+// that abandoned plan.
 func rankEvidence(query string, lexical, embed []SearchHit, limit int) []SearchHit {
 	if limit < 1 {
 		limit = defaultSearchLimit
@@ -202,11 +235,13 @@ func rankEvidence(query string, lexical, embed []SearchHit, limit int) []SearchH
 		rows = append(rows, scoredHit{
 			hit: c.hit, score: sessionScore(c, cover),
 			cover: cover, embRank: c.embRank,
+			abandoned: abandonedPlan(c.texts),
 		})
 	}
 	seek := querySeeksOriginals(query)
+	demote := seek && !queryMentionsAbandoned(query)
 	sort.SliceStable(rows, func(i, j int) bool {
-		return betterHit(rows[i], rows[j], seek)
+		return betterHit(rows[i], rows[j], seek, demote)
 	})
 	if len(rows) > limit {
 		rows = rows[:limit]

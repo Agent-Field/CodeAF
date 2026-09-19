@@ -421,13 +421,15 @@ that names `graph.db` and the disk's reason — not the `memory` row.
 
 There is no slash command for it — you ask in the conversation, and it searches.
 
-## Original passages despite different wording — emailed receipt links, authenticated access
+## Original passages despite different wording — emailed receipt links, purchase confirmation PDF, authenticated access
 
-Yes. Ask with the words you have now — emailed receipt links, a purchase
-confirmation PDF, “who may fetch it” — and search still ranks the original
-passages that decided the thing, even when those passages said authenticated
-document access or signed-in billed-file fetch and never used today’s title or
-id. `/search` and `search_conversations` share that ranking.
+Yes. Type the words you have now — emailed receipt links, or a purchase
+confirmation PDF — and search still ranks the original passages that decided
+the thing, even when those passages said authenticated document access or
+signed-in billed-file fetch and never used today’s title or id. You do not
+have to phrase it as a question; who, what, why, how, may, can, should, or
+allowed are not required. `/search` and `search_conversations` share that
+ranking.
 
 Chats that merely restate the ask are not the original. A short correction such
 as “No, the other one.” is findable with the surrounding decision. A buried
