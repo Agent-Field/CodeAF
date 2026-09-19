@@ -99,6 +99,8 @@ type tasksPlace struct {
 	planOn   bool
 	planAt   int
 	planBack []session.PlanTaskPage
+	// panePlan caches run pages fetched by the cursor-follow command; paint only reads this map.
+	panePlan map[string]session.PlanTaskPage
 	// planNote is the note a person types on a plan task's page, and it is the
 	// [editor] every other box on this surface is rather than a string of its own
 	// (the filter is one, and so is the conversation's composer). Typing on the

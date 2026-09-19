@@ -3474,6 +3474,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case taskPanePlanMsg:
+		a.taskPanePlanRead(msg)
+		return a, nil
+
 	case taskTailMsg:
 		// One node's journal, read off the loop for the record card and for the
 		// pane beside the list (taskrecord.go, taskpane.go). A read that came back

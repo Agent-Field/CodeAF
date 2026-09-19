@@ -5169,12 +5169,26 @@ If your question is really steering — for example, *“tell it to skip the fix
 box does not send it. It shows the note text and asks you to confirm with `enter`; only that
 confirmation writes the same steering note that the task page would write.
 
+## What does the right side of the work tab show?
+
+The right side shows the selected run. It draws these blocks from top to bottom:
+
+- the title, its dot row and the count of tasks done out of tasks in the run;
+- one dim line, `from <conversation> · <state> <age> · <cost>`, with no cost when it is zero;
+- the seats, `work <model> · plan <model>`;
+- `your call`, with every open question of the run and its answer keys;
+- the run’s tree, with each row’s seat dim at its end and a settled family folded to `N done`;
+- `notes`, with the last notes at the foot.
+
+A block with nothing in it is not drawn. The pane keeps the header, the questions and the
+first running row when room is short; it drops the bottom of the tree first, then the notes.
+
 ## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
 
 On a terminal **110 columns or wider** the tasks place splits: the list keeps the left, a dim
-rule divides it, and the right is the record of whatever row the cursor is on. Nothing is
-opened and nothing is lost — walking down with `↑` and `↓` changes what the pane shows, and the
-list stays exactly where it was.
+rule divides it, and the right follows whatever row the cursor is on. A run shows the run;
+a task shows that task’s record. Nothing is opened and nothing is lost — walking down with
+`↑` and `↓` changes what the pane shows, and the list stays exactly where it was.
 
 ```
  ▾ Clever Bet Prediction Model using Stochastic Processes          9h   │ Upgraded model v2: vector skills, BOCPD
@@ -5213,9 +5227,9 @@ what has been read is kept, so walking back up costs nothing. Until it arrives t
 pane is simply empty — there is no spinner and no `loading`, and nothing on the page ever waits
 for a disk.
 
-**The pane is the record card at a narrower width**, so the two never disagree. `enter` still
-opens the whole card, where the report is complete and scrolls; `esc` comes back to the list
-with the pane showing the same row.
+**For a task row, the pane is the record card at a narrower width**, so the two never
+disagree. `enter` still opens the whole card, where the report is complete and scrolls;
+`esc` comes back to the list with the pane showing the same row.
 
 **On a conversation's own row the pane is the conversation**: its title, `3 pieces of work ·
 $9.30`, the first few rows under it in the order the page files them, and `enter open the chat`.
