@@ -32,9 +32,14 @@ slash in this build.
 
 ## New folder, New chat, Organize existing chats — visible actions, not slash-only, new folder on the folders place
 
-On the Folders place the visible actions are **New folder**, **New chat**, and
-**Organize existing chats**. They are not slash-only. New folder creates at Root, or
-inside the selected folder. New chat starts at Root or that folder: the first sent
+On the Folders place the visible actions are **New folder**, **New chat**,
+**Organize existing chats**, **Add existing chats**, **Organize this chat**,
+**Manage this folder**, **Coordinate selected**, and **Open chat**. They are not
+slash-only. **`c`** is New folder. **`g`** is Coordinate selected. **`b`** is Add
+existing chats. **`d`** is Manage this folder. **`t`** is Organize this chat.
+**`u`** is Undo. New folder creates at Root, or
+inside the selected folder — one action, not a later nest.
+New chat starts at Root or that folder: the first sent
 message mints the transcript and files it; Esc before send creates nothing and
 returns to Folders from Root and from inside a folder — it does not mint a
 session-header transcript and it does not leave you on `Home new conversation`.
@@ -100,7 +105,22 @@ without a parent still makes a Root folder.
 A saved chat is one conversation identity (the 16-hex session id). Grouping it
 does not copy the transcript.
 
-On a `folders` row, `→` opens the verb strip:
+## Miller columns, pinned details, Right drills, shift+→ actions
+
+On the Folders place a wide frame is **Miller columns** over the logical graph:
+Root, then the selected folder's children, then deeper children as space
+permits, then a pinned **details** pane. A shared folder or chat is one identity
+at two paths; details name the other placement as `also in`. Depth that does not
+fit windows older ancestor columns and keeps a breadcrumb. An 80-column frame
+is one navigation column plus switchable details; resizing back to wide keeps
+the same selected object and path.
+
+On the Folders place, **`→` drills** (next child column, or details for a leaf)
+and never opens the verb strip. **`shift+→`** opens the strip (`shift+→ actions`).
+`←` returns to the parent column, or from details back to the leaf's column.
+Other places keep `→` as the strip.
+
+On a `folders` row, `shift+→` (Folders place) or `→` (home) opens the verb strip:
 
 `n` new chat here · `f` add current chat · `m` move this placement · `w` why here · `x` remove this placement
 

@@ -47,6 +47,12 @@ func (adapter) OrganizeStatus(context.Context) (tui3.FolderOrganize, error) {
 	return tui3.FolderOrganize{}, nil
 }
 func (adapter) CancelOrganize(context.Context) error { return nil }
+func (adapter) CreateFolderIn(context.Context, string, string) (tui3.FolderView, error) {
+	return tui3.FolderView{}, nil
+}
+func (adapter) OrganizeThisChat(context.Context, string) (tui3.FolderOrganize, error) {
+	return tui3.FolderOrganize{}, nil
+}
 
 var _ tui3.Folders = adapter{}
 

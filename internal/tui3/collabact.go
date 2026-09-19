@@ -8,9 +8,9 @@ import (
 
 // folderCollabVerbs is the optional mark/coordinate strip. NIL IS ABSENT: a
 // surface without Collab never offers these keys, so Wave 1 membership verbs
-// stay exactly `n f e i` / `n f m w x`. Marking is a convenience; `c` is
-// offered only when something is already marked, because the primary path is
-// saying "coordinate these" in the ordinary chat.
+// stay exactly `n f e i` / `n f m w x`. Marking is a convenience; `g` is
+// Coordinate selected and is offered only when something is already marked.
+// `c` stays New folder on the Folders place.
 func (a *app) folderCollabVerbs(line homeLine) []verb {
 	if a.collab == nil {
 		return nil
@@ -24,7 +24,7 @@ func (a *app) folderCollabVerbs(line homeLine) []verb {
 		verbs = append(verbs, verb{key: 'k', word: word, do: func() tea.Cmd { return a.toggleCollabMark(line) }})
 	}
 	if len(a.collabView.marks) > 0 {
-		verbs = append(verbs, verb{key: 'c', word: collabCoordinateWord, do: func() tea.Cmd { return a.coordinateMarked() }})
+		verbs = append(verbs, verb{key: 'g', word: folderCoordinateAction, do: func() tea.Cmd { return a.coordinateMarked() }})
 	}
 	return verbs
 }

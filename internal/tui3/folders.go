@@ -49,6 +49,17 @@ type Folders interface {
 	OrganizeExisting(ctx context.Context) (FolderOrganize, error)
 	OrganizeStatus(ctx context.Context) (FolderOrganize, error)
 	CancelOrganize(ctx context.Context) error
+	// CreateFolderIn is visible New folder. Empty parentID is Root.
+	// Non-empty creates and nests in one store transaction (no Root orphan).
+	CreateFolderIn(ctx context.Context, name, parentID string) (FolderView, error)
+	// OrganizeThisChat is visible Organize this chat. CoalesceKey is
+	// session.OrganizeCoalesceKey(conversationID, latest source revision).
+	OrganizeThisChat(ctx context.Context, conversationID string) (FolderOrganize, error)
+}
+
+// FolderChange is the compact activity line. Empty means draw nothing.
+type FolderChange struct {
+	Action, FolderName, CollectionID, RefID string
 }
 
 // FolderOrganize is the explicit survey as the Folders place draws it.
@@ -138,31 +149,42 @@ type homeFoldersReading struct {
 // The verb strip on a folders row, quoted in the contract and the manual as
 // these exact phrases.
 const (
-	folderNewChatWord     = "new chat here"
-	folderAddHereWord     = "add current chat"
-	folderMoveWord        = "move this placement"
-	folderWhyWord         = "why here"
-	folderRemoveWord      = "remove this placement"
-	folderAlsoInWord      = "also in "
-	folderWhisperWord     = "logical groups of chats · /folders create Billing"
-	folderBackWord        = "back"
-	folderUnwiredWord     = "folders are not wired here"
-	folderNoStandWord     = "stand on a folder · then n starts a chat there"
-	folderMoveHintWord    = "enter a folder to move it there · esc cancel"
-	folderNestWord        = "nest this folder"
-	folderRenameWord      = "rename this folder"
-	folderNestHintWord    = "enter a folder to nest it there · esc cancel"
-	folderInstructWord    = "instruct this folder"
-	folderInstructHead    = "instructions"
-	folderInstructWhisper = "standing guidance for chats in this folder"
-	folderInstructUsage   = "usage: /folders instruct <name-or-id> <text>"
-	folderOrganizerOrigin = "organizer"
-	folderDelayedWord     = "discovery delayed"
-	folderDegradedWord    = "degraded"
-	folderLostWord        = "that chat is no longer in this folder"
-	folderUnavailableWord = "unavailable"
-	logicalFolderGoneWord = "that folder is no longer here"
-	folderFiledWord       = "could not file this chat here"
+	folderNewChatWord      = "new chat here"
+	folderAddHereWord      = "add current chat"
+	folderMoveWord         = "move this placement"
+	folderWhyWord          = "why here"
+	folderRemoveWord       = "remove this placement"
+	folderAlsoInWord       = "also in "
+	folderWhisperWord      = "logical groups of chats · /folders create Billing"
+	folderBackWord         = "back"
+	folderUnwiredWord      = "folders are not wired here"
+	folderNoStandWord      = "stand on a folder · then n starts a chat there"
+	folderMoveHintWord     = "enter a folder to move it there · esc cancel"
+	folderNestWord         = "nest this folder"
+	folderRenameWord       = "rename this folder"
+	folderNestHintWord     = "enter a folder to nest it there · esc cancel"
+	folderInstructWord     = "instruct this folder"
+	folderInstructHead     = "instructions"
+	folderInstructWhisper  = "standing guidance for chats in this folder"
+	folderInstructUsage    = "usage: /folders instruct <name-or-id> <text>"
+	folderOrganizerOrigin  = "organizer"
+	folderDelayedWord      = "discovery delayed"
+	folderDegradedWord     = "degraded"
+	folderLostWord         = "that chat is no longer in this folder"
+	folderUnavailableWord  = "unavailable"
+	logicalFolderGoneWord  = "that folder is no longer here"
+	folderFiledWord        = "could not file this chat here"
+	folderAddExistingWord  = "Add existing chats"
+	folderOrganizeThisWord = "Organize this chat"
+	folderManageWord       = "Manage this folder"
+	folderCoordinateAction = "Coordinate selected"
+	folderOpenChatWord     = "Open chat"
+	folderUndoWord         = "Undo"
+	folderWhyShortWord     = "Why"
+	folderAddedToWord      = "Added to "
+	folderDrillHint        = "→ drill"
+	folderShiftActionsHint = "shift+→ actions"
+	folderOrganizeThisFail = "could not organize this chat"
 	// Wave 2 e2e needle names (internal/e2e/folders_needles_test.go) grep
 	// these identifiers. Values match the drawing constants above.
 	folderInstructSlashWord    = "/folders instruct"
@@ -175,6 +197,11 @@ const (
 	// this Kind is a nested/shared folder, not a chat.
 	folderCollectionKind = "collection"
 )
+
+// folderAddStart is the one Folders-place door t-ux-add-old fills.
+// Defined as (*app).beginFolderAdd in folderadd.go. Absent file keeps this
+// nil, so the restable row is omitted (capability absent, not a broken button).
+var folderAddStart func(*app) tea.Cmd
 
 // homeFolderRow is one logical folder on the folders panel. Numbered outside
 // the [homeRowKind] iota for the same reason [homeProjectRow] is: that block is
@@ -401,6 +428,7 @@ func (a *app) addCurrentToFolder(id string) tea.Cmd {
 		a.folderNote(folderFiledWord)
 		return nil
 	}
+	a.rememberFolderChange(id, ref)
 	a.refreshFolderMemo()
 	return nil
 }
@@ -507,7 +535,10 @@ func (a *app) folderWhyHere(line homeLine) tea.Cmd {
 		a.folderNote("could not say why this chat is here")
 		return nil
 	}
-	a.folderNote(folderWhyLine(why))
+	text := folderWhyLine(why)
+	a.folderSheet.whyLine = text
+	a.folderSheet.whyRef = ref
+	a.folderNote(text)
 	return nil
 }
 
@@ -744,6 +775,105 @@ func (a *app) createLogicalFolder(name string) tea.Cmd {
 	a.afterFolderMutation(folder.ID)
 	a.folderNote("created " + folder.Name)
 	return nil
+}
+
+// createFolderInPlace is visible New folder: parent is the folder the person
+// is standing in. Empty parent is Root. Slash `/folders create` stays
+// [createLogicalFolder] so a typed create without a parent does not nest.
+func (a *app) createFolderInPlace(name string) tea.Cmd {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	if a.foldersUnavailable() {
+		return nil
+	}
+	parent := a.folderPlaceCreateParent()
+	folder, err := a.folders.CreateFolderIn(a.folderCtx(), name, parent)
+	if err != nil {
+		a.folderNote("could not create " + name)
+		return nil
+	}
+	a.afterFolderMutation(folder.ID)
+	a.folderNote("created " + folder.Name)
+	return nil
+}
+
+func (a *app) folderPlaceCreateParent() string {
+	stop, ok := a.folderPlaceCursor()
+	if ok && stop.kind == folderStopFolder {
+		return strings.TrimSpace(stop.id)
+	}
+	return strings.TrimSpace(a.folderSheet.open)
+}
+
+func (a *app) organizeThisChat() tea.Cmd {
+	if a.foldersUnavailable() {
+		return nil
+	}
+	ref := a.folderPlaceChatRef()
+	if ref == "" {
+		a.folderNote("stand on a chat · then organize this chat")
+		return nil
+	}
+	view, err := a.folders.OrganizeThisChat(a.folderCtx(), ref)
+	if err != nil {
+		a.folderNote(folderOrganizeThisFail)
+		return nil
+	}
+	a.folderSheet.organize = view
+	a.refreshFolderPlace()
+	return nil
+}
+
+func (a *app) folderPlaceChatRef() string {
+	stop, ok := a.folderPlaceCursor()
+	if ok && stop.kind == folderStopChat {
+		if id := strings.TrimSpace(stop.id); id != "" {
+			return id
+		}
+	}
+	return a.conversationRef()
+}
+
+func (a *app) undoFolderChange() tea.Cmd {
+	if a.foldersUnavailable() {
+		return nil
+	}
+	change := a.folderSheet.change
+	id, ref := strings.TrimSpace(change.CollectionID), strings.TrimSpace(change.RefID)
+	if id == "" || ref == "" {
+		return nil
+	}
+	if err := a.folders.RemovePlacement(a.folderCtx(), id, ref); err != nil {
+		a.folderNote("could not remove that placement")
+		return nil
+	}
+	a.folderSheet.change = FolderChange{}
+	a.refreshFolderMemo()
+	return nil
+}
+
+func folderChangeLine(change FolderChange) string {
+	name := strings.TrimSpace(change.FolderName)
+	if name == "" {
+		return ""
+	}
+	action := strings.TrimSpace(change.Action)
+	if action == "" {
+		action = "Added to"
+	}
+	return action + " " + name + " · " + folderWhyShortWord + " · " + folderUndoWord
+}
+
+func (a *app) rememberFolderChange(collectionID, refID string) {
+	name := collectionID
+	if folder, ok := a.folderInReadings(collectionID); ok && strings.TrimSpace(folder.Name) != "" {
+		name = folder.Name
+	}
+	a.folderSheet.change = FolderChange{
+		Action: "Added to", FolderName: name, CollectionID: collectionID, RefID: refID,
+	}
 }
 
 func (a *app) renameLogicalFolder(from, to string) tea.Cmd {
