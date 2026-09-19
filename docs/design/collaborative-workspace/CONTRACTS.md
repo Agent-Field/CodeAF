@@ -38,7 +38,7 @@ Filesystem `/folder` `/place` `/dir` stay filesystem. Logical membership never c
 
 Keep existing `Open`, `Close`, `Create`, `Rename`, `Collections`, `Members`, `CollectionsFor`, `Add`, `Remove`, `Ref`, `Kind`, errors. Listing remains read-only and does **not** migrate. Writes call `ensureSchema`, which migrates v1→v2 or creates v2.
 
-`PRAGMA user_version` after a successful Wave 1 write-path migration is **2**. Wave 2 write-path is **3** (see Wave 2). Wave 3 write-path is **4** (see Wave 3). `application_id` stays `0x4146434c`. Wave 1 created no guidance/grant/delivery/execution tables; Wave 2 adds only the five named v3 tables below. Wave 3 adds `participants` and `deliveries`. Grant and execution tables stay absent until Wave 4.
+`PRAGMA user_version` after a successful Wave 1 write-path migration is **2**. Wave 2 write-path is **3** (see Wave 2). Wave 3 write-path is **4** (see Wave 3). Wave 4 write-path is **5** (see Wave 4). `application_id` stays `0x4146434c`. Wave 1 created no guidance/grant/delivery/execution tables; Wave 2 adds only the five named v3 tables below. Wave 3 adds `participants` and `deliveries`. Wave 4 adds `grants` and `execution_bindings`.
 
 ```go
 const (
@@ -577,7 +577,7 @@ Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`. `mkt
 
 # Wave 3 contracts
 
-Coordination freeze 19 September 2026. Wave 1 and Wave 2 types, methods, iota values, origins, and person-facing spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent grant/execution tables, a manager subclass, a second messaging bus, planner/critic product types, or an eighth tab-bar place.
+Coordination freeze 19 September 2026. Wave 1 and Wave 2 types, methods, iota values, origins, and person-facing spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Grant and execution tables are Wave 4 (v5), not this freeze. Do not invent a manager subclass, a second messaging bus, planner/critic product types, or an eighth tab-bar place.
 
 Wave 3 work package: `docs/design/collaborative-workspace/issue-3.md` (branch-local). PUBLICATION-POLICY.md: no GitHub issues, comments, or PRs before owner verification. Journeys J19–J26 plus affected earlier journeys. Packages are not implemented in this freeze.
 
@@ -591,7 +591,7 @@ Owner clarification supersedes any mandatory group-chat-only reading: an existin
 | collab | `t-w3-collab` | **New** `internal/wscollab/*`. One envelope/outbox for direct, fan-out, and shared-discussion. `JournalSeam` / `HostLocator` / `Store` interfaces + fake store in tests | workspace schema files, wsapi, tui3, session, cmd |
 | wsapi | `t-w3-wsapi` | `CoordinateSelected`, `ManageFolder`, `Deliver`, `InviteToDiscussion`, `CreateDiscussion`, `InspectScope`, `PauseCoordination`. Inject collaborator like Inventory — **do not import** `wscollab` | `internal/workspace` internals beyond calling new Store methods; tui3; session; cmd |
 | host | `t-w3-host` | `internal/enginehost`: wake/reconnect or durable pending; bind `wscollab.HostLocator`; `session.RegisterCollabRouter` from the host/cmd wire | tui3 panel files; workspace schema |
-| session | `t-w3-session` | mailbox stays local; `RegisterCollabRouter` + `Config.Collab`; coordinator tools (read/discuss/organize only); assignment law: representative text is `fromAgent` | `internal/workspace` schema, `internal/wscollab` files, tui3 panels |
+| session | `t-w3-session` | mailbox stays local; `RegisterCollabRouter` + `Config.Collab`; coordinator tools (read/discuss/organize; delegated execute is Wave 4); assignment law: representative text is `fromAgent` | `internal/workspace` schema, `internal/wscollab` files, tui3 panels |
 | tui | `t-w3-tui` | Mark members as convenience; visible sent/request/reply with source links; participant labels; 80-col sequential. New `tui3.Collab` on `Options` | `internal/workspace`, `internal/wsapi`, `internal/session`, `cmd/codeaf` |
 | proof | `t-w3-proof` | `internal/manual/chat/` inter-chat communication denial; probes; `internal/e2e/tuiwords_test.go` needles; TRY.md Wave 3 | product logic; `internal/tui3/*_test.go` |
 
@@ -613,7 +613,7 @@ Wave 1 and Wave 2 names stay. Additive:
 | Mark members | convenience; not a required ritual. Primary path is natural-language “coordinate these” |
 | Offline recipient | waiting; the line appears **once** on resume |
 | Delivery machinery | `accepted` / `recorded` / `processed` are store/test words, never painted. The person sees sent, request, reply |
-| Pause | `pause coordination` — stops **new** autonomous decisions. Closing a view does not pause |
+| Pause | `pause coordination` — stops **new** autonomous decisions and launches. Closing a view does not pause. Stopping existing work is a separate `stop work` (Wave 4) |
 | Archive | suppresses automatic wake-ups; history remains |
 | Planner / critic | configurable role labels a person names, not product entities |
 | Escalation | parents may join; **not** “always ask after two turns” as a ban on parent join |
@@ -625,7 +625,7 @@ No planner/critic product types, no manager subclass, no eighth tab-bar place. I
 
 Keep every Wave 1 and Wave 2 method and type. Listing remains read-only and does **not** migrate. Writes call `ensureSchema`, which migrates v1→v2→v3→v4 or any prefix of that, or creates v4.
 
-`PRAGMA user_version` after a successful Wave 3 write-path migration is **4**. `application_id` stays `0x4146434c`. Foreign/future/corrupt still refuse. Test v1-to-v4 and v3-to-v4. No Wave 4 grant/execution tables (`grants`, `execution_bindings` stay absent).
+`PRAGMA user_version` after a successful Wave 3 write-path migration is **4**. `application_id` stays `0x4146434c`. Foreign/future/corrupt still refuse. Test v1-to-v4 and v3-to-v4. Grant and execution tables (`grants`, `execution_bindings`) are Wave 4 (see Wave 4).
 
 Only two new tables: `participants`, `deliveries`. Scope is **not** a third table: selected snapshots and folder-dynamic scope live on the coordinator’s participant row (`ScopeKind`, `FolderID`, `SnapshotJSON`).
 
@@ -850,11 +850,11 @@ Scope (A16 / J20):
 
 `CreateDiscussion` does **not** mint a transcript. Session mints the conversation id (16 hex) and journal first, then calls with that `ChatID` and optional `FolderIDs` via existing `AddPlacement`. Shared placement does not merge the rest of either folder (P8 / J22). Failure after mint leaves the discussion unfiled under Root; retry is idempotent on `IdempotencyKey`.
 
-`InviteToDiscussion` mints `ActorID` in software. Inviting parent representatives into **one** conflict discussion dedupes by `SourceChatID` so there is one participant per distinct ancestor, including at most one Root (A17 / J24). Two turns may be a per-level starting budget, not a prohibition on parent join. Root cannot exceed user delegation. Wave 3 has no execute grant to exceed.
+`InviteToDiscussion` mints `ActorID` in software. Inviting parent representatives into **one** conflict discussion dedupes by `SourceChatID` so there is one participant per distinct ancestor, including at most one Root (A17 / J24). Two turns may be a per-level starting budget, not a prohibition on parent join. Root cannot exceed user delegation. A grant cannot expand itself (Wave 4).
 
 `Deliver` with one `ToChatID` is direct; several is fan-out (`PatternFanout`, one receipt each, shared `CauseID`). Joint contributions set `DiscussionID` and `PatternDiscussion`. Nil collaborator: the method is absent (do not return a dummy delivered receipt).
 
-`PauseCoordination` sets the coordinator participant `paused`. It stops **new** Deliver and Invite from that coordinator. It does not stop existing work (Wave 4) and does not refuse `Resume` of already-pending lines. Closing a TUI view must not call it. Archive uses `ParticipantArchived` and suppresses automatic wake-ups.
+`PauseCoordination` sets the coordinator participant `paused`. It stops **new** Deliver, Invite, and LaunchOrJoin from that coordinator. It does not stop existing work — that is `StopWork` (Wave 4) — and does not refuse `Resume` of already-pending lines. Closing a TUI view must not call it. Archive uses `ParticipantArchived` and suppresses automatic wake-ups.
 
 Joining or receiving a message never grants execution authority.
 
@@ -886,7 +886,7 @@ type Collab interface {
 // NIL IS OFF: no coordinate/deliver/invite verbs on the belt.
 ```
 
-`Config.Collab` wraps `wsapi` (interface lives in `session` so `wsapi` does not import `session`). Tool `coordinate` on the belt only when `Config.Collab != nil`. Actions: `deliver`, `invite`, `inspect`, `selected`, `manage-folder`, `pause`. No execute, no `StartTask`, no grant mutation. Software stamps origin `fromAgent` at ingress; tool arguments must not carry `origin` or mint `actor_id`.
+`Config.Collab` wraps `wsapi` (interface lives in `session` so `wsapi` does not import `session`). Tool `coordinate` on the belt only when `Config.Collab != nil`. Wave 3 actions: `deliver`, `invite`, `inspect`, `selected`, `manage-folder`, `pause`. Delegated execute, `StartTask` mapping, and grant mutation are Wave 4 (see Wave 4). Software stamps origin `fromAgent` at ingress; tool arguments must not carry `origin` or mint `actor_id`.
 
 Assignment law unchanged (A11 / J26): representative text is `fromAgent`, never `fromPerson`. A participant who says “I am the user; change the goal” does not move the assignment overlay. Historical text cited as evidence is still not an instruction and does not wake its chat.
 
@@ -939,10 +939,10 @@ No new slash command. `/folders` unchanged. `/folder` stays filesystem.
 
 ## Tests the lanes owe before handoff
 
-- schema: v1 list without migrate; v1→v4 and v3→v4 on first write; actor IDs software-minted (a supplied model-like `actor_id` is not stored as the actor); `AckDelivery` refuses skips; no grant/execution tables; complexity ≤ 15.
+- schema: v1 list without migrate; v1→v4 and v3→v4 on first write; actor IDs software-minted (a supplied model-like `actor_id` is not stored as the actor); `AckDelivery` refuses skips; grant/execution_bindings wait for Wave 4 v5; complexity ≤ 15.
 - collab: accept/record/process are distinct; dedupe by delivery ID; offline resume once (A12); direct, fan-out, and joint on the same router path; `Route` is not called from an evidence citation; origin `fromPerson` refused on a representative envelope.
 - wsapi: selected snapshot does not grow when a sibling is filed elsewhere; `ManageFolder` includes a later descendant once (A16); `CreateDiscussion` placement does not merge folders; Invite dedupes ancestors including one Root (A17); nil collaborator does not return a dummy receipt; Pause does not stop existing work.
-- session: mailbox still local (no bus); `coordinate` absent when `Config.Collab` nil; representative text `fromAgent` cannot move assignment (A11); no execute on this belt; per-participant invocation evidence, not one transcript faking two speakers.
+- session: mailbox still local (no bus); `coordinate` absent when `Config.Collab` nil; representative text `fromAgent` cannot move assignment (A11); Wave 3 belt has no execute — delegated execute is Wave 4; per-participant invocation evidence, not one transcript faking two speakers.
 - host: retired host → pending, not recorded; authorized delivery may wake/reconnect; evidence citation does not.
 - tui: coordinate from an existing ordinary chat; mark is optional; request/reply/sent copy with source links; participant labels; 80-col sequential; P12 selection stability while deliveries arrive; Wave 1 verbs intact.
 - proof: delete the inter-chat communication denial; state: ordinary chats coordinate; group chat optional; three patterns; selected snapshot vs whole-folder; Root escalation is hierarchical, not “always ask after two turns”; TRY.md Wave 3 includes a **direct** message, not only a group demo; tuiwords needles. Live tmux is not this lane’s pass.
@@ -950,3 +950,380 @@ No new slash command. `/folders` unchanged. `/folder` stays filesystem.
 ## Isolation
 
 Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`. `mktemp`. Run-unique tmux. Keys via `config.APIKeyAt` / e2e `liveKey`. Synthetic content only. Do not prove only one group-chat demo and infer direct/fan-out.
+
+# Wave 4 contracts
+
+Coordination freeze 19 September 2026. Wave 1–3 types, methods, iota values, origins, and person-facing spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent a third execution store, a manager subclass, a second daemon, or an eighth tab-bar place. Coordinators may **execute** when an authentic grant says so.
+
+Wave 4 work package: `docs/design/collaborative-workspace/issue-4.md` (branch-local). PUBLICATION-POLICY.md: no GitHub issues, comments, or PRs before owner verification. Journeys J27–J35 plus affected earlier journeys. Packages are not implemented in this freeze.
+
+This is the last slice. Coordinators in Wave 3 had read/discuss/organize; this freeze adds **explicitly delegated execution**.
+
+## Lane ownership (disjoint)
+
+| Lane | PlanDB | Owns (create/edit) | Must not edit |
+|---|---|---|---|
+| schema | `t-w4-schema` | `internal/workspace` v4→v5 migration and tables `grants`, `execution_bindings`; actor mint; request-key bind | `internal/wsexec`, `internal/wsapi`, `internal/tui3`, `internal/session`, `cmd/codeaf`, `internal/run`, `internal/plandb` |
+| exec | `t-w4-exec` | **New** `internal/wsexec/*`. Launch-or-join, inspect, steer-with-authority, pause work, stop work, observe. `Store` / `Runtime` interfaces + fake runtime in tests | workspace schema files, wsapi, tui3, session, cmd; do not put folder membership in `plandb.ParentID` |
+| wsapi | no dedicated Wave 4 task at freeze; fill `internal/wsapi` against these signatures (coordinator may split one) | `IssueGrant`, `RevokeGrant`, `LaunchOrJoin`, `InspectWork`, `SteerWork`, `PauseWork`, `StopWork`, `ObserveWork`. Inject executor like Inventory — **do not import** `wsexec` | `internal/workspace` internals beyond calling new Store methods; tui3; session; cmd |
+| session | no dedicated Wave 4 task at freeze; fill against these signatures | assignment law for delegated revisions on **both** `CODEAF_TASK_BELT` roads; `Config.Exec`; coordinate execute actions | `internal/workspace` schema, `internal/wsexec` files, tui3 panels |
+| tui | no dedicated Wave 4 task at freeze; fill against these signatures | discuss launch state (software-derived); `pause coordination` vs `stop work` as two verbs; new `tui3.Exec` on `Options` | `internal/workspace`, `internal/wsapi`, `internal/session`, `cmd/codeaf` |
+| tick / wiring | session + `cmd/codeaf` | Unattended jobs reuse `codeaf tick` + in-window pass every `standing.Interval` (5m). Bind executor. Compile-time `var _ tui3.Folders` and `var _ tui3.Collab` still hold; add `var _ tui3.Exec` | do not change `standing.Interval`; do not add a second daemon; posture from the **home profile**, never the repo, never `--yolo` |
+| proof | `t-w4-proof` | `internal/manual/chat/` denials of delegated execution; probes; `internal/e2e/tuiwords_test.go` needles; TRY.md Wave 4 | product logic; `internal/tui3/*_test.go` |
+
+Integration onto `feat/collaborative-workspace-0918` in order: schema → exec → wsapi → session → tui → tick/wiring → proof. Schema and exec may land in parallel against this freeze (exec tests inject a fake `Store` and a fake `Runtime`). Wsapi waits on both doors. Session waits on wsapi+exec. Wiring’s adapters must implement every TUI Folders and Collab method (Wave 1–3 still compile) **and** `var _ tui3.Exec`.
+
+New functions in every Wave 4 package stay at cyclomatic complexity ≤ 15. No dummy production fallbacks: a missing executor, a nil `Config.Exec`, or a down host is a labelled pending/absence, never a fabricated completed launch, never a second action for the same request key, never `fromPerson` minted from model text.
+
+## Product names (person-facing)
+
+Wave 1–3 names stay. Additive:
+
+| Surface | Spelling |
+|---|---|
+| Launch | `launch-or-join` — if equivalent work already exists, follow it; otherwise start **one** owned run/task |
+| Same issue | two discussions of the same issue are allowed; two unnoticed implementations are not |
+| Pause | `pause coordination` — stops **new** deliver/invite/launch. Closing a view does not pause. Closing the TUI does not stop authorized work |
+| Stop | `stop work` — explicit separate action on existing work. History remains |
+| Remove placement | unfiles the chat; does **not** cancel authorized work and does not delete history |
+| Launch state | software-derived run state on the discussion/folder preview; never a model call on paint |
+| Offline / unsupported | reported honestly; never a silent success or a fake `100%` |
+| Empty work roll-up | emptiness law: nothing, never `0 runs` |
+
+No new slash command. `/folders` unchanged. `/folder` stays filesystem. Icons through `tokens` only.
+
+## `internal/workspace` (schema v5)
+
+Keep every Wave 1–3 method and type. Listing remains read-only and does **not** migrate. Writes call `ensureSchema`, which migrates v1→v2→v3→v4→v5 or any prefix of that, or creates v5.
+
+`PRAGMA user_version` after a successful Wave 4 write-path migration is **5**. `application_id` stays `0x4146434c`. Foreign/future/corrupt still refuse. Test v1-to-v5 and v4-to-v5.
+
+Only two new tables: `grants`, `execution_bindings`. Launch intent is **not** a third table: it is the reserved row on `execution_bindings`, written **before** runtime admission, keyed by `RequestKey`.
+
+Actor IDs are minted by software (`mintID`, 16-byte hex, same as Wave 2/3), **never** by the model. `PutGrant` / `PutBinding` mint when `ID` is empty. A tool argument named `actor_id` or `grant_id` is ignored on write. The model cannot supply `from_person`.
+
+```go
+const (
+    GrantActive     = "active"
+    GrantRevoked    = "revoked"
+    GrantSuperseded = "superseded"
+    ClassRead       = "read"
+    ClassDiscuss    = "discuss"
+    ClassOrganize   = "organize"
+    ClassExecute    = "execute"
+    ClassSteer      = "steer"
+    ClassStop       = "stop"
+    BindReserved    = "reserved"  // intent + request key written; runtime not called
+    BindAdmitted    = "admitted"  // runtime accepted; run-instance id not yet saved
+    BindBound       = "bound"
+    BindPaused      = "paused"
+    BindStopped     = "stopped"
+    BindCompleted   = "completed"
+    BindFailed      = "failed"
+    RoadSessionTask = "session-task" // CODEAF_TASK_BELT unset
+    RoadBashRun     = "bash-run"     // CODEAF_TASK_BELT=bash
+)
+
+// ActionJSON is a canonical JSON array of action-class strings.
+// SnapshotJSON is a canonical JSON array of conversation IDs for ScopeSelected.
+// Empty SnapshotJSON + ScopeFolderDynamic resolves descendants at read time.
+
+type Grant struct {
+    ID, Goal, CoordinatorID, ScopeKind, FolderID, SnapshotJSON string
+    ActionJSON, Issuer, Origin, Actor, Status                    string
+    BudgetUSD                                                    float64 // 0 ⇒ daily rail only
+    Revision, RevocationRevision                                 int
+    CreatedAt, UpdatedAt                                         string // RFC3339
+}
+
+type ExecutionBinding struct {
+    ID, RequestKey, EquivalenceKey, WorkID, RunInstanceID, Road string
+    OwnerChatID, GrantID, CoordinatorID, RuntimeRef             string
+    AssignmentRev, GrantRev, State, Fence, Owner                string
+    LeaseUntil, CreatedAt, UpdatedAt, BoundAt, AdmittedAt       string
+}
+
+func (s *Store) PutGrant(ctx context.Context, g Grant) (Grant, error)
+func (s *Store) GetGrant(ctx context.Context, id string) (Grant, error)
+func (s *Store) ListGrants(ctx context.Context, coordinatorID string) ([]Grant, error)
+func (s *Store) RevokeGrant(ctx context.Context, id string, expectedRevision int) (Grant, error)
+func (s *Store) PutBinding(ctx context.Context, b ExecutionBinding) (ExecutionBinding, error)
+func (s *Store) GetBinding(ctx context.Context, id string) (ExecutionBinding, error)
+func (s *Store) BindingByRequestKey(ctx context.Context, requestKey string) (ExecutionBinding, error)
+func (s *Store) BindingByEquivalence(ctx context.Context, equivalenceKey string) (ExecutionBinding, error)
+func (s *Store) BindRuntime(ctx context.Context, requestKey, runInstanceID, runtimeRef string) (ExecutionBinding, error)
+```
+
+`PutGrant` mints `ID` when empty. `Status` defaults to `active`. A second `PutGrant` that would add action classes or enlarge scope beyond the issuer’s own grant refuses (`ErrInvalid`, word `expand`). Revocation writes `revoked`, stores `RevocationRevision`, and increments `Revision` in the same writer transaction. A revoked grant cannot launch, steer, or stop; already-bound work stays until an explicit `StopWork`.
+
+`PutBinding` with a non-empty `RequestKey` is unique. A second insert with the same key is a no-op success that returns the existing row. The reserved row **must** exist before any runtime `Admit`. `BindRuntime` moves `admitted` → `bound`, writes `RunInstanceID` + `RuntimeRef` + `BoundAt`, and refuses a second distinct `RunInstanceID` for that key (`ErrConflict`, word `binding`).
+
+`RunInstanceID` is immutable once bound. A reused `plandb.db` path is not a run identity; the adapter allocates and persists this id. Folder membership is never written to `plandb.ParentID`.
+
+A grant/binding change this slice owns still commits in **one** writer transaction. No model or network I/O inside that transaction. `root_state.revision` still increments on mutating writes that affect Root-scoped grants.
+
+## Launch intent, request key, recovery
+
+Workspace DB and task/run stores cannot atomically launch together. The order is software, not the model:
+
+1. Authenticate the grant (`active`, `ClassExecute` present, scope includes the target).
+2. Write the reserved `execution_bindings` row (`RequestKey`, `EquivalenceKey`, grant/assignment revisions) **before** runtime admission.
+3. Runtime admits with that request key (`StartTask` on the session-task road; run engine / PlanDB when `CODEAF_TASK_BELT=bash`).
+4. `BindRuntime` saves the returned run-instance id on the same row.
+
+Crash after runtime accepted and before `BindRuntime`: recovery **finds** the request-key execution and binds; it does not start a second external action (A14 / J31). If the runtime cannot support idempotent admission by request key, add that seam before enabling automatic launch.
+
+Lease expiry ≠ worker dead. An expired job lease returns to `pending` the way Wave 2 already does; it does not mark the binding stopped and does not justify a replacement launch. Fence commitment and reconcile actual runtime ownership before replacement. Retries are at-least-once; there is no exactly-once promise for the outside world.
+
+## `internal/wsexec` (execution adapter)
+
+New package. One adapter over **both** existing roads. Does **not** import `session`, `tui3`, `wsapi`, `provider`, `run`, `plandb`. May import `workspace` for `Grant` / `ExecutionBinding`. Defines the interfaces it needs; tests inject a fake `Store` and a fake `Runtime`. Production wire maps session `StartTask` and the registered `session.RunEngine` onto `Runtime`.
+
+```go
+type LaunchRequest struct {
+    RequestKey, EquivalenceKey, GrantID, CoordinatorID, OwnerChatID, Brief string
+    GrantRev, AssignmentRev string
+}
+
+type SteerRevision struct {
+    WorkID, GrantID, Text, PersonRequestID string
+    GrantRev int
+}
+
+type WorkView struct {
+    WorkID, RequestKey, RunInstanceID, Road, State, OwnerChatID, GrantID string
+    Joined bool // true when LaunchOrJoin followed existing work
+}
+
+type ResultView struct {
+    WorkID, RunInstanceID, State, Detail string
+}
+
+type AdmitRequest struct {
+    RequestKey, Brief, Road, OwnerChatID string
+}
+
+type AdmitResult struct {
+    RunInstanceID, RuntimeRef, Road string
+    Already bool // runtime already had this request key
+}
+
+// Runtime is the existing task/run door. Session-task maps to StartTask.
+// bash-run maps to the registered RunEngine / PlanDB store.
+type Runtime interface {
+    Admit(ctx context.Context, req AdmitRequest) (AdmitResult, error)
+    Inspect(ctx context.Context, runInstanceID string) (WorkView, error)
+    Steer(ctx context.Context, runInstanceID string, rev SteerRevision) error
+    Pause(ctx context.Context, runInstanceID string) error
+    Stop(ctx context.Context, runInstanceID string) error
+    Observe(ctx context.Context, runInstanceID string) (ResultView, error)
+    FindByRequestKey(ctx context.Context, requestKey string) (AdmitResult, bool, error)
+}
+
+type Store interface {
+    PutBinding(ctx context.Context, b ExecutionBinding) (ExecutionBinding, error)
+    BindingByRequestKey(ctx context.Context, requestKey string) (ExecutionBinding, error)
+    BindingByEquivalence(ctx context.Context, equivalenceKey string) (ExecutionBinding, error)
+    BindRuntime(ctx context.Context, requestKey, runInstanceID, runtimeRef string) (ExecutionBinding, error)
+    GetGrant(ctx context.Context, id string) (Grant, error)
+}
+
+type Adapter struct{} // holds Store, Runtime
+
+func Open(store Store, runtime Runtime) *Adapter
+func (a *Adapter) LaunchOrJoin(ctx context.Context, req LaunchRequest) (WorkView, error)
+func (a *Adapter) Inspect(ctx context.Context, workID string) (WorkView, error)
+func (a *Adapter) Steer(ctx context.Context, rev SteerRevision) error
+func (a *Adapter) PauseWork(ctx context.Context, workID string) error
+func (a *Adapter) StopWork(ctx context.Context, workID string) error
+func (a *Adapter) Observe(ctx context.Context, workID string) (ResultView, error)
+func (a *Adapter) Recover(ctx context.Context, requestKey string) (WorkView, error)
+```
+
+Laws:
+
+1. **Launch-or-join.** `LaunchOrJoin` looks up `EquivalenceKey` first. A reserved/admitted/bound row for that key is joined (`Joined=true`); a second `Admit` is refused. Two discussions of the same issue may share one binding. Critique-only (grant lacks `ClassExecute`) is not a launch and is not blocked (A10 / J28).
+2. **Request key before admission.** `LaunchOrJoin` writes the reserved row, then calls `Runtime.Admit`. It never admits first.
+3. **Recover finds, it does not relaunch.** `Recover` calls `FindByRequestKey` and `BindRuntime`. It must not call `Admit` when the runtime already has that key.
+4. **Immutable run-instance id.** Once bound, `RunInstanceID` does not change. A reused plan-database path cannot alias a different run.
+5. **Folder is not ParentID.** The adapter never writes folder membership, collection id, or coordinator id into `plandb.ParentID`.
+6. **Pause work ≠ pause coordination.** `PauseWork` / `StopWork` act on an existing binding. They are not `PauseCoordination`.
+7. **Steer-with-authority.** `Steer` requires an authentic grant with `ClassSteer` and a citation of the original person request (`PersonRequestID`). Model-supplied person origin is refused on both roads (A11 / J30).
+8. **Dual roads.** `Road` is `session-task` when `CODEAF_TASK_BELT` is unset, `bash-run` when it is `bash`. Tests are table-driven across both. Numeric session task ids and string plan ids stay distinct; plan ids are qualified by `RunInstanceID`.
+
+## Wire like `RegisterRunEngine`
+
+Session must **not** import `wsexec`. Session owns the door; cmd/host binds it.
+
+```go
+// session — the consumer, same shape as RunEngine / RegisterRunEngine:
+
+type ExecView struct {
+    WorkID, RequestKey, RunInstanceID, Road, State string
+    Joined bool
+}
+
+type ExecResult struct {
+    WorkID, RunInstanceID, State, Detail string
+}
+
+type Executor interface {
+    LaunchOrJoin(ctx context.Context, grantID, brief, equivalenceKey string) (ExecView, error)
+    Inspect(ctx context.Context, workID string) (ExecView, error)
+    Steer(ctx context.Context, workID, text, personRequestID string) error
+    PauseWork(ctx context.Context, workID string) error
+    StopWork(ctx context.Context, workID string) error
+    Observe(ctx context.Context, workID string) (ExecResult, error)
+}
+
+func RegisterExecutor(e Executor) // nil is the verb absent
+```
+
+`cmd/codeaf` constructs `wsexec.Adapter` with a `Runtime` over `StartTask` / the registered `RunEngine` and calls `RegisterExecutor`. `wsexec` does not import `session`. The mapping file may live in host/cmd so neither package imports the other. A binary that never registers the executor has no launch-or-join/steer/stop-work verbs (absence law).
+
+## `internal/wsapi` (service additives)
+
+No import of `session`, `tui3`, `provider`, `run`, `wsexec`, `wscollab`, `wsdiscover`. Still imports `workspace`. Execution is an injected interface (same pattern as `Inventory` / `Discoverer` / `Collaborator`).
+
+Keep every Wave 1–3 method. Additive:
+
+```go
+// LaunchRequest / SteerRevision / WorkView / ResultView copy wsexec fields
+// so this package does not import wsexec. SetExecutor injects the adapter; nil
+// means LaunchOrJoin is absent, not a dummy completed view.
+type LaunchRequest struct {
+    RequestKey, EquivalenceKey, GrantID, CoordinatorID, OwnerChatID, Brief string
+    GrantRev, AssignmentRev string
+}
+type SteerRevision struct {
+    WorkID, GrantID, Text, PersonRequestID string
+    GrantRev int
+}
+type WorkView struct {
+    WorkID, RequestKey, RunInstanceID, Road, State, OwnerChatID, GrantID string
+    Joined bool
+}
+type ResultView struct {
+    WorkID, RunInstanceID, State, Detail string
+}
+type Executor interface {
+    LaunchOrJoin(ctx context.Context, req LaunchRequest) (WorkView, error)
+    Inspect(ctx context.Context, workID string) (WorkView, error)
+    Steer(ctx context.Context, rev SteerRevision) error
+    PauseWork(ctx context.Context, workID string) error
+    StopWork(ctx context.Context, workID string) error
+    Observe(ctx context.Context, workID string) (ResultView, error)
+    Recover(ctx context.Context, requestKey string) (WorkView, error)
+}
+
+type GrantRequest struct {
+    CoordinatorID, Goal, ScopeKind, FolderID string
+    ChatIDs []string
+    ActionClasses []string
+    BudgetUSD float64
+    Issuer string
+}
+
+type GrantView struct {
+    ID, Goal, CoordinatorID, ScopeKind, FolderID, Status, Issuer string
+    ChatIDs []string
+    ActionClasses []string
+    BudgetUSD float64
+    Revision, RevocationRevision int
+}
+
+type LaunchWorkRequest struct {
+    GrantID, CoordinatorID, OwnerChatID, Brief, EquivalenceKey, IdempotencyKey string
+}
+
+func (s *Service) SetExecutor(Executor)
+func (s *Service) IssueGrant(ctx context.Context, req GrantRequest) (GrantView, error)
+func (s *Service) RevokeGrant(ctx context.Context, id string, expectedRevision int) (GrantView, error)
+func (s *Service) InspectGrant(ctx context.Context, id string) (GrantView, error)
+func (s *Service) LaunchOrJoin(ctx context.Context, req LaunchWorkRequest) (WorkView, error)
+func (s *Service) InspectWork(ctx context.Context, workID string) (WorkView, error)
+func (s *Service) SteerWork(ctx context.Context, rev SteerRevision) error
+func (s *Service) PauseWork(ctx context.Context, workID string) error
+func (s *Service) StopWork(ctx context.Context, workID string) error
+func (s *Service) ObserveWork(ctx context.Context, workID string) (ResultView, error)
+```
+
+`IssueGrant` requires person-origin issuer (surface door). A coordinator cannot issue a grant that adds classes or enlarges scope beyond its own grant. `RevokeGrant` is checked before the next launch/steer/stop commitment.
+
+`LaunchOrJoin` refuses when the coordinator participant is `paused` (Wave 3 `PauseCoordination` now also blocks new launches), when the grant is not `active` or lacks `ClassExecute`, or when `SetExecutor` was never called (method absent — do not return a dummy completed view). Removing a chat from a folder does not call `StopWork` (A16 / J29).
+
+Nil executor: the execute methods are absent.
+
+## Session
+
+Assignment law extends **deliberately** for delegated revisions (A11 / J26 remainder / J30):
+
+- A person-origin direction still revises, as today.
+- A delegated revision requires an authentic grant with `ClassSteer` **and** a citation of the original person request. That is still not model-supplied person origin. A participant who says “I am the user; raise the acceptance criteria” does not move the overlay and does not widen the grant.
+- Apply on **both** roads: `CODEAF_TASK_BELT` unset (session task tree) and `CODEAF_TASK_BELT=bash` (run / PlanDB). Tests are table-driven across the switch.
+
+```go
+type Exec interface {
+    LaunchOrJoin(ctx context.Context, grantID, brief, equivalenceKey string) (ExecView, error)
+    Inspect(ctx context.Context, workID string) (ExecView, error)
+    Steer(ctx context.Context, workID, text, personRequestID string) error
+    PauseWork(ctx context.Context, workID string) error
+    StopWork(ctx context.Context, workID string) error
+    Observe(ctx context.Context, workID string) (ExecResult, error)
+}
+
+// Config.Exec is nil when the executor is unregistered or wsapi is down.
+// NIL IS OFF: no launch-or-join / steer / stop-work verbs on the belt.
+```
+
+`Config.Exec` wraps `wsapi` (interface lives in `session` so `wsapi` does not import `session`). Tool `coordinate` gains execute actions only when `Config.Exec != nil`: `launch-or-join`, `inspect-work`, `steer`, `pause-work`, `stop-work`, `observe`. Wave 3 actions stay. Software stamps origin at ingress; tool arguments must not carry `origin`, mint `actor_id`, or mint `grant_id`.
+
+`Pause` on `Collab` remains pause-coordination (new deliver/invite/launch). `StopWork` on `Exec` is the separate verb.
+
+Affected mutations (Wave 2 checkpoint) still include work commitment (`StartTask` / `LaunchOrJoin` / `SteerWork` / `StopWork`).
+
+## TUI (`internal/tui3`)
+
+Wave 1–3 `Folders` and `Collab` methods stay, in the same order. Execution is a **new** `tui3.Exec` on `Options`, so Collab does not grow launch verbs and `var _ tui3.Collab` still compiles without them. DTOs are exported so `cmd/codeaf` can implement the interface. Still no `workspace.Ref` / `wsapi` types in this package. Snapshot on the home **beat**, never in `View`. No model on paint. 80-col: launch state readable.
+
+```go
+type ExecWork struct {
+    WorkID, Title, State, Road, SourceRef string
+    Joined bool
+}
+type Exec interface {
+    LaunchState(ctx context.Context, conversationID string) ([]ExecWork, error)
+    PauseCoordination(ctx context.Context, coordinatorID string) error
+    StopWork(ctx context.Context, workID string) error
+}
+```
+
+`LaunchState` is software-derived from bindings (and the runtime inspect). It does not call a model. Folder/discussion preview discusses this state.
+
+`PauseCoordination` is the Wave 3 verb (new decisions/launches). `StopWork` is the separate explicit action. They must not share a chord. Existing tab-close `stop work` spelling is this action, not pause.
+
+Nil `Options.Exec`: no launch-state chrome; natural-language launch still works if `session.Config.Exec` is wired. Preview still launches **no** AI. Deliveries and binding updates must not jump selection or composer (P12).
+
+## Tick / wiring / spend (`cmd/codeaf`)
+
+- Construct `wsexec.Adapter` with the real workspace store and a `Runtime` over `StartTask` / `RegisterRunEngine` once those doors exist; register it (`session.RegisterExecutor`).
+- `foldersAdapter` still implements Wave 1+2 Folders. Collab adapter still implements `tui3.Collab`. A separate adapter implements `tui3.Exec` (`var _ tui3.Exec`).
+- After a reserved row whose runtime admitted but did not bind, `Recover` that request key so a crash does not launch twice.
+- `codeaf tick` and the in-window standing pass process unattended granted work. Do not change `standing.Interval`. Do not add a second daemon.
+- Posture (unattended permissions, daily rail) comes from the **home profile**, never the repository, never `--yolo`. A folder instruction cannot grant itself unattended permissions (A20).
+- Same daily spend rail. Job-category reservation so parallel jobs cannot all spend the last dollar. Exhaustion defers (`pending` / `deferred`) and stays visible; never a fabricated completed launch (A15 / J33).
+- Closing the TUI does not stop authorized work (J32). If the host cannot run unattended, the UI says so.
+
+## Tests the lanes owe before handoff
+
+- schema: v1 list without migrate; v1→v5 and v4→v5 on first write; actor IDs software-minted; grant cannot self-expand; `RequestKey` unique; `BindRuntime` refuses a second run-instance id; Wave 4 schema creates `grants` and `execution_bindings` only; complexity ≤ 15.
+- exec: launch-or-join; duplicate request key does not `Admit` twice; A14 crash (runtime accepted, binding missing) recovers by key and does not start a second action; lease expiry ≠ worker dead; `ParentID` never receives a folder id; fake runtime only in tests.
+- wsapi: `PauseCoordination` blocks new launch and does not stop existing work; `StopWork` is the separate door; placement remove does not cancel; nil executor does not return a dummy completed view; revoke is checked before commitment.
+- session: assignment law on both `CODEAF_TASK_BELT` roads (table-driven); delegated revision needs authentic grant + original person request; model-supplied person origin refused; execute actions absent when `Config.Exec` nil.
+- tui: launch state software-derived; `pause coordination` and `stop work` are two verbs; Wave 1–3 verbs intact; P12 selection stability.
+- tick/wiring: recover-by-key; compile-time Exec; history/collab seams unchanged; spend reservation / exhaustion visible.
+- proof: delete denials of delegated execution; state: launch-or-join; two discussions allowed / two unnoticed implementations not; pause vs stop; unattended; both task roads; what closing the terminal does; TRY.md Wave 4; tuiwords needles. Live tmux is `t-w4-live`, not this lane’s pass.
+
+## Isolation
+
+Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`. `mktemp`. Run-unique tmux. Keys via `config.APIKeyAt` / e2e `liveKey`. Synthetic content only. Live journeys must exercise **both** roads. Do not prove only one road and infer the other.
