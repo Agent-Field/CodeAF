@@ -732,11 +732,12 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		RefreshApprovals: func() {
 			refreshV3Policy(agent, workspace, proc.ProfileDir, launchOptions.Yolo)
 		},
-		ProfileDir:  proc.ProfileDir,
-		Workspace:   workspace,
-		SessionFile: transcript,
-		Resumed:     resumed,
-		Note:        notice,
+		ProfileDir:        proc.ProfileDir,
+		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
+		Workspace:         workspace,
+		SessionFile:       transcript,
+		Resumed:           resumed,
+		Note:              notice,
 		// The shape this conversation ended up with, for the surface to compare
 		// against what it asked for. It is the shape that was APPLIED, so a
 		// hello that joined a conversation somebody else opened reads the other

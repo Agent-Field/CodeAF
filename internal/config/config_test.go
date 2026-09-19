@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -533,11 +534,18 @@ func TestLoadWarnsOnceForEveryUnreadTopLevelProfileKey(t *testing.T) {
 	if first.Model != DefaultModel {
 		t.Fatalf("nested model changed resolution: got %q, want %q", first.Model, DefaultModel)
 	}
+	if got, want := first.UnreadProfileKeys, []string{"models", "typo.key"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unread profile keys = %v, want %v", got, want)
+	}
 	if got, ok := persistedString(dir, KeyChatModel); !ok || got != "flat/model" {
 		t.Fatalf("consumed flat key resolved as %q, %v", got, ok)
 	}
-	if _, err := LoadKeyless(); err != nil {
+	second, err := LoadKeyless()
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(second.UnreadProfileKeys, first.UnreadProfileKeys) {
+		t.Fatalf("second unread profile keys = %v, want %v", second.UnreadProfileKeys, first.UnreadProfileKeys)
 	}
 	got := output.String()
 	if strings.Count(got, "unread top-level config key(s)") != 1 {
@@ -561,5 +569,31 @@ func TestLoadWarnsOnceForEveryUnreadTopLevelProfileKey(t *testing.T) {
 	}
 	if value := ResponseLiftCapAt(dir); value != 0.5 {
 		t.Errorf("response lift cap = %v, want 0.5", value)
+	}
+}
+
+// TestNoShippedWriterKeyIsReportedUnread guards the property that a key the
+// product itself writes is never named as unread: the notice must not tell a
+// person their config carries an ignored key they never typed. Every settings
+// registry row and every non-setting field the loader writes is a shipped
+// writer; a profile made of all of them yields an empty unread list.
+func TestNoShippedWriterKeyIsReportedUnread(t *testing.T) {
+	dir := t.TempDir()
+	values := map[string]json.RawMessage{}
+	for _, row := range NewSettings(SettingsOptions{ProfileDir: dir}).Rows() {
+		if row.Key == "" {
+			continue
+		}
+		values[row.Key] = json.RawMessage(`"x"`)
+	}
+	for _, key := range []string{
+		KeySetupSeen, KeySplitPct, KeyStandingBackground,
+		KeyResponseAttempts, KeyResponseLiftAfter, KeyResponseLiftCap,
+		keyModelSources,
+	} {
+		values[key] = json.RawMessage(`"x"`)
+	}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("shipped-writer keys reported unread: %v", unread)
 	}
 }
