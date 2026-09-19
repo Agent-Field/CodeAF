@@ -76,7 +76,9 @@ func (a *app) refreshRunSummary() tea.Cmd {
 	a.runSummaryRefreshedAt = now
 	a.runSummaryShape = shape
 	ctx := a.ctx
-	return a.offLoop(func() func(bool) tea.Cmd {
+	// BESIDE THE LINE, NEVER IN IT: nobody pressed for this, and the second call
+	// below waits on a model for as long as its budget allows ([app.besideLine]).
+	return a.besideLine(func() func(bool) tea.Cmd {
 		// NOBODY RECORDS A LOOK AT A RUN YET (the run pane will), so the last
 		// look is the zero time and the page's `since` line reads "never".
 		stored, stale := agent.PlanRunSummary(root)
