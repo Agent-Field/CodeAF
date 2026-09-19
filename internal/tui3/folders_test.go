@@ -1,0 +1,279 @@
+package tui3
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// fakeFolders is an in-memory Folders seam. freeze panics on any call so a
+// test can prove View and a cursor move never read the store.
+type fakeFolders struct {
+	mu      sync.Mutex
+	frozen  bool
+	root    folderRoot
+	members map[string][]folderPlacement
+	whys    map[string]folderWhy
+	creates int
+	adds    [][2]string
+	removes [][2]string
+	moves   [][3]string
+	reads   int
+}
+
+func (f *fakeFolders) freeze() { f.mu.Lock(); f.frozen = true; f.mu.Unlock() }
+
+func (f *fakeFolders) touch(op string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.frozen {
+		panic("Folders." + op + " called after freeze (View or cursor must not read the store)")
+	}
+	if strings.Contains(op, "Snapshot") {
+		f.reads++
+	}
+}
+
+func (f *fakeFolders) RootSnapshot(context.Context) (folderRoot, error) {
+	f.touch("RootSnapshot")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.root, nil
+}
+
+func (f *fakeFolders) FolderSnapshot(_ context.Context, id string) (folderView, []folderPlacement, error) {
+	f.touch("FolderSnapshot")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, folder := range f.root.Folders {
+		if folder.ID == id {
+			return folder, append([]folderPlacement(nil), f.members[id]...), nil
+		}
+	}
+	return folderView{}, nil, nil
+}
+
+func (f *fakeFolders) CreateFolder(_ context.Context, name string) (folderView, error) {
+	f.touch("CreateFolder")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.creates++
+	folder := folderView{ID: "col-" + name, Name: name, Lifecycle: "active"}
+	f.root.Folders = append(f.root.Folders, folder)
+	return folder, nil
+}
+
+func (f *fakeFolders) AddPlacement(_ context.Context, collectionID, refID string) error {
+	f.touch("AddPlacement")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.adds = append(f.adds, [2]string{collectionID, refID})
+	return nil
+}
+
+func (f *fakeFolders) RemovePlacement(_ context.Context, collectionID, refID string) error {
+	f.touch("RemovePlacement")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.removes = append(f.removes, [2]string{collectionID, refID})
+	return nil
+}
+
+func (f *fakeFolders) MovePlacement(_ context.Context, fromID, toID, refID string) error {
+	f.touch("MovePlacement")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.moves = append(f.moves, [3]string{fromID, toID, refID})
+	return nil
+}
+
+func (f *fakeFolders) WhyHere(_ context.Context, collectionID, refID string) (folderWhy, error) {
+	f.touch("WhyHere")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.whys != nil {
+		if why, ok := f.whys[collectionID+"/"+refID]; ok {
+			return why, nil
+		}
+	}
+	return folderWhy{Origin: "person", Reason: "filed from home"}, nil
+}
+
+func billingSecurityFolders() *fakeFolders {
+	billing := folderView{ID: "col-billing", Name: "Billing", Lifecycle: "active", MemberCount: 1}
+	receipts := folderView{ID: "col-receipts", Name: "Receipts", Lifecycle: "active", ParentIDs: []string{"col-billing", "col-security"}}
+	security := folderView{ID: "col-security", Name: "Security", Lifecycle: "active", MemberCount: 1}
+	place := folderPlacement{
+		CollectionID: "col-billing",
+		RefID:        "aaaa000000000001",
+		Title:        "Porting the Resume Picker",
+		AlsoIn:       []string{"Security"},
+	}
+	return &fakeFolders{
+		root: folderRoot{Folders: []folderView{billing, receipts, security}},
+		members: map[string][]folderPlacement{
+			"col-billing":  {place},
+			"col-security": {{CollectionID: "col-security", RefID: "aaaa000000000001", Title: "Porting the Resume Picker", AlsoIn: []string{"Billing"}}},
+		},
+	}
+}
+
+func TestFoldersIsNotAnAliasOfFolder(t *testing.T) {
+	if err := checkCommands(commands); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range commands {
+		if c.name == "folder" {
+			for _, word := range c.alias {
+				if word == "folders" {
+					t.Fatal("/folders is an alias of /folder")
+				}
+			}
+		}
+		if c.name == "folders" {
+			for _, word := range c.alias {
+				if word == "folder" || word == "place" || word == "dir" {
+					t.Fatalf("/folders aliases filesystem /%s", word)
+				}
+			}
+		}
+	}
+	if err := checkCommands([]command{
+		{name: "folder", alias: []string{"folders"}},
+	}); err == nil {
+		t.Fatal("checkCommands allowed /folders as an alias of /folder")
+	}
+	if got := homeFate("folders", ""); got != fatePlace {
+		t.Fatalf("bare /folders fate %q, want %q", got, fatePlace)
+	}
+	if got := homeFate("folder", ""); got != fateTargetFolder {
+		t.Fatalf("/folder fate moved to %q", got)
+	}
+}
+
+func TestPendingFolderEscCreatesNothing(t *testing.T) {
+	lab := newLiveLab(t)
+	started := 0
+	a := lab.app(lab.mine)
+	a.start = func(workspace string) (Conversation, error) {
+		started++
+		return Conversation{
+			Agent:       &fakeAgent{model: "m"},
+			SessionFile: lab.mine,
+			Workspace:   workspace,
+		}, nil
+	}
+	a.width, a.height = 120, 45
+	a.folders = billingSecurityFolders()
+	a.openHome()
+	homeText(a)
+	before := a.file
+	a.pendingFolder = "col-billing"
+	a.welcome.open, a.welcome.start = true, true
+	if !a.startingChat() {
+		t.Fatal("start page was not up")
+	}
+	a.cancelChatStart()
+	a.reapPendingFolder()
+	if a.pendingFolder != "" {
+		t.Fatalf("esc left pendingFolder %q", a.pendingFolder)
+	}
+	if a.startingChat() {
+		t.Fatal("esc left the start page up")
+	}
+	if a.file != before {
+		t.Fatalf("esc replaced the transcript: %q -> %q", before, a.file)
+	}
+	if started != 0 {
+		t.Fatalf("esc minted %d conversations", started)
+	}
+	fake := a.folders.(*fakeFolders)
+	if len(fake.adds) != 0 {
+		t.Fatalf("esc filed a placement: %v", fake.adds)
+	}
+}
+
+func TestFirstMessageFilesThePendingFolder(t *testing.T) {
+	lab := newLiveLab(t)
+	a := lab.app(lab.mine)
+	a.folders = billingSecurityFolders()
+	a.pendingFolder = "col-billing"
+	a.welcome.open, a.welcome.start = true, true
+	a.file = lab.mine
+	a.filePendingFolder()
+	fake := a.folders.(*fakeFolders)
+	if len(fake.adds) != 1 || fake.adds[0] != [2]string{"col-billing", "aaaa000000000001"} {
+		t.Fatalf("first message filed %v, want billing/aaaa000000000001", fake.adds)
+	}
+	if a.pendingFolder != "" {
+		t.Fatalf("pendingFolder survived the first message: %q", a.pendingFolder)
+	}
+}
+
+func TestComposerAndSelectionSurviveAMembershipChange(t *testing.T) {
+	lab := newLiveLab(t)
+	fake := billingSecurityFolders()
+	a := lab.open()
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	a.pointFolderID("col-billing")
+	a.home.box.setText("keep this sentence")
+	want, ok := a.home.focusedLine()
+	if !ok || want.kind != homeFolderRow || want.dir != "col-billing" {
+		t.Fatalf("cursor was not on Billing: %+v", want)
+	}
+	fake.root.Folders = append(fake.root.Folders, folderView{ID: "col-ops", Name: "Ops", Lifecycle: "active"})
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	got, ok := a.home.focusedLine()
+	if !ok || got.kind != homeFolderRow || got.dir != "col-billing" {
+		t.Fatalf("membership change moved the cursor to %+v", got)
+	}
+	if a.home.box.String() != "keep this sentence" {
+		t.Fatalf("membership change wiped the composer: %q", a.home.box.String())
+	}
+}
+
+func TestNilFoldersStillDrawsTheWhisper(t *testing.T) {
+	a := newLiveLab(t).open()
+	a.folders = nil
+	a.readHomeFolders()
+	a.home.build()
+	frame := homeText(a)
+	if !strings.Contains(frame, folderWhisperWord) {
+		t.Fatalf("nil Folders dropped the whisper:\n%s", frame)
+	}
+	a.home.say("", "")
+	cmd := a.createLogicalFolder("Billing")
+	if cmd != nil {
+		t.Fatal("nil Folders created something")
+	}
+	if a.home.msg != folderUnwiredWord {
+		t.Fatalf("nil mutation said %q, want %q", a.home.msg, folderUnwiredWord)
+	}
+}
+
+func TestFolderSessionLookupFindsTheWorldRow(t *testing.T) {
+	a := newLiveLab(t).open()
+	in := a.home.gridInput()
+	row, ok := folderSessionOf(&in, "aaaa000000000001")
+	if !ok || row.ID != "aaaa000000000001" {
+		t.Fatalf("did not find the live session: ok=%v row=%+v", ok, row)
+	}
+	if _, ok := folderSessionOf(&in, ""); ok {
+		t.Fatal("empty id looked up a session")
+	}
+}
+
+func TestAlsoInClause(t *testing.T) {
+	if got := folderAlsoIn(nil); got != "" {
+		t.Fatalf("empty AlsoIn drew %q", got)
+	}
+	if got := folderAlsoIn([]string{"Security"}); got != "also in Security" {
+		t.Fatalf("dual placement said %q", got)
+	}
+}
