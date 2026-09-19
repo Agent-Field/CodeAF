@@ -177,7 +177,7 @@ type homePanelSlot struct {
 var homePanelOrder = []homePanelSlot{
 	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10, head: pageSearch},
-	{panel: foldersPanel{homePanelBase{panelFolders}}, word: "folders", keep: 2, least: 3, rest: 4, most: 8},
+	{panel: foldersPanel{homePanelBase{panelFolders}}, word: "folders", keep: 2, least: 3, rest: 4, most: 8, head: pageFolders},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},

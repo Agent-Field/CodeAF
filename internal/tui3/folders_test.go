@@ -15,25 +15,29 @@ import (
 // fakeFolders is an in-memory Folders seam. freeze panics on any call so a
 // test can prove View and a cursor move never read the store.
 type fakeFolders struct {
-	mu        sync.Mutex
-	frozen    bool
-	root      FolderRoot
-	members   map[string][]FolderPlacement
-	whys      map[string]FolderWhy
-	err       error
-	creates   int
-	adds      [][2]string
-	nests     [][2]string
-	nestErr   error
-	removes   [][2]string
-	moves     [][3]string
-	renames   [][2]string
-	instructs [][2]string
-	guidance  map[string][]FolderInstruction
-	index     FolderIndex
-	indexErr  error
-	guideErr  error
-	reads     int
+	mu          sync.Mutex
+	frozen      bool
+	root        FolderRoot
+	members     map[string][]FolderPlacement
+	whys        map[string]FolderWhy
+	err         error
+	creates     int
+	adds        [][2]string
+	nests       [][2]string
+	nestErr     error
+	removes     [][2]string
+	moves       [][3]string
+	renames     [][2]string
+	instructs   [][2]string
+	guidance    map[string][]FolderInstruction
+	index       FolderIndex
+	indexErr    error
+	guideErr    error
+	reads       int
+	organize    FolderOrganize
+	organizeErr error
+	organizes   int
+	cancels     int
 }
 
 func (f *fakeFolders) freeze() { f.mu.Lock(); f.frozen = true; f.mu.Unlock() }
@@ -202,6 +206,47 @@ func (f *fakeFolders) IndexProgress(context.Context) (FolderIndex, error) {
 		return FolderIndex{}, f.indexErr
 	}
 	return f.index, nil
+}
+
+func (f *fakeFolders) OrganizeExisting(context.Context) (FolderOrganize, error) {
+	f.touch("OrganizeExisting")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.organizeErr != nil {
+		return FolderOrganize{}, f.organizeErr
+	}
+	f.organizes++
+	if folderJobLive(f.organize.State) {
+		return f.organize, nil
+	}
+	if strings.TrimSpace(f.organize.JobID) == "" {
+		f.organize = FolderOrganize{JobID: "job-org", State: "queued", Detail: "surveying chats"}
+	} else {
+		f.organize.State = "queued"
+	}
+	return f.organize, nil
+}
+
+func (f *fakeFolders) OrganizeStatus(context.Context) (FolderOrganize, error) {
+	f.touch("OrganizeStatus")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.organizeErr != nil {
+		return FolderOrganize{}, f.organizeErr
+	}
+	return f.organize, nil
+}
+
+func (f *fakeFolders) CancelOrganize(context.Context) error {
+	f.touch("CancelOrganize")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.organizeErr != nil {
+		return f.organizeErr
+	}
+	f.cancels++
+	f.organize.State = "cancel"
+	return nil
 }
 
 func billingSecurityFolders() *fakeFolders {
@@ -383,6 +428,8 @@ func TestNilFoldersIsUnavailableNotEmpty(t *testing.T) {
 			return a.instructThisFolder(homeLine{kind: homeFolderRow, dir: "col-billing"})
 		}},
 		{"instruct", func() tea.Cmd { return a.instructNamedFolder("Billing authenticate receipts") }},
+		{"organize", func() tea.Cmd { return a.folderPlaceOrganize() }},
+		{"cancel", func() tea.Cmd { return a.folderPlaceCancel() }},
 	} {
 		a.home.say("", "")
 		if cmd := step.run(); cmd != nil {

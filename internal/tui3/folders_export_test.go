@@ -40,6 +40,13 @@ func (adapter) FolderGuidance(context.Context, string) ([]tui3.FolderInstruction
 func (adapter) IndexProgress(context.Context) (tui3.FolderIndex, error) {
 	return tui3.FolderIndex{}, nil
 }
+func (adapter) OrganizeExisting(context.Context) (tui3.FolderOrganize, error) {
+	return tui3.FolderOrganize{}, nil
+}
+func (adapter) OrganizeStatus(context.Context) (tui3.FolderOrganize, error) {
+	return tui3.FolderOrganize{}, nil
+}
+func (adapter) CancelOrganize(context.Context) error { return nil }
 
 var _ tui3.Folders = adapter{}
 
@@ -70,5 +77,9 @@ func TestFoldersInterfaceIsImplementableOutsideThePackage(t *testing.T) {
 	idx, err := folders.IndexProgress(context.Background())
 	if err != nil || idx.Passages != 0 || idx.Delayed {
 		t.Fatalf("empty adapter IndexProgress: %+v err=%v", idx, err)
+	}
+	org, err := folders.OrganizeExisting(context.Background())
+	if err != nil || org.JobID != "" {
+		t.Fatalf("empty adapter OrganizeExisting: %+v err=%v", org, err)
 	}
 }

@@ -26,8 +26,8 @@ import (
 // `page` everywhere — which was true until ARCHITECTURE.md named the interface
 // and the owner signed it.
 //
-// THE SEVEN ARE A LIST AND NOT A SWITCH. The tab bar's order, the numbers
-// `alt+1`…`alt+7` jump to, and the order `tab` walks are ONE fact, held in
+// THE PLACES ARE A LIST AND NOT A SWITCH. The tab bar's order, the numbers
+// `alt+1`…`alt+8` jump to, and the order `tab` walks are ONE fact, held in
 // [placeOrder], so a place added later is a row in that slice and a file.
 //
 // The rewind timeline is NOT one of them. It is still a page reached by
@@ -49,6 +49,7 @@ const (
 	pageSpend
 	pageSearch
 	pageSettings
+	pageFolders
 )
 
 // ── THE CONTRACT EVERY PLACE ANSWERS ────────────────────────────────────────
@@ -350,18 +351,18 @@ func (placeBase) boxOnBody() bool    { return false }
 var placeRegistry = map[page]place{}
 
 // placeOrder is the whole set, in the one order that matters: `alt+1` through
-// `alt+7`, and — for the first [placeBarPlaces] of them — left to right along
+// `alt+8`, and — for the first [placeBarPlaces] of them — left to right along
 // the tab bar and round the circle `tab` walks.
 //
-// THE BAR IS FOUR PLACES AND HOME IS THEIR SUMMARY (DESIGN.md's law 10). What
-// wants you and what is running (home), the work itself (tasks), what it cost
-// (spend), and how this machine is set (settings). Standing, memory and search
-// come after them: still rooms, still reached by `/standing`, `/memory` and
-// `/search`, by the typed box's place offers, by `alt+5`…`alt+7` and by the
-// map — but not drawn on a bar a person reads a hundred times a day, until they
-// are the rooms a person walks into a hundred times a day.
+// THE BAR IS FIVE PLACES AND HOME IS THEIR SUMMARY. What wants you and what is
+// running (home), the work itself (tasks), what it cost (spend), how this
+// machine is set (settings), and logical groups of chats (folders). Standing,
+// memory and search come after them: still rooms, still reached by `/standing`,
+// `/memory` and `/search`, by the typed box's place offers, by `alt+6`…`alt+8`
+// and by the map — but not drawn on a bar a person reads a hundred times a day,
+// until they are the rooms a person walks into a hundred times a day.
 //
-// THE THREE KEEP A DIGIT EACH so a hand that learned `alt+5` finds a room there
+// THE THREE KEEP A DIGIT EACH so a hand that learned `alt+6` finds a room there
 // rather than a key that does nothing.
 //
 // IT IS A LIST HERE AND NOT AN `init` ORDER. Go runs a package's `init`s in
@@ -369,11 +370,11 @@ var placeRegistry = map[page]place{}
 // bar's reading order at the mercy of what a file happens to be called — and
 // `place_home.go` sorts after `place_tasks.go` would silently reorder the bar
 // and every number on it.
-var placeOrder = []page{pageHome, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageSearch}
+var placeOrder = []page{pageHome, pageTasks, pageSpend, pageSettings, pageFolders, pageStanding, pageMemory, pageSearch}
 
-// placeBarPlaces is how many of [placeOrder] the tab bar draws: the four a day
+// placeBarPlaces is how many of [placeOrder] the tab bar draws: the five a day
 // is read through.
-const placeBarPlaces = 4
+const placeBarPlaces = 5
 
 // barPages is the places the bar draws while a person stands at `here`: the
 // first [placeBarPlaces], and the room they are standing in when it is one of
@@ -1645,7 +1646,7 @@ const (
 	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · " +
+	placeMapWords = "alt+1…8 go to a place · alt+enter send it off as a task · " +
 		placeMapVerbWords + " · " + mapCloseWords
 	// mapCloseWords is that line's last clause, named so the switcher's own
 	// clause can be spliced IN FRONT of it rather than after it (hop.go): `esc
