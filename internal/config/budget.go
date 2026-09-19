@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -114,6 +115,8 @@ func writeProfileValue(profileDir, key string, value any) error {
 //
 // The single-key writer above is this function with a map of one, so there is
 // still exactly one place that knows how a setting reaches the disk.
+var profileWriteMu sync.Mutex
+
 func writeProfileValues(profileDir string, updates map[string]any) error {
 	if len(updates) == 0 {
 		return nil
@@ -122,6 +125,23 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	// and a failure that named a different row on every attempt would be a
 	// failure nobody could search for.
 	key := errorKey(updates)
+	encodedUpdates := make(map[string]json.RawMessage, len(updates))
+	for name, value := range updates {
+		encodedValue, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("write config %s: %w", name, err)
+		}
+		encodedUpdates[name] = encodedValue
+	}
+
+	// A settings write is one read-copy-rename transaction. Two surface actions
+	// may reach it together; serializing the whole transaction keeps the second
+	// read behind the first rename instead of letting either rename discard the
+	// other action. Marshal before the lock because user-defined marshalers do
+	// not belong inside the profile critical section.
+	profileWriteMu.Lock()
+	defer profileWriteMu.Unlock()
+
 	held, err := readProfileConfig(profileDir)
 	if err != nil {
 		return fmt.Errorf("write config: preserve existing file: %w", err)
@@ -132,11 +152,7 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	// on the path where the write itself then fails.
 	values := make(map[string]json.RawMessage, len(held)+len(updates))
 	maps.Copy(values, held)
-	for name, value := range updates {
-		encodedValue, err := json.Marshal(value)
-		if err != nil {
-			return fmt.Errorf("write config %s: %w", name, err)
-		}
+	for name, encodedValue := range encodedUpdates {
 		values[name] = encodedValue
 	}
 	encoded, err := json.MarshalIndent(values, "", "  ")
