@@ -547,6 +547,9 @@ func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
 // and a worker that is not the root's own is still refused.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if task.Waiting {
+			return fmt.Errorf("task %q is waiting and can only be finished after it is woken", id)
+		}
 		text := strings.TrimSpace(result)
 		// A REVIEW CONCLUSION CARRIES ITS BASIS WITH IT, written by the same
 		// gate that judged it: a holds conclusion is refused unless every
@@ -779,6 +782,9 @@ func (s *Store) SetVerdictBasis(id string, basis VerdictBasis) (*Task, error) {
 // Fail marks a task failed by its owner, with a reason the next reader sees.
 func (s *Store) Fail(id, agent, message string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if task.Waiting {
+			return fmt.Errorf("task %q is waiting and can only be finished after it is woken", id)
+		}
 		if len(message) > 32<<10 {
 			return errors.New("failure reason exceeds 32768 bytes")
 		}
