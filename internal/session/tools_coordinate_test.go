@@ -89,11 +89,16 @@ func TestCoordinateHasNoExecuteAction(t *testing.T) {
 }
 
 func TestCoordinateSchemaOmitsOriginAndActorID(t *testing.T) {
-	if strings.Contains(coordinateSchemaJSON, `"origin"`) {
-		t.Fatal("coordinate schema must not take an origin argument")
-	}
-	if strings.Contains(coordinateSchemaJSON, `"actor_id"`) || strings.Contains(coordinateSchemaJSON, `"actorId"`) {
-		t.Fatal("coordinate schema must not take an actor_id a model could mint")
+	for _, schema := range []string{coordinateSchemaJSON, coordinateExecSchemaJSON} {
+		if strings.Contains(schema, `"origin"`) {
+			t.Fatal("coordinate schema must not take an origin argument")
+		}
+		if strings.Contains(schema, `"actor_id"`) || strings.Contains(schema, `"actorId"`) {
+			t.Fatal("coordinate schema must not take an actor_id a model could mint")
+		}
+		if strings.Contains(schema, `"grant_id"`) {
+			t.Fatal("coordinate schema must not mint grant_id")
+		}
 	}
 }
 

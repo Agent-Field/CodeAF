@@ -1369,6 +1369,13 @@ type Config struct {
 	// door ([RegisterCollabRouter]); this field must not mint through both.
 	Collab Collab
 
+	// Exec is the wsapi wrapper the coordinate execute actions talk to
+	// (exec.go). NIL IS OFF — no launch-or-join / steer / stop-work verbs —
+	// even when Collab is wired. Wave 3 read/discuss/organize stays. The
+	// process-wide door is [RegisterExecutor]; this field is the per-session
+	// override a test injects and a host fills when wsapi is up.
+	Exec Exec
+
 	// standingItems overrides where [Standing.Store] would be read, and it is
 	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
 	// else: the store is a concrete *standing.Store on the seam a door fills,
@@ -3173,6 +3180,14 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
+	// execMu guards the request-key index StartTask's delegated door writes
+	// (exec.go). A second AdmitTask with the same key must find the first
+	// run-instance rather than start another. The maps are this process's:
+	// the durable binding lives in the workspace store, and this is only
+	// the runtime's FindByRequestKey / Steer seam.
+	execMu    sync.Mutex
+	execByKey map[string]*execAdmission
+	execByID  map[uint64]*execAdmission
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active

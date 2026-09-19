@@ -249,6 +249,12 @@ var (
 	errStaleVersion       = errors.New("the assignment has moved since the version you named")
 	errStaleDirection     = errors.New("that direction is older than the one already in force")
 	errPublishing         = errors.New("this task's work is being published and its assignment is closed")
+	// Delegated revision (Wave 4) still needs an authentic grant and a citation
+	// of the original person request. These are not a model minting fromPerson.
+	errGrantCannotSteer      = errors.New("delegated revision needs an authentic grant that may steer")
+	errNoPersonRequest       = errors.New("delegated revision needs the original person request")
+	errModelPersonOrigin     = errors.New("model-supplied person origin")
+	errPersonRequestMismatch = errors.New("that citation is not the original person request")
 )
 
 // hear records one line said to this task and answers its id. Every line is
@@ -469,6 +475,39 @@ func (a *taskAssignment) revise(id uint64, expected uint64, edit assignmentEdit,
 		a.directions[index].state = directionApplied
 		a.directions[index].version = a.version
 	}
+	return a.version, nil
+}
+
+// reviseDelegated applies a coordinator's change that cites the original
+// PERSON request. THE NEW TEXT IS NOT fromPerson: authority is the grant plus
+// that citation, and a representative who only claims to be the user never
+// reaches this door. said is the person's own words recorded at admission.
+func (a *taskAssignment) reviseDelegated(said string, expected uint64, edit assignmentEdit, at time.Time) (uint64, error) {
+	if strings.TrimSpace(said) == "" {
+		return 0, errNoPersonRequest
+	}
+	if expected != a.version {
+		return 0, fmt.Errorf("%w: it is at revision %d and you named %d", errStaleVersion, a.version, expected)
+	}
+	if edit.empty() {
+		return 0, errNothingToRevise
+	}
+	a.version++
+	revision := assignmentRevision{
+		version:     a.version,
+		said:        strings.TrimSpace(said),
+		work:        strings.TrimSpace(edit.work),
+		deliverable: strings.TrimSpace(edit.deliverable),
+		acceptance:  strings.TrimSpace(edit.acceptance),
+		at:          at,
+	}
+	if revision.deliverable != "" {
+		a.deliverable = revision.deliverable
+	}
+	if revision.acceptance != "" {
+		a.acceptance = revision.acceptance
+	}
+	a.revisions = append(a.revisions, revision)
 	return a.version, nil
 }
 
@@ -798,6 +837,29 @@ func (n *TaskNode) reviseAssignment(id, expected uint64, edit assignmentEdit) (u
 	// see the old goal's commands wearing the new goal's number, which is exactly
 	// the verdict this is written to prevent (task_run.go's
 	// [TaskNode.reviseChecksLocked]).
+	n.reviseChecksLocked(version, edit.checks)
+	return version, nil
+}
+
+// reviseDelegatedAssignment is the node's door for a granted steer. It meets
+// the same publication and settled refusals reviseAssignment does, then folds
+// the overlay using the original person request rather than a fromAgent line.
+func (n *TaskNode) reviseDelegatedAssignment(said string, expected uint64, edit assignmentEdit) (uint64, error) {
+	if n == nil || n.graph == nil {
+		return 0, errNoAssignmentToMove
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.state.settled() {
+		return 0, errAssignmentSettled
+	}
+	if n.publishing {
+		return 0, errPublishing
+	}
+	version, err := n.assignment.reviseDelegated(said, expected, edit, time.Now())
+	if err != nil {
+		return 0, err
+	}
 	n.reviseChecksLocked(version, edit.checks)
 	return version, nil
 }
