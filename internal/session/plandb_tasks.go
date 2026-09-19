@@ -136,6 +136,9 @@ type PlanStep struct {
 	FullOutput  string   `json:"full_output,omitempty"`
 	Writes      []string `json:"writes,omitempty"`
 	Children    []string `json:"children,omitempty"`
+	// NotRun is the engine's fact that this call was refused before it ran.
+	// Its absence is false, so a record written before the field draws as it did.
+	NotRun bool `json:"not_run,omitempty"`
 	// Parts are display facts derived from Command. Command remains the byte-for-byte
 	// record; a surface filters parts instead of rewriting that record.
 	Parts []PlanCommandPart `json:"parts,omitempty"`

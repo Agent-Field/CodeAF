@@ -129,6 +129,10 @@ func TestANewBuildCutOffBeforeItsEndingIsRefusedHolds(t *testing.T) {
 	if err := rec.record(1, refused); err != nil {
 		t.Fatalf("record the refused step: %v", err)
 	}
+	steps, err := Trajectory(storeDir, "review")
+	if err != nil || len(steps) != 1 || !steps[0].NotRun {
+		t.Fatalf("refused event did not establish not-run on its recorded step: steps=%+v err=%v", steps, err)
+	}
 	if _, err := store.Done("review", "review", "holds: the acceptance is met", nil, nil); err == nil {
 		t.Fatal("a new build cut off before its ending earned holds by reading")
 	}
