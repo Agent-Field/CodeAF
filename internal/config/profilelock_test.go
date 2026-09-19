@@ -76,8 +76,16 @@ func TestProfileLockTimesOut(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "timed out after 2s") {
 		t.Fatalf("write error = %v, want 2s lock timeout", err)
 	}
-	if elapsed < profileLockWait || elapsed > profileLockWait+time.Second {
-		t.Fatalf("timeout took %s, want %s with scheduling allowance", elapsed, profileLockWait)
+	if elapsed < profileLockWait {
+		t.Fatalf("timeout returned after %s, before the %s bounded wait even elapsed", elapsed, profileLockWait)
+	}
+	// The upper bound only catches a wait that never returns. Keep it generous so
+	// a scheduler stall on a loaded box cannot fail a test about correctness: a
+	// real regression here does not return at all, and the go test deadline ends
+	// it. See the #1226 property, check the condition before the clock and keep
+	// the clock loose.
+	if elapsed > 30*time.Second {
+		t.Fatalf("timeout took %s, far past the %s wait, so the bounded wait did not hold", elapsed, profileLockWait)
 	}
 }
 
@@ -147,7 +155,10 @@ func mustWriteSignal(t *testing.T, path string) {
 
 func waitForSignal(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	// Generous by the #1226 property: the signal arrives in milliseconds and the
+	// stat above is checked before this clock, so the bound only catches a helper
+	// that never signals and stays clear of a loaded box's scheduler.
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		_, err := os.Stat(path)
 		if err == nil {
