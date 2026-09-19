@@ -108,4 +108,7 @@ func TestOrganizeUserMessageCarriesFolderHierarchy(t *testing.T) {
 	if !strings.Contains(user, "collection_id") {
 		t.Fatalf("organize prompt dropped the add action shape:\n%s", user)
 	}
+	if !strings.Contains(user, "Already being in a different folder") {
+		t.Fatalf("organize prompt dropped dual-membership law:\n%s", user)
+	}
 }

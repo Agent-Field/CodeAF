@@ -49,7 +49,7 @@ const organizeSystem = "You organize chats into folders from cited evidence only
 const organizePrompt = `Given the evidence and folders, return one JSON object:
 {"kind":"no-action"|"add"|"remove"|"move"|"create-folder","chat_id":"...","source_rev":"...","actions":[],"degraded":false}
 kind add requires actions like [{"kind":"add","collection_id":"<id from folders>","ref":{"kind":"conversation","id":"<chat_id>"},"reason":"..."}].
-Add this chat to a folder when cited evidence from a chat already in that folder shows the same purpose. Dual membership is allowed. kind no-action when already filed there, overlap is weak, or no folder id to cite. Cite only the evidence. Do not invent folder ids.`
+Each folder is an id, a name, then its members (conversation <id> or collection <id>). Add this chat to a folder when cited evidence is from a conversation listed under that folder and the purpose matches. Already being in a different folder is not a reason for no-action. Dual membership is allowed. kind no-action when already listed under that same folder, overlap is weak, or no folder id to cite. Cite only the evidence. Do not invent folder ids.`
 
 // Organize is the runner the tick calls. Spend is tagged RoleOrganize. A high
 // floor is the high-tier model when the request says the work is restructuring

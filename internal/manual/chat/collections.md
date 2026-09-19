@@ -209,9 +209,9 @@ collections cannot open. It refuses a cycle or an unknown id in its result text.
 After a substantive message is already in the journal, codeaf enqueues an
 `observe_and_organize` job. Filing happens when the standing pass or `codeaf tick`
 is bound to the organizer and applies a validated plan — enqueue alone does not
-place the chat. RoleOrganize is handed the live folder id/name list plus
-cited passages; without those ids it can only return `no-action`. Filing
-needs no approval card. `w` why here shows origin
+place the chat. RoleOrganize is handed the live folder graph (id, name, and
+member conversation ids) plus cited passages; without those ids it can only
+return `no-action`. Filing needs no approval card. `w` why here shows origin
 `organizer` plus the evidence reason, skipping empty parts. Person-filed chats
 still show `person`. Similarity scores are never membership: a keyword-only file
 is refused, so it does not file by keywords. Lexical overlap alone does not add a
