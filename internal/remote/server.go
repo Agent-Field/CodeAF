@@ -2626,6 +2626,27 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return json.Marshal(dropped)
 
+	case MethodPlanTasks:
+		door, ok := agent.(interface{ PlanTasks() []session.PlanTaskRow })
+		if !ok {
+			return json.Marshal([]session.PlanTaskRow(nil))
+		}
+		return json.Marshal(door.PlanTasks())
+
+	case MethodPlanTaskPage:
+		args, err := arg[PlanTaskPageArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			PlanTaskPage(string) (session.PlanTaskPage, bool)
+		})
+		if !ok {
+			return json.Marshal(PlanTaskPageResult{})
+		}
+		page, found := door.PlanTaskPage(args.ID)
+		return json.Marshal(PlanTaskPageResult{Page: page, OK: found})
+
 	case MethodPlanSpend:
 		// THE READ SIDE OF THE RUN'S SPEND-BY-SEAT, carried across the way
 		// [MethodRewindPoints] is. It is ASSERTED rather than called on the
