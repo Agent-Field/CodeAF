@@ -38,7 +38,7 @@ Filesystem `/folder` `/place` `/dir` stay filesystem. Logical membership never c
 
 Keep existing `Open`, `Close`, `Create`, `Rename`, `Collections`, `Members`, `CollectionsFor`, `Add`, `Remove`, `Ref`, `Kind`, errors. Listing remains read-only and does **not** migrate. Writes call `ensureSchema`, which migrates v1→v2 or creates v2.
 
-`PRAGMA user_version` after a successful Wave 1 write-path migration is **2**. Wave 2 write-path is **3** (see Wave 2). `application_id` stays `0x4146434c`. Wave 1 created no guidance/grant/delivery/execution tables; Wave 2 adds only the five named v3 tables below. Grant/delivery/execution stay absent.
+`PRAGMA user_version` after a successful Wave 1 write-path migration is **2**. Wave 2 write-path is **3** (see Wave 2). Wave 3 write-path is **4** (see Wave 3). `application_id` stays `0x4146434c`. Wave 1 created no guidance/grant/delivery/execution tables; Wave 2 adds only the five named v3 tables below. Wave 3 adds `participants` and `deliveries`. Grant and execution tables stay absent until Wave 4.
 
 ```go
 const (
@@ -207,7 +207,7 @@ type Folders interface {
 
 # Wave 2 contracts
 
-Coordination freeze 19 September 2026. Wave 1 types, methods, iota values, origins, and person-facing Wave 1 spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent grant/delivery/execution tables, an eighth tab-bar place, a keyword-only filer, or a private HTTP client.
+Coordination freeze 19 September 2026. Wave 1 types, methods, iota values, origins, and person-facing Wave 1 spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent grant or execution tables, an eighth tab-bar place, a keyword-only filer, or a private HTTP client. Participants and deliveries are Wave 3 (v4), not this freeze.
 
 Wave 2 work package: `docs/design/collaborative-workspace/issue-2.md` (branch-local). PUBLICATION-POLICY.md: no GitHub issues, comments, or PRs before owner verification. Journeys J09–J18 plus affected J01–J08. Packages are not implemented in this freeze.
 
@@ -250,7 +250,7 @@ Purpose text on a collection is a description, not an instruction. Agent-inferre
 
 Keep every Wave 1 method and type. Listing remains read-only and does **not** migrate. Writes call `ensureSchema`, which migrates v1→v2→v3 or v2→v3 or creates v3.
 
-`PRAGMA user_version` after a successful Wave 2 write-path migration is **3**. `application_id` stays `0x4146434c`. Foreign/future/corrupt still refuse. Test v1-to-v3 and v2-to-v3. No participants/deliveries/grants/execution_bindings.
+`PRAGMA user_version` after a successful Wave 2 write-path migration is **3**. `application_id` stays `0x4146434c`. Foreign/future/corrupt still refuse. Test v1-to-v3 and v2-to-v3. Wave 2 still does not add grant or execution tables. Participants and deliveries are Wave 3 (see Wave 3); grant/execution_bindings are Wave 4.
 
 ```go
 const (
@@ -562,7 +562,7 @@ Nil `Options.Folders` still refuses mutations, including `i` / `/folders instruc
 
 ## Tests the lanes owe before handoff
 
-- schema: v1 list without migrate; v1→v3 and v2→v3 on first write; lease/fence mismatch refuses; expired lease returns to pending; coalesce; suppress key; no Wave 3/4 tables; complexity ≤ 15.
+- schema: v1 list without migrate; v1→v3 and v2→v3 on first write; lease/fence mismatch refuses; expired lease returns to pending; coalesce; suppress key; Wave 2 schema does not create grant or execution tables (participants/deliveries wait for Wave 3 v4); complexity ≤ 15.
 - discover: cursor identity is not a byte offset; crash/replay (A13); rewind/delete invalidates derived rows (A22); version/dimension mismatch does not compare vectors; fake Embedder in tests only.
 - embed: `/embeddings` adapter; availability inspect without printing keys; spend tagged; pin not a text-tier Register; degraded path labelled, not a silent lexical filer.
 - wsapi: `no-action` writes no membership; validator rules 1–10; InstructFolder person-only; EffectiveGuidance Root-once + conflict bit; SuppressPlacement blocks identical evidence; ApplyActionPlan expected-revision atomic.
@@ -574,3 +574,371 @@ Nil `Options.Folders` still refuses mutations, including `i` / `/folders instruc
 ## Isolation
 
 Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`. `mktemp`. Run-unique tmux. Keys via `config.APIKeyAt` / e2e `liveKey`. Synthetic content only. Measure scale in passages/vectors/memory/latency, not chat count alone (J18).
+
+# Wave 3 contracts
+
+Coordination freeze 19 September 2026. Wave 1 and Wave 2 types, methods, iota values, origins, and person-facing spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent grant/execution tables, a manager subclass, a second messaging bus, planner/critic product types, or an eighth tab-bar place.
+
+Wave 3 work package: `docs/design/collaborative-workspace/issue-3.md` (branch-local). PUBLICATION-POLICY.md: no GitHub issues, comments, or PRs before owner verification. Journeys J19–J26 plus affected earlier journeys. Packages are not implemented in this freeze.
+
+Owner clarification supersedes any mandatory group-chat-only reading: an existing ordinary chat coordinates independent chats. A new group chat is **optional**.
+
+## Lane ownership (disjoint)
+
+| Lane | PlanDB | Owns (create/edit) | Must not edit |
+|---|---|---|---|
+| schema | `t-w3-schema` | `internal/workspace` v3→v4 migration and tables `participants`, `deliveries`; actor mint; delivery ack | `internal/wscollab`, `internal/wsapi`, `internal/tui3`, `internal/session`, `cmd/codeaf`, `internal/enginehost` |
+| collab | `t-w3-collab` | **New** `internal/wscollab/*`. One envelope/outbox for direct, fan-out, and shared-discussion. `JournalSeam` / `HostLocator` / `Store` interfaces + fake store in tests | workspace schema files, wsapi, tui3, session, cmd |
+| wsapi | `t-w3-wsapi` | `CoordinateSelected`, `ManageFolder`, `Deliver`, `InviteToDiscussion`, `CreateDiscussion`, `InspectScope`, `PauseCoordination`. Inject collaborator like Inventory — **do not import** `wscollab` | `internal/workspace` internals beyond calling new Store methods; tui3; session; cmd |
+| host | `t-w3-host` | `internal/enginehost`: wake/reconnect or durable pending; bind `wscollab.HostLocator`; `session.RegisterCollabRouter` from the host/cmd wire | tui3 panel files; workspace schema |
+| session | `t-w3-session` | mailbox stays local; `RegisterCollabRouter` + `Config.Collab`; coordinator tools (read/discuss/organize only); assignment law: representative text is `fromAgent` | `internal/workspace` schema, `internal/wscollab` files, tui3 panels |
+| tui | `t-w3-tui` | Mark members as convenience; visible sent/request/reply with source links; participant labels; 80-col sequential. New `tui3.Collab` on `Options` | `internal/workspace`, `internal/wsapi`, `internal/session`, `cmd/codeaf` |
+| proof | `t-w3-proof` | `internal/manual/chat/` inter-chat communication denial; probes; `internal/e2e/tuiwords_test.go` needles; TRY.md Wave 3 | product logic; `internal/tui3/*_test.go` |
+
+Integration onto `feat/collaborative-workspace-0918` in order: schema → collab → wsapi → host → session → tui → proof. Schema and collab may land in parallel against this freeze (collab tests inject a fake `Store`). Wsapi waits on both doors. Host waits on collab. Session waits on wsapi+collab. Wiring’s adapters must implement every TUI Folders method (Wave 1+2 still compile) **and** `var _ tui3.Collab`.
+
+New functions in every Wave 3 package stay at cyclomatic complexity ≤ 15. No dummy production fallbacks: a missing router, a retired host, or a nil `Config.Collab` is a labelled pending/absence, never a fake delivered line, never a coordinator transcript impersonating two speakers, never `fromPerson` minted from model text.
+
+## Product names (person-facing)
+
+Wave 1 and Wave 2 names stay. Additive:
+
+| Surface | Spelling |
+|---|---|
+| Coordination | an ordinary chat; never a “manager” product object or a special collaboration mode |
+| Optional separate chat | a **discussion** — not a “group chat” product entity. Creating one is optional. |
+| Direct | `request` / `reply` with a source link |
+| Fan-out | `sent` separately; one receipt per recipient |
+| Joint | participant labels on a normal chat |
+| Mark members | convenience; not a required ritual. Primary path is natural-language “coordinate these” |
+| Offline recipient | waiting; the line appears **once** on resume |
+| Delivery machinery | `accepted` / `recorded` / `processed` are store/test words, never painted. The person sees sent, request, reply |
+| Pause | `pause coordination` — stops **new** autonomous decisions. Closing a view does not pause |
+| Archive | suppresses automatic wake-ups; history remains |
+| Planner / critic | configurable role labels a person names, not product entities |
+| Escalation | parents may join; **not** “always ask after two turns” as a ban on parent join |
+| Empty participants | emptiness law: nothing, never `0 participants` |
+
+No planner/critic product types, no manager subclass, no eighth tab-bar place. Icons through `tokens` only.
+
+## `internal/workspace` (schema v4)
+
+Keep every Wave 1 and Wave 2 method and type. Listing remains read-only and does **not** migrate. Writes call `ensureSchema`, which migrates v1→v2→v3→v4 or any prefix of that, or creates v4.
+
+`PRAGMA user_version` after a successful Wave 3 write-path migration is **4**. `application_id` stays `0x4146434c`. Foreign/future/corrupt still refuse. Test v1-to-v4 and v3-to-v4. No Wave 4 grant/execution tables (`grants`, `execution_bindings` stay absent).
+
+Only two new tables: `participants`, `deliveries`. Scope is **not** a third table: selected snapshots and folder-dynamic scope live on the coordinator’s participant row (`ScopeKind`, `FolderID`, `SnapshotJSON`).
+
+Actor IDs are minted by software (`mintID`, 16-byte hex, same as Wave 2 jobs/guidance), **never** by the model. `PutParticipant` / `PutDelivery` mint when `ID` is empty. A tool argument named `actor_id` is ignored on write. The model cannot supply `from_person`.
+
+```go
+const (
+    ParticipantActive   = "active"
+    ParticipantPaused   = "paused"
+    ParticipantArchived = "archived"
+    ActorKindChat       = "chat"
+    ActorKindRole       = "role"   // planner/critic are labels in Role, not kinds
+    ActorKindFolder     = "folder"
+    ScopeSelected       = "selected"
+    ScopeFolderDynamic  = "folder-dynamic"
+    DeliveryPending     = "pending"
+    DeliveryAccepted    = "accepted"
+    DeliveryRecorded    = "recorded"
+    DeliveryProcessed   = "processed"
+    PatternDirect       = "direct"
+    PatternFanout       = "fan-out"
+    PatternDiscussion   = "discussion"
+)
+
+// SnapshotJSON is a canonical JSON array of conversation IDs for ScopeSelected.
+// Empty for folder-dynamic (descendants are resolved at read time, never snapshotted).
+
+type Participant struct {
+    ID, DiscussionID, ActorID, Kind, Role, SourceChatID, Status string
+    ScopeKind, FolderID, SnapshotJSON                           string
+    Origin, Actor                                               string
+    CreatedAt, UpdatedAt                                        string // RFC3339
+}
+
+type Delivery struct {
+    ID, CauseID, FromChatID, ToChatID, Pattern, State, Body string
+    Origin, ActorID, DiscussionID, IdempotencyKey           string
+    Attempt                                                 int
+    CreatedAt, AcceptedAt, RecordedAt, ProcessedAt, UpdatedAt string
+}
+
+func (s *Store) PutParticipant(ctx context.Context, p Participant) (Participant, error)
+func (s *Store) ListParticipants(ctx context.Context, discussionID string) ([]Participant, error)
+func (s *Store) SetParticipantStatus(ctx context.Context, id, status string) error
+func (s *Store) PutDelivery(ctx context.Context, d Delivery) (Delivery, error)
+func (s *Store) GetDelivery(ctx context.Context, id string) (Delivery, error)
+func (s *Store) ListDeliveries(ctx context.Context, causeID string) ([]Delivery, error)
+func (s *Store) ListPendingDeliveries(ctx context.Context, toChatID string) ([]Delivery, error)
+func (s *Store) AckDelivery(ctx context.Context, id, state string) (Delivery, error)
+```
+
+`AckDelivery` advances **one** step along `pending → accepted → recorded → processed`. A skip (pending→recorded, accepted→processed, pending→processed) refuses (`ErrInvalid`, word `state`). The three later facts are different timestamps: `AcceptedAt` is the queue, `RecordedAt` is the recipient journal, `ProcessedAt` is the finished invocation/turn. A row may be `accepted` with empty `RecordedAt`. Tests must not treat any one of them as “sent”.
+
+`Delivery.ID` is the durable id written into the recipient journal — the same role as mailbox `deliveryID`, not a second scheme. Software mints it once at enqueue; retries reuse it. Fan-out: **one ID per recipient**, shared `CauseID`. Non-empty `IdempotencyKey` is unique; a second enqueue with the same key is a no-op success that returns the existing row.
+
+A membership/guidance/participant/delivery-ack change this slice owns still commits in **one** writer transaction. No model or network I/O inside that transaction.
+
+## `internal/wscollab` (one router)
+
+New package. One durable envelope/outbox for **direct, fan-out, and shared-discussion**. Do not build three buses or three chat types. Routing destinations and participant/scope records express the difference.
+
+Does **not** import `session`, `tui3`, `wsapi`, `provider`, `run`. Defines the interfaces it needs; tests inject a fake `Store` until schema lands. Production wire maps `workspace.Delivery` onto `Envelope`.
+
+```go
+type Envelope struct {
+    DeliveryID, CauseID, FromChatID, ToChatID, Pattern, Body string
+    Origin, ActorID, DiscussionID, IdempotencyKey            string
+}
+
+type Receipt struct {
+    DeliveryID, CauseID, ToChatID, State string // pending|accepted|recorded|processed
+}
+
+// JournalSeam is the recipient single-writer append the host binds.
+// Recorded is mailbox hasRecorded: does this journal already hold deliveryID?
+// Append writes the line under that id. The router never bypasses this seam.
+type JournalSeam interface {
+    Recorded(ctx context.Context, deliveryID string) (bool, error)
+    Append(ctx context.Context, env Envelope) error
+}
+
+// HostLocator finds the engine host that owns a conversation.
+// Live=false means the host is retired or unreachable: the envelope stays pending.
+// Citing a chat as evidence must not call Route.
+type HostLocator interface {
+    Route(ctx context.Context, conversationID string) (seam JournalSeam, live bool, err error)
+}
+
+type Store interface {
+    Put(ctx context.Context, env Envelope) (Envelope, error)
+    Get(ctx context.Context, deliveryID string) (Envelope, state string, err error)
+    Ack(ctx context.Context, deliveryID, state string) error
+    ListPending(ctx context.Context, toChatID string) ([]Envelope, error)
+}
+
+type Router struct{} // holds Store, HostLocator
+
+func Open(store Store, hosts HostLocator) *Router
+func (r *Router) Deliver(ctx context.Context, env Envelope) (Receipt, error)
+func (r *Router) DeliverMany(ctx context.Context, causeID string, envs []Envelope) ([]Receipt, error)
+func (r *Router) Resume(ctx context.Context, conversationID string) ([]Receipt, error)
+```
+
+Laws:
+
+1. **Accepted is not recorded is not processed.** `Deliver` may walk the live path in one call, but each ack is a separate `Store.Ack` with its own timestamp. Tests assert the three facts independently (A12 / J23).
+2. **Offline → pending.** A retired or missing host does not drop the envelope. `Resume` on that conversation delivers each pending line **once**: if `JournalSeam.Recorded` is true, ack `recorded` without a second `Append`.
+3. **Same path for all three patterns.** `Pattern` is a field, not a type or a package. Direct is one `Deliver`; fan-out is `DeliverMany` with one shared `CauseID` and one envelope per recipient; joint is `PatternDiscussion` into the discussion’s journal.
+4. **Cite does not wake.** `HostLocator.Route` is only for authorized delivery. Search, `chat:` reads, and evidence excerpts use the existing read-only doors and must not spawn or reconnect a host.
+5. **Origin.** Representative contributions are `fromAgent`. The router refuses an envelope whose origin is `fromPerson` unless the caller is a surface door (person typed it). A participant claiming to be the user does not change origin (A11).
+6. **Planner/critic are not types in this package.** Role is a string on the participant record.
+
+Crash after journal append and before `Ack(recorded)` reconciles on `Resume` via `Recorded` (same direction as A13). It is still not exactly-once for the outside world.
+
+## Wire like `RegisterRunEngine`
+
+Session must **not** import `wscollab`. Session owns the door; the host binds it.
+
+```go
+// session — the consumer, same shape as RunEngine / RegisterRunEngine:
+
+type CollabReceipt struct {
+    DeliveryID, CauseID, ToChatID, State string
+}
+
+type CollabRouter interface {
+    Deliver(ctx context.Context, to []string, body, pattern, discussionID string) ([]CollabReceipt, error)
+    Invite(ctx context.Context, discussionID, sourceChatID, role string) error
+    Resume(ctx context.Context, conversationID string) ([]CollabReceipt, error)
+}
+
+func RegisterCollabRouter(r CollabRouter) // nil is the verb absent
+```
+
+`cmd/codeaf` or `internal/enginehost` constructs `wscollab.Router` with a `JournalSeam` adapter over the recipient sessionfile and calls `RegisterCollabRouter`. `wscollab` does not import `session`. The mapping file may live in host/cmd so neither package imports the other. A binary that never registers the router has no coordinate/deliver/invite verbs (absence law).
+
+Tools use `Config.Collab` (the wsapi wrapper below). `RegisterCollabRouter` is the cycle-safe inbound door: `Resume` when a session opens, and the journal seam the router appends through. The `coordinate` tool must not call `RegisterCollabRouter` itself.
+
+## `internal/wsapi` (service additives)
+
+No import of `session`, `tui3`, `provider`, `run`, `wscollab`, `wsdiscover`. Still imports `workspace`. Collaboration is an injected interface (same pattern as `Inventory` / `Discoverer`).
+
+Keep every Wave 1 and Wave 2 method. Additive:
+
+```go
+// CollabEnvelope / CollabAck copy wscollab.Envelope / Receipt fields so this
+// package does not import wscollab. SetCollaborator injects the router; nil
+// means Deliver is absent, not a dummy success.
+type CollabEnvelope struct {
+    DeliveryID, CauseID, FromChatID, ToChatID, Pattern, Body string
+    Origin, ActorID, DiscussionID, IdempotencyKey            string
+}
+type CollabAck struct {
+    DeliveryID, CauseID, ToChatID, State string
+}
+type Collaborator interface {
+    Deliver(ctx context.Context, env CollabEnvelope) (CollabAck, error)
+    DeliverMany(ctx context.Context, causeID string, envs []CollabEnvelope) ([]CollabAck, error)
+    Resume(ctx context.Context, conversationID string) ([]CollabAck, error)
+}
+
+type CoordinateRequest struct {
+    CoordinatorID string
+    ChatIDs       []string // marked IDs; order preserved
+}
+
+type ManageFolderRequest struct {
+    CoordinatorID, FolderID string
+}
+
+type ScopeView struct {
+    ID, Kind, CoordinatorID, FolderID string
+    ChatIDs                           []string // resolved members
+    Revision                          int
+}
+
+type DeliverRequest struct {
+    FromChatID, Body, Pattern, CauseID, IdempotencyKey, DiscussionID string
+    ToChatIDs []string // one = direct; many = fan-out
+}
+
+type DeliverReceipt struct {
+    DeliveryID, CauseID, ToChatID, State string
+}
+
+type InviteRequest struct {
+    DiscussionID, SourceChatID, Role string
+    // Role is a free label. ActorID is minted by the service, never taken from this request.
+}
+
+type ParticipantView struct {
+    ActorID, DiscussionID, Kind, Role, SourceChatID, Status string
+}
+
+type CreateDiscussionRequest struct {
+    ChatID, CoordinatorID, Title, IdempotencyKey string
+    FolderIDs []string
+}
+
+type DiscussionView struct {
+    ChatID, Title string
+    FolderIDs     []string
+}
+
+func (s *Service) SetCollaborator(Collaborator)
+func (s *Service) CoordinateSelected(ctx context.Context, req CoordinateRequest) (ScopeView, error)
+func (s *Service) ManageFolder(ctx context.Context, req ManageFolderRequest) (ScopeView, error)
+func (s *Service) InspectScope(ctx context.Context, coordinatorID string) (ScopeView, error)
+func (s *Service) Deliver(ctx context.Context, req DeliverRequest) ([]DeliverReceipt, error)
+func (s *Service) InviteToDiscussion(ctx context.Context, req InviteRequest) (ParticipantView, error)
+func (s *Service) CreateDiscussion(ctx context.Context, req CreateDiscussionRequest) (DiscussionView, error)
+func (s *Service) ListParticipants(ctx context.Context, discussionID string) ([]ParticipantView, error)
+func (s *Service) PauseCoordination(ctx context.Context, coordinatorID string) error
+```
+
+Scope (A16 / J20):
+
+- `CoordinateSelected` writes `ScopeKind=selected` and `SnapshotJSON` of the given IDs on the coordinator’s participant row. Adding a sibling elsewhere does **not** enlarge `ChatIDs`. `InspectScope` returns that snapshot.
+- `ManageFolder` writes `ScopeKind=folder-dynamic` and `FolderID`. `InspectScope` resolves **current** descendants, including future members, shared objects **deduped** once.
+- A fifth chat filed in Billing after a selected-four stays out of selected scope and **does** appear once `ManageFolder` is the live responsibility.
+
+`CreateDiscussion` does **not** mint a transcript. Session mints the conversation id (16 hex) and journal first, then calls with that `ChatID` and optional `FolderIDs` via existing `AddPlacement`. Shared placement does not merge the rest of either folder (P8 / J22). Failure after mint leaves the discussion unfiled under Root; retry is idempotent on `IdempotencyKey`.
+
+`InviteToDiscussion` mints `ActorID` in software. Inviting parent representatives into **one** conflict discussion dedupes by `SourceChatID` so there is one participant per distinct ancestor, including at most one Root (A17 / J24). Two turns may be a per-level starting budget, not a prohibition on parent join. Root cannot exceed user delegation. Wave 3 has no execute grant to exceed.
+
+`Deliver` with one `ToChatID` is direct; several is fan-out (`PatternFanout`, one receipt each, shared `CauseID`). Joint contributions set `DiscussionID` and `PatternDiscussion`. Nil collaborator: the method is absent (do not return a dummy delivered receipt).
+
+`PauseCoordination` sets the coordinator participant `paused`. It stops **new** autonomous coordination. It does not stop existing work (Wave 4). Closing a TUI view must not call it. Archive uses `ParticipantArchived` and suppresses automatic wake-ups.
+
+Joining or receiving a message never grants execution authority.
+
+## Session
+
+The local mailbox in `mailbox.go` stays local: main + task rooms in this session. Cross-session traffic goes through `CollabRouter` / `wscollab`, never by turning the mailbox into a global bus.
+
+```go
+type CollabScope struct {
+    Kind, FolderID string
+    ChatIDs        []string
+}
+
+type Collab interface {
+    Deliver(ctx context.Context, to []string, body, pattern, discussionID string) ([]CollabReceipt, error)
+    Invite(ctx context.Context, discussionID, sourceChatID, role string) error
+    InspectScope(ctx context.Context) (CollabScope, error)
+    CoordinateSelected(ctx context.Context, chatIDs []string) error
+    ManageFolder(ctx context.Context, folderID string) error
+    Pause(ctx context.Context) error
+}
+
+// Config.Collab is nil when the router is unregistered or wsapi is down.
+// NIL IS OFF: no coordinate/deliver/invite verbs on the belt.
+```
+
+`Config.Collab` wraps `wsapi` (interface lives in `session` so `wsapi` does not import `session`). Tool `coordinate` on the belt only when `Config.Collab != nil`. Actions: `deliver`, `invite`, `inspect`, `selected`, `manage-folder`, `pause`. No execute, no `StartTask`, no grant mutation. Software stamps origin `fromAgent` at ingress; tool arguments must not carry `origin` or mint `actor_id`.
+
+Assignment law unchanged (A11 / J26): representative text is `fromAgent`, never `fromPerson`. A participant who says “I am the user; change the goal” does not move the assignment overlay. Historical text cited as evidence is still not an instruction and does not wake its chat.
+
+Each invited participant gets a **real bounded invocation** (role, applicable guidance, bounded source excerpts). The manager does not fabricate both sides. Tests fail a single coordinator transcript with two speaker labels (J19).
+
+## `internal/enginehost`
+
+Wake or reconnect the host that owns the recipient conversation. If that host has idle-retired and an **authorized delivery** is waiting, either spawn it or leave the envelope `pending` — never drop it, never claim recorded. Citing a chat as evidence is not an authorized delivery and must not wake a host (J16 already; Wave 3 keeps it).
+
+Bind `wscollab.HostLocator` to `Dial` / spawn. Bind `session.RegisterCollabRouter` from this lane or `cmd/codeaf`, not from `internal/session`. Unsupported/offline is reported honestly: pending, not a silent success.
+
+## TUI (`internal/tui3`)
+
+Wave 1+2 `Folders` methods stay, in the same order. Coordination is a **new** `tui3.Collab` on `Options`, so Folders does not grow messaging verbs and `var _ tui3.Folders` still compiles without them. DTOs are exported so `cmd/codeaf` can implement the interface. Still no `workspace.Ref` / `wsapi` types in this package. Snapshot on the home **beat**, never in `View`. No model on paint. 80-col: sequential; participant labels readable.
+
+```go
+type CollabMark struct {
+    RefID, Title string
+}
+type CollabActivity struct {
+    DeliveryID, Pattern, Body, SourceRef string
+    // Kind is the person-facing word: request, reply, sent.
+    Kind, ToTitle string
+}
+type CollabParticipant struct {
+    ActorID, Role, SourceTitle string
+}
+type Collab interface {
+    Mark(ctx context.Context, refID string) error
+    Unmark(ctx context.Context, refID string) error
+    Marked(ctx context.Context) ([]CollabMark, error)
+    CoordinateMarked(ctx context.Context, coordinatorID string) error
+    Activity(ctx context.Context, coordinatorID string) ([]CollabActivity, error)
+    Participants(ctx context.Context, discussionID string) ([]CollabParticipant, error)
+}
+```
+
+Nil `Options.Collab`: no mark/coordinate chrome; natural-language coordination still works if `session.Config.Collab` is wired. Marking is never required to coordinate. Joint discussion looks like a normal chat with participant labels. Deliveries arriving must not jump selection or composer (P12 / J06). Preview still launches **no** AI.
+
+No new slash command. `/folders` unchanged. `/folder` stays filesystem.
+
+## Tick / wiring (`cmd/codeaf`)
+
+- Construct `wscollab.Router` with the real workspace store and enginehost locator once those doors exist; register it (`session.RegisterCollabRouter`).
+- `foldersAdapter` still implements Wave 1+2 Folders (`var _ tui3.Folders`). A separate adapter implements `tui3.Collab` (`var _ tui3.Collab`).
+- After journal append of an authorized inbound delivery, `Resume` that conversation so pending lines appear once.
+- Do not change `standing.Interval`. Do not add a second daemon.
+
+## Tests the lanes owe before handoff
+
+- schema: v1 list without migrate; v1→v4 and v3→v4 on first write; actor IDs software-minted (a supplied model-like `actor_id` is not stored as the actor); `AckDelivery` refuses skips; no grant/execution tables; complexity ≤ 15.
+- collab: accept/record/process are distinct; dedupe by delivery ID; offline resume once (A12); direct, fan-out, and joint on the same router path; `Route` is not called from an evidence citation; origin `fromPerson` refused on a representative envelope.
+- wsapi: selected snapshot does not grow when a sibling is filed elsewhere; `ManageFolder` includes a later descendant once (A16); `CreateDiscussion` placement does not merge folders; Invite dedupes ancestors including one Root (A17); nil collaborator does not return a dummy receipt; Pause does not stop existing work.
+- session: mailbox still local (no bus); `coordinate` absent when `Config.Collab` nil; representative text `fromAgent` cannot move assignment (A11); no execute on this belt; per-participant invocation evidence, not one transcript faking two speakers.
+- host: retired host → pending, not recorded; authorized delivery may wake/reconnect; evidence citation does not.
+- tui: coordinate from an existing ordinary chat; mark is optional; request/reply/sent copy with source links; participant labels; 80-col sequential; P12 selection stability while deliveries arrive; Wave 1 verbs intact.
+- proof: delete the inter-chat communication denial; state: ordinary chats coordinate; group chat optional; three patterns; selected snapshot vs whole-folder; Root escalation is hierarchical, not “always ask after two turns”; TRY.md Wave 3 includes a **direct** message, not only a group demo; tuiwords needles. Live tmux is not this lane’s pass.
+
+## Isolation
+
+Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`. `mktemp`. Run-unique tmux. Keys via `config.APIKeyAt` / e2e `liveKey`. Synthetic content only. Do not prove only one group-chat demo and infer direct/fan-out.
