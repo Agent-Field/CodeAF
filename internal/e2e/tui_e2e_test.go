@@ -29,13 +29,13 @@ package e2e
 //
 // ── TWO WIDTHS, AND THE REASON IS IN THE PRODUCT ────────────────────────────
 //
-// Home at rest is seven panels, and the width chooses the columns
+// Home at rest is eight panels, and the width chooses the columns
 // (internal/tui3's homegrid.go): two from a hundred and ten cells, three from a
 // hundred and seventy. There is NO CARD AT REST at any width; the one card left
 // stands beside a SEARCH, from a hundred and thirty-six cells (homebridge.go).
 // So a subtest that reads that card types first and runs at [tuiWide], and a
 // subtest about the panels runs at [tuiPlain], where the left column holds
-// `needs you`, `where you were` and `projects` and nothing is cut at [tuiCardAt].
+// `needs you`, `where you were`, `folders` and `projects` and nothing is cut at [tuiCardAt].
 
 import (
 	"encoding/json"
@@ -328,7 +328,7 @@ func testRefusedLanding(t *testing.T) {
 // ── 1 ───────────────────────────────────────────────────────────────────────
 
 // testHomeShape opens the product with five projects on the machine and reads
-// the shape home has TODAY (docs/design/home-mission-control/DESIGN.md): seven
+// the shape home has TODAY (docs/design/home-mission-control/DESIGN.md): eight
 // panels under a four-word bar, every seeded conversation on `where you were`,
 // an empty panel keeping its heading and its whisper, the foot's three verbs, and
 // the two doors in and out of the screen.
@@ -348,11 +348,14 @@ func testHomeShape(t *testing.T) {
 	screen := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"), say(t, "homePanelRecent"))
 	t.Logf("home greeted on launch:\n%s", screen)
 
-	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all seven at their
+	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all eight at their
 	// floors in two columns, so a heading missing here is a panel the grid lost
-	// rather than one a short frame squeezed out.
-	for _, name := range []string{"homeNeedsHeading", "homePanelRecent", "homePanelProjects",
-		"homePanelRunning", "switcherSinceLeft", "homePanelSpend", "homePanelNext"} {
+	// rather than one a short frame squeezed out. `folders` is the eighth: logical
+	// groups of chats, not the projects panel. The tagged wait for its whisper,
+	// unwired refusal, `also in`, and `/folders` vs `/folder` is t-w1-live; the
+	// untagged gate pins those words in tuiwords_test.go.
+	for _, name := range []string{"homeNeedsHeading", "homePanelRecent", "homePanelFolders",
+		"homePanelProjects", "homePanelRunning", "switcherSinceLeft", "homePanelSpend", "homePanelNext"} {
 		if !strings.Contains(screen, say(t, name)) {
 			t.Errorf("home has no %q panel:\n%s", say(t, name), screen)
 		}
