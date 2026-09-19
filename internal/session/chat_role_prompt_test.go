@@ -42,11 +42,14 @@ func TestTheConversationUnderTheBeltHasOneWayToPutWorkOut(t *testing.T) {
 		"SEVERAL PROPOSALS IN ONE MESSAGE ARE HOW YOU WORK IN\nPARALLEL",
 		"joins the same run",
 		"`depends_on`",
-		"never redo the work",
+		"A finished task is asked about with `tasks` and is never redone or re-verified by hand.",
 	} {
 		if !strings.Contains(page, rule) {
 			t.Errorf("the page under the belt does not say %q", rule)
 		}
+	}
+	if !strings.Contains(tasksDescription, "A finished task is asked about with `tasks` and is never redone or re-verified by hand.") {
+		t.Errorf("the tasks description lacks the finished-task rule: %q", tasksDescription)
 	}
 	for _, rule := range []string{"Hand off: launch a task.", "Add to: while one runs"} {
 		if strings.Contains(systemPromptSource, rule) {
