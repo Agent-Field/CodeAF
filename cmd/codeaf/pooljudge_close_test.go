@@ -15,10 +15,12 @@ import (
 
 func TestJudgeSweepStopsAndJoinsAtRealProcessClose(t *testing.T) {
 	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	wrote := make(chan struct{})
 	old := poolJudgeSweepRun
 	poolJudgeSweepRun = func(ctx context.Context, _ config.Config, profileDir, _ string, _ func() []catalog.Model, _ func(string) judge.Ask, _ func() time.Time) {
 		started <- struct{}{}
-		<-ctx.Done()
+		<-release
 		pool := config.ProfilePath(profileDir, "pool")
 		if err := os.MkdirAll(pool, 0o700); err != nil {
 			t.Error(err)
@@ -27,6 +29,7 @@ func TestJudgeSweepStopsAndJoinsAtRealProcessClose(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(pool, "joined"), nil, 0o600); err != nil {
 			t.Error(err)
 		}
+		close(wrote)
 	}
 	t.Cleanup(func() { poolJudgeSweepRun = old })
 
@@ -36,7 +39,21 @@ func TestJudgeSweepStopsAndJoinsAtRealProcessClose(t *testing.T) {
 	}
 	<-started
 	pool := config.ProfilePath(proc.ProfileDir, "pool")
-	proc.closeAll()
+	closed := make(chan struct{})
+	go func() {
+		proc.closeAll()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+		close(release)
+		<-wrote
+		t.Fatal("Close returned while the judge sweep could still write")
+	case <-time.After(1 * time.Second):
+	}
+	close(release)
+	<-wrote
+	<-closed
 	if err := os.RemoveAll(pool); err != nil {
 		t.Fatal(err)
 	}
@@ -55,13 +72,17 @@ func TestJudgeSweepCannotCrossHomesAndLaterProcessStartsItsOwn(t *testing.T) {
 	var mu sync.Mutex
 	starts := 0
 	started := make(chan struct{}, 2)
+	releases := make(chan chan struct{}, 2)
+	writes := make(chan string, 2)
 	old := poolJudgeSweepRun
 	poolJudgeSweepRun = func(ctx context.Context, _ config.Config, profileDir, _ string, _ func() []catalog.Model, _ func(string) judge.Ask, _ func() time.Time) {
 		mu.Lock()
 		starts++
 		mu.Unlock()
 		started <- struct{}{}
-		<-ctx.Done()
+		release := make(chan struct{})
+		releases <- release
+		<-release
 		pool := config.ProfilePath(profileDir, "pool")
 		if err := os.MkdirAll(pool, 0o700); err != nil {
 			t.Error(err)
@@ -70,6 +91,7 @@ func TestJudgeSweepCannotCrossHomesAndLaterProcessStartsItsOwn(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(pool, "joined"), nil, 0o600); err != nil {
 			t.Error(err)
 		}
+		writes <- pool
 	}
 	t.Cleanup(func() { poolJudgeSweepRun = old })
 
@@ -85,8 +107,25 @@ func TestJudgeSweepCannotCrossHomesAndLaterProcessStartsItsOwn(t *testing.T) {
 		return p
 	}
 	first := open()
+	firstRelease := <-releases
 	t.Setenv("CODEAF_HOME", homeB)
-	first.closeAll()
+	firstClosed := make(chan struct{})
+	go func() {
+		first.closeAll()
+		close(firstClosed)
+	}()
+	select {
+	case <-firstClosed:
+		close(firstRelease)
+		if got := <-writes; got != filepath.Join(homeB, "pool") {
+			t.Fatalf("survivor wrote under %q, want second home", got)
+		}
+		t.Fatal("first Close returned while its sweep could write into the second home")
+	case <-time.After(1 * time.Second):
+	}
+	close(firstRelease)
+	<-writes
+	<-firstClosed
 	poolB := filepath.Join(homeB, "pool")
 	if err := os.RemoveAll(poolB); err != nil {
 		t.Fatal(err)
@@ -96,7 +135,22 @@ func TestJudgeSweepCannotCrossHomesAndLaterProcessStartsItsOwn(t *testing.T) {
 	}
 
 	second := open()
-	second.closeAll()
+	secondRelease := <-releases
+	secondClosed := make(chan struct{})
+	go func() {
+		second.closeAll()
+		close(secondClosed)
+	}()
+	select {
+	case <-secondClosed:
+		close(secondRelease)
+		<-writes
+		t.Fatal("second Close returned while its sweep could still write")
+	case <-time.After(1 * time.Second):
+	}
+	close(secondRelease)
+	<-writes
+	<-secondClosed
 	mu.Lock()
 	got := starts
 	mu.Unlock()
