@@ -43,3 +43,7 @@ Changing only the anchor test to acquire real 8765 cannot make it immune to an u
 - The product does not require 8765 specifically. It has a registered 18765 fallback, and non-doored services also have a dynamic fallback.
 - A heavy-suite lock cannot protect these binds from unrelated processes.
 - Probe-then-close does not reserve the address for the later serving bind.
+
+## Implementation step
+
+The test change will keep the production address order and binding path intact while replacing the package address list during each fixed-port collision test with test-owned loopback ports. The anchor will hold its first test address open and let `BeginAuth` choose and serve on the second test address, so the busy-first-door condition remains forced in-process. The assertions will derive the expected loopback and registered door from the second test port. The two both-busy tests will hold both test addresses. No test will bind 8765 or 18765, so an external holder of either product port cannot affect these proofs.
