@@ -3572,14 +3572,25 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 		// row as well because the STORE held its title, so a run was drawn as its
 		// parts with nothing over them. The node row stays, and the run's rows
 		// hang under it, which is where a tree's rows go.
-		drawn, owner := make(map[string]bool), make(map[string]bool)
+		// EACH RUN HANGS UNDER ITS OWN ROW. A conversation may hold several runs,
+		// an ended one beside the live one, and every drawn row is filed under the
+		// run it belongs to by walking the store's own parents.
+		drawn := make(map[string]bool)
 		for _, row := range plan {
 			drawn[row.title] = true
 		}
+		parent, rootTitle := make(map[string]string), make(map[string]string)
 		for _, row := range a.taskSheet.mine.plan {
-			if strings.TrimSpace(row.Parent) == "" {
-				owner[planTitleFor(row.Title)] = true
+			parent[row.ID] = strings.TrimSpace(row.Parent)
+			if parent[row.ID] == "" {
+				rootTitle[row.ID] = planTitleFor(row.Title)
 			}
+		}
+		rootOf := func(id string) string {
+			for hops := 0; parent[id] != "" && hops < len(parent); hops++ {
+				id = parent[id]
+			}
+			return id
 		}
 		entries := a.railEntries()
 		nodeOf := func(line railLine) *taskNode {
@@ -3588,37 +3599,46 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 			}
 			return entries[line.entry].node
 		}
-		// under is the last line of the node row the run hangs under, or -1 when
-		// no row on the column carries the run: the rows then take the place they
-		// always had, ahead of the first entry.
-		under := -1
+		// under is, for each run, the last line of the node row that carries it.
+		// A run no row on the column carries keeps the place the rows always
+		// had, ahead of the first entry.
+		under := make(map[string]int)
 		for i, line := range view {
-			if node := nodeOf(line); node != nil && owner[planTitleFor(node.label)] && !drawn[strings.TrimSpace(node.label)] {
-				under = i
+			node := nodeOf(line)
+			if node == nil || drawn[strings.TrimSpace(node.label)] {
+				continue
+			}
+			for root, title := range rootTitle {
+				if title == planTitleFor(node.label) {
+					under[root] = i
+				}
 			}
 		}
-		planLines := make([]railLine, 0, len(plan))
+		after := make(map[int][]railLine)
+		var ahead []railLine
 		for _, row := range plan {
-			planLines = append(planLines, railLine{text: row.text, entry: -1, plan: row.id})
+			line := railLine{text: row.text, entry: -1, plan: row.id}
+			if at, ok := under[rootOf(row.id)]; ok {
+				after[at] = append(after[at], line)
+			} else {
+				ahead = append(ahead, line)
+			}
 		}
 		next := make([]railLine, 0, len(view)+len(plan))
-		inserted := false
+		placed := len(ahead) == 0
 		for i, line := range view {
-			if under < 0 && !inserted && line.entry >= 0 {
-				next = append(next, planLines...)
-				inserted = true
+			if !placed && line.entry >= 0 {
+				next = append(next, ahead...)
+				placed = true
 			}
 			if node := nodeOf(line); node != nil && drawn[strings.TrimSpace(node.label)] {
 				continue
 			}
 			next = append(next, line)
-			if i == under {
-				next = append(next, planLines...)
-				inserted = true
-			}
+			next = append(next, after[i]...)
 		}
-		if !inserted {
-			next = append(append([]railLine{}, planLines...), next...)
+		if !placed {
+			next = append(append([]railLine{}, ahead...), next...)
 		}
 		if len(next) > height {
 			next = next[:height]
