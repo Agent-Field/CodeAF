@@ -369,7 +369,9 @@ finished work in front of it. The woken task is claimed under its own agent name
 again, so it can re-plan, add another child and park again, or finish with `done`
 exactly as it could on its first launch. A `plandb wait` with nothing open to wait
 on is refused, so a worker cannot park on nothing. The remaining endings are the
-run's step cap, its wall, and an errored turn.
+run's step cap, its wall, an errored turn, and one ending the worker reaches on
+its own: the same command coming back with the same answer four times in a row,
+which the section after next explains.
 
 ## When does a waiting task come back?
 
@@ -388,6 +390,31 @@ A child merely being **claimed, started, noted or otherwise touched** while a
 sibling still runs is **not** a reason to come back, and neither is a dependency
 stirring without landing. The park is a wait on something, and it is over when
 that something has finished — not when it has moved.
+
+## Why did my task stop on its own?
+
+A task stops itself for one reason of its own: **the same command came back
+with the same answer four times in a row, and nothing changed between them.**
+Whatever the command was, and whatever was wrong with it, that is work that has
+stopped moving — and the shape is invisible to the other self-ending, because
+a worker that alternates one command with one sentence never stacks up four
+replies with no action in them. The task ends as `incomplete`, and its record
+closes with the reason `the same command came back with the same answer 4
+times in a row: the work was not moving`. The steps above it on the task page
+show the command and exactly what it got each time, so you can see what it
+was caught on rather than guess.
+
+Two kinds of worker are never stopped this way:
+
+- **A task blocked on another task is parked, not stopped.** The plan itself
+  names what the task is waiting on — a part not finished yet, or a
+  dependency — so the task waits exactly as if its worker had asked to, and
+  comes back when that thing finishes (see the section above on when a
+  waiting task returns).
+- **A task whose repeated command keeps bringing back something different is
+  left alone.** When each answer differs, or other tasks in the plan moved
+  between the commands, the work is standing in front of something that
+  changes, and only the step cap bounds it, as always.
 
 ## How does a task decide it is done?
 
