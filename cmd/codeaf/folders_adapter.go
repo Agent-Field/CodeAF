@@ -10,8 +10,8 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"fmt"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -78,11 +78,11 @@ func (a *foldersAdapter) AddFolderPlacement(ctx context.Context, parentID, child
 func (a *foldersAdapter) RemovePlacement(ctx context.Context, collectionID, refID string) error {
 	ref := conversationRef(refID)
 	why, _ := a.svc.WhyHere(ctx, collectionID, ref)
-	if err := a.svc.RemovePlacement(ctx, collectionID, ref, personProvenance("")); err != nil {
+	hash, err := organizerEvidenceHash(why)
+	if err != nil {
 		return err
 	}
-	a.suppressOrganizerPlacement(ctx, collectionID, ref, why)
-	return nil
+	return a.svc.RemovePlacementSuppressing(ctx, collectionID, ref, hash, personProvenance(""))
 }
 
 func (a *foldersAdapter) MovePlacement(ctx context.Context, fromID, toID, refID string) error {
@@ -278,10 +278,13 @@ func folderPlacementsOf(places []wsapi.Placement) []tui3.FolderPlacement {
 	return out
 }
 
-func (a *foldersAdapter) suppressOrganizerPlacement(ctx context.Context, collectionID string, ref workspace.Ref, why wsapi.Why) {
-	if a == nil || a.jobs == nil || why.Event.Origin != workspace.OriginOrganizer {
-		return
+func organizerEvidenceHash(why wsapi.Why) (string, error) {
+	if why.Event.Origin != workspace.OriginOrganizer {
+		return "", nil
 	}
-	sum := sha256.Sum256([]byte(why.Event.Evidence))
-	_ = a.jobs.Suppress(ctx, collectionID, ref, hex.EncodeToString(sum[:]), personProvenance("removed"))
+	hash := strings.TrimSpace(why.Event.Evidence)
+	if hash == "" {
+		return "", fmt.Errorf("organizer placement has no evidence hash")
+	}
+	return hash, nil
 }

@@ -126,24 +126,9 @@ func (c *Client) Embed(ctx context.Context, texts []string) ([][]float32, string
 	if response == nil || len(response.Data) == 0 {
 		return nil, "", "", 0, fmt.Errorf("embeddings: provider returned no vectors")
 	}
-	byIndex := map[int][]float32{}
-	dim := 0
-	for _, row := range response.Data {
-		if len(row.Embedding) == 0 {
-			return nil, "", "", 0, fmt.Errorf("embeddings: empty vector at index %d", row.Index)
-		}
-		if dim == 0 {
-			dim = len(row.Embedding)
-		}
-		byIndex[row.Index] = row.Embedding
-	}
-	vectors := make([][]float32, len(texts))
-	for i := range texts {
-		vector, ok := byIndex[i]
-		if !ok || len(vector) == 0 {
-			return nil, "", "", 0, fmt.Errorf("embeddings: missing vector at index %d", i)
-		}
-		vectors[i] = vector
+	vectors, dim, err := vectorsOf(response.Data, len(texts))
+	if err != nil {
+		return nil, "", "", 0, err
 	}
 	model := strings.TrimSpace(response.Model)
 	if model == "" {
@@ -153,6 +138,29 @@ func (c *Client) Embed(ctx context.Context, texts []string) ([][]float32, string
 		c.account(model, response.Usage)
 	}
 	return vectors, model, Version, dim, nil
+}
+
+func vectorsOf(rows []provider.Embedding, n int) ([][]float32, int, error) {
+	byIndex := map[int][]float32{}
+	dim := 0
+	for _, row := range rows {
+		if len(row.Embedding) == 0 {
+			return nil, 0, fmt.Errorf("embeddings: empty vector at index %d", row.Index)
+		}
+		if dim == 0 {
+			dim = len(row.Embedding)
+		}
+		byIndex[row.Index] = row.Embedding
+	}
+	vectors := make([][]float32, n)
+	for i := 0; i < n; i++ {
+		vector, ok := byIndex[i]
+		if !ok || len(vector) == 0 {
+			return nil, 0, fmt.Errorf("embeddings: missing vector at index %d", i)
+		}
+		vectors[i] = vector
+	}
+	return vectors, dim, nil
 }
 
 // Available inspects whether this install can embed, without printing keys.

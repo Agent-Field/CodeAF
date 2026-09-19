@@ -153,22 +153,33 @@ func (s *Store) Suppress(ctx context.Context, collectionID string, ref Ref, evid
 		return storeError(err)
 	}
 	at := s.stamp()
+	if err := suppressInTx(ctx, tx, collectionID, ref, evidenceHash, p, at); err != nil {
+		return storeError(err)
+	}
+	return storeError(tx.Commit())
+}
+
+func suppressInTx(ctx context.Context, tx *sql.Tx, collectionID string, ref Ref, evidenceHash string, p Provenance, at string) error {
+	if evidenceHash == "" || len(evidenceHash) > 4096 {
+		return fmt.Errorf("%w: suppression needs an evidence hash", ErrInvalid)
+	}
+	if err := requireCollection(ctx, tx, collectionID); err != nil {
+		return err
+	}
 	result, err := tx.ExecContext(ctx, `INSERT INTO placement_suppressions(collection_id,kind,ref_id,session_id,evidence_hash,actor,at)
  VALUES (?,?,?,?,?,?,?) ON CONFLICT(collection_id,kind,ref_id,session_id,evidence_hash) DO NOTHING`,
 		collectionID, ref.Kind, ref.ID, ref.SessionID, evidenceHash, p.Actor, at)
 	if err != nil {
-		return storeError(err)
+		return err
 	}
 	n, err := result.RowsAffected()
 	if err != nil {
-		return storeError(err)
+		return err
 	}
-	if n > 0 {
-		if err := bumpTouched(ctx, tx, at, collectionID); err != nil {
-			return storeError(err)
-		}
+	if n == 0 {
+		return nil
 	}
-	return storeError(tx.Commit())
+	return bumpTouched(ctx, tx, at, collectionID)
 }
 
 func (s *Store) IsSuppressed(ctx context.Context, collectionID string, ref Ref, evidenceHash string) (bool, error) {

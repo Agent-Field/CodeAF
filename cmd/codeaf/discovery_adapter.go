@@ -45,8 +45,8 @@ func (d *discoveryAdapter) SetEmbedder(embedder embed.Embedder) {
 		return
 	}
 	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.embedder = embedder
-	d.mu.Unlock()
 }
 
 func (d *discoveryAdapter) currentEmbedder() embed.Embedder {
@@ -156,6 +156,12 @@ func (d *discoveryAdapter) IndexProgress(ctx context.Context) (wsapi.IndexView, 
 		Delayed:  prog.Delayed,
 		Degraded: prog.Degraded,
 		Detail:   prog.Detail,
+	}
+	if view.Passages == 0 {
+		view.Delayed = true
+		if view.Detail == "" {
+			view.Detail = embed.LabelDelayed
+		}
 	}
 	if d.embedderDown(ctx) {
 		view.Delayed = true
