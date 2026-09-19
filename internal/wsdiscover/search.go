@@ -91,6 +91,8 @@ func (s *Store) Passages(ctx context.Context, sessionID string) ([]Passage, erro
 
 const passageColumns = `id,session_id,generation,ordinal,content_hash,source_ref,speaker,text,model,version,dimension,vector`
 
+const passageSelect = `passages.id,passages.session_id,passages.generation,passages.ordinal,passages.content_hash,passages.source_ref,passages.speaker,passages.text,passages.model,passages.version,passages.dimension,passages.vector`
+
 func scanPassage(rows *sql.Rows) (Passage, error) {
 	var (
 		p      Passage
@@ -123,25 +125,28 @@ func (s *Store) queryPassages(ctx context.Context, q string, args ...any) ([]Pas
 	return out, rows.Err()
 }
 
-// SearchLexical is FTS over present passages. Hostile syntax is a miss, the
-// same way the conversation index treats it — not an error and not a dump.
+// SearchLexical is BM25 over present passages. Terms are OR-ed so a mixed-topic
+// or multi-turn ask still hits; hostile syntax is a miss, the same way the
+// conversation index treats it — not an error and not a dump.
 func (s *Store) SearchLexical(ctx context.Context, query string, limit int) ([]Passage, error) {
 	ready, err := s.readyForRead(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if !ready || query == "" {
+	match := ftsMatchQuery(query)
+	if !ready || match == "" {
 		return []Passage{}, nil
 	}
 	if limit < 1 {
 		limit = 20
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+passageColumns+` FROM passages
-		 WHERE id IN (SELECT rowid FROM passages_fts WHERE passages_fts MATCH ?)
-		   AND session_id IN (SELECT session_id FROM sources WHERE state != ?)
-		 ORDER BY generation, ordinal
-		 LIMIT ?`, query, SourceDeleted, limit)
+		SELECT `+passageSelect+` FROM passages
+		 JOIN passages_fts ON passages_fts.rowid = passages.id
+		 WHERE passages_fts MATCH ?
+		   AND passages.session_id IN (SELECT session_id FROM sources WHERE state != ?)
+		 ORDER BY bm25(passages_fts, 0.0, 0.0, 1.0), passages.generation, passages.ordinal
+		 LIMIT ?`, match, SourceDeleted, limit)
 	if err != nil {
 		return []Passage{}, nil
 	}

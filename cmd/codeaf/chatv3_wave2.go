@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 	"github.com/Agent-Field/codeaf/internal/wsapi"
 )
 
@@ -34,6 +35,51 @@ func folderServiceOf(folders session.Folders) *wsapi.Service {
 		return nil
 	}
 	return wrapped.svc
+}
+
+// evidenceSearchStore is the search place's production door onto the same
+// hybrid ranking SearchEvidence uses. graph.db lexical-only filled J18's
+// /search with paraphrase restatements of the query; discovery.db is the
+// index that has the originals. An empty evidence list falls back so a
+// machine with no discovery rows still searches what was said.
+type evidenceSearchStore struct {
+	inner tui3.SearchStore
+	svc   *wsapi.Service
+}
+
+func wrapSearchWithEvidence(inner tui3.SearchStore, folders session.Folders) tui3.SearchStore {
+	if inner == nil {
+		return nil
+	}
+	svc := folderServiceOf(folders)
+	if svc == nil {
+		return inner
+	}
+	return evidenceSearchStore{inner: inner, svc: svc}
+}
+
+func (s evidenceSearchStore) SearchConversations(terms string, limit int) ([]store.ConversationHit, error) {
+	if s.svc != nil {
+		hits, err := s.svc.SearchEvidence(context.Background(), wsapi.SearchQuery{Query: terms, Limit: limit})
+		if err == nil && len(hits) > 0 {
+			return conversationHitsFromEvidence(hits), nil
+		}
+	}
+	if s.inner == nil {
+		return nil, nil
+	}
+	return s.inner.SearchConversations(terms, limit)
+}
+
+func conversationHitsFromEvidence(hits []wsapi.SearchHit) []store.ConversationHit {
+	out := make([]store.ConversationHit, 0, len(hits))
+	for _, hit := range hits {
+		out = append(out, store.ConversationHit{MessageHit: store.MessageHit{
+			SessionID: hit.SessionID,
+			Body:      hit.Passage,
+		}})
+	}
+	return out
 }
 
 type folderHybrid struct{ svc *wsapi.Service }

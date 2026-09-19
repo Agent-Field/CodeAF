@@ -606,6 +606,14 @@ Typing here searches and nothing else. **Typing on home is what offers places** 
 the standing place beside the chats that match) — the same offer made twice, one `tab` apart,
 would be two rankings that could disagree.
 
+## /search finds authenticated access from emailed receipt links
+
+`/search` (and `alt+8`) uses the same hybrid ranking as conversation search.
+Type emailed receipt links or a purchase confirmation PDF and the original
+authenticated-access passage still ranks, even when it never used those words.
+Rows that only restate what you just typed are not that original. A short
+correction and a buried note in a mixed-topic chat stay findable.
+
 ## settings — how this machine is set
 
 Every setting, in sections, with a search that crosses all of them. `/settings`, `/set` and

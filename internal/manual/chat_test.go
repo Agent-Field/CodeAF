@@ -1281,6 +1281,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// record of work and not of what was said.
 		{"what did we decide last week", "what-i-remember"},
 		{"search my old conversations", "what-i-remember"},
+		{"find original passages despite different wording", "what-i-remember"},
+		{"emailed receipt links without the old title", "what-i-remember"},
 		{"what is the embed pin", "what-i-remember"},
 		{"why does discovery say degraded", "what-i-remember"},
 		{"what does discovery delayed mean", "what-i-remember"},
