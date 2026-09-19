@@ -405,6 +405,10 @@ requirement in them, and speed is no permission to skip the walk.
   allows — `/settings` → Spending → **per conversation** — which is off by default.
   The run's width and its dollar ceiling are the conversation's own numbers, so a
   run costs what the conversation costs and runs as wide as the conversation may.
+- **The time limit.** A session opened with an elapsed-time limit (`--max-hours`) hands
+  a run whatever is left of it. When the time is up the run starts nothing new, ends the
+  work still going, brings home what had finished, and its row reads `incomplete` with
+  `a limit you set stopped it`. A session with no time limit puts none on its runs.
 - **The step cap.** A worker stops at **200** finished tool calls — the same
   figure a node worker carries. The cap is a bound on spend and not a finding about
   the work: the turn is stopped there rather than judged, and a worker stopped this

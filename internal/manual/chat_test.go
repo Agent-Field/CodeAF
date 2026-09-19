@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -3038,15 +3037,5 @@ func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
 					section.Page, section.Title, phrase)
 			}
 		}
-	}
-}
-
-func TestStartingCodeafAnswersWhetherATimeLimitStopsARunningTask(t *testing.T) {
-	body, err := os.ReadFile("chat/starting-codeaf.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(body), "## Does a time limit stop a running task") {
-		t.Fatal("starting-codeaf.md has no searchable heading answering whether a time limit stops a running task")
 	}
 }

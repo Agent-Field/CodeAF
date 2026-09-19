@@ -223,12 +223,26 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			timer.Reset(passInterval)
 		case <-elapsed:
 			// TIME AND COST SHARE ONE ENDING. Mark the same limit state the
-			// spend counter marks, end and drain work already in flight, then
-			// let pass return the existing OutcomeLimit without launching again.
+			// spend counter marks, so the next pass launches nothing and answers
+			// the existing OutcomeLimit.
+			//
+			// THE DIFFERENCE IS THE WORK IN FLIGHT. A cost limit lets it finish,
+			// because what it will spend is already committed; a time limit
+			// cannot, because the time is gone. So every worker is ended here, and
+			// ITS ENDING IS ABSORBED, the way the caller's wall below reads its
+			// endings: a return that was dropped would leave its task claimed and
+			// reading as running on a run that is over, and what the worker spent
+			// before it was cut would be missing from the run's account.
 			s.limitHit = true
-			s.drain()
-			s.inFlight = 0
 			elapsed = nil
+			for _, cancel := range s.cancels {
+				cancel()
+			}
+			for s.inFlight > 0 {
+				ret := <-s.finished
+				s.inFlight--
+				s.absorb(ret)
+			}
 		case <-ctx.Done():
 			// The caller's wall: workers still out there were handed this
 			// context and end with it. Their endings are absorbed so their
@@ -275,7 +289,8 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit) {
 		// Nothing of ours is running and the run cannot complete itself: the
-		// root's own worker failed, or the cost counter has reached its limit.
+		// root's own worker failed, or the run has reached a limit a person set,
+		// in dollars or in time.
 		// The word says which; the store keeps whatever the run reached.
 		if s.limitHit {
 			return OutcomeLimit

@@ -34,7 +34,7 @@ func TestElapsedLimitUsesTheLimitEndingRoad(t *testing.T) {
 				t.Errorf("add post-limit task: %v", err)
 			}
 			close(ended)
-			return Report{}, ctx.Err()
+			return Report{USD: 0.25}, ctx.Err()
 		})
 	}
 	supervisor := NewSupervisor(store, t.TempDir(), 2, Limits{Elapsed: time.Hour}, factory)
@@ -52,6 +52,14 @@ func TestElapsedLimitUsesTheLimitEndingRoad(t *testing.T) {
 	case <-ended:
 	default:
 		t.Fatal("Run returned before its in-flight worker ended and drained")
+	}
+	// THE CUT WORKER'S ENDING WAS READ, NOT DROPPED: what it spent before the
+	// limit is in the run's account, and the run holds no claim on it any more.
+	if supervisor.spent != 0.25 {
+		t.Fatalf("run spend = %v, want the cut worker's 0.25: its return was dropped", supervisor.spent)
+	}
+	if len(supervisor.cancels) != 0 {
+		t.Fatalf("the run still holds %d workers after its limit ended it", len(supervisor.cancels))
 	}
 	if got := launches.Load(); got != 1 {
 		t.Fatalf("worker launches = %d, want only the in-flight root", got)
