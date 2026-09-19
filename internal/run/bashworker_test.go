@@ -683,6 +683,43 @@ func TestBashWorkerKeepsAWorkerWhoseEveryLookAnswersDifferently(t *testing.T) {
 // movement can save it, and it does: the store is the one thing a waiting or
 // coordinating worker legitimately watches, and a store that moved is the
 // world having changed.
+// A BROKEN WORKER IN A BUSY RUN IS ENDED WHILE THE OTHERS WORK. The identical
+// failing look, and between every two looks the STORE MOVES, but on a sibling's
+// task: that is the rest of the run getting on with its own work, and read over
+// the whole store it would reset this worker's count for ever. Read over the
+// worker's own task and the rows under it, the law fires at its bound.
+func TestBashWorkerEndsABrokenWorkerWhileItsSiblingsMoveTheStore(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "mine", Title: "the broken worker's task", ParentID: "root"},
+		{ID: "theirs", Title: "a sibling that keeps working", ParentID: "root"},
+	}); err != nil {
+		t.Fatalf("add the two tasks: %v", err)
+	}
+	if _, err := store.Claim("mine", "mine"); err != nil {
+		t.Fatalf("claim the worker's task: %v", err)
+	}
+	command := "plandb task note theirs tick >/dev/null 2>&1; cat missing.txt"
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolReply(`{"command":` + jsonString(command) + `}`), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task("mine"))
+
+	if err == nil || !strings.Contains(err.Error(), "the same command came back with the same answer") {
+		t.Fatalf("the worker ended with %v, want the same-action ending: a sibling's moves are not its progress", err)
+	}
+	if report.Steps != 4 {
+		t.Fatalf("report steps = %d, want the law's bound of four", report.Steps)
+	}
+	if notes := store.Notes("theirs", 0); len(notes) < 4 {
+		t.Fatalf("the sibling's task holds %d notes, want one per look: the store did not move and the test proves nothing", len(notes))
+	}
+}
+
 func TestBashWorkerKeepsAWorkerWhoseStoreMovedBetweenLooks(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))

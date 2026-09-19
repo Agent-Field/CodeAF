@@ -412,9 +412,11 @@ Two kinds of worker are never stopped this way:
   comes back when that thing finishes (see the section above on when a
   waiting task returns).
 - **A task whose repeated command keeps bringing back something different is
-  left alone.** When each answer differs, or other tasks in the plan moved
-  between the commands, the work is standing in front of something that
-  changes, and only the step cap bounds it, as always.
+  left alone.** When each answer differs, or the task's own notes or one of
+  its parts moved between the commands, the work is standing in front of
+  something that changes, and only the step cap bounds it, as always. What
+  OTHER tasks in the plan do does not count: a task caught like this is
+  stopped even while the rest of the run carries on working.
 
 ## How does a task decide it is done?
 
