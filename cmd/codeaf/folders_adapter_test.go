@@ -273,6 +273,36 @@ func TestSessionFoldersFileNestsACollectionRef(t *testing.T) {
 	}
 }
 
+func TestAdapterOrganizeExistingCoalescesAndCancels(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "collections.db")
+	svc, err := wsapi.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	adapter := &foldersAdapter{svc: svc}
+	first, err := adapter.OrganizeExisting(ctx)
+	if err != nil || first.JobID == "" || first.State != "queued" {
+		t.Fatalf("OrganizeExisting: %+v, %v", first, err)
+	}
+	second, err := adapter.OrganizeExisting(ctx)
+	if err != nil || second.JobID != first.JobID {
+		t.Fatalf("second click: %+v vs %s, %v", second, first.JobID, err)
+	}
+	status, err := adapter.OrganizeStatus(ctx)
+	if err != nil || status.JobID != first.JobID || status.State != "queued" {
+		t.Fatalf("OrganizeStatus: %+v, %v", status, err)
+	}
+	if err := adapter.CancelOrganize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := adapter.OrganizeStatus(ctx)
+	if err != nil || cancelled.State != "cancel" {
+		t.Fatalf("cancel: %+v, %v", cancelled, err)
+	}
+}
+
 func containsName(names []string, want string) bool {
 	for _, name := range names {
 		if name == want {

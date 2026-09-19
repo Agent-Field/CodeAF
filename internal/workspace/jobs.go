@@ -14,12 +14,16 @@ import (
 // EnqueueJob records work for the tick. A second enqueue with the same type and
 // coalesce key while the first is still pending or leased is a no-op success:
 // the organizer must not run twice for one source revision.
+//
+// A blank collections file is initialized here without creating a folder.
+// Organize existing chats must be able to run on a fresh Root; Create remains
+// the only door that invents a collection row.
 func (s *Store) EnqueueJob(ctx context.Context, job Job) (Job, error) {
 	job, err := normalizeEnqueue(job)
 	if err != nil {
 		return Job{}, storeError(err)
 	}
-	if err := s.writeReady(ctx); err != nil {
+	if err := s.ensureSchema(ctx); err != nil {
 		return Job{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -112,15 +116,73 @@ func (s *Store) LeaseJob(ctx context.Context, types []string, owner, until strin
 }
 
 // FinishJob requires the current fence. Only completed, deferred, failed and
-// cancelled are terminal; there is no other job state.
+// cancelled are terminal; there is no other job state. A job the person already
+// cancelled is a no-op success so the standing pass does not fail the tick.
 func (s *Store) FinishJob(ctx context.Context, id, fence, state, detail string) error {
 	if !validJobFinish(state) {
 		return storeError(fmt.Errorf("%w: job cannot finish as %q", ErrInvalid, state))
 	}
-	return s.withHeldJob(ctx, id, fence, func(tx *sql.Tx, job Job, now string) error {
+	return s.withJob(ctx, id, func(tx *sql.Tx, job Job, now string) error {
+		if job.State == JobCancelled {
+			return nil
+		}
+		if !holdsFence(job, fence, now) {
+			return fenceConflict()
+		}
 		_, err := tx.ExecContext(ctx, `UPDATE jobs SET state=?, error=?, updated_at=? WHERE id=?`,
 			state, detail, now, job.ID)
 		return err
+	})
+}
+
+// LookupJob is the latest row for a type and coalesce key. Pending and leased
+// win over a finished twin so status follows the live survey. Expired leases
+// return to pending first, the same way LeaseJob does, so restart paints queued
+// rather than a stale running.
+func (s *Store) LookupJob(ctx context.Context, jobType, coalesceKey string) (Job, error) {
+	jobType, coalesceKey = strings.TrimSpace(jobType), strings.TrimSpace(coalesceKey)
+	if jobType == "" || coalesceKey == "" {
+		return Job{}, storeError(fmt.Errorf("%w: lookup needs a type and a key", ErrInvalid))
+	}
+	return s.withJobsTx(ctx, func(tx *sql.Tx, now string) (Job, error) {
+		if err := expireLeases(ctx, tx, now); err != nil {
+			return Job{}, err
+		}
+		job, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM jobs
+ WHERE type=? AND coalesce_key=?
+ ORDER BY CASE WHEN state IN (?,?) THEN 0 ELSE 1 END, seq DESC LIMIT 1`,
+			jobType, coalesceKey, JobPending, JobLeased))
+		if errors.Is(err, sql.ErrNoRows) {
+			return Job{}, ErrNotFound
+		}
+		return job, err
+	})
+}
+
+// CancelJob marks the live pending or leased row cancelled. The person does not
+// hold the worker fence; this is the visible cancel, not FinishJob.
+func (s *Store) CancelJob(ctx context.Context, jobType, coalesceKey string) (Job, error) {
+	jobType, coalesceKey = strings.TrimSpace(jobType), strings.TrimSpace(coalesceKey)
+	if jobType == "" || coalesceKey == "" {
+		return Job{}, storeError(fmt.Errorf("%w: cancel needs a type and a key", ErrInvalid))
+	}
+	return s.withJobsTx(ctx, func(tx *sql.Tx, now string) (Job, error) {
+		if err := expireLeases(ctx, tx, now); err != nil {
+			return Job{}, err
+		}
+		job, err := lookupCoalesced(ctx, tx, jobType, coalesceKey)
+		if errors.Is(err, sql.ErrNoRows) {
+			return Job{}, ErrNotFound
+		}
+		if err != nil {
+			return Job{}, err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE jobs SET state=?, owner='', fence='', lease_until='', updated_at=?
+ WHERE id=? AND state IN (?,?)`, JobCancelled, now, job.ID, JobPending, JobLeased)
+		if err != nil {
+			return Job{}, err
+		}
+		return loadJob(ctx, tx, job.ID)
 	})
 }
 
@@ -140,29 +202,48 @@ func (s *Store) withHeldJob(ctx context.Context, id, fence string, apply func(*s
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(fence) == "" {
 		return storeError(fmt.Errorf("%w: job fence does not match", ErrConflict))
 	}
+	return s.withJob(ctx, id, func(tx *sql.Tx, job Job, now string) error {
+		if !holdsFence(job, fence, now) {
+			return fenceConflict()
+		}
+		return apply(tx, job, now)
+	})
+}
+
+func (s *Store) withJob(ctx context.Context, id string, apply func(*sql.Tx, Job, string) error) error {
+	if strings.TrimSpace(id) == "" {
+		return storeError(fmt.Errorf("%w: job fence does not match", ErrConflict))
+	}
+	_, err := s.withJobsTx(ctx, func(tx *sql.Tx, now string) (Job, error) {
+		job, err := loadJob(ctx, tx, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return Job{}, ErrNotFound
+		}
+		if err != nil {
+			return Job{}, err
+		}
+		if err := apply(tx, job, now); err != nil {
+			return Job{}, err
+		}
+		return job, nil
+	})
+	return err
+}
+
+func (s *Store) withJobsTx(ctx context.Context, apply func(*sql.Tx, string) (Job, error)) (Job, error) {
 	if err := s.writeReady(ctx); err != nil {
-		return err
+		return Job{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return storeError(err)
+		return Job{}, storeError(err)
 	}
 	defer tx.Rollback()
-	now := s.stamp()
-	job, err := loadJob(ctx, tx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return storeError(ErrNotFound)
-	}
+	job, err := apply(tx, s.stamp())
 	if err != nil {
-		return storeError(err)
+		return Job{}, storeError(err)
 	}
-	if !holdsFence(job, fence, now) {
-		return storeError(fenceConflict())
-	}
-	if err := apply(tx, job, now); err != nil {
-		return storeError(err)
-	}
-	return storeError(tx.Commit())
+	return job, storeError(tx.Commit())
 }
 
 func holdsFence(job Job, fence, now string) bool {

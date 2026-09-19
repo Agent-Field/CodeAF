@@ -3872,9 +3872,11 @@ func MemoryEnabledAt(profileDir string) bool {
 	return MemoryAt(profileDir) == MemoryOn
 }
 
-// OrganizeEnabledAt is the workspace.organize switch. Unset is on: automatic
-// filing is the default once v3 exists. Off cancels or defers apply; it does
-// not drop the journal or refuse a person's Add/Remove.
+// OrganizeEnabledAt is the workspace.organize switch. Unset is on: the
+// pipeline is allowed. Off cancels or defers automatic after-message apply;
+// it does not drop the journal, refuse a person's Add/Remove, or cancel an
+// explicit organize_existing job. Unset-on does not silently first-populate
+// an empty Folders tab; that takes New folder or Organize existing chats.
 func OrganizeEnabledAt(profileDir string) bool {
 	if value, ok := persistedBool(profileDir, KeyWorkspaceOrganize); ok {
 		return value
