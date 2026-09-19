@@ -136,6 +136,14 @@ type PlanStep struct {
 	FullOutput  string   `json:"full_output,omitempty"`
 	Writes      []string `json:"writes,omitempty"`
 	Children    []string `json:"children,omitempty"`
+	// NotRun is the engine's fact that the harness answered this call itself and
+	// nothing ran. Its absence is false, so a record written before the field
+	// draws as it did.
+	NotRun bool `json:"not_run,omitempty"`
+	// Refused is the engine's fact that the call was an action the worker
+	// attempted and a door refused. A NotRun step without it is a correction
+	// about the form of a reply, which is no step a person reads.
+	Refused bool `json:"refused,omitempty"`
 	// Parts are display facts derived from Command. Command remains the byte-for-byte
 	// record; a surface filters parts instead of rewriting that record.
 	Parts []PlanCommandPart `json:"parts,omitempty"`

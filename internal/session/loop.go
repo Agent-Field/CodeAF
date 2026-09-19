@@ -3274,6 +3274,10 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				// reads events and not results, so a fact kept only on the result
 				// is a fact no counter can act on (withdrawn.go).
 				HarnessMade: results[index].harness,
+				// AN ATTEMPTED ACTION A DOOR REFUSED is the one harness-made
+				// answer with a veto's author on it ([episode.preAction]); a
+				// correction about the reply's form has none.
+				Refused: results[index].harness && results[index].refusedBy != "",
 			})
 			continue
 		}

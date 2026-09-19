@@ -912,6 +912,10 @@ const (
 	// "Steering a task"), said on the page because the page is where the note is
 	// typed.
 	taskPlanPickupWord = "the worker reads a note at its next step"
+	// taskPlanRefusedWord leads the line a refused action draws in a step's
+	// place. It is the permissions page's own word for a call that was refused,
+	// taken from that constant so the two places cannot come to disagree.
+	taskPlanRefusedWord = permDenyWord
 	// tasksPlanCancelWord is the cancel key on a plan row and its page, spelled
 	// from the roster's own cancel key and verb rather than re-invented here.
 	tasksPlanCancelWord = stopRaiseKey + " " + stopActWord
@@ -1531,6 +1535,24 @@ func (a *app) taskPlanBody(width int) []string {
 	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
 		for _, step := range page.Steps {
+			// A CALL THE ENGINE SAYS DID NOT RUN IS ONE OF TWO THINGS, and the
+			// engine says which. A correction about the FORM of the worker's reply
+			// was addressed to the worker and nothing was attempted: it stays in
+			// the record and in the head's count, and has no row. AN ACTION THE
+			// WORKER ATTEMPTED AND A DOOR REFUSED is something a person steering
+			// the run wants to see, so it draws as one dim line in the step's
+			// place: the word the permissions page already uses for a refused call
+			// and what was tried. It carries NO NUMBER, because a number on this
+			// page is a step that ran, and the rows around it keep the numbers the
+			// record gave them. Both facts are fields set where the event is known;
+			// this surface never reads the answer's sentence, which was written for
+			// the worker, and a record without the fields draws as before.
+			if step.NotRun {
+				if tried := planDisplayCommand(step.Command, step.Parts); step.Refused && tried != "" {
+					add(pal.dim("   " + taskPlanRefusedWord + railSep + tried))
+				}
+				continue
+			}
 			// A STEP WITH NOTHING OF THE WORK IN IT HAS NO ROW, AND EVERY OTHER ROW
 			// KEEPS THE NUMBER THE RECORD GAVE IT. The head counts the steps that
 			// ran, the live step is called by its number elsewhere, and a row
