@@ -33,6 +33,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -42,6 +43,25 @@ import (
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
+
+// runCostLeft is what a run is handed of the dollar limit the person set: the
+// limit less what the conversation has already spent. THE LIMIT IS READ THROUGH
+// [Agent.railCap], the one place that decides which of the person's dollar
+// limits is the smaller, so a run and an adaptive run cannot come to disagree
+// about it. Zero means no limit. A spent or overspent limit becomes the smallest
+// positive figure rather than zero because the run engine reads zero as
+// unlimited; its existing limit ending then stops the run before a second paid
+// call if admission did not already refuse the turn.
+func runCostLeft(limit, spent float64) float64 {
+	if limit <= 0 {
+		return 0
+	}
+	left := limit - spent
+	if left <= 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	return left
+}
 
 // RunSpec is one run as the door hands it to the engine: the store to drive,
 // the working copy its workers share, the run's own words, the conversation's
@@ -58,10 +78,9 @@ type RunSpec struct {
 	// and the brief is the assignment the root worker reads.
 	Title string
 	Brief string
-	// Slots is how many workers run at once, and CostUSD is what the whole run
-	// may spend. Both are the conversation's own numbers (TaskParallel and
-	// SpendRailUSD), so a run costs what the conversation costs and runs as
-	// wide as the conversation may.
+	// Slots is how many workers run at once. CostUSD is what is left of the
+	// smaller dollar limit the person set on the conversation, so the run and
+	// conversation spend from the same finite allowance.
 	Slots   int
 	CostUSD float64
 	// Elapsed is the conversation time still available when this run starts.
@@ -335,7 +354,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		Title:     title,
 		Brief:     brief,
 		Slots:     a.config.TaskParallel,
-		CostUSD:   a.config.SpendRailUSD,
+		CostUSD:   runCostLeft(a.railCap(0), a.Usage().CostUSD),
 		Elapsed:   wallLeft,
 		// The step cap a node of this session's own tree carries, so a run
 		// worker and a node worker stop at the same figure.
