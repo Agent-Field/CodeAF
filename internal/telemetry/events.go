@@ -384,6 +384,61 @@ const (
 	CostBandsDoc  = "dollar bands are 0, under 0.01, 0.01-0.1, 0.1-1, 1-10 and 10+"
 )
 
+// CountBands, CostBands and DurationBands list every band a row can carry, in
+// ascending order, from the constants the bucket functions answer with — so a
+// listing that prints them cannot spell a band a row would not.
+func CountBands() []string {
+	return []string{BucketZero, BucketOne, BucketTwo5, BucketSix, BucketTwo1, Bucket100}
+}
+
+func CostBands() []string {
+	return []string{CostZero, CostUnder1c, Cost1cTo10c, Cost10cTo1, Cost1To10, Cost10Plus}
+}
+
+func DurationBands() []string {
+	return []string{DurationUnder1m, Duration1To5m, Duration5To30m, Duration30mTo2h, Duration2hPlus}
+}
+
+// StopReasons lists every stop reason, in the contract's order.
+func StopReasons() []string {
+	return []string{StopDone, StopError, StopIncomplete, StopBudget, StopTurnCap,
+		StopDeadline, StopPrice, StopQuestion, StopInterrupted, StopUnknown}
+}
+
+// exampleProps is one plausible value per event prop, spelled from the
+// contract's own constants wherever the contract has one, so an example row
+// can never show a value a real row could not carry. `codeaf telemetry show`
+// prints one row per event from this table so a person sees the shape of
+// what leaves before anything has. The fingerprint is the one invented value:
+// sixteen hex characters, which is all a real one is.
+var exampleProps = map[string]map[string]string{
+	"session_started": {
+		"mode":    string(ModeChat),
+		"resumed": "false",
+	},
+	"session_ended": {
+		"mode":               string(ModeChat),
+		"duration":           Duration5To30m,
+		"turns":              BucketSix,
+		"model_calls":        BucketTwo1,
+		"model_calls_failed": BucketZero,
+		"tool_calls":         BucketSix,
+		"tool_calls_failed":  BucketZero,
+		"cost_usd":           Cost10cTo1,
+		"stop_reason":        StopDone,
+		"exit_code":          "0",
+	},
+	"fault": {
+		"mode":        string(ModeChat),
+		"scope":       ScopeMain,
+		"fingerprint": "3fa9c1e2b7d04e85",
+	},
+}
+
+// ExampleProp answers the example value for one event prop, or "" for a prop
+// the table does not hold; a test holds the table to the allowlist.
+func ExampleProp(event, prop string) string { return exampleProps[event][prop] }
+
 // AllowlistedProps answers which key an event name accepts. It backs the doc
 // drift test and the privacy law: the table above is the allowlist, this is
 // its only reader outside this file's own tests.

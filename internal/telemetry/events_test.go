@@ -335,3 +335,57 @@ func TestNothingSentinelEverReachesTheWire(t *testing.T) {
 		}
 	}
 }
+
+// TestExamplePropsCoverTheAllowlistExactly holds the example table `codeaf
+// telemetry show` prints to the allowlist: every prop an event adds has an
+// example, no example names a prop the event cannot carry, and every example
+// is a value the contract admits where the contract enumerates one.
+func TestExamplePropsCoverTheAllowlistExactly(t *testing.T) {
+	common := set(CommonPropNames())
+	for _, event := range AllowlistedEvents() {
+		added := EventPropNames(event)
+		for _, name := range added {
+			if ExampleProp(event, name) == "" {
+				t.Errorf("%s %s has no example value", event, name)
+			}
+		}
+		for name := range exampleProps[event] {
+			if common[name] || !allowedProps[event][name] {
+				t.Errorf("%s has an example for %q, which it does not add", event, name)
+			}
+		}
+		if len(added) == 0 && len(exampleProps[event]) != 0 {
+			t.Errorf("%s adds nothing but has examples", event)
+		}
+	}
+	if !ValidStopReason(ExampleProp("session_ended", "stop_reason")) {
+		t.Errorf("the example stop_reason is not one of the contract's")
+	}
+	for _, band := range CountBands() {
+		found := false
+		for n := 0; n <= 101 && !found; n++ {
+			found = BucketCount(n) == band
+		}
+		if !found {
+			t.Errorf("count band %q is not one BucketCount answers", band)
+		}
+	}
+	for _, band := range DurationBands() {
+		found := false
+		for _, d := range []time.Duration{0, 2 * time.Minute, 10 * time.Minute, time.Hour, 3 * time.Hour} {
+			found = found || BucketDuration(d) == band
+		}
+		if !found {
+			t.Errorf("duration band %q is not one BucketDuration answers", band)
+		}
+	}
+	for _, band := range CostBands() {
+		found := false
+		for _, c := range []float64{0, 0.005, 0.05, 0.5, 5, 50} {
+			found = found || BucketCost(c) == band
+		}
+		if !found {
+			t.Errorf("cost band %q is not one BucketCost answers", band)
+		}
+	}
+}

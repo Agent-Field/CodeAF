@@ -126,15 +126,17 @@ usage counts, so the notice's "see exactly what leaves" is true of both.
 
 - `codeaf telemetry status` says whether the counts are on, and why not when
   they are off.
-- `codeaf telemetry show` prints exactly what leaves, from BOTH streams: for
-  the usage counts, every field with the value this machine would send now
-  (the six every-event props, the hashes, what each event adds, the bands, the
-  never list), then the events waiting to leave; for the Model Pool, every
-  field of a row and what it means, the two identities a batch travels under,
-  the never list, then the rows waiting. Each stream sits under a line naming
-  where it goes or why it is not sent. It prints the fields whether or not
-  anything is waiting, because the day a person reads it is the day they
-  install, when nothing is.
+- `codeaf telemetry show` prints what leaves, from BOTH streams, shaped like
+  the data: for the usage counts, the events waiting to leave, then every
+  every-event field with the value this machine would send now, one example
+  row per event (`mode=chat  duration=5-30m  turns=6-20 …`, from the
+  contract's own bands) and the bands and stop reasons a row can carry; for
+  the Model Pool, the rows waiting, then one example row in the bytes the
+  relay receives and the two identities a batch travels under. Each stream
+  sits under a line naming where it goes or why it is not sent. It lists only
+  what is sent — the never lists are the notice's and this page's — and it
+  prints the shape whether or not anything is waiting, because the day a
+  person reads it is the day they install, when nothing is.
 - `codeaf telemetry off` and `codeaf telemetry on` write the profile setting.
 
 ```

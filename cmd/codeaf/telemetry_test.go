@@ -276,8 +276,11 @@ func TestTelemetryShowDoesNotCreateThePoolOutbox(t *testing.T) {
 
 // TestTelemetryShowNamesEveryFieldOnAnEmptyMachine is the notice's "see
 // exactly what leaves" read on the day a person installs: nothing is waiting
-// yet, and the verb still prints every field a row would carry, with this
-// machine's own values where they are known before a run, and the never list.
+// yet, and the verb still shows the shape of every row — this machine's own
+// values where they are known before a run, one example row per event where
+// they are not, the bands, and the pool row in the relay's bytes. It lists
+// only what is sent: no line starts with "never", because a person reading a
+// shape wants the shape and the notice already carries the disclaimer.
 func TestTelemetryShowNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
 	telemetryHome(t)
 	telemetrySink(t)
@@ -288,22 +291,35 @@ func TestTelemetryShowNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
 	}
 	got := usageOut.(*strings.Builder).String()
 	for _, want := range []string{
-		"every event carries, as this machine would send it now:",
+		"every event, as this machine would send it now",
 		"os                   " + runtime.GOOS,
 		"arch                 " + runtime.GOARCH,
 		"install_method       unknown",
-		"install_id_hash      (minted on the first send)",
-		"session_ended adds:",
-		"stop_reason          done, error, incomplete, budget, turn-cap, deadline, price, question, interrupted, or unknown",
-		"fingerprint          16 hex characters hashed from codeaf function names in the stack",
-		"never: anything about you or your work",
-		"one row per judged seat, after a task lands:",
-		"model                the model slug that held the seat",
+		"install_id_hash      sha256 of a random id, minted on the first send",
+		"what each event adds, for example",
+		"first_run            nothing; sent once per install",
+		"session_started      mode=chat  resumed=false",
+		"session_ended        mode=chat  duration=5-30m  turns=6-20",
+		"stop_reason=done  exit_code=0",
+		"fault                mode=chat  scope=main  fingerprint=",
+		"bands                counts 0 · 1 · 2-5 · 6-20 · 21-100 · 100+",
+		"dollars 0 · <0.01 · 0.01-0.1 · 0.1-1 · 1-10 · 10+",
+		"duration <1m · 1-5m · 5-30m · 30m-2h · 2h+",
+		"stop_reason          one of done · error · incomplete",
+		"one row per judged seat, after a task lands, for example",
+		`{"schema":1,"metric":"role_quality","role":"worker",`,
+		`"door":"task","size":"M",`,
+		`"day":"`,
+		"nonce                16 random bytes as hex",
 		"X-Codeaf-Install",
-		"never: the brief, the deliverable",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("show should print %q, got:\n%s", want, got)
+		}
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "never") {
+			t.Errorf("show lists only what is sent; got a never line: %q", line)
 		}
 	}
 	for _, name := range telemetry.CommonPropNames() {
@@ -366,5 +382,35 @@ func TestTelemetryOffCommandQuietsThePool(t *testing.T) {
 	}
 	if cfg := config.ModelPoolResolved(root, poolOn); !cfg.CanSend() {
 		t.Fatalf("`telemetry on` should hand the pool back, got mode %v from %q", cfg.Mode, cfg.Source.Mode)
+	}
+}
+
+// TestWrapJSONRowKeepsTheBytes holds the wrapped pool row to its bytes: a
+// break lands only at a comma before a key, the continuation is indented by
+// one space so the braces line up, and the lines read back, unindented, as
+// exactly the row that was wrapped.
+func TestWrapJSONRowKeepsTheBytes(t *testing.T) {
+	row := `{"schema":1,"metric":"role_quality","role":"worker","model":"m","score":81,"judge":"j","door":"task","size":"M","day":"2026-09-19"}`
+	lines := wrapJSONRow(row, 40)
+	if len(lines) < 3 {
+		t.Fatalf("a %d-byte row at width 40 should wrap to three or more lines, got %q", len(row), lines)
+	}
+	var back strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			if !strings.HasPrefix(line, ` "`) {
+				t.Errorf("continuation %q should start with a space and a key", line)
+			}
+			line = line[1:]
+		} else if !strings.HasSuffix(line, ",") {
+			t.Errorf("a wrapped line should end at a comma, got %q", line)
+		}
+		back.WriteString(line)
+	}
+	if back.String() != row {
+		t.Errorf("the lines read back as\n%s\nwant\n%s", back.String(), row)
+	}
+	if got := wrapJSONRow(row, 1000); len(got) != 1 || got[0] != row {
+		t.Errorf("a row under the width should not wrap, got %q", got)
 	}
 }

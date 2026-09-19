@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
@@ -117,11 +118,13 @@ func runTelemetryShow(args []string) error {
 }
 
 // showEverythingWaiting composes the two streams, in the order the notice
-// names them: the usage counts first, the Model Pool second. For each, a
-// heading naming where it goes or why it does not, then WHAT A ROW SAYS —
-// every field, with the value this machine would send for it now where the
-// value is known before a run — then what a row never carries, then the rows
-// waiting to leave, in the bytes a relay would receive.
+// names them: the usage counts first, the Model Pool second. Each sits under
+// a heading naming where it goes or why it does not, then what is waiting,
+// then WHAT A ROW LOOKS LIKE: the fields with this machine's own values where
+// they are known before a run, and one example row per event where they are
+// not, spelled from the contract's own constants. Only what is sent is
+// listed; the never lists live in the notice and docs/TELEMETRY.md, because a
+// person reading a shape wants the shape, not a second disclaimer.
 //
 // The fields are printed whether or not anything is waiting. A person reads
 // this verb once, on the day they install, when the spool is empty; two empty
@@ -131,72 +134,119 @@ func showEverythingWaiting(profileDir string, lookup func(string) (string, bool)
 	var out strings.Builder
 	out.WriteString(usageCountsHeading())
 	out.WriteByte('\n')
-	writeUsageCountFields(&out)
 	writeWaiting(&out, telemetry.Show())
+	out.WriteByte('\n')
+	writeUsageCountFields(&out)
 	out.WriteByte('\n')
 	cfg := config.ModelPoolResolved(profileDir, lookup)
 	out.WriteString(modelPoolHeading(cfg))
 	out.WriteByte('\n')
-	writeModelPoolFields(&out)
 	writeWaiting(&out, poolRowsWaiting(config.ProfilePath(profileDir, "pool")))
+	out.WriteByte('\n')
+	writeModelPoolFields(&out)
 	return strings.TrimRight(out.String(), "\n")
 }
 
 // showIndent is the two spaces every line under a stream heading starts with.
 const showIndent = "  "
 
+// showKeyWidth is the column the values start in: the widest key any row
+// carries is model_calls_failed, eighteen characters, and two for air.
+const showKeyWidth = 20
+
 // writeUsageCountFields prints the usage-count row as this machine would fill
-// it: the six every-event props with their live values, the identity and
-// envelope fields with what each is, then what each of the three session
-// events adds, and the never list from the notice.
+// it — the six every-event props with their live values and the four
+// envelope fields — then one example row per event, then the bands.
 func writeUsageCountFields(out *strings.Builder) {
-	fmt.Fprintf(out, "%severy event carries, as this machine would send it now:\n", showIndent)
+	fmt.Fprintf(out, "%severy event, as this machine would send it now\n", showIndent)
 	for _, prop := range telemetry.CommonPropValues() {
-		writeField(out, prop.Name, prop.Value, telemetry.PropDoc(telemetry.EveryEvent, prop.Name))
+		writeField(out, prop.Name, prop.Value)
 	}
-	install := "(minted on the first send)"
+	install := "sha256 of a random id, minted on the first send"
 	if hash, ok := telemetry.InstallIDHashIfMinted(); ok {
 		install = hash[:12] + "…"
 	}
-	writeField(out, "install_id_hash", install, telemetry.InstallHashDoc)
-	writeField(out, "session_id_hash", "(per session)", telemetry.SessionHashDoc)
-	writeField(out, "event_id", "(per event)", telemetry.EventIDDoc)
-	writeField(out, "event_time", "(per event)", telemetry.EventTimeDoc)
+	writeField(out, "install_id_hash", install)
+	writeField(out, "session_id_hash", "sha256 of the run id, one per session; absent on first_run")
+	writeField(out, "event_id", "16 random bytes as hex, one per event")
+	writeField(out, "event_time", time.Now().UTC().Format(time.RFC3339))
+	out.WriteByte('\n')
+	fmt.Fprintf(out, "%swhat each event adds, for example\n", showIndent)
 	for _, event := range telemetry.AllowlistedEvents() {
 		names := telemetry.EventPropNames(event)
 		if len(names) == 0 {
-			fmt.Fprintf(out, "%s%s adds nothing; it is sent once per install\n", showIndent, event)
+			writeField(out, event, "nothing; sent once per install")
 			continue
 		}
-		fmt.Fprintf(out, "%s%s adds:\n", showIndent, event)
-		for _, name := range names {
-			writeField(out, name, "", telemetry.PropDoc(event, name))
+		writeField(out, event, exampleRow(event, names))
+	}
+	out.WriteByte('\n')
+	writeField(out, "bands", "counts "+strings.Join(telemetry.CountBands(), " · "))
+	writeField(out, "", "dollars "+strings.Join(telemetry.CostBands(), " · "))
+	writeField(out, "", "duration "+strings.Join(telemetry.DurationBands(), " · "))
+	writeField(out, "stop_reason", "one of "+strings.Join(telemetry.StopReasons(), " · "))
+}
+
+// exampleRow spells one event's props as key=value pairs in the doc's order,
+// wrapped so a session_ended row does not run past the terminal's edge. The
+// values are [telemetry.ExampleProp]'s, from the contract's constants.
+func exampleRow(event string, names []string) string {
+	var pairs []string
+	for _, name := range names {
+		pairs = append(pairs, name+"="+telemetry.ExampleProp(event, name))
+	}
+	const perLine = 5
+	var lines []string
+	for len(pairs) > 0 {
+		n := perLine
+		if n > len(pairs) {
+			n = len(pairs)
 		}
+		lines = append(lines, strings.Join(pairs[:n], "  "))
+		pairs = pairs[n:]
 	}
-	fmt.Fprintf(out, "%s%s; %s\n", showIndent, telemetry.CountBandsDoc, telemetry.CostBandsDoc)
-	fmt.Fprintf(out, "%snever: anything about you or your work — no prompts, code, file names, paths, repo names, keys, email, IP, machine name, model names, or error text\n", showIndent)
+	continuation := "\n" + showIndent + showIndent + strings.Repeat(" ", showKeyWidth+1)
+	return strings.Join(lines, continuation)
 }
 
-// writeModelPoolFields prints what one pool row says, field by field, and the
-// two identities a batch travels under.
+// writeModelPoolFields prints what one pool row looks like: an example row in
+// the bytes a relay would receive, then the two identities a batch travels
+// under.
 func writeModelPoolFields(out *strings.Builder) {
-	fmt.Fprintf(out, "%sone row per judged seat, after a task lands:\n", showIndent)
-	for _, field := range record.Fields() {
-		writeField(out, field.Name, "", field.Meaning)
+	fmt.Fprintf(out, "%sone row per judged seat, after a task lands, for example\n", showIndent)
+	for _, line := range wrapJSONRow(record.ExampleRowJSON(time.Now()), 72) {
+		fmt.Fprintf(out, "%s%s%s\n", showIndent, showIndent, line)
 	}
-	writeField(out, "nonce", "(per row)", "16 random bytes as hex, so a resend is not a double count")
-	writeField(out, "X-Codeaf-Install", "(header)", "a random per-install id, minted on the first send; not the usage counts' id")
-	fmt.Fprintf(out, "%snever: %s\n", showIndent, record.NeverInARow)
+	writeField(out, "nonce", "16 random bytes as hex, one per row, so a resend is not a double count")
+	writeField(out, "X-Codeaf-Install", "a header: a random per-install id, minted on the first send; not the usage counts' id")
 }
 
-// writeField prints one field line: the name, the value when there is one to
-// show, and what the field is, in columns a person can scan.
-func writeField(out *strings.Builder, name, value, meaning string) {
-	if value == "" {
-		fmt.Fprintf(out, "%s%s%-20s %s\n", showIndent, showIndent, name, meaning)
-		return
+// wrapJSONRow breaks one flat JSON object over lines of about the width
+// given, only ever at a comma before a key, and indents the continuation by
+// one space so the braces line up; the bytes, read back without the breaks
+// and the indent, are the row's own.
+func wrapJSONRow(row string, width int) []string {
+	var lines []string
+	line := ""
+	for i, part := range strings.Split(row, ",\"") {
+		if i > 0 {
+			part = "\"" + part
+			if len(line)+1+len(part) > width {
+				lines = append(lines, line+",")
+				line = " "
+			} else {
+				line += ","
+			}
+		}
+		line += part
 	}
-	fmt.Fprintf(out, "%s%s%-20s %-26s %s\n", showIndent, showIndent, name, value, meaning)
+	return append(lines, line)
+}
+
+// writeField prints one field line: the key in its column and the value, or
+// a continuation line under the value column when the key is empty.
+func writeField(out *strings.Builder, key, value string) {
+	fmt.Fprintf(out, "%s%s%-*s %s\n", showIndent, showIndent, showKeyWidth, key, value)
 }
 
 // writeWaiting prints the rows waiting to leave, or one line saying none are.

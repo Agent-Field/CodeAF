@@ -763,12 +763,14 @@ retracted belief restores, a stopped service starts again, a revoked device pair
 ## What does it count about a run — the anonymous usage counts, and `codeaf telemetry`
 
 `codeaf telemetry` is the door onto the anonymous usage counts: `status` says whether
-they are on and why not when they are off, `show` prints exactly what leaves — for
-the usage counts, every field with the value this machine would send now, what each event
-adds, and what is never sent; for the Model Pool, every field of a row and what it means;
-then, for each, the rows waiting to leave, under a line naming where they go or why they
-are not sent — and `off` and `on` write the answer to your profile. `show` prints the
-fields even when nothing is waiting, which is the case on the day you install.
+they are on and why not when they are off, `show` prints what leaves, shaped like the
+data — for each stream, under a line naming where it goes or why it is not sent, the rows
+waiting to leave, then the shape of a row: for the usage counts every every-event field
+with the value this machine would send now and one example row per event
+(`session_ended  mode=chat  duration=5-30m  turns=6-20 …`) with the bands a row can
+carry; for the Model Pool one example row in the relay's own bytes — and `off` and `on`
+write the answer to your profile. `show` lists only what is sent, never a disclaimer, and
+prints the shape even when nothing is waiting, which is the case on the day you install.
 `CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
 usage counts go quiet and the Model Pool is capped at `read`, so it still picks models
 from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or

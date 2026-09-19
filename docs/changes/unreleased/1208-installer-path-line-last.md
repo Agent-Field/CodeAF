@@ -7,6 +7,7 @@ invalidates:
   - "The installer printed `codeaf: add it to this shell with: export PATH=...` between `codeaf: installed` and `codeaf version`. That sentence is gone; the bare `export PATH=...` line is now the very last thing the script prints, with a blank line above and below, bold green on a terminal."
   - "The installer opened with `codeaf: stable v0.3.0 for darwin/arm64` and `codeaf: installed <path>`. Neither prints on a normal run any more; `--verbose` still reports both on stderr, and the receipt is `installed codeaf v… built … · go… os/arch`."
   - "The installer printed the full six-line telemetry notice from docs/TELEMETRY.md. It prints a three-line form now (`codeaf shares anonymous performance data with AgentField` / `codeaf does NOT share your prompts, code, files, or any private information` / `see what is shared: codeaf telemetry show · turn off: CODEAF_TELEMETRY=off`); the full notice still prints from the binary before the first session's events leave."
+  - "`codeaf telemetry show` printed a field-by-field table with a meaning column and a `never:` line per stream. It prints the shape of the data now: the rows waiting first, then this machine's live every-event values, one example row per event from the contract's bands, the bands and stop reasons, and the pool row in the relay's bytes; no `never` line, only what is sent."
 ---
 
 The install one-liner ends on the one line a person still has to paste, and
