@@ -447,3 +447,41 @@ func TestHostedTaskPageDrawsARefusedActionAsOneLineAndACorrectionAsNone(t *testi
 		}
 	}
 }
+
+// A TASK'S DRAWN STEP NUMBERS CONTINUE ACROSS WAKES. The engine has already
+// recorded three steps before the wake and two after it; the hosted page draws
+// that record once, in its recorded order.
+func TestHostedPageDrawsContinuedTaskStepsOnceInOrder(t *testing.T) {
+	a, _, path := hostedPlanApp(t, false)
+	id := openHostedPage(t, a)
+	taskDir := plandb.TaskDir(filepath.Dir(path), strings.TrimPrefix(id, "t-"))
+	if err := os.MkdirAll(taskDir, 0o700); err != nil {
+		t.Fatalf("make the continued task record folder: %v", err)
+	}
+	record := strings.Join([]string{
+		`{"kind":"step","step":1,"command":"printf one"}`,
+		`{"kind":"step","step":2,"command":"printf two"}`,
+		`{"kind":"step","step":3,"command":"printf three"}`,
+		`{"kind":"step","step":4,"command":"printf four"}`,
+		`{"kind":"step","step":5,"command":"printf five"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(taskDir, "trajectory.jsonl"), []byte(record), 0o600); err != nil {
+		t.Fatalf("record the continued task: %v", err)
+	}
+	cmd := a.taskSheetPlan(id)
+	if cmd == nil {
+		t.Fatal("the continued page was not asked for")
+	}
+	drive(t, a, cmd())
+
+	var got []string
+	for _, line := range strings.Split(taskSheetText(a), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && strings.HasPrefix(fields[1], "printf") {
+			got = append(got, fields[0])
+		}
+	}
+	if want := []string{"1", "2", "3", "4", "5"}; strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("drawn step rows = %q, want %q exactly once and in order:\n%s", got, want, taskSheetText(a))
+	}
+}

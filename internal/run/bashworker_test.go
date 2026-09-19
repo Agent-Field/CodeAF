@@ -473,6 +473,56 @@ func workspaceInsideGitWorkTree(root string) bool {
 	}
 }
 
+func TestBashWorkerContinuesTaskNumbersButCapsAndReportsThisRun(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	id := store.RootID()
+	dir := plandb.TaskDir(storeDir, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var record []byte
+	for n := 1; n <= 3; n++ {
+		line, err := json.Marshal(run.Step{Kind: "step", Step: n, Command: fmt.Sprintf("echo old-%d", n)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		record = append(record, append(line, '\n')...)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), record, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolReply(`{"command":"echo new"}`), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 2), *store.Task(id))
+	if err == nil || !strings.Contains(err.Error(), "stopped at its step cap after 2 steps") {
+		t.Fatalf("run error = %v, want this run stopped at its two-step cap", err)
+	}
+	if report.Steps != 2 {
+		t.Fatalf("report steps = %d, want only this run's two steps", report.Steps)
+	}
+	steps, err := run.Trajectory(storeDir, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var numbers []int
+	for _, step := range steps {
+		numbers = append(numbers, step.Step)
+	}
+	if got := fmt.Sprint(numbers); got != "[1 2 3 4 5]" {
+		t.Fatalf("recorded step numbers = %s, want [1 2 3 4 5]", got)
+	}
+	end := endLine(t, rawTrajectory(t, storeDir, id))
+	if end.Steps != 2 {
+		t.Fatalf("ending steps = %d, want only this run's two steps", end.Steps)
+	}
+}
+
 func TestBashWorkerEndsItsLoopAtTheStepCap(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))

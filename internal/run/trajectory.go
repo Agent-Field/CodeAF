@@ -48,7 +48,7 @@ const observationHeadBytes = 2048
 // line: Kind says which one a line is.
 type Step struct {
 	Kind string `json:"kind"`
-	// Step is the step's number, counted from one over the worker's whole run.
+	// Step is the step's number, counted from one over the task across its wakes.
 	Step int `json:"step"`
 	// Command is what the worker asked the belt to run, as the model spelled
 	// it — the command a resumed worker must not repeat blind, and the one
