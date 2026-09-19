@@ -626,7 +626,13 @@ func (s *Store) checkVerdictBasis(task *Task) (VerdictBasis, bool) {
 	if len(task.Checks) == 0 {
 		return VerdictBasis{Kind: "reading"}, true
 	}
-	recorded := s.recordedRuns(task)
+	recorded, sawAnyExit := s.recordedRuns(task)
+	if !sawAnyExit {
+		// No step in this record carried an exit: the work predates exit recording,
+		// or nothing ran. There is no run to judge, so the verdict is a reading one,
+		// and reading can hold.
+		return VerdictBasis{Kind: "reading"}, true
+	}
 	seen := make(map[string]bool, len(task.Checks))
 	runs := make([]VerdictRun, 0, len(task.Checks))
 	earned := true
@@ -657,31 +663,43 @@ func (s *Store) checkVerdictBasis(task *Task) (VerdictBasis, bool) {
 // a worker command stripped the same way the session's own reading stripped it.
 // The LAST exit for a command wins, because a command re-run is a later fact
 // about the same check.
-func (s *Store) recordedRuns(task *Task) map[string]int {
+func (s *Store) recordedRuns(task *Task) (map[string]int, bool) {
 	out := map[string]int{}
 	data, err := os.ReadFile(filepath.Join(TaskDir(filepath.Dir(s.path), task.ID), "trajectory.jsonl"))
 	if err != nil {
-		return out
+		return out, false
 	}
+	sawAnyExit := false
 	for _, line := range strings.Split(string(data), "\n") {
 		var step struct {
 			Kind     string `json:"kind"`
 			Command  string `json:"command"`
-			ExitCode int    `json:"exit_code"`
+			ExitCode *int   `json:"exit_code"`
 		}
 		if json.Unmarshal([]byte(line), &step) != nil || step.Kind != "step" {
 			continue
 		}
+		// AN ABSENT EXIT IS UNKNOWN, NOT ZERO. A step the recorder could not stamp,
+		// and every step of a record written before the field existed, decodes to a
+		// nil pointer here and is not a recorded run at all.
+		if step.ExitCode == nil {
+			continue
+		}
+		sawAnyExit = true
 		command := strings.TrimSpace(step.Command)
+		// The belt wraps a worker command in a cd to the ABSOLUTE root of the
+		// task's own copy. Only that wrapper is stripped, so a check the checker
+		// typed with its own relative cd is a different command and counts as one,
+		// which is the ruling that a check runs from the root of the task's copy.
 		if prefix, inner, ok := strings.Cut(command, " && "); ok {
 			fields := strings.Fields(prefix)
-			if len(fields) == 2 && fields[0] == "cd" {
+			if len(fields) == 2 && fields[0] == "cd" && strings.HasPrefix(fields[1], "/") {
 				command = strings.TrimSpace(inner)
 			}
 		}
-		out[command] = step.ExitCode
+		out[command] = *step.ExitCode
 	}
-	return out
+	return out, sawAnyExit
 }
 
 // auditableDeclaredCheck is the store's half of the check door's law, asked of

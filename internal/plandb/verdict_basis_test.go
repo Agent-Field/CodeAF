@@ -2,7 +2,6 @@ package plandb
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -79,31 +78,16 @@ func TestTaskJSONCarriesThePersistedVerdictBasis(t *testing.T) {
 	}
 }
 
-// A HOLDS VERDICT MUST REST ON ONE COMMAND THE SHELL WOULD RUN AS ONE COMMAND.
-// The store is the second reader of the check door's law: even with a recorded
-// zero exit, it credits a holds verdict only to a declared check that is one
-// audited command, judged by the same quote-aware reader the proposal door uses
-// ([approval.FirstCompositionOutsideQuotes]). A quoted bar is one command and
-// holds; every form that is more than one command is refused, so a verdict can
-// never rest on it.
-func TestCheckVerdictBasisAdmitsAQuotedBarAndRefusesEveryNeverRunForm(t *testing.T) {
+// EVERY COMPOSED FORM IS REFUSED BY THE STORE'S OWN AUDIT, whatever its exit.
+// These are the proposal door's own never-run forms (task_checks_contract_test.go);
+// the store asks the same one-command question the door does, so a holds verdict
+// can never rest on one of them.
+func TestAuditableDeclaredCheckAdmitsAQuotedBarAndRefusesEveryComposedForm(t *testing.T) {
 	const quotedBar = `grep -iE 'handoff|vault|wall' walls.md`
-	store := planOpen(t, filepath.Join(t.TempDir(), "plan.db"))
-	defer store.Close()
-
-	writeCheckRuns(t, store, "quoted-bar", map[string]int{quotedBar: 0})
-	basis, earned := store.checkVerdictBasis(&Task{TaskSpec: TaskSpec{ID: "quoted-bar", Role: RoleCheck, Checks: []string{quotedBar}}})
-	if !earned {
-		t.Fatalf("the store did not credit a holds verdict to a quoted-bar check run to exit 0: %#v", basis)
+	if !auditableDeclaredCheck(quotedBar) {
+		t.Fatalf("the store refused a quoted bar that is one command: %q", quotedBar)
 	}
-	if basis.Kind != "run" || len(basis.Runs) != 1 || basis.Runs[0].Command != quotedBar || basis.Runs[0].ExitCode != 0 {
-		t.Fatalf("basis = %#v, want one recorded run of the quoted bar at exit 0", basis)
-	}
-
-	// The never-run forms of the proposal door's own contract test
-	// (task_checks_contract_test.go). Each is more than one command, so the store
-	// must refuse a holds verdict on it even though a zero exit is on file.
-	neverRun := []string{
+	for _, form := range []string{
 		quotedBar + ` && touch RAN`,
 		quotedBar + ` ; touch RAN`,
 		`grep "$(touch RAN)" walls.md`,
@@ -112,34 +96,68 @@ func TestCheckVerdictBasisAdmitsAQuotedBarAndRefusesEveryNeverRunForm(t *testing
 		`grep 'unclosed walls.md ; touch RAN`,
 		quotedBar + ` > RAN`,
 		quotedBar + ` | tee RAN`,
-	}
-	for i, form := range neverRun {
-		id := fmt.Sprintf("never-%d", i)
-		writeCheckRuns(t, store, id, map[string]int{form: 0})
-		if _, earned := store.checkVerdictBasis(&Task{TaskSpec: TaskSpec{ID: id, Role: RoleCheck, Checks: []string{form}}}); earned {
-			t.Errorf("the store credited a holds verdict to a check that is more than one command: %q", form)
+	} {
+		if auditableDeclaredCheck(form) {
+			t.Errorf("the store admitted a check that is more than one command: %q", form)
 		}
 	}
 }
 
-// writeCheckRuns writes the checker's trajectory for a task so that
-// [Store.recordedRuns] reads back one recorded step per command with its exit.
-func writeCheckRuns(t *testing.T, store *Store, id string, runs map[string]int) {
+// AN EXIT THE RECORDER NEVER WROTE IS UNKNOWN, AND UNKNOWN EARNS NOTHING. A step
+// with no exit_code field, which is every step of a record written before the
+// field existed, does not read as a zero. When the whole record carries no exit
+// the verdict is a reading one and reading can hold; when some exit was recorded
+// but the declared command's was not, or its exit was non-zero, holds is refused.
+// The earned path is proven end to end through the real recorder in internal/run,
+// never from a hand-written zero here.
+func TestCheckVerdictBasisTreatsAnAbsentExitAsUnknown(t *testing.T) {
+	const check = "grep vault walls.md"
+	checkTask := &Task{TaskSpec: TaskSpec{ID: "review", Role: RoleCheck, Checks: []string{check}}}
+
+	t.Run("an old record with no exit reads as a reading that holds", func(t *testing.T) {
+		store := planOpen(t, filepath.Join(t.TempDir(), "plan.db"))
+		defer store.Close()
+		writeTrajectoryLines(t, store, "review", `{"kind":"step","step":1,"command":"grep vault walls.md"}`)
+		basis, earned := store.checkVerdictBasis(checkTask)
+		if !earned || basis.Kind != "reading" {
+			t.Fatalf("an old trajectory with no exit read as %#v earned=%v, want a reading that holds", basis, earned)
+		}
+	})
+
+	t.Run("a recorded exit elsewhere but not for the check refuses holds", func(t *testing.T) {
+		store := planOpen(t, filepath.Join(t.TempDir(), "plan.db"))
+		defer store.Close()
+		writeTrajectoryLines(t, store, "review",
+			`{"kind":"step","step":1,"command":"ls","exit_code":0}`,
+			`{"kind":"step","step":2,"command":"grep vault walls.md"}`)
+		if _, earned := store.checkVerdictBasis(checkTask); earned {
+			t.Fatal("holds earned though the declared check has no recorded exit")
+		}
+	})
+
+	t.Run("a recorded non-zero exit refuses holds", func(t *testing.T) {
+		store := planOpen(t, filepath.Join(t.TempDir(), "plan.db"))
+		defer store.Close()
+		writeTrajectoryLines(t, store, "review", `{"kind":"step","step":1,"command":"grep vault walls.md","exit_code":1}`)
+		if _, earned := store.checkVerdictBasis(checkTask); earned {
+			t.Fatal("holds earned on a recorded non-zero exit")
+		}
+	})
+}
+
+// writeTrajectoryLines writes raw trajectory lines for a task, for the decode
+// tests that must set a step's exit field present or absent. It never writes the
+// earned path (an auditable command at a recorded zero); that is proven through
+// the real recorder in internal/run so no fake can hide a recorder that writes
+// no exit.
+func writeTrajectoryLines(t *testing.T, store *Store, id string, lines ...string) {
 	t.Helper()
 	dir := TaskDir(filepath.Dir(store.path), id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	var b strings.Builder
-	for command, exit := range runs {
-		line, err := json.Marshal(map[string]any{"kind": "step", "command": command, "exit_code": exit})
-		if err != nil {
-			t.Fatal(err)
-		}
-		b.Write(line)
-		b.WriteByte('\n')
-	}
-	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), []byte(b.String()), 0o644); err != nil {
+	body := strings.Join(lines, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
