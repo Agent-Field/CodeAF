@@ -142,6 +142,16 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	profileWriteMu.Lock()
 	defer profileWriteMu.Unlock()
 
+	path := BudgetConfigPath(profileDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("write config %s: %w", key, err)
+	}
+	profileLock, err := lockProfileConfig(path)
+	if err != nil {
+		return fmt.Errorf("write config %s: %w", key, err)
+	}
+	defer profileLock.Close()
+
 	held, err := readProfileConfig(profileDir)
 	if err != nil {
 		return fmt.Errorf("write config: preserve existing file: %w", err)
@@ -157,10 +167,6 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	}
 	encoded, err := json.MarshalIndent(values, "", "  ")
 	if err != nil {
-		return fmt.Errorf("write config %s: %w", key, err)
-	}
-	path := BudgetConfigPath(profileDir)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("write config %s: %w", key, err)
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".config-*.json")
