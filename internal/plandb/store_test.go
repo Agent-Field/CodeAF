@@ -1868,7 +1868,7 @@ func TestPlandbCliCheckConclusionRequiresTheRightDeclaredChecks(t *testing.T) {
 	}{
 		// NO DECLARATION MAKES THE CHECKER A READER, SO A READING MAY HOLD: the
 		// old gate demanded a declared contract for any holds verdict, and
-		// [TestReadingCanHoldAndDoesNotHoldIsUngated] replaced that — the
+		// [TestReadingCanHoldAndDoesNotHoldIsUngated] replaced that, the
 		// declared contract is the whole contract, and nobody declared one. A
 		// DECLARED contract still demands its every zero-exit audited run, below.
 		{name: "holds empty contract", conclusion: "holds: it works", wantErr: false},

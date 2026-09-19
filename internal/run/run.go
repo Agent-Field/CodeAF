@@ -500,7 +500,7 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 	// reading contract: a review node carries what the worker declared, never a
 	// promise rebuilt from what the worker happened to run (the trajectory's own
 	// backfill died with it, and the gate now refuses a holds verdict it did not
-	// earn — plandb.Done's [checkVerdictBasis]).
+	// earn, plandb.Done's [checkVerdictBasis]).
 	id := s.store.NextID()
 	spec := plandb.TaskSpec{
 		ID:          id,
