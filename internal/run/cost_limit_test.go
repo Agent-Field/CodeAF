@@ -194,6 +194,14 @@ func TestAWorkerReportingSpendWhileTheRunDrainsDoesNotHoldTheRunOpen(t *testing.
 	if got := reports.Load(); got != 64 {
 		t.Fatalf("spend reports made = %d, want all 64", got)
 	}
+	// AND THE WORKER THE RUN OUTLIVED WAS STILL PAID FOR. Its words are dropped
+	// with its return; its dollars are in the run's count, once.
+	if supervisor.spent != 0.064 {
+		t.Fatalf("run spend = %v, want the outlived worker's 0.064 counted exactly once", supervisor.spent)
+	}
+	if supervisor.inFlight != 0 || len(supervisor.finished) != 0 {
+		t.Fatalf("the run left work behind it: inFlight=%d, returns unread=%d", supervisor.inFlight, len(supervisor.finished))
+	}
 }
 
 // WHAT A RUN COUNTS AS SPENT NEVER GOES DOWN, and it includes every paid call
