@@ -111,8 +111,10 @@ const (
 const homeFolderRow homeRowKind = 246
 
 // homeFolderBack is the sequential way out of a drilled-in folder: enter or
-// esc returns to Root (or to the parent list). It exists so 80-column home
-// never grows a third column of members beside the folders.
+// esc pops one step — the parent that was walked, or Root when the trail is
+// empty. It exists so 80-column home never grows a third column of members
+// beside the folders, and so a shared child (J02) can be reached through both
+// parents and left the same way.
 const homeFolderBack homeRowKind = 247
 
 // readHomeFolders is the beat's reading. Nil Folders is unavailable: the memo
@@ -143,8 +145,10 @@ func (a *app) readHomeFolders() {
 	if err != nil {
 		// THE OPEN OBJECT SURVIVES A MISSING FOLDER: we drop the drill-in and
 		// say so, rather than leaving the cursor inside a collection the beat
-		// can no longer name (J06).
+		// can no longer name (J06). The trail dies with it so a later esc
+		// cannot reopen a parent walk that no longer stands.
 		a.home.folderOpen = ""
+		a.home.folderTrail = nil
 		a.home.say(logicalFolderGoneWord, "")
 		a.home.folders = next
 		return
@@ -399,6 +403,17 @@ func (a *app) enterFolder(id string) tea.Cmd {
 	if a.pendingMoveRef != "" {
 		return a.completeFolderMove(id)
 	}
+	cur := strings.TrimSpace(a.home.folderOpen)
+	if cur == id {
+		a.refreshFolderMemo()
+		a.pointFolderBack()
+		return nil
+	}
+	if cur != "" {
+		// PUSH THE PARENT WE ARE LEAVING, not the child we are entering, so
+		// esc from Receipts returns to Billing (or Security) rather than Root.
+		a.home.folderTrail = append(a.home.folderTrail, cur)
+	}
 	a.home.folderOpen = id
 	a.refreshFolderMemo()
 	a.pointFolderBack()
@@ -406,12 +421,26 @@ func (a *app) enterFolder(id string) tea.Cmd {
 }
 
 func (a *app) leaveFolder() bool {
-	if strings.TrimSpace(a.home.folderOpen) == "" {
+	open := strings.TrimSpace(a.home.folderOpen)
+	if open == "" {
 		return false
 	}
-	a.home.folderOpen = ""
+	if n := len(a.home.folderTrail); n > 0 {
+		a.home.folderOpen = a.home.folderTrail[n-1]
+		a.home.folderTrail = a.home.folderTrail[:n-1]
+	} else {
+		a.home.folderOpen = ""
+		a.home.folderTrail = nil
+	}
 	a.refreshFolderMemo()
-	a.focusFoldersPanel()
+	if a.pointFolderID(open) {
+		return true
+	}
+	if a.home.folderOpen == "" {
+		a.focusFoldersPanel()
+	} else {
+		a.pointFolderBack()
+	}
 	return true
 }
 
@@ -590,17 +619,18 @@ func (a *app) resolveFolder(name string) (FolderView, bool) {
 	return FolderView{}, false
 }
 
-func (a *app) pointFolderID(id string) {
+func (a *app) pointFolderID(id string) bool {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return
+		return false
 	}
 	for at, line := range a.home.lines {
 		if line.kind == homeFolderRow && line.dir == id {
 			a.home.cursor = at
-			return
+			return true
 		}
 	}
+	return false
 }
 
 func (a *app) folderNote(text string) {
