@@ -1,6 +1,6 @@
 # Publication policy: branch-local ideation until verification
 
-**Latest owner instruction · 18 September 2026. This supersedes earlier requests to publish GitHub issues or open a PR as work progresses.**
+**Latest owner instruction · 19 September 2026.** Automatic continuation is authorized: after each verified receipt, kick the next wave immediately and give the owner an immutable binary to try. This supersedes earlier requests to publish GitHub issues, open a PR as work progresses, or pause between waves for an owner checkpoint.
 
 - Keep all four waves, product/engineering design, journey checklists, PlanDB progress exports and receipts in files on `feat/collaborative-workspace-0918`.
 - The branch may be pushed to origin. Do not create additional GitHub issues, reopen the closed ones, post issue updates, or create a PR during this unverified phase.

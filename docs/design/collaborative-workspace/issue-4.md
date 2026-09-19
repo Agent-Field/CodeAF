@@ -1,6 +1,6 @@
 # Wave 4: Safe execution: launch-or-join, authority, and unattended recovery
 
-**Tracking:** local wave file; [no GitHub issue or PR before verification](PUBLICATION-POLICY.md).
+**Tracking:** local wave file; [no GitHub issue or PR before verification](PUBLICATION-POLICY.md). Automatic continuation is authorized: Wave 3 `ready.json` exists, so this wave runs now without waiting for the owner’s Wave 3 try.
 
 **Branch:** `feat/collaborative-workspace-0918`
 **Design:** [`PRD-TDD.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/PRD-TDD.md) · [`ENGINEERING.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/ENGINEERING.md)

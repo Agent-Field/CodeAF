@@ -1,6 +1,6 @@
 # Collaborative workspace — four serial usable slices
 
-**Latest owner instruction · 18 September 2026. Automatic continuation is authorized.** After a wave’s `releases/wave-N/ready.json` exists, start the next wave immediately with parallel workers. Do not pause for the owner to try the immutable binary. Do not start a dependent wave before that receipt. No GitHub issues/comments/PRs before owner verification of the whole feature; branch push is allowed.
+**Latest owner instruction · 19 September 2026.** Automatic continuation is authorized and supersedes every earlier stop-after-Wave-N / owner-checkpoint pause: *make sure you have timer to check when its done to kick start and give me a binary to test and next parallel wave keep doing dont wait*. After a wave’s `releases/wave-N/ready.json` exists, preserve the immutable binary and start the next wave immediately with parallel workers. Do not pause for the owner to try it. Do not start a dependent wave before that receipt. No GitHub issues/comments/PRs before owner verification of the whole feature; branch push is allowed.
 
 **Status:** branch-local implementation plan. The previous GitHub issues are closed; all four waves continue here and in PlanDB.
 
