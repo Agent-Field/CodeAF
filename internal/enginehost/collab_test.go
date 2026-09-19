@@ -198,6 +198,7 @@ func (s pendingStore) SetProcessed(context.Context, wscollab.DeliveryID) error {
 func (s pendingStore) Pending(context.Context, string) ([]wscollab.Envelope, error) {
 	return nil, nil
 }
+func (s pendingStore) Archived(context.Context, string) (bool, error)           { return false, nil }
 func (s pendingStore) PutDiscussion(context.Context, wscollab.Discussion) error { return nil }
 func (s pendingStore) GetDiscussion(context.Context, string) (wscollab.Discussion, error) {
 	return wscollab.Discussion{}, wscollab.ErrNotFound

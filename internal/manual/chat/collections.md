@@ -370,13 +370,25 @@ Missing authority reaches you. Unrelated work continues.
 `pause` (the `coordinate` action; person-facing **pause coordination**) stops
 **new** deliver, invite, and launch from that coordinator. Closing the view
 does not pause. Closing the TUI does not pause. Already-waiting lines still
-appear once on resume. Archive suppresses automatic wake-ups; history remains.
+appear once on resume after pause. Putting a discussion away (`ctrl+e` put away)
+archives it: Bind, Resume, tick, and host spawn do not flush pending or wake it.
+The roster and deliveries stay readable. Pause may still Resume-flush already-pending;
+archive must not.
 
 **`stop work` is a separate explicit action** on existing work. It is the same
 spelling as the tab-close card's second answer. Pause does not stop a run that
 is already going. Stop does not delete history. They must not share a chord.
 `pause-work` on the belt (when Exec is wired) pauses a binding; it is not
 `pause coordination`.
+
+## Archive a discussion — put away suppresses automatic wake-ups
+
+Putting a coordinating discussion away (`ctrl+e` put away on home) archives it.
+Archive suppresses automatic wake-ups; history remains. Bind, Resume, tick, and
+host spawn do not flush pending lines into the journal and do not spawn a host.
+The roster and deliveries stay readable. Pause is a different act: it stops new
+deliver, invite, and launch but still Resume-flushes already-pending. Closing a
+view still does not pause and does not archive.
 
 Coordinators may read, discuss, organize, and — with an authentic execute grant
 — **launch-or-join**. A revoked grant cannot launch, steer, or stop; already-bound
