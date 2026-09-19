@@ -303,7 +303,7 @@ func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
 		}},
 	}
 	for _, place := range everyPlaceTable() {
-		if place.id == pageSettings || place.id == pageMemory {
+		if place.id == pageSettings || place.id == pageMemory || place.id == pageFolders {
 			continue
 		}
 		for _, frame := range frames {

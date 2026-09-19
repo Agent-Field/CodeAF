@@ -208,6 +208,7 @@ var placeWhisper = map[page]placeBlank{
 	pageStanding: {heading: standHeading, whisper: `reminders, watches and routines · "remind me at 6" or "every morning at 9"`},
 	pageMemory:   {whisper: "what it has learned about you and this machine · /remember adds a line"},
 	pageSearch:   {whisper: "type a word · every conversation on this machine is searched"},
+	pageFolders:  {heading: "folders", whisper: folderWhisperWord},
 }
 
 // placeWhisperLead is where the whisper hangs: the place's own lead, then the

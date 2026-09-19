@@ -133,6 +133,15 @@ func everyPlaceTable() []everyPlace {
 				return out
 			},
 		},
+		{
+			id:     pageFolders,
+			open:   foldersPlaceLab,
+			cursor: func(a *app) int { return a.folderSheet.cursor },
+			hits: func(a *app) []int {
+				_, hits, _, _ := a.folderPlaceFrame(a.width, a.height)
+				return hits
+			},
+		},
 	}
 }
 
@@ -228,6 +237,31 @@ func settingsPlaceLab(t *testing.T) *app {
 	a.showPage(pageSettings)
 	if !a.at(pageSettings) {
 		t.Fatal("the settings place did not open")
+	}
+	return a
+}
+
+// foldersPlaceLab is the Folders place over more collections than the frame
+// can hold, so a walk and a hover have rows they can actually move through.
+func foldersPlaceLab(t *testing.T) *app {
+	t.Helper()
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker",
+		lab.workspace("alpha"), now.Add(-2*time.Minute))
+	folders := make([]FolderView, 40)
+	for i := range folders {
+		folders[i] = FolderView{ID: "col-" + itoa(i), Name: "Folder " + itoa(i), Lifecycle: "active"}
+	}
+	a := lab.app(mine)
+	a.width, a.height = 120, 20
+	a.pal = newPalette(tokens.ANSI256, false)
+	a.folders = &fakeFolders{root: FolderRoot{Folders: folders}}
+	if cmd := a.showPage(pageFolders); cmd != nil {
+		runCmd(cmd)
+	}
+	if !a.at(pageFolders) {
+		t.Fatal("the folders place did not open over forty folders")
 	}
 	return a
 }
@@ -365,7 +399,7 @@ func TestTheWheelNeverReachesTheConversationFromAPlace(t *testing.T) {
 // map answered -1 by declaration and the other three had none at all, so a
 // pointer crossing any of them lit nothing.
 func TestThePointerPreviewsOnEveryPromotedPlace(t *testing.T) {
-	promoted := map[page]bool{pageStanding: true, pageMemory: true, pageSpend: true, pageSearch: true}
+	promoted := map[page]bool{pageStanding: true, pageMemory: true, pageSpend: true, pageSearch: true, pageFolders: true}
 	for _, place := range everyPlaceTable() {
 		if !promoted[place.id] {
 			continue
