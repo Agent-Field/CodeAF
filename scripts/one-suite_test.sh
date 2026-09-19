@@ -20,8 +20,14 @@ run_order() {
 	local holder_pid=$! ready
 	read -r ready <"$fifo"
 	[ "$ready" = ready ]
-	local metadata output status
+	local metadata output status suite_pid since
 	metadata="$(cat "$lock")"
+	# The lock file records the suite's pid, when it started, and the pid of the
+	# holder that carries the lock beside it, so read the two the refusal quotes
+	# by field rather than by splitting the line in two.
+	suite_pid="${metadata%% *}"
+	since="${metadata#* }"
+	since="${since%% *}"
 	set +e
 	if [ "$first" = namespace-first ]; then
 		output="$("${contender[@]}" 2>&1)"
@@ -32,7 +38,7 @@ run_order() {
 	set -e
 	[ "$status" -eq 1 ]
 	case "$output" in
-		*"another heavy suite is already running on this box (pid ${metadata%% *}, started ${metadata#* })."*) ;;
+		*"another heavy suite is already running on this box (pid ${suite_pid}, started ${since})."*) ;;
 		*) printf 'refusal did not name holder metadata %q: %s\n' "$metadata" "$output" >&2; return 1 ;;
 	esac
 	if [ "$first" = host-first ]; then
@@ -63,7 +69,10 @@ run_host_b_after_cell() {
 	local holder_pid=$! ready
 	read -r ready <"$fifo"
 	[ "$ready" = ready ]
-	local metadata; metadata="$(cat "$lock")"
+	local metadata suite_pid since; metadata="$(cat "$lock")"
+	suite_pid="${metadata%% *}"
+	since="${metadata#* }"
+	since="${since%% *}"
 	set +e
 	local cell_out cell_status hostb_out hostb_status
 	cell_out="$(bwrap --unshare-pid --bind / / --dev-bind /dev /dev --proc /proc -- "${cell[@]}" 2>&1)"; cell_status=$?
@@ -72,7 +81,7 @@ run_host_b_after_cell() {
 	[ "$cell_status" -eq 1 ] || { printf 'cell starter was not refused: %s\n' "$cell_out" >&2; kill -TERM "$holder_pid"; return 1; }
 	[ "$hostb_status" -eq 1 ] || { printf 'host B was not refused after the cell attempt: %s\n' "$hostb_out" >&2; kill -TERM "$holder_pid"; return 1; }
 	case "$hostb_out" in
-		*"another heavy suite is already running on this box (pid ${metadata%% *}, started ${metadata#* })."*) ;;
+		*"another heavy suite is already running on this box (pid ${suite_pid}, started ${since})."*) ;;
 		*) printf 'host B refusal did not still name host A %q: %s\n' "$metadata" "$hostb_out" >&2; kill -TERM "$holder_pid"; return 1 ;;
 	esac
 	kill -TERM "$holder_pid"
