@@ -72,6 +72,17 @@ func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook t
 		closeStore()
 		return stored.Summary, true
 	}
+	// A RUN A PERSON STOPPED BUYS NO FURTHER READING. A stop moves the run's
+	// rows, and a surface asks again whenever they move, so without this every
+	// stop was followed by one more model call about work the person had just
+	// ended the spend on (the usage ledger on the real binary, 2026-09-19). The
+	// run's own task is cancelled by nothing but a person's stop
+	// ([plandb.Store.StopRoot]), so its state is the whole test, and the last
+	// reading the run had stands.
+	if root := store.Task(planTaskID(rootID)); root != nil && root.Status == plandb.StatusCancelled {
+		closeStore()
+		return stored.Summary, had
+	}
 	input := runSummaryInput(family, questions, rootID, lastLook, a.summaryNow(), stored.Summary)
 	closeStore()
 	response, _, err := a.callRole(ctx, roles.RoleWorker, a.model, []ai.Message{

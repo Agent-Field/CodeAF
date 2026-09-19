@@ -32,6 +32,13 @@ var errPlanOtherChat = errors.New("that task belongs to another conversation")
 // steered.
 var errPlanEndedRun = errors.New("that task's run has ended")
 
+// errPlanRunNotHeld is what a hold on the run's own task answers. Nothing holds
+// a whole run: the store holds a part and everything under it, and refuses the
+// run's task for every caller in a sentence about who owns what, which is no
+// sentence for a person. No surface built with this file offers the key there
+// (internal/tui3's planOwnTask); a window built before it still does.
+var errPlanRunNotHeld = errors.New("a run is not held as a whole: hold one of its parts, or stop it")
+
 // planNoTask is the refusal for an id the conversation's plan does not hold,
 // naming the id exactly as the caller wrote it so a surface can echo it.
 func planNoTask(id string) error {
@@ -41,7 +48,7 @@ func planNoTask(id string) error {
 // planSteer is the one road all six verbs take: open the conversation's store,
 // resolve the id inside it, refuse a task another chat spawned or an id the
 // plan does not hold, and otherwise run the store verb the caller names. A
-// store refusal — the root is the harness's, a terminal task cannot be
+// store refusal — a whole run is not held, a terminal task cannot be
 // cancelled, a revision is only for work that has not started — travels back
 // as the store wrote it, because the store is the one that knows its own laws.
 func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) error) error {
@@ -86,6 +93,9 @@ func (a *Agent) PlanNote(id, text string) error {
 // subtree is launched until it is resumed.
 func (a *Agent) PlanPause(id string) error {
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
+		if task.ID == store.RootID() {
+			return errPlanRunNotHeld
+		}
 		_, err := store.Pause(task.ID)
 		return err
 	})
@@ -95,6 +105,9 @@ func (a *Agent) PlanPause(id string) error {
 // alone and answers no error, so a surface may resume without asking first.
 func (a *Agent) PlanResume(id string) error {
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
+		if task.ID == store.RootID() {
+			return errPlanRunNotHeld
+		}
 		_, err := store.Resume(task.ID)
 		return err
 	})
@@ -103,8 +116,24 @@ func (a *Agent) PlanResume(id string) error {
 // PlanCancel ends a task, its descendants and the work hard-depending on it.
 // The cascade is the store's own law; the person's cancel carries no reason,
 // because the store records the ending and the surface reads the word.
+//
+// THE RUN'S OWN TASK IS STOPPED AS THE RUN. The store refuses every verb on it,
+// because no worker may end the run it is part of; a person may, and the stop
+// they are owed is the run's (stoprun.go), never the store's sentence about who
+// owns what.
 func (a *Agent) PlanCancel(id string) error {
+	if row, ok := a.beltRunRootRow(id); ok {
+		_, err := a.cancelTask(row, "")
+		return err
+	}
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
+		if task.ID == store.RootID() {
+			// A RUN NOBODY IS RUNNING ANY MORE. The store holds an open run and this
+			// conversation has none going (the program ended under it), so there is
+			// no context to cut and the whole stop is the store's: the run and what
+			// is open under it end, and the next hand-off starts fresh.
+			return store.StopRoot(taskStoppedWord)
+		}
 		_, err := store.Cancel(task.ID, "")
 		return err
 	})
