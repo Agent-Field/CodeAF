@@ -226,3 +226,27 @@ func isRefinement(a, b string) bool {
 	b = strings.TrimSpace(strings.ToLower(b))
 	return a == b || strings.Contains(a, b) || strings.Contains(b, a)
 }
+
+// FolderGuidance is that folder's own active instructions, loaded on the beat.
+// Inferred observations are not included.
+func (s *Service) FolderGuidance(ctx context.Context, scopeID string) ([]GuidanceItem, error) {
+	if err := s.ready(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.store.ListGuidance(ctx, scopeID)
+	if err != nil {
+		return nil, wrapStoreError(err)
+	}
+	name, err := s.scopeName(ctx, scopeID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]GuidanceItem, 0, len(rows))
+	for _, row := range rows {
+		if row.Status != workspace.GuidanceActive {
+			continue
+		}
+		out = append(out, guidanceItem(row, name))
+	}
+	return out, nil
+}

@@ -62,6 +62,12 @@ func TestEveryLaunchCarriesTheProcessesOwnStores(t *testing.T) {
 	if first.Config.Memory != proc.Memory || second.Config.Memory != proc.Memory {
 		t.Fatal("a launch opened its own handle on the chat database")
 	}
+	if first.Config.ConversationHistory != proc.History || second.Config.ConversationHistory != proc.History {
+		t.Fatal("a launch did not carry the process's history reader")
+	}
+	if first.Config.EnqueueOrganize == nil || second.Config.EnqueueOrganize == nil {
+		t.Fatal("a launch did not enqueue observe_and_organize after a journalled message")
+	}
 	if first.Config.Connect != proc.Conns || second.Config.Connect != proc.Conns {
 		t.Fatal("a launch built its own accounts manager — a token one refreshed would be invisible to the other")
 	}

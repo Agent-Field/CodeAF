@@ -106,7 +106,7 @@ func TestAdapterRenameAndNestedKindSurviveTwoParents(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = svc.Close() })
-	adapter := newFoldersAdapter(svc)
+	adapter := newFoldersAdapter(svc, nil)
 	if adapter == nil {
 		t.Fatal("adapter is nil")
 	}
@@ -201,7 +201,7 @@ func TestAdapterAddFolderPlacementRefusesACycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = svc.Close() })
-	folders := newFoldersAdapter(svc)
+	folders := newFoldersAdapter(svc, nil)
 	billing, err := folders.CreateFolder(ctx, "Billing")
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +237,7 @@ func TestSessionFoldersFileNestsACollectionRef(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = svc.Close() })
 	folders := newSessionFolders(svc)
-	surface := newFoldersAdapter(svc)
+	surface := newFoldersAdapter(svc, nil)
 	billing, err := surface.CreateFolder(ctx, "Billing")
 	if err != nil {
 		t.Fatal(err)

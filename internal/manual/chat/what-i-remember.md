@@ -372,6 +372,16 @@ the opaque `ref` from a result, on its own, to open that
 message and up to two messages on either side. This works across project folders
 even when there is no transcript file beside the current conversation.
 
+## Can I search old chats with memory off — conversation search without remember
+
+Yes. Memory off means no `remember` and no lines carried into the next session.
+Conversation search reads the indexed history, which stays open. Ask what was
+decided last week and `search_conversations` still looks. The search place on
+home is the same index.
+
+It is off only when that history file could not open, which is the sentence
+that names `graph.db` and the disk's reason — not the `memory` row.
+
 ## Conversation search limits — hybrid search, coverage, and memory off
 
 - Search returns eight matches by default, twenty at most. Each matching passage
