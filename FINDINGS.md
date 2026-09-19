@@ -40,3 +40,7 @@ The process-owned usage writer is the strongest match for a file appearing durin
 ## Forced-order reproduction design
 
 The next step will add a test-only barrier at the usage writer's dequeue seam. The target test will hold the queued usage row until its body has completed agent close, then prove that the writer can create `v3/usage.jsonl` afterward. This forces the observed ordering without load, sleeps, busy loops, or synthetic CPU. The barrier belongs at `usageWriter.run`, immediately before its lazy open, because that is the exact asynchronous writer identified above. No session clock, poll timeout, or issue #1211 surface is involved.
+
+## Deterministic reproduction
+
+A test-only `usageWriter.beforeWrite` barrier now stops the exact writer after dequeue and before `openUsageLedger` at `internal/session/usage_ledger.go:603`. The target turn reaches that barrier, then `Agent.Close` returns while `v3/usage.jsonl` still does not exist. The focused command fails deterministically with `Agent.Close returned before its product-owned usage writer created .../001/v3/usage.jsonl: no such file or directory`. Cleanup releases the barrier and calls `FlushUsage`, so the test leaves no blocked writer. This establishes that the late writer is the product-owned usage writer started by `usageWriterFor`, not the lane beat or any test-started goroutine.

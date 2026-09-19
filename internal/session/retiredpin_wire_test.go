@@ -1,6 +1,8 @@
 package session
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +31,26 @@ import (
 // told.
 func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	// NO TEST WRITES THE REAL HOME: the lane registry's store lives under it.
-	t.Setenv(home.EnvVar, t.TempDir())
+	state := t.TempDir()
+	t.Setenv(home.EnvVar, state)
+	ledger := filepath.Join(state, "v3", "usage.jsonl")
+	writerEntered := make(chan struct{})
+	releaseWriter := make(chan struct{})
+	writer := &usageWriter{queue: make(chan usageWrite, usageQueueDepth), beforeWrite: func() {
+		close(writerEntered)
+		<-releaseWriter
+	}}
+	usageWritersMu.Lock()
+	usageWriters[ledger] = writer
+	usageWritersMu.Unlock()
+	go writer.run(ledger)
+	t.Cleanup(func() {
+		close(releaseWriter)
+		FlushUsage()
+		usageWritersMu.Lock()
+		delete(usageWriters, ledger)
+		usageWritersMu.Unlock()
+	})
 	const model = "stub/talk"
 	// THE PINNED MACHINE IS ONE THE ROUTER DOES NOT SERVE FOR THIS MODEL, which
 	// is the measured shape: the router publishes its serving set, the machine a
@@ -79,6 +100,14 @@ func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	}
 	if served := server.Served(); len(served) == 0 {
 		t.Fatal("nothing answered the turn, so the widened retry never landed")
+	}
+
+	<-writerEntered
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(ledger); err != nil {
+		t.Fatalf("Agent.Close returned before its product-owned usage writer created %s: %v", ledger, err)
 	}
 }
 
