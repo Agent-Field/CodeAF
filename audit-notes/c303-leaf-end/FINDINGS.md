@@ -96,3 +96,5 @@ The correction is committed at `f8e08781f9556d71725d720facbe91fab6a4f549`. Next 
 `go test ./internal/exec/...` passed, including `internal/exec` and `internal/exec/bare`. Next step: run the required standalone `gofmt -l ./cmd ./internal` check; acceptance requires no output.
 
 `gofmt -l ./cmd ./internal` printed nothing and passed. Next step: run the required standalone change-entry validation, `go run ./cmd/codeaf-changes check`.
+
+`go run ./cmd/codeaf-changes check` passed with 20 well-formed entries. Next step: run the required standalone guard and naming-law tests.
