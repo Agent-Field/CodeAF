@@ -97,8 +97,8 @@ type RunSpec struct {
 }
 
 // RunLimit is which bound a person set ended a run. The engine's outcome word
-// is one sentence for every limit — it is the exit ladder's own word, and the
-// ladder keeps its one rung — so this fact is what says which limit fired. It
+// is one sentence for every limit; it is the exit ladder's own word and the
+// ladder keeps its one rung, so this fact is what says which limit fired. It
 // is set where the run decides the limit was reached and read where the ending
 // is drawn; it is never parsed back out of a sentence.
 type RunLimit string
@@ -665,7 +665,7 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 }
 
 // beltRunLimitEnding is the run row's ending for a limit its person set, off
-// the summary's own fact. Empty — no ending a reading knows — is the answer for
+// the summary's own fact. Empty, which no reading knows as an ending, is the answer for
 // every run that did not end on a bound, which is the reading those runs always
 // drew.
 func beltRunLimitEnding(limit RunLimit) TaskEnding {

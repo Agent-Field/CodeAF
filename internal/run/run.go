@@ -27,8 +27,8 @@ const (
 )
 
 // Limit is which bound a person set ended a run that reached it. The outcome
-// word above is one sentence for both limits — the exit ladder keeps its one
-// rung — so this fact is what says which limit fired, and it is carried beside
+// word above is one sentence for both limits and the exit ladder keeps its one
+// rung, so this fact is what says which limit fired, and it is carried beside
 // the word rather than read out of it: set where the run decides the limit was
 // reached ([Supervisor.limitHit]), read where the ending is drawn.
 type Limit string
@@ -145,9 +145,9 @@ type Supervisor struct {
 	rootResult string
 	rootFailed bool
 	// limitHit is which limit a person set ended this run, and empty while none
-	// has. It is set the moment the run decides a limit was reached — the
+	// has. It is set the moment the run decides a limit was reached (the
 	// elapsed signal in Run, the spend counters in countLiveSpend and
-	// settleSpend — so the ending can name the limit that caused it rather
+	// settleSpend), so the ending can name the limit that caused it rather
 	// than the one sentence both share.
 	limitHit       Limit
 	dispatchedRoot bool
