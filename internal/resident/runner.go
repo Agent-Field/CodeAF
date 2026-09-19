@@ -212,6 +212,9 @@ type Runner struct {
 	// landing is the one moment the ready set provably changed, so it says so
 	// instead of leaving the next pass to find out.
 	wake chan struct{}
+	// afterDispatch is a test seam that can hold this dispatch pass until the
+	// worker lands. Production leaves it nil.
+	afterDispatch func()
 }
 
 // NewRunner builds a runner executing at most workers nodes concurrently.
@@ -1101,6 +1104,9 @@ func (r *Runner) dispatchOne(ctx context.Context, pass *passReads) (spawned bool
 		}
 		r.runOne(runCtx, node, hold)
 	}(node, runCtx, cancel, hold)
+	if r.afterDispatch != nil {
+		r.afterDispatch()
+	}
 	return true, nil
 }
 
