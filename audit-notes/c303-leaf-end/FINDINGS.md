@@ -78,3 +78,11 @@ The committed reproduction was inspected. It deterministically replaces the post
 ## First correction attempt
 
 The scripted edit refused before changing `jobs_test.go` because its expected completer block did not exactly match the file. The still-forced test then failed 20 of 20 runs, and every run logged `no such process` from the real probe before the fabricated success. This strengthens the deterministic test-side classification and leaves the reproduction intact. Next step: inspect the exact completer block and adapt the identity-capture edit to it.
+
+## Exact correction seam
+
+The completer waits at `jobs_test.go:377-389` for `survivor.pid`, so it can capture the original process identity there before returning the final answer. The post-return assertion is at `jobs_test.go:413-420`. Next step: add a `survivorStarted` field, populate it through `ProcessStartTime` before final completion, remove the forced probe, and compare identity after teardown.
+
+## Correction result
+
+The identity-aware test correction passes 20 consecutive focused runs with `go test ./internal/exec -run '^TestLeafEndTerminatesSurvivorsAndNotesCount$' -count=20`. The completer now captures the original survivor start time before returning its final answer; after leaf teardown the assertion reports a survivor only when both PID and start identity still match. This preserves leak detection while accepting an absent original or a recycled PID. Only `internal/exec/jobs_test.go` and this run note changed. Next step: commit the passing correction immediately, then run the required checks from the committed tree.
