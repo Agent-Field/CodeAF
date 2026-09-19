@@ -394,19 +394,20 @@ that names `graph.db` and the disk's reason — not the `memory` row.
   Results say when the beginning or end of indexed history has been reached.
 - Search is hybrid: lexical (BM25) plus embedding or labelled expansion
   candidates beside those hits. Use a few distinctive words. Original passages
-  still rank when the ask uses different wording — emailed receipt links can
-  find an earlier authenticated-access decision; restatements of the query do
-  not occupy every row, and a nearer abandoned-mailer family does not occupy
-  every candidate slot either. A session whose decision is signed-in billed-file
-  access outranks one that mentions billed-file only to refuse it (Cafe dinner
-  slip OCR, restaurant paper). Short corrections and a buried note in a mixed-topic
-  chat stay findable. Equally relevant matches put newer messages first. Short
-  words and Unicode words are supported (at most 32 query words). Names and IDs
-  label results; titles are not searched. If a task search misses, codeaf is
-  pointed at conversation search when that tool is available. When embeddings
-  are bound, discovery may add those candidates beside the words; when they are
-  not, that extra path is labelled `degraded` / `discovery delayed` and does not
-  say the workspace was checked. There is no keyword-only filer.
+  still rank when the ask uses different wording — a plumber invoice, a shipping
+  label, or a purchase order can find an earlier standing decision the same way
+  emailed receipt links can; restatements of the query do not occupy every row,
+  and a nearer abandoned-mailer family does not occupy every candidate slot
+  either. A session whose decision is the standing rule outranks one that names
+  the artefact only to refuse it (Cafe dinner slip OCR, restaurant paper). Short
+  corrections and a buried note in a mixed-topic chat stay findable. Equally
+  relevant matches put newer messages first. Short words and Unicode words are
+  supported (at most 32 query words). Names and IDs label results; titles are
+  not searched. If a task search misses, codeaf is pointed at conversation search
+  when that tool is available. When embeddings are bound, discovery may add those
+  candidates beside the words; when they are not, that extra path is labelled
+  `degraded` / `discovery delayed` and does not say the workspace was checked.
+  There is no keyword-only filer.
 - Only messages already indexed in this store are searched. Failed or pending
   index writes, other stores and spilled file contents are not included. A miss
   does not prove the subject was never discussed.
@@ -424,28 +425,30 @@ that names `graph.db` and the disk's reason — not the `memory` row.
 
 There is no slash command for it — you ask in the conversation, and it searches.
 
-## Original passages despite different wording — emailed receipt links, purchase confirmation PDF
+## Original passages despite different wording — plumber invoice, shipping label, purchase order, emailed receipt links, authenticated access
 
-Yes. Type the words you have now — emailed receipt links, or a purchase
-confirmation PDF — and search still ranks the original passages that decided
-the thing, even when those passages said authenticated document access or
-signed-in billed-file fetch and never used today’s title or id. You do not
-have to phrase it as a question; who, what, why, how, may, can, should, or
-allowed are not required. `/search` and `search_conversations` share that
-ranking. The candidate list is conversations, not repeated turns of the
-nearest family: an abandoned-mailer cluster that is closer in embedding space
-cannot fill the pool so the original never appears.
+Yes. Type the words you have now — a plumber invoice from last March, a
+shipping label from last Tuesday, a purchase order from the vendor, or
+emailed receipt links — and search still ranks the original passages that
+decided the thing, even when those passages never used today’s title or id.
+You do not have to phrase it as a question; who, what, why, how, may, can,
+should, or allowed are not required, and neither is a receipt-domain token
+union. `/search` and `search_conversations` share that ranking. The candidate
+list is conversations, not repeated turns of the nearest family: an
+abandoned-mailer cluster that is closer in embedding space cannot fill the
+pool so the original never appears.
 
 Chats that merely restate the ask are not the original. A Cafe dinner slip OCR
 chat that says restaurant paper, not a billed-file hyperlink policy, named
-billed-file only to refuse it — that is not the access decision, and search
-does not ban cafe, restaurant, abandon, or espresso to hide it. A short
-correction such as “No, the other one.” is findable with the surrounding
-decision. A buried
-note inside a mixed-topic thread (certificate work that still records the
-access rule) stays findable; it is not drowned by a larger family that only
-shares some of the words. When embeddings are down, that extra path is
-`degraded` / `discovery delayed` and does not say the workspace was checked.
+billed-file only to refuse it — that is not the standing decision, and search
+does not ban cafe, restaurant, abandon, or espresso to hide it. The same
+ranking prefers a facilities drain-work bill over a workshop OCR that only
+refuses a plumber invoice. A short correction such as “No, the other one.” is
+findable with the surrounding decision. A buried note inside a mixed-topic
+thread (certificate work that still records the access rule) stays findable;
+it is not drowned by a larger family that only shares some of the words. When
+embeddings are down, that extra path is `degraded` / `discovery delayed` and
+does not say the workspace was checked.
 
 ## Cafe dinner slip OCR versus signed-in billed-file access — restaurant paper, not a billed-file hyperlink policy
 

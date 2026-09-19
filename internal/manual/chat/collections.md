@@ -299,13 +299,14 @@ Learned memory off leaves `remember` and reflex absent. Conversation history
 is still there: `search_conversations` and the search place still run, and
 automatic organization still files. Hybrid search adds embedding (or labelled
 expansion) candidates beside lexical hits. Original passages still rank when
-the ask uses different wording; restatements of the query are not the original,
-and a nearer abandoned-mailer family does not fill the candidate list.
-A session whose decision is the access policy outranks one that mentions
-billed-file only to refuse it (Cafe dinner slip OCR). Cafe, restaurant, abandon,
-and espresso are not banned words. Fourteen of twenty search rows are still
-those signed-in originals when a nearer restaurant cluster fills the first page.
-Abandoned plans and the words that rejected them stay searchable.
+the ask uses different wording — a plumber invoice, a shipping label, or a
+purchase order the same way as emailed receipt links; restatements of the query
+are not the original, and a nearer abandoned-mailer family does not fill the
+candidate list. A session whose standing decision is the rule outranks one that
+names the artefact only to refuse it (Cafe dinner slip OCR). Cafe, restaurant,
+abandon, and espresso are not banned words. Fourteen of twenty search rows are
+still those signed-in originals when a nearer restaurant cluster fills the
+first page. Abandoned plans and the words that rejected them stay searchable.
 
 ## Discovery delayed vs checked — did it check the workspace, degraded, not checked
 

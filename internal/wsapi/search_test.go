@@ -68,7 +68,16 @@ func TestSearchEvidenceDegradedExpansion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hits) != 2 || hits[1].ScoreKind != ScoreExpansion || !hits[1].Degraded {
+	if len(hits) != 2 {
+		t.Fatalf("expansion %+v", hits)
+	}
+	var exp SearchHit
+	for _, hit := range hits {
+		if hit.Ref == "exp" {
+			exp = hit
+		}
+	}
+	if exp.ScoreKind != ScoreExpansion || !exp.Degraded {
 		t.Fatalf("expansion %+v", hits)
 	}
 }
@@ -80,44 +89,65 @@ func TestSearchEvidenceDifferentWordingOriginalsBeatParaphraseEchoes(t *testing.
 	queries := []string{"emailed purchase confirmation PDF", "emailed receipt links"}
 	for _, query := range queries {
 		t.Run(query, func(t *testing.T) {
-			var lexical, embed []SearchHit
-			for i := 0; i < 20; i++ {
-				id := "para-" + itoa(i)
-				passage := query + " billing ask"
-				lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreBM25})
-				embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
-			}
-			for i := 0; i < 20; i++ {
-				id := "src-" + itoa(i)
-				passage := "Customers must sign in before a billed-file hyperlink will work. Authenticated session only."
-				embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
-			}
-			for i := 0; i < 20; i++ {
-				id := "a6-" + itoa(i)
-				passage := "Plan: mail customers the raw download address. We abandon mailing the bare locator. The abandoned mailer stays rejected."
-				embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
-			}
-			svc := testService(t, nil)
-			svc.SetDiscoverer(fakeDiscoverer{lexical: lexical, embed: embed})
-			hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: query, Limit: 20})
-			if err != nil {
-				t.Fatal(err)
-			}
-			gold, abandoned, para := 0, 0, 0
-			for _, hit := range hits {
-				switch {
-				case strings.HasPrefix(hit.SessionID, "src-"):
-					gold++
-				case strings.HasPrefix(hit.SessionID, "a6-"):
-					abandoned++
-				case strings.HasPrefix(hit.SessionID, "para-"):
-					para++
-				}
-			}
-			if gold < 14 || abandoned > 0 || para > 0 {
-				t.Fatalf("A4 originals in top-20: %d (want ≥14); abandoned=%d para=%d ids=%v", gold, abandoned, para, idsOf(hits))
-			}
+			assertOriginalsBeatParaphrases(t, query, "Customers must sign in before a billed-file hyperlink will work. Authenticated session only.")
 		})
+	}
+}
+
+func TestSearchEvidenceHeldOutDifferentWordingOriginalsBeatParaphraseEchoes(t *testing.T) {
+	// 93d688e2 only opened original-neighbor ranking for two-of-five
+	// emailed-receipt tokens (or a question cue). These asks have neither.
+	cases := []struct {
+		query, original string
+	}{
+		{"plumber invoice from last March", "Facilities must keep the drain-work bill in the job folder."},
+		{"shipping label from last Tuesday", "Dispatch must print the outbound carton sticker from the signed dock record."},
+		{"purchase order from the vendor", "Accounts must file the supplier request form with the job."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			assertOriginalsBeatParaphrases(t, tc.query, tc.original)
+		})
+	}
+}
+
+func assertOriginalsBeatParaphrases(t *testing.T, query, original string) {
+	t.Helper()
+	var lexical, embed []SearchHit
+	for i := 0; i < 20; i++ {
+		id := "para-" + itoa(i)
+		passage := query + " billing ask"
+		lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreBM25})
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	for i := 0; i < 20; i++ {
+		id := "src-" + itoa(i)
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: original, ScoreKind: ScoreEmbed})
+	}
+	for i := 0; i < 20; i++ {
+		id := "a6-" + itoa(i)
+		passage := "Plan: mail customers the raw download address. We abandon mailing the bare locator. The abandoned mailer stays rejected."
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	svc := testService(t, nil)
+	svc.SetDiscoverer(fakeDiscoverer{lexical: lexical, embed: embed})
+	hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: query, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gold, abandoned, para := 0, 0, 0
+	for _, hit := range hits {
+		switch {
+		case strings.HasPrefix(hit.SessionID, "src-"):
+			gold++
+		case strings.HasPrefix(hit.SessionID, "a6-"):
+			abandoned++
+		case strings.HasPrefix(hit.SessionID, "para-"):
+			para++
+		}
+	}
+	if gold < 14 || abandoned > 0 || para > 0 {
+		t.Fatalf("originals in top-20: %d (want ≥14); abandoned=%d para=%d ids=%v", gold, abandoned, para, idsOf(hits))
 	}
 }
 
@@ -166,14 +196,108 @@ func TestSearchEvidenceAccessPolicyBeatsCafeOCRHardNegatives(t *testing.T) {
 	}
 }
 
-func TestAccessPolicyDecisionDoesNotDenylistCafe(t *testing.T) {
+func TestSearchEvidenceHeldOutStandingDecisionBeatsIdentityRefusal(t *testing.T) {
+	// On 93d688e2 a question-shaped held-out ask sought originals but never
+	// elevated standing decisions, so an OCR/refusal neighbour tied at class 2.
+	// Gold is the standing rule, not the refusal mention. Cafe is not a token.
+	cases := []struct {
+		query, original, refusal string
+	}{
+		{
+			"plumber invoice from last March",
+			"Facilities must keep the drain-work bill in the job folder.",
+			"OCR the handwritten drain quote into the outing spreadsheet. Workshop paper, not a facilities-bill hyperlink policy.",
+		},
+		{
+			"who approved the plumber invoice",
+			"Facilities must keep the drain-work bill in the job folder.",
+			"OCR the handwritten drain quote into the outing spreadsheet. Workshop paper, not a facilities-bill hyperlink policy.",
+		},
+		{
+			"shipping label from last Tuesday",
+			"Dispatch must print the outbound carton sticker from the signed dock record.",
+			"OCR the dock slip into the outing spreadsheet. Warehouse paper, not a carton-sticker hyperlink policy.",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			var embed []SearchHit
+			for i := 0; i < 40; i++ {
+				id := "ocr-" + itoa(i)
+				embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: tc.refusal, ScoreKind: ScoreEmbed})
+			}
+			for i := 0; i < 40; i++ {
+				id := "src-" + itoa(i)
+				embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: tc.original, ScoreKind: ScoreEmbed})
+			}
+			for i := 0; i < 20; i++ {
+				id := "a6-" + itoa(i)
+				passage := "Plan: mail customers the raw download address. We abandon mailing the bare locator. The abandoned mailer stays rejected."
+				embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+			}
+			svc := testService(t, nil)
+			svc.SetDiscoverer(fakeDiscoverer{embed: embed})
+			hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: tc.query, Limit: 20})
+			if err != nil {
+				t.Fatal(err)
+			}
+			gold, ocr, abandoned := 0, 0, 0
+			for _, hit := range hits {
+				switch {
+				case strings.HasPrefix(hit.SessionID, "src-"):
+					gold++
+				case strings.HasPrefix(hit.SessionID, "ocr-"):
+					ocr++
+				case strings.HasPrefix(hit.SessionID, "a6-"):
+					abandoned++
+				}
+			}
+			if gold < 14 || ocr > 0 || abandoned > 0 {
+				t.Fatalf("originals in top-20: %d (want ≥14); ocr=%d abandoned=%d ids=%v", gold, ocr, abandoned, idsOf(hits))
+			}
+		})
+	}
+}
+
+func TestQuerySeeksOriginalsIsNotAReceiptTokenUnion(t *testing.T) {
+	for _, query := range []string{
+		"plumber invoice from last March",
+		"shipping label from last Tuesday",
+		"purchase order from the vendor",
+		"receipt from the cafe",
+		"emailed purchase confirmation PDF",
+		"emailed receipt links",
+		"who approved the plumber invoice",
+		"can we reuse the shipping label",
+	} {
+		if !querySeeksOriginals(query) {
+			t.Fatalf("%q should seek originals without a receipt-token union", query)
+		}
+	}
+	if querySeeksOriginals("No the other one signed-in session not bare locator") {
+		t.Fatal("A7 short correction must keep coverage ranking")
+	}
+	if querySeeksOriginals("billed-file hyperlinks require signed-in session buried in certificate work") {
+		t.Fatal("global minority-topic note must keep coverage ranking")
+	}
+}
+
+func TestStandingDecisionDoesNotDenylistCafe(t *testing.T) {
 	policy := []string{"Customers must sign in before a billed-file hyperlink will work. OCR cafe dinner slip is filed separately."}
-	if !accessPolicyDecision(policy) {
-		t.Fatal("mentioning a cafe dinner slip must not strip an access-policy decision")
+	if !standingDecision(policy) {
+		t.Fatal("mentioning a cafe dinner slip must not strip a standing decision")
 	}
 	refusal := []string{"OCR cafe dinner slip 1 into the outing spreadsheet. Restaurant paper, not a billed-file hyperlink policy."}
-	if accessPolicyDecision(refusal) {
-		t.Fatal("a billed-file refusal mention is not the access-policy decision")
+	if standingDecision(refusal) {
+		t.Fatal("a billed-file refusal mention is not the standing decision")
+	}
+	plumber := []string{"Facilities must keep the drain-work bill in the job folder."}
+	if !standingDecision(plumber) {
+		t.Fatal("a non-receipt standing rule must still count")
+	}
+	plumberRefusal := []string{"Workshop paper, not a facilities-bill hyperlink policy."}
+	if standingDecision(plumberRefusal) {
+		t.Fatal("an identity refusal is not the standing decision")
 	}
 }
 
