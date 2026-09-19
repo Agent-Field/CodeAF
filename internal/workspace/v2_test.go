@@ -108,6 +108,14 @@ func TestV1ListDoesNotMigrate(t *testing.T) {
 	if err != nil || len(guidance) != 0 {
 		t.Fatalf("v1 list guidance: %v, %v", guidance, err)
 	}
+	people, err := s.ListParticipants(ctx, "mgmt")
+	if err != nil || len(people) != 0 {
+		t.Fatalf("v1 list participants: %v, %v", people, err)
+	}
+	queued, err := s.ListPendingDeliveries(ctx, "old-chat")
+	if err != nil || len(queued) != 0 {
+		t.Fatalf("v1 list deliveries: %v, %v", queued, err)
+	}
 	suppressed, err := s.IsSuppressed(ctx, "billing-v1", Ref{Kind: ConversationKind, ID: "old-chat"}, "hash")
 	if err != nil || suppressed {
 		t.Fatalf("v1 is-suppressed: %v, %v", suppressed, err)
@@ -121,7 +129,7 @@ func TestV1ListDoesNotMigrate(t *testing.T) {
 	}
 }
 
-func TestFirstWriteMigratesV1ToV3(t *testing.T) {
+func TestFirstWriteMigratesV1ToV4(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "v1.db")
 	writeV1Fixture(t, path)
@@ -135,10 +143,10 @@ func TestFirstWriteMigratesV1ToV3(t *testing.T) {
 		t.Fatal(err)
 	}
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 3 {
+	if app != applicationID || version != 4 {
 		t.Fatalf("first write left application %d version %d", app, version)
 	}
-	if s.SchemaVersion() != 3 {
+	if s.SchemaVersion() != 4 {
 		t.Fatalf("handle version %d after write", s.SchemaVersion())
 	}
 	after, err := s.Collections(ctx)
@@ -154,8 +162,9 @@ func TestFirstWriteMigratesV1ToV3(t *testing.T) {
 		t.Fatalf("migrated add wrote no event: %+v, %v", why, err)
 	}
 	requireTables(t, path, v3TableNames...)
+	requireTables(t, path, v4TableNames...)
 	if extra := tablesNamed(t, path, laterPhaseTableNames...); len(extra) != 0 {
-		t.Fatalf("wave 2 created later-phase tables: %v", extra)
+		t.Fatalf("wave 3 created later-phase tables: %v", extra)
 	}
 }
 
@@ -397,8 +406,10 @@ func TestUnknownOriginIsRefused(t *testing.T) {
 
 var v3TableNames = []string{"guidance", "jobs", "observations", "placement_suppressions", "proposed_actions"}
 
+var v4TableNames = []string{"participants", "deliveries"}
+
 var laterPhaseTableNames = []string{
-	"participants", "participant", "deliveries", "delivery", "grants", "grant", "execution_bindings", "execution",
+	"grants", "grant", "execution_bindings", "execution",
 }
 
 func tablesNamed(t *testing.T, path string, names ...string) []string {
