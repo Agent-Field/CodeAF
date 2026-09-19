@@ -54,12 +54,6 @@ type workerReturn struct {
 	err    error
 }
 
-type workerEvent struct {
-	ret    *workerReturn
-	taskID string
-	banked float64
-}
-
 // Supervisor is the launch loop over one plan store. It claims ready leaves
 // as the task's own agent — the name its finish command answers to — and
 // records the process that holds the claim beside it, so a run is owned per
@@ -100,16 +94,34 @@ type Supervisor struct {
 	// touched by no one else. cancels maps a running task to the context
 	// cancel that ends its worker, so a pass can end one worker's context
 	// without touching the rest.
-	finished chan workerEvent
+	finished chan workerReturn
 	// workers counts the goroutines launch has started and not yet seen end.
 	// It is the run's one promise to its caller — NO WORKER OUTLIVES ITS RUN —
 	// and drain is its only reader: every road out of Run waits on it before
 	// answering, so the store, the working copy and the process are the
 	// caller's alone the moment the run is over.
-	workers        sync.WaitGroup
-	inFlight       int
-	spent          float64
-	banked         map[string]float64
+	workers  sync.WaitGroup
+	inFlight int
+	spent    float64
+	// THE DOLLAR LIMIT IS READ WHILE THE WORK IS GOING, not only when a worker
+	// comes home. live is what each worker in flight says it has banked so far,
+	// a cumulative figure its own goroutine writes under liveMu; counted is how
+	// much of that figure the loop has already added to spent, and it belongs to
+	// the loop alone. Both are keyed by task, both are cumulative, and a
+	// worker's return reconciles them against its report, so a dollar is
+	// counted once whether the loop saw it on the way or only at the end.
+	//
+	// A WORKER NEVER WAITS ON THE RUN TO SAY WHAT IT SPENT. It writes its figure
+	// and drops a token into liveMoved if there is room; a token that does not
+	// fit is lost and nothing else is, because the figure is cumulative and the
+	// next read takes all of it. That matters most on the way out: drain waits
+	// for workers and reads nothing, so a worker that had to be heard before it
+	// could go on would hold the run open for good.
+	liveMu    sync.Mutex
+	live      map[string]float64
+	counted   map[string]float64
+	liveMoved chan struct{}
+
 	nodes          int
 	steps          int
 	rootResult     string
@@ -154,7 +166,8 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		limits:    limits,
 		factory:   factory,
 		after:     time.After,
-		finished:  make(chan workerEvent, slots+1),
+		finished:  make(chan workerReturn, slots+1),
+		liveMoved: make(chan struct{}, 1),
 		cancels:   make(map[string]context.CancelFunc),
 		checkOf:   make(map[string]string),
 	}
@@ -190,7 +203,10 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 		return OutcomeCannotRun
 	}
 	s.spent = 0
-	s.banked = make(map[string]float64)
+	s.liveMu.Lock()
+	s.live = make(map[string]float64)
+	s.liveMu.Unlock()
+	s.counted = make(map[string]float64)
 	s.nodes = 0
 	s.steps = 0
 	s.rootResult = ""
@@ -224,8 +240,11 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			return outcome
 		}
 		select {
-		case event := <-s.finished:
-			s.consume(event)
+		case ret := <-s.finished:
+			s.inFlight--
+			s.absorb(ret)
+		case <-s.liveMoved:
+			s.countLiveSpend()
 		case <-timer.C:
 			timer.Reset(passInterval)
 		case <-elapsed:
@@ -233,8 +252,9 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			// spend counter marks, so the next pass launches nothing and answers
 			// the existing OutcomeLimit.
 			//
-			// TIME AND COST BOTH END WORK IN FLIGHT. Once either ceiling is
-			// reached, every worker is ended here, and
+			// TIME ENDS THE WORK IN FLIGHT, AS DOLLARS DO ([countLiveSpend]): the
+			// time is gone whatever a worker was in the middle of. So every worker
+			// is ended here, and
 			// ITS ENDING IS ABSORBED, the way the caller's wall below reads its
 			// endings: a return that was dropped would leave its task claimed and
 			// reading as running on a run that is over, and what the worker spent
@@ -245,7 +265,9 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 				cancel()
 			}
 			for s.inFlight > 0 {
-				s.consume(<-s.finished)
+				ret := <-s.finished
+				s.inFlight--
+				s.absorb(ret)
 			}
 		case <-ctx.Done():
 			// The caller's wall: workers still out there were handed this
@@ -255,7 +277,9 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			// the endings rather than dropping them, because the run it stops
 			// is one a later pass picks up from the store.
 			for s.inFlight > 0 {
-				s.consume(<-s.finished)
+				ret := <-s.finished
+				s.inFlight--
+				s.absorb(ret)
 			}
 			s.drain()
 			return OutcomeIncomplete
@@ -351,11 +375,16 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 		taskCtx = WithWakeClause(taskCtx, wake)
 	}
 	s.cancels[task.ID] = cancel
-	s.banked[task.ID] = 0
+	s.counted[task.ID] = 0
 	if s.limits.CostUSD > 0 {
-		taskCtx = WithSpendBank(taskCtx, func(usd float64) {
-			s.finished <- workerEvent{taskID: task.ID, banked: usd}
-		})
+		// ONLY A RUN WITH A DOLLAR LIMIT LISTENS. A worker launched again for a
+		// wake starts its own count from nothing, so the figure a former run of
+		// the same task left behind is cleared before this one can write.
+		id := task.ID
+		s.liveMu.Lock()
+		s.live[id] = 0
+		s.liveMu.Unlock()
+		taskCtx = WithSpendBank(taskCtx, func(usd float64) { s.bankLive(id, usd) })
 	}
 	s.inFlight++
 	s.nodes++
@@ -370,8 +399,7 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 		} else {
 			report, err = worker.Run(WithStepsPerTask(taskCtx, s.limits.StepsPerTask), task)
 		}
-		ret := workerReturn{task: task, report: report, err: err}
-		s.finished <- workerEvent{ret: &ret}
+		s.finished <- workerReturn{task: task, report: report, err: err}
 	}()
 }
 
@@ -400,29 +428,77 @@ func (s *Supervisor) drain() {
 	s.workers.Wait()
 }
 
-// consume serializes live spend and worker returns on the supervisor loop.
-func (s *Supervisor) consume(event workerEvent) {
-	if event.ret != nil {
-		s.inFlight--
-		s.absorb(*event.ret)
-		return
+// bankLive is the one thing a worker's goroutine does to the run's account: it
+// writes what the worker has banked so far and lets the loop know there is
+// something to read. IT NEVER BLOCKS, for the reason the fields state. The
+// figure only ever rises, so a late or repeated call cannot take a dollar back.
+func (s *Supervisor) bankLive(id string, usd float64) {
+	s.liveMu.Lock()
+	if usd > s.live[id] {
+		s.live[id] = usd
 	}
-	// With no ceiling, live reports are observational: returned workers keep
-	// the shipped accounting semantics, including dropping cancelled work.
+	s.liveMu.Unlock()
+	select {
+	case s.liveMoved <- struct{}{}:
+	default:
+	}
+}
+
+// countLiveSpend adds to the run's spend whatever the workers in flight have
+// banked since the loop last looked, and ends the work in flight the moment the
+// sum reaches the person's dollar limit.
+//
+// A DOLLAR LIMIT MEANS THE RUN'S DOLLARS, NOT THE DOLLARS OF WORKERS THAT HAVE
+// COME HOME. Read only at a return, one long worker could pass the limit many
+// times over before anyone counted, and the limit would be a word about the
+// run after it rather than a hold on this one. The ending is the time limit's:
+// the limit state is marked, every worker's context is ended, the loop goes on
+// reading their returns and absorbing each one, and the pass that finds nothing
+// in flight answers the limit. Nothing is dropped, because drain is not the
+// road: a dropped return would leave its task claimed on a run that is over.
+func (s *Supervisor) countLiveSpend() {
 	if s.limits.CostUSD <= 0 {
 		return
 	}
-	previous := s.banked[event.taskID]
-	if event.banked > previous {
-		s.spent += event.banked - previous
-		s.banked[event.taskID] = event.banked
+	s.liveMu.Lock()
+	for id, counted := range s.counted {
+		if now := s.live[id]; now > counted {
+			s.spent += now - counted
+			s.counted[id] = now
+		}
 	}
+	s.liveMu.Unlock()
 	if s.spent >= s.limits.CostUSD && !s.limitHit {
 		s.limitHit = true
 		for _, cancel := range s.cancels {
 			cancel()
 		}
 	}
+}
+
+// settleSpend reconciles a returned worker's report with what the loop counted
+// while it worked, so its dollars are in the run's spend exactly once. The
+// report is the receipt; a report smaller than what was already counted (a
+// worker that lost its figure on the way out) takes nothing back, because the
+// money was spent. A return can itself be what reaches the limit, as it always
+// could.
+func (s *Supervisor) settleSpend(ret workerReturn) {
+	if counted := s.counted[ret.task.ID]; ret.report.USD > counted {
+		s.spent += ret.report.USD - counted
+	}
+	s.forgetLive(ret.task.ID)
+	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
+		s.limitHit = true
+	}
+}
+
+// forgetLive drops a returned worker's live figure and the loop's count of it,
+// so the set the loop reads is the set of workers in flight.
+func (s *Supervisor) forgetLive(id string) {
+	delete(s.counted, id)
+	s.liveMu.Lock()
+	delete(s.live, id)
+	s.liveMu.Unlock()
 }
 
 // absorb writes one worker's ending into the store and keeps the run's
@@ -440,26 +516,23 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	// hands back no account this run counts. The completion check below still
 	// runs, because the cancellation may be the write that finished the tree.
 	delete(s.cancels, ret.task.ID)
-	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
-		// Live spend was provisional. Preserve the existing rule that an
-		// externally cancelled task contributes no report to this run.
-		s.spent -= s.banked[ret.task.ID]
-		delete(s.banked, ret.task.ID)
+	if ret.report.Waiting {
+		// A PARKED RETURN IS NOT AN ENDING. The worker called `plandb wait`; the
+		// store already released the claim and flagged the task waiting, and the
+		// task stays open until the run wakes it ([launchWaits]). Nothing is
+		// written over the store's own park, and the spend the worker made is
+		// still the run's.
+		s.settleSpend(ret)
+		s.steps += ret.report.Steps
 		s.completeTree()
 		return
 	}
-	banked := s.banked[ret.task.ID]
-	if ret.report.USD > banked {
-		s.spent += ret.report.USD - banked
-	}
-	delete(s.banked, ret.task.ID)
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
-		s.limitHit = true
-	}
-	if ret.report.Waiting {
-		// A parked return is not an ending. The store already released the
-		// claim, and the spend the worker made is still the run's.
-		s.steps += ret.report.Steps
+	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
+		// WHAT WAS COUNTED ON THE WAY IS TAKEN BACK, so the rule above reads the
+		// same with a dollar limit as without one: a worker whose task the store
+		// cancelled under it hands back no account this run counts.
+		s.spent -= s.counted[ret.task.ID]
+		s.forgetLive(ret.task.ID)
 		s.completeTree()
 		return
 	}
@@ -468,6 +541,7 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	// counts what the worker spent, and the root's own report is still the
 	// run's result.
 	endedByStore := ret.err == nil && s.store.Task(ret.task.ID).Status == plandb.StatusDone
+	s.settleSpend(ret)
 	s.steps += ret.report.Steps
 	if ret.task.ID == s.store.RootID() {
 		// The harness owns the root, and the store refuses worker writes to it.

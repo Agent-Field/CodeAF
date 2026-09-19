@@ -509,3 +509,47 @@ func TestBashWorkerEndsItsLoopAtTheStepCap(t *testing.T) {
 		t.Fatalf("the ending reads %d steps with %q, want the cap's count and reason", end.Steps, end.Reason)
 	}
 }
+
+// THE WORKER SAYS WHAT IT HAS SPENT AS EACH CALL IS PAID FOR, not only when it
+// comes home. A run's dollar limit is read from these figures while the worker
+// is still working, so they must arrive once per paid call, each one the whole
+// of what the worker has spent so far, and the last one must be the figure the
+// report carries: two accounts of one worker's money would drift.
+func TestBashWorkerReportsItsSpendAsEachCallIsPaidFor(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		reply := toolReply(`{"command":"true"}`)
+		cost := 0.25
+		reply.Usage.Cost = &cost
+		return reply, nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	var mu sync.Mutex
+	var figures []float64
+	ctx := run.WithSpendBank(run.WithStepsPerTask(runContext(t), 3), func(usd float64) {
+		mu.Lock()
+		figures = append(figures, usd)
+		mu.Unlock()
+	})
+
+	report, _ := worker.Run(ctx, *store.Task(store.RootID()))
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(figures) < 3 {
+		t.Fatalf("the worker reported its spend %d times over three paid calls: %v", len(figures), figures)
+	}
+	for i := 1; i < len(figures); i++ {
+		if figures[i] <= figures[i-1] {
+			t.Fatalf("spend figures are not the running whole: %v", figures)
+		}
+	}
+	if figures[0] != 0.25 {
+		t.Fatalf("the first figure = %v, want the first call's 0.25", figures[0])
+	}
+	if last := figures[len(figures)-1]; last != report.USD {
+		t.Fatalf("the last figure reported = %v and the report carries %v, want one account", last, report.USD)
+	}
+}
