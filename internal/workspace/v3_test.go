@@ -58,13 +58,16 @@ func TestV2ListDoesNotMigrate(t *testing.T) {
 	if tablesNamed(t, path, v4TableNames...) != nil {
 		t.Fatalf("v2 list created v4 tables: %v", tablesNamed(t, path, v4TableNames...))
 	}
+	if tablesNamed(t, path, v5TableNames...) != nil {
+		t.Fatalf("v2 list created v5 tables: %v", tablesNamed(t, path, v5TableNames...))
+	}
 	app, version := fileUserVersion(t, path)
 	if app != applicationID || version != 2 {
 		t.Fatalf("list migrated the file: application %d version %d", app, version)
 	}
 }
 
-func TestFirstWriteMigratesV2ToV4(t *testing.T) {
+func TestFirstWriteMigratesV2ToV5(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "v2.db")
 	writeV2Fixture(t, path)
@@ -73,13 +76,14 @@ func TestFirstWriteMigratesV2ToV4(t *testing.T) {
 		t.Fatal(err)
 	}
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 4 {
+	if app != applicationID || version != 5 {
 		t.Fatalf("first write left application %d version %d", app, version)
 	}
 	requireTables(t, path, v3TableNames...)
 	requireTables(t, path, v4TableNames...)
+	requireTables(t, path, v5TableNames...)
 	if extra := tablesNamed(t, path, laterPhaseTableNames...); len(extra) != 0 {
-		t.Fatalf("wave 3 created later-phase tables: %v", extra)
+		t.Fatalf("wave 4 created later-phase tables: %v", extra)
 	}
 	members, err := s.Members(ctx, "billing-v2")
 	if err != nil || len(members) != 2 {
@@ -230,18 +234,19 @@ func TestObservationAndProposalPersist(t *testing.T) {
 	}
 }
 
-func TestBlankCreateWritesV4WithoutGrantTables(t *testing.T) {
+func TestBlankCreateWritesV5WithGrantTables(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "fresh.db")
 	s := openTestStore(t, path)
 	createTestCollection(t, s, "Inbox")
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 4 {
+	if app != applicationID || version != 5 {
 		t.Fatalf("fresh write left application %d version %d", app, version)
 	}
 	requireTables(t, path, v3TableNames...)
 	requireTables(t, path, v4TableNames...)
+	requireTables(t, path, v5TableNames...)
 	if extra := tablesNamed(t, path, laterPhaseTableNames...); len(extra) != 0 {
-		t.Fatalf("fresh v4 created later-phase tables: %v", extra)
+		t.Fatalf("fresh v5 created later-phase tables: %v", extra)
 	}
 }
 

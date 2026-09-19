@@ -10,9 +10,10 @@ const minSchemaVersion = 1
 // schemaVersion is the latest collections schema this binary writes.
 // Wave 1 owns v2 (purpose, provenance, root_state). Wave 2 owns v3
 // (guidance, jobs, observations, placement_suppressions, proposed_actions).
-// Wave 3 owns v4 (participants, deliveries). Grant and execution tables
-// stay absent until Wave 4.
-const schemaVersion = 4
+// Wave 3 owns v4 (participants, deliveries). Wave 4 owns v5 (grants,
+// execution_bindings). Launch intent is the reserved binding row, not a
+// third table.
+const schemaVersion = 5
 
 const v2CollectionsDDL = `
 CREATE TABLE collections (
@@ -181,28 +182,102 @@ CREATE INDEX deliveries_pending ON deliveries(to_chat_id, state, seq);
 CREATE UNIQUE INDEX deliveries_idempotency ON deliveries(idempotency_key) WHERE idempotency_key != '';
 `
 
+const v5DDL = `
+CREATE TABLE grants (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ id TEXT NOT NULL UNIQUE,
+ goal TEXT NOT NULL DEFAULT '',
+ coordinator_id TEXT NOT NULL DEFAULT '',
+ scope_kind TEXT NOT NULL DEFAULT '',
+ folder_id TEXT NOT NULL DEFAULT '',
+ snapshot_json TEXT NOT NULL DEFAULT '',
+ action_json TEXT NOT NULL DEFAULT '',
+ issuer TEXT NOT NULL DEFAULT '',
+ origin TEXT NOT NULL CHECK(origin IN ('person','system_fallback','organizer','agent')),
+ actor TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL CHECK(status IN ('active','revoked','superseded')),
+ budget_usd REAL NOT NULL DEFAULT 0,
+ revision INTEGER NOT NULL DEFAULT 1,
+ revocation_revision INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL
+);
+CREATE INDEX grants_coordinator ON grants(coordinator_id, seq);
+CREATE TABLE execution_bindings (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ id TEXT NOT NULL UNIQUE,
+ request_key TEXT NOT NULL DEFAULT '',
+ equivalence_key TEXT NOT NULL DEFAULT '',
+ work_id TEXT NOT NULL DEFAULT '',
+ run_instance_id TEXT NOT NULL DEFAULT '',
+ road TEXT NOT NULL DEFAULT '',
+ owner_chat_id TEXT NOT NULL DEFAULT '',
+ grant_id TEXT NOT NULL DEFAULT '',
+ coordinator_id TEXT NOT NULL DEFAULT '',
+ runtime_ref TEXT NOT NULL DEFAULT '',
+ assignment_rev TEXT NOT NULL DEFAULT '',
+ grant_rev TEXT NOT NULL DEFAULT '',
+ state TEXT NOT NULL CHECK(state IN ('reserved','admitted','bound','paused','stopped','completed','failed')),
+ fence TEXT NOT NULL DEFAULT '',
+ owner TEXT NOT NULL DEFAULT '',
+ lease_until TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL,
+ bound_at TEXT NOT NULL DEFAULT '',
+ admitted_at TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX execution_bindings_request ON execution_bindings(request_key) WHERE request_key != '';
+CREATE INDEX execution_bindings_equivalence ON execution_bindings(equivalence_key, seq);
+`
+
 func verifyVersionTables(ctx context.Context, q schemaQuerier, version int) error {
-	if _, err := q.ExecContext(ctx, "SELECT seq,id,name FROM collections LIMIT 0"); err != nil {
-		return err
-	}
-	if _, err := q.ExecContext(ctx, "SELECT seq,collection_id,kind,ref_id,session_id,target_collection FROM memberships LIMIT 0"); err != nil {
+	if err := verifyV1Tables(ctx, q); err != nil {
 		return err
 	}
 	if version < 2 {
 		return nil
 	}
+	if err := verifyV2Tables(ctx, q); err != nil {
+		return err
+	}
+	if version < 3 {
+		return nil
+	}
+	if err := verifyV3Tables(ctx, q); err != nil {
+		return err
+	}
+	if version < 4 {
+		return nil
+	}
+	if err := verifyV4Tables(ctx, q); err != nil {
+		return err
+	}
+	if version < 5 {
+		return nil
+	}
+	return verifyV5Tables(ctx, q)
+}
+
+func verifyV1Tables(ctx context.Context, q schemaQuerier) error {
+	if _, err := q.ExecContext(ctx, "SELECT seq,id,name FROM collections LIMIT 0"); err != nil {
+		return err
+	}
+	_, err := q.ExecContext(ctx, "SELECT seq,collection_id,kind,ref_id,session_id,target_collection FROM memberships LIMIT 0")
+	return err
+}
+
+func verifyV2Tables(ctx context.Context, q schemaQuerier) error {
 	if _, err := q.ExecContext(ctx, "SELECT purpose,lifecycle,revision,created_at,updated_at FROM collections LIMIT 0"); err != nil {
 		return err
 	}
 	if _, err := q.ExecContext(ctx, "SELECT seq,origin,reason,actor,at FROM membership_events LIMIT 0"); err != nil {
 		return err
 	}
-	if _, err := q.ExecContext(ctx, "SELECT id,purpose,revision FROM root_state LIMIT 0"); err != nil {
-		return err
-	}
-	if version < 3 {
-		return nil
-	}
+	_, err := q.ExecContext(ctx, "SELECT id,purpose,revision FROM root_state LIMIT 0")
+	return err
+}
+
+func verifyV3Tables(ctx context.Context, q schemaQuerier) error {
 	if _, err := q.ExecContext(ctx, "SELECT id,scope_id,text,status FROM guidance LIMIT 0"); err != nil {
 		return err
 	}
@@ -215,16 +290,23 @@ func verifyVersionTables(ctx context.Context, q schemaQuerier, version int) erro
 	if _, err := q.ExecContext(ctx, "SELECT collection_id,kind,ref_id,evidence_hash FROM placement_suppressions LIMIT 0"); err != nil {
 		return err
 	}
-	if _, err := q.ExecContext(ctx, "SELECT id,plan_json FROM proposed_actions LIMIT 0"); err != nil {
-		return err
-	}
-	if version < 4 {
-		return nil
-	}
+	_, err := q.ExecContext(ctx, "SELECT id,plan_json FROM proposed_actions LIMIT 0")
+	return err
+}
+
+func verifyV4Tables(ctx context.Context, q schemaQuerier) error {
 	if _, err := q.ExecContext(ctx, "SELECT id,actor_id,discussion_id,kind,scope_kind FROM participants LIMIT 0"); err != nil {
 		return err
 	}
 	_, err := q.ExecContext(ctx, "SELECT id,cause_id,state,accepted_at,recorded_at,processed_at FROM deliveries LIMIT 0")
+	return err
+}
+
+func verifyV5Tables(ctx context.Context, q schemaQuerier) error {
+	if _, err := q.ExecContext(ctx, "SELECT id,coordinator_id,action_json,status FROM grants LIMIT 0"); err != nil {
+		return err
+	}
+	_, err := q.ExecContext(ctx, "SELECT id,request_key,run_instance_id,state FROM execution_bindings LIMIT 0")
 	return err
 }
 
@@ -249,6 +331,12 @@ func migrateToCurrent(ctx context.Context, tx schemaQuerier, from int, now strin
 	}
 	if from == 3 {
 		if err := migrateV3ToV4(ctx, tx); err != nil {
+			return err
+		}
+		from = 4
+	}
+	if from == 4 {
+		if err := migrateV4ToV5(ctx, tx); err != nil {
 			return err
 		}
 	}
@@ -286,6 +374,11 @@ func migrateV3ToV4(ctx context.Context, tx schemaQuerier) error {
 	return err
 }
 
+func migrateV4ToV5(ctx context.Context, tx schemaQuerier) error {
+	_, err := tx.ExecContext(ctx, v5DDL)
+	return err
+}
+
 func createV2(ctx context.Context, tx schemaQuerier, now string) error {
 	if _, err := tx.ExecContext(ctx, v2CollectionsDDL+v2HistoryDDL); err != nil {
 		return err
@@ -303,6 +396,9 @@ func createCurrent(ctx context.Context, tx schemaQuerier, now string) error {
 		return err
 	}
 	if err := migrateV3ToV4(ctx, tx); err != nil {
+		return err
+	}
+	if err := migrateV4ToV5(ctx, tx); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion))
