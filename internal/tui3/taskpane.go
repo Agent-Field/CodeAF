@@ -958,29 +958,35 @@ func (a *app) taskPaneRunFitFrom(page session.PlanTaskPage, conversation string,
 	if len(rows) <= room {
 		return rows
 	}
-	note := -1
+	note := len(rows)
 	for i, r := range rows {
 		if ansi.Strip(r.text) == "notes" {
 			note = i
 			break
 		}
 	}
-	if note >= 0 {
-		rows = rows[:note]
+	treeRows := 0
+	for _, row := range page.Children {
+		if strings.TrimSpace(row.Status) != "done" {
+			treeRows++
+		}
 	}
-	for len(rows) > room {
-		cut := -1
-		for i := len(rows) - 1; i >= 0; i-- {
-			s := ansi.Strip(rows[i].text)
-			if strings.Contains(s, " done") {
-				cut = i
-				break
-			}
-		}
-		if cut < 0 {
-			break
-		}
+	if treeRows < len(page.Children) {
+		treeRows++ // the folded done family
+	}
+	treeStart := note - treeRows
+	// The first live row is the pane's anchor. Remove later tree rows from
+	// the bottom before spending any of the notes budget.
+	for len(rows) > room && note-treeStart > 1 {
+		cut := note - 1
 		rows = append(rows[:cut], rows[cut+1:]...)
+		note--
+	}
+	for len(rows) > room && note < len(rows) {
+		rows = rows[:len(rows)-1]
+		if len(rows) == note+1 { // do not leave a heading over no notes
+			rows = rows[:note]
+		}
 	}
 	if len(rows) > room {
 		rows = rows[:room]
