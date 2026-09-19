@@ -28,10 +28,16 @@ func (foldersPanel) rows(in *homeGridInput) homePanelRows {
 		return homePanelRows{emptyWord: folderUnwiredWord}
 	}
 	open := strings.TrimSpace(in.folderOpen)
+	var out homePanelRows
 	if open != "" {
-		return homePanelCut(in, panelFolders, folderOpenLines(in, open))
+		out = homePanelCut(in, panelFolders, folderOpenLines(in, open))
+	} else {
+		out = homePanelCut(in, panelFolders, folderRootLines(in))
 	}
-	return homePanelCut(in, panelFolders, folderRootLines(in))
+	// INDEXING LIVES ON THE HEADING so a squeezed 80-col panel still says
+	// delayed/degraded without stealing the emptiness whisper or the back row.
+	out.said = folderIndexCopy(in.folders.index)
+	return out
 }
 
 func folderRootLines(in *homeGridInput) []homeLine {
@@ -65,6 +71,7 @@ func folderOpenLines(in *homeGridInput, open string) []homeLine {
 		name = open
 	}
 	lines := []homeLine{folderBackLine(open, name)}
+	lines = append(lines, folderInstructLines(in.folders.guidance)...)
 	seen := map[string]bool{}
 	for _, child := range childFolders(in.folders.root.Folders, open) {
 		seen[child.ID] = true

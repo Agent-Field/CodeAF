@@ -36,6 +36,30 @@ type Folders interface {
 	RemovePlacement(ctx context.Context, collectionID, refID string) error
 	MovePlacement(ctx context.Context, fromID, toID, refID string) error
 	WhyHere(ctx context.Context, collectionID, refID string) (FolderWhy, error)
+	// InstructFolder writes person-origin standing guidance for one folder.
+	// FolderGuidance is that folder's own instructions, loaded on the beat.
+	// IndexProgress is software counters for discovery catch-up.
+	InstructFolder(ctx context.Context, id, text string) error
+	FolderGuidance(ctx context.Context, id string) ([]FolderInstruction, error)
+	IndexProgress(ctx context.Context) (FolderIndex, error)
+}
+
+// FolderInstruction is one standing guidance line the folder-detail section
+// draws. Purpose text on a collection is a description and does not appear
+// here; inferred observations are not instructions.
+type FolderInstruction struct {
+	ScopeID, Text, Origin, Actor, At string
+	Revision                         int
+}
+
+// FolderIndex is discovery catch-up as software. Passages and Vectors are
+// counts, never a percentage. Delayed is the embedder or organizer down;
+// Degraded is expansion-only retrieval. Detail is person-facing and empty
+// when caught up.
+type FolderIndex struct {
+	Passages, Vectors int
+	Delayed, Degraded bool
+	Detail            string
 }
 
 // FolderView is one logical folder as the panel draws it. ParentIDs empty means
@@ -81,10 +105,12 @@ type FolderRoot struct {
 // rows() reads this and never the seam. missing is a nil seam or a failed
 // first read: the panel must not draw the empty-workspace whisper over it.
 type homeFoldersReading struct {
-	root    FolderRoot
-	open    FolderView
-	members []FolderPlacement
-	missing bool
+	root     FolderRoot
+	open     FolderView
+	members  []FolderPlacement
+	index    FolderIndex
+	guidance []FolderInstruction
+	missing  bool
 }
 
 // The verb strip on a folders row, quoted in the contract and the manual as
@@ -103,6 +129,13 @@ const (
 	folderMoveHintWord    = "enter a folder to move it there · esc cancel"
 	folderNestWord        = "nest this folder"
 	folderNestHintWord    = "enter a folder to nest it there · esc cancel"
+	folderInstructWord    = "instruct this folder"
+	folderInstructHead    = "instructions"
+	folderInstructWhisper = "standing guidance for chats in this folder"
+	folderInstructUsage   = "usage: /folders instruct <name-or-id> <text>"
+	folderOrganizerOrigin = "organizer"
+	folderDelayedWord     = "discovery delayed"
+	folderDegradedWord    = "degraded"
 	folderLostWord        = "that chat is no longer in this folder"
 	folderUnavailableWord = "unavailable"
 	logicalFolderGoneWord = "that folder is no longer here"
@@ -145,6 +178,7 @@ func (a *app) readHomeFolders() {
 	}
 	next := homeFoldersReading{root: root}
 	open := strings.TrimSpace(a.home.folderOpen)
+	a.readFolderDetail(ctx, &next, open)
 	if open == "" {
 		a.home.folders = next
 		return
@@ -197,6 +231,9 @@ func (a *app) folderVerbs(line homeLine) []verb {
 	}
 	if line.kind == homeFolderRow {
 		verbs = append(verbs, verb{key: 'e', word: folderNestWord, do: func() tea.Cmd { return a.beginFolderNest(line) }})
+	}
+	if line.kind == homeFolderRow || line.kind == homeFolderBack {
+		verbs = append(verbs, verb{key: 'i', word: folderInstructWord, do: func() tea.Cmd { return a.instructThisFolder(line) }})
 	}
 	if line.kind == homeSession {
 		verbs = append(verbs,
@@ -427,6 +464,9 @@ func (a *app) folderWhyHere(line homeLine) tea.Cmd {
 }
 
 func folderWhyLine(why FolderWhy) string {
+	if strings.EqualFold(strings.TrimSpace(why.Origin), folderOrganizerOrigin) {
+		return folderOrganizerWhy(why)
+	}
 	var parts []string
 	for _, p := range []string{
 		strings.TrimSpace(why.Origin),
@@ -609,8 +649,10 @@ func (a *app) runFoldersCommand(rest string) tea.Cmd {
 		return a.nestLogicalFolder(name)
 	case "new":
 		return a.startInFolder(a.folderIDUnderCursor())
+	case "instruct":
+		return a.instructNamedFolder(name)
 	}
-	a.folderNote("usage: /folders · /folders create <name> · /folders add <name-or-id> · /folders rename <name-or-id> <new-name> · /folders nest <child> [in <parent>] · /folders new")
+	a.folderNote("usage: /folders · /folders create <name> · /folders add <name-or-id> · /folders rename <name-or-id> <new-name> · /folders nest <child> [in <parent>] · /folders instruct <name-or-id> <text> · /folders new")
 	return nil
 }
 
