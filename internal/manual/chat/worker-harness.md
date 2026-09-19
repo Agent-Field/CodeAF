@@ -37,6 +37,9 @@ work went (`landed on <branch>: N files`, or the sentence saying why it did not)
 that will not go in is never forced: the branch is kept in your repository and the note
 names it, for example `its branch <branch> was kept`, when your checkout moved on after
 the copy was cut. A run that only read says `nothing to land: the run's working copy holds no change` and changes no file. The
+landing card says `merged` when the work is in your folder and `branch kept` only for a
+branch that is waiting. A hand-off that joined the run ends with it: its row settles
+`done` or `incomplete` when the run's does. The
 row the run was published under settles `done` when the run finished whole and
 `incomplete` on any other ending.
 
