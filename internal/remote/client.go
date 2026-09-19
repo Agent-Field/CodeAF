@@ -2032,7 +2032,12 @@ func (a *Agent) PlanRunSummary(rootID string) (session.RunPlanSummary, bool) {
 // RefreshRunSummary asks the engine to refresh within the caller deadline.
 func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook time.Time) (session.RunPlanSummary, bool) {
 	args := RefreshRunSummaryArgs{RootID: rootID, LastLook: lastLook}
-	args.Deadline, _ = ctx.Deadline()
+	if deadline, ok := ctx.Deadline(); ok {
+		args.Budget = time.Until(deadline)
+		if args.Budget <= 0 {
+			return session.RunPlanSummary{}, false
+		}
+	}
 	payload, err := a.c.call(ctx, MethodRefreshRunSummary, args)
 	if err != nil {
 		return session.RunPlanSummary{}, false

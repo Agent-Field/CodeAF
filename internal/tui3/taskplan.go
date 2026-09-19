@@ -732,7 +732,12 @@ func planNamesOf(rows []tasksMineRow, chat string) map[string]bool {
 // A PAGE THE ENGINE WILL NOT ANSWER FOR IS NOT OPENED. A task this chat did not
 // spawn, or one whose store has gone, leaves the list where it was rather than
 // raising a page of blanks.
-func (a *app) taskSheetPlan(id string) tea.Cmd {
+func (a *app) taskSheetPlan(id string) tea.Cmd { return a.taskSheetPlanFrom(id, nil) }
+
+// taskSheetPlanFrom is [app.taskSheetPlan] for a step INTO one of a page's
+// parts: `from` is the page stepped out of, and it goes on the way back when
+// the part's page has opened and not before.
+func (a *app) taskSheetPlanFrom(id string, from *session.PlanTaskPage) tea.Cmd {
 	agent, ok := a.planReader()
 	if !ok {
 		return nil
@@ -742,6 +747,15 @@ func (a *app) taskSheetPlan(id string) tea.Cmd {
 		return func(here bool) tea.Cmd {
 			if !here || !found {
 				return nil
+			}
+			// THE PAGE STEPPED OUT OF GOES ON THE WAY BACK ONLY WHEN THE NEW ONE
+			// OPENED, and only if the person is still on it: a part with no page
+			// leaves `esc` exactly one step from the list, as it was.
+			if from != nil {
+				if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != from.Row.ID {
+					return nil
+				}
+				a.taskSheet.planBack = append(a.taskSheet.planBack, *from)
 			}
 			a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
 			a.taskSheet.planAt = -1
@@ -1018,9 +1032,7 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.taskSheet.planNote.empty() && a.taskSheet.planAt >= 0 && a.taskSheet.planAt < len(a.taskSheet.plan.Children) {
 			old := a.taskSheet.plan
 			id := old.Children[a.taskSheet.planAt].ID
-			cmd := a.taskSheetPlan(id)
-			a.taskSheet.planBack = append(a.taskSheet.planBack, old)
-			return cmd
+			return a.taskSheetPlanFrom(id, &old)
 		}
 		return a.taskPlanNoteSend()
 	case "backspace":
@@ -1363,7 +1375,7 @@ func planChildWord(row session.PlanTaskRow) string {
 // a stuck page reads the bottom, a person who scrolled up stays where they
 // were.
 func (a *app) taskPlanFollow() tea.Cmd {
-	if !a.taskPlanRunning() {
+	if !a.taskPlanRunning() || a.taskSheet.planFollowing {
 		return nil
 	}
 	agent, ok := a.planReader()
@@ -1371,10 +1383,15 @@ func (a *app) taskPlanFollow() tea.Cmd {
 		return nil
 	}
 	id := a.taskSheet.plan.Row.ID
+	a.taskSheet.planFollowing = true
 	return a.offLoop(func() func(bool) tea.Cmd {
 		page, found := agent.PlanTaskPage(id)
 		return func(here bool) tea.Cmd {
-			if here && found {
+			a.taskSheet.planFollowing = false
+			// THE ANSWER IS FOR THE PAGE THAT ASKED. A person who opened another
+			// task, or closed the page, while this read was out is not handed the
+			// page they left.
+			if here && found && a.taskSheet.planOn && a.taskSheet.plan.Row.ID == id {
 				a.taskSheet.plan = page
 			}
 			return nil
