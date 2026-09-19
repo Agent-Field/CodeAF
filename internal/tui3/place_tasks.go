@@ -1625,7 +1625,7 @@ func (p *tasksPlace) hint(a *app) string {
 	// the one key that holds the task, named where a person reads what a row can
 	// do ([app.tasksPlanKeyWords] says why they are `x` and `p`).
 	if ok && item.plan != nil {
-		parts = append(parts, a.tasksPlanKeyWords(item.plan.Status)...)
+		parts = append(parts, a.tasksPlanKeyWords(*item.plan)...)
 	}
 	if verbs := p.verbs(a); len(verbs) > 0 {
 		words := make([]string, 0, len(verbs))

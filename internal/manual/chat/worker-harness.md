@@ -210,9 +210,12 @@ this conversation's plan**, so a task another chat spawned is never reachable:
 - **pause** / **resume** — hold a task and everything under it out of the ready
   frontier without changing its rung, so running steps finish and nothing new in
   the subtree is launched; or release the hold. The key is `p`: a running row
-  reads `p pause` and a held one `p resume`.
+  reads `p pause` and a held one `p resume`. A run cannot be paused as a whole:
+  under the run's own task no `p pause` is named, and there `p` is a letter in the note.
 - **cancel** — end a task, its descendants and the work hard-depending on it. The
   key is `x stop it` (the roster's own cancel key), on the row and on the page.
+  On the run's own row and page that key ends the whole run and asks first; see
+  "How do I stop a run?" below.
 - **amend** — prepend text to a task's description, the way the CLI's `task amend
   --prepend` does, so the plan learns while it runs.
 - **priority** — set a task's priority through the store's revision verb.
@@ -228,9 +231,44 @@ Two refusals are this layer's own, and they are the words the pane reads back:
 - `that task belongs to another conversation`
 
 A refusal the store itself answers travels back as the store wrote it, because the
-store is the one that knows its own laws — the root is the harness's, a task that
-has ended cannot be cancelled, and a revision is only for work that has not
-started.
+store is the one that knows its own laws — a task that has ended cannot be
+cancelled, and a revision is only for work that has not started. A hold asked of
+the run's own task answers `a run is not held as a whole: hold one of its parts, or
+stop it`.
+
+## How do I stop a run? Stop it did nothing and the task kept running, cancel the whole run
+
+Press `x` over an empty box while the run's row is the one task row on the side list,
+or open the run's own page and press `x stop it` there. Both raise the same card,
+`Stop this task?`, with `stop it` and `keep going`; the page steps aside so the card
+is drawn in the conversation. A digit moves the choice, `enter` takes it, and `esc` is
+`keep going`. Nothing ends on one keystroke. Telling the chat "stop task 1" ends a run
+the same way and asks nothing, because your sentence is the decision.
+
+A stop ends the run now: every part still open is ended, what it was running is cut
+off, and no further model call is made for it. The row reads `stopped`. A second stop
+on a run that is already stopping answers that it is already stopping.
+
+`x` on one PART of a run ends that part only, at once and without a card, and the
+rest of the run carries on. A run cannot be paused as a whole, so under the run's own
+task no `p pause` is named.
+
+Closing the window, `ctrl+c` and `/quit` do NOT stop a run: it carries on without the
+window and its work lands by itself. Stop it first if you want it ended.
+
+## What a stopped run keeps: its branch after you stop it, bring it in or drop it
+
+**Nothing a stopped run made goes into your folder.** What it had made so far is
+committed on the run's own branch, its copy of your folder is given back, and the
+conversation and the run's page say where the work is and what to do with it:
+
+```
+stopped · its work so far is kept on <branch> and did not go into <folder> · merge that branch to bring it in, or delete it to drop it
+```
+
+A run stopped before it changed anything says `stopped · it had changed nothing` and
+names no branch. The next `/task` after a stop starts a fresh run; it never picks the
+stopped work back up, and the stopped run stays readable from the side list.
 
 ## What a worker can do — the one shell a task worker can actually run
 

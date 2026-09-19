@@ -130,6 +130,12 @@ func cancelNumber(kind, rest string) (uint64, error) {
 
 // cancelTask stops one node of the work graph.
 func (a *Agent) cancelTask(id uint64, why string) (string, error) {
+	// A RUN'S ROWS WEAR TASK NUMBERS AND ARE NOT IN THE GRAPH, so the run is
+	// asked first (stoprun.go). A number that is not a run's goes on to the
+	// graph exactly as it always did.
+	if line, owned, err := a.stopBeltRow(id, why); owned {
+		return line, err
+	}
 	a.mu.Lock()
 	graph := a.tasks
 	a.mu.Unlock()

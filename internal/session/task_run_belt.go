@@ -168,6 +168,13 @@ type beltRun struct {
 	// each is settled with the run ([Agent.settleBeltRun]); it is written and
 	// read under [Agent.beltMu].
 	joined []uint64
+	// cut ends the context the run's workers and every call they have out run
+	// under, and stopped and stopReason say a PERSON ended it and in what words
+	// (stoprun.go). cut is set once before the run starts; the other two are
+	// written and read under [Agent.beltMu].
+	cut        context.CancelFunc
+	stopped    bool
+	stopReason string
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -266,9 +273,14 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	// THE COPY IS A SHELL WORKER'S, so its landing stages the tree's own status:
 	// a run's workers edit through bash and fill no write ledger.
 	tree.bashBelt = true
+	// THE RUN'S CONTEXT IS ONE A PERSON'S STOP CAN CUT. It outlives the turn that
+	// started it, which is the caller's business (task.go hands this door a
+	// context no turn's ending cancels); what it must not outlive is the person
+	// saying stop, and until this cancel was kept nothing could say it (stoprun.go).
+	runCtx, cut := context.WithCancel(ctx)
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
-		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree,
+		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
 	}
 	a.installBeltRun(g, run)
 	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: a.taskClockNow()})
@@ -296,7 +308,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		PlanModel:    planSeat,
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 	}
-	go a.driveBeltRun(ctx, engine, run, spec)
+	go a.driveBeltRun(runCtx, engine, run, spec)
 	return nil
 }
 
@@ -364,6 +376,21 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 // cleared once the work is home, so the next `/task` seeds a fresh plan.
 func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun, spec RunSpec) {
 	summary := engine.Start(ctx, spec)
+	if run.cut != nil {
+		defer run.cut()
+	}
+	if stopped, why := a.beltRunStopped(run); stopped {
+		// A RUN A PERSON STOPPED IS NOT LANDED. Its work is kept where the stop's
+		// own sentence said it would be, and the ending is the stop's (stoprun.go).
+		a.settleStoppedBeltRun(run, why)
+		a.beltMu.Lock()
+		if a.beltRun == run {
+			a.beltRun = nil
+		}
+		a.beltMu.Unlock()
+		_ = run.store.Close()
+		return
+	}
 	landing := a.landBeltRun(ctx, engine, run)
 	// A LANDING GETS ONE LAST READING before its digest is composed. The call
 	// owns the short beltRunSummaryDeadline: refusal, malformed output, or a
