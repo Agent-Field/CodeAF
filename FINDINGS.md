@@ -56,3 +56,7 @@ The regression will retain the forced dequeue-before-open ordering, close the Ag
 ## Fix correction
 
 The first edit command matched no source text, so that commit changed only this findings record and did not alter behavior. The source edit now applies the same ownership decision with exact multiline matches.
+
+## Focused verification step
+
+The forced regression is now expected to pass repeatedly because the state owner releases the barrier and calls `FlushUsage` before checking the ledger and returning. Verification will run the single test repeatedly, confirm formatting, and confirm the fenced files remain untouched.
