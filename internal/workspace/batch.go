@@ -67,8 +67,8 @@ func prepareBatchOps(ops []BatchOp) ([]BatchOp, error) {
 }
 
 const (
-	ActionMove            = "move"
-	PlanCreateFolderKind  = "create-folder"
+	ActionMove           = "move"
+	PlanCreateFolderKind = "create-folder"
 )
 
 func applyBatchOps(ctx context.Context, tx *sql.Tx, at string, ops []BatchOp) ([]MembershipEvent, error) {
