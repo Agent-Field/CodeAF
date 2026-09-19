@@ -3,6 +3,7 @@ package wsapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -195,6 +196,9 @@ func (s *Service) Deliver(ctx context.Context, req DeliverRequest) ([]DeliverRec
 	if err := validateDeliver(req); err != nil {
 		return nil, err
 	}
+	if err := s.refuseIfPaused(ctx, req.FromChatID); err != nil {
+		return nil, err
+	}
 	return s.sendEnvelopes(ctx, deliverEnvelopes(req))
 }
 
@@ -206,6 +210,9 @@ func (s *Service) InviteToDiscussion(ctx context.Context, req InviteRequest) (Pa
 	}
 	if req.DiscussionID == "" || req.SourceChatID == "" {
 		return ParticipantView{}, fmt.Errorf("%w: invite needs a discussion and a source chat", workspace.ErrInvalid)
+	}
+	if err := s.refuseIfPaused(ctx, req.DiscussionID); err != nil {
+		return ParticipantView{}, err
 	}
 	c, err := s.requireCollabStore()
 	if err != nil {
@@ -279,6 +286,20 @@ func (s *Service) PauseCoordination(ctx context.Context, coordinatorID string) e
 		return err
 	}
 	return wrapStoreError(c.SetParticipantStatus(ctx, row.ID, ParticipantPaused))
+}
+
+func (s *Service) refuseIfPaused(ctx context.Context, coordinatorID string) error {
+	row, err := s.coordinatorRow(ctx, coordinatorID)
+	if err != nil {
+		if errors.Is(err, workspace.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if row.Status == ParticipantPaused || row.Status == ParticipantArchived {
+		return fmt.Errorf("%w: coordination is paused", workspace.ErrInvalid)
+	}
+	return nil
 }
 
 func (s *Service) writeCoordinatorScope(ctx context.Context, coordinatorID, kind, folderID, snapshot string) (workspace.Participant, error) {

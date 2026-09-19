@@ -131,7 +131,23 @@ func (a *Agent) coordinateInvite(ctx context.Context, discussion, source, role s
 	if strings.TrimSpace(discussion) == "" || strings.TrimSpace(source) == "" {
 		return "Invalid arguments: invite needs a discussion and a source chat.", true, nil
 	}
-	if err := a.config.Collab.Invite(ctx, discussion, source, strings.TrimSpace(role)); err != nil {
+	role = strings.TrimSpace(role)
+	if err := a.config.Collab.Invite(ctx, discussion, source, role); err != nil {
+		return coordinateRefusal(err), true, nil
+	}
+	excerpts := a.collabSourceExcerpts(ctx, source)
+	guidance := a.collabSourceGuidance(ctx, source)
+	body, err := a.consultCollabParticipant(ctx, role, source, excerpts, guidance)
+	if err != nil {
+		return "invited; could not consult: " + err.Error(), true, nil
+	}
+	inv := CollabInvocation{
+		ID: mintCollabInvocationID(), ActorID: source + ":" + role, Role: role, Source: source,
+	}
+	if err := a.rememberInvocation(inv); err != nil {
+		return coordinateRefusal(err), true, nil
+	}
+	if err := a.config.Collab.Contribute(ctx, discussion, inv, body); err != nil {
 		return coordinateRefusal(err), true, nil
 	}
 	return "ok", false, nil

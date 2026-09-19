@@ -10,15 +10,16 @@ import (
 )
 
 type fakeCollab struct {
-	mu         sync.Mutex
-	deliveries []collabSend
-	invites    []collabInvite
-	selected   []string
-	folder     string
-	paused     int
-	scope      CollabScope
-	deliverErr error
-	inviteErr  error
+	mu            sync.Mutex
+	deliveries    []collabSend
+	invites       []collabInvite
+	contributions []collabContribution
+	selected      []string
+	folder        string
+	paused        int
+	scope         CollabScope
+	deliverErr    error
+	inviteErr     error
 }
 
 type collabSend struct {
@@ -83,11 +84,32 @@ func (f *fakeCollab) Pause(context.Context) error {
 	return nil
 }
 
+type collabContribution struct {
+	Discussion string
+	Inv        CollabInvocation
+	Body       string
+}
+
+func (f *fakeCollab) Contribute(_ context.Context, discussionID string, inv CollabInvocation, body string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.contributions = append(f.contributions, collabContribution{Discussion: discussionID, Inv: inv, Body: body})
+	return nil
+}
+
 func (f *fakeCollab) sends() []collabSend {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out := make([]collabSend, len(f.deliveries))
 	copy(out, f.deliveries)
+	return out
+}
+
+func (f *fakeCollab) contributed() []collabContribution {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]collabContribution, len(f.contributions))
+	copy(out, f.contributions)
 	return out
 }
 

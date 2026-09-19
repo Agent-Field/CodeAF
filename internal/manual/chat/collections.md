@@ -286,9 +286,13 @@ Three patterns share one router:
    `reply` with a `source` link. That chat's history stays its own.
 2. **Fan-out** — send one update to several separately. Each is `sent` with its
    own receipt, not a group conversation.
-3. **Joint** — invite participants into the **current** discussion. It looks
+3. **Joint** — invite participants into the **current** discussion. Invite
+   records the roster **and** runs a bounded consult as that role from source
+   excerpts; the contribution is not the manager writing both sides. It looks
    like a normal chat with role labels (`planner · Feature B`). Empty
-   participants draw nothing — never `0 participants`.
+   participants draw nothing — never `0 participants`. The management chat
+   paints `request` / `reply` / `sent` from deliveries to or from this chat,
+   including recorded replies, never from pending-to-self only.
 
 `accepted`, `recorded`, and `processed` are store words, never painted. The
 person sees `sent`, `request`, `reply`. If a recipient is not running, the line
@@ -332,6 +336,7 @@ Missing authority reaches you. Unrelated work continues.
 ## Pause coordination — closing a view does not pause, archive
 
 `pause` (the `coordinate` action; person-facing **pause coordination**) stops
-**new** autonomous decisions. Closing a view does not pause. Archive
-suppresses automatic wake-ups; history remains. Coordinators may read, discuss,
-and organize. They cannot execute — launch-or-join is a later wave.
+new deliver and invite from that coordinator. Closing the view does not pause.
+Already-waiting lines still appear once on resume. Archive suppresses automatic
+wake-ups; history remains. Coordinators may read, discuss, and organize. They
+cannot execute — launch-or-join is a later wave.

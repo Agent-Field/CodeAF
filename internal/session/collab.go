@@ -79,6 +79,9 @@ type Collab interface {
 	CoordinateSelected(ctx context.Context, chatIDs []string) error
 	ManageFolder(ctx context.Context, folderID string) error
 	Pause(ctx context.Context) error
+	// Contribute records one participant's own bounded invocation into the
+	// discussion. The manager must not Deliver both sides as itself (J19).
+	Contribute(ctx context.Context, discussionID string, inv CollabInvocation, body string) error
 }
 
 // CollabLine is one inbound envelope as this package reads it, without

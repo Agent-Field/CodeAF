@@ -250,6 +250,11 @@ func TestPauseCoordinationDoesNotDropScope(t *testing.T) {
 	if _, err := svc.CoordinateSelected(ctx, CoordinateRequest{CoordinatorID: "mgmt", ChatIDs: []string{"a", "b"}}); err != nil {
 		t.Fatal(err)
 	}
+	router := &recordingCollaborator{}
+	svc.SetCollaborator(router)
+	if _, err := svc.Deliver(ctx, DeliverRequest{FromChatID: "mgmt", Body: "already queued", ToChatIDs: []string{"a"}}); err != nil {
+		t.Fatalf("deliver before pause: %v", err)
+	}
 	if err := svc.PauseCoordination(ctx, "mgmt"); err != nil {
 		t.Fatal(err)
 	}
@@ -261,10 +266,17 @@ func TestPauseCoordinationDoesNotDropScope(t *testing.T) {
 	if err != nil || len(people) != 1 || people[0].Status != ParticipantPaused {
 		t.Fatalf("paused roster %+v, %v", people, err)
 	}
-	router := &recordingCollaborator{}
-	svc.SetCollaborator(router)
-	if _, err := svc.Deliver(ctx, DeliverRequest{FromChatID: "mgmt", Body: "already queued", ToChatIDs: []string{"a"}}); err != nil {
-		t.Fatalf("pause must not refuse in-flight deliver: %v", err)
+	if _, err := svc.Deliver(ctx, DeliverRequest{FromChatID: "mgmt", Body: "new after pause", ToChatIDs: []string{"a"}}); err == nil || !strings.Contains(err.Error(), "paused") {
+		t.Fatalf("pause must refuse new deliver: %v", err)
+	}
+	if _, err := svc.InviteToDiscussion(ctx, InviteRequest{DiscussionID: "mgmt", SourceChatID: "planner-chat", Role: "planner"}); err == nil || !strings.Contains(err.Error(), "paused") {
+		t.Fatalf("pause must refuse new invite: %v", err)
+	}
+	if _, err := router.Resume(ctx, "a"); err != nil {
+		t.Fatalf("pause must not block resume of pending: %v", err)
+	}
+	if len(router.envelopes()) != 1 {
+		t.Fatalf("new deliver after pause was stored: %+v", router.envelopes())
 	}
 }
 

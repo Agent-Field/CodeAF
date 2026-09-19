@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -79,5 +80,63 @@ func TestRealStoreCoordinateAndDeliverPersist(t *testing.T) {
 	}
 	if held.State == "" {
 		t.Fatal("delivery row has no state")
+	}
+}
+
+func TestActivityPaintsRequestReplySentFromRealStore(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	svc, _ := openV3FolderServiceWith(nil)
+	if svc == nil || svc.Workspace() == nil {
+		t.Fatal("production wsapi.Open must bind collections.db")
+	}
+	ctx := context.Background()
+	mgmt, featureA, featureB := "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "cccccccccccccccc"
+	collab := &sessionCollab{svc: svc, chatID: mgmt}
+	if err := collab.CoordinateSelected(ctx, []string{featureA, featureB}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := collab.Deliver(ctx, []string{featureA}, "how far is A?", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := collab.Deliver(ctx, []string{featureB, "dddddddddddddddd"}, "use the v2 header", "fan-out", ""); err != nil {
+		t.Fatal(err)
+	}
+	reply, err := svc.Workspace().PutDelivery(ctx, workspace.Delivery{
+		FromChatID: featureA, ToChatID: mgmt, Pattern: workspace.PatternDirect,
+		Body: "halfway", Origin: workspace.OriginAgent,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Workspace().AckDelivery(ctx, reply.ID, workspace.DeliveryAccepted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Workspace().AckDelivery(ctx, reply.ID, workspace.DeliveryRecorded); err != nil {
+		t.Fatal(err)
+	}
+	surface := &tuiCollab{svc: svc}
+	acts, err := surface.Activity(ctx, mgmt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]int{}
+	for _, act := range acts {
+		kinds[act.Kind]++
+		if act.Kind == "request" && act.SourceRef != featureA && act.ToTitle != featureA {
+			t.Fatalf("request missing source %s: %+v", featureA, act)
+		}
+		if act.Kind == "reply" && act.SourceRef != featureA {
+			t.Fatalf("reply missing source %s: %+v", featureA, act)
+		}
+		if act.Kind == "sent" && act.SourceRef == "" {
+			t.Fatalf("sent missing source: %+v", act)
+		}
+		low := strings.ToLower(act.Kind + act.Body + act.SourceRef)
+		if strings.Contains(low, "accepted") || strings.Contains(low, "recorded") || strings.Contains(low, "processed") {
+			t.Fatalf("store word painted: %+v", act)
+		}
+	}
+	if kinds["request"] == 0 || kinds["reply"] == 0 || kinds["sent"] == 0 {
+		t.Fatalf("kinds %v, want request, reply, and sent from production deliveries", kinds)
 	}
 }
