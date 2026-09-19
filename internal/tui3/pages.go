@@ -325,10 +325,10 @@ func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (placeBase) box(a *app) *editor { return &a.compose }
 func (placeBase) boxOnBody() bool    { return false }
 
-// carryEditor copies a typed sentence onto another box. Home has its own
-// composer; Folders (and the rooms that share [app.compose]) would otherwise
-// greet a person with the resting prompt after alt+5 from home (J43). The
-// copy is a new slice because [editor.reset] reuses the backing array.
+// carryEditor copies a typed sentence onto another box. The copy is a new
+// slice because [editor.reset] reuses the backing array. Callers are the
+// Folders place boundary ([app.carryAcrossFolders]): home type-and-enter
+// must not keep the previous sentence by copying on every raiseHome.
 func carryEditor(dst, src *editor) {
 	if dst == nil || src == nil || src.empty() {
 		return
@@ -338,6 +338,52 @@ func carryEditor(dst, src *editor) {
 	if dst.cursor < 0 || dst.cursor > len(dst.value) {
 		dst.cursor = len(dst.value)
 	}
+}
+
+// snapshotTypedBox captures the sentence in the box the person is typing
+// into, before a place close zeros that box. Home's composer dies with
+// [app.dropHome]; the launch conversation types into [app.input].
+func (a *app) snapshotTypedBox() editor {
+	var held editor
+	carryEditor(&held, a.typedComposer())
+	return held
+}
+
+// typedComposer is the box currently on the keyboard: a standing place's
+// own box, otherwise the conversation draft. The Folders name box is not
+// a sentence — it is a folder's name — so a tab away from naming keeps
+// the shared composer instead of carrying "Billing" into the next room.
+func (a *app) typedComposer() *editor {
+	if pl := a.showing(); pl != nil {
+		if box := pl.box(a); box != nil && box != a.folderSheet.naming {
+			return box
+		}
+	}
+	if a.pageShowing() {
+		return &a.compose
+	}
+	return &a.input
+}
+
+// carryAcrossFolders copies a typed sentence only when the Folders place
+// is the room being left or entered (J43). Copying on every home raise
+// concatenated the next home send onto the last one.
+func (a *app) carryAcrossFolders(from, to page, held editor) {
+	if from != pageFolders && to != pageFolders {
+		return
+	}
+	carryEditor(a.composerOn(to), &held)
+}
+
+// composerOn is the box the arriving room types into after showPage has
+// opened it. Conversation (no place) is [app.input].
+func (a *app) composerOn(id page) *editor {
+	if pl := placeFor(id); pl != nil {
+		if box := pl.box(a); box != nil {
+			return box
+		}
+	}
+	return &a.input
 }
 
 // ── THERE IS NO DEFAULT hint, AND THAT IS THE WHOLE POINT ───────────────────
@@ -2174,6 +2220,8 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // ([place.remote]), which is still the place being open and saying why it is
 // empty.
 func (a *app) showPage(id page) (cmd tea.Cmd) {
+	from := a.page
+	held := a.snapshotTypedBox()
 	if a.startingChat() {
 		back := a.parkChatStart()
 		defer func() { cmd = tea.Batch(back, cmd) }()
@@ -2219,10 +2267,13 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 		// THE CONVERSATION IS A PAGE ID LIKE ANY OTHER, and it is the one with no
 		// place behind it: `esc` out of a room lands here, and what is on the
 		// frame is then whatever view.go draws under the places.
+		a.carryAcrossFolders(from, pageNone, held)
 		return nil
 	}
 	a.page = id
-	return next.open(a)
+	cmd = next.open(a)
+	a.carryAcrossFolders(from, id, held)
+	return cmd
 }
 
 // closeModals puts away every bottom-anchored overlay on the way into a place.

@@ -845,6 +845,13 @@ func (a *app) resolveFolder(name string) (FolderView, bool) {
 	if name == "" {
 		return FolderView{}, false
 	}
+	if folder, ok := a.folderInReadings(name); ok {
+		return folder, true
+	}
+	return a.lookupNestedFolder(name)
+}
+
+func (a *app) folderInReadings(name string) (FolderView, bool) {
 	seen := map[string]FolderView{}
 	add := func(folder FolderView) {
 		id := strings.TrimSpace(folder.ID)
@@ -863,6 +870,63 @@ func (a *app) resolveFolder(name string) (FolderView, bool) {
 		if strings.EqualFold(folder.Name, name) {
 			named = folder
 			names++
+		}
+	}
+	if names == 1 {
+		return named, true
+	}
+	return FolderView{}, false
+}
+
+// lookupNestedFolder walks FolderSnapshot from Root. wsapi.RootSnapshot is
+// parentless-only, so a nested Receipts is missing from the memo after nest
+// and `/folders rename Receipts Invoices` used to say `no folder called
+// Receipts` (J41). This is a slash/verb path, never View.
+func (a *app) lookupNestedFolder(name string) (FolderView, bool) {
+	if a.folders == nil {
+		return FolderView{}, false
+	}
+	seen := map[string]bool{}
+	var queue []string
+	add := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			return
+		}
+		queue = append(queue, id)
+	}
+	for _, folder := range a.home.folders.root.Folders {
+		add(folder.ID)
+	}
+	for _, folder := range a.folderSheet.reading.root.Folders {
+		add(folder.ID)
+	}
+	add(a.home.folderOpen)
+	add(a.folderSheet.open)
+	ctx := a.folderCtx()
+	var named FolderView
+	var names int
+	for i := 0; i < len(queue); i++ {
+		id := queue[i]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		folder, members, err := a.folders.FolderSnapshot(ctx, id)
+		if err != nil {
+			continue
+		}
+		if folder.ID == name {
+			return folder, true
+		}
+		if strings.EqualFold(strings.TrimSpace(folder.Name), name) {
+			named = folder
+			names++
+		}
+		for _, place := range members {
+			if folderCollectionPlacement(place) {
+				add(place.RefID)
+			}
 		}
 	}
 	if names == 1 {
