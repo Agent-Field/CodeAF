@@ -107,6 +107,11 @@ type RunLanding struct {
 	Branch  string
 	Changed []string
 	Refused string
+	// Home is how the work came home, in the landing road's own outcome words
+	// ([mergeMerged] and its kin), set by this door once the run's copy has been
+	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
+	// landing, which commits on the copy's branch and merges nothing.
+	Home string
 }
 
 // RunEngine is the run engine as this door reaches it. Start drives one store
@@ -151,6 +156,18 @@ type beltRun struct {
 	root  string
 	row   uint64
 	title string
+	// workspace is the run's own copy, the directory every worker types in, and
+	// ground is the folder that copy was cut from and comes home to. tree is the
+	// copy as the ground ladder made it, kept so the run's landing is the ladder's
+	// own ([Agent.landBeltRun]).
+	workspace string
+	ground    string
+	tree      taskTree
+	// joined is every hand-off that joined this run after it started, by the
+	// number its row wears. Each was published as a running row of its own, and
+	// each is settled with the run ([Agent.settleBeltRun]); it is written and
+	// read under [Agent.beltMu].
+	joined []uint64
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -172,14 +189,29 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, quest
 
 	id := g.reserve()
 	title := taskPersonTitle(brief)
-	if err := a.startKnownTaskRun(ctx, id, title, brief, nil, question); err != nil {
+	stand := taskStand{dir: a.config.Workspace, mode: TaskModeWorktree}
+	if err := a.startKnownTaskRun(ctx, id, title, brief, nil, stand, question); err != nil {
 		return a.startTaskLegacy(ctx, brief, solo)
 	}
 	return id, title, "", nil
 }
 
+// standsElsewhereError is the one refusal that STAYS AT THE RUN'S DOOR: a task
+// handed off while other work is underway shares that work's copy, and a copy is
+// of one folder. It says both folders and what to do, because the conversation
+// that reads it has no other way to learn why a good proposal was turned back.
+// Every other failure of this door (no engine, no store, a copy that would not
+// cut) falls through to the shipped road, which cuts its own copy from the same
+// stand and so honours the ground the person approved.
+type standsElsewhereError struct{ underway, asked string }
+
+func (e standsElsewhereError) Error() string {
+	return "the work already underway is in a copy of " + e.underway + ", and this task is about " + e.asked +
+		": tasks that run together share one copy of one folder. Propose it again when that work has ended"
+}
+
 // An approved hand-off under the bash belt belongs to the run store and never to the session tree.
-func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, question string) error {
+func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string) error {
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
@@ -201,11 +233,17 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	// parent — and the supervisor already turning finds it ready on its next
 	// pass. Nothing opens a second store.
 	if live != nil {
+		if canonicalPath(stand.dir) != live.ground {
+			return standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
+		}
 		if _, err := live.store.AddMany([]plandb.TaskSpec{{
 			ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies,
 		}}); err != nil {
 			return err
 		}
+		a.beltMu.Lock()
+		live.joined = append(live.joined, id)
+		a.beltMu.Unlock()
 		a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow()})
 		return nil
 	}
@@ -220,7 +258,18 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 			return err
 		}
 	}
-	run := &beltRun{plan: plan, store: store, root: store.RootID(), row: id, title: title}
+	tree, err := prepareTaskTreeOn(ctx, a.config.Place, a.config.Workspace, a.journalID(), id, title, stand)
+	if err != nil {
+		_ = store.Close()
+		return err
+	}
+	// THE COPY IS A SHELL WORKER'S, so its landing stages the tree's own status:
+	// a run's workers edit through bash and fill no write ledger.
+	tree.bashBelt = true
+	run := &beltRun{
+		plan: plan, store: store, root: store.RootID(), row: id, title: title,
+		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree,
+	}
 	a.installBeltRun(g, run)
 	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: a.taskClockNow()})
 
@@ -234,7 +283,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 
 	spec := RunSpec{
 		Store:     store,
-		Workspace: a.config.Workspace,
+		Workspace: run.workspace,
 		Title:     title,
 		Brief:     brief,
 		Slots:     a.config.TaskParallel,
@@ -320,13 +369,7 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 // cleared once the work is home, so the next `/task` seeds a fresh plan.
 func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun, spec RunSpec) {
 	summary := engine.Start(ctx, spec)
-	landing, err := engine.Land(ctx, run.store, spec.Workspace, run.root)
-	if err != nil {
-		if g := a.graph(); g != nil {
-			g.planNote("the run's landing failed: " + err.Error())
-		}
-		landing = RunLanding{}
-	}
+	landing := a.landBeltRun(ctx, engine, run)
 	// A LANDING GETS ONE LAST READING before its digest is composed. The call
 	// owns the short beltRunSummaryDeadline: refusal, malformed output, or a
 	// slow provider leaves the stored reading alone and cannot hold the run
@@ -348,6 +391,66 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	}
 	a.beltMu.Unlock()
 	_ = run.store.Close()
+}
+
+// landBeltRun brings a finished run's work home, and it does it THE WAY THE
+// SHIPPED ROAD BRINGS A TASK'S WORK HOME, through the same function
+// ([taskTree.comeHome]): the run's work is committed in the run's own copy, the
+// copy's branch is merged into the ground it was cut from, the person's own
+// unfinished work is carried across the merge or the branch is kept and the
+// files named, and the copy is given back. IT HAPPENS AT THE RUN'S END AND ASKS
+// NOBODY, because that is what a task's landing has always done here and a
+// finished task whose files are not in the folder is not finished to the person
+// who asked for it.
+//
+// A run that waited in memory for somebody to land it was tried first and had
+// three faults: a later hand-off joined a run whose supervisor had stopped and
+// never ran, the waiting door was lost when the window closed, and the
+// conversation was told the work was done while its folder held none of it.
+//
+// WHAT THE PERSON IS TOLD IS WHERE THE WORK IS NOW. The engine's own landing
+// commits in the copy and names the copy's branch; once the merge is in, the
+// branch the conversation's note names is the ground's, and a merge that would
+// not go in answers with the sentence that names the kept branch and the files.
+func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun) RunLanding {
+	landing, err := engine.Land(ctx, run.store, run.workspace, run.root)
+	if err != nil {
+		if g := a.graph(); g != nil {
+			g.planNote("the run's landing failed: " + err.Error())
+		}
+		return RunLanding{}
+	}
+	if run.tree.dir == "" {
+		return landing
+	}
+	merge, said, _, _ := run.tree.comeHome(run.title, nil, a.signsGitWork())
+	if landing.Refused != "" {
+		// NOTHING TO LAND IS STILL AN ENDING: the copy was given back above, and
+		// the sentence the engine answered is the whole account.
+		return landing
+	}
+	if merge != mergeMerged && merge != mergeInPlace {
+		// THE WORK DID NOT GO IN, AND THE OUTCOME NOTE SAYS SO IN THE ROAD'S OWN
+		// SENTENCE, which names the kept branch and what it clashed with. It is
+		// not written twice: the landing carries it and the run's one outcome
+		// note is where it is read.
+		if said == "" {
+			said = "its work is kept on " + landing.Branch + " and did not go into " + run.ground
+		}
+		landing.Refused, landing.Home = said, merge
+		return landing
+	}
+	landing.Home = merge
+	if branch := currentBranch(run.ground); branch != "" {
+		landing.Branch = branch
+	}
+	home := withReport("its work is in "+run.ground+" on "+landing.Branch, said)
+	if _, err := run.store.AddNote(run.root, run.root, home); err != nil {
+		if g := a.graph(); g != nil {
+			g.planNote("the run's homecoming note failed: " + err.Error())
+		}
+	}
+	return landing
 }
 
 // deliverBeltRunLanding writes the run's digest into the conversation record.
@@ -419,6 +522,35 @@ func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	a.publishRunRow(g, notice)
+	a.settleJoinedRows(g, run, notice.EndedAt)
+}
+
+// settleJoinedRows ends the row of every hand-off that joined the run. A JOINED
+// HAND-OFF IS A ROW OF ITS OWN AND ENDS WITH THE RUN IT JOINED: it was published
+// running when it joined and nothing ever published its ending, so on the real
+// screen it span beside a finished run for as long as the window stayed open.
+// Its state is what the store says of that task, and the run's landing is said
+// once, on the run's own row.
+func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time) {
+	a.beltMu.Lock()
+	joined := append([]uint64(nil), run.joined...)
+	a.beltMu.Unlock()
+	for _, id := range joined {
+		notice := TaskNotice{ID: id, State: TaskFailed, Parent: run.row, EndedAt: ended}
+		for _, kept := range g.runRows(id) {
+			if kept.ID == id {
+				notice.Title, notice.StartedAt = kept.Title, kept.StartedAt
+			}
+		}
+		if task := run.store.Task(strconv.FormatUint(id, 10)); task != nil {
+			if task.Status == plandb.StatusDone {
+				notice.State = TaskDone
+			}
+			notice.Result = strings.TrimSpace(task.Result)
+			notice.Report = notice.Result
+		}
+		a.publishRunRow(g, notice)
+	}
 }
 
 // beltRunNotice is the run as a task notice: its row, its ending, the result the
@@ -444,7 +576,13 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 	}
 	if landing.Branch != "" {
 		notice.Branch = landing.Branch
+		// WHERE THE WORK IS, AS A FACT. A run whose copy came home says so, and
+		// only a branch that is still waiting is `kept`: the card read `branch
+		// kept` over work that was already in the person's folder.
 		notice.Merge = mergeKept
+		if landing.Home != "" {
+			notice.Merge = landing.Home
+		}
 	}
 	return notice
 }
@@ -500,4 +638,11 @@ func (a *Agent) missingRunDependencies(ids []uint64) []uint64 {
 		}
 	}
 	return missing
+}
+
+// beltRunStandsOn reports whether a hand-off may share the live run's copy.
+func (a *Agent) beltRunStandsOn(stand taskStand) bool {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	return a.beltRun != nil && a.beltRun.ground == canonicalPath(stand.dir)
 }

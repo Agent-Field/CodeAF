@@ -36,23 +36,33 @@ func (c beltRunCompleter) CompleteWithMessages(context.Context, []ai.Message, ..
 // test owns rather than one it races — asks the completer it was handed, and
 // completes the store's root with the answer. Land answers a fixed landing.
 type beltRunDouble struct {
-	mu      sync.Mutex
-	summary RunSummary
-	landing RunLanding
-	entered chan struct{}
-	release chan struct{}
-	ran     bool
+	mu       sync.Mutex
+	summary  RunSummary
+	landing  RunLanding
+	spec     RunSpec
+	entered  chan struct{}
+	release  chan struct{}
+	finished chan struct{}
+	ran      bool
 	// ctx is the context the engine was started under, kept so a test can ask
 	// whether the run outlived the turn that launched it.
-	ctx context.Context
+	ctx       context.Context
+	landCalls int
+	// work, when set, is what the run's workers did: it is called with the run's
+	// own working copy before the run ends. real makes the landing the engine's
+	// real one (a commit of the copy's own status) instead of a scripted answer,
+	// for the tests that follow the work all the way home.
+	work func(workspace string)
+	real bool
 }
 
 func newBeltRunDouble(result string) *beltRunDouble {
 	return &beltRunDouble{
-		summary: RunSummary{Outcome: beltRunOutcomeDone, Result: result, Nodes: 1, Steps: 2},
-		landing: RunLanding{Branch: "task/fix-the-nil-map-crash", Changed: []string{"internal/session/agent.go"}},
-		entered: make(chan struct{}),
-		release: make(chan struct{}),
+		summary:  RunSummary{Outcome: beltRunOutcomeDone, Result: result, Nodes: 1, Steps: 2},
+		landing:  RunLanding{Branch: "task/fix-the-nil-map-crash", Changed: []string{"internal/session/agent.go"}},
+		entered:  make(chan struct{}),
+		release:  make(chan struct{}),
+		finished: make(chan struct{}),
 	}
 }
 
@@ -60,6 +70,7 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	d.mu.Lock()
 	d.ran = true
 	d.ctx = ctx
+	d.spec = spec
 	d.mu.Unlock()
 	if spec.CompleterFor != nil {
 		if completer := spec.CompleterFor("test/model"); completer != nil {
@@ -72,14 +83,31 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	}
 	close(d.entered)
 	<-d.release
+	if d.work != nil {
+		d.work(spec.Workspace)
+	}
 	if spec.Store != nil {
 		_ = spec.Store.CompleteRoot(d.summary.Result)
 	}
+	close(d.finished)
 	return d.summary
 }
 
-func (d *beltRunDouble) Land(context.Context, *plandb.Store, string, string) (RunLanding, error) {
+func (d *beltRunDouble) Land(_ context.Context, _ *plandb.Store, workspace, _ string) (RunLanding, error) {
+	d.mu.Lock()
+	d.landCalls++
+	d.mu.Unlock()
+	if d.real {
+		branch, changed, refusal, err := LandRunTree(workspace, "the run", false)
+		return RunLanding{Branch: branch, Changed: changed, Refused: refusal}, err
+	}
 	return d.landing, nil
+}
+
+func (d *beltRunDouble) lands() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.landCalls
 }
 
 func (d *beltRunDouble) didRun() bool {
@@ -96,6 +124,20 @@ func registerBeltRunEngine(t *testing.T, engine RunEngine) {
 	previous := chatRunEngine
 	RegisterRunEngine(engine)
 	t.Cleanup(func() { RegisterRunEngine(previous) })
+}
+
+// endBeltRun lets the double's run finish and WAITS FOR THE RUN TO BE OVER: its
+// landing committed, its copy given back, its store closed. A test that released
+// the run and returned used to race that ending against its own temporary
+// directory's removal, and lost it under load as "directory not empty".
+func endBeltRun(t *testing.T, agent *Agent, double *beltRunDouble) {
+	t.Helper()
+	close(double.release)
+	beltRunWaitFor(t, "the run to end", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
 }
 
 // beltRunStoreAt is a fresh handle on the run's store, adopted by path — the
@@ -267,12 +309,16 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	if task := beltRunTaskAt(t, dir, rootID); task == nil || task.Status != plandb.StatusDone {
 		t.Fatalf("the run's root did not read done")
 	}
-	if !anyNoteCarries(beltRunNotes(t, dir, rootID), "landed on task/fix-the-nil-map-crash") {
+	// THE BRANCH THE PERSON IS TOLD IS THE ONE THEIR FOLDER IS ON, because that is
+	// where the work is once it has come home; the copy's own branch is gone.
+	home := double.landing
+	home.Branch = currentBranch(agent.config.Workspace)
+	if !anyNoteCarries(beltRunNotes(t, dir, rootID), "landed on "+home.Branch) {
 		t.Fatalf("no note on the root carries the branch: %v", beltRunNotes(t, dir, rootID))
 	}
-	wantDigest := beltRunOutcomeNote(nil, "", double.summary, double.landing)
+	wantDigest := beltRunOutcomeNote(nil, "", double.summary, home)
 	if !strings.Contains(wantDigest, "done") || !strings.Contains(wantDigest, "the run fixed the nil map") ||
-		!strings.Contains(wantDigest, "landed on task/fix-the-nil-map-crash") {
+		!strings.Contains(wantDigest, "landed on "+home.Branch) {
 		t.Fatalf("digest = %q, want outcome, root result, and work destination", wantDigest)
 	}
 	if got := conversationJournalLines(agent, wantDigest); got != 1 {
@@ -344,6 +390,13 @@ func TestStartTaskBashBeltJoinsTheLiveRun(t *testing.T) {
 	}
 	close(double.release)
 	beltRunWaitFor(t, "the run's landing", func() bool { return conversationNotes(agent, "landed on ") == 1 })
+	// THE JOINED HAND-OFF'S ROW ENDS WITH THE RUN. It was published running when
+	// it joined and nothing published its ending, so it span beside a finished
+	// run for as long as the window stayed open.
+	beltRunWaitFor(t, "the joined row to settle", func() bool {
+		rows := agent.graph().runRows(second)
+		return len(rows) == 1 && rows[0].State != TaskRunning && !rows[0].EndedAt.IsZero()
+	})
 }
 
 // TestStartTaskWithoutBeltKeepsTheLegacyRoad: with the switch unset the door is
@@ -546,4 +599,367 @@ func TestDriveBeltRunDoesNotRefreshWhenStoreIsGone(t *testing.T) {
 		t.Fatalf("summary requests with no store = %d, want none", got)
 	}
 	_ = store.Close()
+}
+
+func beltRunRepoState(t *testing.T, repo string) string {
+	t.Helper()
+	status, err := git(repo, "status", "--porcelain=v1", "--untracked-files=all")
+	if err != nil {
+		t.Fatalf("read repository state: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(repo, "seed.txt"))
+	if err != nil {
+		t.Fatalf("read seed: %v", err)
+	}
+	return status + "\x00" + string(body)
+}
+
+func TestApprovedBeltHandoffCutsRunCopyFromResolvedGround(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	conversation := newTestRepo(t)
+	if err := os.WriteFile(filepath.Join(conversation, "seed.txt"), []byte("conversation\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(conversation, "add", "seed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(conversation, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed"); err != nil {
+		t.Fatal(err)
+	}
+	before := beltRunRepoState(t, conversation)
+	sessionDir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: sessionDir}
+		config.AskConsent = false
+	})
+	stand := taskStand{dir: conversation, mode: TaskModeWorktree}
+	if err := agent.startKnownTaskRun(context.Background(), 41, "isolated work", "brief", nil, stand, ""); err != nil {
+		t.Fatalf("start run: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	workspace := double.spec.Workspace
+	double.mu.Unlock()
+	want := filepath.Join(canonicalPath(sessionDir), placeTrees, "41")
+	if canonicalPath(workspace) != want {
+		t.Fatalf("run workspace = %q, want %q", workspace, want)
+	}
+	if got := beltRunRepoState(t, conversation); got != before {
+		t.Fatalf("conversation changed while run worked: %q != %q", got, before)
+	}
+	close(double.release)
+	beltRunWaitFor(t, "run finish", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
+}
+
+func TestBeltRunUsesAlternateGroundAndOnlySameGroundMayJoin(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	conversation := newTestRepo(t)
+	alternate := newTestRepo(t)
+	if err := os.WriteFile(filepath.Join(conversation, "seed.txt"), []byte("conversation\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(conversation, "add", "seed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(conversation, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "conversation seed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(alternate, "seed.txt"), []byte("alternate\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(alternate, "add", "seed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(alternate, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "alternate seed"); err != nil {
+		t.Fatal(err)
+	}
+	conversationBefore := beltRunRepoState(t, conversation)
+	sessionDir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: sessionDir}
+		config.AskConsent = false
+	})
+	alternateStand := taskStand{dir: alternate, mode: TaskModeWorktree, rung: taskGroundSaid}
+	if err := agent.startKnownTaskRun(context.Background(), 51, "alternate work", "brief", nil, alternateStand, ""); err != nil {
+		t.Fatalf("start alternate run: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	workspace := double.spec.Workspace
+	double.mu.Unlock()
+	body, err := os.ReadFile(filepath.Join(workspace, "seed.txt"))
+	if err != nil || string(body) != "alternate\n" {
+		t.Fatalf("run copy was not cut from alternate ground: body=%q err=%v", body, err)
+	}
+	if err := agent.startKnownTaskRun(context.Background(), 52, "same ground child", "brief", nil, alternateStand, ""); err != nil {
+		t.Fatalf("same-ground join: %v", err)
+	}
+	if task := beltRunTaskAt(t, sessionDir, "52"); task == nil || task.ParentID != "51" {
+		t.Fatalf("same-ground hand-off did not join the run: %+v", task)
+	}
+	conversationStand := taskStand{dir: conversation, mode: TaskModeWorktree}
+	if err := agent.startKnownTaskRun(context.Background(), 53, "different ground", "brief", nil, conversationStand, ""); err == nil || !strings.Contains(err.Error(), "share one copy of one folder") {
+		t.Fatalf("different-ground hand-off error = %v, want same-ground explanation", err)
+	}
+	if task := beltRunTaskAt(t, sessionDir, "53"); task != nil {
+		t.Fatalf("different-ground hand-off joined the live run: %+v", task)
+	}
+	if got := beltRunRepoState(t, conversation); got != conversationBefore {
+		t.Fatalf("conversation changed during alternate-ground run: %q != %q", got, conversationBefore)
+	}
+	endBeltRun(t, agent, double)
+}
+
+// A RUN'S WORK COMES HOME WHEN THE RUN ENDS, the way a task's always has. The
+// workers write in the run's own copy and the person's folder does not move
+// while they do; at the end the copy's work is committed, merged into the ground
+// it was cut from, and the copy is given back. The run is then OVER: nothing is
+// left waiting in memory for a second gesture, so the next hand-off starts a run
+// of its own and never joins one whose workers have gone home.
+func TestABeltRunsWorkComesHomeWhenItEnds(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	conversation := beltRunCommittedRepo(t)
+	dir := t.TempDir()
+	double := newBeltRunDouble("the change is made")
+	double.real = true
+	var during string
+	double.work = func(workspace string) {
+		if err := os.WriteFile(filepath.Join(workspace, "made.txt"), []byte("made by the run\n"), 0o644); err != nil {
+			t.Errorf("the run's own write: %v", err)
+		}
+		during = beltRunRepoState(t, conversation)
+	}
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: dir}
+	})
+	before := beltRunRepoState(t, conversation)
+	if err := agent.startKnownTaskRun(context.Background(), 71, "make the change", "brief", nil, taskStand{dir: conversation, mode: TaskModeWorktree}, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	workspace := double.spec.Workspace
+	double.mu.Unlock()
+	if workspace == canonicalPath(conversation) {
+		t.Fatalf("the run works in the person's own folder %s", workspace)
+	}
+	close(double.release)
+	beltRunWaitFor(t, "the run to end", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
+	if during != before {
+		t.Fatalf("the person's folder moved while the run worked:\n%s\n--- before ---\n%s", during, before)
+	}
+	body, err := os.ReadFile(filepath.Join(conversation, "made.txt"))
+	if err != nil || string(body) != "made by the run\n" {
+		t.Fatalf("the run's work is not in the folder it was cut from: %q, %v", body, err)
+	}
+	if out, _ := git(conversation, "status", "--porcelain"); strings.TrimSpace(out) != "" {
+		t.Fatalf("the work came home uncommitted:\n%s", out)
+	}
+	if _, err := os.Stat(workspace); !os.IsNotExist(err) {
+		t.Fatalf("the run's copy %s was not given back: %v", workspace, err)
+	}
+	if got := double.lands(); got != 1 {
+		t.Fatalf("the run's landing ran %d times, want once", got)
+	}
+	store, err := plandb.Open(filepath.Join(dir, planStoreFilename), "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	said := ""
+	for _, note := range store.Notes(store.RootID(), 0) {
+		said += note.Body + "\n"
+	}
+	_ = store.Close()
+	if !strings.Contains(said, "its work is in "+canonicalPath(conversation)+" on ") {
+		t.Fatalf("the run's page does not say where its work is now:\n%s", said)
+	}
+	// AND THE CARD SAYS MERGED, on the person's own branch. It read `branch kept`
+	// over work that was already in their folder.
+	rows := agent.graph().runRows(71)
+	if len(rows) == 0 || rows[0].Merge != mergeMerged || rows[0].Branch != currentBranch(conversation) {
+		t.Fatalf("the run's row says %+v, want merged on %s", rows, currentBranch(conversation))
+	}
+}
+
+// A HAND-OFF AFTER A RUN HAS ENDED IS A RUN OF ITS OWN, IN A COPY OF ITS OWN.
+// It never joins the ended run (whose workers have gone home and whose copy was
+// given back), and it is cut from the ground AS THE FIRST RUN LEFT IT, so the
+// second run's workers read the first run's work.
+func TestAHandoffAfterAnEndedRunStartsAFreshRunInItsOwnCopy(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	conversation := beltRunCommittedRepo(t)
+	dir := t.TempDir()
+	first := newBeltRunDouble("the first change is made")
+	first.real = true
+	first.work = func(workspace string) {
+		if err := os.WriteFile(filepath.Join(workspace, "first.txt"), []byte("first\n"), 0o644); err != nil {
+			t.Errorf("the first run's write: %v", err)
+		}
+	}
+	registerBeltRunEngine(t, first)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: dir}
+	})
+	stand := taskStand{dir: conversation, mode: TaskModeWorktree}
+	if err := agent.startKnownTaskRun(context.Background(), 81, "the first", "brief", nil, stand, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-first.entered
+	endBeltRun(t, agent, first)
+
+	second := newBeltRunDouble("the second change is made")
+	second.real = true
+	sawFirst := false
+	second.work = func(workspace string) {
+		_, err := os.Stat(filepath.Join(workspace, "first.txt"))
+		sawFirst = err == nil
+	}
+	registerBeltRunEngine(t, second)
+	if err := agent.startKnownTaskRun(context.Background(), 82, "the second", "brief", nil, stand, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-second.entered
+	first.mu.Lock()
+	firstCopy := first.spec.Workspace
+	first.mu.Unlock()
+	second.mu.Lock()
+	secondCopy, secondRoot := second.spec.Workspace, second.spec.Store.RootID()
+	second.mu.Unlock()
+	if secondCopy == firstCopy || secondCopy == canonicalPath(conversation) {
+		t.Fatalf("the second run works in %s; the first worked in %s and the person's folder is %s", secondCopy, firstCopy, conversation)
+	}
+	if secondRoot != "82" {
+		t.Fatalf("the second hand-off joined the ended run: its store's root is %q, want its own number", secondRoot)
+	}
+	endBeltRun(t, agent, second)
+	if !sawFirst {
+		t.Fatal("the second run's copy did not hold the first run's work")
+	}
+}
+
+// A RUN THAT ONLY READ LANDS NOTHING, SAYS SO, AND GIVES ITS COPY BACK.
+func TestAReadOnlyBeltRunLandsNothingAndGivesItsCopyBack(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	conversation := beltRunCommittedRepo(t)
+	dir := t.TempDir()
+	double := newBeltRunDouble("read the files")
+	double.real = true
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: dir}
+	})
+	before := beltRunRepoState(t, conversation)
+	if err := agent.startKnownTaskRun(context.Background(), 72, "read only", "brief", nil, taskStand{dir: conversation, mode: TaskModeWorktree}, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	workspace := double.spec.Workspace
+	double.mu.Unlock()
+	close(double.release)
+	beltRunWaitFor(t, "the run to end", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
+	if after := beltRunRepoState(t, conversation); after != before {
+		t.Fatalf("a run that only read changed the person's folder:\n%s\n--- before ---\n%s", after, before)
+	}
+	if _, err := os.Stat(workspace); !os.IsNotExist(err) {
+		t.Fatalf("the run's copy %s was not given back: %v", workspace, err)
+	}
+}
+
+// WORK THAT WILL NOT GO IN KEEPS ITS BRANCH AND SAYS SO. The person committed to
+// the same file while the run worked; the run's work is committed on its own
+// branch in their repository, their folder is exactly as they left it, and the
+// run's page names the kept branch instead of saying the work is in the folder.
+func TestABeltRunWhoseWorkConflictsKeepsItsBranchAndSaysSo(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	conversation := beltRunCommittedRepo(t)
+	dir := t.TempDir()
+	double := newBeltRunDouble("the change is made")
+	double.real = true
+	double.work = func(workspace string) {
+		if err := os.WriteFile(filepath.Join(workspace, "seed.txt"), []byte("the run's line\n"), 0o644); err != nil {
+			t.Errorf("the run's own write: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(conversation, "seed.txt"), []byte("the person's line\n"), 0o644); err != nil {
+			t.Errorf("the person's write: %v", err)
+		}
+		if _, err := git(conversation, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-am", "the person's own change"); err != nil {
+			t.Errorf("the person's commit: %v", err)
+		}
+	}
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: dir}
+	})
+	if err := agent.startKnownTaskRun(context.Background(), 73, "change the seed", "brief", nil, taskStand{dir: conversation, mode: TaskModeWorktree}, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	close(double.release)
+	beltRunWaitFor(t, "the run to end", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
+	body, _ := os.ReadFile(filepath.Join(conversation, "seed.txt"))
+	if string(body) != "the person's line\n" {
+		t.Fatalf("the person's folder was written over or holds a conflict:\n%s", body)
+	}
+	store, err := plandb.Open(filepath.Join(dir, planStoreFilename), "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	said := ""
+	for _, note := range store.Notes(store.RootID(), 0) {
+		said += note.Body + "\n"
+	}
+	_ = store.Close()
+	if strings.Contains(said, "its work is in ") || !strings.Contains(said, "its branch task/") || !strings.Contains(said, " was kept") {
+		t.Fatalf("the run's page does not say the branch was kept:\n%s", said)
+	}
+	if out, _ := git(conversation, "branch", "--list", "task/*"); strings.TrimSpace(out) == "" {
+		t.Fatal("the kept branch is not in the person's repository")
+	}
+	rows := agent.graph().runRows(73)
+	if len(rows) == 0 || rows[0].Merge == mergeMerged || !strings.HasPrefix(rows[0].Branch, "task/") {
+		t.Fatalf("the run's row says %+v, want the kept branch and never merged", rows)
+	}
+}
+
+func beltRunCommittedRepo(t *testing.T) string {
+	t.Helper()
+	repo := newTestRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("seed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(repo, "add", "seed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed"); err != nil {
+		t.Fatal(err)
+	}
+	return repo
 }

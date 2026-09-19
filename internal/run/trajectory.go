@@ -29,8 +29,9 @@ const trajectoryName = "trajectory.jsonl"
 // worker ran and what it observed; the ending line is how the worker's turn
 // ended and what it said when it did.
 const (
-	trajectoryStepKind = "step"
-	trajectoryEndKind  = "end"
+	trajectoryStepKind  = "step"
+	trajectoryEndKind   = "end"
+	trajectoryBeginKind = "begin"
 )
 
 // observationHeadBytes is how much of one step's observation the record
@@ -67,12 +68,27 @@ type Step struct {
 	// off the store after the command rather than parsed out of its output.
 	Children []string `json:"children,omitempty"`
 
+	// ExitCode is the command's own exit status when the belt ran one and the
+	// recorder knew it: zero for a step that ended, the non-zero code for one
+	// that failed. It is a pointer so a step written before this field existed,
+	// or one whose exit is unknown, decodes to nil and is never read as a zero a
+	// real exit could equal. A holds verdict rests only on a recorded zero exit.
+	ExitCode *int `json:"exit_code,omitempty"`
+
 	// The ending line's fields. Steps is the run's whole step count, Result is
 	// the worker's own account of the work, and Reason is why the loop ended —
 	// a turn that ended, a step cap, a wall.
 	Steps  int    `json:"steps,omitempty"`
 	Result string `json:"result,omitempty"`
 	Reason string `json:"reason,omitempty"`
+
+	// ExitsRecorded is stamped true by a build that records each command's
+	// exit, on the OPENING line it writes before any step and on the ending
+	// line; bashworker.go sets it at both. A reader uses it to tell a record
+	// that observed no run, or was cut off before its ending, from one written
+	// before exits were recorded: the first refuses a holds verdict that never
+	// ran its checks, the second falls back to reading.
+	ExitsRecorded bool `json:"exits_recorded,omitempty"`
 }
 
 // Trajectory reads one task's recorded steps back, in the order they were

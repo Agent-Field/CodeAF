@@ -75,6 +75,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -809,8 +810,10 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// NODE. It keeps the id the card showed, carries its acceptance in the brief
 	// and its depends_on as the store's own dependencies, and takes the person's
 	// ask with it when this turn owes one (CHAT-ROLE.md, "A landing speaks only
-	// when an answer is owed"). A refusal from the run road falls through to the
-	// shipped engine, exactly as a typed /task does.
+	// when an answer is owed"). A task about ANOTHER FOLDER than the work
+	// already underway is refused here ([standsElsewhereError]); any other
+	// failure of the run road falls through to the shipped engine, exactly as a
+	// typed /task does, and that engine cuts its own copy from the same stand.
 	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
 		a.mu.Lock()
 		question := questionAtTaskHandoff(a.owedAsks)
@@ -820,8 +823,17 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		// and the turn cancels it on its way out (agent.go, `defer cancel(nil)`);
 		// a run driven under it would be stopped the moment the model finished
 		// its sentence. The values ride along, the cancellation does not.
-		if err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, question); err == nil {
-			return taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere), false, nil
+		joined := a.beltRunStandsOn(p.stand)
+		err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
+		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
+			return refusal.Error(), true, nil
+		}
+		if err == nil {
+			receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
+			if joined {
+				receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
+			}
+			return receipt, false, nil
 		}
 	}
 	state := graph.admit(p.id, spec)

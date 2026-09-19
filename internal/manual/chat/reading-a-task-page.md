@@ -552,7 +552,8 @@ task's record instead, which the clause above says out loud.
 **A run task's page carries this box too**, and it says when the note is read rather than merely
 saved. Under the box the run page writes `the worker reads a note at its next step`: the note
 goes to the task's store and waits until the worker asks for its next step, which is when it
-reads what you wrote.
+reads what you wrote. A task that has ended, `done` or `incomplete`, takes no next step, so
+its page leaves that sentence out.
 
 ## Task page says finished but the work is still running
 

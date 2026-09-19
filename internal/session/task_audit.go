@@ -3413,7 +3413,7 @@ func refuseOutsideAllowlist(command string, allowed []string, voice shellLeash) 
 // checks after it are about that command.
 //
 // WHAT COUNTS AS COMPOSITION IS READ THE WAY THE SHELL THAT RUNS THE COMMAND
-// READS IT ([firstCompositionOutsideQuotes]), and the argument above survives
+// READS IT ([approval.FirstCompositionOutsideQuotes]), and the argument above survives
 // that reading whole: a character the shell hands to the one program as text
 // starts nothing, and every character the shell would ACT on is still refused
 // wherever it stands. The door and this gate ask ONE reader, because a check the
@@ -3431,7 +3431,7 @@ func refuseOutsideDoor(command string, door auditDoor, voice shellLeash) (string
 		return fmt.Sprintf("refused: %s runs %s, and that was an empty command.\n%s",
 			voice.who, voice.forWhat, voice.hint), false
 	}
-	if offending, composed := firstCompositionOutsideQuotes(command); composed {
+	if offending, composed := approval.FirstCompositionOutsideQuotes(command); composed {
 		return fmt.Sprintf("refused: %s runs ONE %s command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
 			voice.who, voice.forWhat, string(offending), clip(command, auditCommandLimit),
 			door.offer(), voice.hint), false
@@ -3455,81 +3455,6 @@ func refuseOutsideDoor(command string, door auditDoor, voice shellLeash) (string
 	return fmt.Sprintf("refused: %s is not %s, and %s only runs %s.\nYou may run: %s\n%s",
 		clip(normalized, auditCommandLimit), voice.forWhat, voice.who, voice.forWhat,
 		door.offer(), voice.hint), false
-}
-
-// shellComposition is every character that can start a second command, redirect
-// output, or substitute one. It is a CONSTANT rather than a literal at the gate
-// because two readers now ask the same question of a string — the gate itself,
-// and the reader that decides whether a fragment of the work's own text could
-// ever be a door (task_checks.go's [commandLike]) — and a composition set spelled
-// twice is a safety argument with two versions.
-const shellComposition = ";|&<>`$(){}\n\r\\"
-
-// firstCompositionOutsideQuotes is THE ONE READER of "is this one command", and
-// every gate that asks the question asks it here: the proposal door
-// ([declaredCheckList], [commandLike]), the runner's gate ([refuseOutsideDoor])
-// and the clause reader ([wholeClause]). Two readers were two answers: the door
-// admitted a quoted bar and the runner refused it. It finds the first character that makes a line more
-// than one command, reading quotes the way the shell that runs the check reads
-// them, and reports false for a line that is one command.
-//
-// THE RULE IS ABOUT WHAT THE SHELL WOULD DO WITH THE CHARACTER, NOT ABOUT THE
-// CHARACTER. Inside single quotes every character is text, so a bar in a quoted
-// pattern is an argument and was refused as a pipe (2026-09-18, a search for
-// three words joined by bars). Inside double quotes the shell still EXPANDS: a
-// dollar or a backtick there runs a command of its own, and a backslash escapes,
-// so those three stay composition in double quotes exactly as they are outside
-// any. Everything else in double quotes is text. NOTHING THE SHAPE LAW STOPPED
-// BEFORE STARTS RUNNING: what is newly allowed is only what the shell passes to
-// the one program as an argument, byte for byte.
-func firstCompositionOutsideQuotes(text string) (byte, bool) {
-	const liveInDoubleQuotes = "$`\\"
-	var quote byte
-	for i := 0; i < len(text); i++ {
-		char := text[i]
-		switch {
-		case quote == '\'':
-			if char == quote {
-				quote = 0
-			}
-		case quote == '"':
-			if char == quote {
-				quote = 0
-			} else if strings.IndexByte(liveInDoubleQuotes, char) >= 0 {
-				return char, true
-			}
-		case char == '\'' || char == '"':
-			quote = char
-		case strings.IndexByte(shellComposition, char) >= 0:
-			return char, true
-		}
-	}
-	// AN UNCLOSED QUOTE IS NOT ONE COMMAND EITHER: the shell would wait for more.
-	if quote != 0 {
-		return quote, true
-	}
-	return 0, false
-}
-
-// firstBarOutsideQuotes is where the shell would end a line's first stage: the
-// first pipe it would act on, read with the same quoting as
-// [firstCompositionOutsideQuotes], or -1 when there is none.
-func firstBarOutsideQuotes(line string) int {
-	var quote byte
-	for i := 0; i < len(line); i++ {
-		char := line[i]
-		switch {
-		case quote != 0:
-			if char == quote {
-				quote = 0
-			}
-		case char == '\'' || char == '"':
-			quote = char
-		case char == '|':
-			return i
-		}
-	}
-	return -1
 }
 
 // matchesCommandPrefix decides whether one command starts with one allowed
