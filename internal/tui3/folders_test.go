@@ -23,6 +23,8 @@ type fakeFolders struct {
 	err     error
 	creates int
 	adds    [][2]string
+	nests   [][2]string
+	nestErr error
 	removes [][2]string
 	moves   [][3]string
 	renames [][2]string
@@ -100,6 +102,17 @@ func (f *fakeFolders) AddPlacement(_ context.Context, collectionID, refID string
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.adds = append(f.adds, [2]string{collectionID, refID})
+	return nil
+}
+
+func (f *fakeFolders) AddFolderPlacement(_ context.Context, parentID, childFolderID string) error {
+	f.touch("AddFolderPlacement")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.nestErr != nil {
+		return f.nestErr
+	}
+	f.nests = append(f.nests, [2]string{parentID, childFolderID})
 	return nil
 }
 
@@ -323,6 +336,10 @@ func TestNilFoldersIsUnavailableNotEmpty(t *testing.T) {
 		{"create", func() tea.Cmd { return a.createLogicalFolder("Billing") }},
 		{"add", func() tea.Cmd { return a.addNamedFolder("Billing") }},
 		{"rename", func() tea.Cmd { return a.renameLogicalFolder("Billing", "Invoices") }},
+		{"nest", func() tea.Cmd { return a.nestLogicalFolder("Receipts in Billing") }},
+		{"e", func() tea.Cmd {
+			return a.beginFolderNest(homeLine{kind: homeFolderRow, dir: "col-receipts"})
+		}},
 	} {
 		a.home.say("", "")
 		if cmd := step.run(); cmd != nil {
@@ -332,8 +349,8 @@ func TestNilFoldersIsUnavailableNotEmpty(t *testing.T) {
 			t.Fatalf("%s said %q, want %q", step.name, a.home.msg, folderUnwiredWord)
 		}
 	}
-	if a.pendingFolder != "" || a.pendingMoveFrom != "" {
-		t.Fatalf("nil mutation left pending state folder=%q move=%q", a.pendingFolder, a.pendingMoveFrom)
+	if a.pendingFolder != "" || a.pendingMoveFrom != "" || a.pendingNestChild != "" {
+		t.Fatalf("nil mutation left pending state folder=%q move=%q nest=%q", a.pendingFolder, a.pendingMoveFrom, a.pendingNestChild)
 	}
 }
 
@@ -669,6 +686,106 @@ func TestFolderWhyLineKeepsEvidenceAndAt(t *testing.T) {
 	for _, want := range []string{"person", "filed from home", "me", "receipt thread", "2026-09-18T12:00:00Z"} {
 		if !strings.Contains(a.home.msg, want) {
 			t.Fatalf("w said %q, dropped %q", a.home.msg, want)
+		}
+	}
+}
+
+func TestFoldersNestCommandPlacesChildUnderBothParents(t *testing.T) {
+	fake := billingSecurityFolders()
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	if cmd := a.runFoldersCommand("nest Receipts in Billing"); cmd != nil {
+		t.Fatal("nest Billing returned a command")
+	}
+	if cmd := a.runFoldersCommand("nest Receipts in Security"); cmd != nil {
+		t.Fatal("nest Security returned a command")
+	}
+	want := [][2]string{
+		{"col-billing", "col-receipts"},
+		{"col-security", "col-receipts"},
+	}
+	if len(fake.nests) != len(want) {
+		t.Fatalf("nests %v, want %v", fake.nests, want)
+	}
+	for i, pair := range want {
+		if fake.nests[i] != pair {
+			t.Fatalf("nest %d is %v, want %v", i, fake.nests[i], pair)
+		}
+	}
+	if len(fake.adds) != 0 {
+		t.Fatalf("nest filed a conversation: %v", fake.adds)
+	}
+}
+
+func TestFoldersNestVerbThenEnterParent(t *testing.T) {
+	fake := billingSecurityFolders()
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	row := homeLine{kind: homeFolderRow, dir: "col-receipts", project: "Receipts"}
+	if cmd := a.beginFolderNest(row); cmd != nil {
+		t.Fatal("begin nest returned a command")
+	}
+	if a.pendingNestChild != "col-receipts" {
+		t.Fatalf("pendingNestChild %q", a.pendingNestChild)
+	}
+	if cmd := a.enterFolder("col-billing"); cmd != nil {
+		t.Fatal("enter parent returned a command")
+	}
+	if a.pendingNestChild != "" {
+		t.Fatal("pending nest survived enter")
+	}
+	if len(fake.nests) != 1 || fake.nests[0] != [2]string{"col-billing", "col-receipts"} {
+		t.Fatalf("verb nest called %v", fake.nests)
+	}
+	if a.home.folderOpen == "col-billing" {
+		t.Fatal("completing a nest drilled into the parent")
+	}
+}
+
+func TestFoldersNestCycleShowsTheStoreError(t *testing.T) {
+	fake := billingSecurityFolders()
+	fake.nestErr = errors.New("collection membership would form a cycle")
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	if cmd := a.runFoldersCommand("nest Billing in Receipts"); cmd != nil {
+		t.Fatal("cycle nest returned a command")
+	}
+	if a.home.msg != fake.nestErr.Error() {
+		t.Fatalf("cycle said %q, want the store error", a.home.msg)
+	}
+	if len(fake.nests) != 0 {
+		t.Fatalf("cycle mutated the graph: %v", fake.nests)
+	}
+}
+
+func TestFolderRowVerbsIncludeNest(t *testing.T) {
+	a := newLiveLab(t).open()
+	a.folders = billingSecurityFolders()
+	row := homeLine{kind: homeFolderRow, dir: "col-receipts", project: "Receipts"}
+	verbs := a.folderVerbs(row)
+	want := []struct {
+		key  rune
+		word string
+	}{
+		{'n', folderNewChatWord},
+		{'f', folderAddHereWord},
+		{'e', folderNestWord},
+	}
+	if len(verbs) != len(want) {
+		t.Fatalf("got %d verbs, want %d", len(verbs), len(want))
+	}
+	for i, v := range want {
+		if verbs[i].key != v.key || verbs[i].word != v.word {
+			t.Fatalf("verb %d is %q %q, want %q %q", i, string(verbs[i].key), verbs[i].word, string(v.key), v.word)
 		}
 	}
 }

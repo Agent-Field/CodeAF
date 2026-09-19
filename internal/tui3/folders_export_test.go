@@ -21,8 +21,11 @@ func (adapter) FolderSnapshot(context.Context, string) (tui3.FolderView, []tui3.
 func (adapter) CreateFolder(context.Context, string) (tui3.FolderView, error) {
 	return tui3.FolderView{}, nil
 }
-func (adapter) RenameFolder(context.Context, string, string) error    { return nil }
-func (adapter) AddPlacement(context.Context, string, string) error    { return nil }
+func (adapter) RenameFolder(context.Context, string, string) error { return nil }
+func (adapter) AddPlacement(context.Context, string, string) error { return nil }
+func (adapter) AddFolderPlacement(context.Context, string, string) error {
+	return nil
+}
 func (adapter) RemovePlacement(context.Context, string, string) error { return nil }
 func (adapter) MovePlacement(context.Context, string, string, string) error {
 	return nil

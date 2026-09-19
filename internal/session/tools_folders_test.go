@@ -20,6 +20,7 @@ type fakeFolders struct {
 	unfileErr map[string]error
 	moveErr   error
 	last      workspace.Provenance
+	lastRef   workspace.Ref
 }
 
 func (f *fakeFolders) List(context.Context) ([]FolderRef, error) {
@@ -30,10 +31,11 @@ func (f *fakeFolders) List(context.Context) ([]FolderRef, error) {
 	return out, nil
 }
 
-func (f *fakeFolders) File(_ context.Context, collectionID, conversationID string, p workspace.Provenance) error {
+func (f *fakeFolders) File(_ context.Context, collectionID string, ref workspace.Ref, p workspace.Provenance) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.last = p
+	f.lastRef = ref
 	if err, ok := f.fileErr[collectionID]; ok {
 		return err
 	}
@@ -43,7 +45,7 @@ func (f *fakeFolders) File(_ context.Context, collectionID, conversationID strin
 	if f.members[collectionID] == nil {
 		f.members[collectionID] = map[string]bool{}
 	}
-	f.members[collectionID][conversationID] = true
+	f.members[collectionID][ref.ID] = true
 	return nil
 }
 
@@ -180,6 +182,9 @@ func TestFoldersListFileUnfileAndMoveAgainstAFake(t *testing.T) {
 	if fake.last.Origin != workspace.OriginOrganizer {
 		t.Fatalf("unfile origin %q, want organizer", fake.last.Origin)
 	}
+	if fake.lastRef.Kind != workspace.ConversationKind {
+		t.Fatalf("file kind %q, want conversation for this chat", fake.lastRef.Kind)
+	}
 }
 
 func TestFoldersToolStampsOrganizerOriginAndIgnoresAPersonClaim(t *testing.T) {
@@ -260,6 +265,57 @@ func TestFoldersIsNotNamedFolderOnTheBashBeltEither(t *testing.T) {
 	}
 	if beltHas(agent, "folder") {
 		t.Fatal("the bash belt must not alias /folder")
+	}
+}
+
+func TestFoldersFileNestsACollectionRef(t *testing.T) {
+	fake := &fakeFolders{
+		listed: []FolderRef{
+			{ID: "billingbilling00", Name: "Billing"},
+			{ID: "receiptsreceipts", Name: "Receipts"},
+			{ID: "securityyyyyyyy0", Name: "Security"},
+		},
+		fileErr: map[string]error{
+			"cyclecyclecycle0": workspace.ErrCycle,
+		},
+	}
+	agent := foldersAgent(t, fake)
+
+	out, failed := callFolders(t, agent, `{"action":"file","id":"billingbilling00","child":"receiptsreceipts"}`)
+	if failed {
+		t.Fatalf("nest refused: %s", out)
+	}
+	if fake.lastRef != (workspace.Ref{Kind: workspace.CollectionKind, ID: "receiptsreceipts"}) {
+		t.Fatalf("file used %+v, want a collection ref for Receipts", fake.lastRef)
+	}
+	if fake.last.Origin != workspace.OriginOrganizer {
+		t.Fatalf("nest origin %q, want organizer", fake.last.Origin)
+	}
+	if fake.lastRef.Kind == workspace.ConversationKind {
+		t.Fatal("nest hard-coded ConversationKind")
+	}
+	if fake.members["billingbilling00"]["receiptsreceipts"] != true {
+		t.Fatalf("nest did not record membership: %+v", fake.members)
+	}
+	chat := agent.config.Place.ID()
+	if fake.members["billingbilling00"][chat] {
+		t.Fatal("nest filed this chat instead of the child folder")
+	}
+
+	out, failed = callFolders(t, agent, `{"action":"file","id":"securityyyyyyyy0","child":"receiptsreceipts"}`)
+	if failed {
+		t.Fatalf("shared nest refused: %s", out)
+	}
+	if fake.members["securityyyyyyyy0"]["receiptsreceipts"] != true {
+		t.Fatal("shared nest did not file Receipts under Security")
+	}
+
+	out, failed = callFolders(t, agent, `{"action":"file","id":"cyclecyclecycle0","child":"billingbilling00"}`)
+	if !failed {
+		t.Fatal("cycle nest succeeded")
+	}
+	if !strings.Contains(strings.ToLower(out), "cycle") {
+		t.Fatalf("cycle nest did not say so: %q", out)
 	}
 }
 

@@ -2607,7 +2607,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.cancelTakeover() {
 			return nil
 		}
-		if a.clearFolderMove() {
+		if a.clearFolderMove() || a.clearFolderNest() {
 			return nil
 		}
 		if !h.box.empty() {

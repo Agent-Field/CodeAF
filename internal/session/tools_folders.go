@@ -1,12 +1,13 @@
 package session
 
-// The `folders` tool: file this conversation in a logical folder, take it out,
-// move a placement, or list what is there.
+// The `folders` tool: file this conversation in a logical folder, nest a
+// folder under another, take a placement out, move one, or list what is there.
 //
 // Logical folders are membership, not directories. They never change cwd, the
 // repo, or `/attach`. Filesystem `/folder` `/place` `/dir` stay filesystem.
 // The conversation id for membership is this session's Place.ID() — the 16-hex
-// folder name — never a UI path.
+// folder name — never a UI path. A `child` folder id files that collection
+// instead of this chat.
 //
 // THE TOOL IS ABSENT WHEN Config.Folders IS NIL, which is the absence law this
 // belt is built on: a verb with nothing behind it is a model told it can file
@@ -32,20 +33,24 @@ type FolderRef struct {
 // The methods wrap wsapi (List / File / Unfile / Move). The interface lives
 // here so wsapi does not import session.
 //
+// File takes a typed [workspace.Ref]: ConversationKind for this chat,
+// CollectionKind to nest a folder. It does not default an empty Kind to
+// conversation — a dummy fallback would make every nest look like a chat.
+//
 // Provenance is stamped by the tool at ingress: OriginOrganizer, actor = this
 // session. Tool arguments must not carry origin — a model cannot claim person.
 //
 // NIL IS OFF: no verb on the belt.
 type Folders interface {
 	List(ctx context.Context) ([]FolderRef, error)
-	File(ctx context.Context, collectionID, conversationID string, p workspace.Provenance) error
+	File(ctx context.Context, collectionID string, ref workspace.Ref, p workspace.Provenance) error
 	Unfile(ctx context.Context, collectionID, conversationID string, p workspace.Provenance) error
 	Move(ctx context.Context, fromID, toID, conversationID string, p workspace.Provenance) error
 }
 
 func init() { glossField["folders"] = "action" }
 
-const foldersDescription = "File this conversation in a logical folder, take it out, move a placement, or list the folders. Membership does not change the working directory; /folder is still a filesystem path. The current chat is implied and is never passed as an id."
+const foldersDescription = "File this conversation in a logical folder, nest a folder under another, take a placement out, move one, or list the folders. Membership does not change the working directory; /folder is still a filesystem path. The current chat is implied unless child names a folder to nest."
 
 const foldersSchemaJSON = `{
   "type": "object",
@@ -53,15 +58,19 @@ const foldersSchemaJSON = `{
     "action": {
       "type": "string",
       "enum": ["list", "file", "unfile", "move"],
-      "description": "list folders, file this chat, unfile it, or move a placement."
+      "description": "list folders, file this chat or a child folder, unfile it, or move a placement."
     },
     "id": {
       "type": "string",
-      "description": "Folder id for file or unfile, or the destination of a move."
+      "description": "Folder id for file or unfile, or the destination of a move. Parent folder when child is set."
     },
     "from": {
       "type": "string",
       "description": "Source folder id for move. Other placements of this chat stay."
+    },
+    "child": {
+      "type": "string",
+      "description": "Folder id to nest under id. When set, file that folder as a collection instead of this chat."
     }
   },
   "required": ["action"],
@@ -95,6 +104,7 @@ func (a *Agent) foldersTool(ctx context.Context, args json.RawMessage) (string, 
 		Action string `json:"action"`
 		ID     string `json:"id"`
 		From   string `json:"from"`
+		Child  string `json:"child"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
@@ -102,16 +112,12 @@ func (a *Agent) foldersTool(ctx context.Context, args json.RawMessage) (string, 
 	action := strings.TrimSpace(parsed.Action)
 	id := strings.TrimSpace(parsed.ID)
 	from := strings.TrimSpace(parsed.From)
+	child := strings.TrimSpace(parsed.Child)
 	switch action {
 	case "list":
 		return a.foldersList(ctx)
 	case "file":
-		if id == "" {
-			return "Invalid arguments: file needs the folder id.", true, nil
-		}
-		return a.foldersMutate(ctx, func(chat string) error {
-			return a.config.Folders.File(ctx, id, chat, a.foldersOrganizer())
-		})
+		return a.foldersFile(ctx, id, child)
 	case "unfile":
 		if id == "" {
 			return "Invalid arguments: unfile needs the folder id.", true, nil
@@ -129,6 +135,22 @@ func (a *Agent) foldersTool(ctx context.Context, args json.RawMessage) (string, 
 	default:
 		return "Invalid arguments: action must be list, file, unfile or move.", true, nil
 	}
+}
+
+func (a *Agent) foldersFile(ctx context.Context, id, child string) (string, bool, error) {
+	if id == "" {
+		return "Invalid arguments: file needs the folder id.", true, nil
+	}
+	if child != "" {
+		err := a.config.Folders.File(ctx, id, workspace.Ref{Kind: workspace.CollectionKind, ID: child}, a.foldersOrganizer())
+		if err != nil {
+			return foldersRefusal(err), true, nil
+		}
+		return "ok", false, nil
+	}
+	return a.foldersMutate(ctx, func(chat string) error {
+		return a.config.Folders.File(ctx, id, workspace.Ref{Kind: workspace.ConversationKind, ID: chat}, a.foldersOrganizer())
+	})
 }
 
 func (a *Agent) foldersList(ctx context.Context) (string, bool, error) {
