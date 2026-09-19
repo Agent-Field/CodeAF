@@ -12,7 +12,7 @@ GitHub: #1216. Journeys: J01–J08. Pre-wave source: `610a32ba`. Design HEAD at 
 | service | `t-w1-service` | `internal/wsapi/*` (new package) | workspace internals, tui3, session, cmd |
 | tui | `t-w1-tui` | `internal/tui3/homepanel_folders.go`, `internal/tui3/folders.go`, their tests; `internal/tui3/homegrid.go` (append `panelFolders` to the iota **last** so existing IDs do not shift; insert the slot in `homePanelOrder` after recent; whisper); `internal/tui3/commands.go` (`/folders` rows only); `internal/tui3/homeslash.go` (`homeFate` for `folders`); `internal/tui3/tui3.go` (`Options.Folders` field); `internal/tui3/place_home.go` (`homeRowVerbs` folder case); `internal/tui3/home.go` (folder enter + pending start); `internal/tui3/app.go` (`case "folders"` only) | `internal/workspace`, `internal/wsapi`, `internal/session`, `cmd/codeaf` |
 | wiring | `t-w1-wiring` | `cmd/codeaf/collections.go` (additive `--reason`); `cmd/codeaf/chatv3.go` / `chatv3_local.go` (construct `wsapi.Service`, set `tui3.Options.Folders` and `session.Config.Folders`); `internal/session/tools_folders.go`; `internal/session/session.go` (`Config.Folders`); `internal/session/tools.go` and `internal/session/bashbelt.go` (append `foldersTools` the same way `memoryTools` is appended); `internal/session/prompts/system.md` (mention `folders` only if wired) | `internal/workspace` internals, `internal/tui3` except filling Options |
-| proof | `t-w1-proof` | `internal/workspace` extra tests only if storage agrees via PlanDB; prefer `internal/wsapi/*_test.go` additions in service tree; `internal/tui3/folders_test.go`; `internal/e2e` untagged needle + tagged live helper; `internal/manual/chat/collections.md`; `internal/manual/chat_test.go` probes; `docs/design/collaborative-workspace/TRY.md` | product logic in other packages except manuals/tests listed |
+| proof | `t-w1-proof` | `internal/manual/chat/` pages that currently deny folder UI; `internal/manual/chat_test.go` probes; `internal/e2e/tuiwords_test.go` needles; `docs/design/collaborative-workspace/TRY.md`; optional untagged e2e helper. **Not** `internal/tui3/*_test.go` or workspace/wsapi tests unless a lane transfers them in a PlanDB note. | product logic; other packages' unit tests |
 
 Integration (`t-w1-integrate`) applies lane branches onto `feat/collaborative-workspace-0918` in order: storage → service → wiring → tui → proof.
 
@@ -51,6 +51,11 @@ const (
 
 type Provenance struct {
     Origin, Reason, Actor, Evidence, IdempotencyKey string
+    // ExpectedRevision is optional. Zero means “no precondition” (old CLI).
+    // Non-zero must match the collection's revision inside the write txn.
+    ExpectedRevision int
+    // ExpectedFrom / ExpectedTo apply to Move only; zero means no check.
+    ExpectedFrom, ExpectedTo int
 }
 
 type MembershipEvent struct {
@@ -71,9 +76,12 @@ func (s *Store) Move(ctx context.Context, fromID, toID string, ref Ref, p Proven
 func (s *Store) WhyHere(ctx context.Context, id string, ref Ref) (MembershipEvent, error)
 func (s *Store) Events(ctx context.Context, id string, ref Ref) ([]MembershipEvent, error)
 func (s *Store) SchemaVersion() int
+func (s *Store) RootState(ctx context.Context) (revision int, purpose, updatedAt string, err error)
 ```
 
-`Add`/`Remove` keep their old signatures and mean person origin + empty reason (CLI compatibility). `Move` is add-destination + remove-source + two events in **one** writer transaction; other placements of the same ref stay. Cycle check remains in that transaction. `WhyHere` is the latest event for that active or last edge. Root is not stored as membership.
+Mismatch of a non-zero expected revision returns `ErrConflict` (add this sentinel) wrapping `ErrInvalid` with the word `revision`. Zero expected revision keeps old CLI/add/remove unconditional.
+
+`Add`/`Remove` keep their old signatures and mean person origin + empty reason (CLI compatibility). `Move` is add-destination + remove-source + two events in **one** writer transaction; other placements of the same ref stay. Cycle check remains in that transaction. `WhyHere` is the latest event for that active or last edge. Root is not stored as membership. `RootState` reads `root_state` (creating the v2 row only on a write path / ensureSchema).
 
 `Collection` JSON may grow omitempty fields; default CLI text is still `id  name`.
 
@@ -135,7 +143,8 @@ Deduplicate conversation IDs in counts. Expected-revision conflicts return `work
 - Snapshot is a memo filled on the home **beat** (`readHomeFolders`), never in `View` or on cursor move.
 - `homeFolderRow = 246`, `homeFolderBack = 247`. Member chats reuse `homeSession` with `cell.panel == panelFolders`.
 - `app.pendingFolder` string: set by `n` / `/folders` new; consumed after first-message `renew`/`startChatEnter` via `AddPlacement`. Esc clears it and creates no transcript.
-- `Options.Folders` is a TUI interface (`type Folders interface`) with the snapshot/mutate methods the panel needs. Nil ⇒ panel still draws the whisper; mutations no-op with a note. `*wsapi.Service` must satisfy it (wiring may wrap). TUI must not import `internal/workspace`. TUI may keep small local view structs if `wsapi` is not on the branch yet.
+- `Options.Folders` is `tui3.Folders`, defined in `internal/tui3/folders.go` with **TUI DTOs only** (`folderView`, `folderPlacement`, `folderWhy`). It does **not** use `workspace.Ref` or `wsapi.Folder`. Wiring owns an adapter `tui3.Folders` ← `*wsapi.Service`. `*wsapi.Service` is **not** required to satisfy `tui3.Folders` directly.
+- Nil `Options.Folders` (store unavailable): the panel heading still exists, but it is **not** an empty working workspace. Mutations (`n f m w x`, `/folders create|add`) must refuse with a visible failure, never silent success. Distinct from a working empty store, which uses the emptiness-law whisper.
 - 80-col: sequential drill-in, `esc` back. No model on paint.
 
 `wsapi.Service` should itself talk to a `store` interface matching the frozen `workspace.Store` methods so service tests can use a fake while storage is in another worktree. `Open` still calls `workspace.Open`.
