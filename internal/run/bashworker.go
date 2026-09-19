@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -126,7 +127,17 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	// noAction counts replies in a row that carried no tool call. A reply that
 	// did call a tool resets the run to one — its own trailing words are the
 	// first of the new run — and the fourth in a row fails the task.
+	// sameStep is the law below, held for the whole turn: the identity of the
+	// last finished step, how many identical ones have come back in a row, and
+	// the moment the store was last read. The words a worker says between its
+	// actions leave no step and change nothing, so the count runs over the
+	// recorded steps alone.
 	noAction := 0
+	var (
+		lastStep string
+		same     int
+		since    time.Time
+	)
 	for {
 		events, err := agent.Submit(runCtx, brief)
 		if err != nil {
@@ -142,6 +153,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 			roundSteps int
 			turnErr    error
 			capped     bool
+			stalled    bool
 			ending     storeEnding
 		)
 		for event := range events {
@@ -166,6 +178,16 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				if capped {
 					continue
 				}
+				// THE SAME-ACTION LAW ENDS THE RECORD WHERE IT FELL, for the cap's
+				// own reason: stop() cancels the turn, but a model that answers at
+				// once has its next action begun and aborted before the loop
+				// notices, and that aborted call is not a step the worker took.
+				// Counted, it would put a fifth step on a record whose ending says
+				// four, and its "aborted" answer would read as something that
+				// happened to the work.
+				if stalled {
+					continue
+				}
 				steps++
 				roundSteps++
 				if err := rec.record(steps, event); err != nil {
@@ -186,6 +208,37 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 					capped = true
 					stop()
 					continue
+				}
+				// THE SAME-ACTION LAW, READ FROM THE RECORD AND NEVER FROM THE
+				// WORDS: one step is identified by the command the model spelled
+				// and the head of the answer that came back — the same head the
+				// trajectory records — and the step before it says whether THIS
+				// WORKER'S PART OF THE STORE moved between them ([movedUnder]: the
+				// task's own row, a note or a context on it, or any row under it;
+				// the supervisor heartbeat deliberately none of them, because
+				// refreshing a claim is not work). A different command, a
+				// different answer, or a move under the task resets the run to
+				// one; the same command with the same answer on a part of the
+				// store that stood still counts toward [sameStepLimit].
+				identity := event.Tool + "\x00" + stepCommand(event) + "\x00" + observationHead(event.Output)
+				moved := movedUnder(w.store, task.ID, since)
+				since = time.Now()
+				if moved || identity != lastStep {
+					same, lastStep = 1, identity
+				} else if same++; same >= sameStepLimit {
+					// A TASK THE STORE SAYS IS BLOCKED ON ANOTHER TASK goes to
+					// the parking the belt already has rather than an ending:
+					// `plandb wait` refuses a wait with nothing open, so a park
+					// that lands here says the store itself names what the
+					// worker is waiting on, and the task wakes when that wait
+					// is over instead of failing behind somebody else's work.
+					if _, waitErr := w.store.Wait(task.ID, task.ID); waitErr == nil {
+						ending = storeEnding{kind: endingWait, reason: fmt.Sprintf("waiting: the same command came back with the same answer %d times in a row", sameStepLimit)}
+						stop()
+					} else {
+						stalled = true
+						stop()
+					}
 				}
 				// THE STORE'S OWN ENDING IS DETECTED AFTER THE COMMAND RUNS. A
 				// `plandb done`, or a `plandb wait`, that the worker itself just
@@ -234,7 +287,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 			}
 			return Report{Result: ending.result, Steps: steps, USD: usd}, nil
 		case ending.kind == endingWait:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "waiting"}); err != nil {
+			reason := "waiting"
+			if ending.reason != "" {
+				reason = ending.reason
+			}
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd, Waiting: true}, nil
@@ -243,6 +300,15 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, fmt.Errorf("stopped at its step cap after %d steps", capSteps)
+		case stalled:
+			// THE LAW'S OWN ENDING, in the plain words a person reads on the
+			// task's page: no machinery, no counts of things they have no
+			// name for — the same command, the same answer, the one bound.
+			reason := fmt.Sprintf("the same command came back with the same answer %d times in a row: the work was not moving", sameStepLimit)
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
+				return Report{Steps: steps, USD: usd}, err
+			}
+			return Report{Steps: steps, USD: usd}, errors.New(reason)
 		case ctx.Err() != nil:
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "the run's wall stopped it"}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
@@ -282,6 +348,75 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 // the same fact: a model that is not driving the belt one action at a time.
 const noActionLimit = 4
 
+// sameStepLimit is how many finished steps in a row may be the same command
+// coming back with the same answer, with nothing moving in the worker's own
+// part of the store between them, before the task ends. THE SAME-ACTION LAW:
+// THE SAME COMMAND COMING BACK WITH THE SAME ANSWER sameStepLimit TIMES RUNNING,
+// WITH NOTHING MOVING UNDER THE WORKER'S OWN TASK BETWEEN THE LOOKS, IS A WORKER
+// THAT HAS STOPPED MAKING PROGRESS, AND ITS TASK ENDS THERE — whatever the tool and whatever
+// the cause, because the ending reads no word of the command and no word of
+// the error: the identity of the action, the head of the answer, and the
+// store's own record of movement are the whole of the evidence.
+//
+// The count is over FINISHED STEPS and not model calls, so the words a worker
+// says between its actions are nothing to it — and the alternation one action
+// plus one text reply, which the no-action ending cannot see because every
+// action resets that run to one, is bounded here too. Without this law the
+// step cap was the only bound on that shape; a real pair of workers spent 820
+// model calls and $4.30 inside it in half an hour, the cause unknown because
+// the answer every action got was the same every time.
+//
+// THE THREE RESETS ARE WHAT THE LAW DOES NOT END. A different command is a
+// different action tried; a different answer is a changed world, the shape
+// of a worker legitimately waiting on something that changes; a move in the
+// worker's own part of the store (its task and the rows under it, [movedUnder])
+// is work it or its children did, read from the store's own bookkeeping and
+// never from the command's words. A worker whose every look answers
+// differently, or whose own part of the store moves between looks, is never
+// ended here — the step cap bounds it as before. WHAT ITS SIBLINGS DO IS NOT
+// ITS PROGRESS: a broken worker in a busy run is ended while the others work. A worker the store says is
+// blocked on another task is not ended either: the loop parks it the way
+// `plandb wait` would, and it wakes when its wait is over.
+//
+// The bound is the same four the no-action ending uses, because the two are
+// the same fact at both ends of a turn: a belt that has answered the same
+// way four times has been told three times what happens.
+const sameStepLimit = 4
+
+// movedUnder answers whether anything the store records moved, since the
+// moment, in the part of the plan THIS worker can move: its own task, or a row
+// anywhere under it.
+//
+// IT IS THE WORKER'S OWN PART AND NOT THE WHOLE STORE, because a run is many
+// workers on one store. Read over the whole store, a broken worker would be
+// kept alive for as long as its siblings went on working, which is exactly
+// when nobody is looking at it: their rows move every few seconds and every
+// one of those moves would reset its count. What a sibling does is not this
+// worker's progress. A worker that is waiting on a sibling is not failed for
+// it either: its look comes back different when the sibling lands, and a
+// worker the store says is blocked is parked rather than ended.
+//
+// The zero moment is the first step of a turn, where there is no earlier look
+// to compare with; it answers moved, so the count starts at one.
+func movedUnder(store *plandb.Store, id string, since time.Time) bool {
+	if since.IsZero() {
+		return true
+	}
+	for _, changed := range store.Changed(since) {
+		// Walk the containment chain up from the row that moved. The chain is
+		// bounded by the tree's depth, and a row whose parent is gone ends it.
+		for at := store.Task(changed); at != nil; at = store.Task(at.ParentID) {
+			if at.ID == id {
+				return true
+			}
+			if at.ParentID == "" || at.ParentID == at.ID {
+				break
+			}
+		}
+	}
+	return false
+}
+
 // noActionNote is the harness's own voice, sent as a user message after a reply
 // that executed no action. It is not the person's and it is not a step: it is
 // the belt saying what a worker already knows from its page, at the one moment
@@ -303,6 +438,11 @@ const (
 type storeEnding struct {
 	kind   storeEndingKind
 	result string
+	// reason is the ending line's own words where an ending carries more
+	// than its kind: the wait the same-action law sends a blocked worker to
+	// says beside its "waiting" what the worker was doing, so a person reading
+	// the record asks no second question.
+	reason string
 }
 
 // storeEnding reads the task's row and answers the ending it carries, if any.
