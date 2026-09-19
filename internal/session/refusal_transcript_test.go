@@ -167,3 +167,17 @@ func TestACheckIsOneCommandAsTheShellWouldReadItsQuotes(t *testing.T) {
 		}
 	}
 }
+
+func TestAnOverlongDeclaredCheckNamesTheLengthCause(t *testing.T) {
+	check := "printf " + strings.Repeat("x", 4097-len("printf "))
+	want := "Invalid arguments: checks must each be ONE rerunnable command: each check may be at most 4096 bytes"
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	arguments := `{"title":"Fix the nil-map","summary":"s","brief":"b","deliverable":"d","acceptance":"a","checks":[` + strconv.Quote(check) + `]}`
+	got, isError := runTool(t, agent, "propose_task", arguments)
+	if !isError {
+		t.Fatalf("a 4097-byte check was accepted")
+	}
+	if strings.TrimSuffix(got, ".") != want {
+		t.Fatalf("length refusal bytes:\n got %q\nwant %q", got, want)
+	}
+}
