@@ -5273,10 +5273,10 @@ sort control and no column header on this page; typing filters the groups instea
 
 ## filter the tasks list — type to filter, what it matches, and esc to clear it
 
-**Type, and the list narrows as you type.** The first line of the list is the control row: a
-`⌕` mark, then what you have typed, and before you type anything the dim words `type to
-filter`. That is where your letters land — there is no message to send from this place, so
-every printable key goes to the filter. `backspace` takes one back, `ctrl+u` clears the box,
+**Type, and the list narrows as you type.** What you type appears in the box, replacing the
+dim words `type to filter this list`. That is where your letters land — there is no message
+to send from this place, so every printable key goes to the filter. `backspace` takes one back,
+`ctrl+u` clears the box,
 `ctrl+w` takes a word.
 
 The query is matched against the task's name, the main chat's title, the state word and the
