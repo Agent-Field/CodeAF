@@ -199,7 +199,11 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string) {
 		ID: run.row, Title: run.title, State: TaskFailed, Stopped: true,
 		Report: report, Changed: changed, Merge: merge, EndedAt: a.taskClockNow(),
 	}
-	if merge != mergeInPlace {
+	// THE ROW NAMES A BRANCH ONLY WHEN THERE IS WORK ON IT, for the reason the
+	// sentence does ([beltStoppedWhere]): measured on the real binary, a run
+	// stopped in its first seconds drew `branch kept` beside "it had changed
+	// nothing".
+	if merge != mergeInPlace && len(changed) > 0 {
 		notice.Branch = run.tree.branch
 	}
 	g := a.graph()
