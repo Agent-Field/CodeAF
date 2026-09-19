@@ -100,3 +100,7 @@ The correction is committed at `f8e08781f9556d71725d720facbe91fab6a4f549`. Next 
 `go run ./cmd/codeaf-changes check` passed with 20 well-formed entries. Next step: run the required standalone guard and naming-law tests.
 
 `go test ./internal/guard ./internal/namelaw` passed. All five required checks now pass. Next step: finalize the evidence with the post-check tree hash, current deciding file:line locations, clean status, and commit hash. No amendment will follow.
+
+## Final independent verification
+
+The correction and earlier evidence are committed. This task will now verify the final committed tree without changing it: record the tree hash, run each of the five required commands separately, then record the tree hash again. No amend or file update will follow the before-hash sequence.
