@@ -713,7 +713,12 @@ func TestBashWorkerEndsABrokenWorkerWhileItsSiblingsMoveTheStore(t *testing.T) {
 		t.Fatalf("the worker ended with %v, want the same-action ending: a sibling's moves are not its progress", err)
 	}
 	if report.Steps != 4 {
-		t.Fatalf("report steps = %d, want the law's bound of four", report.Steps)
+		var record []string
+		steps, _ := run.Trajectory(filepath.Dir(store.Path()), "mine")
+		for _, step := range steps {
+			record = append(record, fmt.Sprintf("%d %q -> %q", step.Step, step.Command, step.Observation))
+		}
+		t.Fatalf("report steps = %d, want the law's bound of four; the record:\n%s", report.Steps, strings.Join(record, "\n"))
 	}
 	if notes := store.Notes("theirs", 0); len(notes) < 4 {
 		t.Fatalf("the sibling's task holds %d notes, want one per look: the store did not move and the test proves nothing", len(notes))
