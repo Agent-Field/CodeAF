@@ -43,3 +43,7 @@ Formatting, build, session/run vetting, the focused session suite, the run/manua
 Worker completion must stop at the run-owned copy. The later landing action should call the existing run landing door, which already delegates committing to `session.LandRunTree`; its report needs to identify both the run copy that supplied the work and the person's checkout that receives it. A run with no changes must leave both places alone and report that nothing moved.
 
 The failing focused tests now distinguish the two moments: after the engine returns they observe that landing was already called once (the defect), and an explicit `Agent.Land` cannot find the finished run because it was cleared. The implementation must retain the finished run until `/land`, invoke the engine only there, and translate its answer into the existing folder-landing result.
+
+## Integration correction
+
+The explicit-landing implementation is sound, but two older belt tests still wait for worker completion to land automatically. They must instead prove the run remains available after workers finish, then invoke the person's landing action and retain their existing settlement assertions.
