@@ -2567,6 +2567,21 @@ type app struct {
 	runSummaryShape       string
 	runSummaryNow         string
 
+	// THE RUN'S ROWS ARE HELD HERE AND ASKED FOR FROM UPDATE, never from the
+	// frame ([app.refreshPlanRows]). The frame draws what is held. planRowsFront
+	// is the conversation the rows belong to, so rows read for one conversation
+	// are never drawn over another; planRowsGen moves whenever a read is folded
+	// in, and it is what [tasksPlace.regroup] hangs a re-file on; planRowsStamp
+	// is this window's own stamp as it stood when the last read was ASKED, so a
+	// verb that lands while a read is out is answered by one more read.
+	planRows        []session.PlanTaskRow
+	planRowsRead    bool
+	planRowsFront   int
+	planRowsGen     uint64
+	planRowsStamp   uint64
+	planRowsAt      time.Time
+	planRowsReading bool
+
 	// setup is the first-run screen, which precedes the box below on the one
 	// launch that gets it (firstrun.go). Its zero value is every other launch.
 	setup setupFlow
@@ -3228,6 +3243,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// sent only when the sentence moved (title.go).
 	if say := a.retitle(); say != nil {
 		cmd = tea.Batch(cmd, say)
+	}
+	// THE RUN'S ROWS ARE ASKED FOR BEFORE ITS SUMMARY, because the summary decides
+	// from the rows the surface holds.
+	if rows := a.refreshPlanRows(); rows != nil {
+		cmd = tea.Batch(cmd, rows)
 	}
 	if summary := a.refreshRunSummary(); summary != nil {
 		cmd = tea.Batch(cmd, summary)

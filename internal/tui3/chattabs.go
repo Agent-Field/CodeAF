@@ -998,8 +998,7 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 // "that folder is gone" is two features to keep in step.
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 	if tab.work {
-		a.openWorkTab()
-		return nil
+		return a.openWorkTab()
 	}
 	a.workTabOn = false
 	a.tabReveal()
