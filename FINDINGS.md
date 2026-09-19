@@ -17,3 +17,7 @@ The next step fixes the contract at the run door with focused tests. Each fixtur
 ## Run copy implementation
 
 The focused tests now fail at the intended seam: `startKnownTaskRun` has no stand argument. The implementation step will pass the resolved stand through both task doors, prepare exactly one tree with `prepareTaskTreeOn`, store its ground and workspace on the live run, hand that workspace to every child, and reject a live hand-off whose canonical ground differs. The run engine remains responsible only for driving the shared copy; finishing workers will no longer alter the conversation checkout.
+
+## Verification
+
+The isolated-run tests pass after the door began retaining one prepared tree per run. The live run records the canonical ground and shared workspace; a same-ground hand-off joins and its receipt says why, while a different-ground hand-off is refused before it can enter the store. The next step is verification against the existing belt, stand, ground, receipt, and run tests, followed by the required build, vet, law, formatting, and forbidden-path/history checks.
