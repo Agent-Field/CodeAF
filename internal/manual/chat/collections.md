@@ -1,18 +1,82 @@
-# Organizing references in collections
+# Logical folders — grouping saved chats
 
-## How do I group chats in logical folders
+## Group chats in folders — logical folders, the folders panel, /folders
 
-`codeaf collections` is a local command for organizing references to conversations,
-tasks, ongoing items and files. A collection is a logical folder with a stable ID
-and name. Several collections can reference the same record. Collections can
-contain other collections, including one child shared by several parents;
-circular membership is refused. Renaming a collection preserves its ID.
+Home has a `folders` panel for **logical groups of chats**. It is not a directory
+on disk. The heading is the word `folders`. With nothing in it yet the panel
+keeps that heading and one dim line:
 
-This command does not change the home dashboard, chat tabs or `/folder`.
-`/folder` chooses filesystem context for a conversation. Collection membership
-does not move transcripts, attach a working directory, grant write permissions,
-start work or change an assignment. There is no collection slash command or
-automatic context injection yet.
+```
+logical groups of chats · /folders create Billing
+```
+
+It never says “no folders yet”. `/folders` focuses the panel. `/folders create
+Billing` makes a logical folder named Billing. Nested folders and a folder shared
+by two parents are allowed; a cycle is refused and nothing is half-applied.
+
+Unfiled chats sit under a virtual **Root**. Root is a logical scope, not a path,
+and `codeaf collections list` never prints a Root row.
+
+`/folders` is **not** an alias of `/folder`. `/folder`, `/place` and `/dir` still
+choose a filesystem directory. Filing a chat here does not change cwd, the
+repository, `/attach`, or which project `/folder` named.
+
+The CLI `codeaf collections` still files the same graph. There is no `/collections`
+slash in this build.
+
+## Saved chats — /folders add, new chat here, verbs n f m w x
+
+A saved chat is one conversation identity (the 16-hex session id). Grouping it
+does not copy the transcript.
+
+On a `folders` row, `→` opens the verb strip:
+
+`n` new chat here · `f` add current chat · `m` move this placement · `w` why here · `x` remove this placement
+
+- **`n`** opens the start page with that folder pending. The first message mints
+  a new chat and files it here. `esc` before sending creates no transcript.
+- **`f`** and `/folders add <name-or-id>` file the **current** chat in that
+  folder. Repeating the add is harmless.
+- **`m`** moves only the placement you are on. Other folders that already hold
+  this chat stay.
+- **`w`** shows why this chat is here — who put it here and the reason — not a
+  score.
+- **`x`** removes that placement only. The chat and its history remain.
+
+An old chat can be added to a new folder without merging or resuming it.
+
+## Also in two folders — one chat, also in Billing and Security
+
+The same saved chat can sit in two folders at once — Billing and Security, for
+example. There is one identity, one history, one spend. Opening it from either
+placement shows the same messages.
+
+A row in one folder names the other as `also in` and the other folder's name, so
+you can see it is not a second copy. Counts are unique conversation ids, not
+paths through the graph.
+
+A later message sent through one placement is there when you reopen through the
+other. Removing one placement leaves the rest. Moving the Billing placement into
+Receipts does not drop the Security one.
+
+## Is /folder a logical folder? — /folders vs /folder, /place, /dir
+
+No. `/folder` is a **filesystem** command. It opens the add-context sheet so this
+conversation can be about a directory. Its other words are `/place` and `/dir`.
+It does not group saved chats.
+
+`/folders` (plural) is the **logical** command. It is not an alias of `/folder`.
+`checkCommands` keeps them distinct: typing `/folders` never runs `/folder`.
+
+| Command | What it names | What it changes |
+| --- | --- | --- |
+| `/folder` `/place` `/dir` | a directory on disk | which project this chat is about; not membership |
+| `/folders` | a logical group of chats | home's `folders` panel |
+| `/folders create <name>` | a new logical folder | the collections graph |
+| `/folders add <name-or-id>` | the current chat's membership | one placement; not cwd |
+
+Logical membership never changes cwd, the repository, or `/attach`. After you
+file a chat, `/folder` still names the same path it named before.
 
 ## Where do I file a task
 
@@ -86,6 +150,17 @@ references this record.` `codeaf collections remove <collection-id> <kind>
 <record-id>` removes only that membership, answering `This collection no longer
 references it; the original record is unchanged.` It neither deletes the original
 record nor stops ongoing work. Repeating add or remove is harmless, and removing
-something that was never there is not an error. Collection deletion, automatic
-organization, inherited instructions and communication between conversations are
-not implemented by these commands.
+something that was never there is not an error.
+
+When the `folders` tool is on the belt it can `list`, `file`, `unfile` and `move`
+the current chat the same way. It is absent rather than present and failing when
+collections cannot open. It refuses a cycle or an unknown id in its result text.
+
+## Automatic organization, inherited instructions, and chats talking to each other
+
+Not in this build. Automatic organization does not file chats for you. A logical
+folder does not attach inherited instructions that descendant chats pick up.
+Conversations do not send each other messages. You create folders and add, move
+or remove placements yourself — from the `folders` panel, `/folders create` /
+`/folders add`, the `n f m w x` verbs, or `codeaf collections`. Collection
+deletion is not implemented by these commands either.

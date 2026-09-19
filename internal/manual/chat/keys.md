@@ -2083,7 +2083,7 @@ conversation with `/new` changes nothing about it. It used to be shut until the 
 found somewhere else to go, and that rule is gone (the home page, *space space does
 nothing*).
 
-Once it is open, **home is seven panels in one, two or three columns** (the home page has
+Once it is open, **home is eight panels in one, two or three columns** (the home page has
 what each holds), and its keys are a small grammar:
 
 | Key | On home |
