@@ -138,9 +138,10 @@ type Supervisor struct {
 	// it the parent's own words would exist nowhere and the ending the run
 	// writes at the cap would carry an empty result. All three belong to the
 	// loop goroutine like the counters beside them.
-	wakes      map[string]int
-	reported   map[string]map[string]bool
-	lastReport map[string]string
+	wakes            map[string]int
+	reported         map[string]map[string]bool
+	lastReport       map[string]string
+	terminalRootHeld func() // test observation point; nil outside tests
 	// checkOf maps a check task's id to the leaf it reads, for the review
 	// round: a check whose result does not hold leaves its sentence as a note
 	// on the leaf it names here. It is written when the check is added and read
@@ -324,6 +325,9 @@ returnsAbsorbed:
 		_, rootInFlight := s.cancels[rootID]
 		if root.Status != plandb.StatusDone || !rootInFlight {
 			return s.outcomeForRoot(root.Status)
+		}
+		if s.terminalRootHeld != nil {
+			s.terminalRootHeld()
 		}
 	}
 
