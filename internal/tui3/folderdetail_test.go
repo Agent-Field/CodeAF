@@ -44,6 +44,27 @@ func TestFolderInstructionsSection(t *testing.T) {
 	}
 }
 
+func TestEnterFolderOpensTheFoldersPanelSoMembersStayReachable(t *testing.T) {
+	fake := billingSecurityFolders()
+	a := newLiveLab(t).open()
+	a.width, a.height = 80, 40
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	a.enterFolder("col-billing")
+	if !a.home.openedOn || a.home.opened != panelFolders {
+		t.Fatalf("enterFolder left folders folded openedOn=%v opened=%v", a.home.openedOn, a.home.opened)
+	}
+	frame := homeText(a)
+	if !strings.Contains(frame, "Porting the Resume Picker") {
+		t.Fatalf("80-col drill-in folded the chat member away:\n%s", frame)
+	}
+	if strings.Contains(frame, "2 more") && !strings.Contains(frame, "Porting the Resume Picker") {
+		t.Fatalf("folder members were only a fold count:\n%s", frame)
+	}
+}
+
 func TestFolderInstructCommand(t *testing.T) {
 	fake := billingSecurityFolders()
 	a := newLiveLab(t).open()
