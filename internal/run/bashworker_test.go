@@ -660,10 +660,11 @@ func TestBashWorkerEndsAWorkerThatRepeatsTheSameFailingCommand(t *testing.T) {
 	if report.Steps >= 60 {
 		t.Fatalf("the worker spent %d steps, want the law's bound far below the cap", report.Steps)
 	}
-	// THE BOUND IS THE LAW'S OWN: the fourth identical step is the last, the
-	// same four the belt's other no-progress ending uses.
-	if report.Steps != 4 {
-		t.Fatalf("report steps = %d, want the law's bound of four identical steps", report.Steps)
+	// THE BOUND IS THE LAW'S OWN: the third identical step brings the
+	// note, and the sixth is the last, three identical looks after the belt
+	// said what it observed.
+	if report.Steps != 6 {
+		t.Fatalf("report steps = %d, want the law's bound of six identical steps", report.Steps)
 	}
 	if !strings.Contains(err.Error(), "the same command") || !strings.Contains(err.Error(), "the same answer") {
 		t.Fatalf("the ending = %q, want a plain reason about the same command and the same answer", err.Error())
@@ -673,7 +674,7 @@ func TestBashWorkerEndsAWorkerThatRepeatsTheSameFailingCommand(t *testing.T) {
 	// they have no name for.
 	lines := rawTrajectory(t, storeDir, store.RootID())
 	end := endLine(t, lines)
-	if end.Steps != 4 || !strings.Contains(end.Reason, "the same command") {
+	if end.Steps != 6 || !strings.Contains(end.Reason, "the same command") {
 		t.Fatalf("the ending reads %d steps with %q, want the bound and the plain reason", end.Steps, end.Reason)
 	}
 	for i, want := range []string{"same command", "same answer"} {
@@ -688,8 +689,8 @@ func TestBashWorkerEndsAWorkerThatRepeatsTheSameFailingCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the trajectory: %v", err)
 	}
-	if len(steps) != 4 || steps[0].Command != "cat missing.txt" {
-		t.Fatalf("the trajectory reads %d steps, want the four identical commands", len(steps))
+	if len(steps) != 6 || steps[0].Command != "cat missing.txt" {
+		t.Fatalf("the trajectory reads %d steps, want the six identical commands", len(steps))
 	}
 	if !strings.Contains(steps[0].Observation, "No such file") {
 		t.Fatalf("the recorded observation = %q, want the failure the command got", steps[0].Observation)
@@ -729,8 +730,8 @@ func TestBashWorkerParksAStalledWorkerThatIsBlockedOnAnotherTask(t *testing.T) {
 	if !report.Waiting {
 		t.Fatal("the blocked worker was not parked; want it waiting on its child")
 	}
-	if report.Steps != 4 {
-		t.Fatalf("report steps = %d, want the law's bound of four identical steps", report.Steps)
+	if report.Steps != 6 {
+		t.Fatalf("report steps = %d, want the law's bound of six identical steps", report.Steps)
 	}
 	after := store.Task(store.RootID())
 	if after == nil || !after.Waiting {
@@ -825,13 +826,13 @@ func TestBashWorkerEndsABrokenWorkerWhileItsSiblingsMoveTheStore(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "the same command came back with the same answer") {
 		t.Fatalf("the worker ended with %v, want the same-action ending: a sibling's moves are not its progress", err)
 	}
-	if report.Steps != 4 {
+	if report.Steps != 6 {
 		var record []string
 		steps, _ := run.Trajectory(filepath.Dir(store.Path()), "mine")
 		for _, step := range steps {
 			record = append(record, fmt.Sprintf("%d %q -> %q", step.Step, step.Command, step.Observation))
 		}
-		t.Fatalf("report steps = %d, want the law's bound of four; the record:\n%s", report.Steps, strings.Join(record, "\n"))
+		t.Fatalf("report steps = %d, want the law's bound of six; the record:\n%s", report.Steps, strings.Join(record, "\n"))
 	}
 	if notes := store.Notes("theirs", 0); len(notes) < 4 {
 		t.Fatalf("the sibling's task holds %d notes, want one per look: the store did not move and the test proves nothing", len(notes))
@@ -875,4 +876,195 @@ func TestBashWorkerKeepsAWorkerWhoseStoreMovedBetweenLooks(t *testing.T) {
 			t.Fatalf("step %d observation = %q, want the same answer every time", i+1, step.Observation)
 		}
 	}
+}
+
+// THE BELT SPEAKS ONCE BEFORE IT ENDS, and the first thing that proves is the
+// mercy: A WORKER THAT CHANGES ITS ACTION AFTER THE NOTE IS NOT ENDED. Three
+// identical looks bring the harness's own sentence into the turn that is
+// still running, the worker changes what it does, and the run carries on to
+// its own finish. The note itself is the thing asserted: it must be in the
+// messages the seat was sent, exactly once, and it must have arrived before
+// the changed action, because the seat answers with the changed command only
+// to a request that carries it.
+func TestBashWorkerSpeaksOnceAndKeepsAWorkerThatChangesItsAction(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
+	store := runOpenStore(t)
+	// THE IDENTICAL RUN: one missing file, one short reply, over and over,
+	// until the note reaches the turn.
+	fail := `{"command":"cat missing.txt"}`
+	changed := `{"command":"cat other-place.txt"}`
+	var told int
+	var looks int
+	seat := &seat{ever: func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		if hasSpoken(messages) {
+			// The note is in front of the worker: the first reply after it
+			// changes the action, the second finishes the task.
+			told++
+			if told == 1 {
+				return toolReply(changed), nil
+			}
+			return toolReply(finishCommand("root", "moved on after the note")), nil
+		}
+		looks++
+		if looks%2 == 1 {
+			return toolReply(fail), nil
+		}
+		return textReply("looking again"), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 24), *store.Task(store.RootID()))
+
+	if err != nil {
+		t.Fatalf("a worker that changed its action after the note was ended: %v", err)
+	}
+	if report.Waiting {
+		t.Fatal("the worker that changed its action was parked, want its own finish")
+	}
+	if report.Result != "moved on after the note" {
+		t.Fatalf("report result = %q, want the worker's own finish after the change", report.Result)
+	}
+	if report.Steps >= 24 {
+		t.Fatalf("the worker spent %d steps, want its own finish far below the cap", report.Steps)
+	}
+	if !hasSpoken(seat.last(t)) {
+		t.Fatal("the note never reached the worker: the seat's last request does not carry it")
+	}
+	if spoken := countSpoken(seat.last(t)); spoken != 1 {
+		t.Fatalf("the note was sent %d times, want exactly once in the messages the seat was sent", spoken)
+	}
+	if told < 2 {
+		t.Fatalf("the changed action and the finish were never asked for, told = %d", told)
+	}
+}
+
+// The second thing the law proves: A WORKER THAT IGNORES THE NOTE IS ENDED AT
+// THE BOUND, three more identical steps after the sentence, with the plain
+// reason on the ending line, and the note was sent exactly once. The shape is
+// the one the law was written for, one failing command alternating with one
+// line of text, which never stacks up the no-action ending at all.
+func TestBashWorkerEndsAWorkerThatIgnoresTheNote(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	fail := `{"command":"cat missing.txt"}`
+	calls := 0
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		calls++
+		if calls%2 == 1 {
+			return toolReply(fail), nil
+		}
+		return textReply("still working on it"), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task(store.RootID()))
+
+	if err == nil {
+		t.Fatal("a worker that ignored the note came home clean")
+	}
+	if !strings.Contains(err.Error(), "the same command") || !strings.Contains(err.Error(), "the same answer") {
+		t.Fatalf("the ending = %q, want a plain reason about the same command and the same answer", err.Error())
+	}
+	// THE BOUND IS THREE IDENTICAL STEPS AFTER THE NOTE, which is three more on
+	// top of the three that brought it: six finished steps in all.
+	if report.Steps != 6 {
+		t.Fatalf("report steps = %d, want the bound of six identical steps, three after the note", report.Steps)
+	}
+	if report.Steps >= 60 {
+		t.Fatalf("the worker spent %d steps, want the law's bound far below the cap", report.Steps)
+	}
+	lines := rawTrajectory(t, storeDir, store.RootID())
+	end := endLine(t, lines)
+	if end.Steps != 6 || !strings.Contains(end.Reason, "6 times in a row") {
+		t.Fatalf("the ending reads %d steps with %q, want the bound and its figure", end.Steps, end.Reason)
+	}
+	if spoken := countSpoken(seat.last(t)); spoken != 1 {
+		t.Fatalf("the note was sent %d times, want exactly once in the messages the seat was sent", spoken)
+	}
+	steps, err := run.Trajectory(storeDir, store.RootID())
+	if err != nil {
+		t.Fatalf("read the trajectory: %v", err)
+	}
+	if len(steps) != 6 {
+		t.Fatalf("the trajectory reads %d steps, want the six identical commands", len(steps))
+	}
+}
+
+// THE NOTE IS THE HARNESS'S OWN VOICE AND NOT A PERSON'S, and the record is
+// where that shows: the sentence the belt speaks draws no step and no row of
+// its own. The trajectory of the ignored-note run above holds only the
+// worker's own commands; the note lives in the messages the model was sent
+// and nowhere else. This test reads the same run from the record's side: the
+// steps are the worker's alone, and no step's command is the note.
+func TestBashWorkerNoteDrawsNoStepOfItsOwn(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	fail := `{"command":"cat missing.txt"}`
+	calls := 0
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		calls++
+		if calls%2 == 1 {
+			return toolReply(fail), nil
+		}
+		return textReply("still working on it"), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	_, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task(store.RootID()))
+	if err == nil {
+		t.Fatal("the run was expected to end on the law")
+	}
+	steps, err := run.Trajectory(storeDir, store.RootID())
+	if err != nil {
+		t.Fatalf("read the trajectory: %v", err)
+	}
+	for i, step := range steps {
+		if strings.Contains(step.Command, "has come back with the same answer") {
+			t.Fatalf("step %d carries the note as a command: %q", i+1, step.Command)
+		}
+		if step.Command != "cat missing.txt" {
+			t.Fatalf("step %d command = %q, want only the worker's own look", i+1, step.Command)
+		}
+	}
+}
+
+// hasSpoken answers whether the request carries the belt's own note, by its
+// opening words: the lead phrase is the note's alone, and the ending reason
+// that says the same thing in the past tense does not reach the messages.
+func hasSpoken(messages []ai.Message) bool {
+	for _, message := range messages {
+		if message.Role == "user" && strings.Contains(messageContent(message), "has come back with the same answer") {
+			return true
+		}
+	}
+	return false
+}
+
+// countSpoken counts the note's occurrences in one request, which is the
+// count of times it was ever said: once in the transcript, it rides every
+// request after it, so the last request carries the whole run's delivery.
+func countSpoken(messages []ai.Message) int {
+	var count int
+	for _, message := range messages {
+		if message.Role == "user" && strings.Contains(messageContent(message), "has come back with the same answer") {
+			count++
+		}
+	}
+	return count
+}
+
+// last is the seat's most recent request, the one that carries the whole run.
+func (s *seat) last(t *testing.T) []ai.Message {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.requests) == 0 {
+		t.Fatal("the seat was never asked anything")
+	}
+	return s.requests[len(s.requests)-1]
 }
