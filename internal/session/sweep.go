@@ -51,6 +51,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -87,9 +88,22 @@ const (
 // pointed at a temp directory and therefore could not be proved. An empty root
 // is a build with no ambient side, and rule 4 does nothing at all.
 func SweepHome(standingRoot string, note func(string)) {
+	SweepHomeContext(context.Background(), standingRoot, note)
+}
+
+// SweepHomeContext is SweepHome with cancellation. Cancellation is checked
+// before resolving the ambient home so a stopped launch cannot target a home
+// selected after it started.
+func SweepHomeContext(ctx context.Context, standingRoot string, note func(string)) {
+	if contextDone(ctx) {
+		return
+	}
 	now := time.Now()
-	SweepPlaces(home.Join("v3", placesDirName), now, note)
-	SweepStanding(standingRoot, now, note)
+	SweepPlacesContext(ctx, home.Join("v3", placesDirName), now, note)
+	if contextDone(ctx) {
+		return
+	}
+	SweepStandingContext(ctx, standingRoot, now, note)
 }
 
 // SweepPlaces applies the three rules over one projects root.
@@ -97,6 +111,15 @@ func SweepHome(standingRoot string, note func(string)) {
 // A root that is not there is not a failure — it is a machine that has not held
 // a conversation yet — and answers silently.
 func SweepPlaces(root string, now time.Time, note func(string)) {
+	SweepPlacesContext(context.Background(), root, now, note)
+}
+
+// SweepPlacesContext is SweepPlaces with cancellation between entries and
+// immediately before each destructive operation.
+func SweepPlacesContext(ctx context.Context, root string, now time.Time, note func(string)) {
+	if contextDone(ctx) {
+		return
+	}
 	if note == nil {
 		note = func(string) {}
 	}
@@ -109,6 +132,9 @@ func SweepPlaces(root string, now time.Time, note func(string)) {
 		return
 	}
 	for _, bucket := range buckets {
+		if contextDone(ctx) {
+			return
+		}
 		if !bucket.IsDir() {
 			continue
 		}
@@ -119,10 +145,13 @@ func SweepPlaces(root string, now time.Time, note func(string)) {
 			continue
 		}
 		for _, entry := range sessions {
+			if contextDone(ctx) {
+				return
+			}
 			if !entry.IsDir() {
 				continue
 			}
-			sweepSession(filepath.Join(path, entry.Name()), now, note)
+			sweepSession(ctx, filepath.Join(path, entry.Name()), now, note)
 		}
 	}
 }
@@ -130,12 +159,12 @@ func SweepPlaces(root string, now time.Time, note func(string)) {
 // sweepSession is the three rules over one session folder, in the order that
 // makes rule 3 unconditional: the live check first, and nothing at all happens
 // to a folder that fails it.
-func sweepSession(dir string, now time.Time, note func(string)) {
-	if sessionIsOpen(dir) {
+func sweepSession(ctx context.Context, dir string, now time.Time, note func(string)) {
+	if contextDone(ctx) || sessionIsOpen(dir) {
 		// Somebody is talking to it. Not its logs, not its folder, nothing.
 		return
 	}
-	sweepLogs(dir, now, note)
+	sweepLogs(ctx, dir, now, note)
 	meta, err := LoadMeta(dir)
 	if err != nil {
 		note(fmt.Sprintf("sweep: could not read the identity of %s: %v", dir, err))
@@ -148,7 +177,7 @@ func sweepSession(dir string, now time.Time, note func(string)) {
 	if strings.TrimSpace(meta.ID) == "" || !sweepIsLitter(meta, dir, now) {
 		return
 	}
-	reapSession(dir, meta, note)
+	reapSession(ctx, dir, meta, note)
 }
 
 // sessionIsOpen reports whether another codeaf holds this session's transcript.
@@ -189,10 +218,13 @@ func sessionIsOpen(dir string) bool {
 // sweepLogs expires the droppings and NOTHING ELSE: it walks logs/ and only
 // logs/, removes files past the TTL, and leaves every directory standing. A
 // directory removed here would be one a live job's next line could not recreate.
-func sweepLogs(dir string, now time.Time, note func(string)) {
+func sweepLogs(ctx context.Context, dir string, now time.Time, note func(string)) {
 	logs := filepath.Join(dir, placeLogs)
 	cutoff := now.Add(-sweepTTL)
 	err := filepath.WalkDir(logs, func(path string, entry fs.DirEntry, err error) error {
+		if contextDone(ctx) {
+			return fs.SkipAll
+		}
 		if err != nil {
 			return err
 		}
@@ -202,6 +234,9 @@ func sweepLogs(dir string, now time.Time, note func(string)) {
 		info, err := entry.Info()
 		if err != nil || !info.ModTime().Before(cutoff) {
 			return nil
+		}
+		if contextDone(ctx) {
+			return fs.SkipAll
 		}
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			note(fmt.Sprintf("sweep: could not expire %s: %v", path, err))
@@ -282,20 +317,35 @@ func underTempDir(path string) bool {
 // last ran, and none of those is a reason to leave the litter standing. When the
 // workspace is gone there is nothing holding a registration either, which is why
 // the git commands are skipped entirely rather than run into an error.
-func reapSession(dir string, meta Meta, note func(string)) {
+func reapSession(ctx context.Context, dir string, meta Meta, note func(string)) {
+	if contextDone(ctx) {
+		return
+	}
 	if root, ok := repositoryRoot(meta.Workspace); ok {
 		treesRoot := (Place{Dir: dir}).Trees()
 		trees, err := os.ReadDir(treesRoot)
 		if err == nil && len(trees) > 0 {
 			release := lockGitRoot(Place{Dir: dir}, root)
 			for _, tree := range trees {
+				if contextDone(ctx) {
+					release()
+					return
+				}
 				if !tree.IsDir() {
 					continue
 				}
 				// The registration carries git's resolved spelling, so removal
 				// must use the same canonical path creation and checkpoints use.
 				path := canonicalPath(filepath.Join(treesRoot, tree.Name()))
+				if contextDone(ctx) {
+					release()
+					return
+				}
 				_, _ = git(root, "worktree", "remove", "--force", path)
+			}
+			if contextDone(ctx) {
+				release()
+				return
 			}
 			_, _ = git(root, "worktree", "prune")
 			release()
@@ -310,6 +360,9 @@ func reapSession(dir string, meta Meta, note func(string)) {
 	// off it, and the remove is best-effort for this function's stated reason.
 	reaped := map[string]bool{}
 	for _, tree := range meta.Trees {
+		if contextDone(ctx) {
+			return
+		}
 		root := strings.TrimSpace(tree.Root)
 		if root == "" || reaped[root] || strings.TrimSpace(tree.Dir) == "" {
 			continue
@@ -317,9 +370,21 @@ func reapSession(dir string, meta Meta, note func(string)) {
 		reaped[root] = true
 		release := lockGitRoot(Place{Dir: dir}, root)
 		for _, other := range meta.Trees {
+			if contextDone(ctx) {
+				release()
+				return
+			}
 			if other.Root == root {
+				if contextDone(ctx) {
+					release()
+					return
+				}
 				_, _ = git(root, "worktree", "remove", "--force", canonicalPath(other.Dir))
 			}
+		}
+		if contextDone(ctx) {
+			release()
+			return
 		}
 		_, _ = git(root, "worktree", "prune")
 		release()
@@ -327,7 +392,10 @@ func reapSession(dir string, meta Meta, note func(string)) {
 	// AND THE FORKS FURROW IS STILL KEEPING A LINE ABOUT. A task that landed
 	// dropped its own; what reaches here is the world of a task whose session was
 	// killed mid-run, and its directory is one of the ones about to go.
-	dropSweptForks(dir, note)
+	dropSweptForks(ctx, dir, note)
+	if contextDone(ctx) {
+		return
+	}
 	if err := os.RemoveAll(dir); err != nil {
 		note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
 	}
@@ -354,7 +422,10 @@ func reapSession(dir string, meta Meta, note func(string)) {
 // to leave the litter standing — which is this file's own rule, stated in
 // [reapSession]. What each of them earns is a line in the log, because after
 // this pass nothing knows the fork's name at all.
-func dropSweptForks(dir string, note func(string)) {
+func dropSweptForks(ctx context.Context, dir string, note func(string)) {
+	if contextDone(ctx) {
+		return
+	}
 	document, ok := loadTaskCheckpoint((Place{Dir: dir}).Tasks())
 	if !ok {
 		return
@@ -364,6 +435,9 @@ func dropSweptForks(dir string, note func(string)) {
 	// drops and two log lines about one record.
 	asked := map[string]bool{}
 	for _, record := range document.Nodes {
+		if contextDone(ctx) {
+			return
+		}
 		tree, isUniverse := universeInRecord(record)
 		if !isUniverse {
 			continue
@@ -373,6 +447,9 @@ func dropSweptForks(dir string, note func(string)) {
 			continue
 		}
 		asked[key] = true
+		if contextDone(ctx) {
+			return
+		}
 		if err := tree.dropUniverse(); err != nil {
 			note(fmt.Sprintf("sweep: could not tell furrow to forget the fork %s of %s: %v", tree.universe, tree.ground, err))
 			continue
@@ -391,6 +468,15 @@ func dropSweptForks(dir string, note func(string)) {
 // v3/projects because it never reads that directory, and an empty or missing
 // root answers silently: a machine with nothing standing has nothing here.
 func SweepStanding(root string, now time.Time, note func(string)) {
+	SweepStandingContext(context.Background(), root, now, note)
+}
+
+// SweepStandingContext is SweepStanding with cancellation between entries and
+// immediately before each removal.
+func SweepStandingContext(ctx context.Context, root string, now time.Time, note func(string)) {
+	if contextDone(ctx) {
+		return
+	}
 	if note == nil {
 		note = func(string) {}
 	}
@@ -398,8 +484,11 @@ func SweepStanding(root string, now time.Time, note func(string)) {
 	if root == "" {
 		return
 	}
-	sweepExchanges(root, now, note)
-	sweepRuns(root, now, note)
+	sweepExchanges(ctx, root, now, note)
+	if contextDone(ctx) {
+		return
+	}
+	sweepRuns(ctx, root, now, note)
 }
 
 // sweepExchanges reaps the folder behind an errand that came to nothing.
@@ -409,7 +498,7 @@ func SweepStanding(root string, now time.Time, note func(string)) {
 // moves it into the project's own bucket (tui3's homeexchange.go). What is left
 // here after a week is the third case — a sentence that went nowhere — and it
 // is the one case whose folder nobody will ever open again.
-func sweepExchanges(root string, now time.Time, note func(string)) {
+func sweepExchanges(ctx context.Context, root string, now time.Time, note func(string)) {
 	exchanges := standing.ExchangesRoot(root)
 	entries, err := os.ReadDir(exchanges)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -420,12 +509,18 @@ func sweepExchanges(root string, now time.Time, note func(string)) {
 		return
 	}
 	for _, entry := range entries {
+		if contextDone(ctx) {
+			return
+		}
 		if !entry.IsDir() {
 			continue
 		}
 		dir := filepath.Join(exchanges, entry.Name())
 		if !sweepIsStale(dir, now) {
 			continue
+		}
+		if contextDone(ctx) {
+			return
 		}
 		if err := os.RemoveAll(dir); err != nil {
 			note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
@@ -441,7 +536,7 @@ func sweepExchanges(root string, now time.Time, note func(string)) {
 // something, landed something, failed, or is waiting for the person keeps its
 // folder like any other session — as does a run whose marker is missing, which
 // is every run written before this existed.
-func sweepRuns(root string, now time.Time, note func(string)) {
+func sweepRuns(ctx context.Context, root string, now time.Time, note func(string)) {
 	items, err := os.ReadDir(root)
 	if errors.Is(err, fs.ErrNotExist) {
 		return
@@ -451,6 +546,9 @@ func sweepRuns(root string, now time.Time, note func(string)) {
 		return
 	}
 	for _, item := range items {
+		if contextDone(ctx) {
+			return
+		}
 		// Only an item's own folder holds runs. exchanges/ is rule 4's other
 		// half and is skipped by name; the documents, the ledgers, the wake log
 		// and the locks are files and are skipped by not being directories.
@@ -467,6 +565,9 @@ func sweepRuns(root string, now time.Time, note func(string)) {
 			continue
 		}
 		for _, entry := range entries {
+			if contextDone(ctx) {
+				return
+			}
 			if !entry.IsDir() {
 				continue
 			}
@@ -474,10 +575,25 @@ func sweepRuns(root string, now time.Time, note func(string)) {
 			if !standing.RunCameToNothing(dir) || !sweepIsStale(dir, now) {
 				continue
 			}
+			if contextDone(ctx) {
+				return
+			}
 			if err := os.RemoveAll(dir); err != nil {
 				note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
 			}
 		}
+	}
+}
+
+func contextDone(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
 	}
 }
 

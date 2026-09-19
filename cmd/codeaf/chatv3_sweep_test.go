@@ -1,81 +1,81 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
+	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
-// CLOSE SEALS THE PLACE SWEEP WITHOUT WAITING FOR THE WALK.
-//
-// The seam blocks the sweep as if it were walking a machine that has held a
-// thousand conversations, so its length is unbounded. closeAll must still return
-// promptly (it seals the note rather than joining the walk), and the sweep's
-// late error note, reported after the seal, must write nothing beneath the home
-// the process just left. Without the seal that late note recreates v3/sweep.log
-// after the owner has closed, the ordering that races a TempDir RemoveAll and
-// produces "directory not empty".
-func TestClosingSealsThePlaceSweepWithoutWaitingForTheWalk(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "state")
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("CODEAF_HOME", root)
-	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
-	t.Setenv("OPENROUTER_API_KEY", "test-key")
+func TestCloseJoinsPlaceSweepAndNextProcessStillSweeps(t *testing.T) {
+	type pass struct {
+		started  chan struct{}
+		canceled chan struct{}
+		release  chan struct{}
+	}
+	passes := []pass{
+		{make(chan struct{}), make(chan struct{}), make(chan struct{})},
+		{make(chan struct{}), make(chan struct{}), make(chan struct{})},
+	}
+	var releases [2]sync.Once
+	for i := range passes {
+		i := i
+		t.Cleanup(func() { releases[i].Do(func() { close(passes[i].release) }) })
+	}
 
-	started := make(chan struct{})
-	release := make(chan struct{})
-	noted := make(chan struct{})
-	var releaseOnce sync.Once
-	free := func() { releaseOnce.Do(func() { close(release) }) }
 	previousSweep := sweepHome
-	sweepOnce = sync.Once{}
-	sweepMu.Lock()
-	sweepSealed = false
-	sweepMu.Unlock()
-	sweepHome = func(_ string, note func(string)) {
-		close(started)
-		<-release
-		note("forced sweep failure after close")
-		close(noted)
-	}
-	t.Cleanup(func() {
-		free()
-		<-noted
-		sweepHome = previousSweep
-		sweepOnce = sync.Once{}
-		sweepMu.Lock()
-		sweepSealed = false
-		sweepMu.Unlock()
-	})
-
-	proc, err := openV3Process("resume")
-	if err != nil {
-		t.Fatalf("the resume door did not open: %v", err)
-	}
-	<-started
-
-	// closeAll returns while the walk is still blocked: quit does not wait for it.
-	closed := make(chan struct{})
-	go func() {
-		proc.closeAll()
-		close(closed)
-	}()
-	select {
-	case <-closed:
-	case <-time.After(3 * time.Second):
-		t.Fatal("closeAll blocked on the place sweep walk; quit must not wait for a walk that grows with the profile")
+	t.Cleanup(func() { sweepHome = previousSweep })
+	var starts atomic.Int32
+	var destructive atomic.Int32
+	sweepHome = func(ctx context.Context, _ string, _ func(string)) {
+		i := int(starts.Add(1)) - 1
+		if i >= len(passes) {
+			t.Errorf("unexpected sweep start %d", i+1)
+			return
+		}
+		close(passes[i].started)
+		<-ctx.Done()
+		close(passes[i].canceled)
+		<-passes[i].release
+		if ctx.Err() == nil {
+			destructive.Add(1) // models the next rename or remove in the walk
+		}
 	}
 
-	// The sweep is sealed, so its late error note writes nothing.
-	free()
-	<-noted
-
-	late := filepath.Join(root, "v3", sweepLogName)
-	if _, err := os.Stat(late); err == nil {
-		t.Fatalf("a sealed place sweep wrote %s after closeAll returned", late)
-	} else if !os.IsNotExist(err) {
-		t.Fatal(err)
+	wait := func(name string, ch <-chan struct{}) {
+		t.Helper()
+		select {
+		case <-ch:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("timed out waiting for %s", name)
+		}
 	}
+	closeProcess := func(name string, p *v3Process, pass int) {
+		t.Helper()
+		closed := make(chan struct{})
+		go func() {
+			p.closeAll()
+			close(closed)
+		}()
+		wait(name+" cancellation", passes[pass].canceled)
+		releases[pass].Do(func() { close(passes[pass].release) })
+		wait(name+" close", closed)
+	}
+
+	proc1 := &v3Process{}
+	proc1.startPlaceSweep()
+	wait("first sweep start", passes[0].started)
+	closeProcess("first process", proc1, 0)
+	if got := destructive.Load(); got != 0 {
+		t.Fatalf("first close allowed %d destructive sweep attempts after cancellation, want 0", got)
+	}
+
+	proc2 := &v3Process{}
+	proc2.startPlaceSweep()
+	wait("second sweep start", passes[1].started)
+	if got := starts.Load(); got != 2 {
+		t.Fatalf("sweep starts in one binary = %d, want 2", got)
+	}
+	closeProcess("second process", proc2, 1)
 }
