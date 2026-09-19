@@ -574,7 +574,7 @@ func TestApprovedBeltHandoffCutsRunCopyFromResolvedGround(t *testing.T) {
 	if _, err := git(conversation, "add", "seed.txt"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := git(conversation, "commit", "-m", "seed"); err != nil {
+	if _, err := git(conversation, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed"); err != nil {
 		t.Fatal(err)
 	}
 	before := beltRunRepoState(t, conversation)
@@ -612,13 +612,22 @@ func TestBeltRunUsesAlternateGroundAndOnlySameGroundMayJoin(t *testing.T) {
 	registerBeltRunEngine(t, double)
 	conversation := newTestRepo(t)
 	alternate := newTestRepo(t)
+	if err := os.WriteFile(filepath.Join(conversation, "seed.txt"), []byte("conversation\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(conversation, "add", "seed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(conversation, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "conversation seed"); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(alternate, "seed.txt"), []byte("alternate\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := git(alternate, "add", "seed.txt"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := git(alternate, "commit", "-m", "alternate seed"); err != nil {
+	if _, err := git(alternate, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "alternate seed"); err != nil {
 		t.Fatal(err)
 	}
 	conversationBefore := beltRunRepoState(t, conversation)

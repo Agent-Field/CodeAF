@@ -88,6 +88,9 @@ func TestApprovedProposalBashBeltJoinsLiveRunWithPlanDependencies(t *testing.T) 
 	if err != nil || failed {
 		t.Fatalf("propose_task: failed=%v err=%v answer=%q", failed, err, answer)
 	}
+	if !strings.Contains(answer, "joined the work already underway") || !strings.Contains(answer, "same ground") {
+		t.Fatalf("joined hand-off receipt = %q, want the same-ground join said plainly", answer)
+	}
 
 	store := beltRunStoreAt(t, dir)
 	defer store.Close()
