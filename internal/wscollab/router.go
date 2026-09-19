@@ -27,7 +27,9 @@ func New(store Store) (*Router, error) {
 }
 
 // Bind attaches the recipient's single-writer seam and flushes pending
-// envelopes once. Session never calls this; the host does.
+// envelopes once, unless the conversation is archived. Archive suppresses
+// that automatic wakeup; the seam still binds so history stays readable.
+// Session never calls this; the host does.
 func (r *Router) Bind(ctx context.Context, conversationID string, seam Seam) ([]Receipt, error) {
 	if strings.TrimSpace(conversationID) == "" || seam == nil {
 		return nil, fmt.Errorf("%w: bind requires a conversation and a seam", ErrInvalid)
@@ -119,7 +121,15 @@ func (r *Router) Cite(conversationID string) Citation {
 
 // Resume delivers every still-pending line for a conversation once. A journal
 // that already holds the id is marked recorded and not appended again.
+// An archived conversation is not an automatic wakeup: pending stays pending.
 func (r *Router) Resume(ctx context.Context, conversationID string) ([]Receipt, error) {
+	archived, err := r.store.Archived(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if archived {
+		return nil, nil
+	}
 	pending, err := r.store.Pending(ctx, conversationID)
 	if err != nil {
 		return nil, err
@@ -151,6 +161,13 @@ func (r *Router) MarkProcessed(ctx context.Context, id DeliveryID) error {
 func (r *Router) route(ctx context.Context, env Envelope) (Receipt, error) {
 	if err := r.store.Put(ctx, env); err != nil {
 		return Receipt{}, err
+	}
+	archived, err := r.store.Archived(ctx, env.To)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if archived {
+		return pendingReceipt(env), nil
 	}
 	if seam := r.bound(env.To); seam != nil {
 		return r.flush(ctx, seam, env)

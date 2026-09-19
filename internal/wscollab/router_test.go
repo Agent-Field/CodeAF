@@ -154,6 +154,77 @@ func TestOfflineResumeDeliversOnce(t *testing.T) {
 	}
 }
 
+func TestArchiveSuppressesBindResumeAndHostWake(t *testing.T) {
+	ctx := context.Background()
+	store := newMemStore()
+	router, err := New(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := router.Deliver(ctx, OriginPerson, Message{From: "other", Body: "queued", CauseID: "arch"}, []string{"mgmt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Queue != QueuePending || got[0].Recorded {
+		t.Fatalf("pre-archive must stay pending: %+v", got[0])
+	}
+	store.markArchived("mgmt")
+
+	host := &memHost{alive: true}
+	previous := registeredHosts()
+	RegisterHostFinder(&memFinder{host: host})
+	t.Cleanup(func() { RegisterHostFinder(previous) })
+
+	seam := newSeam()
+	flushed, err := router.Bind(ctx, "mgmt", seam)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flushed) != 0 || seam.lines() != 0 {
+		t.Fatalf("archive Bind flushed: receipts=%+v append=%d", flushed, seam.lines())
+	}
+	again, err := router.Resume(ctx, "mgmt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 0 || seam.lines() != 0 {
+		t.Fatalf("archive Resume flushed: receipts=%+v append=%d", again, seam.lines())
+	}
+
+	router.Unbind("mgmt")
+	late, err := router.Deliver(ctx, OriginPerson, Message{From: "other", Body: "after", CauseID: "arch2"}, []string{"mgmt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if late[0].Recorded || late[0].Queue != QueuePending || host.wakes != 0 || seam.lines() != 0 {
+		t.Fatalf("archive must not spawn or append: wakes=%d append=%d rec=%+v", host.wakes, seam.lines(), late[0])
+	}
+	held, err := store.Pending(ctx, "mgmt")
+	if err != nil || len(held) < 2 {
+		t.Fatalf("history must remain pending: %+v, %v", held, err)
+	}
+}
+
+func TestUnarchivedBindStillFlushesPending(t *testing.T) {
+	ctx := context.Background()
+	store := newMemStore()
+	router, err := New(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := router.Deliver(ctx, OriginPerson, Message{From: "other", Body: "queued", CauseID: "pause"}, []string{"mgmt"}); err != nil {
+		t.Fatal(err)
+	}
+	seam := newSeam()
+	flushed, err := router.Bind(ctx, "mgmt", seam)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flushed) != 1 || !flushed[0].Recorded || seam.lines() != 1 {
+		t.Fatalf("pause is not archive: Bind must still flush pending: receipts=%+v append=%d", flushed, seam.lines())
+	}
+}
+
 func TestCiteDoesNotWake(t *testing.T) {
 	host := &memHost{alive: true}
 	finder := &memFinder{host: host}

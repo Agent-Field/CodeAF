@@ -63,6 +63,35 @@ func registeredCollabRouter() CollabRouter {
 	return chatCollab
 }
 
+// PutAwayCollab maps a conversation put-away onto the collaboration archive
+// bit. The host registers it; nil is absence, so ordinary chats still put
+// away in meta alone.
+type PutAwayCollab func(ctx context.Context, conversationID string, archived bool) error
+
+var (
+	putAwayMu   sync.Mutex
+	putAwayHook PutAwayCollab
+)
+
+// RegisterPutAwayCollab installs the collab side of [SetArchived]. Putting a
+// discussion away must write ParticipantArchived so Bind/Resume do not flush
+// pending. Bringing it back restores active. Nil is the mapping absent.
+func RegisterPutAwayCollab(fn PutAwayCollab) {
+	putAwayMu.Lock()
+	defer putAwayMu.Unlock()
+	putAwayHook = fn
+}
+
+func notifyPutAway(conversationID string, archived bool) error {
+	putAwayMu.Lock()
+	fn := putAwayHook
+	putAwayMu.Unlock()
+	if fn == nil || strings.TrimSpace(conversationID) == "" {
+		return nil
+	}
+	return fn(context.Background(), conversationID, archived)
+}
+
 // CollabScope is the live selected snapshot or current folder descendants.
 type CollabScope struct {
 	Kind, FolderID string

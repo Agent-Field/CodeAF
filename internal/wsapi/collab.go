@@ -288,6 +288,40 @@ func (s *Service) PauseCoordination(ctx context.Context, coordinatorID string) e
 	return wrapStoreError(c.SetParticipantStatus(ctx, row.ID, ParticipantPaused))
 }
 
+// ArchiveCoordination puts a discussion away. It writes ParticipantArchived
+// on every roster row for that conversation, keeps deliveries and the
+// transcript, and does not pause a view that was merely closed. Bind/Resume
+// consult this bit and refuse to flush pending.
+func (s *Service) ArchiveCoordination(ctx context.Context, conversationID string) error {
+	return s.setDiscussionStatus(ctx, conversationID, ParticipantArchived)
+}
+
+// RestoreCoordination brings a put-away discussion back to active. Pause is a
+// different door; this is the undo of ArchiveCoordination.
+func (s *Service) RestoreCoordination(ctx context.Context, conversationID string) error {
+	return s.setDiscussionStatus(ctx, conversationID, ParticipantActive)
+}
+
+func (s *Service) setDiscussionStatus(ctx context.Context, conversationID, status string) error {
+	if err := s.ready(ctx); err != nil {
+		return err
+	}
+	c, err := s.requireCollabStore()
+	if err != nil {
+		return err
+	}
+	people, err := c.ListParticipants(ctx, conversationID)
+	if err != nil {
+		return wrapStoreError(err)
+	}
+	for _, row := range people {
+		if err := c.SetParticipantStatus(ctx, row.ID, status); err != nil {
+			return wrapStoreError(err)
+		}
+	}
+	return nil
+}
+
 func (s *Service) refuseIfPaused(ctx context.Context, coordinatorID string) error {
 	row, err := s.coordinatorRow(ctx, coordinatorID)
 	if err != nil {
