@@ -446,6 +446,30 @@ func TestSupervisorChecksAChildlessRootThatCompletedItselfInTheStore(t *testing.
 	}
 }
 
+func TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	const result = "the root wrote its own ending"
+	seat.actions["root"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		if _, err := store.Done(task.ID, task.ID, result, nil, nil); err != nil {
+			return run.Report{}, err
+		}
+		// Hold the worker return behind the supervisor pass that observes Done.
+		// The losing pass enters drain, whose cancellation releases this worker.
+		<-ctx.Done()
+		return run.Report{Result: result, Steps: 1}, nil
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+
+	if outcome := supervisor.Run(runContext(t)); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	checks := tasksWithRole(store, plandb.RoleCheck)
+	if len(checks) != 1 {
+		t.Fatalf("check tasks = %d, want exactly one for the root observed done before its worker returns", len(checks))
+	}
+}
+
 func TestSupervisorTurnsARootsDoesNotHoldFindingIntoAFix(t *testing.T) {
 	store := runOpenStore(t)
 	seat := newFakeSeat()
