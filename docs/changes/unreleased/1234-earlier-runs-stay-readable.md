@@ -6,6 +6,7 @@ surface: [chat, engine]
 invalidates:
   - "A second hand-off in one conversation renamed the first run's store to `plandb.db.1` and every read opened only the live store, so the first run's row stayed on the rail while its page, its parts and its notes could no longer be opened. Every read now takes the ended stores oldest first and then the live one, and a task of any run opens by the id the rail shows."
   - "An ended run is read, never steered. A note, pause, resume, cancel, amend or priority on one of its tasks answers `that task's run has ended` and changes nothing on disk. Only the run underway takes those."
+  - "A lock handed out through a returned closer was outside every law: the lock law asks for a defer in the function that locks, and these lock in one function and release in another. `internal/guard` now holds the two-half law for them: the helper never answers nil while locked, and its caller writes no return before the closer is deferred or called, except on the first result being nil."
 ---
 
 Seen on the real binary on 2026-09-19: after a second hand-off, the first
