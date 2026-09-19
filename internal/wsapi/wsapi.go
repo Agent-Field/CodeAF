@@ -17,6 +17,7 @@ package wsapi
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/workspace"
@@ -62,12 +63,14 @@ type RootView struct {
 // Service holds a store, an optional inventory, an optional discoverer, an
 // optional collaborator, an optional executor, and a clock.
 type Service struct {
-	store  store
-	inv    Inventory
-	disc   Discoverer
-	collab Collaborator
-	exec   Executor
-	now    func() time.Time
+	store      store
+	inv        Inventory
+	disc       Discoverer
+	collab     Collaborator
+	exec       Executor
+	now        func() time.Time
+	onExisting func()
+	chatRev    func(string) string
 }
 
 // Open wraps workspace.Open. A corrupt, foreign, or unreadable store is an
@@ -144,6 +147,24 @@ func (s *Service) SetExecutor(e Executor) {
 	s.exec = e
 }
 
+// SetReactiveOptIn is called after Organize existing chats successfully
+// enqueues. Wiring writes workspace.reactive=on; tests may leave it nil.
+func (s *Service) SetReactiveOptIn(fn func()) {
+	if s == nil {
+		return
+	}
+	s.onExisting = fn
+}
+
+// SetChatRevision supplies the latest source revision for Organize this chat.
+// Nil means the coalesce key is conversationID plus an empty revision.
+func (s *Service) SetChatRevision(fn func(string) string) {
+	if s == nil {
+		return
+	}
+	s.chatRev = fn
+}
+
 // Workspace is the real collections.db handle when Open bound *workspace.Store.
 // Tests that inject a fake get nil: job enqueue is then absent, not a second
 // SQLite pool on the same file.
@@ -161,6 +182,28 @@ func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error)
 		return Folder{}, err
 	}
 	created, err := s.store.Create(ctx, name)
+	if err != nil {
+		return Folder{}, wrapStoreError(err)
+	}
+	return s.folderFrom(ctx, created)
+}
+
+// CreateFolderIn is visible New folder. Empty parentID is Root. Non-empty
+// creates and nests in one store transaction so a parent miss cannot leave a
+// Root orphan. A fake membership-only store refuses rather than succeeding.
+func (s *Service) CreateFolderIn(ctx context.Context, name, parentID string) (Folder, error) {
+	if err := s.ready(ctx); err != nil {
+		return Folder{}, err
+	}
+	parentID = strings.TrimSpace(parentID)
+	if parentID == "" {
+		return s.CreateFolder(ctx, name)
+	}
+	inner, ok := s.store.(*workspace.Store)
+	if !ok || inner == nil {
+		return Folder{}, errOrganizeUnwired
+	}
+	created, err := inner.CreateIn(ctx, name, parentID)
 	if err != nil {
 		return Folder{}, wrapStoreError(err)
 	}

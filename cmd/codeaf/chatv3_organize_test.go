@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/embed"
@@ -15,7 +18,13 @@ import (
 )
 
 func TestEnqueueOrganizeCoalescesTheSameSourceRevision(t *testing.T) {
+	t.Cleanup(swapOrganizeWake(func() {}))
 	t.Setenv(home.EnvVar, t.TempDir())
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	if err := config.WriteWorkspaceReactive(profile, true); err != nil {
+		t.Fatal(err)
+	}
 	path := collectionsPath()
 	jobs, err := workspace.Open(path)
 	if err != nil {
@@ -290,5 +299,95 @@ func TestAMemoryOffProcessStillCarriesHistoryAndEnqueue(t *testing.T) {
 	}
 	if launch.Config.EnqueueOrganize == nil {
 		t.Fatal("a memory-off launch dropped observe_and_organize enqueue")
+	}
+}
+
+func TestEnqueueOrganizeIsSilentUntilReactiveOptIn(t *testing.T) {
+	t.Cleanup(swapOrganizeWake(func() {}))
+	t.Setenv(home.EnvVar, t.TempDir())
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	jobs, err := workspace.Open(collectionsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = jobs.Close() })
+	if _, err := jobs.Create(context.Background(), "Inbox"); err != nil {
+		t.Fatal(err)
+	}
+	enqueue := v3EnqueueOrganize(jobs)
+	enqueue("aaaaaaaaaaaaaaaa", "3:deadbeef")
+	_, err = jobs.LookupJob(context.Background(), workspace.JobOrganize, session.OrganizeCoalesceKey("aaaaaaaaaaaaaaaa", "3:deadbeef"))
+	if !errors.Is(err, workspace.ErrNotFound) {
+		t.Fatalf("reactive unset still enqueued: %v", err)
+	}
+}
+
+func TestEnqueueOrganizeKicksTheStandingPass(t *testing.T) {
+	kicked := make(chan struct{}, 1)
+	t.Cleanup(swapOrganizeWake(func() {
+		select {
+		case kicked <- struct{}{}:
+		default:
+		}
+	}))
+	t.Setenv(home.EnvVar, t.TempDir())
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	if err := config.WriteWorkspaceReactive(profile, true); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := workspace.Open(collectionsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = jobs.Close() })
+	if _, err := jobs.Create(context.Background(), "Inbox"); err != nil {
+		t.Fatal(err)
+	}
+	v3EnqueueOrganize(jobs)("aaaaaaaaaaaaaaaa", "3:deadbeef")
+	select {
+	case <-kicked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("enqueue did not kick the standing pass")
+	}
+}
+
+func TestOrganizeExistingOptsTheWorkspaceIntoReactive(t *testing.T) {
+	t.Cleanup(swapOrganizeWake(func() {}))
+	homeDir := isolateOrganizeHome(t)
+	svc := openV3FolderService()
+	if svc == nil {
+		t.Fatal("folders did not open")
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	if _, err := svc.OrganizeExistingChats(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	profile := os.Getenv(config.ProfileDirEnv)
+	if !config.ReactiveEnabledAt(profile) {
+		t.Fatalf("Organize existing chats left workspace.reactive off in %s (%s)", profile, homeDir)
+	}
+}
+
+func TestOrganizePassDefersWhenTheDailyRailIsSpent(t *testing.T) {
+	t.Cleanup(swapOrganizeWake(func() {}))
+	homeDir := isolateOrganizeHome(t)
+	t.Setenv("CODEAF_DAILY_BUDGET", "0.01")
+	writeOrganizeChat(t, organizeBillingID, "emailed download links for the receipt")
+	job := enqueueOrganizeJob(t, organizeBillingID, "1:cafe")
+	st, err := standing.Open(home.Join("v3", "standing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Append(standing.EmbedSpend(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := v3OrganizePassWith(os.Getenv(config.ProfileDirEnv), v3Organizer())(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	state, detail := readJobFinish(t, homeDir, job.ID)
+	if state != workspace.JobDeferred || detail != embed.LabelDelayed {
+		t.Fatalf("spent rail finished %s %s, want deferred delayed", state, detail)
 	}
 }

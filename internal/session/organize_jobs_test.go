@@ -115,6 +115,80 @@ func TestProcessOrganizeJobsCancelsWhenOrganizeIsOff(t *testing.T) {
 	}
 }
 
+func TestProcessOrganizeJobsRunsOrganizeThisChatWhenOrganizeIsOff(t *testing.T) {
+	jobs := &fakeOrganizeJobs{pending: []workspace.Job{{
+		ID: "j1", Type: workspace.JobOrganize, CauseID: workspace.OrganizeThisCause,
+		ChatID: "chat-a", CoalesceKey: OrganizeCoalesceKey("chat-a", "1:cafe"),
+	}}}
+	work := &fakeOrganizer{state: workspace.JobCompleted, detail: "no-action"}
+	if err := ProcessOrganizeJobs(context.Background(), jobs, work, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if len(work.saw) != 1 || work.saw[0].CauseID != workspace.OrganizeThisCause {
+		t.Fatalf("off cancelled Organize this chat: %+v", work.saw)
+	}
+}
+
+func TestProcessOrganizePassDefersWhenTheDailyRailIsBlocked(t *testing.T) {
+	jobs := &fakeOrganizeJobs{pending: []workspace.Job{{
+		ID: "j1", Type: workspace.JobOrganize, CoalesceKey: workspace.OrganizeExistingKey,
+	}}}
+	work := &fakeOrganizer{state: workspace.JobCompleted, detail: "add"}
+	err := ProcessOrganizePass(context.Background(), OrganizePass{
+		Jobs: jobs, Work: work, Enabled: true, Now: time.Now(), RailBlocked: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(work.saw) != 0 {
+		t.Fatal("a blocked rail still called RoleOrganize")
+	}
+	if len(jobs.finished) != 1 || jobs.finished[0].State != workspace.JobDeferred {
+		t.Fatalf("blocked rail finish %+v", jobs.finished)
+	}
+}
+
+func TestOrganizeKickRunsOnceThenOneFollowUp(t *testing.T) {
+	var kick OrganizeKick
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var n atomicInt
+	kick.Request(func() {
+		n.add(1)
+		close(started)
+		<-release
+	})
+	<-started
+	kick.Request(func() { n.add(1) })
+	kick.Request(func() { n.add(1) })
+	close(release)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if n.get() == 2 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("kick ran %d times, want one in-flight plus one follow-up", n.get())
+}
+
+type atomicInt struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (c *atomicInt) add(n int) {
+	c.mu.Lock()
+	c.n += n
+	c.mu.Unlock()
+}
+
+func (c *atomicInt) get() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.n
+}
+
 func TestProcessOrganizeJobsFailsAfterTooManyAttempts(t *testing.T) {
 	jobs := &fakeOrganizeJobs{pending: []workspace.Job{{ID: "j1", Attempt: organizeAttemptCap}}}
 	work := &fakeOrganizer{state: workspace.JobCompleted}
