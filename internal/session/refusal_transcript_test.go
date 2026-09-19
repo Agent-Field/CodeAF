@@ -124,8 +124,11 @@ func TestCommandLikePreservesQuotedArgumentSpacing(t *testing.T) {
 // the one program as text is an argument, and the check reaches the checker byte
 // for byte; a character the shell would ACT on is composition wherever it
 // stands, and that includes a dollar or a backtick inside double quotes, which
-// the shell still expands there. The fixtures are the owner's own refused checks
-// of 2026-09-18 beside the forms that must never start passing.
+// the shell still expands there. A backslash inside double quotes makes the
+// character after it text, so an escaped quote does not close the quotation and
+// a doubled backslash does not hide the quote that does. The fixtures are the
+// owner's own refused checks of 2026-09-18 and 2026-09-19 beside the forms that
+// must never start passing.
 func TestACheckIsOneCommandAsTheShellWouldReadItsQuotes(t *testing.T) {
 	const escapedBar = `ssh spark "cd /home/santosh/src/doe/peer/c341/profile/v3/projects/-home-santosh-src-trees-c341/9749744049d6cbce/trees/1 && git grep -n 'dialTimeout\|waitForHostQuietly\|func Dial' -- internal/enginehost"`
 	for _, one := range []string{
