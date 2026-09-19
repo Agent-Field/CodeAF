@@ -73,3 +73,15 @@ func TestAStoppedRootCrossesTheHostedWireAndDrawsStopped(t *testing.T) {
 	// hosted page has passed through the same page gesture a person uses.
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
 }
+
+func TestAStoppedPlanRowUsesTheOrdinaryStoppedGlyph(t *testing.T) {
+	plan := planStatus(session.PlanTaskRow{Status: "cancelled", Stopped: true})
+	ordinary := session.ProjectTask(session.TaskFacts{
+		State:   session.TaskFailed,
+		Stopped: true,
+		Ending:  session.TaskEndingStopped,
+	})
+	if got, want := tierSlot(plan), tierSlot(ordinary); got != want {
+		t.Fatalf("stopped plan glyph slot = %d, ordinary stopped glyph slot = %d", got, want)
+	}
+}
