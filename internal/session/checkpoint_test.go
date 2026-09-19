@@ -720,6 +720,13 @@ func checkpointAgent(t *testing.T, completer Completer, mutate ...func(*Config))
 	// the mark is then long enough whatever else the machine is doing, and the
 	// tests here submit through [watchedContext] so the watch reaches the turn.
 	watchReadings(t, agent)
+	// AND A TURN THE AGENT WAKES BY ITSELF CARRIES THE SAME WATCH. Nobody submits
+	// a woken turn, so [watchedContext] never reached it: its readings were not
+	// counted, its script was never held, and on a loaded machine the mark's
+	// reading landed after the script had run out. The turn then ended in words,
+	// nothing was handed over, and the test spent its whole patience on a node
+	// that could not come (ten of four hundred loaded runs, none quiet).
+	agent.wokenTurnBase = func() context.Context { return watchedContext(agent) }
 	return agent
 }
 
@@ -2959,6 +2966,55 @@ func TestAWokenTurnPastTheCeilingMovesWorkToATask(t *testing.T) {
 	if !strings.Contains(node.spec.acceptance, "port the whole language server") {
 		t.Errorf("the handed-over work is finished against %q, want the person's own words", node.spec.acceptance)
 	}
+}
+
+// AND THE HANDOVER DOES NOT DEPEND ON HOW FAST THE READING LANDS. This is the
+// loaded machine's failure, forced on a quiet one: the mark's reading is made to
+// take far longer than the whole script's rounds cost. The script is held while
+// a reading beside the woken turn is in flight, which is the order a real turn
+// has, so the handover still fires. Before the woken turn carried the fixture's
+// watch, this ordering ended the turn in words with nothing admitted.
+func TestAWokenTurnHandsOverHoweverLateItsReadingLands(t *testing.T) {
+	inner := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
+		checkpointChainSketch, "a draft", "a brief somebody could work from")}
+	answerTheReadingsOffTheQueue(inner)
+	late := &lateReadingCompleter{inner: inner, wait: 50 * time.Millisecond}
+	agent := checkpointAgent(t, late)
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+	agent.mu.Lock()
+	agent.personAsk = "port the whole language server and get every golden test passing"
+	agent.mu.Unlock()
+
+	if !agent.enqueueNote(wakeNote("task 1 is done · the first piece landed")) {
+		t.Fatal("the wake note was not taken")
+	}
+	ran.await(t)
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d tasks were admitted with a late reading, want exactly one", count)
+	}
+}
+
+// lateReadingCompleter answers the mark's reading (the one request that carries
+// no belt and asks for the sketch) only after a wait, and everything else as the
+// scripted completer under it would.
+type lateReadingCompleter struct {
+	inner *scriptedCompleter
+	wait  time.Duration
+}
+
+func (c *lateReadingCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
+	if len(request.Tools) == 0 && askedForSketch(messages) {
+		select {
+		case <-time.After(c.wait):
+		case <-ctx.Done():
+		}
+	}
+	return c.inner.CompleteWithMessages(ctx, messages, options...)
 }
 
 // ── a turn ends; the ask does not ───────────────────────────────────────────
