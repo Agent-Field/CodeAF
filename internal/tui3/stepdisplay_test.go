@@ -173,7 +173,7 @@ func TestTaskPageDrawsObservationHeadOnlyWhenOmittedPartsCannotWriteIt(t *testin
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			row := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Status: "done", Folder: copy}
-			step := session.PlanStep{Step: 1, Command: test.command, Parts: spannedParts(t, test.command, test.parts...), Observation: test.head, ObservationHeadAttributable: test.wantHead}
+			step := session.PlanStep{Step: 1, Command: test.command, Parts: spannedParts(t, test.command, test.parts...), Observation: test.head, ObservationHeadWithheld: !test.wantHead}
 			a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{"t-alpha": {Row: row, Folder: copy, Steps: []session.PlanStep{step}}})
 			if !openTaskPlaceWithRows(a) {
 				t.Fatal("task place did not open")
