@@ -28,9 +28,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -187,9 +189,130 @@ func v3OrganizePassWith(profileDir string, work session.Organizer) func(context.
 		if err != nil {
 			return nil
 		}
-		defer store.Close()
+		follow := false
+		defer func() {
+			_ = store.Close()
+			if follow {
+				kickOrganizePass()
+			}
+		}()
 		recoverUnboundWork(ctx, store)
-		return session.ProcessOrganizeJobs(ctx, store, work, config.OrganizeEnabledAt(profileDir), time.Now())
+		door := &organizeFinishWatch{Store: store}
+		err = session.ProcessOrganizePass(ctx, session.OrganizePass{
+			Jobs:        door,
+			Work:        work,
+			Enabled:     config.OrganizeEnabledAt(profileDir),
+			Now:         time.Now(),
+			RailBlocked: v3OrganizeRailBlocked(profileDir),
+		})
+		follow = door.kick || continueDeferredSurvey(ctx, store)
+		return err
+	}
+}
+
+// organizeFinishWatch notes a membership commit so the pass can kick the
+// standing lock again without waiting five minutes.
+type organizeFinishWatch struct {
+	*workspace.Store
+	kick bool
+}
+
+func (w *organizeFinishWatch) FinishJob(ctx context.Context, id, fence, state, detail string) error {
+	err := w.Store.FinishJob(ctx, id, fence, state, detail)
+	if err == nil && state == workspace.JobCompleted && organizeMembershipKind(detail) {
+		w.kick = true
+	}
+	return err
+}
+
+func organizeMembershipKind(detail string) bool {
+	switch strings.TrimSpace(detail) {
+	case session.PlanAdd, session.PlanRemove, session.PlanMove, session.PlanCreateFolder:
+		return true
+	}
+	return false
+}
+
+func continueDeferredSurvey(ctx context.Context, store *workspace.Store) bool {
+	if store == nil {
+		return false
+	}
+	job, err := store.LookupJob(ctx, workspace.JobOrganize, workspace.OrganizeExistingKey)
+	if err != nil || job.State != workspace.JobDeferred || strings.TrimSpace(job.Cursor) == "" {
+		return false
+	}
+	_, err = store.EnqueueJob(ctx, workspace.Job{
+		Type:        workspace.JobOrganize,
+		CoalesceKey: workspace.OrganizeExistingKey,
+	})
+	return err == nil
+}
+
+func v3OrganizeRailBlocked(profileDir string) bool {
+	rail := v3StandingDailyRail(profileDir)
+	if rail <= 0 {
+		return false
+	}
+	st, err := standing.Open(v3StandingRoot())
+	if err != nil {
+		return false
+	}
+	all, err := st.Today("", time.Now())
+	if err != nil {
+		return false
+	}
+	return all.USD >= rail
+}
+
+var organizeKick session.OrganizeKick
+
+// organizeWakeFn is the standing pass kick. Nil means production
+// [runStandingOrganizeKick]. Tests replace it so enqueue proof does not take
+// the real tick lock. The function value is not initialized to the production
+// kick: that cycle would run through v3StandingTicker at package init.
+var organizeWakeFn func()
+
+func kickOrganizePass() {
+	fn := organizeWakeFn
+	if fn == nil {
+		fn = runStandingOrganizeKick
+	}
+	organizeKick.Request(fn)
+}
+
+func swapOrganizeWake(fn func()) func() {
+	prev := organizeWakeFn
+	if fn == nil {
+		fn = func() {}
+	}
+	organizeWakeFn = fn
+	return func() { organizeWakeFn = prev }
+}
+
+// runStandingOrganizeKick is one v3OrganizePass through the existing standing
+// lock. ErrHeld retries until TickWindow; the five-minute ticker stays the
+// crash fallback.
+func runStandingOrganizeKick() {
+	store, err := standing.Open(v3StandingRoot())
+	if err != nil {
+		return
+	}
+	deadline := time.Now().Add(standing.TickWindow)
+	for {
+		if time.Now().After(deadline) {
+			return
+		}
+		ticker, err := v3StandingTicker(store)
+		if err != nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Until(deadline))
+		_, err = ticker.Tick(ctx)
+		cancel()
+		if err == nil || !errors.Is(err, standing.ErrHeld) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

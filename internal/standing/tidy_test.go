@@ -102,3 +102,21 @@ func TestAFailedTidyIsCountedAndNoted(t *testing.T) {
 		t.Fatalf("the pass is %+v", pass)
 	}
 }
+
+func TestEmbedSpendCountsAgainstTheRailAndNotFired(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	if err := store.Append(EmbedSpend(0.04)); err != nil {
+		t.Fatal(err)
+	}
+	spend, err := store.Today("", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spend.USD != 0.04 {
+		t.Fatalf("embed spend %v, want 0.04", spend.USD)
+	}
+	if spend.Fired != 0 {
+		t.Fatalf("RoleEmbed counted as %d firings", spend.Fired)
+	}
+}

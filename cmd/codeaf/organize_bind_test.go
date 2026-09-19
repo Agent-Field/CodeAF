@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -357,6 +358,100 @@ func TestExplicitSurveyKeepsUpgradePlacements(t *testing.T) {
 	}
 	assertChatInFolder(t, billing.ID, organizeBillingID)
 	assertFolderNamed(t, "Billing")
+}
+
+func TestSurveyCursorAdvancesPastEightNoActionChats(t *testing.T) {
+	homeDir := isolateOrganizeHome(t)
+	ids := make([]string, 9)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("aaaaaaaaaaaaaa%02d", i)
+		writeOrganizeChat(t, ids[i], "hi")
+	}
+	live := liveOrganizeEmbedder()
+	svc, _ := openV3FolderServiceWith(live)
+	if svc == nil {
+		t.Fatal("folders did not open")
+	}
+	root, err := svc.RootSnapshot(context.Background())
+	if err != nil || len(root.Unfiled) != 9 {
+		t.Fatalf("unfiled %+v, %v", root.Unfiled, err)
+	}
+	unfiled := make([]string, 0, 9)
+	for _, place := range root.Unfiled {
+		unfiled = append(unfiled, place.Ref.ID)
+	}
+	_ = svc.Close()
+
+	job := enqueueExistingOrganizeJob(t)
+	var saw []string
+	work := newDoorOrganizer(live, func(_ context.Context, req session.OrganizeRequest) (session.OrganizePlan, error) {
+		saw = append(saw, req.ChatID)
+		return session.OrganizePlan{Kind: session.PlanNoAction, Model: "organize-test"}, nil
+	})
+	runOrganizeJob(t, work)
+	if len(saw) != organizeSurveyCap {
+		t.Fatalf("first lease processed %d chats, want %d", len(saw), organizeSurveyCap)
+	}
+	jobs, err := workspace.Open(collectionsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = jobs.Close() })
+	got, err := jobs.LookupJob(context.Background(), workspace.JobOrganize, workspace.OrganizeExistingKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != workspace.JobDeferred || got.Cursor != unfiled[organizeSurveyCap] {
+		t.Fatalf("cursor %+v (home %s), want deferred at %s", got, homeDir, unfiled[organizeSurveyCap])
+	}
+	if _, err := jobs.EnqueueJob(context.Background(), workspace.Job{
+		Type:        workspace.JobOrganize,
+		CoalesceKey: workspace.OrganizeExistingKey,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = jobs.Close()
+	runOrganizeJob(t, work)
+	if len(saw) != 9 {
+		t.Fatalf("second lease left %d chats processed, want 9", len(saw))
+	}
+	state, _ := readJobFinish(t, homeDir, job.ID)
+	if state != workspace.JobCompleted {
+		t.Fatalf("survey after the cursor finished %s", state)
+	}
+}
+
+func TestGreetingSurveyDoesNotCreateAFolder(t *testing.T) {
+	homeDir := isolateOrganizeHome(t)
+	writeOrganizeChat(t, organizeBillingID, "hi")
+	live := liveOrganizeEmbedder()
+	svc, _ := openV3FolderServiceWith(live)
+	if svc == nil {
+		t.Fatal("folders did not open")
+	}
+	_ = svc.Close()
+	job := enqueueExistingOrganizeJob(t)
+	work := newDoorOrganizer(live, createBillingPlan(organizeBillingID))
+	runOrganizeJob(t, work)
+	state, detail := readJobFinish(t, homeDir, job.ID)
+	if state != workspace.JobCompleted || detail != wsapi.PlanNoAction {
+		t.Fatalf("greeting survey finished %s %s, want completed no-action", state, detail)
+	}
+	assertNoFolders(t)
+}
+
+func TestSurveyStartIndexDoesNotRestartWhenTheCursorIsMissing(t *testing.T) {
+	isolateOrganizeHome(t)
+	ids := []string{"bbbb", "cccc", "dddd"}
+	if got := surveyStartIndex(ids, ""); got != 0 {
+		t.Fatalf("empty cursor started at %d", got)
+	}
+	if got := surveyStartIndex(ids, "cccc"); got != 1 {
+		t.Fatalf("cccc started at %d", got)
+	}
+	if got := surveyStartIndex(ids, "missing"); got != len(ids) {
+		t.Fatalf("missing cursor restarted at %d, want end", got)
+	}
 }
 
 func enqueueBareOrganizeJob(t *testing.T, chatID, rev string) workspace.Job {

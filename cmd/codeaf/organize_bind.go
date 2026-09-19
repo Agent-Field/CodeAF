@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/embed"
@@ -39,7 +40,7 @@ func v3TickEmbedder() embed.Embedder {
 	if err != nil {
 		return nil
 	}
-	return v3Embedder(settings, nil, nil)
+	return v3EmbedderAccount(settings, nil, nil, v3StandingEmbedAccount())
 }
 
 func (o *doorOrganizer) Organize(ctx context.Context, job workspace.Job) (string, string, error) {
@@ -75,23 +76,34 @@ const organizeSurveyCap = 8
 
 func (o *doorOrganizer) surveyExisting(ctx context.Context, svc *wsapi.Service, job workspace.Job) (string, string, error) {
 	ids := surveyChatIDs(ctx, svc)
-	if len(ids) == 0 {
+	start := surveyStartIndex(ids, job.Cursor)
+	if start >= len(ids) {
+		persistSurveyCursor(ctx, svc, job, "")
 		return workspace.JobCompleted, wsapi.PlanNoAction, nil
 	}
 	kind := wsapi.PlanNoAction
-	for i, id := range ids {
-		if i >= organizeSurveyCap {
+	processed := 0
+	for i := start; i < len(ids); i++ {
+		if processed >= organizeSurveyCap {
+			persistSurveyCursor(ctx, svc, job, ids[i])
 			return workspace.JobDeferred, embed.LabelDelayed, nil
 		}
 		one := job
-		one.ChatID = id
+		one.ChatID = ids[i]
 		state, detail, err := o.applyChat(ctx, svc, one, true)
 		if err != nil || state == workspace.JobDeferred || state == workspace.JobFailed {
+			persistSurveyCursor(ctx, svc, job, ids[i])
 			return workspace.JobDeferred, embed.LabelDelayed, nil
 		}
 		if state == workspace.JobCompleted && detail != "" && detail != wsapi.PlanNoAction {
 			kind = detail
 		}
+		processed++
+		next := ""
+		if i+1 < len(ids) {
+			next = ids[i+1]
+		}
+		persistSurveyCursor(ctx, svc, job, next)
 	}
 	return workspace.JobCompleted, kind, nil
 }
@@ -111,6 +123,48 @@ func surveyChatIDs(ctx context.Context, svc *wsapi.Service) []string {
 		}
 	}
 	return ids
+}
+
+// surveyStartIndex is the first unfiled id at or after the checkpoint.
+// A missing cursor id does not restart Unfiled[0..]; it continues in world
+// order so eight no-action chats cannot pin the survey forever.
+func surveyStartIndex(ids []string, cursor string) int {
+	cursor = strings.TrimSpace(cursor)
+	if cursor == "" {
+		return 0
+	}
+	for i, id := range ids {
+		if id == cursor {
+			return i
+		}
+	}
+	past := false
+	for _, id := range (folderWorld{}).ConversationIDs() {
+		if id == cursor {
+			past = true
+			continue
+		}
+		if !past {
+			continue
+		}
+		for i, unfiled := range ids {
+			if unfiled == id {
+				return i
+			}
+		}
+	}
+	return len(ids)
+}
+
+func persistSurveyCursor(ctx context.Context, svc *wsapi.Service, job workspace.Job, cursor string) {
+	if svc == nil || strings.TrimSpace(job.ID) == "" || strings.TrimSpace(job.Fence) == "" {
+		return
+	}
+	store := svc.Workspace()
+	if store == nil {
+		return
+	}
+	_ = store.SetJobCursor(ctx, job.ID, job.Fence, cursor)
 }
 
 func (o *doorOrganizer) applyChat(ctx context.Context, svc *wsapi.Service, job workspace.Job, survey bool) (string, string, error) {
@@ -482,10 +536,40 @@ func preparePlan(ctx context.Context, svc *wsapi.Service, plan wsapi.ActionPlan,
 	if !allowCreate {
 		plan = refuseEmptyRootCreate(ctx, svc, plan)
 	}
+	plan = refuseGreetingOrTiny(plan, chatQuery(plan.ChatID))
 	for i := range plan.Actions {
 		plan.Actions[i] = fillOneRevision(ctx, svc, plan.Actions[i], plan.ChatID)
 	}
 	return plan
+}
+
+// refuseGreetingOrTiny keeps a hello or an empty line from CreateFolder.
+// That is success without a graph write, on the survey and the automatic path.
+func refuseGreetingOrTiny(plan wsapi.ActionPlan, query string) wsapi.ActionPlan {
+	if !isGreetingOrTiny(query) {
+		return plan
+	}
+	plan.Kind = wsapi.PlanNoAction
+	plan.Actions = nil
+	return plan
+}
+
+func isGreetingOrTiny(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return true
+	}
+	n := utf8.RuneCountInString(text)
+	if n > 24 {
+		return false
+	}
+	switch strings.Trim(strings.ToLower(text), "!?., ") {
+	case "hi", "hello", "hey", "yo", "thanks", "thank you", "ok", "okay",
+		"yes", "no", "hi there", "hello there", "hey there", "good morning",
+		"good night", "gm", "gn":
+		return true
+	}
+	return n <= 4 && !strings.ContainsAny(text, `/\{}=:@`)
 }
 
 func refuseEmptyRootCreate(ctx context.Context, svc *wsapi.Service, plan wsapi.ActionPlan) wsapi.ActionPlan {

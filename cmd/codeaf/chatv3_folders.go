@@ -8,7 +8,9 @@ package main
 
 import (
 	"context"
+	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/embed"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -75,9 +77,37 @@ func openV3FolderServiceWith(embedder embed.Embedder) (*wsapi.Service, *discover
 	if adapter != nil {
 		svc.SetDiscoverer(adapter)
 	}
+	svc.SetReactiveOptIn(v3OptInReactive)
+	svc.SetChatRevision(v3ChatRevision)
 	bindV3Collab(svc)
 	bindV3Exec(svc)
 	return svc, adapter
+}
+
+func v3OptInReactive() {
+	settings, err := config.LoadKeyless()
+	if err != nil {
+		return
+	}
+	_ = config.WriteWorkspaceReactive(settings.ProfileDir, true)
+}
+
+func v3ChatRevision(chatID string) string {
+	for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
+		if row.ID != chatID {
+			continue
+		}
+		entries := wholeTranscript(session.ReadTranscript(row.Transcript))
+		for i := len(entries) - 1; i >= 0; i-- {
+			if entries[i].Role != "user" {
+				continue
+			}
+			if text := strings.TrimSpace(entries[i].Text); text != "" {
+				return session.OrganizeRevision(i+1, text)
+			}
+		}
+	}
+	return ""
 }
 
 func openDiscoveryAdapter(embedder embed.Embedder) *discoveryAdapter {
@@ -132,18 +162,38 @@ func surfaceFolders(folders session.Folders) tui3.Folders {
 // means collections did not open, so the callback itself is absent rather
 // than a writer that fails every time. CoalesceKey is chat id plus the
 // source revision so two enqueues of the same line stay one pending row.
+// Automatic graph writes run only when both workspace.organize and
+// workspace.reactive are on; the visible survey opts reactive in.
 func v3EnqueueOrganize(jobs *workspace.Store) func(string, string) {
 	if jobs == nil {
 		return nil
 	}
 	return func(chatID, sourceRev string) {
-		_, _ = jobs.EnqueueJob(context.Background(), workspace.Job{
+		profile := v3ProfileDir()
+		if !config.OrganizeEnabledAt(profile) || !config.ReactiveEnabledAt(profile) {
+			return
+		}
+		key := session.OrganizeCoalesceKey(chatID, sourceRev)
+		_, err := jobs.EnqueueJob(context.Background(), workspace.Job{
 			Type:        workspace.JobOrganize,
 			ChatID:      chatID,
 			SourceRev:   sourceRev,
-			CoalesceKey: session.OrganizeCoalesceKey(chatID, sourceRev),
+			CoalesceKey: key,
 		})
+		if err != nil {
+			return
+		}
+		_ = jobs.SupersedePendingChatJobs(context.Background(), chatID, key)
+		kickOrganizePass()
 	}
+}
+
+func v3ProfileDir() string {
+	settings, err := config.LoadKeyless()
+	if err != nil {
+		return ""
+	}
+	return settings.ProfileDir
 }
 
 // folderWorld is the conversation inventory wsapi.SetInventory takes: ids and

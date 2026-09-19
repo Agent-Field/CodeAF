@@ -156,3 +156,81 @@ func TestEmptyStatusIsNotDone(t *testing.T) {
 		t.Fatalf("no job must be empty, not done: %+v", view)
 	}
 }
+
+func TestOrganizeThisChatCoalescesAndDoesNotOptIn(t *testing.T) {
+	ctx := context.Background()
+	svc := openSQLiteService(t)
+	opted := false
+	svc.SetReactiveOptIn(func() { opted = true })
+	svc.SetChatRevision(func(string) string { return "3:deadbeef" })
+	first, err := svc.OrganizeThisChat(ctx, "aaaaaaaaaaaaaaaa")
+	if err != nil || first.JobID == "" || first.State != organizeQueued {
+		t.Fatalf("OrganizeThisChat: %+v, %v", first, err)
+	}
+	second, err := svc.OrganizeThisChat(ctx, "aaaaaaaaaaaaaaaa")
+	if err != nil || second.JobID != first.JobID {
+		t.Fatalf("coalesce: %+v vs %s, %v", second, first.JobID, err)
+	}
+	if opted {
+		t.Fatal("Organize this chat opted the workspace into reactive")
+	}
+	job, err := svc.Workspace().LookupJob(ctx, workspace.JobOrganize, workspace.OrganizeChatKey("aaaaaaaaaaaaaaaa", "3:deadbeef"))
+	if err != nil || job.CauseID != workspace.OrganizeThisCause {
+		t.Fatalf("cause %+v, %v", job, err)
+	}
+}
+
+func TestOrganizeExistingOptsInWhenWired(t *testing.T) {
+	ctx := context.Background()
+	svc := openSQLiteService(t)
+	opted := 0
+	svc.SetReactiveOptIn(func() { opted++ })
+	if _, err := svc.OrganizeExistingChats(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if opted != 1 {
+		t.Fatalf("opt-in count %d, want 1", opted)
+	}
+}
+
+func TestCreateFolderInNestsWithoutARootOrphan(t *testing.T) {
+	ctx := context.Background()
+	svc := openSQLiteService(t)
+	billing, err := svc.CreateFolder(ctx, "Billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts, err := svc.CreateFolderIn(ctx, "Receipts", billing.ID)
+	if err != nil || receipts.Name != "Receipts" || len(receipts.ParentIDs) != 1 || receipts.ParentIDs[0] != billing.ID {
+		t.Fatalf("CreateFolderIn: %+v, %v", receipts, err)
+	}
+	root, err := svc.RootSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range root.Folders {
+		if folder.ID == receipts.ID {
+			t.Fatalf("nested folder appeared at Root: %+v", root.Folders)
+		}
+	}
+	_, err = svc.CreateFolderIn(ctx, "Orphan", "missing")
+	if err == nil {
+		t.Fatal("missing parent succeeded")
+	}
+	inbox, err := svc.CreateFolderIn(ctx, "Inbox", "")
+	if err != nil || inbox.Name != "Inbox" || len(inbox.ParentIDs) != 0 {
+		t.Fatalf("empty parent should be Root: %+v, %v", inbox, err)
+	}
+}
+
+func TestFakeStoreRefusesCreateFolderInAndOrganizeThisChat(t *testing.T) {
+	svc := testService(t, nil)
+	_, err := svc.CreateFolderIn(context.Background(), "Receipts", "billing")
+	if err == nil || !errors.Is(err, errOrganizeUnwired) {
+		t.Fatalf("fake CreateFolderIn: %v", err)
+	}
+	view, err := svc.OrganizeThisChat(context.Background(), "aaaaaaaaaaaaaaaa")
+	if err == nil || !errors.Is(err, errOrganizeUnwired) {
+		t.Fatalf("fake OrganizeThisChat: %+v, %v", view, err)
+	}
+}
