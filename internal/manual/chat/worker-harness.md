@@ -64,6 +64,12 @@ shows, in order, each section left out when nothing is behind it:
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
 
+## Can I still read a task from an earlier run?
+
+Yes. Every run this conversation has made stays on the rail, oldest first. You
+can open any task from an earlier run and read its description, notes, steps and
+spend. An ended run is there to read, not to steer.
+
 ## Why is this task indented under that one?
 
 The pane draws the run's **plan as a tree, not a flat list**. A task sits under the
