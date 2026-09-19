@@ -54,7 +54,8 @@ type Provenance struct {
 }
 
 type MembershipEvent struct {
-    CollectionID, KindKind string // Kind is workspace.Kind
+    CollectionID string
+    Kind         Kind
     RefID, SessionID, Action, Origin, Reason, Actor, Evidence, At, IdempotencyKey string
 }
 
