@@ -114,7 +114,10 @@ func TestCommandLikePreservesQuotedArgumentSpacing(t *testing.T) {
 	if !ok || got != check {
 		t.Fatalf("commandLike(%q) = %q, %v", check, got, ok)
 	}
-	const escapedBar = `ssh spark "cd /home/santosh/src/doe/peer/c341/profile/v3/projects/-home-santosh-src-trees-c341/9749744049d6cbce/trees/1 && git grep -n 'dialTimeout\|waitForHostQuietly\|func Dial' -- internal/enginehost"`
+	// THE SAME SHAPE UNDER THE LENGTH LAW. commandLike also bounds how long a
+	// command may be, which is a different law from the one read here, so this
+	// door is fed the measured check's shape with a shorter folder in it.
+	const escapedBar = `ssh spark "cd /home/santosh/src/trees/c341 && git grep -n 'dialTimeout\|waitForHostQuietly\|func Dial' -- internal/enginehost"`
 	if got, ok := commandLike(escapedBar); !ok || got != escapedBar {
 		t.Fatalf("commandLike(%q) = %q, %v; want exact bytes admitted", escapedBar, got, ok)
 	}
@@ -130,9 +133,12 @@ func TestCommandLikePreservesQuotedArgumentSpacing(t *testing.T) {
 // owner's own refused checks of 2026-09-18 and 2026-09-19 beside the forms that
 // must never start passing.
 func TestACheckIsOneCommandAsTheShellWouldReadItsQuotes(t *testing.T) {
-	const escapedBar = `ssh spark "cd /home/santosh/src/doe/peer/c341/profile/v3/projects/-home-santosh-src-trees-c341/9749744049d6cbce/trees/1 && git grep -n 'dialTimeout\|waitForHostQuietly\|func Dial' -- internal/enginehost"`
+	// The declared-check list and the door built from it both stand behind
+	// commandLike's length law, which is a different law from the one read here,
+	// so they are fed the measured check's shape with a shorter folder in it.
+	const escapedBarShort = `ssh spark "cd /home/santosh/src/trees/c341 && git grep -n 'dialTimeout\|waitForHostQuietly\|func Dial' -- internal/enginehost"`
 	for _, one := range []string{
-		escapedBar,
+		escapedBarShort,
 		`grep -iE 'handoff|vault|wall' /tmp/wisp-ideation/walls.md`,
 		`grep -c '^## (one)  {two}; $three' notes.md`,
 		`./count.sh "a | b ; c  (d)" report.txt`,
@@ -143,9 +149,9 @@ func TestACheckIsOneCommandAsTheShellWouldReadItsQuotes(t *testing.T) {
 			t.Errorf("%s: checks = %q, refusal = %q; want it kept byte for byte", one, got, refusal)
 		}
 	}
-	door := auditDoorFor(declaringNode(escapedBar), standingOn(""))
-	if refusal, ok := doorRefusal(escapedBar, door); !ok {
-		t.Fatalf("the runtime audit door refused %q: %s", escapedBar, refusal)
+	door := auditDoorFor(declaringNode(escapedBarShort), standingOn(""))
+	if refusal, ok := doorRefusal(escapedBarShort, door); !ok {
+		t.Fatalf("the runtime audit door refused %q: %s", escapedBarShort, refusal)
 	}
 	for said, offending := range map[string]string{
 		`test -s walls.md && grep -c '^## ' walls.md | awk '$1>=6'`: `"&"`,

@@ -221,11 +221,8 @@ const (
 	auditEvidenceLines = 3
 
 	// auditCommandLimit keeps a refused command readable when it is handed back
-	// to the auditor as a refusal, AND IT IS THE LONGEST COMMAND [commandLike]
-	// ADMITS, so it bounds a declared check as well. It was 200 until a measured
-	// check of 203 bytes, one command naming one absolute folder, was turned away
-	// by the length alone in a sentence that names no cause (2026-09-19).
-	auditCommandLimit = 256
+	// to the auditor as a refusal.
+	auditCommandLimit = 200
 
 	// auditReaderHint rides every refusal and the bash description itself.
 	//
