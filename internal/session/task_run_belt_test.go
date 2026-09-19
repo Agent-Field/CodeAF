@@ -390,6 +390,13 @@ func TestStartTaskBashBeltJoinsTheLiveRun(t *testing.T) {
 	}
 	close(double.release)
 	beltRunWaitFor(t, "the run's landing", func() bool { return conversationNotes(agent, "landed on ") == 1 })
+	// THE JOINED HAND-OFF'S ROW ENDS WITH THE RUN. It was published running when
+	// it joined and nothing published its ending, so it span beside a finished
+	// run for as long as the window stayed open.
+	beltRunWaitFor(t, "the joined row to settle", func() bool {
+		rows := agent.graph().runRows(second)
+		return len(rows) == 1 && rows[0].State != TaskRunning && !rows[0].EndedAt.IsZero()
+	})
 }
 
 // TestStartTaskWithoutBeltKeepsTheLegacyRoad: with the switch unset the door is
@@ -782,6 +789,12 @@ func TestABeltRunsWorkComesHomeWhenItEnds(t *testing.T) {
 	if !strings.Contains(said, "its work is in "+canonicalPath(conversation)+" on ") {
 		t.Fatalf("the run's page does not say where its work is now:\n%s", said)
 	}
+	// AND THE CARD SAYS MERGED, on the person's own branch. It read `branch kept`
+	// over work that was already in their folder.
+	rows := agent.graph().runRows(71)
+	if len(rows) == 0 || rows[0].Merge != mergeMerged || rows[0].Branch != currentBranch(conversation) {
+		t.Fatalf("the run's row says %+v, want merged on %s", rows, currentBranch(conversation))
+	}
 }
 
 // A HAND-OFF AFTER A RUN HAS ENDED IS A RUN OF ITS OWN, IN A COPY OF ITS OWN.
@@ -929,6 +942,10 @@ func TestABeltRunWhoseWorkConflictsKeepsItsBranchAndSaysSo(t *testing.T) {
 	}
 	if out, _ := git(conversation, "branch", "--list", "task/*"); strings.TrimSpace(out) == "" {
 		t.Fatal("the kept branch is not in the person's repository")
+	}
+	rows := agent.graph().runRows(73)
+	if len(rows) == 0 || rows[0].Merge == mergeMerged || !strings.HasPrefix(rows[0].Branch, "task/") {
+		t.Fatalf("the run's row says %+v, want the kept branch and never merged", rows)
 	}
 }
 
