@@ -26,10 +26,11 @@ package session
 //     read the message as authority all follow [messageOrigin].
 //
 // It is local. [conversationID] carries a session because a task number is
-// minted per session and repeats across them; a later cross-session router would
-// resolve one to a mailbox the same way this file resolves the local ones, and
-// would additionally need authenticated authority, admission policy and replay
-// protection. None of that is here or implied: no discovery, no registry, no bus.
+// minted per session and repeats across them. Cross-session traffic does not
+// go through this file: it goes through [CollabRouter] / [Config.Collab]
+// (collab.go), which the host binds the way it binds [RegisterRunEngine].
+// This mailbox is still not a bus. No discovery, no registry, no fan-out
+// across sessions lives here.
 //
 // AND A DELIVERY STILL CARRIES NO ASSIGNMENT REVISION: accepted means a live
 // reader has the words, never that the work has been re-aimed. What closed the
