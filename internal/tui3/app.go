@@ -5629,6 +5629,10 @@ func (a *app) settle() tea.Cmd {
 	// (PERF.md's connection laws).
 	a.refreshUsage()
 	a.measureContext()
+	// AND COORDINATION CHROME IS RE-READ HERE, not only on the home beat: a
+	// management chat that stayed on the conversation after deliver/invite
+	// would otherwise keep an empty memo and paint nothing (collabview.go).
+	a.refreshCollabChrome()
 	// AND THE EFFORT TABLE IS REFRESHED ON THE SAME BEAT, which is what carries a
 	// rung dialled in ANOTHER window on the same hosted conversation across to
 	// this one (reasoninglevel.go states the bound). It costs nothing over a
