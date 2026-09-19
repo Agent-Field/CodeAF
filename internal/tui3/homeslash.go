@@ -202,8 +202,8 @@ func homeFate(word, rest string) string {
 	case "folder":
 		return fateTargetFolder
 	case "folders":
-		// Bare it focuses the home folders panel; with words it creates, files,
-		// renames or starts a chat there. It is never /folder's fate.
+		// Bare it opens the Folders place; with words it creates, files,
+		// renames, organizes or starts a chat there. It is never /folder's fate.
 		if rest == "" {
 			return fatePlace
 		}
