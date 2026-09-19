@@ -30,6 +30,10 @@ var (
 	// not corruption and not a refusal: another command is still writing, so
 	// this command left the collections database unchanged and can be retried.
 	ErrBusy = errors.New("the collections database is busy being written by something else")
+	// ErrConflict is a stale-write refusal. It wraps ErrInvalid so callers that
+	// already handle an invalid request still see one, and the sentence names
+	// the revision so a person can tell a conflict from a malformed id.
+	ErrConflict = fmt.Errorf("%w: collection revision does not match", ErrInvalid)
 )
 
 // Ref preserves the address used by the existing record owner. TASK NUMBERS
@@ -42,8 +46,13 @@ type Ref struct {
 }
 
 type Collection struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Purpose   string `json:"purpose,omitempty"`
+	Lifecycle string `json:"lifecycle,omitempty"`
+	Revision  int    `json:"revision,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // Validate checks the reference shape without asking an execution owner to
