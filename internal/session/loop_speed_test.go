@@ -491,6 +491,7 @@ func TestASlowListenerNeverHoldsTheTurnThatIsTellingIt(t *testing.T) {
 			"want at most %dms — a phase was posted down the turn's own stack",
 			pace.StepGapMS, paceLawBudget.Milliseconds())
 	}
+	phaseDesk.settled()
 	// AND THE LISTENER REALLY WAS TOLD. A turn that posted nothing would pass this
 	// law by saying nothing, which is the other way to break the status line.
 	if atomic.LoadInt64(&told) == 0 {

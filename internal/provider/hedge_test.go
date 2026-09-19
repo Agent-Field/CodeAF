@@ -580,9 +580,11 @@ func TestTwoArmsRecordingAtOnceDoNotDeadlock(t *testing.T) {
 }
 
 func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testing.T) {
+	firstToken := make(chan struct{})
+	t.Cleanup(func() { close(firstToken) })
 	rig := newLaneRig(t, "late/first-token",
-		// Thirty virtual seconds to the first token, against half a second.
-		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		// A signal, not elapsed-time slack, orders A after the rescue.
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24, FirstTokenUntil: firstToken}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
 	rig.believes("A", 20, 2000)
