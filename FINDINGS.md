@@ -35,3 +35,7 @@ The ledger must be opened for the profile whose config was loaded. In hosted mod
 4. Add focused command-path tests for both `--no-host` launch transport and hosted `hostOptions` transport.
 5. Exercise the acceptance case with a built real binary and a real engine plus client, never `quietAgent` or another fake agent: nested `{"models":{"tiers":{"reflex":"..."}}}` shows a notice naming `models` once; a correct flat config shows nothing; a second launch is silent; changing the unread set shows once again in hosted and `--no-host` modes.
 6. Run only focused `go test -run` commands while implementing, then leave the coordinator's prescribed pre-PR gates to the coordinator.
+
+## Implementation step
+
+Implement the shared return value first, then transport it on `v3Process` and `remote.Welcome`, and finally arm the existing notice board with the hashed dynamic gate. Focused tests will cover config classification, wire transport, local and hosted option assembly, and ledger behavior. No downstream layer will read or classify `config.json`.
