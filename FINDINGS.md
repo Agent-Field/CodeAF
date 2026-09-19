@@ -169,3 +169,7 @@ The final artifact review found that the terminal-root deferral regresses `TestS
 ## Review defect resolution
 
 The distinction is the task identity in `Supervisor.cancels`, not the total in-flight count. In the forced self-finished ordering, the root task itself remains in that map until its return is absorbed, and that return must be allowed to seat review. In `TestStartWaitsForAWorkerTheCompletedTreeLeftBehind`, the root return has already been absorbed and removed while the completed leaf worker remains, so the terminal result must proceed to `drain`. The terminal guard now defers only while the root task is in flight. Both deterministic regressions pass ten consecutive focused runs. No `run.Start` code changed.
+
+## Final verification checkpoint after review repair
+
+The repair is committed at `e792cd006`. The next step is immutable-tree verification: the complete `internal/run` package first, then the five required pre-PR commands separately with the tree hash printed before and after. Any failure will be recorded before another code change. No amendment will follow successful gates.
