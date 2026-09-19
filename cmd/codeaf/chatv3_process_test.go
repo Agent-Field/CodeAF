@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -365,5 +369,99 @@ func TestOpeningAWorkspaceThatIsNotThereIsRefusedInASentence(t *testing.T) {
 	}
 	if viaLink != direct {
 		t.Fatalf("two spellings of one directory are two workspaces: %q and %q", viaLink, direct)
+	}
+}
+
+// Closing a process stops and joins its standing clock. Removing the store after
+// Close makes any late pass observable: taking the tick lock recreates the root.
+func TestCloseAllJoinsStandingTickerAndLaterProcessCanStart(t *testing.T) {
+	const interval = 10 * time.Millisecond
+	oldInterval := standingTickInterval
+	standingTickInterval = interval
+	t.Cleanup(func() { standingTickInterval = oldInterval })
+
+	proc := v3TestProcess(t)
+	root := filepath.Join(t.TempDir(), "v3", "standing")
+	store, err := standing.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc.startStandingTicks(store)
+	waitForStandingTick(t, root, interval)
+
+	proc.closeAll()
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(4 * interval)
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("standing created files after Close returned: %v", err)
+	}
+
+	later := v3TestProcess(t)
+	laterRoot := filepath.Join(t.TempDir(), "v3", "standing")
+	laterStore, err := standing.Open(laterRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	later.startStandingTicks(laterStore)
+	waitForStandingTick(t, laterRoot, interval)
+	later.closeAll()
+}
+
+func waitForStandingTick(t *testing.T, root string, interval time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(20 * interval)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(filepath.Join(root, "tick.lock")); err == nil {
+			return
+		}
+		time.Sleep(interval)
+	}
+	t.Fatal("standing ticker did not take its lock")
+}
+
+// TestCloseAllCancelsAnInFlightStandingPass proves a quit never waits out a
+// running pass's TickWindow: closeAll cancels the pass's context, so a pass
+// blocked on nothing but its own ctx ends at once and Close returns promptly.
+// The ordering is forced by channels, with only a generous sanity bound.
+func TestCloseAllCancelsAnInFlightStandingPass(t *testing.T) {
+	oldInterval := standingTickInterval
+	standingTickInterval = 5 * time.Millisecond
+	t.Cleanup(func() { standingTickInterval = oldInterval })
+
+	started := make(chan struct{})
+	sawCancel := make(chan struct{})
+	var once sync.Once
+	oldPass := standingTickPass
+	standingTickPass = func(ctx context.Context, _ *standing.Store) {
+		once.Do(func() { close(started) })
+		<-ctx.Done()
+		close(sawCancel)
+	}
+	t.Cleanup(func() { standingTickPass = oldPass })
+
+	proc := v3TestProcess(t)
+	store, err := standing.Open(filepath.Join(t.TempDir(), "v3", "standing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc.startStandingTicks(store)
+	<-started // a pass is in flight, blocked on its ctx
+
+	closed := make(chan struct{})
+	go func() {
+		proc.closeAll()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(30 * time.Second):
+		t.Fatal("closeAll did not return while a standing pass was in flight; the pass's ctx was not cancelled")
+	}
+	select {
+	case <-sawCancel:
+	default:
+		t.Fatal("the in-flight standing pass did not see its ctx cancelled")
 	}
 }
