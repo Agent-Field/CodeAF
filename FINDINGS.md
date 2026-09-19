@@ -72,3 +72,7 @@ The next independent pre-PR check is `go build ./...`. It verifies all packages 
 ## Build check result and session-suite step
 
 `go build ./...` passed. The next independent check runs the complete session package tree through the required Spark lock wrapper with a fresh test count.
+
+## Session-suite result and formatting step
+
+The wrapped whole session suite ran once and failed across many unrelated task-system tests because this checkout's current task belt and audit behavior differ from those fixtures. The target forced regression had already passed 10 times, and the suite output did not report it failing. This broad pre-existing failure is recorded without retry. The next independent check is repository Go formatting.
