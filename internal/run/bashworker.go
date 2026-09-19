@@ -218,15 +218,16 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				// THE SAME-ACTION LAW, READ FROM THE RECORD AND NEVER FROM THE
 				// WORDS: one step is identified by the command the model spelled
 				// and the head of the answer that came back — the same head the
-				// trajectory records — and the step before it says whether the
-				// store moved between them ([Store.Changed]: any task row, note
-				// or context that moved, the supervisor heartbeat deliberately
-				// none of them, because refreshing a claim is not work). A
-				// different command, a different answer, or a moved store
-				// resets the run to one; the same command with the same answer
-				// on a store that stood still counts toward [sameStepLimit].
+				// trajectory records — and the step before it says whether THIS
+				// WORKER'S PART OF THE STORE moved between them ([movedUnder]: the
+				// task's own row, a note or a context on it, or any row under it;
+				// the supervisor heartbeat deliberately none of them, because
+				// refreshing a claim is not work). A different command, a
+				// different answer, or a move under the task resets the run to
+				// one; the same command with the same answer on a part of the
+				// store that stood still counts toward [sameStepLimit].
 				identity := event.Tool + "\x00" + stepCommand(event) + "\x00" + observationHead(event.Output)
-				moved := len(w.store.Changed(since)) > 0
+				moved := movedUnder(w.store, task.ID, since)
 				since = time.Now()
 				if moved || identity != lastStep {
 					same, lastStep = 1, identity
@@ -354,11 +355,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 const noActionLimit = 4
 
 // sameStepLimit is how many finished steps in a row may be the same command
-// coming back with the same answer, with nothing the store records moving
-// between them, before the task ends. THE SAME-ACTION LAW: THE SAME COMMAND
-// COMING BACK WITH THE SAME ANSWER sameStepLimit TIMES RUNNING, WITH NOTHING
-// THE STORE RECORDS MOVING BETWEEN THE LOOKS, IS A WORKER THAT HAS STOPPED
-// MAKING PROGRESS, AND ITS TASK ENDS THERE — whatever the tool and whatever
+// coming back with the same answer, with nothing moving in the worker's own
+// part of the store between them, before the task ends. THE SAME-ACTION LAW:
+// THE SAME COMMAND COMING BACK WITH THE SAME ANSWER sameStepLimit TIMES RUNNING,
+// WITH NOTHING MOVING UNDER THE WORKER'S OWN TASK BETWEEN THE LOOKS, IS A WORKER
+// THAT HAS STOPPED MAKING PROGRESS, AND ITS TASK ENDS THERE — whatever the tool and whatever
 // the cause, because the ending reads no word of the command and no word of
 // the error: the identity of the action, the head of the answer, and the
 // store's own record of movement are the whole of the evidence.
@@ -373,11 +374,13 @@ const noActionLimit = 4
 //
 // THE THREE RESETS ARE WHAT THE LAW DOES NOT END. A different command is a
 // different action tried; a different answer is a changed world, the shape
-// of a worker legitimately waiting on something that changes; a moved store
-// is the one a blocked or coordinating worker watches, read from the store's
-// own bookkeeping and never from the command's words. A worker whose every
-// look answers differently, or whose store moves between looks, is never
-// ended here — the step cap bounds it as before. A worker the store says is
+// of a worker legitimately waiting on something that changes; a move in the
+// worker's own part of the store (its task and the rows under it, [movedUnder])
+// is work it or its children did, read from the store's own bookkeeping and
+// never from the command's words. A worker whose every look answers
+// differently, or whose own part of the store moves between looks, is never
+// ended here — the step cap bounds it as before. WHAT ITS SIBLINGS DO IS NOT
+// ITS PROGRESS: a broken worker in a busy run is ended while the others work. A worker the store says is
 // blocked on another task is not ended either: the loop parks it the way
 // `plandb wait` would, and it wakes when its wait is over.
 //
@@ -385,6 +388,40 @@ const noActionLimit = 4
 // the same fact at both ends of a turn: a belt that has answered the same
 // way four times has been told three times what happens.
 const sameStepLimit = 4
+
+// movedUnder answers whether anything the store records moved, since the
+// moment, in the part of the plan THIS worker can move: its own task, or a row
+// anywhere under it.
+//
+// IT IS THE WORKER'S OWN PART AND NOT THE WHOLE STORE, because a run is many
+// workers on one store. Read over the whole store, a broken worker would be
+// kept alive for as long as its siblings went on working, which is exactly
+// when nobody is looking at it: their rows move every few seconds and every
+// one of those moves would reset its count. What a sibling does is not this
+// worker's progress. A worker that is waiting on a sibling is not failed for
+// it either: its look comes back different when the sibling lands, and a
+// worker the store says is blocked is parked rather than ended.
+//
+// The zero moment is the first step of a turn, where there is no earlier look
+// to compare with; it answers moved, so the count starts at one.
+func movedUnder(store *plandb.Store, id string, since time.Time) bool {
+	if since.IsZero() {
+		return true
+	}
+	for _, changed := range store.Changed(since) {
+		// Walk the containment chain up from the row that moved. The chain is
+		// bounded by the tree's depth, and a row whose parent is gone ends it.
+		for at := store.Task(changed); at != nil; at = store.Task(at.ParentID) {
+			if at.ID == id {
+				return true
+			}
+			if at.ParentID == "" || at.ParentID == at.ID {
+				break
+			}
+		}
+	}
+	return false
+}
 
 // noActionNote is the harness's own voice, sent as a user message after a reply
 // that executed no action. It is not the person's and it is not a step: it is
