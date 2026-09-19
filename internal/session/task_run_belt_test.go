@@ -92,6 +92,14 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	if d.early != nil {
 		d.early(spec.Workspace)
 	}
+	// The real run engine reports its reconciled cumulative spend while work is
+	// live. Drive the same observer before either the normal or stopped ending.
+	if spec.OnSpend != nil {
+		d.mu.Lock()
+		usd := d.summary.USD
+		d.mu.Unlock()
+		spec.OnSpend(usd)
+	}
 	close(d.entered)
 	if d.honoursStop {
 		select {
@@ -1224,15 +1232,17 @@ func TestStartTaskBashBeltRunSpendRefusesNextTurnWithShippedLimitSentence(t *tes
 		t.Fatalf("StartTask: %v", err)
 	}
 	<-double.entered
-	close(double.release)
-	lastTaskUpdate(t, updates)
 
-	_, err := agent.Submit(context.Background(), "this turn must not start")
-	if err == nil {
-		t.Fatal("the turn after overspending the conversation limit was accepted")
+	// The run is still live, but its reported dollars already belong to this
+	// conversation. The next turn must read that total before the run lands.
+	refusal := collect(t, mustSubmit(t, agent, "this turn must not start"))
+	if len(refusal) != 1 || refusal[0].Err == nil {
+		t.Fatalf("the turn after overspending the conversation limit = %v, want one refusal", kinds(refusal))
 	}
 	const want = "conversation limit reached · $2.05 spent of $2 · /budget changes it"
-	if err.Error() != want {
-		t.Fatalf("next-turn refusal = %q, want unchanged shipped sentence %q", err, want)
+	if got := refusal[0].Err.Error(); got != want {
+		t.Fatalf("next-turn refusal = %q, want unchanged shipped sentence %q", got, want)
 	}
+	close(double.release)
+	lastTaskUpdate(t, updates)
 }
