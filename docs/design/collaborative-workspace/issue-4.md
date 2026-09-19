@@ -1,4 +1,6 @@
-# Issue 4: Safe execution: launch-or-join, authority, and unattended recovery
+# Wave 4: Safe execution: launch-or-join, authority, and unattended recovery
+
+**Tracking:** local wave file; [no GitHub issue or PR before verification](PUBLICATION-POLICY.md).
 
 **Branch:** `feat/collaborative-workspace-0918`
 **Design:** [`PRD-TDD.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/PRD-TDD.md) · [`ENGINEERING.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/ENGINEERING.md)
@@ -8,7 +10,7 @@
 Required: P9, A3 (no duplicate implementation), A9 (conflicting writes wait), A10, A11 (both runtime roads), A14, A16 (remove placement does not cancel work), A20, A21.
 Defaults: execution **adapter** over existing `StartTask` roads; durable launch intent + request key; pause coordination ≠ stop work; no new daemon; spend via existing daily rail + job-category reservation.
 
-This is the last slice. Final gate: `make pr-ready BASE=7cda67c9a066b9c805e4327054a814e0c52c0ef9` on Spark plus live cases. Coordinators in issue 3 had read/discuss/organize; this issue adds **explicitly delegated execution**.
+This is the last slice. Final gate: `make pr-ready BASE=7cda67c9a066b9c805e4327054a814e0c52c0ef9` on Spark plus live cases. Coordinators in wave 3 had read/discuss/organize; this issue adds **explicitly delegated execution**.
 
 ---
 

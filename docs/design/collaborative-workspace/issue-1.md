@@ -1,4 +1,6 @@
-# Issue 1: Folders you can see: Root, shared membership, and new chats that stay themselves
+# Wave 1: Folders you can see: Root, shared membership, and new chats that stay themselves
+
+**Tracking:** local wave file; [no GitHub issue or PR before verification](PUBLICATION-POLICY.md).
 
 **Branch:** `feat/collaborative-workspace-0918` (from `santos/dev` `7cda67c9a066b9c805e4327054a814e0c52c0ef9`; the owner explicitly requested branch-off-`santos/dev`; do not switch).
 **Design:** [`docs/design/collaborative-workspace/PRD-TDD.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/PRD-TDD.md)
@@ -27,7 +29,7 @@ A person can group chats in **logical folders** from the TUI without touching fi
 - Composer text and selected object survive organization changes from another window (J06).
 - 80-column sequential browse; large fixture remains readable (J07 subset in live, full hundreds fixture in automated tests).
 
-This is a usable organizing surface, not a schema-only checkpoint. Automatic semantic filing is issue 2. Inter-chat communication is issue 3.
+This is a usable organizing surface, not a schema-only checkpoint. Automatic semantic filing is wave 2. Inter-chat communication is wave 3.
 
 ---
 
@@ -161,7 +163,7 @@ No full `go test ./internal/tui3` on a shared box while another agent holds the 
 ## Documentation
 
 - `internal/manual/chat/collections.md` (and a folders page if retrieval needs a `##` heading in asker’s words: “logical folders”, “group chats”).
-- Remove “there is no collection slash command”. Keep “automatic organization is not implemented” until issue 2. Keep inter-chat communication denial until issue 3.
+- Remove “there is no collection slash command”. Keep “automatic organization is not implemented” until wave 2. Keep inter-chat communication denial until wave 3.
 - Design progress notes: what was true (CLI-only collections, no UI) vs what is true now. Do not invent a PR number.
 - `TRY.md`: create folders → new chat → same chat in two folders → reopen.
 

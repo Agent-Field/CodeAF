@@ -6,7 +6,7 @@ This document is self-contained. It specifies the experience, proposed implement
 
 **Status:** implementation proposal grounded in inspected source, not a claim of shipped behavior. **Required** means established product intent. **Default** means a recommended implementation choice resolving an earlier open question; build with it unless the owner changes it. **Experiment** means optional optimization, not a prerequisite for the promised experience.
 
-**Reading order:** [product and defaults](#2-product-problem-and-promise), [UI design](#6-product-design), [existing code](#7-what-already-exists-and-what-to-extend), [architecture](#8-technical-architecture), [AI workflows](#11-explicit-ai-workflow), [build phases](#18-delivery-plan), and [acceptance](#19-acceptance-matrix). The four serial GitHub issues, owner journeys J01–J35, and engineering corrections live beside this file: [`serial-plan.md`](serial-plan.md), [`USER-JOURNEYS.md`](USER-JOURNEYS.md), [`ENGINEERING.md`](ENGINEERING.md), [`COLLABORATION-CLARIFICATION.md`](COLLABORATION-CLARIFICATION.md). Sections 9–17 contain the technical contracts; section 20 contains the mandatory implementation/testing handoff rules.
+**Reading order:** [product and defaults](#2-product-problem-and-promise), [UI design](#6-product-design), [existing code](#7-what-already-exists-and-what-to-extend), [architecture](#8-technical-architecture), [AI workflows](#11-explicit-ai-workflow), [build phases](#18-delivery-plan), and [acceptance](#19-acceptance-matrix). The four serial branch-local waves, owner journeys J01–J35, and engineering corrections live beside this file: [`serial-plan.md`](serial-plan.md), [`USER-JOURNEYS.md`](USER-JOURNEYS.md), [`ENGINEERING.md`](ENGINEERING.md), [`COLLABORATION-CLARIFICATION.md`](COLLABORATION-CLARIFICATION.md). Sections 9–17 contain the technical contracts; section 20 contains the mandatory implementation/testing handoff rules.
 
 ## 1. Build target and source baseline
 
@@ -402,7 +402,7 @@ Apply routine authorized plans automatically. The validator is not an extra user
 
 ## 18. Delivery plan
 
-The PRD's seven phases (0–6) are delivered as **four serial GitHub issues**, each leaving a playable TUI on Spark with live tmux chat acceptance. The product contract (P1–P12, A1–A22) is unchanged. Owner journeys J01–J35 in [`USER-JOURNEYS.md`](USER-JOURNEYS.md) are the completion checklist. Engineering corrections are in [`ENGINEERING.md`](ENGINEERING.md). Issue bodies: [`issue-1.md`](issue-1.md) … [`issue-4.md`](issue-4.md).
+The PRD's seven phases (0–6) are delivered as **four serial branch-local waves**, each leaving a playable TUI on Spark with live tmux chat acceptance. The product contract (P1–P12, A1–A22) is unchanged. Owner journeys J01–J35 in [`USER-JOURNEYS.md`](USER-JOURNEYS.md) are the completion checklist. Engineering corrections are in [`ENGINEERING.md`](ENGINEERING.md). Issue bodies: [`issue-1.md`](issue-1.md) … [`issue-4.md`](issue-4.md).
 
 **The owner explicitly requested branch-off-`santos/dev`.** Work stays on `feat/collaborative-workspace-0918`. Do not merge or push to `dev`, `santos/dev`, `staging`, or `main`.
 
@@ -413,7 +413,7 @@ The PRD's seven phases (0–6) are delivered as **four serial GitHub issues**, e
 | 3. Ordinary chats coordinate | One router for direct, fan-out, and optional shared discussion; hierarchical parent/Root escalation; durable delivery | J19–J26. Existing chat can manage others; a new group chat is optional. Real per-participant invocations. |
 | 4. Safe execution | Launch-or-join over both task roads; grants; pause vs stop; unattended tick | J27–J35 plus `make pr-ready` against the recorded baseline. Coordinators gain delegated execution here. |
 
-Hardening (migrations, restart, manuals, live journeys) is an exit condition of each issue, not a fifth issue. Do not make personal model training a prerequisite for issue 2. Avoid shipping a deterministic keyword-only substitute for semantic discovery. After each wave, [`TRY.md`](TRY.md) records how the owner can try that exact behavior without overwriting their global binary or personal home.
+Hardening (migrations, restart, manuals, live journeys) is an exit condition of each issue, not a fifth issue. Do not make personal model training a prerequisite for wave 2. Avoid shipping a deterministic keyword-only substitute for semantic discovery. After each wave, [`TRY.md`](TRY.md) records how the owner can try that exact behavior without overwriting their global binary or personal home.
 
 ## 19. Acceptance matrix
 

@@ -1,6 +1,6 @@
 # Collaborative workspace — four serial usable slices
 
-**Status:** approved for execution. Four GitHub issues are created from this plan. Implementation proceeds issue by issue on Spark.
+**Status:** branch-local implementation plan. The previous GitHub issues are closed; all four waves continue here and in PlanDB. No new issues or PR before verification. See [publication policy](PUBLICATION-POLICY.md).
 
 | | |
 |---|---|
@@ -17,14 +17,14 @@
 
 Required product intent is P1–P12 and A1–A22 in the PRD. **Default** means a recommended implementation choice this plan settles so the four issues can be built. Defaults do not reopen required behavior. Supervising review and the owner's collaboration clarification **replace** earlier draft defaults that contradicted them.
 
-GitHub issues (filled after `gh issue create`):
+Branch-local wave files (the canonical work packages):
 
-| # | Title | Issue | Journeys |
+| Wave | Title | Plan | Journeys |
 |---|---|---|---|
-| 1 | Folders you can see: Root, shared membership, and new chats that stay themselves | [#1216](https://github.com/Agent-Field/CodeAF/issues/1216) | J01–J08 |
-| 2 | Semantic discovery, automatic filing, and scoped folder instructions | [#1217](https://github.com/Agent-Field/CodeAF/issues/1217) | J09–J18 |
-| 3 | Inspectable collaboration: ordinary chats coordinate, with optional shared discussion | [#1218](https://github.com/Agent-Field/CodeAF/issues/1218) | J19–J26 |
-| 4 | Safe execution: launch-or-join, authority, and unattended recovery | [#1219](https://github.com/Agent-Field/CodeAF/issues/1219) | J27–J35 |
+| 1 | Folders you can see: Root, shared membership, and new chats that stay themselves | [Wave 1](issue-1.md) | J01–J08 |
+| 2 | Semantic discovery, automatic filing, and scoped folder instructions | [Wave 2](issue-2.md) | J09–J18 |
+| 3 | Inspectable collaboration: ordinary chats coordinate, with optional shared discussion | [Wave 3](issue-3.md) | J19–J26 |
+| 4 | Safe execution: launch-or-join, authority, and unattended recovery | [Wave 4](issue-4.md) | J27–J35 |
 
 ---
 
@@ -52,7 +52,7 @@ Inspected against HEAD on this branch (worker-harness waves are already in histo
 - `search_conversations` is lexical FTS5 (`internal/store/thread_search.go`) and is **absent unless learned memory is on**. `v3Memory` returns nil when `config.MemoryEnabledAt` is false; `v3SearchSeam` shares that store. A18 cannot be met by leaving search gated on memory.
 - Mailbox is **local to one session** (main + task rooms). Comment in `mailbox.go` states cross-session routing is absent.
 - Assignment revisions require person-origin (`assignment.go`). Agent restatements cannot mint person authority.
-- Both execution roads are live: `CODEAF_TASK_BELT` unset → session task tree; `CODEAF_TASK_BELT=bash` → run/plandb. Issue 4 must not assume one global plan DB.
+- Both execution roads are live: `CODEAF_TASK_BELT` unset → session task tree; `CODEAF_TASK_BELT=bash` → run/plandb. Wave 4 must not assume one global plan DB.
 - Standing tick: in-window pass plus OS `codeaf tick`. Engine hosts idle-retire; they are not perpetual folder intelligence.
 - Roles: `internal/roles` is an open registry with `callRoleChecked` accounting. No embedding client exists in `internal/provider`.
 - No `@` mention picker exists.
@@ -64,7 +64,7 @@ Inspected against HEAD on this branch (worker-harness waves are already in histo
 
 - Conversation id is 16 hex, minted in `cmd/codeaf/chatv3_layout.go` `v3MintSession` at `$CODEAF_HOME/v3/projects/<workspace-with-slashes-as-dashes>/<id>/transcript.jsonl`.
 - Filesystem referred places (`session/places.go`) are capped at 16 and live on `meta.json`. That cap is not logical-folder membership.
-- Local mailbox already has `deliveryID` + `durableDelivery` settled against the journal (`recorded`). Issue 3’s router must compose those, not mint a second id scheme.
+- Local mailbox already has `deliveryID` + `durableDelivery` settled against the journal (`recorded`). Wave 3’s router must compose those, not mint a second id scheme.
 - Cycle-safe wire pattern already used by the belt: `session.RunEngine` + `RegisterRunEngine` in `internal/run/enginewire.go` `init()`.
 - Standing cadence is `standing.Interval` (5 minutes) plus OS `codeaf tick`.
 - Slash table `commands.go` `checkCommands`: `/folders` cannot be an alias of `/folder`.
@@ -125,9 +125,9 @@ If embeddings are unavailable, hybrid search degrades to query expansion + lexic
 
 **Default:**
 
-- Issue 1 migrates collections.db **v1 → v2** in the write path, additive, with **only** purpose/lifecycle/revision/timestamps, membership events, and `root_state`. Listing remains read-only and does not migrate. Refuse foreign/future/damaged; never reset.
-- Issue 2 adds v3 tables it owns (guidance, jobs, observations, placement_suppressions). Issue 3 adds v4 (participants, deliveries). Issue 4 adds v5 (grants, execution_bindings). Each bump is an explicit transactional migration. Test v1-to-latest.
-- Journals remain authoritative. `discovery.db` at `home.Join("v3", "discovery.db")` is derived and rebuildable (issue 2).
+- Wave 1 migrates collections.db **v1 → v2** in the write path, additive, with **only** purpose/lifecycle/revision/timestamps, membership events, and `root_state`. Listing remains read-only and does not migrate. Refuse foreign/future/damaged; never reset.
+- Wave 2 adds v3 tables it owns (guidance, jobs, observations, placement_suppressions). Wave 3 adds v4 (participants, deliveries). Wave 4 adds v5 (grants, execution_bindings). Each bump is an explicit transactional migration. Test v1-to-latest.
+- Journals remain authoritative. `discovery.db` at `home.Join("v3", "discovery.db")` is derived and rebuildable (wave 2).
 - A membership change, its audit event, and any outbox row this slice owns commit in **one collections transaction**. Model calls happen after, then revalidate expected revisions before apply. No AI/network inside a writer transaction.
 
 ### 2.6 Ordinary chats coordinate; shared discussion is optional
@@ -173,7 +173,7 @@ Feature switch: profile row `workspace.organize` (default on after v2). Off paus
 
 ### 2.10 Do not optimize for a manual folder demo
 
-Issue 1 is a usable folder TUI because later AI has to land *somewhere*. Semantic discovery, collaboration, and safe execution are issues 2–4. All J01–J35 remain required.
+Wave 1 is a usable folder TUI because later AI has to land *somewhere*. Semantic discovery, collaboration, and safe execution are issues 2–4. All J01–J35 remain required.
 
 ---
 
@@ -201,7 +201,7 @@ For every issue:
 - Credentials: resolve with the product (`config.APIKeyAt` / `home.InheritedDir()` / e2e `liveKey`), write into the throwaway profile the way `internal/e2e` `newWorld`/`liveKey` does. Never print the key. Never place keys in command arguments. Pin `model.talk` to `deepseek/deepseek-v4-flash` and `icons` to `plain` for capture needles.
 - Workspace: a throwaway **git repository**. Prefer matching `internal/e2e` env (`TERM=xterm-256color`, `CODEAF_HOME`, no `HOME` rewrite).
 - Run-unique tmux session names (`cw-iN-<pid>-<sha>`). Reuse the existing terminal-resize/start readiness harness; mere `new-session -x/-y` is insufficient when tmux server policy overrides sizing. Drive one pass at 80 columns. Do **not** follow `make demo-home`.
-- After the chat: inspect `$CODEAF_HOME/v3/collections.db`, journals, and (from issue 2) `discovery.db`. Save pane captures under the control dir `receipts/issue-N/`.
+- After the chat: inspect `$CODEAF_HOME/v3/collections.db`, journals, and (from wave 2) `discovery.db`. Save pane captures under the control dir `receipts/issue-N/`.
 - Never clean other sessions. Never inspect arbitrary process argv.
 
 ---
@@ -266,19 +266,19 @@ Hardening that the PRD called “phase 6” is **in-issue**: migrations, restart
 
 These do not reopen P1–P12. They are decided at the named issue:
 
-1. **Exact embedding model slug** that this Spark’s provider actually serves. Issue 2 inspects without printing keys, registers `RoleEmbed`, and records the chosen id. Not hardcoded in TUI copy.
+1. **Exact embedding model slug** that this Spark’s provider actually serves. Wave 2 inspects without printing keys, registers `RoleEmbed`, and records the chosen id. Not hardcoded in TUI copy.
 2. **Vector lookup:** brute-force cosine in SQLite for the first release. Measure passages/vectors/memory/latency on the promised corpus before calling it scalable. ANN only if measurements demand it.
-3. **Opening the conversation FTS store when memory is off** vs indexing journals only into `discovery.db`. Prefer: split `v3SearchSeam` from memory **and** feed `discovery.db` from journals. Issue 2 owns the split.
+3. **Opening the conversation FTS store when memory is off** vs indexing journals only into `discovery.db`. Prefer: split `v3SearchSeam` from memory **and** feed `discovery.db` from journals. Wave 2 owns the split.
 4. **Explicit Root placements** beyond the virtual-root default: not in this release.
 5. **Multi-host synchronized organization graph:** not in this release; preserve remote identifiers only.
 6. **Live discovery quality thresholds:** establish on the issue-2 fixture corpus before calling A4/A5 statistically done.
 7. **Final `/folders` aliases** if users type `/collection`. Default: no `/folder` alias. Optional later alias `/collections` pointing at `/folders`.
-8. **Whether `codeaf collections` grows purpose/why flags in issue 1** or stays CRUD while TUI/tools carry provenance. Default: CLI gains `--reason` / `--json` fields without changing existing output for old invocations.
+8. **Whether `codeaf collections` grows purpose/why flags in wave 1** or stays CRUD while TUI/tools carry provenance. Default: CLI gains `--reason` / `--json` fields without changing existing output for old invocations.
 
 ---
 
 ## 7. Key risk
 
-Issue 2 is the load-bearing slice: it must split search from optional memory, ship a real embedding adapter through existing provider accounting, and turn organizer output into **validated durable actions**. If issue 2 ships a lexical-only filer, issues 3–4 cannot satisfy P6/A4/A5. Issue 3’s risk is proving three communication patterns with real per-participant invocations, not a group-chat demo. Issue 4’s risk is dual execution roads plus host idle-retirement.
+Wave 2 is the load-bearing slice: it must split search from optional memory, ship a real embedding adapter through existing provider accounting, and turn organizer output into **validated durable actions**. If wave 2 ships a lexical-only filer, issues 3–4 cannot satisfy P6/A4/A5. Wave 3’s risk is proving three communication patterns with real per-participant invocations, not a group-chat demo. Wave 4’s risk is dual execution roads plus host idle-retirement.
 
 Owner-facing demos: after each wave, update [`TRY.md`](TRY.md) with actual keys and a synthetic fixture on Spark, never overwriting the owner's global binary or `~/.codeaf`.

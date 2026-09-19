@@ -1,4 +1,6 @@
-# Issue 3: Inspectable collaboration: ordinary chats coordinate, with optional shared discussion
+# Wave 3: Inspectable collaboration: ordinary chats coordinate, with optional shared discussion
+
+**Tracking:** local wave file; [no GitHub issue or PR before verification](PUBLICATION-POLICY.md).
 
 **Branch:** `feat/collaborative-workspace-0918`
 **Design:** [`PRD-TDD.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/PRD-TDD.md) · [`ENGINEERING.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/ENGINEERING.md) · [`COLLABORATION-CLARIFICATION.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/COLLABORATION-CLARIFICATION.md)
@@ -23,7 +25,7 @@ Planner and critic on one issue are **configurable roles** invited into the curr
 
 If a recipient session is not running, the message is queued. When that session is resumed, the line appears **once** (J23). Accepted, recorded, and processed are three different states.
 
-Two folders that share one discussion do **not** merge the rest of their contents (J22). Coordinators have **read/discuss/organize** until issue 4 adds delegated execution (J26).
+Two folders that share one discussion do **not** merge the rest of their contents (J22). Coordinators have **read/discuss/organize** until wave 4 adds delegated execution (J26).
 
 ---
 
@@ -37,7 +39,7 @@ Two folders that share one discussion do **not** merge the rest of their content
 | `internal/session` | Mailbox stays local. Cross-session goes through `wscollab`. Assignment law unchanged: representative text is `fromAgent`, never `fromPerson` (A11). Coordinator tools: read/discuss/organize only. |
 | `internal/enginehost` | Wake/reconnect or leave a durable pending delivery if the host has retired. |
 | `internal/tui3` | Mark members as a convenience, not a required ritual. Natural-language “coordinate these” is the primary path. Visible sent/request/reply activity with source links. Joint discussion looks like a normal chat with participant labels. Narrow: still sequential. |
-| Tools | Coordinator chat gets deliver / invite / inspect-scope tools bound to this issue’s grant (read/discuss/organize). Execute tools wait for issue 4. |
+| Tools | Coordinator chat gets deliver / invite / inspect-scope tools bound to this issue’s grant (read/discuss/organize). Execute tools wait for wave 4. |
 | Manual | Inter-chat communication denial removed. State: ordinary chats coordinate; group chat optional; three patterns; selected snapshot vs whole-folder; Root escalation is hierarchical, not “always ask after two turns”. |
 | Owner try | TRY.md: selected coordination and visible participants, including a direct message — not only a group demo. |
 
@@ -85,7 +87,7 @@ Isolated mktemp home. Cover J19–J26. **Do not prove only one group-chat demo.*
 
 ### Attribution (J26 / A11)
 
-11. A participant claims to be the user. **Pass:** assignment/goal does not move; line labelled as representative/agent. Coordinator cannot execute (that is issue 4).
+11. A participant claims to be the user. **Pass:** assignment/goal does not move; line labelled as representative/agent. Coordinator cannot execute (that is wave 4).
 
 Restart: quit, reopen, discussion and deliveries intact.
 

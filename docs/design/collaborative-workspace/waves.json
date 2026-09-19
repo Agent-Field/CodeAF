@@ -1,0 +1,27 @@
+{
+  "branch": "feat/collaborative-workspace-0918",
+  "tracking": "branch-local",
+  "pr": "deferred until verification",
+  "waves": [
+    {
+      "n": 1,
+      "plan": "docs/design/collaborative-workspace/issue-1.md",
+      "state": "in progress"
+    },
+    {
+      "n": 2,
+      "plan": "docs/design/collaborative-workspace/issue-2.md",
+      "state": "pending"
+    },
+    {
+      "n": 3,
+      "plan": "docs/design/collaborative-workspace/issue-3.md",
+      "state": "pending"
+    },
+    {
+      "n": 4,
+      "plan": "docs/design/collaborative-workspace/issue-4.md",
+      "state": "pending"
+    }
+  ]
+}

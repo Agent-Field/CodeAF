@@ -1,8 +1,10 @@
-# Issue 2: Semantic discovery, automatic filing, and scoped folder instructions
+# Wave 2: Semantic discovery, automatic filing, and scoped folder instructions
+
+**Tracking:** local wave file; [no GitHub issue or PR before verification](PUBLICATION-POLICY.md).
 
 **Branch:** `feat/collaborative-workspace-0918`
 **Design:** [`PRD-TDD.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/PRD-TDD.md) · [`ENGINEERING.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/ENGINEERING.md)
-**Depends on:** issue 1 committed on this branch (folders TUI, `wsapi`, collections v2).
+**Depends on:** wave 1 committed on this branch (folders TUI, `wsapi`, collections v2).
 **Journeys:** [`USER-JOURNEYS.md`](https://github.com/Agent-Field/CodeAF/blob/feat/collaborative-workspace-0918/docs/design/collaborative-workspace/USER-JOURNEYS.md) **J09–J18** (plus affected J01–J08).
 
 Required: P4 (purpose + scoped guidance), P6, P7, P8, P10, A3 (find existing work), A4, A5, A6, A7, A8, A9 (guidance checkpoint), A13, A15 (discovery side), A18 (search with memory off), A22.
@@ -64,7 +66,7 @@ Similarity scores never become membership. `no-action` is a first-class result.
 
 ## Exact TUI journey (real model, tmux)
 
-Isolated `CODEAF_HOME=$(mktemp -d …)` and private `CODEAF_PROFILE_DIR`. Same credential recipe as issue 1. Run-unique tmux. **Two chats**, real model. Cover J09–J18.
+Isolated `CODEAF_HOME=$(mktemp -d …)` and private `CODEAF_PROFILE_DIR`. Same credential recipe as wave 1. Run-unique tmux. **Two chats**, real model. Cover J09–J18.
 
 1. Create folders Billing and Security. Instruct Security with a standing line about authenticated receipt links (J13). **Pass:** instruction visible; versioned; source is the person.
 2. In Security, new chat. First message records that customers must authenticate; reject mailing raw URLs; keep the rejection (J10). **Pass:** chat stays in Security; guidance present as folder guidance.

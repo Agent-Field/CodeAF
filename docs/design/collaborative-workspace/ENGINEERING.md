@@ -4,7 +4,7 @@
 
 ## Schema
 
-Issue 1 migrates collections.db **v1 → v2** with only the metadata this slice needs: collection purpose/lifecycle/revision/timestamps, membership events (provenance), `root_state`, and atomic mutation+provenance in one writer transaction. Later issues add their owned tables through explicit transactional migrations (v3, v4, …). Additional schema versions are normal. Do not pre-create empty guidance/grant/delivery/execution tables in issue 1. Test every supported upgrade path, including direct v1-to-latest. Listing stays read-only and does not migrate. Foreign/future/corrupt databases are refused, never reset. No schema version change hidden behind a table-name check.
+Wave 1 migrates collections.db **v1 → v2** with only the metadata this slice needs: collection purpose/lifecycle/revision/timestamps, membership events (provenance), `root_state`, and atomic mutation+provenance in one writer transaction. Later issues add their owned tables through explicit transactional migrations (v3, v4, …). Additional schema versions are normal. Do not pre-create empty guidance/grant/delivery/execution tables in wave 1. Test every supported upgrade path, including direct v1-to-latest. Listing stays read-only and does not migrate. Foreign/future/corrupt databases are refused, never reset. No schema version change hidden behind a table-name check.
 
 ## Authority and escalation
 
