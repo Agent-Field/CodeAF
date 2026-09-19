@@ -133,6 +133,22 @@ func TestANewBuildCutOffBeforeItsEndingIsRefusedHolds(t *testing.T) {
 	if err != nil || len(steps) != 1 || !steps[0].NotRun {
 		t.Fatalf("refused event did not establish not-run on its recorded step: steps=%+v err=%v", steps, err)
 	}
+	// THE RECORD KEEPS WHICH KIND OF ANSWER IT WAS. The event above carries no
+	// attempted action a door refused, so it is a correction and nothing more; the
+	// same event WITH the fact is recorded as a refused action, which is the one
+	// kind the task page draws.
+	if steps[0].Refused {
+		t.Fatalf("a harness answer with no refused door was recorded as a refused action: %+v", steps[0])
+	}
+	door := refused
+	door.Refused = true
+	if err := rec.record(2, door); err != nil {
+		t.Fatalf("record the refused action: %v", err)
+	}
+	steps, err = Trajectory(storeDir, "review")
+	if err != nil || len(steps) != 2 || !steps[1].NotRun || !steps[1].Refused || steps[1].ExitCode != nil {
+		t.Fatalf("a refused action was not recorded as not run, refused and without an exit: steps=%+v err=%v", steps, err)
+	}
 	if _, err := store.Done("review", "review", "holds: the acceptance is met", nil, nil); err == nil {
 		t.Fatal("a new build cut off before its ending earned holds by reading")
 	}
