@@ -416,8 +416,8 @@ do: try something else; when waiting on something outside the plan that has
 not changed yet, wait for it in one longer action that returns when it has
 changed, and one action may run for up to 600 seconds; or park with
 `plandb wait` when the plan names what it waits on. A worker that then does
-something different starts the count again; one that keeps the same look
-three more times is stopped.
+something different is not stopped, and the count starts again; one that
+keeps the same look three more times is stopped.
 
 Whatever the command was, that is work that has stopped moving. The task ends
 as `incomplete`, and its record closes with the reason `the same command came
@@ -427,8 +427,8 @@ steps above it on the task page show the command and what it got each time.
 When the thing being waited on is outside the plan, a build, a deploy, a job
 on another machine, the worker cannot park for it, because the plan does not
 name it. Tell it what you know with a note from the task's page: a note on
-the task counts as something changing, so the count starts again. Or pause
-the task until the thing has changed.
+the task counts as something changing, so the task is not stopped and the
+count starts again. Or pause the task until the thing has changed.
 
 Two kinds of worker are never stopped this way:
 
