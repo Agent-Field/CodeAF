@@ -11,15 +11,18 @@ import (
 // fakeStore implements the frozen store contract. Tests talk to this, not the
 // adapter, so provenance, atomic Move, WhyHere, and cycle refusals are real.
 type fakeStore struct {
-	mu          sync.Mutex
-	seq         int
-	rootRev     int
-	cols        []workspace.Collection
-	members     map[string][]workspace.Ref
-	events      []workspace.MembershipEvent
-	keys        map[string]keyedOp
-	revisionErr error
-	at          string
+	mu           sync.Mutex
+	seq          int
+	rootRev      int
+	cols         []workspace.Collection
+	members      map[string][]workspace.Ref
+	events       []workspace.MembershipEvent
+	keys         map[string]keyedOp
+	guidance     []workspace.Guidance
+	proposals    []workspace.Proposal
+	suppressions map[string]workspace.Suppression
+	revisionErr  error
+	at           string
 }
 
 type keyedOp struct {
@@ -29,9 +32,10 @@ type keyedOp struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		members: map[string][]workspace.Ref{},
-		keys:    map[string]keyedOp{},
-		at:      "2026-09-18T00:00:00Z",
+		members:      map[string][]workspace.Ref{},
+		keys:         map[string]keyedOp{},
+		suppressions: map[string]workspace.Suppression{},
+		at:           "2026-09-18T00:00:00Z",
 	}
 }
 
@@ -39,7 +43,7 @@ var _ store = (*fakeStore)(nil)
 
 func (f *fakeStore) Close() error { return nil }
 
-func (f *fakeStore) SchemaVersion() int { return 2 }
+func (f *fakeStore) SchemaVersion() int { return 3 }
 
 func (f *fakeStore) Create(_ context.Context, name string) (workspace.Collection, error) {
 	if err := workspace.ValidateName(name); err != nil {
@@ -262,6 +266,109 @@ func (f *fakeStore) RootState(context.Context) (int, string, string, error) {
 		return 0, "", "", workspace.ErrNotFound
 	}
 	return f.rootRev, "", f.at, nil
+}
+
+func (f *fakeStore) PutGuidance(_ context.Context, g workspace.Guidance) (workspace.Guidance, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if g.Supersedes != "" {
+		found := false
+		for i, row := range f.guidance {
+			if row.ID == g.Supersedes {
+				f.guidance[i].Status = workspace.GuidanceSuperseded
+				found = true
+			}
+		}
+		if !found {
+			return workspace.Guidance{}, workspace.ErrNotFound
+		}
+	}
+	if g.ID == "" {
+		f.seq++
+		g.ID = fmt.Sprintf("g%02d", f.seq)
+	}
+	g.CreatedAt, g.UpdatedAt = f.at, f.at
+	f.guidance = append(f.guidance, g)
+	if g.ScopeID != "" {
+		f.bump(g.ScopeID)
+	} else {
+		f.rootRev++
+	}
+	return g, nil
+}
+
+func (f *fakeStore) ListGuidance(_ context.Context, scopeID string) ([]workspace.Guidance, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]workspace.Guidance, 0)
+	for _, row := range f.guidance {
+		if row.ScopeID == scopeID {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) PutProposal(_ context.Context, p workspace.Proposal) (workspace.Proposal, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p.IdempotencyKey != "" {
+		for _, row := range f.proposals {
+			if row.IdempotencyKey == p.IdempotencyKey {
+				return row, nil
+			}
+		}
+	}
+	if p.ID == "" {
+		f.seq++
+		p.ID = fmt.Sprintf("p%02d", f.seq)
+	}
+	p.CreatedAt = f.at
+	f.proposals = append(f.proposals, p)
+	return p, nil
+}
+
+func (f *fakeStore) Suppress(_ context.Context, collectionID string, ref workspace.Ref, evidenceHash string, p workspace.Provenance) error {
+	if err := ref.Validate(); err != nil {
+		return err
+	}
+	if evidenceHash == "" {
+		return fmt.Errorf("%w: suppression needs an evidence hash", workspace.ErrInvalid)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.members[collectionID]; !ok {
+		return workspace.ErrNotFound
+	}
+	key := suppressionKey(collectionID, ref, evidenceHash)
+	if _, ok := f.suppressions[key]; ok {
+		return nil
+	}
+	f.suppressions[key] = workspace.Suppression{
+		CollectionID: collectionID,
+		Kind:         string(ref.Kind),
+		RefID:        ref.ID,
+		SessionID:    ref.SessionID,
+		EvidenceHash: evidenceHash,
+		Actor:        p.Actor,
+		At:           f.at,
+	}
+	f.bump(collectionID)
+	return nil
+}
+
+func (f *fakeStore) IsSuppressed(_ context.Context, collectionID string, ref workspace.Ref, evidenceHash string) (bool, error) {
+	if err := ref.Validate(); err != nil {
+		return false, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.suppressions[suppressionKey(collectionID, ref, evidenceHash)]
+	return ok, nil
+}
+
+func suppressionKey(collectionID string, ref workspace.Ref, evidenceHash string) string {
+	return collectionID + "\x00" + string(ref.Kind) + "\x00" + ref.ID + "\x00" + ref.SessionID + "\x00" + evidenceHash
 }
 
 func (f *fakeStore) refuse() error { return f.revisionErr }

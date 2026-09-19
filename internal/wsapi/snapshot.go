@@ -237,3 +237,7 @@ func (s *Service) lookup(ctx context.Context, id string) (workspace.Collection, 
 func collectionRef(id string) workspace.Ref {
 	return workspace.Ref{Kind: workspace.CollectionKind, ID: id}
 }
+
+func conversationRef(id string) workspace.Ref {
+	return workspace.Ref{Kind: workspace.ConversationKind, ID: id}
+}
