@@ -10,8 +10,9 @@ const minSchemaVersion = 1
 // schemaVersion is the latest collections schema this binary writes.
 // Wave 1 owns v2 (purpose, provenance, root_state). Wave 2 owns v3
 // (guidance, jobs, observations, placement_suppressions, proposed_actions).
-// Grant, delivery and execution tables stay absent until a later wave.
-const schemaVersion = 3
+// Wave 3 owns v4 (participants, deliveries). Grant and execution tables
+// stay absent until Wave 4.
+const schemaVersion = 4
 
 const v2CollectionsDDL = `
 CREATE TABLE collections (
@@ -135,6 +136,51 @@ CREATE TABLE proposed_actions (
 CREATE UNIQUE INDEX proposed_actions_idempotency ON proposed_actions(idempotency_key) WHERE idempotency_key != '';
 `
 
+const v4DDL = `
+CREATE TABLE participants (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ id TEXT NOT NULL UNIQUE,
+ discussion_id TEXT NOT NULL,
+ actor_id TEXT NOT NULL UNIQUE,
+ kind TEXT NOT NULL CHECK(kind IN ('chat','role','folder')),
+ role TEXT NOT NULL DEFAULT '',
+ source_chat_id TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL CHECK(status IN ('active','paused','archived')),
+ scope_kind TEXT NOT NULL DEFAULT '',
+ folder_id TEXT NOT NULL DEFAULT '',
+ snapshot_json TEXT NOT NULL DEFAULT '',
+ origin TEXT NOT NULL CHECK(origin IN ('person','system_fallback','organizer')),
+ actor TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL
+);
+CREATE INDEX participants_discussion ON participants(discussion_id, seq);
+CREATE UNIQUE INDEX participants_source ON participants(discussion_id, source_chat_id) WHERE source_chat_id != '' AND status='active';
+CREATE TABLE deliveries (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ id TEXT NOT NULL UNIQUE,
+ cause_id TEXT NOT NULL DEFAULT '',
+ from_chat_id TEXT NOT NULL DEFAULT '',
+ to_chat_id TEXT NOT NULL,
+ pattern TEXT NOT NULL CHECK(pattern IN ('direct','fan-out','discussion')),
+ state TEXT NOT NULL CHECK(state IN ('pending','accepted','recorded','processed')),
+ body TEXT NOT NULL DEFAULT '',
+ origin TEXT NOT NULL CHECK(origin IN ('person','system_fallback','organizer')),
+ actor_id TEXT NOT NULL DEFAULT '',
+ discussion_id TEXT NOT NULL DEFAULT '',
+ idempotency_key TEXT NOT NULL DEFAULT '',
+ attempt INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL,
+ accepted_at TEXT NOT NULL DEFAULT '',
+ recorded_at TEXT NOT NULL DEFAULT '',
+ processed_at TEXT NOT NULL DEFAULT '',
+ updated_at TEXT NOT NULL
+);
+CREATE INDEX deliveries_cause ON deliveries(cause_id, seq);
+CREATE INDEX deliveries_pending ON deliveries(to_chat_id, state, seq);
+CREATE UNIQUE INDEX deliveries_idempotency ON deliveries(idempotency_key) WHERE idempotency_key != '';
+`
+
 func verifyVersionTables(ctx context.Context, q schemaQuerier, version int) error {
 	if _, err := q.ExecContext(ctx, "SELECT seq,id,name FROM collections LIMIT 0"); err != nil {
 		return err
@@ -169,7 +215,16 @@ func verifyVersionTables(ctx context.Context, q schemaQuerier, version int) erro
 	if _, err := q.ExecContext(ctx, "SELECT collection_id,kind,ref_id,evidence_hash FROM placement_suppressions LIMIT 0"); err != nil {
 		return err
 	}
-	_, err := q.ExecContext(ctx, "SELECT id,plan_json FROM proposed_actions LIMIT 0")
+	if _, err := q.ExecContext(ctx, "SELECT id,plan_json FROM proposed_actions LIMIT 0"); err != nil {
+		return err
+	}
+	if version < 4 {
+		return nil
+	}
+	if _, err := q.ExecContext(ctx, "SELECT id,actor_id,discussion_id,kind,scope_kind FROM participants LIMIT 0"); err != nil {
+		return err
+	}
+	_, err := q.ExecContext(ctx, "SELECT id,cause_id,state,accepted_at,recorded_at,processed_at FROM deliveries LIMIT 0")
 	return err
 }
 
@@ -188,6 +243,12 @@ func migrateToCurrent(ctx context.Context, tx schemaQuerier, from int, now strin
 	}
 	if from == 2 {
 		if err := migrateV2ToV3(ctx, tx); err != nil {
+			return err
+		}
+		from = 3
+	}
+	if from == 3 {
+		if err := migrateV3ToV4(ctx, tx); err != nil {
 			return err
 		}
 	}
@@ -220,6 +281,11 @@ func migrateV2ToV3(ctx context.Context, tx schemaQuerier) error {
 	return err
 }
 
+func migrateV3ToV4(ctx context.Context, tx schemaQuerier) error {
+	_, err := tx.ExecContext(ctx, v4DDL)
+	return err
+}
+
 func createV2(ctx context.Context, tx schemaQuerier, now string) error {
 	if _, err := tx.ExecContext(ctx, v2CollectionsDDL+v2HistoryDDL); err != nil {
 		return err
@@ -234,6 +300,9 @@ func createCurrent(ctx context.Context, tx schemaQuerier, now string) error {
 		return err
 	}
 	if err := migrateV2ToV3(ctx, tx); err != nil {
+		return err
+	}
+	if err := migrateV3ToV4(ctx, tx); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion))
