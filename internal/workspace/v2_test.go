@@ -116,6 +116,10 @@ func TestV1ListDoesNotMigrate(t *testing.T) {
 	if err != nil || len(queued) != 0 {
 		t.Fatalf("v1 list deliveries: %v, %v", queued, err)
 	}
+	grants, err := s.ListGrants(ctx, "mgmt")
+	if err != nil || len(grants) != 0 {
+		t.Fatalf("v1 list grants: %v, %v", grants, err)
+	}
 	suppressed, err := s.IsSuppressed(ctx, "billing-v1", Ref{Kind: ConversationKind, ID: "old-chat"}, "hash")
 	if err != nil || suppressed {
 		t.Fatalf("v1 is-suppressed: %v, %v", suppressed, err)
@@ -129,7 +133,7 @@ func TestV1ListDoesNotMigrate(t *testing.T) {
 	}
 }
 
-func TestFirstWriteMigratesV1ToV4(t *testing.T) {
+func TestFirstWriteMigratesV1ToV5(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "v1.db")
 	writeV1Fixture(t, path)
@@ -143,10 +147,10 @@ func TestFirstWriteMigratesV1ToV4(t *testing.T) {
 		t.Fatal(err)
 	}
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 4 {
+	if app != applicationID || version != 5 {
 		t.Fatalf("first write left application %d version %d", app, version)
 	}
-	if s.SchemaVersion() != 4 {
+	if s.SchemaVersion() != 5 {
 		t.Fatalf("handle version %d after write", s.SchemaVersion())
 	}
 	after, err := s.Collections(ctx)
@@ -163,8 +167,9 @@ func TestFirstWriteMigratesV1ToV4(t *testing.T) {
 	}
 	requireTables(t, path, v3TableNames...)
 	requireTables(t, path, v4TableNames...)
+	requireTables(t, path, v5TableNames...)
 	if extra := tablesNamed(t, path, laterPhaseTableNames...); len(extra) != 0 {
-		t.Fatalf("wave 3 created later-phase tables: %v", extra)
+		t.Fatalf("wave 4 created later-phase tables: %v", extra)
 	}
 }
 
@@ -408,8 +413,10 @@ var v3TableNames = []string{"guidance", "jobs", "observations", "placement_suppr
 
 var v4TableNames = []string{"participants", "deliveries"}
 
+var v5TableNames = []string{"grants", "execution_bindings"}
+
 var laterPhaseTableNames = []string{
-	"grants", "grant", "execution_bindings", "execution",
+	"grant", "execution", "launch_intents", "responsibilities",
 }
 
 func tablesNamed(t *testing.T, path string, names ...string) []string {

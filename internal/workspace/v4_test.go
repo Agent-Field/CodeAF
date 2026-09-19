@@ -55,8 +55,15 @@ func TestV3ListDoesNotMigrate(t *testing.T) {
 	if err != nil || len(queued) != 0 {
 		t.Fatalf("v3 list deliveries: %v, %v", queued, err)
 	}
+	grants, err := s.ListGrants(ctx, "mgmt")
+	if err != nil || len(grants) != 0 {
+		t.Fatalf("v3 list grants: %v, %v", grants, err)
+	}
 	if tablesNamed(t, path, v4TableNames...) != nil {
 		t.Fatalf("v3 list created v4 tables: %v", tablesNamed(t, path, v4TableNames...))
+	}
+	if tablesNamed(t, path, v5TableNames...) != nil {
+		t.Fatalf("v3 list created v5 tables: %v", tablesNamed(t, path, v5TableNames...))
 	}
 	app, version := fileUserVersion(t, path)
 	if app != applicationID || version != 3 {
@@ -64,7 +71,7 @@ func TestV3ListDoesNotMigrate(t *testing.T) {
 	}
 }
 
-func TestFirstWriteMigratesV3ToV4(t *testing.T) {
+func TestFirstWriteMigratesV3ToV5(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "v3.db")
 	writeV3Fixture(t, path)
@@ -73,13 +80,14 @@ func TestFirstWriteMigratesV3ToV4(t *testing.T) {
 		t.Fatal(err)
 	}
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 4 {
+	if app != applicationID || version != 5 {
 		t.Fatalf("first write left application %d version %d", app, version)
 	}
 	requireTables(t, path, v3TableNames...)
 	requireTables(t, path, v4TableNames...)
+	requireTables(t, path, v5TableNames...)
 	if extra := tablesNamed(t, path, laterPhaseTableNames...); len(extra) != 0 {
-		t.Fatalf("wave 3 created later-phase tables: %v", extra)
+		t.Fatalf("wave 4 created later-phase tables: %v", extra)
 	}
 	guidance, err := s.PutGuidance(ctx, Guidance{Text: "keep receipts", Origin: OriginPerson})
 	if err != nil || guidance.ID == "" {
@@ -256,7 +264,7 @@ func TestDeliveryStatesStayDistinctAndOfflineStaysPending(t *testing.T) {
 	}
 }
 
-func TestBlankFilePutParticipantInitializesV4(t *testing.T) {
+func TestBlankFilePutParticipantInitializesV5(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "blank.db")
 	s := openTestStore(t, path)
@@ -264,8 +272,8 @@ func TestBlankFilePutParticipantInitializesV4(t *testing.T) {
 	if err != nil || got.ID == "" {
 		t.Fatalf("blank put: %+v, %v", got, err)
 	}
-	if s.SchemaVersion() != 4 {
-		t.Fatalf("schema %d, want 4", s.SchemaVersion())
+	if s.SchemaVersion() != 5 {
+		t.Fatalf("schema %d, want 5", s.SchemaVersion())
 	}
 	queued, err := s.PutDelivery(ctx, Delivery{ToChatID: "peer", Body: "hello", Origin: OriginAgent})
 	if err != nil || queued.Origin != OriginAgent || queued.State != DeliveryPending {
