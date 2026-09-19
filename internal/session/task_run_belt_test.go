@@ -36,24 +36,27 @@ func (c beltRunCompleter) CompleteWithMessages(context.Context, []ai.Message, ..
 // test owns rather than one it races — asks the completer it was handed, and
 // completes the store's root with the answer. Land answers a fixed landing.
 type beltRunDouble struct {
-	mu      sync.Mutex
-	summary RunSummary
-	landing RunLanding
-	spec    RunSpec
-	entered chan struct{}
-	release chan struct{}
-	ran     bool
+	mu       sync.Mutex
+	summary  RunSummary
+	landing  RunLanding
+	spec     RunSpec
+	entered  chan struct{}
+	release  chan struct{}
+	finished chan struct{}
+	ran      bool
 	// ctx is the context the engine was started under, kept so a test can ask
 	// whether the run outlived the turn that launched it.
-	ctx context.Context
+	ctx       context.Context
+	landCalls int
 }
 
 func newBeltRunDouble(result string) *beltRunDouble {
 	return &beltRunDouble{
-		summary: RunSummary{Outcome: beltRunOutcomeDone, Result: result, Nodes: 1, Steps: 2},
-		landing: RunLanding{Branch: "task/fix-the-nil-map-crash", Changed: []string{"internal/session/agent.go"}},
-		entered: make(chan struct{}),
-		release: make(chan struct{}),
+		summary:  RunSummary{Outcome: beltRunOutcomeDone, Result: result, Nodes: 1, Steps: 2},
+		landing:  RunLanding{Branch: "task/fix-the-nil-map-crash", Changed: []string{"internal/session/agent.go"}},
+		entered:  make(chan struct{}),
+		release:  make(chan struct{}),
+		finished: make(chan struct{}),
 	}
 }
 
@@ -77,11 +80,21 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	if spec.Store != nil {
 		_ = spec.Store.CompleteRoot(d.summary.Result)
 	}
+	close(d.finished)
 	return d.summary
 }
 
 func (d *beltRunDouble) Land(context.Context, *plandb.Store, string, string) (RunLanding, error) {
+	d.mu.Lock()
+	d.landCalls++
+	d.mu.Unlock()
 	return d.landing, nil
+}
+
+func (d *beltRunDouble) lands() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.landCalls
 }
 
 func (d *beltRunDouble) didRun() bool {
@@ -489,14 +502,14 @@ func TestDriveBeltRunRefreshesSummaryOnceBeforeOutcomeNote(t *testing.T) {
 		t.Fatalf("summary requests = %d, want exactly one", got)
 	}
 	notes := beltRunNotes(t, dir, planRootID)
-	if !anyNoteCarries(notes, "done · fixed · landed on task/landing: 1 file · The fresh landing summary is stored.") {
+	if !anyNoteCarries(notes, "done · fixed · The fresh landing summary is stored.") {
 		t.Fatalf("outcome note was written before the fresh now sentence: %v", notes)
 	}
 }
 
 func TestDriveBeltRunSummaryFailurePreservesOutcomeNoteAndIsDeadlineBounded(t *testing.T) {
 	landing := RunLanding{Branch: "task/landing", Changed: []string{"internal/session/task_run_belt.go"}}
-	want := "done · landed on task/landing: 1 file"
+	want := "done"
 	tests := []struct {
 		name string
 		step step
@@ -600,7 +613,11 @@ func TestApprovedBeltHandoffCutsRunCopyFromResolvedGround(t *testing.T) {
 		t.Fatalf("conversation changed while run worked: %q != %q", got, before)
 	}
 	close(double.release)
-	beltRunWaitFor(t, "run finish", func() bool { agent.beltMu.Lock(); defer agent.beltMu.Unlock(); return agent.beltRun == nil })
+	beltRunWaitFor(t, "run finish", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun != nil && agent.beltRun.summary != nil
+	})
 	if got := beltRunRepoState(t, conversation); got != before {
 		t.Fatalf("conversation changed after workers finished: %q != %q", got, before)
 	}
@@ -666,4 +683,88 @@ func TestBeltRunUsesAlternateGroundAndOnlySameGroundMayJoin(t *testing.T) {
 		t.Fatalf("conversation changed during alternate-ground run: %q != %q", got, conversationBefore)
 	}
 	close(double.release)
+}
+
+// TestABeltRunWaitsForExplicitLanding keeps completion and landing as two
+// distinct acts: workers finish in their own copy, and only the person's later
+// landing request invokes the established run landing door.
+func TestABeltRunWaitsForExplicitLanding(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	conversation := beltRunCommittedRepo(t)
+	dir := t.TempDir()
+	double := newBeltRunDouble("the work is ready")
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: dir}
+	})
+	if err := agent.startKnownTaskRun(context.Background(), 71, "prepare the change", "brief", nil, taskStand{dir: conversation, mode: TaskModeWorktree}, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	workspace := double.spec.Workspace
+	double.mu.Unlock()
+	close(double.release)
+	<-double.finished
+	if got := double.lands(); got != 0 {
+		t.Fatalf("worker completion invoked landing %d times, want none", got)
+	}
+	landing, err := agent.Land(conversation)
+	if err != nil {
+		t.Fatalf("explicit Land: %v", err)
+	}
+	if got := double.lands(); got != 1 {
+		t.Fatalf("explicit landing invoked the run door %d times, want once", got)
+	}
+	if !strings.Contains(landing.Note, conversation) || !strings.Contains(landing.Note, workspace) {
+		t.Fatalf("landing note %q does not say what moved from %s to %s", landing.Note, workspace, conversation)
+	}
+}
+
+// TestAReadOnlyBeltRunWaitsThenSaysNothingMoved proves that an explicit landing
+// of a reading-only run changes neither place and answers plainly.
+func TestAReadOnlyBeltRunWaitsThenSaysNothingMoved(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	conversation := beltRunCommittedRepo(t)
+	dir := t.TempDir()
+	double := newBeltRunDouble("read the files")
+	double.landing = RunLanding{Refused: runNothingToLand}
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: dir}
+	})
+	before := beltRunRepoState(t, conversation)
+	if err := agent.startKnownTaskRun(context.Background(), 72, "read only", "brief", nil, taskStand{dir: conversation, mode: TaskModeWorktree}, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	close(double.release)
+	<-double.finished
+	landing, err := agent.Land(conversation)
+	if err != nil {
+		t.Fatalf("explicit Land: %v", err)
+	}
+	if !strings.Contains(landing.Note, "nothing") {
+		t.Fatalf("read-only landing note = %q, want it to say nothing moved", landing.Note)
+	}
+	if after := beltRunRepoState(t, conversation); after != before {
+		t.Fatalf("read-only landing changed the person's checkout:\n%s\n--- before ---\n%s", after, before)
+	}
+}
+
+func beltRunCommittedRepo(t *testing.T) string {
+	t.Helper()
+	repo := newTestRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("seed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(repo, "add", "seed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed"); err != nil {
+		t.Fatal(err)
+	}
+	return repo
 }
