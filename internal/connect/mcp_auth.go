@@ -294,7 +294,11 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer 
 		return nil, err
 	}
 	service := plug.service
-	local, err := newLocalListener(localServerAddresses)
+	addresses := localServerAddresses
+	if record, held := m.registrations().get(service.ID); held {
+		addresses = reconnectAddresses(record, addresses)
+	}
+	local, err := newLocalListener(addresses)
 	if err != nil {
 		return nil, fmt.Errorf("connect %s: %w", service.Name, err)
 	}
@@ -347,6 +351,32 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer 
 		cancel()
 		return nil, ctx.Err()
 	}
+}
+
+// reconnectAddresses puts previously registered loopback addresses first, so a
+// reconnect can keep using its identity after an ephemeral listener closes.
+func reconnectAddresses(record mcpRegistration, fallback []string) []string {
+	addresses := make([]string, 0, len(record.Redirects)+len(fallback))
+	for _, redirect := range record.Redirects {
+		parsed, err := url.Parse(redirect)
+		if err != nil || parsed.Scheme != "http" || parsed.Port() == "" {
+			continue
+		}
+		host := parsed.Hostname()
+		if host != "localhost" && host != "127.0.0.1" {
+			continue
+		}
+		address := "127.0.0.1:" + parsed.Port()
+		if !slices.Contains(addresses, address) {
+			addresses = append(addresses, address)
+		}
+	}
+	for _, address := range fallback {
+		if !slices.Contains(addresses, address) {
+			addresses = append(addresses, address)
+		}
+	}
+	return addresses
 }
 
 // connectToolServer is the whole trip, from the first question to the keys on

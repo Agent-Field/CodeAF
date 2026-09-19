@@ -260,13 +260,15 @@ func TestAServiceThatWillNotBeIntroducedToSaysSoPlainly(t *testing.T) {
 // so that connecting again is one browser trip and not a second registration.
 func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
 	first := unusedLoopbackAddress(t)
-	second := unusedLoopbackAddress(t)
 	previous := newLocalListener
 	calls := 0
-	newLocalListener = func([]string) (*listener.Listener, error) {
+	newLocalListener = func(addresses []string) (*listener.Listener, error) {
 		address := first
 		if calls > 0 {
-			address = second
+			if addresses[0] != first {
+				t.Fatalf("reconnect first address = %q, want saved %q", addresses[0], first)
+			}
+			address = addresses[0]
 		}
 		calls++
 		return listener.NewOn(address)
