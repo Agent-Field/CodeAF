@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/embed"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -64,7 +65,9 @@ func TestOrganizePassLeavesPendingWhenTheOrganizerIsUnbound(t *testing.T) {
 	}
 	_ = jobs.Close()
 
-	if err := v3OrganizePass(t.TempDir())(context.Background()); err != nil {
+	// Construction failed: the pass is handed a nil organizer, the same as
+	// v3Organizer returning nil. It must leave the row pending, not fake success.
+	if err := v3OrganizePassWith(t.TempDir(), nil)(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -79,6 +82,22 @@ func TestOrganizePassLeavesPendingWhenTheOrganizerIsUnbound(t *testing.T) {
 	}
 	if job.State != workspace.JobLeased {
 		t.Fatalf("job state %q", job.State)
+	}
+}
+
+func TestOrganizePassFinishesWhenTheOrganizerIsBound(t *testing.T) {
+	homeDir := isolateOrganizeHome(t)
+	writeOrganizeChat(t, organizeBillingID, "emailed download links for the receipt")
+	job := enqueueOrganizeJob(t, organizeBillingID, "1:cafe")
+	if err := v3OrganizePass(t.TempDir())(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	state, detail := readJobFinish(t, homeDir, job.ID)
+	if state == workspace.JobPending || state == workspace.JobLeased {
+		t.Fatalf("bound organizer left the job %s (%s)", state, detail)
+	}
+	if state != workspace.JobDeferred || detail != embed.LabelDelayed {
+		t.Fatalf("keyless bind should defer delayed, got %s %s", state, detail)
 	}
 }
 

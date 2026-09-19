@@ -49,6 +49,26 @@ func (d *discoveryAdapter) SetEmbedder(embedder embed.Embedder) {
 	d.embedder = embedder
 }
 
+// Ingest writes journal records into the same discovery.db SearchEvidence
+// reads. Replay of a stored cursor is a no-op. A nil or down embedder still
+// stores the passages and leaves vectors empty — never a dummy success.
+func (d *discoveryAdapter) Ingest(ctx context.Context, records []wsdiscover.Record) error {
+	if d == nil || d.store == nil {
+		return nil
+	}
+	return d.store.Ingest(ctx, records, discoverEmbedder(d.currentEmbedder()))
+}
+
+func discoverEmbedder(current embed.Embedder) wsdiscover.Embedder {
+	if current == nil {
+		return nil
+	}
+	if bound, ok := current.(wsdiscover.Embedder); ok {
+		return bound
+	}
+	return nil
+}
+
 func (d *discoveryAdapter) currentEmbedder() embed.Embedder {
 	if d == nil {
 		return nil
