@@ -241,7 +241,7 @@ const (
 	// It exists because of a real audit that died of it: the auditor ran `ls` on
 	// a huge home directory, the listing filled its context, and what was left of
 	// the reply budget was not enough to reach a verdict. The readers already
-	// truncate at pi's own numbers (50KB, internal/exec/bare's truncate.go), and
+	// truncate at the shipped numbers (50KB, in bare's truncate.go), and
 	// 50KB of directory listing is still a whole investigation's worth of budget
 	// spent on one wrong reach. Eight thousand bytes is two screens — enough for
 	// a real `go test` failure, enough for a diff hunk — and the cut says how
@@ -302,9 +302,10 @@ const (
 // THE ALLOWLIST IS NOT WRITTEN IN THIS FILE ANY MORE, and that is the whole of
 // one fix. It used to be a constant naming three `go` verbs, which made the gate
 // a gate for exactly one language and a coincidence everywhere else — measured,
-// on a Rust deliverable, in task_checks.go's opening. What one audit may run is
-// now read off the WORK: the checks its own document declares, the checks its
-// worker ran, and the always-safe reading commands ([auditDoorFor]).
+// on a deliverable written in another language, in task_checks.go's opening.
+// What one audit may run is now read off the WORK: the checks its own document
+// declares, the checks its worker ran, and the always-safe reading commands
+// ([auditDoorFor]).
 //
 // Every entry is still a COMMAND PREFIX matched field by field, so a check
 // admits its own flags and does not admit a program that merely starts like it.
@@ -1064,7 +1065,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// tree went home behind them (task_claims.go's [landingFiles]).
 	files := landingFilesFor(node, changed)
 	if tree.root != "" {
-		stageTaskWork(tree.dir, files.all())
+		stageTaskWork(tree.dir, files.all(), false)
 	}
 
 	// AND THE VERDICT IS REACHED SOMEWHERE ELSE. The staged tree above is what the
@@ -2148,7 +2149,7 @@ func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround,
 	// for a reason that has nothing to do with the work (task_run.go's
 	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
 	// job log instead.
-	if problem, _ := stageTaskWork(dir, wrote); problem != "" {
+	if problem, _ := stageTaskWork(dir, wrote, false); problem != "" {
 		remove()
 		return auditGround{}, "the work could not be staged in a clean copy: " + problem
 	}
@@ -2221,7 +2222,7 @@ func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	// for a reason that has nothing to do with the work (task_run.go's
 	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
 	// job log instead.
-	if problem, _ := stageTaskWork(dir, wrote); problem != "" {
+	if problem, _ := stageTaskWork(dir, wrote, false); problem != "" {
 		remove()
 		return auditGround{}, "the work could not be staged in a clean copy: " + problem
 	}
@@ -3326,7 +3327,7 @@ type shellLeash struct {
 // file has always carried.
 var auditShell = shellLeash{who: "an auditor", forWhat: "verification", hint: auditReaderHint}
 
-// verifyOnlyBash wraps pi's bash so it runs the work's own verification and
+// verifyOnlyBash wraps bare's bash so it runs the work's own verification and
 // nothing else.
 //
 // THE DESCRIPTION NAMES THIS AUDIT'S OWN DOOR, not a list somebody wrote once.
@@ -3342,8 +3343,8 @@ func verifyOnlyBash(tool bare.Tool, door auditDoor) bare.Tool {
 	return tool
 }
 
-// readingOnlyBash is the gate itself: pi's bash, allowed to run one command off
-// a list and refusing everything else.
+// readingOnlyBash is the gate itself: bare's bash, allowed to run one command
+// off a list and refusing everything else.
 //
 // The refusal is a RESULT, not an error: the agent reads "I am not allowed to
 // run that, here is what I am allowed to run" and gets on with the job, exactly
@@ -3411,6 +3412,14 @@ func refuseOutsideAllowlist(command string, allowed []string, voice shellLeash) 
 // after the first check there is exactly one command in the string, and the
 // checks after it are about that command.
 //
+// WHAT COUNTS AS COMPOSITION IS READ THE WAY THE SHELL THAT RUNS THE COMMAND
+// READS IT ([approval.FirstCompositionOutsideQuotes]), and the argument above survives
+// that reading whole: a character the shell hands to the one program as text
+// starts nothing, and every character the shell would ACT on is still refused
+// wherever it stands. The door and this gate ask ONE reader, because a check the
+// door admitted and the runner then refused could never hold: correct work
+// failed its review over a quoted bar.
+//
 // THE DOOR IS MATCHED THE TWO WAYS IT IS WRITTEN. A check that named a file is
 // matched by WHICH FILE the command names, under any spelling of it
 // ([auditDoor.admitsFile]); everything else is matched field by field as the
@@ -3422,9 +3431,9 @@ func refuseOutsideDoor(command string, door auditDoor, voice shellLeash) (string
 		return fmt.Sprintf("refused: %s runs %s, and that was an empty command.\n%s",
 			voice.who, voice.forWhat, voice.hint), false
 	}
-	if index := strings.IndexAny(command, shellComposition); index >= 0 {
+	if offending, composed := approval.FirstCompositionOutsideQuotes(command); composed {
 		return fmt.Sprintf("refused: %s runs ONE %s command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
-			voice.who, voice.forWhat, string(command[index]), clip(command, auditCommandLimit),
+			voice.who, voice.forWhat, string(offending), clip(command, auditCommandLimit),
 			door.offer(), voice.hint), false
 	}
 	// Whitespace is normalized so "make  check" is the same command as
@@ -3447,14 +3456,6 @@ func refuseOutsideDoor(command string, door auditDoor, voice shellLeash) (string
 		clip(normalized, auditCommandLimit), voice.forWhat, voice.who, voice.forWhat,
 		door.offer(), voice.hint), false
 }
-
-// shellComposition is every character that can start a second command, redirect
-// output, or substitute one. It is a CONSTANT rather than a literal at the gate
-// because two readers now ask the same question of a string — the gate itself,
-// and the reader that decides whether a fragment of the work's own text could
-// ever be a door (task_checks.go's [commandLike]) — and a composition set spelled
-// twice is a safety argument with two versions.
-const shellComposition = ";|&<>`$(){}\n\r\\"
 
 // matchesCommandPrefix decides whether one command starts with one allowed
 // prefix, FIELD BY FIELD.

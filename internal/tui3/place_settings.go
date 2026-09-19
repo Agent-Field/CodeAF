@@ -44,7 +44,7 @@ func (placeSettings) open(a *app) tea.Cmd {
 }
 
 // tick re-reads nothing and keeps the beat: see the note over [placeSettings.open].
-func (placeSettings) tick(a *app, now time.Time) bool { return true }
+func (placeSettings) tick(a *app, now time.Time) (bool, tea.Cmd) { return true, nil }
 
 func (placeSettings) close(a *app) { a.dropSettings() }
 

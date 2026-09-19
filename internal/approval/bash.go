@@ -89,6 +89,31 @@ func Vouchable(command string) bool {
 
 // ── segments ────────────────────────────────────────────────────────────────
 
+// BashCommandPart is one command and the shell boundary that follows it. The
+// command is trimmed, while Separator preserves the operator bytes themselves.
+//
+// THE SPANS ARE WHAT LETS A READER DRAW PART OF A COMMAND WITHOUT RETYPING IT.
+// Command[Start:End] of the line that was split is this part as it was typed,
+// the space around it included, and [End:SepEnd] is the boundary after it. A
+// reader that wants some parts and not others cuts spans out of the line it
+// was handed; one that joins trimmed commands back together has written a
+// different line from the one that ran.
+type BashCommandPart struct {
+	Command   string
+	Separator string
+	Start     int
+	End       int
+	SepEnd    int
+}
+
+// SplitBashCommand breaks a command line at the boundaries the shell acts on.
+// Quoted and escaped bytes remain in their command, and redirection ampersands
+// are not mistaken for command boundaries.
+func SplitBashCommand(command string) []BashCommandPart {
+	parts, _ := splitBashCommand(command)
+	return parts
+}
+
 // splitSegments breaks a command line into the individual commands it runs and
 // reports whether it was compound at all.
 //
@@ -107,20 +132,33 @@ func Vouchable(command string) bool {
 // left alone, since splitting there would make every command with a redirect
 // look compound.
 func splitSegments(command string) (segments []string, compound bool) {
-	var (
-		current []byte
-		quote   byte
-	)
-	flush := func() {
-		if segment := strings.TrimSpace(string(current)); segment != "" {
-			segments = append(segments, segment)
+	parts, compound := splitBashCommand(command)
+	segments = make([]string, 0, len(parts))
+	for _, part := range parts {
+		segments = append(segments, part.Command)
+	}
+	return segments, compound
+}
+
+func splitBashCommand(command string) (parts []BashCommandPart, compound bool) {
+	var current []byte
+	var quote byte
+	begin := 0
+	// flush ends the part being read at a boundary whose last byte is just
+	// before sepEnd. A stretch with nothing in it makes no part, and the next
+	// part still begins after the boundary that closed it.
+	flush := func(separator string, sepEnd int) {
+		if text := strings.TrimSpace(string(current)); text != "" {
+			parts = append(parts, BashCommandPart{
+				Command: text, Separator: separator,
+				Start: begin, End: sepEnd - len(separator), SepEnd: sepEnd,
+			})
 		}
+		begin = sepEnd
 		current = current[:0]
 	}
-
 	for index := 0; index < len(command); index++ {
 		char := command[index]
-
 		if quote != 0 {
 			if char == '\\' && quote == '"' && index+1 < len(command) {
 				current = append(current, char, command[index+1])
@@ -133,7 +171,6 @@ func splitSegments(command string) (segments []string, compound bool) {
 			}
 			continue
 		}
-
 		switch {
 		case char == '\\' && index+1 < len(command):
 			current = append(current, char, command[index+1])
@@ -143,40 +180,40 @@ func splitSegments(command string) (segments []string, compound bool) {
 			current = append(current, char)
 		case char == '\n' || char == ';':
 			compound = true
-			flush()
+			flush(string(char), index+1)
 		case char == '&':
-			if index+1 < len(command) && command[index+1] == '>' { // &>log
+			if (index+1 < len(command) && command[index+1] == '>') || lastNonSpace(current) == '>' {
 				current = append(current, char)
-				break
+				continue
 			}
-			if lastNonSpace(current) == '>' { // 2>&1
-				current = append(current, char)
-				break
-			}
+			separator := "&"
 			if index+1 < len(command) && command[index+1] == '&' {
+				separator = "&&"
 				index++
 			}
 			compound = true
-			flush()
+			flush(separator, index+1)
 		case char == '|':
+			separator := "|"
 			if index+1 < len(command) && command[index+1] == '|' {
+				separator = "||"
 				index++
 			}
 			compound = true
-			flush()
+			flush(separator, index+1)
 		case char == '$' && index+1 < len(command) && command[index+1] == '(':
 			index++
 			compound = true
-			flush()
+			flush("$(", index+1)
 		case char == '(' || char == ')' || char == '`':
 			compound = true
-			flush()
+			flush(string(char), index+1)
 		default:
 			current = append(current, char)
 		}
 	}
-	flush()
-	return segments, compound
+	flush("", len(command))
+	return parts, compound
 }
 
 func lastNonSpace(text []byte) byte {

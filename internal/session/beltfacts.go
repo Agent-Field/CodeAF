@@ -96,16 +96,20 @@ func (c Config) shelvesCapabilities() bool { return !c.InTask }
 // conversation, and a node has none.
 func (c Config) mayWatch() bool { return !c.InTask }
 
-// mayAsk is unconditional; only the conversation shelf changes whether the
-// schema is carried now or loaded on the next request.
-func (c Config) mayAsk() bool { return true }
+// mayAsk says whether `ask` belongs on this belt. It is unconditional on the
+// conversation's belt — only the shelf changes whether the schema is carried now
+// or loaded on the next request — and OFF on a bash-belt node, whose loop reaches
+// the person through the plan CLI and never through a consent gate (bashbelt.go
+// builds that belt; this is the same fact asked of a config before there is an
+// agent, so the belt and the page cannot disagree about the verb).
+func (c Config) mayAsk() bool { return !c.mayBashBelt() }
 
 // mayProposeTask says whether the task pair — `propose_task` and the `tasks`
 // window onto what it started — belongs on this belt: always in a conversation,
 // and in a node only when it was handed the conversation's graph and is not
 // standing on the floor of the tree ([Agent.mayProposeTask] is this asked of a
 // live agent, and task.go states the fan-out law it comes from).
-func (c Config) mayProposeTask() bool { return !c.InTask || c.mayFanOut() }
+func (c Config) mayProposeTask() bool { return !c.InTask || (c.mayFanOut() && !c.bashBelt) }
 
 // mayQuickTask says whether `quick_task` belongs on this belt, and it is
 // [Config.mayProposeTask] and not a second reading of it (task_quick.go).
@@ -116,7 +120,23 @@ func (c Config) mayProposeTask() bool { return !c.InTask || c.mayFanOut() }
 // written as its own predicate rather than as the other one spelled twice
 // because the page's bullet is about THIS verb, and a fact naming the wrong
 // predicate is a sentence nobody can check.
-func (c Config) mayQuickTask() bool { return c.mayProposeTask() }
+func (c Config) mayQuickTask() bool { return c.mayProposeTask() && !c.oneTaskRoad() }
+
+// oneTaskRoad says whether this agent is a conversation whose hand-offs are
+// runs in the plan store: the bash belt is asked for and a run engine is wired.
+//
+// THERE IS ONE WAY TO PUT WORK OUT UNDER THE BELT, AND IT IS `propose_task`.
+// The owner's words, 2026-09-18: one way, a task; the model launches several
+// when it needs to, and each is more of the plan. So `quick_task` is ABSENT
+// here, not refusing: it runs on the session tree, outside the plan store, where
+// no tree on the screen can show it and no check reads it, and a belt that
+// carried it would be offering a second engine under the first one's name. The
+// predicate is [stagedProposal.Commit]'s own guard, so the verb leaves the belt
+// exactly where a proposal starts a run and nowhere else; with no engine wired
+// a proposal still runs on the session tree and both verbs stay.
+func (c Config) oneTaskRoad() bool {
+	return !c.InTask && bashBeltAsked() && chatRunEngine != nil
+}
 
 // mayTickItems says whether `items` belongs on this belt (task_quick.go), and
 // it is the presence of the node's own list door and nothing else: a quick
@@ -189,6 +209,15 @@ func (c Config) mayProposeSubharness() bool {
 	return c.AskConsent && c.HarnessCards && len(c.subharnessRows()) > 0
 }
 
+// mayBashBelt says whether this agent's belt is the experiment's bash belt
+// (bashbelt.go, docs/design/bash-task-loop/DESIGN.md): the one `bash` tool
+// plus the hands that cannot be a shell command. InTask is half of the
+// predicate so no road can hand the experiment to a conversation, and the
+// flag is asked ONLY here — the one-reading law every belt verb follows —
+// so the prompt and the belt cannot disagree about which belt a worker is
+// on.
+func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt }
+
 // ── the facts ───────────────────────────────────────────────────────────────
 
 // beltFact is one run of session-facts bullets that names a tool, together with
@@ -213,6 +242,17 @@ type beltFact struct {
 	// do from here, and what to do in its place. An empty string renders
 	// nothing, which is right where the absence needs no instruction.
 	absent string
+	// bashAbsent is the absent wording ON THE EXPERIMENT'S BELT (bashbelt.go),
+	// where a fact about handing work out reads differently: the worker's
+	// coordination goes through the plan CLI, not through these verbs. Empty
+	// falls back to [beltFact.absent], which is right for every fact whose
+	// absence means the same thing on both belts.
+	bashAbsent string
+	// oneRoad is the present wording for a conversation whose hand-offs are runs
+	// in the plan store ([Config.oneTaskRoad]). It names `propose_task` alone,
+	// because that is the only verb such a belt carries. Empty falls back to
+	// [beltFact.present].
+	oneRoad string
 }
 
 // beltFacts is the whole of it, in the order the section reads.
@@ -429,6 +469,30 @@ var handoffFacts = []beltFact{{
 		"can. Each landing comes to you as a note, and starts a turn if yours has ended,\n" +
 		"so fold them as they arrive. When nothing independent of what you handed out\n" +
 		"remains, end your turn. That is how you wait.",
+	oneRoad: "You are one mind with a clock, and ONE way to put more minds on the work:\n" +
+		"`propose_task`. Each is a worker in a copy of the folder, checked when it\n" +
+		"finishes, that outlives this window. The first opens a run; every one after it\n" +
+		"while that run lives joins the same run as another task of it, and so does a\n" +
+		"`/task` the person types. SEVERAL PROPOSALS IN ONE MESSAGE ARE HOW YOU WORK IN\n" +
+		"PARALLEL: parts that do not need each other go out together and cost the\n" +
+		"longest of them alone, where done in your own hands they cost their sum. A part\n" +
+		"that must follow another is proposed once that one's id is back, naming it in\n" +
+		"`depends_on`. Parts that feed each other closely are ONE task: its worker\n" +
+		"splits it further in the plan when the material shows it is wide.\n" +
+		"\n" +
+		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
+		"more than you knew. WHEN THE ASK ITSELF NAMES SEVERAL THINGS, THOSE ARE THE\n" +
+		"PARTS. THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB. One read, one edit,\n" +
+		"one command is never worth a hand-off: do it here.\n" +
+		"\n" +
+		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept, or answer what you\n" +
+		"can, and end your turn when nothing independent of what you handed out remains.\n" +
+		"A landing speaks here only when the person is owed an answer. " +
+		"A finished task is asked about with `tasks` and is never redone or rechecked by hand.",
+	bashAbsent: "Work goes out through the plan when it has parts that do not need each other:\n" +
+		"`plandb add` and `plandb split` in bash are how, and every ready task they make\n" +
+		"is given a worker of its own. What is yours alone you carry here, in the order\n" +
+		"that finishes it.",
 	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
@@ -585,8 +649,14 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 	lines := make([]string, 0, len(facts))
 	for _, fact := range facts {
 		text := fact.absent
+		if config.mayBashBelt() && fact.bashAbsent != "" {
+			text = fact.bashAbsent
+		}
 		if fact.holds(config) {
 			text = fact.present
+			if fact.oneRoad != "" && config.oneTaskRoad() {
+				text = fact.oneRoad
+			}
 			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES
 			// THESE TOOLS. A worker or a task node carries them directly, so
 			// telling it to call `load_capability` — which is not on its belt at

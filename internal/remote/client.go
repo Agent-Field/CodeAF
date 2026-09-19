@@ -1949,6 +1949,116 @@ func (a *Agent) RewindPoints() []session.RewindPoint {
 	return points
 }
 
+// PlanSpend is the run's spending rolled up by seat, over the wire. It is the
+// engine door internal/tui3's spend page asserts ([session.Agent.PlanSpend]),
+// carried here so the block draws on a remote conversation exactly as it does
+// on a local one.
+//
+// THE EMPTINESS LAW DECIDES ITS ERROR, and it is the whole of why this returns
+// a slice and no error. The seat block is DRAWN FROM the lines it is handed, so
+// a conversation with no plan and a link that cannot answer must both read as
+// the same thing: nothing drawn. An engine older than this door answers "no
+// such method", which lands here as a nil slice — the block is simply absent,
+// which is what a remote conversation drew before the door existed.
+// PlanTasks reads this conversation’s complete plan rows from the engine.
+func (a *Agent) PlanTasks() []session.PlanTaskRow {
+	payload, err := a.c.call(nil, MethodPlanTasks, nil)
+	if err != nil {
+		return nil
+	}
+	var rows []session.PlanTaskRow
+	if json.Unmarshal(payload, &rows) != nil {
+		return nil
+	}
+	return rows
+}
+
+// PlanTaskPage reads one complete task page from the engine.
+func (a *Agent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
+	payload, err := a.c.call(nil, MethodPlanTaskPage, PlanTaskPageArgs{ID: id})
+	if err != nil {
+		return session.PlanTaskPage{}, false
+	}
+	var result PlanTaskPageResult
+	if json.Unmarshal(payload, &result) != nil {
+		return session.PlanTaskPage{}, false
+	}
+	return result.Page, result.OK
+}
+
+func (a *Agent) PlanNote(id, text string) error {
+	_, err := a.c.call(nil, MethodPlanNote, PlanTextArgs{ID: id, Text: text})
+	return err
+}
+
+func (a *Agent) PlanPause(id string) error {
+	_, err := a.c.call(nil, MethodPlanPause, PlanTaskArgs{ID: id})
+	return err
+}
+
+func (a *Agent) PlanResume(id string) error {
+	_, err := a.c.call(nil, MethodPlanResume, PlanTaskArgs{ID: id})
+	return err
+}
+
+func (a *Agent) PlanCancel(id string) error {
+	_, err := a.c.call(nil, MethodPlanCancel, PlanTaskArgs{ID: id})
+	return err
+}
+
+func (a *Agent) PlanAmend(id, text string) error {
+	_, err := a.c.call(nil, MethodPlanAmend, PlanTextArgs{ID: id, Text: text})
+	return err
+}
+
+func (a *Agent) PlanPriority(id string, priority int) error {
+	_, err := a.c.call(nil, MethodPlanPriority, PlanPriorityArgs{ID: id, Priority: priority})
+	return err
+}
+
+// PlanRunSummary reads the last engine-side summary; an unavailable link keeps nothing.
+func (a *Agent) PlanRunSummary(rootID string) (session.RunPlanSummary, bool) {
+	payload, err := a.c.call(nil, MethodPlanRunSummary, PlanRunSummaryArgs{RootID: rootID})
+	if err != nil {
+		return session.RunPlanSummary{}, false
+	}
+	var result PlanRunSummaryResult
+	if json.Unmarshal(payload, &result) != nil {
+		return session.RunPlanSummary{}, false
+	}
+	return result.Summary, result.OK
+}
+
+// RefreshRunSummary asks the engine to refresh within the caller deadline.
+func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook time.Time) (session.RunPlanSummary, bool) {
+	args := RefreshRunSummaryArgs{RootID: rootID, LastLook: lastLook}
+	if deadline, ok := ctx.Deadline(); ok {
+		args.Budget = time.Until(deadline)
+		if args.Budget <= 0 {
+			return session.RunPlanSummary{}, false
+		}
+	}
+	payload, err := a.c.call(ctx, MethodRefreshRunSummary, args)
+	if err != nil {
+		return session.RunPlanSummary{}, false
+	}
+	var result PlanRunSummaryResult
+	if json.Unmarshal(payload, &result) != nil {
+		return session.RunPlanSummary{}, false
+	}
+	return result.Summary, result.OK
+}
+
+func (a *Agent) PlanSpend(since time.Time) []session.PlanSpendLine {
+	payload, err := a.c.call(nil, MethodPlanSpend, PlanSpendArgs{Since: since})
+	if err != nil {
+		return nil
+	}
+	var lines []session.PlanSpendLine
+	_ = json.Unmarshal(payload, &lines)
+	return lines
+}
+
 // RewindAt cuts at one of them. Its error is SHOWN — the mode stays up and
 // prints the sentence — so a dead connection lands there like any other refusal.
 func (a *Agent) RewindAt(index int) ([]session.DisplayEntry, error) {

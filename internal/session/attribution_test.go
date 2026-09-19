@@ -74,7 +74,7 @@ func TestALandedCommitCarriesTheTrailer(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
 
-	if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, true); problem != "" {
+	if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, true, false); problem != "" {
 		t.Fatalf("the landing could not commit: %s", problem)
 	}
 	body := gitOut(t, tree.dir, "log", "-1", "--format=%B")
@@ -108,7 +108,7 @@ func TestALandedCommitIsUnsignedWhenTheRowIsOff(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
 
-	if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, false); problem != "" {
+	if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, false, false); problem != "" {
 		t.Fatalf("the landing could not commit: %s", problem)
 	}
 	if body := gitOut(t, tree.dir, "log", "-1", "--format=%B"); strings.Contains(body, "agentfield-bot") {

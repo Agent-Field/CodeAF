@@ -183,7 +183,7 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional. Commands that re-establish the result, each one simple command safe to run again. ` +
+	`"description":"Optional. Each ONE rerunnable command: no leading cd; | & ; < > $ only inside single quotes. ` +
 	`The checker runs these and nothing else; work declaring none is judged by reading. Never the work itself"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
@@ -557,7 +557,13 @@ func runnableChecks(declared []string, own taskCopy) []string {
 			continue
 		}
 		command = own.bindCommand(command)
-		if !runnableHere(own.dir, command) {
+		// THE RUNNABILITY QUESTION IS ASKED OF THE GROUND THE CHECKER STANDS IN,
+		// and with no ground there is no question: a caller on the ground itself
+		// carries the identity map, and its declaration is the whole contract
+		// ([TestDeclaredCommandsAloneAreTheCheckerContract] speaks the law). Where
+		// there IS a copy to stand in, the cleanup applies and a declared word
+		// that cannot run stays out of the door ([TestOnlyARunnableSpanBecomesADeclaredCheck]).
+		if own.dir != "" && !runnableHere(own.dir, command) {
 			continue
 		}
 		out = append(out, command)
@@ -579,6 +585,42 @@ func runnableChecks(declared []string, own taskCopy) []string {
 // THE SHAPE IS THE ONLY THING ASKED HERE, and the ground is not: a check is
 // declared before the work exists, so a command naming a file the work has yet to
 // write is a perfectly good check and is settled where the door is built.
+// leadsWithDirectoryChange reports a check whose first step changes directory.
+// IT IS REFUSED, NEVER REPAIRED. Dropping the step looked safe for the case
+// that was measured (2026-09-18: a proposal's first call spelled its check as a
+// change into the person's checkout and then the command), and it is
+// meaning-preserving ONLY when the directory is the ground itself. This door
+// does not know the ground, and a check that changes into any other folder
+// (a deliverable written outside the repository is checked exactly that way)
+// would be kept as a command run somewhere its files are not: a wrong verdict
+// on correct work, or a pass on the wrong file. A refusal is annoying and never
+// wrong, so the refusal says the form that passes instead.
+func leadsWithDirectoryChange(said string) bool {
+	step, _, composed := strings.Cut(said, "&&")
+	fields := strings.Fields(step)
+	return composed && len(fields) == 2 && fields[0] == "cd"
+}
+
+// checkShapeRefusal is what a declared check that is not one command hears, and
+// IT SAYS WHAT WOULD PASS. "… is not" was the whole of the old sentence, and a
+// model refused by it wrote the same shape again (measured 2026-09-18: nine
+// refusals over three rounds). So it names the one character that made this a
+// composition and the form of a check in one sentence. IT NEVER OFFERS A
+// REWRITTEN COMMAND: naming the tail after the last joiner as the repair was
+// tried and drops the step the check needed.
+func checkShapeRefusal(said string) string {
+	refusal := "Invalid arguments: checks must each be ONE rerunnable command"
+	if offending, composed := approval.FirstCompositionOutsideQuotes(said); composed {
+		refusal += ": " + strconv.Quote(string(offending)) + " joins, redirects or expands commands in " +
+			strconv.Quote(clip(said, auditCommandLimit)) +
+			". Such a character may stand only inside a single-quoted argument, where it is text"
+	}
+	if leadsWithDirectoryChange(said) {
+		refusal += ". A check runs from the root of the task's own copy: leave the directory change out and name each file by its path"
+	}
+	return refusal
+}
+
 func declaredCheckList(raw []string) ([]string, string) {
 	out := make([]string, 0, len(raw))
 	for _, entry := range raw {
@@ -588,8 +630,7 @@ func declaredCheckList(raw []string) ([]string, string) {
 		}
 		command, ok := commandLike(said)
 		if !ok {
-			return nil, "Invalid arguments: checks must each be ONE command with no shell composition — " +
-				strconv.Quote(clip(said, auditCommandLimit)) + " is not"
+			return nil, checkShapeRefusal(said)
 		}
 		if !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
 			return nil, "Invalid arguments: checks may not name " + strconv.Quote(command) +
@@ -837,6 +878,13 @@ func preparedAuditCommand(command string) string {
 	if command == "" {
 		return command
 	}
+	// ONE COMMAND IS LEFT EXACTLY AS IT WAS TYPED. A bar or an arrow inside a
+	// quoted argument is text ([approval.FirstCompositionOutsideQuotes]), and a line that
+	// is already one command has no stage to take: cutting it at that bar would
+	// hand the gate half a quotation, which it then refuses.
+	if _, composed := approval.FirstCompositionOutsideQuotes(command); !composed {
+		return command
+	}
 	if stage, ok := firstStage(command); ok {
 		return strings.TrimSpace(stage)
 	}
@@ -857,11 +905,13 @@ func preparedAuditCommand(command string) string {
 // command short at the first arrow it happens to contain would hand the door a
 // SHORTER command than the work ran, and a shorter command is a wider one.
 func firstStage(line string) (string, bool) {
-	if head, rest, piped := strings.Cut(line, "|"); piped {
-		if strings.HasPrefix(rest, "|") {
+	// THE PIPE THAT ENDS THE FIRST STAGE IS THE FIRST ONE THE SHELL WOULD ACT ON.
+	// A bar inside a quoted argument belongs to the command that carries it.
+	if at := approval.FirstBarOutsideQuotes(line); at >= 0 {
+		if strings.HasPrefix(line[at+1:], "|") {
 			return "", false
 		}
-		line = head
+		line = line[:at]
 	}
 	fields := strings.Fields(line)
 	for len(fields) > 0 {
@@ -1115,7 +1165,7 @@ func sameFile(one, other string) bool {
 // as one command:
 //
 //   - no shell composition, which is the gate's own standing law
-//     ([shellComposition]) asked one step earlier;
+//     ([approval.ShellComposition]) asked one step earlier;
 //   - a first word that is a program rather than an option, because a brief
 //     backticking `--stdio` is naming a flag and not a check;
 //   - a first word with something in it besides wildcards, because a door
@@ -1128,7 +1178,10 @@ func sameFile(one, other string) bool {
 // than about how it was typed.
 func commandLike(text string) (string, bool) {
 	text = strings.TrimSpace(text)
-	if text == "" || strings.ContainsAny(text, shellComposition) {
+	if text == "" {
+		return "", false
+	}
+	if _, composed := approval.FirstCompositionOutsideQuotes(text); composed {
 		return "", false
 	}
 	fields := strings.Fields(text)
@@ -1139,9 +1192,8 @@ func commandLike(text string) (string, bool) {
 	if strings.HasPrefix(program, "-") || strings.Trim(program, "*?[]") == "" {
 		return "", false
 	}
-	normalized := strings.Join(fields, " ")
-	if len(normalized) > auditCommandLimit {
+	if len(text) > auditCommandLimit {
 		return "", false
 	}
-	return normalized, true
+	return text, true
 }

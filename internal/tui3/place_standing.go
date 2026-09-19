@@ -880,12 +880,12 @@ func (placeStanding) close(a *app)        { a.orders.close(a) }
 // the cursor settled onto the list they made — because a list rebuilt under a
 // cursor that was not moved with it is a cursor standing on whatever slid into
 // its line number.
-func (placeStanding) tick(a *app, now time.Time) bool {
+func (placeStanding) tick(a *app, now time.Time) (bool, tea.Cmd) {
 	p := &a.orders
 	a.readStandingElsewhere()
 	p.rows = a.standingPageRows(p.win)
 	p.cursor = p.settle(p.cursor)
-	return true
+	return true, nil
 }
 func (placeStanding) body(a *app, width, room int) []placeRow {
 	return a.orders.body(a, width, room)
@@ -906,10 +906,12 @@ func (a *app) standingPlaceFrame(width, height int) ([]string, []int, int, int) 
 	lines, hits, caretX, caretY := a.placeDraw(placeStanding{}, width, height)
 	return lines, placeLineHits(hits), caretX, caretY
 }
-func (placeStanding) enter(a *app) tea.Cmd                { return a.orders.enter(a) }
-func (placeStanding) verbs(a *app) []verb                 { return a.orders.verbs(a) }
-func (placeStanding) rowID(a *app) string                 { return a.orders.rowID() }
-func (placeStanding) window(a *app, key string) bool      { return a.orders.window(a, key) }
+func (placeStanding) enter(a *app) tea.Cmd { return a.orders.enter(a) }
+func (placeStanding) verbs(a *app) []verb  { return a.orders.verbs(a) }
+func (placeStanding) rowID(a *app) string  { return a.orders.rowID() }
+func (placeStanding) window(a *app, key string) (bool, tea.Cmd) {
+	return a.orders.window(a, key), nil
+}
 func (placeStanding) note(a *app, width int) []string     { return a.orders.note(a, width) }
 func (placeStanding) hint(a *app) string                  { return a.orders.hint(a) }
 func (placeStanding) changed(a *app, since time.Time) int { return a.orders.changed(a, since) }

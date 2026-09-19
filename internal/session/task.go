@@ -75,6 +75,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -307,6 +308,16 @@ type taskSpec struct {
 	// repeating anything the worker happened to do.
 	checks    []string
 	dependsOn []uint64
+	// planID is THE TASK'S ID IN THE PLAN STORE (internal/plandb), set only on
+	// a node the bash belt's plandb loop drives (docs/design/plandb-cli/
+	// DESIGN.md, the wiring section). It is what makes a node and its plan
+	// task one thing: the runtime claims the store task under this id when it
+	// dispatches the node, the node's work order is composed FROM the store
+	// read, and the pulse writes the node's ending back to the store task.
+	// Empty is the ordinary case — every node outside the experiment, and a
+	// quick or design or run node under it — and an empty one touches nothing:
+	// no seed, no pulse, no plan lines in the worker document.
+	planID string
 	// modelWord is the `model` argument as the model wrote it — a word, not an
 	// id — and it lives only until [Agent.resolveTaskModel] has answered for it
 	// (taskmodel.go). model is that answer: the id this node will actually run
@@ -562,6 +573,30 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	return bare.RunStaged(ctx, a.stageTask(ctx, args))
 }
 
+// taskHasPlacementContract reports that parsing got far enough to ask where the
+// proposed work stands. Missing task fields remain their single, established
+// refusal rather than manufacturing a placement question for something that is
+// not yet a task.
+func taskHasPlacementContract(spec taskSpec) bool {
+	return spec.title != "" && spec.summary != "" && spec.brief != "" &&
+		spec.deliverable != "" && spec.acceptance != ""
+}
+
+// proposalProblems joins independently repairable contract and placement
+// problems as sentences. Contract comes first because its corrected words may
+// change the placement the proposer chooses.
+func proposalProblems(contract string, stand taskStand) string {
+	parts := []string{strings.TrimSuffix(strings.TrimSpace(contract), ".")}
+	if stand.refusal != "" {
+		parts = append(parts, strings.TrimSuffix(strings.TrimSpace(stand.refusal), "."))
+	}
+	if stand.ask != "" {
+		parts = append(parts, strings.TrimSuffix(strings.TrimSpace(stand.ask), "."),
+			"Ask the person which, then propose this again with `ground` set to their answer")
+	}
+	return strings.Join(parts, ". ") + "."
+}
+
 // stageTask is the half of a proposal that can be taken back: the arguments
 // read, the door refusals asked, the ground resolved, a slot and an id taken,
 // and the card put in front of the person with its clock running.
@@ -589,6 +624,12 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged {
 	spec, problem := parseTaskArguments(args)
 	if problem != "" {
+		// A CONTRACT PROBLEM DOES NOT HIDE A PLACEMENT PROBLEM. Once the call has
+		// enough of a task to place, both readings are already available and each
+		// is returned as its own sentence in the order the proposer can repair them.
+		if taskHasPlacementContract(spec) {
+			problem = proposalProblems(problem, a.resolveTaskGround(spec))
+		}
 		return bare.Settled(problem, true)
 	}
 	// THE DOOR REFUSALS, before a card or a slot. A trivial ask and a
@@ -710,7 +751,7 @@ func (p *stagedProposal) Withdraw() {
 // batch would have read. The answer may already be in: a person who said no, or
 // a clock that ran out, while the message was still arriving, is read here in
 // the order it happened ([Agent.openTask]).
-func (p *stagedProposal) Commit(context.Context) (string, bool, error) {
+func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	a, spec, graph, elsewhere := p.agent, p.spec, p.graph, p.elsewhere
 	admitted := false
 	defer func() {
@@ -765,6 +806,36 @@ func (p *stagedProposal) Commit(context.Context) (string, bool, error) {
 	// the transcript by now and in neither the brief nor the request.
 	spec.admission = a.admissionContext()
 
+	// AN APPROVED HAND-OFF UNDER THE BASH BELT IS A RUN, NEVER A SESSION-TREE
+	// NODE. It keeps the id the card showed, carries its acceptance in the brief
+	// and its depends_on as the store's own dependencies, and takes the person's
+	// ask with it when this turn owes one (CHAT-ROLE.md, "A landing speaks only
+	// when an answer is owed"). A task about ANOTHER FOLDER than the work
+	// already underway is refused here ([standsElsewhereError]); any other
+	// failure of the run road falls through to the shipped engine, exactly as a
+	// typed /task does, and that engine cuts its own copy from the same stand.
+	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
+		a.mu.Lock()
+		question := questionAtTaskHandoff(a.owedAsks)
+		a.mu.Unlock()
+		description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+		// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT. This context is the turn's,
+		// and the turn cancels it on its way out (agent.go, `defer cancel(nil)`);
+		// a run driven under it would be stopped the moment the model finished
+		// its sentence. The values ride along, the cancellation does not.
+		joined := a.beltRunStandsOn(p.stand)
+		err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
+		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
+			return refusal.Error(), true, nil
+		}
+		if err == nil {
+			receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
+			if joined {
+				receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
+			}
+			return receipt, false, nil
+		}
+	}
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
@@ -784,10 +855,34 @@ func taskReceipt(id uint64, spec taskSpec, state TaskState, stand taskStand, els
 	}
 	if state == TaskQueued {
 		result := fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence)
-		return withElsewhere(withReport(result, stand.redirect), elsewhere)
+		return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
 	}
 	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence)
-	return withElsewhere(withReport(result, stand.redirect), elsewhere)
+	return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
+}
+
+// taskStandSentence says WHERE the task works whenever that was read from the
+// proposal itself, and says nothing otherwise.
+//
+// IT IS SAID IN A PERSON'S WORDS AND NEVER AS A RUNG'S NAME. `brief` and `said`
+// are how a log spells which step of the ladder answered; the receipt is read
+// by the model in front of the person and is theirs to open, so it names the
+// folder and whose word put the work there. A `ground` the refusal never
+// offered is accepted (it is somebody saying where the work is), and this line
+// is what makes a wrong one visible in the same breath rather than when the
+// work lands somewhere nobody looked. The rungs that read the conversation
+// instead are silent here, as they always were: the work went where the
+// conversation already is.
+func taskStandSentence(stand taskStand) string {
+	switch {
+	case stand.dir == "":
+		return ""
+	case stand.rung == taskGroundBrief:
+		return "It works in " + stand.dir + ", the one folder its brief names the work in."
+	case stand.rung == taskGroundSaid && !stand.kept:
+		return "It works in " + stand.dir + ", the folder this proposal gave as its ground."
+	}
+	return ""
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one
@@ -911,20 +1006,31 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 	// in the same words the divider's door uses, because one shape checked in
 	// two places would drift into two accounts of what an expectation is
 	// (handoffcontract.go owns both).
-	expects, problem := parseExpectations(parsed.Expects)
-	if problem != "" {
-		return spec, problem
-	}
+	expects, expectationProblem := parseExpectations(parsed.Expects)
 	spec.expects = expects
 	// AND THE VERIFICATION, on the same terms and for the same reason: it is the
 	// other optional half of the contract, and a check nobody could run is worth
 	// saying out loud here where the model can still fix it (task_checks.go's
-	// [declaredCheckList]).
-	checks, problem := declaredCheckList(parsed.Checks)
-	if problem != "" {
-		return spec, problem
-	}
+	// [declaredCheckList]). Reading it even when an expectation is malformed lets
+	// one refusal carry every independently repairable contract problem.
+	checks, checkProblem := declaredCheckList(parsed.Checks)
 	spec.checks = checks
+	problems := make([]string, 0, 2)
+	if expectationProblem != "" {
+		problems = append(problems, expectationProblem)
+	}
+	if checkProblem != "" {
+		problems = append(problems, checkProblem)
+	}
+	if len(problems) == 1 {
+		return spec, problems[0]
+	}
+	if len(problems) > 1 {
+		for i := range problems {
+			problems[i] = strings.TrimSuffix(strings.TrimSpace(problems[i]), ".")
+		}
+		return spec, strings.Join(problems, ". ") + "."
+	}
 	return spec, ""
 }
 

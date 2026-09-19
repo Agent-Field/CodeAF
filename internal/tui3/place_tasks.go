@@ -89,6 +89,45 @@ type tasksPlace struct {
 	// node made it, and the card is read rather than walked, so an offset is the
 	// only thing that moves ([clampTop], expand.go).
 	detailTop int
+	// plan is the run's plan page standing over the list — the description, the
+	// notes and the trajectory one plan task carries — and planOn says it is up.
+	// It is the SAME latch the record card uses ([tasksPlace.detailOn]) and draws
+	// in its place: enter over a plan row opens it and esc backs out one layer to
+	// the list, exactly as the card does, because a second key for one door is a
+	// second thing to learn ([app.taskSheetPlan]).
+	plan          session.PlanTaskPage
+	planOn        bool
+	planBriefFull bool
+	planAt        int
+	planBack      []session.PlanTaskPage
+	// planNote is the note a person types on a plan task's page, and it is the
+	// [editor] every other box on this surface is rather than a string of its own
+	// (the filter is one, and so is the conversation's composer). Typing on the
+	// page lands here and `enter` sends it through the store's note verb
+	// ([app.taskPlanNoteSend]); the row's own keys are read over an EMPTY box, so
+	// a note that starts with `p` or `x` is a letter the moment it has one.
+	planNote editor
+	// planStick is whether the page is pinned to its live edge — the bottom of
+	// the trajectory, where the newest step arrives. It is the SAME mechanism the
+	// room follows its own live edge with ([app.roomOffsetFor] resolves
+	// [tasksPlace.detailTop] here, [app.taskPlanTopFor] is its twin at this
+	// offset): a scroll up releases the pin and a scroll back to the bottom takes
+	// it again. It is beside the offset and not inside it because the bottom moves
+	// as the body grows, and a pinned page resolves to wherever the bottom now is
+	// rather than to the number it was last drawn at.
+	planStick bool
+	// planFollowing is a follow read that has been asked and has not come back.
+	// THE PAINT CLOCK ASKS AT MOST ONE AT A TIME: over a slow link a read per
+	// frame would stand in the door line in front of the key a person presses
+	// next, and every one of them would answer the same page.
+	planFollowing bool
+	// planPageAt is when the open page was last read, for any reason: the read
+	// that opened it, a follow, the re-read after a note. The follow's beat is
+	// counted from it ([app.taskPlanFollow]).
+	planPageAt time.Time
+	// planGen is the read of the run's rows this reading was filed from
+	// ([app.planRowsGen]); a newer one re-files it ([tasksPlace.regroup]).
+	planGen uint64
 	// tail is the last thing the node said, read off its journal once when the
 	// card opened, and tailRead says the read has happened — an empty tail with
 	// tailRead false is a read still in flight, and one with tailRead true is a
@@ -203,10 +242,11 @@ func (a *app) takeTaskReading() tasksPlace {
 	world := a.readWorld()
 	mine := a.taskSheetMine()
 	return tasksPlace{
-		world:  world,
-		mine:   mine,
-		awayAt: a.elsewhere().Read,
-		mineAt: a.railStamp,
+		world:   world,
+		mine:    mine,
+		awayAt:  a.elsewhere().Read,
+		mineAt:  a.railStamp,
+		planGen: a.planRowsGen,
 		reading: readTasks(world, mine, session.LastDays(now, taskSheetDays), tasksSort{},
 			session.LastLookAt(a.looksRoot(), pageTasks.word()), now),
 	}
@@ -235,10 +275,38 @@ func (a *app) takeTaskReading() tasksPlace {
 //
 // The common frame compares the held stamps and the main chat's own state.
 // A main turn can finish without any worker or other-window notice.
+//
+// IT NEVER ASKS THE ENGINE. The run's rows are read off the loop and held on the
+// surface ([app.refreshPlanRows]); this re-files what is held, and a read that
+// has come back since the last filing is one more stamp to compare.
+// planCanMove reports whether any row of a plan can change without the person
+// touching it: work that is queued or running. A row that is done, incomplete
+// or waiting on the person moves only by a verb, and a verb moves the stamp.
+func planCanMove(rows []session.PlanTaskRow) bool {
+	for _, row := range rows {
+		switch planStateWord(row) {
+		case "queued", "running":
+			return true
+		}
+	}
+	return false
+}
+
 func (p *tasksPlace) regroup(a *app) {
 	at, stamp := a.elsewhere().Read, a.railStamp
 	selfChanged := p.mine.row.ID != "" && (p.mine.row.Presence.State != a.taskSheetSelfState() || p.mine.row.Title != strings.TrimSpace(a.title))
-	if at.Equal(p.awayAt) && stamp == p.mineAt && !selfChanged {
+	// A READING NOBODY EVER TOOK IS NOT A FRESH ONE. The chat's rail draws the
+	// run's tree out of this same reading ([app.railRows]), in a conversation
+	// whose person may never walk into the tasks place: the zero place holds the
+	// zero stamps, the stamps of a quiet window are zero too, and the two read as
+	// equal, so the rail stood empty until somebody opened the page once. So the
+	// first ask files this window's own work under the present clock. It is the
+	// light half of [app.takeTaskReading], the half with no walk of the record
+	// in it: the record is the page's, and the page takes it on the way in.
+	if p.reading.now.IsZero() {
+		p.reading.now = a.now()
+		p.reading.win = session.LastDays(p.reading.now, taskSheetDays)
+	} else if at.Equal(p.awayAt) && stamp == p.mineAt && !selfChanged && p.planGen == a.planRowsGen {
 		return
 	}
 	// THE CURSOR IS REMEMBERED BY WHAT IT IS ON, ACROSS THE REBUILD.
@@ -258,7 +326,7 @@ func (p *tasksPlace) regroup(a *app) {
 	// kept. A row that is genuinely gone falls back to the settle every other
 	// rebuild uses, which parks on the nearest row rather than nowhere.
 	was, held := p.rowAt(a, p.cursor)
-	p.awayAt, p.mineAt = at, stamp
+	p.awayAt, p.mineAt, p.planGen = at, stamp, a.planRowsGen
 	p.mine = a.taskSheetMine()
 	p.reading = readTasks(p.world, p.mine, p.reading.win, p.order, p.reading.seen, p.reading.now)
 	if !held {
@@ -389,6 +457,19 @@ func (a *app) taskSheetMine() tasksMine {
 			row.live = &status
 		}
 		mine.rows = append(mine.rows, row)
+	}
+	// AND THE RUN'S PLAN, when this conversation seeded one. It is the store's
+	// own read, narrowed to this chat, and it is the second authority for work
+	// that has not landed: a task the run has added but not yet dispatched is on
+	// this page and nowhere in the index (taskplan.go).
+	//
+	// THE ROWS ARE THE ONES THE SURFACE HOLDS, NEVER A READ MADE HERE. This runs
+	// inside the frame, and over a connection the read is a call to another
+	// process that can take the wire's whole deadline; it is asked for from
+	// Update and folded in when it answers ([app.refreshPlanRows]).
+	if rows, ok := a.heldPlanRows(); ok {
+		mine.plan = rows
+		mine.now = a.runSummaryNow
 	}
 	mine.away = a.taskSheetAwayRows()
 	// AND WHICH OF THOSE WINDOWS ARE THIS ONE'S OWN CONVERSATIONS. The presence
@@ -823,6 +904,9 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// which backs out one layer to the list rather than closing the page
 	// (taskrecord.go).
 	if a.taskSheet.detailOn {
+		if a.taskSheet.planOn {
+			return a.taskPlanKey(msg), true
+		}
 		return a.taskCardKey(key), true
 	}
 	// THE CARET'S OWN CHORDS BEFORE THE PAGE'S KEYS (editkeys.go). `home` and
@@ -842,6 +926,13 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if editorWordKill(&a.taskSheet.query, key) {
 		a.taskSheetTyped()
 		return nil, true
+	}
+	// A PLAN ROW'S OWN KEYS, the cancel and the hold, read over an EMPTY box the
+	// way the roster reads its bare letters (stop.go's own law). It is ahead of
+	// the switch because a plan row's `x` and `p` are verbs rather than filter
+	// letters until the box has something in it ([app.taskSheetPlanKey]).
+	if cmd, took := a.taskSheetPlanKey(key); took {
+		return cmd, true
 	}
 	switch key {
 	case "esc":
@@ -990,6 +1081,12 @@ func (p *tasksPlace) enter(a *app) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	// A PLAN ROW OPENS ITS OWN PAGE — the description, the notes and the
+	// trajectory the store carries — through the sheet's own machinery and the
+	// same key a record row opens its card with ([app.taskSheetPlan]).
+	if item.plan != nil {
+		return a.taskSheetPlan(item.plan.ID)
+	}
 	if item.away {
 		// THE LADDER IS WALKED BEFORE THE CARD IS DRAWN, which is the whole of
 		// what changed here. Work in another conversation is not one situation but
@@ -1047,6 +1144,11 @@ func (a *app) taskSheetInside(entry *session.TaskIndexEntry) tea.Cmd {
 	// over an ordinary record row can never inherit the recovery band of the away
 	// row somebody opened before it ([app.taskSheetAwayCard] sets it back after).
 	a.taskSheet.awayOwner = tasksAwayOwner{}
+	// AND THE PLAN LATCH IS CLEARED WITH IT, so the card can never be drawn in the
+	// plan page's place ([app.taskSheetPlan] sets it for the one row that opens a
+	// plan task's page).
+	a.taskSheet.plan, a.taskSheet.planOn = session.PlanTaskPage{}, false
+	a.taskSheet.planNote.reset()
 	return a.readTaskTail(*entry)
 }
 
@@ -1393,7 +1495,7 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 		return 0
 	}
 	end := cursor
-	for end+1 < len(lines) && lines[end+1].kind == tasksLineTail {
+	for end+1 < len(lines) && (lines[end+1].kind == tasksLineTail || lines[end+1].kind == tasksLinePlanUnder) {
 		end++
 	}
 	if top > cursor {
@@ -1501,6 +1603,12 @@ func (p *tasksPlace) hint(a *app) string {
 	// had not mentioned ([app.taskSheetFold]).
 	if word := a.taskSheetFoldWord(); word != "" {
 		parts = append(parts, word)
+	}
+	// AND A PLAN ROW'S OWN KEYS, beside the door its enter takes: the cancel and
+	// the one key that holds the task, named where a person reads what a row can
+	// do ([app.tasksPlanKeyWords] says why they are `x` and `p`).
+	if ok && item.plan != nil {
+		parts = append(parts, a.tasksPlanKeyWords(*item.plan)...)
 	}
 	if verbs := p.verbs(a); len(verbs) > 0 {
 		words := make([]string, 0, len(verbs))
@@ -1686,9 +1794,9 @@ func (placeTasks) close(a *app) { a.taskSheet.close(a) }
 // bar's numbers are recomputed on this beat, so standing on this place froze
 // every tab's count — including the counts of the six rooms this one has
 // nothing to do with (placecounts.go's [app.placeBeat]).
-func (placeTasks) tick(a *app, now time.Time) bool {
+func (placeTasks) tick(a *app, now time.Time) (bool, tea.Cmd) {
 	a.taskSheet.regroup(a)
-	return true
+	return true, nil
 }
 
 func (placeTasks) body(a *app, width, room int) []placeRow {
@@ -1739,7 +1847,9 @@ func (placeTasks) rowID(a *app) string {
 	}
 	return item.entry.SessionID + "\x00" + item.entry.ID
 }
-func (placeTasks) window(a *app, key string) bool      { return a.taskSheet.window(a, key) }
+func (placeTasks) window(a *app, key string) (bool, tea.Cmd) {
+	return a.taskSheet.window(a, key), nil
+}
 func (placeTasks) note(a *app, width int) []string     { return a.taskSheet.note(a, width) }
 func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint(a) }
 func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.changed(a, since) }
@@ -1819,6 +1929,12 @@ func (placeTasks) ownFrame(a *app, width, height int) ([]string, []placeHit, int
 	if !a.taskSheet.detailOn {
 		return nil, nil, 0, 0, false
 	}
+	// THE PLAN PAGE DRAWS IN THE CARD'S PLACE, through the same latch and the
+	// same frame slot ([app.taskPlanFrame]).
+	if a.taskSheet.planOn {
+		lines, caretX, caretY := a.taskPlanFrame(width, height)
+		return lines, nil, caretX, caretY, true
+	}
 	lines, _, caretX, caretY := a.taskCardFrame(width, height)
 	return lines, nil, caretX, caretY, true
 }
@@ -1869,6 +1985,9 @@ func (placeTasks) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	defer a.touch()
 	if cmd, took := a.placeKey(msg); took {
 		return cmd, true
+	}
+	if a.taskSheet.planOn {
+		return a.taskPlanKey(msg), true
 	}
 	return a.taskCardKey(msg.String()), true
 }

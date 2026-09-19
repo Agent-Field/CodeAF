@@ -87,7 +87,7 @@ func TestAnIgnoredPathTheWorkerWroteDoesNotCostItTheRest(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
 	writeFile(t, filepath.Join(tree.dir, "run.log"), "noise\n")
 
-	saved, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"}, false)
+	saved, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"}, false, false)
 	if problem != "" {
 		// THE REST OF THE LEDGER WENT IN, so the one path git refused is not a
 		// failure of the landing (task_land_unsaved.go's [unstagedWork]).
@@ -133,6 +133,37 @@ func TestWhatTheNodeDidNotWriteStaysInItsWorktree(t *testing.T) {
 	}
 	if left := leftBehind(tree.dir); !containsString(left, "build/binary") {
 		t.Fatalf("leftBehind = %v, want it to name what is still sitting there", left)
+	}
+}
+
+// THE PORCELAIN LINE IS READ FROM ITS COLUMNS, not trimmed off its front. A
+// status line for a modified-but-unstaged path begins with a space — ' M
+// a/b.go' — and a reader that trims the line first turns it into 'M a/b.go',
+// so the slice past the third column then cuts the path's own first
+// character: a/b.go read as b.go. The untracked form needs no trimming, so
+// only the staged-looking path ever lost its head, which is why the fault
+// survived: every line looked almost right.
+func TestLeftBehindReadsThePorcelainColumnsWhole(t *testing.T) {
+	repo := newTestRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, "a"), 0o755); err != nil {
+		t.Fatalf("the directory for the modified path: %v", err)
+	}
+	writeFile(t, filepath.Join(repo, "a", "b.go"), "first\n")
+	mustGit(t, repo, "add", "a/b.go")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed a/b.go")
+	writeFile(t, filepath.Join(repo, "a", "b.go"), "second\n")
+	writeFile(t, filepath.Join(repo, "c.go"), "untracked\n")
+
+	// The tree git status reads here is the ordinary shape the landing reads:
+	// one modified-not-staged line with the leading-space padding and one
+	// untracked line beside it.
+	status := gitOut(t, repo, "status", "--porcelain", "--untracked-files=all", "--", ".")
+	if !strings.Contains(status, " M a/b.go") || !strings.Contains(status, "?? c.go") {
+		t.Fatalf("the fixture reads:\n%s, want a modified and an untracked path", status)
+	}
+	left := porcelainPaths(status)
+	if !containsString(left, "a/b.go") || !containsString(left, "c.go") {
+		t.Fatalf("porcelainPaths = %v, want a/b.go whole and c.go", left)
 	}
 }
 

@@ -55,11 +55,28 @@ both roads in: a ground the conversation worked out from what it had been readin
 one you settled yourself when it asked which of two projects the work was for. The set
 lives in the conversation's own folder, so closing the terminal does not lose it.
 
-A folder **you named** stays until you say otherwise. One the conversation merely worked
-out **decays**: if every call since has been in another repository, the fresh evidence wins
-and the old answer stops being offered — the record stays, it just stops deciding. And two
-folders the conversation is about, with nothing in the work to choose between them, are
-the same one-keypress question rung 2 asks, in the two names you already know.
+A folder **you named** stays until you say otherwise. Before conversation evidence is
+weighed, the task's own brief gets a rung: when every existing place its contract writes
+down is held by exactly one ground, the task stands there. A ground is the repository a
+named folder is inside, or the folder itself when it is inside none, so a brief that names
+a repository's subfolder and only files under it stands on that repository. This is a
+rule of properties (existence, containment, exactly one ground), not of a particular tool,
+kind of artifact, or spelling. A named folder that is inside no repository is where output
+goes and does not vote when another named folder is inside one, so a brief that works in
+one repository and writes its report to a scratch folder beside it still has one answer.
+Two grounds that both hold everything are two answers: the rung never picks, and the rungs
+below decide or ask. An aside that introduces an unrelated folder leaves no ground holding
+everything, so it cannot silently win.
+
+One folder the conversation merely worked out **decays**: if every call since has been in
+another repository, the fresh evidence wins and the old answer stops being offered — the
+record stays, it just stops deciding. And two folders the conversation is about, with
+nothing in the work to choose between them, are the same one-keypress question the next
+rung asks, in the two names you already know. An explicit existing `ground` still outranks
+every other rung, even when it is a third folder not offered by that question; the receipt
+says where in words, `It works in <folder>, the folder this proposal gave as its ground.`,
+so a wrong choice is visible immediately. A stand read from the brief is said the same way:
+`It works in <folder>, the one folder its brief names the work in.`
 
 **How it stands on that ground is not asked either — it follows from the work.** A
 repository the task writes in gets a working copy of its own, on a branch cut **from that
@@ -612,6 +629,12 @@ where it stands.
 
 A task is the same agent you talk to, with the same tools, in a quieter place.
 
+**On the worker harness road its belt is not the conversation's.** With
+`CODEAF_TASK_BELT=bash` set, a worker carries one shell and the plan CLI rather than
+these tools, and the verbs for handing work out come off it; the *worker harness* page
+names what that belt carries. Everything below is the belt the older road composes,
+which is what a build without the switch gives every task.
+
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and
 document engine. **The transcript it inherits only when it was promoted** — a quick task
@@ -641,7 +664,9 @@ piece it was given, and where its brief cannot be done without going against you
 in its report instead of quietly widening the job. A top-level task, with nobody between it
 and you, still reads your message as the whole of what was asked for.
 
-**It keeps `propose_task` and `tasks`, as a pair.** A task may hand pieces of its own work
+**It keeps `propose_task` and `tasks`, as a pair.** On the worker harness road it does
+not — that belt coordinates through the plan CLI, and the handing-out verbs are off it
+(*worker harness*, under *What a worker can do*). On this road a task may hand pieces of its own work
 out when its brief holds parts that do not need each other, at most **20** of them, and
 `tasks` is how it then watches them. Tasks nest at most **3** deep, so a piece it hands out
 may split its own share once more and a piece of that piece cannot. Inside a task
@@ -960,6 +985,34 @@ own word that the work is done; *The git an unattended run left on its own will 
 in *What codeaf is, and how you start it* says exactly what that session reads. The rule
 exists because a task reports work as *its own*, and one that fast-forwarded onto `main`
 really did report somebody else's fixes as the thing it had just built.
+
+## Can a task clone a repository? Inside a repository, no — but in a folder that is not one, yes
+
+The rule above is about **whose work** a command would take. A task normally works in a copy
+of your repository, so its copy shares your object store and every branch in it — and a
+clone there would bring in work the task did not do. **In that case `git clone` is refused
+with the same sentence as `pull` and `fetch`:**
+
+> git clone is not yours to run: it would bring in work this task did not do, and this task
+> reports what it writes as its own. Look with git status, diff, log and show — any branch,
+> as much as you want. What you write with write and edit in this copy comes home on its
+> own.
+
+**But a folder that is not a repository holds none of your work to protect.** A run worker
+handed an empty `-w` folder, or a task whose objective is "clone repository X, check out
+commit Y, then implement Z", is standing somewhere with no copy of yours to answer for — and
+there the guard does not apply at all: `git clone`, `git checkout`, `git fetch`, `git pull`,
+`git merge` and the rest run as they would at your terminal. An objective whose first step
+is a `git clone` is the work, not a reach for somebody else's commits.
+
+The decision is read off the task's **workspace root**, so a repository the task clones into
+a **subfolder** does not switch the guard back on for the rest of the run — the guard looks
+at where the task stands, not at whatever a later command left beside it.
+
+**One thing is refused wherever a task stands, and it is a different rule:** `git push`, and
+the rest of the road home. A task's work comes home through its landing, not over a remote,
+so a push from a folder that is not a repository is refused exactly as one from inside a
+repository is — *Can a task push, or open a pull request?* above says what it reads.
 
 ## How a task reports back to you
 
@@ -1369,6 +1422,20 @@ entire task run.
 Being stopped as stuck says **nothing** about the deliverable: a stopped task is still
 checked against its acceptance, and when the check passes it lands finished and merges with
 the `stopped:` line gone. The section below is that whole rule.
+
+## Does the planner see what its subtasks did — a task reads its own parts' reports, who joins the pieces back up, where a parent's result comes from
+
+**Yes, and that report is where the task's own result comes from.** A task that handed parts of
+its work out is **run again once every part it dispatched has landed**, and that turn opens on
+what each part reported — its title, whether it landed, and its result, one after another. The
+report that turn gives is the parent's result; on a run's root it is the result the run answers
+with, not whatever the first turn said when the work was still in pieces.
+
+Joining the parts is that turn's work, and it is the task's, not yours: read the parts together,
+check the combined result in the working copy, add a part if something is missing, and report. A
+task woken this way that hands out a further part **waits again** and is woken once that one
+lands too. The waking is bounded — a task is run again at most a fixed few times — so a task that
+keeps splitting cannot hold a run open forever.
 
 ## A task stopped as stuck that had already finished its work
 
@@ -2599,8 +2666,13 @@ open and read. The assembled brief is not in it; it is rebuilt from the prerequi
 reports when a task starts.
 
 It is written after **every** transition, atomically, never only at exit. On load it is
-schema-checked, and **any** violation drops the file whole and starts the session with no
-graph rather than refusing to start.
+schema-checked, and **any** violation starts the session with no graph rather than refusing
+to start. **The file that could not be read is kept, never overwritten**: it is moved beside
+itself as `tasks.json.refused-<seconds>` before anything is saved, and the id counter is
+raised past every task that left a transcript or a working copy in the conversation's
+folder, so a new task never takes a number an old one used. A task that came out of a run's
+plan carries no acceptance of its own in this file (what it is held to is in the plan's
+store), and that is not a violation.
 
 A conversation with **no session file on disk** gets no checkpoint at all, and runs tasks
 anyway.
@@ -3064,12 +3136,30 @@ checkpoint that was in force. A negative value answers `Invalid arguments: max_s
 be negative`. Zero or absent means the default.
 
 **`checks`** — the repeatable verification, described in *What propose_task needs from you*
-above. Each entry must be one simple command with no pipes or `&&`, and one that even a
-permit-everything policy would still stop and ask about is refused outright:
-`Invalid arguments: checks must each be ONE command with no shell composition`. The same
-argument is on `divide_work`, where each part declares what its own checker may run — and a
-check every part declares is taken off all of them and given once to the task that divided
-them, which is the only one that can honestly make it after its parts are home.
+above. Each entry must be ONE rerunnable command, and one that even a permit-everything
+policy would still stop and ask about is refused outright. A character that joins, redirects
+or expands commands (a pipe, `&&`, `;`, a redirection, a dollar, a backtick) refuses the
+entry when the shell would act on it, and is plain text inside a single-quoted argument: a
+search pattern holding a bar, in single quotes, is one command. Inside double quotes a
+dollar, a backtick and a backslash still refuse it, because the shell still expands them
+there. The refusal names the character and says what passes:
+`Invalid arguments: checks must each be ONE rerunnable command: "|" joins, redirects or
+expands commands in "<the check>". Such a character may stand only inside a single-quoted
+argument, where it is text`. The checker's own shell reads a command the same way, so a
+check admitted here is one the checker can run, and what it must never run is stopped at
+both. A check that leads with a directory change
+(`cd <folder> && <command>`) is refused like any other composition, and its refusal ends
+with the form that passes: `A check runs from the root of the task's own copy: leave the
+directory change out and name each file by its path`. It is never quietly repaired, because
+the command kept would run where its files may not be. The same argument is on
+`divide_work`, where each part declares what its own checker may run — and a check every
+part declares is taken off all of them and given once to the task that divided them, which
+is the only one that can honestly make it after its parts are home.
+
+Proposals refused side by side in one reply are ONE attempt, and a refusal they share
+counts once: three refused together for one reason are not three repeats, and a refusal
+whose words changed is not the same failure again, so neither earns the note about
+repeating a call.
 
 That refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
 for you: the row in the conversation reads only `the call was refused`, the task's card

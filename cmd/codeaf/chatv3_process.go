@@ -54,8 +54,9 @@ type v3Process struct {
 	// the same one: with CODEAF_PROFILE_DIR set, a panel writing ~/.codeaf while
 	// the session read the named profile is a gate turned off in the sheet that
 	// stays on with nothing on screen saying why.
-	Settings   config.Config
-	ProfileDir string
+	Settings          config.Config
+	ProfileDir        string
+	UnreadProfileKeys []string
 	// Models is ONE lazy warm and one cache on disk. N catalogs would be N
 	// network round trips for one answer.
 	Models *catalog.Catalog
@@ -100,10 +101,13 @@ type v3Process struct {
 	// mu guards everything below: the lazily opened history file and the list of
 	// agents this process has built. Both are touched from the surface's
 	// goroutine and from the door's defer, which are not the same one.
-	mu     sync.Mutex
-	recall *history.Store
-	agents []*session.Agent
-	closed bool
+	mu              sync.Mutex
+	recall          *history.Store
+	agents          []*session.Agent
+	standingStarted bool
+	standingStop    chan struct{}
+	standingDone    chan struct{}
+	closed          bool
 }
 
 // openV3Process builds the once-only half of a v3 launch.
@@ -184,15 +188,16 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
 	return &v3Process{
-		Settings:   settings,
-		ProfileDir: settings.ProfileDir,
-		Models:     models,
-		Shelf:      shelf,
-		Harnesses:  subharness.Default(),
-		Memory:     v3Memory(settings.ProfileDir),
-		Artifacts:  artifactsIndexPath(),
-		Conns:      v3Connect(settings.ProfileDir),
-		LaunchDir:  launchDir,
+		Settings:          settings,
+		ProfileDir:        settings.ProfileDir,
+		UnreadProfileKeys: append([]string(nil), settings.UnreadProfileKeys...),
+		Models:            models,
+		Shelf:             shelf,
+		Harnesses:         subharness.Default(),
+		Memory:            v3Memory(settings.ProfileDir),
+		Artifacts:         artifactsIndexPath(),
+		Conns:             v3Connect(settings.ProfileDir),
+		LaunchDir:         launchDir,
 	}, nil
 }
 
@@ -407,6 +412,12 @@ func (p *v3Process) closeAll() {
 		return
 	}
 
+	// The process starts its place sweep before it opens any shared state. Seal
+	// its note before closing that state so a late error cannot write after
+	// close; the walk itself is not waited on, so quit does not grow with the
+	// profile.
+	sealPlaceSweep()
+
 	// The start-up errands this process seated on its profile — the pool index
 	// refresh and the outbox push — were started fire-and-forget.
 	// [stopPoolErrands] cancels them and waits, so nothing this process started
@@ -414,6 +425,11 @@ func (p *v3Process) closeAll() {
 	// the seam). It runs first, before the conversations and the stores, because
 	// it is the process's own errand and not a conversation's.
 	stopPoolErrands(p.ProfileDir)
+
+	// Stop the standing clock before closing anything it may borrow. Waiting
+	// for its loop also waits for a pass already in flight, so no standing
+	// writer can outlive this process close.
+	p.stopStandingTicks()
 
 	var waiting sync.WaitGroup
 	for _, agent := range agents {
@@ -441,7 +457,7 @@ func (p *v3Process) closeAll() {
 	// It is the same bargain the recall store's Close makes one line below: a
 	// queue written on the way out, so the last thing a person did is on disk
 	// before the terminal comes back.
-	session.FlushUsage()
+	session.CloseUsage()
 
 	if recall != nil {
 		_ = recall.Close()

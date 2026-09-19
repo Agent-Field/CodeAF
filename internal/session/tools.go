@@ -9,8 +9,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
-// belt is the session's tool inventory: the seven pi tools — read, bash, edit,
-// write, grep, find, ls — with their verbatim pi schemas and descriptions.
+// belt is the session's tool inventory: the seven file tools — read, bash,
+// edit, write, grep, find, ls — with their verbatim schemas and descriptions.
 //
 // The hands are bare's, not a second copy: the session works the way a
 // subharness leaf works, and a divergence between them would be a divergence
@@ -42,8 +42,8 @@ import (
 // records, unconditional because every session compacts), and web_search and web_fetch
 // reach outside the machine (tools_search.go) when a back end was wired, and
 // generate_image paints (tools_image.go) when an image model was. bare
-// is untouched — a subharness leaf gets pi's bash exactly as before, and the
-// session gets pi's bash plus one argument.
+// is untouched — a subharness leaf gets bare's bash exactly as before, and the
+// session gets bare's bash plus one argument.
 //
 // propose_task (task.go) is the one hand that gives work AWAY: the model grooms
 // a self-contained piece, the person gets a countdown to redirect it, and an
@@ -60,7 +60,7 @@ import (
 // resultCaps is how much of one tool result this conversation's model can
 // afford to be handed, and it is the answer the whole belt is built with.
 //
-// IT FOLLOWS THE WINDOW. pi's flat caps — 2000 lines or 50KB — were measured
+// IT FOLLOWS THE WINDOW. bare's flat caps — 2000 lines or 50KB — were measured
 // against a 128,000-token window, which is exactly what [Agent.window] answers
 // when no model card says otherwise, so a frontier conversation gets them
 // unchanged and is byte-identical to what it was. A model with a smaller window
@@ -113,6 +113,17 @@ func (a *Agent) resultCaps() bare.Caps { return bare.CapsFor(a.window()) }
 // person's machine that no transcript ever showed them — and the node was
 // briefed to do one piece of work, not to retune the product around it.
 //
+// AND ON THE EXPERIMENT BRANCH THERE IS A THIRD ANSWER: THE SIX FILE TOOLS
+// COME OFF ENTIRELY. spark/bash-task-loop hands a task worker ONE bash tool —
+// bare's, with the branch's head+tail+path cut and the session's background
+// argument — and the kept hands that cannot be a shell command, under a strict
+// one-action-per-response envelope (bashbelt.go, bashbelt_envelope.go). It is
+// a SECOND composition behind [Config.mayBashBelt], set from CODEAF_TASK_BELT
+// at the one place a worker's Config is built (task_run.go's
+// [Agent.newTaskAgentOn]); unset, the belt above is byte for byte what it was,
+// and internal/exec/bare is untouched — the hands stay its, and the
+// experiment is a wire change, never an engine change.
+//
 // propose_task and tasks STAY, and they are one pair. A node may hand parts of
 // its own work further out (task.go's fan-out law) — the proposals join the
 // conversation's own graph under the node that made them, so there is no second
@@ -132,6 +143,15 @@ func (a *Agent) resultCaps() bare.Caps { return bare.CapsFor(a.window()) }
 // is exactly what the conversation has, which is the point: it is the same
 // worker, working somewhere quieter.
 func (a *Agent) belt() []bare.Tool {
+	// THE EXPERIMENT'S SECOND BELT, AND THE ONE DELEGATION THIS FUNCTION MAKES.
+	// A task worker built with CODEAF_TASK_BELT=bash reads a belt of one shell
+	// and the hands that cannot be a shell command, under a strict one-action
+	// envelope — the branch named in [bashBelt] — and unset, not one byte of
+	// what is composed here moves. The conversation never reads the switch:
+	// [Config.mayBashBelt] is the predicate and it answers InTask first.
+	if a.config.mayBashBelt() {
+		return a.bashBelt()
+	}
 	tools := bare.AllToolsCapped(a.config.Workspace, a.resultCaps())
 	for index, tool := range tools {
 		switch tool.Name {

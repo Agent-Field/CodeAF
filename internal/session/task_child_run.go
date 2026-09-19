@@ -206,7 +206,31 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 // EVERY OTHER NODE OPENS EXACTLY AS IT ALWAYS DID. A node with no parts out —
 // which is nearly all of them, including one that divides mid-run and is
 // already talking when it does — submits its brief here and runs.
+//
+// AND A NODE RESUMED AFTER AN INTERRUPT READS ONE SENTENCE MORE. The interrupt
+// door marks the node Interrupted and requeues it (task_store.go's interrupt),
+// and the fresh worker this builds opens on the same tree the predecessor was
+// working in when the process died — [TaskNode.resumeTree] reuses that working
+// copy on exactly this flag. The predecessor's effects are therefore
+// unannounced facts about the disk: files it saved, edits it half-made, a build
+// it left mid-run. miniplan checkpoints a trajectory and replays it; codeaf's
+// recovery unit is the node and the tree is the record
+// (docs/design/task-continue/DESIGN.md §D), so the only thing that ports of
+// that machinery is the sentence that makes its resume safe, and it is said
+// here, once, to the one worker that is about to act on the tree it describes.
 func (r *childRun) open(instruction string) error {
+	// THE CLAUSE IS ADDED, NOT DUPLICATED, and what the opening already says was
+	// verified before this was written: the document [TaskNode.instructionLocked]
+	// composes carries the contract, the family checks, the copy map and — for a
+	// restored node — the admission context's quotes and call handles
+	// ([AdmissionContext.restored]), which name what the predecessor's ADMISSION
+	// saw and say nothing about one that died mid-work. The row's "paused — it
+	// resumes" report is the person's reading of the record, and never reaches
+	// this document. So the fresh worker's document says nothing about a
+	// predecessor until this line adds it.
+	if note := r.resumeNote(); note != "" {
+		instruction = withReport(instruction, note)
+	}
 	if r.child.childrenOutstanding() {
 		r.child.enqueueNote(briefNote(instruction))
 		return nil
@@ -222,6 +246,45 @@ func (r *childRun) open(instruction string) error {
 	r.node.openingCarried()
 	r.drain(events)
 	return nil
+}
+
+// taskResumeClause is the resume sentence a bash-belt worker reads when the
+// worker before it was interrupted mid-work in this same tree
+// (docs/design/bash-task-loop/DESIGN.md, Decision 4).
+const taskResumeClause = "your predecessor was interrupted mid-work; effects may exist in the tree — inspect before repeating anything."
+
+// resumeNote is the clause a resumed node's opening carries, or "" when this
+// worker opens on a tree nobody has worked in.
+//
+// THE FLAG IS THE RECORD THE INTERRUPT DOOR ALREADY KEEPS, and reading it is
+// the whole of the mechanism: taskStore.interrupt marks the record Interrupted
+// when a process dies mid-work, restoreNode reads that field back onto the
+// node, and [TaskNode.resumeTree] reuses the durable working copy on exactly
+// that flag (task_run.go). Nothing here clears the flag and nothing here adds
+// a second one — the tree and the flag are the record, and this is a sentence
+// about them, not a checkpoint of them.
+//
+// IT RENDERS FOR BASH-BELT WORKERS ONLY, which is the wave's own acceptance:
+// the experiment's arms must differ by the belt alone, and today's belt keeps
+// today's opening byte for byte. The predicate is read off the child under its
+// own lock, the same read [Agent.mayBashBelt] makes.
+func (r *childRun) resumeNote() string {
+	r.child.mu.Lock()
+	belt := r.child.config.mayBashBelt()
+	r.child.mu.Unlock()
+	if !belt {
+		return ""
+	}
+	if r.node == nil || r.node.graph == nil {
+		return ""
+	}
+	r.node.graph.mu.Lock()
+	interrupted := r.node.interrupted
+	r.node.graph.mu.Unlock()
+	if !interrupted {
+		return ""
+	}
+	return taskResumeClause
 }
 
 // checkpoint puts the WORKING or CIRCLING question and answers whether the
@@ -762,6 +825,28 @@ func (r *childRun) drainLanding(events <-chan Event) bool {
 // arrived.
 func (r *childRun) foldParts() {
 	for r.stopped == "" && r.runCtx.Err() == nil {
+		// ── THE PLAN'S TURN-END PULSE ──
+		//
+		// The worker's turn has ended and the node is still running, which is
+		// the last moment it can adopt a store task as a child of its own: a
+		// pass taken after the landing hands the task a parent that has already
+		// settled and already cut its subtree, so nobody waits on the work and
+		// nobody folds its report. A task can be ready and unadopted here
+		// because the store grows outside this worker's own calls — a sibling's
+		// CLI write whose pass ran before the task became ready, a command this
+		// worker backgrounded, the person's own shell — and the pass after its
+		// last bash call is behind it by then.
+		//
+		// IT RUNS BEFORE THE TWO FACTS BELOW ARE READ, and that order is the
+		// point: a task this pass hands out is a child the read has to see, so
+		// the worker parks on it instead of leaving its loop and landing. The
+		// belt predicate keeps every other worker off this road, and the pulse
+		// itself is nil-safe outside the experiment (plandb_plan.go).
+		if r.child.config.mayBashBelt() {
+			if g := r.child.graph(); g != nil {
+				g.planPulse()
+			}
+		}
 		// The generation is taken BEFORE the question, so a report landing
 		// between the two closes the channel this select is about to wait on.
 		news := r.child.taskNewsWait()

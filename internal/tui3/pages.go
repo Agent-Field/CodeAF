@@ -99,7 +99,14 @@ type place interface {
 	// re-reads on the keystroke that walks in. A clock left running on a place
 	// that never asked for one is a second reader of the same disk, and walking
 	// out of memory onto home used to be exactly that (placecounts.go).
-	tick(a *app, now time.Time) bool
+	//
+	// IT MAY ALSO HAND BACK A COMMAND. That is where a place asks an engine door
+	// off the update loop — the spend place's run-of-seats read is the one that
+	// does — because the beat is the moment a place re-reads what it draws and a
+	// door asked from Update would freeze the window while the engine answered
+	// (offloop.go). The bool says whether the beat goes on; the command, nil where
+	// the place has none, runs beside the re-armed clock.
+	tick(a *app, now time.Time) (bool, tea.Cmd)
 	// body is the rows and the hit map, painted into exactly the room the frame
 	// reserved. It reads caches and never a seam.
 	body(a *app, width, room int) []placeRow
@@ -195,7 +202,11 @@ type place interface {
 	// window is `shift+←→↑↓`, the stretch of time this place is showing and how
 	// coarse. False is "this place has no window", and the key then does nothing
 	// rather than something undrawn (SCREEN 3d).
-	window(a *app, key string) bool
+	//
+	// The bool says whether the window moved; the command, nil where the place
+	// has none, carries a door the move makes necessary — the spend place re-asks
+	// its seat rollup over the new window, off the update loop ([place.tick]).
+	window(a *app, key string) (bool, tea.Cmd)
 	// box is the composer this place types into — the shared one by default.
 	box(a *app) *editor
 	// boxOnBody reports that this place draws what is typed into its box in a row
@@ -269,11 +280,11 @@ type place interface {
 // silently displace home.
 type placeBase struct{}
 
-func (placeBase) counted() bool                           { return false }
-func (placeBase) open(a *app) tea.Cmd                     { return nil }
-func (placeBase) close(a *app)                            {}
-func (placeBase) tick(a *app, now time.Time) bool         { return false }
-func (placeBase) body(a *app, width, room int) []placeRow { return nil }
+func (placeBase) counted() bool                              { return false }
+func (placeBase) open(a *app) tea.Cmd                        { return nil }
+func (placeBase) close(a *app)                               {}
+func (placeBase) tick(a *app, now time.Time) (bool, tea.Cmd) { return false, nil }
+func (placeBase) body(a *app, width, room int) []placeRow    { return nil }
 
 // remote is NOTHING TO SAY, which is the right default in both directions: a
 // place on a local session has no other machine to name, and a place whose
@@ -287,21 +298,21 @@ func (placeBase) bar(a *app, width int) (string, placeHit, bool) {
 func (placeBase) ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool) {
 	return nil, nil, 0, 0, false
 }
-func (placeBase) stops(a *app) []int                      { return nil }
-func (placeBase) cursorRow(a *app, rows []placeRow) int   { return -1 }
-func (placeBase) rowID(a *app) string                     { return "" }
-func (placeBase) enter(a *app) tea.Cmd                    { return nil }
-func (placeBase) verbs(a *app) []verb                     { return nil }
-func (placeBase) alt(a *app, letter rune) bool            { return false }
-func (placeBase) window(a *app, key string) bool          { return false }
-func (placeBase) note(a *app, width int) []string         { return nil }
-func (placeBase) resting(a *app) string                   { return "" }
-func (placeBase) changed(a *app, since time.Time) int     { return 0 }
-func (placeBase) summary(a *app) string                   { return "" }
-func (placeBase) press(a *app, y int) (tea.Cmd, bool)     { return nil, false }
-func (placeBase) hover(a *app, y int) bool                { return false }
-func (placeBase) wheel(a *app, delta int) (tea.Cmd, bool) { return nil, false }
-func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return nil }
+func (placeBase) stops(a *app) []int                        { return nil }
+func (placeBase) cursorRow(a *app, rows []placeRow) int     { return -1 }
+func (placeBase) rowID(a *app) string                       { return "" }
+func (placeBase) enter(a *app) tea.Cmd                      { return nil }
+func (placeBase) verbs(a *app) []verb                       { return nil }
+func (placeBase) alt(a *app, letter rune) bool              { return false }
+func (placeBase) window(a *app, key string) (bool, tea.Cmd) { return false, nil }
+func (placeBase) note(a *app, width int) []string           { return nil }
+func (placeBase) resting(a *app) string                     { return "" }
+func (placeBase) changed(a *app, since time.Time) int       { return 0 }
+func (placeBase) summary(a *app) string                     { return "" }
+func (placeBase) press(a *app, y int) (tea.Cmd, bool)       { return nil, false }
+func (placeBase) hover(a *app, y int) bool                  { return false }
+func (placeBase) wheel(a *app, delta int) (tea.Cmd, bool)   { return nil, false }
+func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd   { return nil }
 func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }

@@ -46,7 +46,12 @@ func (a *Agent) refuseProposedTask(spec taskSpec) string {
 		return spawnFloorRefusal
 	}
 	if missing, failed := a.graph().doomedDependencies(spec.dependsOn); len(missing)+len(failed) > 0 {
-		return dependencyRefusal(missing, failed)
+		if bashBeltAsked() {
+			missing = a.missingRunDependencies(missing)
+		}
+		if len(missing)+len(failed) > 0 {
+			return dependencyRefusal(missing, failed)
+		}
 	}
 	return ""
 }

@@ -100,15 +100,22 @@ func TestShPrependsSkillPathOnlyWithStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := `{"cmd":"printf '%s' \"$PATH\""}`
+	// One short marker line, position independent: whatever the ambient size of
+	// PATH, the collector keeps this line, and a truncated capture fails the
+	// test instead of reading as a pass or a false failure.
+	command := `{"cmd":"printf 'PATH_HEAD=%s\n' \"$(printf '%s' \"$PATH\" | cut -d: -f1)\""}`
 
 	plain := NewToolbox(workspace(t), "1", nil)
 	plainResult := plain.Execute(context.Background(), "sh", command)
 	if plainResult.IsError {
 		t.Fatalf("plain sh: %s", plainResult.Content)
 	}
-	if strings.Split(plainResult.Content, string(os.PathListSeparator))[0] == bin {
-		t.Fatalf("no-store PATH unexpectedly starts with skill bin: %q", plainResult.Content)
+	head, ok := pathHeadMarker(plainResult.Content)
+	if !ok {
+		t.Fatalf("no-store sh: PATH_HEAD marker line missing from capture (truncated?): %q", plainResult.Content)
+	}
+	if head == bin {
+		t.Fatalf("no-store PATH unexpectedly starts with skill bin: %q", head)
 	}
 
 	history, err := graphstore.Open(filepath.Join(t.TempDir(), "history.db"))
@@ -121,9 +128,25 @@ func TestShPrependsSkillPathOnlyWithStore(t *testing.T) {
 	if attachedResult.IsError {
 		t.Fatalf("store-attached sh: %s", attachedResult.Content)
 	}
-	if got := strings.Split(attachedResult.Content, string(os.PathListSeparator))[0]; got != bin {
+	got, ok := pathHeadMarker(attachedResult.Content)
+	if !ok {
+		t.Fatalf("store-attached sh: PATH_HEAD marker line missing from capture (truncated?): %q", attachedResult.Content)
+	}
+	if got != bin {
 		t.Fatalf("store-attached PATH starts with %q, want %q: %q", got, bin, attachedResult.Content)
 	}
+}
+
+// pathHeadMarker reads the PATH_HEAD marker line the sh helper prints, and
+// reports ok false when the line is absent, so a capture truncated by the
+// capped collector cannot make the assertion read as either outcome.
+func pathHeadMarker(content string) (string, bool) {
+	for _, line := range strings.Split(strings.TrimSuffix(content, "\n"), "\n") {
+		if rest, found := strings.CutPrefix(line, "PATH_HEAD="); found {
+			return rest, true
+		}
+	}
+	return "", false
 }
 
 func TestRecallSurfacesActiveSkillKind(t *testing.T) {

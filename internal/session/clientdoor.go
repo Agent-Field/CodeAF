@@ -332,6 +332,21 @@ func (a *Agent) routedCompleter() Completer {
 	return modelRoutingCompleter{agent: a}
 }
 
+// beltRunCompleter returns the completer a run's worker seats are built on. A
+// `/task` under the bash belt hands the run engine this conversation's
+// account-aware view, so each seat's request resolves the model its crew picked
+// back through this conversation's account pool rather than pinning whichever
+// adapter the conversation happened to hold.
+//
+// IT IS ALWAYS A VISIBLE COMPLETER, unlike [Agent.routedCompleter], which
+// answers nil so a conditional tool can be absent: the run road has no such
+// option — a seat with no provider is a task that cannot run — and a
+// conversation whose client is truly gone is answered by a call that refuses
+// rather than by a worker built on a keyless client.
+func (a *Agent) beltRunCompleter() Completer {
+	return modelRoutingCompleter{agent: a}
+}
+
 // fallbackModels reads the adapter's own ordered chain without exposing that
 // adapter to the caller.
 func (a *Agent) fallbackModels(model string) []string {
