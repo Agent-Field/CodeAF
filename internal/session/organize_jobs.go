@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/workspace"
 )
@@ -41,7 +43,7 @@ type Organizer interface {
 // OrganizeCoalesceKey is chat id + source revision. A second enqueue for the
 // same key while the row is pending or leased is a no-op success in the store.
 func OrganizeCoalesceKey(chatID, sourceRev string) string {
-	return chatID + ":" + sourceRev
+	return workspace.OrganizeChatKey(chatID, sourceRev)
 }
 
 // OrganizeRevision is the source revision of one journalled user message: the
@@ -52,40 +54,59 @@ func OrganizeRevision(ordinal int, text string) string {
 	return fmt.Sprintf("%d:%x", ordinal, sum[:8])
 }
 
+// OrganizePass is one elected walk of observe_and_organize. RailBlocked is
+// the standing DailyRail exhausted: finish deferred/delayed rather than spend
+// after standing is already blocked.
+type OrganizePass struct {
+	Jobs        OrganizeJobs
+	Work        Organizer
+	Enabled     bool
+	Now         time.Time
+	RailBlocked bool
+}
+
 // ProcessOrganizeJobs leases observe_and_organize work on the elected standing
 // pass. Organize itself happens outside the lease transaction; FinishJob is a
 // later write that revalidates the fence. A missing organizer leaves pending
 // rows untouched — absent, not a stub that claims the workspace was checked.
 func ProcessOrganizeJobs(ctx context.Context, jobs OrganizeJobs, work Organizer, enabled bool, now time.Time) error {
-	if jobs == nil || work == nil {
+	return ProcessOrganizePass(ctx, OrganizePass{Jobs: jobs, Work: work, Enabled: enabled, Now: now})
+}
+
+// ProcessOrganizePass is [ProcessOrganizeJobs] with the DailyRail bit.
+func ProcessOrganizePass(ctx context.Context, pass OrganizePass) error {
+	if pass.Jobs == nil || pass.Work == nil {
 		return nil
 	}
-	until := now.UTC().Add(standing.TickWindow).Format(time.RFC3339)
+	until := pass.Now.UTC().Add(standing.TickWindow).Format(time.RFC3339)
 	for n := 0; n < organizePassLimit; n++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		job, err := jobs.LeaseJob(ctx, []string{workspace.JobOrganize}, OrganizeOwner, until)
+		job, err := pass.Jobs.LeaseJob(ctx, []string{workspace.JobOrganize}, OrganizeOwner, until)
 		if errors.Is(err, workspace.ErrNotFound) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		state, detail := settleOrganizeJob(ctx, work, enabled, job)
-		if err := jobs.FinishJob(ctx, job.ID, job.Fence, state, detail); err != nil {
+		state, detail := settleOrganizeJob(ctx, pass.Work, pass.Enabled, pass.RailBlocked, job)
+		if err := pass.Jobs.FinishJob(ctx, job.ID, job.Fence, state, detail); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func settleOrganizeJob(ctx context.Context, work Organizer, enabled bool, job workspace.Job) (string, string) {
+func settleOrganizeJob(ctx context.Context, work Organizer, enabled, railBlocked bool, job workspace.Job) (string, string) {
 	if job.Attempt >= organizeAttemptCap {
 		return workspace.JobFailed, "too many attempts"
 	}
 	if !enabled && !explicitOrganize(job) {
 		return workspace.JobCancelled, "workspace.organize is off"
+	}
+	if railBlocked {
+		return workspace.JobDeferred, "discovery delayed"
 	}
 	state, detail, err := work.Organize(ctx, job)
 	if err != nil {
@@ -106,7 +127,44 @@ func validOrganizeFinish(state string) bool {
 }
 
 func explicitOrganize(job workspace.Job) bool {
-	return job.CoalesceKey == workspace.OrganizeExistingKey
+	return job.CoalesceKey == workspace.OrganizeExistingKey || job.CauseID == workspace.OrganizeThisCause
+}
+
+// OrganizeKick coalesces event-driven standing passes: at most one in-flight
+// worker plus one dirty follow-up. A second Request while running does not
+// spawn another goroutine.
+type OrganizeKick struct {
+	mu      sync.Mutex
+	running bool
+	dirty   bool
+}
+
+// Request runs fn. A call while a run is in flight records one follow-up.
+func (k *OrganizeKick) Request(fn func()) {
+	if k == nil || fn == nil {
+		return
+	}
+	k.mu.Lock()
+	if k.running {
+		k.dirty = true
+		k.mu.Unlock()
+		return
+	}
+	k.running = true
+	k.mu.Unlock()
+	guard.Go("session/organize-kick", func() {
+		for {
+			fn()
+			k.mu.Lock()
+			if !k.dirty {
+				k.running = false
+				k.mu.Unlock()
+				return
+			}
+			k.dirty = false
+			k.mu.Unlock()
+		}
+	})
 }
 
 func organizeChatID(place Place, fallback string) string {

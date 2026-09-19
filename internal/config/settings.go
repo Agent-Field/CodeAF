@@ -366,6 +366,10 @@ const (
 	// KeyWorkspaceOrganize pauses automatic placements when off. Manual
 	// folders, history, and chat stay. Default on once collections v3 exists.
 	KeyWorkspaceOrganize = "workspace.organize"
+	// KeyWorkspaceReactive opts the workspace into automatic after-message
+	// graph writes. Unset is off: Organize existing chats that successfully
+	// enqueues writes it on. Manual New folder does not.
+	KeyWorkspaceReactive = "workspace.reactive"
 
 	// KeyStandingBackground is whether this machine's own scheduler keeps
 	// standing items current when no codeaf window is open (internal/standing's
@@ -3882,6 +3886,23 @@ func OrganizeEnabledAt(profileDir string) bool {
 		return value
 	}
 	return true
+}
+
+// ReactiveEnabledAt is the workspace.reactive switch. Unset is off: automatic
+// after-message graph writes wait for Organize existing chats to opt in.
+// Off does not delete placements and does not cancel an explicit survey or
+// Organize this chat job.
+func ReactiveEnabledAt(profileDir string) bool {
+	if value, ok := persistedBool(profileDir, KeyWorkspaceReactive); ok {
+		return value
+	}
+	return false
+}
+
+// WriteWorkspaceReactive persists the opt-in Organize existing chats writes
+// after a successful enqueue. It is PROFILE-ONLY, the same as organize.
+func WriteWorkspaceReactive(profileDir string, on bool) error {
+	return writeProfileValue(profileDir, KeyWorkspaceReactive, on)
 }
 
 // BackgroundChecksAt resolves the background-checks row to its word, default

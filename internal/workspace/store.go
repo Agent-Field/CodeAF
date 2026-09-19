@@ -288,6 +288,40 @@ func (s *Store) Create(ctx context.Context, name string) (Collection, error) {
 	return c, nil
 }
 
+// CreateIn is visible New folder. Empty parentID is Root Create. Non-empty
+// creates and nests in one store transaction so a parent miss cannot leave a
+// Root orphan the person never asked for.
+func (s *Store) CreateIn(ctx context.Context, name, parentID string) (Collection, error) {
+	parentID = strings.TrimSpace(parentID)
+	if parentID == "" {
+		return s.Create(ctx, name)
+	}
+	if err := ValidateName(name); err != nil {
+		return Collection{}, storeError(err)
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return Collection{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	defer tx.Rollback()
+	at := s.stamp()
+	created, err := insertCollection(ctx, tx, name, at)
+	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	_, err = addInTx(ctx, tx, at, parentID, Ref{Kind: CollectionKind, ID: created.ID}, Provenance{Origin: OriginPerson, Actor: "person"})
+	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Collection{}, storeError(err)
+	}
+	return created, nil
+}
+
 func (s *Store) Rename(ctx context.Context, id, name string) error {
 	if err := ValidateName(name); err != nil {
 		return storeError(err)
