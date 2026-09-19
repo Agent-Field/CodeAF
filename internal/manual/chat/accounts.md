@@ -7,7 +7,7 @@ the keys are kept. A connected account gives codeaf tools it may use in your nam
 connected model service is a place models come from and is covered by the
 [services page](services.md).
 
-## What a connected account is
+## What a connected account is — can you access my email
 
 A connected account is a service codeaf holds a credential for. Connecting one does
 two things: it stores the credential in your profile directory, and it puts that

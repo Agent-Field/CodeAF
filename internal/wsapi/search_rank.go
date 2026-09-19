@@ -12,6 +12,10 @@ const (
 	wordingCoverageMax = 0.25
 	lexRRFWeight       = 2.0
 	coverWeight        = 0.3
+	// coverageAskMinTerms is how many distinctive words turn a look-up into a
+	// keyword ask. A plumber invoice is four terms; the A7 correction is seven;
+	// a buried certificate note is nine. This is a length gate, not a domain list.
+	coverageAskMinTerms = 6
 )
 
 // searchPool is how many lexical and embedding SESSIONS to gather before
@@ -159,22 +163,29 @@ func queryMentionsAbandoned(query string) bool {
 	return strings.Contains(strings.ToLower(query), "abandon")
 }
 
-// accessPolicyDecision is true when the session's standing decision is the
-// billed-file access rule — signed-in / authenticated fetch — not when it
-// names billed-file only to say this chat is not that rule. Cafe, restaurant,
-// abandon, and espresso are not tokens here: a policy chat that mentions a
-// dinner slip still counts, and an OCR chat that only refuses the topic does
-// not.
-func accessPolicyDecision(texts []string) bool {
+// standingDecision is true when the session states a rule — must, require,
+// or an authenticated / signed-in fetch — and false when it names a topic
+// only to say this chat is not that rule. Cafe, restaurant, abandon, and
+// espresso are not tokens here: a decision that mentions a dinner slip still
+// counts, and an OCR chat that only refuses the topic does not. billed-file
+// and purchase-document are not required, so a plumber-invoice or shipping-
+// label rule still counts.
+func standingDecision(texts []string) bool {
 	hay := strings.ToLower(strings.Join(texts, " "))
-	if !hasAccessAuth(hay) {
+	if identityRefusal(hay) {
 		return false
 	}
-	return strings.Contains(hay, "billed-file") ||
-		strings.Contains(hay, "billed files") ||
-		strings.Contains(hay, "billed document") ||
-		strings.Contains(hay, "purchase-document") ||
-		strings.Contains(hay, "purchase document")
+	return hasAccessAuth(hay) || hasDecisionLanguage(hay)
+}
+
+func identityRefusal(hay string) bool {
+	return strings.Contains(hay, "not a ") ||
+		strings.Contains(hay, "not the ")
+}
+
+func hasDecisionLanguage(hay string) bool {
+	return strings.Contains(hay, "must ") ||
+		strings.Contains(hay, "require")
 }
 
 func hasAccessAuth(hay string) bool {
@@ -183,21 +194,6 @@ func hasAccessAuth(hay string) bool {
 		strings.Contains(hay, "sign in") ||
 		strings.Contains(hay, "logged-in") ||
 		strings.Contains(hay, "after login")
-}
-
-// emailedReceiptTopic is the J18 TUI/manual ask: "emailed purchase confirmation
-// PDF" and "emailed receipt links" name the artefact, not a question. Two of
-// these tokens are enough; who|what|why|how|may|can|should|allowed are not
-// required.
-func emailedReceiptTopic(query string) bool {
-	q := strings.ToLower(query)
-	n := 0
-	for _, word := range []string{"emailed", "receipt", "purchase", "confirmation", "pdf"} {
-		if strings.Contains(q, word) {
-			n++
-		}
-	}
-	return n >= 2
 }
 
 func hasAskCue(query string) bool {
@@ -211,11 +207,17 @@ func hasAskCue(query string) bool {
 }
 
 // querySeeksOriginals is true for a different-wording look-up. Question cues
-// still count, but they are not the only path: an emailed-receipt topic
-// without those words also prefers original neighbours. "No, the other one"
-// and a buried certificate note do not match, so they keep coverage ranking.
+// still count. A short artefact look-up without those words — plumber invoice,
+// shipping label, purchase order, emailed receipt links — also prefers
+// original neighbours. coverageAskMinTerms is a length gate, not a domain
+// list: a short correction and a buried minority-topic note carry more
+// distinctive terms, so they keep coverage ranking.
 func querySeeksOriginals(query string) bool {
-	return hasAskCue(query) || emailedReceiptTopic(query)
+	if hasAskCue(query) {
+		return true
+	}
+	n := len(queryTerms(query))
+	return n > 0 && n < coverageAskMinTerms
 }
 
 type scoredHit struct {
@@ -231,13 +233,14 @@ func originalNeighbor(row scoredHit) bool {
 	return row.embRank > 0 && row.cover < wordingCoverageMax
 }
 
-// evidenceClass separates an emailed-receipt look-up into: the access-policy
-// decision (3), other original neighbours such as a dinner-slip OCR that only
-// refuses billed-file (2), abandoned neighbours (1), and query restatements
-// (0). Policy only elevates when coverage is still in the original-neighbour
-// band, so a buried certificate note that happens to contain "hyperlinks"
-// does not outrank the signed-in original on "emailed receipt links".
-// Higher wins. Cafe/restaurant/espresso are not a denylist.
+// evidenceClass separates a different-wording look-up into: the standing
+// decision (3), other original neighbours such as an OCR chat that only
+// refuses the asked-for artefact (2), abandoned neighbours (1), and query
+// restatements (0). A standing decision only elevates when coverage is still
+// in the original-neighbour band, so a buried certificate note that happens
+// to contain "hyperlinks" does not outrank the signed-in original on
+// "emailed receipt links". Higher wins. Cafe/restaurant/espresso are not a
+// denylist.
 func evidenceClass(row scoredHit, seek, demoteAbandoned, preferPolicy bool) int {
 	if !seek {
 		return 0
@@ -274,9 +277,9 @@ func betterHit(i, j scoredHit, seekOriginals, demoteAbandoned, preferPolicy bool
 // semantically close passages that share few of its tokens; a keyword ask
 // prefers sessions that cover its distinctive words. Abandoned-plan
 // neighbours stay behind the standing decision unless the query is about
-// that abandoned plan. An emailed-receipt topic then prefers the session
-// whose decision is the access policy over one that names billed-file only
-// to refuse it.
+// that abandoned plan. A short look-up then prefers the session whose
+// decision is the standing rule over one that names the artefact only to
+// refuse it. Receipt-domain token unions are not the gate.
 func rankEvidence(query string, lexical, embed []SearchHit, limit int) []SearchHit {
 	if limit < 1 {
 		limit = defaultSearchLimit
@@ -290,12 +293,12 @@ func rankEvidence(query string, lexical, embed []SearchHit, limit int) []SearchH
 			hit: c.hit, score: sessionScore(c, cover),
 			cover: cover, embRank: c.embRank,
 			abandoned: abandonedPlan(c.texts),
-			policy:    accessPolicyDecision(c.texts),
+			policy:    standingDecision(c.texts),
 		})
 	}
 	seek := querySeeksOriginals(query)
 	demote := seek && !queryMentionsAbandoned(query)
-	preferPolicy := emailedReceiptTopic(query)
+	preferPolicy := seek
 	sort.SliceStable(rows, func(i, j int) bool {
 		return betterHit(rows[i], rows[j], seek, demote, preferPolicy)
 	})
