@@ -109,12 +109,35 @@ func TestFinishRoadsNeverLeaveDoneAndWaiting(t *testing.T) {
 		}
 		assertLaw(t, store)
 	})
-	t.Run("CompleteRoot", func(t *testing.T) {
+	t.Run("CompleteRoot never parked", func(t *testing.T) {
 		store := planOpen(t, "")
 		if err := store.CompleteRoot("done"); err != nil {
 			t.Fatalf("CompleteRoot: %v", err)
 		}
 		if got := store.Task(store.RootID()); got.Status != StatusDone || got.Result != "done" {
+			t.Fatalf("completed root = %s %q", got.Status, got.Result)
+		}
+		assertLaw(t, store)
+	})
+	t.Run("CompleteRoot parked until Wake", func(t *testing.T) {
+		store := planOpen(t, "")
+		root := store.RootID()
+		planAdd(t, store, TaskSpec{ID: "child", Title: "child"})
+		if _, err := store.Wait(root, root); err != nil {
+			t.Fatalf("Wait root: %v", err)
+		}
+		planFinish(t, store, "child", "child", "done")
+		requireParkedFinishRefusal(t, store.CompleteRoot("late"))
+		if got := store.Task(root); !got.Waiting || terminal(got.Status) || got.Result != "" {
+			t.Fatalf("refused CompleteRoot = status %s waiting %v result %q", got.Status, got.Waiting, got.Result)
+		}
+		if _, err := store.Wake(root); err != nil {
+			t.Fatalf("Wake root: %v", err)
+		}
+		if err := store.CompleteRoot("after wake"); err != nil {
+			t.Fatalf("CompleteRoot after Wake: %v", err)
+		}
+		if got := store.Task(root); got.Status != StatusDone || got.Result != "after wake" {
 			t.Fatalf("completed root = %s %q", got.Status, got.Result)
 		}
 		assertLaw(t, store)

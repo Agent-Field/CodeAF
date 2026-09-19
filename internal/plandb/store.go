@@ -1458,6 +1458,9 @@ func (s *Store) CompleteRoot(result string) error {
 		if root == nil || terminal(root.Status) {
 			return errNoChange
 		}
+		if root.Waiting {
+			return fmt.Errorf("task %q is waiting and can only be finished after it is woken", root.ID)
+		}
 		if hasOpenDescendants(*next, root.ID) {
 			return errors.New("root has open descendants")
 		}
