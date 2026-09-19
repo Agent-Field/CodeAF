@@ -1001,3 +1001,46 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 		t.Fatalf("PlanTaskPage args = %+v, %v", args, err)
 	}
 }
+
+func TestRunSummariesCrossWholeAndDroppedRefreshKeepsNothing(t *testing.T) {
+	client, e := newEngine(t)
+	want := session.RunPlanSummary{
+		What: "building the wire", Since: "tests failed", Now: "implementing", Next: "verify",
+		WrittenAt: time.Date(2026, 9, 19, 1, 2, 3, 4, time.UTC),
+	}
+	e.answers[MethodPlanRunSummary] = PlanRunSummaryResult{Summary: want, OK: true}
+	e.answers[MethodRefreshRunSummary] = PlanRunSummaryResult{Summary: want, OK: true}
+
+	agent := client.Agent()
+	if got, ok := agent.PlanRunSummary("t-root"); !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("PlanRunSummary = (%+v, %v), want (%+v, true)", got, ok, want)
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Minute))
+	defer cancel()
+	if got, ok := agent.RefreshRunSummary(ctx, "t-root", want.WrittenAt); !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("RefreshRunSummary = (%+v, %v), want (%+v, true)", got, ok, want)
+	}
+	calls := e.calls(MethodRefreshRunSummary)
+	if len(calls) != 1 {
+		t.Fatalf("RefreshRunSummary calls = %d, want 1", len(calls))
+	}
+	var args RefreshRunSummaryArgs
+	if err := json.Unmarshal(calls[0].Payload, &args); err != nil {
+		t.Fatal(err)
+	}
+	if args.RootID != "t-root" || !args.LastLook.Equal(want.WrittenAt) || args.Deadline.IsZero() {
+		t.Fatalf("RefreshRunSummary args = %+v", args)
+	}
+
+	e.silent[MethodRefreshRunSummary] = true
+	dropped := make(chan struct{})
+	go func() {
+		defer close(dropped)
+		time.Sleep(10 * time.Millisecond)
+		_ = e.conn.Close()
+	}()
+	if got, ok := agent.RefreshRunSummary(context.Background(), "t-root", time.Time{}); got != (session.RunPlanSummary{}) || ok {
+		t.Fatalf("dropped RefreshRunSummary = (%+v, %v), want nothing kept", got, ok)
+	}
+	<-dropped
+}
