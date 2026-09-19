@@ -4836,7 +4836,11 @@ func (a *app) paint() tea.Cmd {
 	// A RUNNING COUNTDOWN IS THE FIFTH, and it is named separately from the turn
 	// even though a question can only be up mid-turn: the clock that draws it
 	// must not depend on a second fact staying true.
-	waitLive := a.state == stateWorking || a.waiting()
+	// ONLY stateWorking. a.waiting() is a disjunct of otherLive below, so including it
+	// here would be dead: w implies otherLive, so `waitLive && !otherLive` reduces to the
+	// same expression without it, and so does `waitLive || otherLive`. The forming-task
+	// wait therefore keeps the full cadence, which is what it does today.
+	waitLive := a.state == stateWorking
 	otherLive := a.welcome.animating() || a.tasksAnimating() ||
 		// The question block's own clocks, on the same terms: a policy line
 		// counting down and a reading clock running out are the two things on
