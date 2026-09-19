@@ -113,6 +113,35 @@ type Row struct {
 	Day    string  `json:"day"`
 }
 
+// Field is one row field and what it is, in a person's words.
+type Field struct {
+	Name    string
+	Meaning string
+}
+
+// Fields answers every field a row carries, in the order the row spells them,
+// with what each is: the table `codeaf telemetry show` prints so a person can
+// read what a row would say before any row exists. A test holds it to the
+// row's own JSON names.
+func Fields() []Field {
+	return []Field{
+		{"schema", "always 1"},
+		{"metric", "always role_quality"},
+		{"role", "the seat that was scored: worker, high or mastermind"},
+		{"model", "the model slug that held the seat"},
+		{"score", "0 to 100, the judge's reading of the seat"},
+		{"judge", "the model slug that scored it, never one from the crew"},
+		{"door", "how the run came in: task, do, exec or run"},
+		{"size", "how much work the run carried: S under 200k tokens, M under a million, L past it"},
+		{"day", "the UTC day, YYYY-MM-DD"},
+	}
+}
+
+// NeverInARow names what a row never carries, for the same listing: the
+// judge reads a clipped brief and deliverable to score a seat, and none of
+// what it read leaves in the row.
+const NeverInARow = "the brief, the deliverable, the report, code, file names, paths, repo names, keys, email, IP, or machine name"
+
 // RowsOf reads judge scores into rows, one per score. Every row carries
 // schema 1 and the role_quality metric; the day is spelled by the caller, the
 // way the outbox spells its own.

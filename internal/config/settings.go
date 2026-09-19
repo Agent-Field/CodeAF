@@ -3385,7 +3385,37 @@ func ModelPoolPublicKeySettingAt(profileDir string) string {
 // and [ModelPoolPublicKeySettingAt] against its own lookup rather than
 // calling this.
 func ModelPoolAt(profileDir string) poolcfg.Config {
-	return poolcfg.Resolve(ModelPoolSettingAt(profileDir), ModelPoolPublicKeySettingAt(profileDir), os.LookupEnv)
+	return ModelPoolResolved(profileDir, os.LookupEnv)
+}
+
+// ModelPoolResolved is [ModelPoolAt] with the environment injected, for the
+// verbs whose tests hand one in. It is where the telemetry off switch reaches
+// the pool: the environment rungs (CODEAF_TELEMETRY, DO_NOT_TRACK) are read by
+// the resolver through lookup, and the two rungs that live on disk — the
+// project file and the profile row that `codeaf telemetry off` writes — are
+// read here and applied with [poolcfg.Config.Quieted]. Disk only, never the
+// process environment: a caller that injected an environment must get the
+// answer for THAT environment, not the one the harness happens to export.
+func ModelPoolResolved(profileDir string, lookup func(string) (string, bool)) poolcfg.Config {
+	cfg := poolcfg.Resolve(ModelPoolSettingAt(profileDir), ModelPoolPublicKeySettingAt(profileDir), lookup)
+	cwd, _ := os.Getwd()
+	if telemetryRowsOff(cwd, profileDir) {
+		cfg = cfg.Quieted()
+	}
+	return cfg
+}
+
+// telemetryRowsOff is the disk half of [TelemetryOffReason]: the project file
+// and the profile row, without the environment pin, which the caller has read
+// already through its own lookup.
+func telemetryRowsOff(cwd, profileDir string) bool {
+	if cwd != "" {
+		if value, err := ProjectBoolAt(cwd, profileDir, KeyTelemetry); err == nil && !value {
+			return true
+		}
+	}
+	value, ok := persistedBool(profileDir, KeyTelemetry)
+	return ok && !value
 }
 
 // ExaKeyAt resolves the Exa credential: the environment first, then the sheet,

@@ -1,12 +1,18 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/pool/outbox"
+	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
+	"github.com/Agent-Field/codeaf/internal/pool/record"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
@@ -89,16 +95,178 @@ func telemetryInstallPrefix() string {
 	return hash
 }
 
-// runTelemetryShow prints exactly what is waiting to leave the machine, the
-// package's own rendering so the command and `codeaf telemetry show` a person
-// reads in the notice are one and the same thing.
+// runTelemetryShow prints exactly what is waiting to leave the machine — ALL
+// of it. The notice promises "see exactly what leaves: codeaf telemetry show",
+// and two streams leave: the anonymous usage counts this package spools, and
+// the Model Pool's judged seat scores, which wait in the pool's own outbox
+// under the profile and go to a different relay under a different switch.
+// Until 2026-09-18 this verb printed only the first, so a person who read it
+// and set CODEAF_TELEMETRY=off believed nothing more would leave while the
+// pool went on sending. Both streams are printed here, each under a line
+// naming where it goes or why it does not, so the sentence in the notice is
+// true of everything the binary sends.
 func runTelemetryShow(args []string) error {
 	flags := telemetryFlags("show")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	fmt.Fprintln(usageOut, telemetry.Show())
+	profileDir := config.ProfileDir()
+	telemetry.Configure(telemetryConfiguredOff())
+	fmt.Fprintln(usageOut, showEverythingWaiting(profileDir, os.LookupEnv))
 	return nil
+}
+
+// showEverythingWaiting composes the two streams, in the order the notice
+// names them: the usage counts first, the Model Pool second. For each, a
+// heading naming where it goes or why it does not, then WHAT A ROW SAYS —
+// every field, with the value this machine would send for it now where the
+// value is known before a run — then what a row never carries, then the rows
+// waiting to leave, in the bytes a relay would receive.
+//
+// The fields are printed whether or not anything is waiting. A person reads
+// this verb once, on the day they install, when the spool is empty; two empty
+// arrays told them nothing about what would leave the first time they used the
+// program, and the notice had promised them exactly that.
+func showEverythingWaiting(profileDir string, lookup func(string) (string, bool)) string {
+	var out strings.Builder
+	out.WriteString(usageCountsHeading())
+	out.WriteByte('\n')
+	writeUsageCountFields(&out)
+	writeWaiting(&out, telemetry.Show())
+	out.WriteByte('\n')
+	cfg := config.ModelPoolResolved(profileDir, lookup)
+	out.WriteString(modelPoolHeading(cfg))
+	out.WriteByte('\n')
+	writeModelPoolFields(&out)
+	writeWaiting(&out, poolRowsWaiting(config.ProfilePath(profileDir, "pool")))
+	return strings.TrimRight(out.String(), "\n")
+}
+
+// showIndent is the two spaces every line under a stream heading starts with.
+const showIndent = "  "
+
+// writeUsageCountFields prints the usage-count row as this machine would fill
+// it: the six every-event props with their live values, the identity and
+// envelope fields with what each is, then what each of the three session
+// events adds, and the never list from the notice.
+func writeUsageCountFields(out *strings.Builder) {
+	fmt.Fprintf(out, "%severy event carries, as this machine would send it now:\n", showIndent)
+	for _, prop := range telemetry.CommonPropValues() {
+		writeField(out, prop.Name, prop.Value, telemetry.PropDoc(telemetry.EveryEvent, prop.Name))
+	}
+	install := "(minted on the first send)"
+	if hash, ok := telemetry.InstallIDHashIfMinted(); ok {
+		install = hash[:12] + "…"
+	}
+	writeField(out, "install_id_hash", install, telemetry.InstallHashDoc)
+	writeField(out, "session_id_hash", "(per session)", telemetry.SessionHashDoc)
+	writeField(out, "event_id", "(per event)", telemetry.EventIDDoc)
+	writeField(out, "event_time", "(per event)", telemetry.EventTimeDoc)
+	for _, event := range telemetry.AllowlistedEvents() {
+		names := telemetry.EventPropNames(event)
+		if len(names) == 0 {
+			fmt.Fprintf(out, "%s%s adds nothing; it is sent once per install\n", showIndent, event)
+			continue
+		}
+		fmt.Fprintf(out, "%s%s adds:\n", showIndent, event)
+		for _, name := range names {
+			writeField(out, name, "", telemetry.PropDoc(event, name))
+		}
+	}
+	fmt.Fprintf(out, "%s%s; %s\n", showIndent, telemetry.CountBandsDoc, telemetry.CostBandsDoc)
+	fmt.Fprintf(out, "%snever: anything about you or your work — no prompts, code, file names, paths, repo names, keys, email, IP, machine name, model names, or error text\n", showIndent)
+}
+
+// writeModelPoolFields prints what one pool row says, field by field, and the
+// two identities a batch travels under.
+func writeModelPoolFields(out *strings.Builder) {
+	fmt.Fprintf(out, "%sone row per judged seat, after a task lands:\n", showIndent)
+	for _, field := range record.Fields() {
+		writeField(out, field.Name, "", field.Meaning)
+	}
+	writeField(out, "nonce", "(per row)", "16 random bytes as hex, so a resend is not a double count")
+	writeField(out, "X-Codeaf-Install", "(header)", "a random per-install id, minted on the first send; not the usage counts' id")
+	fmt.Fprintf(out, "%snever: %s\n", showIndent, record.NeverInARow)
+}
+
+// writeField prints one field line: the name, the value when there is one to
+// show, and what the field is, in columns a person can scan.
+func writeField(out *strings.Builder, name, value, meaning string) {
+	if value == "" {
+		fmt.Fprintf(out, "%s%s%-20s %s\n", showIndent, showIndent, name, meaning)
+		return
+	}
+	fmt.Fprintf(out, "%s%s%-20s %-26s %s\n", showIndent, showIndent, name, value, meaning)
+}
+
+// writeWaiting prints the rows waiting to leave, or one line saying none are.
+func writeWaiting(out *strings.Builder, rows string) {
+	if rows == "[]" {
+		fmt.Fprintf(out, "%swaiting to leave: none\n", showIndent)
+		return
+	}
+	fmt.Fprintf(out, "%swaiting to leave:\n%s\n", showIndent, rows)
+}
+
+// usageCountsHeading names where the usage counts go, or the rung of the
+// opt-out ladder that keeps them here. It reads the same ladder `telemetry
+// status` reads, so the two verbs cannot disagree about whether anything is
+// sent.
+func usageCountsHeading() string {
+	if reason := telemetry.OffReason(); reason != "" {
+		return fmt.Sprintf("usage counts (off: %s)", reason)
+	}
+	return fmt.Sprintf("usage counts (%s)", telemetry.Endpoint())
+}
+
+// modelPoolHeading names where the pool rows go, or the mode that keeps them
+// here: `read` uses the pool and sends nothing, `off` asks no judge at all.
+func modelPoolHeading(cfg poolcfg.Config) string {
+	if !cfg.CanSend() {
+		return fmt.Sprintf("Model Pool (model_pool %s, nothing is sent)", cfg.Mode)
+	}
+	return fmt.Sprintf("Model Pool (%s)", cfg.SubmitURL)
+}
+
+// poolRowsWaiting renders the pool outbox's pending rows the way telemetry.Show
+// renders the spool: a JSON array, one row per line, `[]` when nothing waits.
+// It reads the file by path and stats it first, like [pendingRows], because
+// [outbox.Open] creates an absent outbox and a reading form must not write.
+func poolRowsWaiting(poolDir string) string {
+	path := filepath.Join(poolDir, "outbox.jsonl")
+	if _, err := os.Stat(path); err != nil {
+		return "[]"
+	}
+	box, err := outbox.Open(path)
+	if err != nil {
+		return "[]"
+	}
+	defer box.Close()
+	rows := box.Pending()
+	if len(rows) == 0 {
+		return "[]"
+	}
+	var out bytes.Buffer
+	out.WriteString("[\n")
+	for i, row := range rows {
+		// The outbox stores a row compacted; encoding it again here, with
+		// HTML escaping off as the outbox writes it, answers the same bytes
+		// the relay is sent.
+		var line bytes.Buffer
+		enc := json.NewEncoder(&line)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(row); err != nil {
+			continue
+		}
+		out.WriteString("  ")
+		out.Write(bytes.TrimSpace(line.Bytes()))
+		if i < len(rows)-1 {
+			out.WriteByte(',')
+		}
+		out.WriteByte('\n')
+	}
+	out.WriteString("]")
+	return out.String()
 }
 
 // runTelemetrySet writes the settings row from internal/config: `telemetry off`

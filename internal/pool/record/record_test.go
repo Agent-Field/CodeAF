@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -324,5 +325,27 @@ func TestCellsAnswerSortedAndCarryTheMeanAndCount(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("cell %d is %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// TestFieldsNameEveryRowFieldInOrder holds the listing table to the row: one
+// entry per JSON name, in the row's own order, so a field added to Row without
+// a line for a person fails here.
+func TestFieldsNameEveryRowFieldInOrder(t *testing.T) {
+	var want []string
+	rt := reflect.TypeOf(Row{})
+	for i := 0; i < rt.NumField(); i++ {
+		name, _, _ := strings.Cut(rt.Field(i).Tag.Get("json"), ",")
+		want = append(want, name)
+	}
+	var got []string
+	for _, f := range Fields() {
+		got = append(got, f.Name)
+		if strings.TrimSpace(f.Meaning) == "" {
+			t.Errorf("field %q has no meaning", f.Name)
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Fields() names %v, the row spells %v", got, want)
 	}
 }
