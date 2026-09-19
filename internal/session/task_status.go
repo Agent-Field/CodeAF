@@ -678,8 +678,8 @@ const (
 	// taskReasonTimeLimit and taskReasonCostLimit are the two bounds a run's
 	// own person set on it, and they are drawn from the ending alone: the run
 	// answers one outcome sentence for every limit, and this line is where the
-	// two are told apart. Neither is a fault — a limit set by hand stopped the
-	// work rather than breaking it — and each names its own limit so a person
+	// two are told apart. Neither is a fault: a limit set by hand stopped the
+	// work rather than breaking it, and each names its own limit so a person
 	// who set both is told which one fired.
 	taskReasonTimeLimit = "a time limit you set stopped it"
 	taskReasonCostLimit = "a dollar limit you set stopped it"

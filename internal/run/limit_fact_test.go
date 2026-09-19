@@ -11,13 +11,13 @@ import (
 
 // The law these tests state: the run knows which limit ended it when it decides
 // it, and the fact crosses to the caller beside the outcome word. The outcome
-// stays one sentence for both limits — the exit ladder's own — and the limit
+// stays one sentence for both limits, the exit ladder's own, and the limit
 // fact is what says which, so a person who set both is told which one fired.
 
 // TestStartNamesTheTimeLimit runs a real supervisor over a store whose worker
 // blocks until the run ends it, with both a dollar limit and an elapsed limit
 // set and the clock the one that fires. The supervisor's driven clock is not
-// reachable through Start, so the limit is small real time — the worker holds
+// reachable through Start, so the limit is small real time: the worker holds
 // the run open until the limit cuts it, whatever the box's load.
 func TestStartNamesTheTimeLimit(t *testing.T) {
 	store, err := plandb.Open(t.TempDir()+"/plan.json", "time-limit", "root", "root", "run until the limit")

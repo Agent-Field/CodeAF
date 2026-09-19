@@ -119,3 +119,46 @@ func TestBeltRunNoticeCarriesTheLimitAsAnEnding(t *testing.T) {
 		})
 	}
 }
+
+// TestRunEndingsThatKeepTheFault is the other half of the inventory: the
+// endings that are not a person's limit and reached the fault reason before
+// this table learned the two limits, still reaching it today. A run that ran
+// and did not finish, a run that could not be run at all, and a joined row
+// whose task the run's own ending cut mid-flight all carry no ending a reading
+// knows, and their account is the report's first line behind the fault word.
+func TestRunEndingsThatKeepTheFault(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		report string
+	}{
+		{name: "ran and did not finish", report: "ran and did not finish"},
+		{name: "could not be run at all", report: "could not be run at all"},
+		{name: "cut mid-flight", report: "context canceled"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			reason := TaskReasonOf(TaskEnding(""), tt.report)
+			want := "a fault: " + tt.report
+			if reason != want {
+				t.Fatalf("reason = %q, want %q", reason, want)
+			}
+			if !ProjectTask(TaskFacts{State: TaskFailed, Ending: TaskEnding(""), Report: tt.report}).Fault {
+				t.Fatal("a row with no ending a reading knows is not drawn as a fault")
+			}
+		})
+	}
+}
+
+// TestBeltRunNoticeWithoutALimitKeepsNoEnding keeps the fact honest in the
+// other direction: a run that did not end on a bound publishes a row with no
+// limit ending, so it draws the reading its outcome word always drew.
+func TestBeltRunNoticeWithoutALimitKeepsNoEnding(t *testing.T) {
+	agent, _, run, _ := landingSummaryFixture(t, &scriptedCompleter{})
+	notice := agent.beltRunNotice(run, RunSummary{Outcome: "ran and did not finish"}, RunLanding{})
+	if notice.Ending != "" {
+		t.Fatalf("run row ending = %q, want none for a run no limit ended", notice.Ending)
+	}
+	status := ProjectTask(notice.StatusFacts())
+	if status.Reason != "a fault: ran and did not finish" {
+		t.Fatalf("drawn reason = %q, want the fault and the outcome word", status.Reason)
+	}
+}
