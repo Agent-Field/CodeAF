@@ -8,6 +8,7 @@ package session
 // spawned it.
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -161,5 +162,100 @@ func TestPlanSteerAnswersTheStoresOwnRefusal(t *testing.T) {
 	}
 	if err := agent.PlanCancel("t-done-one"); err == nil || err.Error() != `task "done-one" is already terminal` {
 		t.Fatalf("PlanCancel on a done task = %v, want the store's terminal refusal", err)
+	}
+}
+
+// Every steering verb recognizes a task kept from an earlier run, answers one
+// sentence that the run has ended, and leaves the ended run exactly as it was.
+func TestPlanSteerRefusesEveryVerbOnAnEndedRun(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "earlier", Title: "Earlier"})
+	ended, err := plandb.Open(path, "", planRootID, "", "")
+	if err != nil {
+		t.Fatalf("open earlier run: %v", err)
+	}
+	if _, err := ended.Claim("earlier", "worker"); err != nil {
+		t.Fatalf("claim earlier task: %v", err)
+	}
+	if _, err := ended.Done("earlier", "worker", "earlier work", nil, nil); err != nil {
+		t.Fatalf("finish earlier task: %v", err)
+	}
+	if err := ended.CompleteRoot("earlier result"); err != nil {
+		t.Fatalf("end earlier run: %v", err)
+	}
+	_ = ended.Close()
+	archive := path + ".1"
+	if err := os.Rename(path, archive); err != nil {
+		t.Fatalf("archive earlier run: %v", err)
+	}
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "live", Title: "Live"})
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	before, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatalf("read archive before steering: %v", err)
+	}
+	verbs := []struct {
+		name string
+		call func() error
+	}{
+		{"PlanNote", func() error { return agent.PlanNote("t-earlier", "hello") }},
+		{"PlanPause", func() error { return agent.PlanPause("t-earlier") }},
+		{"PlanResume", func() error { return agent.PlanResume("t-earlier") }},
+		{"PlanCancel", func() error { return agent.PlanCancel("t-earlier") }},
+		{"PlanAmend", func() error { return agent.PlanAmend("t-earlier", "more") }},
+		{"PlanPriority", func() error { return agent.PlanPriority("t-earlier", 3) }},
+	}
+	for _, verb := range verbs {
+		if err := verb.call(); err == nil || err.Error() != "that task's run has ended" {
+			t.Fatalf("%s on an ended run = %v, want the ended-run sentence", verb.name, err)
+		}
+		after, readErr := os.ReadFile(archive)
+		if readErr != nil {
+			t.Fatalf("read archive after %s: %v", verb.name, readErr)
+		}
+		if string(after) != string(before) {
+			t.Fatalf("%s changed the ended run", verb.name)
+		}
+	}
+
+	if err := agent.PlanNote("t-live", "still writable"); err != nil {
+		t.Fatalf("note on live run: %v", err)
+	}
+}
+
+// A READ THAT FINDS NO STORE GIVES THE PLAN'S LOCK BACK. A plan is armed before
+// its store exists, and a side list's beat can read in that moment. The read
+// that opens every run's store took the plan's lock and handed back the closer
+// that releases it, and both readers returned on "no stores" without calling
+// it: the lock was never released, and every later read, the run's own driver
+// and the conversation's close then waited on it for good. Seen on the real
+// binary: an engine an hour old that would not end.
+func TestAPlanReadThatFindsNoStoreReleasesThePlansLock(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, filepath.Join(t.TempDir(), "no-such-folder", planStoreFilename), "chat-a")
+	plan := agent.graph().planIfArmed()
+	if plan == nil {
+		t.Fatal("the fixture did not arm a plan")
+	}
+	for _, reading := range []struct {
+		name string
+		read func()
+	}{
+		{"the listing", func() { _ = agent.PlanTasks() }},
+		{"one task", func() { _, _ = agent.PlanTaskPage("1") }},
+		{"a note", func() { _ = agent.PlanNote("1", "hello") }},
+		{"every handle", func() { _, _, done := agent.openPlanReadHandles(); done() }},
+	} {
+		reading.read()
+		if !plan.mu.TryLock() {
+			// Given back here so the fixture's own close can end: a leaked lock
+			// hangs that close exactly as it hung the engine's.
+			plan.mu.Unlock()
+			t.Fatalf("%s found no store and kept the plan's lock", reading.name)
+		}
+		plan.mu.Unlock()
 	}
 }

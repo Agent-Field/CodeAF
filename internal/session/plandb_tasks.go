@@ -145,28 +145,33 @@ const planTrajectoryFile = "trajectory.jsonl"
 // ever seeded — and an empty slice (not nil) is a plan that holds only other
 // chats' work: the store is there and this chat's part of it is not.
 func (a *Agent) PlanTasks() []PlanTaskRow {
-	store, plan, closeStore := a.openPlanHandle()
-	if store == nil {
+	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
+	if len(stores) == 0 {
 		return nil
 	}
-	defer closeStore()
-	dir := filepath.Dir(store.Path())
-	spend := planSpendByTask(store.Path())
-	live := store.LiveSteps()
-	tasks := store.Tasks(plandb.Filter{Chat: plan.chat})
-	rows := make([]PlanTaskRow, 0, len(tasks))
-	// THE RUN'S ROOT IS WHAT THE STORE SAYS IT IS, never a name. A run the
-	// conversation opens is rooted at the task's own number
-	// ([Agent.startKnownTaskRun]), so a comparison against the word `root`
-	// counted nothing on any real run and its row wore no progress.
-	root := store.RootID()
-	for _, task := range tasks {
-		row := planTaskRow(store, dir, task, spend, live)
-		row.Folder = a.config.Workspace
-		rows = append(rows, row)
-		if task.ID == root {
-			applyPlanRootProgress(&rows[len(rows)-1], tasks, root)
+	var rows []PlanTaskRow
+	for _, store := range stores {
+		dir := filepath.Dir(store.Path())
+		spend := planSpendByTask(store.Path())
+		live := store.LiveSteps()
+		tasks := store.Tasks(plandb.Filter{Chat: plan.chat})
+		// THE RUN'S ROOT IS WHAT THE STORE SAYS IT IS, never a name. A run the
+		// conversation opens is rooted at the task's own number
+		// ([Agent.startKnownTaskRun]), so a comparison against the word `root`
+		// counted nothing on any real run and its row wore no progress.
+		root := store.RootID()
+		for _, task := range tasks {
+			row := planTaskRow(store, dir, task, spend, live)
+			row.Folder = a.config.Workspace
+			rows = append(rows, row)
+			if task.ID == root {
+				applyPlanRootProgress(&rows[len(rows)-1], tasks, root)
+			}
 		}
+	}
+	if rows == nil {
+		return []PlanTaskRow{}
 	}
 	return rows
 }
@@ -176,13 +181,20 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 // task this chat did not spawn, whether it is another conversation's or no
 // task at all: the page is the chat's own reading of its own plan.
 func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
-	store, plan, closeStore := a.openPlanHandle()
-	if store == nil {
+	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
+	if len(stores) == 0 {
 		return PlanTaskPage{}, false
 	}
-	defer closeStore()
-	task := store.Task(planTaskID(id))
-	if task == nil || task.Chat != plan.chat {
+	var store *plandb.Store
+	var task *plandb.Task
+	for _, candidate := range stores {
+		if found := candidate.Task(planTaskID(id)); found != nil && found.Chat == plan.chat {
+			store, task = candidate, found
+			break
+		}
+	}
+	if task == nil {
 		return PlanTaskPage{}, false
 	}
 	dir := filepath.Dir(store.Path())
@@ -241,6 +253,79 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Children:    children,
 		WaitRows:    waitRows,
 	}, true
+}
+
+// openPlanReadHandles opens every ended run oldest-first and then the live run.
+// Ended handles stay cached because an ended store never changes; only the live
+// handle is reopened for each read so writes from another process are visible.
+func (a *Agent) openPlanReadHandles() ([]*plandb.Store, *planState, func()) {
+	g := a.graph()
+	if g == nil {
+		return nil, nil, func() {}
+	}
+	plan := g.planIfArmed()
+	if plan == nil {
+		return nil, nil, func() {}
+	}
+	plan.mu.Lock()
+	if plan.archives == nil {
+		plan.archives = make(map[string]*plandb.Store)
+	}
+	stores := make([]*plandb.Store, 0, len(planArchivePaths(plan.path))+1)
+	for _, path := range planArchivePaths(plan.path) {
+		store := plan.archives[path]
+		if store == nil {
+			opened, err := plandb.Open(path, "", "", "", "")
+			if err != nil {
+				continue
+			}
+			plan.archives[path] = opened
+			store = opened
+		}
+		stores = append(stores, store)
+	}
+	live := plan.open()
+	if live != nil {
+		stores = append(stores, live)
+	}
+	if len(stores) == 0 {
+		// NOTHING TO READ IS NEVER RETURNED LOCKED. A plan is armed before its
+		// store exists, and both readers answer "no stores" by returning at once;
+		// a lock handed back on that path is a lock nobody releases, and every
+		// later read, the run's own driver and the conversation's close then wait
+		// on it for good ([Agent.openPlanHandle] gives it back the same way).
+		plan.mu.Unlock()
+		return nil, nil, func() {}
+	}
+	return stores, plan, func() {
+		if live != nil {
+			_ = live.Close()
+		}
+		plan.mu.Unlock()
+	}
+}
+
+// closePlanArchives closes every read handle this conversation kept on an ended
+// run's store. It takes the graph's plan gate to find the plan and the plan's
+// own gate to empty it, the same two every reader takes, and it never arms a
+// plan that was not armed: a conversation that read nothing holds nothing.
+func (a *Agent) closePlanArchives() {
+	g := a.graph()
+	if g == nil {
+		return
+	}
+	g.planMu.Lock()
+	plan := g.plan
+	g.planMu.Unlock()
+	if plan == nil {
+		return
+	}
+	plan.mu.Lock()
+	defer plan.mu.Unlock()
+	for path, store := range plan.archives {
+		_ = store.Close()
+		delete(plan.archives, path)
+	}
 }
 
 // openPlanHandle opens the run's store for one pass — a reading verb or one of
