@@ -27,7 +27,7 @@ func TestLockFollowsSuiteAfterWrapperKilled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	holder := exec.Command(os.Args[0], lock, "sh", "-c", "echo $$; read release")
+	holder := exec.Command(os.Args[0], lock, "sh", "-c", "sleep 0.05; echo $$; read release")
 	holder.Env = append(os.Environ(), "CODEAF_SUITE_LOCK_FIXTURE=1")
 	holder.Stdin = childInput
 	holder.Stdout = childOutput
