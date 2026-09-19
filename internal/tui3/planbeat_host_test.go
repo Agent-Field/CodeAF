@@ -319,14 +319,22 @@ func TestHostedPlanPartsCrossTheWireAndFilterThePage(t *testing.T) {
 		t.Fatalf("hosted page step parts = %#v, ok %v, want three parts", page.Steps, ok)
 	}
 
+	// THE ENGINE'S FACT ABOUT THE HEAD CROSSES THE WIRE WITH THE PARTS. This row
+	// leaves out a part addressed to the run's record, and that part prints: the
+	// first line of what came back may be its print and not the work's, so the
+	// engine withholds the head and the hosted page must draw none.
+	if !page.Steps[0].ObservationHeadWithheld {
+		t.Fatalf("hosted page step = %#v, want the head withheld for a row that leaves out a record part", page.Steps[0])
+	}
+
 	openHostedPage(t, a)
 	screen := taskSheetText(a)
-	for _, never := range []string{workspace, "plandb task overview"} {
+	for _, never := range []string{workspace, "plandb task overview", "recorded-output"} {
 		if strings.Contains(screen, never) {
 			t.Fatalf("hosted page contains filtered %q:\n%s", never, screen)
 		}
 	}
-	for _, want := range []string{"recorded-worker-bytes", "recorded-output"} {
+	for _, want := range []string{"recorded-worker-bytes"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("hosted page lacks %q:\n%s", want, screen)
 		}
