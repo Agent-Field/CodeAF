@@ -296,6 +296,17 @@ const (
 	// died on an API 404 read as a gap in the ask and held an unattended run open
 	// over a tree that was finished (#513).
 	TaskEndingUpstream TaskEnding = "upstream"
+	// TaskEndingTimeLimit says the bound a run was handed on its own time ended
+	// it: the elapsed limit a person set on the session, of which a run is given
+	// what is left. It is a fact about the bound and never about the work, so it
+	// is drawn without a fault and its reason names the limit
+	// ([taskReasonTimeLimit]).
+	TaskEndingTimeLimit TaskEnding = "time-limit"
+	// TaskEndingCostLimit is [TaskEndingTimeLimit] for the run's other bound:
+	// the spend ceiling a person set, counted while the work is still going.
+	// Its reason names the dollar limit ([taskReasonCostLimit]), and the two
+	// endings exist apart so a person who set both is told which one fired.
+	TaskEndingCostLimit TaskEnding = "cost-limit"
 	// TaskEndingError is everything else: a working copy that could not be
 	// made, a worker that would not start, an error nobody classified.
 	TaskEndingError TaskEnding = "error"

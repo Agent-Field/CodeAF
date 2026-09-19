@@ -178,7 +178,7 @@ func (a *Agent) beltRunRootRow(id string) (uint64, bool) {
 // and the conversation are told once where that work is, and the rows settle as
 // stopped by a person. NOTHING IS LANDED AND NO TURN IS BOUGHT: the person
 // ended the spend, and a model call to narrate the ending would be more of it.
-func (a *Agent) settleStoppedBeltRun(run *beltRun, why string) {
+func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	merge, changed := keptWork(run.tree, run.title, nil, a.signsGitWork())
 	report := stopBecause(taskStoppedWord, why)
 	if merge != mergeInPlace {
@@ -217,5 +217,9 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string) {
 		}
 	}
 	a.publishRunRow(g, notice)
-	a.settleJoinedRows(g, run, notice.EndedAt)
+	// A JOINED ROW THE STOP TOOK DOWN ENDS WITH THE STOP, NOT AS A FAULT: cut
+	// is the run engine's own typed record of which tasks its ending cut
+	// mid-flight, and the stop is a person, so the law draws those rows with
+	// the stop ending ([Agent.settleJoinedRows], [TaskReasonOf]).
+	a.settleJoinedRows(g, run, notice.EndedAt, TaskEndingStopped, cut)
 }

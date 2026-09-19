@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,20 @@ const (
 	OutcomeCannotRun  Outcome = "could not be run at all"
 	OutcomeIncomplete Outcome = "ran and did not finish"
 	OutcomeLimit      Outcome = "a limit you set stopped it"
+)
+
+// Limit is which bound a person set ended a run that reached it. The outcome
+// word above is one sentence for both limits and the exit ladder keeps its one
+// rung, so this fact is what says which limit fired, and it is carried beside
+// the word rather than read out of it: set where the run decides the limit was
+// reached ([Supervisor.limitHit]), read where the ending is drawn.
+type Limit string
+
+const (
+	// LimitTime is the elapsed limit.
+	LimitTime Limit = "time"
+	// LimitCost is the spend ceiling.
+	LimitCost Limit = "cost"
 )
 
 // passInterval is how long the loop idles between passes when no worker has
@@ -126,13 +141,25 @@ type Supervisor struct {
 	counted   map[string]float64
 	liveMoved chan struct{}
 
-	nodes          int
-	steps          int
-	rootResult     string
-	rootFailed     bool
-	limitHit       bool
+	nodes      int
+	steps      int
+	rootResult string
+	rootFailed bool
+	// limitHit is which limit a person set ended this run, and empty while none
+	// has. It is set the moment the run decides a limit was reached (the
+	// elapsed signal in Run, the spend counters in countLiveSpend and
+	// settleSpend), so the ending can name the limit that caused it rather
+	// than the one sentence both share.
+	limitHit       Limit
 	dispatchedRoot bool
 	cancels        map[string]context.CancelFunc
+	// cut is every task whose worker came home with the run's own ending as its
+	// error (a context the run ended: its elapsed wall, its spend ceiling, or a
+	// person's stop), by store id. It is the typed fact that says which rows the
+	// run's ending cut mid-flight, so a surface draws those rows with the run's
+	// own ending and never as a fault ([Summary.Cut]). It belongs to the loop
+	// goroutine like the counters beside it.
+	cut map[string]bool
 	// wakes counts how many times each composite task's worker has been launched
 	// again to integrate a landing of its children, and reported names the child
 	// ids a task's worker has already been woken with, so a wake fires once per
@@ -174,6 +201,7 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		finished:  make(chan workerReturn, slots+1),
 		liveMoved: make(chan struct{}, 1),
 		cancels:   make(map[string]context.CancelFunc),
+		cut:       make(map[string]bool),
 		checkOf:   make(map[string]string),
 		// Run makes these afresh for each run. They are made here too so that a
 		// launch is safe on a supervisor no Run has started, which is how a test
@@ -221,7 +249,8 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.steps = 0
 	s.rootResult = ""
 	s.rootFailed = false
-	s.limitHit = false
+	s.limitHit = ""
+	s.cut = make(map[string]bool)
 	s.dispatchedRoot = false
 	s.inFlight = 0
 	s.cancels = make(map[string]context.CancelFunc)
@@ -258,9 +287,11 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 		case <-timer.C:
 			timer.Reset(passInterval)
 		case <-elapsed:
-			// TIME AND COST SHARE ONE ENDING. Mark the same limit state the
-			// spend counter marks, so the next pass launches nothing and answers
-			// the existing OutcomeLimit.
+			// TIME AND COST SHARE ONE OUTCOME WORD, AND THE FACT UNDER IT SAYS
+			// WHICH. The spend counter marks the cost limit where it decides it;
+			// this marks the time one here, so the ending names the limit that
+			// fired and the next pass launches nothing and answers the existing
+			// OutcomeLimit.
 			//
 			// TIME ENDS THE WORK IN FLIGHT, AS DOLLARS DO ([countLiveSpend]): the
 			// time is gone whatever a worker was in the middle of. So every worker
@@ -269,7 +300,9 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			// endings: a return that was dropped would leave its task claimed and
 			// reading as running on a run that is over, and what the worker spent
 			// before it was cut would be missing from the run's account.
-			s.limitHit = true
+			if s.limitHit == "" {
+				s.limitHit = LimitTime
+			}
 			elapsed = nil
 			for _, cancel := range s.cancels {
 				cancel()
@@ -342,12 +375,13 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		}
 	}
 
-	if s.inFlight == 0 && (s.rootFailed || s.limitHit) {
+	if s.inFlight == 0 && (s.rootFailed || s.limitHit != "") {
 		// Nothing of ours is running and the run cannot complete itself: the
 		// root's own worker failed, or the run has reached a limit a person set,
 		// in dollars or in time.
-		// The word says which; the store keeps whatever the run reached.
-		if s.limitHit {
+		// The word is one for both limits; limitHit is the fact that says which,
+		// and the store keeps whatever the run reached.
+		if s.limitHit != "" {
 			return OutcomeLimit
 		}
 		return OutcomeIncomplete
@@ -358,7 +392,7 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		s.dispatchedRoot = true
 		s.launch(ctx, *root, "")
 	}
-	if !s.limitHit {
+	if s.limitHit == "" {
 		for _, ready := range s.store.ReadySet().Runnable {
 			if s.inFlight >= s.slots {
 				break
@@ -467,6 +501,14 @@ func (s *Supervisor) drain() {
 		select {
 		case ret := <-s.finished:
 			s.inFlight--
+			// THE ENDING IS DROPPED, BUT THE FACT OF WHO IT CUT IS NOT: a
+			// worker that came home with the run's own ending as its error was
+			// taken down by that ending, and the run records it where it knows
+			// ([Summary.Cut]). The ending itself stays dropped, for the reason
+			// the comment above gives.
+			if errors.Is(ret.err, context.Canceled) {
+				s.cut[ret.task.ID] = true
+			}
 			s.settleSpend(ret)
 		default:
 			return
@@ -515,8 +557,8 @@ func (s *Supervisor) countLiveSpend() {
 	}
 	s.liveMu.Unlock()
 	s.publishSpend()
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && !s.limitHit {
-		s.limitHit = true
+	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
+		s.limitHit = LimitCost
 		for _, cancel := range s.cancels {
 			cancel()
 		}
@@ -534,8 +576,11 @@ func (s *Supervisor) settleSpend(ret workerReturn) {
 		s.spent += ret.report.USD - counted
 	}
 	s.forgetLive(ret.task.ID)
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
-		s.limitHit = true
+	// THE LIMIT THAT ENDED THE RUN IS THE FIRST ONE REACHED. A return that carries
+	// the spend past the dollar limit after the time limit already ended the run
+	// does not rename the ending.
+	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
+		s.limitHit = LimitCost
 	}
 	s.publishSpend()
 }
@@ -601,6 +646,18 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		return
 	}
 	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
+		// A ROW THE STORE CANCELLED WAS CUT BY THE RUN'S ENDING ONLY WHEN THAT
+		// ENDING IS WHAT CANCELLED IT. A limit ends contexts and writes no row, so
+		// a cancelled row was never the limit's doing: somebody cancelled it. When
+		// that was a person stopping the whole run, the store cancelled the run's
+		// own task in the same write, and the part was taken down by the stop. When
+		// the run's own task still stands, a person stopped this ONE part and the
+		// run carried on; a limit that ends the run an hour later did not take it
+		// down, and its row must not say so. It is read from the store and not
+		// from the clock, so it holds whatever order the returns come home in.
+		if errors.Is(ret.err, context.Canceled) && s.rootCancelled() {
+			s.cut[ret.task.ID] = true
+		}
 		s.settleSpend(ret)
 		s.completeTree()
 		return
@@ -609,6 +666,13 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	// for it: the store carries the completion and its result. The run still
 	// counts what the worker spent, and the root's own report is still the
 	// run's result.
+	// THE RUN'S OWN ENDING CUT THIS TASK MID-FLIGHT, as a fact, wherever its
+	// ending is written: the worker came home with the context the run ended
+	// as its error. Recorded here where every return passes, so the fact is
+	// carried and never parsed back out of an error sentence ([Summary.Cut]).
+	if errors.Is(ret.err, context.Canceled) {
+		s.cut[ret.task.ID] = true
+	}
 	endedByStore := ret.err == nil && s.store.Task(ret.task.ID).Status == plandb.StatusDone
 	s.settleSpend(ret)
 	s.steps += ret.report.Steps
@@ -903,7 +967,7 @@ func (s *Supervisor) treeTerminal() bool {
 // WAKES COUNT AS WORKERS: each one comes from the same factory, takes a slot and
 // a node, and its spend is counted like any other seat's.
 func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
-	if s.limitHit {
+	if s.limitHit != "" {
 		return
 	}
 	// THE PLAN IS READ ONCE for the whole sweep: every helper below answers out
@@ -970,7 +1034,7 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 // through the store's own write and a launch this pass cannot make — no slot,
 // another writer took it — is made on a later one.
 func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
-	if s.limitHit {
+	if s.limitHit != "" {
 		return
 	}
 	tasks := s.store.Tasks()
@@ -1301,6 +1365,24 @@ func (s *Supervisor) closeAtCap(task plandb.Task) {
 	_, _ = s.store.Fail(task.ID, task.ID, reason)
 }
 
+// rootCancelled answers whether the store has cancelled the run's own task,
+// which is what a person's stop of the whole run writes.
+func (s *Supervisor) rootCancelled() bool {
+	root := s.store.Task(s.store.RootID())
+	return root != nil && root.Status == plandb.StatusCancelled
+}
+
+// cutIDs is the typed answer to which tasks the run's own ending took down,
+// sorted so a reader cannot tell the order the workers came home in.
+func (s *Supervisor) cutIDs() []string {
+	ids := make([]string, 0, len(s.cut))
+	for id := range s.cut {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
 // wakeClause is the resume clause a woken parent's worker opens with: what every
 // child it dispatched reported, verbatim, and the instruction to integrate and
 // verify the combined result. It is the same sentence for the root and for every
@@ -1458,7 +1540,18 @@ type Summary struct {
 	Outcome Outcome
 	// Result is the root's own result: what the run's last worker reported
 	// when the tree finished whole, and empty whenever it did not.
-	Result  string
+	Result string
+	// Limit is which bound a person set ended the run, and empty on every
+	// run that did not end on one. The outcome word is the same sentence for
+	// both limits; this is what tells them apart.
+	Limit Limit
+	// Cut is every task the run's own ending cut mid-flight, by store id: its
+	// wall, its spend ceiling, or a person's stop ended the context their
+	// workers ran under. A task that failed on its own before the ending is
+	// not here. This is the fact a surface draws those rows with, so a row the
+	// person's bound took down is never read as a fault; it is carried typed
+	// and never parsed out of a stored error sentence.
+	Cut     []string
 	Nodes   int
 	Steps   int
 	USD     float64
@@ -1506,6 +1599,8 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	return outcome, Summary{
 		Outcome: outcome,
 		Result:  result,
+		Limit:   supervisor.limitHit,
+		Cut:     supervisor.cutIDs(),
 		Nodes:   supervisor.nodes,
 		Steps:   supervisor.steps,
 		USD:     supervisor.spent,
