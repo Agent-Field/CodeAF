@@ -6,7 +6,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
@@ -286,5 +290,54 @@ func TestThePagesStopEndsARunNobodyIsRunningAnyMore(t *testing.T) {
 	}
 	if task := after.Task("part"); task == nil || task.Status != plandb.StatusCancelled {
 		t.Fatalf("the run's part after the page's stop = %+v, want cancelled", task)
+	}
+}
+
+// countingCompleter counts the model calls a conversation makes.
+type countingCompleter struct {
+	beltRunCompleter
+	calls atomic.Int64
+}
+
+func (c *countingCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	c.calls.Add(1)
+	return c.beltRunCompleter.CompleteWithMessages(ctx, messages, options...)
+}
+
+// A RUN A PERSON STOPPED BUYS NO FURTHER READING. A surface asks for the run's
+// summary again whenever its rows move, and a stop moves them, so on the real
+// binary one model call was made about twenty seconds after every stop taken
+// from the run's page (the usage ledger, 2026-09-19, three of three). The person
+// ended the spend; the last reading the run had stands.
+func TestAStoppedRunBuysNoFurtherSummary(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	conversation := beltRunCommittedRepo(t)
+	dir := t.TempDir()
+	double := newBeltRunDouble("unused")
+	double.real, double.honoursStop = true, true
+	registerBeltRunEngine(t, double)
+	counting := &countingCompleter{beltRunCompleter: beltRunCompleter{text: "done"}}
+	agent, _ := newTestAgent(t, counting, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: dir}
+	})
+	if err := agent.startKnownTaskRun(context.Background(), 71, "make the change", "brief", nil, taskStand{dir: conversation, mode: TaskModeWorktree}, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	if _, err := agent.Cancel(CancelTask + ":71"); err != nil {
+		t.Fatal(err)
+	}
+	beltRunWaitFor(t, "the run to end", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
+	before := counting.calls.Load()
+	for _, id := range []string{"71", "t-71"} {
+		agent.RefreshRunSummary(context.Background(), id, time.Time{})
+	}
+	if got := counting.calls.Load() - before; got != 0 {
+		t.Fatalf("a stopped run's summary was asked of a model %d times, want never", got)
 	}
 }
