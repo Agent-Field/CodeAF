@@ -606,20 +606,21 @@ Typing here searches and nothing else. **Typing on home is what offers places** 
 the standing place beside the chats that match) — the same offer made twice, one `tab` apart,
 would be two rankings that could disagree.
 
-## /search finds authenticated access from emailed receipt links
+## /search finds original passages from a plumber invoice, shipping label, or purchase order
 
 `/search` (and `alt+8`) uses the same hybrid ranking as conversation search.
-Type emailed receipt links or a purchase confirmation PDF and the original
-authenticated-access passage still ranks, even when it never used those words.
-You do not have to phrase it as a question. Search gathers distinct
-conversations, so a larger family of abandoned-mailer chats that sit closer
-to the words you typed cannot occupy every candidate slot. Rows that only
-restate what you just typed are not that original, and an abandoned plan is
-not that original either. A session whose decision is signed-in billed-file
-access outranks one that mentions billed-file only to refuse it (Cafe dinner
-slip OCR: restaurant paper, not a billed-file hyperlink policy). Cafe,
-restaurant, abandon, and espresso are not banned words. A short correction
-and a buried note in a mixed-topic chat stay findable.
+Type a plumber invoice from last March, a shipping label from last Tuesday, a
+purchase order from the vendor, or emailed receipt links, and the original
+passage still ranks even when it never used those words. You do not have to
+phrase it as a question. Search gathers distinct conversations, so a larger
+family of abandoned-mailer chats that sit closer to the words you typed cannot
+occupy every candidate slot. Rows that only restate what you just typed are
+not that original, and an abandoned plan is not that original either. A session
+whose standing decision is the rule outranks one that names the artefact only
+to refuse it (Cafe dinner slip OCR: restaurant paper, not a billed-file
+hyperlink policy; a workshop OCR is the same shape for a plumber invoice).
+Cafe, restaurant, abandon, and espresso are not banned words. A short
+correction and a buried note in a mixed-topic chat stay findable.
 
 ## Cafe dinner slip OCR is not signed-in billed-file access — restaurant paper, not a billed-file hyperlink policy
 
