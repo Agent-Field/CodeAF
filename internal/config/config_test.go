@@ -1,13 +1,16 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -503,5 +506,49 @@ func TestDocumentClientIsDirectLikeTheVisionProxy(t *testing.T) {
 	client, err := configured.DocumentClient()
 	if err != nil || client == nil {
 		t.Fatalf("document client = %v err=%v", client, err)
+	}
+}
+
+func TestLoadWarnsOnceForEveryUnreadTopLevelProfileKey(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(ProfileDirEnv, dir)
+	if err := os.WriteFile(BudgetConfigPath(dir), []byte(`{"models":{"tiers":{"reflex":"nested/model"}},"typo.key":true,"model.talk":"flat/model"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	warnedProfileConfigs = sync.Map{}
+	var output bytes.Buffer
+	oldWriter := log.Writer()
+	oldFlags := log.Flags()
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+
+	first, err := LoadKeyless()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Model != DefaultModel {
+		t.Fatalf("nested model changed resolution: got %q, want %q", first.Model, DefaultModel)
+	}
+	if got, ok := persistedString(dir, KeyChatModel); !ok || got != "flat/model" {
+		t.Fatalf("consumed flat key resolved as %q, %v", got, ok)
+	}
+	if _, err := LoadKeyless(); err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	if strings.Count(got, "unread top-level config key(s)") != 1 {
+		t.Fatalf("load diagnostic count = %d, want 1: %q", strings.Count(got, "unread top-level config key(s)"), got)
+	}
+	for _, key := range []string{"models", "typo.key"} {
+		if !strings.Contains(got, key) {
+			t.Errorf("diagnostic does not name %q: %q", key, got)
+		}
+	}
+	if strings.Contains(got, KeyChatModel) {
+		t.Errorf("diagnostic called a consumed flat key unread: %q", got)
 	}
 }
