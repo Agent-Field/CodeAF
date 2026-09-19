@@ -107,7 +107,7 @@ func TestTaskPageOmitsOwnRecordIDsAndRunCopyPath(t *testing.T) {
 	const copy = "/private/conversation/trees/1"
 	row := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Status: "done", Folder: copy}
 	steps := []session.PlanStep{
-		{Step: 1, Command: "ls; plandb task overview", Parts: []session.PlanCommandPart{displayPart("ls", "; ", false, false), displayPart("plandb task overview", "", true, false)}, Observation: "files"},
+		{Step: 1, Command: "ls; plandb task overview", Parts: []session.PlanCommandPart{displayPart("ls", "; ", false, false), displayPart("plandb task overview", "", true, false)}, Observation: "files", ObservationHeadWithheld: true},
 		{Step: 2, Command: "plandb done t-1 --agent 1", Parts: []session.PlanCommandPart{displayPart("plandb done t-1 --agent 1", "", true, false)}, Observation: "✓ t-1 done [0/0]"},
 		{Step: 3, Command: "cd " + copy + " && go test ./...", Parts: []session.PlanCommandPart{displayPart("cd "+copy, " && ", false, true), displayPart("go test ./...", "", false, false)}, Observation: "ok"},
 	}
@@ -117,12 +117,20 @@ func TestTaskPageOmitsOwnRecordIDsAndRunCopyPath(t *testing.T) {
 	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
 	page := taskSheetText(a)
-	for _, never := range []string{copy, "t-1", "--agent 1", "✓ t-1"} {
+	// `files` IS ON THE NEVER LIST, AND IT USED TO BE WANTED. Step 1's row left
+	// out a part addressed to the run's record, so the head cannot be told from
+	// that part's print: one shell, one interleaved observation, and the head
+	// belongs to the first part that PRINTED, not the first part shown. The step
+	// carries the fact the engine sets for that shape ([session.PlanStep]'s
+	// ObservationHeadWithheld), and the page draws no dim line under it. Step 3
+	// left out only the change into the run's copy, joined so that its failure
+	// ends the line, and keeps its `ok`.
+	for _, never := range []string{copy, "t-1", "--agent 1", "✓ t-1", "files"} {
 		if strings.Contains(page, never) {
 			t.Fatalf("page contains %q:\n%s", never, page)
 		}
 	}
-	for _, want := range []string{"1  ls", "3  go test ./...", "files", "ok"} {
+	for _, want := range []string{"1  ls", "3  go test ./...", "ok"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("page lacks %q:\n%s", want, page)
 		}
