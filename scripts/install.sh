@@ -13,7 +13,7 @@ VERSION="${VERSION:-}"
 # request that the download steps did not already make.
 TELEMETRY_NOTICE='codeaf shares anonymous performance data with AgentField
 codeaf does NOT share your prompts, code, files, or any private information
-see what is shared: codeaf telemetry show · turn off: CODEAF_TELEMETRY=off'
+see what is shared: codeaf telemetry info · turn off: CODEAF_TELEMETRY=off'
 VERBOSE="${VERBOSE:-0}"
 NO_MODIFY_PATH="${CODEAF_NO_MODIFY_PATH:-${AFORGE_NO_MODIFY_PATH:-0}}" # legacy-name
 INSTALL_DIR="${CODEAF_INSTALL_DIR:-${AFORGE_INSTALL_DIR:-${HOME}/.codeaf/bin}}" # legacy-name

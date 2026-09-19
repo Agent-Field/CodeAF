@@ -586,7 +586,7 @@ the scores its judge gave in `own.json`
 under the pool directory — `show` and `status` say what that sheet holds — and
 the crew reads them beside the index. `status` adds how many rows are waiting to be sent
 and whether the mode allows sending and reading; `codeaf telemetry show` prints the
-rows themselves. `codeaf pool status` also
+rows themselves, as JSON. `codeaf pool status` also
 says whether the relay answered, and whether the mirror did, and what the
 last judge did — which model, which seats it scored, or why it failed. `--json` prints
 the same answer as one object; `show` reads nothing off the network.
@@ -763,14 +763,15 @@ retracted belief restores, a stopped service starts again, a revoked device pair
 ## What does it count about a run — the anonymous usage counts, and `codeaf telemetry`
 
 `codeaf telemetry` is the door onto the anonymous usage counts: `status` says whether
-they are on and why not when they are off, `show` prints what leaves, shaped like the
-data — for each stream, under a line naming where it goes or why it is not sent, the rows
-waiting to leave, then the shape of a row: for the usage counts every every-event field
-with the value this machine would send now and one example row per event
-(`session_ended  mode=chat  duration=5-30m  turns=6-20 …`) and the stop reasons a row
-can carry; for the Model Pool one example row in the relay's own bytes — and `off` and `on`
-write the answer to your profile. `show` lists only what is sent, never a disclaimer, and
-prints the shape even when nothing is waiting, which is the case on the day you install.
+they are on and why not when they are off; `info` says what is collected, shaped like the
+data — for each stream, under a line naming where it goes or why it is not sent, every
+every-event field with the value this machine would send now and one example row per
+event (`session_ended  mode=chat  duration=5-30m  turns=6-20 …`) with the stop reasons a
+row can carry, and for the Model Pool one example row in the relay's own bytes; `show`
+prints what is waiting to leave right now as one JSON object, a key per destination
+(`usage`, `model_pool`) with its `destination`, an `off` reason when nothing is sent
+there, and `waiting`, the rows themselves, `[]` on the day you install; and `off` and
+`on` write the answer to your profile. `info` lists only what is sent, never a disclaimer.
 `CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
 usage counts go quiet and the Model Pool is capped at `read`, so it still picks models
 from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or

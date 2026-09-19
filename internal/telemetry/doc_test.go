@@ -162,7 +162,7 @@ func TestDocCarriesTheNoticeAndTheSwitches(t *testing.T) {
 	if !strings.Contains(body, Notice) {
 		t.Error("docs/TELEMETRY.md must quote the notice byte for byte")
 	}
-	for _, wanted := range []string{"CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "telemetry show"} {
+	for _, wanted := range []string{"CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "telemetry info", "telemetry show"} {
 		if !strings.Contains(body, wanted) {
 			t.Errorf("docs/TELEMETRY.md must mention %q", wanted)
 		}

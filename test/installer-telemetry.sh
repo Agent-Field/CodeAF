@@ -99,7 +99,7 @@ body=$(sed 1d "$notice")
 ok "one blank line before the notice" '[ -z "$(head -n 1 "$notice")" ]'
 ok "installer notice matches docs/TELEMETRY.md verbatim" '[ "$body" = "$installer_expected" ]'
 ok "installer notice is three lines" '[ "$(printf "%s\n" "$body" | wc -l | tr -d " ")" = 3 ]'
-ok "installer notice names the inspector and the switch" 'case "$body" in *"codeaf telemetry show"*CODEAF_TELEMETRY=off*) true;; *) false;; esac'
+ok "installer notice names the inspector and the switch" 'case "$body" in *"codeaf telemetry info"*CODEAF_TELEMETRY=off*) true;; *) false;; esac'
 ok "installer notice names what is never shared" 'case "$body" in *"does NOT share your prompts, code, files"*) true;; *) false;; esac'
 readme_block=$(awk '
 	/^```text$/ {f = 1; buf = ""; next}
