@@ -52,3 +52,7 @@ The forced row belongs to the process-wide usage ledger, not to one Agent. `Agen
 ## Fix step
 
 The regression will retain the forced dequeue-before-open ordering, close the Agent, then explicitly release and flush the process-owned writer before the test returns. The assertion moves after `FlushUsage`, proving the test's process-state owner has joined the write. Cleanup uses the same idempotent release as a failure fallback, so an earlier test failure cannot strand the writer.
+
+## Fix correction
+
+The first edit command matched no source text, so that commit changed only this findings record and did not alter behavior. The source edit now applies the same ownership decision with exact multiline matches.
