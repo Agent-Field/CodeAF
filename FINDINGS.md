@@ -15,3 +15,7 @@ The legal dependency direction is `session` defining the capability, `remote` as
 The surface-door law requires a locally declared interface it can inspect, so `planAgent` embeds `session.PlanAgent` instead of aliasing it. This preserves one source of methods while keeping the repository's static wire coverage law effective.
 
 The final surface change is only a type alias. The remote surface-door law now follows selected interface aliases, preventing the shared-interface extraction from weakening its wire coverage without making shared plan reads look like new update-loop calls.
+
+## Hosted end-to-end proof
+
+`TestHostedAgentReadsSeededPlanTasksEndToEnd` uses `t.TempDir`, `session.OpenRunPlan`, a real `session.Agent`, the engine host's attach server over a real pipe, and `remote.Dial`. It proves `remote.Agent.PlanTasks` returns the seeded PlanDB row rather than a scripted transport answer.
