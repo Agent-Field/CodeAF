@@ -2663,6 +2663,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did my task stop on its own", "worker-harness"},
 		{"my task stopped and I did not stop it", "worker-harness"},
 		{"the task says the same command came back with the same answer", "worker-harness"},
+		// The same law's note, asked from the waiting side: a worker
+		// watching something the plan does not name is the shape the note was
+		// written for, and these are the words of a person holding it.
+		{"my task is waiting on a build outside the plan", "worker-harness"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
