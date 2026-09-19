@@ -1494,6 +1494,14 @@ type app struct {
 	usageLedger  string
 	ledger       func(time.Time) ([]session.UsageLine, bool, bool)
 	archive      func(string, bool) error
+	// folders is the logical-folder seam the home folders panel reads. Nil
+	// still draws the whisper. pendingFolder is the collection `n` / `/folders
+	// new` will file the next first message into; esc on the start page clears
+	// it and creates no transcript. pendingMoveFrom/Ref are `m` in flight.
+	folders         Folders
+	pendingFolder   string
+	pendingMoveFrom string
+	pendingMoveRef  string
 	// world is the walk of the machine THE SESSION RUNS ON, and farPlaces is the
 	// state root it was walked under. Nil and empty are this process's own disk,
 	// which is every local launch; over --host the door fills both and the places
@@ -2730,6 +2738,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		usageLedger:         opts.UsageLedger,
 		ledger:              opts.Ledger,
 		archive:             opts.Archive,
+		folders:             opts.Folders,
 		world:               opts.World,
 		farPlaces:           opts.WorldRoot,
 		farRecord:           opts.TaskRecord,
@@ -3222,6 +3231,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if summary := a.refreshRunSummary(); summary != nil {
 		cmd = tea.Batch(cmd, summary)
 	}
+	// A PENDING FOLDER THAT NEVER MINTED A TRANSCRIPT DIES HERE: esc on the
+	// start page leaves startingChat false and creates nothing (folders.go).
+	a.reapPendingFolder()
 	return model, cmd
 }
 
@@ -6940,6 +6952,10 @@ func (a *app) slash(line string) tea.Cmd {
 		// to remember what home exists to show them (home.go).
 		return a.showPage(pageHome)
 
+	case "folders":
+		// Logical membership on the home folders panel. Not an alias of /folder.
+		return a.runFoldersCommand(rest)
+
 	case "search":
 		// THE TYPED DOOR ONTO THE SEARCH PLACE, and it takes no argument on
 		// purpose. The place IS a box — typing in it searches and the read goes
@@ -7498,6 +7514,11 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	}
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
+	}
+	// FIRST MESSAGE IN "NEW CHAT HERE": the transcript is minted, then we file.
+	// Only the start page carries pendingFolder; /new behind home does not.
+	if a.startingChat() {
+		a.filePendingFolder()
 	}
 	return cmd, true
 }
