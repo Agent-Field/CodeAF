@@ -54,3 +54,7 @@ The smallest deterministic correction belongs in the test: retain and compare pr
 ## Forced-ordering reproduction plan
 
 Before changing the test, the next step will add the smallest test-only liveness-probe seam beside the existing bare-PID assertion. The test will force the post-reap PID-reuse observation by substituting a successful probe only after `Linear.Run` has returned. This preserves the production close ordering, creates no load or busy loop, and deterministically demonstrates that the current assertion reports a survivor solely from an integer PID that can now denote another process. The focused test is expected to fail with the existing `survived leaf end` message; that failing test-only step will be committed intentionally for the correction task.
+
+## Reproduction edit correction
+
+The first test edit committed the test-only probe hook but the exact replacement of its call site was refused because two bare `syscall.Kill(pid, 0)` assertions exist in this file. No focused test ran, so commit `70c49222b` is only the hook half of the reproduction. The next edit will target the named leaf-end assertion with surrounding failure text, then gofmt, run the focused test, and commit the deterministic failing state.
