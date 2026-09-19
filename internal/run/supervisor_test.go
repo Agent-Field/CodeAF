@@ -678,10 +678,10 @@ func TestStartWaitsForAWorkerTheCompletedTreeLeftBehind(t *testing.T) {
 	// THE COORDINATOR ANSWERS ITS WAKE, the way a real one does since a parent
 	// is woken with its children's landings: the first launch dispatches the
 	// leaf and ends its turn, the wake says the last word. It is the LEAF that
-	// lingers — it writes its own ending through the store and then sits in
-	// its goroutine until the run cancels it, which is the shape a worker has
-	// when `plandb done` ran mid-step — so the tree is complete while a worker
-	// it launched is still alive, and Start may not answer over its head.
+	// is still out: it writes its own ending through the store and comes home a
+	// moment later, which is the shape a worker has when `plandb done` ran
+	// mid-step. A row that reads done is not a landing until that return is
+	// absorbed, so Start may not answer over the leaf's head.
 	var rootLaunches atomic.Int32
 	seat.actions["root"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
 		if rootLaunches.Add(1) == 1 {
