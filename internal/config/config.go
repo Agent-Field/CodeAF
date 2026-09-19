@@ -224,6 +224,8 @@ const (
 type Config struct {
 	APIKey  string
 	BaseURL string
+	// UnreadProfileKeys is the sorted result of the profile reader registry check.
+	UnreadProfileKeys []string
 	// Sources is the resolved service set. Empty preserves every scalar
 	// construction that predates services through [modelsource.Set.OrDefault].
 	Sources modelsource.Set
@@ -358,11 +360,8 @@ func LoadKeyless() (Config, error) { return load(false) }
 
 var warnedProfileConfigs sync.Map
 
-func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage) {
+func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage) []string {
 	path := BudgetConfigPath(profileDir)
-	if _, warned := warnedProfileConfigs.LoadOrStore(path, struct{}{}); warned {
-		return
-	}
 	consumed := map[string]bool{
 		KeySetupSeen:          true,
 		KeySplitPct:           true,
@@ -381,11 +380,13 @@ func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage)
 			unread = append(unread, key)
 		}
 	}
-	if len(unread) == 0 {
-		return
-	}
 	sort.Strings(unread)
-	log.Printf("codeaf: %s has unread top-level config key(s): %s", path, strings.Join(unread, ", "))
+	if len(unread) > 0 {
+		if _, warned := warnedProfileConfigs.LoadOrStore(path, struct{}{}); !warned {
+			log.Printf("codeaf: %s has unread top-level config key(s): %s", path, strings.Join(unread, ", "))
+		}
+	}
+	return unread
 }
 
 func load(requireKey bool) (Config, error) {
@@ -394,12 +395,13 @@ func load(requireKey bool) (Config, error) {
 	// object once here, then resolve both facts from the snapshot so adding an
 	// empty model_sources field does not add a launch-path read.
 	profileValues, _ := readProfileConfig(profileDir)
-	warnUnreadProfileKeys(profileDir, profileValues)
+	unreadProfileKeys := warnUnreadProfileKeys(profileDir, profileValues)
 	apiKey := apiKeyFrom(profileValues)
 	baseURL := firstNonEmpty(env.Get("CODEAF_BASE_URL"), DefaultBaseURL)
 	config := Config{
 		APIKey:            apiKey,
 		BaseURL:           baseURL,
+		UnreadProfileKeys: unreadProfileKeys,
 		Model:             firstNonEmpty(env.Get(ModelEnv), DefaultModel),
 		PlanModel:         strings.TrimSpace(env.Get(PlanModelEnv)),
 		Timeout:           DefaultTimeout,

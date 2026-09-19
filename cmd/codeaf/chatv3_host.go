@@ -658,9 +658,10 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		Workspace: welcome.Workspace,
 		// The engine's own journal path, shown with its machine in front of it
 		// wherever the surface shows it (internal/tui3's host.go).
-		SessionFile: welcome.SessionFile,
-		Resumed:     welcome.Resumed,
-		Notice:      hostEntryNotice(welcome),
+		SessionFile:       welcome.SessionFile,
+		Resumed:           welcome.Resumed,
+		Notice:            hostEntryNotice(welcome),
+		UnreadProfileKeys: append([]string(nil), welcome.UnreadProfileKeys...),
 		// The engine's own tool-approval posture, so the YOLO badge names the
 		// machine that actually decides whether a tool runs unattended
 		// (internal/tui3's app.approvalPosture).
