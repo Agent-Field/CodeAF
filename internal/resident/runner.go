@@ -985,6 +985,9 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 type passReads struct {
 	// open is the set of nodes that still have unfinished children.
 	open map[string]bool
+	// dispatched keeps a leaf released by its worker from being reclaimed by
+	// the same pass. A later pass may pick it up normally.
+	dispatched map[string]bool
 	// railRaised is whether a durable repair is waiting to be admitted, which
 	// stops the pass claiming anything at all.
 	railRaised *bool
@@ -1157,6 +1160,9 @@ func (r *Runner) claimNext(pass *passReads) (store.Node, bool, error) {
 		pass.open = derived
 	}
 	for _, node := range ready {
+		if pass.dispatched[node.ID] {
+			continue
+		}
 		// Yield to user work only for BACKGROUND self work (practice, or
 		// sessionless self splices). A self-origin node carrying a session is
 		// the user's own job continuing — the resident spliced its synthesis
@@ -1236,6 +1242,10 @@ func (r *Runner) claimNext(pass *passReads) (store.Node, bool, error) {
 		}
 		node.Owner = claim.Owner
 		node.ClaimToken = claim.Token
+		if pass.dispatched == nil {
+			pass.dispatched = make(map[string]bool)
+		}
+		pass.dispatched[node.ID] = true
 		return node, true, nil
 	}
 	return store.Node{}, false, nil
