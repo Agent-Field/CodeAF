@@ -3145,7 +3145,9 @@ dollar, a backtick and a backslash still refuse it, because the shell still expa
 there. The refusal names the character and says what passes:
 `Invalid arguments: checks must each be ONE rerunnable command: "|" joins, redirects or
 expands commands in "<the check>". Such a character may stand only inside a single-quoted
-argument, where it is text`. A check that leads with a directory change
+argument, where it is text`. The checker's own shell reads a command the same way, so a
+check admitted here is one the checker can run, and what it must never run is stopped at
+both. A check that leads with a directory change
 (`cd <folder> && <command>`) is refused like any other composition, and its refusal ends
 with the form that passes: `A check runs from the root of the task's own copy: leave the
 directory change out and name each file by its path`. It is never quietly repaired, because

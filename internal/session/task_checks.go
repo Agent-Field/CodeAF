@@ -183,7 +183,7 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional. Each ONE rerunnable command: no leading cd, and | & ; < > $ only inside single quotes. ` +
+	`"description":"Optional. Each ONE rerunnable command: no leading cd; | & ; < > $ only inside single quotes. ` +
 	`The checker runs these and nothing else; work declaring none is judged by reading. Never the work itself"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
@@ -615,48 +615,6 @@ func checkShapeRefusal(said string) string {
 	return refusal
 }
 
-// firstCompositionOutsideQuotes finds the first character that makes a line more
-// than one command, reading quotes the way the shell that runs the check reads
-// them, and reports false for a line that is one command.
-//
-// THE RULE IS ABOUT WHAT THE SHELL WOULD DO WITH THE CHARACTER, NOT ABOUT THE
-// CHARACTER. Inside single quotes every character is text, so a bar in a quoted
-// pattern is an argument and was refused as a pipe (2026-09-18, a search for
-// three words joined by bars). Inside double quotes the shell still EXPANDS: a
-// dollar or a backtick there runs a command of its own, and a backslash escapes,
-// so those three stay composition in double quotes exactly as they are outside
-// any. Everything else in double quotes is text. NOTHING THE SHAPE LAW STOPPED
-// BEFORE STARTS RUNNING: what is newly allowed is only what the shell passes to
-// the one program as an argument, byte for byte.
-func firstCompositionOutsideQuotes(text string) (byte, bool) {
-	const liveInDoubleQuotes = "$`\\"
-	var quote byte
-	for i := 0; i < len(text); i++ {
-		char := text[i]
-		switch {
-		case quote == '\'':
-			if char == quote {
-				quote = 0
-			}
-		case quote == '"':
-			if char == quote {
-				quote = 0
-			} else if strings.IndexByte(liveInDoubleQuotes, char) >= 0 {
-				return char, true
-			}
-		case char == '\'' || char == '"':
-			quote = char
-		case strings.IndexByte(shellComposition, char) >= 0:
-			return char, true
-		}
-	}
-	// AN UNCLOSED QUOTE IS NOT ONE COMMAND EITHER: the shell would wait for more.
-	if quote != 0 {
-		return quote, true
-	}
-	return 0, false
-}
-
 func declaredCheckList(raw []string) ([]string, string) {
 	out := make([]string, 0, len(raw))
 	for _, entry := range raw {
@@ -914,6 +872,13 @@ func preparedAuditCommand(command string) string {
 	if command == "" {
 		return command
 	}
+	// ONE COMMAND IS LEFT EXACTLY AS IT WAS TYPED. A bar or an arrow inside a
+	// quoted argument is text ([firstCompositionOutsideQuotes]), and a line that
+	// is already one command has no stage to take: cutting it at that bar would
+	// hand the gate half a quotation, which it then refuses.
+	if _, composed := firstCompositionOutsideQuotes(command); !composed {
+		return command
+	}
 	if stage, ok := firstStage(command); ok {
 		return strings.TrimSpace(stage)
 	}
@@ -934,11 +899,13 @@ func preparedAuditCommand(command string) string {
 // command short at the first arrow it happens to contain would hand the door a
 // SHORTER command than the work ran, and a shorter command is a wider one.
 func firstStage(line string) (string, bool) {
-	if head, rest, piped := strings.Cut(line, "|"); piped {
-		if strings.HasPrefix(rest, "|") {
+	// THE PIPE THAT ENDS THE FIRST STAGE IS THE FIRST ONE THE SHELL WOULD ACT ON.
+	// A bar inside a quoted argument belongs to the command that carries it.
+	if at := firstBarOutsideQuotes(line); at >= 0 {
+		if strings.HasPrefix(line[at+1:], "|") {
 			return "", false
 		}
-		line = head
+		line = line[:at]
 	}
 	fields := strings.Fields(line)
 	for len(fields) > 0 {
