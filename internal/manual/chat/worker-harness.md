@@ -380,7 +380,10 @@ build is unchanged and the older engine serves every road:
 
 The switch is read where the belt is composed, where a person's `/task` is
 admitted, and where `codeaf do` chooses its road — and **with it unset, not one
-byte of any prompt, belt or landing moves**.
+byte of any prompt, belt or landing moves**. Wave 4 **launch-or-join** uses the
+same switch: unset is the session task tree (`session-task`); `CODEAF_TASK_BELT=bash`
+is the run engine (`bash-run`). Both roads stay. A reused plan-database path is
+not a run identity.
 
 Everything behind the switch is a seam. A build with no run engine linked answers
 the older road, and every refusal on the run road falls back to it rather than
