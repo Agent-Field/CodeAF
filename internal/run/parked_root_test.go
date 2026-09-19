@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,9 +27,11 @@ func (f parkedRootWorker) Run(ctx context.Context, task plandb.Task) (Report, er
 // ordinary way: the child's return seats its review, the review lands, the root
 // is woken, and the woken worker's word is the run's answer.
 //
-// Forced with channels, no sleeps: the child is launched while the root's worker
-// is still out, and the root's worker makes its late write only after the
-// child's done has landed in the store.
+// Forced with channels, no sleeps, in the order the loaded runs had it: the
+// child's done lands in the store, THEN the root's late finish arrives, and only
+// then does the child's worker come home. The child's return is what seats its
+// review, so while it is held back the store shows a root whose every child is
+// finished and nothing yet stands in the late finish's way but this law.
 func TestAParkedRootsLateFinishDoesNotCloseTheRunOverAnUnreviewedChild(t *testing.T) {
 	store, err := plandb.Open(filepath.Join(t.TempDir(), "plan.db"), "parked-root", "root", "The run", "park on one child")
 	if err != nil {
@@ -39,6 +42,7 @@ func TestAParkedRootsLateFinishDoesNotCloseTheRunOverAnUnreviewedChild(t *testin
 	const late, woken = "the late round's word", "integrated after the wake"
 
 	childDone := make(chan struct{})
+	lateTried := make(chan struct{})
 	var rootLaunches atomic.Int32
 	var lateErr atomic.Value
 	factory := func(task plandb.Task) Worker {
@@ -68,6 +72,7 @@ func TestAParkedRootsLateFinishDoesNotCloseTheRunOverAnUnreviewedChild(t *testin
 				if _, err := store.Done(task.ID, task.ID, late, nil, nil); err != nil {
 					lateErr.Store(err.Error())
 				}
+				close(lateTried)
 				return Report{Waiting: true, Steps: 2}, nil
 			})
 		case task.Role == plandb.RoleCheck:
@@ -75,11 +80,18 @@ func TestAParkedRootsLateFinishDoesNotCloseTheRunOverAnUnreviewedChild(t *testin
 				return Report{Result: "holds: reviewed", Steps: 1}, nil
 			})
 		default:
-			return parkedRootWorker(func(_ context.Context, task plandb.Task) (Report, error) {
+			return parkedRootWorker(func(ctx context.Context, task plandb.Task) (Report, error) {
 				if _, err := store.Done(task.ID, task.ID, "the child is done", nil, nil); err != nil {
 					return Report{}, err
 				}
 				close(childDone)
+				// THE CHILD'S RETURN IS HELD BACK until the late finish has been
+				// tried, the way a loaded box held it.
+				select {
+				case <-lateTried:
+				case <-ctx.Done():
+					return Report{}, ctx.Err()
+				}
 				return Report{Result: "the child is done", Steps: 1}, nil
 			})
 		}
@@ -90,8 +102,8 @@ func TestAParkedRootsLateFinishDoesNotCloseTheRunOverAnUnreviewedChild(t *testin
 	if outcome := supervisor.Run(ctx); outcome != OutcomeDone {
 		t.Fatalf("outcome = %q, want %q", outcome, OutcomeDone)
 	}
-	if said, _ := lateErr.Load().(string); said == "" {
-		t.Fatal("the parked root's late finish was admitted, want it refused")
+	if said, _ := lateErr.Load().(string); !strings.Contains(said, "waiting") {
+		t.Fatalf("the parked root's late finish answered %q, want it refused because the task is waiting", said)
 	}
 	checks := 0
 	for _, task := range store.Tasks() {
