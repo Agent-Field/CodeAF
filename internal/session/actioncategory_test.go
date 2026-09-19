@@ -160,7 +160,7 @@ func TestEveryToolOnTheBeltHasAnActionFamily(t *testing.T) {
 func TestTheConditionalHandsHaveActionFamiliesToo(t *testing.T) {
 	for _, name := range []string{
 		"web_search", "web_fetch", "search_conversations",
-		"remember", "forget", "recall",
+		"remember", "forget", "recall", "folders",
 		"stand", "watch", "divide_work", "propose_task", "tasks",
 		"revise_assignment", "revise_design", "build_harness", "list_harnesses",
 		"propose_subharness", "list_subharnesses",

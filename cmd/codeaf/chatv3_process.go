@@ -81,6 +81,10 @@ type v3Process struct {
 	// answer to give. Each conversation still gets its own memory pass and its
 	// own context, which is per-agent already.
 	Memory *store.Store
+	// Folders is the logical-folder membership seam the session `folders`
+	// tool talks to. One handle per process, like Memory. Nil when the store
+	// cannot open: the tool is absent, not a belt that refuses every call.
+	Folders session.Folders
 	// Artifacts is the deliverables index — one file per machine, and /export
 	// and /files must resolve the same one the session's own products record
 	// themselves in.
@@ -190,6 +194,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Shelf:      shelf,
 		Harnesses:  subharness.Default(),
 		Memory:     v3Memory(settings.ProfileDir),
+		Folders:    openV3Folders(),
 		Artifacts:  artifactsIndexPath(),
 		Conns:      v3Connect(settings.ProfileDir),
 		LaunchDir:  launchDir,
@@ -448,6 +453,9 @@ func (p *v3Process) closeAll() {
 	}
 	if p.Memory != nil {
 		_ = p.Memory.Close()
+	}
+	if closer, ok := p.Folders.(interface{ Close() error }); ok {
+		_ = closer.Close()
 	}
 }
 
