@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -309,6 +310,18 @@ func TestIdempotentAddRemoveAndIdempotencyKey(t *testing.T) {
 	events, err := s.Events(ctx, inbox.ID, chat)
 	if err != nil || len(events) != 1 || events[0].IdempotencyKey != "add-1" {
 		t.Fatalf("repeated add wrote extra history: %+v, %v", events, err)
+	}
+	other := createTestCollection(t, s, "Other")
+	err = s.AddWith(ctx, other.ID, chat, Provenance{Origin: OriginPerson, IdempotencyKey: "add-1"})
+	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "different operation") {
+		t.Fatalf("same key on a different add: %v", err)
+	}
+	err = s.RemoveWith(ctx, inbox.ID, chat, Provenance{Origin: OriginPerson, IdempotencyKey: "add-1"})
+	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "different operation") {
+		t.Fatalf("same key on a remove: %v", err)
+	}
+	if got, err := s.Members(ctx, inbox.ID); err != nil || len(got) != 1 {
+		t.Fatalf("refused key reuse mutated membership: %v, %v", got, err)
 	}
 	if err := s.RemoveWith(ctx, inbox.ID, chat, Provenance{Origin: OriginPerson, IdempotencyKey: "rm-1"}); err != nil {
 		t.Fatal(err)

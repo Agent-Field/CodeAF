@@ -47,7 +47,7 @@ type Why struct {
 type RootView struct {
 	Folders  []Folder
 	Unfiled  []Placement
-	Revision int // root_state.revision; zero until the store exposes RootState
+	Revision int // root_state.revision; zero on a blank store before the first write
 }
 
 // Service holds a store, an optional inventory, and a clock.
