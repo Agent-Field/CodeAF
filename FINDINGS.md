@@ -36,3 +36,7 @@
 ## Current conclusion
 
 The process-owned usage writer is the strongest match for a file appearing during `t.TempDir` cleanup because a successful turn necessarily queues its nonzero usage and the queue handoff does not wait for the filesystem. The lane beat is also product-owned and unjoined, but its possible state write is a sheet cache refresh rather than the per-call write guaranteed by the tested turn. A person closing the full v3 program quickly is protected for usage by the ordering in `v3Process.closeAll`: close every agent, wait for those closes, then call `session.FlushUsage` before returning. Calling `Agent.Close` alone does not provide that process-level guarantee.
+
+## Forced-order reproduction design
+
+The next step will add a test-only barrier at the usage writer's dequeue seam. The target test will hold the queued usage row until its body has completed agent close, then prove that the writer can create `v3/usage.jsonl` afterward. This forces the observed ordering without load, sleeps, busy loops, or synthetic CPU. The barrier belongs at `usageWriter.run`, immediately before its lazy open, because that is the exact asynchronous writer identified above. No session clock, poll timeout, or issue #1211 surface is involved.
