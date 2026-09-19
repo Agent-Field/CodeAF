@@ -384,6 +384,11 @@ type homePanelRows struct {
 	// right is a clause the heading carries at its right margin, and money the
 	// figure inside it drawn in the money ink — the day's spend on `spend`.
 	right, money string
+	// emptyWord is the whisper this reading wants when it has no rows. ""
+	// means the panel's static whisper. Nil Folders sets this so the heading
+	// stays and the refusal is a whisper, not a stoppable row that steals
+	// the field from scheduled and since-you-left.
+	emptyWord string
 }
 
 // homePanelGroup is a SECOND HEADING INSIDE ONE PANEL: a run of the panel's own
@@ -711,14 +716,25 @@ func byKeep(column []*homeGridPanel) []*homeGridPanel {
 	return order
 }
 
-// squeezeColumn fits one column into room (law 5): the lowest-priority panel is
-// shrunk to its floor first, then the next, and only when every panel is at its
-// floor are panels dropped, lowest first.
+// squeezeColumn fits one column into room (law 5): whispering panels go
+// first, then the lowest-priority panel is shrunk to its floor, and only
+// when every panel is at its floor are remaining panels dropped. A whisper
+// that stayed while scheduled shrank to "5 more" and no row was the eighth
+// panel landing as a fake row, then as a whisper that still outranked a
+// standable scheduled line.
 func squeezeColumn(column []*homeGridPanel, room int) {
 	if room <= 0 || homeColumnHeight(column) <= room {
 		return
 	}
 	order := byKeep(column)
+	for _, p := range byDrop(order) {
+		if homeColumnHeight(column) <= room {
+			break
+		}
+		if p.empty() {
+			p.dropped = true
+		}
+	}
 	for _, p := range order {
 		if homeColumnHeight(column) <= room {
 			break
@@ -844,7 +860,11 @@ func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel
 		p.desc = homeDescOn(cols)
 		at := homeColumnOf(slot, cols, p.empty())
 		if p.empty() {
-			p.whisper = homeWhisperLines(slot.panel.whisper(), widths[at])
+			words := p.read.emptyWord
+			if words == "" {
+				words = slot.panel.whisper()
+			}
+			p.whisper = homeWhisperLines(words, widths[at])
 		}
 		columns[at] = append(columns[at], p)
 	}

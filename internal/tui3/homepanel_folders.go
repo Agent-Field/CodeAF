@@ -22,18 +22,16 @@ type foldersPanel struct{ homePanelBase }
 
 func (foldersPanel) rows(in *homeGridInput) homePanelRows {
 	if in.folders.missing {
-		return homePanelCut(in, panelFolders, []homeLine{folderUnavailableLine()})
+		// NIL IS A WHISPER, NOT A ROW. A fake homeFolderRow used to stand in
+		// the field, steal squeeze room from scheduled / since-you-left, and
+		// give an empty home a cursor stop that was not a project.
+		return homePanelRows{emptyWord: folderUnwiredWord}
 	}
 	open := strings.TrimSpace(in.folderOpen)
 	if open != "" {
 		return homePanelCut(in, panelFolders, folderOpenLines(in, open))
 	}
 	return homePanelCut(in, panelFolders, folderRootLines(in))
-}
-
-func folderUnavailableLine() homeLine {
-	cell := &homeCell{kind: cellWhisper, panel: panelFolders, title: folderUnwiredWord}
-	return homeLine{kind: homeFolderRow, project: folderUnwiredWord, cell: cell}
 }
 
 func folderRootLines(in *homeGridInput) []homeLine {
