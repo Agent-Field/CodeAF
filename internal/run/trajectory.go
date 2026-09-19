@@ -68,6 +68,13 @@ type Step struct {
 	// off the store after the command rather than parsed out of its output.
 	Children []string `json:"children,omitempty"`
 
+	// NotRun is established by the engine when the ended tool event is a
+	// harness refusal rather than a call the belt ran. The requested command and
+	// answer remain in the record; a surface uses this fact to omit the row
+	// without interpreting the answer's words. False also preserves records
+	// written before the field existed.
+	NotRun bool `json:"not_run,omitempty"`
+
 	// ExitCode is the command's own exit status when the belt ran one and the
 	// recorder knew it: zero for a step that ended, the non-zero code for one
 	// that failed. It is a pointer so a step written before this field existed,

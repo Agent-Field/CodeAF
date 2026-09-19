@@ -1531,6 +1531,13 @@ func (a *app) taskPlanBody(width int) []string {
 	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
 		for _, step := range page.Steps {
+			// A CALL THE ENGINE SAYS DID NOT RUN REMAINS IN THE RECORD and in
+			// the head's count, but is not a step a person reads. The fact is a
+			// field set where the event is known; this surface never reads the
+			// refusal's sentence, and a record without the field draws as before.
+			if step.NotRun {
+				continue
+			}
 			// A STEP WITH NOTHING OF THE WORK IN IT HAS NO ROW, AND EVERY OTHER ROW
 			// KEEPS THE NUMBER THE RECORD GAVE IT. The head counts the steps that
 			// ran, the live step is called by its number elsewhere, and a row
