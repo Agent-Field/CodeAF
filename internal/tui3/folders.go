@@ -28,6 +28,11 @@ type Folders interface {
 	CreateFolder(ctx context.Context, name string) (FolderView, error)
 	RenameFolder(ctx context.Context, id, name string) error
 	AddPlacement(ctx context.Context, collectionID, refID string) error
+	// AddFolderPlacement nests childFolderID under parentID as a typed
+	// collection member. It is a separate verb from AddPlacement so a chat
+	// file cannot silently become a folder nest, and so the adapter never
+	// falls back to a conversation ref.
+	AddFolderPlacement(ctx context.Context, parentID, childFolderID string) error
 	RemovePlacement(ctx context.Context, collectionID, refID string) error
 	MovePlacement(ctx context.Context, fromID, toID, refID string) error
 	WhyHere(ctx context.Context, collectionID, refID string) (FolderWhy, error)
@@ -96,6 +101,8 @@ const (
 	folderUnwiredWord     = "folders are not wired here"
 	folderNoStandWord     = "stand on a folder · then n starts a chat there"
 	folderMoveHintWord    = "enter a folder to move it there · esc cancel"
+	folderNestWord        = "nest this folder"
+	folderNestHintWord    = "enter a folder to nest it there · esc cancel"
 	folderLostWord        = "that chat is no longer in this folder"
 	folderUnavailableWord = "unavailable"
 	logicalFolderGoneWord = "that folder is no longer here"
@@ -181,12 +188,15 @@ func (a *app) folderCtx() context.Context {
 }
 
 // folderVerbs is `→` on a folders-panel row: new chat here, add the current
-// chat, and — on a placement — move, why here, and remove. A verb that cannot
-// work is absent, not broken.
+// chat, nest this folder, and — on a placement — move, why here, and remove.
+// A verb that cannot work is absent, not broken.
 func (a *app) folderVerbs(line homeLine) []verb {
 	verbs := []verb{
 		{key: 'n', word: folderNewChatWord, do: func() tea.Cmd { return a.startInFolder(a.folderIDOf(line)) }},
 		{key: 'f', word: folderAddHereWord, do: func() tea.Cmd { return a.addCurrentToFolder(a.folderIDOf(line)) }},
+	}
+	if line.kind == homeFolderRow {
+		verbs = append(verbs, verb{key: 'e', word: folderNestWord, do: func() tea.Cmd { return a.beginFolderNest(line) }})
 	}
 	if line.kind == homeSession {
 		verbs = append(verbs,
@@ -319,6 +329,7 @@ func (a *app) beginFolderMove(line homeLine) tea.Cmd {
 	if from == "" || ref == "" {
 		return nil
 	}
+	a.clearFolderNest()
 	a.pendingMoveFrom, a.pendingMoveRef = from, ref
 	a.folderNote(folderMoveHintWord)
 	return nil
@@ -330,6 +341,54 @@ func (a *app) clearFolderMove() bool {
 	}
 	a.pendingMoveFrom, a.pendingMoveRef = "", ""
 	return true
+}
+
+func (a *app) beginFolderNest(line homeLine) tea.Cmd {
+	if a.foldersUnavailable() {
+		return nil
+	}
+	if line.kind != homeFolderRow {
+		return nil
+	}
+	child := strings.TrimSpace(line.dir)
+	if child == "" {
+		return nil
+	}
+	a.clearFolderMove()
+	a.pendingNestChild = child
+	a.folderNote(folderNestHintWord)
+	return nil
+}
+
+func (a *app) clearFolderNest() bool {
+	if a.pendingNestChild == "" {
+		return false
+	}
+	a.pendingNestChild = ""
+	return true
+}
+
+func (a *app) completeFolderNest(parentID string) tea.Cmd {
+	parentID = strings.TrimSpace(parentID)
+	child := a.pendingNestChild
+	a.pendingNestChild = ""
+	if a.foldersUnavailable() {
+		return nil
+	}
+	return a.placeFolderIn(parentID, child)
+}
+
+func (a *app) placeFolderIn(parentID, childID string) tea.Cmd {
+	parentID, childID = strings.TrimSpace(parentID), strings.TrimSpace(childID)
+	if parentID == "" || childID == "" || parentID == childID {
+		return nil
+	}
+	if err := a.folders.AddFolderPlacement(a.folderCtx(), parentID, childID); err != nil {
+		a.folderNote(err.Error())
+		return nil
+	}
+	a.refreshFolderMemo()
+	return nil
 }
 
 func (a *app) completeFolderMove(toID string) tea.Cmd {
@@ -400,15 +459,18 @@ func (a *app) removeFolderPlacement(line homeLine) tea.Cmd {
 }
 
 func (a *app) enterFolder(id string) tea.Cmd {
-	if a.foldersUnavailable() {
-		return nil
-	}
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return nil
 	}
 	if a.pendingMoveRef != "" {
 		return a.completeFolderMove(id)
+	}
+	if a.pendingNestChild != "" {
+		return a.completeFolderNest(id)
+	}
+	if a.foldersUnavailable() {
+		return nil
 	}
 	cur := strings.TrimSpace(a.home.folderOpen)
 	if cur == id {
@@ -543,10 +605,12 @@ func (a *app) runFoldersCommand(rest string) tea.Cmd {
 	case "rename":
 		from, to, _ := strings.Cut(name, " ")
 		return a.renameLogicalFolder(from, to)
+	case "nest":
+		return a.nestLogicalFolder(name)
 	case "new":
 		return a.startInFolder(a.folderIDUnderCursor())
 	}
-	a.folderNote("usage: /folders · /folders create <name> · /folders add <name-or-id> · /folders rename <name-or-id> <new-name> · /folders new")
+	a.folderNote("usage: /folders · /folders create <name> · /folders add <name-or-id> · /folders rename <name-or-id> <new-name> · /folders nest <child> [in <parent>] · /folders new")
 	return nil
 }
 
@@ -610,6 +674,48 @@ func (a *app) renameLogicalFolder(from, to string) tea.Cmd {
 	}
 	a.folderNote("renamed " + folder.Name + " to " + to)
 	return nil
+}
+
+func (a *app) nestLogicalFolder(rest string) tea.Cmd {
+	childName, parentName := splitFoldersNest(rest)
+	if childName == "" {
+		a.folderNote("usage: /folders nest <child> [in <parent>]")
+		return nil
+	}
+	if a.foldersUnavailable() {
+		return nil
+	}
+	child, ok := a.resolveFolder(childName)
+	if !ok {
+		a.folderNote("no folder called " + childName)
+		return nil
+	}
+	parentID := strings.TrimSpace(parentName)
+	if parentID == "" {
+		parentID = a.folderIDUnderCursor()
+	} else if parent, found := a.resolveFolder(parentName); found {
+		parentID = parent.ID
+	} else {
+		a.folderNote("no folder called " + parentName)
+		return nil
+	}
+	if parentID == "" {
+		a.folderNote("stand on a folder · then nest " + child.Name + " there")
+		return nil
+	}
+	return a.placeFolderIn(parentID, child.ID)
+}
+
+// splitFoldersNest reads `/folders nest Receipts in Billing`. The last ` in `
+// is the parent; without it the child nests into the folder under the cursor.
+func splitFoldersNest(rest string) (child, parent string) {
+	rest = strings.TrimSpace(rest)
+	lower := strings.ToLower(rest)
+	const sep = " in "
+	if i := strings.LastIndex(lower, sep); i >= 0 {
+		return strings.TrimSpace(rest[:i]), strings.TrimSpace(rest[i+len(sep):])
+	}
+	return rest, ""
 }
 
 func (a *app) addNamedFolder(name string) tea.Cmd {

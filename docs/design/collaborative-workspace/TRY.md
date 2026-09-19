@@ -37,7 +37,7 @@ Launch only that binary, with `CODEAF_HOME` and `CODEAF_PROFILE_DIR` set, from `
 
 1. Home `folders` panel. Empty: heading `folders` plus `logical groups of chats · /folders create Billing` — never “no folders yet”.
 2. `/folders` focuses that panel. `/folder` still opens the filesystem sheet. They are not aliases.
-3. `/folders create Billing`, then Receipts, then Security. Nest Receipts under Billing; also place Receipts under Security.
+3. `/folders create Billing`, then Receipts, then Security. `/folders nest Receipts in Billing`, then `/folders nest Receipts in Security`.
 4. On Billing, `→` then `n` (new chat here). Start page opens; `esc` before sending creates no transcript.
 5. `n` again. Send a synthetic chat. The new id is filed in Billing. Filesystem project is still `$WS`.
 6. `/folders add Security` (or `f` on Security). Either folder shows the same title; `also in` names the other. One history.

@@ -197,6 +197,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/folders` | — | — | focuses home's `folders` panel — logical groups of chats; **not** an alias of `/folder` |
 | `/folders` | — | `create <name>` | make a logical folder |
 | `/folders` | — | `add <name-or-id>` | file the current chat here |
+| `/folders` | — | `nest <child> [in <parent>]` | place a folder under another |
 | `/folders` | — | `rename <name-or-id> <new-name>` | rename a logical folder |
 | `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
@@ -1130,13 +1131,15 @@ A task another window is running cannot be stopped from home: its `running` row 
 /folders                    the folders panel on home
 /folders create Billing     make a logical folder
 /folders add <name-or-id>   file the current chat here
+/folders nest Receipts in Billing
 /folders rename Receipts Invoices
 ```
 
 The empty panel's dim line is `logical groups of chats · /folders create Billing`. On a
 row, `→` then `n f m w x`: `n` new chat here · `f` add current chat · `m` move this
-placement · `w` why here · `x` remove this placement. The collections page is the rest:
-also in two folders, `/folder` vs `/folders`, and what is not built yet.
+placement · `w` why here · `x` remove this placement. On a folder row, `e` nests
+that folder; `/folders nest Receipts in Billing` is the typed form. The collections
+page is the rest: also in two folders, `/folder` vs `/folders`, and what is not built yet.
 
 ## /permissions — what runs without asking
 

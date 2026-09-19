@@ -68,6 +68,10 @@ func (a *foldersAdapter) AddPlacement(ctx context.Context, collectionID, refID s
 	return a.svc.AddPlacement(ctx, collectionID, conversationRef(refID), personProvenance(""))
 }
 
+func (a *foldersAdapter) AddFolderPlacement(ctx context.Context, parentID, childFolderID string) error {
+	return a.svc.AddPlacement(ctx, parentID, collectionRef(childFolderID), personProvenance(""))
+}
+
 func (a *foldersAdapter) RemovePlacement(ctx context.Context, collectionID, refID string) error {
 	return a.svc.RemovePlacement(ctx, collectionID, conversationRef(refID), personProvenance(""))
 }
@@ -152,8 +156,8 @@ func (f *sessionFolders) collectFolder(ctx context.Context, folder wsapi.Folder,
 	return nil
 }
 
-func (f *sessionFolders) File(ctx context.Context, collectionID, conversationID string, p workspace.Provenance) error {
-	return f.svc.AddPlacement(ctx, collectionID, conversationRef(conversationID), organizerProvenance(p))
+func (f *sessionFolders) File(ctx context.Context, collectionID string, ref workspace.Ref, p workspace.Provenance) error {
+	return f.svc.AddPlacement(ctx, collectionID, ref, organizerProvenance(p))
 }
 
 func (f *sessionFolders) Unfile(ctx context.Context, collectionID, conversationID string, p workspace.Provenance) error {
@@ -166,6 +170,10 @@ func (f *sessionFolders) Move(ctx context.Context, fromID, toID, conversationID 
 
 func conversationRef(id string) workspace.Ref {
 	return workspace.Ref{Kind: workspace.ConversationKind, ID: id}
+}
+
+func collectionRef(id string) workspace.Ref {
+	return workspace.Ref{Kind: workspace.CollectionKind, ID: id}
 }
 
 func personProvenance(reason string) workspace.Provenance {

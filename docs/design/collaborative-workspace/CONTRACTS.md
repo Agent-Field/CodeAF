@@ -148,7 +148,7 @@ Deduplicate conversation IDs in counts. Pass Provenance through to the store (do
 - `homeFolderRow = 246`, `homeFolderBack = 247`. Member chats reuse `homeSession` with `cell.panel == panelFolders`.
 - `app.pendingFolder` string: set by `n` / `/folders` new; consumed after first-message `renew`/`startChatEnter` via `AddPlacement`. Esc clears it and creates no transcript.
 - `Options.Folders` is `tui3.Folders`. DTOs are **exported** so `cmd/codeaf` can implement the interface (`FolderView`, `FolderPlacement`, `FolderWhy`, `FolderRoot`). They do **not** use `workspace.Ref` or `wsapi.Folder`. Wiring owns `cmd/codeaf/folders_adapter.go` mapping `*wsapi.Service` → `tui3.Folders`, with a compile-time `var _ tui3.Folders = (*foldersAdapter)(nil)`. `*wsapi.Service` does **not** satisfy `tui3.Folders` directly.
-- Nil `Options.Folders` (open failed / store unavailable / corrupt): the panel heading still exists, but it is **not** an empty working workspace. Mutations (`n f m w x`, `/folders create|add`) must refuse with a visible failure, never silent success. Distinct from a working empty store, which uses the emptiness-law whisper.
+- Nil `Options.Folders` (open failed / store unavailable / corrupt): the panel heading still exists, but it is **not** an empty working workspace. Mutations (`n f e m w x`, `/folders create|add|nest`) must refuse with a visible failure, never silent success. Distinct from a working empty store, which uses the emptiness-law whisper.
 - 80-col: sequential drill-in, `esc` back. No model on paint.
 
 ```go
@@ -175,18 +175,19 @@ type Folders interface {
     CreateFolder(ctx context.Context, name string) (FolderView, error)
     RenameFolder(ctx context.Context, id, name string) error
     AddPlacement(ctx context.Context, collectionID, refID string) error
+    AddFolderPlacement(ctx context.Context, parentID, childFolderID string) error
     RemovePlacement(ctx context.Context, collectionID, refID string) error
     MovePlacement(ctx context.Context, fromID, toID, refID string) error
     WhyHere(ctx context.Context, collectionID, refID string) (FolderWhy, error)
 }
 ```
 
-`Kind` on a placement is workspace's reference kind (`collection`, `conversation`). Empty Kind is a conversation. Nested/shared folders survive as `Kind=collection` members of FolderSnapshot; RootSnapshot may list only parentless folders. `wsapi.Service` talks to a `store` interface matching `workspace.Store`. `Open` binds `*workspace.Store` directly (`AddWith`/`Move`/`RootState`); there is no production fake adapter. `cmd/codeaf` `foldersAdapter.RenameFolder` calls `svc.RenameFolder`.
+`Kind` on a placement is workspace's reference kind (`collection`, `conversation`). Empty Kind is a conversation. Nested/shared folders survive as `Kind=collection` members of FolderSnapshot; RootSnapshot may list only parentless folders. `AddFolderPlacement` is how the TUI nests one folder under another: the adapter calls `svc.AddPlacement` with `workspace.CollectionKind` and OriginPerson, never a conversation-ref fallback. `/folders nest <child> [in <parent>]` and the folder-row verb `e` (nest this folder) are the person-facing doors; a cycle is the existing store `ErrCycle`. `wsapi.Service` talks to a `store` interface matching `workspace.Store`. `Open` binds `*workspace.Store` directly (`AddWith`/`Move`/`RootState`); there is no production fake adapter. `cmd/codeaf` `foldersAdapter.RenameFolder` calls `svc.RenameFolder`.
 
 ## Session / CLI (wiring)
 
-- `session.Config.Folders` is an interface with `List/File/Unfile/Move` methods wrapping `wsapi` (define the interface in `session` so `wsapi` does not import `session`).
-- Tool `folders` on the belt only when `Config.Folders != nil`. Actions: `list`, `file`, `unfile`, `move`. Refuses cycles/unknown ids in result text.
+- `session.Config.Folders` is an interface with `List/File/Unfile/Move` methods wrapping `wsapi` (define the interface in `session` so `wsapi` does not import `session`). `File` takes a typed `workspace.Ref`; it does not hard-code `ConversationKind` for every call.
+- Tool `folders` on the belt only when `Config.Folders != nil`. Actions: `list`, `file`, `unfile`, `move`. `file` with `child` nests that folder (`CollectionKind`) under `id`; without `child` it files this chat. Refuses cycles/unknown ids in result text.
 - **Trusted origin at ingress.** The folders tool stamps `OriginOrganizer` (actor = this session) itself. Tool arguments must not carry `origin`; a model cannot claim `person`. Person-facing CLI and TUI verbs stamp `OriginPerson`. `system_fallback` is only for explicit recovery paths, never as a silent default.
 - Conversation id for membership is `session.Place.ID()` (16 hex), never a UI path.
 - CLI: `--reason` optional on `add`/`remove`; default output of old verbs unchanged.
