@@ -1091,6 +1091,10 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		cfg.MediaModel = v3MediaModel(activeModels, settings.ProfileDir, cfg.RolesSource)
 		cfg.MediaPick = v3MediaPick(activeModels)
 	}
+	// RoleEmbed is a pin on the same media client, not a text-tier Register.
+	// A nil adapter leaves discovery delayed — never a stub that returns
+	// empty vectors. Discover and session bind this hand when they land.
+	_ = v3Embedder(mediaSettings, cfg.RolesSource, activeModels)
 
 	// AND THE RUN DOOR IS BUILT FROM THE SAME PAIR. A saved harness may name a
 	// media verb on its whitelist, and the node that reaches for it at run time

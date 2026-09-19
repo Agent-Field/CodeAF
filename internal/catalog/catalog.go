@@ -1051,6 +1051,12 @@ func hasModality(values []string, requested string) bool {
 		if requested == "music" && value == "audio" {
 			return true
 		}
+		if requested == "embeddings" && value == "embedding" {
+			return true
+		}
+		if requested == "embedding" && value == "embeddings" {
+			return true
+		}
 	}
 	return false
 }
