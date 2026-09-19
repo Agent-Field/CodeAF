@@ -6,6 +6,7 @@ package session
 // records them; no model is called.
 
 import (
+	"bytes"
 	"math"
 	"os"
 	"path/filepath"
@@ -381,5 +382,61 @@ func TestPlanTaskRootCarriesProgressWhenTheRootIsATaskNumber(t *testing.T) {
 	root := planRowByID(t, agent.PlanTasks(), "t-7")
 	if root.Total != 2 || root.Done != 1 {
 		t.Fatalf("a numbered root's progress = %d of %d, want 1 of 2", root.Done, root.Total)
+	}
+}
+
+func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
+	const copy = "/home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/1"
+	tests := []struct {
+		command string
+		record  []int
+		prefix  []int
+	}{
+		{"ls; ls *.go 2>/dev/null; plandb task overview 2>/dev/null | head -30", []int{2}, nil},
+		{"cat calc.go go.mod notes.txt", nil, nil},
+		{"plandb done t-1 --agent 1 --result 'Added Mul and Div in muldiv.go …'", []int{0}, nil},
+		{"cd " + copy + " && ls && cat muldiv.go && go vet ./... && go test -count=1 ./...", nil, []int{0}},
+		{"cd " + copy + " && plandb done t-1 --agent 1 --result 'Mul and Div in …'", []int{1}, []int{0}},
+	}
+	for _, test := range tests {
+		step := PlanStep{Command: test.command}
+		got := planStepDisplayFacts(step, copy, "plandb")
+		if got.Command != test.command {
+			t.Fatalf("recorded command changed:\n got %q\nwant %q", got.Command, test.command)
+		}
+		var record, prefix []int
+		for i, part := range got.Parts {
+			if part.RecordAddressed {
+				record = append(record, i)
+			}
+			if part.RunCopyPrefix {
+				prefix = append(prefix, i)
+			}
+		}
+		if !reflect.DeepEqual(record, test.record) || !reflect.DeepEqual(prefix, test.prefix) {
+			t.Errorf("facts for %q: record=%v prefix=%v parts=%#v", test.command, record, prefix, got.Parts)
+		}
+	}
+}
+
+func TestPlanStepDisplayFactsDoNotRewriteTrajectory(t *testing.T) {
+	dir := t.TempDir()
+	command := "cd /run/trees/1 && plandb done t-1 --agent 1 --result 'done'"
+	writePlanTrajectory(t, dir, "alpha", `{"kind":"step","step":5,"command":"cd /run/trees/1 && plandb done t-1 --agent 1 --result 'done'","observation":"done t-1"}`)
+	path := planTrajectoryPath(dir, "alpha")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps := planStepDisplayFactsForPage(planTrajectory(dir, "alpha"), "/run/trees/1")
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("display facts rewrote the trajectory")
+	}
+	if len(steps) != 1 || steps[0].Command != command {
+		t.Fatalf("PlanStep.Command = %q, want %q", steps[0].Command, command)
 	}
 }
