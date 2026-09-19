@@ -40,7 +40,8 @@ type jobQueue interface {
 var _ jobQueue = (*workspace.Store)(nil)
 
 // OrganizeExistingChats enqueues observe_and_organize with OrganizeExistingKey.
-// A second call while pending or leased returns the same row.
+// A second call while pending or leased returns the same row. A cancelled,
+// delayed, or failed row is resumed as queued rather than minting a twin.
 func (s *Service) OrganizeExistingChats(ctx context.Context) (OrganizeView, error) {
 	jobs, err := s.jobQueue(ctx)
 	if err != nil {

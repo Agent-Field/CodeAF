@@ -1436,7 +1436,7 @@ func (s *Service) CancelOrganize(ctx context.Context) error
 | `completed` | `done` |
 | `cancelled` | `cancel` |
 
-Durable, restartable, idempotent: quit/reopen leaves a `queued`/`running` job for the tick; a second click while `pending`/`leased` returns the same row. Budget-bounded: exhausting the background rail finishes `deferred` and paints `delayed`. Foreground chat stays responsive. `cmd/codeaf/folders_adapter.go` implements the three TUI methods against this door (`var _ tui3.Folders` still holds).
+Durable, restartable, idempotent: quit/reopen leaves a `queued`/`running` job for the tick; a second click while `pending`/`leased` returns the same row. A cancelled, deferred, or failed `organize_existing` row is resumed as pending rather than minting a second job. Budget-bounded: exhausting the background rail finishes `deferred` and paints `delayed`. Foreground chat stays responsive. `cmd/codeaf/folders_adapter.go` implements the three TUI methods against this door (`var _ tui3.Folders` still holds).
 
 **Fresh profile does not invent folders.** After-message automatic enqueue (Wave 2, CoalesceKey = chat id + source revision) MUST NOT `CreateFolder` while Root has zero collections. The Folders tab stays empty of generated folders until the person uses **New folder** / `/folders create` **or** **Organize existing chats** actually applies. `workspace.organize` unset remains **on** for the pipeline being *allowed*; unset-on no longer means silent first-populate of an empty tab. Off still cancels/defers **automatic** after-message apply; it does not refuse manual Add/Remove and it does **not** cancel an explicit `organize_existing` job.
 

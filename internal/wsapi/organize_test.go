@@ -3,6 +3,7 @@ package wsapi
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -33,6 +34,10 @@ func TestOrganizeExistingChatsEnqueuesAndCoalesces(t *testing.T) {
 	}
 	if strings.EqualFold(cancelled.State, "cancelled") || strings.EqualFold(cancelled.Detail, "checked") {
 		t.Fatalf("person-facing status leaked store words: %+v", cancelled)
+	}
+	resumed, err := svc.OrganizeExistingChats(ctx)
+	if err != nil || resumed.JobID != first.JobID || resumed.State != organizeQueued {
+		t.Fatalf("resume after cancel minted %+v vs %s, %v", resumed, first.JobID, err)
 	}
 }
 
@@ -108,6 +113,36 @@ func TestOrganizerMayCreateFolderOnBlankRoot(t *testing.T) {
 	again, err := svc.RootSnapshot(ctx)
 	if err != nil || len(again.Folders) != 1 || again.Folders[0].Name != "Billing" {
 		t.Fatalf("created folders %+v, %v", again.Folders, err)
+	}
+}
+
+func TestOrganizeExistingSurvivesRestartWithoutMinting(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "collections.db")
+	svc, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := svc.OrganizeExistingChats(ctx)
+	if err != nil || first.JobID == "" || first.State != organizeQueued {
+		t.Fatalf("enqueue: %+v, %v", first, err)
+	}
+	if err := svc.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	again, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = again.Close() })
+	status, err := again.OrganizeStatus(ctx)
+	if err != nil || status.JobID != first.JobID || status.State != organizeQueued {
+		t.Fatalf("reopen status: %+v, %v", status, err)
+	}
+	second, err := again.OrganizeExistingChats(ctx)
+	if err != nil || second.JobID != first.JobID || second.State != organizeQueued {
+		t.Fatalf("reopen enqueue minted %+v vs %s, %v", second, first.JobID, err)
 	}
 }
 

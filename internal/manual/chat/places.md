@@ -463,8 +463,9 @@ folders until **New folder** or **Organize existing chats**.
 Visible actions, not slash-only: **New folder**, **New chat**, **Organize existing chats**.
 New chat starts at Root or the selected folder; Esc before send creates nothing. Organize
 reuses `observe_and_organize` and paints `queued` `running` `delayed` `done` `cancel` —
-never `pending` `leased` `completed` `deferred` `cancelled`, never `checked`. `/folders
-organize` is the same survey, never the only door.
+never `pending` `leased` `completed` `deferred` `cancelled`, never `checked`. Quit and
+reopen leaves that same job queued or running; it does not mint a second
+`organize_existing` row. `/folders organize` is the same survey, never the only door.
 
 `esc` walks back. 80-column sequential. The collections page has create, nest, rename,
 why-here, and `/folder` vs `/folders`.

@@ -252,7 +252,8 @@ func TestBlankCreateWritesV5WithGrantTables(t *testing.T) {
 
 func TestCancelAndLookupFollowTheExplicitKey(t *testing.T) {
 	ctx := context.Background()
-	s := openTestStore(t, filepath.Join(t.TempDir(), "existing.db"))
+	path := filepath.Join(t.TempDir(), "existing.db")
+	s := openTestStore(t, path)
 	cols, err := s.Collections(ctx)
 	if err != nil || len(cols) != 0 {
 		t.Fatalf("blank store already had folders: %+v, %v", cols, err)
@@ -282,8 +283,11 @@ func TestCancelAndLookupFollowTheExplicitKey(t *testing.T) {
 		t.Fatalf("lookup cancelled: %+v, %v", status, err)
 	}
 	next, err := s.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey})
-	if err != nil || next.ID == first.ID || next.State != JobPending {
+	if err != nil || next.ID != first.ID || next.State != JobPending {
 		t.Fatalf("re-enqueue after cancel: %+v vs %s, %v", next, first.ID, err)
+	}
+	if n := countJobsWithKey(t, path, JobOrganize, OrganizeExistingKey); n != 1 {
+		t.Fatalf("cancel then enqueue minted %d organize_existing rows", n)
 	}
 }
 
@@ -316,8 +320,60 @@ func TestFinishAfterCancelIsNoOpAndRestartKeepsPending(t *testing.T) {
 		t.Fatal(err)
 	}
 	found, err := again.LookupJob(ctx, JobOrganize, OrganizeExistingKey)
-	if err != nil || found.ID != pending.ID || found.State != JobPending {
-		t.Fatalf("restart lost the queued survey: %+v, %v", found, err)
+	if err != nil || found.ID != job.ID || found.ID != pending.ID || found.State != JobPending {
+		t.Fatalf("restart minted a second survey: original %s got %+v, %v", job.ID, found, err)
+	}
+	if n := countJobsWithKey(t, path, JobOrganize, OrganizeExistingKey); n != 1 {
+		t.Fatalf("restart left %d organize_existing rows", n)
+	}
+}
+
+func TestRestartLeavesTheSamePendingOrganizeExisting(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "survive.db")
+	s := openTestStore(t, path)
+	job, err := s.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey})
+	if err != nil || job.State != JobPending {
+		t.Fatalf("enqueue: %+v, %v", job, err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	again := openTestStore(t, path)
+	found, err := again.LookupJob(ctx, JobOrganize, OrganizeExistingKey)
+	if err != nil || found.ID != job.ID || found.State != JobPending {
+		t.Fatalf("reopen lost the queued survey: %+v, %v", found, err)
+	}
+	resumed, err := again.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey})
+	if err != nil || resumed.ID != job.ID || resumed.State != JobPending {
+		t.Fatalf("reopen enqueue minted %+v vs %s, %v", resumed, job.ID, err)
+	}
+	if n := countJobsWithKey(t, path, JobOrganize, OrganizeExistingKey); n != 1 {
+		t.Fatalf("reopen minted %d organize_existing rows", n)
+	}
+}
+
+func TestEnqueueResumesAnExpiredOrganizeExistingLease(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "expired-lease.db")
+	s := openTestStore(t, path)
+	fixed := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	s.clock = func() time.Time { return fixed }
+	job, err := s.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leased, err := s.LeaseJob(ctx, []string{JobOrganize}, "tick", "2026-09-19T11:00:00Z")
+	if err != nil || leased.ID != job.ID {
+		t.Fatalf("lease: %+v, %v", leased, err)
+	}
+	resumed, err := s.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey})
+	if err != nil || resumed.ID != job.ID || resumed.State != JobPending {
+		t.Fatalf("expired lease minted %+v vs %s, %v", resumed, job.ID, err)
+	}
+	if n := countJobsWithKey(t, path, JobOrganize, OrganizeExistingKey); n != 1 {
+		t.Fatalf("expired lease left %d organize_existing rows", n)
 	}
 }
 
@@ -343,4 +399,18 @@ func jobState(t *testing.T, path, id string) string {
 		t.Fatal(err)
 	}
 	return state
+}
+
+func countJobsWithKey(t *testing.T, path, jobType, key string) int {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE type=? AND coalesce_key=?`, jobType, key).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
