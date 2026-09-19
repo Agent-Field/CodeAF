@@ -68,3 +68,7 @@ The forced regression is now expected to pass repeatedly because the state owner
 ## Build check
 
 The next independent pre-PR check is `go build ./...`. It verifies all packages compile after the test seam and ownership fix.
+
+## Build check result and session-suite step
+
+`go build ./...` passed. The next independent check runs the complete session package tree through the required Spark lock wrapper with a fresh test count.
