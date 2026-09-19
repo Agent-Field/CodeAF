@@ -1467,6 +1467,44 @@ func (s *Store) CompleteRoot(result string) error {
 	})
 }
 
+// StopRoot ends the run on a person's word. Only the runtime calls it, the way
+// only the runtime calls [Store.CompleteRoot], and it is the one ending of the
+// run's own task that does not wait for the work under it: the run's task and
+// every task still open are cancelled in one transaction, and every task that
+// had already ended keeps the ending it has.
+//
+// EVERY OPEN TASK IS ENDED, NOT ONLY THE ONES A CASCADE WOULD REACH. Every task
+// in a store is the run's, so the walk is over the store and not down the tree:
+// a cascade that follows cancelled parents stops at a parent that ended earlier
+// and would leave the open work under it to be offered to the next worker.
+//
+// A RUN LEFT OPEN IS A RUN THE NEXT HAND-OFF ADOPTS, which is why a stop has to
+// be written here and cannot only be a context somebody cut: a store whose run
+// task is still open is picked up again by the next run over it, stopped work
+// included. Two presses are one stop, and a run that ended by itself is left as
+// it ended.
+func (s *Store) StopRoot(reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.transact(func(next *state, now time.Time) error {
+		root := next.Tasks[next.RootID]
+		if root == nil || terminal(root.Status) {
+			return errNoChange
+		}
+		reason = strings.TrimSpace(reason)
+		for _, task := range next.Tasks {
+			if terminal(task.Status) {
+				continue
+			}
+			task.Status, task.Error, task.ClaimedBy = StatusCancelled, reason, ""
+			task.Owner, task.SeenAt = "", time.Time{}
+			task.UpdatedAt, task.CompletedAt = now, now
+		}
+		promote(next, now)
+		return nil
+	})
+}
+
 // Archive moves whole finished subtrees out of the live plan and into the
 // archive: a task and every task under it, when each one has been terminal —
 // done, cancelled or failed — for longer than the window. The moved tasks
