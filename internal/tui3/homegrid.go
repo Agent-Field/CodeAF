@@ -21,7 +21,7 @@ import (
 // (homepanel_<name>.go), and every one of them is a pure reading over what home
 // already cached on its three-second beat — a panel opens nothing, stats
 // nothing and asks no seam, which is what keeps the place law "a place never
-// reads the disk on a draw" true of a screen made of seven readings.
+// reads the disk on a draw" true of a screen made of eight readings.
 //
 // THE LAYOUT IS DECIDED WHEN THE LINES ARE BUILT, NOT WHEN THEY ARE PAINTED. A
 // squeezed panel keeps its heading and `N more · <place>`, so which rows exist
@@ -82,6 +82,9 @@ const (
 	panelLeft
 	panelSpend
 	panelNext
+	// panelFolders is last so existing IDs do not shift. It is an eighth home
+	// panel, not an eighth tab-bar place.
+	panelFolders
 )
 
 // homePanel is one panel: what it is, and its rows out of the cached reading.
@@ -174,6 +177,7 @@ type homePanelSlot struct {
 var homePanelOrder = []homePanelSlot{
 	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10, head: pageSearch},
+	{panel: foldersPanel{homePanelBase{panelFolders}}, word: "folders", keep: 2, least: 3, rest: 4, most: 8},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
@@ -203,6 +207,7 @@ var homeWhisper = map[homePanelID]string{
 	panelRunning: "work you send off with /task runs here on its own",
 	panelLeft:    "what watches and tasks did while the terminal was shut",
 	panelRecent:  "your conversations · what you type below starts one",
+	panelFolders: folderWhisperWord,
 	panelSpend:   "every chat and task is priced here",
 	panelNext:    `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"`,
 }
@@ -312,8 +317,13 @@ type homeGridInput struct {
 	repos map[string]homeRepoReading
 	// spend is the day's figure and the fortnight behind it (homepanel_spend.go).
 	spend homeSpendReading
-	seen  time.Time
-	now   time.Time
+	// folders is the logical-folder memo the beat filled ([app.readHomeFolders]),
+	// and folderOpen the collection somebody drilled into. Both are caches: the
+	// panel's rows() reads them and never the seam.
+	folders    homeFoldersReading
+	folderOpen string
+	seen       time.Time
+	now        time.Time
 	// opened is the one panel whose fold somebody opened, and openedOn that
 	// there is one: its cap is lifted ([homeGridInput.cap]) and, for `needs
 	// you`, its aged landings come back into the group ([homeView.gridInput]).
@@ -347,7 +357,8 @@ func (h *homeView) gridInput() homeGridInput {
 		opened: h.opened, openedOn: h.openedOn,
 		desc: homeDescOn(h.cols), world: world, items: h.items,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
-		repos: h.repos, spend: h.spend, seen: h.seen, now: h.world.Read}
+		repos: h.repos, spend: h.spend, folders: h.folders, folderOpen: h.folderOpen,
+		seen: h.seen, now: h.world.Read}
 }
 
 // ── what a panel hands back ────────────────────────────────────────────────

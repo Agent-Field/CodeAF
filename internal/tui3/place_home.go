@@ -186,6 +186,12 @@ func (a *app) homeRowVerbs() []verb {
 	if line.cell != nil && line.cell.panel == panelRunning && line.kind != homeItem {
 		return a.runningVerbs(line)
 	}
+	// A FOLDERS ROW HAS THE FOLDER STRIP, including member chats that reuse
+	// [homeSession] with panelFolders — their verbs are membership, not the
+	// conversation's ordinary `put it away`.
+	if line.cell != nil && line.cell.panel == panelFolders {
+		return a.folderVerbs(line)
+	}
 	// A ROW OF THE GRID CARRIES THE SWITCHER'S OWN ROW ON ITS CELL, so its verbs
 	// are the reading's exactly as they were on the list (homegrid.go).
 	if line.cell != nil && line.cell.row != nil {
