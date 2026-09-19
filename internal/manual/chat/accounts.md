@@ -34,6 +34,31 @@ response bodies are read up to 8 MiB.
 An account with no tools in this build answers `<Name> is connected, and this build
 has no tools for it. Do the work without it and say so plainly.`
 
+## Can you access my email
+
+Yes, once Google is connected. Connecting Google puts three mail tools on the belt:
+`gmail_search`, `gmail_read` and `gmail_send`. Until that account is connected those
+tools are not there at all — codeaf cannot search, read or send your mail, and there
+is no broken mail verb sitting on the belt to fail.
+
+`gmail_search` looks through your mailbox with Gmail's own search syntax (`from:`,
+`subject:`, `has:attachment`, `newer_than:7d`) and returns a numbered list: who each
+message is from, when it arrived, and its subject. Follow it with `gmail_read` on the
+ids worth opening; that returns the sender, the date, the subject and the body with
+the markup stripped. `gmail_send` sends one message from your own address. It leaves
+as you, it reaches the people you name, and nothing can call it back, so you are asked
+before it goes. Silence is not a reason to send the same thing twice.
+
+Connect Google from `/connect` (alias `/connections`). It is a browser account: the
+sign-in opens this machine's browser and asks for
+`https://www.googleapis.com/auth/gmail.modify` — read and write mail, but not
+permanent deletion. Over `--host` a new connection is refused with
+`connecting an account is not available over --host yet — the sign-in opens a browser here and the account belongs to the machine over there. accounts already connected on that machine keep working.`
+Mail tools already connected on the far machine keep working.
+
+This is your mailbox. Searching old chats can find a conversation *about* mail; it
+does not open Gmail.
+
 ## How many services can be connected
 
 **129 services register in this build: 99 are connected with a pasted key, and 30 are

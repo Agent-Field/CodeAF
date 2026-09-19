@@ -424,7 +424,7 @@ that names `graph.db` and the disk's reason — not the `memory` row.
 
 There is no slash command for it — you ask in the conversation, and it searches.
 
-## Original passages despite different wording — emailed receipt links, purchase confirmation PDF, authenticated access
+## Original passages despite different wording — emailed receipt links, purchase confirmation PDF
 
 Yes. Type the words you have now — emailed receipt links, or a purchase
 confirmation PDF — and search still ranks the original passages that decided
