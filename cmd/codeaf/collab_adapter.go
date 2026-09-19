@@ -32,6 +32,18 @@ var (
 	v3CollabRouter *wscollab.Router
 )
 
+func setV3CollabRouter(r *wscollab.Router) {
+	v3CollabMu.Lock()
+	defer v3CollabMu.Unlock()
+	v3CollabRouter = r
+}
+
+func currentV3CollabRouter() *wscollab.Router {
+	v3CollabMu.Lock()
+	defer v3CollabMu.Unlock()
+	return v3CollabRouter
+}
+
 func bindV3Collab(svc *wsapi.Service) {
 	if svc == nil || svc.Workspace() == nil {
 		return
@@ -42,9 +54,7 @@ func bindV3Collab(svc *wsapi.Service) {
 	}
 	svc.SetCollaborator(&wsapiCollaborator{router: router})
 	session.RegisterCollabRouter(&sessionCollabRouter{router: router})
-	v3CollabMu.Lock()
-	v3CollabRouter = router
-	v3CollabMu.Unlock()
+	setV3CollabRouter(router)
 }
 
 func v3ChatID(sessionFile string) string {
@@ -59,9 +69,7 @@ func conversationChatIDFrom(place session.Place, sessionFile string) string {
 }
 
 func bindAgentCollab(agent *session.Agent, cfg session.Config) {
-	v3CollabMu.Lock()
-	router := v3CollabRouter
-	v3CollabMu.Unlock()
+	router := currentV3CollabRouter()
 	if router == nil || agent == nil {
 		return
 	}
@@ -170,9 +178,7 @@ func (c *sessionCollab) Pause(ctx context.Context) error {
 }
 
 func (c *sessionCollab) Contribute(ctx context.Context, discussionID string, inv session.CollabInvocation, body string) error {
-	v3CollabMu.Lock()
-	router := v3CollabRouter
-	v3CollabMu.Unlock()
+	router := currentV3CollabRouter()
 	if router == nil {
 		return fmt.Errorf("%w: collaborator is absent", workspace.ErrInvalid)
 	}
@@ -227,10 +233,14 @@ func (c *tuiCollab) Marked(context.Context) ([]tui3.CollabMark, error) {
 	return out, nil
 }
 
-func (c *tuiCollab) CoordinateMarked(ctx context.Context, coordinatorID string) error {
+func (c *tuiCollab) markedIDs() []string {
 	c.mu.Lock()
-	ids := append([]string(nil), c.ids...)
-	c.mu.Unlock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.ids...)
+}
+
+func (c *tuiCollab) CoordinateMarked(ctx context.Context, coordinatorID string) error {
+	ids := c.markedIDs()
 	_, err := c.svc.CoordinateSelected(ctx, wsapi.CoordinateRequest{CoordinatorID: coordinatorID, ChatIDs: ids})
 	return err
 }

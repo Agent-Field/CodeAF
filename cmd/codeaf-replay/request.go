@@ -365,17 +365,21 @@ var callSiteRoles = map[string]lane.Role{
 	// front of `codeaf tick`; pricing it as talk would put a wait that is not
 	// happening into the watched half of the report.
 	"organize": lane.RoleAuxiliary,
-	"worker":   lane.RoleAuxiliary,
-	"speech":   lane.RoleAuxiliary,
-	"video":    lane.RoleAuxiliary,
-	"handoff":  lane.RoleAuxiliary,
-	"taskname": lane.RoleAuxiliary,
-	"jobname":  lane.RoleAuxiliary,
-	"caption":  lane.RoleAuxiliary,
-	"shaper":   lane.RoleAuxiliary,
-	"intake":   lane.RoleAuxiliary,
-	"careful":  lane.RoleAuxiliary,
-	"distill":  lane.RoleAuxiliary,
+	// RoleCollabConsult is one invited participant's bounded call during
+	// coordinate invite. callRoleChecked prices it as an errand (no stream);
+	// errandRole's default is auxiliary, same as organize.
+	"collab-consult": lane.RoleAuxiliary,
+	"worker":         lane.RoleAuxiliary,
+	"speech":         lane.RoleAuxiliary,
+	"video":          lane.RoleAuxiliary,
+	"handoff":        lane.RoleAuxiliary,
+	"taskname":       lane.RoleAuxiliary,
+	"jobname":        lane.RoleAuxiliary,
+	"caption":        lane.RoleAuxiliary,
+	"shaper":         lane.RoleAuxiliary,
+	"intake":         lane.RoleAuxiliary,
+	"careful":        lane.RoleAuxiliary,
+	"distill":        lane.RoleAuxiliary,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.

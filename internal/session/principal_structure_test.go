@@ -74,6 +74,10 @@ var wakeRoads = map[string]string{
 		"session's goal owner answered about that landing ([Agent.addressLanding] → " +
 		"[Principal.Report]), so a run that lands while nobody is watching is told to whoever the " +
 		"run was started for rather than to an empty room",
+	"collabNote": "inbound from another conversation's representative ([Agent.ReceiveCollab]). " +
+		"It is addressed to THIS conversation — the person it belongs to — not to the source chat. " +
+		"A shut session does not owe an answer until Resume delivers the waiting line on open (J23), " +
+		"so the wake is not a sentence into an empty room. Origin is fromAgent; it is not the person's instruction",
 }
 
 // TestEveryWakeRoadSaysWhoItIsAddressedTo fails when a new road into the wake
