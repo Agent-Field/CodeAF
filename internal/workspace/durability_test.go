@@ -102,10 +102,19 @@ func TestEveryDoorRefusesACancelledContextWithoutWriting(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	doors := map[string]func() error{
-		"Create":         func() error { _, err := s.Create(ctx, "Later"); return err },
-		"Rename":         func() error { return s.Rename(ctx, inbox.ID, "Later") },
-		"Add":            func() error { return s.Add(ctx, inbox.ID, Ref{Kind: ConversationKind, ID: "chat"}) },
-		"Remove":         func() error { return s.Remove(ctx, inbox.ID, Ref{Kind: ConversationKind, ID: "chat"}) },
+		"Create":  func() error { _, err := s.Create(ctx, "Later"); return err },
+		"Rename":  func() error { return s.Rename(ctx, inbox.ID, "Later") },
+		"Add":     func() error { return s.Add(ctx, inbox.ID, Ref{Kind: ConversationKind, ID: "chat"}) },
+		"AddWith": func() error { return s.AddWith(ctx, inbox.ID, Ref{Kind: ConversationKind, ID: "chat"}, Provenance{}) },
+		"Remove":  func() error { return s.Remove(ctx, inbox.ID, Ref{Kind: ConversationKind, ID: "chat"}) },
+		"RemoveWith": func() error {
+			return s.RemoveWith(ctx, inbox.ID, Ref{Kind: ConversationKind, ID: "chat"}, Provenance{})
+		},
+		"Move": func() error {
+			return s.Move(ctx, inbox.ID, inbox.ID, Ref{Kind: ConversationKind, ID: "chat"}, Provenance{})
+		},
+		"WhyHere":        func() error { _, err := s.WhyHere(ctx, inbox.ID, Ref{Kind: ConversationKind, ID: "chat"}); return err },
+		"Events":         func() error { _, err := s.Events(ctx, inbox.ID, Ref{Kind: ConversationKind, ID: "chat"}); return err },
 		"Collections":    func() error { _, err := s.Collections(ctx); return err },
 		"Members":        func() error { _, err := s.Members(ctx, inbox.ID); return err },
 		"CollectionsFor": func() error { _, err := s.CollectionsFor(ctx, Ref{Kind: ConversationKind, ID: "chat"}); return err },
