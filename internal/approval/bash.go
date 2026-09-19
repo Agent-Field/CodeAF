@@ -91,9 +91,19 @@ func Vouchable(command string) bool {
 
 // BashCommandPart is one command and the shell boundary that follows it. The
 // command is trimmed, while Separator preserves the operator bytes themselves.
+//
+// THE SPANS ARE WHAT LETS A READER DRAW PART OF A COMMAND WITHOUT RETYPING IT.
+// Command[Start:End] of the line that was split is this part as it was typed,
+// the space around it included, and [End:SepEnd] is the boundary after it. A
+// reader that wants some parts and not others cuts spans out of the line it
+// was handed; one that joins trimmed commands back together has written a
+// different line from the one that ran.
 type BashCommandPart struct {
 	Command   string
 	Separator string
+	Start     int
+	End       int
+	SepEnd    int
 }
 
 // SplitBashCommand breaks a command line at the boundaries the shell acts on.
@@ -133,10 +143,18 @@ func splitSegments(command string) (segments []string, compound bool) {
 func splitBashCommand(command string) (parts []BashCommandPart, compound bool) {
 	var current []byte
 	var quote byte
-	flush := func(separator string) {
+	begin := 0
+	// flush ends the part being read at a boundary whose last byte is just
+	// before sepEnd. A stretch with nothing in it makes no part, and the next
+	// part still begins after the boundary that closed it.
+	flush := func(separator string, sepEnd int) {
 		if text := strings.TrimSpace(string(current)); text != "" {
-			parts = append(parts, BashCommandPart{Command: text, Separator: separator})
+			parts = append(parts, BashCommandPart{
+				Command: text, Separator: separator,
+				Start: begin, End: sepEnd - len(separator), SepEnd: sepEnd,
+			})
 		}
+		begin = sepEnd
 		current = current[:0]
 	}
 	for index := 0; index < len(command); index++ {
@@ -162,7 +180,7 @@ func splitBashCommand(command string) (parts []BashCommandPart, compound bool) {
 			current = append(current, char)
 		case char == '\n' || char == ';':
 			compound = true
-			flush(string(char))
+			flush(string(char), index+1)
 		case char == '&':
 			if (index+1 < len(command) && command[index+1] == '>') || lastNonSpace(current) == '>' {
 				current = append(current, char)
@@ -174,7 +192,7 @@ func splitBashCommand(command string) (parts []BashCommandPart, compound bool) {
 				index++
 			}
 			compound = true
-			flush(separator)
+			flush(separator, index+1)
 		case char == '|':
 			separator := "|"
 			if index+1 < len(command) && command[index+1] == '|' {
@@ -182,19 +200,19 @@ func splitBashCommand(command string) (parts []BashCommandPart, compound bool) {
 				index++
 			}
 			compound = true
-			flush(separator)
+			flush(separator, index+1)
 		case char == '$' && index+1 < len(command) && command[index+1] == '(':
 			index++
 			compound = true
-			flush("$(")
+			flush("$(", index+1)
 		case char == '(' || char == ')' || char == '`':
 			compound = true
-			flush(string(char))
+			flush(string(char), index+1)
 		default:
 			current = append(current, char)
 		}
 	}
-	flush("")
+	flush("", len(command))
 	return parts, compound
 }
 

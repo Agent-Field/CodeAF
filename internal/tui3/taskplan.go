@@ -1805,21 +1805,60 @@ func planRailNow(line tasksLine, width int, pal palette, sentence string) []stri
 // part that belongs only to the run record or changes into the run copy; this
 // surface omits those parts and preserves every other part and separator.
 func planDisplayCommand(command string, parts []session.PlanCommandPart) string {
-	if len(parts) == 0 {
+	left := func(part session.PlanCommandPart) bool {
+		return part.RecordAddressed || part.RunCopyPrefix || strings.TrimSpace(part.Command) == ""
+	}
+	cut := false
+	for _, part := range parts {
+		if left(part) {
+			cut = true
+			break
+		}
+	}
+	// NOTHING LEFT OUT IS THE LINE AS IT RAN. The parts are only ever a reason
+	// to leave something out, never a second spelling of the command.
+	if !cut {
 		return planFirstLine(strings.TrimSpace(command))
 	}
-	kept := make([]int, 0, len(parts))
-	for i, part := range parts {
-		if !part.RecordAddressed && !part.RunCopyPrefix && strings.TrimSpace(part.Command) != "" {
-			kept = append(kept, i)
-		}
-	}
+	// WHAT IS KEPT IS CUT FROM THE RECORDED LINE, span by span: each kept part
+	// as it was typed, and between two kept parts the boundary that followed
+	// the first of them. A part with nothing kept after it brings no boundary,
+	// so a line never ends on one.
 	var display strings.Builder
-	for at, i := range kept {
-		display.WriteString(parts[i].Command)
-		if at+1 < len(kept) {
-			display.WriteString(parts[i].Separator)
+	last := -1
+	for i, part := range parts {
+		if left(part) {
+			continue
 		}
+		// A kept part always has bytes of its own, so an empty or impossible span
+		// is a part that was never given one.
+		if part.Start < 0 || part.Start >= part.End || part.End > part.SepEnd || part.SepEnd > len(command) {
+			return planJoinedParts(parts, left)
+		}
+		if last >= 0 {
+			display.WriteString(command[parts[last].End:parts[last].SepEnd])
+		}
+		display.WriteString(command[part.Start:part.End])
+		last = i
+	}
+	return planFirstLine(strings.TrimSpace(display.String()))
+}
+
+// planJoinedParts is the kept parts joined by their own boundaries, for parts
+// that carry no spans into the line they came from.
+func planJoinedParts(parts []session.PlanCommandPart, left func(session.PlanCommandPart) bool) string {
+	var display strings.Builder
+	wrote := false
+	boundary := ""
+	for _, part := range parts {
+		if left(part) {
+			continue
+		}
+		if wrote {
+			display.WriteString(boundary)
+		}
+		display.WriteString(part.Command)
+		boundary, wrote = part.Separator, true
 	}
 	return planFirstLine(strings.TrimSpace(display.String()))
 }
