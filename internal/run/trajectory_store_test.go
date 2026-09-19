@@ -27,6 +27,10 @@ func fixtureCommands(t *testing.T, root, task string) []string {
 	return commands
 }
 
+// writeCheckRuns writes a decode fixture: each declared command at a chosen
+// exit, for the store-reading tests. It never exercises the earned path through
+// a real recorder, which is proven in TestHoldsRestsOnTheRecordersOwnExitFromARealCommand
+// in internal/run, so this fixture cannot hide a recorder that writes no exit.
 func writeCheckRuns(t *testing.T, store *plandb.Store, id string, runs map[string]int) {
 	t.Helper()
 	dir := plandb.TaskDir(filepath.Dir(store.Path()), id)

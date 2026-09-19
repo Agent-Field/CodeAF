@@ -127,6 +127,21 @@ func TestCheckVerdictBasisTreatsAnAbsentExitAsUnknown(t *testing.T) {
 		}
 	})
 
+	t.Run("a declaration with no trajectory at all refuses holds", func(t *testing.T) {
+		store := planOpen(t, filepath.Join(t.TempDir(), "plan.db"))
+		defer store.Close()
+		// No trajectory is written: nothing was observed. A declaration with an
+		// empty or missing record is the purest unproven declaration and must not
+		// hold, unlike an old record which has lines and only lacks the marker.
+		basis, earned := store.checkVerdictBasis(checkTask)
+		if earned {
+			t.Fatal("a declaration with no record at all earned holds by reading")
+		}
+		if len(basis.Unobserved) != 1 || basis.Unobserved[0] != check {
+			t.Fatalf("no-record basis unobserved = %#v, want the declared check %q", basis.Unobserved, check)
+		}
+	})
+
 	t.Run("a new build that observed no run refuses holds", func(t *testing.T) {
 		store := planOpen(t, filepath.Join(t.TempDir(), "plan.db"))
 		defer store.Close()
