@@ -1,6 +1,6 @@
 ---
 kind: internal
-title: a proposed design for closing the window: work keeps running or waits as interrupted
+title: a proposed design for closing the window, where work keeps running or waits as interrupted
 pr: 1224
 surface: [chat, engine]
 invalidates:
