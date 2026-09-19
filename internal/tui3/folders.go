@@ -111,6 +111,9 @@ type homeFoldersReading struct {
 	index    FolderIndex
 	guidance []FolderInstruction
 	missing  bool
+	// marked is the optional collab selection copied from [app.collabView]
+	// after the beat. View reads this and never Collab.Marked.
+	marked []CollabMark
 }
 
 // The verb strip on a folders row, quoted in the contract and the manual as
@@ -249,7 +252,7 @@ func (a *app) folderVerbs(line homeLine) []verb {
 			verb{key: 'x', word: folderRemoveWord, do: func() tea.Cmd { return a.removeFolderPlacement(line) }},
 		)
 	}
-	return verbs
+	return append(verbs, a.folderCollabVerbs(line)...)
 }
 
 func (a *app) folderIDOf(line homeLine) string {
@@ -568,6 +571,7 @@ func (a *app) leaveFolder() bool {
 func (a *app) refreshFolderMemo() {
 	prev, had := a.home.focusedLine()
 	a.readHomeFolders()
+	a.readCollab()
 	a.home.build()
 	a.explainLostFolderRow(prev, had)
 	a.touch()
@@ -636,6 +640,7 @@ func (a *app) showFoldersPanel() tea.Cmd {
 		cmd = a.showPage(pageHome)
 	}
 	a.readHomeFolders()
+	a.readCollab()
 	a.home.build()
 	a.focusFoldersPanel()
 	a.touch()

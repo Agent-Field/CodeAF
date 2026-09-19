@@ -135,6 +135,13 @@ func folderMemberLine(in *homeGridInput, place FolderPlacement, collectionID str
 			note = folderUnavailableWord
 		}
 	}
+	if collabChatMarked(in, id) {
+		if note != "" {
+			note = collabMarkedWord + " · " + note
+		} else {
+			note = collabMarkedWord
+		}
+	}
 	cell := &homeCell{panel: panelFolders, title: title, note: note, key: collectionID}
 	return homeLine{kind: homeSession, row: row, dir: row.ProjectDir, project: row.Project, cell: cell}, true
 }
