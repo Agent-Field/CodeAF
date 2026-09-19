@@ -361,6 +361,10 @@ var callSiteRoles = map[string]lane.Role{
 	"spellout": lane.RoleAuxiliary,
 	"imagegen": lane.RoleAuxiliary,
 	"embed":    lane.RoleAuxiliary,
+	// RoleOrganize is the standing pass's folder filer. Nobody is sitting in
+	// front of `codeaf tick`; pricing it as talk would put a wait that is not
+	// happening into the watched half of the report.
+	"organize": lane.RoleAuxiliary,
 	"worker":   lane.RoleAuxiliary,
 	"speech":   lane.RoleAuxiliary,
 	"video":    lane.RoleAuxiliary,
