@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a worker that has stopped making progress ends by an observable property, not only at the step cap
-pr: 1260
+pr: 1266
 surface: [engine, chat]
 invalidates:
   - "A run worker that alternated one action and one text reply could never be ended by the no-action rule, because a reply carrying a tool call resets that run to one; nothing but the step cap (200 finished calls), the wall or an outside limit ended it. A real pair of workers spent 820 model calls and $4.30 in half an hour in exactly that shape. Now the same command coming back with the same answer four finished steps in a row, with nothing the plan store records moving between the steps, ends the task with the reason `the same command came back with the same answer 4 times in a row: the work was not moving` on its record's ending line."
