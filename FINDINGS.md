@@ -157,3 +157,7 @@ ok github.com/Agent-Field/codeaf/cmd/codeaf 19.986s
 ## Final pre-PR checkpoint
 
 The corrected implementation and regression are committed at `ee6ec8b36`. I will now rerun all five required pre-PR commands separately, recording the tree hash before and after. No source change or amendment will follow a passing gate.
+
+## Final gate evidence
+
+All five required pre-PR commands passed on tree `0cf18d6c0a41de7579df409ead4dad60184931c3`: `go build ./...`; `go test ./cmd/codeaf/...`; `gofmt -l ./cmd ./internal` with no output; `go run ./cmd/codeaf-changes check`; and `go test ./internal/guard ./internal/namelaw`. The tree hash was identical before and after. This note is the only subsequent change, so the same five commands will run once more against the final committed evidence tree.
