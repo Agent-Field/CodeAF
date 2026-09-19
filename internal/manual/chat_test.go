@@ -953,6 +953,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A task's page with heavy tool use, asked the ways the screenshot
 		// provoked: the wheel doing nothing, the calls that are not there, and
 		// a frame that is mostly blank.
+		{"how do I see what a finished task did", "reading-a-task-page"},
 		{"can't scroll in a task", "reading-a-task-page"},
 		{"how do I see earlier tool calls in a task", "reading-a-task-page"},
 		{"task page is empty", "reading-a-task-page"},

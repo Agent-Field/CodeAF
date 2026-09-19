@@ -699,7 +699,7 @@ ratify line is never counted: nothing is waiting on it.
 
 The chip never takes the keys off the page you are standing on. A task that
 raised a question while you were on the tasks place says so at the right of the
-foot, and the row's own `enter open its room` stays where it was.
+foot, and the row's own `enter open its page` stays where it was.
 
 **`alt+a` brings the newest one back** and takes you to the conversation it
 belongs to. The newest rather than the oldest, because if you are pressing it
