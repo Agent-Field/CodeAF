@@ -12,8 +12,9 @@ package session
 // observe) are on the schema only when Config.Exec (or RegisterExecutor) is
 // wired. NIL IS OFF: never a dummy completed launch. Software stamps origin
 // at the wsapi wrapper; this schema has no `origin` and no `actor_id` — a
-// model cannot claim person. grant is a citation of an existing grant, not
-// a minted id.
+// model cannot claim person. On a person-origin turn, launch-or-join with a
+// brief is enough: software IssuePersonGrant, then LaunchOrJoin. An agent
+// turn still cites grant. The model must not fall back to propose_task.
 
 import (
 	"context"
@@ -28,7 +29,7 @@ func init() { glossField["coordinate"] = "action" }
 
 const coordinateDescription = "Coordinate other chats from this ordinary conversation: deliver a request or update, invite a participant into this discussion, inspect who is in scope, snapshot selected chats, manage a whole folder, or pause new autonomous coordination. This does not execute work for them. Origin is stamped by software as another agent, never as the person."
 
-const coordinateExecDescription = "Coordinate other chats from this ordinary conversation: deliver a request or update, invite a participant into this discussion, inspect who is in scope, snapshot selected chats, manage a whole folder, pause new autonomous coordination, or — when an authentic grant says so — launch-or-join, inspect, steer, pause, stop, or observe authorized work. Origin is stamped by software as another agent, never as the person. A grant id is cited, not minted."
+const coordinateExecDescription = "Coordinate other chats from this ordinary conversation: deliver a request or update, invite a participant into this discussion, inspect who is in scope, snapshot selected chats, manage a whole folder, or pause new autonomous coordination. When the person just asked this ordinary chat to do the work, call launch-or-join with a brief — software issues the person-origin execute grant, then launches. Do not fall back to propose_task for that. An agent or coordinator turn cites an existing grant and does not mint grant_id. Also inspect-work, steer, pause-work, stop-work, or observe authorized work. Origin is stamped by software as another agent, never as the person."
 
 const coordinateSchemaJSON = `{
   "type": "object",
@@ -83,7 +84,7 @@ const coordinateExecSchemaJSON = `{
     "action": {
       "type": "string",
       "enum": ["deliver", "invite", "inspect", "selected", "manage-folder", "pause", "launch-or-join", "inspect-work", "steer", "pause-work", "stop-work", "observe"],
-      "description": "Wave 3 coordination, or launch-or-join / inspect / steer / pause-work / stop-work / observe authorized work."
+      "description": "Wave 3 coordination, or launch-or-join from this ordinary chat (person just asked: a brief is enough; do not use propose_task), inspect-work, steer, pause-work, stop-work, or observe."
     },
     "to": {
       "type": "array",
@@ -121,7 +122,7 @@ const coordinateExecSchemaJSON = `{
     },
     "grant": {
       "type": "string",
-      "description": "Existing grant to cite for launch-or-join or steer. Software does not mint this id."
+      "description": "Existing grant to cite on an agent or coordinator turn for launch-or-join or steer. On a person-origin turn omit this: software issues the grant. Never mint grant_id."
     },
     "work": {
       "type": "string",

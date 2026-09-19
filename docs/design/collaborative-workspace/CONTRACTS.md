@@ -1305,19 +1305,20 @@ Wave 1–3 `Folders` and `Collab` methods stay, in the same order. Execution is 
 
 ```go
 type ExecWork struct {
-    WorkID, Title, State, Road, SourceRef string
+    WorkID, Title, State, Road, SourceRef, GrantID string
     Joined bool
 }
 type Exec interface {
     LaunchState(ctx context.Context, conversationID string) ([]ExecWork, error)
     PauseCoordination(ctx context.Context, coordinatorID string) error
     StopWork(ctx context.Context, workID string) error
+    RevokeGrant(ctx context.Context, grantID string) error
 }
 ```
 
-`LaunchState` is software-derived from bindings (and the runtime inspect). It does not call a model. Folder/discussion preview discusses this state.
+`LaunchState` is software-derived from bindings (and the runtime inspect). It does not call a model. Folder/discussion preview discusses this state. GrantID is authority for revoke; it is not painted.
 
-`PauseCoordination` is the Wave 3 verb (new decisions/launches). `StopWork` is the separate explicit action. They must not share a chord. Existing tab-close `stop work` spelling is this action, not pause.
+`PauseCoordination` is the Wave 3 verb (new decisions/launches). `StopWork` is the separate explicit action. `RevokeGrant` is a third verb (`v` revoke grant). They must not share a chord. Closing a view does not pause, stop, or revoke. Existing tab-close `stop work` spelling is this stop action, not pause.
 
 Nil `Options.Exec`: no launch-state chrome; natural-language launch still works if `session.Config.Exec` is wired. Preview still launches **no** AI. Deliveries and binding updates must not jump selection or composer (P12).
 
@@ -1325,8 +1326,8 @@ Nil `Options.Exec`: no launch-state chrome; natural-language launch still works 
 
 - Construct `wsexec.Adapter` with the real workspace store and a `Runtime` over `StartTask` / `RegisterRunEngine` once those doors exist; register it (`session.RegisterExecutor`).
 - `foldersAdapter` still implements Wave 1+2 Folders. Collab adapter still implements `tui3.Collab`. A separate adapter implements `tui3.Exec` (`var _ tui3.Exec`).
-- After a reserved row whose runtime admitted but did not bind, `Recover` that request key so a crash does not launch twice.
-- `codeaf tick` and the in-window standing pass process unattended granted work. Do not change `standing.Interval`. Do not add a second daemon.
+- After a reserved row whose runtime admitted but did not bind, `Recover` that request key so a crash does not launch twice. Recover finds; it must not Admit (A14 / J31).
+- `codeaf tick` and the in-window standing pass `LaunchOrJoin` reserved execute grants so authorized work continues after TUI close. Do not change `standing.Interval`. Do not add a second daemon.
 - Posture (unattended permissions, daily rail) comes from the **home profile**, never the repository, never `--yolo`. A folder instruction cannot grant itself unattended permissions (A20).
 - Same daily spend rail. Job-category reservation so parallel jobs cannot all spend the last dollar. Exhaustion defers (`pending` / `deferred`) and stays visible; never a fabricated completed launch (A15 / J33).
 - Closing the TUI does not stop authorized work (J32). If the host cannot run unattended, the UI says so.

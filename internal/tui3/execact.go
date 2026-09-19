@@ -6,11 +6,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// folderExecVerbs is the optional pause/stop strip. NIL IS ABSENT: a surface
-// without Exec never offers these keys, so Wave 1 membership verbs stay
+// folderExecVerbs is the optional pause/stop/revoke strip. NIL IS ABSENT: a
+// surface without Exec never offers these keys, so Wave 1 membership verbs stay
 // exactly `n f e i` / `n f m w x` and Wave 3 mark/coordinate stay `k` / `c`.
-// `p` is pause coordination; `s` is stop work. They must not share a chord.
-// Closing a view does not pause; tab-close `stop work` is this stop action.
+// `p` is pause coordination; `s` is stop work; `v` is revoke grant. They must
+// not share a chord. Closing a view does not pause, stop, or revoke; tab-close
+// `stop work` is the stop action.
 func (a *app) folderExecVerbs(line homeLine) []verb {
 	if a.exec == nil {
 		return nil
@@ -28,6 +29,13 @@ func (a *app) folderExecVerbs(line homeLine) []verb {
 				do:   func() tea.Cmd { return a.stopExecWork(workID) },
 			})
 		}
+		if grantID := a.execGrantIDOf(line); grantID != "" {
+			verbs = append(verbs, verb{
+				key:  'v',
+				word: execRevokeWord,
+				do:   func() tea.Cmd { return a.revokeExecGrant(grantID) },
+			})
+		}
 	}
 	return verbs
 }
@@ -39,6 +47,19 @@ func (a *app) execWorkIDOf(line homeLine) string {
 			continue
 		}
 		if id := strings.TrimSpace(work.WorkID); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+func (a *app) execGrantIDOf(line homeLine) string {
+	ref := a.placementRefOf(line)
+	for _, work := range a.execView.works {
+		if !execWorkBelongs(work, ref) {
+			continue
+		}
+		if id := strings.TrimSpace(work.GrantID); id != "" {
 			return id
 		}
 	}
@@ -77,6 +98,25 @@ func (a *app) stopExecWork(workID string) tea.Cmd {
 	}
 	if err := a.exec.StopWork(a.folderCtx(), workID); err != nil {
 		a.folderNote(execCouldNotStop)
+		return nil
+	}
+	a.refreshFolderMemo()
+	return nil
+}
+
+// revokeExecGrant is `v`: withdraw authority so the next launch/steer/stop
+// is refused. Already-bound work stays until an explicit stop work. This is
+// not pause coordination and not stop work.
+func (a *app) revokeExecGrant(grantID string) tea.Cmd {
+	if a.exec == nil {
+		return nil
+	}
+	grantID = strings.TrimSpace(grantID)
+	if grantID == "" {
+		return nil
+	}
+	if err := a.exec.RevokeGrant(a.folderCtx(), grantID); err != nil {
+		a.folderNote(execCouldNotRevoke)
 		return nil
 	}
 	a.refreshFolderMemo()

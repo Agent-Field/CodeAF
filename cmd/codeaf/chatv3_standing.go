@@ -196,7 +196,7 @@ func v3OrganizePassWith(profileDir string, work session.Organizer) func(context.
 				kickOrganizePass()
 			}
 		}()
-		recoverUnboundWork(ctx, store)
+		continueGrantedWork(ctx, store)
 		door := &organizeFinishWatch{Store: store}
 		err = session.ProcessOrganizePass(ctx, session.OrganizePass{
 			Jobs:        door,

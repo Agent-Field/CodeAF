@@ -117,8 +117,9 @@ children, chats, `also in`, instructions, busy exec lines, compact
 `Add existing chats` is filled by `folderadd.go` (`t-ux-add-old`). Navigation does
 not call the organizer. No model/disk on paint.
 
-**Planned (other lanes):** exec revoke (`t-ux-exec`).
-`workspace.reactive` and survey cursor are runtime.
+**Also on this integrate SHA:** painted request/reply/sent (`collabview.go`);
+ordinary-chat launch-or-join, tick `continueGrantedWork`, visible `revoke grant`
+(`t-ux-exec`). `workspace.reactive` and survey cursor are runtime.
 
 **Verified:** package tests in `./internal/tui3` for J44–J49 shapes and
 F03/F08/F11–F13/F21 doors. Not live tmux pane evidence — that is `t-rx-proof`

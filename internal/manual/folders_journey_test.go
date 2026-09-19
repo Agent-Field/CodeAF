@@ -56,6 +56,7 @@ func TestWave1FolderJourneyNamesStandInTheChatManual(t *testing.T) {
 		"launch-or-join",
 		"stop work",
 		"pause coordination vs stop work",
+		"revoke grant",
 		"closing the terminal does not stop authorized work",
 		"codeaf tick",
 		"codeaf_task_belt",
