@@ -254,6 +254,9 @@ func (a *app) tabCloseTake(at int) tea.Cmd {
 // in-process adapter fallback uses only this conversation's replayed roster;
 // project-index IDs are never cancellation authority because they repeat.
 func (a *app) stopConversation(tab chatTab) error {
+	// Tab-close `stop work` is this action, not pause coordination. Authorized
+	// bindings for this conversation stop here; keep running never does.
+	a.stopAuthorizedWork(tab)
 	// The engine owns admission as well as cancellation. A surface roster can
 	// miss a job created while this card is open, so prefer the complete door.
 	var agent any = a.agent

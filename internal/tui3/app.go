@@ -1510,6 +1510,11 @@ type app struct {
 	// only that, the way [homeView.folders] is a memo and never a store read.
 	collab     Collab
 	collabView collabReading
+	// exec is the Wave 4 launch-state seam. Nil is no launch chrome and no
+	// pause/stop verbs. execView is the memo [app.readExec] writes on the
+	// beat; View reads only that.
+	exec     Exec
+	execView execReading
 	// world is the walk of the machine THE SESSION RUNS ON, and farPlaces is the
 	// state root it was walked under. Nil and empty are this process's own disk,
 	// which is every local launch; over --host the door fills both and the places
@@ -2748,6 +2753,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		archive:             opts.Archive,
 		folders:             opts.Folders,
 		collab:              opts.Collab,
+		exec:                opts.Exec,
 		world:               opts.World,
 		farPlaces:           opts.WorldRoot,
 		farRecord:           opts.TaskRecord,
