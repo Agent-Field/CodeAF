@@ -47,13 +47,24 @@ func TestThePlaceSweepStopsBeforeTheProcessCloses(t *testing.T) {
 		t.Fatalf("the resume door did not open: %v", err)
 	}
 	<-started
-	proc.closeAll()
+	closed := make(chan struct{})
+	go func() {
+		proc.closeAll()
+		close(closed)
+	}()
+
+	select {
+	case <-closed:
+		t.Fatal("closeAll returned while the product-owned place sweep was still running")
+	default:
+	}
+	free()
+	<-finished
+	<-closed
 
 	if err := os.RemoveAll(root); err != nil {
 		t.Fatal(err)
 	}
-	free()
-	<-finished
 
 	late := filepath.Join(root, "v3", sweepLogName)
 	if _, err := os.Stat(late); err == nil {
