@@ -63,3 +63,7 @@ Real-request reachability: a real request can legitimately produce either winner
 Deciding events remain the stall and rescue dispatch at `internal/provider/hedge.go:654-687`, the rescue gate and start at `internal/provider/hedge.go:897-977`, completed-result send and receive at `internal/provider/hedge.go:537-540` and `internal/provider/hedge.go:324-360`, the mutex-protected winner decision at `internal/provider/hedge.go:1549-1564`, and loser cancellation at `internal/provider/hedge.go:1521-1542`.
 
 Ruled out: winner overwrite, omission of a registered loser from cancellation, report timing as the winner source, a product-side fix, changes under `internal/provider/pool`, changes outside `internal/provider/hedge_test.go` and this findings file, machine-load reproduction, and probabilistic timing adjustments.
+
+## Pre-PR verification plan
+
+The implementation and focused verification are complete. The remaining step is the required five-command verification run on the committed tree. I will record `git rev-parse HEAD^{tree}` immediately before and after the five separate commands. The commands are `go build ./...`, `scripts/one-suite.sh go test ./internal/provider/...`, `gofmt -l ./cmd ./internal`, `go run ./cmd/codeaf-changes check`, and `go test ./internal/guard ./internal/namelaw`. Acceptance requires all commands to pass, gofmt to print nothing, and the two tree hashes to match. I will not amend or modify the verified tree afterward.
