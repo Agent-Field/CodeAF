@@ -15,7 +15,7 @@ type fakeStore struct {
 	seq         int
 	cols        []workspace.Collection
 	members     map[string][]workspace.Ref
-	events      []MembershipEvent
+	events      []workspace.MembershipEvent
 	keys        map[string]struct{}
 	revisionErr error
 	at          string
@@ -29,6 +29,8 @@ func newFakeStore() *fakeStore {
 	}
 }
 
+var _ store = (*fakeStore)(nil)
+
 func (f *fakeStore) Close() error { return nil }
 
 func (f *fakeStore) SchemaVersion() int { return 2 }
@@ -40,7 +42,7 @@ func (f *fakeStore) Create(_ context.Context, name string) (workspace.Collection
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.seq++
-	created := workspace.Collection{ID: fmt.Sprintf("c%02d", f.seq), Name: name}
+	created := workspace.Collection{ID: fmt.Sprintf("c%02d", f.seq), Name: name, Lifecycle: workspace.LifecycleActive, Revision: 1}
 	f.cols = append(f.cols, created)
 	f.members[created.ID] = []workspace.Ref{}
 	return created, nil
@@ -99,14 +101,14 @@ func (f *fakeStore) CollectionsFor(_ context.Context, ref workspace.Ref) ([]work
 }
 
 func (f *fakeStore) Add(ctx context.Context, id string, ref workspace.Ref) error {
-	return f.AddWith(ctx, id, ref, Provenance{Origin: originPerson})
+	return f.AddWith(ctx, id, ref, workspace.Provenance{Origin: workspace.OriginPerson})
 }
 
 func (f *fakeStore) Remove(ctx context.Context, id string, ref workspace.Ref) error {
-	return f.RemoveWith(ctx, id, ref, Provenance{Origin: originPerson})
+	return f.RemoveWith(ctx, id, ref, workspace.Provenance{Origin: workspace.OriginPerson})
 }
 
-func (f *fakeStore) AddWith(_ context.Context, id string, ref workspace.Ref, p Provenance) error {
+func (f *fakeStore) AddWith(_ context.Context, id string, ref workspace.Ref, p workspace.Provenance) error {
 	if err := ref.Validate(); err != nil {
 		return err
 	}
@@ -133,11 +135,11 @@ func (f *fakeStore) AddWith(_ context.Context, id string, ref workspace.Ref, p P
 		return nil
 	}
 	f.members[id] = append(f.members[id], ref)
-	f.record(id, ref, actionAdd, p)
+	f.record(id, ref, workspace.ActionAdd, p)
 	return nil
 }
 
-func (f *fakeStore) RemoveWith(_ context.Context, id string, ref workspace.Ref, p Provenance) error {
+func (f *fakeStore) RemoveWith(_ context.Context, id string, ref workspace.Ref, p workspace.Provenance) error {
 	if err := ref.Validate(); err != nil {
 		return err
 	}
@@ -163,12 +165,12 @@ func (f *fakeStore) RemoveWith(_ context.Context, id string, ref workspace.Ref, 
 	}
 	f.members[id] = kept
 	if found {
-		f.record(id, ref, actionRemove, p)
+		f.record(id, ref, workspace.ActionRemove, p)
 	}
 	return nil
 }
 
-func (f *fakeStore) Move(_ context.Context, fromID, toID string, ref workspace.Ref, p Provenance) error {
+func (f *fakeStore) Move(_ context.Context, fromID, toID string, ref workspace.Ref, p workspace.Provenance) error {
 	if err := ref.Validate(); err != nil {
 		return err
 	}
@@ -194,7 +196,7 @@ func (f *fakeStore) Move(_ context.Context, fromID, toID string, ref workspace.R
 	}
 	if !f.hasLocked(toID, ref) {
 		f.members[toID] = append(f.members[toID], ref)
-		f.record(toID, ref, actionAdd, p)
+		f.record(toID, ref, workspace.ActionAdd, p)
 	}
 	kept := make([]workspace.Ref, 0, len(f.members[fromID]))
 	found := false
@@ -207,14 +209,14 @@ func (f *fakeStore) Move(_ context.Context, fromID, toID string, ref workspace.R
 	}
 	f.members[fromID] = kept
 	if found {
-		f.record(fromID, ref, actionRemove, p)
+		f.record(fromID, ref, workspace.ActionRemove, p)
 	}
 	return nil
 }
 
-func (f *fakeStore) WhyHere(_ context.Context, id string, ref workspace.Ref) (MembershipEvent, error) {
+func (f *fakeStore) WhyHere(_ context.Context, id string, ref workspace.Ref) (workspace.MembershipEvent, error) {
 	if err := ref.Validate(); err != nil {
-		return MembershipEvent{}, err
+		return workspace.MembershipEvent{}, err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -224,16 +226,16 @@ func (f *fakeStore) WhyHere(_ context.Context, id string, ref workspace.Ref) (Me
 			return event, nil
 		}
 	}
-	return MembershipEvent{}, workspace.ErrNotFound
+	return workspace.MembershipEvent{}, workspace.ErrNotFound
 }
 
-func (f *fakeStore) Events(_ context.Context, id string, ref workspace.Ref) ([]MembershipEvent, error) {
+func (f *fakeStore) Events(_ context.Context, id string, ref workspace.Ref) ([]workspace.MembershipEvent, error) {
 	if err := ref.Validate(); err != nil {
 		return nil, err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := make([]MembershipEvent, 0)
+	out := make([]workspace.MembershipEvent, 0)
 	for _, event := range f.events {
 		if event.CollectionID == id && event.Kind == ref.Kind && event.RefID == ref.ID && event.SessionID == ref.SessionID {
 			out = append(out, event)
@@ -244,7 +246,7 @@ func (f *fakeStore) Events(_ context.Context, id string, ref workspace.Ref) ([]M
 
 func (f *fakeStore) refuse() error { return f.revisionErr }
 
-func (f *fakeStore) replay(p Provenance) (bool, error) {
+func (f *fakeStore) replay(p workspace.Provenance) (bool, error) {
 	if p.IdempotencyKey == "" {
 		return false, nil
 	}
@@ -255,8 +257,8 @@ func (f *fakeStore) replay(p Provenance) (bool, error) {
 	return false, nil
 }
 
-func (f *fakeStore) record(id string, ref workspace.Ref, action string, p Provenance) {
-	f.events = append(f.events, MembershipEvent{
+func (f *fakeStore) record(id string, ref workspace.Ref, action string, p workspace.Provenance) {
+	f.events = append(f.events, workspace.MembershipEvent{
 		CollectionID:   id,
 		Kind:           ref.Kind,
 		RefID:          ref.ID,

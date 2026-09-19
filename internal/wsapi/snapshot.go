@@ -24,7 +24,11 @@ func (s *Service) RootSnapshot(ctx context.Context) (RootView, error) {
 	if err != nil {
 		return RootView{}, err
 	}
-	return RootView{Folders: folders, Unfiled: unfiled}, nil
+	revision, err := rootRevision(ctx, s.store)
+	if err != nil {
+		return RootView{}, err
+	}
+	return RootView{Folders: folders, Unfiled: unfiled, Revision: revision}, nil
 }
 
 // FolderSnapshot is one folder and its direct placements, with AlsoIn filled
@@ -123,10 +127,16 @@ func (s *Service) folderFrom(ctx context.Context, collection workspace.Collectio
 	if err != nil {
 		return Folder{}, err
 	}
+	lifecycle := collection.Lifecycle
+	if lifecycle == "" {
+		lifecycle = workspace.LifecycleActive
+	}
 	return Folder{
 		ID:          collection.ID,
 		Name:        collection.Name,
-		Lifecycle:   lifecycleActive,
+		Purpose:     collection.Purpose,
+		Lifecycle:   lifecycle,
+		Revision:    collection.Revision,
 		ParentIDs:   parentIDs,
 		MemberCount: count,
 	}, nil
