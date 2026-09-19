@@ -224,10 +224,12 @@ const (
 	// back to the auditor as a refusal.
 	auditCommandClipLimit = 200
 
-	// declaredCheckByteLimit bounds the declaration text carried into the
-	// checker prompt. At eight checks, 1000 bytes each keeps that contribution
-	// within the checker's 8000-byte evidence budget; above it, declarations
-	// alone can exceed that budget before the fixed door and refusal prose.
+	// declaredCheckByteLimit is the longest a declared check may be, and it is a
+	// judgement rather than a budget: the longest check met in real use runs a
+	// little over 200 bytes, and a thousand is five times that. What it guards
+	// against is a program pasted in where a check belongs, not the cost of the
+	// text. Its cost is small and worth saying plainly: a check's prompt carries
+	// at most sixteen declarations, so at most sixteen thousand bytes.
 	declaredCheckByteLimit = 1000
 
 	// auditReaderHint rides every refusal and the bash description itself.

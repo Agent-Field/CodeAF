@@ -17,7 +17,7 @@ func TestTheDeclaredAndRunnableDoorsShareTheLengthBoundary(t *testing.T) {
 	if len(runnable) != 1 || runnable[0] != atLimit {
 		t.Fatalf("1000-byte check absent from runnable door: %q", runnable)
 	}
-	if declared, refusal = declaredCheckList([]string{overLimit}); declared != nil || refusal != "Invalid arguments: checks must each be ONE rerunnable command: each check may be at most 1000 bytes" {
+	if declared, refusal = declaredCheckList([]string{overLimit}); declared != nil || refusal != "Invalid arguments: checks must each be ONE rerunnable command: this check is 1001 bytes and a check may be at most 1000" {
 		t.Fatalf("1001-byte check: declared = %q, refusal = %q", declared, refusal)
 	}
 }

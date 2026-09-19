@@ -138,6 +138,7 @@ package session
 // it is how this work is verified.
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -614,7 +615,11 @@ func leadsWithDirectoryChange(said string) bool {
 func checkShapeRefusal(said string) string {
 	refusal := "Invalid arguments: checks must each be ONE rerunnable command"
 	if len(said) > declaredCheckByteLimit {
-		return refusal + ": each check may be at most 1000 bytes"
+		// The measured length is the whole repair: a person who reads how far
+		// over they are shortens the check, where a bare limit leaves them
+		// guessing which of their checks was the long one.
+		return fmt.Sprintf("%s: this check is %d bytes and a check may be at most %d",
+			refusal, len(said), declaredCheckByteLimit)
 	}
 	if offending, composed := approval.FirstCompositionOutsideQuotes(said); composed {
 		refusal += ": " + strconv.Quote(string(offending)) + " joins, redirects or expands commands in " +
