@@ -416,7 +416,7 @@ func TestLeafEndTerminatesSurvivorsAndNotesCount(t *testing.T) {
 		t.Fatalf("survivor did not start: %v; log=%q artifacts=%v", err, logBody, outcome.Artifacts)
 	}
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(pidBody)))
-	if err := syscall.Kill(pid, 0); err == nil {
+	if err := leafEndProcessProbe(pid, 0); err == nil {
 		t.Fatalf("process %d survived leaf end", pid)
 	}
 	if _, ok := space.Locate(filepath.Join(jobsDir, jobLogName("1", 1))); !ok {
