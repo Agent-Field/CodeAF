@@ -40,3 +40,9 @@ The forced test now offers only an ephemeral listener candidate, completes and p
 A five-run check exposed that claiming the first address after `Flow.Wait` races the loopback server's asynchronous shutdown: one run still held the address while four produced the intended exact count. The address-claim barrier is therefore rejected as nondeterministic. The next revision will inject already-open listeners at the existing `listener.New` seam, which controls the two redirects without timing, retries, load, or fixed ports.
 
 The revised hook substitutes `listener.New` only in the test and directs the two sequential `BeginAuth` calls to two preselected ephemeral addresses. Five focused runs all failed at the count assertion with exactly `codeaf introduced itself 2 times, want once`; none failed at listener setup. This is the accepted deterministic regression seam.
+
+## Cause decision and selected fix
+
+The forced ordering proves this is a product path. After the first settled flow persists its registration, a reconnect can bind a different ephemeral redirect. `mcpRegistration.fits` then correctly rejects that redirect because the service was never told about it, and `connectToolServer` issues a real second dynamic registration request. The test counts only that request.
+
+The smallest product change is to make reconnect listener selection try the saved registration's loopback redirect before the ordinary candidates. When that prior address is available, the reconnect uses the redirect already registered and `fits` skips introduction. This is reachable outside the test whenever a prior connection used a fallback ephemeral listener, disconnected, and later reconnects after that listener has closed. The fixed listener candidates and their ordering will remain unchanged as the fallback path.
