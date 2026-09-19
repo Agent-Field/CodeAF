@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -510,16 +511,33 @@ func TestBashWorkerEndsItsLoopAtTheStepCap(t *testing.T) {
 	}
 }
 
-// THE WORKER SAYS WHAT IT HAS SPENT AS EACH CALL IS PAID FOR, not only when it
-// comes home. A run's dollar limit is read from these figures while the worker
-// is still working, so they must arrive once per paid call, each one the whole
-// of what the worker has spent so far, and the last one must be the figure the
-// report carries: two accounts of one worker's money would drift.
-func TestBashWorkerReportsItsSpendAsEachCallIsPaidFor(t *testing.T) {
+// THE WORKER SAYS WHAT IT HAS SPENT WHILE IT IS STILL WORKING, not only when it
+// comes home. A run's dollar limit is read from these figures, so the first
+// paid call must be told to the run before the worker's turn is over, every
+// figure must be the whole of what the worker has spent so far, and the last
+// one must be the figure the report carries: two accounts of one worker's money
+// would drift.
+//
+// THE SEAT HOLDS THE SECOND CALL UNTIL THE FIRST IS REPORTED, which is what makes
+// "while it is still working" a fact and not a race: the figures are readings of
+// a running total and a fast worker may fold several calls into one reading, so
+// their count is not the property. A worker that reports only at its turn's
+// end never frees the seat, and the first figure it then gives is not the first
+// call's.
+func TestBashWorkerReportsItsSpendWhileItIsStillWorking(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
 	store := runOpenStore(t)
-	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+	firstReported := make(chan struct{})
+	var calls atomic.Int32
+	seat := &seat{ever: func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		if calls.Add(1) > 1 {
+			select {
+			case <-firstReported:
+			case <-ctx.Done():
+			case <-time.After(10 * time.Second):
+			}
+		}
 		reply := toolReply(`{"command":"true"}`)
 		cost := 0.25
 		reply.Usage.Cost = &cost
@@ -531,23 +549,24 @@ func TestBashWorkerReportsItsSpendAsEachCallIsPaidFor(t *testing.T) {
 	ctx := run.WithSpendBank(run.WithStepsPerTask(runContext(t), 3), func(usd float64) {
 		mu.Lock()
 		figures = append(figures, usd)
+		first := len(figures) == 1
 		mu.Unlock()
+		if first {
+			close(firstReported)
+		}
 	})
 
 	report, _ := worker.Run(ctx, *store.Task(store.RootID()))
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(figures) < 3 {
-		t.Fatalf("the worker reported its spend %d times over three paid calls: %v", len(figures), figures)
+	if len(figures) == 0 || figures[0] != 0.25 {
+		t.Fatalf("spend figures = %v, want the first paid call's 0.25 told before the second call", figures)
 	}
 	for i := 1; i < len(figures); i++ {
 		if figures[i] <= figures[i-1] {
-			t.Fatalf("spend figures are not the running whole: %v", figures)
+			t.Fatalf("spend figures are not a rising whole: %v", figures)
 		}
-	}
-	if figures[0] != 0.25 {
-		t.Fatalf("the first figure = %v, want the first call's 0.25", figures[0])
 	}
 	if last := figures[len(figures)-1]; last != report.USD {
 		t.Fatalf("the last figure reported = %v and the report carries %v, want one account", last, report.USD)
