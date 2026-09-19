@@ -29,34 +29,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// planAgent is the slice of [session.Agent] the tasks place reads a run's plan
-// through. It is asserted rather than added to [Agent] for the reason every
-// optional seam here is: a scripted agent offers a tasker and has never heard of
-// a plan store, and a surface driven by one must stay representable.
-type planAgent interface {
-	// PlanTasks is the plan this conversation seeded, as rows ready to draw.
-	// Nil is the honest answer for a conversation with no plan.
-	PlanTasks() []session.PlanTaskRow
-	// PlanTaskPage is one task's description, notes and trajectory, for the id a
-	// row carries. False is the answer for a task this chat did not spawn.
-	PlanTaskPage(id string) (session.PlanTaskPage, bool)
-	// THE SIX VERBS are the person's own door onto a run's plan, the hard
-	// steering beside the note (plandb_steer.go). Each resolves an id inside THIS
-	// conversation's plan and answers the store's own sentence on a refusal — the
-	// root is the harness's, a terminal task cannot be cancelled — which is what
-	// the pane reads back on its one line.
-	PlanNote(id, text string) error
-	PlanPause(id string) error
-	PlanResume(id string) error
-	PlanCancel(id string) error
-	PlanAmend(id, text string) error
-	PlanPriority(id string, n int) error
-	// The summary is stored beside the plan and belongs to the same optional
-	// local-store door. Keeping it on this seam avoids inventing a second door
-	// that the remote road cannot truthfully provide.
-	PlanRunSummary(string) (session.RunPlanSummary, bool)
-	RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool)
-}
+// planAgent names the shared optional capability so the surface and every
+// transport agree on one method set while scripted agents may still omit it.
+type planAgent = session.PlanAgent
 
 // planReader is the agent under this surface, when it carries a plan at all.
 func (a *app) planReader() (planAgent, bool) {
