@@ -178,6 +178,16 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				if capped {
 					continue
 				}
+				// THE SAME-ACTION LAW ENDS THE RECORD WHERE IT FELL, for the cap's
+				// own reason: stop() cancels the turn, but a model that answers at
+				// once has its next action begun and aborted before the loop
+				// notices, and that aborted call is not a step the worker took.
+				// Counted, it would put a fifth step on a record whose ending says
+				// four, and its "aborted" answer would read as something that
+				// happened to the work.
+				if stalled {
+					continue
+				}
 				steps++
 				roundSteps++
 				if err := rec.record(steps, event); err != nil {
