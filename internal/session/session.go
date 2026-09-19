@@ -2712,6 +2712,16 @@ type Agent struct {
 	// is days old on a resumed conversation, and a budget measured from it would
 	// stop a resumed session before its first turn.
 	startedAt time.Time
+	// wokenTurnBase is the context a turn the agent wakes BY ITSELF starts under,
+	// and it is nil in the running product, which answers the plain background
+	// ([Agent.wokenTurnContext]). A submitted turn inherits its caller's context
+	// and so carries whatever the caller put on it; a woken turn has no caller,
+	// so a fixture that pins an order through its turn's context could reach
+	// every turn but this one. The woken-turn handover test was red about once
+	// in forty runs on a loaded machine for exactly that reason and never on a
+	// quiet one. The product reads nothing off this context that it would not
+	// read off the background.
+	wokenTurnBase func() context.Context
 	// wallStop ends the one reader that waits independently for this session's
 	// wall, and is nil when the session has no unattended wall (wallclock.go).
 	// wallEndingTaken is the once-only mark on the ending that reader writes.
