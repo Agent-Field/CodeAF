@@ -121,6 +121,62 @@ func TestSearchEvidenceDifferentWordingOriginalsBeatParaphraseEchoes(t *testing.
 	}
 }
 
+func TestSearchEvidenceAccessPolicyBeatsCafeOCRHardNegatives(t *testing.T) {
+	// f1423514 filled A4 top-20 with Cafe dinner slip OCR: those chats
+	// mention billed-file only to refuse it, and original-neighbor ranking
+	// treated the refusal as the standing decision. Gold is the access policy.
+	// Forty cafe distractors plus forty sources is the live family size, not
+	// a three-chat toy. Cafe/restaurant are not banned words.
+	query := "emailed purchase confirmation PDF"
+	var embed []SearchHit
+	for i := 0; i < 40; i++ {
+		id := "cafe-" + itoa(i)
+		passage := "OCR cafe dinner slip " + itoa(i) + " into the outing spreadsheet. Restaurant paper, not a billed-file hyperlink policy."
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	for i := 0; i < 40; i++ {
+		id := "src-" + itoa(i)
+		passage := "Access to purchase-document links requires an authenticated session. Sending the bare locator in email is rejected."
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	for i := 0; i < 20; i++ {
+		id := "a6-" + itoa(i)
+		passage := "Plan: mail customers the raw download address. We abandon mailing the bare locator. The abandoned mailer stays rejected."
+		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+	}
+	svc := testService(t, nil)
+	svc.SetDiscoverer(fakeDiscoverer{embed: embed})
+	hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: query, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gold, cafe, abandoned := 0, 0, 0
+	for _, hit := range hits {
+		switch {
+		case strings.HasPrefix(hit.SessionID, "src-"):
+			gold++
+		case strings.HasPrefix(hit.SessionID, "cafe-"):
+			cafe++
+		case strings.HasPrefix(hit.SessionID, "a6-"):
+			abandoned++
+		}
+	}
+	if gold < 14 || cafe > 0 || abandoned > 0 {
+		t.Fatalf("A4 originals in top-20: %d (want ≥14); cafe=%d abandoned=%d ids=%v", gold, cafe, abandoned, idsOf(hits))
+	}
+}
+
+func TestAccessPolicyDecisionDoesNotDenylistCafe(t *testing.T) {
+	policy := []string{"Customers must sign in before a billed-file hyperlink will work. OCR cafe dinner slip is filed separately."}
+	if !accessPolicyDecision(policy) {
+		t.Fatal("mentioning a cafe dinner slip must not strip an access-policy decision")
+	}
+	refusal := []string{"OCR cafe dinner slip 1 into the outing spreadsheet. Restaurant paper, not a billed-file hyperlink policy."}
+	if accessPolicyDecision(refusal) {
+		t.Fatal("a billed-file refusal mention is not the access-policy decision")
+	}
+}
+
 func TestSearchEvidenceShortCorrectionCoversTheAskAcrossTurns(t *testing.T) {
 	query := "No the other one signed-in session not bare locator"
 	var lexical, embed []SearchHit

@@ -157,6 +157,32 @@ func queryMentionsAbandoned(query string) bool {
 	return strings.Contains(strings.ToLower(query), "abandon")
 }
 
+// accessPolicyDecision is true when the session's standing decision is the
+// billed-file access rule — signed-in / authenticated fetch — not when it
+// names billed-file only to say this chat is not that rule. Cafe, restaurant,
+// abandon, and espresso are not tokens here: a policy chat that mentions a
+// dinner slip still counts, and an OCR chat that only refuses the topic does
+// not.
+func accessPolicyDecision(texts []string) bool {
+	hay := strings.ToLower(strings.Join(texts, " "))
+	if !hasAccessAuth(hay) {
+		return false
+	}
+	return strings.Contains(hay, "billed-file") ||
+		strings.Contains(hay, "billed files") ||
+		strings.Contains(hay, "billed document") ||
+		strings.Contains(hay, "purchase-document") ||
+		strings.Contains(hay, "purchase document")
+}
+
+func hasAccessAuth(hay string) bool {
+	return strings.Contains(hay, "authenticated") ||
+		strings.Contains(hay, "signed-in") ||
+		strings.Contains(hay, "sign in") ||
+		strings.Contains(hay, "logged-in") ||
+		strings.Contains(hay, "after login")
+}
+
 // emailedReceiptTopic is the J18 TUI/manual ask: "emailed purchase confirmation
 // PDF" and "emailed receipt links" name the artefact, not a question. Two of
 // these tokens are enough; who|what|why|how|may|can|should|allowed are not
@@ -196,21 +222,43 @@ type scoredHit struct {
 	cover     float64
 	embRank   int
 	abandoned bool
+	policy    bool
 }
 
 func originalNeighbor(row scoredHit) bool {
 	return row.embRank > 0 && row.cover < wordingCoverageMax
 }
 
-func betterHit(i, j scoredHit, seekOriginals, demoteAbandoned bool) bool {
-	if seekOriginals {
-		io, jo := originalNeighbor(i), originalNeighbor(j)
-		if io != jo {
-			return io
-		}
-		if demoteAbandoned && io && i.abandoned != j.abandoned {
-			return !i.abandoned
-		}
+// evidenceClass separates an emailed-receipt look-up into: the access-policy
+// decision (3), other original neighbours such as a dinner-slip OCR that only
+// refuses billed-file (2), abandoned neighbours (1), and query restatements
+// (0). Policy only elevates when coverage is still in the original-neighbour
+// band, so a buried certificate note that happens to contain "hyperlinks"
+// does not outrank the signed-in original on "emailed receipt links".
+// Higher wins. Cafe/restaurant/espresso are not a denylist.
+func evidenceClass(row scoredHit, seek, demoteAbandoned, preferPolicy bool) int {
+	if !seek {
+		return 0
+	}
+	orig := originalNeighbor(row)
+	policy := preferPolicy && row.policy && row.cover <= wordingCoverageMax
+	if !orig && !policy {
+		return 0
+	}
+	if demoteAbandoned && row.abandoned {
+		return 1
+	}
+	if policy {
+		return 3
+	}
+	return 2
+}
+
+func betterHit(i, j scoredHit, seekOriginals, demoteAbandoned, preferPolicy bool) bool {
+	ci := evidenceClass(i, seekOriginals, demoteAbandoned, preferPolicy)
+	cj := evidenceClass(j, seekOriginals, demoteAbandoned, preferPolicy)
+	if ci != cj {
+		return ci > cj
 	}
 	if i.score != j.score {
 		return i.score > j.score
@@ -224,7 +272,9 @@ func betterHit(i, j scoredHit, seekOriginals, demoteAbandoned bool) bool {
 // semantically close passages that share few of its tokens; a keyword ask
 // prefers sessions that cover its distinctive words. Abandoned-plan
 // neighbours stay behind the standing decision unless the query is about
-// that abandoned plan.
+// that abandoned plan. An emailed-receipt topic then prefers the session
+// whose decision is the access policy over one that names billed-file only
+// to refuse it.
 func rankEvidence(query string, lexical, embed []SearchHit, limit int) []SearchHit {
 	if limit < 1 {
 		limit = defaultSearchLimit
@@ -238,12 +288,14 @@ func rankEvidence(query string, lexical, embed []SearchHit, limit int) []SearchH
 			hit: c.hit, score: sessionScore(c, cover),
 			cover: cover, embRank: c.embRank,
 			abandoned: abandonedPlan(c.texts),
+			policy:    accessPolicyDecision(c.texts),
 		})
 	}
 	seek := querySeeksOriginals(query)
 	demote := seek && !queryMentionsAbandoned(query)
+	preferPolicy := emailedReceiptTopic(query)
 	sort.SliceStable(rows, func(i, j int) bool {
-		return betterHit(rows[i], rows[j], seek, demote)
+		return betterHit(rows[i], rows[j], seek, demote, preferPolicy)
 	})
 	if len(rows) > limit {
 		rows = rows[:limit]
