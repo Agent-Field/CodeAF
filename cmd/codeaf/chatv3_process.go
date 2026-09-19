@@ -111,6 +111,8 @@ type v3Process struct {
 	standingStarted bool
 	standingStop    chan struct{}
 	standingDone    chan struct{}
+	sweepCancel     context.CancelFunc
+	sweepDone       chan struct{}
 	closed          bool
 }
 
@@ -134,10 +136,6 @@ func openV3Process(door string) (*v3Process, error) { return openV3ProcessWith(d
 // there to finish the browser trip, and a process that opened keyless would fail
 // on its first request instead of at the door where the sentence can be read.
 func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
-	// Housekeeping, in the background, once per process (chatv3_sweep.go). It
-	// was already a sync.Once and needs nothing from this move; it is here
-	// because this is now the one function every v3 door passes through.
-	startPlaceSweep()
 	settings, err := config.Load()
 	if err != nil && askKey && errors.Is(err, config.ErrNoAPIKey) {
 		// A keyless process is useful only when the surface can answer it. The
@@ -192,7 +190,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
-	return &v3Process{
+	process := &v3Process{
 		Settings:          settings,
 		ProfileDir:        settings.ProfileDir,
 		UnreadProfileKeys: append([]string(nil), settings.UnreadProfileKeys...),
@@ -205,7 +203,9 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Artifacts:         artifactsIndexPath(),
 		Conns:             v3Connect(settings.ProfileDir),
 		LaunchDir:         launchDir,
-	}, nil
+	}
+	process.startPlaceSweep()
+	return process, nil
 }
 
 // v3UsesDefaultOpenRouter identifies the one endpoint the browser flow can
@@ -429,11 +429,10 @@ func (p *v3Process) closeAll() {
 		p.Models.Close()
 	}
 
-	// The process starts its place sweep before it opens any shared state. Seal
-	// its note before closing that state so a late error cannot write after
-	// close; the walk itself is not waited on, so quit does not grow with the
-	// profile.
-	sealPlaceSweep()
+	// Cancellation is checked between entries and before destructive operations.
+	// Joining therefore waits only for the current bounded filesystem operation,
+	// and guarantees the sweep cannot rename or remove after close returns.
+	p.stopPlaceSweep()
 
 	// The start-up errands this process seated on its profile — the pool index
 	// refresh and the outbox push — were started fire-and-forget.
