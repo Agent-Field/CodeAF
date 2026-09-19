@@ -1,6 +1,7 @@
 package approval
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -205,5 +206,19 @@ func TestCriticalHit(t *testing.T) {
 				t.Errorf("criticalHit(%q) reported a hit with no rule to show", test.command)
 			}
 		})
+	}
+}
+
+func TestSplitBashCommandPreservesCommandsAndBoundaries(t *testing.T) {
+	command := `cd '/tmp/a;b' && echo "x|y" 2>&1; plandb done || echo failed &> log`
+	want := []BashCommandPart{
+		{Command: `cd '/tmp/a;b'`, Separator: "&&"},
+		{Command: `echo "x|y" 2>&1`, Separator: ";"},
+		{Command: `plandb done`, Separator: "||"},
+		{Command: `echo failed &> log`},
+	}
+	got := SplitBashCommand(command)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("SplitBashCommand(%q) = %#v, want %#v", command, got, want)
 	}
 }
