@@ -70,7 +70,7 @@ func openTaskOwnerView(workspace string, ask tui3.TaskOwnerAsk) (tui3.TaskOwnerV
 	// is already listening and fails otherwise, which is the same question
 	// [v3HostAnswers] asks before a headless message and for the same reason: a
 	// resident process left behind by somebody glancing at a row is a surprise.
-	dial := func() (io.ReadWriteCloser, error) { return enginehost.Dial(workspace) }
+	dial := func() (io.ReadWriteCloser, error) { return dialTaskOwnerHost(workspace) }
 	client, err := remote.Roam("", remote.Hello{
 		Workspace: workspace,
 		Session:   file,
@@ -110,4 +110,19 @@ func openTaskOwnerView(workspace string, ask tui3.TaskOwnerAsk) (tui3.TaskOwnerV
 		Questions: agent.WatchQuestions,
 		Close:     client.Close,
 	}, nil
+}
+
+// dialTaskOwnerHost connects without starting anything. A task row can be
+// opened while the already-running surface's host is restarting, so only the
+// stale-socket replacement sequence gets the same short grace as a headless
+// message: refused first, then refused or absent while the socket is replaced.
+func dialTaskOwnerHost(workspace string) (io.ReadWriteCloser, error) {
+	// The same startup window as a headless launch: retry a refused connect only
+	// while the host lock is held ([enginehost.DialStartingHost]). The nil check
+	// keeps a failed dial from returning a non-nil interface around a nil conn.
+	conn, err := enginehost.DialStartingHost(workspace)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
 }
