@@ -201,8 +201,15 @@ the one exception, and it is a line and not a step (see "A line under steps says
 
 Everything that is kept is drawn exactly as it was typed, spacing included. A command with
 nothing left out is drawn whole. A part inside `$( )` or a bracketed group is never left out,
-and neither is work that is piped into something else. The head of what came back is drawn
-only when every part left out cannot have written to it and stops everything after it on failure.
+and neither is work that is piped into something else.
+
+**The dim line under a row is the first line of what came back, and it is only drawn when
+it must be the row's own.** A command comes back with one answer for the whole line. When
+the row left out a part addressed to the run's record, that part may have printed first,
+and its words cannot be told from the work's, so the row has no dim line. A row that left
+out only the change into the run's copy keeps it: that change prints nothing when it works,
+and when it fails nothing after it runs. A row with nothing left out always keeps it. The
+whole answer is on disk behind the row either way.
 
 **A step with nothing of the work in it has no row, and the numbers skip over it.** Every
 row keeps the number the step ran as, so a page whose head says `12 steps` may draw rows
