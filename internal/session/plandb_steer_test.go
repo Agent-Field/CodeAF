@@ -225,3 +225,37 @@ func TestPlanSteerRefusesEveryVerbOnAnEndedRun(t *testing.T) {
 		t.Fatalf("note on live run: %v", err)
 	}
 }
+
+// A READ THAT FINDS NO STORE GIVES THE PLAN'S LOCK BACK. A plan is armed before
+// its store exists, and a side list's beat can read in that moment. The read
+// that opens every run's store took the plan's lock and handed back the closer
+// that releases it, and both readers returned on "no stores" without calling
+// it: the lock was never released, and every later read, the run's own driver
+// and the conversation's close then waited on it for good. Seen on the real
+// binary: an engine an hour old that would not end.
+func TestAPlanReadThatFindsNoStoreReleasesThePlansLock(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, filepath.Join(t.TempDir(), "no-such-folder", planStoreFilename), "chat-a")
+	plan := agent.graph().planIfArmed()
+	if plan == nil {
+		t.Fatal("the fixture did not arm a plan")
+	}
+	for _, reading := range []struct {
+		name string
+		read func()
+	}{
+		{"the listing", func() { _ = agent.PlanTasks() }},
+		{"one task", func() { _, _ = agent.PlanTaskPage("1") }},
+		{"a note", func() { _ = agent.PlanNote("1", "hello") }},
+		{"every handle", func() { _, _, done := agent.openPlanReadHandles(); done() }},
+	} {
+		reading.read()
+		if !plan.mu.TryLock() {
+			// Given back here so the fixture's own close can end: a leaked lock
+			// hangs that close exactly as it hung the engine's.
+			plan.mu.Unlock()
+			t.Fatalf("%s found no store and kept the plan's lock", reading.name)
+		}
+		plan.mu.Unlock()
+	}
+}
