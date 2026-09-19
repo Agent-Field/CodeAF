@@ -30,3 +30,7 @@ Two candidate orderings can make both executions introduce:
 ## Smallest-change candidates for the next step
 
 For the deterministic redirect-mismatch ordering, force two distinct redirects at the seam and then either avoid issuing the second introduction by reusing an allowed stable redirect, or change the test to wait only if evidence shows unsettled state. The base-tree evidence favors a product fix because the second request is real and `Flow.Wait` already settles persistence. For the overlapping-flow ordering, the product-sized fix would serialize registration acquisition per service and recheck after acquiring the serialization point.
+
+## Forced-ordering regression step
+
+The deterministic seam is the package-level listener candidate list at `internal/connect/auth.go:17-26`, before `listener.New` chooses a redirect in `internal/connect/mcp_auth.go:295`. The regression test will temporarily offer only `127.0.0.1:0`, forcing the initial connection and the sequential reconnect to receive distinct ephemeral redirects. That ordering makes `mcpRegistration.fits` reject the saved identity and drives the same production introduction call at `internal/connect/mcp_auth.go:369-370` a second time. This changes no fixed-port behavior, uses no load or busy loop, and directly distinguishes a product request from a test-side counting artifact because the fake counter advances only in its registration handler.
