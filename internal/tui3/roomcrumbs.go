@@ -556,6 +556,10 @@ func (a *app) crumbPress(x, y int) bool {
 	// of the page you just opened does not close it, and it keeps that page's
 	// draft, scroll and subscription rather than replacing them. A run's node
 	// lands on the run's page there, which is where its row lands too.
-	a.openRailRoom(crumb.node)
+	// The door's command rides out the way a room's pump always has: the caller
+	// takes [app.roomPump] once the press is answered.
+	if cmd := a.openRailRoom(crumb.node); cmd != nil {
+		a.roomPump = cmd
+	}
 	return true
 }
