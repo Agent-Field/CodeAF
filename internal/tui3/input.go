@@ -339,6 +339,14 @@ func (e *editor) down() {
 // two typed overlays are read before the editor, because while a list is up the
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	if a.railPlanPending.id != "" {
+		if msg.String() == "esc" {
+			a.railPlanPending = railPlanPending{}
+			return nil
+		}
+		a.railPlanPending.keys = append(a.railPlanPending.keys, msg)
+		return nil
+	}
 	if a.railTaskPlanOn {
 		cmd := a.taskPlanKey(msg)
 		if !a.taskSheet.planOn {

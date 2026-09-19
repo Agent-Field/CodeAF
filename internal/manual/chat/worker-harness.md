@@ -91,6 +91,11 @@ is the one the tasks place opens: what the task was asked, its notes, its steps,
 box that leaves a note. `esc` goes back to the conversation exactly as you left it, with
 whatever you had typed still in the box.
 
+The page can take a moment to arrive. From the press on, what you type belongs to the
+page and never to the conversation: the keys are kept in order and land in the page's
+note box when it opens, `enter` included. `esc` in that moment withdraws the press. If
+the row turns out to have no page and its room opens instead, those keys are dropped.
+
 A page opened on a task that is still running follows it, one read at a time, and stops
 reading when the task has settled. A step whose command is many lines long is drawn as
 its first line and `…`; what ran is unchanged.

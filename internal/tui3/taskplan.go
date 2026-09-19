@@ -747,7 +747,7 @@ func (a *app) taskSheetPlanFrom(id string, from *session.PlanTaskPage) tea.Cmd {
 // comes back: `opened` runs once the page is up, and `missing` is the gesture's
 // own answer for a task the store has no page for, so a rail row whose run's
 // store is gone still opens what it always opened.
-func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened func(), missing func() tea.Cmd) tea.Cmd {
+func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened func() tea.Cmd, missing func() tea.Cmd) tea.Cmd {
 	agent, ok := a.planReader()
 	if !ok {
 		if missing != nil {
@@ -759,6 +759,9 @@ func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened fun
 		page, found := agent.PlanTaskPage(id)
 		return func(here bool) tea.Cmd {
 			if !here {
+				return nil
+			}
+			if opened != nil && a.railPlanPending.id != id {
 				return nil
 			}
 			if !found {
@@ -789,11 +792,12 @@ func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened fun
 			// this page is not that row ([app.taskSheetInside] clears it at the one other
 			// door for the same reason).
 			a.taskSheet.awayOwner = tasksAwayOwner{}
+			var cmd tea.Cmd
 			if opened != nil {
-				opened()
+				cmd = opened()
 			}
 			a.touch()
-			return nil
+			return cmd
 		}
 	})
 }
@@ -1650,4 +1654,43 @@ func planWithoutOwnFolder(command, folder string) string {
 		}
 	}
 	return command
+}
+
+// railPlanPending is the gap between a press on a run's row in the side list
+// and that task's page being drawn.
+//
+// THE KEYS TYPED IN THE GAP ARE THE PAGE'S. The page is read off the update
+// loop ([app.taskSheetPlanAsk]), and on a hosted conversation the answer took
+// 2.4 seconds on a real screen. Until it folds back the conversation is still
+// what is drawn, and its box used to take whatever was typed: a note meant for
+// a task was sent to the model as a message. A person types at what they
+// pressed, so from the press on, every key is held here, in order, and handed
+// to the page's own keyboard the moment the page is up ([app.finishRailPlan]).
+//
+// THREE WAYS OUT, and none of them reaches the conversation: the answer opens
+// the page and replays the keys; the answer says there is no page, the row's
+// room opens as it always did and the keys are dropped, because a room's box
+// is a different receiver again; `esc` withdraws the press. A second press
+// replaces the first and starts with no keys.
+type railPlanPending struct {
+	id   string
+	keys []tea.KeyPressMsg
+}
+
+func (a *app) beginRailPlan(id string) { a.railPlanPending = railPlanPending{id: id} }
+
+func (a *app) finishRailPlan(id string) tea.Cmd {
+	if a.railPlanPending.id != id {
+		return nil
+	}
+	keys := a.railPlanPending.keys
+	a.railPlanPending = railPlanPending{}
+	a.railTaskPlanOn = true
+	var cmds []tea.Cmd
+	for _, key := range keys {
+		if cmd := a.taskPlanKey(key); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	return tea.Batch(cmds...)
 }
