@@ -96,14 +96,33 @@ type RunSpec struct {
 	OnSpend func(float64)
 }
 
+// RunLimit is which bound a person set ended a run. The engine's outcome word
+// is one sentence for every limit — it is the exit ladder's own word, and the
+// ladder keeps its one rung — so this fact is what says which limit fired. It
+// is set where the run decides the limit was reached and read where the ending
+// is drawn; it is never parsed back out of a sentence.
+type RunLimit string
+
+const (
+	// RunLimitTime is the elapsed limit: the session's own time bound, of
+	// which a run is given what is left.
+	RunLimitTime RunLimit = "time"
+	// RunLimitCost is the run's spend ceiling, counted while the work is still
+	// going.
+	RunLimitCost RunLimit = "cost"
+)
+
 // RunSummary is what a run came to, folded onto the words this package reads:
-// the engine's outcome word, the root's result, and the run's size.
+// the engine's outcome word, the root's result, the run's size, and the limit
+// that ended it when one did.
 type RunSummary struct {
 	Outcome string
 	Result  string
-	Nodes   int
-	Steps   int
-	USD     float64
+	// Limit is empty on every run that did not end on a bound its person set.
+	Limit RunLimit
+	Nodes int
+	Steps int
+	USD   float64
 }
 
 // RunLanding is what the run's landing answered: the branch the working copy's
@@ -623,6 +642,12 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 	}
 	notice := TaskNotice{
 		ID: run.row, Title: run.title, State: state,
+		// A LIMIT ITS PERSON SET IS THE ROW'S ENDING, so the reason a surface
+		// draws names which limit stopped the work and carries no fault
+		// ([TaskReasonOf]): the outcome word alone says only that one of them
+		// fired. The ending comes from the summary's own fact and never out of
+		// the outcome sentence.
+		Ending: beltRunLimitEnding(summary.Limit),
 		Report: report, Result: summary.Result,
 		Changed: landing.Changed,
 	}
@@ -637,6 +662,20 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	return notice
+}
+
+// beltRunLimitEnding is the run row's ending for a limit its person set, off
+// the summary's own fact. Empty — no ending a reading knows — is the answer for
+// every run that did not end on a bound, which is the reading those runs always
+// drew.
+func beltRunLimitEnding(limit RunLimit) TaskEnding {
+	switch limit {
+	case RunLimitTime:
+		return TaskEndingTimeLimit
+	case RunLimitCost:
+		return TaskEndingCostLimit
+	}
+	return ""
 }
 
 // beltRunOutcomeNote is the one line a run's own page carries about how it
