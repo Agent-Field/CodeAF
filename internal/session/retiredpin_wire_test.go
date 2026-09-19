@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,6 +37,8 @@ func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	ledger := filepath.Join(state, "v3", "usage.jsonl")
 	writerEntered := make(chan struct{})
 	releaseWriter := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseWriter) }) }
 	writer := &usageWriter{queue: make(chan usageWrite, usageQueueDepth), beforeWrite: func() {
 		close(writerEntered)
 		<-releaseWriter
@@ -45,7 +48,7 @@ func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	usageWritersMu.Unlock()
 	go writer.run(ledger)
 	t.Cleanup(func() {
-		close(releaseWriter)
+		release()
 		FlushUsage()
 		usageWritersMu.Lock()
 		delete(usageWriters, ledger)
@@ -106,8 +109,10 @@ func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	if err := agent.Close(); err != nil {
 		t.Fatal(err)
 	}
+	release()
+	FlushUsage()
 	if _, err := os.Stat(ledger); err != nil {
-		t.Fatalf("Agent.Close returned before its product-owned usage writer created %s: %v", ledger, err)
+		t.Fatalf("usage flush returned before its product-owned writer created %s: %v", ledger, err)
 	}
 }
 
