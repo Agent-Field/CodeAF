@@ -18,7 +18,6 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -29,34 +28,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// planAgent is the slice of [session.Agent] the tasks place reads a run's plan
-// through. It is asserted rather than added to [Agent] for the reason every
-// optional seam here is: a scripted agent offers a tasker and has never heard of
-// a plan store, and a surface driven by one must stay representable.
-type planAgent interface {
-	// PlanTasks is the plan this conversation seeded, as rows ready to draw.
-	// Nil is the honest answer for a conversation with no plan.
-	PlanTasks() []session.PlanTaskRow
-	// PlanTaskPage is one task's description, notes and trajectory, for the id a
-	// row carries. False is the answer for a task this chat did not spawn.
-	PlanTaskPage(id string) (session.PlanTaskPage, bool)
-	// THE SIX VERBS are the person's own door onto a run's plan, the hard
-	// steering beside the note (plandb_steer.go). Each resolves an id inside THIS
-	// conversation's plan and answers the store's own sentence on a refusal — the
-	// root is the harness's, a terminal task cannot be cancelled — which is what
-	// the pane reads back on its one line.
-	PlanNote(id, text string) error
-	PlanPause(id string) error
-	PlanResume(id string) error
-	PlanCancel(id string) error
-	PlanAmend(id, text string) error
-	PlanPriority(id string, n int) error
-	// The summary is stored beside the plan and belongs to the same optional
-	// local-store door. Keeping it on this seam avoids inventing a second door
-	// that the remote road cannot truthfully provide.
-	PlanRunSummary(string) (session.RunPlanSummary, bool)
-	RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool)
-}
+// planAgent aliases the shared optional capability so session remains the one
+// source of its complete method set.
+type planAgent = session.PlanAgent
 
 // planReader is the agent under this surface, when it carries a plan at all.
 func (a *app) planReader() (planAgent, bool) {
@@ -102,16 +76,18 @@ func (a *app) refreshRunSummary() tea.Cmd {
 	a.runSummaryRefreshedAt = now
 	a.runSummaryShape = shape
 	ctx := a.ctx
-	return func() tea.Msg {
+	return a.offLoop(func() func(bool) tea.Cmd {
 		// NOBODY RECORDS A LOOK AT A RUN YET (the run pane will), so the last
 		// look is the zero time and the page's `since` line reads "never".
 		stored, stale := agent.PlanRunSummary(root)
 		if !stale && strings.TrimSpace(stored.What) != "" {
-			return runSummaryRefreshedMsg{summary: stored, ok: true}
+			return func(bool) tea.Cmd { return func() tea.Msg { return runSummaryRefreshedMsg{summary: stored, ok: true} } }
 		}
 		summary, kept := agent.RefreshRunSummary(ctx, root, time.Time{})
-		return runSummaryRefreshedMsg{summary: summary, ok: kept}
-	}
+		return func(bool) tea.Cmd {
+			return func() tea.Msg { return runSummaryRefreshedMsg{summary: summary, ok: kept} }
+		}
+	})
 }
 
 // planStateWord maps one store status onto the ONE state word a row wears
@@ -756,29 +732,47 @@ func planNamesOf(rows []tasksMineRow, chat string) map[string]bool {
 // A PAGE THE ENGINE WILL NOT ANSWER FOR IS NOT OPENED. A task this chat did not
 // spawn, or one whose store has gone, leaves the list where it was rather than
 // raising a page of blanks.
-func (a *app) taskSheetPlan(id string) tea.Cmd {
+func (a *app) taskSheetPlan(id string) tea.Cmd { return a.taskSheetPlanFrom(id, nil) }
+
+// taskSheetPlanFrom is [app.taskSheetPlan] for a step INTO one of a page's
+// parts: `from` is the page stepped out of, and it goes on the way back when
+// the part's page has opened and not before.
+func (a *app) taskSheetPlanFrom(id string, from *session.PlanTaskPage) tea.Cmd {
 	agent, ok := a.planReader()
 	if !ok {
 		return nil
 	}
-	page, ok := agent.PlanTaskPage(id)
-	if !ok {
-		return nil
-	}
-	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
-	a.taskSheet.planAt = -1
-	a.taskSheet.detailTop = 0
-	// A PAGE OPENS AT THE LIVE EDGE. The newest step is the reason the page
-	// follows at all, so it opens stuck to the bottom and a scroll is what
-	// releases it ([app.taskPlanTopFor], [app.taskPlanScroll]).
-	a.taskSheet.planStick = true
-	a.taskSheet.planNote.reset()
-	// The card's recovery band belongs to the row the CARD was opened from, and
-	// this page is not that row ([app.taskSheetInside] clears it at the one other
-	// door for the same reason).
-	a.taskSheet.awayOwner = tasksAwayOwner{}
-	a.touch()
-	return nil
+	return a.offLoop(func() func(bool) tea.Cmd {
+		page, found := agent.PlanTaskPage(id)
+		return func(here bool) tea.Cmd {
+			if !here || !found {
+				return nil
+			}
+			// THE PAGE STEPPED OUT OF GOES ON THE WAY BACK ONLY WHEN THE NEW ONE
+			// OPENED, and only if the person is still on it: a part with no page
+			// leaves `esc` exactly one step from the list, as it was.
+			if from != nil {
+				if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != from.Row.ID {
+					return nil
+				}
+				a.taskSheet.planBack = append(a.taskSheet.planBack, *from)
+			}
+			a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
+			a.taskSheet.planAt = -1
+			a.taskSheet.detailTop = 0
+			// A PAGE OPENS AT THE LIVE EDGE. The newest step is the reason the page
+			// follows at all, so it opens stuck to the bottom and a scroll is what
+			// releases it ([app.taskPlanTopFor], [app.taskPlanScroll]).
+			a.taskSheet.planStick = true
+			a.taskSheet.planNote.reset()
+			// The card's recovery band belongs to the row the CARD was opened from, and
+			// this page is not that row ([app.taskSheetInside] clears it at the one other
+			// door for the same reason).
+			a.taskSheet.awayOwner = tasksAwayOwner{}
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // closeTaskPlan backs out one layer to the list, which is the card's own `esc`.
@@ -822,8 +816,8 @@ const (
 // read FRESH rather than out of the place's own snapshot: a `p` pressed twice
 // must resume what the first press paused, and the pane's held rows are a
 // reading that changes on its own beat ([tasksPlace.regroup]).
-func (a *app) taskPlanPaused(agent planAgent, id string) bool {
-	for _, row := range agent.PlanTasks() {
+func (a *app) taskPlanPaused(rows []session.PlanTaskRow, id string) bool {
+	for _, row := range rows {
 		if row.ID == id {
 			return strings.TrimSpace(row.Status) == "paused"
 		}
@@ -842,23 +836,34 @@ func (a *app) taskPlanVerb(run func(planAgent) error) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if err := run(agent); err != nil {
-		a.pageMsg = err.Error()
-	} else {
-		// A verb that landed clears a refusal a previous one left on the pane's
-		// line, which is what keeps the line about the key just pressed.
-		a.pageMsg = ""
-		// THE STORE MOVED, so the pane takes its plan again on the next frame:
-		// the row a person just steered wears the store's new word. The stamp is
-		// what [tasksPlace.regroup] hangs a re-read on ([app.railStamp]), and this
-		// is the one door that moves it without a node landing.
-		a.railStamp++
+	return a.offLoop(func() func(bool) tea.Cmd {
+		return a.taskPlanVerbFold(run(agent))
+	})
+}
+
+func (a *app) taskPlanVerbFold(err error) func(bool) tea.Cmd {
+	return func(here bool) tea.Cmd {
+		if !here {
+			return nil
+		}
+		if err != nil {
+			a.pageMsg = err.Error()
+		} else {
+			// A verb that landed clears a refusal a previous one left on the pane's
+			// line, which is what keeps the line about the key just pressed.
+			a.pageMsg = ""
+			// THE STORE MOVED, so the pane takes its plan again on the next frame:
+			// the row a person just steered wears the store's new word. The stamp is
+			// what [tasksPlace.regroup] hangs a re-read on ([app.railStamp]), and this
+			// is the one door that moves it without a node landing.
+			a.railStamp++
+		}
+		// The strip is the node row's own way to end work, and it goes away with the
+		// verb it was opened for rather than standing over a row it has acted on.
+		a.closeStrip()
+		a.touch()
+		return nil
 	}
-	// The strip is the node row's own way to end work, and it goes away with the
-	// verb it was opened for rather than standing over a row it has acted on.
-	a.closeStrip()
-	a.touch()
-	return nil
 }
 
 // taskPlanCancel ends a plan task, its descendants and the work hard-depending
@@ -875,10 +880,16 @@ func (a *app) taskPlanToggle(id string) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if a.taskPlanPaused(agent, id) {
-		return a.taskPlanVerb(func(p planAgent) error { return p.PlanResume(id) })
-	}
-	return a.taskPlanVerb(func(p planAgent) error { return p.PlanPause(id) })
+	return a.offLoop(func() func(bool) tea.Cmd {
+		paused := a.taskPlanPaused(agent.PlanTasks(), id)
+		var err error
+		if paused {
+			err = agent.PlanResume(id)
+		} else {
+			err = agent.PlanPause(id)
+		}
+		return a.taskPlanVerbFold(err)
+	})
 }
 
 // taskPlanNoteSend writes what is typed in the page's composer as a person-note
@@ -896,21 +907,30 @@ func (a *app) taskPlanNoteSend() tea.Cmd {
 		return nil
 	}
 	id := a.taskSheet.plan.Row.ID
-	if err := agent.PlanNote(id, text); err != nil {
-		a.pageMsg = err.Error()
-		a.touch()
-		return nil
-	}
-	a.taskSheet.planNote.reset()
-	a.pageMsg = ""
-	a.railStamp++
-	// Read the page again so the note a person just left is on the screen, which
-	// is the receipt the store cannot draw itself.
-	if page, ok := agent.PlanTaskPage(id); ok {
-		a.taskSheet.plan = page
-	}
-	a.touch()
-	return nil
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := agent.PlanNote(id, text)
+		page, found := agent.PlanTaskPage(id)
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			if err != nil {
+				a.pageMsg = err.Error()
+				a.touch()
+				return nil
+			}
+			a.taskSheet.planNote.reset()
+			a.pageMsg = ""
+			a.railStamp++
+			// Read the page again so the note a person just left is on the screen, which
+			// is the receipt the store cannot draw itself.
+			if found {
+				a.taskSheet.plan = page
+			}
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // taskSheetPlanKey is a plan row's own keys in the LIST, over an empty box the
@@ -1012,12 +1032,7 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.taskSheet.planNote.empty() && a.taskSheet.planAt >= 0 && a.taskSheet.planAt < len(a.taskSheet.plan.Children) {
 			old := a.taskSheet.plan
 			id := old.Children[a.taskSheet.planAt].ID
-			if cmd := a.taskSheetPlan(id); a.taskSheet.plan.Row.ID == id {
-				a.taskSheet.planBack = append(a.taskSheet.planBack, old)
-			} else {
-				return cmd
-			}
-			return nil
+			return a.taskSheetPlanFrom(id, &old)
 		}
 		return a.taskPlanNoteSend()
 	case "backspace":
@@ -1359,19 +1374,29 @@ func planChildWord(row session.PlanTaskRow) string {
 // SCREEN is the resolver's question and not this one's ([app.taskPlanTopFor]):
 // a stuck page reads the bottom, a person who scrolled up stays where they
 // were.
-func (a *app) taskPlanFollow() {
-	if !a.taskPlanRunning() {
-		return
+func (a *app) taskPlanFollow() tea.Cmd {
+	if !a.taskPlanRunning() || a.taskSheet.planFollowing {
+		return nil
 	}
 	agent, ok := a.planReader()
 	if !ok {
-		return
+		return nil
 	}
-	page, ok := agent.PlanTaskPage(a.taskSheet.plan.Row.ID)
-	if !ok {
-		return
-	}
-	a.taskSheet.plan = page
+	id := a.taskSheet.plan.Row.ID
+	a.taskSheet.planFollowing = true
+	return a.offLoop(func() func(bool) tea.Cmd {
+		page, found := agent.PlanTaskPage(id)
+		return func(here bool) tea.Cmd {
+			a.taskSheet.planFollowing = false
+			// THE ANSWER IS FOR THE PAGE THAT ASKED. A person who opened another
+			// task, or closed the page, while this read was out is not handed the
+			// page they left.
+			if here && found && a.taskSheet.planOn && a.taskSheet.plan.Row.ID == id {
+				a.taskSheet.plan = page
+			}
+			return nil
+		}
+	})
 }
 
 // taskPlanRunning reports whether the page is open on a task that is still
