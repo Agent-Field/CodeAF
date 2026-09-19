@@ -174,8 +174,16 @@ steps
       running 41s
 ```
 
-When the command ends the store clears the live step and the next read draws it as an ordinary
-step, with its number and the head of what came back.
+When the step ends, the next read draws it as an ordinary step, with its number and the head
+of what came back.
+
+### Why is a step missing from the page?
+
+The page shows every part that does the task, just as it was written. It leaves out the
+repeated move into the task's own copy and any part that only keeps the task's own page up
+to date. If a step has no other part, there is no row for it; the numbers beside the steps you
+can read stay in order. What that last step said is already in the task's report, so the page
+does not repeat its note or its private names beneath another step.
 
 ## Why does it say queued?
 
