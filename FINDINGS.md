@@ -68,3 +68,5 @@ Review established that the first fixed-form regression did not pin the join: de
 ### Corrected regression evidence
 
 The corrected focused regression passed 20 times. A mutation archive with the `waitPlaceSweep` call removed could not complete the required wait-seam handshake, confirming the test now depends on the join. The first full package verification attempt then hit unrelated `TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds`, which reported zero check tasks instead of one. This is outside the sweep paths and the remaining separate checks did not run after that failure. Verification is retried from the unchanged committed implementation.
+
+The full package retry failed at the same unrelated engine check with the same zero-versus-one assertion. The sweep-focused package test remains green, and verification below isolates the unchanged failure while completing the other required checks. No product or test path from this task reaches that engine-check code.
