@@ -11,8 +11,10 @@ logical groups of chats · /folders create Billing
 ```
 
 It never says “no folders yet”. `/folders` focuses the panel. `/folders create
-Billing` makes a logical folder named Billing. Nested folders and a folder shared
-by two parents are allowed; a cycle is refused and nothing is half-applied.
+Billing` makes a logical folder named Billing. `/folders nest Receipts in Billing`
+places Receipts under Billing; repeating that under Security shares the same
+folder. Nested folders and a folder shared by two parents are allowed; a cycle
+is refused and nothing is half-applied.
 
 Unfiled chats sit under a virtual **Root**. Root is a logical scope, not a path,
 and `codeaf collections list` never prints a Root row.
@@ -33,6 +35,10 @@ On a `folders` row, `→` opens the verb strip:
 
 `n` new chat here · `f` add current chat · `m` move this placement · `w` why here · `x` remove this placement
 
+On a **folder** row the strip also has **`e`** nest this folder: enter the
+parent next, or `esc` to cancel. Chat rows keep `m w x`. A verb that cannot
+work is absent.
+
 - **`n`** opens the start page with that folder pending. The first message mints
   a new chat and files it here. `esc` before sending creates no transcript.
 - **`f`** and `/folders add <name-or-id>` file the **current** chat in that
@@ -44,6 +50,19 @@ On a `folders` row, `→` opens the verb strip:
 - **`x`** removes that placement only. The chat and its history remain.
 
 An old chat can be added to a new folder without merging or resuming it.
+
+## Nest a folder — /folders nest, Receipts under Billing and Security
+
+`/folders nest Receipts in Billing` places Receipts under Billing. `/folders nest
+Receipts in Security` puts the same folder under Security too. Both paths are
+one folder: rename it and the new name shows through both. Nested folders are
+members whose kind is `collection`, not a second copy of a chat.
+
+Without `in <parent>`, nest uses the folder under the cursor (or the one you
+are already in). On a folder row, `e` then enter the parent does the same
+thing. A cycle — making a folder a child of its own descendant — is refused
+with `collection membership would form a cycle` and nothing is half-applied.
+You do not need `codeaf collections add` to nest.
 
 ## Rename a folder — /folders rename, both parents
 
@@ -82,6 +101,7 @@ It does not group saved chats.
 | `/folders` | a logical group of chats | home's `folders` panel |
 | `/folders create <name>` | a new logical folder | the collections graph |
 | `/folders add <name-or-id>` | the current chat's membership | one placement; not cwd |
+| `/folders nest <child> [in <parent>]` | a folder under another folder | the same child under every parent |
 | `/folders rename <name-or-id> <new-name>` | that folder's display name | the same folder under every parent |
 
 Logical membership never changes cwd, the repository, or `/attach`. After you
@@ -162,7 +182,8 @@ record nor stops ongoing work. Repeating add or remove is harmless, and removing
 something that was never there is not an error.
 
 When the `folders` tool is on the belt it can `list`, `file`, `unfile` and `move`
-the current chat the same way. It is absent rather than present and failing when
+the current chat the same way. `file` with `child` nests that folder under `id`
+instead of this chat. It is absent rather than present and failing when
 collections cannot open. It refuses a cycle or an unknown id in its result text.
 
 ## Automatic organization, inherited instructions, and chats talking to each other
@@ -171,5 +192,5 @@ Not in this build. Automatic organization does not file chats for you. A logical
 folder does not attach inherited instructions that descendant chats pick up.
 Conversations do not send each other messages. You create folders and add, move
 or remove placements yourself — from the `folders` panel, `/folders create` /
-`/folders add`, the `n f m w x` verbs, or `codeaf collections`. Collection
+`/folders add` / `/folders nest`, the `n f e m w x` verbs, or `codeaf collections`. Collection
 deletion is not implemented by these commands either.

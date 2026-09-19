@@ -200,6 +200,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"group chats in folders", "collections"},
 		{"is /folder a logical folder?", "collections"},
 		{"also in two folders", "collections"},
+		{"nest receipts under billing", "collections"},
 		{"saved chats", "collections"},
 		// Two codeaf commands on one collections database: the words somebody
 		// types after they have seen the refusal, not the words it is written in.

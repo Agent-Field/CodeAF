@@ -1498,11 +1498,13 @@ type app struct {
 	// unavailable: mutations refuse rather than drawing the empty-workspace
 	// whisper. pendingFolder is the collection `n` / `/folders new` will file
 	// the next first message into; esc on the start page clears it and creates
-	// no transcript. pendingMoveFrom/Ref are `m` in flight.
-	folders         Folders
-	pendingFolder   string
-	pendingMoveFrom string
-	pendingMoveRef  string
+	// no transcript. pendingMoveFrom/Ref are `m` in flight. pendingNestChild is
+	// `e` / `/folders nest` in flight: the next folder entered becomes the parent.
+	folders          Folders
+	pendingFolder    string
+	pendingMoveFrom  string
+	pendingMoveRef   string
+	pendingNestChild string
 	// world is the walk of the machine THE SESSION RUNS ON, and farPlaces is the
 	// state root it was walked under. Nil and empty are this process's own disk,
 	// which is every local launch; over --host the door fills both and the places
