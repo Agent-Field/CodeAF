@@ -21,3 +21,7 @@ The focused tests now fail at the intended seam: `startKnownTaskRun` has no stan
 ## Verification
 
 The isolated-run tests pass after the door began retaining one prepared tree per run. The live run records the canonical ground and shared workspace; a same-ground hand-off joins and its receipt says why, while a different-ground hand-off is refused before it can enter the store. The next step is verification against the existing belt, stand, ground, receipt, and run tests, followed by the required build, vet, law, formatting, and forbidden-path/history checks.
+
+## Proof results
+
+The required focused session command passes, as do formatting, the whole build, session/run vet, and the run/manual/name-law package tests. `make test-laws` reaches all 120 law files but remains red in five pre-existing `cmd/codeaf` kept-nothing cases: their scripted headless runs stop before any model call with the default model line; every other listed package, including `internal/session`, passes. No implementation or test file outside `internal/session` was changed.
