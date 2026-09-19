@@ -369,10 +369,6 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	}
 }
 
-// TestStartTaskBashBeltJoinsTheLiveRun: a run is one store, so a second `/task`
-// while one is live adds its work to that same store — a child of the run's one
-// root — rather than opening another. The second id is in the store, and the
-// store still holds one file.
 func TestStartTaskBashBeltPassesTheConversationWallLeftToTheRun(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("done")
@@ -419,6 +415,10 @@ func TestDriveBeltRunLimitUsesTheOrdinaryLandingRoad(t *testing.T) {
 	}
 }
 
+// TestStartTaskBashBeltJoinsTheLiveRun: a run is one store, so a second `/task`
+// while one is live adds its work to that same store — a child of the run's one
+// root — rather than opening another. The second id is in the store, and the
+// store still holds one file.
 func TestStartTaskBashBeltJoinsTheLiveRun(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("the run did the work")
