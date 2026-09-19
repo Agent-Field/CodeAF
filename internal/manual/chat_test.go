@@ -195,6 +195,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can I not answer the question on this task page", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
+		// Wave 1 logical folders on home: the words somebody types when they
+		// mean grouping chats, not the filesystem /folder sheet.
+		{"group chats in folders", "collections"},
+		{"is /folder a logical folder?", "collections"},
+		{"also in two folders", "collections"},
+		{"saved chats", "collections"},
 		// Two codeaf commands on one collections database: the words somebody
 		// types after they have seen the refusal, not the words it is written in.
 		{"collections database is locked", "collections"},

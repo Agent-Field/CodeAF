@@ -3,7 +3,7 @@
 ## See all my projects — /home
 
 Type `/home`. It takes the whole screen and shows **everything on this machine, from every
-project**, not just the folder this window was started in — as seven **panels**, each
+project**, not just the folder this window was started in — as eight **panels**, each
 answering one question you would ask walking up to a colleague's desk:
 
 ```
@@ -42,7 +42,7 @@ answering one question you would ask walking up to a colleague's desk:
    the 6am repo watch
 ```
 
-Everything with rows in it is on the **left**, in the fixed order of the seven panels.
+Everything with rows in it is on the **left**, in the fixed order of the eight panels.
 `projects` and `spend` are pinned at the **top right** and stay there. On a quieter machine
 most of those left-hand panels have nothing in them, and they gather under the pinned pair
 in the right-hand rail instead — heading and one dim line each — so the left of the screen
@@ -66,7 +66,7 @@ Home is the **first of the four places on the tab bar** — `home  tasks  spend 
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
 
-## See everything at once — what is on the home screen, the seven panels, and what an empty one says
+## See everything at once — what is on the home screen, the eight panels, and what an empty one says
 
 **What has something in it is on the left; everything else is a rail down the right
 edge.** A panel with rows stands in the **field** — the left of the screen, filled from the
@@ -80,7 +80,7 @@ height is the same on every machine on every day. A blank row separates that pai
 panels below them, which are in the rail only because they are quiet today.
 
 **The rank never moves, only the side.** Within the field and within the rail the order is
-always `needs you`, `where you were`, `projects`, `running`, `since you left`, `spend`,
+always `needs you`, `where you were`, `folders`, `projects`, `running`, `since you left`, `spend`,
 `scheduled` — so two panels that both fill never swap places.
 
 One column under 110 cells, where every panel is in that one order and there is no rail;
@@ -95,6 +95,7 @@ from home stands there as a card. Nothing else stands in it.
 | --- | --- | --- | --- |
 | `needs you` | a question waiting on a person, anywhere, and under them the `unread` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
 | `where you were` | a conversation | opens it | `your conversations · what you type below starts one` |
+| `folders` | a logical group of chats | opens it | `logical groups of chats · /folders create Billing` |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
 | `running` | a task, a background job, a watch firing | brings its conversation here | `work you send off with /task runs here on its own` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
@@ -2249,7 +2250,7 @@ are said where they happen: in the conversation that met them, and on `/status`.
 
 **Show a preview card at rest.** The card is only beside a search, on a wide frame.
 
-**Change a panel's place or turn one off.** The seven panels and their order are fixed, and
+**Change a panel's place or turn one off.** The eight panels and their order are fixed, and
 which column each stands in is read off what it holds — a panel with rows is in the field at
 the left, a quiet one in the rail at the right — so nothing about them is yours to set; only
 their heights and their sides move with the terminal and the day.
