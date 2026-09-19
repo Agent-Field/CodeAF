@@ -153,3 +153,7 @@ ok github.com/Agent-Field/codeaf/internal/run 7.068s
 go test ./cmd/codeaf -run '^(TestDoOnTheRunEngineRootStoreFinishBeforeWorkerReturnNamesRootResult|TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds|TestDoOnTheRunEngineSeatsACheckOnTheCheckModel)$' -count=10
 ok github.com/Agent-Field/codeaf/cmd/codeaf 19.986s
 ```
+
+## Final pre-PR checkpoint
+
+The corrected implementation and regression are committed at `ee6ec8b36`. I will now rerun all five required pre-PR commands separately, recording the tree hash before and after. No source change or amendment will follow a passing gate.
