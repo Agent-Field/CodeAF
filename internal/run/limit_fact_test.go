@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // The law these tests state: the run knows which limit ended it when it decides
@@ -71,5 +72,20 @@ func TestStartNamesTheCostLimit(t *testing.T) {
 	}
 	if summary.Limit != LimitCost {
 		t.Fatalf("limit fact = %q, want the dollar limit that fired", summary.Limit)
+	}
+}
+
+// TestRunLimitCrossesTheSeamAsItself keeps the fact a fact across the engine
+// wire: each limit maps one for one onto the session's own words, and a limit
+// this build does not know reads as none rather than as a guess.
+func TestRunLimitCrossesTheSeamAsItself(t *testing.T) {
+	if got := runLimitOf(LimitTime); got != session.RunLimitTime {
+		t.Fatalf("time limit crossed the seam as %q", got)
+	}
+	if got := runLimitOf(LimitCost); got != session.RunLimitCost {
+		t.Fatalf("cost limit crossed the seam as %q", got)
+	}
+	if got := runLimitOf(Limit("unheard")); got != "" {
+		t.Fatalf("an unknown limit crossed the seam as %q, want none", got)
 	}
 }
