@@ -237,23 +237,77 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 // [standing.ErrHeld] is SILENT: another window is ticking, which is the design
 // working rather than a fault, and a log line per five minutes per window would
 // be a file nobody could read.
-func startStandingTicks(store *standing.Store) {
-	if store == nil {
+var standingTickInterval = standing.Interval
+
+// standingTickPass is the seam the ticker calls; tests replace it to hold a
+// pass in flight. The default is the real pass.
+var standingTickPass = runStandingTick
+
+func (p *v3Process) startStandingTicks(store *standing.Store) {
+	if p == nil || store == nil {
 		return
 	}
-	standingOnce.Do(func() {
-		guard.Go("chatv3/standing", func() {
-			standingTicks.Store(true)
-			ticker := time.NewTicker(standing.Interval)
-			defer ticker.Stop()
-			for range ticker.C {
-				runStandingTick(store)
-			}
+	stop, done, started := p.takeStandingStart()
+	if !started {
+		return
+	}
+
+	guard.Go("chatv3/standing", func() {
+		standingTicks.Store(true)
+		// One ctx for the whole ticker. Closing stop cancels it, which ends an
+		// in-flight pass promptly (runStandingTick derives the pass ceiling from
+		// it), so a quit never waits out a running pass's TickWindow.
+		ctx, cancel := context.WithCancel(context.Background())
+		ticker := time.NewTicker(standingTickInterval)
+		defer func() {
+			ticker.Stop()
+			cancel()
+			standingTicks.Store(false)
+			close(done)
+		}()
+		guard.Go("chatv3/standing-stop", func() {
+			<-stop
+			cancel()
 		})
+		for {
+			select {
+			case <-ticker.C:
+				standingTickPass(ctx, store)
+			case <-stop:
+				return
+			}
+		}
 	})
 }
 
-var standingOnce sync.Once
+func (p *v3Process) takeStandingStart() (stop, done chan struct{}, started bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.standingStarted {
+		return nil, nil, false
+	}
+	p.standingStarted = true
+	p.standingStop = make(chan struct{})
+	p.standingDone = make(chan struct{})
+	return p.standingStop, p.standingDone, true
+}
+
+func (p *v3Process) stopStandingTicks() {
+	stop, done := p.takeStandingStop()
+	if stop == nil {
+		return
+	}
+	close(stop)
+	<-done
+}
+
+func (p *v3Process) takeStandingStop() (stop, done chan struct{}) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	stop, done = p.standingStop, p.standingDone
+	p.standingStop, p.standingDone = nil, nil
+	return stop, done
+}
 
 // standingTicks is whether the loop above is actually running in this process,
 // and [standingTicking] is how the surface asks ([tui3.StandingSeam.Ticking]).
@@ -268,7 +322,7 @@ func standingTicking() bool { return standingTicks.Load() }
 
 // runStandingTick is one pass, bounded, with everything it can say written to a
 // file.
-func runStandingTick(store *standing.Store) {
+func runStandingTick(ctx context.Context, store *standing.Store) {
 	// A PANIC HERE MUST NOT END THE TICKING. The loop above is this process's
 	// whole contribution to the ambient side, and a goroutine that unwound out
 	// of it would leave a window that looks like it is keeping watch and is not.
@@ -278,9 +332,12 @@ func runStandingTick(store *standing.Store) {
 		noteStanding("could not start a pass: " + err.Error())
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), standing.TickWindow)
+	// The pass's ceiling is a CHILD of the caller's ctx, so closing the ticker
+	// (which cancels that ctx) ends an in-flight pass at once, and the 120s
+	// TickWindow stays the pass's own upper bound when nobody is quitting.
+	passCtx, cancel := context.WithTimeout(ctx, standing.TickWindow)
 	defer cancel()
-	if _, err := pass.Tick(ctx); err != nil {
+	if _, err := pass.Tick(passCtx); err != nil {
 		if err == standing.ErrHeld {
 			return
 		}
