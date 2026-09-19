@@ -2016,6 +2016,34 @@ func (a *Agent) PlanPriority(id string, priority int) error {
 	return err
 }
 
+// PlanRunSummary reads the last engine-side summary; an unavailable link keeps nothing.
+func (a *Agent) PlanRunSummary(rootID string) (session.RunPlanSummary, bool) {
+	payload, err := a.c.call(nil, MethodPlanRunSummary, PlanRunSummaryArgs{RootID: rootID})
+	if err != nil {
+		return session.RunPlanSummary{}, false
+	}
+	var result PlanRunSummaryResult
+	if json.Unmarshal(payload, &result) != nil {
+		return session.RunPlanSummary{}, false
+	}
+	return result.Summary, result.OK
+}
+
+// RefreshRunSummary asks the engine to refresh within the caller deadline.
+func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook time.Time) (session.RunPlanSummary, bool) {
+	args := RefreshRunSummaryArgs{RootID: rootID, LastLook: lastLook}
+	args.Deadline, _ = ctx.Deadline()
+	payload, err := a.c.call(ctx, MethodRefreshRunSummary, args)
+	if err != nil {
+		return session.RunPlanSummary{}, false
+	}
+	var result PlanRunSummaryResult
+	if json.Unmarshal(payload, &result) != nil {
+		return session.RunPlanSummary{}, false
+	}
+	return result.Summary, result.OK
+}
+
 func (a *Agent) PlanSpend(since time.Time) []session.PlanSpendLine {
 	payload, err := a.c.call(nil, MethodPlanSpend, PlanSpendArgs{Since: since})
 	if err != nil {
