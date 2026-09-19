@@ -1494,13 +1494,15 @@ type app struct {
 	usageLedger  string
 	ledger       func(time.Time) ([]session.UsageLine, bool, bool)
 	archive      func(string, bool) error
-	// folders is the logical-folder seam the home folders panel reads. Nil is
-	// unavailable: mutations refuse rather than drawing the empty-workspace
-	// whisper. pendingFolder is the collection `n` / `/folders new` will file
-	// the next first message into; esc on the start page clears it and creates
-	// no transcript. pendingMoveFrom/Ref are `m` in flight. pendingNestChild is
-	// `e` / `/folders nest` in flight: the next folder entered becomes the parent.
+	// folders is the logical-folder seam the home folders panel and the Folders
+	// place read. Nil is unavailable: mutations refuse rather than drawing the
+	// empty-workspace whisper. pendingFolder is the collection `n` / `/folders
+	// new` / place New chat will file the next first message into; esc on the
+	// start page clears it and creates no transcript. pendingMoveFrom/Ref are
+	// `m` in flight. pendingNestChild is `e` / `/folders nest` in flight: the
+	// next folder entered becomes the parent. folderSheet is the Folders place.
 	folders          Folders
+	folderSheet      foldersPlace
 	pendingFolder    string
 	pendingMoveFrom  string
 	pendingMoveRef   string
@@ -6968,7 +6970,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.showPage(pageHome)
 
 	case "folders":
-		// Logical membership on the home folders panel. Not an alias of /folder.
+		// Logical membership on the Folders place. Not an alias of /folder.
 		return a.runFoldersCommand(rest)
 
 	case "search":

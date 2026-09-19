@@ -2384,7 +2384,11 @@ func (l homeLine) stop() bool {
 	case homeLedger:
 		return true
 	}
-	return false
+	return l.foldersHeadStop()
+}
+
+func (l homeLine) foldersHeadStop() bool {
+	return l.kind == homeSwitchHead && l.cell != nil && l.cell.panel == panelFolders && l.cell.kind == cellHead
 }
 
 // move walks by whole conversations, stepping over headings, blanks and
@@ -3215,6 +3219,11 @@ func (a *app) homeEnter() tea.Cmd {
 		return a.enterFolder(line.dir)
 	case homeFolderBack:
 		a.leaveFolder()
+		return nil
+	case homeSwitchHead:
+		if line.foldersHeadStop() {
+			return a.showPage(pageFolders)
+		}
 		return nil
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I

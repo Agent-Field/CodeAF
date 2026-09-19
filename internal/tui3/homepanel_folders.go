@@ -8,16 +8,15 @@ import (
 )
 
 // foldersPanel is `folders`: logical groups of chats, not filesystem
-// directories. `/folder` `/place` `/dir` stay filesystem. This is an eighth
-// home panel, not an eighth tab-bar place.
+// directories. `/folder` `/place` `/dir` stay filesystem. Folders-entry made
+// this an enter-from home panel onto the dedicated Folders place; the panel
+// stays a summary door, and sequential drill-in lives on that place.
 //
 // EMPTY IT KEEPS ITS HEADING AND ONE DIM TEACHING LINE — never "no folders
 // yet". That whisper is a working store with nothing in it. A nil seam is
 // unavailable: the heading stays and the panel names the refusal, rather
 // than looking like an empty workspace. With rows it is Root: parentless
-// collections, then unfiled chats. Enter drills in sequentially (back,
-// children, members) so an 80-column frame never grows a third column of
-// the graph.
+// collections, then unfiled chats. Enter on the heading opens the place.
 type foldersPanel struct{ homePanelBase }
 
 func (foldersPanel) rows(in *homeGridInput) homePanelRows {

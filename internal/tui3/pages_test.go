@@ -60,13 +60,13 @@ func placeFrameText(a *app) string {
 // ([TestEveryPlaceIsRegisteredOnceAndInTabOrder]), because the list they have to
 // agree with is the registry rather than a literal seven this file counted. What
 // is left here is the two facts that are about the EDGES of that list.
-func TestTheSevenPlacesAreOneList(t *testing.T) {
-	if len(pages()) != 7 {
-		t.Fatalf("there are %d places, and the design has seven", len(pages()))
+func TestThePlacesAreOneList(t *testing.T) {
+	if len(pages()) != 8 {
+		t.Fatalf("there are %d places, and Folders-entry has eight", len(pages()))
 	}
-	// AND alt+8 IS NOTHING, rather than the first place again.
-	if _, ok := placeDigit("alt+8"); ok {
-		t.Fatal("alt+8 reaches a place that does not exist")
+	// AND alt+9 IS NOTHING, rather than the first place again.
+	if _, ok := placeDigit("alt+9"); ok {
+		t.Fatal("alt+9 reaches a place that does not exist")
 	}
 }
 
@@ -293,7 +293,7 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	// after the four with theirs: the map is the one surface whose job is to show
 	// every key, so `alt+5`…`alt+7` are on it.
 	if bar := after[placeTabRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "4 settings") ||
-		!strings.Contains(bar, "5 standing") || !strings.Contains(bar, "7 search") {
+		!strings.Contains(bar, "5 folders") || !strings.Contains(bar, "8 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
@@ -792,12 +792,12 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 // ([app.placeTabBar]); at 80 columns and up nothing is dropped. Standing,
 // memory and search are rooms reached by command, by their digit and by the
 // map — not words on the row a person reads a hundred times a day.
-func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
+func TestTheTabBarCarriesTheFiveAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		if !strings.Contains(bar, "home   tasks   spend   settings") {
-			t.Fatalf("at %d columns the bar is not the four places in order: %q", width, bar)
+		if !strings.Contains(bar, "home   tasks   spend   settings   folders") {
+			t.Fatalf("at %d columns the bar is not the five places in order: %q", width, bar)
 		}
 		for _, id := range []page{pageStanding, pageMemory, pageSearch} {
 			if strings.Contains(bar, id.word()) {
@@ -808,7 +808,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
 	// lit is a bar that does not know where you are.
 	walkTo(t, a, pageMemory)
-	if bar := plain(a.placeTabBar(120, false, a.pal)); !strings.Contains(bar, "settings   memory") {
+	if bar := plain(a.placeTabBar(120, false, a.pal)); !strings.Contains(bar, "folders   memory") {
 		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
 	}
 }

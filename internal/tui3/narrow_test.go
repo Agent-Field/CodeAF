@@ -55,11 +55,11 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 	wide := plain(a.placeTabBar(120, false, a.pal))
 	if !strings.Contains(wide, "home   tasks") {
 		t.Fatalf("at 120 columns the bar drew\n\t%q\nand the air between two chips is gone; it should read\n\t%q",
-			wide, "  home   tasks   spend   settings")
+			wide, "  home   tasks   spend   settings   folders")
 	}
 	if narrow := plain(a.placeTabBar(tight, false, a.pal)); !strings.Contains(narrow, "home  tasks") {
 		t.Fatalf("at %d columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
-			tight, narrow, "  home  tasks  spend  settings")
+			tight, narrow, "  home  tasks  spend  settings  folders")
 	}
 }
 

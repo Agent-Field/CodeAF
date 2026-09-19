@@ -19,9 +19,9 @@ import (
 // store that happens to hold no folders. A belt that failed every call would
 // be a capability advertised as broken.
 //
-// THE SNAPSHOT IS TAKEN ON THE HOME BEAT and nowhere else. View, the cursor and
-// a mere rebuild read [homeView.folders], which is a memo. A call from paint
-// would be a store read on a draw, which this surface forbids.
+// THE SNAPSHOT IS TAKEN ON THE HOME BEAT AND THE FOLDERS-PLACE BEAT, never in
+// View, never on a cursor move. A call from paint would be a store read on a
+// draw, which this surface forbids.
 type Folders interface {
 	RootSnapshot(ctx context.Context) (FolderRoot, error)
 	FolderSnapshot(ctx context.Context, id string) (FolderView, []FolderPlacement, error)
@@ -42,6 +42,19 @@ type Folders interface {
 	InstructFolder(ctx context.Context, id, text string) error
 	FolderGuidance(ctx context.Context, id string) ([]FolderInstruction, error)
 	IndexProgress(ctx context.Context) (FolderIndex, error)
+	// OrganizeExisting is the visible Organize existing chats action.
+	// OrganizeStatus is that job as the Folders place draws it.
+	// CancelOrganize is the visible cancel. Nil seam refuses all three
+	// with [folderUnwiredWord] before these are reached.
+	OrganizeExisting(ctx context.Context) (FolderOrganize, error)
+	OrganizeStatus(ctx context.Context) (FolderOrganize, error)
+	CancelOrganize(ctx context.Context) error
+}
+
+// FolderOrganize is the explicit survey as the Folders place draws it.
+// State is person-facing: queued | running | delayed | done | cancel.
+type FolderOrganize struct {
+	JobID, State, Detail string
 }
 
 // FolderInstruction is one standing guidance line the folder-detail section
@@ -266,14 +279,21 @@ func (a *app) folderIDOf(line homeLine) string {
 	case homeFolderRow:
 		return strings.TrimSpace(line.dir)
 	case homeFolderBack:
-		return strings.TrimSpace(a.home.folderOpen)
+		return a.folderOpenID()
 	case homeSession:
 		if line.cell != nil {
 			if id := strings.TrimSpace(line.cell.key); id != "" {
 				return id
 			}
 		}
-		return strings.TrimSpace(a.home.folderOpen)
+		return a.folderOpenID()
+	}
+	return a.folderOpenID()
+}
+
+func (a *app) folderOpenID() string {
+	if a.at(pageFolders) {
+		return strings.TrimSpace(a.folderSheet.open)
 	}
 	return strings.TrimSpace(a.home.folderOpen)
 }
@@ -305,7 +325,11 @@ func (a *app) startInFolder(id string) tea.Cmd {
 		a.folderNote(newUnavailableWord)
 		return nil
 	}
-	a.closeHome()
+	if a.at(pageFolders) {
+		a.leavePlace()
+	} else {
+		a.closeHome()
+	}
 	cmd := a.openChatStart()
 	if a.startingChat() {
 		a.pendingFolder = id
@@ -641,24 +665,10 @@ func (a *app) focusFoldersPanel() {
 	}
 }
 
-func (a *app) showFoldersPanel() tea.Cmd {
-	var cmd tea.Cmd
-	if !a.at(pageHome) {
-		cmd = a.showPage(pageHome)
-	}
-	a.readHomeFolders()
-	a.readCollab()
-	a.readExec()
-	a.home.build()
-	a.focusFoldersPanel()
-	a.touch()
-	return cmd
-}
-
 func (a *app) runFoldersCommand(rest string) tea.Cmd {
 	rest = strings.TrimSpace(rest)
 	if rest == "" {
-		return a.showFoldersPanel()
+		return a.showPage(pageFolders)
 	}
 	action, name, _ := strings.Cut(rest, " ")
 	name = strings.TrimSpace(name)
@@ -676,12 +686,22 @@ func (a *app) runFoldersCommand(rest string) tea.Cmd {
 		return a.startInFolder(a.folderIDUnderCursor())
 	case "instruct":
 		return a.instructNamedFolder(name)
+	case "organize":
+		return a.openFoldersOrganize()
 	}
-	a.folderNote("usage: /folders · /folders create <name> · /folders add <name-or-id> · /folders rename <name-or-id> <new-name> · /folders nest <child> [in <parent>] · /folders instruct <name-or-id> <text> · /folders new")
+	a.folderNote("usage: /folders · /folders create <name> · /folders add <name-or-id> · /folders rename <name-or-id> <new-name> · /folders nest <child> [in <parent>] · /folders instruct <name-or-id> <text> · /folders new · /folders organize")
 	return nil
 }
 
+func (a *app) openFoldersOrganize() tea.Cmd {
+	cmd := a.showPage(pageFolders)
+	return tea.Batch(cmd, a.folderPlaceOrganize())
+}
+
 func (a *app) folderIDUnderCursor() string {
+	if a.at(pageFolders) {
+		return a.folderPlaceFolderID()
+	}
 	if !a.at(pageHome) {
 		return strings.TrimSpace(a.home.folderOpen)
 	}
@@ -709,10 +729,7 @@ func (a *app) createLogicalFolder(name string) tea.Cmd {
 		a.folderNote("could not create " + name)
 		return nil
 	}
-	if a.at(pageHome) {
-		a.refreshFolderMemo()
-		a.pointFolderID(folder.ID)
-	}
+	a.afterFolderMutation(folder.ID)
 	a.folderNote("created " + folder.Name)
 	return nil
 }
@@ -735,12 +752,21 @@ func (a *app) renameLogicalFolder(from, to string) tea.Cmd {
 		a.folderNote("could not rename " + folder.Name)
 		return nil
 	}
-	if a.at(pageHome) {
-		a.refreshFolderMemo()
-		a.pointFolderID(folder.ID)
-	}
+	a.afterFolderMutation(folder.ID)
 	a.folderNote("renamed " + folder.Name + " to " + to)
 	return nil
+}
+
+func (a *app) afterFolderMutation(id string) {
+	if a.at(pageFolders) {
+		a.refreshFolderPlace()
+		a.pointFolderPlaceID(id)
+		return
+	}
+	if a.at(pageHome) {
+		a.refreshFolderMemo()
+		a.pointFolderID(id)
+	}
 }
 
 func (a *app) nestLogicalFolder(rest string) tea.Cmd {
@@ -857,6 +883,11 @@ func (a *app) pointFolderID(id string) bool {
 func (a *app) folderNote(text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
+		return
+	}
+	if a.at(pageFolders) {
+		a.folderSheet.note = text
+		a.touch()
 		return
 	}
 	if a.at(pageHome) {

@@ -125,13 +125,14 @@ var commands = []command{
 	{name: "home", desc: "every project and conversation on this machine"},
 	// /folders is NOT an alias of /folder. Filesystem /folder /place /dir stay
 	// filesystem; this is logical membership on the home folders panel.
-	{name: "folders", desc: "logical groups of chats"},
+	{name: "folders", desc: "logical groups of chats · " + placeChord(pageFolders)},
 	{name: "folders", args: "create <name>", desc: "…make a logical folder"},
 	{name: "folders", args: "add <name-or-id>", desc: "…file this chat here"},
 	{name: "folders", args: "rename <name-or-id> <new-name>", desc: "…rename a logical folder"},
 	{name: "folders", args: "nest <child> [in <parent>]", desc: "…place a folder under another"},
 	{name: "folders", args: "instruct <name-or-id> <text>", desc: "…standing guidance for chats in this folder"},
 	{name: "folders", args: "new", desc: "…start a new chat in the folder under the cursor"},
+	{name: "folders", args: "organize", desc: "…survey existing chats into folders"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
 	// does. /home, /memory, /standing, /history and /settings each open a place
 	// from the box; search and spend were reachable only by their `alt+` digit,
