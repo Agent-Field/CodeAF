@@ -45,6 +45,14 @@ On a `folders` row, `→` opens the verb strip:
 
 An old chat can be added to a new folder without merging or resuming it.
 
+## Rename a folder — /folders rename, both parents
+
+`/folders rename Receipts Invoices` changes that folder's display name. Receipts
+can sit under Billing and Security at once; the new name shows through both
+paths, and the chats inside it stay. Nested folders are members whose kind is
+`collection`, not a second copy of a chat. A cycle — making a folder a child of
+its own descendant — is refused and nothing is half-applied.
+
 ## Also in two folders — one chat, also in Billing and Security
 
 The same saved chat can sit in two folders at once — Billing and Security, for
@@ -74,6 +82,7 @@ It does not group saved chats.
 | `/folders` | a logical group of chats | home's `folders` panel |
 | `/folders create <name>` | a new logical folder | the collections graph |
 | `/folders add <name-or-id>` | the current chat's membership | one placement; not cwd |
+| `/folders rename <name-or-id> <new-name>` | that folder's display name | the same folder under every parent |
 
 Logical membership never changes cwd, the repository, or `/attach`. After you
 file a chat, `/folder` still names the same path it named before.
