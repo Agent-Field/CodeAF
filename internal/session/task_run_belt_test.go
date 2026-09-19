@@ -633,15 +633,28 @@ func TestPlanReadsWithoutArchiveStayIdentical(t *testing.T) {
 	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha"})
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	armPlanStore(t, agent, path, "chat-a")
-	before, err := json.Marshal(agent.PlanTasks())
+	store, err := plandb.Open(path, "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := json.Marshal(agent.PlanTasks())
+	tasks := store.Tasks(plandb.Filter{Chat: "chat-a"})
+	wantRows := make([]PlanTaskRow, 0, len(tasks))
+	for _, task := range tasks {
+		wantRows = append(wantRows, planTaskRow(store, dir, task, planSpendByTask(path), store.LiveSteps()))
+		if task.ID == store.RootID() {
+			applyPlanRootProgress(&wantRows[len(wantRows)-1], tasks, store.RootID())
+		}
+	}
+	_ = store.Close()
+	want, err := json.Marshal(wantRows)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(before, after) {
-		t.Fatalf("single-store rows changed:\n%s\n%s", before, after)
+	got, err := json.Marshal(agent.PlanTasks())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("single-store rows changed:\ngot  %s\nwant %s", got, want)
 	}
 }
