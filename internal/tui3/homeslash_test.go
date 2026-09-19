@@ -70,11 +70,8 @@ func TestHomeSlashOffersCommandRows(t *testing.T) {
 	}
 }
 
-// TestHomeSlashEnterOnOfferedRow: the cursor rests on the action row while
-// typing; one ↑ is the errand row, and the second ↑ is the best command row —
-// the drop-up's law, best match nearest the box. Enter there runs the row the
-// way chat's list does: the box is rewritten with the chosen word and the
-// command runs.
+// The best name match is selected while typing, in alphabetical list order.
+// Enter runs that row through the same dispatch as a conversation.
 func TestHomeSlashEnterOnOfferedRow(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
@@ -83,15 +80,11 @@ func TestHomeSlashEnterOnOfferedRow(t *testing.T) {
 	runCmd(a.openHome())
 
 	typeHome(a, "/set")
-	if k := homeKindAt(a); k != homeRowKind(255) {
-		t.Fatalf("cursor rested on %v while typing, want no selected result", k)
-	}
-	a.homeKey(key("up"))
 	if k := homeKindAt(a); k != homeCommand {
-		t.Fatalf("second ↑ landed on %v, want a command row", k)
+		t.Fatalf("cursor rested on %v while typing, want a command", k)
 	}
 	if a.home.lines[a.home.cursor].cmd.name != "settings" {
-		t.Fatalf("second ↑ reached %q, want the best match /settings", a.home.lines[a.home.cursor].cmd.name)
+		t.Fatalf("filter selected %q, want the best match /settings", a.home.lines[a.home.cursor].cmd.name)
 	}
 	runCmd(a.homeEnter())
 	if !a.at(pageSettings) {
@@ -637,7 +630,7 @@ func TestHomeSlashDoesNotAddASubmissionRow(t *testing.T) {
 	runCmd(a.openHome())
 
 	typeHome(a, "/settings")
-	if k := homeKindAt(a); k != homeRowKind(255) {
+	if k := homeKindAt(a); k != homeCommand {
 		t.Fatalf("the cursor left the action row onto %v", k)
 	}
 	text := homeText(a)
@@ -684,7 +677,7 @@ func TestHomeSlashChosenRowWritesTheNameAndNotThePlaceholder(t *testing.T) {
 		if line, ok := a.home.focusedLine(); ok && line.kind == homeCommand && line.cmd.args != "" {
 			break
 		}
-		a.homeKey(key("up"))
+		a.homeKey(key("down"))
 	}
 	chosen := a.home.lines[a.home.cursor]
 	if chosen.kind != homeCommand || chosen.cmd.args == "" {
@@ -713,7 +706,7 @@ func TestHomeSlashMentionRewritesTheTokenInPlace(t *testing.T) {
 
 	typeHome(a, "what does /sett")
 	for i := 0; i < len(a.home.lines) && homeKindAt(a) != homeCommand; i++ {
-		a.homeKey(key("up"))
+		a.homeKey(key("down"))
 	}
 	if k := homeKindAt(a); k != homeCommand {
 		t.Fatalf("↑ never reached a command row; it rests on %v:\n%s", k, homeText(a))

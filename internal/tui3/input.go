@@ -990,7 +990,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.onFirstLine() {
 			a.input.up()
 			a.touch()
-			return nil
+			return a.syncLists()
 		}
 		// A MESSAGE WAITING FOR THE ANSWER IS READ BEFORE THE HISTORY, and it has
 		// to be: enter remembers everything it parks, so the newest history line
@@ -1014,7 +1014,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.onLastLine() {
 			a.input.down()
 			a.touch()
-			return nil
+			return a.syncLists()
 		}
 		if a.recallForward() {
 			return nil
@@ -1190,6 +1190,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.empty() {
 			a.input.wordLeft()
 			a.touch()
+			return a.syncLists()
 		}
 		return nil
 	case "alt+right", "alt+f", "ctrl+right":
@@ -1197,6 +1198,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.empty() {
 			a.input.wordRight()
 			a.touch()
+			return a.syncLists()
 		}
 		return nil
 	case "super+left", "super+right", "meta+left", "meta+right":
@@ -1220,7 +1222,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.input.end()
 		}
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "left":
 		// ← ON AN EMPTY BOX IS NAVIGATION. There is no caret to move in an empty
 		// draft, which is the same argument the proposal's row makes for taking
@@ -1233,7 +1235,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		a.input.left()
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "right":
 		// → is the other half of it: forward, into the work (room.go).
 		if a.input.empty() {
@@ -1251,18 +1253,18 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		a.input.right()
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "ctrl+f":
 		// The emacs forward-char keeps its plain meaning at both ends. It is the
 		// caret key and nothing else, so nothing about the navigation above can
 		// be reached by a chord somebody pressed to move one character.
 		a.input.right()
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "home", "ctrl+a":
 		a.input.home()
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "end", "ctrl+e":
 		// ctrl+e has two meanings and they are read the way ↑'s four are: with
 		// nothing typed it opens the running turn's compact steps first
@@ -1277,7 +1279,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		a.input.end()
 		a.touch()
-		return nil
+		return a.syncLists()
 	}
 
 	// TWO SPACES IN AN EMPTY BOX ARE THE DOOR HOME (home.go). It is read here,

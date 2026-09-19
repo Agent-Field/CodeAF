@@ -3659,6 +3659,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.tabWheel(msg) {
 			return a, nil
 		}
+		// The command list scrolls above the composer instead of moving the
+		// transcript while the person is choosing a command.
+		if a.menu.open {
+			a.menu.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
 		// The roster over the body is the same claim one step earlier: while it
 		// is up the transcript is not on screen at all, and the roster's window
 		// follows its focus rather than an offset of its own (task.go's
@@ -8237,6 +8244,17 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	switch msg.String() {
+	case "pgup", "pgdown":
+		if !a.menu.open {
+			return nil, false
+		}
+		delta := max(1, overlayItems(a.overlayHeight(), a.widthOr())-1)
+		if msg.String() == "pgup" {
+			delta = -delta
+		}
+		a.menu.move(delta)
+		a.touch()
+		return nil, true
 	case "up", "ctrl+p":
 		if a.menu.open {
 			a.menu.move(-1)

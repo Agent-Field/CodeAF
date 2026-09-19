@@ -2,80 +2,51 @@
 
 ## Typing a slash to see the command list
 
-Type `/` and the command list opens under the message box. There is one list of commands
-in codeaf: the pop-up you get by typing `/` and the list `/help` prints are drawn from
-the same table.
+Type `/` in the home or conversation message box to see every available command in
+**alphabetical order above the seam**. The list and `/help` use the same command table.
+The list scrolls; a short window does not remove commands. The new-conversation greeting
+yields its space to the list while browsing. At phone width, descriptions
+appear below command names. On home, only commands appear while this list is active:
+thread, task, project and place search results return when you leave the command token.
 
-**It opens at a word boundary, and not only at the start of the line.** A `/` typed as
-the first character of the box opens it, and so does a `/` typed after a space or a
-newline — so you can find a command half a sentence in without throwing the sentence
-away. A `/` with anything other than a space in front of it opens nothing at all, which
-is what keeps `cmd/codeaf` and `https://example.com` quiet.
+Keep typing to filter names and aliases by substring. The rows stay alphabetical; the
+initial selection favors a name match over an alias, and a prefix over a later match.
+For example, `/res` selects `/resume`, although `/new` also matches its `reset` alias.
+A filter with no matches shows `no commands match` and keeps unrelated results hidden.
 
-The list is not modal. You keep typing into the same box and the list narrows under it.
-Only ↑ ↓ enter esc are taken from the editor; every other key types into your draft and
-re-filters. A space ends the word the list is filtering on and closes it, because a line
-with an argument is a line being written rather than a command being chosen.
+- ↑ / ctrl+p and ↓ / ctrl+n choose a row. PgUp / PgDown and the mouse wheel scroll.
+- Enter takes the selected row. A command that takes words, such as `/model <slug>`,
+  leaves `/model ` in the box ready for its argument. A bare command runs.
+- In a conversation, Esc dismisses the list and leaves the typed word; the list stays
+  dismissed while you continue that token. On home, Esc clears the draft as usual.
 
-Moving in it:
+The list follows the caret as well as edits. The box remains editable while it is open.
+A command chosen inside a sentence completes its token rather than running on its own;
+send tags such as `/ask` and `/task` retain their submission behavior.
 
-- ↑ / ctrl+p and ↓ / ctrl+n move.
-- enter takes the row under the cursor. Whether that *runs* or completes a live tag
-  depends on where the word sits — see "Use /standing or /task in the middle of a
-  sentence".
-- esc closes the list and seals that word: it does not come back on the next letter you
-  type. Start another word and it opens again. The text you typed stays.
-
-**The list shows as many rows as the frame can hold, and never fewer than eight.** Eight
-used to be a ceiling as well as a floor, so a fifty-row terminal drew eight commands under
-thirty-six blank rows and both `/help` and `/manual` were below the fold. It is only the
-floor now: on a tall terminal the whole table is on the screen at once, on a short one the
-list is clamped so the status line and a row of conversation survive, and the list scrolls
-under the cursor either way. **Where rows are still hidden the list says how many**, in the
-same `▸ 25 more` spelling the search place and the spend place draw, though there it is
-a door and here it is only a count. At phone width fewer rows
-show, each with its description on its own line. Rows highlight under the mouse pointer,
-but a click does not run a row — this list has no mouse commit.
-
-Filtering is a substring search over the command's name, ranked by where the match was
-found, prefix first. An alias match ranks a whole rung below any name match, so typing
-`res` puts `/resume` above the `/new` that answers to `reset`.
-
-**Rows that take an argument are not run.** At the head of an otherwise empty box,
-choosing `/model <slug>` or `/export <path>` writes `/model ` or `/export ` into the box
-with the caret after it, and runs nothing.
-
-Anything you press enter on goes into the ↑-history, commands included. Choosing a row
-from the list records it as `/<name>`, exactly as if you had typed it.
-
-While a panel is up — settings, the model picker, resume, connect, harness, permissions,
-copy mode, rewind — typing `/` does nothing. Those states take the key first.
-
-**Home's box has the same list.** Typing `/` on the home screen opens the same ranked
-list over its box, and `↑` walks to a row and `enter` runs it, exactly as in a chat. A
-slash line typed in full and entered from home's typing row is run too — `/settings`
-opens the settings place rather than starting a conversation with the word in it.
-Commands that act on a conversation act on the one home holds behind the screen.
+On home, command rows describe what they will do there, including commands that open a
+conversation first. See *What each command does on home*. In a conversation, pointer
+hover highlights a row but clicking does not execute it. Enter confirms the keyboard
+selection. Commands entered in a conversation are kept in its ↑-history.
 
 ## Why a file path does not pop up the command list
 
-Typing `/Users/you/notes.md` or `/tmp/log` into the message box does not leave the
-command list flickering over your sentence. Three rules keep it away, and they are the
-same three wherever the slash is:
+The same token rules apply on home and in conversations:
 
-- **A slash needs a space in front of it.** Only the first character of the box, or a
-  slash after a space or a newline, is a candidate. So the second slash of
-  `/Users/you` is not one, and neither is the one in `cmd/codeaf/main.go` or in
-  `https://`.
-- **A word that matches no command closes the list.** The candidate runs to the next
-  space, so the word being matched is `Users/you`, and nothing in the table looks
-  like it. In practice a path drops the list within a couple of keystrokes and it stays
-  gone. Backspace back to a word that does match and it returns.
-- **esc seals the word.** If it did open over something you meant literally, esc puts it
-  away and it stays away for that word.
+- A slash starts a command token only at the beginning of the draft or after whitespace.
+  `cmd/codeaf` and `https://example.com` do not open the list.
+- The caret must be inside the command word. A space begins its argument and closes the
+  list; moving the caret back into the command word opens it again.
+- The entire token must contain command-name characters. A further slash, a dot or a
+  backslash makes it a path rather than a command token, even with the caret midway
+  through it. `/tmp/project` and `/image.png` therefore leave the list closed.
 
-There is no setting for this and nothing to turn off. The list follows what you type; it
-never holds itself open.
+A partial path such as `/tmp` is still indistinguishable from an unknown command word:
+it shows `no commands match` until another slash or path punctuation makes the intent
+clear. Pasting a complete path never needs those intermediate states.
+
+Panels such as settings, the model picker, resume and copy mode keep their own keyboard
+handling; typing `/` there does not open this composer list.
 
 ## Slash commands are drawn as chips
 

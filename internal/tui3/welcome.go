@@ -872,7 +872,9 @@ type welcomeMark struct {
 // welcomeFits reports whether the unit is on the frame at all: it is open, and
 // the window has the room stated above.
 func (a *app) welcomeFits() bool {
-	if !a.welcome.open {
+	// Browsing commands lends the greeting's space to the list and restores
+	// the ordinary seam and draft. The start page's ownership stays intact.
+	if !a.welcome.open || a.menu.open {
 		return false
 	}
 	// AND NEVER UNDER A QUESTION SOMEBODY OPENED OUT (questionroom.go). The

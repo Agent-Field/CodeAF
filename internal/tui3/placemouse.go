@@ -310,6 +310,9 @@ func (a *app) placeBoxPress(x, y int) bool {
 	// AND THE PRESS ARMS THE SWEEP over this box, on the message box's own
 	// terms and for its reason (boxselect.go, draftclick.go).
 	a.boxPressed(box, true, x, y)
+	if box == &a.home.box {
+		a.home.build()
+	}
 	return true
 }
 

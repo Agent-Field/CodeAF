@@ -684,6 +684,18 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// still asking, but the page's box owns every key while it is on screen, so
 	// an offer naming keys it could not honour would be a lie on the frame
 	// (question.go's [app.questionRows]).
+	// Slash commands live above the seam, in the same region as Home's
+	// results. Marks move with their rows, so mouse input follows the drawing.
+	commandsAbove := a.menu.open
+	addOverlay := func() {
+		for i, line := range a.overlayRows(width, a.overlayHeight()) {
+			add(line, chromeRow{kind: chromeOverlay, index: i})
+		}
+	}
+	if commandsAbove {
+		addOverlay()
+	}
+	unitAt := len(rows)
 	unit, _, unitX, unitRow := a.welcomeUnit(width)
 	greeted := len(unit) > 0
 	for i, line := range unit {
@@ -756,7 +768,7 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// otherwise. Both are a row counted from the head of this block — the unit's
 	// rows are its first rows — and the frame turns each into a screen row from
 	// where it drew that half ([app.frameOut]).
-	caretX, caretRow := unitX, unitRow
+	caretX, caretRow := unitX, unitAt+unitRow
 	if !a.welcomeHolds() {
 		if a.roomRecipientHeight() > 0 {
 			add(inputPad+a.pal.accent(fit(a.roomRecipientWord(), width-len(inputPad))), chromeRow{})
@@ -795,8 +807,8 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for _, line := range a.spellRows(width) {
 		add(line, chromeRow{})
 	}
-	for i, line := range a.overlayRows(width, a.overlayHeight()) {
-		add(line, chromeRow{kind: chromeOverlay, index: i})
+	if !commandsAbove {
+		addOverlay()
 	}
 	for i, line := range a.statusRow(width) {
 		add(line, chromeRow{kind: chromeStatus, index: i})
@@ -893,7 +905,11 @@ func welcomeLift(marks []chromeRow) int {
 }
 
 // chromeHeight is how many rows the frame spends below the conversation.
-func (a *app) chromeHeight() int {
+func (a *app) chromeHeight() int { return a.chromeBaseHeight() + a.overlayHeight() }
+
+// chromeBaseHeight reserves the composer and its fixed surroundings before a
+// command list borrows the remaining rows above the seam.
+func (a *app) chromeBaseHeight() int {
 	width, _ := a.size()
 	// The status (one row, or two when the telemetry wraps — and always two at
 	// the phone tier, where it is a deck rather than a row: [app.statusHeight]
@@ -901,7 +917,7 @@ func (a *app) chromeHeight() int {
 	// layout to learn how tall the bottom of the frame is), the input block, and
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
-	n := a.statusHeight(width) + a.overlayHeight() + a.questionHeight() +
+	n := a.statusHeight(width) + a.questionHeight() +
 		a.questionFootHeight() + a.guardHeight() +
 		a.followHeight() + a.landHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
 	// THE GREETING'S ROWS ALREADY HOLD THE BOX while it holds the box, and the

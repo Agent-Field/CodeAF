@@ -169,9 +169,13 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	// A newline is a draft row even before it holds a letter. Let the caret
 	// move within home's draft before the page claims arrows for its rows.
-	if a.at(pageHome) && homeDraftMotion(&a.home.box, key) {
-		a.touch()
-		return nil, true
+	if a.at(pageHome) {
+		commandWalk := a.home.cmd.open && (key == "up" || key == "down")
+		if !commandWalk && homeDraftMotion(&a.home.box, key) {
+			a.home.build()
+			a.touch()
+			return nil, true
+		}
 	}
 
 	switch key {

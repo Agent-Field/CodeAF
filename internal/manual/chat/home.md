@@ -756,7 +756,7 @@ Home has **two shapes**.
 on the chat you were in before this one.
 
 **The moment you type a character it becomes one list, a drop-up.** It lifts so that its
-best match lands nearest the message box. Only search results appear above the seam;
+best match lands nearest the message box. For ordinary text, only search results appear above the seam;
 there are no submission action rows. One `↑` selects the strongest match, and each `↑`
 past it walks into a weaker one. Clearing the box puts the panels back.
 
@@ -1281,12 +1281,15 @@ of the `/` drop-up reads `<command>   <fate> · <what the command does>` — so 
 it will open a conversation first and `/quit` says which conversation it closes. The whole
 table is in *What each command does on home*, one section down.
 
-**The command list opens over home's box too.** Typing `/` raises the same ranked drop-up a
-chat shows — best match nearest the box — and `↑` walks up into it, `enter` runs the row
-you land on, and `esc` puts the list away. A command that TAKES words leaves `/model ` in the
-box with the caret after it rather than running on the spot. An inline `/ask` tag also asks the sentence here, just as `/task` marks work to send off.
-Other ordinary slash-command mentions remain prose. *Typing a slash to see the command list* has the
-whole of that behaviour.
+**The command list opens over home's box too.** Typing `/` shows every command above the
+seam, alphabetically from top to bottom, with no thread, task, project or place results
+mixed in. Keep typing to filter; the best name match is selected without changing that
+order. ↑ / ↓ choose, PgUp / PgDown and the mouse wheel scroll, and Enter takes the row.
+A command that takes words leaves `/model ` in the box ready for its argument. Esc clears
+the home draft. Moving past the command word into its arguments restores ordinary search.
+An inline `/ask` tag also asks the sentence here, just as `/task` marks work to send off.
+Other ordinary slash-command mentions remain prose. *Typing a slash to see the command
+list* describes the shared token and filtering rules.
 
 **A pasted path is not a command.** A folder pasted into an empty home box offers
 `start a new conversation in <folder>` only until the next key. Enter accepts; any other

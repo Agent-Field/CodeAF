@@ -578,6 +578,8 @@ func (a *app) homePhoneList(width, room int, pal palette) []homeDrawn {
 	if len(h.lines) == 0 {
 		word := homeEmptyWord
 		switch {
+		case h.cmd.open:
+			word = commandNoMatchWord
 		case h.searching():
 			word = homeNoMatchWord
 		case !h.known:
@@ -686,6 +688,8 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 			homeNote(line.row, a.homeHeld(line.row), "", a.takeoverRowWord(line.row), a.homeMark(line.row),
 				a.homeRowGone(line.row), a.homeFresh(line.row), h.world.Read),
 			homeNoteInk(line.row, a.homeHeld(line.row) || a.homeRowGone(line.row))
+	case homeCommand:
+		return line.cmd.typed(), line.cmd.note(a.chords), nil
 	case homeItem:
 		return standGlyph(line.view.Item, line.view.Running, line.view.News, pal.ascii) +
 				" " + strings.TrimSpace(line.view.Item.Words),

@@ -1425,6 +1425,7 @@ func (h *homeView) build() {
 	// line, matched back afterwards by what it STANDS FOR rather than by its
 	// number ([homeLine.sameRow]).
 	previousLine, hadLine := h.focusedLine()
+	previousCommand, previousQuery := h.cmd.open, h.cmd.query
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed belongs to the composer again.
 	if !h.searching() {
@@ -1443,6 +1444,16 @@ func (h *homeView) build() {
 	// COMPOSING HAS NO SELECTED RESULT. Enter submits the draft until the
 	// person explicitly selects a match with the keyboard or pointer.
 	h.cursor, h.top = h.clamp(0), 0
+	if h.cmd.open {
+		// Commands share the conversation menu's initial selection. An
+		// unchanged filter keeps its chosen row on refresh.
+		h.cursor = h.clamp(h.cmd.cursor)
+		if previousCommand && previousQuery == h.cmd.query && hadLine {
+			h.pointSame(previousLine)
+		}
+		h.picked = len(h.lines) > 0
+		return
+	}
 	if h.searching() {
 		// Keep an explicitly chosen result through filtering and idle refreshes.
 		h.picked = h.picked && hadLine && h.pointSame(previousLine)
@@ -1582,6 +1593,11 @@ func (h *homeView) dropUp() bool { return h.searching() }
 // down past the last result returns to composing. Project headings remain
 // above their own rows.
 func (h *homeView) buildWorld() {
+	commandRows := h.commandLines()
+	if h.cmd.open {
+		h.lines = append(h.lines, commandRows...)
+		return
+	}
 	query := h.query()
 	var found []homeHit
 	for _, project := range h.world.Projects {
@@ -1667,7 +1683,6 @@ func (h *homeView) buildWorld() {
 	// Only matches belong above the seam. Submission is the composer's own
 	// action, so it does not compete with the results for a row or a cursor.
 	h.lines = append(h.lines, h.placeLines(query)...)
-	h.lines = append(h.lines, h.commandLines()...)
 }
 
 // homeHit is one project and the conversations of it that survived the box.
@@ -2274,7 +2289,7 @@ func (h *homeView) move(delta int) {
 			break
 		}
 		if next >= len(h.lines) {
-			if h.searching() {
+			if h.searching() && !h.cmd.open {
 				at = len(h.lines)
 			}
 			break
@@ -2404,6 +2419,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// letters and `ctrl+e`, and every one of those is read below under its own
 	// guard.
 	if editorMotion(&h.box, msg.String()) {
+		h.build()
 		return nil
 	}
 	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
@@ -2610,6 +2626,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// the line, is the row's.
 		if !h.box.empty() && h.box.cursor != h.box.lineEnd() {
 			h.box.end()
+			h.build()
 			return nil
 		}
 		// CTRL+E SETS THE ROW ASIDE, whichever kind of row it is: a
@@ -2753,6 +2770,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 		h.box.right()
+		h.build()
 		return nil
 	case "left":
 		// A CARD'S OPEN BANDS FOLD FIRST, one layer at a time on esc's own
@@ -2776,13 +2794,16 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		h.box.left()
+		h.build()
 		return nil
 
 	case "ctrl+b":
 		h.box.left()
+		h.build()
 		return nil
 	case "ctrl+f":
 		h.box.right()
+		h.build()
 		return nil
 
 	default:
@@ -2916,6 +2937,9 @@ func (h *homeView) rebuild() {
 // disagree. The phone's inbox is homephone.go's; every wider frame is
 // [homeView.buildWorld]'s, untouched.
 func (h *homeView) buildFor() {
+	if !h.searching() {
+		h.cmd.close()
+	}
 	// NOTHING IS LIFTED UNTIL A SHAPE LIFTS IT. Only the phone's inbox takes
 	// rows out of their projects, and a map left standing from the frame before
 	// this one would silence a row on a screen that never lifted it.
@@ -2990,6 +3014,9 @@ func (a *app) homeEnter() tea.Cmd {
 		h.projectPaste.path = ""
 		h.build()
 		return a.homeStartInProject(project)
+	}
+	if h.cmd.open && len(h.box.liveTags()) > 0 {
+		return a.homeSubmit()
 	}
 	if _, selected := h.focusedLine(); h.searching() && !selected {
 		return a.homeSubmit()
@@ -4264,7 +4291,7 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	// winning an argument with the only words on screen. An empty MACHINE is
 	// not this case any more: its sentence is a line of the list ([homeEmptyRow])
 	// and the columns around it keep their places.
-	if len(a.home.lines) == 0 {
+	if len(a.home.lines) == 0 || a.home.cmd.open {
 		left, right = left+right+2, 0
 	}
 	// STACKED: the exchange takes the frame and the list stands down behind it
@@ -4366,6 +4393,8 @@ func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 	if len(h.lines) == 0 {
 		word := homeEmptyWord
 		switch {
+		case h.cmd.open:
+			word = commandNoMatchWord
 		case h.searching():
 			word = homeNoMatchWord
 		case !h.known:

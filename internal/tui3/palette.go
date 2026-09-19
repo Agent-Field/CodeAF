@@ -2416,6 +2416,7 @@ func (a *app) overlayHeight() int {
 	room := height - 2 - a.inputHeight() - a.questionHeight() -
 		a.followHeight() - a.landHeight() - a.parkedHeight()
 	if commands {
+		room = height - a.topHeight() - a.chromeBaseHeight() - 1
 		want = a.menu.height(width, room, a.chords)
 	}
 	if want > room {
