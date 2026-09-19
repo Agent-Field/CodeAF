@@ -2647,6 +2647,72 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		page, found := door.PlanTaskPage(args.ID)
 		return json.Marshal(PlanTaskPageResult{Page: page, OK: found})
 
+	case MethodPlanNote:
+		args, err := arg[PlanTextArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanNote(string, string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot note its plan")
+		}
+		return nil, door.PlanNote(args.ID, args.Text)
+
+	case MethodPlanPause:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanPause(string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot pause its plan")
+		}
+		return nil, door.PlanPause(args.ID)
+
+	case MethodPlanResume:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanResume(string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot resume its plan")
+		}
+		return nil, door.PlanResume(args.ID)
+
+	case MethodPlanCancel:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanCancel(string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot cancel its plan")
+		}
+		return nil, door.PlanCancel(args.ID)
+
+	case MethodPlanAmend:
+		args, err := arg[PlanTextArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanAmend(string, string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot amend its plan")
+		}
+		return nil, door.PlanAmend(args.ID, args.Text)
+
+	case MethodPlanPriority:
+		args, err := arg[PlanPriorityArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanPriority(string, int) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot prioritize its plan")
+		}
+		return nil, door.PlanPriority(args.ID, args.Priority)
+
 	case MethodPlanSpend:
 		// THE READ SIDE OF THE RUN'S SPEND-BY-SEAT, carried across the way
 		// [MethodRewindPoints] is. It is ASSERTED rather than called on the

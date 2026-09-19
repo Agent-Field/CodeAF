@@ -93,6 +93,7 @@ type fakeAgent struct {
 
 	spendLines []session.PlanSpendLine
 	spendSince time.Time
+	planSteers []string
 }
 
 func (f *fakeAgent) TaskJournal(uint64) string { return f.taskJournal }
@@ -402,6 +403,31 @@ func (f *fakeAgent) RewindAt(int) ([]session.DisplayEntry, error) {
 		return nil, f.rewindBy
 	}
 	return f.dropped, nil
+}
+
+func (f *fakeAgent) PlanNote(id, text string) error {
+	f.planSteers = append(f.planSteers, "note:"+id+":"+text)
+	return f.failing
+}
+func (f *fakeAgent) PlanPause(id string) error {
+	f.planSteers = append(f.planSteers, "pause:"+id)
+	return f.failing
+}
+func (f *fakeAgent) PlanResume(id string) error {
+	f.planSteers = append(f.planSteers, "resume:"+id)
+	return f.failing
+}
+func (f *fakeAgent) PlanCancel(id string) error {
+	f.planSteers = append(f.planSteers, "cancel:"+id)
+	return f.failing
+}
+func (f *fakeAgent) PlanAmend(id, text string) error {
+	f.planSteers = append(f.planSteers, "amend:"+id+":"+text)
+	return f.failing
+}
+func (f *fakeAgent) PlanPriority(id string, n int) error {
+	f.planSteers = append(f.planSteers, fmt.Sprintf("priority:%s:%d", id, n))
+	return f.failing
 }
 
 func (f *fakeAgent) PlanSpend(since time.Time) []session.PlanSpendLine {
@@ -873,6 +899,39 @@ func TestServeAnswersEveryMethod(t *testing.T) {
 	}
 	if len(agent.connected) != 1 || agent.connected[0] != "google:somebody@example.com" {
 		t.Errorf("connected notes %q", agent.connected)
+	}
+}
+
+func TestServeDispatchesPlanSteeringAndPreservesRefusal(t *testing.T) {
+	agent := &fakeAgent{}
+	l := dialAgent(t, engineOn(agent))
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatal(frame.Error)
+	}
+	for i, call := range []struct {
+		method string
+		args   any
+	}{
+		{MethodPlanNote, PlanTextArgs{ID: "t-a", Text: "hello"}},
+		{MethodPlanPause, PlanTaskArgs{ID: "t-b"}},
+		{MethodPlanResume, PlanTaskArgs{ID: "t-c"}},
+		{MethodPlanAmend, PlanTextArgs{ID: "t-d", Text: "constraint"}},
+		{MethodPlanPriority, PlanPriorityArgs{ID: "t-e", Priority: 8}},
+	} {
+		if frame := l.call(uint64(i+1), call.method, call.args); frame.Error != "" {
+			t.Fatalf("%s: %s", call.method, frame.Error)
+		}
+	}
+	const refusal = `task "done-one" is already terminal`
+	agent.failing = errors.New(refusal)
+	if frame := l.call(6, MethodPlanCancel, PlanTaskArgs{ID: "t-done-one"}); frame.Error != refusal {
+		t.Fatalf("server refusal = %q, want byte-for-byte %q", frame.Error, refusal)
+	}
+	if len(agent.planSteers) != 6 || agent.planSteers[5] != "cancel:t-done-one" {
+		t.Fatalf("steering dispatch = %q", agent.planSteers)
+	}
+	if err := l.end(); err != nil {
+		t.Fatal(err)
 	}
 }
 

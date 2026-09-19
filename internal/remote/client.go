@@ -1986,6 +1986,36 @@ func (a *Agent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
 	return result.Page, result.OK
 }
 
+func (a *Agent) PlanNote(id, text string) error {
+	_, err := a.c.call(nil, MethodPlanNote, PlanTextArgs{ID: id, Text: text})
+	return err
+}
+
+func (a *Agent) PlanPause(id string) error {
+	_, err := a.c.call(nil, MethodPlanPause, PlanTaskArgs{ID: id})
+	return err
+}
+
+func (a *Agent) PlanResume(id string) error {
+	_, err := a.c.call(nil, MethodPlanResume, PlanTaskArgs{ID: id})
+	return err
+}
+
+func (a *Agent) PlanCancel(id string) error {
+	_, err := a.c.call(nil, MethodPlanCancel, PlanTaskArgs{ID: id})
+	return err
+}
+
+func (a *Agent) PlanAmend(id, text string) error {
+	_, err := a.c.call(nil, MethodPlanAmend, PlanTextArgs{ID: id, Text: text})
+	return err
+}
+
+func (a *Agent) PlanPriority(id string, priority int) error {
+	_, err := a.c.call(nil, MethodPlanPriority, PlanPriorityArgs{ID: id, Priority: priority})
+	return err
+}
+
 func (a *Agent) PlanSpend(since time.Time) []session.PlanSpendLine {
 	payload, err := a.c.call(nil, MethodPlanSpend, PlanSpendArgs{Since: since})
 	if err != nil {
