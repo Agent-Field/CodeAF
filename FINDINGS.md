@@ -165,3 +165,7 @@ All five required pre-PR commands passed on tree `0cf18d6c0a41de7579df409ead4dad
 ## Review defect checkpoint
 
 The final artifact review found that the terminal-root deferral regresses `TestStartWaitsForAWorkerTheCompletedTreeLeftBehind`: a root whose tree is already complete can retain an unrelated in-flight worker and never finish. Before changing product code, the next step is to distinguish the self-finished root worker whose return must be absorbed from a worker that the completed tree has left behind, then narrow the deferral to the former ordering. The forced missing-check regression and the existing left-behind-worker regression must both pass. The `run.Start` result fallback from #1210 remains fenced.
+
+## Review defect resolution
+
+The distinction is the task identity in `Supervisor.cancels`, not the total in-flight count. In the forced self-finished ordering, the root task itself remains in that map until its return is absorbed, and that return must be allowed to seat review. In `TestStartWaitsForAWorkerTheCompletedTreeLeftBehind`, the root return has already been absorbed and removed while the completed leaf worker remains, so the terminal result must proceed to `drain`. The terminal guard now defers only while the root task is in flight. Both deterministic regressions pass ten consecutive focused runs. No `run.Start` code changed.

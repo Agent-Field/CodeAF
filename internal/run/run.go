@@ -248,7 +248,10 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	if terminalStatus(root.Status) {
 		// A ROOT WORKER CAN WRITE DONE BEFORE ITS GOROUTINE RETURNS. Its return
 		// is what seats the review, so do not accept the stored ending first.
-		if root.Status != plandb.StatusDone || s.inFlight == 0 {
+		// Other in-flight workers may be remnants of an already completed tree;
+		// they must be drained rather than mistaken for the root return.
+		_, rootInFlight := s.cancels[rootID]
+		if root.Status != plandb.StatusDone || !rootInFlight {
 			return s.outcomeForRoot(root.Status)
 		}
 	}
