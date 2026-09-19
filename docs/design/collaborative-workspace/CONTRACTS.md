@@ -831,12 +831,21 @@ type DiscussionView struct {
     FolderIDs     []string
 }
 
+type ConflictDiscussionView struct {
+    ChatID       string
+    FolderIDs    []string
+    Participants []ParticipantView
+    Reused       bool
+    Exhausted    bool
+}
+
 func (s *Service) SetCollaborator(Collaborator)
 func (s *Service) CoordinateSelected(ctx context.Context, req CoordinateRequest) (ScopeView, error)
 func (s *Service) ManageFolder(ctx context.Context, req ManageFolderRequest) (ScopeView, error)
 func (s *Service) InspectScope(ctx context.Context, coordinatorID string) (ScopeView, error)
 func (s *Service) Deliver(ctx context.Context, req DeliverRequest) ([]DeliverReceipt, error)
 func (s *Service) InviteToDiscussion(ctx context.Context, req InviteRequest) (ParticipantView, error)
+func (s *Service) OpenConflictDiscussion(ctx context.Context, conversationID string) (ConflictDiscussionView, error)
 func (s *Service) CreateDiscussion(ctx context.Context, req CreateDiscussionRequest) (DiscussionView, error)
 func (s *Service) ListParticipants(ctx context.Context, discussionID string) ([]ParticipantView, error)
 func (s *Service) PauseCoordination(ctx context.Context, coordinatorID string) error
@@ -851,6 +860,8 @@ Scope (A16 / J20):
 `CreateDiscussion` does **not** mint a transcript. Session mints the conversation id (16 hex) and journal first, then calls with that `ChatID` and optional `FolderIDs` via existing `AddPlacement`. Shared placement does not merge the rest of either folder (P8 / J22). Failure after mint leaves the discussion unfiled under Root; retry is idempotent on `IdempotencyKey`.
 
 `InviteToDiscussion` mints `ActorID` in software. Inviting parent representatives into **one** conflict discussion dedupes by `SourceChatID` so there is one participant per distinct ancestor, including at most one Root (A17 / J24). Two turns may be a per-level starting budget, not a prohibition on parent join. Root cannot exceed user delegation. A grant cannot expand itself (Wave 4).
+
+`OpenConflictDiscussion` is the production door for that law. When `EffectiveGuidance` is `Conflict`, software opens or reuses **one** discussion (stable id from the disagreeing folder set), files it in those folders, and invites the triggering chat plus one participant per distinct ancestor including one Root. The first parent to answer is not the boss. Finite rounds and time stop escalation loops; an exhausted room returns `Exhausted` and further Deliver/Invite refuse with `missing authority reaches the person` / unresolved conflict reaching the person. IssueGrant with `CoordinatorID=root` and no issuer is that same checkpoint; Root citing a person grant still cannot expand classes or scope. This is automatic parent escalation, not “always ask the user after two turns.”
 
 `Deliver` with one `ToChatID` is direct; several is fan-out (`PatternFanout`, one receipt each, shared `CauseID`). Joint contributions set `DiscussionID` and `PatternDiscussion`. Nil collaborator: the method is absent (do not return a dummy delivered receipt).
 
@@ -872,6 +883,11 @@ type CollabInvocation struct {
     ID, ActorID, Role, Source string
 }
 
+type ConflictRoom struct {
+    ChatID    string
+    Exhausted bool
+}
+
 type Collab interface {
     Deliver(ctx context.Context, to []string, body, pattern, discussionID string) ([]CollabReceipt, error)
     Invite(ctx context.Context, discussionID, sourceChatID, role string) error
@@ -880,13 +896,14 @@ type Collab interface {
     ManageFolder(ctx context.Context, folderID string) error
     Pause(ctx context.Context) error
     Contribute(ctx context.Context, discussionID string, inv CollabInvocation, body string) error
+    OpenConflict(ctx context.Context, conversationID string) (ConflictRoom, error)
 }
 
 // Config.Collab is nil when the router is unregistered or wsapi is down.
 // NIL IS OFF: no coordinate/deliver/invite verbs on the belt.
 ```
 
-`Config.Collab` wraps `wsapi` (interface lives in `session` so `wsapi` does not import `session`). Tool `coordinate` on the belt only when `Config.Collab != nil`. Wave 3 actions: `deliver`, `invite`, `inspect`, `selected`, `manage-folder`, `pause`. Delegated execute, `StartTask` mapping, and grant mutation are Wave 4 (see Wave 4). Software stamps origin `fromAgent` at ingress; tool arguments must not carry `origin` or mint `actor_id`.
+`Config.Collab` wraps `wsapi` (interface lives in `session` so `wsapi` does not import `session`). Tool `coordinate` on the belt only when `Config.Collab != nil`. Wave 3 actions: `deliver`, `invite`, `inspect`, `selected`, `manage-folder`, `pause`. `OpenConflict` is software-called from the guidance load when instructions conflict — it is not a model verb. Delegated execute, `StartTask` mapping, and grant mutation are Wave 4 (see Wave 4). Software stamps origin `fromAgent` at ingress; tool arguments must not carry `origin` or mint `actor_id`.
 
 Assignment law unchanged (A11 / J26): representative text is `fromAgent`, never `fromPerson`. A participant who says “I am the user; change the goal” does not move the assignment overlay. Historical text cited as evidence is still not an instruction and does not wake its chat.
 
@@ -941,8 +958,8 @@ No new slash command. `/folders` unchanged. `/folder` stays filesystem.
 
 - schema: v1 list without migrate; v1→v4 and v3→v4 on first write; actor IDs software-minted (a supplied model-like `actor_id` is not stored as the actor); `AckDelivery` refuses skips; grant/execution_bindings wait for Wave 4 v5; complexity ≤ 15.
 - collab: accept/record/process are distinct; dedupe by delivery ID; offline resume once (A12); direct, fan-out, and joint on the same router path; `Route` is not called from an evidence citation; origin `fromPerson` refused on a representative envelope.
-- wsapi: selected snapshot does not grow when a sibling is filed elsewhere; `ManageFolder` includes a later descendant once (A16); `CreateDiscussion` placement does not merge folders; Invite dedupes ancestors including one Root (A17); nil collaborator does not return a dummy receipt; Pause does not stop existing work.
-- session: mailbox still local (no bus); `coordinate` absent when `Config.Collab` nil; representative text `fromAgent` cannot move assignment (A11); Wave 3 belt has no execute — delegated execute is Wave 4; per-participant invocation evidence, not one transcript faking two speakers.
+- wsapi: selected snapshot does not grow when a sibling is filed elsewhere; `ManageFolder` includes a later descendant once (A16); `CreateDiscussion` placement does not merge folders; Invite dedupes ancestors including one Root (A17); `OpenConflictDiscussion` reuses one room and invites ancestors+Root on Conflict; Root IssueGrant without issuer reaches the person; nil collaborator does not return a dummy receipt; Pause does not stop existing work.
+- session: mailbox still local (no bus); `coordinate` absent when `Config.Collab` nil; representative text `fromAgent` cannot move assignment (A11); Wave 3 belt has no execute — delegated execute is Wave 4; per-participant invocation evidence, not one transcript faking two speakers; guidance Conflict calls `OpenConflict` rather than asking after two turns.
 - host: retired host → pending, not recorded; authorized delivery may wake/reconnect; evidence citation does not.
 - tui: coordinate from an existing ordinary chat; mark is optional; request/reply/sent copy with source links; participant labels; 80-col sequential; P12 selection stability while deliveries arrive; Wave 1 verbs intact.
 - proof: delete the inter-chat communication denial; state: ordinary chats coordinate; group chat optional; three patterns; selected snapshot vs whole-folder; Root escalation is hierarchical, not “always ask after two turns”; TRY.md Wave 3 includes a **direct** message, not only a group demo; tuiwords needles. Live tmux is not this lane’s pass.

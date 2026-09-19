@@ -108,6 +108,9 @@ func (s *Service) IssueGrant(ctx context.Context, req GrantRequest) (GrantView, 
 	if err != nil {
 		return GrantView{}, err
 	}
+	if err := s.refuseRootGrant(ctx, req); err != nil {
+		return GrantView{}, err
+	}
 	if err := s.refuseSelfExpand(ctx, g, row); err != nil {
 		return GrantView{}, err
 	}
