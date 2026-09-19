@@ -61,3 +61,18 @@ No Go source or test was changed. In particular, `run.Start` at `internal/run/ru
 The deterministic seam needs no product hook. The new run test will make the root worker call `store.Done`, then block on its worker context before returning its report. This guarantees the store exposes a terminal root while the worker return is unavailable. The supervisor timer then starts another `pass`, `pass` returns the terminal outcome, and `drain` cancels the blocked worker. The assertion will require the root check that the current product path skips, so the focused test must fail on this base tree with zero checks.
 
 This delayed worker step directly forces source ordering 2 without load, busy loops, or parallel process spawning. It also avoids `run.Start` and therefore cannot modify or exercise the fenced pull request 1210 stored-result fallback. The command-level tests remain evidence of real reachability, while this smaller `internal/run` test isolates the product seam. Before editing the test, I will commit this checkpoint.
+
+## Deterministic failing regression evidence
+
+The delayed-step test `TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding` now forces the suspected ordering. Its root worker writes `store.Done` and waits for context cancellation before returning. The next supervisor pass therefore sees the terminal root before any worker return can be selected; the terminal road enters `drain`, cancellation releases the worker, and its return is dropped.
+
+Focused command on the unchanged product code:
+
+```text
+go test ./internal/run -run '^TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding$' -count=1
+--- FAIL: TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding (0.34s)
+    review_test.go:469: check tasks = 0, want exactly one for the root observed done before its worker returns
+FAIL
+```
+
+This establishes a product path, not a test-side early read: `Supervisor.Run` has already returned `OutcomeDone` before the test inspects the store. It rules out scheduler load as necessary, rules out `AddRootCheck` refusing all finished roots, and rules out the command adapter reading before the supervisor returns. The sibling check-model failure remains consistent with this seam but is not independently proven to have the same cause. The smallest prospective product fix remains at the terminal-root decision in `pass`; `run.Start` and the fenced pull request 1210 path are untouched.
