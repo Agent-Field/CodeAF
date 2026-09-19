@@ -1362,6 +1362,13 @@ type Config struct {
 	// caller that hands none gets the belt it had before this field existed.
 	Folders Folders
 
+	// Collab is the wsapi wrapper the `coordinate` tool talks to
+	// (tools_coordinate.go). NIL IS OFF — no deliver/invite/inspect verbs —
+	// because a model told it can message other chats will plan around one,
+	// and every call would then refuse. The inbound router is a different
+	// door ([RegisterCollabRouter]); this field must not mint through both.
+	Collab Collab
+
 	// standingItems overrides where [Standing.Store] would be read, and it is
 	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
 	// else: the store is a concrete *standing.Store on the seam a door fills,
@@ -2664,6 +2671,10 @@ type Agent struct {
 	guidanceText     string
 	guidanceSnap     GuidanceSnapshot
 	guidanceConflict bool
+	// collabInvocations is which actor each bounded contribution already
+	// spoke as (collab.go). One id speaking as two participants is the
+	// coordinator fabricating both sides of a discussion (J19).
+	collabInvocations map[string]string
 	// placesText is the `# Attached folders` block message[0] currently carries
 	// (placescontext.go): the folders the PERSON attached to this conversation,
 	// named absolutely, with each one's own house rules scoped to it. It sits
