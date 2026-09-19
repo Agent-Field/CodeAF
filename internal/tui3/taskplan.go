@@ -670,7 +670,7 @@ func planRailLive(line tasksLine, width int, pal palette) string {
 	if room < 1 {
 		return ""
 	}
-	if live := planLiveRow(line.item.plan.Live.Command, line.item.plan.Folder, room, pal); live != "" {
+	if live := planLiveRow(line.item.plan.Live.Command, line.item.plan.LiveParts, room, pal); live != "" {
 		return lead + live
 	}
 	return ""
@@ -1491,10 +1491,6 @@ func (a *app) taskPlanBody(width int) []string {
 			}
 		}
 	}
-	if folder := strings.TrimSpace(page.Folder); folder != "" {
-		section("folder")
-		addWrapped(folder, pal.ink)
-	}
 	if len(page.Notes) > 0 {
 		section("notes")
 		for _, note := range page.Notes {
@@ -1523,12 +1519,14 @@ func (a *app) taskPlanBody(width int) []string {
 	}
 	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
+		visible := 0
 		for _, step := range page.Steps {
-			command := planDisplayCommand(step.Command, page.Folder)
+			command := planDisplayCommand(step.Command, step.Parts)
 			if command == "" {
 				continue
 			}
-			add(pal.ink(itoa(step.Step) + "  " + command))
+			visible++
+			add(pal.ink(itoa(visible) + "  " + command))
 			if head := planObservationHead(step.Observation); head != "" {
 				add(pal.dim("   " + head))
 			}
@@ -1542,7 +1540,7 @@ func (a *app) taskPlanBody(width int) []string {
 		// and the next re-read draws it as an ordinary step (internal/plandb's
 		// live.go states the law, and a live step's zero value draws nothing).
 		if live := page.Live; !live.Empty() {
-			if command := planDisplayCommand(live.Command, page.Folder); command != "" {
+			if command := planDisplayCommand(live.Command, page.Row.LiveParts); command != "" {
 				add(pal.ink(pal.glyph(tokens.GStepRunning) + "  $ " + command))
 			}
 			if !live.Since.IsZero() {
@@ -1580,7 +1578,7 @@ func (a *app) taskPlanBody(width int) []string {
 				word += railSep + itoa(n) + " queued behind it"
 			}
 			add(pal.ink(lead + word))
-			if line := planLiveRow(kid.Live.Command, kid.Folder, width-ansi.StringWidth(lead)-2, pal); line != "" {
+			if line := planLiveRow(kid.Live.Command, kid.LiveParts, width-ansi.StringWidth(lead)-2, pal); line != "" {
 				add(lead + "  " + line)
 			}
 		}
@@ -1803,11 +1801,27 @@ func planRailNow(line tasksLine, width int, pal palette, sentence string) []stri
 }
 
 // planDisplayCommand is the one display rule for a task step on the page, rail,
-// and tree. The record remains untouched: only a leading change into the exact
-// run copy named in the page head is omitted. Every other command is returned
-// exactly as recorded apart from surrounding space already discarded by rows.
-func planDisplayCommand(command, folder string) string {
-	return planFirstLine(planWithoutOwnFolder(strings.TrimSpace(command), strings.TrimSpace(folder)))
+// and tree. The record remains untouched. The session marks each quote-aware
+// part that belongs only to the run record or changes into the run copy; this
+// surface omits those parts and preserves every other part and separator.
+func planDisplayCommand(command string, parts []session.PlanCommandPart) string {
+	if len(parts) == 0 {
+		return planFirstLine(strings.TrimSpace(command))
+	}
+	kept := make([]int, 0, len(parts))
+	for i, part := range parts {
+		if !part.RecordAddressed && !part.RunCopyPrefix && strings.TrimSpace(part.Command) != "" {
+			kept = append(kept, i)
+		}
+	}
+	var display strings.Builder
+	for at, i := range kept {
+		display.WriteString(parts[i].Command)
+		if at+1 < len(kept) {
+			display.WriteString(parts[i].Separator)
+		}
+	}
+	return planFirstLine(strings.TrimSpace(display.String()))
 }
 
 // planFirstLine is a command as ONE ROW. A command that writes a document is
