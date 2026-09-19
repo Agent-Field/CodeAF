@@ -1505,6 +1505,11 @@ type app struct {
 	pendingMoveFrom  string
 	pendingMoveRef   string
 	pendingNestChild string
+	// collab is the Wave 3 coordination seam. Nil is no mark/coordinate chrome.
+	// collabView is the memo [app.readCollab] writes on the beat; View reads
+	// only that, the way [homeView.folders] is a memo and never a store read.
+	collab     Collab
+	collabView collabReading
 	// world is the walk of the machine THE SESSION RUNS ON, and farPlaces is the
 	// state root it was walked under. Nil and empty are this process's own disk,
 	// which is every local launch; over --host the door fills both and the places
@@ -2742,6 +2747,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		ledger:              opts.Ledger,
 		archive:             opts.Archive,
 		folders:             opts.Folders,
+		collab:              opts.Collab,
 		world:               opts.World,
 		farPlaces:           opts.WorldRoot,
 		farRecord:           opts.TaskRecord,
