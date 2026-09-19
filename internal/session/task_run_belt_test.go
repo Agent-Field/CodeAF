@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1245,4 +1246,55 @@ func TestStartTaskBashBeltRunSpendRefusesNextTurnWithShippedLimitSentence(t *tes
 	}
 	close(double.release)
 	lastTaskUpdate(t, updates)
+}
+
+func TestRunCostLeft(t *testing.T) {
+	tests := []struct {
+		name         string
+		limit, spent float64
+		want         float64
+	}{
+		{"no limit", 0, 0, 0},
+		{"no limit, something spent", 0, 3, 0},
+		{"nothing spent", 7, 0, 7},
+		{"part spent", 7, 2.5, 4.5},
+		{"all spent", 7, 7, math.SmallestNonzeroFloat64},
+		{"overspent", 7, 12, math.SmallestNonzeroFloat64},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := runCostLeft(test.limit, test.spent); got != test.want {
+				t.Fatalf("runCostLeft(%v, %v) = %v, want %v", test.limit, test.spent, got, test.want)
+			}
+		})
+	}
+}
+
+func TestStartTaskBashBeltPassesTheDollarLimitLeftToTheRun(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: dir}
+		config.AskConsent = false
+		config.SpendRailUSD = 9
+		config.Interactive = true
+		config.Budget = Budget{USD: 7}
+	})
+	agent.usage.CostUSD = 2.5
+
+	if _, _, _, err := agent.StartTask(context.Background(), "finish within the dollars left", false); err != nil {
+		t.Fatalf("StartTask: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	got := double.spec.CostUSD
+	double.mu.Unlock()
+	if got != 4.5 {
+		t.Fatalf("run cost limit = %v, want the $4.50 left of the smaller $7 launch limit", got)
+	}
+	endBeltRun(t, agent, double)
 }
