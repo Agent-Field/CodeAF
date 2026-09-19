@@ -269,9 +269,20 @@ func (s *Store) Create(ctx context.Context, name string) (Collection, error) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO collections(id,name,purpose,lifecycle,revision,created_at,updated_at)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT INTO collections(id,name,purpose,lifecycle,revision,created_at,updated_at)
  VALUES (?,?,?,?,?,?,?)`, c.ID, c.Name, c.Purpose, c.Lifecycle, c.Revision, c.CreatedAt, c.UpdatedAt)
 	if err != nil {
+		return Collection{}, storeError(err)
+	}
+	if err := bumpTouched(ctx, tx, now); err != nil {
+		return Collection{}, storeError(err)
+	}
+	if err := tx.Commit(); err != nil {
 		return Collection{}, storeError(err)
 	}
 	return c, nil
@@ -285,7 +296,12 @@ func (s *Store) Rename(ctx context.Context, id, name string) error {
 		return err
 	}
 	now := s.now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(ctx, "UPDATE collections SET name=?,updated_at=? WHERE id=?", name, now, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return storeError(err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, "UPDATE collections SET name=?,revision=revision+1,updated_at=? WHERE id=?", name, now, id)
 	if err != nil {
 		return storeError(err)
 	}
@@ -296,7 +312,10 @@ func (s *Store) Rename(ctx context.Context, id, name string) error {
 	if n == 0 {
 		return storeError(ErrNotFound)
 	}
-	return nil
+	if err := bumpTouched(ctx, tx, now); err != nil {
+		return storeError(err)
+	}
+	return storeError(tx.Commit())
 }
 
 func (s *Store) Collections(ctx context.Context) ([]Collection, error) {
@@ -367,6 +386,24 @@ func (s *Store) SchemaVersion() int {
 	s.schemaMu.Lock()
 	defer s.schemaMu.Unlock()
 	return s.version
+}
+
+// RootState reports the virtual root's revision without writing. Listing and
+// this snapshot must not migrate a v1 file; the v2 row is created only when a
+// write runs ensureSchema.
+func (s *Store) RootState(ctx context.Context) (revision int, purpose, updatedAt string, err error) {
+	ready, err := s.readyForRead(ctx)
+	if err != nil {
+		return 0, "", "", err
+	}
+	if !ready || s.version < 2 {
+		return 0, "", "", storeError(ErrNotFound)
+	}
+	err = s.db.QueryRowContext(ctx, "SELECT revision, purpose, updated_at FROM root_state WHERE id=1").Scan(&revision, &purpose, &updatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", "", storeError(ErrNotFound)
+	}
+	return revision, purpose, updatedAt, storeError(err)
 }
 
 func requireCollection(ctx context.Context, tx *sql.Tx, id string) error {

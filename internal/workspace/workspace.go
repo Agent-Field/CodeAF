@@ -30,6 +30,10 @@ var (
 	// not corruption and not a refusal: another command is still writing, so
 	// this command left the collections database unchanged and can be retried.
 	ErrBusy = errors.New("the collections database is busy being written by something else")
+	// ErrConflict is a stale-write refusal. It wraps ErrInvalid so callers that
+	// already handle an invalid request still see one, and the sentence names
+	// the revision so a person can tell a conflict from a malformed id.
+	ErrConflict = fmt.Errorf("%w: collection revision does not match", ErrInvalid)
 )
 
 // Ref preserves the address used by the existing record owner. TASK NUMBERS
