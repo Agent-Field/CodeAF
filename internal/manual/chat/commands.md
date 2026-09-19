@@ -1896,7 +1896,7 @@ one order:
 1. the row you set here (an environment variable of the same name still wins over it —
    `CODEAF_IMAGE_MODEL`, `CODEAF_SPEECH_MODEL`, `CODEAF_MUSIC_MODEL`, `CODEAF_VIDEO_MODEL`,
    `CODEAF_VOICE_MODEL`, `CODEAF_VISION_MODEL`);
-2. a role pinned in "pinned roles" — `imagegen`, `speech`, `video`, `vision`;
+2. a role pinned in "pinned roles" — `imagegen`, `speech`, `video`, `vision`, `embed`;
 3. the best model the catalog advertises that publishes the capability;
 4. a name this build remembers.
 

@@ -512,6 +512,13 @@ func makesModality(model Model, want string, marks map[string]bool) bool {
 // drawsImages is the "drawing" slot's question.
 func drawsImages(model Model) bool { return makesModality(model, "image", imageMarks) }
 
+// embedsVectors is the embed pin's question: a model that answers in a vector.
+var embeddingMarks = map[string]bool{"embed": true, "embedding": true, "embeddings": true}
+
+func embedsVectors(model Model) bool {
+	return makesModality(model, "embeddings", embeddingMarks) || makesModality(model, "embedding", embeddingMarks)
+}
+
 // speaksAloud is the "speaking" slot's question.
 func speaksAloud(model Model) bool { return makesModality(model, "speech", speechMarks) }
 
@@ -634,7 +641,7 @@ var generationMarks = map[string]bool{
 var sidecarMarks = map[string]bool{
 	"audio": true, "voice": true, "whisper": true, "lyria": true,
 	"music": true, "video": true,
-	"embedding": true, "embeddings": true,
+	"embed": true, "embedding": true, "embeddings": true,
 	"moderation": true, "rerank": true, "reranker": true,
 }
 

@@ -873,7 +873,13 @@ what you choose is **pinned** to that role alone. The row then reads
 **del** on a pinned row to clear it; the role goes back to following its class.
 
 The picker a role opens asks that role's own question. `vision` offers only models that
-can see; every other role offers the models you can hold a conversation with.
+can see; `embed` offers only models that turn words into vectors; every other role
+offers the models you can hold a conversation with.
+
+Some pins never sit on a class, because a text model is the wrong answer:
+`imagegen`, `speech`, `video`, and `embed`. Those are written only in **pinned
+roles** — `embed:openai/text-embedding-3-small` — and they do not follow `small
+work` or `careful work` above.
 
 Every pin lives in the one **pinned roles** row, written as
 `planner:openai/gpt-5, worker:openai/gpt-5-mini`. Pinning from the list and typing into

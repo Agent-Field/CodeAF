@@ -48,6 +48,7 @@ var bestMediaPreferences = map[string][]string{
 	"transcribe": {DefaultVoiceModel},
 	"listen":     {preferredPerceptionModel},
 	"watch":      {preferredPerceptionModel},
+	"embeddings": {preferredEmbedModel, fallbackEmbedModel, "openai/text-embedding-3-large"},
 }
 
 // curatedMediaModels is the LAST RUNG of the use-time resolver: the name this
@@ -71,6 +72,7 @@ var curatedMediaModels = map[string]string{
 	"transcribe": DefaultVoiceModel,
 	"listen":     preferredPerceptionModel,
 	"watch":      preferredPerceptionModel,
+	"embeddings": preferredEmbedModel,
 }
 
 // CandidateMediaModel is the CATALOG rung of the use-time resolver: the best
@@ -139,6 +141,11 @@ func provisionalModelID(id string) bool {
 func FallbackMediaModel(modality string) string {
 	return curatedMediaModels[strings.ToLower(strings.TrimSpace(modality))]
 }
+
+// PreferredEmbedModel is the slug Spark's provider served when Wave 2
+// inspected availability without printing keys. It is the RoleEmbed default,
+// not a sentence a settings row repeats.
+func PreferredEmbedModel() string { return preferredEmbedModel }
 
 type scoredModel struct {
 	id    string
