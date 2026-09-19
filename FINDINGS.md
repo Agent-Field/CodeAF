@@ -17,3 +17,5 @@ The manual already had the requested finished-task rail guidance. The remaining 
 The broad focused run found an order-dependent fallback defect: using `planOn` to infer whether the gesture's page read succeeded can observe unrelated page state. The gesture needs an explicit boolean answer from a page-opening helper.
 
 The required focused suite passes with `CODEAF_TASK_BELT` unset. Final verification now covers formatting, build, vet, focused tui3 behavior, the four named law packages, and all laws.
+
+Final verification passed formatting, build, tui3 vet, focused tui3 tests, and the four named law packages. `make test-laws` reached all 27 packages; only five pre-existing `cmd/codeaf` keptnothing tests failed before running a task (default-model setup returned exit 2), while `internal/tui3` and every other package passed. A clean retry will distinguish transient host setup from this internal/tui3-only change.
