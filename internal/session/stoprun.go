@@ -90,6 +90,21 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 		if cut != nil {
 			cut()
 		}
+		// AND THE ROW SAYS IT IS STOPPING UNTIL THE RUN HAS ENDED. The engine
+		// answers once every worker is home, and a worker inside a step can take
+		// seconds to die: on the real binary a row read `running` for seven seconds
+		// after the person had stopped it. A stop still going through is still
+		// running and is marked as a person's, which is the reading every stopped
+		// task's row already has ([TaskNotice.Stopped]).
+		if g := a.graph(); g != nil {
+			notice := TaskNotice{ID: id, Title: run.title, State: TaskRunning, Stopped: true}
+			for _, kept := range g.runRows(id) {
+				if kept.ID == id {
+					notice.StartedAt, notice.Parent = kept.StartedAt, kept.Parent
+				}
+			}
+			a.publishRunRow(g, notice)
+		}
 		return "stopping " + stopBecause(name, why) + " — its branch is kept", true, nil
 	}
 	joined := false
