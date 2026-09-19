@@ -34,6 +34,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -153,6 +154,7 @@ type beltRun struct {
 	title     string
 	workspace string
 	ground    string
+	summary   *RunSummary
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -334,14 +336,15 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 // cleared once the work is home, so the next `/task` seeds a fresh plan.
 func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun, spec RunSpec) {
 	summary := engine.Start(ctx, spec)
-	landing, err := engine.Land(ctx, run.store, spec.Workspace, run.root)
-	if err != nil {
-		if g := a.graph(); g != nil {
-			g.planNote("the run's landing failed: " + err.Error())
-		}
-		landing = RunLanding{}
+	// FINISHING THE WORK LEAVES IT IN THE RUN'S COPY. The person's later
+	// landing request is the only door that moves it into their checkout.
+	a.beltMu.Lock()
+	if a.beltRun == run {
+		run.summary = &summary
 	}
-	// A LANDING GETS ONE LAST READING before its digest is composed. The call
+	a.beltMu.Unlock()
+	landing := RunLanding{}
+	// A FINISHED RUN GETS ONE LAST READING before its waiting digest is composed. The call
 	// owns the short beltRunSummaryDeadline: refusal, malformed output, or a
 	// slow provider leaves the stored reading alone and cannot hold the run
 	// beyond that bound. RefreshRunSummary itself declines without a store.
@@ -355,13 +358,6 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	}
 	a.deliverBeltRunLanding(run, summary, landing)
 	a.settleBeltRun(run, summary, landing)
-
-	a.beltMu.Lock()
-	if a.beltRun == run {
-		a.beltRun = nil
-	}
-	a.beltMu.Unlock()
-	_ = run.store.Close()
 }
 
 // deliverBeltRunLanding writes the run's digest into the conversation record.
@@ -521,4 +517,55 @@ func (a *Agent) beltRunStandsOn(stand taskStand) bool {
 	a.beltMu.Lock()
 	defer a.beltMu.Unlock()
 	return a.beltRun != nil && a.beltRun.ground == canonicalPath(stand.dir)
+}
+
+// landFinishedBeltRun moves a finished run only when the person explicitly
+// asks to land the ground it stands on. It answers false when the ordinary
+// standing-tree road owns that folder.
+func (a *Agent) landFinishedBeltRun(ctx context.Context, folder string) (FolderLanding, bool, error) {
+	a.beltMu.Lock()
+	run := a.beltRun
+	if run == nil || run.summary == nil || canonicalPath(folder) != run.ground {
+		a.beltMu.Unlock()
+		return FolderLanding{}, false, nil
+	}
+	engine := chatRunEngine
+	summary := *run.summary
+	a.beltMu.Unlock()
+	if engine == nil {
+		return FolderLanding{}, true, errors.New("the run landing door is unavailable")
+	}
+	answer, err := engine.Land(ctx, run.store, run.workspace, run.root)
+	if err != nil {
+		return FolderLanding{}, true, err
+	}
+	line := answer.Refused
+	if line == "" {
+		line = fmt.Sprintf("Moved %d %s from %s into %s.", len(answer.Changed), pluralFiles(len(answer.Changed)), run.workspace, run.ground)
+	} else {
+		line = fmt.Sprintf("Nothing moved from %s into %s: %s.", run.workspace, run.ground, strings.TrimSuffix(line, "."))
+	}
+	a.deliverBeltRunLanding(run, summary, answer)
+	a.settleBeltRun(run, summary, answer)
+	a.beltMu.Lock()
+	if a.beltRun == run {
+		a.beltRun = nil
+	}
+	a.beltMu.Unlock()
+	_ = run.store.Close()
+	return FolderLanding{Folder: run.ground, Name: filepath.Base(run.ground), Files: append([]string{}, answer.Changed...), Merged: mergeMerged, Note: line}, true, nil
+}
+
+func pluralFiles(count int) string {
+	if count == 1 {
+		return "file"
+	}
+	return "files"
+}
+
+func (a *Agent) finishedBeltRunFor(folder string) (*beltRun, bool) {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	run := a.beltRun
+	return run, run != nil && run.summary != nil && canonicalPath(folder) == run.ground
 }
