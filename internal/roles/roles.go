@@ -87,6 +87,13 @@ const (
 	// slice of this package a media resolver wants.
 	RoleSpeech Role = "speech"
 	RoleVideo  Role = "video"
+	// RoleEmbed turns passages into vectors for discovery. It is a PIN like
+	// [RoleImageGen] and [RoleSpeech]: an embeddings endpoint is not a text
+	// tier, and resolving "embed" through tiers.low would hand a chat model to
+	// POST /embeddings. The model id is configurable through [PinKey]
+	// (RoleEmbed). Availability is inspected without printing keys. THEY ARE
+	// DELIBERATELY NOT REGISTERED.
+	RoleEmbed Role = "embed"
 	// RoleAuditor is the VERIFIED FRONTIER: the read-only judge that decides
 	// whether a piece of finished-looking work is actually finished, against
 	// hard evidence it gathered itself. It sits HIGH and it is the one role
@@ -439,6 +446,7 @@ var roleDescriptions = map[Role]string{
 	RoleTaskName:      "the two or three words a task is called",
 	RoleJobName:       "the three or four words a background job is called",
 	RoleCaption:       "the discrete step title over a live tool batch",
+	RoleEmbed:         "turns passages into vectors for discovery",
 }
 
 var (
@@ -551,7 +559,7 @@ func Known(name string) bool {
 
 var vocabulary = []Role{
 	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
-	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
+	RoleDesigner, RoleDivision, RoleEmbed, RoleGuardian, RoleHandoff,
 	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
 	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
 	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,

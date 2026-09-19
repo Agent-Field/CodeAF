@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // The three defects this slice closed, each pinned by what a person reported:
@@ -103,7 +104,20 @@ func TestTheMediaPredicates(t *testing.T) {
 	}
 }
 
-// ── 2. the slot's picker is resolved through that question ──────────────────
+func TestTheEmbedPinAsksForAVectorModel(t *testing.T) {
+	if !embedsVectors(Model{ID: "openai/text-embedding-3-small"}) {
+		t.Fatal("a silent embedding slug must match the embed pin")
+	}
+	if !embedsVectors(Model{ID: "vendor/vectors", Output: []string{"embeddings"}}) {
+		t.Fatal("a row that publishes embeddings must match")
+	}
+	if embedsVectors(Model{ID: "moonshotai/kimi-k3"}) {
+		t.Fatal("a chat model must not match the embed pin")
+	}
+	if roleFilter(roles.RoleEmbed) == nil || !roleFilter(roles.RoleEmbed)(Model{ID: "qwen/qwen3-embedding-8b"}) {
+		t.Fatal("RoleEmbed's picker must offer embedding slugs")
+	}
+}
 
 // THE LIST IS NARROWED INSIDE THE LADDER, not after it. A slot that filtered
 // [app.modelList]'s answer would be filtering a list its own rows had already

@@ -2,8 +2,10 @@
 //
 // Storage stays in internal/workspace. This package projects membership into
 // folder snapshots, unique conversation counts, and why-here, and it never
-// imports session, tui3, provider, or run. Open binds *workspace.Store
+// imports session, tui3, provider, run, or wsdiscover. Open binds *workspace.Store
 // directly so provenance, atomic Move, WhyHere, and Events are the real store's.
+// Wave 2 adds InstructFolder, EffectiveGuidance, SearchEvidence, a typed
+// ActionPlan, and SuppressPlacement. Discovery is an injected interface.
 package wsapi
 
 import (
@@ -50,10 +52,11 @@ type RootView struct {
 	Revision int // root_state.revision; zero on a blank store before the first write
 }
 
-// Service holds a store, an optional inventory, and a clock.
+// Service holds a store, an optional inventory, an optional discoverer, and a clock.
 type Service struct {
 	store store
 	inv   Inventory
+	disc  Discoverer
 	now   func() time.Time
 }
 
@@ -68,12 +71,24 @@ func Open(path string) (*Service, error) {
 	return &Service{store: inner, now: time.Now}, nil
 }
 
-// Close releases the underlying store.
+// Close releases the membership store and, if the injected discoverer
+// holds a file, that file too. A missing discoverer is not an error.
 func (s *Service) Close() error {
-	if s == nil || s.store == nil {
+	if s == nil {
 		return nil
 	}
-	return s.store.Close()
+	var first error
+	if c, ok := s.disc.(interface{ Close() error }); ok {
+		first = c.Close()
+		s.disc = nil
+	}
+	if s.store != nil {
+		if err := s.store.Close(); err != nil && first == nil {
+			first = err
+		}
+		s.store = nil
+	}
+	return first
 }
 
 // SetInventory replaces the conversation world used for titles and unfiled rows.
@@ -82,6 +97,21 @@ func (s *Service) SetInventory(inv Inventory) {
 		return
 	}
 	s.inv = inv
+}
+
+// SetDiscoverer replaces the discovery index used for SearchEvidence and
+// IndexProgress. A nil discoverer is delayed, not a fake empty success.
+// Replacing a discoverer that owns a file closes the previous one.
+func (s *Service) SetDiscoverer(disc Discoverer) {
+	if s == nil {
+		return
+	}
+	if s.disc != nil && s.disc != disc {
+		if c, ok := s.disc.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}
+	s.disc = disc
 }
 
 // CreateFolder makes a logical folder. It is a child of Root until placed.

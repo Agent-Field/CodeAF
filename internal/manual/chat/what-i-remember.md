@@ -382,11 +382,14 @@ even when there is no transcript file beside the current conversation.
   Message IDs belong to the
   global journal; a gap does not mean a message is missing from this conversation.
   Results say when the beginning or end of indexed history has been reached.
-- This is word search, not semantic search. Use a few distinctive words;
+- This is still word search in the current store. Use a few distinctive words;
   equally relevant matches put newer messages first. Short words and Unicode
   words are supported (at most 32 query words). Names and IDs label results;
   titles are not searched. If a task search misses, codeaf is pointed at
-  conversation search when that tool is available.
+  conversation search when that tool is available. When embeddings are bound,
+  discovery may add those candidates beside the words; when they are not, that
+  extra path is labelled `degraded` / `discovery delayed` and does not say the
+  workspace was checked.
 - Only messages already indexed in this store are searched. Memory-off history,
   failed or pending index writes, other stores and spilled file contents are not
   included. A miss does not prove the subject was never discussed.
@@ -401,6 +404,29 @@ even when there is no transcript file beside the current conversation.
   a summary of them is not.
 
 There is no slash command for it — you ask in the conversation, and it searches.
+
+## Embeddings, the embed pin, and discovery delayed
+
+The model that turns passages into vectors is the **`embed` pin**, written in
+**pinned roles** as `embed: <model>` — the same row as `imagegen` and `speech`.
+It is a pin, not a text class: a chat model in `small work` is not an embeddings
+endpoint. Availability is inspected without printing keys. The default slug is
+whatever this install's provider actually serves, not a name printed on a
+settings row.
+
+When that pin or the `/embeddings` endpoint is down, discovery keeps the
+expanded-word path and labels it **`degraded`** / **`discovery delayed`**. That
+is a fallback, not a replacement, and it must not file and must not claim the
+workspace was `checked`. There is no keyword-only filer.
+
+## discovery.db — rebuildable index, not membership truth
+
+The derived search index is **`v3/discovery.db`** in the codeaf home. Journals
+stay the source of membership; this file can be rebuilt. Opening a chat binds
+that file plus the **embed** adapter, or labels the path `discovery delayed` if
+the embedder is down or the file cannot open. A failed discovery open does not
+empty your folders and does not invent a fake `100%` or a successful empty
+index. Dummy production fallbacks are not used.
 
 ## How does something get remembered without me asking?
 

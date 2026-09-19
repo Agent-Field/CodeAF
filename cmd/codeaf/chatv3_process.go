@@ -194,7 +194,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Shelf:      shelf,
 		Harnesses:  subharness.Default(),
 		Memory:     v3Memory(settings.ProfileDir),
-		Folders:    openV3Folders(),
+		Folders:    openV3FoldersWith(v3Embedder(settings, nil, models)),
 		Artifacts:  artifactsIndexPath(),
 		Conns:      v3Connect(settings.ProfileDir),
 		LaunchDir:  launchDir,

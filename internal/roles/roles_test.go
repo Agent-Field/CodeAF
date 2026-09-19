@@ -419,4 +419,36 @@ func TestKeys(t *testing.T) {
 	if got := TierKey(TierLow); got != "tiers.low" {
 		t.Fatalf("TierKey(low) = %q, want tiers.low", got)
 	}
+	if got := PinKey(RoleEmbed); got != "roles.embed" {
+		t.Fatalf("PinKey(embed) = %q, want roles.embed", got)
+	}
+}
+
+// RoleEmbed is a PIN, not a text-tier tenant. Registering it would hand a chat
+// model to POST /embeddings the first time someone cleared the pin.
+func TestRoleEmbedIsAPinAndNotATextTier(t *testing.T) {
+	if RoleEmbed == RoleAuditor {
+		t.Fatal("RoleEmbed must not be RoleAuditor")
+	}
+	if !Known(string(RoleEmbed)) {
+		t.Fatal("RoleEmbed must be in the vocabulary so a pin is kept")
+	}
+	if _, registered := TierOf(RoleEmbed); registered {
+		t.Fatal("RoleEmbed must not be Register'd to a text tier")
+	}
+	for _, role := range Registered() {
+		if role == RoleEmbed {
+			t.Fatal("RoleEmbed appeared in Registered(); it is a pin")
+		}
+	}
+	src := settings(map[string]string{PinKey(RoleEmbed): "openai/text-embedding-3-small"})
+	if model, ok := Pinned(src, RoleEmbed); !ok || model != "openai/text-embedding-3-small" {
+		t.Fatalf("Pinned(embed) = %q, %v", model, ok)
+	}
+	if _, err := Resolve(src, RoleEmbed, "session-model"); !errors.Is(err, ErrUnknownRole) {
+		t.Fatalf("Resolve(embed) = %v, want ErrUnknownRole: a pin is not a ladder", err)
+	}
+	if Describe(RoleEmbed) == "" {
+		t.Fatal("RoleEmbed needs a person-facing line")
+	}
 }
