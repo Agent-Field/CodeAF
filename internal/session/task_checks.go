@@ -614,7 +614,7 @@ func leadsWithDirectoryChange(said string) bool {
 func checkShapeRefusal(said string) string {
 	refusal := "Invalid arguments: checks must each be ONE rerunnable command"
 	if len(said) > declaredCheckByteLimit {
-		return refusal + ": each check may be at most 4096 bytes"
+		return refusal + ": each check may be at most 1000 bytes"
 	}
 	if offending, composed := approval.FirstCompositionOutsideQuotes(said); composed {
 		refusal += ": " + strconv.Quote(string(offending)) + " joins, redirects or expands commands in " +
