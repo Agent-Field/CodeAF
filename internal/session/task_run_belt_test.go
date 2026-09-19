@@ -39,6 +39,7 @@ type beltRunDouble struct {
 	mu      sync.Mutex
 	summary RunSummary
 	landing RunLanding
+	spec    RunSpec
 	entered chan struct{}
 	release chan struct{}
 	ran     bool
@@ -60,6 +61,7 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	d.mu.Lock()
 	d.ran = true
 	d.ctx = ctx
+	d.spec = spec
 	d.mu.Unlock()
 	if spec.CompleterFor != nil {
 		if completer := spec.CompleterFor("test/model"); completer != nil {
@@ -546,4 +548,113 @@ func TestDriveBeltRunDoesNotRefreshWhenStoreIsGone(t *testing.T) {
 		t.Fatalf("summary requests with no store = %d, want none", got)
 	}
 	_ = store.Close()
+}
+
+func beltRunRepoState(t *testing.T, repo string) string {
+	t.Helper()
+	status, err := git(repo, "status", "--porcelain=v1", "--untracked-files=all")
+	if err != nil {
+		t.Fatalf("read repository state: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(repo, "seed.txt"))
+	if err != nil {
+		t.Fatalf("read seed: %v", err)
+	}
+	return status + "\x00" + string(body)
+}
+
+func TestApprovedBeltHandoffCutsRunCopyFromResolvedGround(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	conversation := newTestRepo(t)
+	if err := os.WriteFile(filepath.Join(conversation, "seed.txt"), []byte("conversation\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(conversation, "add", "seed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(conversation, "commit", "-m", "seed"); err != nil {
+		t.Fatal(err)
+	}
+	before := beltRunRepoState(t, conversation)
+	sessionDir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: sessionDir}
+		config.AskConsent = false
+	})
+	stand := taskStand{dir: conversation, mode: TaskModeWorktree}
+	if err := agent.startKnownTaskRun(context.Background(), 41, "isolated work", "brief", nil, stand, ""); err != nil {
+		t.Fatalf("start run: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	workspace := double.spec.Workspace
+	double.mu.Unlock()
+	want := filepath.Join(sessionDir, placeTrees, "41")
+	if workspace != want {
+		t.Fatalf("run workspace = %q, want %q", workspace, want)
+	}
+	if got := beltRunRepoState(t, conversation); got != before {
+		t.Fatalf("conversation changed while run worked: %q != %q", got, before)
+	}
+	close(double.release)
+	beltRunWaitFor(t, "run finish", func() bool { agent.beltMu.Lock(); defer agent.beltMu.Unlock(); return agent.beltRun == nil })
+	if got := beltRunRepoState(t, conversation); got != before {
+		t.Fatalf("conversation changed after workers finished: %q != %q", got, before)
+	}
+}
+
+func TestBeltRunUsesAlternateGroundAndOnlySameGroundMayJoin(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	conversation := newTestRepo(t)
+	alternate := newTestRepo(t)
+	if err := os.WriteFile(filepath.Join(alternate, "seed.txt"), []byte("alternate\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(alternate, "add", "seed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(alternate, "commit", "-m", "alternate seed"); err != nil {
+		t.Fatal(err)
+	}
+	conversationBefore := beltRunRepoState(t, conversation)
+	sessionDir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: sessionDir}
+		config.AskConsent = false
+	})
+	alternateStand := taskStand{dir: alternate, mode: TaskModeWorktree, rung: taskGroundSaid}
+	if err := agent.startKnownTaskRun(context.Background(), 51, "alternate work", "brief", nil, alternateStand, ""); err != nil {
+		t.Fatalf("start alternate run: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	workspace := double.spec.Workspace
+	double.mu.Unlock()
+	body, err := os.ReadFile(filepath.Join(workspace, "seed.txt"))
+	if err != nil || string(body) != "alternate\n" {
+		t.Fatalf("run copy was not cut from alternate ground: body=%q err=%v", body, err)
+	}
+	if err := agent.startKnownTaskRun(context.Background(), 52, "same ground child", "brief", nil, alternateStand, ""); err != nil {
+		t.Fatalf("same-ground join: %v", err)
+	}
+	if task := beltRunTaskAt(t, sessionDir, "52"); task == nil || task.ParentID != "51" {
+		t.Fatalf("same-ground hand-off did not join the run: %+v", task)
+	}
+	conversationStand := taskStand{dir: conversation, mode: TaskModeWorktree}
+	if err := agent.startKnownTaskRun(context.Background(), 53, "different ground", "brief", nil, conversationStand, ""); err == nil || !strings.Contains(err.Error(), "same ground") {
+		t.Fatalf("different-ground hand-off error = %v, want same-ground explanation", err)
+	}
+	if task := beltRunTaskAt(t, sessionDir, "53"); task != nil {
+		t.Fatalf("different-ground hand-off joined the live run: %+v", task)
+	}
+	if got := beltRunRepoState(t, conversation); got != conversationBefore {
+		t.Fatalf("conversation changed during alternate-ground run: %q != %q", got, conversationBefore)
+	}
+	close(double.release)
 }
