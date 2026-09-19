@@ -60,6 +60,13 @@ const usageEvery = 10
 // one, and a dot that blinks in between every chunk is noise.
 const quietBeforeEllipsis = 700 * time.Millisecond
 
+// streamFreshFor is how long after the last delta a reply still counts as
+// arriving, and so keeps the paint clock at its full cadence. Deltas land a
+// few hundred milliseconds apart in a working stream; past this the only
+// thing moving is the spinner, which changes glyph every spinnerStep-th
+// paint, and the wait steps at that cadence instead.
+const streamFreshFor = 250 * time.Millisecond
+
 // runState is the word in the status line.
 type runState int
 
@@ -4829,7 +4836,12 @@ func (a *app) paint() tea.Cmd {
 	// A RUNNING COUNTDOWN IS THE FIFTH, and it is named separately from the turn
 	// even though a question can only be up mid-turn: the clock that draws it
 	// must not depend on a second fact staying true.
-	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
+	// ONLY stateWorking. a.waiting() is a disjunct of otherLive below, so including it
+	// here would be dead: w implies otherLive, so `waitLive && !otherLive` reduces to the
+	// same expression without it, and so does `waitLive || otherLive`. The forming-task
+	// wait therefore keeps the full cadence, which is what it does today.
+	waitLive := a.state == stateWorking
+	otherLive := a.welcome.animating() || a.tasksAnimating() ||
 		// The question block's own clocks, on the same terms: a policy line
 		// counting down and a reading clock running out are the two things on
 		// that block that change without a key being pressed (question.go).
@@ -4922,8 +4934,21 @@ func (a *app) paint() tea.Cmd {
 		// fourth that can be the whole of what is happening: the page follows a
 		// live edge the store writes from another process, and no turn of ours
 		// runs while it moves (taskplan.go's [app.taskPlanFollow]).
-		a.taskPlanRunning() {
-		return tea.Batch(kick, a.frameTick())
+		a.taskPlanRunning()
+	// THE WAIT ON THE MODEL is the only term that can hold this clock while
+	// the screen shows nothing but the spinner and the ellipsis, and a spinner
+	// glyph only changes every spinnerStep-th paint (styles.go). A wait whose
+	// stream has stopped arriving does not need thirty frames a second: the
+	// clock steps at the spinner's own cadence, and the animations that count
+	// in paints (spinnerStep, pulseStep) land exactly where they would have at
+	// full cadence, one stride at a time. Any OTHER liveness term, or a stream
+	// still arriving ([app.streamFresh]), keeps the full cadence.
+	if waitLive || otherLive {
+		every := a.frameEvery()
+		if waitLive && !otherLive && !a.streamFresh() {
+			every *= spinnerStep
+		}
+		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
 	a.painting = false
 	return kick
@@ -6176,6 +6201,13 @@ func (a *app) running() bool {
 // quiet reports whether the stream has been silent long enough to say so.
 func (a *app) quiet() bool {
 	return !a.lastDelta.IsZero() && time.Since(a.lastDelta) >= quietBeforeEllipsis
+}
+
+// streamFresh reports whether the reply's text is still arriving: a delta has
+// landed within [streamFreshFor]. A fresh stream wants every frame slot the
+// link gives it; a quiet one only wants the spinner's cadence (paint's tail).
+func (a *app) streamFresh() bool {
+	return !a.lastDelta.IsZero() && time.Since(a.lastDelta) < streamFreshFor
 }
 
 // waitEvent takes the next event off the stream — and, while more of the same
