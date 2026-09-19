@@ -32,12 +32,15 @@ type FolderRef struct {
 // The methods wrap wsapi (List / File / Unfile / Move). The interface lives
 // here so wsapi does not import session.
 //
+// Provenance is stamped by the tool at ingress: OriginOrganizer, actor = this
+// session. Tool arguments must not carry origin — a model cannot claim person.
+//
 // NIL IS OFF: no verb on the belt.
 type Folders interface {
 	List(ctx context.Context) ([]FolderRef, error)
-	File(ctx context.Context, collectionID, conversationID string) error
-	Unfile(ctx context.Context, collectionID, conversationID string) error
-	Move(ctx context.Context, fromID, toID, conversationID string) error
+	File(ctx context.Context, collectionID, conversationID string, p workspace.Provenance) error
+	Unfile(ctx context.Context, collectionID, conversationID string, p workspace.Provenance) error
+	Move(ctx context.Context, fromID, toID, conversationID string, p workspace.Provenance) error
 }
 
 func init() { glossField["folders"] = "action" }
@@ -64,6 +67,16 @@ const foldersSchemaJSON = `{
   "required": ["action"],
   "additionalProperties": false
 }`
+
+// foldersOrganizer is trusted origin at ingress. The model does not get an
+// origin argument; this session is the actor, never a person claiming to have
+// filed the placement from the home verbs.
+func (a *Agent) foldersOrganizer() workspace.Provenance {
+	return workspace.Provenance{
+		Origin: workspace.OriginOrganizer,
+		Actor:  strings.TrimSpace(a.config.Place.ID()),
+	}
+}
 
 func (a *Agent) foldersTools() []bare.Tool {
 	if a.config.Folders == nil {
@@ -97,21 +110,21 @@ func (a *Agent) foldersTool(ctx context.Context, args json.RawMessage) (string, 
 			return "Invalid arguments: file needs the folder id.", true, nil
 		}
 		return a.foldersMutate(ctx, func(chat string) error {
-			return a.config.Folders.File(ctx, id, chat)
+			return a.config.Folders.File(ctx, id, chat, a.foldersOrganizer())
 		})
 	case "unfile":
 		if id == "" {
 			return "Invalid arguments: unfile needs the folder id.", true, nil
 		}
 		return a.foldersMutate(ctx, func(chat string) error {
-			return a.config.Folders.Unfile(ctx, id, chat)
+			return a.config.Folders.Unfile(ctx, id, chat, a.foldersOrganizer())
 		})
 	case "move":
 		if from == "" || id == "" {
 			return "Invalid arguments: move needs from (source folder id) and id (destination folder id).", true, nil
 		}
 		return a.foldersMutate(ctx, func(chat string) error {
-			return a.config.Folders.Move(ctx, from, id, chat)
+			return a.config.Folders.Move(ctx, from, id, chat, a.foldersOrganizer())
 		})
 	default:
 		return "Invalid arguments: action must be list, file, unfile or move.", true, nil

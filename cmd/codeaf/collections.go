@@ -181,34 +181,21 @@ func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result a
 	return err
 }
 
-// addCollectionRef files a membership. Empty reason keeps Add, which is person
-// origin with no reason (CLI compatibility). A non-empty --reason is accepted
-// now so the flag shape is frozen; persistence through AddWith waits on
-// workspace.Provenance in the storage lane.
+// addCollectionRef files a membership as a person-facing CLI verb. Origin is
+// person even when --reason is empty: that is the old Add spelling, not an
+// organizer claim.
 func addCollectionRef(ctx context.Context, store *workspace.Store, id string, ref workspace.Ref, reason string) error {
-	if reason == "" {
-		return store.Add(ctx, id, ref)
-	}
-	type withReason interface {
-		AddWith(context.Context, string, workspace.Ref, string) error
-	}
-	if writer, ok := any(store).(withReason); ok {
-		return writer.AddWith(ctx, id, ref, reason)
-	}
-	return store.Add(ctx, id, ref)
+	return store.AddWith(ctx, id, ref, workspace.Provenance{
+		Origin: workspace.OriginPerson,
+		Reason: reason,
+	})
 }
 
 func removeCollectionRef(ctx context.Context, store *workspace.Store, id string, ref workspace.Ref, reason string) error {
-	if reason == "" {
-		return store.Remove(ctx, id, ref)
-	}
-	type withReason interface {
-		RemoveWith(context.Context, string, workspace.Ref, string) error
-	}
-	if writer, ok := any(store).(withReason); ok {
-		return writer.RemoveWith(ctx, id, ref, reason)
-	}
-	return store.Remove(ctx, id, ref)
+	return store.RemoveWith(ctx, id, ref, workspace.Provenance{
+		Origin: workspace.OriginPerson,
+		Reason: reason,
+	})
 }
 
 func writeCollectionRef(output io.Writer, ref workspace.Ref) error {

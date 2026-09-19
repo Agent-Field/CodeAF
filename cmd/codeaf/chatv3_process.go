@@ -82,8 +82,8 @@ type v3Process struct {
 	// own context, which is per-agent already.
 	Memory *store.Store
 	// Folders is the logical-folder membership seam the session `folders`
-	// tool talks to. One handle per process, like Memory, because two SQLite
-	// pools on collections.db would wait on each other's busy timeout.
+	// tool talks to. One handle per process, like Memory. Nil when the store
+	// cannot open: the tool is absent, not a belt that refuses every call.
 	Folders session.Folders
 	// Artifacts is the deliverables index — one file per machine, and /export
 	// and /files must resolve the same one the session's own products record

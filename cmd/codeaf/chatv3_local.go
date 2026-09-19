@@ -258,7 +258,7 @@ func openChatV3Local(launch localLaunch) error {
 	localDoors(&options, welcome, settings)
 	// Logical folders for this machine's collections.db. The session side is
 	// wired in openV3Launch (Config.Folders) inside the engine process.
-	// tui3.Options.Folders is the surface half; the TUI lane owns that field.
+	// Open failure leaves Options.Folders nil — unavailable, not empty.
 	attachSurfaceFolders(&options, openV3Folders())
 	// AND A PLAIN LAUNCH IS STILL GREETED BY HOME ON THIS ROAD. Whether somebody
 	// is being greeted is one fact — a person opened codeaf with no particular

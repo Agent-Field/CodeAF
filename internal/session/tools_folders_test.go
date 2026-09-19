@@ -19,6 +19,7 @@ type fakeFolders struct {
 	fileErr   map[string]error
 	unfileErr map[string]error
 	moveErr   error
+	last      workspace.Provenance
 }
 
 func (f *fakeFolders) List(context.Context) ([]FolderRef, error) {
@@ -29,9 +30,10 @@ func (f *fakeFolders) List(context.Context) ([]FolderRef, error) {
 	return out, nil
 }
 
-func (f *fakeFolders) File(_ context.Context, collectionID, conversationID string) error {
+func (f *fakeFolders) File(_ context.Context, collectionID, conversationID string, p workspace.Provenance) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.last = p
 	if err, ok := f.fileErr[collectionID]; ok {
 		return err
 	}
@@ -45,9 +47,10 @@ func (f *fakeFolders) File(_ context.Context, collectionID, conversationID strin
 	return nil
 }
 
-func (f *fakeFolders) Unfile(_ context.Context, collectionID, conversationID string) error {
+func (f *fakeFolders) Unfile(_ context.Context, collectionID, conversationID string, p workspace.Provenance) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.last = p
 	if err, ok := f.unfileErr[collectionID]; ok {
 		return err
 	}
@@ -57,9 +60,10 @@ func (f *fakeFolders) Unfile(_ context.Context, collectionID, conversationID str
 	return nil
 }
 
-func (f *fakeFolders) Move(_ context.Context, fromID, toID, conversationID string) error {
+func (f *fakeFolders) Move(_ context.Context, fromID, toID, conversationID string, p workspace.Provenance) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.last = p
 	if f.moveErr != nil {
 		return f.moveErr
 	}
@@ -172,6 +176,27 @@ func TestFoldersListFileUnfileAndMoveAgainstAFake(t *testing.T) {
 	}
 	if fake.members["securityyyyyyyy0"][chat] {
 		t.Fatal("unfile left the placement")
+	}
+	if fake.last.Origin != workspace.OriginOrganizer {
+		t.Fatalf("unfile origin %q, want organizer", fake.last.Origin)
+	}
+}
+
+func TestFoldersToolStampsOrganizerOriginAndIgnoresAPersonClaim(t *testing.T) {
+	fake := &fakeFolders{}
+	agent := foldersAgent(t, fake)
+	out, failed := callFolders(t, agent, `{"action":"file","id":"billingbilling00","origin":"person"}`)
+	if failed {
+		t.Fatalf("file refused: %s", out)
+	}
+	if fake.last.Origin != workspace.OriginOrganizer {
+		t.Fatalf("origin %q, want organizer — a model must not claim person", fake.last.Origin)
+	}
+	if fake.last.Actor != agent.config.Place.ID() {
+		t.Fatalf("actor %q, want this session", fake.last.Actor)
+	}
+	if strings.Contains(foldersSchemaJSON, `"origin"`) {
+		t.Fatal("folders schema must not take an origin argument")
 	}
 }
 

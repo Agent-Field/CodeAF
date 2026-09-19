@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -294,28 +293,6 @@ func TestCollectionsReasonIsAdditiveAndLeavesOldOutputUnchanged(t *testing.T) {
 	removeWith := collectionPlain(t, db, "remove", product.ID, "conversation", "chat-a", "--reason", "no longer billing")
 	if removeWithout != removeWith {
 		t.Fatalf("--reason changed default remove output: %q vs %q", removeWithout, removeWith)
-	}
-}
-
-func TestOpenV3FoldersWiresTheSessionSeam(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
-	folders := openV3Folders()
-	if folders == nil {
-		t.Fatal("openV3Folders returned nil, so the folders tool would be absent")
-	}
-	listed, err := folders.List(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(listed) != 0 {
-		t.Fatalf("a fresh home listed %+v", listed)
-	}
-	if _, err := os.Stat(filepath.Join(os.Getenv("CODEAF_HOME"), "v3", "collections.db")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("list created storage: %v", err)
-	}
-	_ = folderWorld{}.ConversationIDs()
-	if title := (folderWorld{}).Title("missing"); title != "" {
-		t.Fatalf("missing conversation titled %q", title)
 	}
 }
 

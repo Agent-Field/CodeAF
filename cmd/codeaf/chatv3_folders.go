@@ -1,130 +1,52 @@
 package main
 
-// Logical folders at the v3 door: one collections store per process, handed to
-// the session as Config.Folders. wsapi.Service is the typed wrapper the
-// contract names; this worktree does not have that package yet, so the door
-// talks to workspace.Store through the session.Folders interface. Integrate
-// replaces [workspaceFolders] with wsapi.Open once service lands.
-//
-// tui3.Options.Folders is owned by the TUI lane and is not a field on this
-// worktree. [attachSurfaceFolders] is the assignment site; it is a no-op until
-// that field exists.
+// Logical folders at the v3 door: one wsapi.Service per process, handed to
+// the session as Config.Folders and to the surface as tui3.Options.Folders
+// through [foldersAdapter]. Store-open failure leaves both nil — unavailable,
+// never a fake empty graph. A missing collections.db is a working empty store
+// (workspace.Open creates the blank file; schema waits for the first write).
 
 import (
-	"context"
-	"errors"
-	"os"
-	"sync"
-
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
-	"github.com/Agent-Field/codeaf/internal/workspace"
+	"github.com/Agent-Field/codeaf/internal/wsapi"
 )
 
+func collectionsPath() string {
+	return home.Join("v3", "collections.db")
+}
+
+func openV3FolderService() *wsapi.Service {
+	svc, err := wsapi.Open(collectionsPath())
+	if err != nil {
+		return nil
+	}
+	svc.SetInventory(folderWorld{})
+	return svc
+}
+
 func openV3Folders() session.Folders {
-	return newWorkspaceFolders(home.Join("v3", "collections.db"))
+	return newSessionFolders(openV3FolderService())
 }
 
 func attachSurfaceFolders(options *tui3.Options, folders session.Folders) {
-	if options == nil || folders == nil {
+	if options == nil {
 		return
 	}
-	// BIND GAP: assign options.Folders when the TUI lane adds that field.
-	// *wsapi.Service (or this wrapper) is what it should hold. First-message
-	// order is TUI-owned; wiring only makes AddPlacement available.
+	options.Folders = surfaceFolders(folders)
 }
 
-// workspaceFolders implements session.Folders against today's workspace.Store.
-// List of a missing database is empty and does not create the file. A write
-// opens it. Move is add-then-remove until workspace.Move exists.
-type workspaceFolders struct {
-	path  string
-	mu    sync.Mutex
-	store *workspace.Store
-}
-
-func newWorkspaceFolders(path string) *workspaceFolders {
-	return &workspaceFolders{path: path}
-}
-
-func (f *workspaceFolders) Close() error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.store == nil {
+func surfaceFolders(folders session.Folders) tui3.Folders {
+	wrapped, ok := folders.(*sessionFolders)
+	if !ok || wrapped == nil || wrapped.svc == nil {
 		return nil
 	}
-	err := f.store.Close()
-	f.store = nil
-	return err
+	return newFoldersAdapter(wrapped.svc)
 }
 
-func (f *workspaceFolders) open() (*workspace.Store, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.store != nil {
-		return f.store, nil
-	}
-	store, err := workspace.Open(f.path)
-	if err != nil {
-		return nil, err
-	}
-	f.store = store
-	return store, nil
-}
-
-func (f *workspaceFolders) List(ctx context.Context) ([]session.FolderRef, error) {
-	if _, err := os.Stat(f.path); errors.Is(err, os.ErrNotExist) {
-		return []session.FolderRef{}, nil
-	} else if err != nil {
-		return nil, err
-	}
-	store, err := f.open()
-	if err != nil {
-		return nil, err
-	}
-	cols, err := store.Collections(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]session.FolderRef, 0, len(cols))
-	for _, col := range cols {
-		out = append(out, session.FolderRef{ID: col.ID, Name: col.Name})
-	}
-	return out, nil
-}
-
-func (f *workspaceFolders) File(ctx context.Context, collectionID, conversationID string) error {
-	store, err := f.open()
-	if err != nil {
-		return err
-	}
-	return store.Add(ctx, collectionID, workspace.Ref{Kind: workspace.ConversationKind, ID: conversationID})
-}
-
-func (f *workspaceFolders) Unfile(ctx context.Context, collectionID, conversationID string) error {
-	store, err := f.open()
-	if err != nil {
-		return err
-	}
-	return store.Remove(ctx, collectionID, workspace.Ref{Kind: workspace.ConversationKind, ID: conversationID})
-}
-
-func (f *workspaceFolders) Move(ctx context.Context, fromID, toID, conversationID string) error {
-	store, err := f.open()
-	if err != nil {
-		return err
-	}
-	ref := workspace.Ref{Kind: workspace.ConversationKind, ID: conversationID}
-	if err := store.Add(ctx, toID, ref); err != nil {
-		return err
-	}
-	return store.Remove(ctx, fromID, ref)
-}
-
-// folderWorld is the conversation inventory wsapi.SetInventory will take:
-// ids and titles from the existing session world. Wired here so integrate
-// can hand it to the service without a second walk.
+// folderWorld is the conversation inventory wsapi.SetInventory takes: ids and
+// titles from the existing session world.
 type folderWorld struct{}
 
 func (folderWorld) ConversationIDs() []string {

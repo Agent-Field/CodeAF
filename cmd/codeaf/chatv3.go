@@ -1041,9 +1041,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// never see it: neither copies this config.
 		Standing: v3Standing(settings.ProfileDir),
 		// Logical folders of chats. One handle per process (chatv3_folders.go),
-		// the same collections.db the CLI organizes. Nil would take `folders`
-		// off the belt; a process that cannot open the seam still hands the
-		// lazy wrapper, which lists nothing until a write creates the file.
+		// the same collections.db the CLI organizes. Nil takes `folders` off
+		// the belt: a store that cannot open is unavailable, not a fake empty
+		// graph the model would keep filing into.
 		Folders: proc.Folders,
 		// THE DIVISION ROAD, on by default (internal/config's DefaultSwarm). A
 		// task that turns out to hold more than one worker's share may split

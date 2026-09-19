@@ -9,64 +9,66 @@ import (
 )
 
 // Folders is the home panel's seam onto logical folder membership. It is a TUI
-// interface so this package never imports internal/workspace, and so a nil
-// value is a panel that still draws its whisper rather than a belt that fails
-// every time it is asked. Wiring may wrap *wsapi.Service; the methods here are
-// the snapshot and mutate set the panel actually calls.
+// interface so this package never imports internal/workspace. The DTOs are
+// exported so cmd/codeaf can implement the seam without this package importing
+// wsapi, and without wsapi importing tui3. Wiring owns the adapter.
+//
+// NIL IS UNAVAILABLE, NOT EMPTY. A door that could not open the store leaves
+// this nil; mutations must refuse rather than succeed as an empty workspace.
 //
 // THE SNAPSHOT IS TAKEN ON THE HOME BEAT and nowhere else. View, the cursor and
 // a mere rebuild read [homeView.folders], which is a memo. A call from paint
 // would be a store read on a draw, which this surface forbids.
 type Folders interface {
-	RootSnapshot(ctx context.Context) (folderRoot, error)
-	FolderSnapshot(ctx context.Context, id string) (folderView, []folderPlacement, error)
-	CreateFolder(ctx context.Context, name string) (folderView, error)
+	RootSnapshot(ctx context.Context) (FolderRoot, error)
+	FolderSnapshot(ctx context.Context, id string) (FolderView, []FolderPlacement, error)
+	CreateFolder(ctx context.Context, name string) (FolderView, error)
 	AddPlacement(ctx context.Context, collectionID, refID string) error
 	RemovePlacement(ctx context.Context, collectionID, refID string) error
 	MovePlacement(ctx context.Context, fromID, toID, refID string) error
-	WhyHere(ctx context.Context, collectionID, refID string) (folderWhy, error)
+	WhyHere(ctx context.Context, collectionID, refID string) (FolderWhy, error)
 }
 
-// folderView is one logical folder as the panel draws it. ParentIDs empty means
+// FolderView is one logical folder as the panel draws it. ParentIDs empty means
 // the folder stands at Root. MemberCount is unique conversation IDs, not paths.
-type folderView struct {
+type FolderView struct {
 	ID, Name, Purpose, Lifecycle string
 	Revision                     int
 	ParentIDs                    []string
 	MemberCount                  int
 }
 
-// folderPlacement is one conversation sitting in a folder. AlsoIn names the
+// FolderPlacement is one conversation sitting in a folder. AlsoIn names the
 // other folders that hold the same chat, so a dual placement can say
 // "also in Security" without a second store round-trip on the draw.
-type folderPlacement struct {
+type FolderPlacement struct {
 	CollectionID string
 	RefID, Title string
 	AlsoIn       []string
 }
 
-// folderWhy is the latest membership event for an edge, as the `w` verb shows
+// FolderWhy is the latest membership event for an edge, as the `w` verb shows
 // it: who put it here and why, with no confidence score.
-type folderWhy struct {
+type FolderWhy struct {
 	Origin, Reason, Actor, Evidence, At string
 }
 
-// folderRoot is Root as the beat caches it. Folders is every collection the
+// FolderRoot is Root as the beat caches it. Folders is every collection the
 // service knows — parentless ones are Root's own rows, and ParentIDs is how a
 // drilled-in folder finds its children — because FolderSnapshot returns
 // placements, not nested folders.
-type folderRoot struct {
-	Folders  []folderView
-	Unfiled  []folderPlacement
+type FolderRoot struct {
+	Folders  []FolderView
+	Unfiled  []FolderPlacement
 	Revision int
 }
 
 // homeFoldersReading is the memo [app.readHomeFolders] writes on the beat.
 // rows() reads this and never the seam.
 type homeFoldersReading struct {
-	root    folderRoot
-	open    folderView
-	members []folderPlacement
+	root    FolderRoot
+	open    FolderView
+	members []FolderPlacement
 }
 
 // The verb strip on a folders row, quoted in the contract and the manual as
@@ -320,7 +322,7 @@ func (a *app) folderWhyHere(line homeLine) tea.Cmd {
 	return nil
 }
 
-func folderWhyLine(why folderWhy) string {
+func folderWhyLine(why FolderWhy) string {
 	var parts []string
 	for _, p := range []string{strings.TrimSpace(why.Origin), strings.TrimSpace(why.Reason), strings.TrimSpace(why.Actor)} {
 		if p != "" {
@@ -481,12 +483,12 @@ func (a *app) addNamedFolder(name string) tea.Cmd {
 	return a.addCurrentToFolder(folder.ID)
 }
 
-func (a *app) resolveFolder(name string) (folderView, bool) {
+func (a *app) resolveFolder(name string) (FolderView, bool) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return folderView{}, false
+		return FolderView{}, false
 	}
-	var named folderView
+	var named FolderView
 	var names int
 	for _, folder := range a.home.folders.root.Folders {
 		if folder.ID == name {
@@ -500,7 +502,7 @@ func (a *app) resolveFolder(name string) (folderView, bool) {
 	if names == 1 {
 		return named, true
 	}
-	return folderView{}, false
+	return FolderView{}, false
 }
 
 func (a *app) pointFolderID(id string) {
@@ -542,8 +544,8 @@ func folderAlsoIn(names []string) string {
 	return folderAlsoInWord + strings.Join(kept, ", ")
 }
 
-func parentlessFolders(all []folderView) []folderView {
-	var out []folderView
+func parentlessFolders(all []FolderView) []FolderView {
+	var out []FolderView
 	for _, folder := range all {
 		if len(folder.ParentIDs) == 0 {
 			out = append(out, folder)
@@ -552,12 +554,12 @@ func parentlessFolders(all []folderView) []folderView {
 	return out
 }
 
-func childFolders(all []folderView, parent string) []folderView {
+func childFolders(all []FolderView, parent string) []FolderView {
 	parent = strings.TrimSpace(parent)
 	if parent == "" {
 		return nil
 	}
-	var out []folderView
+	var out []FolderView
 	for _, folder := range all {
 		for _, id := range folder.ParentIDs {
 			if id == parent {
