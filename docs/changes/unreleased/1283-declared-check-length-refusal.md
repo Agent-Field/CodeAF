@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a long declared check says why it was refused
-pr: 1277
+pr: 1283
 surface: [chat, engine]
 invalidates:
   - "A declared check longer than the admission limit was refused as though it were not one rerunnable command, even when it was one real command. The refusal now names length as the cause and says how long the check actually is, so the person shortens that check instead of guessing which one was too long."
