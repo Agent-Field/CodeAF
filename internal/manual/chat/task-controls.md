@@ -158,7 +158,8 @@ the worker reads a note at its next step
 ```
 
 A worker is a separate loop, so a note waits until the worker asks for its next step, and that
-is when it reads what you wrote. `x stop it` and `p pause` are read only over an empty box: the
+is when it reads what you wrote. A task that has ended, `done` or `incomplete`, takes no next
+step, so its page leaves that sentence out. `x stop it` and `p pause` are read only over an empty box: the
 moment there is a note to type, a letter is a letter.
 
 ## Task setup through the session host
