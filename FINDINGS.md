@@ -19,3 +19,7 @@ The broad focused run found an order-dependent fallback defect: using `planOn` t
 The required focused suite passes with `CODEAF_TASK_BELT` unset. Final verification now covers formatting, build, vet, focused tui3 behavior, the four named law packages, and all laws.
 
 Final verification passed formatting, build, tui3 vet, focused tui3 tests, and the four named law packages. `make test-laws` reached all 27 packages; only five pre-existing `cmd/codeaf` keptnothing tests failed before running a task (default-model setup returned exit 2), while `internal/tui3` and every other package passed. A clean retry will distinguish transient host setup from this internal/tui3-only change.
+
+## Manual contradiction follow-up
+
+`internal/manual/chat/tasks.md` still has current-facing directions that say a held task row opens its room, despite the stored-page behavior documented elsewhere. The remaining task is to make those directions say that a stored task opens its page running or finished, while a row without a stored page keeps its prior room or card path.
