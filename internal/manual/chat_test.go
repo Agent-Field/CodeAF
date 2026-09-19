@@ -214,6 +214,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does /folders open a directory", "collections"},
 		{"fresh folders tab empty", "collections"},
 		{"no folders yet", "collections"},
+		{"miller columns on folders", "places"},
+		{"right arrow drills folders", "places"},
+		{"shift+right folders actions", "keys"},
+		{"chat preview in folders details", "collections"},
+		{"also in from two paths", "collections"},
+		{"organize this chat", "collections"},
+		{"manage this folder", "collections"},
+		{"does organization wait five minutes", "collections"},
+		{"organize existing chats more than eight", "collections"},
+		{"stale folder details", "collections"},
+		{"resize folders 80 columns", "places"},
+		{"open chat from folders details", "collections"},
 		// Wave 2: automatic organization and inherited instructions, asked in
 		// the words somebody types after the denials came out of the corpus.
 		{"does it file chats automatically", "collections"},
