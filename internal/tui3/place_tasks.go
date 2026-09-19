@@ -1859,7 +1859,7 @@ func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 // its own body, so the foot must not draw it a second time. The foot keeps the
 // invitation ([placeTasks.resting]) and loses the echo; one person's letters on
 // screen twice is the defect this page's own title row was removed for.
-func (placeTasks) boxOnBody() bool { return true }
+func (placeTasks) boxOnBody() bool { return false }
 
 // resting is what that box says when nothing is typed in it, and it is THIS
 // PLACE'S sentence rather than the router's (pages.go's [place.resting]).

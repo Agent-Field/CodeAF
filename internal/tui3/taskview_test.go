@@ -10,7 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE TASKS PLACE ─────────────────────────────────────────────────────────
@@ -834,8 +833,8 @@ func TestRunningWorkStaysOnTheColumnHoweverFarTheCursorWalks(t *testing.T) {
 // ── typing at the page ──────────────────────────────────────────────────────
 
 // TYPING FILTERS BOTH SECTIONS AT ONCE. A record of four hundred tasks is
-// reached by remembering a word of a title, and the page is the whole frame —
-// there is no box underneath for a letter to land in.
+// reached by remembering a word of a title, and what is typed stays visible in
+// the place box where the typing lands.
 func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
@@ -854,13 +853,21 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	for _, want := range []string{
 		taskSheetNowHead, "Ship the port",
 		"done today", "Port the parser",
-		// AND THE WORDS ARE ON THE CONTROL ROW, at the top of the list, where the
-		// typing lands — not echoed on a note line under the rows they changed.
-		a.pal.glyph(tokens.GFilter) + " port",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the filtered page is missing %q:\n%s", want, text)
 		}
+	}
+	// THE WORDS ARE IN THE PLACE BOX, in reading ink with the caret after them;
+	// the resting invitation is absent while there is something to read.
+	frame, caretX, caretY := a.frame()
+	frameText := plain(frame)
+	if !strings.Contains(frameText, "› port") || strings.Contains(frameText, tasksTypeWord) {
+		t.Fatalf("the filter is not in its box alone:\n%s", frameText)
+	}
+	rows := strings.Split(frameText, "\n")
+	if caretY < 0 || caretY >= len(rows) || !strings.Contains(rows[caretY], "› port") {
+		t.Fatalf("the caret is at %d,%d, outside the filter box:\n%s", caretX, caretY, frameText)
 	}
 	for _, gone := range []string{"Write the tree", "Mix the audio"} {
 		if strings.Contains(text, gone) {
@@ -893,6 +900,25 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if got := a.taskSheetFilter(); got != "z" {
 		t.Fatalf("backspace left the filter %q", got)
+	}
+
+	// A FILTER LONGER THAN THE BOX KEEPS ITS TAIL AND CARET VISIBLE rather than
+	// growing the frame or losing the point where the next letter will land.
+	drive(t, a, key("ctrl+u"))
+	for range a.width * 2 {
+		drive(t, a, key("x"))
+	}
+	frame, caretX, caretY = a.frame()
+	rows = strings.Split(plain(frame), "\n")
+	if caretY < 0 || caretY >= len(rows) || caretX >= a.width || !strings.Contains(rows[caretY], "x") {
+		t.Fatalf("the long filter lost its visible tail or caret at %d,%d:\n%s", caretX, caretY, plain(frame))
+	}
+
+	// esc clears the filter and restores the resting invitation in the same box.
+	drive(t, a, key("esc"))
+	frame, _, _ = a.frame()
+	if got := plain(frame); !strings.Contains(got, tasksTypeWord) || strings.Contains(got, "› xxxx") {
+		t.Fatalf("esc did not restore the resting box:\n%s", got)
 	}
 }
 
