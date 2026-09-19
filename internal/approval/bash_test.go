@@ -1,7 +1,6 @@
 package approval
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -211,14 +210,56 @@ func TestCriticalHit(t *testing.T) {
 
 func TestSplitBashCommandPreservesCommandsAndBoundaries(t *testing.T) {
 	command := `cd '/tmp/a;b' && echo "x|y" 2>&1; plandb done || echo failed &> log`
-	want := []BashCommandPart{
-		{Command: `cd '/tmp/a;b'`, Separator: "&&"},
-		{Command: `echo "x|y" 2>&1`, Separator: ";"},
-		{Command: `plandb done`, Separator: "||"},
-		{Command: `echo failed &> log`},
+	want := []struct{ command, separator string }{
+		{`cd '/tmp/a;b'`, "&&"},
+		{`echo "x|y" 2>&1`, ";"},
+		{`plandb done`, "||"},
+		{`echo failed &> log`, ""},
 	}
 	got := SplitBashCommand(command)
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("SplitBashCommand(%q) = %#v, want %#v", command, got, want)
+	if len(got) != len(want) {
+		t.Fatalf("SplitBashCommand(%q) = %#v, want %d parts", command, got, len(want))
+	}
+	for i, part := range got {
+		if part.Command != want[i].command || part.Separator != want[i].separator {
+			t.Errorf("part %d = %q then %q, want %q then %q", i, part.Command, part.Separator, want[i].command, want[i].separator)
+		}
+	}
+}
+
+// THE SPANS PUT THE LINE BACK TOGETHER BYTE FOR BYTE. Every byte of the line
+// belongs to exactly one part's span or one boundary, in order, so a reader
+// that cuts spans out of the line never invents or loses a byte of what ran.
+func TestSplitBashCommandSpansCoverTheLineByteForByte(t *testing.T) {
+	for _, command := range []string{
+		`cd '/tmp/a;b' && echo "x|y" 2>&1; plandb done || echo failed &> log`,
+		"ls;go test ./...&&go vet ./...",
+		"  echo $(date)  ",
+		"cat > f <<'EOF'\nfunc a() {}\nEOF\ngo build ./... &",
+		"(cd x; make) && echo `pwd`",
+		"",
+	} {
+		var back strings.Builder
+		at := 0
+		for _, part := range SplitBashCommand(command) {
+			if part.Start < at || part.End < part.Start || part.SepEnd < part.End || part.SepEnd > len(command) {
+				t.Fatalf("%q: part %q has spans %d %d %d after %d", command, part.Command, part.Start, part.End, part.SepEnd, at)
+			}
+			// A stretch that made no part (two boundaries in a row) is still
+			// the line's own bytes, and sits before this part's start.
+			back.WriteString(command[at:part.Start])
+			if got := strings.TrimSpace(command[part.Start:part.End]); got != part.Command {
+				t.Errorf("%q: span holds %q, the part says %q", command, got, part.Command)
+			}
+			if got := command[part.End:part.SepEnd]; got != part.Separator {
+				t.Errorf("%q: boundary span holds %q, the part says %q", command, got, part.Separator)
+			}
+			back.WriteString(command[part.Start:part.SepEnd])
+			at = part.SepEnd
+		}
+		back.WriteString(command[at:])
+		if back.String() != command {
+			t.Errorf("the spans rebuilt %q from %q", back.String(), command)
+		}
 	}
 }

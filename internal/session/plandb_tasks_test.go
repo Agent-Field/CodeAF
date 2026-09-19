@@ -394,7 +394,21 @@ func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
 		record  []int
 		prefix  []int
 	}{
-		{"ls; ls *.go 2>/dev/null; plandb task overview 2>/dev/null | head -30", []int{2}, nil},
+		// A pipeline is one command: the record's listing and the pager it is
+		// read through go together.
+		{"ls; ls *.go 2>/dev/null; plandb task overview 2>/dev/null | head -30", []int{2, 3}, nil},
+		// Work piped into something is never the record's, whatever it is piped to.
+		{"go test ./... | plandb note t-1 -", nil, nil},
+		// A part inside a substitution or a group is never marked: the line
+		// around a hole in one is not a command anybody ran.
+		{"echo $(plandb task overview)", nil, nil},
+		{"(cd x; make) && plandb done t-1", nil, nil},
+		{"(cd " + copy + " && make)", nil, nil},
+		// An ended run's copy has been given back; a folder directly under the
+		// conversation's folder of copies is still a run's copy.
+		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7 && go vet ./...", nil, []int{0}},
+		// Further down is somewhere the work went, and that is the work.
+		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7/internal && go vet ./...", nil, nil},
 		{"cat calc.go go.mod notes.txt", nil, nil},
 		{"plandb done t-1 --agent 1 --result 'Added Mul and Div in muldiv.go …'", []int{0}, nil},
 		{"cd " + copy + " && ls && cat muldiv.go && go vet ./... && go test -count=1 ./...", nil, []int{0}},
@@ -402,7 +416,7 @@ func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
 	}
 	for _, test := range tests {
 		step := PlanStep{Command: test.command}
-		got := planStepDisplayFacts(step, copy, "plandb")
+		got := planStepDisplayFacts(step, planRunCopies{live: copy, root: filepath.Dir(copy)}, "plandb")
 		if got.Command != test.command {
 			t.Fatalf("recorded command changed:\n got %q\nwant %q", got.Command, test.command)
 		}
@@ -476,7 +490,7 @@ func TestPlanStepDisplayFactsDoNotRewriteTrajectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	steps := planStepDisplayFactsForPage(planTrajectory(dir, "alpha"), "/run/trees/1")
+	steps := planStepDisplayFactsForPage(planTrajectory(dir, "alpha"), planRunCopies{live: "/run/trees/1"})
 	after, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
