@@ -64,3 +64,7 @@ The forced regression is now expected to pass repeatedly because the state owner
 ## Focused verification result
 
 `go test ./internal/session -run '^TestAPinTheWireRefusesTellsTheConversationSo$' -count=10` passed. `gofmt -l` printed nothing for both touched Go files. The fenced timeout and issue #1211 file-name check printed nothing. The required pre-PR sequence starts from the tree hash printed below.
+
+## Build check
+
+The next independent pre-PR check is `go build ./...`. It verifies all packages compile after the test seam and ownership fix.
