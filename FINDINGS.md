@@ -161,3 +161,7 @@ The corrected implementation and regression are committed at `ee6ec8b36`. I will
 ## Final gate evidence
 
 All five required pre-PR commands passed on tree `0cf18d6c0a41de7579df409ead4dad60184931c3`: `go build ./...`; `go test ./cmd/codeaf/...`; `gofmt -l ./cmd ./internal` with no output; `go run ./cmd/codeaf-changes check`; and `go test ./internal/guard ./internal/namelaw`. The tree hash was identical before and after. This note is the only subsequent change, so the same five commands will run once more against the final committed evidence tree.
+
+## Review defect checkpoint
+
+The final artifact review found that the terminal-root deferral regresses `TestStartWaitsForAWorkerTheCompletedTreeLeftBehind`: a root whose tree is already complete can retain an unrelated in-flight worker and never finish. Before changing product code, the next step is to distinguish the self-finished root worker whose return must be absorbed from a worker that the completed tree has left behind, then narrow the deferral to the former ordering. The forced missing-check regression and the existing left-behind-worker regression must both pass. The `run.Start` result fallback from #1210 remains fenced.
