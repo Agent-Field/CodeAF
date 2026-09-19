@@ -32,7 +32,10 @@ package main
 import (
 	"errors"
 	"io"
+	"os"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -70,7 +73,7 @@ func openTaskOwnerView(workspace string, ask tui3.TaskOwnerAsk) (tui3.TaskOwnerV
 	// is already listening and fails otherwise, which is the same question
 	// [v3HostAnswers] asks before a headless message and for the same reason: a
 	// resident process left behind by somebody glancing at a row is a surprise.
-	dial := func() (io.ReadWriteCloser, error) { return enginehost.Dial(workspace) }
+	dial := func() (io.ReadWriteCloser, error) { return dialTaskOwnerHost(workspace) }
 	client, err := remote.Roam("", remote.Hello{
 		Workspace: workspace,
 		Session:   file,
@@ -110,4 +113,27 @@ func openTaskOwnerView(workspace string, ask tui3.TaskOwnerAsk) (tui3.TaskOwnerV
 		Questions: agent.WatchQuestions,
 		Close:     client.Close,
 	}, nil
+}
+
+// dialTaskOwnerHost connects without starting anything. A task row can be
+// opened while the already-running surface's host is restarting, so only the
+// stale-socket replacement sequence gets the same short grace as a headless
+// message: refused first, then refused or absent while the socket is replaced.
+func dialTaskOwnerHost(workspace string) (io.ReadWriteCloser, error) {
+	deadline := time.Now().Add(v3HostAnswerWait)
+	sawRefused := false
+	for {
+		conn, err := enginehost.Dial(workspace)
+		if err == nil {
+			return conn, nil
+		}
+		refused := errors.Is(err, syscall.ECONNREFUSED)
+		if refused {
+			sawRefused = true
+		}
+		if !sawRefused || (!refused && !errors.Is(err, os.ErrNotExist)) || !time.Now().Before(deadline) {
+			return nil, err
+		}
+		time.Sleep(v3HostAnswerPause)
+	}
 }
