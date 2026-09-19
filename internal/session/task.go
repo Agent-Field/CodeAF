@@ -820,8 +820,13 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		// and the turn cancels it on its way out (agent.go, `defer cancel(nil)`);
 		// a run driven under it would be stopped the moment the model finished
 		// its sentence. The values ride along, the cancellation does not.
-		if err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, question); err == nil {
-			return taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere), false, nil
+		joined := a.beltRunStandsOn(p.stand)
+		if err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question); err == nil {
+			receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
+			if joined {
+				receipt = withReport(receipt, "It joined the work already underway because both stand on the same ground.")
+			}
+			return receipt, false, nil
 		}
 	}
 	state := graph.admit(p.id, spec)

@@ -146,11 +146,13 @@ var beltRunSummaryDeadline = 6 * time.Second
 // on the Agent and nowhere else, so ownership of a running run is this
 // process's.
 type beltRun struct {
-	plan  *planState
-	store *plandb.Store
-	root  string
-	row   uint64
-	title string
+	plan      *planState
+	store     *plandb.Store
+	root      string
+	row       uint64
+	title     string
+	workspace string
+	ground    string
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -172,14 +174,15 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, quest
 
 	id := g.reserve()
 	title := taskPersonTitle(brief)
-	if err := a.startKnownTaskRun(ctx, id, title, brief, nil, question); err != nil {
+	stand := taskStand{dir: a.config.Workspace, mode: TaskModeWorktree}
+	if err := a.startKnownTaskRun(ctx, id, title, brief, nil, stand, question); err != nil {
 		return a.startTaskLegacy(ctx, brief, solo)
 	}
 	return id, title, "", nil
 }
 
 // An approved hand-off under the bash belt belongs to the run store and never to the session tree.
-func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, question string) error {
+func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string) error {
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
@@ -201,6 +204,9 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	// parent — and the supervisor already turning finds it ready on its next
 	// pass. Nothing opens a second store.
 	if live != nil {
+		if canonicalPath(stand.dir) != live.ground {
+			return errors.New("this hand-off stands on a different ground; it may join the live run only from the same ground")
+		}
 		if _, err := live.store.AddMany([]plandb.TaskSpec{{
 			ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies,
 		}}); err != nil {
@@ -220,7 +226,15 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 			return err
 		}
 	}
-	run := &beltRun{plan: plan, store: store, root: store.RootID(), row: id, title: title}
+	tree, err := prepareTaskTreeOn(ctx, a.config.Place, a.config.Workspace, a.journalID(), id, title, stand)
+	if err != nil {
+		_ = store.Close()
+		return err
+	}
+	run := &beltRun{
+		plan: plan, store: store, root: store.RootID(), row: id, title: title,
+		workspace: tree.dir, ground: canonicalPath(stand.dir),
+	}
 	a.installBeltRun(g, run)
 	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: a.taskClockNow()})
 
@@ -234,7 +248,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 
 	spec := RunSpec{
 		Store:     store,
-		Workspace: a.config.Workspace,
+		Workspace: run.workspace,
 		Title:     title,
 		Brief:     brief,
 		Slots:     a.config.TaskParallel,
@@ -500,4 +514,11 @@ func (a *Agent) missingRunDependencies(ids []uint64) []uint64 {
 		}
 	}
 	return missing
+}
+
+// beltRunStandsOn reports whether a hand-off may share the live run's copy.
+func (a *Agent) beltRunStandsOn(stand taskStand) bool {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	return a.beltRun != nil && a.beltRun.ground == canonicalPath(stand.dir)
 }
