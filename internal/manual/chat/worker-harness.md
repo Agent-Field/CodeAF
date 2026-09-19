@@ -79,8 +79,9 @@ shows, in order, each section left out when nothing is behind it:
 - `notes` — every note left on the task, with its moment. A note you left reads
   `you`. A note a worker or the run left names no author: the store knows those
   only by ids of its own, and an id is never drawn on this page;
-- `steps` — the trajectory its worker recorded: each command with the head of what
-  came back, the whole observation on disk behind the row.
+- `steps` — the trajectory its worker recorded: each command that ran with the head
+  of what came back, the whole observation on disk behind the row. A call known not to
+  have run stays in the record and its count, but has no row on the page.
 
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
