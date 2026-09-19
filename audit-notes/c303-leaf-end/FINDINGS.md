@@ -70,3 +70,11 @@ The current worker is consuming the committed forced-ordering reproduction and f
 ## Validation step
 
 The committed reproduction was inspected. It deterministically replaces the post-return bare PID probe with success after first observing the original PID absent, proving the failure message can be caused by PID reuse after correct teardown. Next step: inspect existing internal/exec identity helpers and the exact implementation lines to choose the smallest test-only correction without introducing a second identity scheme.
+
+## Correction choice
+
+`internal/exec` already exposes `ProcessStartTime`, and production stores that identity when registering a job at `jobs.go:198-206`. The smallest valid correction is test-only: capture the survivor's start identity while the completer has proved it is running, then fail after leaf end only if the same PID still has the same identity. A missing PID or a reused PID with a different identity is settled success. Next step: implement this correction, remove the forced probe hook, gofmt, and run the named focused test.
+
+## First correction attempt
+
+The scripted edit refused before changing `jobs_test.go` because its expected completer block did not exactly match the file. The still-forced test then failed 20 of 20 runs, and every run logged `no such process` from the real probe before the fabricated success. This strengthens the deterministic test-side classification and leaves the reproduction intact. Next step: inspect the exact completer block and adapt the identity-capture edit to it.
