@@ -286,13 +286,15 @@ func tokenStyle(methods []string) oauth2.AuthStyle {
 // have to think about: THE ASKING HAPPENS BEFORE THE ADDRESS EXISTS. There is no
 // sign-in page to name until the service has been asked where its sign-in is, so
 // this call is on the network for as long as that takes, and ctx bounds it.
+var newLocalListener = listener.New
+
 func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer string) (*Flow, error) {
 	answer = strings.TrimSpace(answer)
 	if _, err := plug.at(answer); err != nil {
 		return nil, err
 	}
 	service := plug.service
-	local, err := listener.New(localServerAddresses)
+	local, err := newLocalListener(localServerAddresses)
 	if err != nil {
 		return nil, fmt.Errorf("connect %s: %w", service.Name, err)
 	}
