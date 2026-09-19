@@ -55,3 +55,17 @@ The test change will keep the production address order and binding path intact w
 ## Validation step
 
 The implementation commit is complete. The final validation will record the committed tree before and after five separate commands: repository build, the internal/connect package tests, formatting cleanliness, change-entry validation, and guard plus naming-law tests. Equality of the two tree hashes will prove that validation did not alter the committed implementation tree.
+
+## Final validation evidence
+
+Starting committed tree: `ce8e551940c109092689372864f2afea2337dd4d`.
+
+Each validation command ran separately after the implementation and validation-plan commits:
+
+1. `go build ./...` exited 0 and printed nothing.
+2. `go test ./internal/connect/...` exited 0. It reported `ok` for `internal/connect` and `internal/connect/ampcatalog`, and no test files for `internal/connect/ampcatalog/gen`.
+3. `gofmt -l ./cmd ./internal` exited 0 and printed nothing.
+4. `go run ./cmd/codeaf-changes check` exited 0 and printed `docs/changes/unreleased: 16 entries, all well formed.`
+5. `go test ./internal/guard ./internal/namelaw` exited 0 and reported `ok` for both packages.
+
+Ending committed tree: `ce8e551940c109092689372864f2afea2337dd4d`. It exactly equals the starting committed tree, proving that the validation commands did not alter the tree.
