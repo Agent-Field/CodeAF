@@ -1168,7 +1168,7 @@ func (a *app) tasksPlanKeyWords(row session.PlanTaskRow) []string {
 // cannot disagree about which tasks can still move.
 func planEnded(row session.PlanTaskRow) bool {
 	switch planStateWord(row) {
-	case "done", "incomplete":
+	case "done", "incomplete", "stopped":
 		return true
 	}
 	return false

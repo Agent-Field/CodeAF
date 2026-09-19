@@ -105,6 +105,55 @@ func TestPlanTasksAnswersOnlyThisChatsRows(t *testing.T) {
 	}
 }
 
+// A TASK WHOSE ENDING CARRIES A PERSON'S STOP SAYS SO ON ITS ROW, and so does
+// everything that stop took down with it. The store ends what is under a
+// cancelled task in the same write, at the same instant and under its own
+// reason; a row reads as stopped when its own reason is the stop's, or when it
+// was cancelled in the very instant an ancestor was stopped. A task cancelled
+// for any other reason, at any other time, is not.
+func TestAStopMarksTheTaskAndWhatItTookDownAndNothingElse(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a",
+		plandb.TaskSpec{ID: "alpha", Title: "Alpha"},
+		plandb.TaskSpec{ID: "alpha-part", Title: "Alpha's part", ParentID: "alpha"},
+		plandb.TaskSpec{ID: "beta", Title: "Beta"},
+		plandb.TaskSpec{ID: "beta-part", Title: "Beta's part", ParentID: "beta"},
+		plandb.TaskSpec{ID: "gamma", Title: "Gamma"},
+	)
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Cancel("alpha", stopBecause(taskStoppedWord, "wrong folder")); err != nil {
+		t.Fatalf("stop alpha: %v", err)
+	}
+	if _, err := store.Cancel("beta", "the plan no longer needs it"); err != nil {
+		t.Fatalf("cancel beta: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	want := map[string]bool{"t-alpha": true, "t-alpha-part": true, "t-beta": false, "t-beta-part": false, "t-gamma": false}
+	seen := 0
+	for _, row := range agent.PlanTasks() {
+		stopped, named := want[row.ID]
+		if !named {
+			continue
+		}
+		seen++
+		if row.Stopped != stopped {
+			t.Errorf("%s: Stopped = %v, want %v (status %s)", row.ID, row.Stopped, stopped, row.Status)
+		}
+	}
+	if seen != len(want) {
+		t.Fatalf("read %d of the %d rows the test names", seen, len(want))
+	}
+}
+
 // A conversation with no plan answers nil rather than an empty read: the
 // emptiness is "there is no store", which a surface must tell apart from "the
 // store holds nothing of mine".
