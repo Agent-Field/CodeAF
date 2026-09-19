@@ -183,7 +183,7 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional. Each ONE rerunnable command re-establishing the result: no leading cd, no &&. ` +
+	`"description":"Optional. Each ONE rerunnable command: no leading cd; | & ; < > $ only inside single quotes. ` +
 	`The checker runs these and nothing else; work declaring none is judged by reading. Never the work itself"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
@@ -595,6 +595,26 @@ func leadsWithDirectoryChange(said string) bool {
 	return composed && len(fields) == 2 && fields[0] == "cd"
 }
 
+// checkShapeRefusal is what a declared check that is not one command hears, and
+// IT SAYS WHAT WOULD PASS. "… is not" was the whole of the old sentence, and a
+// model refused by it wrote the same shape again (measured 2026-09-18: nine
+// refusals over three rounds). So it names the one character that made this a
+// composition and the form of a check in one sentence. IT NEVER OFFERS A
+// REWRITTEN COMMAND: naming the tail after the last joiner as the repair was
+// tried and drops the step the check needed.
+func checkShapeRefusal(said string) string {
+	refusal := "Invalid arguments: checks must each be ONE rerunnable command"
+	if offending, composed := firstCompositionOutsideQuotes(said); composed {
+		refusal += ": " + strconv.Quote(string(offending)) + " joins, redirects or expands commands in " +
+			strconv.Quote(clip(said, auditCommandLimit)) +
+			". Such a character may stand only inside a single-quoted argument, where it is text"
+	}
+	if leadsWithDirectoryChange(said) {
+		refusal += ". A check runs from the root of the task's own copy: leave the directory change out and name each file by its path"
+	}
+	return refusal
+}
+
 func declaredCheckList(raw []string) ([]string, string) {
 	out := make([]string, 0, len(raw))
 	for _, entry := range raw {
@@ -604,12 +624,7 @@ func declaredCheckList(raw []string) ([]string, string) {
 		}
 		command, ok := commandLike(said)
 		if !ok {
-			refusal := "Invalid arguments: checks must each be ONE command with no shell composition — " +
-				strconv.Quote(clip(said, auditCommandLimit)) + " is not"
-			if leadsWithDirectoryChange(said) {
-				refusal += ". A check runs from the root of the task's own copy: leave the directory change out and name each file by its path"
-			}
-			return nil, refusal
+			return nil, checkShapeRefusal(said)
 		}
 		if !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
 			return nil, "Invalid arguments: checks may not name " + strconv.Quote(command) +
@@ -857,6 +872,13 @@ func preparedAuditCommand(command string) string {
 	if command == "" {
 		return command
 	}
+	// ONE COMMAND IS LEFT EXACTLY AS IT WAS TYPED. A bar or an arrow inside a
+	// quoted argument is text ([firstCompositionOutsideQuotes]), and a line that
+	// is already one command has no stage to take: cutting it at that bar would
+	// hand the gate half a quotation, which it then refuses.
+	if _, composed := firstCompositionOutsideQuotes(command); !composed {
+		return command
+	}
 	if stage, ok := firstStage(command); ok {
 		return strings.TrimSpace(stage)
 	}
@@ -877,11 +899,13 @@ func preparedAuditCommand(command string) string {
 // command short at the first arrow it happens to contain would hand the door a
 // SHORTER command than the work ran, and a shorter command is a wider one.
 func firstStage(line string) (string, bool) {
-	if head, rest, piped := strings.Cut(line, "|"); piped {
-		if strings.HasPrefix(rest, "|") {
+	// THE PIPE THAT ENDS THE FIRST STAGE IS THE FIRST ONE THE SHELL WOULD ACT ON.
+	// A bar inside a quoted argument belongs to the command that carries it.
+	if at := firstBarOutsideQuotes(line); at >= 0 {
+		if strings.HasPrefix(line[at+1:], "|") {
 			return "", false
 		}
-		line = head
+		line = line[:at]
 	}
 	fields := strings.Fields(line)
 	for len(fields) > 0 {
@@ -1148,7 +1172,10 @@ func sameFile(one, other string) bool {
 // than about how it was typed.
 func commandLike(text string) (string, bool) {
 	text = strings.TrimSpace(text)
-	if text == "" || strings.ContainsAny(text, shellComposition) {
+	if text == "" {
+		return "", false
+	}
+	if _, composed := firstCompositionOutsideQuotes(text); composed {
 		return "", false
 	}
 	fields := strings.Fields(text)
@@ -1159,9 +1186,8 @@ func commandLike(text string) (string, bool) {
 	if strings.HasPrefix(program, "-") || strings.Trim(program, "*?[]") == "" {
 		return "", false
 	}
-	normalized := strings.Join(fields, " ")
-	if len(normalized) > auditCommandLimit {
+	if len(text) > auditCommandLimit {
 		return "", false
 	}
-	return normalized, true
+	return text, true
 }
