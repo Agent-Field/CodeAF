@@ -670,7 +670,7 @@ func planRailLive(line tasksLine, width int, pal palette) string {
 	if room < 1 {
 		return ""
 	}
-	if live := planLiveRow(line.item.plan.Live.Command, line.item.plan.Folder, room, pal); live != "" {
+	if live := planLiveRow(line.item.plan.Live.Command, line.item.plan.LiveParts, room, pal); live != "" {
 		return lead + live
 	}
 	return ""
@@ -1491,10 +1491,6 @@ func (a *app) taskPlanBody(width int) []string {
 			}
 		}
 	}
-	if folder := strings.TrimSpace(page.Folder); folder != "" {
-		section("folder")
-		addWrapped(folder, pal.ink)
-	}
 	if len(page.Notes) > 0 {
 		section("notes")
 		for _, note := range page.Notes {
@@ -1524,7 +1520,11 @@ func (a *app) taskPlanBody(width int) []string {
 	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
 		for _, step := range page.Steps {
-			command := planDisplayCommand(step.Command, page.Folder)
+			// A STEP WITH NOTHING OF THE WORK IN IT HAS NO ROW, AND EVERY OTHER ROW
+			// KEEPS THE NUMBER THE RECORD GAVE IT. The head counts the steps that
+			// ran, the live step is called by its number elsewhere, and a row
+			// renumbered to close the gap would make both of them wrong about it.
+			command := planDisplayCommand(step.Command, step.Parts)
 			if command == "" {
 				continue
 			}
@@ -1542,7 +1542,7 @@ func (a *app) taskPlanBody(width int) []string {
 		// and the next re-read draws it as an ordinary step (internal/plandb's
 		// live.go states the law, and a live step's zero value draws nothing).
 		if live := page.Live; !live.Empty() {
-			if command := planDisplayCommand(live.Command, page.Folder); command != "" {
+			if command := planDisplayCommand(live.Command, page.Row.LiveParts); command != "" {
 				add(pal.ink(pal.glyph(tokens.GStepRunning) + "  $ " + command))
 			}
 			if !live.Since.IsZero() {
@@ -1580,7 +1580,7 @@ func (a *app) taskPlanBody(width int) []string {
 				word += railSep + itoa(n) + " queued behind it"
 			}
 			add(pal.ink(lead + word))
-			if line := planLiveRow(kid.Live.Command, kid.Folder, width-ansi.StringWidth(lead)-2, pal); line != "" {
+			if line := planLiveRow(kid.Live.Command, kid.LiveParts, width-ansi.StringWidth(lead)-2, pal); line != "" {
 				add(lead + "  " + line)
 			}
 		}
@@ -1803,11 +1803,66 @@ func planRailNow(line tasksLine, width int, pal palette, sentence string) []stri
 }
 
 // planDisplayCommand is the one display rule for a task step on the page, rail,
-// and tree. The record remains untouched: only a leading change into the exact
-// run copy named in the page head is omitted. Every other command is returned
-// exactly as recorded apart from surrounding space already discarded by rows.
-func planDisplayCommand(command, folder string) string {
-	return planFirstLine(planWithoutOwnFolder(strings.TrimSpace(command), strings.TrimSpace(folder)))
+// and tree. The record remains untouched. The session marks each quote-aware
+// part that belongs only to the run record or changes into the run copy; this
+// surface omits those parts and preserves every other part and separator.
+func planDisplayCommand(command string, parts []session.PlanCommandPart) string {
+	left := func(part session.PlanCommandPart) bool {
+		return part.RecordAddressed || part.RunCopyPrefix || strings.TrimSpace(part.Command) == ""
+	}
+	cut := false
+	for _, part := range parts {
+		if left(part) {
+			cut = true
+			break
+		}
+	}
+	// NOTHING LEFT OUT IS THE LINE AS IT RAN. The parts are only ever a reason
+	// to leave something out, never a second spelling of the command.
+	if !cut {
+		return planFirstLine(strings.TrimSpace(command))
+	}
+	// WHAT IS KEPT IS CUT FROM THE RECORDED LINE, span by span: each kept part
+	// as it was typed, and between two kept parts the boundary that followed
+	// the first of them. A part with nothing kept after it brings no boundary,
+	// so a line never ends on one.
+	var display strings.Builder
+	last := -1
+	for i, part := range parts {
+		if left(part) {
+			continue
+		}
+		// A kept part always has bytes of its own, so an empty or impossible span
+		// is a part that was never given one.
+		if part.Start < 0 || part.Start >= part.End || part.End > part.SepEnd || part.SepEnd > len(command) {
+			return planJoinedParts(parts, left)
+		}
+		if last >= 0 {
+			display.WriteString(command[parts[last].End:parts[last].SepEnd])
+		}
+		display.WriteString(command[part.Start:part.End])
+		last = i
+	}
+	return planFirstLine(strings.TrimSpace(display.String()))
+}
+
+// planJoinedParts is the kept parts joined by their own boundaries, for parts
+// that carry no spans into the line they came from.
+func planJoinedParts(parts []session.PlanCommandPart, left func(session.PlanCommandPart) bool) string {
+	var display strings.Builder
+	wrote := false
+	boundary := ""
+	for _, part := range parts {
+		if left(part) {
+			continue
+		}
+		if wrote {
+			display.WriteString(boundary)
+		}
+		display.WriteString(part.Command)
+		boundary, wrote = part.Separator, true
+	}
+	return planFirstLine(strings.TrimSpace(display.String()))
 }
 
 // planFirstLine is a command as ONE ROW. A command that writes a document is

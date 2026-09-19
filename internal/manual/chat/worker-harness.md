@@ -177,6 +177,25 @@ steps
 When the command ends the store clears the live step and the next read draws it as an ordinary
 step, with its number and the head of what came back.
 
+## Why is a step missing, the step numbers skip, the cd at the front of a command is gone
+
+**The steps a run's task shows are the work, cut from the commands as they ran.** Two
+things are left out of a step's row, and nothing else is ever changed:
+
+- a leading change into the run's own copy, which every command starts with and which says
+  nothing about the task. A change into a folder further down is the work and is drawn
+- any part of the command addressed only to the run's own record of the task, with whatever
+  it is piped through. That is the run keeping its page up to date, not doing the task
+
+Everything that is kept is drawn exactly as it was typed, spacing included. A command with
+nothing left out is drawn whole. A part inside `$( )` or a bracketed group is never left out,
+and neither is work that is piped into something else.
+
+**A step with nothing of the work in it has no row, and the numbers skip over it.** Every
+row keeps the number the step ran as, so a page whose head says `12 steps` may draw rows
+`1` to `4`, then `9`. The missing numbers are the run's own bookkeeping. What the last of
+them said is the task's result, which is in the notes above the steps.
+
 ## Why does it say queued?
 
 `queued` is this surface's own word for a run task the store holds `pending`: the work is

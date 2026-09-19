@@ -1,6 +1,10 @@
 package tui3
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -275,4 +279,60 @@ func TestAnOpenPageOnAnEndedTaskReadsOnceAndStops(t *testing.T) {
 	if got := counted.pages.Load() - opened; got != 0 {
 		t.Fatalf("a page on an ended task crossed the wire %d more times over twenty beats, want none", got)
 	}
+}
+
+// A HOSTED PAGE AND ROW CARRY THEIR DISPLAY PARTS OVER THE REAL WIRE, and the
+// hosted surface filters those facts rather than exposing run bookkeeping.
+func TestHostedPlanPartsCrossTheWireAndFilterThePage(t *testing.T) {
+	a, counted, path := hostedPlanApp(t, false)
+	workspace := filepath.Dir(filepath.Dir(path))
+	seedRows := counted.PlanTasks()
+	if len(seedRows) != 1 {
+		t.Fatalf("seed rows = %#v, want one", seedRows)
+	}
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	liveCommand := "printf live-worker-bytes; plandb task overview"
+	if err := store.SetLive("root", 2, liveCommand); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	command := "cd " + workspace + " && printf recorded-worker-bytes; plandb task overview"
+	if err := os.MkdirAll(filepath.Dir(seedRows[0].TrajectoryPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"kind":"step","step":1,"command":` + hostedJSONQuote(command) + `,"observation":"recorded-output"}` + "\n"
+	if err := os.WriteFile(seedRows[0].TrajectoryPath, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := counted.PlanTasks()
+	if len(rows) != 1 || len(rows[0].LiveParts) != 2 {
+		t.Fatalf("hosted row live parts = %#v, want two parts", rows)
+	}
+	page, ok := counted.PlanTaskPage("root")
+	if !ok || len(page.Steps) != 1 || len(page.Steps[0].Parts) != 3 {
+		t.Fatalf("hosted page step parts = %#v, ok %v, want three parts", page.Steps, ok)
+	}
+
+	openHostedPage(t, a)
+	screen := taskSheetText(a)
+	for _, never := range []string{workspace, "plandb task overview"} {
+		if strings.Contains(screen, never) {
+			t.Fatalf("hosted page contains filtered %q:\n%s", never, screen)
+		}
+	}
+	for _, want := range []string{"recorded-worker-bytes", "recorded-output"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("hosted page lacks %q:\n%s", want, screen)
+		}
+	}
+}
+
+func hostedJSONQuote(text string) string {
+	return strconv.Quote(text)
 }
