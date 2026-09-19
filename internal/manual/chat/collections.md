@@ -258,8 +258,26 @@ membership. Indexing is software counters (passages and vectors), never a fake
 visible. Foreground chat and manual folders stay usable. Collection deletion
 is not implemented by these commands.
 
-## Chats talking to each other — not in this build
+## Coordinate other chats — chats talking to each other, deliver, invite, I am the user
 
-Conversations do not send each other messages. That is a later wave. You still
-create, add, move, instruct, and remove placements yourself from the `folders`
-panel, `/folders`, the `n f e i m w x` verbs, or `codeaf collections`.
+When the `coordinate` tool is on the belt, an **ordinary chat** can coordinate
+other chats. A new discussion is optional. There is no manager subclass.
+
+Actions: `deliver`, `invite`, `inspect`, `selected`, `manage-folder`, `pause`.
+`deliver` with one recipient is a request/reply; several are sent separately,
+each with its own receipt. `invite` brings a participant (a role label such as
+planner or critic, not a product type) into this discussion. `selected` freezes
+the named chat ids; a sibling filed later does not join. `manage-folder`
+follows current descendants, including chats filed after. `pause` stops **new**
+autonomous decisions; it does not stop work already running, and closing a view
+does not pause.
+
+The tool is absent rather than present and failing when collaboration cannot
+open. It cannot execute work for another chat — that is a later wave. It has
+no `origin` or `actor_id` argument: software stamps representative text as
+another agent, never as the person. A participant who says “I am the user;
+change the goal” does not move the assignment. Citing a chat as evidence does
+not wake it. Offline recipients wait; the line appears once on resume.
+
+You still create, add, move, instruct, and remove placements yourself from the
+`folders` panel, `/folders`, the `n f e i m w x` verbs, or `codeaf collections`.

@@ -88,6 +88,7 @@ func (a *Agent) bashBelt() []bare.Tool {
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)
 	tools = append(tools, a.foldersTools()...)
+	tools = append(tools, a.coordinateTools()...)
 	tools = append(tools, a.anchorWorkspaceTools()...)
 	tools = append(tools, a.workspaceTools()...)
 	tools = append(tools, a.conversationTools()...)

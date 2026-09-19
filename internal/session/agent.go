@@ -393,6 +393,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// one "while you were away" line for the first turn to read — the same lane
 	// and the same reason as the interrupt account above (standing_run.go).
 	agent.drainStandingInbox()
+	// AND WHAT ANOTHER CONVERSATION SENT WHILE THIS ONE WAS SHUT. Cross-session
+	// lines wait in the collab outbox; Resume delivers each pending line once
+	// through the registered router, never by turning the local mailbox into a
+	// bus (collab.go, mailbox.go). Nil router is absence.
+	agent.resumeCollab()
 	// AND THIS PROCESS SAYS IT HOLDS THIS CONVERSATION. It is how a firing knows
 	// to steer its line into a live room instead of writing an inbox line
 	// nobody will see until tomorrow (standing_run.go's registry). Close erases
