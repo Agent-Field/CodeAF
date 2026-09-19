@@ -130,18 +130,31 @@ func (a *foldersAdapter) IndexProgress(ctx context.Context) (tui3.FolderIndex, e
 	}, nil
 }
 
-// OrganizeExisting launches the explicit survey. t-fe-ui owns the Folders
-// place DTO; this door returns the wsapi view that place maps.
-func (a *foldersAdapter) OrganizeExisting(ctx context.Context) (wsapi.OrganizeView, error) {
-	return a.svc.OrganizeExistingChats(ctx)
+// OrganizeExisting launches the explicit survey. tui3 owns FolderOrganize;
+// wsapi.OrganizeView is the same three strings, mapped here the way
+// IndexProgress maps FolderIndex. This is not a dummy: it calls the real door.
+func (a *foldersAdapter) OrganizeExisting(ctx context.Context) (tui3.FolderOrganize, error) {
+	view, err := a.svc.OrganizeExistingChats(ctx)
+	if err != nil {
+		return tui3.FolderOrganize{}, err
+	}
+	return folderOrganizeOf(view), nil
 }
 
-func (a *foldersAdapter) OrganizeStatus(ctx context.Context) (wsapi.OrganizeView, error) {
-	return a.svc.OrganizeStatus(ctx)
+func (a *foldersAdapter) OrganizeStatus(ctx context.Context) (tui3.FolderOrganize, error) {
+	view, err := a.svc.OrganizeStatus(ctx)
+	if err != nil {
+		return tui3.FolderOrganize{}, err
+	}
+	return folderOrganizeOf(view), nil
 }
 
 func (a *foldersAdapter) CancelOrganize(ctx context.Context) error {
 	return a.svc.CancelOrganize(ctx)
+}
+
+func folderOrganizeOf(view wsapi.OrganizeView) tui3.FolderOrganize {
+	return tui3.FolderOrganize{JobID: view.JobID, State: view.State, Detail: view.Detail}
 }
 
 func (a *foldersAdapter) WhyHere(ctx context.Context, collectionID, refID string) (tui3.FolderWhy, error) {
