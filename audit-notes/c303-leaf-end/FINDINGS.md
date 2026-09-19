@@ -90,3 +90,5 @@ The identity-aware test correction passes 20 consecutive focused runs with `go t
 ## Pre-PR verification
 
 The correction is committed at `f8e08781f9556d71725d720facbe91fab6a4f549`. Next step: record the committed tree hash and run the first required standalone check, `go build ./...`.
+
+`go build ./...` passed from tree `5bb057600137f6ddb720994ae2698d843a78d926`. Next step: run the required standalone `go test ./internal/exec/...` check.
