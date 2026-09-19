@@ -34,12 +34,19 @@ func (s *Store) AddWith(ctx context.Context, id string, ref Ref, p Provenance) e
 	if replay {
 		return storeError(tx.Commit())
 	}
+	if err := matchRevision(ctx, tx, id, p.ExpectedRevision); err != nil {
+		return storeError(err)
+	}
 	added, err := insertMembership(ctx, tx, id, ref)
 	if err != nil {
 		return storeError(err)
 	}
 	if added {
-		if err := recordEvent(ctx, tx, id, ref, ActionAdd, p, s.stamp()); err != nil {
+		at := s.stamp()
+		if err := recordEvent(ctx, tx, id, ref, ActionAdd, p, at); err != nil {
+			return storeError(err)
+		}
+		if err := bumpTouched(ctx, tx, at, id); err != nil {
 			return storeError(err)
 		}
 	}
@@ -62,7 +69,7 @@ func (s *Store) RemoveWith(ctx context.Context, id string, ref Ref, p Provenance
 	if replay {
 		return storeError(tx.Commit())
 	}
-	if err := requireCollection(ctx, tx, id); err != nil {
+	if err := matchRevision(ctx, tx, id, p.ExpectedRevision); err != nil {
 		return storeError(err)
 	}
 	removed, err := deleteMembership(ctx, tx, id, ref)
@@ -70,7 +77,11 @@ func (s *Store) RemoveWith(ctx context.Context, id string, ref Ref, p Provenance
 		return storeError(err)
 	}
 	if removed {
-		if err := recordEvent(ctx, tx, id, ref, ActionRemove, p, s.stamp()); err != nil {
+		at := s.stamp()
+		if err := recordEvent(ctx, tx, id, ref, ActionRemove, p, at); err != nil {
+			return storeError(err)
+		}
+		if err := bumpTouched(ctx, tx, at, id); err != nil {
 			return storeError(err)
 		}
 	}
@@ -98,7 +109,15 @@ func (s *Store) Move(ctx context.Context, fromID, toID string, ref Ref, p Proven
 	if replay {
 		return storeError(tx.Commit())
 	}
-	if err := requireCollection(ctx, tx, fromID); err != nil {
+	// THE EXPECTED REVISION IS READ INSIDE THE WRITER TRANSACTION. A check
+	// against a snapshot taken before Begin would race a peer's commit, and a
+	// mismatch after we had already inserted would still have to roll the edge
+	// back. Asking here means a stale ExpectedFrom or ExpectedTo never writes,
+	// so one mismatch leaves neither membership nor event behind.
+	if err := matchRevision(ctx, tx, fromID, p.ExpectedFrom); err != nil {
+		return storeError(err)
+	}
+	if err := matchRevision(ctx, tx, toID, p.ExpectedTo); err != nil {
 		return storeError(err)
 	}
 	if _, err := insertMembership(ctx, tx, toID, ref); err != nil {
@@ -114,6 +133,9 @@ func (s *Store) Move(ctx context.Context, fromID, toID string, ref Ref, p Proven
 	remove := p
 	remove.IdempotencyKey = ""
 	if err := recordEvent(ctx, tx, fromID, ref, ActionRemove, remove, at); err != nil {
+		return storeError(err)
+	}
+	if err := bumpTouched(ctx, tx, at, fromID, toID); err != nil {
 		return storeError(err)
 	}
 	return storeError(tx.Commit())
@@ -277,4 +299,29 @@ func scanEvent(row eventScanner) (MembershipEvent, error) {
 	var ev MembershipEvent
 	err := row.Scan(&ev.CollectionID, &ev.Kind, &ev.RefID, &ev.SessionID, &ev.Action, &ev.Origin, &ev.Reason, &ev.Actor, &ev.Evidence, &ev.At, &ev.IdempotencyKey)
 	return ev, err
+}
+
+func matchRevision(ctx context.Context, tx *sql.Tx, id string, expected int) error {
+	var got int
+	err := tx.QueryRowContext(ctx, "SELECT revision FROM collections WHERE id=?", id).Scan(&got)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if expected != 0 && got != expected {
+		return ErrConflict
+	}
+	return nil
+}
+
+func bumpTouched(ctx context.Context, tx *sql.Tx, now string, ids ...string) error {
+	for _, id := range ids {
+		if _, err := tx.ExecContext(ctx, "UPDATE collections SET revision=revision+1, updated_at=? WHERE id=?", now, id); err != nil {
+			return err
+		}
+	}
+	_, err := tx.ExecContext(ctx, "UPDATE root_state SET revision=revision+1, updated_at=? WHERE id=1", now)
+	return err
 }

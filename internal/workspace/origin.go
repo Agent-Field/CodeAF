@@ -10,6 +10,11 @@ type Provenance struct {
 	Actor          string
 	Evidence       string
 	IdempotencyKey string
+	// ExpectedRevision is optional. Zero means no precondition (old CLI).
+	// Non-zero must match the collection's revision inside the write txn.
+	ExpectedRevision int
+	// ExpectedFrom / ExpectedTo apply to Move only; zero means no check.
+	ExpectedFrom, ExpectedTo int
 }
 
 const (

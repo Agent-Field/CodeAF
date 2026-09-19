@@ -93,6 +93,9 @@ func TestV1ListDoesNotMigrate(t *testing.T) {
 	if err != nil || len(parents) != 1 || parents[0].ID != "billing-v1" {
 		t.Fatalf("v1 find: %v, %v", parents, err)
 	}
+	if _, _, _, err := s.RootState(ctx); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("v1 root state: %v", err)
+	}
 	if _, err := s.WhyHere(ctx, "billing-v1", Ref{Kind: ConversationKind, ID: "old-chat"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("v1 why-here: %v", err)
 	}

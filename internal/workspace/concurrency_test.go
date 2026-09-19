@@ -63,6 +63,11 @@ func TestReadsNeverAskForTheWriterLock(t *testing.T) {
 	if err := writer.Add(ctx, collection.ID, ref); err != nil {
 		t.Fatal(err)
 	}
+	committed, err := writer.Collections(ctx)
+	if err != nil || len(committed) != 1 {
+		t.Fatalf("writer list after add: %v, %v", committed, err)
+	}
+	collection = committed[0]
 	tx, err := writer.db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
