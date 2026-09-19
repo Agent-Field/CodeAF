@@ -174,16 +174,27 @@ steps
       running 41s
 ```
 
-When the step ends, the next read draws it as an ordinary step, with its number and the head
-of what came back.
+When the command ends the store clears the live step and the next read draws it as an ordinary
+step, with its number and the head of what came back.
 
-### Why is a step missing from the page?
+## Why is a step missing from a task's page, the step numbers skip, where did the cd go
 
-The page shows every part that does the task, just as it was written. It leaves out the
-repeated move into the task's own copy and any part that only keeps the task's own page up
-to date. If a step has no other part, there is no row for it; the numbers beside the steps you
-can read stay in order. What that last step said is already in the task's report, so the page
-does not repeat its note or its private names beneath another step.
+**The steps on a run's task page are the work, cut from the commands as they ran.** Two
+things are left out of a step's row, and nothing else is ever changed:
+
+- a leading change into the run's own copy, which every command starts with and which says
+  nothing about the task. A change into a folder further down is the work and is drawn
+- any part of the command addressed only to the run's own record of the task, with whatever
+  it is piped through. That is the run keeping its page up to date, not doing the task
+
+Everything that is kept is drawn exactly as it was typed, spacing included. A command with
+nothing left out is drawn whole. A part inside `$( )` or a bracketed group is never left out,
+and neither is work that is piped into something else.
+
+**A step with nothing of the work in it has no row, and the numbers skip over it.** Every
+row keeps the number the step ran as, so a page whose head says `12 steps` may draw rows
+`1` to `4`, then `9`. The missing numbers are the run's own bookkeeping. What the last of
+them said is the task's result, which is in the notes above the steps.
 
 ## Why does it say queued?
 
