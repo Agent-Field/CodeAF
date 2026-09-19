@@ -564,7 +564,16 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		// Its worker's report is kept for the completion; its error is what
 		// stops the run from ever completing, not a row.
 		if ret.err != nil {
-			s.rootFailed = true
+			root := s.store.Task(ret.task.ID)
+			if root.Status == plandb.StatusDone {
+				// FINISHED WORK GETS A REVIEW ROUND BEFORE THE RUN MAY ANSWER
+				// DONE. The store's ending stands even when its worker later
+				// returns an error, including the result the review must read.
+				s.rootResult = root.Result
+				s.addReviewCheck(ret.task, root.Result)
+			} else {
+				s.rootFailed = true
+			}
 		} else {
 			s.rootResult = ret.report.Result
 			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other. If
