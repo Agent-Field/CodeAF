@@ -16,6 +16,12 @@ type VerdictBasis struct {
 	// exit the check's own record shows. Only a run basis carries it; a
 	// reading basis carries none.
 	Runs []VerdictRun `json:"runs,omitempty"`
+
+	// Unobserved names the declared checks a reading verdict did not observe
+	// run, which happens for a record written before command exits were
+	// recorded. It is set only on a reading basis, so a reader does not mistake
+	// an old record's holds for one earned by running the declared checks.
+	Unobserved []string `json:"unobserved,omitempty"`
 }
 
 // VerdictRun is one declared check's recorded run: the command, and the exit

@@ -362,8 +362,8 @@ func TestBashWorkerRecordsItsStepsAndReportsThem(t *testing.T) {
 		t.Fatalf("the recorded observation = %q, want the command's output in it", steps[0].Observation)
 	}
 	lines := rawTrajectory(t, storeDir, store.RootID())
-	if len(lines) != 3 {
-		t.Fatalf("the trajectory holds %d lines, want the two steps and the ending", len(lines))
+	if len(lines) != 4 {
+		t.Fatalf("the trajectory holds %d lines, want the opening line, the two steps and the ending", len(lines))
 	}
 	end := endLine(t, lines)
 	if end.Steps != 2 || end.Reason != "finished in the store" {
@@ -495,10 +495,10 @@ func TestBashWorkerEndsItsLoopAtTheStepCap(t *testing.T) {
 		t.Fatalf("report steps = %d, want the cap the loop stopped at", report.Steps)
 	}
 	lines := rawTrajectory(t, storeDir, store.RootID())
-	if len(lines) != 4 {
-		t.Fatalf("the trajectory holds %d lines, want three steps and the ending", len(lines))
+	if len(lines) != 5 {
+		t.Fatalf("the trajectory holds %d lines, want the opening line, three steps and the ending", len(lines))
 	}
-	for i, line := range lines[:3] {
+	for i, line := range lines[1:4] {
 		var step run.Step
 		if json.Unmarshal([]byte(line), &step) != nil || step.Kind != "step" || step.Step != i+1 {
 			t.Fatalf("trajectory line %d is not step %d: %q", i, i+1, line)

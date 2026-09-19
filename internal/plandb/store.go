@@ -626,12 +626,14 @@ func (s *Store) checkVerdictBasis(task *Task) (VerdictBasis, bool) {
 	if len(task.Checks) == 0 {
 		return VerdictBasis{Kind: "reading"}, true
 	}
-	recorded, sawAnyExit := s.recordedRuns(task)
-	if !sawAnyExit {
-		// No step in this record carried an exit: the work predates exit recording,
-		// or nothing ran. There is no run to judge, so the verdict is a reading one,
-		// and reading can hold.
-		return VerdictBasis{Kind: "reading"}, true
+	recorded, newBuild := s.recordedRuns(task)
+	if !newBuild {
+		// A record from before command exits were recorded. There is no run to
+		// judge and a reader cannot tell a refused or unrun check from a passing
+		// one, so the verdict is a reading one, which can hold, and it names the
+		// declared checks it never observed so no reader mistakes it for a holds
+		// earned by running them.
+		return VerdictBasis{Kind: "reading", Unobserved: append([]string(nil), task.Checks...)}, true
 	}
 	seen := make(map[string]bool, len(task.Checks))
 	runs := make([]VerdictRun, 0, len(task.Checks))
@@ -669,23 +671,38 @@ func (s *Store) recordedRuns(task *Task) (map[string]int, bool) {
 	if err != nil {
 		return out, false
 	}
-	sawAnyExit := false
+	// newBuild is true when this record was written by a build that records
+	// command exits: a step carried an exit, or any line was stamped
+	// exits_recorded. internal/run/trajectory.go stamps that on the opening line
+	// (before any step) and on the ending line, so a record cut off mid-run is
+	// still known to be new; keep the field name in step with that writer. A
+	// record with no exit and no stamp is genuinely old, and the reader must not
+	// treat its silence as a passing run.
+	newBuild := false
 	for _, line := range strings.Split(string(data), "\n") {
 		var step struct {
-			Kind     string `json:"kind"`
-			Command  string `json:"command"`
-			ExitCode *int   `json:"exit_code"`
+			Kind          string `json:"kind"`
+			Command       string `json:"command"`
+			ExitCode      *int   `json:"exit_code"`
+			ExitsRecorded bool   `json:"exits_recorded"`
 		}
-		if json.Unmarshal([]byte(line), &step) != nil || step.Kind != "step" {
+		if json.Unmarshal([]byte(line), &step) != nil {
 			continue
 		}
-		// AN ABSENT EXIT IS UNKNOWN, NOT ZERO. A step the recorder could not stamp,
-		// and every step of a record written before the field existed, decodes to a
-		// nil pointer here and is not a recorded run at all.
+		// Any line a build stamped, opening or ending, marks the record new even
+		// when no step ran or the run was cut off before its ending.
+		if step.ExitsRecorded {
+			newBuild = true
+		}
+		if step.Kind != "step" {
+			continue
+		}
+		// AN ABSENT EXIT IS UNKNOWN, NOT ZERO. A step the recorder could not stamp
+		// decodes to a nil pointer here and is not a recorded run at all.
 		if step.ExitCode == nil {
 			continue
 		}
-		sawAnyExit = true
+		newBuild = true
 		command := strings.TrimSpace(step.Command)
 		// The belt wraps a worker command in a cd to the ABSOLUTE root of the
 		// task's own copy. Only that wrapper is stripped, so a check the checker
@@ -699,7 +716,7 @@ func (s *Store) recordedRuns(task *Task) (map[string]int, bool) {
 		}
 		out[command] = *step.ExitCode
 	}
-	return out, sawAnyExit
+	return out, newBuild
 }
 
 // auditableDeclaredCheck is the store's half of the check door's law, asked of

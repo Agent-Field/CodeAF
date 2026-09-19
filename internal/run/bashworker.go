@@ -83,6 +83,13 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	if err != nil {
 		return Report{}, fmt.Errorf("read the task's trajectory: %w", err)
 	}
+	// A BUILD THAT RECORDS EXITS SAYS SO ON ITS FIRST LINE, before any step, so a
+	// record cut off before its ending (a killed worker, a wall, a window closed
+	// mid-run) is still known to be a new build and its silence is not read as a
+	// passing run. Written once, when the task first runs.
+	if len(past) == 0 {
+		_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryBeginKind, ExitsRecorded: true})
+	}
 	agent, err := session.NewBeltWorker(session.Config{
 		Workspace: w.workspace,
 		Model:     w.model,
@@ -120,7 +127,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 			// A TURN THAT NEVER STARTED RUNS NO COMMAND, so it clears any live step
 			// a predecessor left behind on this task rather than claiming a present.
 			w.clearLiveStep(task.ID)
-			_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the turn never started: " + err.Error()})
+			_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Reason: "the turn never started: " + err.Error()})
 			return Report{Steps: steps}, err
 		}
 		brief = noActionNote
@@ -160,7 +167,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 					// than the run was: that is a failure of the record itself,
 					// and the honest ending is the task failing on it.
 					w.clearLiveStep(task.ID)
-					_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the record failed: " + err.Error()})
+					_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Reason: "the record failed: " + err.Error()})
 					return Report{Steps: steps}, err
 				}
 				// THE STEP IS NO LONGER RUNNING, so its live reading goes with it: the
@@ -216,27 +223,27 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 		w.clearLiveStep(task.ID)
 		switch {
 		case ending.kind == endingDone:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Result: ending.result, Reason: "finished in the store"}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Result: ending.result, Reason: "finished in the store"}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Result: ending.result, Steps: steps, USD: usd}, nil
 		case ending.kind == endingWait:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "waiting"}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "waiting"}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd, Waiting: true}, nil
 		case capped:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "stopped at the step cap"}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "stopped at the step cap"}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, fmt.Errorf("stopped at its step cap after %d steps", capSteps)
 		case ctx.Err() != nil:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "the run's wall stopped it"}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "the run's wall stopped it"}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, fmt.Errorf("the run's wall stopped the worker: %w", ctx.Err())
 		case turnErr != nil:
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "the turn errored: " + turnErr.Error()}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: "the turn errored: " + turnErr.Error()}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, turnErr
@@ -255,7 +262,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 		}
 		if noAction >= noActionLimit {
 			reason := fmt.Sprintf("%d replies in a row carried no action", noAction)
-			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: reason}); err != nil {
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, errors.New(reason)

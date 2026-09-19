@@ -1886,14 +1886,19 @@ func TestPlandbCliCheckConclusionRequiresTheRightDeclaredChecks(t *testing.T) {
 			if _, err := store.Claim("review", "review"); err != nil {
 				t.Fatalf("claim check task: %v", err)
 			}
-			if len(tt.ran) > 0 {
+			if len(tt.checks) > 0 {
 				dir := TaskDir(filepath.Dir(store.Path()), "review")
 				if err := os.MkdirAll(dir, 0o700); err != nil {
 					t.Fatalf("make task directory: %v", err)
 				}
+				// A real check run stamps its opening line as a build that records
+				// exits, then records each declared command it ran with a zero exit. A
+				// run that executed no declared check has only the opening line, which
+				// still marks it a new build whose holds the gate must refuse.
 				var trajectory strings.Builder
+				trajectory.WriteString("{\"kind\":\"begin\",\"exits_recorded\":true}\n")
 				for i, command := range tt.ran {
-					trajectory.WriteString(fmt.Sprintf("{\"kind\":\"step\",\"step\":%d,\"command\":\"cd /tmp/tree && %s\"}\n", i+1, command))
+					trajectory.WriteString(fmt.Sprintf("{\"kind\":\"step\",\"step\":%d,\"command\":\"cd /tmp/tree && %s\",\"exit_code\":0}\n", i+1, command))
 				}
 				if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), []byte(trajectory.String()), 0o600); err != nil {
 					t.Fatalf("write trajectory: %v", err)
