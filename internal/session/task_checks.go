@@ -614,12 +614,17 @@ func leadsWithDirectoryChange(said string) bool {
 // tried and drops the step the check needed.
 func checkShapeRefusal(said string) string {
 	refusal := "Invalid arguments: checks must each be ONE rerunnable command"
-	if len(said) > declaredCheckByteLimit {
+	// THE SAME TEXT THE DOOR MEASURES. commandLike admits the trimmed command,
+	// so measuring the raw text here would refuse a check for a length the door
+	// never counted, and tell someone whose real command is inside the limit
+	// that it is too long because of the spaces around it.
+	measured := strings.TrimSpace(said)
+	if len(measured) > declaredCheckByteLimit {
 		// The measured length is the whole repair: a person who reads how far
 		// over they are shortens the check, where a bare limit leaves them
 		// guessing which of their checks was the long one.
 		return fmt.Sprintf("%s: this check is %d bytes and a check may be at most %d",
-			refusal, len(said), declaredCheckByteLimit)
+			refusal, len(measured), declaredCheckByteLimit)
 	}
 	if offending, composed := approval.FirstCompositionOutsideQuotes(said); composed {
 		refusal += ": " + strconv.Quote(string(offending)) + " joins, redirects or expands commands in " +
@@ -1181,8 +1186,9 @@ func sameFile(one, other string) bool {
 //     backticking `--stdio` is naming a flag and not a check;
 //   - a first word with something in it besides wildcards, because a door
 //     spelled `*` is not a door, it is an open wall;
-//   - short enough that at most eight declarations cannot crowd the checker
-//     prompt and its evidence out of their shared context.
+//   - short enough to be a check rather than a program pasted in where a check
+//     belongs, which is what the length bounds; the cost is small either way,
+//     since a check's prompt carries at most sixteen declarations.
 //
 // Whitespace is normalized for the reason the gate normalizes it: "go  test" and
 // "go test" are one command, and the door is about which program runs rather
