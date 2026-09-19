@@ -329,7 +329,7 @@ func testRefusedLanding(t *testing.T) {
 
 // testHomeShape opens the product with five projects on the machine and reads
 // the shape home has TODAY (docs/design/home-mission-control/DESIGN.md): eight
-// panels under a four-word bar, every seeded conversation on `where you were`,
+// panels under a five-word bar, every seeded conversation on `where you were`,
 // an empty panel keeping its heading and its whisper, the foot's three verbs, and
 // the two doors in and out of the screen.
 //
@@ -366,10 +366,9 @@ func testHomeShape(t *testing.T) {
 	if !strings.Contains(screen, say(t, "homeRunningWhisper")) {
 		t.Errorf("the empty `running` panel does not whisper %q:\n%s", say(t, "homeRunningWhisper"), screen)
 	}
-	// THE BAR IS FOUR WORDS. Standing, memory and search are places reached by
-	// command and by alt+5…7, and a bar that still named them is the seven-word
-	// bar this wave retired.
-	want := []string{say(t, "barHomeWord"), say(t, "barTasksWord"), say(t, "homePanelSpend"), say(t, "barSettingsWord")}
+	// THE BAR IS FIVE WORDS. Folders-entry put logical Folders on the bar after
+	// settings. Standing, memory and search stay off-bar at alt+6…8.
+	want := []string{say(t, "barHomeWord"), say(t, "barTasksWord"), say(t, "homePanelSpend"), say(t, "barSettingsWord"), say(t, "barFoldersWord")}
 	if got := barWords(screen, want[0], want[len(want)-1]); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("the tab bar reads %q, want %q:\n%s", got, want, screen)
 	}
@@ -1611,9 +1610,8 @@ func testOneSpendFigure(t *testing.T) {
 	// as esc-then-3, which is what internal/tui3's placeDigit reads.
 	//
 	// THE DIGIT IS THE PLACE'S RANK IN internal/tui3's placeOrder, and the bar of
-	// four (`home tasks spend settings`) made spend the third. It was `alt+5` on
-	// the seven-word bar, and on the four-word one `alt+5` opens standing — which
-	// this subtest then read as a spend place with no figure on it.
+	// five (`home tasks spend settings folders`) keeps spend the third. Folders
+	// took `alt+5`; standing is `alt+6`.
 	r.lit("\x1b3")
 	place := r.waitFor(25*time.Second, say(t, "spendRailsHint"))
 	t.Logf("the spend place after the interrupted turn:\n%s", place)

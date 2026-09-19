@@ -172,16 +172,21 @@ Do **not** prove only one `CODEAF_TASK_BELT` road. Pause vs stop are two verbs.
 
 ## Folders-entry — dedicated logical Folders place
 
-Status: **not live yet.** Freeze is CONTRACTS.md Folders-entry on this branch. Proof (`t-fe-proof`) updates actual keys here after they land. Do not treat Wave 1’s “`/folders` focuses that panel” as current product law.
+Status: **harness committed, not live yet.** J36–J43 executable procedure is
+`internal/e2e/folders_entry_e2e_test.go` plus untagged needles and production-state
+tests. Live tmux+model is `t-fe-validate`. Do not treat Wave 1’s “`/folders` focuses
+that panel” as current product law. Visible-action chords are not recorded here until
+ui lands them; the contracted digits are below.
 
 **Do not** use wave-1…4 immutable binaries to prove this. Do not overwrite `releases/wave-{1,2,3,4}/`. Isolated `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`.
 
-### What you should see (frozen names; keys land with ui/organize)
+### What you should see (frozen names)
 
 1. Tab bar fifth word `folders`. `/folders` enters that place. `/folder` still opens the filesystem sheet.
-2. Fresh workspace: heading `folders` plus `logical groups of chats · /folders create Billing` — never “no folders yet”. Unfiled chats still show at Root. No generated folders until **New folder** or **Organize existing chats**.
-3. Visible **New folder**, **New chat**, **Organize existing chats** — not slash-only. New chat at Root or the selected folder. Esc before send creates nothing.
-4. **Organize existing chats** starts a real background `observe_and_organize` job. Person-facing progress: `queued` `running` `delayed` `done` `cancel`. Chat stays usable.
-5. Upgrade keeps existing placements. 80-col sequential; selection and composer survive.
+2. `alt+5` is Folders. Standing / memory / search are `alt+6` `alt+7` `alt+8`.
+3. Fresh workspace: heading `folders` plus `logical groups of chats · /folders create Billing` — never “no folders yet”. Unfiled chats still show at Root. No generated folders until **New folder** or **Organize existing chats**.
+4. Visible **New folder**, **New chat**, **Organize existing chats** — not slash-only. New chat at Root or the selected folder. Esc before send creates nothing. Optional `/folders organize` is the same survey, never the only door.
+5. **Organize existing chats** starts a real background `observe_and_organize` job (`organize_existing`). Person-facing progress: `queued` `running` `delayed` `done` `cancel`. Chat stays usable.
+6. Upgrade keeps existing placements. 80-col sequential; selection and composer survive.
 
 Wave 1–4 launches stay for those waves’ verified SHAs.

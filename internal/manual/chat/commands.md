@@ -194,12 +194,13 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
 | `/folder` | `/place`, `/dir` | — | locally opens the add context sheet; over `--host` says the folder chooser is unavailable |
 | `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
-| `/folders` | — | — | focuses home's `folders` panel — logical groups of chats; **not** an alias of `/folder` |
+| `/folders` | — | — | enters the logical Folders place — not an alias of `/folder` |
 | `/folders` | — | `create <name>` | make a logical folder |
 | `/folders` | — | `add <name-or-id>` | file the current chat here |
 | `/folders` | — | `nest <child> [in <parent>]` | place a folder under another |
 | `/folders` | — | `rename <name-or-id> <new-name>` | rename a logical folder |
 | `/folders` | — | `instruct <name-or-id> <text>` | standing guidance for chats in this folder |
+| `/folders` | — | `organize` | same survey as **Organize existing chats**; never the only door |
 | `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
@@ -225,7 +226,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
+| `/search` | — | — | opens the search place — everything said on this machine (also `alt+8`) |
 | `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+3`) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what codeaf may spend · every limit on one tab |
@@ -260,16 +261,16 @@ Under the table `/help` prints the keys that have no slash command, including
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         quits everything · mid-turn it interrupts instead, like esc`.
 
-**It also names the way into the seven places**, which it did not for a long while — three
+**It also names the way into the eight places**, which it did not for a long while — three
 rows, directly under the `tab` row:
 
 ```
-alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings
+alt+1…8        go to a place · in the tab bar's own order: home tasks spend settings folders standing memory search
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `opt+1…7` and `opt+.`; the substitution happens once, at the moment of
+On a Mac those read `opt+1…8` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
@@ -757,7 +758,7 @@ and the note's leading `· `; strip those before feeding it to a parser.
 ## /search and /spend — the typed doors onto those two places
 
 `/search` opens the **search place** — everything that has been said on this machine,
-found by the words you remember of it. It is the same place `alt+7` opens and the same
+found by the words you remember of it. It is the same place `alt+8` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
 searches.
 
@@ -1071,7 +1072,7 @@ box, opens it on a one-conversation machine and on an empty one alike, and over 
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+of the five places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
 **It is eight panels**, in one column under 110 cells, two from 110 and three from 170,
@@ -1123,21 +1124,24 @@ one left alone may be let go of; that is not a refusal of the one you asked for.
 A task another window is running cannot be stopped from home: its `running` row says
 `another window` and offers no stop.
 
-## /folders — not /folder; create and add; logical groups of chats
+## /folders — not /folder; enters the Folders place; create, add, organize
 
-`/folders` focuses home's `folders` panel. It is **not** an alias of `/folder`. `/folder`,
-`/place` and `/dir` still pick a directory; `/folders` does not.
+`/folders` **enters the logical Folders place** (`alt+5`). It is **not** an alias of
+`/folder`. `/folder`, `/place` and `/dir` still pick a directory; `/folders` does not.
+Home's `folders` panel stays as enter-from.
 
 ```
-/folders                    the folders panel on home
+/folders                    the Folders place
 /folders create Billing     make a logical folder
 /folders add <name-or-id>   file the current chat here
 /folders nest Receipts in Billing
 /folders rename Receipts Invoices
 /folders instruct Security <text>
+/folders organize           same survey as Organize existing chats
 ```
 
-The empty panel's dim line is `logical groups of chats · /folders create Billing`. On a
+The empty list's dim line is `logical groups of chats · /folders create Billing`. Visible
+actions on the place are **New folder**, **New chat**, **Organize existing chats**. On a
 row, `→` then `n f e i m w x`: `n` new chat here · `f` add current chat · `m` move this
 placement · `w` why here · `x` remove this placement. On a folder row, `e` nests
 that folder and `i` is instruct this folder; `/folders nest Receipts in Billing` and
