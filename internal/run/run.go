@@ -295,6 +295,20 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		return OutcomeCannotRun
 	}
 	s.endCancelledWorkers()
+	// NO RUN ANSWERS DONE WHILE A FINISHED PIECE OF WORK HAS HAD NO REVIEW
+	// ROUND. Returns already queued are finished work, not workers that need
+	// cancellation; absorb all of them before reading the root ending. A worker
+	// still running is left alone, so the terminal drain keeps its old bound.
+	for {
+		select {
+		case ret := <-s.finished:
+			s.inFlight--
+			s.absorb(ret)
+		default:
+			goto returnsAbsorbed
+		}
+	}
+returnsAbsorbed:
 	// TAKE-OVER, EVERY PASS: refresh this process's own claims so they never
 	// read stale, then hand back any claim whose process has stopped touching
 	// it, so the ready read below offers it again. Our own claims are fresh
