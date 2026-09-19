@@ -14,7 +14,7 @@ Wave 1 work package: `docs/design/collaborative-workspace/issue-1.md` (branch-lo
 | wiring | `t-w1-wiring` | `cmd/codeaf/collections.go` (additive `--reason`); `cmd/codeaf/folders_adapter.go` (`var _ tui3.Folders`); `cmd/codeaf/chatv3.go` / `chatv3_local.go` (construct `wsapi.Service`, set `tui3.Options.Folders` and `session.Config.Folders`); `internal/session/tools_folders.go`; `internal/session/session.go` (`Config.Folders`); `internal/session/tools.go` and `internal/session/bashbelt.go` (append `foldersTools` the same way `memoryTools` is appended); `internal/session/prompts/system.md` (mention `folders` only if wired) | `internal/workspace` internals, `internal/tui3` except filling Options |
 | proof | `t-w1-proof` | `internal/manual/chat/` pages that currently deny folder UI; `internal/manual/chat_test.go` probes; `internal/e2e/tuiwords_test.go` needles; `docs/design/collaborative-workspace/TRY.md`; optional untagged e2e helper. **Not** `internal/tui3/*_test.go` or workspace/wsapi tests unless a lane transfers them in a PlanDB note. | product logic; other packages' unit tests |
 
-Integration (`t-w1-integrate`) applies lane branches onto `feat/collaborative-workspace-0918` in order: storage → service → wiring → tui → proof.
+Integration (`t-w1-integrate`) applies lane branches onto `feat/collaborative-workspace-0918` in order: storage → service → real-store → tui → wiring → proof. Wiring's adapter must implement every TUI Folders method, including `RenameFolder`.
 
 Storage draft lives in the storage worktree only (`origin.go`, `schema.go`, in-progress `store.go`). Coordinator checkout must not keep those uncommitted files after contracts land.
 
@@ -27,6 +27,7 @@ Storage draft lives in the storage worktree only (`origin.go`, `schema.go`, in-p
 | Slash | `/folders` — **not** an alias of `/folder`. Optional later alias `/collections` is out of Wave 1. |
 | `/folders create <name>` | make a logical folder |
 | `/folders add <name-or-id>` | file the current chat here |
+| `/folders rename <name-or-id> <new-name>` | rename a logical folder; the new name shows through every parent |
 | Verb strip (`→` on a folders row) | `n` new chat here · `f` add current chat · `m` move this placement · `w` why here · `x` remove this placement |
 | Tool name | `folders` |
 | Root | virtual; never a `collections` row; never a CLI list entry |
@@ -152,16 +153,16 @@ Deduplicate conversation IDs in counts. Pass Provenance through to the store (do
 
 ```go
 type FolderView struct {
-    ID, Name, Purpose string
+    ID, Name, Purpose, Lifecycle string
     Revision, MemberCount int
-    ParentIDs, AlsoIn []string
+    ParentIDs []string
 }
 type FolderPlacement struct {
-    CollectionID, ConversationID, Title string
+    CollectionID, RefID, Title, Kind string
     AlsoIn []string
 }
 type FolderWhy struct {
-    Origin, Reason, Actor, At string
+    Origin, Reason, Actor, Evidence, At string
 }
 type FolderRoot struct {
     Folders []FolderView
@@ -169,17 +170,18 @@ type FolderRoot struct {
     Revision int
 }
 type Folders interface {
-    Root(ctx context.Context) (FolderRoot, error)
-    Snapshot(ctx context.Context, id string) (FolderView, []FolderPlacement, error)
-    Create(ctx context.Context, name string) (FolderView, error)
-    Add(ctx context.Context, collectionID, conversationID, reason string) error
-    Remove(ctx context.Context, collectionID, conversationID, reason string) error
-    Move(ctx context.Context, fromID, toID, conversationID, reason string) error
-    WhyHere(ctx context.Context, collectionID, conversationID string) (FolderWhy, error)
+    RootSnapshot(ctx context.Context) (FolderRoot, error)
+    FolderSnapshot(ctx context.Context, id string) (FolderView, []FolderPlacement, error)
+    CreateFolder(ctx context.Context, name string) (FolderView, error)
+    RenameFolder(ctx context.Context, id, name string) error
+    AddPlacement(ctx context.Context, collectionID, refID string) error
+    RemovePlacement(ctx context.Context, collectionID, refID string) error
+    MovePlacement(ctx context.Context, fromID, toID, refID string) error
+    WhyHere(ctx context.Context, collectionID, refID string) (FolderWhy, error)
 }
 ```
 
-`wsapi.Service` should itself talk to a `store` interface matching the frozen `workspace.Store` methods so service tests can use a fake while storage is in another worktree. `Open` still calls `workspace.Open`. After storage lands, Open's adapter must call `AddWith`/`Move`/`RootState` on `*workspace.Store`, not discard provenance.
+`Kind` on a placement is workspace's reference kind (`collection`, `conversation`). Empty Kind is a conversation. Nested/shared folders survive as `Kind=collection` members of FolderSnapshot; RootSnapshot may list only parentless folders. `wsapi.Service` talks to a `store` interface matching `workspace.Store`. `Open` binds `*workspace.Store` directly (`AddWith`/`Move`/`RootState`); there is no production fake adapter. `cmd/codeaf` `foldersAdapter.RenameFolder` calls `svc.RenameFolder`.
 
 ## Session / CLI (wiring)
 

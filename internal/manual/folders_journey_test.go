@@ -16,6 +16,7 @@ func TestWave1FolderJourneyNamesStandInTheChatManual(t *testing.T) {
 		"logical groups of chats · /folders create billing",
 		"/folders create",
 		"/folders add",
+		"/folders rename",
 		"`n` new chat here · `f` add current chat · `m` move this placement · `w` why here · `x` remove this placement",
 		"also in",
 		"/folder",
