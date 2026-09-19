@@ -177,6 +177,18 @@ func readPlanRows(t *testing.T, a *app) {
 	a.taskSheet.regroup(a)
 }
 
+// firstRowsReadHome puts a window where any conversation one message old stands:
+// its first read of the run's rows has been asked, answered and folded in. A
+// test that counts every command or every call over the wire takes its count
+// from here, because that one read is owed to every conversation whose agent can
+// answer it and belongs to none of the gestures such a test is about.
+func firstRowsReadHome(t *testing.T, a *app) {
+	t.Helper()
+	if cmd := a.refreshPlanRows(); cmd != nil {
+		drive(t, a, cmd())
+	}
+}
+
 // openWorkTabNow opens the run's tab and answers the page read it asks for.
 func openWorkTabNow(t *testing.T, a *app) {
 	t.Helper()

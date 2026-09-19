@@ -338,6 +338,7 @@ func TestAnAnswerOverAConnectionAsksTheFarMachineNothingFromUpdate(t *testing.T)
 	if !ok {
 		t.Fatal("the question is not on the block")
 	}
+	firstRowsReadHome(t, a)
 	before := client.CallsMade()
 	cmd := a.answerQuestion(head, session.Answer{Key: "1", Picked: []string{"1"}})
 	// THE ASSERTION IS HERE, BETWEEN UPDATE RETURNING AND THE COMMAND RUNNING.
