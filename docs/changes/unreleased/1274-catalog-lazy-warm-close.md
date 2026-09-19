@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: closing a process cancels and joins lazy catalog warming before a late cache write
-pr: 1264
+pr: 1274
 surface: [engine]
 invalidates:
   - "Lazy catalog warming could outlive process close and write its cache afterward, including beneath a home selected by a later launch. Close now cancels and joins the warm, and a fetch that succeeds after cancellation does not write the cache."
