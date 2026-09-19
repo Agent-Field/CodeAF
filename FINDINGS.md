@@ -13,3 +13,7 @@ This task must make an approved hand-off run in a run-owned copy beneath the con
 ## Focused tests
 
 The next step fixes the contract at the run door with focused tests. Each fixture sets `CODEAF_TASK_BELT` itself, creates a real committed repository, captures the person's checkout bytes, and records the `RunSpec` handed to the engine. The tests distinguish the conversation ground from an explicitly selected alternate ground, require one run-owned path beneath the conversation's `trees`, require joined children to retain that exact path, and require a different-ground hand-off not to enter the live store.
+
+## Run copy implementation
+
+The focused tests now fail at the intended seam: `startKnownTaskRun` has no stand argument. The implementation step will pass the resolved stand through both task doors, prepare exactly one tree with `prepareTaskTreeOn`, store its ground and workspace on the live run, hand that workspace to every child, and reject a live hand-off whose canonical ground differs. The run engine remains responsible only for driving the shared copy; finishing workers will no longer alter the conversation checkout.
