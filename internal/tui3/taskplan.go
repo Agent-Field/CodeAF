@@ -1519,14 +1519,16 @@ func (a *app) taskPlanBody(width int) []string {
 	}
 	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
-		visible := 0
 		for _, step := range page.Steps {
+			// A STEP WITH NOTHING OF THE WORK IN IT HAS NO ROW, AND EVERY OTHER ROW
+			// KEEPS THE NUMBER THE RECORD GAVE IT. The head counts the steps that
+			// ran, the live step is called by its number elsewhere, and a row
+			// renumbered to close the gap would make both of them wrong about it.
 			command := planDisplayCommand(step.Command, step.Parts)
 			if command == "" {
 				continue
 			}
-			visible++
-			add(pal.ink(itoa(visible) + "  " + command))
+			add(pal.ink(itoa(step.Step) + "  " + command))
 			if head := planObservationHead(step.Observation); head != "" {
 				add(pal.dim("   " + head))
 			}

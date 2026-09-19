@@ -122,7 +122,7 @@ func TestTaskPageOmitsOwnRecordIDsAndRunCopyPath(t *testing.T) {
 			t.Fatalf("page contains %q:\n%s", never, page)
 		}
 	}
-	for _, want := range []string{"1  ls", "2  go test ./...", "files", "ok"} {
+	for _, want := range []string{"1  ls", "3  go test ./...", "files", "ok"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("page lacks %q:\n%s", want, page)
 		}

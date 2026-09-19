@@ -374,16 +374,8 @@ the page says it in one dim line, above whatever else it already knows:
 row — a row drawn in the tasks place — keeps up with the work: the newest step walks in at the
 bottom, and the page stays stuck to that live edge until you scroll up, which releases it.
 Scrolling back to the bottom resumes the follow, and a page on a task that has settled is a
-still page, never re-read. The step being run right now is drawn one step early, with the
-running glyph beside it.
-
-### Why is a step missing from the page?
-
-The page shows every part that does the task, just as it was written. It leaves out a leading
-move into the run's own copy and any command part addressed only to the run's record. If a
-step has no other part, there is no row for it; the numbers beside the steps you can read stay
-in order. What that last step said is already in the task's report, so the page
-does not repeat its note or its private names beneath another step.
+still page, never re-read. The step being run right now is drawn one step early, the running
+glyph beside its command.
 
 ## Why is a task I just started showing an empty page
 
