@@ -303,7 +303,10 @@ func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
 // that ends a node ends the plan task and a letter typed into the filter is
 // still a letter.
 func TestTheCancelKeyOnAPlanRowEndsItThroughTheStore(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	// AN ORDINARY TASK HANGS UNDER ITS RUN, as every row the engine answers for
+	// one does; a row under nothing is the run's own task, whose stop is the
+	// card's and which nothing holds (stoprun_page_test.go).
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Parent: "t-run", Title: "Alpha", Status: "claimed"}}
 	a, fake := planAppWith(t, rows, nil)
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over a plan")
@@ -321,7 +324,10 @@ func TestTheCancelKeyOnAPlanRowEndsItThroughTheStore(t *testing.T) {
 // the foot names the cancel and the hold beside the door enter takes, because a
 // key nobody can find is a key that does not exist.
 func TestPOnAPlanRowPausesThenResumes(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	// AN ORDINARY TASK HANGS UNDER ITS RUN, as every row the engine answers for
+	// one does; a row under nothing is the run's own task, whose stop is the
+	// card's and which nothing holds (stoprun_page_test.go).
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Parent: "t-run", Title: "Alpha", Status: "claimed"}}
 	a, fake := planAppWith(t, rows, nil)
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over a plan")
@@ -384,7 +390,10 @@ func TestSendingOnThePlanPageWritesANoteAndStartsNoTurn(t *testing.T) {
 // answered — never a card, which a place cannot draw over itself. It is read on
 // the list, where the router's line rides beside the hint.
 func TestAPlanVerbRefusalIsSpokenOnThePanesLine(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	// AN ORDINARY TASK HANGS UNDER ITS RUN, as every row the engine answers for
+	// one does; a row under nothing is the run's own task, whose stop is the
+	// card's and which nothing holds (stoprun_page_test.go).
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Parent: "t-run", Title: "Alpha", Status: "claimed"}}
 	a, fake := planAppWith(t, rows, nil)
 	fake.refuse = errors.New("the root task is the harness's — it cannot be cancelled")
 	if !openTaskPlaceWithRows(a) {
@@ -402,7 +411,10 @@ func TestAPlanVerbRefusalIsSpokenOnThePanesLine(t *testing.T) {
 // AND THE DEFAULT PAGE DRAWS IT TOO, on its closing rule, because the page draws
 // its own frame and the router's line has no place on it.
 func TestAPlanVerbRefusalIsSpokenOnThePage(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	// AN ORDINARY TASK HANGS UNDER ITS RUN, as every row the engine answers for
+	// one does; a row under nothing is the run's own task, whose stop is the
+	// card's and which nothing holds (stoprun_page_test.go).
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Parent: "t-run", Title: "Alpha", Status: "claimed"}}
 	pages := map[string]session.PlanTaskPage{
 		"t-alpha": {Row: rows[0], Description: "the work order"},
 	}
@@ -1058,7 +1070,7 @@ func TestAFinishedTasksPageOffersNoVerbItWouldRefuse(t *testing.T) {
 		{"failed", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
 		{"cancelled", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
 	} {
-		row := session.PlanTaskRow{ID: "t-1", Title: "Alpha", Status: tc.status}
+		row := session.PlanTaskRow{ID: "t-1", Parent: "t-run", Title: "Alpha", Status: tc.status}
 		a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{"t-1": {Row: row}})
 		a.taskSheet.plan = session.PlanTaskPage{Row: row}
 		keys := a.taskPlanKeys()

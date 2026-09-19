@@ -248,3 +248,40 @@ func TestThePagesStopOnTheRunsOwnTaskEndsTheRun(t *testing.T) {
 		t.Fatalf("after the page's stop the run's context cut = %t, its task = %+v", cut, root)
 	}
 }
+
+// A RUN NOBODY IS RUNNING ANY MORE IS STILL ENDED BY ITS PAGE'S STOP. A store
+// can hold an open run with no run going in this conversation (the program
+// ended under it), and its page still offers the stop. The store refuses its
+// own cancel on that task for every caller, so the page answered with the
+// store's sentence about who owns what. The person's stop ends it in the store,
+// which is also what keeps the next hand-off from adopting it.
+func TestThePagesStopEndsARunNobodyIsRunningAnyMore(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	workspace := t.TempDir()
+	store, err := OpenRunPlan(workspace, "the run", "the hand-off's own words")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := store.RootID()
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "part", Title: "a part", Description: "its own words"}}); err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = workspace
+	})
+	if err := agent.PlanCancel(root); err != nil {
+		t.Fatalf("the page's stop on a run nobody is running was refused: %v", err)
+	}
+	after, err := plandb.Open(PlanStorePath(workspace), "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer after.Close()
+	if task := after.Task(root); task == nil || task.Status != plandb.StatusCancelled {
+		t.Fatalf("the run's own task after the page's stop = %+v, want cancelled", task)
+	}
+	if task := after.Task("part"); task == nil || task.Status != plandb.StatusCancelled {
+		t.Fatalf("the run's part after the page's stop = %+v, want cancelled", task)
+	}
+}

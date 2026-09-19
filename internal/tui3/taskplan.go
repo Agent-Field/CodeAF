@@ -761,6 +761,16 @@ func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened fun
 		page, found := agent.PlanTaskPage(id)
 		return func(here bool) tea.Cmd {
 			if !here {
+				// EVERY ENDING OF THE READ ENDS THE HOLD IT WAS MADE FOR. The keys
+				// are held for as long as this read is out and no longer, and the
+				// read has its own bound: over the wire a call gives up at its
+				// deadline and answers no page (internal/remote's callDeadline),
+				// which is the `missing` road below. An answer for a front the
+				// person has left opens nothing, and used to leave the hold taking
+				// every key until `esc`.
+				if opened != nil && a.railPlanPending.id == id {
+					a.railPlanPending = railPlanPending{}
+				}
 				return nil
 			}
 			if opened != nil && a.railPlanPending.id != id {
@@ -859,7 +869,7 @@ func (a *app) taskPlanPaused(rows []session.PlanTaskRow, id string) bool {
 // taskPlanVerb is the one road every plan key takes: resolve the plan door, run
 // the store verb the caller names, and put the store's own sentence on the
 // pane's one line when it refuses. The store is the authority on its own laws —
-// the root is the harness's, a terminal task cannot be cancelled — and its
+// a terminal task cannot be cancelled, a whole run is not held — and its
 // sentence is what a person reads back, never a card ([app.pageMsg] is the one
 // refusal a place that is not home has to say).
 func (a *app) taskPlanVerb(run func(planAgent) error) tea.Cmd {
@@ -902,6 +912,70 @@ func (a *app) taskPlanVerbFold(err error) func(bool) tea.Cmd {
 // cancel a node row already has, reached through the plan verb.
 func (a *app) taskPlanCancel(id string) tea.Cmd {
 	return a.taskPlanVerb(func(p planAgent) error { return p.PlanCancel(id) })
+}
+
+// planOwnTask reports whether a plan row is the run's OWN task: the one row in
+// a run's store that hangs under nothing. It is the run as a whole, and the two
+// verbs mean something different on it. The store takes a cancel and a hold on
+// any part and refuses both on this task for every caller, because no worker
+// may end or hold the run it is part of. A person may end it, and that is the
+// run's stop, asked for through the card ([app.taskPlanStop]). Nothing holds a
+// whole run, so that key is not offered there and is a letter.
+func planOwnTask(row session.PlanTaskRow) bool {
+	return strings.TrimSpace(row.ID) != "" && strings.TrimSpace(row.Parent) == ""
+}
+
+// taskPlanStop is `x` on a plan row or its page. A part is ended by the store's
+// own cancel, at once, as it always was. THE RUN'S OWN TASK IS THE WHOLE RUN,
+// and ending that is the act the stop card exists to confirm: the card is
+// raised, aimed at the run through the plan's own door, and nothing is ended by
+// one keystroke.
+//
+// THE PAGE STEPS ASIDE FOR THE CARD, the way a background job's page does
+// (stop.go's [app.raiseStop] says why): it takes the frame whole and the block
+// draws every question above the message box, so a card raised over it would be
+// a question nobody could see, answered by the next key they pressed. The run's
+// row is still on the side list and opens the page again.
+func (a *app) taskPlanStop(row session.PlanTaskRow) tea.Cmd {
+	if !planOwnTask(row) {
+		return a.taskPlanCancel(row.ID)
+	}
+	if _, ok := a.planReader(); !ok {
+		return nil
+	}
+	a.closeTaskPlan()
+	a.railTaskPlanOn = false
+	a.closeTaskSheet()
+	a.raiseStop(stopTarget{plan: row.ID, noun: stopTaskNoun, detail: stopTaskDetail})
+	return nil
+}
+
+// taskPlanStopTaken is the card's "stop it" for a run's own task. The store's
+// id goes through the plan's door, which ends the run ([session.Agent.PlanCancel]);
+// what the run then says about where its work is arrives in the conversation
+// from the engine, and a stop that could not be given is said where the person
+// now is.
+func (a *app) taskPlanStopTaken(id string) tea.Cmd {
+	agent, ok := a.planReader()
+	if !ok {
+		a.note(stopUnavailableWord)
+		return nil
+	}
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := agent.PlanCancel(id)
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			if err != nil {
+				a.note(err.Error())
+			} else {
+				a.railStamp++
+			}
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // taskPlanToggle is `p`: hold the task the store says is running, release the
@@ -980,8 +1054,11 @@ func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
 	}
 	switch key {
 	case stopRaiseKey:
-		return a.taskPlanCancel(item.plan.ID), true
+		return a.taskPlanStop(*item.plan), true
 	case "p":
+		if planOwnTask(*item.plan) {
+			return nil, false
+		}
 		return a.taskPlanToggle(item.plan.ID), true
 	}
 	return nil, false
@@ -996,11 +1073,20 @@ func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
 // work that is done or incomplete, so a foot that named both keys under a
 // finished task was two offers that could only be refused, on every finished
 // page a person opened.
-func (a *app) tasksPlanKeyWords(status string) []string {
+//
+// AND THE RUN'S OWN TASK IS OFFERED ONLY ITS STOP, because nothing holds a whole
+// run ([planOwnTask]). THE LAW IS ONE SENTENCE: no verb is named here that the
+// store would refuse for this row, and a test presses every word this answers
+// against a real store to hold it (stoprun_footlaw_test.go).
+func (a *app) tasksPlanKeyWords(row session.PlanTaskRow) []string {
+	status := row.Status
 	if planEnded(status) {
 		return nil
 	}
 	words := []string{tasksPlanCancelWord}
+	if planOwnTask(row) {
+		return words
+	}
 	if strings.TrimSpace(status) == "paused" {
 		return append(words, tasksPlanResumeWord)
 	}
@@ -1040,9 +1126,13 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	if a.taskSheet.planNote.empty() {
 		switch key {
 		case stopRaiseKey:
-			return a.taskPlanCancel(a.taskSheet.plan.Row.ID)
+			return a.taskPlanStop(a.taskSheet.plan.Row)
 		case "p":
-			return a.taskPlanToggle(a.taskSheet.plan.Row.ID)
+			// NOTHING HOLDS A WHOLE RUN, so on the run's own page this key is the
+			// letter it is and starts a note ([planOwnTask]).
+			if !planOwnTask(a.taskSheet.plan.Row) {
+				return a.taskPlanToggle(a.taskSheet.plan.Row.ID)
+			}
 		}
 	}
 	switch key {
@@ -1264,7 +1354,7 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 // first is the scroll.
 func (a *app) taskPlanKeys() string {
 	parts := []string{"↑↓ scroll", "enter send"}
-	parts = append(parts, a.tasksPlanKeyWords(a.taskSheet.plan.Row.Status)...)
+	parts = append(parts, a.tasksPlanKeyWords(a.taskSheet.plan.Row)...)
 	parts = append(parts, taskCardBackWord)
 	return strings.Join(parts, railSep)
 }
@@ -1726,9 +1816,19 @@ func (a *app) finishRailPlan(id string) tea.Cmd {
 	a.railTaskPlanOn = true
 	var cmds []tea.Cmd
 	for _, key := range keys {
+		// A KEY THAT LEFT THE PAGE ENDS THE REPLAY. The keys were kept for the
+		// page, and one of them can close it (`esc`, or the stop on the run's own
+		// page, which steps aside for its card): what was typed after it was typed
+		// blind, and is dropped rather than aimed at whatever is up now.
+		if !a.taskSheet.planOn {
+			break
+		}
 		if cmd := a.taskPlanKey(key); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	}
+	if !a.taskSheet.planOn {
+		a.railTaskPlanOn = false
 	}
 	return tea.Batch(cmds...)
 }
