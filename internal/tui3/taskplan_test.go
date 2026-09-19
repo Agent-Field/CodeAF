@@ -215,14 +215,19 @@ func TestThePaneDrawsThisChatsPlanRowsWithTheirStateWords(t *testing.T) {
 }
 
 // ENTER OPENS THE PAGE THE STORE KEEPS: the description, the notes with their
-// author and moment, and the trajectory's steps — each command on its own line.
+// moment and `you` on the person's own, and the trajectory's steps, each command
+// on its own line.
 func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
 	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
 	pages := map[string]session.PlanTaskPage{
 		"t-alpha": {
 			Row:         rows[0],
 			Description: "the work order",
-			Notes:       []session.PlanTaskNote{{Author: "worker-1", Body: "a handoff", At: taskFixtureNow}},
+			Notes: []session.PlanTaskNote{
+				{Author: "worker-1", Body: "a handoff", At: taskFixtureNow},
+				{Author: "7", Body: "landed on work: 2 files", At: taskFixtureNow},
+				{Author: "person-handle", Person: true, Body: "mind the vault", At: taskFixtureNow},
+			},
 			Steps: []session.PlanStep{
 				{Step: 1, Command: "$ echo one", Observation: "one"},
 				{Step: 2, Command: "$ echo two", Observation: "two"},
@@ -242,9 +247,17 @@ func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
 		t.Fatal("enter over a plan row did not open its page")
 	}
 	page := taskSheetText(a)
-	for _, want := range []string{"the work order", "worker-1", "$ echo one", "$ echo two", "$ echo three"} {
+	for _, want := range []string{"the work order", "a handoff", "landed on work: 2 files", "mind the vault", "you", "$ echo one", "$ echo two", "$ echo three"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the plan page is missing %q:\n%s", want, page)
+		}
+	}
+	// AN AUTHOR IS A WORD A PERSON WOULD RECOGNISE OR IT IS NOT DRAWN. The person
+	// is `you`; a worker's handle, the run's own number and the person's store
+	// handle are ids, and no id of the store's is anywhere on the page.
+	for _, never := range []string{"worker-1", "person-handle", "t-alpha", "7 " + strings.TrimSpace(railSep)} {
+		if strings.Contains(page, never) {
+			t.Fatalf("the plan page draws the store's own id %q:\n%s", never, page)
 		}
 	}
 	// THE HEAD OPENS ON THE TASK AS GIVEN TO THE PERSON: title, a folded brief,
@@ -712,6 +725,30 @@ func TestThePlanPageSaysWhenANoteIsRead(t *testing.T) {
 	}
 }
 
+// A SENTENCE THAT HAS STOPPED BEING TRUE IS ABSENT. A task that has ended takes
+// no further step, so its page never says a worker reads a note at its next
+// one; a task that can still move keeps the sentence.
+func TestAnEndedTasksPageNeverPromisesANextStep(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		said   bool
+	}{
+		{"claimed", true},
+		{"paused", true},
+		{"done", false},
+		{"failed", false},
+		{"cancelled", false},
+	} {
+		rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: tc.status}}
+		pages := map[string]session.PlanTaskPage{"t-alpha": {Row: rows[0], Description: "the work order"}}
+		a, _ := planAppWith(t, rows, pages)
+		openPlanPage(t, a)
+		if got := strings.Contains(taskSheetText(a), taskPlanPickupWord); got != tc.said {
+			t.Fatalf("a %s task's page says %q: %v, want %v:\n%s", tc.status, taskPlanPickupWord, got, tc.said, taskSheetText(a))
+		}
+	}
+}
+
 // THE LIVE STEP IS DRAWN ONE STEP EARLY and leaves the page when the task ends:
 // the running glyph in place of the number, the command in ink, and the call's
 // own clock dim under it — and the next read after the store cleared the live
@@ -992,5 +1029,40 @@ func TestPlanRailAndTreeOmitTheNamedFolderFromLiveCommands(t *testing.T) {
 	text := planTextFor(t, []session.PlanTaskRow{root, child})
 	if strings.Contains(text, "cd /tmp/run-copy") || !strings.Contains(text, "$ go test ./internal/tui3") || !strings.Contains(text, "$ go vet ./internal/session") {
 		t.Fatalf("rail/tree command display did not omit only the named folder:\n%s", text)
+	}
+}
+
+// A TASK THAT HAS ENDED IS OFFERED NEITHER VERB. The store refuses to stop or
+// hold work that is done or incomplete, so naming both keys under a finished
+// task was two offers that could only be refused.
+func TestAFinishedTasksPageOffersNoVerbItWouldRefuse(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		want   []string
+		never  []string
+	}{
+		{"running", []string{tasksPlanCancelWord, tasksPlanPauseWord}, []string{tasksPlanResumeWord}},
+		{"paused", []string{tasksPlanCancelWord, tasksPlanResumeWord}, []string{tasksPlanPauseWord}},
+		{"done", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
+		{"failed", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
+		{"cancelled", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
+	} {
+		row := session.PlanTaskRow{ID: "t-1", Title: "Alpha", Status: tc.status}
+		a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{"t-1": {Row: row}})
+		a.taskSheet.plan = session.PlanTaskPage{Row: row}
+		keys := a.taskPlanKeys()
+		for _, word := range tc.want {
+			if !strings.Contains(keys, word) {
+				t.Fatalf("a %s task's page does not offer %q: %s", tc.status, word, keys)
+			}
+		}
+		for _, word := range tc.never {
+			if strings.Contains(keys, word) {
+				t.Fatalf("a %s task's page offers %q, which the store would refuse: %s", tc.status, word, keys)
+			}
+		}
+		if !strings.Contains(keys, taskCardBackWord) {
+			t.Fatalf("a %s task's page lost its way back: %s", tc.status, keys)
+		}
 	}
 }

@@ -72,8 +72,9 @@ same full frame, the same `esc`, and the same way back as a record row's card. I
 shows, in order, each section left out when nothing is behind it:
 
 - `description` — the work order the worker was given;
-- `notes` — every note left on the task, with its author, your own reading `you`,
-  and its moment;
+- `notes` — every note left on the task, with its moment. A note you left reads
+  `you`. A note a worker or the run left names no author: the store knows those
+  only by ids of its own, and an id is never drawn on this page;
 - `steps` — the trajectory its worker recorded: each command with the head of what
   came back, the whole observation on disk behind the row.
 
@@ -202,7 +203,9 @@ this conversation's plan**, so a task another chat spawned is never reachable:
 - **priority** — set a task's priority through the store's revision verb.
 
 `x` and `p` are read only over an **empty box**: the moment there is a note to
-type, a letter is a letter.
+type, a letter is a letter. A task that has ended, `done` or `incomplete`, is offered
+neither: its row and its page name no `x stop it` and no `p pause`, because the store
+would refuse both.
 
 Two refusals are this layer's own, and they are the words the pane reads back:
 
