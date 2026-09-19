@@ -82,3 +82,7 @@ This establishes a product path, not a test-side early read: `Supervisor.Run` ha
 The forced regression from commit `e87c9b8e8` confirms the terminal-root pass is product-reachable and returns before review creation. The correction will stay inside `internal/run.Supervisor`: when a pass sees a done root while its worker is still in flight, it will seat the root check from the persisted root result before accepting the ending. Review seating must be idempotent within the supervisor because the delayed worker return is later absorbed through the ordinary path. The pass must then continue so the newly ready check can launch; simply returning an empty outcome would strand the deterministic delayed worker. No `run.Start` code or #1210 fallback will change.
 
 Before editing product code I will add only the minimum in-memory review association guard and terminal-root branch needed for that ordering, then run the forced regression plus the existing root review tests.
+
+## First fix execution
+
+The first focused run no longer reports zero checks, but the forced test times out with `OutcomeIncomplete` after 10 seconds. This disproves that seating alone is sufficient for the delayed-worker harness. Before changing the product again I will inspect the fake check worker and completion path to distinguish a test fixture that never lands the new check from a supervisor counter or cancellation defect. The product edit remains uncommitted until this is resolved; `run.Start` is still untouched.
