@@ -24,7 +24,7 @@
 # exactly what sessions do not share.
 set -euo pipefail
 
-lock="/tmp/codeaf-suite-$(id -u).lockfile"
+lock="${CODEAF_SUITE_LOCK_PATH:-/tmp/codeaf-suite-$(id -u).lockfile}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 helper="${CODEAF_SUITE_LOCK_HELPER:-$root/bin/codeaf-suite-lock}"
 if [ -z "${CODEAF_SUITE_LOCK_HELPER:-}" ]; then
