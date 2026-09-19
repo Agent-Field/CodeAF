@@ -48,7 +48,7 @@ func TestC280SelectedRunPaneDrawsOrderedOptionalBlocks(t *testing.T) {
 func TestC280RunPaneRoomDropsTreeBottomThenNotes(t *testing.T) {
 	page := c280Page()
 	a, _ := planAppWith(t, append([]session.PlanTaskRow{page.Row}, page.Children...), map[string]session.PlanTaskPage{page.Row.ID: page})
-	rows := a.taskPaneRunFit(page, 60, 8)
+	rows := a.taskPaneRunFit(page, 60, 10)
 	text := ansi.Strip(strings.Join(func() []string {
 		out := []string{}
 		for _, r := range rows {
@@ -56,7 +56,7 @@ func TestC280RunPaneRoomDropsTreeBottomThenNotes(t *testing.T) {
 		}
 		return out
 	}(), "\n"))
-	for _, want := range []string{"rewrite auth", "your call", "ship this?", "write handler"} {
+	for _, want := range []string{"rewrite auth", "your call", "ship this?", "write handler", "notes", "keep middleware order"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("short pane dropped %q:\n%s", want, text)
 		}
