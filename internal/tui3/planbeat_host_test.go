@@ -72,6 +72,11 @@ func hostedPlanApp(t *testing.T, ended bool) (*app, *countedPlanAgent, string) {
 	a := newTestApp(counted)
 	a.width, a.height = 200, 40
 	a.homeRoot = t.TempDir()
+	// THE RUN'S SUMMARY IS KEPT OUT OF EVERY TEST ON THIS FIXTURE. The engine is
+	// real and its model's address refuses, so a summary asked after a message
+	// would spend its whole budget finding that out; marking one as already out
+	// is the surface's own way of not asking for another.
+	a.runSummaryRefreshing = true
 	return a, counted, session.PlanStorePath(workspace)
 }
 
@@ -84,7 +89,7 @@ func TestAHostedConversationAtRestReadsNoPlanOverTheWire(t *testing.T) {
 	a, counted, _ := hostedPlanApp(t, true)
 	now := taskFixtureNow
 	a.clock = func() time.Time { return now }
-	a.taskSheet.regroup(a)
+	readPlanRows(t, a)
 	first := counted.rows.Load()
 	if first != 1 {
 		t.Fatalf("the first reading crossed the wire %d times, want once", first)
@@ -94,7 +99,7 @@ func TestAHostedConversationAtRestReadsNoPlanOverTheWire(t *testing.T) {
 	}
 	for beat := 0; beat < 20; beat++ {
 		now = now.Add(elsewhereEvery)
-		a.taskSheet.regroup(a)
+		readPlanRows(t, a)
 	}
 	if got := counted.rows.Load(); got != first {
 		t.Fatalf("twenty beats at rest crossed the wire %d more times, want none", got-first)
@@ -108,7 +113,7 @@ func TestAHostedRailLearnsOfAnAddedPartWithinOneBeat(t *testing.T) {
 	a, counted, path := hostedPlanApp(t, false)
 	now := taskFixtureNow
 	a.clock = func() time.Time { return now }
-	a.taskSheet.regroup(a)
+	readPlanRows(t, a)
 	held := len(a.taskSheet.mine.plan)
 	if held == 0 {
 		t.Fatal("the first reading did not hold the live run's row")
@@ -122,12 +127,12 @@ func TestAHostedRailLearnsOfAnAddedPartWithinOneBeat(t *testing.T) {
 	}
 	_ = worker.Close()
 	now = now.Add(elsewhereEvery - time.Millisecond)
-	a.taskSheet.regroup(a)
+	readPlanRows(t, a)
 	if got := len(a.taskSheet.mine.plan); got != held {
 		t.Fatalf("the plan was read again inside its beat: %d rows, was %d", got, held)
 	}
 	now = now.Add(time.Millisecond)
-	a.taskSheet.regroup(a)
+	readPlanRows(t, a)
 	if got := len(a.taskSheet.mine.plan); got != held+1 {
 		t.Fatalf("one beat later the rail holds %d rows, want the added part as well as the %d it had", got, held)
 	}
@@ -199,7 +204,7 @@ func openHostedPage(t *testing.T, a *app) string {
 	// after a message would spend its whole budget finding that out; marking one
 	// as already out is the surface's own way of not asking for another.
 	a.runSummaryRefreshing = true
-	a.taskSheet.regroup(a)
+	readPlanRows(t, a)
 	if len(a.taskSheet.mine.plan) == 0 {
 		t.Fatal("the first reading did not hold the run's row")
 	}

@@ -172,7 +172,7 @@ func TestARunIsItsOwnRowWithItsPartsUnderItAndEachOpensItsPage(t *testing.T) {
 	}
 	a, _ := planAppWith(t, []session.PlanTaskRow{root, first, second}, pages)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(2, root.Title, session.TaskRunning, session.TaskNotice{})})
-	a.taskSheet.regroup(a)
+	readPlanRows(t, a)
 
 	view, _ := a.railDrawnView(a.viewHeight())
 	rootAt, firstAt, secondAt := -1, -1, -1
