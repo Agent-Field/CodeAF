@@ -98,3 +98,5 @@ The correction is committed at `f8e08781f9556d71725d720facbe91fab6a4f549`. Next 
 `gofmt -l ./cmd ./internal` printed nothing and passed. Next step: run the required standalone change-entry validation, `go run ./cmd/codeaf-changes check`.
 
 `go run ./cmd/codeaf-changes check` passed with 20 well-formed entries. Next step: run the required standalone guard and naming-law tests.
+
+`go test ./internal/guard ./internal/namelaw` passed. All five required checks now pass. Next step: finalize the evidence with the post-check tree hash, current deciding file:line locations, clean status, and commit hash. No amendment will follow.
