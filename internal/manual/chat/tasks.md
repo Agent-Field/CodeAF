@@ -5185,20 +5185,22 @@ nothing is printed when the count is zero. Their own rows remain under their
 parents and say `queued · waits: <title>`.
 ## can I ask what a task did without opening its conversation?
 
-Yes. From the run pane, open the ask box and ask about one task. codeaf answers from
-the run store: the task rows and results, the run's notes, and, when those are
-not enough, one read-only look at a named task's description, result, notes and last twelve
-steps. The turn is bounded to three rounds. It cannot run commands, write files, change the
-store or redo the work; if the record does not hold the answer, it says so plainly.
+Yes: ask the conversation. It reads the task with its `tasks` tool and answers from the
+run's own record, never by doing the work again. A task you handed off is read by the
+number its card and the rail show, `#2`; a part the run made for itself is read by its
+place under that task, `#2.1`, `#2.2`, in an order that does not move. A listing shows each
+one's name, title, state and the first line of what came back; reading one task shows what
+it was asked, what came back in full, what the run's checks found, and its last steps. A
+store's own id is never shown. A finished task is asked about this way and is never redone
+or rechecked by hand.
 
-Every answer names the task it came from and the range of steps it read, so you can open
-that source rather than taking an unsourced answer on trust. The exchange is temporary: up
-to three earlier questions and answers stay in the box while it is open, and none of them is
-written into the task's conversation.
+Tasks from earlier sittings and from other windows are still listed after the run's, and a
+number the run does not hold is answered the way it always was.
 
-If your question is really steering — for example, *“tell it to skip the fixtures”* — the
-box does not send it. It shows the note text and asks you to confirm with `enter`; only that
-confirmation writes the same steering note that the task page would write.
+There is no ask box on the run's pane yet. The turn behind it exists in the engine (three
+read-only rounds over the run's rows, notes and one named task's last twelve steps, naming
+the task and the steps each answer came from) and no screen opens it, so asking the
+conversation is the way today.
 
 ## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
 
