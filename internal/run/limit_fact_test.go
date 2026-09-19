@@ -133,3 +133,63 @@ func TestStartNamesTheRowsItsEndingCut(t *testing.T) {
 		t.Fatal("a task that failed on its own before the ending is recorded as cut by it")
 	}
 }
+
+// A PART A PERSON STOPPED BY ITSELF IS NOT CUT BY THE LIMIT THAT ENDS THE RUN
+// LATER. The store cancels the one part, its worker comes home with a cancelled
+// context like any worker the run's ending takes down, and the run carries on.
+// When the time limit then ends the run, the cut set names the work the limit
+// took down and not the part the person had already stopped.
+func TestAPartStoppedAloneIsNotCutByTheLimitThatEndsTheRunLater(t *testing.T) {
+	store, err := plandb.Open(t.TempDir()+"/plan.json", "cut-fact", "root", "root", "one part stopped, then the limit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "stopped", Title: "the part a person stops", ParentID: store.RootID()},
+		{ID: "working", Title: "the part still working", ParentID: store.RootID()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan string, 3)
+	factory := func(task plandb.Task) Worker {
+		return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
+			if task.ID == store.RootID() {
+				return Report{Result: "dispatched", Steps: 1}, nil
+			}
+			started <- task.ID
+			<-ctx.Done()
+			return Report{}, ctx.Err()
+		})
+	}
+	elapsed := make(chan time.Time)
+	supervisor := NewSupervisor(store, t.TempDir(), 3, Limits{Elapsed: time.Hour}, factory)
+	supervisor.after = func(time.Duration) <-chan time.Time { return elapsed }
+	answered := make(chan Outcome, 1)
+	go func() { answered <- supervisor.Run(context.Background()) }()
+	for i := 0; i < 2; i++ {
+		select {
+		case <-started:
+		case <-time.After(20 * time.Second):
+			t.Fatal("the two parts never started")
+		}
+	}
+	if _, err := store.Cancel("stopped", "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	// The limit fires at once. Whichever comes home first, the fact is read
+	// from the store and not from the order.
+	close(elapsed)
+	select {
+	case outcome := <-answered:
+		if outcome != OutcomeLimit {
+			t.Fatalf("outcome = %q, want %q", outcome, OutcomeLimit)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run never answered its limit")
+	}
+	cut := supervisor.cutIDs()
+	if len(cut) != 1 || cut[0] != "working" {
+		t.Fatalf("cut = %q, want only the part the limit took down", cut)
+	}
+}
