@@ -9,64 +9,77 @@ import (
 )
 
 // Folders is the home panel's seam onto logical folder membership. It is a TUI
-// interface so this package never imports internal/workspace, and so a nil
-// value is a panel that still draws its whisper rather than a belt that fails
-// every time it is asked. Wiring may wrap *wsapi.Service; the methods here are
-// the snapshot and mutate set the panel actually calls.
+// interface so this package never imports internal/workspace. The DTOs are
+// exported so cmd/codeaf can implement the seam without this package importing
+// wsapi, and without wsapi importing tui3. Wiring owns the adapter.
+//
+// NIL IS UNAVAILABLE, NOT EMPTY. A door that could not open the store leaves
+// this nil; the panel heading still exists, mutations refuse with
+// [folderUnwiredWord], and the emptiness-law whisper is reserved for a working
+// store that happens to hold no folders. A belt that failed every call would
+// be a capability advertised as broken.
 //
 // THE SNAPSHOT IS TAKEN ON THE HOME BEAT and nowhere else. View, the cursor and
 // a mere rebuild read [homeView.folders], which is a memo. A call from paint
 // would be a store read on a draw, which this surface forbids.
 type Folders interface {
-	RootSnapshot(ctx context.Context) (folderRoot, error)
-	FolderSnapshot(ctx context.Context, id string) (folderView, []folderPlacement, error)
-	CreateFolder(ctx context.Context, name string) (folderView, error)
+	RootSnapshot(ctx context.Context) (FolderRoot, error)
+	FolderSnapshot(ctx context.Context, id string) (FolderView, []FolderPlacement, error)
+	CreateFolder(ctx context.Context, name string) (FolderView, error)
+	RenameFolder(ctx context.Context, id, name string) error
 	AddPlacement(ctx context.Context, collectionID, refID string) error
 	RemovePlacement(ctx context.Context, collectionID, refID string) error
 	MovePlacement(ctx context.Context, fromID, toID, refID string) error
-	WhyHere(ctx context.Context, collectionID, refID string) (folderWhy, error)
+	WhyHere(ctx context.Context, collectionID, refID string) (FolderWhy, error)
 }
 
-// folderView is one logical folder as the panel draws it. ParentIDs empty means
+// FolderView is one logical folder as the panel draws it. ParentIDs empty means
 // the folder stands at Root. MemberCount is unique conversation IDs, not paths.
-type folderView struct {
+type FolderView struct {
 	ID, Name, Purpose, Lifecycle string
 	Revision                     int
 	ParentIDs                    []string
 	MemberCount                  int
 }
 
-// folderPlacement is one conversation sitting in a folder. AlsoIn names the
-// other folders that hold the same chat, so a dual placement can say
-// "also in Security" without a second store round-trip on the draw.
-type folderPlacement struct {
+// FolderPlacement is one member sitting in a folder. Kind is the membership's
+// reference kind as workspace spells it (`collection`, `conversation`, …);
+// empty is a conversation, which is every chat row the panel already drew.
+// AlsoIn names the other folders that hold the same ref, so a dual placement
+// can say "also in Security" without a second store round-trip on the draw.
+type FolderPlacement struct {
 	CollectionID string
 	RefID, Title string
+	Kind         string
 	AlsoIn       []string
 }
 
-// folderWhy is the latest membership event for an edge, as the `w` verb shows
+// FolderWhy is the latest membership event for an edge, as the `w` verb shows
 // it: who put it here and why, with no confidence score.
-type folderWhy struct {
+type FolderWhy struct {
 	Origin, Reason, Actor, Evidence, At string
 }
 
-// folderRoot is Root as the beat caches it. Folders is every collection the
-// service knows — parentless ones are Root's own rows, and ParentIDs is how a
-// drilled-in folder finds its children — because FolderSnapshot returns
-// placements, not nested folders.
-type folderRoot struct {
-	Folders  []folderView
-	Unfiled  []folderPlacement
+// FolderRoot is Root as the beat caches it. Folders may be only the parentless
+// collections (wsapi.RootView) or the full graph; parentless ones are Root's
+// own rows. A drilled-in folder finds children from ParentIDs when the graph
+// is present, and from FolderSnapshot placements whose Kind is collection
+// when Root is parentless-only — so the same nested folder can appear through
+// both of its parents.
+type FolderRoot struct {
+	Folders  []FolderView
+	Unfiled  []FolderPlacement
 	Revision int
 }
 
 // homeFoldersReading is the memo [app.readHomeFolders] writes on the beat.
-// rows() reads this and never the seam.
+// rows() reads this and never the seam. missing is a nil seam or a failed
+// first read: the panel must not draw the empty-workspace whisper over it.
 type homeFoldersReading struct {
-	root    folderRoot
-	open    folderView
-	members []folderPlacement
+	root    FolderRoot
+	open    FolderView
+	members []FolderPlacement
+	missing bool
 }
 
 // The verb strip on a folders row, quoted in the contract and the manual as
@@ -86,6 +99,10 @@ const (
 	folderLostWord        = "that chat is no longer in this folder"
 	logicalFolderGoneWord = "that folder is no longer here"
 	folderFiledWord       = "could not file this chat here"
+	// folderCollectionKind is workspace.CollectionKind's bytes, quoted here so
+	// this package never imports internal/workspace. A FolderPlacement with
+	// this Kind is a nested/shared folder, not a chat.
+	folderCollectionKind = "collection"
 )
 
 // homeFolderRow is one logical folder on the folders panel. Numbered outside
@@ -98,22 +115,28 @@ const homeFolderRow homeRowKind = 246
 // never grows a third column of members beside the folders.
 const homeFolderBack homeRowKind = 247
 
-// readHomeFolders is the beat's reading. Nil Folders leaves the memo empty so
-// the panel still draws its whisper. The open folder's members are taken in
-// the same pass, so a cursor move never has to ask.
+// readHomeFolders is the beat's reading. Nil Folders is unavailable: the memo
+// is marked missing so the panel cannot masquerade as an empty working store.
+// A RootSnapshot error keeps the last good memo instead of wiping it to empty
+// success (n-1x28). The open folder's members are taken in the same pass, so a
+// cursor move never has to ask.
 func (a *app) readHomeFolders() {
-	a.home.folders = homeFoldersReading{}
 	if a.folders == nil {
+		a.home.folders = homeFoldersReading{missing: true}
 		return
 	}
 	ctx := a.folderCtx()
 	root, err := a.folders.RootSnapshot(ctx)
 	if err != nil {
+		if a.home.folders.missing || !a.home.folders.held() {
+			a.home.folders.missing = true
+		}
 		return
 	}
-	a.home.folders.root = root
+	next := homeFoldersReading{root: root}
 	open := strings.TrimSpace(a.home.folderOpen)
 	if open == "" {
+		a.home.folders = next
 		return
 	}
 	folder, members, err := a.folders.FolderSnapshot(ctx, open)
@@ -123,10 +146,26 @@ func (a *app) readHomeFolders() {
 		// can no longer name (J06).
 		a.home.folderOpen = ""
 		a.home.say(logicalFolderGoneWord, "")
+		a.home.folders = next
 		return
 	}
-	a.home.folders.open = folder
-	a.home.folders.members = members
+	next.open = folder
+	next.members = members
+	a.home.folders = next
+}
+
+func (r homeFoldersReading) held() bool {
+	return len(r.root.Folders) > 0 || len(r.root.Unfiled) > 0 || strings.TrimSpace(r.open.ID) != "" || len(r.members) > 0
+}
+
+// foldersUnavailable is every mutation's first check. Nil Options.Folders is a
+// visible refusal, never a silent no-op that looks like an empty workspace.
+func (a *app) foldersUnavailable() bool {
+	if a.folders != nil {
+		return false
+	}
+	a.folderNote(folderUnwiredWord)
+	return true
 }
 
 func (a *app) folderCtx() context.Context {
@@ -186,6 +225,9 @@ func (a *app) placementRefOf(line homeLine) string {
 // Nothing is minted until that message. Esc clears the pending id and creates
 // no transcript.
 func (a *app) startInFolder(id string) tea.Cmd {
+	if a.foldersUnavailable() {
+		return nil
+	}
 	id = strings.TrimSpace(id)
 	if id == "" {
 		a.folderNote(folderNoStandWord)
@@ -242,13 +284,12 @@ func (a *app) reapPendingFolder() {
 }
 
 func (a *app) addCurrentToFolder(id string) tea.Cmd {
+	if a.foldersUnavailable() {
+		return nil
+	}
 	id = strings.TrimSpace(id)
 	if id == "" {
 		a.folderNote(folderNoStandWord)
-		return nil
-	}
-	if a.folders == nil {
-		a.folderNote(folderUnwiredWord)
 		return nil
 	}
 	ref := a.conversationRef()
@@ -265,6 +306,9 @@ func (a *app) addCurrentToFolder(id string) tea.Cmd {
 }
 
 func (a *app) beginFolderMove(line homeLine) tea.Cmd {
+	if a.foldersUnavailable() {
+		return nil
+	}
 	from := a.folderIDOf(line)
 	ref := a.placementRefOf(line)
 	if from == "" || ref == "" {
@@ -287,8 +331,7 @@ func (a *app) completeFolderMove(toID string) tea.Cmd {
 	toID = strings.TrimSpace(toID)
 	from, ref := a.pendingMoveFrom, a.pendingMoveRef
 	a.pendingMoveFrom, a.pendingMoveRef = "", ""
-	if a.folders == nil {
-		a.folderNote(folderUnwiredWord)
+	if a.foldersUnavailable() {
 		return nil
 	}
 	if toID == "" || from == "" || ref == "" || toID == from {
@@ -303,8 +346,7 @@ func (a *app) completeFolderMove(toID string) tea.Cmd {
 }
 
 func (a *app) folderWhyHere(line homeLine) tea.Cmd {
-	if a.folders == nil {
-		a.folderNote(folderUnwiredWord)
+	if a.foldersUnavailable() {
 		return nil
 	}
 	id, ref := a.folderIDOf(line), a.placementRefOf(line)
@@ -320,7 +362,7 @@ func (a *app) folderWhyHere(line homeLine) tea.Cmd {
 	return nil
 }
 
-func folderWhyLine(why folderWhy) string {
+func folderWhyLine(why FolderWhy) string {
 	var parts []string
 	for _, p := range []string{strings.TrimSpace(why.Origin), strings.TrimSpace(why.Reason), strings.TrimSpace(why.Actor)} {
 		if p != "" {
@@ -331,8 +373,7 @@ func folderWhyLine(why folderWhy) string {
 }
 
 func (a *app) removeFolderPlacement(line homeLine) tea.Cmd {
-	if a.folders == nil {
-		a.folderNote(folderUnwiredWord)
+	if a.foldersUnavailable() {
 		return nil
 	}
 	id, ref := a.folderIDOf(line), a.placementRefOf(line)
@@ -348,6 +389,9 @@ func (a *app) removeFolderPlacement(line homeLine) tea.Cmd {
 }
 
 func (a *app) enterFolder(id string) tea.Cmd {
+	if a.foldersUnavailable() {
+		return nil
+	}
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return nil
@@ -419,10 +463,13 @@ func (a *app) runFoldersCommand(rest string) tea.Cmd {
 		return a.createLogicalFolder(name)
 	case "add":
 		return a.addNamedFolder(name)
+	case "rename":
+		from, to, _ := strings.Cut(name, " ")
+		return a.renameLogicalFolder(from, to)
 	case "new":
 		return a.startInFolder(a.folderIDUnderCursor())
 	}
-	a.folderNote("usage: /folders · /folders create <name> · /folders add <name-or-id> · /folders new")
+	a.folderNote("usage: /folders · /folders create <name> · /folders add <name-or-id> · /folders rename <name-or-id> <new-name> · /folders new")
 	return nil
 }
 
@@ -446,8 +493,7 @@ func (a *app) createLogicalFolder(name string) tea.Cmd {
 		a.folderNote("usage: /folders create <name>")
 		return nil
 	}
-	if a.folders == nil {
-		a.folderNote(folderUnwiredWord)
+	if a.foldersUnavailable() {
 		return nil
 	}
 	folder, err := a.folders.CreateFolder(a.folderCtx(), name)
@@ -463,14 +509,39 @@ func (a *app) createLogicalFolder(name string) tea.Cmd {
 	return nil
 }
 
+func (a *app) renameLogicalFolder(from, to string) tea.Cmd {
+	from, to = strings.TrimSpace(from), strings.TrimSpace(to)
+	if from == "" || to == "" {
+		a.folderNote("usage: /folders rename <name-or-id> <new-name>")
+		return nil
+	}
+	if a.foldersUnavailable() {
+		return nil
+	}
+	folder, ok := a.resolveFolder(from)
+	if !ok {
+		a.folderNote("no folder called " + from)
+		return nil
+	}
+	if err := a.folders.RenameFolder(a.folderCtx(), folder.ID, to); err != nil {
+		a.folderNote("could not rename " + folder.Name)
+		return nil
+	}
+	if a.at(pageHome) {
+		a.refreshFolderMemo()
+		a.pointFolderID(folder.ID)
+	}
+	a.folderNote("renamed " + folder.Name + " to " + to)
+	return nil
+}
+
 func (a *app) addNamedFolder(name string) tea.Cmd {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		a.folderNote("usage: /folders add <name-or-id>")
 		return nil
 	}
-	if a.folders == nil {
-		a.folderNote(folderUnwiredWord)
+	if a.foldersUnavailable() {
 		return nil
 	}
 	folder, ok := a.resolveFolder(name)
@@ -481,14 +552,30 @@ func (a *app) addNamedFolder(name string) tea.Cmd {
 	return a.addCurrentToFolder(folder.ID)
 }
 
-func (a *app) resolveFolder(name string) (folderView, bool) {
+func (a *app) resolveFolder(name string) (FolderView, bool) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return folderView{}, false
+		return FolderView{}, false
 	}
-	var named folderView
-	var names int
+	seen := map[string]FolderView{}
+	add := func(folder FolderView) {
+		id := strings.TrimSpace(folder.ID)
+		if id != "" {
+			seen[id] = folder
+		}
+	}
 	for _, folder := range a.home.folders.root.Folders {
+		add(folder)
+	}
+	add(a.home.folders.open)
+	for _, place := range a.home.folders.members {
+		if folderCollectionPlacement(place) {
+			add(folderViewFromPlacement(place))
+		}
+	}
+	var named FolderView
+	var names int
+	for _, folder := range seen {
 		if folder.ID == name {
 			return folder, true
 		}
@@ -500,7 +587,7 @@ func (a *app) resolveFolder(name string) (folderView, bool) {
 	if names == 1 {
 		return named, true
 	}
-	return folderView{}, false
+	return FolderView{}, false
 }
 
 func (a *app) pointFolderID(id string) {
@@ -542,8 +629,8 @@ func folderAlsoIn(names []string) string {
 	return folderAlsoInWord + strings.Join(kept, ", ")
 }
 
-func parentlessFolders(all []folderView) []folderView {
-	var out []folderView
+func parentlessFolders(all []FolderView) []FolderView {
+	var out []FolderView
 	for _, folder := range all {
 		if len(folder.ParentIDs) == 0 {
 			out = append(out, folder)
@@ -552,12 +639,12 @@ func parentlessFolders(all []folderView) []folderView {
 	return out
 }
 
-func childFolders(all []folderView, parent string) []folderView {
+func childFolders(all []FolderView, parent string) []FolderView {
 	parent = strings.TrimSpace(parent)
 	if parent == "" {
 		return nil
 	}
-	var out []folderView
+	var out []FolderView
 	for _, folder := range all {
 		for _, id := range folder.ParentIDs {
 			if id == parent {
@@ -567,4 +654,16 @@ func childFolders(all []folderView, parent string) []folderView {
 		}
 	}
 	return out
+}
+
+func folderCollectionPlacement(place FolderPlacement) bool {
+	return strings.EqualFold(strings.TrimSpace(place.Kind), folderCollectionKind)
+}
+
+func folderViewFromPlacement(place FolderPlacement) FolderView {
+	name := strings.TrimSpace(place.Title)
+	if name == "" {
+		name = strings.TrimSpace(place.RefID)
+	}
+	return FolderView{ID: strings.TrimSpace(place.RefID), Name: name, Lifecycle: "active"}
 }

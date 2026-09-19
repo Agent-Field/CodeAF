@@ -2,9 +2,14 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // fakeFolders is an in-memory Folders seam. freeze panics on any call so a
@@ -12,13 +17,15 @@ import (
 type fakeFolders struct {
 	mu      sync.Mutex
 	frozen  bool
-	root    folderRoot
-	members map[string][]folderPlacement
-	whys    map[string]folderWhy
+	root    FolderRoot
+	members map[string][]FolderPlacement
+	whys    map[string]FolderWhy
+	err     error
 	creates int
 	adds    [][2]string
 	removes [][2]string
 	moves   [][3]string
+	renames [][2]string
 	reads   int
 }
 
@@ -35,31 +42,37 @@ func (f *fakeFolders) touch(op string) {
 	}
 }
 
-func (f *fakeFolders) RootSnapshot(context.Context) (folderRoot, error) {
+func (f *fakeFolders) RootSnapshot(context.Context) (FolderRoot, error) {
 	f.touch("RootSnapshot")
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.err != nil {
+		return FolderRoot{}, f.err
+	}
 	return f.root, nil
 }
 
-func (f *fakeFolders) FolderSnapshot(_ context.Context, id string) (folderView, []folderPlacement, error) {
+func (f *fakeFolders) FolderSnapshot(_ context.Context, id string) (FolderView, []FolderPlacement, error) {
 	f.touch("FolderSnapshot")
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.err != nil {
+		return FolderView{}, nil, f.err
+	}
 	for _, folder := range f.root.Folders {
 		if folder.ID == id {
-			return folder, append([]folderPlacement(nil), f.members[id]...), nil
+			return folder, append([]FolderPlacement(nil), f.members[id]...), nil
 		}
 	}
-	return folderView{}, nil, nil
+	return FolderView{}, nil, nil
 }
 
-func (f *fakeFolders) CreateFolder(_ context.Context, name string) (folderView, error) {
+func (f *fakeFolders) CreateFolder(_ context.Context, name string) (FolderView, error) {
 	f.touch("CreateFolder")
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.creates++
-	folder := folderView{ID: "col-" + name, Name: name, Lifecycle: "active"}
+	folder := FolderView{ID: "col-" + name, Name: name, Lifecycle: "active"}
 	f.root.Folders = append(f.root.Folders, folder)
 	return folder, nil
 }
@@ -88,7 +101,28 @@ func (f *fakeFolders) MovePlacement(_ context.Context, fromID, toID, refID strin
 	return nil
 }
 
-func (f *fakeFolders) WhyHere(_ context.Context, collectionID, refID string) (folderWhy, error) {
+func (f *fakeFolders) RenameFolder(_ context.Context, id, name string) error {
+	f.touch("RenameFolder")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.renames = append(f.renames, [2]string{id, name})
+	for i, folder := range f.root.Folders {
+		if folder.ID == id {
+			f.root.Folders[i].Name = name
+		}
+	}
+	for collectionID, places := range f.members {
+		for i, place := range places {
+			if folderCollectionPlacement(place) && place.RefID == id {
+				places[i].Title = name
+			}
+		}
+		f.members[collectionID] = places
+	}
+	return nil
+}
+
+func (f *fakeFolders) WhyHere(_ context.Context, collectionID, refID string) (FolderWhy, error) {
 	f.touch("WhyHere")
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -97,22 +131,22 @@ func (f *fakeFolders) WhyHere(_ context.Context, collectionID, refID string) (fo
 			return why, nil
 		}
 	}
-	return folderWhy{Origin: "person", Reason: "filed from home"}, nil
+	return FolderWhy{Origin: "person", Reason: "filed from home"}, nil
 }
 
 func billingSecurityFolders() *fakeFolders {
-	billing := folderView{ID: "col-billing", Name: "Billing", Lifecycle: "active", MemberCount: 1}
-	receipts := folderView{ID: "col-receipts", Name: "Receipts", Lifecycle: "active", ParentIDs: []string{"col-billing", "col-security"}}
-	security := folderView{ID: "col-security", Name: "Security", Lifecycle: "active", MemberCount: 1}
-	place := folderPlacement{
+	billing := FolderView{ID: "col-billing", Name: "Billing", Lifecycle: "active", MemberCount: 1}
+	receipts := FolderView{ID: "col-receipts", Name: "Receipts", Lifecycle: "active", ParentIDs: []string{"col-billing", "col-security"}}
+	security := FolderView{ID: "col-security", Name: "Security", Lifecycle: "active", MemberCount: 1}
+	place := FolderPlacement{
 		CollectionID: "col-billing",
 		RefID:        "aaaa000000000001",
 		Title:        "Porting the Resume Picker",
 		AlsoIn:       []string{"Security"},
 	}
 	return &fakeFolders{
-		root: folderRoot{Folders: []folderView{billing, receipts, security}},
-		members: map[string][]folderPlacement{
+		root: FolderRoot{Folders: []FolderView{billing, receipts, security}},
+		members: map[string][]FolderPlacement{
 			"col-billing":  {place},
 			"col-security": {{CollectionID: "col-security", RefID: "aaaa000000000001", Title: "Porting the Resume Picker", AlsoIn: []string{"Billing"}}},
 		},
@@ -220,40 +254,178 @@ func TestComposerAndSelectionSurviveAMembershipChange(t *testing.T) {
 	a.home.build()
 	homeText(a)
 	a.pointFolderID("col-billing")
-	a.home.box.setText("keep this sentence")
 	want, ok := a.home.focusedLine()
 	if !ok || want.kind != homeFolderRow || want.dir != "col-billing" {
 		t.Fatalf("cursor was not on Billing: %+v", want)
 	}
-	fake.root.Folders = append(fake.root.Folders, folderView{ID: "col-ops", Name: "Ops", Lifecycle: "active"})
+	a.home.box.setText("keep this sentence")
+	fake.root.Folders = append(fake.root.Folders, FolderView{ID: "col-ops", Name: "Ops", Lifecycle: "active"})
 	a.readHomeFolders()
 	a.home.build()
 	homeText(a)
-	got, ok := a.home.focusedLine()
-	if !ok || got.kind != homeFolderRow || got.dir != "col-billing" {
-		t.Fatalf("membership change moved the cursor to %+v", got)
-	}
 	if a.home.box.String() != "keep this sentence" {
 		t.Fatalf("membership change wiped the composer: %q", a.home.box.String())
 	}
+	a.home.box.setText("")
+	a.home.build()
+	homeText(a)
+	a.pointFolderID("col-billing")
+	got, ok := a.home.focusedLine()
+	if !ok || got.kind != homeFolderRow || got.dir != "col-billing" {
+		t.Fatalf("membership change dropped Billing: %+v", got)
+	}
 }
 
-func TestNilFoldersStillDrawsTheWhisper(t *testing.T) {
+func TestNilFoldersIsUnavailableNotEmpty(t *testing.T) {
 	a := newLiveLab(t).open()
 	a.folders = nil
 	a.readHomeFolders()
 	a.home.build()
 	frame := homeText(a)
+	if !strings.Contains(frame, "folders") {
+		t.Fatalf("nil Folders dropped the heading:\n%s", frame)
+	}
+	if strings.Contains(frame, folderWhisperWord) {
+		t.Fatalf("nil Folders masqueraded as an empty working store:\n%s", frame)
+	}
+	if !strings.Contains(frame, folderUnwiredWord) {
+		t.Fatalf("nil Folders hid the refusal:\n%s", frame)
+	}
+
+	member := homeLine{kind: homeSession, row: session.SessionRow{ID: "aaaa000000000001"}, cell: &homeCell{panel: panelFolders, key: "col-billing"}}
+	for _, step := range []struct {
+		name string
+		run  func() tea.Cmd
+	}{
+		{"n", func() tea.Cmd { return a.startInFolder("col-billing") }},
+		{"f", func() tea.Cmd { return a.addCurrentToFolder("col-billing") }},
+		{"m", func() tea.Cmd { return a.beginFolderMove(member) }},
+		{"w", func() tea.Cmd { return a.folderWhyHere(member) }},
+		{"x", func() tea.Cmd { return a.removeFolderPlacement(member) }},
+		{"create", func() tea.Cmd { return a.createLogicalFolder("Billing") }},
+		{"add", func() tea.Cmd { return a.addNamedFolder("Billing") }},
+		{"rename", func() tea.Cmd { return a.renameLogicalFolder("Billing", "Invoices") }},
+	} {
+		a.home.say("", "")
+		if cmd := step.run(); cmd != nil {
+			t.Fatalf("%s returned a command on a nil store", step.name)
+		}
+		if a.home.msg != folderUnwiredWord {
+			t.Fatalf("%s said %q, want %q", step.name, a.home.msg, folderUnwiredWord)
+		}
+	}
+	if a.pendingFolder != "" || a.pendingMoveFrom != "" {
+		t.Fatalf("nil mutation left pending state folder=%q move=%q", a.pendingFolder, a.pendingMoveFrom)
+	}
+}
+
+func TestEmptyWorkingFoldersDrawsTheWhisper(t *testing.T) {
+	a := newLiveLab(t).open()
+	a.folders = &fakeFolders{}
+	a.readHomeFolders()
+	a.home.build()
+	frame := homeText(a)
 	if !strings.Contains(frame, folderWhisperWord) {
-		t.Fatalf("nil Folders dropped the whisper:\n%s", frame)
+		t.Fatalf("empty working store dropped the whisper:\n%s", frame)
+	}
+	if strings.Contains(frame, folderUnwiredWord) {
+		t.Fatalf("empty working store said it was unwired:\n%s", frame)
+	}
+	if strings.Contains(frame, "no folders yet") {
+		t.Fatalf("empty working store broke the emptiness law:\n%s", frame)
+	}
+}
+
+func TestFolderReadErrorKeepsTheLastGoodSnapshot(t *testing.T) {
+	fake := billingSecurityFolders()
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	a.pointFolderID("col-billing")
+	fake.err = errors.New("store down")
+	a.readHomeFolders()
+	a.home.build()
+	frame := homeText(a)
+	if !strings.Contains(frame, "Billing") {
+		t.Fatalf("a failed refresh wiped the last good snapshot:\n%s", frame)
+	}
+	if strings.Contains(frame, folderWhisperWord) {
+		t.Fatalf("a failed refresh masqueraded as empty:\n%s", frame)
+	}
+	got, ok := a.home.focusedLine()
+	if !ok || got.kind != homeFolderRow || got.dir != "col-billing" {
+		t.Fatalf("a failed refresh moved the cursor to %+v", got)
+	}
+}
+
+func TestSharedChildFolderShowsUnderBothParents(t *testing.T) {
+	billing := FolderView{ID: "col-billing", Name: "Billing", Lifecycle: "active"}
+	security := FolderView{ID: "col-security", Name: "Security", Lifecycle: "active"}
+	receipts := FolderPlacement{RefID: "col-receipts", Title: "Receipts", Kind: folderCollectionKind}
+	fake := &fakeFolders{
+		root: FolderRoot{Folders: []FolderView{billing, security}},
+		members: map[string][]FolderPlacement{
+			"col-billing":  {receipts},
+			"col-security": {receipts},
+		},
+	}
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	frame := homeText(a)
+	if strings.Contains(frame, "Receipts") {
+		t.Fatalf("Root listed a nested shared folder:\n%s", frame)
+	}
+	a.enterFolder("col-billing")
+	frame = homeText(a)
+	if !strings.Contains(frame, "Receipts") {
+		t.Fatalf("Billing did not show the shared child:\n%s", frame)
+	}
+	a.leaveFolder()
+	a.enterFolder("col-security")
+	frame = homeText(a)
+	if !strings.Contains(frame, "Receipts") {
+		t.Fatalf("Security did not show the shared child:\n%s", frame)
+	}
+}
+
+func TestRenameFolderShowsUnderBothParents(t *testing.T) {
+	billing := FolderView{ID: "col-billing", Name: "Billing", Lifecycle: "active"}
+	security := FolderView{ID: "col-security", Name: "Security", Lifecycle: "active"}
+	receipts := FolderPlacement{RefID: "col-receipts", Title: "Receipts", Kind: folderCollectionKind}
+	fake := &fakeFolders{
+		root: FolderRoot{Folders: []FolderView{billing, security}},
+		members: map[string][]FolderPlacement{
+			"col-billing":  {receipts},
+			"col-security": {receipts},
+		},
+	}
+	a := newLiveLab(t).open()
+	a.folders = fake
+	a.readHomeFolders()
+	a.home.build()
+	homeText(a)
+	a.enterFolder("col-billing")
+	if cmd := a.renameLogicalFolder("Receipts", "Invoices"); cmd != nil {
+		t.Fatal("rename returned a command")
+	}
+	if len(fake.renames) != 1 || fake.renames[0] != [2]string{"col-receipts", "Invoices"} {
+		t.Fatalf("rename called %v", fake.renames)
 	}
 	a.home.say("", "")
-	cmd := a.createLogicalFolder("Billing")
-	if cmd != nil {
-		t.Fatal("nil Folders created something")
+	frame := homeText(a)
+	if !strings.Contains(frame, "Invoices") || strings.Contains(frame, "Receipts") {
+		t.Fatalf("Billing still showed the old name:\n%s", frame)
 	}
-	if a.home.msg != folderUnwiredWord {
-		t.Fatalf("nil mutation said %q, want %q", a.home.msg, folderUnwiredWord)
+	a.leaveFolder()
+	a.enterFolder("col-security")
+	a.home.say("", "")
+	frame = homeText(a)
+	if !strings.Contains(frame, "Invoices") || strings.Contains(frame, "Receipts") {
+		t.Fatalf("Security did not show the rename:\n%s", frame)
 	}
 }
 

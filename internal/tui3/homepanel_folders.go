@@ -12,17 +12,28 @@ import (
 // home panel, not an eighth tab-bar place.
 //
 // EMPTY IT KEEPS ITS HEADING AND ONE DIM TEACHING LINE — never "no folders
-// yet". With rows it is Root: parentless collections, then unfiled chats.
-// Enter drills in sequentially (back, children, members) so an 80-column
-// frame never grows a third column of the graph.
+// yet". That whisper is a working store with nothing in it. A nil seam is
+// unavailable: the heading stays and the panel names the refusal, rather
+// than looking like an empty workspace. With rows it is Root: parentless
+// collections, then unfiled chats. Enter drills in sequentially (back,
+// children, members) so an 80-column frame never grows a third column of
+// the graph.
 type foldersPanel struct{ homePanelBase }
 
 func (foldersPanel) rows(in *homeGridInput) homePanelRows {
+	if in.folders.missing {
+		return homePanelCut(in, panelFolders, []homeLine{folderUnavailableLine()})
+	}
 	open := strings.TrimSpace(in.folderOpen)
 	if open != "" {
 		return homePanelCut(in, panelFolders, folderOpenLines(in, open))
 	}
 	return homePanelCut(in, panelFolders, folderRootLines(in))
+}
+
+func folderUnavailableLine() homeLine {
+	cell := &homeCell{kind: cellWhisper, panel: panelFolders, title: folderUnwiredWord}
+	return homeLine{kind: homeFolderRow, project: folderUnwiredWord, cell: cell}
 }
 
 func folderRootLines(in *homeGridInput) []homeLine {
@@ -31,6 +42,9 @@ func folderRootLines(in *homeGridInput) []homeLine {
 		lines = append(lines, folderRowLine(folder))
 	}
 	for _, place := range in.folders.root.Unfiled {
+		if folderCollectionPlacement(place) {
+			continue
+		}
 		if line, ok := folderMemberLine(in, place, ""); ok {
 			lines = append(lines, line)
 		}
@@ -53,10 +67,21 @@ func folderOpenLines(in *homeGridInput, open string) []homeLine {
 		name = open
 	}
 	lines := []homeLine{folderBackLine(open, name)}
+	seen := map[string]bool{}
 	for _, child := range childFolders(in.folders.root.Folders, open) {
+		seen[child.ID] = true
 		lines = append(lines, folderRowLine(child))
 	}
 	for _, place := range in.folders.members {
+		if folderCollectionPlacement(place) {
+			child := folderViewFromPlacement(place)
+			if child.ID == "" || seen[child.ID] {
+				continue
+			}
+			seen[child.ID] = true
+			lines = append(lines, folderRowLine(child))
+			continue
+		}
 		if line, ok := folderMemberLine(in, place, open); ok {
 			lines = append(lines, line)
 		}
@@ -69,7 +94,7 @@ func folderBackLine(id, name string) homeLine {
 	return homeLine{kind: homeFolderBack, dir: id, project: name, cell: cell}
 }
 
-func folderRowLine(folder folderView) homeLine {
+func folderRowLine(folder FolderView) homeLine {
 	cell := &homeCell{panel: panelFolders, title: folder.Name}
 	if folder.MemberCount > 0 {
 		cell.right = fmt.Sprintf("%d %s", folder.MemberCount, switcherPlural(folder.MemberCount, "chat", "chats"))
@@ -77,7 +102,7 @@ func folderRowLine(folder folderView) homeLine {
 	return homeLine{kind: homeFolderRow, dir: folder.ID, project: folder.Name, cell: cell}
 }
 
-func folderMemberLine(in *homeGridInput, place folderPlacement, collectionID string) (homeLine, bool) {
+func folderMemberLine(in *homeGridInput, place FolderPlacement, collectionID string) (homeLine, bool) {
 	id := strings.TrimSpace(place.RefID)
 	if id == "" {
 		return homeLine{}, false
