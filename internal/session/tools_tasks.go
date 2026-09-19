@@ -69,7 +69,7 @@ import (
 // stated once, on the page's own routing table, rather than once per tool here —
 // eighteen descriptions each carrying their own routing clause is the same table
 // written eighteen times and billed on every request of every turn.
-const tasksDescription = "Find prior or running tasks. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop: a say telling a task to stop is a message it may ignore, never a stop. Never to WAIT for handed-off work. A search also lists other windows' live work, marked `another window`: it has no id here, so none of those operations reach it."
+const tasksDescription = "Find tasks. A finished task is asked about with `tasks` and is never redone or rechecked by hand. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop; say may be ignored. Never to WAIT for handed-off work. Search includes other windows' live work as `another window`, with no id here."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -213,7 +213,28 @@ func (a *Agent) tasksTool() bare.Tool {
 				if parsed.Stop {
 					return "Invalid arguments: stop needs an id — it ends one running task, not a search", true, nil
 				}
-				return markTaskLook(ctx, a.taskSearchText(parsed.Query, parsed.Limit, scope)), false, nil
+				// THE RUN'S TASKS LEAD AND THE SHIPPED LISTING FOLLOWS. A conversation
+				// that has handed work to a run still has the tasks of earlier
+				// sittings and of other windows, and a listing that showed only the
+				// run would have made them unfindable the day the first run started.
+				listing := a.taskSearchText(parsed.Query, parsed.Limit, scope)
+				if run := a.planTasksText(a.runPlanTasks(), parsed.Query); run != "" {
+					if strings.HasPrefix(listing, "No task") {
+						listing = run
+					} else {
+						listing = run + "\n" + listing
+					}
+				}
+				return markTaskLook(ctx, listing), false, nil
+			}
+			// A READ OF A TASK THE RUN'S STORE HOLDS IS ANSWERED FROM THE STORE, by the
+			// number the rail shows for it. Anything else about it (say, stop,
+			// continue, settle) and any id the store does not hold go on to the
+			// shipped reader below, exactly as before.
+			if reading := !parsed.Continue && !parsed.Forward && !parsed.Stop && strings.TrimSpace(parsed.Say) == "" && strings.TrimSpace(parsed.Resolve) == ""; reading {
+				if answer, ok := a.planTaskText(a.runPlanTasks(), token); ok {
+					return markTaskLook(ctx, answer), false, nil
+				}
 			}
 			// THE SAME ANSWER TWICE IN ONE TURN SAYS SO (tasklook.go). It is the
 			// half of the polling fix that reaches a model already mid-poll: the
@@ -1360,4 +1381,117 @@ func TaskAgeWord(d time.Duration) string {
 	default:
 		return strconv.Itoa(int(d/(30*24*time.Hour))) + "mo"
 	}
+}
+
+// runPlanTasks is the rows of the run this conversation handed work to, read
+// from the run's own store, and nil for a conversation with no run.
+//
+// THE `tasks` TOOL WAS BLIND TO THEM (2026-09-18, the real binary): a hand-off
+// ran, split in two, was checked and landed, and one turn later `tasks {"id":
+// "1"}` answered `No task "1" in this project` beside a rail showing `#1 done`.
+// Told no task existed, the conversation set out to verify the work by running
+// the suite itself. The rows are read where the surface reads them
+// ([Agent.PlanTasks]), so the tool and the rail cannot disagree about what ran.
+func (a *Agent) runPlanTasks() []PlanTaskRow {
+	g := a.graph()
+	if g == nil {
+		return nil
+	}
+	plan := g.planIfArmed()
+	if plan == nil || plan.chat == "" {
+		return nil
+	}
+	return a.PlanTasks()
+}
+
+// planTaskLabels names every row of a run THE WAY A PERSON SEES IT, and never by
+// a store id. A task the conversation handed off is stored under the number its
+// card and the rail show, so it is `#2`; a part the run made for itself has no
+// number of its own, so it is its parent's name and its place under that parent,
+// `#2.1`, in the store's own order, which does not move between reads.
+func planTaskLabels(rows []PlanTaskRow) map[string]string {
+	labels := make(map[string]string, len(rows))
+	parts := make(map[string]int, len(rows))
+	for _, row := range rows {
+		bare := planTaskID(row.ID)
+		if _, err := strconv.ParseUint(bare, 10, 64); err == nil {
+			labels[row.ID] = "#" + bare
+			continue
+		}
+		parent, known := labels[row.Parent]
+		if !known {
+			parent = "#"
+		}
+		parts[row.Parent]++
+		labels[row.ID] = strings.TrimSuffix(parent, ".") + "." + strconv.Itoa(parts[row.Parent])
+	}
+	return labels
+}
+
+// planTasksText is the run's tasks as a listing: the name a person sees, the
+// title, the state, and the first line of what came back. Empty when there is
+// no run or nothing in it matches, so the caller's own listing stands alone.
+func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
+	query = strings.ToLower(strings.TrimSpace(query))
+	labels := planTaskLabels(rows)
+	var b strings.Builder
+	for _, row := range rows {
+		page, _ := a.PlanTaskPage(row.ID)
+		if query != "" && !strings.Contains(strings.ToLower(row.Title+" "+row.Status+" "+page.Result), query) {
+			continue
+		}
+		fmt.Fprintf(&b, "%s · %s · %s", labels[row.ID], cutChars(row.Title, runAskLineChars), row.Status)
+		if line := summaryFirstLine(page.Result, runAskLineChars); line != "" {
+			fmt.Fprintf(&b, " · %s", line)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// planTaskText is ONE task of the run, answered from the store: what it was
+// asked, what came back in full, what the run's checks found, and its last
+// steps, each bounded the way [Agent.AskRun] bounds a read. It answers false for
+// a name the run does not hold, and the caller goes on to the shipped reader.
+func (a *Agent) planTaskText(rows []PlanTaskRow, token string) (string, bool) {
+	labels := planTaskLabels(rows)
+	want := "#" + strings.TrimPrefix(strings.TrimSpace(token), "#")
+	id := ""
+	for _, row := range rows {
+		if labels[row.ID] == want {
+			id = row.ID
+			break
+		}
+	}
+	if id == "" {
+		return "", false
+	}
+	page, ok := a.PlanTaskPage(id)
+	if !ok {
+		return "", false
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s · %s · %s\n\nbrief:\n%s\n", labels[id], cutChars(page.Row.Title, runAskLineChars), page.Row.Status, cutChars(page.Description, runAskBodyChars))
+	if page.Result != "" {
+		fmt.Fprintf(&b, "\nresult:\n%s\n", cutChars(page.Result, runAskBodyChars))
+	}
+	for _, row := range rows {
+		if row.Seat != "check" || row.ID == id {
+			continue
+		}
+		if check, _ := a.PlanTaskPage(row.ID); check.Result != "" {
+			fmt.Fprintf(&b, "\n%s · %s:\n%s\n", labels[row.ID], cutChars(row.Title, runAskLineChars), cutChars(check.Result, runAskBodyChars))
+		}
+	}
+	steps := page.Steps
+	if len(steps) > runAskNotesPerTask*4 {
+		steps = steps[len(steps)-runAskNotesPerTask*4:]
+	}
+	if len(steps) > 0 {
+		b.WriteString("\nlast steps:\n")
+	}
+	for _, step := range steps {
+		fmt.Fprintf(&b, "%d · %s\n%s\n", step.Step, cutChars(step.Command, runAskLineChars), cutChars(step.Observation, runAskLineChars))
+	}
+	return b.String(), true
 }

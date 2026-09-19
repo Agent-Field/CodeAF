@@ -139,7 +139,7 @@ func TestPlanPageWaitsOwnFirstThenTasksWaitingOnItAndOmitsEmptySection(t *testin
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over a plan")
 	}
-	a.taskSheetPlan(tests.ID)
+	drive(t, a, a.taskSheetPlan(tests.ID)())
 	text := taskSheetText(a)
 	own := padTo("write the tests · waits: write the handler", 51) + tierGlyph(a.pal, planStatus(handler.Status)) + " 12 steps"
 	behind := padTo("write the fixtures · waits: write the tests", 51) + tierGlyph(a.pal, planStatus(fixtures.Status)) + " queued"
