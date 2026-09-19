@@ -1656,7 +1656,22 @@ func planWithoutOwnFolder(command, folder string) string {
 	return command
 }
 
-// railPlanPending owns keys after a rail gesture until its page answer.
+// railPlanPending is the gap between a press on a run's row in the side list
+// and that task's page being drawn.
+//
+// THE KEYS TYPED IN THE GAP ARE THE PAGE'S. The page is read off the update
+// loop ([app.taskSheetPlanAsk]), and on a hosted conversation the answer took
+// 2.4 seconds on a real screen. Until it folds back the conversation is still
+// what is drawn, and its box used to take whatever was typed: a note meant for
+// a task was sent to the model as a message. A person types at what they
+// pressed, so from the press on, every key is held here, in order, and handed
+// to the page's own keyboard the moment the page is up ([app.finishRailPlan]).
+//
+// THREE WAYS OUT, and none of them reaches the conversation: the answer opens
+// the page and replays the keys; the answer says there is no page, the row's
+// room opens as it always did and the keys are dropped, because a room's box
+// is a different receiver again; `esc` withdraws the press. A second press
+// replaces the first and starts with no keys.
 type railPlanPending struct {
 	id   string
 	keys []tea.KeyPressMsg
