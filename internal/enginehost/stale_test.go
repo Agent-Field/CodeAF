@@ -43,33 +43,21 @@ func liveHost(t *testing.T, workspace string) {
 	})
 }
 
-// waitForHostQuietly waits for a host to be listening WITHOUT connecting to it,
-// which is the whole point of the helper.
-//
-// A connection is reaped on its own goroutine after the far end closes it, so a
-// test that dialled to find out whether the host was up would then race that
-// reaping — and a host with a connection it has not finished letting go of
-// honestly answers that it is holding something. That answer is the safe side
-// of the question in the field (a refusal, never a retirement) and it is a
-// coin toss inside a test. So this asks the two things a host publishes without
-// being spoken to: it has taken the lock, and its socket file exists.
+// waitForHostQuietly waits until the host accepts a connection and completes
+// the remote handshake. A socket pathname and a held lock can coexist during
+// startup before the host has replaced a stale socket and begun accepting.
 func waitForHostQuietly(t *testing.T, workspace string) {
 	t.Helper()
-	dir, err := Dir(workspace)
-	if err != nil {
-		t.Fatalf("resolve the directory: %v", err)
-	}
-	socket := filepath.Join(dir, socketName)
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := os.Stat(socket); err == nil {
-			held, err := takeLock(filepath.Join(dir, lockName))
-			if err != nil {
-				// The lock is taken and the socket file is there, which
-				// together are a host that is listening.
+		conn, err := Dial(workspace)
+		if err == nil {
+			surface, handshakeErr := remote.Dial(conn, "test readiness", remote.Hello{Version: remote.Version})
+			if handshakeErr == nil {
+				_ = surface.Close()
 				return
 			}
-			_ = releaseLock(held)
+			_ = conn.Close()
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("no host came up")
