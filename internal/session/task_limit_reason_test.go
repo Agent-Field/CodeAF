@@ -3,6 +3,8 @@ package session
 import (
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // The law these tests state: an ending caused by something its person set is
@@ -121,11 +123,15 @@ func TestBeltRunNoticeCarriesTheLimitAsAnEnding(t *testing.T) {
 }
 
 // TestRunEndingsThatKeepTheFault is the other half of the inventory: the
-// endings that are not a person's limit and reached the fault reason before
-// this table learned the two limits, still reaching it today. A run that ran
-// and did not finish, a run that could not be run at all, and a joined row
-// whose task the run's own ending cut mid-flight all carry no ending a reading
-// knows, and their account is the report's first line behind the fault word.
+// endings that are the work's own and keep the fault reason. A run that ran
+// and did not finish and a run that could not be run at all carry no ending a
+// reading knows, and their account is the report's first line behind the fault
+// word. A row the run's own ending cut mid-flight is NOT here any more: the
+// run carries its typed record of what it cut ([RunSummary.Cut]) and the settle
+// road draws those rows with the run's own ending
+// ([TestRunJoinedRowsCutByAPersonsEndingNameIt]). What stays under this test is
+// the reading itself: an ending nobody names, whatever the report, still draws
+// the fault line.
 func TestRunEndingsThatKeepTheFault(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
@@ -133,7 +139,7 @@ func TestRunEndingsThatKeepTheFault(t *testing.T) {
 	}{
 		{name: "ran and did not finish", report: "ran and did not finish"},
 		{name: "could not be run at all", report: "could not be run at all"},
-		{name: "cut mid-flight", report: "context canceled"},
+		{name: "a break with words and no ending", report: "context canceled"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			reason := TaskReasonOf(TaskEnding(""), tt.report)
@@ -161,4 +167,105 @@ func TestBeltRunNoticeWithoutALimitKeepsNoEnding(t *testing.T) {
 	if status.Reason != "a fault: ran and did not finish" {
 		t.Fatalf("drawn reason = %q, want the fault and the outcome word", status.Reason)
 	}
+}
+
+// TestRunJoinedRowsCutByAPersonsEndingNameIt holds the law on the road the
+// checker named: a hand-off that joined a run and was taken down by the run's
+// own ending is a row a person ended, not a fault. The run's ending and its
+// typed record of what it cut ([RunSummary.Cut]) arrive through the real
+// settle road, and the row reads the way the run row reads: the limit's own
+// sentence, no fault, and the two limits reading apart; a person's stop reads
+// stopped; a row that failed on its own keeps the fault.
+func TestRunJoinedRowsCutByAPersonsEndingNameIt(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		summary RunSummary
+		ending  TaskEnding
+		reason  string
+	}{
+		{name: "time", summary: RunSummary{Outcome: "a limit you set stopped it", Limit: RunLimitTime, Cut: []string{"7"}}, ending: TaskEndingTimeLimit, reason: "a time limit you set stopped it"},
+		{name: "cost", summary: RunSummary{Outcome: "a limit you set stopped it", Limit: RunLimitCost, Cut: []string{"7"}}, ending: TaskEndingCostLimit, reason: "a dollar limit you set stopped it"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			agent, store, run, _ := landingSummaryFixture(t, &scriptedCompleter{})
+			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "7", Title: "the joined work", Description: "its brief", ParentID: run.root}}); err != nil {
+				t.Fatalf("add joined task: %v", err)
+			}
+			if _, err := store.Claim("7", "7"); err != nil {
+				t.Fatalf("claim joined task: %v", err)
+			}
+			if _, err := store.Fail("7", "7", "context canceled"); err != nil {
+				t.Fatalf("fail joined task: %v", err)
+			}
+			run.joined = []uint64{7}
+			agent.settleBeltRun(run, tt.summary, RunLanding{})
+			rows := agent.graph().runRows(7)
+			if len(rows) != 1 {
+				t.Fatalf("the joined row published %d times, want once", len(rows))
+			}
+			row := rows[0]
+			if row.Ending != tt.ending {
+				t.Fatalf("joined row ending = %q, want the run's own %q", row.Ending, tt.ending)
+			}
+			status := ProjectTask(row.StatusFacts())
+			if status.Fault {
+				t.Fatalf("a row the person's %s limit took down is drawn as a fault", tt.name)
+			}
+			if status.Reason != tt.reason {
+				t.Fatalf("joined row reason = %q, want %q", status.Reason, tt.reason)
+			}
+		})
+	}
+	t.Run("stop", func(t *testing.T) {
+		agent, store, run, _ := landingSummaryFixture(t, &scriptedCompleter{})
+		if _, err := store.AddMany([]plandb.TaskSpec{{ID: "7", Title: "the joined work", Description: "its brief", ParentID: run.root}}); err != nil {
+			t.Fatalf("add joined task: %v", err)
+		}
+		if _, err := store.Claim("7", "7"); err != nil {
+			t.Fatalf("claim joined task: %v", err)
+		}
+		if _, err := store.Fail("7", "7", "context canceled"); err != nil {
+			t.Fatalf("fail joined task: %v", err)
+		}
+		run.joined = []uint64{7}
+		agent.settleStoppedBeltRun(run, "the person stopped it", []string{"7"})
+		rows := agent.graph().runRows(7)
+		if len(rows) != 1 {
+			t.Fatalf("the joined row published %d times, want once", len(rows))
+		}
+		status := ProjectTask(rows[0].StatusFacts())
+		if status.Fault {
+			t.Fatal("a row the person's stop took down is drawn as a fault")
+		}
+		if status.Reason != "" {
+			t.Fatalf("a stopped row draws the reason %q, want none", status.Reason)
+		}
+	})
+	t.Run("own failure", func(t *testing.T) {
+		agent, store, run, _ := landingSummaryFixture(t, &scriptedCompleter{})
+		if _, err := store.AddMany([]plandb.TaskSpec{{ID: "7", Title: "the joined work", Description: "its brief", ParentID: run.root}}); err != nil {
+			t.Fatalf("add joined task: %v", err)
+		}
+		if _, err := store.Claim("7", "7"); err != nil {
+			t.Fatalf("claim joined task: %v", err)
+		}
+		if _, err := store.Fail("7", "7", "the leaf broke on its own"); err != nil {
+			t.Fatalf("fail joined task: %v", err)
+		}
+		run.joined = []uint64{7}
+		// THE ROW IS OUTSIDE THE CUT SET: the ending did not take it down, so
+		// its fault is the work's and keeps the reading it always drew.
+		agent.settleBeltRun(run, RunSummary{Outcome: "a limit you set stopped it", Limit: RunLimitTime, Cut: []string{"other"}}, RunLanding{})
+		rows := agent.graph().runRows(7)
+		if len(rows) != 1 {
+			t.Fatalf("the joined row published %d times, want once", len(rows))
+		}
+		status := ProjectTask(rows[0].StatusFacts())
+		if !status.Fault {
+			t.Fatal("a joined row that failed on its own is not drawn as a fault")
+		}
+		if status.Reason != "a fault: the leaf broke on its own" {
+			t.Fatalf("reason = %q, want the fault and the row's first line", status.Reason)
+		}
+	})
 }

@@ -120,6 +120,10 @@ type RunSummary struct {
 	Result  string
 	// Limit is empty on every run that did not end on a bound its person set.
 	Limit RunLimit
+	// Cut is every task the run's own ending cut mid-flight, by store id: the
+	// same typed fact as the limit, read where the run recorded it. A joined
+	// row in this set is drawn with the run's own ending and never as a fault.
+	Cut   []string
 	Nodes int
 	Steps int
 	USD   float64
@@ -428,7 +432,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	if stopped, why := a.beltRunStopped(run); stopped {
 		// A RUN A PERSON STOPPED IS NOT LANDED. Its work is kept where the stop's
 		// own sentence said it would be, and the ending is the stop's (stoprun.go).
-		a.settleStoppedBeltRun(run, why)
+		a.settleStoppedBeltRun(run, why, summary.Cut)
 		a.beltMu.Lock()
 		if a.beltRun == run {
 			a.beltRun = nil
@@ -590,7 +594,7 @@ func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	a.publishRunRow(g, notice)
-	a.settleJoinedRows(g, run, notice.EndedAt)
+	a.settleJoinedRows(g, run, notice.EndedAt, beltRunLimitEnding(summary.Limit), summary.Cut)
 }
 
 // settleJoinedRows ends the row of every hand-off that joined the run. A JOINED
@@ -599,10 +603,23 @@ func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLandi
 // screen it span beside a finished run for as long as the window stayed open.
 // Its state is what the store says of that task, and the run's landing is said
 // once, on the run's own row.
-func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time) {
+//
+// runEnding is the run's own ending, and cut is the typed record of which
+// tasks that ending took down mid-flight ([RunSummary.Cut]). A row in that set
+// was ended by the run's ending and not by its own work, so the law draws it
+// with that ending and never as a fault: a bound its person set or a stop is
+// theirs ([TaskReasonOf]). A row outside it failed on its own and keeps the
+// reading it always drew.
+func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, runEnding TaskEnding, cut []string) {
 	a.beltMu.Lock()
 	joined := append([]uint64(nil), run.joined...)
 	a.beltMu.Unlock()
+	cutRows := make(map[uint64]bool, len(cut))
+	for _, id := range cut {
+		if n, err := strconv.ParseUint(id, 10, 64); err == nil {
+			cutRows[n] = true
+		}
+	}
 	for _, id := range joined {
 		notice := TaskNotice{ID: id, State: TaskFailed, Parent: run.row, EndedAt: ended}
 		for _, kept := range g.runRows(id) {
@@ -616,6 +633,16 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time) {
 			}
 			notice.Result = strings.TrimSpace(task.Result)
 			notice.Report = notice.Result
+			// THE STORE HOLDS THE ACCOUNT OF WHAT BROKE IN ITS ERROR, and a
+			// failed task carries no result: a fault row with nothing to say
+			// would draw the bare word, so its first line is the store's own
+			// sentence of the break.
+			if notice.Report == "" && task.Status != plandb.StatusDone {
+				notice.Report = strings.TrimSpace(task.Error)
+			}
+		}
+		if notice.State != TaskDone && runEnding != "" && cutRows[id] {
+			notice.Ending = runEnding
 		}
 		a.publishRunRow(g, notice)
 	}
