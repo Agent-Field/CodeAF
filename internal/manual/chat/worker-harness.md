@@ -379,7 +379,9 @@ finished work in front of it. The woken task is claimed under its own agent name
 again, so it can re-plan, add another child and park again, or finish with `done`
 exactly as it could on its first launch. A `plandb wait` with nothing open to wait
 on is refused, so a worker cannot park on nothing. The remaining endings are the
-run's step cap, its wall, and an errored turn.
+run's step cap, its wall, an errored turn, and one ending the worker reaches on
+its own: the same command coming back with the same answer four times in a row,
+which "Why did my task stop on its own?" explains.
 
 ## When does a waiting task come back?
 
@@ -403,6 +405,43 @@ A task that comes back **carries on its step numbers from where it stopped**: a 
 that drew steps `1` to `5` before the wait draws the next one as `6`, never a second
 `1`. The step cap is counted afresh each time the worker runs, so the numbers on the
 page can pass the cap without the task having been stopped by it.
+
+## Why did my task stop on its own?
+
+A task stops itself for one reason of its own: **the same command came back
+with the same answer six times in a row, and nothing changed between them.**
+After the third identical look the run tells the worker once what it saw
+and what it can
+do: try something else; when waiting on something outside the plan that has
+not changed yet, wait for it in one longer action that returns when it has
+changed, and one action may run for up to 600 seconds; or park with
+`plandb wait` when the plan names what it waits on. A worker that then does
+something different is not stopped, and the count starts again; one that
+keeps the same look three more times is stopped.
+
+Whatever the command was, that is work that has stopped moving. The task ends
+as `incomplete`, and its record closes with the reason `the same command came
+back with the same answer 6 times in a row: the work was not moving`. The
+steps above it on the task page show the command and what it got each time.
+
+When the thing being waited on is outside the plan, a build, a deploy, a job
+on another machine, the worker cannot park for it, because the plan does not
+name it. Tell it what you know with a note from the task's page: a note on
+the task counts as something changing, so the task is not stopped and the
+count starts again. Or pause the task until the thing has changed.
+
+Two kinds of worker are never stopped this way:
+
+- **A task blocked on another task is parked, not stopped.** The plan itself
+  names what the task is waiting on, a part not finished yet or a
+  dependency, so the task waits exactly as if its worker had asked to, and
+  comes back when that thing finishes.
+- **A task whose repeated command keeps bringing back something different
+  is left alone.** When each answer differs, or the task's own notes or one
+  of its parts moved between the commands, the work is standing in front of
+  something that changes, and only the step cap bounds it. What OTHER tasks
+  in the plan do does not count: a task caught like this is stopped while
+  the rest of the run carries on working.
 
 ## How does a task decide it is done?
 
