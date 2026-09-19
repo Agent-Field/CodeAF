@@ -62,7 +62,7 @@ whole map over the cells you are already reading.
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
-Home is the **first of the four places on the tab bar** — `home  tasks  spend  settings`.
+Home is the **first of the five places on the tab bar** — `home  tasks  spend  settings  folders`.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
 
@@ -95,7 +95,7 @@ from home stands there as a card. Nothing else stands in it.
 | --- | --- | --- | --- |
 | `needs you` | a question waiting on a person, anywhere, and under them the `unread` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
 | `where you were` | a conversation | opens it | `your conversations · what you type below starts one` |
-| `folders` | a logical group of chats | opens it | `logical groups of chats · /folders create Billing` |
+| `folders` | a logical group of chats | opens the Folders place | `logical groups of chats · /folders create Billing` |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
 | `running` | a task, a background job, a watch firing | brings its conversation here | `work you send off with /task runs here on its own` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
@@ -524,7 +524,7 @@ own tab stack — so going back is `enter`. A window that has held only one conv
 **On a launch** — home greeting you — the cursor is on the conversation this window is
 holding, the row `esc` drops back into.
 
-**`↑` off the top row of a column walks up onto the tab bar** — the row of four words. `←`
+**`↑` off the top row of a column walks up onto the tab bar** — the row of five words. `←`
 and `→` walk along them without opening anything, `enter` or `↓` goes into the one under the
 cursor, and `esc` puts the cursor back on the row it came from. Walking up onto the bar does
 not move home's own cursor, so `↑` and then `↓` costs nothing.
@@ -640,20 +640,20 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing, memory and search go — the four places on the tab bar
+## Where did standing, memory and search go — the five places on the tab bar
 
-**They are still places; they are just off the bar.** The tab bar under the top line is four
-words — `home  tasks  spend  settings` — and `tab`, `alt+1` … `alt+4` walk them. Standing,
-memory and search open exactly as they did:
+**They are still places; they are just off the bar.** The tab bar under the top line is five
+words — `home  tasks  spend  settings  folders` — and `tab`, `alt+1` … `alt+5` walk them.
+Folders is on the bar. Standing, memory and search open exactly as they did:
 
-- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `scheduled` row;
-- **`/memory`** (or `/memories`), `alt+6`, or `enter` on memory's line in `since you left`;
-- **`/search`**, `alt+7`, or the typed door on home's box.
+- **`/standing`** (or `/orders`), `alt+6`, or `enter` on a `scheduled` row;
+- **`/memory`** (or `/memories`), `alt+7`, or `enter` on memory's line in `since you left`;
+- **`/search`**, `alt+8`, or the typed door on home's box.
 
-While you stand in one of the three, its word is drawn after the four so you can see where
-you are; `tab` from there goes to home. `alt+.` draws the map of all seven with their
-numbers. Home's own panels already summarise the three on the bar: `running` is a glimpse of
-tasks, `spend` of spend, `scheduled` of standing.
+While you stand in one of the three, its word is drawn after the five so you can see where
+you are; `tab` from there goes to home. `alt+.` draws the map of all eight with their
+numbers. Home's own panels already summarise: `folders` is enter-from for the Folders place,
+`running` is a glimpse of tasks, `spend` of spend, `scheduled` of standing.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
@@ -1439,8 +1439,8 @@ this folder as the first row of `projects`.
 ## Is there a key for home?
 
 Three of them. **`alt+1`** goes straight there from anywhere — home is the first of the
-four places on the tab bar, and each answers to its own position, `alt+1` through `alt+4`
-(the three places off the bar answer `alt+5` through `alt+7`).
+five places on the tab bar, and each answers to its own position, `alt+1` through `alt+5`
+(the three places off the bar answer `alt+6` through `alt+8`).
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 
@@ -1607,7 +1607,7 @@ three ways:**
 
 The `◦` mark itself belongs to the standing place and to a conversation's own lines —
 `◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
-after the last time you spoke in the conversation behind it. The standing place (`alt+5`,
+after the last time you spoke in the conversation behind it. The standing place (`alt+6`,
 `/standing`) is every promise this machine has made, with how much rope each has.
 
 **Retired items are nowhere on home.** Something that fired once and finished, or that you
@@ -1824,7 +1824,7 @@ phone*).
 
 **The machine's own card is gone too.** `↑` off the top of a column reaches the tab bar,
 and each thing that card said has a place: `keeping an eye on` is the standing place
-(`alt+5`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
+(`alt+6`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
 `4 moving`, and `thinking` is the `thinking` row of `/settings`.
 
 ## The card beside a search — the preview on the right while you type

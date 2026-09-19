@@ -1,23 +1,27 @@
 # Logical folders — grouping saved chats
 
-## Group chats in folders — logical folders, the folders panel, /folders
+## Group chats in folders — logical folders, Folders place, eighth place, not only a home panel, /folders, no folders yet, fresh folders tab empty
 
-Home has a `folders` panel for **logical groups of chats**. It is not a directory
-on disk. The heading is the word `folders`. With nothing in it yet the panel
-keeps that heading and one dim line:
+Folders is a **dedicated place** on the Home tab bar — the fifth word, `folders`. `alt+5`
+opens it. Home still has a `folders` panel as enter-from: the heading is `folders`, and
+Enter on that heading opens the place. It is not a directory on disk.
+
+With nothing generated yet the place keeps that heading and one dim line:
 
 ```
 logical groups of chats · /folders create Billing
 ```
 
-It never says “no folders yet”. `/folders` focuses the panel. `/folders create
-Billing` makes a logical folder named Billing. `/folders nest Receipts in Billing`
+It never says “no folders yet”. `/folders` **enters this logical Folders place**.
+`/folders create Billing` makes a logical folder named Billing. `/folders nest Receipts in Billing`
 places Receipts under Billing; repeating that under Security shares the same
 folder. Nested folders and a folder shared by two parents are allowed; a cycle
 is refused and nothing is half-applied.
 
 Unfiled chats sit under a virtual **Root**. Root is a logical scope, not a path,
-and `codeaf collections list` never prints a Root row.
+never a `collections` row, and `codeaf collections list` never prints a Root row.
+A fresh workspace invents no folders until **New folder** or **Organize existing chats**.
+Unfiled chats stay visible at Root either way.
 
 `/folders` is **not** an alias of `/folder`. `/folder`, `/place` and `/dir` still
 choose a filesystem directory. Filing a chat here does not change cwd, the
@@ -25,6 +29,27 @@ repository, `/attach`, or which project `/folder` named.
 
 The CLI `codeaf collections` still files the same graph. There is no `/collections`
 slash in this build.
+
+## New folder, New chat, Organize existing chats — visible actions, not slash-only, new folder on the folders place
+
+On the Folders place the visible actions are **New folder**, **New chat**, and
+**Organize existing chats**. They are not slash-only. New folder creates at Root, or
+inside the selected folder. New chat starts at Root or that folder: the first sent
+message mints the transcript and files it; Esc before send creates nothing.
+
+**Organize existing chats** surveys saved conversations and may create useful folders
+from evidence. It reuses `observe_and_organize` — no second scheduler. Progress is
+`queued` `running` `delayed` `done` `cancel`. A second click while queued or running
+is the same job. Quit and reopen leaves it for the tick. Cancel is visible `cancel`.
+Foreground chat stays usable. It never paints `pending` `leased` `completed`
+`deferred` `cancelled`, and never `checked`. `/folders organize` is the same door,
+never the only one.
+
+A fresh Folders tab stays empty of generated folders until New folder / `/folders create`
+or Organize existing chats actually applies. After-message automatic enqueue no longer
+invents the first folder on an empty tab. `workspace.organize` off still pauses automatic
+after-message apply; it does not refuse manual Add/Remove and it does not cancel an
+explicit `organize_existing` job. Upgrade keeps existing placements.
 
 ## Saved chats — /folders add, new chat here, verbs n f e i m w x
 
@@ -103,7 +128,7 @@ A later message sent through one placement is there when you reopen through the
 other. Removing one placement leaves the rest. Moving the Billing placement into
 Receipts does not drop the Security one.
 
-## Is /folder a logical folder? — /folders vs /folder, /place, /dir
+## Is /folder a logical folder? — /folders vs /folder, /place, /dir, does /folders open a directory
 
 No. `/folder` is a **filesystem** command. It opens the add-context sheet so this
 conversation can be about a directory. Its other words are `/place` and `/dir`.
@@ -115,7 +140,7 @@ It does not group saved chats.
 | Command | What it names | What it changes |
 | --- | --- | --- |
 | `/folder` `/place` `/dir` | a directory on disk | which project this chat is about; not membership |
-| `/folders` | a logical group of chats | home's `folders` panel |
+| `/folders` | a logical group of chats | the Folders place (`alt+5`); home's `folders` panel is enter-from |
 | `/folders create <name>` | a new logical folder | the collections graph |
 | `/folders add <name-or-id>` | the current chat's membership | one placement; not cwd |
 | `/folders nest <child> [in <parent>]` | a folder under another folder | the same child under every parent |
@@ -206,10 +231,11 @@ collections cannot open. It refuses a cycle or an unknown id in its result text.
 
 ## Automatic organization — does it file chats automatically, organizer, why here, no keyword-only file
 
-After a substantive message is already in the journal, codeaf enqueues an
+After a substantive message is already in the journal, codeaf may enqueue an
 `observe_and_organize` job. Filing happens when the standing pass or `codeaf tick`
 is bound to the organizer and applies a validated plan — enqueue alone does not
-place the chat. RoleOrganize is handed the live folder graph (id, name, and
+place the chat. A **fresh Folders tab** does not invent folders from that automatic
+path; **Organize existing chats** is the explicit survey that may. RoleOrganize is handed the live folder graph (id, name, and
 member conversation ids) plus cited passages; without those ids it can only
 return `no-action`. Filing needs no approval card. `w` why here shows origin
 `organizer` plus the evidence reason, skipping empty parts. Person-filed chats
