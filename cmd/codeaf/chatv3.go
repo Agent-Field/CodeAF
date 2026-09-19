@@ -469,7 +469,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// The byte meter and the logger redirect both belong to the surface rather
 	// than to this door, and [runSurface] (chatv3_surface.go) is where every
 	// door gets them.
-	err = runSurface(ctx, tui3.Options{
+	surfaceOpts := tui3.Options{
 		Agent: agent,
 		Build: buildinfo.String(),
 		// The memory place and the search place read the SAME database the
@@ -645,7 +645,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		SaveApproval:     bankToolApproval(agent, workspace, settings.ProfileDir, *yolo),
 		SaveBashApproval: bankBashApproval(agent, workspace, settings.ProfileDir, *yolo),
 		ApplyApprovals:   applyV3Approvals(agent, workspace, settings.ProfileDir, *yolo),
-	})
+	}
+	attachSurfaceFolders(&surfaceOpts, proc.Folders)
+	err = runSurface(ctx, surfaceOpts)
 	return finishChatRestart(err, restart, "")
 }
 
@@ -1038,6 +1040,11 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// something that spends forever. A task node and a firing's own session
 		// never see it: neither copies this config.
 		Standing: v3Standing(settings.ProfileDir),
+		// Logical folders of chats. One handle per process (chatv3_folders.go),
+		// the same collections.db the CLI organizes. Nil takes `folders` off
+		// the belt: a store that cannot open is unavailable, not a fake empty
+		// graph the model would keep filing into.
+		Folders: proc.Folders,
 		// THE DIVISION ROAD, on by default (internal/config's DefaultSwarm). A
 		// task that turns out to hold more than one worker's share may split
 		// itself into parts and stay to fold them back together

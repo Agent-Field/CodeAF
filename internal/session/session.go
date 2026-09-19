@@ -1337,6 +1337,13 @@ type Config struct {
 	// Nil is off: no belt tool, no card, no ticking from this process.
 	Standing *Standing
 
+	// Folders is the logical-folder membership seam the `folders` tool talks
+	// to (tools_folders.go). NIL IS OFF — no verb on the belt — because a
+	// model told it can file this chat will plan a reply around one, and
+	// every call would then refuse. The door constructs it; a test or a
+	// caller that hands none gets the belt it had before this field existed.
+	Folders Folders
+
 	// standingItems overrides where [Standing.Store] would be read, and it is
 	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
 	// else: the store is a concrete *standing.Store on the seam a door fills,

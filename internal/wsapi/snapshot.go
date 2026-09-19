@@ -185,7 +185,7 @@ func (s *Service) placements(ctx context.Context, collectionID string, members [
 		out = append(out, Placement{
 			CollectionID: collectionID,
 			Ref:          ref,
-			Title:        s.titleOf(ref),
+			Title:        s.titleOf(ctx, ref),
 			AlsoIn:       also,
 		})
 	}
@@ -207,7 +207,14 @@ func (s *Service) alsoIn(ctx context.Context, collectionID string, ref workspace
 	return names, nil
 }
 
-func (s *Service) titleOf(ref workspace.Ref) string {
+func (s *Service) titleOf(ctx context.Context, ref workspace.Ref) string {
+	if ref.Kind == workspace.CollectionKind {
+		collection, err := s.lookup(ctx, ref.ID)
+		if err == nil {
+			return collection.Name
+		}
+		return ""
+	}
 	if ref.Kind == workspace.ConversationKind && s.inv != nil {
 		return s.inv.Title(ref.ID)
 	}

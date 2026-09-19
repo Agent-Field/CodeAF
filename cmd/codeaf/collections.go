@@ -19,10 +19,11 @@ const collectionsSummary = `  codeaf collections [list] [--json]    organize cha
 const collectionsUsage = collectionsSummary + `
   codeaf collections create <name> | rename <collection-id> <name>
   codeaf collections show <collection-id>
-  codeaf collections add|remove <collection-id> <kind> <record-id>
+  codeaf collections add|remove <collection-id> <kind> <record-id> [--reason text]
   codeaf collections find <kind> <record-id>
       kinds: collection, conversation, task, standing, artifact (a file path)
       tasks need --session <conversation-id>; all accept --db and --json
+      --reason is optional on add and remove; default output of those verbs is unchanged
       organize references without moving files or starting work`
 
 func runCollections(args []string) error { return runCollectionsTo(args, os.Stdout) }
@@ -32,6 +33,7 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	database := flags.String("db", home.Join("v3", "collections.db"), "collection database path; separate from learned memory")
 	sessionID := flags.String("session", "", "owning conversation id for a task reference")
 	asJSON := flags.Bool("json", false, "print structured records")
+	reason := flags.String("reason", "", "why this membership is being added or removed")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -116,10 +118,10 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	case "show":
 		result, err = store.Members(ctx, rest[1])
 	case "add":
-		err = store.Add(ctx, rest[1], ref)
+		err = addCollectionRef(ctx, store, rest[1], ref, strings.TrimSpace(*reason))
 		result = ref
 	case "remove":
-		err = store.Remove(ctx, rest[1], ref)
+		err = removeCollectionRef(ctx, store, rest[1], ref, strings.TrimSpace(*reason))
 		result = ref
 	case "find":
 		result, err = store.CollectionsFor(ctx, ref)
@@ -177,6 +179,23 @@ func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result a
 		}
 	}
 	return err
+}
+
+// addCollectionRef files a membership as a person-facing CLI verb. Origin is
+// person even when --reason is empty: that is the old Add spelling, not an
+// organizer claim.
+func addCollectionRef(ctx context.Context, store *workspace.Store, id string, ref workspace.Ref, reason string) error {
+	return store.AddWith(ctx, id, ref, workspace.Provenance{
+		Origin: workspace.OriginPerson,
+		Reason: reason,
+	})
+}
+
+func removeCollectionRef(ctx context.Context, store *workspace.Store, id string, ref workspace.Ref, reason string) error {
+	return store.RemoveWith(ctx, id, ref, workspace.Provenance{
+		Origin: workspace.OriginPerson,
+		Reason: reason,
+	})
 }
 
 func writeCollectionRef(output io.Writer, ref workspace.Ref) error {

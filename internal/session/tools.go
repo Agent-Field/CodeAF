@@ -243,6 +243,10 @@ func (a *Agent) belt() []bare.Tool {
 	// program plans around that ability for the rest of the conversation.
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)
+	// Logical folders of chats (tools_folders.go). Absent when Config.Folders
+	// is nil: a verb with nothing behind it is a model told it can file this
+	// conversation whose every call then refuses.
+	tools = append(tools, a.foldersTools()...)
 	// An owned conversation has no project until the person names one. The
 	// anchoring hand exists only in that state; after it succeeds the rebuilt
 	// belt omits it, because a capability whose job is already done is absent.
