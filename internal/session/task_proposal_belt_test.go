@@ -61,7 +61,7 @@ func TestApprovedProposalBashBeltStartsRunWithoutSessionNode(t *testing.T) {
 	if !strings.Contains(root.Description, "the focused proof passes") {
 		t.Fatalf("root description lost acceptance: %q", root.Description)
 	}
-	close(double.release)
+	endBeltRun(t, agent, double)
 }
 
 func TestApprovedProposalBashBeltJoinsLiveRunWithPlanDependencies(t *testing.T) {
@@ -88,7 +88,7 @@ func TestApprovedProposalBashBeltJoinsLiveRunWithPlanDependencies(t *testing.T) 
 	if err != nil || failed {
 		t.Fatalf("propose_task: failed=%v err=%v answer=%q", failed, err, answer)
 	}
-	if !strings.Contains(answer, "joined the work already underway") || !strings.Contains(answer, "same ground") {
+	if !strings.Contains(answer, "It joined the work already underway and shares its copy.") {
 		t.Fatalf("joined hand-off receipt = %q, want the same-ground join said plainly", answer)
 	}
 
@@ -114,7 +114,7 @@ func TestApprovedProposalBashBeltJoinsLiveRunWithPlanDependencies(t *testing.T) 
 	if agent.graph().node(id) != nil {
 		t.Fatalf("proposal %s also admitted a session-tree node", proposed.ID)
 	}
-	close(double.release)
+	endBeltRun(t, agent, double)
 }
 
 func TestApprovedProposalWithoutBeltKeepsSessionTreeRoad(t *testing.T) {
@@ -183,7 +183,7 @@ func TestApprovedProposalsRunSurvivesTheEndOfTheTurnThatLaunchedIt(t *testing.T)
 	if err := running.Err(); err != nil {
 		t.Fatalf("the run's context ended with the turn that launched it: %v", err)
 	}
-	close(double.release)
+	endBeltRun(t, agent, double)
 }
 
 func TestApprovedProposalBashBeltRefusesDifferentGroundInsteadOfSessionTree(t *testing.T) {
@@ -214,11 +214,11 @@ func TestApprovedProposalBashBeltRefusesDifferentGroundInsteadOfSessionTree(t *t
 	}
 	agent.ResolveTask(proposal.id, TaskAnswer{Approved: true})
 	answer, failed, err := proposal.Commit(context.Background())
-	if err != nil || !failed || !strings.Contains(answer, "different ground") || !strings.Contains(answer, "same ground") {
+	if err != nil || !failed || !strings.Contains(answer, "share one copy of one folder") || !strings.Contains(answer, "Propose it again when that work has ended") {
 		t.Fatalf("different-ground hand-off: failed=%v err=%v answer=%q", failed, err, answer)
 	}
 	if node := agent.graph().node(proposal.id); node != nil {
 		t.Fatalf("different-ground hand-off silently became session-tree task %+v", node)
 	}
-	close(double.release)
+	endBeltRun(t, agent, double)
 }

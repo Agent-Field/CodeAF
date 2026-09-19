@@ -74,19 +74,21 @@ record stays, it just stops deciding. And two folders the conversation is about,
 nothing in the work to choose between them, are the same one-keypress question the next
 rung asks, in the two names you already know. An explicit existing `ground` still outranks
 every other rung, even when it is a third folder not offered by that question; the receipt
-says where in words, `Its copy is cut from <folder>, the folder this proposal gave as its ground.`,
+says where in words, `It works in <folder>, the folder this proposal gave as its ground.`,
 so a wrong choice is visible immediately. A stand read from the brief is said the same way:
-`Its copy is cut from <folder>, the one folder its brief names as ground.`
+`It works in <folder>, the one folder its brief names the work in.`
 
 **How it stands on that ground is not asked either — it follows from the work.** A
-repository the task writes in gets a working copy of its own, cut **from that
-repository**. Its work stays in that copy until you explicitly bring it back, and what
-that copy holds is your folder **as it stands** — saved and unsaved files included. A repository
+repository the task writes in gets a working copy of its own, on a branch cut **from that
+repository**. It merges back into an ordinary branch, or stays on its task branch when
+your checkout is protected, detached, on another branch, or on a commit you moved after
+the cut, and what that copy holds is your folder **as it stands** — uncommitted edits and
+untracked files included. A repository
 the task only reads — a whole contract that names no file — is left alone, and the task gets
 a folder of its own. A plain folder with no history behind it is **copied** into the task's
 folder, and the files the task wrote — its parts' files included — are laid back over it by
 name when it lands, all of them or none of them. And "work
-here" is you saying so: that folder is the ground from which the task’s own copy is cut.
+here" is you saying so: the task works in that folder itself, with nothing isolating it.
 
 **Two refusals and one correction.** A task whose contract names an absolute path outside
 its ground, in no repository, is turned back before anything is spent: `this task names a
@@ -112,19 +114,12 @@ it finishes. Two quick tasks that name the same file run one after the other rat
 at once. The *tasks* page has it under *What a quick task is*. Everything below is about
 the ordinary kind.
 
-By default, no. Each code task gets its own copy of **the repository the work is about**
-— its ground, resolved from what this conversation has been reading and editing (above) — so
-you can keep working in yours while it runs. Children of one run share that run's copy; two
-runs never share a copy. A second hand-off may join a live run only when it stands on the
-same ground, and its answer says that it joined. One that stands elsewhere is refused and
-says that it cannot join work already underway on another ground. If your request explicitly
-names another plain folder, that folder is the ground from which the run’s own copy is cut.
-A path inside a repository likewise chooses that repository as ground; its card and its
-`/history` record show the resolved place.
-
-Finishing leaves the changes in the run's copy. Bringing them back is a separate step. The
-note says where the work went and how many files moved; if the run only read, it brings back
-nothing and says there is nothing to bring back.
+By default, no. Each code task gets its own checkout of **the repository the work is about**
+— its ground, resolved from what this conversation has been reading and editing (above) — on
+its own branch, so you can keep working in yours while it runs. If your request explicitly
+names another plain folder, the task works in that exact folder instead. A path inside a
+repository still gets a branch from that repository; its card and its `/history` record
+show the resolved place.
 
 codeaf makes that copy from your folder **as it stands** — see *Does a task see my
 unsaved changes* above for what travels and what does not.
