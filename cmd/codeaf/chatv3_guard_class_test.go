@@ -85,6 +85,14 @@ func processGuardScopes(t *testing.T) map[string]string {
 			if !ok || len(call.Args) == 0 {
 				return true
 			}
+			if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == "poolErrandGoCtx" {
+				lit, ok := call.Args[1].(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					return true
+				}
+				out[strings.Trim(lit.Value, "\\\"")] = filepath.ToSlash(fset.Position(call.Pos()).String())
+				return true
+			}
 			sel, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok {
 				return true
