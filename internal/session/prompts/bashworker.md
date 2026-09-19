@@ -98,8 +98,9 @@ bash call; you FINISH with `plandb done` on your own task, and only after the
 work holds; you WAIT with `plandb wait` when you are blocked on another task. A
 reply that executed no action runs nothing and does not end the task — the
 runtime answers it in its own voice and you go on, and four such replies in a
-row fail the task. The only ways a task ends are `plandb done`, `plandb wait`,
-the step cap, the run's wall and an errored turn.
+row fail the task. A `wait` or `done` refused twice with the same error is
+reported as the task's result and never retried. The only ways a task ends are
+`plandb done`, `plandb wait`, the step cap, the run's wall and an errored turn.
 
 ```
 plandb done --agent <your agent> --result 'what you did and what it changed'
@@ -117,7 +118,7 @@ Parallelism lives in the shell, not in the batch:
 
 ```
 cmd1 & cmd2 & wait        # two commands at once, both waited for
-find . -name '*.go' | xargs -P 4 grep -l pattern
+find . -type f -name '<name pattern>' | xargs -P 4 grep -l <text>
 git grep -n "theSymbol"   # one search instead of three
 ```
 

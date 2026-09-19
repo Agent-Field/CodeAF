@@ -98,6 +98,10 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 		built.Messages += 2 * len(talk.turns)
 	}
 
+	if err := writePlan(projects, ids); err != nil {
+		return built, err
+	}
+
 	tasks, err := writeTaskIndex(projects, ids, now)
 	if err != nil {
 		return built, err

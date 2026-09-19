@@ -240,6 +240,51 @@ func beltGit(t *testing.T, dir string, args ...string) {
 // in the store with the result as its words; the run lands that file on the copy's branch, and the caller reads on
 // stdout the root's own result, the landed path, and the branch the landing
 // answered — the whole of what the run road owes an envelope.
+// A ROOT FINISH THAT LANDS IN THE STORE BEFORE ITS WORKER RETURNS STILL NAMES THE ROOT RESULT.
+//
+// The finish command writes the root done row before its shell exits. Holding that
+// shell beyond the supervisor pass interval forces the store to look terminal while
+// the worker return carrying its report is still in flight; the envelope must not
+// substitute the later landing line for that report. This is the same ordering a
+// real `codeaf do --json` belt worker can reach between its plandb write and return.
+func TestDoOnTheRunEngineRootStoreFinishBeforeWorkerReturnNamesRootResult(t *testing.T) {
+	beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+	workspace := beltRepoWorkspace(t)
+	seat := &beltSeat{
+		script: []func(context.Context, []ai.Message) (*ai.Response, error){
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return beltToolReply("printf 'written by the run' > out.txt"), nil
+			},
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return beltToolReply(beltFinish(beltAnswer) + "; sleep 1"), nil
+			},
+		},
+		ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+			if doc := beltDocument(msgs); strings.Contains(doc, "## Who checks this work") {
+				id := briefTaskID(doc)
+				return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+			}
+			return beltTextReply(beltAnswer), nil
+		},
+	}
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
+		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		newBeltCompleter: func(string) session.Completer { return seat },
+	})
+	if err != nil {
+		t.Fatalf("a brief the model completed left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if !strings.Contains(outcome.Deliverable, beltAnswer) {
+		t.Fatalf("the envelope does not carry the root's result: %q", outcome.Deliverable)
+	}
+}
+
 func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 	beltRunEnv(t)
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
@@ -589,5 +634,194 @@ func TestDoOnTheRunEngineLeavesTheUsageLedgerToTheSession(t *testing.T) {
 	if len(lines) == 0 {
 		t.Fatalf("the session the worker hosted wrote no usage row, so the run road "+
 			"is accounting somewhere of its own:\n%s", stderr.String())
+	}
+}
+
+// THE CHECK SEAT HAS A FLAG OF ITS OWN, and the door resolves it at the seam:
+// `--check-model` seats the run's review checks on the model the person typed,
+// beside a work flag and a plan flag, and no other seat moves. The profile
+// names OTHER models on every row, so a factory that fell to the profile for
+// the check would ask the completer for those and this would see them.
+func TestDoOnTheRunEngineSeatsACheckOnTheCheckModel(t *testing.T) {
+	home := beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+	profileDir := filepath.Join(home, "profile")
+	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := json.Marshal(map[string]string{
+		config.KeyTierLowModel:        "vendor/profile-small",
+		config.KeyTierWorkerModel:     "vendor/profile-worker",
+		config.KeyTierHighModel:       "vendor/profile-careful",
+		config.KeyTierMastermindModel: "vendor/profile-thinking",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(profileDir), rows, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	workspace := beltRepoWorkspace(t)
+	const (
+		workModel  = "vendor/do-work"
+		planModel  = "vendor/do-plan"
+		checkModel = "vendor/do-check"
+	)
+	// The same one-seat shape as the door's seats test: the root adds one
+	// child and parks on it, the child finishes, the woken root folds it, and
+	// the review check on the child's leaf is answered with holds.
+	rootTurns := 0
+	seat := &beltSeat{ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+		doc := beltDocument(msgs)
+		if strings.Contains(doc, "## Who checks this work") {
+			id := briefTaskID(doc)
+			return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+		}
+		if strings.Contains(doc, "## The ask this run serves") {
+			id := briefTaskID(doc)
+			return beltToolReply("plandb done " + id + " --agent " + id + " --result 'the child is done'"), nil
+		}
+		rootTurns++
+		switch rootTurns {
+		case 1:
+			return beltToolReply("plandb add 'the child' --as c1"), nil
+		case 2:
+			return beltToolReply("plandb wait root --agent root"), nil
+		default:
+			return beltToolReply(beltFinish(beltAnswer)), nil
+		}
+	}}
+
+	var mu sync.Mutex
+	built := map[string]int{}
+	newBelt := func(model string) session.Completer {
+		mu.Lock()
+		built[model]++
+		mu.Unlock()
+		return seat
+	}
+
+	var stdout, stderr strings.Builder
+	err = doErrand(doRequest{
+		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
+		timeout: 60 * time.Second, slots: 1,
+		model: workModel, planModel: planModel, checkModel: checkModel,
+		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
+	})
+	if err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
+	}
+
+	mu.Lock()
+	models := make([]string, 0, len(built))
+	for model := range built {
+		models = append(models, model)
+	}
+	checkBuilt := built[checkModel]
+	mu.Unlock()
+	for _, model := range models {
+		if model != workModel && model != planModel && model != checkModel {
+			t.Fatalf("the completer was asked for the model %q; the door named only %q, %q and %q",
+				model, workModel, planModel, checkModel)
+		}
+	}
+	if checkBuilt == 0 {
+		t.Fatalf("the completer was never asked for the check seat %q; the review round did not run or was seated elsewhere (built %v)",
+			checkModel, models)
+	}
+	if built[workModel] == 0 || built[planModel] == 0 {
+		t.Fatalf("the completer was asked for %v, want all three seats the door named", models)
+	}
+}
+
+// AN UNPINNED RUN CHECKS ON THE CREW'S CHECKER. With no seat flag typed at all,
+// the work and plan seats come from the profile's rows and the check seat is
+// empty, so the factory seats the review check on the profile's careful row:
+// one model that works, one that checks, one that thinks, and no fourth model
+// from anywhere.
+func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
+	home := beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+	profileDir := filepath.Join(home, "profile")
+	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := json.Marshal(map[string]string{
+		config.KeyTierWorkerModel:     "vendor/profile-worker",
+		config.KeyTierHighModel:       "vendor/profile-careful",
+		config.KeyTierMastermindModel: "vendor/profile-thinking",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(profileDir), rows, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	workspace := beltRepoWorkspace(t)
+	// The same one-seat shape as the two tests above.
+	rootTurns := 0
+	seat := &beltSeat{ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+		doc := beltDocument(msgs)
+		if strings.Contains(doc, "## Who checks this work") {
+			id := briefTaskID(doc)
+			return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+		}
+		if strings.Contains(doc, "## The ask this run serves") {
+			id := briefTaskID(doc)
+			return beltToolReply("plandb done " + id + " --agent " + id + " --result 'the child is done'"), nil
+		}
+		rootTurns++
+		switch rootTurns {
+		case 1:
+			return beltToolReply("plandb add 'the child' --as c1"), nil
+		case 2:
+			return beltToolReply("plandb wait root --agent root"), nil
+		default:
+			return beltToolReply(beltFinish(beltAnswer)), nil
+		}
+	}}
+
+	var mu sync.Mutex
+	built := map[string]int{}
+	newBelt := func(model string) session.Completer {
+		mu.Lock()
+		built[model]++
+		mu.Unlock()
+		return seat
+	}
+
+	var stdout, stderr strings.Builder
+	err = doErrand(doRequest{
+		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
+		timeout: 60 * time.Second, slots: 1,
+		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
+	})
+	if err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
+	}
+
+	mu.Lock()
+	models := make([]string, 0, len(built))
+	for model := range built {
+		models = append(models, model)
+	}
+	carefulBuilt := built["vendor/profile-careful"]
+	mu.Unlock()
+	crew := map[string]bool{
+		"vendor/profile-worker":   true,
+		"vendor/profile-careful":  true,
+		"vendor/profile-thinking": true,
+	}
+	for _, model := range models {
+		if !crew[model] {
+			t.Fatalf("the completer was asked for the model %q; the crew names only %v", model, models)
+		}
+	}
+	if carefulBuilt == 0 {
+		t.Fatalf("the completer was never asked for the crew's careful row; the check was seated elsewhere (built %v)", models)
 	}
 }

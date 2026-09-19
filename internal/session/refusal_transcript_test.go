@@ -44,3 +44,36 @@ func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
 		t.Fatal("ArgumentRefusal took a bash that failed in the world for a refusal of the call's arguments")
 	}
 }
+
+// A CHECK IS JUDGED BY ITS SHAPE, AND THE SCHEMA SAYS THE SHAPE IN ANY SETUP: one
+// rerunnable command, no leading cd, no composition. It names no tool and no language.
+func TestChecksSchemaSaysWhereAChecksRunsAndNamesNoTool(t *testing.T) {
+	for _, want := range []string{"ONE rerunnable command", "no leading cd", "no &&"} {
+		if !strings.Contains(checksSchemaJSON, want) {
+			t.Errorf("checks schema does not say %q:\n%s", want, checksSchemaJSON)
+		}
+	}
+}
+
+// A CHECK THAT LEADS WITH A DIRECTORY CHANGE IS REFUSED, NEVER REPAIRED, AND THE
+// REFUSAL SAYS THE FORM THAT PASSES. Dropping the step is meaning-preserving only
+// when the directory is the ground itself, which this door does not know: a
+// check that changes into any other folder would be kept as a command run where
+// its files are not. Any other composition keeps the plain refusal.
+func TestACheckThatLeadsWithADirectoryChangeIsRefusedWithTheFormThatPasses(t *testing.T) {
+	const form = "leave the directory change out and name each file by its path"
+	for _, led := range []string{"cd /srv/checkout && ./run.sh --all", "cd /srv/elsewhere && ./run.sh report", "cd sub && ./run.sh"} {
+		got, refusal := declaredCheckList([]string{led})
+		if got != nil || !strings.Contains(refusal, "no shell composition") || !strings.HasSuffix(refusal, form) {
+			t.Fatalf("%q: checks = %q, refusal = %q", led, got, refusal)
+		}
+	}
+	for _, composed := range []string{"./build.sh && ./run.sh", "./run.sh | ./count.sh"} {
+		if _, refusal := declaredCheckList([]string{composed}); !strings.HasSuffix(refusal, " is not") {
+			t.Fatalf("%q: refusal = %q", composed, refusal)
+		}
+	}
+	if got, refusal := declaredCheckList([]string{"./run.sh /srv/elsewhere/report"}); refusal != "" || len(got) != 1 {
+		t.Fatalf("an absolute path as an argument: checks = %q, refusal = %q", got, refusal)
+	}
+}

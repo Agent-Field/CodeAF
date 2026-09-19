@@ -3799,7 +3799,7 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	}
 	// THE ASK IS THE ONE THIS TURN OWES, which on a woken turn is the request its
 	// result belongs to and not whatever was typed last (wakecause.go).
-	page := checkpointCompletionPage(a.turnAsk(), a.snapshot())
+	page := checkpointCompletionPage(a.turnAsk(), a.completionSnapshot())
 	if page == "" {
 		return readerLine{}
 	}
@@ -3833,6 +3833,21 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 // checkpointCompletionPage keeps the person's COMPLETE request in the reader's
 // page. Ordinary asks remain inside [checkpointDigest]; one too large to fit
 // with its heading rides separately from the independently bounded evidence.
+func (a *Agent) completionSnapshot() []ai.Message {
+	messages := a.snapshot()
+	a.mu.Lock()
+	outcomes := append([]string(nil), a.landingOutcomes...)
+	a.mu.Unlock()
+	for index, outcome := range outcomes {
+		id := fmt.Sprintf("landing-%d", index)
+		messages = append(messages,
+			ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: id, Function: ai.ToolCallFunction{Name: "task landing"}}}},
+			ai.Message{Role: "tool", ToolCallID: id, Content: []ai.ContentPart{{Type: "text", Text: outcome}}},
+		)
+	}
+	return messages
+}
+
 func checkpointCompletionPage(asked string, messages []ai.Message) string {
 	asked = strings.TrimSpace(asked)
 	if len(checkpointDigestAsked)+1+len(asked) <= checkpointDigestBytes {

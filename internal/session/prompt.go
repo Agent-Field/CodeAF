@@ -118,6 +118,11 @@ var fanoutPrompt string
 //go:embed prompts/quick.md
 var quickPrompt string
 
+// landingAnswerPrompt is the short role page for the one answer an owed root landing opens.
+//
+//go:embed prompts/landing-answer.md
+var landingAnswerPrompt string
+
 // shapePrompt is what the BRIEF-SHAPER is told (task_shape.go): how to reason
 // its way from the words a person typed after /task to the brief a worker with
 // nobody to ask is actually given.

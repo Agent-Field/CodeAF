@@ -150,10 +150,9 @@ type tasksMine struct {
 	// across the desk — and the difference decides whether the row's door is a
 	// switch or a second view onto the engine.
 	here map[string]bool
-	// plan is the run's own store read for the conversation this page was opened
-	// in, when it has a plan at all ([planAgent]). Nil is a conversation with no
-	// plan, which draws exactly the page this place has always drawn.
+	// plan and now are one store reading carried to the frame as plain data.
 	plan []session.PlanTaskRow
+	now  string
 	// tilde is this machine's home directory, which is what tells a folder
 	// somebody WORKS in from the one they stand in ([chatProjectWord]). It is
 	// read once at boot and handed in like every other fact, because the reading
@@ -198,11 +197,12 @@ type tasksReading struct {
 	// empty — `work codeaf ran on its own. nothing.` across the top of a machine
 	// that had run ten pieces of work. The news that nothing matches already has
 	// its own home on the note line ([taskSheetFilterLine]).
-	whole     int
-	wholeCost float64
-	win       session.UsageWindow
-	seen      time.Time
-	now       time.Time
+	whole      int
+	wholeCost  float64
+	win        session.UsageWindow
+	seen       time.Time
+	now        time.Time
+	summaryNow string
 	// open is what a person has SET about the folds on this page, and it is the
 	// PLACE'S state handed in rather than the reading's own: a snapshot is
 	// replaced whole every time a node lands (place_tasks.go), and a fold that
@@ -217,6 +217,13 @@ type tasksReading struct {
 	// it on: a query. A row that matched and is behind a fold is a row the query
 	// appears not to have found ([tasksPlace.filtered]).
 	unfolded bool
+	// kinFloor is the least number of indent levels the layout draws whatever
+	// the width says ([tasksKinRoom]). The page leaves it zero. The chat's rail
+	// sets it ([tasksReading.planRows]): a run's tree is what the rail is for,
+	// and at the rail's width the page's budget is one level, which drew a task
+	// and the task under it at one indent, two siblings to the eye. One more
+	// level costs a grandchild's row two cells and no other row anything.
+	kinFloor int
 	// folder is the project THIS WINDOW is standing in and tilde this machine's
 	// home directory. They are the two facts [chatProjectWord] needs to decide
 	// whether a conversation root also names its folder — a tag on every row of
@@ -254,7 +261,7 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // graph, then the other windows — which are reading a presence file written
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
-	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by}
+	r := tasksReading{win: win.Normalized(), seen: seen, now: now, summaryNow: strings.TrimSpace(mine.now), tilde: mine.tilde, order: by}
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.
@@ -558,6 +565,9 @@ type tasksLine struct {
 	// of them a row wears is a fact about the layout — how many rows are under
 	// it and whether they are drawn — and the paint may not re-derive it.
 	kin string
+	// underKin is the family column of the lines that stand UNDER this row: the
+	// same indent, with the stroke carried through where a sibling is to come.
+	underKin string
 	// folds says this line is a family root that can be opened and shut, and
 	// open says it is open. They are what `→` and `←` act on, and what the row's
 	// own clause reports (place_tasks.go's [app.taskSheetFold]).
@@ -603,6 +613,10 @@ func (r tasksReading) lay(width int) []tasksLine {
 	tree := r.tree()
 	column := tree.column()
 	levels := tasksKinRoom(width)
+	// THE RAIL ALWAYS AFFORDS A GRANDCHILD ITS STEP ([tasksReading.kinFloor]).
+	if r.kinFloor > levels {
+		levels = r.kinFloor
+	}
 	add := func(kind tasksLineKind, text string) {
 		lines = append(lines, tasksLine{kind: kind, text: text, owner: -1})
 	}
@@ -635,10 +649,37 @@ func (r tasksReading) lay(width int) []tasksLine {
 		}
 		return true
 	}
-	var work func(item tasksItem, depth int, last, named, nested bool)
-	work = func(item tasksItem, depth int, last, named, nested bool) {
+	// rails says, for every step of indent in front of a row, whether the
+	// family line runs through it ([tasksKinTree]). A row's descendants and the
+	// lines under it carry the rule of every ancestor that still has a sibling
+	// to come, so a family's line is one unbroken stroke from its first row to
+	// its last, however many live lines and grandchildren stand between them.
+	var work func(item tasksItem, depth int, last, named, nested bool, rails []bool)
+	work = func(item tasksItem, depth int, last, named, nested bool, rails []bool) {
 		key := tasksKeyOf(item.entry)
 		kids := tree.kids[key]
+		if item.plan != nil && len(kids) > 0 {
+			kept := make([]tasksItem, 0, len(kids))
+			var folded *tasksItem
+			done := 0
+			for _, kid := range kids {
+				if kid.plan != nil && kid.plan.Status == "done" {
+					done++
+					if folded == nil {
+						copy := kid
+						folded = &copy
+					}
+					continue
+				}
+				kept = append(kept, kid)
+			}
+			if folded != nil {
+				folded.entry.Title, folded.entry.Label = "done", "done"
+				folded.entry.Activity = itoa(done) + " done"
+				kept = append(kept, *folded)
+			}
+			kids = kept
+		}
 		own := len(lines)
 		line := tasksLine{kind: tasksLineTask, item: item, owner: own, under: named || nested,
 			rank: tree.rank[key]}
@@ -678,14 +719,22 @@ func (r tasksReading) lay(width int) []tasksLine {
 		case column:
 			mark = tasksKinPad
 		}
-		line.kin = tasksKin(depth, levels, mark)
+		line.kin = tasksKinTree(rails, depth, levels, mark)
+		// THE ROW'S OWN COLUMN CARRIES ON UNDER IT while a sibling is still to
+		// come: the lines under a row, and the rows under those, stand inside
+		// the family's stroke and never break it.
+		through := tasksKinPad
+		if nested && !last {
+			through = tasksKinRule
+		}
+		line.underKin = tasksKinTree(rails, depth, levels, through)
 		lines = append(lines, line)
 		// phone lane: a row becomes a two-line card a thumb goes into
 		// (taskphone.go), and the second line belongs to the first.
 		if phone && tasksCardTail(item, r.now) != "" {
 			lines = append(lines, tasksLine{
 				kind: tasksLineTail, item: item, owner: own,
-				kin: tasksKin(depth, levels, tasksKinPad),
+				kin: line.underKin,
 			})
 		}
 		// A PLAN ROW WITH A STEP IN FLIGHT SPENDS ITS UNDER-BLOCK on the live step
@@ -696,15 +745,16 @@ func (r tasksReading) lay(width int) []tasksLine {
 		for under := 0; under < planUnderCount(item.plan); under++ {
 			lines = append(lines, tasksLine{
 				kind: tasksLinePlanUnder, item: item, owner: own,
-				kin:       tasksKin(depth, levels, tasksKinPad),
+				kin:       line.underKin,
 				planUnder: under,
 			})
 		}
 		if !line.open {
 			return
 		}
+		below := append(append([]bool(nil), rails...), nested && !last)
 		for at, kid := range kids {
-			work(kid, depth+1, at == len(kids)-1, named, true)
+			work(kid, depth+1, at == len(kids)-1, named, true, below)
 		}
 	}
 
@@ -725,7 +775,11 @@ func (r tasksReading) lay(width int) []tasksLine {
 		// each fold shut or open by its own default ([tasksReading.opens]).
 		for _, g := range groups {
 			depth := 0
-			if g.named {
+			// THE RAIL IS ALREADY INSIDE THE CONVERSATION, so its projection draws
+			// no conversation row and spends no indent on one: the run's root
+			// stands at the rail's own edge ([tasksReading.kinFloor]).
+			named := g.named && r.kinFloor == 0
+			if named {
 				line := tasksLine{
 					kind: tasksLineChat, chat: g.chat, owner: len(lines),
 					folds: len(g.roots) > 0, family: g.chat.key, kids: g.chat.kids,
@@ -746,7 +800,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 				depth = 1
 			}
 			for at, root := range g.roots {
-				work(root, depth, at == len(g.roots)-1, g.named, false)
+				work(root, depth, at == len(g.roots)-1, named, false, make([]bool, depth))
 			}
 		}
 	}
@@ -799,6 +853,27 @@ func tasksKin(depth, levels int, mark string) string {
 	return strings.Repeat(tasksKinStep, depth) + mark
 }
 
+// tasksKinTree is [tasksKin] with the family's stroke drawn through it: one
+// step for every ancestor, a rule where that ancestor still has a sibling to
+// come and a blank where it was the last of its family.
+func tasksKinTree(rails []bool, depth, levels int, mark string) string {
+	if depth > levels {
+		depth = levels
+	}
+	if depth <= 0 {
+		return mark
+	}
+	var lead strings.Builder
+	for step := 0; step < depth; step++ {
+		if step < len(rails) && rails[step] {
+			lead.WriteString(tasksKinRule)
+			continue
+		}
+		lead.WriteString(tasksKinStep)
+	}
+	return lead.String() + mark
+}
+
 // tasksKinRoom is how many levels of indent this frame can afford.
 //
 // THE COLUMN MAY NEVER TAKE THE CELLS THE NAME NEEDS (rowfit.go's law 1). Work
@@ -833,6 +908,9 @@ const (
 	tasksFoldOpen = "▾ "
 	// tasksKinCont and tasksKinLast are the connectors under an open piece of
 	// work, on the rows that hold nothing themselves.
+	// tasksKinRule is the family's stroke passing a line that is not a row of
+	// it: the live line under a task, or the rows of the task under that.
+	tasksKinRule = "│ "
 	tasksKinCont = "├ "
 	tasksKinLast = "└ "
 )
@@ -1027,8 +1105,13 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		rank:  make(map[tasksKey]tasksRank, len(items)),
 		sort:  order,
 	}
-	for _, item := range items {
-		t.at[tasksKeyOf(item.entry)] = item
+	for i := range items {
+		// A tree may be built directly by the rail as well as through readTasks.
+		// File every row here so both entrances use the same family ordering.
+		if items[i].plan != nil {
+			items[i].section = tasksSectionOf(items[i], now)
+		}
+		t.at[tasksKeyOf(items[i].entry)] = items[i]
 	}
 	// parentOf is one row's parent WHERE THE PAGE IS DRAWING THAT PARENT TOO. A
 	// child whose parent is outside the time window, or filtered off the page,
@@ -1109,6 +1192,23 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 	// what changes with the key is which of two SIBLINGS comes first, never
 	// whether a row is still under its parent.
 	for key, kids := range t.kids {
+		if len(kids) > 0 && kids[0].plan != nil && t.sort == (tasksSort{}) {
+			// Stable partition: running rows float, every other store row keeps
+			// its relative order.
+			ordered := make([]tasksItem, 0, len(kids))
+			for _, kid := range kids {
+				if kid.plan.Status == "claimed" || kid.plan.Status == "running" {
+					ordered = append(ordered, kid)
+				}
+			}
+			for _, kid := range kids {
+				if kid.plan.Status != "claimed" && kid.plan.Status != "running" {
+					ordered = append(ordered, kid)
+				}
+			}
+			t.kids[key] = ordered
+			continue
+		}
 		sort.SliceStable(kids, func(i, j int) bool {
 			return t.sort.key.less(t.rank[tasksKeyOf(kids[i].entry)], t.rank[tasksKeyOf(kids[j].entry)], t.sort.back)
 		})
@@ -1213,7 +1313,17 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 					held := item
 					urgent = &held
 				}
-				if stamp := tasksEntryAt(item.entry, now); stamp.After(g.order) {
+				// A PLAN ROW'S ACTIVITY IS ITS OWN LAST MOVE; every other row
+				// keeps the stamp the record's list has always sorted by, so the
+				// plan's order never re-files the shipped engine's rows.
+				stamp := tasksEntryAt(item.entry, now)
+				if item.plan != nil {
+					stamp = item.entry.StartedAt
+					if item.entry.EndedAt.After(stamp) {
+						stamp = item.entry.EndedAt
+					}
+				}
+				if stamp.After(g.order) {
 					g.order = stamp
 				}
 				if stamp := tasksEntryStamp(item, now); stamp.After(g.chat.at) {
@@ -1252,9 +1362,22 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		if t.groups[a].section != t.groups[b].section {
 			return t.groups[a].section < t.groups[b].section
 		}
+		// The rail default is activity, newest first. Explicit column sorts
+		// retain the table comparator below.
+		if t.sort == (tasksSort{}) && tasksPlanGroup(t.groups[a]) && tasksPlanGroup(t.groups[b]) {
+			return t.groups[a].order.After(t.groups[b].order)
+		}
 		return t.sort.key.less(t.groups[a].chat.rank, t.groups[b].chat.rank, t.sort.back)
 	})
 	return t
+}
+
+// tasksPlanGroup answers whether a group is a belt run's family: its roots are
+// plan rows. THE ACTIVITY ORDER IS THE PLAN'S AND NOT THE RECORD'S, so only two
+// plan families are compared by it; a group of the shipped engine's rows keeps
+// the comparator its own list has always used.
+func tasksPlanGroup(g tasksGroup) bool {
+	return len(g.roots) > 0 && g.roots[0].plan != nil
 }
 
 // under walks one piece of work and everything beneath it, in draw order, with
@@ -1396,6 +1519,57 @@ func (r tasksReading) rows(width int, pal palette) []string {
 	out := make([]string, len(lines))
 	for i := range lines {
 		out[i] = r.paint(lines, i, width, pal, false)
+	}
+	return out
+}
+
+// planRows draws only this reading's store-backed plan rows — the rail's own
+// projection of the tree, through the same layout pass that owns it on the
+// tasks page. ONE LINE PER TASK: the rail is a narrow column beside a
+// conversation somebody is reading, and the page's own row at this width is a
+// two-line card with the steps and the money under the title, so a run of four
+// tasks would spend eleven of the rail's rows saying what four lines say
+// ([planRailRow]). Page chrome is not part of the projection: the rail already
+// owns its section label and controls, while the task rows remain one tree.
+func (r tasksReading) planRows(width int, pal palette) []string {
+	if width <= 0 {
+		return nil
+	}
+	items := make([]tasksItem, 0, len(r.items))
+	for _, item := range r.items {
+		if item.plan != nil {
+			items = append(items, item)
+		}
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	plan := r
+	plan.items, plan.held, plan.whole = items, len(items), len(items)
+	plan.chats, plan.shape = nil, nil
+	// THE RAIL HAS NO FOLDS OF ITS OWN TO OPEN. On the page everything opens shut
+	// ([tasksReading.opens]) and a person opens the conversation they want; the
+	// rail is already inside that conversation, so its run is drawn open. A
+	// family's finished rows still fold to their one line, which is the tree's
+	// own rule and not a fold a person sets.
+	plan.unfolded = true
+	plan.kinFloor = planRailLevels
+	lines := plan.lay(width)
+	out := make([]string, 0, len(lines))
+	for i := range lines {
+		if lines[i].kind != tasksLineTask || lines[i].item.plan == nil {
+			continue
+		}
+		out = append(out, planRailRow(lines[i], width, pal, r.now))
+		if dots := planRailDots(lines[i], width, pal); dots != "" {
+			out = append(out, dots)
+			if lines[i].item.plan.Parent == "" {
+				out = append(out, planRailNow(lines[i], width, pal, r.summaryNow)...)
+			}
+		}
+		if live := planRailLive(lines[i], width, pal); live != "" {
+			out = append(out, live)
+		}
 	}
 	return out
 }
@@ -1801,7 +1975,11 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	if item.plan != nil {
 		state, second = planStateField(item), planSpendField(item)
 	}
-	return tasksTableRow(lead, cells, tasksLabel(item.entry),
+	label := tasksLabel(item.entry)
+	if item.plan != nil && item.plan.Total > 0 {
+		label += "  " + planProgress(*item.plan, width, pal)
+	}
+	return tasksTableRow(lead, cells, label,
 		state, second,
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
@@ -1861,7 +2039,11 @@ func tasksCardHead(item tasksItem, width int, pal palette, lit bool) string {
 	if room < 1 {
 		room = 1
 	}
-	return lead + placeSubject(fit(tasksLabel(item.entry), room), lit, pal)
+	label := tasksLabel(item.entry)
+	if item.plan != nil && item.plan.Total > 0 {
+		label += "  " + planProgress(*item.plan, width, pal)
+	}
+	return lead + placeSubject(fit(label, room), lit, pal)
 }
 
 // tasksCardTail is the second line of a phone card: what the work came to, where
