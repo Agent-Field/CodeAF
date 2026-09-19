@@ -85,3 +85,22 @@ func TestAStoppedPlanRowUsesTheOrdinaryStoppedGlyph(t *testing.T) {
 		t.Fatalf("stopped plan glyph slot = %d, ordinary stopped glyph slot = %d", got, want)
 	}
 }
+
+// A STOPPED TASK HAS ENDED, and everything that asks whether a task can still
+// move has to hear that from the one word the row draws. The word became
+// `stopped` and the question went on listing only `done` and `incomplete`, so a
+// task a person had just stopped was offered its stop again, and the store's
+// refusal was the answer.
+func TestAStoppedTaskIsOfferedNoVerbAndNoNextStep(t *testing.T) {
+	stopped := session.PlanTaskRow{ID: "t-part", Parent: "t-root", Title: "the stopped part", Status: "cancelled", Stopped: true}
+	if !planEnded(stopped) {
+		t.Fatal("a task a person stopped does not count as ended")
+	}
+	a, _ := planAppWith(t, []session.PlanTaskRow{{ID: "t-root", Title: "the run", Status: "running"}, stopped}, nil)
+	if words := a.tasksPlanKeyWords(stopped); len(words) != 0 {
+		t.Fatalf("a stopped task is offered %v", words)
+	}
+	if planCanMove([]session.PlanTaskRow{stopped}) {
+		t.Fatal("a stopped task is read as one that can still move by itself")
+	}
+}
