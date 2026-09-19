@@ -222,6 +222,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"manage this folder", "collections"},
 		{"always ask after two turns", "collections"},
 		{"pause coordination", "collections"},
+		{"pause coordination vs stop work", "collections"},
+		{"launch-or-join", "collections"},
+		{"two unnoticed implementations", "collections"},
+		{"does closing the terminal stop authorized work", "collections"},
+		{"unattended tick after closing the TUI", "collections"},
+		{"launch-or-join CODEAF_TASK_BELT bash", "collections"},
+		{"both CODEAF_TASK_BELT roads", "collections"},
+		{"does x cancel authorized work", "collections"},
+		{"I am the user raise the acceptance criteria", "collections"},
 		{"mark this chat", "collections"},
 		// Two codeaf commands on one collections database: the words somebody
 		// types after they have seen the refusal, not the words it is written in.

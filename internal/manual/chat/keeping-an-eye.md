@@ -666,9 +666,12 @@ in the window and ends with it: `--no-host`, `--debug`, and `--once`.
 The other half of running with the terminal closed is the **standing side** —
 reminders, watches, rules, overnight work — and it is separate machinery. Every 5 minutes, terminal closed
 or not, the timer runs `codeaf tick`, which takes a few seconds, does whatever is
-due — including a look at where chats belong after a message is already saved —
-and exits. There is no daemon sitting in memory between those moments, and no
+due — including a look at where chats belong after a message is already saved,
+and unattended granted **launch-or-join** work — and exits. There is no daemon sitting in memory between those moments, and no
 second timer for that look. Closing the terminal app changes nothing about it.
+Authorized work is not stopped by quitting the TUI; `stop work` is the explicit
+verb. If the host cannot run unattended, the UI says so. Posture comes from the
+home profile, never the repository, never `--yolo`.
 
 When something fires with nothing open, it waits for you: it is on home the next
 time you open it, and it folds into the next conversation you open in that
