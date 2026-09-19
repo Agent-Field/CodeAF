@@ -1056,7 +1056,11 @@ func TestPlanReadsWithoutArchiveStayIdentical(t *testing.T) {
 	tasks := store.Tasks(plandb.Filter{Chat: "chat-a"})
 	wantRows := make([]PlanTaskRow, 0, len(tasks))
 	for _, task := range tasks {
-		wantRows = append(wantRows, planTaskRow(store, dir, task, planSpendByTask(path), store.LiveSteps()))
+		row := planTaskRow(store, dir, task, planSpendByTask(path), store.LiveSteps())
+		// The listing says where the run works, once per row, exactly as the
+		// single-store read did before there was an archive to aggregate.
+		row.Folder = agent.config.Workspace
+		wantRows = append(wantRows, row)
 		if task.ID == store.RootID() {
 			applyPlanRootProgress(&wantRows[len(wantRows)-1], tasks, store.RootID())
 		}
