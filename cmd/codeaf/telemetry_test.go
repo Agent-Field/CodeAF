@@ -302,9 +302,6 @@ func TestTelemetryShowNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
 		"session_ended        mode=chat  duration=5-30m  turns=6-20",
 		"stop_reason=done  exit_code=0",
 		"fault                mode=chat  scope=main  fingerprint=",
-		"bands                counts 0 · 1 · 2-5 · 6-20 · 21-100 · 100+",
-		"dollars 0 · <0.01 · 0.01-0.1 · 0.1-1 · 1-10 · 10+",
-		"duration <1m · 1-5m · 5-30m · 30m-2h · 2h+",
 		"stop_reason          one of done · error · incomplete",
 		"one row per judged seat, after a task lands, for example",
 		`{"schema":1,"metric":"role_quality","role":"worker",`,
@@ -320,6 +317,14 @@ func TestTelemetryShowNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
 	for _, line := range strings.Split(got, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "never") {
 			t.Errorf("show lists only what is sent; got a never line: %q", line)
+		}
+	}
+	// The bands are not spelled out: the example rows carry one of each and
+	// the doc lists the rest, so a listing of every count, dollar and
+	// duration band is text a person does not need here.
+	for _, absent := range []string{"bands ", "counts 0 ·", "dollars 0 ·", "duration <1m ·"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("show should not list the bands, got %q in:\n%s", absent, got)
 		}
 	}
 	for _, name := range telemetry.CommonPropNames() {

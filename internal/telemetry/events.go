@@ -384,21 +384,6 @@ const (
 	CostBandsDoc  = "dollar bands are 0, under 0.01, 0.01-0.1, 0.1-1, 1-10 and 10+"
 )
 
-// CountBands, CostBands and DurationBands list every band a row can carry, in
-// ascending order, from the constants the bucket functions answer with — so a
-// listing that prints them cannot spell a band a row would not.
-func CountBands() []string {
-	return []string{BucketZero, BucketOne, BucketTwo5, BucketSix, BucketTwo1, Bucket100}
-}
-
-func CostBands() []string {
-	return []string{CostZero, CostUnder1c, Cost1cTo10c, Cost10cTo1, Cost1To10, Cost10Plus}
-}
-
-func DurationBands() []string {
-	return []string{DurationUnder1m, Duration1To5m, Duration5To30m, Duration30mTo2h, Duration2hPlus}
-}
-
 // StopReasons lists every stop reason, in the contract's order.
 func StopReasons() []string {
 	return []string{StopDone, StopError, StopIncomplete, StopBudget, StopTurnCap,

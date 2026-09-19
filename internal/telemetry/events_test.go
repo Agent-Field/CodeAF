@@ -361,31 +361,5 @@ func TestExamplePropsCoverTheAllowlistExactly(t *testing.T) {
 	if !ValidStopReason(ExampleProp("session_ended", "stop_reason")) {
 		t.Errorf("the example stop_reason is not one of the contract's")
 	}
-	for _, band := range CountBands() {
-		found := false
-		for n := 0; n <= 101 && !found; n++ {
-			found = BucketCount(n) == band
-		}
-		if !found {
-			t.Errorf("count band %q is not one BucketCount answers", band)
-		}
-	}
-	for _, band := range DurationBands() {
-		found := false
-		for _, d := range []time.Duration{0, 2 * time.Minute, 10 * time.Minute, time.Hour, 3 * time.Hour} {
-			found = found || BucketDuration(d) == band
-		}
-		if !found {
-			t.Errorf("duration band %q is not one BucketDuration answers", band)
-		}
-	}
-	for _, band := range CostBands() {
-		found := false
-		for _, c := range []float64{0, 0.005, 0.05, 0.5, 5, 50} {
-			found = found || BucketCost(c) == band
-		}
-		if !found {
-			t.Errorf("cost band %q is not one BucketCost answers", band)
-		}
-	}
+
 }

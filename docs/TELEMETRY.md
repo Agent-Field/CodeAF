@@ -130,7 +130,7 @@ usage counts, so the notice's "see exactly what leaves" is true of both.
   the data: for the usage counts, the events waiting to leave, then every
   every-event field with the value this machine would send now, one example
   row per event (`mode=chat  duration=5-30m  turns=6-20 …`, from the
-  contract's own bands) and the bands and stop reasons a row can carry; for
+  contract's own bands) and the stop reasons a row can carry; for
   the Model Pool, the rows waiting, then one example row in the bytes the
   relay receives and the two identities a batch travels under. Each stream
   sits under a line naming where it goes or why it is not sent. It lists only

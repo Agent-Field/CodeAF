@@ -767,8 +767,8 @@ they are on and why not when they are off, `show` prints what leaves, shaped lik
 data — for each stream, under a line naming where it goes or why it is not sent, the rows
 waiting to leave, then the shape of a row: for the usage counts every every-event field
 with the value this machine would send now and one example row per event
-(`session_ended  mode=chat  duration=5-30m  turns=6-20 …`) with the bands a row can
-carry; for the Model Pool one example row in the relay's own bytes — and `off` and `on`
+(`session_ended  mode=chat  duration=5-30m  turns=6-20 …`) and the stop reasons a row
+can carry; for the Model Pool one example row in the relay's own bytes — and `off` and `on`
 write the answer to your profile. `show` lists only what is sent, never a disclaimer, and
 prints the shape even when nothing is waiting, which is the case on the day you install.
 `CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the

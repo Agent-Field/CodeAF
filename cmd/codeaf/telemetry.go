@@ -156,7 +156,9 @@ const showKeyWidth = 20
 
 // writeUsageCountFields prints the usage-count row as this machine would fill
 // it — the six every-event props with their live values and the four
-// envelope fields — then one example row per event, then the bands.
+// envelope fields — then one example row per event, then the stop reasons.
+// The bands themselves are not listed: the example rows show one of each,
+// and docs/TELEMETRY.md spells the rest.
 func writeUsageCountFields(out *strings.Builder) {
 	fmt.Fprintf(out, "%severy event, as this machine would send it now\n", showIndent)
 	for _, prop := range telemetry.CommonPropValues() {
@@ -181,9 +183,6 @@ func writeUsageCountFields(out *strings.Builder) {
 		writeField(out, event, exampleRow(event, names))
 	}
 	out.WriteByte('\n')
-	writeField(out, "bands", "counts "+strings.Join(telemetry.CountBands(), " · "))
-	writeField(out, "", "dollars "+strings.Join(telemetry.CostBands(), " · "))
-	writeField(out, "", "duration "+strings.Join(telemetry.DurationBands(), " · "))
 	writeField(out, "stop_reason", "one of "+strings.Join(telemetry.StopReasons(), " · "))
 }
 
@@ -243,8 +242,7 @@ func wrapJSONRow(row string, width int) []string {
 	return append(lines, line)
 }
 
-// writeField prints one field line: the key in its column and the value, or
-// a continuation line under the value column when the key is empty.
+// writeField prints one field line: the key in its column and the value.
 func writeField(out *strings.Builder, key, value string) {
 	fmt.Fprintf(out, "%s%s%-*s %s\n", showIndent, showIndent, showKeyWidth, key, value)
 }
