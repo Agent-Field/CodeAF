@@ -1740,7 +1740,11 @@ type PlanRunSummaryArgs struct {
 type RefreshRunSummaryArgs struct {
 	RootID   string    `json:"root_id"`
 	LastLook time.Time `json:"last_look,omitempty"`
-	Deadline time.Time `json:"deadline,omitempty"`
+	// Budget is HOW LONG the caller will wait, never the instant it stops
+	// waiting: the engine may be on another machine whose clock is not this
+	// one's, and an instant read against a clock a minute ahead is a refresh
+	// that is cut before it starts. Zero is a caller with no deadline.
+	Budget time.Duration `json:"budget,omitempty"`
 }
 
 // PlanRunSummaryResult preserves both the summary and whether one exists.

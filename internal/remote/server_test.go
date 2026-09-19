@@ -1596,7 +1596,7 @@ func TestRunSummaryServerRoundTripAndEngineDeadline(t *testing.T) {
 		t.Fatalf("PlanRunSummary = %+v", read)
 	}
 	refreshed := decode[PlanRunSummaryResult](t, l.ok(2, MethodRefreshRunSummary, RefreshRunSummaryArgs{
-		RootID: "t-root", LastLook: want.WrittenAt, Deadline: time.Now().Add(20 * time.Millisecond),
+		RootID: "t-root", LastLook: want.WrittenAt, Budget: 20 * time.Millisecond,
 	}).Payload)
 	if !refreshed.OK || !reflect.DeepEqual(refreshed.Summary, want) || !agent.refreshCanceled {
 		t.Fatalf("RefreshRunSummary = %+v, engine canceled = %v", refreshed, agent.refreshCanceled)

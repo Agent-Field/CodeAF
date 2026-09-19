@@ -1028,7 +1028,7 @@ func TestRunSummariesCrossWholeAndDroppedRefreshKeepsNothing(t *testing.T) {
 	if err := json.Unmarshal(calls[0].Payload, &args); err != nil {
 		t.Fatal(err)
 	}
-	if args.RootID != "t-root" || !args.LastLook.Equal(want.WrittenAt) || args.Deadline.IsZero() {
+	if args.RootID != "t-root" || !args.LastLook.Equal(want.WrittenAt) || args.Budget <= 0 || args.Budget > time.Minute {
 		t.Fatalf("RefreshRunSummary args = %+v", args)
 	}
 

@@ -2740,8 +2740,8 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		ctx := context.Background()
 		cancel := func() {}
-		if !args.Deadline.IsZero() {
-			ctx, cancel = context.WithDeadline(ctx, args.Deadline)
+		if args.Budget > 0 {
+			ctx, cancel = context.WithTimeout(ctx, args.Budget)
 		}
 		defer cancel()
 		summary, found := door.RefreshRunSummary(ctx, args.RootID, args.LastLook)

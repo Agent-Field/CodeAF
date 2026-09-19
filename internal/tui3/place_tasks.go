@@ -115,6 +115,11 @@ type tasksPlace struct {
 	// as the body grows, and a pinned page resolves to wherever the bottom now is
 	// rather than to the number it was last drawn at.
 	planStick bool
+	// planFollowing is a follow read that has been asked and has not come back.
+	// THE PAINT CLOCK ASKS AT MOST ONE AT A TIME: over a slow link a read per
+	// frame would stand in the door line in front of the key a person presses
+	// next, and every one of them would answer the same page.
+	planFollowing bool
 	// tail is the last thing the node said, read off its journal once when the
 	// card opened, and tailRead says the read has happened — an empty tail with
 	// tailRead false is a read still in flight, and one with tailRead true is a
