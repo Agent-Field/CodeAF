@@ -38,6 +38,9 @@ type fakeFolders struct {
 	organizeErr error
 	organizes   int
 	cancels     int
+	createsIn   [][2]string
+	thisChats   int
+	thisChatID  string
 }
 
 func (f *fakeFolders) freeze() { f.mu.Lock(); f.frozen = true; f.mu.Unlock() }
@@ -247,6 +250,52 @@ func (f *fakeFolders) CancelOrganize(context.Context) error {
 	f.cancels++
 	f.organize.State = "cancel"
 	return nil
+}
+
+func (f *fakeFolders) CreateFolderIn(_ context.Context, name, parentID string) (FolderView, error) {
+	f.touch("CreateFolderIn")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.creates++
+	f.createsIn = append(f.createsIn, [2]string{name, parentID})
+	folder := FolderView{ID: "col-" + name, Name: name, Lifecycle: "active"}
+	if parentID != "" {
+		folder.ParentIDs = []string{parentID}
+		f.members = folderMembersLocked(f.members)
+		f.members[parentID] = append(f.members[parentID], FolderPlacement{
+			CollectionID: parentID, RefID: folder.ID, Title: name, Kind: folderCollectionKind,
+		})
+		return folder, nil
+	}
+	f.root.Folders = append(f.root.Folders, folder)
+	return folder, nil
+}
+
+func folderMembersLocked(members map[string][]FolderPlacement) map[string][]FolderPlacement {
+	if members != nil {
+		return members
+	}
+	return map[string][]FolderPlacement{}
+}
+
+func (f *fakeFolders) OrganizeThisChat(_ context.Context, conversationID string) (FolderOrganize, error) {
+	f.touch("OrganizeThisChat")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.organizeErr != nil {
+		return FolderOrganize{}, f.organizeErr
+	}
+	f.thisChats++
+	f.thisChatID = conversationID
+	if folderJobLive(f.organize.State) {
+		return f.organize, nil
+	}
+	if strings.TrimSpace(f.organize.JobID) == "" {
+		f.organize = FolderOrganize{JobID: "job-this", State: "queued", Detail: "this chat"}
+	} else {
+		f.organize.State = "queued"
+	}
+	return f.organize, nil
 }
 
 func billingSecurityFolders() *fakeFolders {
