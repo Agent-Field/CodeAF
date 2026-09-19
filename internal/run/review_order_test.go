@@ -26,7 +26,7 @@ import (
 // refuses it because the root is parked ([plandb.Store.Done]), and what is asked
 // here is the rest: the child's review is seated and lands, the root is woken
 // once, and the woken worker's word is the run's answer.
-func TestAParkedRootIsWokenOnlyOverAReviewedChild(t *testing.T) {
+func TestAParkedRootsRunReviewsItsChildBeforeItAnswers(t *testing.T) {
 	store, err := plandb.Open(filepath.Join(t.TempDir(), "plan.db"), "parked-root", "root", "The run", "park on one child")
 	if err != nil {
 		t.Fatal(err)
@@ -127,9 +127,11 @@ func TestAParkedRootIsWokenOnlyOverAReviewedChild(t *testing.T) {
 // row reads done it writes its own done, which the store admits because every
 // child it has is finished. Only then does the child's worker come home. Its
 // review has to be seated beneath a root that already reads done, so the store
-// reopens that root for the one check, and the run ends done with the root's own
-// word only after the check has landed. It used to refuse the check, drop the
-// refusal, and answer done over work nobody had reviewed.
+// reopens that root for the one check. The root finished over a landing it was
+// never given, so once the check has landed it is owed the wake any parent is
+// owed, and the run ends done with the root's word only after that. It used to
+// refuse the check, drop the refusal, and answer done over work nobody had
+// reviewed.
 func TestARunningRootsFinishDoesNotCloseTheRunOverAnUnreviewedChild(t *testing.T) {
 	store, err := plandb.Open(filepath.Join(t.TempDir(), "plan.db"), "running-root", "root", "The run", "finish over one child")
 	if err != nil {
@@ -141,10 +143,16 @@ func TestARunningRootsFinishDoesNotCloseTheRunOverAnUnreviewedChild(t *testing.T
 
 	childDone := make(chan struct{})
 	rootDone := make(chan struct{})
+	var rootLaunches atomic.Int32
 	factory := func(task plandb.Task) Worker {
 		switch {
 		case task.ID == rootID:
 			return parkedRootWorker(func(ctx context.Context, task plandb.Task) (Report, error) {
+				if rootLaunches.Add(1) > 1 {
+					// THE WAKE: the child's landing is handed over, and the root
+					// says again what it said.
+					return Report{Result: word, Steps: 1}, nil
+				}
 				if _, err := store.AddMany([]plandb.TaskSpec{{ID: "c1", Title: "the child", ParentID: task.ID}}); err != nil {
 					return Report{}, err
 				}

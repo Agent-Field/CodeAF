@@ -171,6 +171,11 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		liveMoved: make(chan struct{}, 1),
 		cancels:   make(map[string]context.CancelFunc),
 		checkOf:   make(map[string]string),
+		// Run makes these afresh for each run. They are made here too so that a
+		// launch is safe on a supervisor no Run has started, which is how a test
+		// of one road drives it.
+		live:    make(map[string]float64),
+		counted: make(map[string]float64),
 	}
 }
 
