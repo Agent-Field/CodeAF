@@ -18,7 +18,10 @@
 # YOUR KEY: the drive copies your profile's key into a private temporary home,
 # readable by you alone, and removes that copy on every exit: a pass, a failed
 # check, an interrupt. Nothing else the product writes there carries the key.
-# A screen kept from a failed check has any key the drive knows struck out.
+# A screen kept from a failed check has any key the drive knows struck out. It
+# knows a key by a field whose name says so, or by an environment variable that
+# ends in _API_KEY. A credential kept under any other name it cannot know, so
+# kept screens are private files: read them before you share them.
 #
 # WHAT IT ENDS, and how it chooses: its own tmux server, by its own socket's
 # name; and the engine the chat started for this home, found as the process
