@@ -676,7 +676,10 @@ func planSpendByTask(path string) map[string]float64 {
 // the trajectory or Command: these facts are a read-side view only.
 func planStepDisplayFacts(step PlanStep, runCopy, recordCommand string) PlanStep {
 	approvalParts := approval.SplitBashCommand(step.Command)
-	parts := make([]PlanCommandPart, len(approvalParts))
+	var parts []PlanCommandPart
+	if len(approvalParts) > 0 {
+		parts = make([]PlanCommandPart, len(approvalParts))
+	}
 	for i, part := range approvalParts {
 		parts[i] = PlanCommandPart{Command: part.Command, Separator: part.Separator}
 	}
