@@ -1739,6 +1739,7 @@ type app struct {
 	// (chattabs.go's [tabBar] states the whole of why).
 	chatTabBar     tabBar
 	workTabOn      bool
+	railTaskPlanOn bool
 	workTabSettled string
 	tabView        tabViewport
 	// tabShut is the conversations whose TAB has been dismissed — the whole of
