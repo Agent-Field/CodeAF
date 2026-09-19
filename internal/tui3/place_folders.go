@@ -38,6 +38,7 @@ type foldersPlace struct {
 	renameID                  string
 	note                      string
 	stops                     []folderPlaceStop
+	add                       folderAddPick
 }
 
 // folderPlaceStop is one restable row of the Folders place. Kind decides what
@@ -60,6 +61,7 @@ const (
 	folderStopBack
 	folderStopFolder
 	folderStopChat
+	folderStopAdd
 )
 
 const (
@@ -86,6 +88,8 @@ func (k folderPlaceKind) actionWord() string {
 		return folderOrganizeWord
 	case folderStopCancel:
 		return folderCancelAction
+	case folderStopAdd:
+		return folderAddExistingWord
 	}
 	return ""
 }
@@ -180,6 +184,9 @@ func (placeFolders) enter(a *app) tea.Cmd { return a.enterFolderPlace() }
 func (placeFolders) verbs(a *app) []verb { return a.folderPlaceVerbs() }
 
 func (placeFolders) box(a *app) *editor {
+	if a.folderSheet.add.opened() {
+		return &a.folderSheet.add.filter
+	}
 	if a.folderSheet.naming != nil {
 		return a.folderSheet.naming
 	}
@@ -187,6 +194,9 @@ func (placeFolders) box(a *app) *editor {
 }
 
 func (placeFolders) resting(a *app) string {
+	if a.folderSheet.add.opened() {
+		return folderAddResting
+	}
 	if a.folderSheet.naming != nil {
 		return folderNameResting
 	}
@@ -202,6 +212,9 @@ func (placeFolders) note(a *app, width int) []string {
 }
 
 func (placeFolders) hint(a *app) string {
+	if a.folderSheet.add.opened() {
+		return folderAddHint
+	}
 	if a.folderSheet.naming != nil {
 		if strings.TrimSpace(a.folderSheet.renameID) != "" {
 			return folderRenameHint
@@ -225,6 +238,9 @@ func (placeFolders) hint(a *app) string {
 }
 
 func (placeFolders) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if a.folderSheet.add.opened() {
+		return a.folderAddKey(msg), true
+	}
 	if a.folderSheet.naming == nil {
 		return nil, false
 	}
@@ -234,6 +250,9 @@ func (placeFolders) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (placeFolders) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.folderPlaceKey(msg) }
 
 func (placeFolders) press(a *app, y int) (tea.Cmd, bool) {
+	if a.folderSheet.add.opened() {
+		return a.folderAddPress(y)
+	}
 	if at, ok := a.folderPlaceHitAt(y); ok {
 		a.folderSheet.cursor = at
 		a.rememberFolderPlace()
@@ -244,6 +263,9 @@ func (placeFolders) press(a *app, y int) (tea.Cmd, bool) {
 }
 
 func (placeFolders) hover(a *app, y int) bool {
+	if a.folderSheet.add.opened() {
+		return a.folderAddHover(y)
+	}
 	next := -1
 	if at, ok := a.folderPlaceHitAt(y); ok {
 		next = at
@@ -252,6 +274,11 @@ func (placeFolders) hover(a *app, y int) bool {
 }
 
 func (placeFolders) wheel(a *app, delta int) (tea.Cmd, bool) {
+	if a.folderSheet.add.opened() {
+		a.folderSheet.add.move(delta)
+		a.touch()
+		return nil, true
+	}
 	a.moveFolderPlace(delta)
 	a.touch()
 	return nil, true
@@ -316,6 +343,7 @@ func (a *app) folderPlaceActionStops() []folderPlaceStop {
 		{kind: folderStopNewChat, id: "new-chat", path: base},
 		{kind: folderStopOrganize, id: "organize", path: base},
 	}
+	stops = append(stops, a.folderAddActionStops()...)
 	if folderJobLive(a.folderSheet.organize.State) {
 		stops = append(stops, folderPlaceStop{kind: folderStopCancel, id: "cancel", path: base})
 	}
@@ -459,6 +487,9 @@ func (a *app) moveFolderPlace(delta int) {
 // ── paint ───────────────────────────────────────────────────────────────────
 
 func (a *app) folderPlaceBody(width, room int) []placeRow {
+	if a.folderSheet.add.opened() {
+		return a.folderAddBody(width, room)
+	}
 	p := &a.folderSheet
 	lines := a.folderPlaceLines(width)
 	cursorLine := folderPlaceLineOf(lines, p.cursor)
@@ -717,6 +748,8 @@ func (a *app) enterFolderPlace() tea.Cmd {
 		return a.startFolderPlaceChat()
 	case folderStopOrganize:
 		return a.folderPlaceOrganize()
+	case folderStopAdd:
+		return a.beginFolderAdd()
 	case folderStopCancel:
 		return a.folderPlaceCancel()
 	case folderStopBack:
@@ -865,6 +898,7 @@ func (a *app) folderPlaceVerbs() []verb {
 		{key: 'c', word: folderNewFolderWord, do: func() tea.Cmd { return a.beginFolderPlaceCreate() }},
 		{key: 'n', word: folderNewChatAction, do: func() tea.Cmd { return a.startFolderPlaceChat() }},
 		{key: 'o', word: folderOrganizeWord, do: func() tea.Cmd { return a.folderPlaceOrganize() }},
+		a.folderAddVerb(),
 	}
 	if folderJobLive(a.folderSheet.organize.State) {
 		verbs = append(verbs, verb{key: 'x', word: folderCancelAction, do: func() tea.Cmd { return a.folderPlaceCancel() }})
@@ -902,7 +936,7 @@ func (a *app) folderPlaceFolderID() string {
 	switch stop.kind {
 	case folderStopFolder:
 		return strings.TrimSpace(stop.id)
-	case folderStopBack, folderStopChat, folderStopNewChat, folderStopNewFolder, folderStopOrganize, folderStopCancel:
+	case folderStopBack, folderStopChat, folderStopNewChat, folderStopNewFolder, folderStopOrganize, folderStopCancel, folderStopAdd:
 		return strings.TrimSpace(a.folderSheet.open)
 	}
 	return strings.TrimSpace(a.folderSheet.open)
