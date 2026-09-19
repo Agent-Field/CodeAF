@@ -52,3 +52,11 @@ The named resume test owns no asynchronous writer, and its directly executed pro
 ### Executed result
 
 `go test ./cmd/codeaf -run '^TestThePlaceSweepStopsBeforeTheProcessCloses$' -count=3` failed all three runs at `chatv3_sweep_test.go:60`. Each failure found `state/v3/sweep.log` after `closeAll` returned and after the state root had been removed. This is the intended pre-fix failure and confirms the barrier controls the late product write deterministically.
+
+## Lifecycle fix decision
+
+The forced regression makes the product process the owner: `openV3ProcessWith` calls `startPlaceSweep`, and the test only supplies a controlled `sweepHome` implementation. A quick real close is reachable in the forced ordering: open starts the sweep, close begins while it is blocked, and the error writer runs after close returns. The smallest change is to track that one product-started goroutine and wait for it in `v3Process.closeAll`. The #1211 waiting-line test and its writer join will not be changed.
+
+### Fixed result
+
+`startPlaceSweep` now accounts for its product-owned goroutine, and `v3Process.closeAll` waits for that account before it returns. The deterministic regression now holds close behind the barrier, releases the forced writer, waits for close, removes the state root, and proves no later file appears. `go test ./cmd/codeaf -run '^TestThePlaceSweepStopsBeforeTheProcessCloses$' -count=10` passed. This changes only the place-sweep lifecycle and its regression; the #1211 waiting-line fix is untouched.

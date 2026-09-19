@@ -28,9 +28,9 @@ const sweepLogName = "sweep.log"
 // A person opening a conversation is waiting for a prompt, not for housekeeping:
 // the pass walks every session folder on the machine and stats every dropping in
 // them, which is milliseconds on a laptop that has held ten conversations and a
-// visible pause on one that has held a thousand. So it is a goroutine, it is
-// started and forgotten, and a launch that exits before it finishes has simply
-// swept nothing this time.
+// visible pause on one that has held a thousand. So it is a goroutine and does
+// not block launch. Process close joins it so a late error cannot write beneath
+// state after the process returns.
 //
 // The once is for the doors, not for a schedule: `codeaf chat` and `codeaf
 // resume` are two entrances to one launch, and a process that came through both
@@ -45,12 +45,19 @@ const sweepLogName = "sweep.log"
 // that the rule can be pointed at a temp directory and proved. [v3StandingRoot]
 // is the one answer to where that is.
 func startPlaceSweep() {
-	sweepOnce.Do(func() { guard.Go("chatv3/sweep-home", func() { sweepHome(v3StandingRoot(), noteSweep) }) })
+	sweepOnce.Do(func() {
+		sweepWaiting.Add(1)
+		guard.Go("chatv3/sweep-home", func() {
+			defer sweepWaiting.Done()
+			sweepHome(v3StandingRoot(), noteSweep)
+		})
+	})
 }
 
 var (
-	sweepOnce sync.Once
-	sweepHome = session.SweepHome
+	sweepOnce    sync.Once
+	sweepWaiting sync.WaitGroup
+	sweepHome    = session.SweepHome
 )
 
 // noteSweep writes one line, and opens the file only when there is a line to
