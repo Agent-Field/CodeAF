@@ -622,3 +622,215 @@ func TestBashWorkerReportsItsSpendWhileItIsStillWorking(t *testing.T) {
 		t.Fatalf("the last figure reported = %v and the report carries %v, want one account", last, report.USD)
 	}
 }
+
+// THE SAME-ACTION LAW, FIRST HALF: A WORKER THAT HAS STOPPED MAKING PROGRESS
+// ENDS. The alternation one action + one text reply is the shape the
+// no-action ending cannot see — every action resets that run to one — so a
+// worker that repeats one identical failing command forever was bounded only
+// by the step cap. THE LAW READS THE RECORD, NOT THE WORDS: the same command,
+// the same answer, several finished steps running, nothing the store records
+// moved between them — whatever the tool and whatever the cause, that is a
+// worker whose work is not moving. Here the command fails the same way every
+// time (the shape the real $4.30 run is thought to have taken), and the loop
+// ends in a bounded number of rounds far below the cap, the task failed with
+// a reason a person can read.
+func TestBashWorkerEndsAWorkerThatRepeatsTheSameFailingCommand(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	// ONE IDENTICAL FAILING ACTION, ONE SHORT REPLY, over and over: the exact
+	// alternation, with nothing about the answer ever changing.
+	fail := `{"command":"cat missing.txt"}`
+	calls := 0
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		calls++
+		if calls%2 == 1 {
+			return toolReply(fail), nil
+		}
+		return textReply("still working on it"), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task(store.RootID()))
+
+	if err == nil {
+		t.Fatal("a worker repeating one failing command forever came home clean")
+	}
+	if report.Steps >= 60 {
+		t.Fatalf("the worker spent %d steps, want the law's bound far below the cap", report.Steps)
+	}
+	// THE BOUND IS THE LAW'S OWN: the fourth identical step is the last, the
+	// same four the belt's other no-progress ending uses.
+	if report.Steps != 4 {
+		t.Fatalf("report steps = %d, want the law's bound of four identical steps", report.Steps)
+	}
+	if !strings.Contains(err.Error(), "the same command") || !strings.Contains(err.Error(), "the same answer") {
+		t.Fatalf("the ending = %q, want a plain reason about the same command and the same answer", err.Error())
+	}
+	// THE TRAJECTORY'S ENDING LINE CARRIES THE REASON, in the same plain words
+	// a person reads on the task's page — no machinery, no counts of things
+	// they have no name for.
+	lines := rawTrajectory(t, storeDir, store.RootID())
+	end := endLine(t, lines)
+	if end.Steps != 4 || !strings.Contains(end.Reason, "the same command") {
+		t.Fatalf("the ending reads %d steps with %q, want the bound and the plain reason", end.Steps, end.Reason)
+	}
+	for i, want := range []string{"same command", "same answer"} {
+		if !strings.Contains(end.Reason, want) {
+			t.Fatalf("the ending reason %q does not name the %s", end.Reason, want)
+		}
+		_ = i
+	}
+	// AND THE ANSWER THE REPEATED COMMAND GOT IS IN THE RECORD, so a person
+	// opening the page sees what came back, not just the count of it.
+	steps, err := run.Trajectory(storeDir, store.RootID())
+	if err != nil {
+		t.Fatalf("read the trajectory: %v", err)
+	}
+	if len(steps) != 4 || steps[0].Command != "cat missing.txt" {
+		t.Fatalf("the trajectory reads %d steps, want the four identical commands", len(steps))
+	}
+	if !strings.Contains(steps[0].Observation, "No such file") {
+		t.Fatalf("the recorded observation = %q, want the failure the command got", steps[0].Observation)
+	}
+}
+
+// The law's other mercy: A WORKER BLOCKED ON ANOTHER TASK IS SENT TO THE
+// PARKING THE BELT ALREADY HAS, not ended. The store itself says what the
+// worker is blocked on — an open child here — so the loop parks the task the
+// way `plandb wait` would and ends waiting, to be woken when the wait is
+// over, rather than failing work that was merely standing still behind
+// somebody else's.
+func TestBashWorkerParksAStalledWorkerThatIsBlockedOnAnotherTask(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "leaf", Title: "the blocking leaf", ParentID: "root"}}); err != nil {
+		t.Fatalf("add the open child: %v", err)
+	}
+	fail := `{"command":"cat missing.txt"}`
+	calls := 0
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		calls++
+		if calls%2 == 1 {
+			return toolReply(fail), nil
+		}
+		return textReply("the leaf is not done yet"), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task(store.RootID()))
+
+	if err != nil {
+		t.Fatalf("a worker blocked on an open child was failed: %v", err)
+	}
+	if !report.Waiting {
+		t.Fatal("the blocked worker was not parked; want it waiting on its child")
+	}
+	if report.Steps != 4 {
+		t.Fatalf("report steps = %d, want the law's bound of four identical steps", report.Steps)
+	}
+	after := store.Task(store.RootID())
+	if after == nil || !after.Waiting {
+		t.Fatalf("the store holds no parked root after the law fired: %#v", after)
+	}
+	lines := rawTrajectory(t, storeDir, store.RootID())
+	end := endLine(t, lines)
+	if !strings.Contains(end.Reason, "waiting") || !strings.Contains(end.Reason, "the same command") {
+		t.Fatalf("the ending reason = %q, want the wait named beside the stall", end.Reason)
+	}
+}
+
+// THE SAME-ACTION LAW, SECOND HALF: A WORKER WHOSE LOOK ANSWERS DIFFERENTLY
+// EVERY TIME IS NOT ENDED BY IT. The same command, run sixteen times — four
+// times the bound — with an answer that grows by a line each run: the world
+// the worker is looking at is changing under the identical question, which is
+// the shape of a worker legitimately waiting on something that changes. The
+// law never fires; only the step cap ends the turn, and every step is on the
+// record.
+func TestBashWorkerKeepsAWorkerWhoseEveryLookAnswersDifferently(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	// THE COMMAND IS IDENTICAL EVERY TIME and the answer is not: each run
+	// appends a line before reading the file back.
+	command := "echo tick >> count.txt && cat count.txt"
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolReply(`{"command":` + jsonString(command) + `}`), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	const cap = 16
+	report, err := worker.Run(run.WithStepsPerTask(runContext(t), cap), *store.Task(store.RootID()))
+
+	if err == nil || !strings.Contains(err.Error(), "step cap") {
+		t.Fatalf("the worker ended with %v, want the step cap after sixteen changing looks", err)
+	}
+	if report.Steps != cap {
+		t.Fatalf("report steps = %d, want the whole cap of changing looks", report.Steps)
+	}
+	steps, err := run.Trajectory(storeDir, store.RootID())
+	if err != nil {
+		t.Fatalf("read the trajectory: %v", err)
+	}
+	if len(steps) != cap {
+		t.Fatalf("the trajectory reads %d steps, want the cap's sixteen", len(steps))
+	}
+	for i, step := range steps {
+		if step.Command != command {
+			t.Fatalf("step %d command = %q, want the identical look", i+1, step.Command)
+		}
+		if i > 0 && step.Observation == steps[i-1].Observation {
+			t.Fatalf("steps %d and %d read the same answer %q, want a changing one", i, i+1, step.Observation)
+		}
+	}
+}
+
+// And the store's own half of that: A WORKER WHOSE STORE MOVES BETWEEN LOOKS IS
+// NOT ENDED BY IT, even when the look itself comes back byte for byte the
+// same. The command here is identical every time and so is its answer — the
+// note it files lands in the store each run — so only the store's own
+// movement can save it, and it does: the store is the one thing a waiting or
+// coordinating worker legitimately watches, and a store that moved is the
+// world having changed.
+func TestBashWorkerKeepsAWorkerWhoseStoreMovedBetweenLooks(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	// THE IDENTICAL LOOK: one note filed, the same one word read back, every
+	// time — the note is a new row in the store on every run.
+	command := "plandb task note root tick >/dev/null 2>&1; echo noted"
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolReply(`{"command":` + jsonString(command) + `}`), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	const cap = 16
+	report, err := worker.Run(run.WithStepsPerTask(runContext(t), cap), *store.Task(store.RootID()))
+
+	if err == nil || !strings.Contains(err.Error(), "step cap") {
+		t.Fatalf("the worker ended with %v, want the step cap after sixteen store-moving looks", err)
+	}
+	if report.Steps != cap {
+		t.Fatalf("report steps = %d, want the whole cap of store-moving looks", report.Steps)
+	}
+	steps, err := run.Trajectory(storeDir, store.RootID())
+	if err != nil {
+		t.Fatalf("read the trajectory: %v", err)
+	}
+	if len(steps) != cap {
+		t.Fatalf("the trajectory reads %d steps, want the cap's sixteen", len(steps))
+	}
+	for i, step := range steps {
+		if step.Command != command {
+			t.Fatalf("step %d command = %q, want the identical look", i+1, step.Command)
+		}
+		if !strings.Contains(step.Observation, "noted") {
+			t.Fatalf("step %d observation = %q, want the same answer every time", i+1, step.Observation)
+		}
+	}
+}
