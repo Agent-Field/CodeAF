@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/run"
@@ -537,21 +536,40 @@ func TestSupervisorChecksAChildlessRootThatCompletedItselfInTheStore(t *testing.
 
 func TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding(t *testing.T) {
 	store := runOpenStore(t)
+	ctx := runContext(t)
 	seat := newFakeSeat()
 	const result = "the root wrote its own ending"
-	seat.actions["root"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+	doneWritten := make(chan struct{})
+	releaseReturn := make(chan struct{})
+	seat.actions["root"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
 		if _, err := store.Done(task.ID, task.ID, result, nil, nil); err != nil {
 			return run.Report{}, err
 		}
-		// Delay the worker return across several supervisor passes. This forces a
-		// pass to observe Done while no return is available, without machine load.
-		time.Sleep(500 * time.Millisecond)
-		return run.Report{Result: result, Steps: 1}, nil
+		close(doneWritten)
+		select {
+		case <-releaseReturn:
+			return run.Report{Result: result, Steps: 1}, nil
+		case <-ctx.Done():
+			return run.Report{}, ctx.Err()
+		}
 	}
 	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+	outcome := make(chan run.Outcome, 1)
+	go func() { outcome <- supervisor.Run(ctx) }()
 
-	if outcome := supervisor.Run(runContext(t)); outcome != run.OutcomeDone {
-		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	select {
+	case <-doneWritten:
+	case <-ctx.Done():
+		t.Fatal("root never wrote its own Done")
+	}
+	select {
+	case got := <-outcome:
+		t.Fatalf("outcome = %q before the self-finished root returned, want supervisor blocked", got)
+	default:
+	}
+	close(releaseReturn)
+	if got := <-outcome; got != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", got, run.OutcomeDone)
 	}
 	checks := tasksWithRole(store, plandb.RoleCheck)
 	if len(checks) != 1 {
