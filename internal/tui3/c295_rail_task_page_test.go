@@ -226,3 +226,45 @@ func TestANoteTypedOnARailTaskPageNeverRaisesTheStopCard(t *testing.T) {
 		t.Fatalf("the note box holds %q, want %q", got, "an example")
 	}
 }
+
+// heldRailPlan holds the page's read open until the test lets it go, which is
+// the gap a person types into on a hosted conversation.
+type heldRailPlan struct {
+	*railPlanCounter
+	started chan struct{}
+	release chan struct{}
+}
+
+func (h *heldRailPlan) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
+	close(h.started)
+	<-h.release
+	return h.railPlanCounter.PlanTaskPage(id)
+}
+
+// THE GAP BELONGS TO THE PAGE FOR EVERY KEY, the stop card's included. That key
+// is read above every page, so holding the gap's keys at the page's own rung
+// was not enough: with a task running, a note holding that letter raised the
+// card while the page was still on its way, and the card took the rest.
+func TestALetterTypedWhileARailPageOpensNeverRaisesTheStopCard(t *testing.T) {
+	a, counted := railTaskPageApp(t, true)
+	held := &heldRailPlan{railPlanCounter: counted, started: make(chan struct{}), release: make(chan struct{})}
+	a.agent = held
+	cmd := a.openRailPlan("2", nil)
+	answer := make(chan tea.Msg, 1)
+	go func() { answer <- cmd() }()
+	<-held.started
+	for _, r := range "an example" {
+		drive(t, a, key(string(r)))
+	}
+	if a.stopping() {
+		t.Fatal("a letter typed while the page was opening raised the stop card")
+	}
+	close(held.release)
+	drive(t, a, <-answer)
+	if !a.railTaskPlanOn {
+		t.Fatal("the answer did not open the page")
+	}
+	if got := a.taskSheet.planNote.String(); got != "an example" {
+		t.Fatalf("the page's box holds %q, want every key typed while it opened: %q", got, "an example")
+	}
+}

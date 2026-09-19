@@ -1,8 +1,11 @@
 package tui3
 
 import (
+	"sync"
 	"sync/atomic"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -124,5 +127,59 @@ func TestAHostedRailLearnsOfAnAddedPartWithinOneBeat(t *testing.T) {
 	}
 	if got := counted.rows.Load(); got != 2 {
 		t.Fatalf("learning of one part cost %d reads over the wire, want two", got)
+	}
+}
+
+type heldHostedPlanAgent struct {
+	*countedPlanAgent
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (h *heldHostedPlanAgent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
+	h.once.Do(func() {
+		close(h.started)
+		<-h.release
+	})
+	return h.Agent.PlanTaskPage(id)
+}
+
+// Once a rail gesture has chosen a task page, its delayed store read owns every
+// following key. The conversation must never receive text intended for the page.
+func TestHostedRailPageOwnsKeysWhileItsReadIsInFlight(t *testing.T) {
+	a, counted, _ := hostedPlanApp(t, false)
+	held := &heldHostedPlanAgent{countedPlanAgent: counted, started: make(chan struct{}), release: make(chan struct{})}
+	a.agent = held
+	a.input.value = []rune("conversation draft")
+	cmd := a.openRailPlan("root", nil)
+	answer := make(chan tea.Msg, 1)
+	go func() { answer <- cmd() }()
+	<-held.started
+	for _, r := range "keep the examples short" {
+		drive(t, a, key(string(r)))
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got := string(a.input.value); got != "conversation draft" {
+		t.Fatalf("keys reached the conversation box: %q", got)
+	}
+	close(held.release)
+	drive(t, a, <-answer)
+	if !a.taskSheet.planOn || !a.railTaskPlanOn {
+		t.Fatal("the delayed answer did not open the task page")
+	}
+}
+
+func TestHostedRailPagePendingEscCancelsAndSecondPressSupersedes(t *testing.T) {
+	a, _, _ := hostedPlanApp(t, false)
+	a.railPlanPending = railPlanPending{id: "first", keys: []tea.KeyPressMsg{key("x")}}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if a.railPlanPending.id != "" || a.taskSheet.planOn {
+		t.Fatal("esc did not cancel the pending page")
+	}
+	a.railPlanPending = railPlanPending{id: "first", keys: []tea.KeyPressMsg{key("x")}}
+	a.beginRailPlan("second")
+	if a.railPlanPending.id != "second" || len(a.railPlanPending.keys) != 0 {
+		t.Fatalf("second press retained the first target or its keys: %+v", a.railPlanPending)
 	}
 }

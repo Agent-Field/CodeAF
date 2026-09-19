@@ -576,9 +576,14 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// ([app.taskPlanKey]). Opened from the side list it sits over a conversation
 	// whose own box is empty, so nothing below stood down, and a note holding
 	// this letter raised the card mid-word and lost the rest of the sentence.
+	//
+	// AND SO IS A PAGE THAT IS ON ITS WAY. A hosted conversation reads the page
+	// off the loop, and between the press and the answer the keys already belong
+	// to the page ([railPlanPending]); read here first, this letter would raise
+	// the card over a page that is not drawn yet and take the rest of the note.
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(), a.guarding(),
-		a.taskSheet.planOn,
+		a.taskSheet.planOn, a.railPlanPending.id != "",
 		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.deckShowing(), a.pick.open,
 		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open,
 		a.rew.on, a.rewSheet.open:
