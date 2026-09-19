@@ -284,7 +284,7 @@ func (a *app) takeTaskReading() tasksPlace {
 // or waiting on the person moves only by a verb, and a verb moves the stamp.
 func planCanMove(rows []session.PlanTaskRow) bool {
 	for _, row := range rows {
-		switch planStateWord(row.Status) {
+		switch planStateWord(row) {
 		case "queued", "running":
 			return true
 		}

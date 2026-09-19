@@ -45,6 +45,9 @@ type PlanTaskRow struct {
 	ID      string
 	Title   string
 	Status  string
+	// Stopped is true only when this task's own ending records a person's stop.
+	// It is established from store data here and crosses remote reads as row data.
+	Stopped bool
 	Seat    string
 	Parent  string
 	// Depth is the row's level below the page task; direct children are zero.
@@ -573,6 +576,7 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		ID:             planStoreID(task.ID),
 		Title:          task.Title,
 		Status:         status,
+		Stopped:        planTaskStopped(task),
 		Seat:           seat,
 		Steps:          len(planTrajectory(dir, task.ID)),
 		USD:            spend[task.ID],
@@ -596,6 +600,18 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		row.Waits = append(row.Waits, planStoreID(dep.TaskID))
 	}
 	return row
+}
+
+// planTaskStopped is the store property that distinguishes a person's stop
+// from every other cancellation. The stop road writes either the bare word or
+// that word followed by the person's reason; cancellation cascades write their
+// own ancestry or dependency reason instead.
+func planTaskStopped(task *plandb.Task) bool {
+	if task == nil || task.Status != plandb.StatusCancelled {
+		return false
+	}
+	reason := strings.TrimSpace(task.Error)
+	return reason == taskStoppedWord || strings.HasPrefix(reason, taskStoppedWord+": ")
 }
 
 // planLastNote answers the text of the newest note on a task, empty when there
