@@ -400,15 +400,16 @@ that names `graph.db` and the disk's reason — not the `memory` row.
   tool is available. When embeddings are bound, discovery may add those
   candidates beside the words; when they are not, that extra path is labelled
   `degraded` / `discovery delayed` and does not say the workspace was checked.
+  There is no keyword-only filer.
 - Only messages already indexed in this store are searched. Failed or pending
   index writes, other stores and spilled file contents are not included. A miss
   does not prove the subject was never discussed.
 - **Search stays on when memory is off.** Turning the `memory` row off in
   `/settings` stops `remember` and the reflex that writes durable facts; indexed
-  conversation search and the search place still work. Search is absent only
-  when there is no history store at all. Task workers inherit read-only search
-  when their parent has it; this does not enable memory writes or worker-message
-  indexing.
+  conversation search and the search place still work, and automatic
+  organization still files. Search is absent only when there is no history
+  store at all. Task workers inherit read-only search when their parent has it;
+  this does not enable memory writes or worker-message indexing.
 - **It is not the same as what is remembered.** The remembered lines are a few
   durable facts, extracted and rewritten; this is the conversation in its own
   words. Asked what was decided, codeaf searches and quotes rather than

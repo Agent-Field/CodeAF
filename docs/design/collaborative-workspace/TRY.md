@@ -41,7 +41,18 @@ Live tmux proof: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue
 
 ## Wave 2 — discovery and instructions
 
-Not yet. After issue 2: discovery / why / correct / instruct.
+Status: **names frozen** on this branch. Live J09–J18 is t-w2-live, not this lane. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Use the wave-2 launch script once t-w2-ready cuts the immutable binary next to `releases/wave-2/`.
+
+### What you should see (frozen names)
+
+1. **Instruct.** Open Security. Folder-detail heading `instructions`. Empty: `standing guidance for chats in this folder` — never “no instructions yet”. `/folders instruct Security customers must authenticate receipt links` (or `i` instruct this folder). Not `/folder`. Guidance is standing, not retrieved maybe-relevant text.
+2. **Discovery.** In Security, a chat that customers must authenticate and that mailing raw URLs is refused. Billing, new chat about emailed download links **without** the old title. Reply cites the older Security passage. New chat id stays new. Not a keyword-only fixture.
+3. **Why.** Wait for background organize (`codeaf tick` if needed). `w` on a new Security placement: origin `organizer` plus evidence. No approval card.
+4. **Correct.** `x` that automatic Security placement. Quit. Reopen. Tick with no new messages. It does not return. New evidence may reconsider with a new reason.
+5. **Memory off.** `/settings` memory off. Search still finds the old passage. `remember` stays absent. Automatic organization still files.
+6. **Delayed.** Embedder or organizer down: `discovery delayed`, never `checked`. Expansion-only is `degraded`. Manual `/folders create` / add still work. Indexing is software counters, never a fake `100%` while work remains.
+
+`workspace.organize` off pauses automatic placements; it does not refuse manual folders or foreground chat.
 
 ## Wave 3 — ordinary chats coordinate
 

@@ -140,6 +140,16 @@ const (
 	folderUnavailableWord = "unavailable"
 	logicalFolderGoneWord = "that folder is no longer here"
 	folderFiledWord       = "could not file this chat here"
+	// Wave 2 frozen person-facing copy (CONTRACTS.md). The tui lane draws
+	// these; they stand here so the e2e needle gate can grep the literals
+	// in this worktree before that drawing lands.
+	folderInstructWord         = "instruct this folder"
+	folderInstructSlashWord    = "/folders instruct"
+	folderInstructionsHeading  = "instructions"
+	folderInstructionsWhisper  = "standing guidance for chats in this folder"
+	folderDiscoveryDelayedWord = "discovery delayed"
+	folderDegradedWord         = "degraded"
+	folderOrganizerOriginWord  = "organizer"
 	// folderCollectionKind is workspace.CollectionKind's bytes, quoted here so
 	// this package never imports internal/workspace. A FolderPlacement with
 	// this Kind is a nested/shared folder, not a chat.
