@@ -907,3 +907,31 @@ func TestThePlanPageShowsChildrenUnderItsSteps(t *testing.T) {
 		t.Fatalf("the tree changed the page's note composer:\n%s", text)
 	}
 }
+
+// THE RUN'S PLAN IS READ AGAIN ON ITS OWN BEAT, WHATEVER ELSE THE WINDOW KNOWS.
+// A run's workers move the store and publish nothing, so a part the run added is
+// on the rail only once the plan has been read again. That read rode on the
+// reading of other windows' work, which a conversation whose engine is in
+// another process does not have: on the real screen the hosted rail stood on the
+// run's first row for a minute and drew its parts only when the run ended. This
+// fixture has no such reading either, and its stamp never moves.
+func TestTheRunsPlanIsReadAgainOnItsOwnBeat(t *testing.T) {
+	a, fake := planAppWith(t, []session.PlanTaskRow{{ID: "1", Title: "the run", Status: "running"}}, nil)
+	now := taskFixtureNow
+	a.clock = func() time.Time { return now }
+	a.taskSheet.regroup(a)
+	if got := len(a.taskSheet.mine.plan); got != 1 {
+		t.Fatalf("the first reading holds %d plan rows, want the run's one", got)
+	}
+	fake.plan = append(fake.plan, session.PlanTaskRow{ID: "p1", Parent: "1", Title: "a part the run added", Status: "running"})
+	now = now.Add(elsewhereEvery - time.Millisecond)
+	a.taskSheet.regroup(a)
+	if got := len(a.taskSheet.mine.plan); got != 1 {
+		t.Fatalf("the plan was read again inside its beat: %d rows", got)
+	}
+	now = now.Add(time.Millisecond)
+	a.taskSheet.regroup(a)
+	if got := len(a.taskSheet.mine.plan); got != 2 {
+		t.Fatalf("a beat later the reading still holds %d plan rows, want the part the run added", got)
+	}
+}
