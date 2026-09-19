@@ -417,15 +417,32 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 // a worker whose context a pass already ended — a cancelled task, the caller's
 // wall — is in the map no more and has only to be waited for. The endings are
 // dropped rather than absorbed: the run is over, the store already carries the
-// ending that stands, and the return of a worker the run outlived has no
+// ending that stands, and the words of a worker the run outlived have no
 // reader — the same reading absorb makes of a worker whose task the store
 // cancelled under it.
+//
+// THE DOLLARS ARE NOT DROPPED, for absorb's own reason: what a run counts as
+// spent includes every paid call whatever way its task ended, and a worker the
+// run outlived was paid for like any other. Every worker has returned by the
+// time the wait is over and each left exactly one return in the channel, which
+// is deep enough to hold them all, so they are read here without waiting and
+// only their spend is settled. It also leaves the channel empty, so a return
+// from this run can never be read as one of the next.
 func (s *Supervisor) drain() {
 	for id, cancel := range s.cancels {
 		cancel()
 		delete(s.cancels, id)
 	}
 	s.workers.Wait()
+	for {
+		select {
+		case ret := <-s.finished:
+			s.inFlight--
+			s.settleSpend(ret)
+		default:
+			return
+		}
+	}
 }
 
 // bankLive is the one thing a worker's goroutine does to the run's account: it
