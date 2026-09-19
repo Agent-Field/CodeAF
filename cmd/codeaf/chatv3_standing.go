@@ -239,6 +239,10 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 // be a file nobody could read.
 var standingTickInterval = standing.Interval
 
+// standingTickPass is the seam the ticker calls; tests replace it to hold a
+// pass in flight. The default is the real pass.
+var standingTickPass = runStandingTick
+
 func (p *v3Process) startStandingTicks(store *standing.Store) {
 	if p == nil || store == nil {
 		return
@@ -250,16 +254,25 @@ func (p *v3Process) startStandingTicks(store *standing.Store) {
 
 	guard.Go("chatv3/standing", func() {
 		standingTicks.Store(true)
+		// One ctx for the whole ticker. Closing stop cancels it, which ends an
+		// in-flight pass promptly (runStandingTick derives the pass ceiling from
+		// it), so a quit never waits out a running pass's TickWindow.
+		ctx, cancel := context.WithCancel(context.Background())
 		ticker := time.NewTicker(standingTickInterval)
 		defer func() {
 			ticker.Stop()
+			cancel()
 			standingTicks.Store(false)
 			close(done)
 		}()
+		guard.Go("chatv3/standing-stop", func() {
+			<-stop
+			cancel()
+		})
 		for {
 			select {
 			case <-ticker.C:
-				runStandingTick(store)
+				standingTickPass(ctx, store)
 			case <-stop:
 				return
 			}
@@ -309,7 +322,7 @@ func standingTicking() bool { return standingTicks.Load() }
 
 // runStandingTick is one pass, bounded, with everything it can say written to a
 // file.
-func runStandingTick(store *standing.Store) {
+func runStandingTick(ctx context.Context, store *standing.Store) {
 	// A PANIC HERE MUST NOT END THE TICKING. The loop above is this process's
 	// whole contribution to the ambient side, and a goroutine that unwound out
 	// of it would leave a window that looks like it is keeping watch and is not.
@@ -319,9 +332,12 @@ func runStandingTick(store *standing.Store) {
 		noteStanding("could not start a pass: " + err.Error())
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), standing.TickWindow)
+	// The pass's ceiling is a CHILD of the caller's ctx, so closing the ticker
+	// (which cancels that ctx) ends an in-flight pass at once, and the 120s
+	// TickWindow stays the pass's own upper bound when nobody is quitting.
+	passCtx, cancel := context.WithTimeout(ctx, standing.TickWindow)
 	defer cancel()
-	if _, err := pass.Tick(ctx); err != nil {
+	if _, err := pass.Tick(passCtx); err != nil {
 		if err == standing.ErrHeld {
 			return
 		}
