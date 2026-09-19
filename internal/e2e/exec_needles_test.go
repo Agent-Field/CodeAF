@@ -13,6 +13,7 @@ func TestTheExecSurfaceWordsAreNamed(t *testing.T) {
 		"execLaunchOrJoinWord",
 		"execPauseCoordWord",
 		"execStopWorkWord",
+		"execRevokeGrantWord",
 	} {
 		if say(t, name) == "" {
 			t.Fatalf("the needle %q is in the table but spells nothing", name)

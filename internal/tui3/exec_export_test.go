@@ -14,6 +14,7 @@ func (execAdapter) LaunchState(context.Context, string) ([]tui3.ExecWork, error)
 }
 func (execAdapter) PauseCoordination(context.Context, string) error { return nil }
 func (execAdapter) StopWork(context.Context, string) error          { return nil }
+func (execAdapter) RevokeGrant(context.Context, string) error       { return nil }
 
 var _ tui3.Exec = execAdapter{}
 
@@ -27,6 +28,9 @@ func TestLaunchInterfaceIsImplementableOutsideThePackage(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := door.StopWork(context.Background(), "w-readme"); err != nil {
+		t.Fatal(err)
+	}
+	if err := door.RevokeGrant(context.Background(), "g-readme"); err != nil {
 		t.Fatal(err)
 	}
 }

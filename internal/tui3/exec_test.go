@@ -15,15 +15,17 @@ import (
 // fakeExec is an in-memory Exec seam. freeze panics on any call so a test
 // can prove View and a cursor move never read the store.
 type fakeExec struct {
-	mu       sync.Mutex
-	frozen   bool
-	works    []ExecWork
-	paused   []string
-	stopped  []string
-	stateErr error
-	pauseErr error
-	stopErr  error
-	reads    int
+	mu        sync.Mutex
+	frozen    bool
+	works     []ExecWork
+	paused    []string
+	stopped   []string
+	revoked   []string
+	stateErr  error
+	pauseErr  error
+	stopErr   error
+	revokeErr error
+	reads     int
 }
 
 func (f *fakeExec) freeze() { f.mu.Lock(); f.frozen = true; f.mu.Unlock() }
@@ -72,6 +74,17 @@ func (f *fakeExec) StopWork(_ context.Context, workID string) error {
 		return f.stopErr
 	}
 	f.stopped = append(f.stopped, workID)
+	return nil
+}
+
+func (f *fakeExec) RevokeGrant(_ context.Context, grantID string) error {
+	f.touch("RevokeGrant")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.revokeErr != nil {
+		return f.revokeErr
+	}
+	f.revoked = append(f.revoked, grantID)
 	return nil
 }
 
@@ -308,6 +321,11 @@ func TestPauseCoordinationAndStopWorkAreTwoVerbs(t *testing.T) {
 	if pauseKey != 'p' || stopKey != 's' {
 		t.Fatalf("pause/stop keys %q/%q, want p/s", pauseKey, stopKey)
 	}
+	for _, v := range a.folderVerbs(member) {
+		if v.word == execRevokeWord {
+			t.Fatal("member without a grant id offered revoke grant")
+		}
+	}
 }
 
 func TestPauseCoordinationDoesNotStopWork(t *testing.T) {
@@ -325,6 +343,9 @@ func TestPauseCoordinationDoesNotStopWork(t *testing.T) {
 	}
 	if len(fake.stopped) != 0 {
 		t.Fatalf("pause coordination stopped work: %v", fake.stopped)
+	}
+	if len(fake.revoked) != 0 {
+		t.Fatalf("pause coordination revoked a grant: %v", fake.revoked)
 	}
 }
 
@@ -344,6 +365,9 @@ func TestStopWorkDoesNotPauseCoordination(t *testing.T) {
 	if len(fake.paused) != 0 {
 		t.Fatalf("stop work paused coordination: %v", fake.paused)
 	}
+	if len(fake.revoked) != 0 {
+		t.Fatalf("stop work revoked a grant: %v", fake.revoked)
+	}
 }
 
 func TestStopWorkTabCloseIsStopNotPause(t *testing.T) {
@@ -362,6 +386,9 @@ func TestStopWorkTabCloseIsStopNotPause(t *testing.T) {
 	if len(fake.stopped) != 1 || fake.stopped[0] != "w-readme" {
 		t.Fatalf("tab-close stop work stopped %v", fake.stopped)
 	}
+	if len(fake.revoked) != 0 {
+		t.Fatalf("tab-close stop work revoked a grant: %v", fake.revoked)
+	}
 }
 
 func TestClosingFolderViewDoesNotPauseCoordination(t *testing.T) {
@@ -372,8 +399,8 @@ func TestClosingFolderViewDoesNotPauseCoordination(t *testing.T) {
 	}}
 	a.readExec()
 	a.closeHome()
-	if len(fake.paused) != 0 || len(fake.stopped) != 0 {
-		t.Fatalf("closing a view paused=%v stopped=%v", fake.paused, fake.stopped)
+	if len(fake.paused) != 0 || len(fake.stopped) != 0 || len(fake.revoked) != 0 {
+		t.Fatalf("closing a view paused=%v stopped=%v revoked=%v", fake.paused, fake.stopped, fake.revoked)
 	}
 }
 
@@ -389,7 +416,7 @@ func TestFolderNilExecHasNoLaunchChrome(t *testing.T) {
 	keys := ""
 	for _, v := range a.folderVerbs(row) {
 		keys += string(v.key)
-		if v.word == execPauseWord || v.word == execStopWord {
+		if v.word == execPauseWord || v.word == execStopWord || v.word == execRevokeWord {
 			t.Fatalf("nil Exec offered %q", v.word)
 		}
 	}
@@ -437,9 +464,64 @@ func TestFolderWave1VerbsStayWithLaunchWired(t *testing.T) {
 	}
 }
 
+func TestRevokeGrantIsAThirdVerbDistinctFromPauseAndStop(t *testing.T) {
+	a, fake := execLab(t)
+	fake.works = []ExecWork{{
+		WorkID: "w-readme", Title: "readme comment", State: "bound",
+		SourceRef: "aaaa000000000001", GrantID: "g-readme",
+	}}
+	a.readExec()
+	member := homeLine{kind: homeSession, row: session.SessionRow{ID: "aaaa000000000001"}, cell: &homeCell{panel: panelFolders, key: "col-billing"}}
+	pauseKey, stopKey, revokeKey := rune(0), rune(0), rune(0)
+	for _, v := range a.folderVerbs(member) {
+		switch v.word {
+		case execPauseWord:
+			pauseKey = v.key
+		case execStopWord:
+			stopKey = v.key
+		case execRevokeWord:
+			revokeKey = v.key
+		}
+	}
+	if pauseKey != 'p' || stopKey != 's' || revokeKey != 'v' {
+		t.Fatalf("pause/stop/revoke keys %q/%q/%q, want p/s/v", pauseKey, stopKey, revokeKey)
+	}
+	if pauseKey == stopKey || pauseKey == revokeKey || stopKey == revokeKey {
+		t.Fatalf("pause, stop, and revoke shared a chord: %q %q %q", pauseKey, stopKey, revokeKey)
+	}
+	keys := ""
+	for _, v := range a.folderVerbs(member) {
+		keys += string(v.key)
+	}
+	if keys != "nfmwxpsv" {
+		t.Fatalf("granted member verbs %q, want nfmwxpsv", keys)
+	}
+}
+
+func TestRevokeGrantDoesNotPauseOrStop(t *testing.T) {
+	a, fake := execLab(t)
+	fake.works = []ExecWork{{
+		WorkID: "w-readme", Title: "readme comment", State: "bound",
+		SourceRef: "aaaa000000000001", GrantID: "g-readme",
+	}}
+	a.readExec()
+	if cmd := a.revokeExecGrant("g-readme"); cmd != nil {
+		t.Fatal("revoke returned a command")
+	}
+	if len(fake.revoked) != 1 || fake.revoked[0] != "g-readme" {
+		t.Fatalf("revoked %v, want g-readme", fake.revoked)
+	}
+	if len(fake.paused) != 0 {
+		t.Fatalf("revoke grant paused coordination: %v", fake.paused)
+	}
+	if len(fake.stopped) != 0 {
+		t.Fatalf("revoke grant stopped work: %v", fake.stopped)
+	}
+}
+
 func TestFolderLaunchAddsNoSlash(t *testing.T) {
 	for _, c := range commands {
-		if c.name == "launch" || c.name == "pause" || c.name == "launch-or-join" {
+		if c.name == "launch" || c.name == "pause" || c.name == "launch-or-join" || c.name == "revoke" {
 			t.Fatalf("new slash /%s; Wave 4 adds no slash command", c.name)
 		}
 	}

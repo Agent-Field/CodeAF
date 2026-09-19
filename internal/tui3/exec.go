@@ -14,8 +14,8 @@ import (
 // `var _ tui3.Collab` would demand them.
 //
 // NIL IS NO CHROME, NOT A BROKEN LAUNCH. A door that could not bind the
-// executor leaves this nil; launch-state chrome and the pause/stop verbs are
-// absent, and natural-language launch still works if session.Config.Exec is
+// executor leaves this nil; launch-state chrome and the pause/stop/revoke
+// verbs are absent, and natural-language launch still works if session.Config.Exec is
 // wired. A belt that painted a dummy completed run would be a capability
 // advertised as broken.
 //
@@ -26,14 +26,16 @@ type Exec interface {
 	LaunchState(ctx context.Context, conversationID string) ([]ExecWork, error)
 	PauseCoordination(ctx context.Context, coordinatorID string) error
 	StopWork(ctx context.Context, workID string) error
+	RevokeGrant(ctx context.Context, grantID string) error
 }
 
 // ExecWork is one owned run/task as the discussion and folder preview draw it.
 // State is software-derived. Joined is true when launch-or-join followed
-// existing work rather than starting a second run.
+// existing work rather than starting a second run. GrantID is the authority
+// revoke uses; it is not painted.
 type ExecWork struct {
-	WorkID, Title, State, Road, SourceRef string
-	Joined                                bool
+	WorkID, Title, State, Road, SourceRef, GrantID string
+	Joined                                         bool
 }
 
 // execReading is the memo [app.readExec] writes. View reads this and never
@@ -48,11 +50,13 @@ type execReading struct {
 const (
 	execPauseWord       = "pause coordination"
 	execStopWord        = "stop work"
+	execRevokeWord      = "revoke grant"
 	execJoinWord        = "launch-or-join"
 	execSourceWord      = "source"
 	execUnavailableWord = "launch state is not available"
 	execCouldNotPause   = "could not pause coordination"
 	execCouldNotStop    = "could not stop work"
+	execCouldNotRevoke  = "could not revoke grant"
 	execNeedChatWord    = "stand on a chat · then pause coordination"
 	execZeroRunsWord    = "0 runs"
 	execFakeDoneWord    = "100%"

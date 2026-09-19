@@ -188,7 +188,7 @@ func v3OrganizePassWith(profileDir string, work session.Organizer) func(context.
 			return nil
 		}
 		defer store.Close()
-		recoverUnboundWork(ctx, store)
+		continueGrantedWork(ctx, store)
 		return session.ProcessOrganizeJobs(ctx, store, work, config.OrganizeEnabledAt(profileDir), time.Now())
 	}
 }

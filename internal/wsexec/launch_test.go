@@ -97,6 +97,45 @@ func TestDuplicateRequestKeyDoesNotAdmitTwice(t *testing.T) {
 	}
 }
 
+func TestLaunchOrJoinAdmitsAReservedRowWhenTheHostIsPresent(t *testing.T) {
+	ctx := context.Background()
+	store, rt, grant := harness(t)
+	req := launchReq("rk-tick", "eq-tick", grant.ID)
+	if _, err := store.PutBinding(ctx, reservedBinding(req)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Open(store, rt).LaunchOrJoin(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RunInstanceID == "" || got.State != BindBound {
+		t.Fatalf("tick LaunchOrJoin must admit reserved work: %+v", got)
+	}
+	if rt.admitCalls != 1 {
+		t.Fatalf("reserved continue admitted %d times", rt.admitCalls)
+	}
+}
+
+func TestLaunchOrJoinLeavesReservedWhenTheHostIsAbsent(t *testing.T) {
+	ctx := context.Background()
+	store, rt, grant := harness(t)
+	rt.absent = true
+	req := launchReq("rk-absent", "eq-absent", grant.ID)
+	if _, err := store.PutBinding(ctx, reservedBinding(req)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Open(store, rt).LaunchOrJoin(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RunInstanceID != "" || got.State != BindReserved {
+		t.Fatalf("absent host must leave reserved intent: %+v", got)
+	}
+	if rt.admitCalls != 1 {
+		t.Fatalf("absent host admit calls=%d", rt.admitCalls)
+	}
+}
+
 func TestA14CrashRecoversByKeyWithoutSecondAdmit(t *testing.T) {
 	ctx := context.Background()
 	store, rt, grant := harness(t)

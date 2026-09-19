@@ -9,4 +9,5 @@ const (
 	execLaunchOrJoinWord = "launch-or-join"
 	execPauseCoordWord   = "pause coordination"
 	execStopWorkWord     = "stop work"
+	execRevokeGrantWord  = "revoke grant"
 )
