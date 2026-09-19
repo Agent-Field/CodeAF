@@ -641,7 +641,16 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		return
 	}
 	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
-		if errors.Is(ret.err, context.Canceled) {
+		// A ROW THE STORE CANCELLED WAS CUT BY THE RUN'S ENDING ONLY WHEN THAT
+		// ENDING IS WHAT CANCELLED IT. A limit ends contexts and writes no row, so
+		// a cancelled row was never the limit's doing: somebody cancelled it. When
+		// that was a person stopping the whole run, the store cancelled the run's
+		// own task in the same write, and the part was taken down by the stop. When
+		// the run's own task still stands, a person stopped this ONE part and the
+		// run carried on; a limit that ends the run an hour later did not take it
+		// down, and its row must not say so. It is read from the store and not
+		// from the clock, so it holds whatever order the returns come home in.
+		if errors.Is(ret.err, context.Canceled) && s.rootCancelled() {
 			s.cut[ret.task.ID] = true
 		}
 		s.settleSpend(ret)
@@ -1349,6 +1358,13 @@ func (s *Supervisor) closeAtCap(task plandb.Task) {
 		reason = fmt.Sprintf("the wake cap was reached with child %q %s", offender.ID, offender.Status)
 	}
 	_, _ = s.store.Fail(task.ID, task.ID, reason)
+}
+
+// rootCancelled answers whether the store has cancelled the run's own task,
+// which is what a person's stop of the whole run writes.
+func (s *Supervisor) rootCancelled() bool {
+	root := s.store.Task(s.store.RootID())
+	return root != nil && root.Status == plandb.StatusCancelled
 }
 
 // cutIDs is the typed answer to which tasks the run's own ending took down,
