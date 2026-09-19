@@ -96,7 +96,14 @@ reading when the task has settled. A step whose command is many lines long is dr
 its first line and `…`; what ran is unchanged.
 
 A row the store has no page for opens what it always opened, its room. That is every
-task when the switch is off, and a task of an earlier run once a later run has started.
+task when the switch is off. A task of an earlier run keeps its page after a later run
+has started.
+
+## Can I still read a task from an earlier run?
+
+Yes. Every run this conversation has made stays on the rail, oldest first. You
+can open any task from an earlier run and read its description, notes, steps and
+spend. An ended run is there to read, not to steer.
 
 ## Why is this task indented under that one?
 
