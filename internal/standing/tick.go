@@ -75,6 +75,7 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 	// armed is walked first, because a pass that ran out of time owes them their
 	// own reminders before it owes them a tidier brain.
 	t.tidy(ctx, &pass)
+	t.organize(ctx, &pass)
 	if err := t.Store.appendWake(pass); err != nil {
 		pass.Errors++
 		pass.Notes = append(pass.Notes, "could not write the wake log: "+oneLine(err.Error()))
@@ -126,6 +127,19 @@ func (t *Ticker) tidy(ctx context.Context, pass *Pass) {
 	pass.Tidied += tidied.Changed()
 	if line := tidied.Line(); line != "" {
 		pass.Notes = append(pass.Notes, line)
+	}
+}
+
+// organize runs the workspace job pass on the same elected lock as tidy, so
+// a live window and `codeaf tick` cannot both lease the same row. A nil
+// Organize is silent: the capability is absent. It does not change [Interval].
+func (t *Ticker) organize(ctx context.Context, pass *Pass) {
+	if t.Organize == nil || ctx.Err() != nil {
+		return
+	}
+	if err := t.Organize(ctx); err != nil {
+		pass.Errors++
+		pass.Notes = append(pass.Notes, "organizing chats: "+oneLine(err.Error()))
 	}
 }
 

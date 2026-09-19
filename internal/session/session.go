@@ -1212,6 +1212,11 @@ type Config struct {
 	// wsapi unavailable: the turn still runs, with no standing folder text.
 	Guidance GuidanceSource
 
+	// EnqueueOrganize is called after a person-authored user message has
+	// already reached the journal. Nil is automatic organize absent. The
+	// callback must not take the agent's lock: it runs off the record path.
+	EnqueueOrganize func(chatID, sourceRev string)
+
 	// MemoryImport is the legacy memory.md this session carries into the store
 	// on its first turn, once, before it is renamed to memory.md.imported
 	// (memory.go). Empty imports nothing, which is every caller but the v3 door

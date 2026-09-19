@@ -2468,6 +2468,9 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		// question (steer.go, task_room.go, sessionfile.go's [sessionEntry.Steer]).
 		durable = a.file.appendSteer(kept, *mark)
 		a.stampUserLocked(messageContentText(kept))
+		if durable {
+			a.enqueueOrganizeLocked(messageContentText(kept))
+		}
 		return
 	}
 	durable = a.file.appendMessage(kept, user.refs...)
@@ -2477,6 +2480,24 @@ func (a *Agent) recordUserLocked(user userMessage) {
 	// is the only honest witness to that. A session with no folder stamps
 	// nothing (placemeta.go).
 	a.stampUserLocked(messageContentText(kept))
+	if durable {
+		a.enqueueOrganizeLocked(messageContentText(kept))
+	}
+}
+
+// enqueueOrganizeLocked queues observe_and_organize after the journal already
+// holds the person's words. Session-authored notes never reach it; slash
+// commands and empty lines are not substantive. The callback runs off this
+// lock so a collections write cannot park Interrupt.
+func (a *Agent) enqueueOrganizeLocked(text string) {
+	fn := a.config.EnqueueOrganize
+	text = strings.TrimSpace(text)
+	chatID := organizeChatID(a.config.Place, "")
+	if fn == nil || text == "" || strings.HasPrefix(text, "/") || chatID == "" {
+		return
+	}
+	rev := OrganizeRevision(len(a.messages), text)
+	guard.Go("session/organize-enqueue", func() { fn(chatID, rev) })
 }
 
 func (a *Agent) record(message ai.Message) {

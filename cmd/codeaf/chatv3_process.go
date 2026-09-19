@@ -45,6 +45,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
 // v3Process is everything a launch may borrow but must not build twice.
@@ -77,6 +78,10 @@ type v3Process struct {
 	// History is graph.db for indexed conversation search, opened even when
 	// learned memory is off. Nil only when the file cannot open.
 	History *store.Store
+	// Jobs is the same collections.db handle Folders already opened. Nil when
+	// folders could not open: automatic organize is then absent, not a second
+	// pool on the same file.
+	Jobs *workspace.Store
 	// Folders is the logical-folder membership seam the session `folders`
 	// tool talks to. One handle per process, like Memory. Nil when the store
 	// cannot open: the tool is absent, not a belt that refuses every call.
@@ -188,6 +193,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	if !config.MemoryEnabledAt(settings.ProfileDir) {
 		memory = nil
 	}
+	handles := openV3FolderHandlesWith(v3Embedder(settings, nil, models))
 	return &v3Process{
 		Settings:   settings,
 		ProfileDir: settings.ProfileDir,
@@ -196,7 +202,8 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Harnesses:  subharness.Default(),
 		Memory:     memory,
 		History:    history,
-		Folders:    openV3FoldersWith(v3Embedder(settings, nil, models)),
+		Folders:    handles.folders,
+		Jobs:       handles.jobs,
 		Artifacts:  artifactsIndexPath(),
 		Conns:      v3Connect(settings.ProfileDir),
 		LaunchDir:  launchDir,
@@ -455,7 +462,8 @@ func (p *v3Process) closeAll() {
 	}
 	if p.History != nil {
 		_ = p.History.Close()
-	} else if p.Memory != nil {
+	}
+	if p.Memory != nil && p.Memory != p.History {
 		_ = p.Memory.Close()
 	}
 	if closer, ok := p.Folders.(interface{ Close() error }); ok {

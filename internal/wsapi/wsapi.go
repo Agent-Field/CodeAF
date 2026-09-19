@@ -114,6 +114,17 @@ func (s *Service) SetDiscoverer(disc Discoverer) {
 	s.disc = disc
 }
 
+// Workspace is the real collections.db handle when Open bound *workspace.Store.
+// Tests that inject a fake get nil: job enqueue is then absent, not a second
+// SQLite pool on the same file.
+func (s *Service) Workspace() *workspace.Store {
+	if s == nil {
+		return nil
+	}
+	inner, _ := s.store.(*workspace.Store)
+	return inner
+}
+
 // CreateFolder makes a logical folder. It is a child of Root until placed.
 func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error) {
 	if err := s.ready(ctx); err != nil {

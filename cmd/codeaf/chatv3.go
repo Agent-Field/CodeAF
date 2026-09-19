@@ -35,10 +35,9 @@ import (
 )
 
 // runChatV3 is the v3 door: one session agent over this directory, and the
-// linear surface that shows it. It claims no residency and starts no runner;
-// the ONE thing it opens of the graph database is the person's memories
-// (milestone V3-1, [v3Memory]), because those are the only rows in it a
-// conversation has any business reading.
+// linear surface that shows it. It claims no residency and starts no runner.
+// graph.db is opened once as History so search still works when memory is
+// off; Memory is that same handle only when the memory row is on.
 func runChatV3(args []string) error { return openChatV3("chat", args, false) }
 
 // runResumeV3 is `codeaf resume`: the same door, opened on the session picker.
@@ -940,6 +939,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// is what keeps remember and reflex absent rather than broken (A18).
 		Memory:              proc.Memory,
 		ConversationHistory: proc.History,
+		HybridSearch:        v3HybridOf(proc.Folders),
+		Guidance:            v3GuidanceOf(proc.Folders),
+		EnqueueOrganize:     v3EnqueueOrganize(proc.Jobs),
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
 		// than derived down there for the reason every other path is.

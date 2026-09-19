@@ -7,10 +7,13 @@ package main
 // (workspace.Open creates the blank file; schema waits for the first write).
 
 import (
+	"context"
+
 	"github.com/Agent-Field/codeaf/internal/embed"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/workspace"
 	"github.com/Agent-Field/codeaf/internal/wsapi"
 	"github.com/Agent-Field/codeaf/internal/wsdiscover"
 )
@@ -28,6 +31,28 @@ func openV3FolderService() *wsapi.Service {
 	return svc
 }
 
+type v3FolderHandles struct {
+	folders session.Folders
+	jobs    *workspace.Store
+}
+
+func openV3FolderHandles() v3FolderHandles {
+	return openV3FolderHandlesWith(nil)
+}
+
+// openV3FolderHandlesWith binds one collections.db through wsapi.Open. Jobs is
+// that same handle, never a second SQLite pool on the file.
+func openV3FolderHandlesWith(embedder embed.Embedder) v3FolderHandles {
+	svc, adapter := openV3FolderServiceWith(embedder)
+	if svc == nil {
+		return v3FolderHandles{}
+	}
+	return v3FolderHandles{
+		folders: &sessionFolders{svc: svc, disc: adapter, jobs: svc.Workspace()},
+		jobs:    svc.Workspace(),
+	}
+}
+
 func openV3Folders() session.Folders {
 	return openV3FoldersWith(nil)
 }
@@ -37,11 +62,7 @@ func openV3Folders() session.Folders {
 // a dummy production fallback. A failed discovery Open leaves SearchEvidence
 // delayed; it does not take folders down or invent an empty success.
 func openV3FoldersWith(embedder embed.Embedder) session.Folders {
-	svc, adapter := openV3FolderServiceWith(embedder)
-	if svc == nil {
-		return nil
-	}
-	return &sessionFolders{svc: svc, disc: adapter}
+	return openV3FolderHandlesWith(embedder).folders
 }
 
 func openV3FolderServiceWith(embedder embed.Embedder) (*wsapi.Service, *discoveryAdapter) {
@@ -99,7 +120,25 @@ func surfaceFolders(folders session.Folders) tui3.Folders {
 	if !ok || wrapped == nil || wrapped.svc == nil {
 		return nil
 	}
-	return newFoldersAdapter(wrapped.svc)
+	return newFoldersAdapter(wrapped.svc, wrapped.jobs)
+}
+
+// v3EnqueueOrganize is called after a journalled person message. Nil jobs
+// means collections did not open, so the callback itself is absent rather
+// than a writer that fails every time. CoalesceKey is chat id plus the
+// source revision so two enqueues of the same line stay one pending row.
+func v3EnqueueOrganize(jobs *workspace.Store) func(string, string) {
+	if jobs == nil {
+		return nil
+	}
+	return func(chatID, sourceRev string) {
+		_, _ = jobs.EnqueueJob(context.Background(), workspace.Job{
+			Type:        workspace.JobOrganize,
+			ChatID:      chatID,
+			SourceRev:   sourceRev,
+			CoalesceKey: session.OrganizeCoalesceKey(chatID, sourceRev),
+		})
+	}
 }
 
 // folderWorld is the conversation inventory wsapi.SetInventory takes: ids and
