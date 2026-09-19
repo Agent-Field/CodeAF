@@ -18,8 +18,8 @@ package session
 //
 // A11 / J26: representative text is [fromAgent], never [fromPerson]. The body
 // may claim to be the user; the origin stamp is software's, and assignment
-// overlays that read [directionFromAgent] grant nothing. Wave 3 coordinators
-// may read, discuss, and organize. Execute waits for wave 4.
+// overlays that read [directionFromAgent] grant nothing. Wave 4 delegated
+// execution rides [Config.Exec] / [RegisterExecutor]; nil is the verb absent.
 
 import (
 	"context"
