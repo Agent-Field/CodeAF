@@ -179,6 +179,10 @@ func TestAnAuditDoesNotSpendTheAuditorOnNamingOrASelfRefusedCommand(t *testing.T
 }
 
 func TestPreparedAuditCommandKeepsAChainAndDropsARedirect(t *testing.T) {
+	const escapedBar = `ssh spark "cd /home/santosh/src/doe/peer/c341/profile/v3/projects/-home-santosh-src-trees-c341/9749744049d6cbce/trees/1 && git grep -n 'dialTimeout\|waitForHostQuietly\|func Dial' -- internal/enginehost"`
+	if got := preparedAuditCommand(escapedBar); got != escapedBar {
+		t.Fatalf("quoted backslash-bar command was rewritten to %q", got)
+	}
 	if got := preparedAuditCommand("python3 -m pytest tests 2>&1"); got != "python3 -m pytest tests" {
 		t.Fatalf("redirected pytest = %q", got)
 	}

@@ -114,6 +114,10 @@ func TestCommandLikePreservesQuotedArgumentSpacing(t *testing.T) {
 	if !ok || got != check {
 		t.Fatalf("commandLike(%q) = %q, %v", check, got, ok)
 	}
+	const escapedBar = `ssh spark "cd /home/santosh/src/doe/peer/c341/profile/v3/projects/-home-santosh-src-trees-c341/9749744049d6cbce/trees/1 && git grep -n 'dialTimeout\|waitForHostQuietly\|func Dial' -- internal/enginehost"`
+	if got, ok := commandLike(escapedBar); !ok || got != escapedBar {
+		t.Fatalf("commandLike(%q) = %q, %v; want exact bytes admitted", escapedBar, got, ok)
+	}
 }
 
 // THE SHAPE IS READ THE WAY THE SHELL READS IT. A character the shell hands to
@@ -123,21 +127,28 @@ func TestCommandLikePreservesQuotedArgumentSpacing(t *testing.T) {
 // the shell still expands there. The fixtures are the owner's own refused checks
 // of 2026-09-18 beside the forms that must never start passing.
 func TestACheckIsOneCommandAsTheShellWouldReadItsQuotes(t *testing.T) {
+	const escapedBar = `ssh spark "cd /home/santosh/src/doe/peer/c341/profile/v3/projects/-home-santosh-src-trees-c341/9749744049d6cbce/trees/1 && git grep -n 'dialTimeout\|waitForHostQuietly\|func Dial' -- internal/enginehost"`
 	for _, one := range []string{
+		escapedBar,
 		`grep -iE 'handoff|vault|wall' /tmp/wisp-ideation/walls.md`,
 		`grep -c '^## (one)  {two}; $three' notes.md`,
 		`./count.sh "a | b ; c  (d)" report.txt`,
+		`grep "a\"; ./anything.sh; \"" notes.md`,
 	} {
 		got, refusal := declaredCheckList([]string{one})
 		if refusal != "" || len(got) != 1 || got[0] != one {
 			t.Errorf("%s: checks = %q, refusal = %q; want it kept byte for byte", one, got, refusal)
 		}
 	}
+	door := auditDoorFor(declaringNode(escapedBar), standingOn(""))
+	if refusal, ok := doorRefusal(escapedBar, door); !ok {
+		t.Fatalf("the runtime audit door refused %q: %s", escapedBar, refusal)
+	}
 	for said, offending := range map[string]string{
 		`test -s walls.md && grep -c '^## ' walls.md | awk '$1>=6'`: `"&"`,
 		`grep "$(./anything.sh)" notes.md`:                          `"$"`,
 		"grep \"`./anything.sh`\" notes.md":                         "\"`\"",
-		`grep "a\"; ./anything.sh; \"" notes.md`:                    `"\\"`,
+		`grep "a\\" ; ./anything.sh notes.md`:                       `";"`,
 		`grep 'unclosed notes.md`:                                   `"'"`,
 		`./run.sh > out.txt`:                                        `">"`,
 	} {

@@ -221,8 +221,9 @@ const (
 	auditEvidenceLines = 3
 
 	// auditCommandLimit keeps a refused command readable when it is handed back
-	// to the auditor as a refusal.
-	auditCommandLimit = 200
+	// to the auditor as a refusal. It also bounds declared commands; 256 leaves
+	// ordinary absolute-path checks intact without turning a refusal into a log.
+	auditCommandLimit = 256
 
 	// auditReaderHint rides every refusal and the bash description itself.
 	//
