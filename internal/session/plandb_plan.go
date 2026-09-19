@@ -52,7 +52,10 @@ type planState struct {
 // planStoreFilename is the file name every road agrees on: the runtime's
 // path helper, the CLI's walk-up, and the store's own creation all spell it
 // the same way.
-const planStoreFilename = "plandb.db"
+const (
+	planStoreFilename = "plandb.db"
+	planShimFilename  = "plandb"
+)
 
 // planRootID is the store's root task. The reference loop's supervisor seeds
 // a root named t-root; the store trims the prefix, so the stored id is the
@@ -685,7 +688,7 @@ func (p *planState) armShim() error {
 	if err := os.MkdirAll(bin, 0o700); err != nil {
 		return err
 	}
-	shim := filepath.Join(bin, "plandb")
+	shim := filepath.Join(bin, planShimFilename)
 	words := make([]string, 0, len(argv)+1)
 	for _, word := range argv {
 		words = append(words, quoteShWord(word))

@@ -6,10 +6,13 @@ package session
 // records them; no model is called.
 
 import (
+	"bytes"
+	"context"
 	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -381,5 +384,121 @@ func TestPlanTaskRootCarriesProgressWhenTheRootIsATaskNumber(t *testing.T) {
 	root := planRowByID(t, agent.PlanTasks(), "t-7")
 	if root.Total != 2 || root.Done != 1 {
 		t.Fatalf("a numbered root's progress = %d of %d, want 1 of 2", root.Done, root.Total)
+	}
+}
+
+func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
+	const copy = "/home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/1"
+	tests := []struct {
+		command string
+		record  []int
+		prefix  []int
+	}{
+		// A pipeline is one command: the record's listing and the pager it is
+		// read through go together.
+		{"ls; ls *.go 2>/dev/null; plandb task overview 2>/dev/null | head -30", []int{2, 3}, nil},
+		// Work piped into something is never the record's, whatever it is piped to.
+		{"go test ./... | plandb note t-1 -", nil, nil},
+		// A part inside a substitution or a group is never marked: the line
+		// around a hole in one is not a command anybody ran.
+		{"echo $(plandb task overview)", nil, nil},
+		{"(cd x; make) && plandb done t-1", nil, nil},
+		{"(cd " + copy + " && make)", nil, nil},
+		// An ended run's copy has been given back; a folder directly under the
+		// conversation's folder of copies is still a run's copy.
+		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7 && go vet ./...", nil, []int{0}},
+		// Further down is somewhere the work went, and that is the work.
+		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7/internal && go vet ./...", nil, nil},
+		{"cat calc.go go.mod notes.txt", nil, nil},
+		{"plandb done t-1 --agent 1 --result 'Added Mul and Div in muldiv.go …'", []int{0}, nil},
+		{"cd " + copy + " && ls && cat muldiv.go && go vet ./... && go test -count=1 ./...", nil, []int{0}},
+		{"cd " + copy + " && plandb done t-1 --agent 1 --result 'Mul and Div in …'", []int{1}, []int{0}},
+	}
+	for _, test := range tests {
+		step := PlanStep{Command: test.command}
+		got := planStepDisplayFacts(step, planRunCopies{live: copy, root: filepath.Dir(copy)}, "plandb")
+		if got.Command != test.command {
+			t.Fatalf("recorded command changed:\n got %q\nwant %q", got.Command, test.command)
+		}
+		var record, prefix []int
+		for i, part := range got.Parts {
+			if part.RecordAddressed {
+				record = append(record, i)
+			}
+			if part.RunCopyPrefix {
+				prefix = append(prefix, i)
+			}
+		}
+		if !reflect.DeepEqual(record, test.record) || !reflect.DeepEqual(prefix, test.prefix) {
+			t.Errorf("facts for %q: record=%v prefix=%v parts=%#v", test.command, record, prefix, got.Parts)
+		}
+	}
+}
+
+// A belt run owns a copy outside the conversation workspace. Display facts come
+// from that live run copy, while Folder keeps naming the landed conversation
+// workspace: the two properties are deliberately independent.
+func TestPlanStepDisplayFactsUseTheBeltRunWorkspaceAndKeepFolder(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("the run did the work")
+	registerBeltRunEngine(t, double)
+
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "the run did the work"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: dir}
+		config.SessionFile = filepath.Join(dir, placeTranscript)
+		config.AskConsent = false
+	})
+	id, _, _, err := agent.StartTask(context.Background(), "show the run copy", false)
+	if err != nil {
+		t.Fatalf("StartTask: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	runCopy := double.spec.Workspace
+	double.mu.Unlock()
+	rootID := strconv.FormatUint(id, 10)
+	other := filepath.Join(t.TempDir(), "trees", "2")
+	writePlanTrajectory(t, dir, rootID,
+		`{"kind":"step","step":1,"command":"cd `+runCopy+` && echo work"}`,
+		`{"kind":"step","step":2,"command":"cd `+other+` && echo elsewhere"}`,
+	)
+
+	page, ok := agent.PlanTaskPage(planStoreID(rootID))
+	if !ok {
+		t.Fatal("the belt run task answered no page")
+	}
+	if page.Folder != agent.config.Workspace {
+		t.Fatalf("page folder = %q, want landed workspace %q", page.Folder, agent.config.Workspace)
+	}
+	if len(page.Steps) != 2 || len(page.Steps[0].Parts) == 0 || !page.Steps[0].Parts[0].RunCopyPrefix {
+		t.Fatalf("belt workspace was not marked as the run-copy prefix: %#v", page.Steps)
+	}
+	if len(page.Steps[1].Parts) == 0 || page.Steps[1].Parts[0].RunCopyPrefix {
+		t.Fatalf("another folder was marked as the run-copy prefix: %#v", page.Steps[1].Parts)
+	}
+	endBeltRun(t, agent, double)
+}
+
+func TestPlanStepDisplayFactsDoNotRewriteTrajectory(t *testing.T) {
+	dir := t.TempDir()
+	command := "cd /run/trees/1 && plandb done t-1 --agent 1 --result 'done'"
+	writePlanTrajectory(t, dir, "alpha", `{"kind":"step","step":5,"command":"cd /run/trees/1 && plandb done t-1 --agent 1 --result 'done'","observation":"done t-1"}`)
+	path := planTrajectoryPath(dir, "alpha")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps := planStepDisplayFactsForPage(planTrajectory(dir, "alpha"), planRunCopies{live: "/run/trees/1"})
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("display facts rewrote the trajectory")
+	}
+	if len(steps) != 1 || steps[0].Command != command {
+		t.Fatalf("PlanStep.Command = %q, want %q", steps[0].Command, command)
 	}
 }

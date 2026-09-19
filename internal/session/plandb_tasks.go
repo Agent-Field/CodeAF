@@ -24,6 +24,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -71,7 +72,8 @@ type PlanTaskRow struct {
 	// that is running nothing, which the emptiness law turns into no line drawn
 	// at all; the worker clears the row the moment the command ends, and every
 	// ending of its loop, so a task that is not running never claims a present.
-	Live plandb.LiveStep
+	Live      plandb.LiveStep
+	LiveParts []PlanCommandPart
 	// TrajectoryPath is the file the task's steps are recorded in, for a reader
 	// that wants the record itself and not only its length.
 	TrajectoryPath string
@@ -131,6 +133,37 @@ type PlanStep struct {
 	FullOutput  string   `json:"full_output,omitempty"`
 	Writes      []string `json:"writes,omitempty"`
 	Children    []string `json:"children,omitempty"`
+	// Parts are display facts derived from Command. Command remains the byte-for-byte
+	// record; a surface filters parts instead of rewriting that record.
+	Parts []PlanCommandPart `json:"parts,omitempty"`
+}
+
+// PlanCommandPart is one quote-aware command part and the facts only the
+// session can establish about it. Separator is the text that followed it.
+//
+// Command[Start:End] of the step's recorded command is this part as it was
+// typed and [End:SepEnd] is the boundary after it, so a surface that leaves a
+// part out CUTS ITS SPAN FROM THE RECORDED LINE and never retypes what it
+// keeps. A joined-up copy of trimmed parts is a different line from the one
+// that ran: it lost the spaces around every boundary and the bracket that
+// closed the last one.
+//
+// A FACT IS SET ONLY WHERE CUTTING IS SAFE. Both facts mean "this part is not
+// the work", and both are set only on a part that stands in sequence with its
+// neighbours: after the start of the line or a boundary that ends a command,
+// and before the end of the line or another such boundary. A part inside a
+// substitution or a group is never marked, because the line around a hole in
+// one of those is not a command anybody ran. A pipeline is one command: it is
+// marked whole when its first part is addressed to the record, and not at all
+// otherwise.
+type PlanCommandPart struct {
+	Command         string
+	Separator       string
+	Start           int
+	End             int
+	SepEnd          int
+	RecordAddressed bool
+	RunCopyPrefix   bool
 }
 
 // planTrajectoryFile is the file a task's steps are appended to, under the
@@ -151,6 +184,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		return nil
 	}
 	var rows []PlanTaskRow
+	copies := a.planDisplayRunCopy()
 	for _, store := range stores {
 		dir := filepath.Dir(store.Path())
 		spend := planSpendByTask(store.Path())
@@ -163,7 +197,8 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		root := store.RootID()
 		for _, task := range tasks {
 			row := planTaskRow(store, dir, task, spend, live)
-			row.Folder = a.config.Workspace
+			row.Folder = a.planTaskRunCopy(task.ID)
+			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
 			rows = append(rows, row)
 			if task.ID == root {
 				applyPlanRootProgress(&rows[len(rows)-1], tasks, root)
@@ -200,6 +235,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
 	live := store.LiveSteps()
+	copies := a.planDisplayRunCopy()
 	// Walk admission order once; membership follows parent edges only.
 	all := store.Tasks(plandb.Filter{Chat: plan.chat})
 	rows := make(map[string]PlanTaskRow, len(all))
@@ -207,7 +243,8 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	depths := map[string]int{task.ID: -1}
 	for _, child := range all {
 		row := planTaskRow(store, dir, child, spend, live)
-		row.Folder = a.config.Workspace
+		row.Folder = a.planTaskRunCopy(child.ID)
+		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
 		rows[child.ID] = row
 		depth, under := depths[child.ParentID]
 		if !under || child.ID == task.ID {
@@ -247,9 +284,9 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Description: task.Description,
 		Result:      task.Result,
 		Checks:      append([]string(nil), task.Checks...),
-		Folder:      a.config.Workspace,
+		Folder:      pageRow.Folder,
 		Notes:       planTaskNotes(store, task.ID),
-		Steps:       planTrajectory(dir, task.ID),
+		Steps:       planStepDisplayFactsForPage(planTrajectory(dir, task.ID), copies.or(pageRow.Folder)),
 		Children:    children,
 		WaitRows:    waitRows,
 	}, true
@@ -654,4 +691,134 @@ func planSpendByTask(path string) map[string]float64 {
 		totals[id] = usd
 	}
 	return totals
+}
+
+// planRunCopies says which folders are a run's own copy. live is the copy of
+// the run in flight, or the folder the row names when no run is; root is the
+// conversation's own folder of copies. AN ENDED RUN'S COPY HAS BEEN GIVEN BACK
+// and its steps still record the change into it, so a folder directly under
+// root is a run's copy whether or not it still exists. A folder further down is
+// somewhere the work went inside its copy, and that is the work.
+type planRunCopies struct {
+	live string
+	root string
+}
+
+func (c planRunCopies) holds(dir string) bool {
+	dir = strings.TrimSpace(dir)
+	if dir == "" || !filepath.IsAbs(dir) {
+		return false
+	}
+	dir = filepath.Clean(dir)
+	if c.live != "" && dir == filepath.Clean(c.live) {
+		return true
+	}
+	return c.root != "" && filepath.Dir(dir) == filepath.Clean(c.root)
+}
+
+// planSequenced reports whether a boundary ends one command and starts the
+// next, which is the only kind a part may be cut at.
+func planSequenced(separator string) bool {
+	switch separator {
+	case "", ";", "\n", "&&", "||", "&":
+		return true
+	}
+	return false
+}
+
+// planStepDisplayFacts annotates a copy of a recorded step. It never changes
+// the trajectory or Command: these facts are a read-side view only.
+func planStepDisplayFacts(step PlanStep, copies planRunCopies, recordCommand string) PlanStep {
+	approvalParts := approval.SplitBashCommand(step.Command)
+	var parts []PlanCommandPart
+	if len(approvalParts) > 0 {
+		parts = make([]PlanCommandPart, len(approvalParts))
+	}
+	for i, part := range approvalParts {
+		parts[i] = PlanCommandPart{Command: part.Command, Separator: part.Separator, Start: part.Start, End: part.End, SepEnd: part.SepEnd}
+	}
+	// A PIPELINE IS READ AS ONE COMMAND: from a part that stands in sequence to
+	// the last part a bar joins to it.
+	for i := 0; i < len(parts); {
+		last := i
+		for last+1 < len(parts) && parts[last].Separator == "|" {
+			last++
+		}
+		before := ""
+		if i > 0 {
+			before = parts[i-1].Separator
+		}
+		// Two boundaries in a row leave a stretch that made no part, and the
+		// boundary that was lost with it may have been one that groups: a part
+		// that does not begin where the last boundary ended, or the first part
+		// of a line that does not begin the line, is not in sequence.
+		adjoins := parts[i].Start == 0
+		if i > 0 {
+			adjoins = parts[i-1].SepEnd == parts[i].Start
+		}
+		if adjoins && planSequenced(before) && planSequenced(parts[last].Separator) {
+			words := strings.Fields(parts[i].Command)
+			switch {
+			case len(words) == 0:
+			case strings.Trim(words[0], "'\"") == recordCommand:
+				for at := i; at <= last; at++ {
+					parts[at].RecordAddressed = true
+				}
+			case i == 0 && last == 0 && len(words) == 2 && words[0] == "cd" && copies.holds(strings.Trim(words[1], "'\"")):
+				parts[i].RunCopyPrefix = true
+			}
+		}
+		i = last + 1
+	}
+	step.Parts = parts
+	return step
+}
+
+// planTaskRunCopy answers the folder the row has always exposed. A belt run's
+// copy is deliberately not this property: Folder keeps the conversation
+// workspace while display suppression follows the live belt run separately.
+func (a *Agent) planTaskRunCopy(planID string) string {
+	g := a.graph()
+	if g == nil {
+		return ""
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, node := range g.nodes {
+		if node != nil && node.spec.planID == planID {
+			return node.worktree
+		}
+	}
+	return a.config.Workspace
+}
+
+// planDisplayRunCopy is the folders a step's leading change may name and still
+// be no part of the work: the live belt run's copy and any copy under the
+// conversation's own folder of them. IT IS READ ONCE FOR A WHOLE LISTING, never
+// once per row: it takes the belt's lock and resolves a path, and a listing has
+// as many rows as the run has parts.
+func (a *Agent) planDisplayRunCopy() planRunCopies {
+	copies := planRunCopies{root: a.treesDir()}
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	if a.beltRun != nil {
+		copies.live = a.beltRun.workspace
+	}
+	return copies
+}
+
+// or names the row's own folder as the copy when no run is in flight, which is
+// the folder a row has always exposed.
+func (c planRunCopies) or(folder string) planRunCopies {
+	if c.live == "" {
+		c.live = folder
+	}
+	return c
+}
+
+func planStepDisplayFactsForPage(steps []PlanStep, copies planRunCopies) []PlanStep {
+	for i := range steps {
+		steps[i] = planStepDisplayFacts(steps[i], copies, planShimFilename)
+	}
+	return steps
 }
