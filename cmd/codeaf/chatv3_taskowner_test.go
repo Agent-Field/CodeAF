@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -33,6 +34,21 @@ func TestTaskOwnerRetriesAHostInTheStaleSocketWindow(t *testing.T) {
 	}
 	unixStale.SetUnlinkOnClose(false)
 	if err := stale.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// A real host holds its lock across the whole remove-to-listen window, and the
+	// retry is gated on that lock, so the test holds it as the host would.
+	lockPath, err := enginehost.LockPath(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostLock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hostLock.Close()
+	if err := filelock.Lock(hostLock, true, true); err != nil {
 		t.Fatal(err)
 	}
 

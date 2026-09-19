@@ -32,10 +32,7 @@ package main
 import (
 	"errors"
 	"io"
-	"os"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -120,20 +117,12 @@ func openTaskOwnerView(workspace string, ask tui3.TaskOwnerAsk) (tui3.TaskOwnerV
 // stale-socket replacement sequence gets the same short grace as a headless
 // message: refused first, then refused or absent while the socket is replaced.
 func dialTaskOwnerHost(workspace string) (io.ReadWriteCloser, error) {
-	deadline := time.Now().Add(v3HostAnswerWait)
-	sawRefused := false
-	for {
-		conn, err := enginehost.Dial(workspace)
-		if err == nil {
-			return conn, nil
-		}
-		refused := errors.Is(err, syscall.ECONNREFUSED)
-		if refused {
-			sawRefused = true
-		}
-		if !sawRefused || (!refused && !errors.Is(err, os.ErrNotExist)) || !time.Now().Before(deadline) {
-			return nil, err
-		}
-		time.Sleep(v3HostAnswerPause)
+	// The same startup window as a headless launch: retry a refused connect only
+	// while the host lock is held ([enginehost.DialStartingHost]). The nil check
+	// keeps a failed dial from returning a non-nil interface around a nil conn.
+	conn, err := enginehost.DialStartingHost(workspace)
+	if err != nil {
+		return nil, err
 	}
+	return conn, nil
 }
