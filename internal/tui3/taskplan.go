@@ -192,6 +192,13 @@ func planStateWord(row session.PlanTaskRow) string {
 // a [session.TaskStatus] so the place's own row machinery — the glyph, the state
 // cell, the phone card — draws a plan row the one way it draws every other.
 func planStatus(row session.PlanTaskRow) session.TaskStatus {
+	if row.Stopped {
+		return session.TaskStatus{
+			Tier:     session.TaskTierOver,
+			Presence: session.TaskPresenceStopped,
+			Word:     planStateWord(row),
+		}
+	}
 	store := row.Status
 	switch strings.TrimSpace(store) {
 	case "pending":
