@@ -344,6 +344,16 @@ func (s *Store) ListPendingDeliveries(ctx context.Context, toChatID string) ([]D
 	return s.listDeliveries(ctx, `SELECT `+deliveryColumns+` FROM deliveries WHERE to_chat_id=? AND state=? ORDER BY seq`, toChatID, DeliveryPending)
 }
 
+// ListChatTraffic is the management chat's visible deliveries: outbound and
+// inbound, any state. Listing never migrates. The TUI maps these onto
+// request / reply / sent; it must not call ListPendingDeliveries for paint.
+func (s *Store) ListChatTraffic(ctx context.Context, chatID string) ([]Delivery, error) {
+	if strings.TrimSpace(chatID) == "" {
+		return []Delivery{}, nil
+	}
+	return s.listDeliveries(ctx, `SELECT `+deliveryColumns+` FROM deliveries WHERE from_chat_id=? OR to_chat_id=? ORDER BY seq LIMIT 40`, chatID, chatID)
+}
+
 func (s *Store) listDeliveries(ctx context.Context, query string, args ...any) ([]Delivery, error) {
 	ready, err := s.v4Ready(ctx)
 	if err != nil || !ready {

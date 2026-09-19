@@ -272,3 +272,45 @@ func TestBlankFilePutParticipantInitializesV4(t *testing.T) {
 		t.Fatalf("agent delivery: %+v, %v", queued, err)
 	}
 }
+
+func TestListChatTrafficIncludesOutboundAndRecordedInbound(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "traffic.db"))
+	createTestCollection(t, s, "Inbox")
+	out, err := s.PutDelivery(ctx, Delivery{FromChatID: "mgmt", ToChatID: "feature-a", Pattern: PatternDirect, Body: "how far?", Origin: OriginAgent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := s.PutDelivery(ctx, Delivery{FromChatID: "feature-a", ToChatID: "mgmt", Pattern: PatternDirect, Body: "halfway", Origin: OriginAgent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AckDelivery(ctx, back.ID, DeliveryAccepted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AckDelivery(ctx, back.ID, DeliveryRecorded); err != nil {
+		t.Fatal(err)
+	}
+	fan, err := s.PutDelivery(ctx, Delivery{FromChatID: "mgmt", ToChatID: "feature-b", Pattern: PatternFanout, Body: "use v2", Origin: OriginAgent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PutDelivery(ctx, Delivery{FromChatID: "other", ToChatID: "stranger", Body: "noise", Origin: OriginAgent}); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := s.ListPendingDeliveries(ctx, "mgmt")
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("pending-to-self is the wrong paint query: %+v, %v", pending, err)
+	}
+	got, err := s.ListChatTraffic(ctx, "mgmt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("traffic %+v, want outbound request, recorded reply, and sent", got)
+	}
+	ids := map[string]bool{got[0].ID: true, got[1].ID: true, got[2].ID: true}
+	if !ids[out.ID] || !ids[back.ID] || !ids[fan.ID] {
+		t.Fatalf("traffic ids %v want %s %s %s", ids, out.ID, back.ID, fan.ID)
+	}
+}

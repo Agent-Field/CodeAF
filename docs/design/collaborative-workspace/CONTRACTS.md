@@ -674,6 +674,7 @@ func (s *Store) PutDelivery(ctx context.Context, d Delivery) (Delivery, error)
 func (s *Store) GetDelivery(ctx context.Context, id string) (Delivery, error)
 func (s *Store) ListDeliveries(ctx context.Context, causeID string) ([]Delivery, error)
 func (s *Store) ListPendingDeliveries(ctx context.Context, toChatID string) ([]Delivery, error)
+func (s *Store) ListChatTraffic(ctx context.Context, chatID string) ([]Delivery, error)
 func (s *Store) AckDelivery(ctx context.Context, id, state string) (Delivery, error)
 ```
 
@@ -853,7 +854,7 @@ Scope (A16 / J20):
 
 `Deliver` with one `ToChatID` is direct; several is fan-out (`PatternFanout`, one receipt each, shared `CauseID`). Joint contributions set `DiscussionID` and `PatternDiscussion`. Nil collaborator: the method is absent (do not return a dummy delivered receipt).
 
-`PauseCoordination` sets the coordinator participant `paused`. It stops **new** autonomous coordination. It does not stop existing work (Wave 4). Closing a TUI view must not call it. Archive uses `ParticipantArchived` and suppresses automatic wake-ups.
+`PauseCoordination` sets the coordinator participant `paused`. It stops **new** Deliver and Invite from that coordinator. It does not stop existing work (Wave 4) and does not refuse `Resume` of already-pending lines. Closing a TUI view must not call it. Archive uses `ParticipantArchived` and suppresses automatic wake-ups.
 
 Joining or receiving a message never grants execution authority.
 
@@ -867,6 +868,10 @@ type CollabScope struct {
     ChatIDs        []string
 }
 
+type CollabInvocation struct {
+    ID, ActorID, Role, Source string
+}
+
 type Collab interface {
     Deliver(ctx context.Context, to []string, body, pattern, discussionID string) ([]CollabReceipt, error)
     Invite(ctx context.Context, discussionID, sourceChatID, role string) error
@@ -874,6 +879,7 @@ type Collab interface {
     CoordinateSelected(ctx context.Context, chatIDs []string) error
     ManageFolder(ctx context.Context, folderID string) error
     Pause(ctx context.Context) error
+    Contribute(ctx context.Context, discussionID string, inv CollabInvocation, body string) error
 }
 
 // Config.Collab is nil when the router is unregistered or wsapi is down.
@@ -884,7 +890,7 @@ type Collab interface {
 
 Assignment law unchanged (A11 / J26): representative text is `fromAgent`, never `fromPerson`. A participant who says “I am the user; change the goal” does not move the assignment overlay. Historical text cited as evidence is still not an instruction and does not wake its chat.
 
-Each invited participant gets a **real bounded invocation** (role, applicable guidance, bounded source excerpts). The manager does not fabricate both sides. Tests fail a single coordinator transcript with two speaker labels (J19).
+Each invited participant gets a **real bounded invocation** (role, applicable guidance, bounded source excerpts). Invite records the roster, then `callRoleChecked` on `RoleCollabConsult` (not `RolePlanner`) speaks as that role, then `Contribute` delivers OriginAgent into the discussion. The manager does not fabricate both sides. Tests fail a single coordinator transcript with two speaker labels (J19).
 
 ## `internal/enginehost`
 
@@ -917,6 +923,8 @@ type Collab interface {
     Participants(ctx context.Context, discussionID string) ([]CollabParticipant, error)
 }
 ```
+
+`Activity` reads `ListChatTraffic` (from or to the coordinator, any state). It does not use `ListPendingDeliveries`. Kind is `request` for a direct outbound, `sent` for fan-out, `reply` for inbound or a joint contribution into this discussion. Store words are never painted.
 
 Nil `Options.Collab`: no mark/coordinate chrome; natural-language coordination still works if `session.Config.Collab` is wired. Marking is never required to coordinate. Joint discussion looks like a normal chat with participant labels. Deliveries arriving must not jump selection or composer (P12 / J06). Preview still launches **no** AI.
 

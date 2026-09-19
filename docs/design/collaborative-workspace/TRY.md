@@ -94,7 +94,7 @@ Do **not** prove only a group-chat demo. Selected coordination, a **direct** mes
 7. **Snapshot vs folder (A16).** Add a fifth chat to Billing after the selected-four. It does **not** join the four. Start **manage this folder**. Pass: the fifth appears in dynamic scope.
 8. **Offline once (J23).** Quit so a recipient can retire. From a second isolated window on the same `CODEAF_HOME`, send a direct line. Reopen the member chat. Pass: the line appears exactly once. You see `sent` / `request` / `reply`, not store words `accepted` `recorded` `processed`.
 9. **Escalation (J24).** Instruct Billing and Security incompatibly. Pass: one conflict discussion, parents may join, Root if needed. **Not** “always ask after two turns” as a ban on parent join. Root cannot exceed you. Missing authority reaches you.
-10. **Pause (J25).** `pause coordination` stops **new** autonomous decisions. Closing a view does not pause. Archive suppresses automatic wake-ups; history remains.
+10. **Pause (J25).** `pause coordination` stops new deliver and invite from that coordinator. Closing a view does not pause. Archive suppresses automatic wake-ups; history remains.
 11. **Attribution (J26).** A participant claims to be the user. Pass: assignment/goal does not move; the line is a representative. Coordinator cannot execute (wave 4).
 
 Marking is optional. From home with no current chat, `c` says `coordinate from this chat · or say coordinate these`. A failed mark says `could not mark that chat`.

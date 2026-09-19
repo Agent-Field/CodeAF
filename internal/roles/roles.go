@@ -213,6 +213,11 @@ const (
 	// internal/session, which owns the call and registers it. Never RoleAuditor:
 	// this is membership from evidence, not a verdict on finished work.
 	RoleOrganize Role = "organize"
+	// RoleCollabConsult is one invited participant's bounded call: role,
+	// applicable guidance, and source excerpts. It is NOT RolePlanner — that
+	// word is an adaptive-run brain, and planner/critic on a discussion are
+	// free labels. Registered from internal/session/collab_consult.go.
+	RoleCollabConsult Role = "collab-consult"
 
 	// RoleIntake fills a subharness's input form from what the conversation has
 	// already said (docs/SUBHARNESS-PRD.md §4: infer, then confirm — never
@@ -449,6 +454,7 @@ var roleDescriptions = map[Role]string{
 	RoleVision:        "reads images for a model that cannot see them",
 	RoleShaper:        "the brief a task you started yourself is given",
 	RoleOrganize:      "files a chat in folders from cited evidence",
+	RoleCollabConsult: "speaks as one invited participant from bounded source excerpts",
 	RoleTaskName:      "the two or three words a task is called",
 	RoleJobName:       "the three or four words a background job is called",
 	RoleCaption:       "the discrete step title over a live tool batch",
@@ -564,7 +570,7 @@ func Known(name string) bool {
 }
 
 var vocabulary = []Role{
-	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
+	RoleAuditor, RoleCaption, RoleCareful, RoleCollabConsult, RoleConsolidate,
 	RoleDesigner, RoleDivision, RoleEmbed, RoleGuardian, RoleHandoff,
 	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
 	RoleOrganize, RolePlanner, RoleReflex, RoleRepair, RoleRouter,

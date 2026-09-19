@@ -18,7 +18,7 @@ func TestCollabFilesDoNotImportTheRouterPackage(t *testing.T) {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".go") || strings.HasSuffix(file.Name(), "_test.go") {
 			continue
 		}
-		if file.Name() != "collab.go" && file.Name() != "tools_coordinate.go" && file.Name() != "mailbox.go" {
+		if file.Name() != "collab.go" && file.Name() != "tools_coordinate.go" && file.Name() != "mailbox.go" && file.Name() != "collab_consult.go" {
 			continue
 		}
 		source, err := parser.ParseFile(token.NewFileSet(), file.Name(), nil, parser.ImportsOnly)
@@ -44,7 +44,7 @@ func TestNewCollabFunctionsStayUnderTheCeiling(t *testing.T) {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".go") || strings.HasSuffix(file.Name(), "_test.go") {
 			continue
 		}
-		if file.Name() != "collab.go" && file.Name() != "tools_coordinate.go" {
+		if file.Name() != "collab.go" && file.Name() != "tools_coordinate.go" && file.Name() != "collab_consult.go" {
 			continue
 		}
 		source, err := parser.ParseFile(set, file.Name(), nil, 0)

@@ -7,17 +7,36 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 func coordinateAgent(t *testing.T, collab Collab) *Agent {
 	t.Helper()
 	place := Place{Dir: filepath.Join(t.TempDir(), "aaaaaaaaaaaaaaaa")}
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	complete := &scriptedCompleter{aside: func(messages []ai.Message) (*ai.Response, bool) {
+		if isCollabConsultCall(messages) {
+			return textResponse("as the invited role: keep the surface sequential"), true
+		}
+		return nil, false
+	}}
+	agent, _ := newTestAgent(t, complete, func(config *Config) {
 		config.Collab = collab
 		config.Place = place
 	})
 	return agent
+}
+
+func isCollabConsultCall(messages []ai.Message) bool {
+	for _, msg := range messages {
+		for _, part := range msg.Content {
+			if strings.Contains(part.Text, collabConsultSystem) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func callCoordinate(t *testing.T, agent *Agent, args string) (string, bool) {
@@ -106,6 +125,44 @@ func TestCoordinateInviteRecordsAParticipant(t *testing.T) {
 	}
 	if len(fake.invites) != 1 || fake.invites[0].Source != "planner-chat" || fake.invites[0].Role != "planner" {
 		t.Fatalf("invites = %#v", fake.invites)
+	}
+	got := fake.contributed()
+	if len(got) != 1 || got[0].Discussion != "mgmt" || got[0].Inv.Source != "planner-chat" || got[0].Body == "" {
+		t.Fatalf("invite must Contribute a bounded consult, not only a roster row: %#v", got)
+	}
+	if got[0].Inv.ActorID == "" || got[0].Inv.ID == "" {
+		t.Fatalf("contribution missing invocation identity: %#v", got[0].Inv)
+	}
+}
+
+func TestInvitePlannerAndCriticAreTwoInvocations(t *testing.T) {
+	fake := &fakeCollab{}
+	agent := coordinateAgent(t, fake)
+	if out, failed := callCoordinate(t, agent, `{"action":"invite","discussion":"mgmt","source":"plan-chat","role":"planner"}`); failed {
+		t.Fatalf("planner invite refused: %s", out)
+	}
+	if out, failed := callCoordinate(t, agent, `{"action":"invite","discussion":"mgmt","source":"crit-chat","role":"critic"}`); failed {
+		t.Fatalf("critic invite refused: %s", out)
+	}
+	got := fake.contributed()
+	if len(got) != 2 {
+		t.Fatalf("want two contributions, got %#v", got)
+	}
+	if got[0].Inv.ID == got[1].Inv.ID || got[0].Inv.ActorID == got[1].Inv.ActorID {
+		t.Fatalf("planner and critic shared an invocation: %#v", got)
+	}
+}
+
+func TestRoleCollabConsultIsRegisteredAndIsNotPlanner(t *testing.T) {
+	tier, ok := roles.TierOf(roles.RoleCollabConsult)
+	if !ok {
+		t.Fatal("RoleCollabConsult is not registered")
+	}
+	if tier != roles.TierLow {
+		t.Fatalf("RoleCollabConsult sits on %q, want low", tier)
+	}
+	if roles.RoleCollabConsult == roles.RolePlanner {
+		t.Fatal("collab consult must not reuse RolePlanner")
 	}
 }
 

@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -168,6 +169,19 @@ func (c *sessionCollab) Pause(ctx context.Context) error {
 	return c.svc.PauseCoordination(ctx, c.chatID)
 }
 
+func (c *sessionCollab) Contribute(ctx context.Context, discussionID string, inv session.CollabInvocation, body string) error {
+	v3CollabMu.Lock()
+	router := v3CollabRouter
+	v3CollabMu.Unlock()
+	if router == nil {
+		return fmt.Errorf("%w: collaborator is absent", workspace.ErrInvalid)
+	}
+	_, err := router.Contribute(ctx, discussionID, wscollab.Invocation{
+		ID: inv.ID, ActorID: inv.ActorID, Role: inv.Role, Source: inv.Source,
+	}, body)
+	return err
+}
+
 type tuiCollab struct {
 	svc *wsapi.Service
 	mu  sync.Mutex
@@ -226,15 +240,19 @@ func (c *tuiCollab) Activity(ctx context.Context, coordinatorID string) ([]tui3.
 	if jobs == nil {
 		return nil, nil
 	}
-	rows, err := jobs.ListPendingDeliveries(ctx, coordinatorID)
+	rows, err := jobs.ListChatTraffic(ctx, coordinatorID)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]tui3.CollabActivity, 0, len(rows))
 	for _, d := range rows {
+		kind, source := collabPaintKind(coordinatorID, d)
+		if kind == "" {
+			continue
+		}
 		out = append(out, tui3.CollabActivity{
-			DeliveryID: d.ID, Pattern: d.Pattern, Body: d.Body, SourceRef: d.FromChatID,
-			Kind: collabActivityKind(d.Pattern),
+			DeliveryID: d.ID, Pattern: d.Pattern, Body: d.Body,
+			SourceRef: source, Kind: kind, ToTitle: source,
 		})
 	}
 	return out, nil
@@ -252,15 +270,19 @@ func (c *tuiCollab) Participants(ctx context.Context, discussionID string) ([]tu
 	return out, nil
 }
 
-func collabActivityKind(pattern string) string {
-	switch pattern {
-	case workspace.PatternFanout:
-		return "sent"
-	case workspace.PatternDiscussion:
-		return "reply"
-	default:
-		return "request"
+func collabPaintKind(coordinatorID string, d workspace.Delivery) (kind, source string) {
+	from := strings.TrimSpace(d.FromChatID)
+	to := strings.TrimSpace(d.ToChatID)
+	if to == coordinatorID && from != coordinatorID {
+		return "reply", from
 	}
+	if d.Pattern == workspace.PatternFanout {
+		return "sent", to
+	}
+	if d.Pattern == workspace.PatternDiscussion && from != coordinatorID {
+		return "reply", from
+	}
+	return "request", to
 }
 
 type wsapiCollaborator struct{ router *wscollab.Router }
