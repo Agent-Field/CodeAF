@@ -75,6 +75,7 @@ func openV3FolderServiceWith(embedder embed.Embedder) (*wsapi.Service, *discover
 	if adapter != nil {
 		svc.SetDiscoverer(adapter)
 	}
+	bindV3Collab(svc)
 	return svc, adapter
 }
 
@@ -113,6 +114,7 @@ func attachSurfaceFolders(options *tui3.Options, folders session.Folders) {
 		return
 	}
 	options.Folders = surfaceFolders(folders)
+	attachSurfaceCollab(options, folders)
 }
 
 func surfaceFolders(folders session.Folders) tui3.Folders {

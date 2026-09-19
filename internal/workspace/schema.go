@@ -149,7 +149,7 @@ CREATE TABLE participants (
  scope_kind TEXT NOT NULL DEFAULT '',
  folder_id TEXT NOT NULL DEFAULT '',
  snapshot_json TEXT NOT NULL DEFAULT '',
- origin TEXT NOT NULL CHECK(origin IN ('person','system_fallback','organizer')),
+ origin TEXT NOT NULL CHECK(origin IN ('person','system_fallback','organizer','agent')),
  actor TEXT NOT NULL DEFAULT '',
  created_at TEXT NOT NULL,
  updated_at TEXT NOT NULL
@@ -165,7 +165,7 @@ CREATE TABLE deliveries (
  pattern TEXT NOT NULL CHECK(pattern IN ('direct','fan-out','discussion')),
  state TEXT NOT NULL CHECK(state IN ('pending','accepted','recorded','processed')),
  body TEXT NOT NULL DEFAULT '',
- origin TEXT NOT NULL CHECK(origin IN ('person','system_fallback','organizer')),
+ origin TEXT NOT NULL CHECK(origin IN ('person','system_fallback','organizer','agent')),
  actor_id TEXT NOT NULL DEFAULT '',
  discussion_id TEXT NOT NULL DEFAULT '',
  idempotency_key TEXT NOT NULL DEFAULT '',

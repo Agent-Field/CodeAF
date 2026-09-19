@@ -88,21 +88,16 @@ type DiscussionView struct {
 	FolderIDs     []string
 }
 
-// collabRow is the participant/scope record the schema lane persists as
-// workspace.Participant. THE DOOR IS OPTIONAL: a v3 *workspace.Store does not
-// implement collabStore, so CoordinateSelected stays absent rather than
-// inventing a second participant table.
-type collabRow struct {
-	ID, DiscussionID, ActorID, Kind, Role, SourceChatID, Status string
-	ScopeKind, FolderID, SnapshotJSON                           string
-	Origin, Actor                                               string
-}
-
+// collabStore is the v4 participant door. *workspace.Store implements it;
+// a v3 fake in tests does too. A store that does not is absence, not a
+// second participant table.
 type collabStore interface {
-	PutParticipant(ctx context.Context, p collabRow) (collabRow, error)
-	ListParticipants(ctx context.Context, discussionID string) ([]collabRow, error)
+	PutParticipant(ctx context.Context, p workspace.Participant) (workspace.Participant, error)
+	ListParticipants(ctx context.Context, discussionID string) ([]workspace.Participant, error)
 	SetParticipantStatus(ctx context.Context, id, status string) error
 }
+
+var _ collabStore = (*workspace.Store)(nil)
 
 func (s *Service) requireCollabStore() (collabStore, error) {
 	if s == nil || s.store == nil {
@@ -286,18 +281,18 @@ func (s *Service) PauseCoordination(ctx context.Context, coordinatorID string) e
 	return wrapStoreError(c.SetParticipantStatus(ctx, row.ID, ParticipantPaused))
 }
 
-func (s *Service) writeCoordinatorScope(ctx context.Context, coordinatorID, kind, folderID, snapshot string) (collabRow, error) {
+func (s *Service) writeCoordinatorScope(ctx context.Context, coordinatorID, kind, folderID, snapshot string) (workspace.Participant, error) {
 	c, err := s.requireCollabStore()
 	if err != nil {
-		return collabRow{}, err
+		return workspace.Participant{}, err
 	}
-	row := collabRow{
+	row := workspace.Participant{
 		DiscussionID: coordinatorID, Kind: ActorKindChat, SourceChatID: coordinatorID,
 		Status: ParticipantActive, ScopeKind: kind, FolderID: folderID, SnapshotJSON: snapshot,
 		Origin: workspace.OriginPerson,
 	}
 	if existing, found, err := s.findCoordinator(ctx, c, coordinatorID); err != nil {
-		return collabRow{}, err
+		return workspace.Participant{}, err
 	} else if found {
 		row.ID, row.ActorID, row.Role = existing.ID, existing.ActorID, existing.Role
 	}
@@ -305,25 +300,25 @@ func (s *Service) writeCoordinatorScope(ctx context.Context, coordinatorID, kind
 	return stored, wrapStoreError(err)
 }
 
-func (s *Service) coordinatorRow(ctx context.Context, coordinatorID string) (collabRow, error) {
+func (s *Service) coordinatorRow(ctx context.Context, coordinatorID string) (workspace.Participant, error) {
 	c, err := s.requireCollabStore()
 	if err != nil {
-		return collabRow{}, err
+		return workspace.Participant{}, err
 	}
 	row, ok, err := s.findCoordinator(ctx, c, coordinatorID)
 	if err != nil {
-		return collabRow{}, err
+		return workspace.Participant{}, err
 	}
 	if !ok {
-		return collabRow{}, wrapStoreError(workspace.ErrNotFound)
+		return workspace.Participant{}, wrapStoreError(workspace.ErrNotFound)
 	}
 	return row, nil
 }
 
-func (s *Service) findCoordinator(ctx context.Context, c collabStore, coordinatorID string) (collabRow, bool, error) {
+func (s *Service) findCoordinator(ctx context.Context, c collabStore, coordinatorID string) (workspace.Participant, bool, error) {
 	people, err := c.ListParticipants(ctx, coordinatorID)
 	if err != nil {
-		return collabRow{}, false, wrapStoreError(err)
+		return workspace.Participant{}, false, wrapStoreError(err)
 	}
 	for _, row := range people {
 		if row.SourceChatID == coordinatorID && row.ScopeKind != "" {
@@ -335,7 +330,7 @@ func (s *Service) findCoordinator(ctx context.Context, c collabStore, coordinato
 			return row, true, nil
 		}
 	}
-	return collabRow{}, false, nil
+	return workspace.Participant{}, false, nil
 }
 
 func (s *Service) existingInvite(ctx context.Context, c collabStore, req InviteRequest) (ParticipantView, bool, error) {
@@ -431,7 +426,7 @@ func deliverPattern(req DeliverRequest) string {
 	return PatternDirect
 }
 
-func inviteRow(req InviteRequest) collabRow {
+func inviteRow(req InviteRequest) workspace.Participant {
 	kind := ActorKindChat
 	if req.Role != "" {
 		kind = ActorKindRole
@@ -439,13 +434,13 @@ func inviteRow(req InviteRequest) collabRow {
 	if req.SourceChatID == RootRepresentative {
 		kind = ActorKindFolder
 	}
-	return collabRow{
+	return workspace.Participant{
 		DiscussionID: req.DiscussionID, Kind: kind, Role: req.Role, SourceChatID: req.SourceChatID,
 		Status: ParticipantActive, Origin: OriginAgent,
 	}
 }
 
-func participantView(row collabRow) ParticipantView {
+func participantView(row workspace.Participant) ParticipantView {
 	return ParticipantView{
 		ActorID: row.ActorID, DiscussionID: row.DiscussionID, Kind: row.Kind,
 		Role: row.Role, SourceChatID: row.SourceChatID, Status: row.Status,

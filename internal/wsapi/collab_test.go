@@ -268,16 +268,16 @@ func TestPauseCoordinationDoesNotDropScope(t *testing.T) {
 	}
 }
 
-func TestOpenStoreLeavesCoordinationAbsent(t *testing.T) {
+func TestOpenStoreCoordinatesAndLeavesDeliverAbsentWithoutCollaborator(t *testing.T) {
 	ctx := context.Background()
 	svc := openSQLiteService(t)
-	_, err := svc.CoordinateSelected(ctx, CoordinateRequest{CoordinatorID: "mgmt", ChatIDs: []string{"a"}})
-	if !errors.Is(err, workspace.ErrInvalid) || !strings.Contains(err.Error(), "absent") {
-		t.Fatalf("v3 store must leave coordination absent: %v", err)
+	got, err := svc.CoordinateSelected(ctx, CoordinateRequest{CoordinatorID: "mgmt", ChatIDs: []string{"a"}})
+	if err != nil || got.Kind != ScopeSelected || !sameStrings(got.ChatIDs, []string{"a"}) {
+		t.Fatalf("production store must coordinate: %+v, %v", got, err)
 	}
-	got, err := svc.Deliver(ctx, DeliverRequest{FromChatID: "mgmt", Body: "hello", ToChatIDs: []string{"a"}})
-	if !errors.Is(err, workspace.ErrInvalid) || !strings.Contains(err.Error(), "absent") || got != nil {
-		t.Fatalf("nil collaborator on Open must not invent a receipt: %v, %v", got, err)
+	receipt, err := svc.Deliver(ctx, DeliverRequest{FromChatID: "mgmt", Body: "hello", ToChatIDs: []string{"a"}})
+	if !errors.Is(err, workspace.ErrInvalid) || !strings.Contains(err.Error(), "absent") || receipt != nil {
+		t.Fatalf("nil collaborator on Open must not invent a receipt: %v, %v", receipt, err)
 	}
 }
 

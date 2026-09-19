@@ -255,3 +255,20 @@ func TestDeliveryStatesStayDistinctAndOfflineStaysPending(t *testing.T) {
 		t.Fatalf("get: %+v, %v", got, err)
 	}
 }
+
+func TestBlankFilePutParticipantInitializesV4(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "blank.db")
+	s := openTestStore(t, path)
+	got, err := s.PutParticipant(ctx, Participant{DiscussionID: "mgmt", SourceChatID: "mgmt", Origin: OriginPerson, ScopeKind: ScopeSelected})
+	if err != nil || got.ID == "" {
+		t.Fatalf("blank put: %+v, %v", got, err)
+	}
+	if s.SchemaVersion() != 4 {
+		t.Fatalf("schema %d, want 4", s.SchemaVersion())
+	}
+	queued, err := s.PutDelivery(ctx, Delivery{ToChatID: "peer", Body: "hello", Origin: OriginAgent})
+	if err != nil || queued.Origin != OriginAgent || queued.State != DeliveryPending {
+		t.Fatalf("agent delivery: %+v, %v", queued, err)
+	}
+}
