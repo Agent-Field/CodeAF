@@ -296,6 +296,29 @@ func (a *Agent) openPlanReadHandles() ([]*plandb.Store, *planState, func()) {
 	}
 }
 
+// closePlanArchives closes every read handle this conversation kept on an ended
+// run's store. It takes the graph's plan gate to find the plan and the plan's
+// own gate to empty it, the same two every reader takes, and it never arms a
+// plan that was not armed: a conversation that read nothing holds nothing.
+func (a *Agent) closePlanArchives() {
+	g := a.graph()
+	if g == nil {
+		return
+	}
+	g.planMu.Lock()
+	plan := g.plan
+	g.planMu.Unlock()
+	if plan == nil {
+		return
+	}
+	plan.mu.Lock()
+	defer plan.mu.Unlock()
+	for path, store := range plan.archives {
+		_ = store.Close()
+		delete(plan.archives, path)
+	}
+}
+
 // openPlanHandle opens the run's store for one pass — a reading verb or one of
 // the person's steering writes (plandb_steer.go) — under the plan gate the way
 // every pulse takes it, and answers the store, its plan and the close to run. A

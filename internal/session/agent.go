@@ -2194,6 +2194,10 @@ func (a *Agent) Close() error {
 	// on takes `a.mu` to read or replace what it is writing, so a call from inside
 	// the lock would wait forever on work waiting for this goroutine.
 	a.SettleWrites()
+	// AND THE ENDED RUNS' STORES ARE GIVEN BACK. They are held open for the life
+	// of the conversation because an ended store never changes ([planState.archives]),
+	// and this is where that life ends. A second close finds none.
+	a.closePlanArchives()
 	a.mu.Lock()
 	if a.closed {
 		// A SECOND CLOSE WAITS FOR THE FIRST, AND DOES NOT ANSWER OVER THE TOP

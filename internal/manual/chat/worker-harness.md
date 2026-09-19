@@ -103,7 +103,9 @@ has started.
 
 Yes. Every run this conversation has made stays on the rail, oldest first. You
 can open any task from an earlier run and read its description, notes, steps and
-spend. An ended run is there to read, not to steer.
+spend. An ended run is there to read, not to steer: a note, pause, resume, cancel,
+amend or priority on one of its tasks answers `that task's run has ended` and changes
+nothing. Only the run that is underway takes those.
 
 ## Why is this task indented under that one?
 
