@@ -159,20 +159,20 @@ type Task struct {
 	// SeenAt is when the claim's owner was last seen alive: Claim stamps it,
 	// every pass of the owning process touches it, and StaleClaims reads it. A
 	// task with no claim carries the zero time.
-	SeenAt      time.Time `json:"seen_at,omitempty"`
-	Result      string    `json:"result,omitempty"`
-	Error       string    `json:"error,omitempty"`
-	Artifacts   []string  `json:"artifacts,omitempty"`
-	Evidence    []string  `json:"evidence,omitempty"`
+	SeenAt    time.Time `json:"seen_at,omitempty"`
+	Result    string    `json:"result,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	Artifacts []string  `json:"artifacts,omitempty"`
+	Evidence  []string  `json:"evidence,omitempty"`
 	// VerdictBasis is HOW this task's verdict was earned: whether a check on it
 	// read the work or ran the declared proof, and the recorded exit of every
 	// run. It is written when the verdict lands, by the same gate that judged
 	// it, and it persists so a later reader never has to reopen a trajectory.
 	// A task with no verdict carries the zero value.
 	VerdictBasis VerdictBasis `json:"verdict_basis,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	CompletedAt time.Time `json:"completed_at,omitempty"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+	CompletedAt  time.Time    `json:"completed_at,omitempty"`
 	// ArchivedAt is set only on the tasks Store.Archived reads back — the
 	// moment the archive took the row out of the live plan. A live task
 	// carries the zero time, because the tasks table has no such column.
