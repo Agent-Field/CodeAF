@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,7 +80,7 @@ func TestSurfaceFilesAsPersonAndTheToolSeamFilesAsOrganizer(t *testing.T) {
 		t.Fatalf("TUI origin %q, want person", why.Origin)
 	}
 
-	if err := folders.File(ctx, created.ID, "bbbbbbbbbbbbbbbb", workspace.Provenance{
+	if err := folders.File(ctx, created.ID, workspace.Ref{Kind: workspace.ConversationKind, ID: "bbbbbbbbbbbbbbbb"}, workspace.Provenance{
 		Origin: workspace.OriginPerson,
 		Actor:  "model",
 	}); err != nil {
@@ -122,11 +123,10 @@ func TestAdapterRenameAndNestedKindSurviveTwoParents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nest := workspace.Provenance{Origin: workspace.OriginPerson, Reason: "nest"}
-	if err := svc.AddPlacement(ctx, billing.ID, workspace.Ref{Kind: workspace.CollectionKind, ID: receipts.ID}, nest); err != nil {
+	if err := folders.AddFolderPlacement(ctx, billing.ID, receipts.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.AddPlacement(ctx, security.ID, workspace.Ref{Kind: workspace.CollectionKind, ID: receipts.ID}, nest); err != nil {
+	if err := folders.AddFolderPlacement(ctx, security.ID, receipts.ID); err != nil {
 		t.Fatal(err)
 	}
 	chat := workspace.Ref{Kind: workspace.ConversationKind, ID: "aaaaaaaaaaaaaaaa"}
@@ -183,6 +183,90 @@ func TestAdapterRenameAndNestedKindSurviveTwoParents(t *testing.T) {
 	}
 	if len(receiptMembers) != 1 || receiptMembers[0].RefID != chat.ID {
 		t.Fatalf("renamed folder lost its chat: %+v", receiptMembers)
+	}
+	why, err := svc.WhyHere(ctx, billing.ID, collectionRef(receipts.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if why.Event.Origin != workspace.OriginPerson {
+		t.Fatalf("TUI nest origin %q, want person", why.Event.Origin)
+	}
+}
+
+func TestAdapterAddFolderPlacementRefusesACycle(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "collections.db")
+	svc, err := wsapi.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	folders := newFoldersAdapter(svc)
+	billing, err := folders.CreateFolder(ctx, "Billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts, err := folders.CreateFolder(ctx, "Receipts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := folders.AddFolderPlacement(ctx, billing.ID, receipts.ID); err != nil {
+		t.Fatal(err)
+	}
+	err = folders.AddFolderPlacement(ctx, receipts.ID, billing.ID)
+	if !errors.Is(err, workspace.ErrCycle) {
+		t.Fatalf("cycle returned %v, want ErrCycle", err)
+	}
+	_, members, err := folders.FolderSnapshot(ctx, receipts.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, place := range members {
+		if place.RefID == billing.ID {
+			t.Fatalf("cycle left a reverse edge: %+v", members)
+		}
+	}
+}
+
+func TestSessionFoldersFileNestsACollectionRef(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "collections.db")
+	svc, err := wsapi.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	folders := newSessionFolders(svc)
+	surface := newFoldersAdapter(svc)
+	billing, err := surface.CreateFolder(ctx, "Billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts, err := surface.CreateFolder(ctx, "Receipts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	security, err := surface.CreateFolder(ctx, "Security")
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := workspace.Ref{Kind: workspace.CollectionKind, ID: receipts.ID}
+	if err := folders.File(ctx, billing.ID, child, workspace.Provenance{Actor: "session"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := folders.File(ctx, security.ID, child, workspace.Provenance{Actor: "session"}); err != nil {
+		t.Fatal(err)
+	}
+	_, members, err := surface.FolderSnapshot(ctx, billing.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 1 || members[0].Kind != string(workspace.CollectionKind) || members[0].RefID != receipts.ID {
+		t.Fatalf("session File did not nest a collection: %+v", members)
+	}
+	err = folders.File(ctx, receipts.ID, workspace.Ref{Kind: workspace.CollectionKind, ID: billing.ID}, workspace.Provenance{Actor: "session"})
+	if !errors.Is(err, workspace.ErrCycle) {
+		t.Fatalf("session cycle returned %v, want ErrCycle", err)
 	}
 }
 
