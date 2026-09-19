@@ -233,7 +233,7 @@ func TestBindSessionEmbedderUpgradesThePin(t *testing.T) {
 }
 
 func TestProductionBindDoesNotUseTheTestFake(t *testing.T) {
-	for _, name := range []string{"discovery_adapter.go", "chatv3_folders.go", "chatv3.go", "chatv3_process.go", "chatv3_embed.go"} {
+	for _, name := range []string{"discovery_adapter.go", "chatv3_folders.go", "chatv3.go", "chatv3_process.go", "chatv3_embed.go", "organize_bind.go", "chatv3_standing.go"} {
 		body, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
@@ -247,7 +247,7 @@ func TestProductionBindDoesNotUseTheTestFake(t *testing.T) {
 func TestBindFunctionsStayUnderTheCeiling(t *testing.T) {
 	const ceiling = 15
 	set := token.NewFileSet()
-	for _, name := range []string{"discovery_adapter.go", "chatv3_folders.go"} {
+	for _, name := range []string{"discovery_adapter.go", "chatv3_folders.go", "organize_bind.go"} {
 		source, err := parser.ParseFile(set, name, nil, 0)
 		if err != nil {
 			t.Fatal(err)

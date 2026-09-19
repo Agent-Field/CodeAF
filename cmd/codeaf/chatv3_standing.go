@@ -172,21 +172,25 @@ func v3MemoryPath(profileDir string) string {
 // collections.db for this pass and closes it afterwards, the same bargain as
 // tidy: a ticker rebuilt every five minutes must not hold a writer all day.
 // A store that will not open is silent — absent, not a stub that claims the
-// workspace was checked. The organizer itself is unbound until the session
-// lane wires RoleOrganize; ProcessOrganizeJobs then leaves pending rows
-// pending rather than inventing membership.
+// workspace was checked. The organizer is the production bind at
+// [v3Organizer]; a nil organizer (construction failed) still leaves pending
+// rows pending rather than inventing membership.
 func v3OrganizePass(profileDir string) func(context.Context) error {
+	return v3OrganizePassWith(profileDir, v3Organizer())
+}
+
+func v3OrganizePassWith(profileDir string, work session.Organizer) func(context.Context) error {
 	return func(ctx context.Context) error {
 		store, err := workspace.Open(collectionsPath())
 		if err != nil {
 			return nil
 		}
 		defer store.Close()
-		return session.ProcessOrganizeJobs(ctx, store, v3Organizer(), config.OrganizeEnabledAt(profileDir), time.Now())
+		return session.ProcessOrganizeJobs(ctx, store, work, config.OrganizeEnabledAt(profileDir), time.Now())
 	}
 }
 
-func v3Organizer() session.Organizer { return nil }
+func v3Organizer() session.Organizer { return newDoorOrganizer(v3TickEmbedder(), nil) }
 
 // v3StandingPosture is the config a firing inherits: the person's models, keys,
 // accounts and approval rules, resolved against their HOME rather than against
