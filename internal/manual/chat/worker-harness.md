@@ -64,6 +64,23 @@ shows, in order, each section left out when nothing is behind it:
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
 
+## Open a run's task from the side list — click its row, or one of its parts
+
+With the switch on, a run is drawn in the conversation's side list as its own row,
+`#N`, with its parts and their checks hanging under it. Every one of those rows is a
+door: click the run's row, or select it and press `enter`, and its page opens over the
+conversation; click a part's row or a check's row and THAT task's page opens. The page
+is the one the tasks place opens: what the task was asked, its notes, its steps, and the
+box that leaves a note. `esc` goes back to the conversation exactly as you left it, with
+whatever you had typed still in the box.
+
+A page opened on a task that is still running follows it, one read at a time, and stops
+reading when the task has settled. A step whose command is many lines long is drawn as
+its first line and `…`; what ran is unchanged.
+
+A row the store has no page for opens what it always opened, its room. That is every
+task when the switch is off, and a task of an earlier run once a later run has started.
+
 ## Why is this task indented under that one?
 
 The pane draws the run's **plan as a tree, not a flat list**. A task sits under the
