@@ -291,8 +291,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 // pass takes one look at the store, launches what is ready, and answers the
 // run's outcome word when the run is over — an empty word means it is not.
 func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
-	root := s.store.Task(rootID)
-	if root == nil {
+	if s.store.Task(rootID) == nil {
 		return OutcomeCannotRun
 	}
 	s.endCancelledWorkers()
@@ -301,6 +300,16 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	// that needs ending, and absorbing it is what seats its review; so every
 	// one of them is read before this pass looks at the root's ending.
 	s.absorbQueued()
+	// THE ROOT IS READ AFTER THE RETURNS ARE ABSORBED, NEVER BEFORE. Absorbing a
+	// return can seat a review beneath a root that already reads done, which
+	// moves that root back to waiting on it ([plandb.Store.AddReviewCheck]). A
+	// row read before that would still say done, and the pass would answer done
+	// over a review that had not run: the forced order in review_order_test.go
+	// did exactly that every time.
+	root := s.store.Task(rootID)
+	if root == nil {
+		return OutcomeCannotRun
+	}
 	// TAKE-OVER, EVERY PASS: refresh this process's own claims so they never
 	// read stale, then hand back any claim whose process has stopped touching
 	// it, so the ready read below offers it again. Our own claims are fresh
@@ -711,10 +720,12 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 		Role:        plandb.RoleCheck,
 	}
 	var err error
-	_, err = s.store.AddRootCheck(spec)
+	_, err = s.store.AddReviewCheck(spec)
 	if err != nil {
-		// Refusing a review is a failed run, never a successful ending with the
-		// required round silently absent.
+		// A REVIEW THE STORE WOULD NOT SEAT FAILS THE RUN. It used to be dropped
+		// here without a word, and the run then answered done with the round
+		// silently absent. A run that could not review finished work has not
+		// finished, and says so.
 		s.rootFailed = true
 		return
 	}
@@ -1143,9 +1154,16 @@ func childIDs(tasks []*plandb.Task, id string) map[string]bool {
 	return set
 }
 
-// landed distinguishes a terminal store row from a finished worker return the
-// run has absorbed. Failed and cancelled rows are landed immediately; a Done
-// row is not landed while its worker is still out.
+// landed answers whether a task's ending has reached the run. A LANDING IS A
+// RETURN THE RUN HAS ABSORBED, NOT A STORE ROW. A worker writes its own done to
+// the store and only then comes home, and its return is what seats its review;
+// so a row that reads done while its worker is still out is finished work the
+// run has not taken in yet, and nothing that waits on a landing (the root's
+// completion, a parent's wake, the run's own answer) may go ahead on it. The
+// wait is bounded by the worker: it reads its own row at the end of the step it
+// is in and comes home. A failed or cancelled row has no review to seat, its
+// worker is ended by the pass ([Supervisor.endCancelledWorkers]), and it counts
+// as landed at once.
 func landed(task *plandb.Task, cancels map[string]context.CancelFunc) bool {
 	if task == nil || !terminalStatus(task.Status) {
 		return false
@@ -1156,6 +1174,8 @@ func landed(task *plandb.Task, cancels map[string]context.CancelFunc) bool {
 
 func (s *Supervisor) landed(task *plandb.Task) bool { return landed(task, s.cancels) }
 
+// hasUnlandedDone answers whether any worker still out has already written its
+// own done: finished work whose return, and so whose review, is still to come.
 func (s *Supervisor) hasUnlandedDone() bool {
 	for id := range s.cancels {
 		if task := s.store.Task(id); task != nil && task.Status == plandb.StatusDone {
@@ -1165,6 +1185,9 @@ func (s *Supervisor) hasUnlandedDone() bool {
 	return false
 }
 
+// childrenAllLanded answers whether a task has children and every one of them
+// has landed ([landed]). A composite with no children is not one whose landings
+// can wake it.
 func childrenAllLanded(tasks []*plandb.Task, id string, cancels map[string]context.CancelFunc) bool {
 	has := false
 	for _, child := range tasks {

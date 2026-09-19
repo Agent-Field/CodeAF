@@ -490,12 +490,22 @@ func (s *Store) ClaimWake(id, agent string, owner ...string) (*Task, error) {
 	})
 }
 
-// AddRootCheck admits the one child a terminal root may still need: its review
-// check. A ROOT IS NOT DONE UNTIL ITS CHECK HAS LANDED, whoever wrote its
-// ending, so this one transaction preserves the root's result, moves it back
-// to waiting on the check, and adds that check beneath it. Every other child of
-// a terminal task continues to be refused by AddMany.
-func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
+// AddReviewCheck seats a review check beneath its parent WHATEVER THE PARENT HAS
+// WRITTEN ABOUT ITSELF MEANWHILE. A finished piece of work is reviewed when its
+// worker's return reaches the run, and that can be after the task above it has
+// written its own done: a worker still in its turn may finish the moment its
+// children's rows read done, and the store admits that because every child it
+// has IS finished. The review then has to go beneath a task that reads done,
+// which [Store.AddMany] refuses for every child, and rightly.
+//
+// A TASK IS NOT DONE UNTIL THE REVIEWS BENEATH IT HAVE LANDED, whoever wrote its
+// ending. So this one transaction adds the check and moves every done ancestor
+// back to waiting on it, each keeping the result it earned. The root is
+// completed again by the run once the tree is whole ([Store.CompleteRoot]); a
+// task between closes the way any composite nobody is working closes, when its
+// children are all terminal ([promote]). NOTHING BUT A CHECK COMES IN THIS WAY:
+// every other child of a terminal task continues to be refused by AddMany.
+func (s *Store) AddReviewCheck(spec TaskSpec) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var id string
@@ -506,7 +516,7 @@ func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
 			return err
 		}
 		if spec.Role != RoleCheck {
-			return errors.New("a late review child must have role check")
+			return errors.New("only a review check is seated this way: the child must have role check")
 		}
 		if next.Tasks[spec.ID] != nil {
 			return fmt.Errorf("duplicate task id %q", spec.ID)
