@@ -3760,12 +3760,23 @@ func (a *Agent) wakeLocked() bool {
 	// ceiling rides the context the turn is started with, and the turn opens its
 	// window for itself once it is running ([Agent.runTurn], because the window's
 	// length is read off the Steward's own clock).
-	ctx := context.Background()
+	ctx := a.wokenTurnContext()
 	if wake, settle := a.settleWakeLocked(); settle {
 		ctx = withSettleWake(ctx, wake)
 	}
 	a.startTurnLocked(ctx, userMessage{wake: true}, sink, watchers...)
 	return true
+}
+
+// wokenTurnContext is what a turn nobody submitted starts under: the plain
+// background, unless a fixture supplied a base ([Agent.wokenTurnBase]).
+func (a *Agent) wokenTurnContext() context.Context {
+	if a.wokenTurnBase != nil {
+		if ctx := a.wokenTurnBase(); ctx != nil {
+			return ctx
+		}
+	}
+	return context.Background()
 }
 
 // Wakes is the standing subscription to turns THE SESSION STARTED ON ITS OWN:
