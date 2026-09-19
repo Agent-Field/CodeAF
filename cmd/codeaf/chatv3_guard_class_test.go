@@ -13,7 +13,10 @@ import (
 
 // TestV3ProcessGuardGoClass is the inventory law for goroutines started by a
 // v3 process or launch. A long-lived writer must identify both its stop and the
-// closeAll join. The three known-open rows name the later cells that own them;
+// closeAll join. chatv3/models and engine/models name the process waiter, joined
+// since #1179; the internal/catalog catalog/warm goroutine each one starts is a
+// separate open writer one package down, owned by the catalog-warm-close cell.
+// The remaining known-open row (chatv3/sweep-home) names the later cell that owns it;
 // deleting a row is part of landing that cell.
 func TestV3ProcessGuardGoClass(t *testing.T) {
 	type class struct {
@@ -23,8 +26,8 @@ func TestV3ProcessGuardGoClass(t *testing.T) {
 		"chatv3/standing":         {kind: "joined writer", stop: "v3Process.standingStop", join: "v3Process.closeAll calls stopStandingTicks"},
 		"chatv3/standing-stop":    {kind: "joined helper", stop: "standingStop is closed", join: "chatv3/standing closes standingDone after this helper returns"},
 		"pool/judge-sweep":        {kind: "joined writer", stop: "pool errand context", join: "v3Process.closeAll calls stopPoolErrands"},
-		"chatv3/models":           {kind: "KNOWN-OPEN writer", owner: "later model-warm ownership cell (class target two)"},
-		"engine/models":           {kind: "KNOWN-OPEN writer", owner: "later model-warm ownership cell (class target two)"},
+		"chatv3/models":           {kind: "joined waiter, downstream catalog/warm still open", stop: "warmModels waiter on the pool errand context", join: "v3Process.closeAll calls stopPoolErrands, joining the waiter since #1179; the internal/catalog catalog/warm it starts is not yet joined, owned by the catalog-warm-close cell"},
+		"engine/models":           {kind: "joined waiter, downstream catalog/warm still open", stop: "warmModels waiter on the pool errand context", join: "v3Process.closeAll calls stopPoolErrands, joining the waiter since #1179; the internal/catalog catalog/warm it starts is not yet joined, owned by the catalog-warm-close cell"},
 		"chatv3/sweep-home":       {kind: "KNOWN-OPEN writer", owner: "later home-sweep ownership cell (class target three)"},
 		"chatv3/background":       {kind: "one-shot", stop: "repairBackgroundChecks returns after one bounded Drift/Install pass"},
 		"chatv3/once-questions":   {kind: "one-shot", stop: "agent.Close closes the WatchQuestions channel consumed by the range"},
