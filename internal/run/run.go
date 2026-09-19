@@ -300,7 +300,9 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			// endings: a return that was dropped would leave its task claimed and
 			// reading as running on a run that is over, and what the worker spent
 			// before it was cut would be missing from the run's account.
-			s.limitHit = LimitTime
+			if s.limitHit == "" {
+				s.limitHit = LimitTime
+			}
 			elapsed = nil
 			for _, cancel := range s.cancels {
 				cancel()
@@ -574,7 +576,10 @@ func (s *Supervisor) settleSpend(ret workerReturn) {
 		s.spent += ret.report.USD - counted
 	}
 	s.forgetLive(ret.task.ID)
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
+	// THE LIMIT THAT ENDED THE RUN IS THE FIRST ONE REACHED. A return that carries
+	// the spend past the dollar limit after the time limit already ended the run
+	// does not rename the ending.
+	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
 		s.limitHit = LimitCost
 	}
 	s.publishSpend()
