@@ -101,10 +101,13 @@ type v3Process struct {
 	// mu guards everything below: the lazily opened history file and the list of
 	// agents this process has built. Both are touched from the surface's
 	// goroutine and from the door's defer, which are not the same one.
-	mu     sync.Mutex
-	recall *history.Store
-	agents []*session.Agent
-	closed bool
+	mu              sync.Mutex
+	recall          *history.Store
+	agents          []*session.Agent
+	standingStarted bool
+	standingStop    chan struct{}
+	standingDone    chan struct{}
+	closed          bool
 }
 
 // openV3Process builds the once-only half of a v3 launch.
@@ -422,6 +425,11 @@ func (p *v3Process) closeAll() {
 	// the seam). It runs first, before the conversations and the stores, because
 	// it is the process's own errand and not a conversation's.
 	stopPoolErrands(p.ProfileDir)
+
+	// Stop the standing clock before closing anything it may borrow. Waiting
+	// for its loop also waits for a pass already in flight, so no standing
+	// writer can outlive this process close.
+	p.stopStandingTicks()
 
 	var waiting sync.WaitGroup
 	for _, agent := range agents {

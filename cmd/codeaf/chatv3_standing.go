@@ -237,23 +237,64 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 // [standing.ErrHeld] is SILENT: another window is ticking, which is the design
 // working rather than a fault, and a log line per five minutes per window would
 // be a file nobody could read.
-func startStandingTicks(store *standing.Store) {
-	if store == nil {
+var standingTickInterval = standing.Interval
+
+func (p *v3Process) startStandingTicks(store *standing.Store) {
+	if p == nil || store == nil {
 		return
 	}
-	standingOnce.Do(func() {
-		guard.Go("chatv3/standing", func() {
-			standingTicks.Store(true)
-			ticker := time.NewTicker(standing.Interval)
-			defer ticker.Stop()
-			for range ticker.C {
+	stop, done, started := p.takeStandingStart()
+	if !started {
+		return
+	}
+
+	guard.Go("chatv3/standing", func() {
+		standingTicks.Store(true)
+		ticker := time.NewTicker(standingTickInterval)
+		defer func() {
+			ticker.Stop()
+			standingTicks.Store(false)
+			close(done)
+		}()
+		for {
+			select {
+			case <-ticker.C:
 				runStandingTick(store)
+			case <-stop:
+				return
 			}
-		})
+		}
 	})
 }
 
-var standingOnce sync.Once
+func (p *v3Process) takeStandingStart() (stop, done chan struct{}, started bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.standingStarted {
+		return nil, nil, false
+	}
+	p.standingStarted = true
+	p.standingStop = make(chan struct{})
+	p.standingDone = make(chan struct{})
+	return p.standingStop, p.standingDone, true
+}
+
+func (p *v3Process) stopStandingTicks() {
+	stop, done := p.takeStandingStop()
+	if stop == nil {
+		return
+	}
+	close(stop)
+	<-done
+}
+
+func (p *v3Process) takeStandingStop() (stop, done chan struct{}) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	stop, done = p.standingStop, p.standingDone
+	p.standingStop, p.standingDone = nil, nil
+	return stop, done
+}
 
 // standingTicks is whether the loop above is actually running in this process,
 // and [standingTicking] is how the surface asks ([tui3.StandingSeam.Ticking]).
