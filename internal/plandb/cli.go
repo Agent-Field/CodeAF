@@ -2042,29 +2042,29 @@ func cliProjectID(name string) string {
 // carries, ids spelled with their t- prefix, and no field the store has no
 // answer for.
 type cliTaskJSON struct {
-	ID           string       `json:"id"`
-	ProjectID    string       `json:"project_id"`
-	ParentTaskID *string      `json:"parent_task_id"`
-	IsComposite  bool         `json:"is_composite"`
-	Paused       bool         `json:"paused,omitempty"`
-	Title        string       `json:"title"`
-	Description  string       `json:"description"`
-	Status       Status       `json:"status"`
-	Role         string       `json:"role,omitempty"`
-	Kind         string       `json:"kind"`
-	Priority     int          `json:"priority"`
-	Parallel     string       `json:"parallel,omitempty"`
-	Isolation    string       `json:"isolation,omitempty"`
-	Dependencies []cliDepJSON `json:"dependencies,omitempty"`
-	Checks       []string     `json:"checks,omitempty"`
+	ID           string        `json:"id"`
+	ProjectID    string        `json:"project_id"`
+	ParentTaskID *string       `json:"parent_task_id"`
+	IsComposite  bool          `json:"is_composite"`
+	Paused       bool          `json:"paused,omitempty"`
+	Title        string        `json:"title"`
+	Description  string        `json:"description"`
+	Status       Status        `json:"status"`
+	Role         string        `json:"role,omitempty"`
+	Kind         string        `json:"kind"`
+	Priority     int           `json:"priority"`
+	Parallel     string        `json:"parallel,omitempty"`
+	Isolation    string        `json:"isolation,omitempty"`
+	Dependencies []cliDepJSON  `json:"dependencies,omitempty"`
+	Checks       []string      `json:"checks,omitempty"`
 	VerdictBasis *VerdictBasis `json:"verdict_basis,omitempty"`
-	ClaimedBy    string       `json:"claimed_by,omitempty"`
-	Result       string       `json:"result,omitempty"`
-	Error        string       `json:"error,omitempty"`
-	CreatedAt    time.Time    `json:"created_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
-	CompletedAt  *time.Time   `json:"completed_at,omitempty"`
-	ArchivedAt   *time.Time   `json:"archived_at,omitempty"`
+	ClaimedBy    string        `json:"claimed_by,omitempty"`
+	Result       string        `json:"result,omitempty"`
+	Error        string        `json:"error,omitempty"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
+	CompletedAt  *time.Time    `json:"completed_at,omitempty"`
+	ArchivedAt   *time.Time    `json:"archived_at,omitempty"`
 }
 
 type cliDepJSON struct {
