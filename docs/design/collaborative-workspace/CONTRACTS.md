@@ -135,8 +135,10 @@ Deduplicate conversation IDs in counts. Expected-revision conflicts return `work
 - Snapshot is a memo filled on the home **beat** (`readHomeFolders`), never in `View` or on cursor move.
 - `homeFolderRow = 246`, `homeFolderBack = 247`. Member chats reuse `homeSession` with `cell.panel == panelFolders`.
 - `app.pendingFolder` string: set by `n` / `/folders` new; consumed after first-message `renew`/`startChatEnter` via `AddPlacement`. Esc clears it and creates no transcript.
-- `Options.Folders` is `*wsapi.Service` (nil ⇒ panel still draws whisper; mutations no-op with a note).
+- `Options.Folders` is a TUI interface (`type Folders interface`) with the snapshot/mutate methods the panel needs. Nil ⇒ panel still draws the whisper; mutations no-op with a note. `*wsapi.Service` must satisfy it (wiring may wrap). TUI must not import `internal/workspace`. TUI may keep small local view structs if `wsapi` is not on the branch yet.
 - 80-col: sequential drill-in, `esc` back. No model on paint.
+
+`wsapi.Service` should itself talk to a `store` interface matching the frozen `workspace.Store` methods so service tests can use a fake while storage is in another worktree. `Open` still calls `workspace.Open`.
 
 ## Session / CLI (wiring)
 
