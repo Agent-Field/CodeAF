@@ -117,6 +117,7 @@ type execAdmission struct {
 	personRequest string
 	personWords   string
 	road          string
+	control       string
 	assignment    taskAssignment
 }
 
@@ -262,6 +263,86 @@ func refuseModelPersonOrigin(id string) error {
 		return errModelPersonOrigin
 	}
 	return nil
+}
+
+// PauseAdmitted parks an admitted session-task node, or PlanPause on the
+// bash-run road. It is pause work, not pause coordination.
+func (a *Agent) PauseAdmitted(workID string) error {
+	held, err := a.lookupAdmission(workID)
+	if err != nil {
+		return err
+	}
+	if node := a.taskNode(held.id); node != nil {
+		node.park()
+	} else if held.road == execRoadBash {
+		if err := a.PlanPause(strconv.FormatUint(held.id, 10)); err != nil {
+			return err
+		}
+	}
+	a.execMu.Lock()
+	held.control = BindPausedWord
+	a.execMu.Unlock()
+	return nil
+}
+
+// StopAdmitted cancels the admitted run/task. History remains. This is not
+// pause coordination.
+func (a *Agent) StopAdmitted(workID string) error {
+	held, err := a.lookupAdmission(workID)
+	if err != nil {
+		return err
+	}
+	_, err = a.Cancel(strconv.FormatUint(held.id, 10))
+	if err != nil {
+		return err
+	}
+	a.execMu.Lock()
+	held.control = BindStoppedWord
+	a.execMu.Unlock()
+	return nil
+}
+
+// InspectAdmitted is the Runtime inspect door: software-derived state from
+// the admission index and the live node, never a fabricated completed view.
+func (a *Agent) InspectAdmitted(workID string) (ExecView, error) {
+	held, err := a.lookupAdmission(workID)
+	if err != nil {
+		return ExecView{}, err
+	}
+	return admittedView(held, a.taskNode(held.id)), nil
+}
+
+// ObserveAdmitted is inspect plus a detail line. Empty work is pending,
+// never a fake 100%.
+func (a *Agent) ObserveAdmitted(workID string) (ExecResult, error) {
+	view, err := a.InspectAdmitted(workID)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{WorkID: view.WorkID, RunInstanceID: view.RunInstanceID, State: view.State}, nil
+}
+
+const (
+	BindPausedWord  = "paused"
+	BindStoppedWord = "stopped"
+)
+
+func admittedView(held *execAdmission, node *TaskNode) ExecView {
+	view := ExecView{
+		WorkID: held.requestKey, RequestKey: held.requestKey,
+		RunInstanceID: strconv.FormatUint(held.id, 10), Road: held.road,
+		State: "bound",
+	}
+	if node != nil {
+		view.State = string(node.stateNow())
+		if node.wasStopped() {
+			view.State = BindStoppedWord
+		}
+	}
+	if held.control != "" {
+		view.State = held.control
+	}
+	return view
 }
 
 func formatExecView(v ExecView) string {
