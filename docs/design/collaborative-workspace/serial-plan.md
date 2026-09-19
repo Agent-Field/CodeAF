@@ -21,10 +21,10 @@ GitHub issues (filled after `gh issue create`):
 
 | # | Title | Issue | Journeys |
 |---|---|---|---|
-| 1 | Folders you can see: Root, shared membership, and new chats that stay themselves | _pending_ | J01–J08 |
-| 2 | Semantic discovery, automatic filing, and scoped folder instructions | _pending_ | J09–J18 |
-| 3 | Inspectable collaboration: ordinary chats coordinate, with optional shared discussion | _pending_ | J19–J26 |
-| 4 | Safe execution: launch-or-join, authority, and unattended recovery | _pending_ | J27–J35 |
+| 1 | Folders you can see: Root, shared membership, and new chats that stay themselves | [#1216](https://github.com/Agent-Field/CodeAF/issues/1216) | J01–J08 |
+| 2 | Semantic discovery, automatic filing, and scoped folder instructions | [#1217](https://github.com/Agent-Field/CodeAF/issues/1217) | J09–J18 |
+| 3 | Inspectable collaboration: ordinary chats coordinate, with optional shared discussion | [#1218](https://github.com/Agent-Field/CodeAF/issues/1218) | J19–J26 |
+| 4 | Safe execution: launch-or-join, authority, and unattended recovery | [#1219](https://github.com/Agent-Field/CodeAF/issues/1219) | J27–J35 |
 
 ---
 
