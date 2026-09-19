@@ -497,10 +497,10 @@ type Options struct {
 	Collab Collab
 
 	// Exec is the Wave 4 launch-state seam: software-derived run state on
-	// the discussion and folder preview, plus pause coordination and stop
-	// work as two verbs. Nil is no launch-state chrome; natural-language
-	// launch still works if session.Config.Exec is wired. Wiring owns a
-	// separate adapter (var _ Exec); Collab does not grow launch verbs.
+	// the discussion and folder preview, plus pause coordination, stop
+	// work, and revoke grant as three verbs. Nil is no launch-state chrome;
+	// natural-language launch still works if session.Config.Exec is wired.
+	// Wiring owns a separate adapter (var _ Exec); Collab does not grow launch verbs.
 	Exec Exec
 
 	// ── THE PLACES FOLLOW THE SESSION'S MACHINE ─────────────────────────────

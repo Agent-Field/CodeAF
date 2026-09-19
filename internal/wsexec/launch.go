@@ -51,7 +51,30 @@ func (a *Adapter) joinBy(ctx context.Context, req LaunchRequest, key string, loo
 	if !joinable(got.State) {
 		return WorkView{}, false, nil
 	}
-	return a.recordJoin(ctx, req, got)
+	return a.finishJoin(ctx, req, got)
+}
+
+// finishJoin records the joining chat, then continues a reserved row that
+// never received a runtime. Tick/host LaunchOrJoin lands here: Recover finds
+// an already-accepted key (A14) and must not Admit; this path Admits once
+// when the reserved intent is still waiting on a host.
+func (a *Adapter) finishJoin(ctx context.Context, req LaunchRequest, got ExecutionBinding) (WorkView, bool, error) {
+	view, ok, err := a.recordJoin(ctx, req, got)
+	if err != nil || !ok {
+		return view, ok, err
+	}
+	if !needsAdmit(got) {
+		return view, true, nil
+	}
+	continued, err := a.admitHeld(ctx, req, got)
+	if err != nil {
+		if errors.Is(err, ErrAbsent) {
+			return view, true, nil
+		}
+		return WorkView{}, false, err
+	}
+	continued.Joined = true
+	return continued, true, nil
 }
 
 // recordJoin writes the joining chat onto the existing row. ADDITIVE: it does
@@ -83,23 +106,34 @@ func (a *Adapter) admitNew(ctx context.Context, req LaunchRequest) (WorkView, er
 	if stored.RunInstanceID != "" || !needsAdmit(stored) {
 		return bindingView(stored, true), nil
 	}
-	found, ok, err := a.runtime.FindByRequestKey(ctx, stored.RequestKey)
+	return a.admitHeld(ctx, req, stored)
+}
+
+// admitHeld Admits one already-reserved row. FindByRequestKey first so a
+// runtime that already accepted this key is bound, not launched twice.
+func (a *Adapter) admitHeld(ctx context.Context, req LaunchRequest, held ExecutionBinding) (WorkView, error) {
+	found, ok, err := a.runtime.FindByRequestKey(ctx, held.RequestKey)
 	if err != nil {
 		return WorkView{}, err
 	}
 	if ok {
-		return a.bindFound(ctx, stored.RequestKey, found, true)
+		return a.bindFound(ctx, held.RequestKey, found, true)
+	}
+	brief := strings.TrimSpace(req.Brief)
+	road := held.Road
+	if road == "" {
+		road = currentRoad()
 	}
 	admitted, err := a.runtime.Admit(ctx, AdmitRequest{
-		RequestKey:  stored.RequestKey,
-		Brief:       req.Brief,
-		Road:        stored.Road,
+		RequestKey:  held.RequestKey,
+		Brief:       brief,
+		Road:        road,
 		OwnerChatID: req.OwnerChatID,
 	})
 	if err != nil {
 		return WorkView{}, err
 	}
-	return a.bindFound(ctx, stored.RequestKey, admitted, admitted.Already)
+	return a.bindFound(ctx, held.RequestKey, admitted, admitted.Already)
 }
 
 func needsAdmit(b ExecutionBinding) bool {
