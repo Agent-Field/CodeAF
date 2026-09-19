@@ -33,11 +33,14 @@ func (s *topicEmbedWire) Embed(_ context.Context, request provider.EmbeddingRequ
 
 func topicVec(text string) []float32 {
 	t := strings.ToLower(text)
-	v := []float32{0, 0, 0, 0, 0}
-	mark(v, 0, t, "billed", "sign", "login", "logged", "locator", "session", "fetch", "hyperlink", "authentic")
-	mark(v, 1, t, "emailed", "purchase", "confirmation", "pdf")
-	mark(v, 2, t, "other one", "the other")
-	mark(v, 3, t, "certificate", "wildcard", "terraform")
+	v := []float32{0, 0, 0, 0}
+	// Same-topic different-wording sits on one axis so the TUI string
+	// "emailed purchase confirmation PDF" still retrieves the signed-in
+	// billed-file original. Splitting the ask and the decision across
+	// axes made SearchEmbed miss unless the query itself said "fetch".
+	mark(v, 0, t, "billed", "sign", "login", "logged", "locator", "session", "fetch", "hyperlink", "authentic", "emailed", "purchase", "confirmation", "pdf", "receipt")
+	mark(v, 1, t, "other one", "the other")
+	mark(v, 2, t, "certificate", "wildcard", "terraform")
 	return unit4(v)
 }
 
@@ -81,7 +84,9 @@ func TestSQLiteSearchEvidenceFindsOriginalsDespiteDifferentWording(t *testing.T)
 		recs = append(recs, passage(fmt.Sprintf("src-%02d", i),
 			fmt.Sprintf("Customers must sign in before a billed-file hyperlink will work. Authenticated session only. (policy thread %d)", i)))
 		recs = append(recs, passage(fmt.Sprintf("para-%02d", i),
-			fmt.Sprintf("We email people a download for their purchase confirmation PDF. Who is allowed to fetch it? (billing ask %d)", i)))
+			fmt.Sprintf("We keep emailed receipt links and a purchase confirmation PDF. Who is allowed to fetch them? (billing ask %d)", i)))
+		recs = append(recs, passage(fmt.Sprintf("a6-%02d", i),
+			fmt.Sprintf("Plan: mail customers the raw download address for billed files. We abandon mailing the bare locator. The abandoned mailer stays rejected. (%d)", i)))
 		recs = append(recs, passage(fmt.Sprintf("a7-%02d", i),
 			fmt.Sprintf("No, the other one. Switching to the signed-in session requirement. The bare locator is not adopted. (%d)", i)))
 		recs = append(recs, passage(fmt.Sprintf("glob-%02d", i),
@@ -92,7 +97,8 @@ func TestSQLiteSearchEvidenceFindsOriginalsDespiteDifferentWording(t *testing.T)
 	if err := adapter.store.Ingest(ctx, recs, client); err != nil {
 		t.Fatal(err)
 	}
-	assertFamily(t, svc, "emailed purchase confirmation PDF who may fetch it", "src-", 14, 20)
+	assertFamily(t, svc, "emailed purchase confirmation PDF", "src-", 14, 20)
+	assertFamily(t, svc, "emailed receipt links", "src-", 14, 20)
 	assertFamily(t, svc, "No the other one signed-in session not bare locator", "a7-", 12, 20)
 	assertFamily(t, svc, "billed-file hyperlinks require signed-in session buried in certificate work", "glob-", 10, 20)
 }
@@ -129,30 +135,32 @@ func TestWrapSearchWithEvidenceUsesHybridHits(t *testing.T) {
 	ctx := context.Background()
 	if err := wrapped.disc.store.Ingest(ctx, []wsdiscover.Record{
 		passage("src-01", "Customers must sign in before a billed-file hyperlink will work. Authenticated session only."),
-		passage("para-01", "We email people a download for their purchase confirmation PDF. Who is allowed to fetch it?"),
+		passage("para-01", "We keep emailed receipt links and a purchase confirmation PDF. Who is allowed to fetch them?"),
 	}, client); err != nil {
 		t.Fatal(err)
 	}
 	inner := graphOnlySearch{}
 	store := wrapSearchWithEvidence(inner, folders)
-	hits, err := store.SearchConversations("emailed purchase confirmation PDF who may fetch it", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(hits) == 0 {
-		t.Fatal("hybrid search place returned nothing")
-	}
-	found := false
-	for _, hit := range hits {
-		if hit.SessionID == "src-01" {
-			found = true
+	for _, query := range []string{"emailed purchase confirmation PDF", "emailed receipt links"} {
+		hits, err := store.SearchConversations(query, 10)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if hit.SessionID == "graph-only" {
-			t.Fatal("fell back to graph.db while discovery had hits")
+		if len(hits) == 0 {
+			t.Fatalf("%q: hybrid search place returned nothing", query)
 		}
-	}
-	if !found {
-		t.Fatalf("search place missed the original: %+v", hits)
+		found := false
+		for _, hit := range hits {
+			if hit.SessionID == "src-01" {
+				found = true
+			}
+			if hit.SessionID == "graph-only" {
+				t.Fatalf("%q: fell back to graph.db while discovery had hits", query)
+			}
+		}
+		if !found {
+			t.Fatalf("%q: search place missed the original: %+v", query, hits)
+		}
 	}
 }
 

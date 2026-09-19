@@ -74,35 +74,50 @@ func TestSearchEvidenceDegradedExpansion(t *testing.T) {
 }
 
 func TestSearchEvidenceDifferentWordingOriginalsBeatParaphraseEchoes(t *testing.T) {
-	// J09/J18 A4: the ask uses new wording. Hits that restate the ask are not
-	// the original passages. Gold is the authenticated-access family.
-	query := "emailed purchase confirmation PDF who may fetch it"
-	var lexical, embed []SearchHit
-	for i := 0; i < 20; i++ {
-		id := "para-" + itoa(i)
-		passage := query + " billing ask"
-		lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreBM25})
-		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
-	}
-	for i := 0; i < 20; i++ {
-		id := "src-" + itoa(i)
-		passage := "Customers must sign in before a billed-file hyperlink will work. Authenticated session only."
-		embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
-	}
-	svc := testService(t, nil)
-	svc.SetDiscoverer(fakeDiscoverer{lexical: lexical, embed: embed})
-	hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: query, Limit: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	gold := 0
-	for _, hit := range hits {
-		if strings.HasPrefix(hit.SessionID, "src-") {
-			gold++
-		}
-	}
-	if gold < 14 {
-		t.Fatalf("A4 originals in top-20: %d (want ≥14); paraphrase echoes are not gold: %+v", gold, idsOf(hits))
+	// J09/J18 A4: production queries have no who/may/can/should/allowed.
+	// Hits that restate the ask are not the original passages. Gold is the
+	// authenticated-access family, not paraphrase ids and not abandoned plans.
+	queries := []string{"emailed purchase confirmation PDF", "emailed receipt links"}
+	for _, query := range queries {
+		t.Run(query, func(t *testing.T) {
+			var lexical, embed []SearchHit
+			for i := 0; i < 20; i++ {
+				id := "para-" + itoa(i)
+				passage := query + " billing ask"
+				lexical = append(lexical, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreBM25})
+				embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+			}
+			for i := 0; i < 20; i++ {
+				id := "src-" + itoa(i)
+				passage := "Customers must sign in before a billed-file hyperlink will work. Authenticated session only."
+				embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+			}
+			for i := 0; i < 20; i++ {
+				id := "a6-" + itoa(i)
+				passage := "Plan: mail customers the raw download address. We abandon mailing the bare locator. The abandoned mailer stays rejected."
+				embed = append(embed, SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: ScoreEmbed})
+			}
+			svc := testService(t, nil)
+			svc.SetDiscoverer(fakeDiscoverer{lexical: lexical, embed: embed})
+			hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: query, Limit: 20})
+			if err != nil {
+				t.Fatal(err)
+			}
+			gold, abandoned, para := 0, 0, 0
+			for _, hit := range hits {
+				switch {
+				case strings.HasPrefix(hit.SessionID, "src-"):
+					gold++
+				case strings.HasPrefix(hit.SessionID, "a6-"):
+					abandoned++
+				case strings.HasPrefix(hit.SessionID, "para-"):
+					para++
+				}
+			}
+			if gold < 14 || abandoned > 0 || para > 0 {
+				t.Fatalf("A4 originals in top-20: %d (want ≥14); abandoned=%d para=%d ids=%v", gold, abandoned, para, idsOf(hits))
+			}
+		})
 	}
 }
 
