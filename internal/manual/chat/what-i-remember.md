@@ -455,6 +455,8 @@ hyperlink policy) mentioned billed-file only to refuse it; the original is the
 session whose decision is the authenticated / signed-in fetch rule. Cafe,
 restaurant, abandon, and espresso are not banned words. Abandoned-mailer chats
 stay behind that standing decision unless you asked about the abandoned plan.
+A nearer page of restaurant slips still cannot hold the signed-in originals
+to thirteen of twenty; fourteen of them still make the list.
 
 ## Embeddings, the embed pin, and discovery delayed
 

@@ -628,7 +628,9 @@ access. Cafe dinner slip OCR that says restaurant paper, not a billed-file
 hyperlink policy, named billed-file only to refuse it; that chat is not the
 access decision. Search does not ban cafe, restaurant, abandon, or espresso.
 The session that decided authenticated / signed-in fetch stays ahead of that
-refusal, and ahead of an abandoned mailer.
+refusal, and ahead of an abandoned mailer. A nearer page of those restaurant
+slips still cannot keep the signed-in originals to thirteen of twenty;
+fourteen of them still make the list.
 
 ## settings — how this machine is set
 

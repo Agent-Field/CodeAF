@@ -8,8 +8,10 @@ const defaultSearchLimit = 20
 
 // SearchEvidence is hybrid: a wide lexical pool plus embedding (or labelled
 // expansion) candidates, ranked as one list and truncated to Limit. Restating
-// the query is not a hit on the original passage. A missing discoverer returns
-// no hits — it does not invent membership or claim the workspace was checked.
+// the query is not a hit on the original passage. The gather is wider than
+// the page so a nearer restaurant cluster cannot occupy every session slot.
+// A missing discoverer returns no hits — it does not invent membership or
+// claim the workspace was checked.
 func (s *Service) SearchEvidence(ctx context.Context, q SearchQuery) ([]SearchHit, error) {
 	if err := s.ready(ctx); err != nil {
 		return nil, err

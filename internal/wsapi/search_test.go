@@ -12,12 +12,12 @@ type fakeDiscoverer struct {
 	progress       IndexView
 }
 
-func (f fakeDiscoverer) SearchLexical(context.Context, string, int) ([]SearchHit, error) {
-	return f.lexical, f.lexErr
+func (f fakeDiscoverer) SearchLexical(_ context.Context, _ string, limit int) ([]SearchHit, error) {
+	return clipHits(f.lexical, limit), f.lexErr
 }
 
-func (f fakeDiscoverer) SearchEmbed(context.Context, string, int) ([]SearchHit, error) {
-	return f.embed, f.embErr
+func (f fakeDiscoverer) SearchEmbed(_ context.Context, _ string, limit int) ([]SearchHit, error) {
+	return clipHits(f.embed, limit), f.embErr
 }
 
 func (f fakeDiscoverer) IndexProgress(context.Context) (IndexView, error) {
@@ -177,6 +177,45 @@ func TestAccessPolicyDecisionDoesNotDenylistCafe(t *testing.T) {
 	}
 }
 
+func TestSearchPoolGathersPastACafeFilledNearPage(t *testing.T) {
+	// ddedd424 asked for 160 sessions. Live 10k had 13 a4-source + 7 cafe
+	// in top-20 because restaurant, paraphrase, espresso, and treasury
+	// chats filled that gather. Limit 20 must now read past that page.
+	if got := searchPool(20); got <= 160 {
+		t.Fatalf("limit-20 pool %d; 160 unique nearer sessions left A4 at 13/20", got)
+	}
+}
+
+func TestSearchEvidenceAccessPolicyKeepsFourteenSourcesPastACafeFilledNearPage(t *testing.T) {
+	// Live 10k on ddedd424: 10 purchase-document originals entered
+	// lexically, 3 billed-document originals sat inside the 160-session
+	// embed page, 27 more policy originals sat behind 157 nearer cafe /
+	// paraphrase / espresso / treasury chats. Ranking already prefers
+	// policy over cafe OCR; the miss was admission. Cafe stays in the
+	// list — it is not a banned word.
+	query := "emailed purchase confirmation PDF"
+	lex, emb := a4MarginHits()
+	narrow := rankEvidence(query, clipHits(lex, 160), clipHits(emb, 160), 20)
+	if gold, cafe, _ := countA4Families(narrow); gold >= 14 {
+		t.Fatalf("160-session cafe page should fail at 13/20, got gold=%d cafe=%d ids=%v", gold, cafe, idsOf(narrow))
+	} else if gold != 13 || cafe != 7 {
+		t.Fatalf("160-session cafe page should be 13 sources + 7 cafe, got gold=%d cafe=%d ids=%v", gold, cafe, idsOf(narrow))
+	}
+	svc := testService(t, nil)
+	svc.SetDiscoverer(fakeDiscoverer{lexical: lex, embed: emb})
+	hits, err := svc.SearchEvidence(context.Background(), SearchQuery{Query: query, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gold, cafe, abandoned := countA4Families(hits)
+	if gold < 14 || abandoned > 0 {
+		t.Fatalf("A4 originals in top-20: %d (want ≥14); cafe=%d abandoned=%d ids=%v", gold, cafe, abandoned, idsOf(hits))
+	}
+	if cafeCount(emb) < 14 {
+		t.Fatal("cafe OCR must stay in the candidate list so ranking can lose to it")
+	}
+}
+
 func TestSearchEvidenceShortCorrectionCoversTheAskAcrossTurns(t *testing.T) {
 	query := "No the other one signed-in session not bare locator"
 	var lexical, embed []SearchHit
@@ -267,4 +306,93 @@ func idsOf(hits []SearchHit) []string {
 		out[i] = hit.SessionID
 	}
 	return out
+}
+
+func clipHits(hits []SearchHit, limit int) []SearchHit {
+	if limit < 1 || len(hits) <= limit {
+		return hits
+	}
+	return hits[:limit]
+}
+
+func countA4Families(hits []SearchHit) (gold, cafe, abandoned int) {
+	for _, hit := range hits {
+		switch {
+		case strings.HasPrefix(hit.SessionID, "src-"):
+			gold++
+		case strings.HasPrefix(hit.SessionID, "cafe-"):
+			cafe++
+		case strings.HasPrefix(hit.SessionID, "a6-"):
+			abandoned++
+		}
+	}
+	return gold, cafe, abandoned
+}
+
+func cafeCount(hits []SearchHit) int {
+	n := 0
+	for _, hit := range hits {
+		if strings.HasPrefix(hit.SessionID, "cafe-") {
+			n++
+		}
+	}
+	return n
+}
+
+func hit(id, passage, kind string) SearchHit {
+	sk := ScoreEmbed
+	if kind == "lex" {
+		sk = ScoreBM25
+	}
+	return SearchHit{Ref: id, SessionID: id, Passage: passage, ScoreKind: sk}
+}
+
+// a4MarginHits is the ddedd424 10k geometry: 10 purchase-document
+// originals match the TUI string lexically, 3 billed-document originals
+// sit inside a 160-session embed page, and 27 more policy originals sit
+// behind 157 nearer cafe / paraphrase / espresso / treasury chats.
+func a4MarginHits() (lex, emb []SearchHit) {
+	purchase := "Access to purchase-document links requires an authenticated session. Sending the bare locator in email is rejected."
+	billed := "A billed document opens after login, never from a mailed bare locator. Keep that refusal."
+	signin := "Customers must sign in to their account before a billed-file hyperlink will work. We refuse to mail the raw address."
+	logged := "Only a logged-in customer may fetch billed files. Unauthenticated link sharing is out."
+	query := "emailed purchase confirmation PDF"
+	for i := 0; i < 10; i++ {
+		id := "src-p-" + itoa(i)
+		lex = append(lex, hit(id, purchase, "lex"))
+	}
+	for i := 0; i < 40; i++ {
+		id := "para-" + itoa(i)
+		passage := query + " billing ask"
+		lex = append(lex, hit(id, passage, "lex"))
+		emb = append(emb, hit(id, passage, "emb"))
+	}
+	for i := 0; i < 40; i++ {
+		id := "cafe-" + itoa(i)
+		emb = append(emb, hit(id, "OCR cafe dinner slip "+itoa(i)+" into the outing spreadsheet. Restaurant paper, not a billed-file hyperlink policy.", "emb"))
+	}
+	for i := 0; i < 40; i++ {
+		id := "esp-" + itoa(i)
+		emb = append(emb, hit(id, "I bought espresso machine "+itoa(i)+" and need the kitchen warranty paper slip.", "emb"))
+	}
+	for i := 0; i < 37; i++ {
+		id := "stk-" + itoa(i)
+		emb = append(emb, hit(id, "Should we roll equity security "+itoa(i)+" into the treasury ladder this quarter?", "emb"))
+	}
+	for i := 0; i < 10; i++ {
+		emb = append(emb, hit("src-b-"+itoa(i), billed, "emb"))
+	}
+	for i := 0; i < 10; i++ {
+		emb = append(emb, hit("src-s-"+itoa(i), signin, "emb"))
+	}
+	for i := 0; i < 10; i++ {
+		emb = append(emb, hit("src-l-"+itoa(i), logged, "emb"))
+	}
+	for i := 0; i < 10; i++ {
+		emb = append(emb, hit("src-p-"+itoa(i), purchase, "emb"))
+	}
+	for i := 0; i < 20; i++ {
+		emb = append(emb, hit("a6-"+itoa(i), "Plan: mail customers the raw download address. We abandon mailing the bare locator. The abandoned mailer stays rejected.", "emb"))
+	}
+	return lex, emb
 }

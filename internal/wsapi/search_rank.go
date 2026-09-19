@@ -7,8 +7,8 @@ import (
 
 const (
 	rrfK               = 60
-	searchPoolMin      = 40
-	searchPoolMax      = 160
+	searchPoolMin      = 320
+	searchPoolMax      = 512
 	wordingCoverageMax = 0.25
 	lexRRFWeight       = 2.0
 	coverWeight        = 0.3
@@ -18,8 +18,10 @@ const (
 // ranking. Top-k from one list used to fill the whole answer: paraphrase
 // restatements of the query occupied every A4 slot, AND-of-all-terms missed
 // A7/global, and at 10k a nearer abandoned-mailer family occupied every
-// passage-level slot so the original never entered. The doors unique by
-// session; this budget has to be wider than the page.
+// passage-level slot so the original never entered. Unique-by-session then
+// still left signed-in originals at 13 of 20 when 160 nearer restaurant,
+// paraphrase, espresso, and treasury conversations filled the gather: the
+// doors unique by session; this budget has to be wider than that near page.
 func searchPool(limit int) int {
 	pool := limit * 8
 	if pool < searchPoolMin {
