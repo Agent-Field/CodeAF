@@ -1532,6 +1532,29 @@ func (r tasksReading) rows(width int, pal palette) []string {
 // ([planRailRow]). Page chrome is not part of the projection: the rail already
 // owns its section label and controls, while the task rows remain one tree.
 func (r tasksReading) planRows(width int, pal palette) []string {
+	rows := r.planRailRows(width, pal)
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = row.text
+	}
+	return out
+}
+
+// planRailLine is one drawn line of a run on the rail and the stored task it
+// belongs to, which is what makes the line a door ([app.openRailPlan]). Every
+// line a task draws carries its id, the dots and the live line under the title
+// included, so the whole of a task's block opens that task.
+type planRailLine struct {
+	text  string
+	id    string
+	title string
+}
+
+// planRailRows is [tasksReading.planRows] with each line's task beside it.
+func (r tasksReading) planRailRows(width int, pal palette) []planRailLine {
 	if width <= 0 {
 		return nil
 	}
@@ -1555,20 +1578,23 @@ func (r tasksReading) planRows(width int, pal palette) []string {
 	plan.unfolded = true
 	plan.kinFloor = planRailLevels
 	lines := plan.lay(width)
-	out := make([]string, 0, len(lines))
+	out := make([]planRailLine, 0, len(lines))
 	for i := range lines {
 		if lines[i].kind != tasksLineTask || lines[i].item.plan == nil {
 			continue
 		}
-		out = append(out, planRailRow(lines[i], width, pal, r.now))
+		id, title := lines[i].item.plan.ID, strings.TrimSpace(lines[i].item.plan.Title)
+		out = append(out, planRailLine{planRailRow(lines[i], width, pal, r.now), id, title})
 		if dots := planRailDots(lines[i], width, pal); dots != "" {
-			out = append(out, dots)
+			out = append(out, planRailLine{dots, id, title})
 			if lines[i].item.plan.Parent == "" {
-				out = append(out, planRailNow(lines[i], width, pal, r.summaryNow)...)
+				for _, text := range planRailNow(lines[i], width, pal, r.summaryNow) {
+					out = append(out, planRailLine{text, id, title})
+				}
 			}
 		}
 		if live := planRailLive(lines[i], width, pal); live != "" {
-			out = append(out, live)
+			out = append(out, planRailLine{live, id, title})
 		}
 	}
 	return out
