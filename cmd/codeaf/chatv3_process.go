@@ -407,6 +407,12 @@ func (p *v3Process) closeAll() {
 		return
 	}
 
+	// The process starts its place sweep before it opens any shared state. Seal
+	// its note before closing that state so a late error cannot write after
+	// close; the walk itself is not waited on, so quit does not grow with the
+	// profile.
+	sealPlaceSweep()
+
 	// The start-up errands this process seated on its profile — the pool index
 	// refresh and the outbox push — were started fire-and-forget.
 	// [stopPoolErrands] cancels them and waits, so nothing this process started
