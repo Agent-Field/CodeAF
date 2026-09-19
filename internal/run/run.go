@@ -138,9 +138,10 @@ type Supervisor struct {
 	// it the parent's own words would exist nowhere and the ending the run
 	// writes at the cap would carry an empty result. All three belong to the
 	// loop goroutine like the counters beside them.
-	wakes      map[string]int
-	reported   map[string]map[string]bool
-	lastReport map[string]string
+	wakes            map[string]int
+	reported         map[string]map[string]bool
+	lastReport       map[string]string
+	terminalRootHeld func() // test observation point; nil outside tests
 	// checkOf maps a check task's id to the leaf it reads, for the review
 	// round: a check whose result does not hold leaves its sentence as a note
 	// on the leaf it names here. It is written when the check is added and read
@@ -170,6 +171,11 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		liveMoved: make(chan struct{}, 1),
 		cancels:   make(map[string]context.CancelFunc),
 		checkOf:   make(map[string]string),
+		// Run makes these afresh for each run. They are made here too so that a
+		// launch is safe on a supervisor no Run has started, which is how a test
+		// of one road drives it.
+		live:    make(map[string]float64),
+		counted: make(map[string]float64),
 	}
 }
 
@@ -290,11 +296,25 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 // pass takes one look at the store, launches what is ready, and answers the
 // run's outcome word when the run is over — an empty word means it is not.
 func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
+	if s.store.Task(rootID) == nil {
+		return OutcomeCannotRun
+	}
+	s.endCancelledWorkers()
+	// NO RUN ANSWERS DONE WHILE A FINISHED PIECE OF WORK HAS HAD NO REVIEW
+	// ROUND. A return already in the channel is finished work, not a worker
+	// that needs ending, and absorbing it is what seats its review; so every
+	// one of them is read before this pass looks at the root's ending.
+	s.absorbQueued()
+	// THE ROOT IS READ AFTER THE RETURNS ARE ABSORBED, NEVER BEFORE. Absorbing a
+	// return can seat a review beneath a root that already reads done, which
+	// moves that root back to waiting on it ([plandb.Store.AddReviewCheck]). A
+	// row read before that would still say done, and the pass would answer done
+	// over a review that had not run: the forced order in review_order_test.go
+	// did exactly that every time.
 	root := s.store.Task(rootID)
 	if root == nil {
 		return OutcomeCannotRun
 	}
-	s.endCancelledWorkers()
 	// TAKE-OVER, EVERY PASS: refresh this process's own claims so they never
 	// read stale, then hand back any claim whose process has stopped touching
 	// it, so the ready read below offers it again. Our own claims are fresh
@@ -307,9 +327,14 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		// is what seats the review, so do not accept the stored ending first.
 		// Other in-flight workers may be remnants of an already completed tree;
 		// they must be drained rather than mistaken for the root return.
-		_, rootInFlight := s.cancels[rootID]
-		if root.Status != plandb.StatusDone || !rootInFlight {
+		if root.Status != plandb.StatusDone || !s.hasUnlandedDone() {
 			return s.outcomeForRoot(root.Status)
+		}
+		// Preserve an ending written directly through the store while the run
+		// waits for the outstanding return that will seat its review.
+		s.rootResult = root.Result
+		if s.terminalRootHeld != nil {
+			s.terminalRootHeld()
 		}
 	}
 
@@ -518,6 +543,21 @@ func (s *Supervisor) forgetLive(id string) {
 	s.liveMu.Unlock()
 }
 
+// absorbQueued absorbs every return that is already in the channel and waits
+// for none. A worker still out is left alone: it is not finished work yet, and
+// the roads that wait for one say so themselves.
+func (s *Supervisor) absorbQueued() {
+	for {
+		select {
+		case ret := <-s.finished:
+			s.inFlight--
+			s.absorb(ret)
+		default:
+			return
+		}
+	}
+}
+
 // absorb writes one worker's ending into the store and keeps the run's
 // counters true. A worker that came home well is done with its result; one
 // that came home with an error fails with that error as the reason. Either
@@ -564,7 +604,16 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		// Its worker's report is kept for the completion; its error is what
 		// stops the run from ever completing, not a row.
 		if ret.err != nil {
-			s.rootFailed = true
+			root := s.store.Task(ret.task.ID)
+			if root.Status == plandb.StatusDone {
+				// FINISHED WORK GETS A REVIEW ROUND BEFORE THE RUN MAY ANSWER
+				// DONE. The store's ending stands even when its worker later
+				// returns an error, including the result the review must read.
+				s.rootResult = root.Result
+				s.addReviewCheck(ret.task, root.Result)
+			} else {
+				s.rootFailed = true
+			}
 		} else {
 			s.rootResult = ret.report.Result
 			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other. If
@@ -676,15 +725,13 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 		Role:        plandb.RoleCheck,
 	}
 	var err error
-	if leaf.ID == s.store.RootID() && s.store.Task(leaf.ID).Status == plandb.StatusDone {
-		_, err = s.store.AddRootCheck(spec)
-	} else {
-		_, err = s.store.AddMany([]plandb.TaskSpec{spec})
-	}
+	_, err = s.store.AddReviewCheck(spec)
 	if err != nil {
-		// A check the store would not admit does not replace the task's earned
-		// ending. The terminal-root case has its explicit store seam above; all
-		// other refusals keep the existing outcome and result unchanged.
+		// A REVIEW THE STORE WOULD NOT SEAT FAILS THE RUN. It used to be dropped
+		// here without a word, and the run then answered done with the round
+		// silently absent. A run that could not review finished work has not
+		// finished, and says so.
+		s.rootFailed = true
 		return
 	}
 	s.checkOf[id] = leaf.ID
@@ -822,7 +869,7 @@ func (s *Supervisor) rootAwaitingWake() bool {
 func (s *Supervisor) treeTerminal() bool {
 	rootID := s.store.RootID()
 	for _, task := range s.store.Tasks() {
-		if task.ID != rootID && !terminalStatus(task.Status) {
+		if task.ID != rootID && !s.landed(task) {
 			return false
 		}
 	}
@@ -857,7 +904,7 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		if _, running := s.cancels[task.ID]; running {
 			continue
 		}
-		if !childrenAllTerminal(tasks, task.ID) {
+		if !childrenAllLanded(tasks, task.ID, s.cancels) {
 			continue
 		}
 		if s.wakes[task.ID] >= maxWakes {
@@ -1082,7 +1129,7 @@ func needsWake(tasks []*plandb.Task, task *plandb.Task, cancels map[string]conte
 			continue
 		}
 		children++
-		if !terminalStatus(child.Status) {
+		if !landed(child, cancels) {
 			return false
 		}
 		// A CHECK'S LANDING WAKES NOBODY. A check reviews work its parent has
@@ -1112,21 +1159,52 @@ func childIDs(tasks []*plandb.Task, id string) map[string]bool {
 	return set
 }
 
-// childrenAllTerminal answers whether a task has children and every one of them
-// has ended. A composite with no children is not one whose landings can wake it.
-func childrenAllTerminal(tasks []*plandb.Task, id string) bool {
-	has, all := false, true
+// landed answers whether a task's ending has reached the run. A LANDING IS A
+// RETURN THE RUN HAS ABSORBED, NOT A STORE ROW. A worker writes its own done to
+// the store and only then comes home, and its return is what seats its review;
+// so a row that reads done while its worker is still out is finished work the
+// run has not taken in yet, and nothing that waits on a landing (the root's
+// completion, a parent's wake, the run's own answer) may go ahead on it. The
+// wait is bounded by the worker: it reads its own row at the end of the step it
+// is in and comes home. A failed or cancelled row has no review to seat, its
+// worker is ended by the pass ([Supervisor.endCancelledWorkers]), and it counts
+// as landed at once.
+func landed(task *plandb.Task, cancels map[string]context.CancelFunc) bool {
+	if task == nil || !terminalStatus(task.Status) {
+		return false
+	}
+	_, running := cancels[task.ID]
+	return task.Status != plandb.StatusDone || !running
+}
+
+func (s *Supervisor) landed(task *plandb.Task) bool { return landed(task, s.cancels) }
+
+// hasUnlandedDone answers whether any worker still out has already written its
+// own done: finished work whose return, and so whose review, is still to come.
+func (s *Supervisor) hasUnlandedDone() bool {
+	for id := range s.cancels {
+		if task := s.store.Task(id); task != nil && task.Status == plandb.StatusDone {
+			return true
+		}
+	}
+	return false
+}
+
+// childrenAllLanded answers whether a task has children and every one of them
+// has landed ([landed]). A composite with no children is not one whose landings
+// can wake it.
+func childrenAllLanded(tasks []*plandb.Task, id string, cancels map[string]context.CancelFunc) bool {
+	has := false
 	for _, child := range tasks {
 		if child.ParentID != id {
 			continue
 		}
 		has = true
-		if !terminalStatus(child.Status) {
-			all = false
-			break
+		if !landed(child, cancels) {
+			return false
 		}
 	}
-	return has && all
+	return has
 }
 
 // waitsForWake answers whether a worker's return is a WAIT rather than an
