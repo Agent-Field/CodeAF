@@ -1250,23 +1250,21 @@ func TestStartTaskBashBeltRunSpendRefusesNextTurnWithShippedLimitSentence(t *tes
 
 func TestRunCostLeft(t *testing.T) {
 	tests := []struct {
-		name                   string
-		ceiling, launch, spent float64
-		want                   float64
+		name         string
+		limit, spent float64
+		want         float64
 	}{
-		{"neither", 0, 0, 0, 0},
-		{"conversation ceiling only", 10, 0, 0, 10},
-		{"launch limit only", 0, 8, 0, 8},
-		{"conversation ceiling is smaller", 7, 9, 0, 7},
-		{"launch limit is smaller", 9, 7, 0, 7},
-		{"part spent", 9, 7, 2.5, 4.5},
-		{"all spent", 9, 7, 7, math.SmallestNonzeroFloat64},
-		{"overspent", 9, 7, 12, math.SmallestNonzeroFloat64},
+		{"no limit", 0, 0, 0},
+		{"no limit, something spent", 0, 3, 0},
+		{"nothing spent", 7, 0, 7},
+		{"part spent", 7, 2.5, 4.5},
+		{"all spent", 7, 7, math.SmallestNonzeroFloat64},
+		{"overspent", 7, 12, math.SmallestNonzeroFloat64},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := runCostLeft(test.ceiling, test.launch, test.spent); got != test.want {
-				t.Fatalf("runCostLeft(%v, %v, %v) = %v, want %v", test.ceiling, test.launch, test.spent, got, test.want)
+			if got := runCostLeft(test.limit, test.spent); got != test.want {
+				t.Fatalf("runCostLeft(%v, %v) = %v, want %v", test.limit, test.spent, got, test.want)
 			}
 		})
 	}

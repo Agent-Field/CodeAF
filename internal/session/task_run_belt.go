@@ -44,16 +44,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
-// runCostLeft returns the one tank a run is handed from every dollar limit the
-// person set. Zero inputs mean no limit. A spent or overspent limit becomes the
-// smallest positive tank rather than zero because the run engine defines zero
-// as unlimited; this lets its existing limit ending stop the run before a
-// second paid call if admission did not already refuse the turn.
-func runCostLeft(ceiling, launch, spent float64) float64 {
-	limit := ceiling
-	if launch > 0 && (limit <= 0 || launch < limit) {
-		limit = launch
-	}
+// runCostLeft is what a run is handed of the dollar limit the person set: the
+// limit less what the conversation has already spent. THE LIMIT IS READ THROUGH
+// [Agent.railCap], the one place that decides which of the person's dollar
+// limits is the smaller, so a run and an adaptive run cannot come to disagree
+// about it. Zero means no limit. A spent or overspent limit becomes the smallest
+// positive figure rather than zero because the run engine reads zero as
+// unlimited; its existing limit ending then stops the run before a second paid
+// call if admission did not already refuse the turn.
+func runCostLeft(limit, spent float64) float64 {
 	if limit <= 0 {
 		return 0
 	}
@@ -355,7 +354,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		Title:     title,
 		Brief:     brief,
 		Slots:     a.config.TaskParallel,
-		CostUSD:   runCostLeft(a.config.SpendRailUSD, a.interactiveBudget().USD, a.Usage().CostUSD),
+		CostUSD:   runCostLeft(a.railCap(0), a.Usage().CostUSD),
 		Elapsed:   wallLeft,
 		// The step cap a node of this session's own tree carries, so a run
 		// worker and a node worker stop at the same figure.
