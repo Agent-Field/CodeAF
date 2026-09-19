@@ -214,6 +214,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				usd += event.Usage.CostUSD
 				inTok += event.Usage.Input
 				outTok += event.Usage.Output
+				bankSpend(runCtx, usd)
 			case session.EventError:
 				if turnErr == nil {
 					turnErr = event.Err
