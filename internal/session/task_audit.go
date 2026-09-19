@@ -225,9 +225,10 @@ const (
 	auditCommandClipLimit = 200
 
 	// declaredCheckByteLimit bounds the declaration text carried into the
-	// checker prompt. At eight checks, 4 KiB each caps that contribution at
-	// 32 KiB; above it, declarations can crowd out the checker's evidence.
-	declaredCheckByteLimit = 4096
+	// checker prompt. At eight checks, 1000 bytes each keeps that contribution
+	// within the checker's 8000-byte evidence budget; above it, declarations
+	// alone can exceed that budget before the fixed door and refusal prose.
+	declaredCheckByteLimit = 1000
 
 	// auditReaderHint rides every refusal and the bash description itself.
 	//
