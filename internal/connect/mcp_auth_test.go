@@ -2,6 +2,7 @@ package connect
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -256,6 +257,10 @@ func TestAServiceThatWillNotBeIntroducedToSaysSoPlainly(t *testing.T) {
 // The identity survives being disconnected, exactly as a client credential does,
 // so that connecting again is one browser trip and not a second registration.
 func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
+	previous := localServerAddresses
+	localServerAddresses = []string{"127.0.0.1:0"}
+	t.Cleanup(func() { localServerAddresses = previous })
+
 	fake := startFakeToolServer(t, fakeShape{})
 	manager, _ := withToolServer(t, fake)
 	ctx := context.Background()
@@ -267,9 +272,17 @@ func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
 	if manager.Connected("example") {
 		t.Fatalf("the keys are gone")
 	}
-	if _, kept := manager.registrations().get("example"); !kept {
+	record, kept := manager.registrations().get("example")
+	if !kept {
 		t.Errorf("who codeaf is to this service is not a thing to forget")
 	}
+
+	first := strings.Replace(record.Redirects[0], "http://localhost:", "127.0.0.1:", 1)
+	blockFirst, err := net.Listen("tcp", first)
+	if err != nil {
+		t.Fatalf("hold the first redirect: %v", err)
+	}
+	defer blockFirst.Close()
 
 	flow, err := manager.BeginAuth(ctx, "example", "")
 	if err != nil {
