@@ -68,19 +68,15 @@ type v3Process struct {
 	// at [openV3Launch]: two stores at one directory is how /harness and the
 	// offer card come to name different harnesses.
 	Harnesses *subharness.Store
-	// Memory is the machine's chat database, and it MUST be one. [store.Open]
-	// builds a SQLite handle with an eight-connection pool, and every write goes
-	// through a begin that the driver strips the caller's context off — a
-	// transaction that loses the race waits the full busy timeout and cannot be
-	// cancelled (internal/store's writelock.go, busyWait 10s). Two *Store values
-	// on one file in one process are two pools with no in-process lock between
-	// them, so the only thing arbitrating their writes would be that timeout.
-	//
-	// Memory is legitimately PROFILE-scoped, which is why one handle is enough:
-	// the memory row is not in [config.ProjectKeys], so no workspace has its own
-	// answer to give. Each conversation still gets its own memory pass and its
-	// own context, which is per-agent already.
+	// Memory is the learned-memory half of graph.db, and it MUST be one handle
+	// with History. [store.Open] builds a SQLite handle with an eight-connection
+	// pool; two *Store values on one file are two pools. Memory is nil when the
+	// memory row is off: no remember, no reflex. History stays so search still
+	// works (A18). When memory is on, Memory and History are the same pointer.
 	Memory *store.Store
+	// History is graph.db for indexed conversation search, opened even when
+	// learned memory is off. Nil only when the file cannot open.
+	History *store.Store
 	// Folders is the logical-folder membership seam the session `folders`
 	// tool talks to. One handle per process, like Memory. Nil when the store
 	// cannot open: the tool is absent, not a belt that refuses every call.
@@ -187,13 +183,19 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
+	history := v3History()
+	memory := history
+	if !config.MemoryEnabledAt(settings.ProfileDir) {
+		memory = nil
+	}
 	return &v3Process{
 		Settings:   settings,
 		ProfileDir: settings.ProfileDir,
 		Models:     models,
 		Shelf:      shelf,
 		Harnesses:  subharness.Default(),
-		Memory:     v3Memory(settings.ProfileDir),
+		Memory:     memory,
+		History:    history,
 		Folders:    openV3FoldersWith(v3Embedder(settings, nil, models)),
 		Artifacts:  artifactsIndexPath(),
 		Conns:      v3Connect(settings.ProfileDir),
@@ -451,7 +453,9 @@ func (p *v3Process) closeAll() {
 	if recall != nil {
 		_ = recall.Close()
 	}
-	if p.Memory != nil {
+	if p.History != nil {
+		_ = p.History.Close()
+	} else if p.Memory != nil {
 		_ = p.Memory.Close()
 	}
 	if closer, ok := p.Folders.(interface{ Close() error }); ok {

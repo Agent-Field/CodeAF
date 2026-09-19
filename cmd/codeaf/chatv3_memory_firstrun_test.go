@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -83,5 +85,40 @@ func TestAnUnopenableBrainSaysWhichFileAndWhy(t *testing.T) {
 	}
 	if strings.Contains(said, "out of memory") {
 		t.Fatalf("the sentence still blames memory: %q", said)
+	}
+}
+
+// A18: memory off leaves remember and reflex absent and still opens graph.db
+// for search_conversations and the search place.
+func TestTheDoorOpensHistoryWhenMemoryIsOff(t *testing.T) {
+	fresh := t.TempDir()
+	t.Setenv("HOME", fresh)
+	t.Setenv(home.EnvVar, filepath.Join(fresh, ".codeaf"))
+
+	profile := t.TempDir()
+	registry := config.NewSettings(config.SettingsOptions{
+		ProfileDir: profile,
+		ModelValue: func(slot string) string { return slot + "/model" },
+		SetModel:   func(string, string) error { return nil },
+		SplitPct:   func() int { return 0 },
+	})
+	row, found := registry.Row(config.KeyMemoryEnabled)
+	if !found {
+		t.Fatalf("no settings row %q", config.KeyMemoryEnabled)
+	}
+	if err := row.Apply(config.MemoryOff); err != nil {
+		t.Fatalf("turning memory off: %v", err)
+	}
+	if brain := v3Memory(profile); brain != nil {
+		_ = brain.Close()
+		t.Fatal("the door opened a brain with memory turned off")
+	}
+	history := v3History()
+	if history == nil {
+		t.Fatal("the door opened no history with memory turned off")
+	}
+	defer history.Close()
+	if got := historyStore(session.Config{ConversationHistory: history}); got != history {
+		t.Fatal("the search place did not follow ConversationHistory")
 	}
 }

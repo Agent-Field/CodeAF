@@ -854,10 +854,14 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return remote.LedgerReading{Lines: lines, Held: held}
 		},
 		Search: func(terms string, limit int) ([]store.ConversationHit, error) {
-			if proc.Memory == nil {
-				return nil, errors.New("memory is off")
+			brain := proc.History
+			if brain == nil {
+				brain = proc.Memory
 			}
-			return proc.Memory.SearchConversations(terms, limit)
+			if brain == nil {
+				return nil, errors.New("conversation history is off")
+			}
+			return brain.SearchConversations(terms, limit)
 		},
 		Memory:     v3MemorySeam(proc.Memory),
 		Archive:    session.SetArchived,

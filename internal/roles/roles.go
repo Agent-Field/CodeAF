@@ -208,6 +208,11 @@ const (
 	// wanted. Registered from internal/session/task_shape.go, which owns the
 	// call.
 	RoleShaper Role = "shaper"
+	// RoleOrganize files a chat from cited evidence. Default LOW; restructuring
+	// or instruction conflicts pass a high floor into callRoleChecked from
+	// internal/session, which owns the call and registers it. Never RoleAuditor:
+	// this is membership from evidence, not a verdict on finished work.
+	RoleOrganize Role = "organize"
 
 	// RoleIntake fills a subharness's input form from what the conversation has
 	// already said (docs/SUBHARNESS-PRD.md §4: infer, then confirm — never
@@ -443,6 +448,7 @@ var roleDescriptions = map[Role]string{
 	RoleReflex:        "reads every turn for memory — routing and keeping",
 	RoleVision:        "reads images for a model that cannot see them",
 	RoleShaper:        "the brief a task you started yourself is given",
+	RoleOrganize:      "files a chat in folders from cited evidence",
 	RoleTaskName:      "the two or three words a task is called",
 	RoleJobName:       "the three or four words a background job is called",
 	RoleCaption:       "the discrete step title over a live tool batch",
@@ -561,7 +567,7 @@ var vocabulary = []Role{
 	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
 	RoleDesigner, RoleDivision, RoleEmbed, RoleGuardian, RoleHandoff,
 	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
-	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
+	RoleOrganize, RolePlanner, RoleReflex, RoleRepair, RoleRouter,
 	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
 	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,
 	RoleVision, RoleWorker,

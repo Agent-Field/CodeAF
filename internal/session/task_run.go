@@ -7610,6 +7610,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	child, err := a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
+		HybridSearch:        parent.HybridSearch,
 		// The node learns from, and into, the PROJECT'S error→fix file rather
 		// than one of its own (fixstore.go states why a node cannot find it
 		// alone). A worker hammering a build in a worktree is the richest source
