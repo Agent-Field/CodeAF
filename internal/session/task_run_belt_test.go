@@ -8,10 +8,12 @@ package session
 // plandb door the real one does, on the completer the door handed it.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -962,4 +964,117 @@ func beltRunCommittedRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return repo
+}
+
+// A later run keeps every earlier run readable. This fixture takes the same
+// door as production: an ended store is present, then startKnownTaskRun archives
+// it and seeds the next run. Rows remain oldest-run-first and an archived part's
+// full page survives both the handoff and reopening the conversation.
+func TestPlanReadsEveryBeltRunArchive(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "second result"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: dir}
+		config.AskConsent = false
+	})
+	chat := agent.graph().planChat()
+	path := filepath.Join(dir, planStoreFilename)
+	first, err := plandb.Open(path, "first", "1", "First run", "first brief", chat)
+	if err != nil {
+		t.Fatalf("open first run: %v", err)
+	}
+	if _, err := first.AddMany([]plandb.TaskSpec{{ID: "old-part", Title: "Old part", Description: "old work"}}); err != nil {
+		t.Fatalf("add old part: %v", err)
+	}
+	if _, err := first.AddNote("old-part", "worker-old", "kept note"); err != nil {
+		t.Fatalf("note old part: %v", err)
+	}
+	if err := first.AddSpend("old-part", "test/model", "work", 0.42, 1, 1); err != nil {
+		t.Fatalf("spend old part: %v", err)
+	}
+	if _, err := first.Claim("old-part", "worker-old"); err != nil {
+		t.Fatalf("claim old part: %v", err)
+	}
+	if _, err := first.Done("old-part", "worker-old", "kept result", nil, nil); err != nil {
+		t.Fatalf("finish old part: %v", err)
+	}
+	if err := first.CompleteRoot("first result"); err != nil {
+		t.Fatalf("complete first run: %v", err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("close first run: %v", err)
+	}
+	writePlanTrajectory(t, dir, "old-part", `{"kind":"step","step":1,"command":"$ echo old","observation":"old"}`)
+
+	double := newBeltRunDouble("second result")
+	registerBeltRunEngine(t, double)
+	if err := agent.startKnownTaskRun(context.Background(), 2, "Second run", "second brief", nil, taskStand{dir: agent.config.Workspace, mode: TaskModeInPlace}, ""); err != nil {
+		t.Fatalf("start second run: %v", err)
+	}
+	<-double.entered
+	close(double.release)
+	beltRunWaitFor(t, "second run ending", func() bool { agent.beltMu.Lock(); defer agent.beltMu.Unlock(); return agent.beltRun == nil })
+
+	assertReads := func(label string, got *Agent) {
+		t.Helper()
+		rows := got.PlanTasks()
+		want := []string{"t-1", "t-old-part", "t-2"}
+		if ids := rowIDs(rows); !reflect.DeepEqual(ids, want) {
+			t.Fatalf("%s rows = %v, want %v", label, ids, want)
+		}
+		page, ok := got.PlanTaskPage("t-old-part")
+		if !ok {
+			t.Fatalf("%s cannot open archived part", label)
+		}
+		if page.Result != "kept result" || len(page.Notes) != 1 || page.Notes[0].Body != "kept note" || len(page.Steps) != 1 || page.Row.USD != 0.42 {
+			t.Fatalf("%s archived page = %#v", label, page)
+		}
+	}
+	assertReads("live conversation", agent)
+
+	reopened, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = agent.config.Workspace
+		config.Place = Place{Dir: dir}
+	})
+	defer reopened.Close()
+	assertReads("reopened conversation", reopened)
+}
+
+// With no numbered sibling, aggregation is exactly the existing single-store
+// read rather than a second rendering path.
+func TestPlanReadsWithoutArchiveStayIdentical(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha"})
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks := store.Tasks(plandb.Filter{Chat: "chat-a"})
+	wantRows := make([]PlanTaskRow, 0, len(tasks))
+	for _, task := range tasks {
+		row := planTaskRow(store, dir, task, planSpendByTask(path), store.LiveSteps())
+		// The listing says where the run works, once per row, exactly as the
+		// single-store read did before there was an archive to aggregate.
+		row.Folder = agent.config.Workspace
+		wantRows = append(wantRows, row)
+		if task.ID == store.RootID() {
+			applyPlanRootProgress(&wantRows[len(wantRows)-1], tasks, store.RootID())
+		}
+	}
+	_ = store.Close()
+	want, err := json.Marshal(wantRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := json.Marshal(agent.PlanTasks())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("single-store rows changed:\ngot  %s\nwant %s", got, want)
+	}
 }
