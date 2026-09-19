@@ -47,3 +47,7 @@ The failing focused tests now distinguish the two moments: after the engine retu
 ## Integration correction
 
 The explicit-landing implementation is sound, but two older belt tests still wait for worker completion to land automatically. They must instead prove the run remains available after workers finish, then invoke the person's landing action and retain their existing settlement assertions.
+
+## Final verification
+
+The stale lifecycle assertions now require worker completion to leave the run waiting and invoke explicit landing themselves. The required focused session suite passes, as do formatting, build, vet, and the run/manual/name-law packages. `make test-laws` remains blocked by the pre-existing `cmd/codeaf` kept-nothing subprocess fixtures selecting the default model and exiting 2 rather than reaching their scripted timeout; all other law packages pass.
