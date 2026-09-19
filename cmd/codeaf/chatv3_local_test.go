@@ -462,6 +462,11 @@ func TestOnceRetriesAHostInTheStaleSocketWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	unixStale, ok := stale.(*net.UnixListener)
+	if !ok {
+		t.Fatal("unix listener had an unexpected type")
+	}
+	unixStale.SetUnlinkOnClose(false)
 	if err := stale.Close(); err != nil {
 		t.Fatal(err)
 	}
