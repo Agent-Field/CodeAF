@@ -128,6 +128,12 @@ stale is running.
 | `--max-cost <n>` | with `--yolo`: dollar limit; interactive chat checks before new turns |
 | `--one-model` | every text call this session makes runs on the session model |
 
+## Does a time limit stop a running task?
+
+Yes. When either limit is reached, a running task takes no new steps, ends, and
+brings its finished work home. The row says “a limit you set stopped it,” whether
+the time limit or the cost limit was reached.
+
 `--yolo` does not make codeaf unstoppable: a small set of destructive commands
 and anything that acts in your name still ask, whatever the setting says. See the
 permissions page.
