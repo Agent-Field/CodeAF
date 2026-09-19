@@ -48,3 +48,7 @@ A test-only `usageWriter.beforeWrite` barrier now stops the exact writer after d
 ## Ownership decision
 
 The forced row belongs to the process-wide usage ledger, not to one Agent. `Agent.Close` is therefore not the ownership boundary that must drain it. The full v3 door already closes all agents and then calls `FlushUsage`, so quick real program close cannot produce this late usage write. This test creates process-owned usage work while giving that process state a test-body lifetime. The smallest fix is for the test to release and flush that writer before returning, then assert the ledger was written. Changing `Agent.Close` would impose a process-global flush on every individual agent close and duplicate the existing outer-door ordering. The lane beat remains a separate theoretical unjoined writer, but the barrier rules it out as this regression's signature.
+
+## Fix step
+
+The regression will retain the forced dequeue-before-open ordering, close the Agent, then explicitly release and flush the process-owned writer before the test returns. The assertion moves after `FlushUsage`, proving the test's process-state owner has joined the write. Cleanup uses the same idempotent release as a failure fallback, so an earlier test failure cannot strand the writer.
