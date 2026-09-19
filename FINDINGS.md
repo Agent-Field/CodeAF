@@ -9,3 +9,7 @@ The shipped task road already records a node's working copy and ground-ladder fa
 ## Belt run working-copy isolation
 
 This task must make an approved hand-off run in a run-owned copy beneath the conversation's `trees`, cut by the existing ground ladder from the ground selected by the resolved stand, and leave the person's checkout unchanged. Today the hand-off door resolves and retains that stand, but `startKnownTaskRun` does not receive it and instead gives `RunSpec.Workspace` the conversation workspace; consequently side-by-side hand-offs can share one dirty tree. The intended boundary is one copy per run, shared only by that run's children, with cross-run hand-off occurring only through an explicitly landed commit.
+
+## Focused tests
+
+The next step fixes the contract at the run door with focused tests. Each fixture sets `CODEAF_TASK_BELT` itself, creates a real committed repository, captures the person's checkout bytes, and records the `RunSpec` handed to the engine. The tests distinguish the conversation ground from an explicitly selected alternate ground, require one run-owned path beneath the conversation's `trees`, require joined children to retain that exact path, and require a different-ground hand-off not to enter the live store.
