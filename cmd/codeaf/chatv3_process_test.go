@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -417,4 +419,49 @@ func waitForStandingTick(t *testing.T, root string, interval time.Duration) {
 		time.Sleep(interval)
 	}
 	t.Fatal("standing ticker did not take its lock")
+}
+
+// TestCloseAllCancelsAnInFlightStandingPass proves a quit never waits out a
+// running pass's TickWindow: closeAll cancels the pass's context, so a pass
+// blocked on nothing but its own ctx ends at once and Close returns promptly.
+// The ordering is forced by channels, with only a generous sanity bound.
+func TestCloseAllCancelsAnInFlightStandingPass(t *testing.T) {
+	oldInterval := standingTickInterval
+	standingTickInterval = 5 * time.Millisecond
+	t.Cleanup(func() { standingTickInterval = oldInterval })
+
+	started := make(chan struct{})
+	sawCancel := make(chan struct{})
+	var once sync.Once
+	oldPass := standingTickPass
+	standingTickPass = func(ctx context.Context, _ *standing.Store) {
+		once.Do(func() { close(started) })
+		<-ctx.Done()
+		close(sawCancel)
+	}
+	t.Cleanup(func() { standingTickPass = oldPass })
+
+	proc := v3TestProcess(t)
+	store, err := standing.Open(filepath.Join(t.TempDir(), "v3", "standing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc.startStandingTicks(store)
+	<-started // a pass is in flight, blocked on its ctx
+
+	closed := make(chan struct{})
+	go func() {
+		proc.closeAll()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(30 * time.Second):
+		t.Fatal("closeAll did not return while a standing pass was in flight; the pass's ctx was not cancelled")
+	}
+	select {
+	case <-sawCancel:
+	default:
+		t.Fatal("the in-flight standing pass did not see its ctx cancelled")
+	}
 }
