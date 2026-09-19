@@ -597,3 +597,78 @@ func TestNoShippedWriterKeyIsReportedUnread(t *testing.T) {
 		t.Fatalf("shipped-writer keys reported unread: %v", unread)
 	}
 }
+
+// loadProfileKeyLedger reads testdata/profile-keys.ledger into a set, skipping
+// comment (#) and blank lines.
+func loadProfileKeyLedger(t *testing.T) map[string]bool {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "profile-keys.ledger"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := map[string]bool{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		set[line] = true
+	}
+	return set
+}
+
+// TestProfileKeyLedgerLaw makes it impossible to add or remove a profile writer
+// without accounting for it. Half (a): every key a current writer can produce is
+// in the ledger. Half (b): every ledger key is either consumed at head or in
+// retiredProfileKeys. Adding a settings row forces a ledger line; removing one
+// leaves its line behind and turns this red until the key is retired on purpose.
+func TestProfileKeyLedgerLaw(t *testing.T) {
+	ledger := loadProfileKeyLedger(t)
+	consumed := consumedProfileKeys(t.TempDir())
+
+	for key := range consumed {
+		if key == "" {
+			continue
+		}
+		if !ledger[key] {
+			t.Errorf("writer key %q is not in testdata/profile-keys.ledger; add it", key)
+		}
+	}
+	for key := range ledger {
+		if !consumed[key] && !retiredProfileKeys[key] {
+			t.Errorf("ledger key %q is neither consumed at head nor in retiredProfileKeys; if its writer was removed, retire the key on purpose", key)
+		}
+	}
+	for key := range retiredProfileKeys {
+		if consumed[key] {
+			t.Errorf("retired key %q is still consumed at head; remove it from retiredProfileKeys", key)
+		}
+		if !ledger[key] {
+			t.Errorf("retired key %q is not in the ledger", key)
+		}
+	}
+}
+
+// TestRetiredProfileKeysAreNotReportedUnread pins that a profile carrying a
+// retired key is silent, and that a genuinely unknown key is still named.
+func TestRetiredProfileKeysAreNotReportedUnread(t *testing.T) {
+	dir := t.TempDir()
+	for key := range retiredProfileKeys {
+		key := key
+		t.Run(key, func(t *testing.T) {
+			values := map[string]json.RawMessage{key: json.RawMessage(`"x"`)}
+			if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+				t.Fatalf("retired key %q reported unread: %v", key, unread)
+			}
+		})
+	}
+	values := map[string]json.RawMessage{}
+	for key := range retiredProfileKeys {
+		values[key] = json.RawMessage(`"x"`)
+	}
+	values["totally_unknown_key"] = json.RawMessage(`"x"`)
+	unread := warnUnreadProfileKeys(dir, values)
+	if len(unread) != 1 || unread[0] != "totally_unknown_key" {
+		t.Fatalf("with retired keys plus one unknown, expected only totally_unknown_key unread, got %v", unread)
+	}
+}
