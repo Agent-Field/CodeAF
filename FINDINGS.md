@@ -86,3 +86,20 @@ Before editing product code I will add only the minimum in-memory review associa
 ## First fix execution
 
 The first focused run no longer reports zero checks, but the forced test times out with `OutcomeIncomplete` after 10 seconds. This disproves that seating alone is sufficient for the delayed-worker harness. Before changing the product again I will inspect the fake check worker and completion path to distinguish a test fixture that never lands the new check from a supervisor counter or cancellation defect. The product edit remains uncommitted until this is resolved; `run.Start` is still untouched.
+
+## Timeout diagnosis before second edit
+
+Inspection shows the check worker is not the stall: `fakeSeat` completes unscripted checks immediately. The root remains present in `s.cancels`, and `rootAwaitingWake` therefore prevents `completeTree` from closing the root even after the check lands. Once a pass observes that the root worker has already finished itself in the store, the supervisor must cancel that worker context as well as seat the check. Its return then follows the normal absorb path, removes the in-flight root entry, and the in-memory association prevents a duplicate check. This cancellation is confined to the already-done root ordering.
+
+## Minimal fix focused evidence
+
+After canceling only the already-self-finished root worker, the forced ordering and both existing root-review laws pass together:
+
+```text
+go test ./internal/run -run 'TestSupervisor(ChecksASelfFinishedRootBeforeAcceptingItsStoredEnding|ChecksAChildlessRootThatCompletedItselfInTheStore|RootWaitsOnAnOpenCheckTask)$' -count=1
+ok github.com/Agent-Field/codeaf/internal/run 0.519s
+```
+
+The forced case now proves the check exists before `Supervisor.Run` returns. The implementation changes only terminal-root handling and review idempotence in `internal/run/run.go`; no `run.Start` line changed. The incidental attempt to pass `FINDINGS.md` to `gofmt` reported its expected Markdown illegal-character error and made no change; both touched Go files were successfully formatted before the passing test.
+
+Next I will commit this passing product step, then exercise the command-level self-finished-root and check-model paths repeatedly as focused reachability checks.
