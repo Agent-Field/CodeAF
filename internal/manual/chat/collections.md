@@ -359,11 +359,14 @@ separate discussion with `/folders add` the same way as any other chat.
 
 ## Root escalation — not always ask after two turns, hierarchical parents
 
-A conflict is **one** discussion with both positions. Relevant parent
-representatives may join, common ancestors counted once, then Root if needed.
+When parent folders have incompatible instructions, **software** opens or
+reuses **one** conflict discussion and invites one participant per distinct
+ancestor, including one Root. The first parent to answer is not the boss.
 Two turns may be a per-level starting budget. That is **not** “always ask after
-two turns” as a ban on parent join. Root cannot exceed what you delegated.
-Missing authority reaches you. Unrelated work continues.
+two turns” as a ban on parent join. Root cannot exceed what you delegated:
+issuing a grant without your authority is refused and reaches you. Finite
+rounds, time, and spend stop escalation loops. Unresolved conflict also
+reaches you. Unrelated work continues.
 
 ## Pause coordination vs stop work — closing a view does not pause, archive
 

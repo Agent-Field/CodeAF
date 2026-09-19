@@ -20,6 +20,7 @@ type fakeCollab struct {
 	scope         CollabScope
 	deliverErr    error
 	inviteErr     error
+	conflicts     []string
 }
 
 type collabSend struct {
@@ -82,6 +83,13 @@ func (f *fakeCollab) Pause(context.Context) error {
 	defer f.mu.Unlock()
 	f.paused++
 	return nil
+}
+
+func (f *fakeCollab) OpenConflict(_ context.Context, conversationID string) (ConflictRoom, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.conflicts = append(f.conflicts, conversationID)
+	return ConflictRoom{ChatID: "conflict-room"}, nil
 }
 
 type collabContribution struct {
