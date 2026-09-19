@@ -1150,3 +1150,89 @@ func TestPlanReadsWithoutArchiveStayIdentical(t *testing.T) {
 		t.Fatalf("single-store rows changed:\ngot  %s\nwant %s", got, want)
 	}
 }
+
+// A RUN'S REPORTED DOLLARS BELONG TO THE CONVERSATION THAT STARTED IT. These
+// cases enter through StartTask under the bash belt and wait on the task lane,
+// so they exercise the real door and have no timing sleeps.
+func TestStartTaskBashBeltFoldsRunDollarsOnceOnEveryEnding(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		outcome string
+		stop    bool
+	}{
+		{name: "finished", outcome: beltRunOutcomeDone},
+		{name: "incomplete", outcome: "ran and did not finish"},
+		{name: "stopped by the person", outcome: "ran and did not finish", stop: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CODEAF_TASK_BELT", "bash")
+			double := newBeltRunDouble("the run ended")
+			double.summary.Outcome = tc.outcome
+			double.summary.USD = 0.42
+			double.honoursStop = tc.stop
+			registerBeltRunEngine(t, double)
+
+			dir := t.TempDir()
+			agent, _ := newTestAgent(t, beltRunCompleter{text: "the run ended"}, func(config *Config) {
+				config.Workspace = newTestRepo(t)
+				config.Place = Place{Dir: dir}
+				config.AskConsent = false
+			})
+			updates, stopUpdates := agent.WatchTaskUpdates()
+			defer stopUpdates()
+
+			id, _, _, err := agent.StartTask(context.Background(), "account for this run", false)
+			if err != nil {
+				t.Fatalf("StartTask: %v", err)
+			}
+			<-double.entered
+			if tc.stop {
+				if _, err := agent.Cancel(CancelTask + ":" + strconv.FormatUint(id, 10)); err != nil {
+					t.Fatalf("stop run: %v", err)
+				}
+			} else {
+				close(double.release)
+			}
+			lastTaskUpdate(t, updates)
+
+			if got := agent.Usage().CostUSD; got != 0.42 {
+				t.Fatalf("conversation cost after %s run = %v, want the run's $0.42 exactly once", tc.name, got)
+			}
+		})
+	}
+}
+
+// THE NEXT TURN READS THE SAME TOTAL. Crossing the conversation limit in a run
+// refuses the following turn with the shipped sentence, byte for byte.
+func TestStartTaskBashBeltRunSpendRefusesNextTurnWithShippedLimitSentence(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("the run ended")
+	double.summary.USD = 2.05
+	registerBeltRunEngine(t, double)
+
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "the run ended"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: dir}
+		config.AskConsent = false
+		config.SpendRailUSD = 2
+	})
+	updates, stopUpdates := agent.WatchTaskUpdates()
+	defer stopUpdates()
+
+	if _, _, _, err := agent.StartTask(context.Background(), "spend past the conversation limit", false); err != nil {
+		t.Fatalf("StartTask: %v", err)
+	}
+	<-double.entered
+	close(double.release)
+	lastTaskUpdate(t, updates)
+
+	_, err := agent.Submit(context.Background(), "this turn must not start")
+	if err == nil {
+		t.Fatal("the turn after overspending the conversation limit was accepted")
+	}
+	const want = "conversation limit reached · $2.05 spent of $2 · /budget changes it"
+	if err.Error() != want {
+		t.Fatalf("next-turn refusal = %q, want unchanged shipped sentence %q", err, want)
+	}
+}
