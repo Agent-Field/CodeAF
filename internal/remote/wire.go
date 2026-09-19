@@ -535,15 +535,17 @@ const (
 	// that as the block being absent HERE — which is exactly what it drew before
 	// this door existed — and the emptiness law is kept. Nothing that was drawn
 	// goes dark, so nothing is refused at the door.
-	MethodPlanSpend    = "PlanSpend"    // PlanSpendArgs → []session.PlanSpendLine
-	MethodPlanTasks    = "PlanTasks"    // nothing → []session.PlanTaskRow
-	MethodPlanTaskPage = "PlanTaskPage" // PlanTaskPageArgs → PlanTaskPageResult
-	MethodPlanNote     = "PlanNote"     // PlanTextArgs → nothing
-	MethodPlanPause    = "PlanPause"    // PlanTaskArgs → nothing
-	MethodPlanResume   = "PlanResume"   // PlanTaskArgs → nothing
-	MethodPlanCancel   = "PlanCancel"   // PlanTaskArgs → nothing
-	MethodPlanAmend    = "PlanAmend"    // PlanTextArgs → nothing
-	MethodPlanPriority = "PlanPriority" // PlanPriorityArgs → nothing
+	MethodPlanSpend         = "PlanSpend"         // PlanSpendArgs → []session.PlanSpendLine
+	MethodPlanTasks         = "PlanTasks"         // nothing → []session.PlanTaskRow
+	MethodPlanTaskPage      = "PlanTaskPage"      // PlanTaskPageArgs → PlanTaskPageResult
+	MethodPlanNote          = "PlanNote"          // PlanTextArgs → nothing
+	MethodPlanPause         = "PlanPause"         // PlanTaskArgs → nothing
+	MethodPlanResume        = "PlanResume"        // PlanTaskArgs → nothing
+	MethodPlanCancel        = "PlanCancel"        // PlanTaskArgs → nothing
+	MethodPlanAmend         = "PlanAmend"         // PlanTextArgs → nothing
+	MethodPlanPriority      = "PlanPriority"      // PlanPriorityArgs → nothing
+	MethodPlanRunSummary    = "PlanRunSummary"    // PlanRunSummaryArgs → PlanRunSummaryResult
+	MethodRefreshRunSummary = "RefreshRunSummary" // RefreshRunSummaryArgs → PlanRunSummaryResult
 	// The conversation's own place on the thinking ladder (internal/session's
 	// effort.go). Three doors and not one, because the stored rung and the
 	// resolved rung are two different answers: the dial DRAWS the resolved one
@@ -1727,4 +1729,22 @@ type PlanTaskPageArgs struct {
 type PlanTaskPageResult struct {
 	Page session.PlanTaskPage
 	OK   bool
+}
+
+// PlanRunSummaryArgs names the run whose stored summary is read.
+type PlanRunSummaryArgs struct {
+	RootID string `json:"root_id"`
+}
+
+// RefreshRunSummaryArgs carries the refresh window and caller deadline to the engine.
+type RefreshRunSummaryArgs struct {
+	RootID   string    `json:"root_id"`
+	LastLook time.Time `json:"last_look,omitempty"`
+	Deadline time.Time `json:"deadline,omitempty"`
+}
+
+// PlanRunSummaryResult preserves both the summary and whether one exists.
+type PlanRunSummaryResult struct {
+	Summary session.RunPlanSummary `json:"summary"`
+	OK      bool                   `json:"ok"`
 }
