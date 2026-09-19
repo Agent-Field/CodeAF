@@ -552,7 +552,10 @@ func appendChecks(checks, more []string) []string {
 func runnableChecks(declared []string, own taskCopy) []string {
 	out := make([]string, 0, len(declared))
 	for _, raw := range declared {
-		command, ok := commandLike(raw)
+		// Length is an admission rule, not command shape. An older declaration
+		// that exceeds today's proposal limit is still part of the checker's
+		// contract and must remain visible at the audit door.
+		command, ok := commandShaped(raw)
 		if !ok {
 			continue
 		}
@@ -1177,6 +1180,14 @@ func sameFile(one, other string) bool {
 // "go test" are one command, and the door is about which program runs rather
 // than about how it was typed.
 func commandLike(text string) (string, bool) {
+	text, ok := commandShaped(text)
+	if !ok || len(text) > auditCommandLimit {
+		return "", false
+	}
+	return text, true
+}
+
+func commandShaped(text string) (string, bool) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return "", false
@@ -1190,9 +1201,6 @@ func commandLike(text string) (string, bool) {
 	}
 	program := fields[0]
 	if strings.HasPrefix(program, "-") || strings.Trim(program, "*?[]") == "" {
-		return "", false
-	}
-	if len(text) > auditCommandLimit {
 		return "", false
 	}
 	return text, true
