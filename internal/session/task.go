@@ -75,6 +75,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -809,8 +810,10 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// NODE. It keeps the id the card showed, carries its acceptance in the brief
 	// and its depends_on as the store's own dependencies, and takes the person's
 	// ask with it when this turn owes one (CHAT-ROLE.md, "A landing speaks only
-	// when an answer is owed"). Once this door is chosen, its refusal stays here:
-	// silently taking another road would break the ground the person approved.
+	// when an answer is owed"). A task about ANOTHER FOLDER than the work
+	// already underway is refused here ([standsElsewhereError]); any other
+	// failure of the run road falls through to the shipped engine, exactly as a
+	// typed /task does, and that engine cuts its own copy from the same stand.
 	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
 		a.mu.Lock()
 		question := questionAtTaskHandoff(a.owedAsks)
@@ -821,14 +824,17 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		// a run driven under it would be stopped the moment the model finished
 		// its sentence. The values ride along, the cancellation does not.
 		joined := a.beltRunStandsOn(p.stand)
-		if err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question); err != nil {
-			return err.Error(), true, nil
+		err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
+		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
+			return refusal.Error(), true, nil
 		}
-		receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
-		if joined {
-			receipt = withReport(receipt, "It joined the work already underway because both stand on the same ground.")
+		if err == nil {
+			receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
+			if joined {
+				receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
+			}
+			return receipt, false, nil
 		}
-		return receipt, false, nil
 	}
 	state := graph.admit(p.id, spec)
 	admitted = true
@@ -851,7 +857,7 @@ func taskReceipt(id uint64, spec taskSpec, state TaskState, stand taskStand, els
 		result := fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence)
 		return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
 	}
-	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone in this run’s own copy. Tasks joined to this run share that copy. Its work stays there until you land it. %s", id, on, spec.title, taskHandoffWakeSentence)
+	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence)
 	return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
 }
 
@@ -872,9 +878,9 @@ func taskStandSentence(stand taskStand) string {
 	case stand.dir == "":
 		return ""
 	case stand.rung == taskGroundBrief:
-		return "Its copy is cut from " + stand.dir + ", the one folder its brief names as ground."
+		return "It works in " + stand.dir + ", the one folder its brief names the work in."
 	case stand.rung == taskGroundSaid && !stand.kept:
-		return "Its copy is cut from " + stand.dir + ", the folder this proposal gave as its ground."
+		return "It works in " + stand.dir + ", the folder this proposal gave as its ground."
 	}
 	return ""
 }

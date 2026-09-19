@@ -64,7 +64,6 @@ package session
 // the first arm, with [furrow.Workspace.MergeFork] as its landing.
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -640,11 +639,7 @@ func (a *Agent) noteStandingWrite(tree StandingTree, aimed string) {
 // waiting — without doing any of it. It is what the card shows before the
 // person says yes.
 func (a *Agent) LandingFor(folder string) (FolderLanding, bool) {
-	name := a.standingName(folder)
-	if run, ok := a.finishedBeltRunFor(name); ok {
-		return FolderLanding{Folder: run.ground, Name: filepath.Base(run.ground)}, true
-	}
-	tree, ok := a.standingTreeFor(name)
+	tree, ok := a.standingTreeFor(a.standingName(folder))
 	if !ok || len(tree.Wrote) == 0 {
 		return FolderLanding{}, false
 	}
@@ -693,9 +688,6 @@ func (a *Agent) standingName(name string) string {
 // piling up behind a landing that already failed.
 func (a *Agent) Land(folder string) (FolderLanding, error) {
 	name := a.standingName(folder)
-	if landing, found, err := a.landFinishedBeltRun(context.Background(), name); found {
-		return landing, err
-	}
 	if name == "" {
 		return FolderLanding{}, errors.New("nothing is waiting to go into a folder")
 	}
