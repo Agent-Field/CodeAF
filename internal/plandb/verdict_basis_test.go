@@ -84,6 +84,10 @@ func TestTaskJSONCarriesThePersistedVerdictBasis(t *testing.T) {
 // can never rest on one of them.
 func TestAuditableDeclaredCheckAdmitsAQuotedBarAndRefusesEveryComposedForm(t *testing.T) {
 	const quotedBar = `grep -iE 'handoff|vault|wall' walls.md`
+	const escapedBar = `grep -n "dialTimeout\|waitFor\"Host\|func Dial" notes/a-folder-with-a-long-name/and-another-one-under-it/and-a-third-beneath-that/the-fourth-and-the-last/walls-and-the-notes-kept-beside-them-and-the-n.md`
+	if !auditableDeclaredCheck(escapedBar) {
+		t.Fatalf("the store refused one command carrying a backslash-bar as double-quoted text: %q", escapedBar)
+	}
 	if !auditableDeclaredCheck(quotedBar) {
 		t.Fatalf("the store refused a quoted bar that is one command: %q", quotedBar)
 	}
@@ -92,7 +96,7 @@ func TestAuditableDeclaredCheckAdmitsAQuotedBarAndRefusesEveryComposedForm(t *te
 		quotedBar + ` ; touch RAN`,
 		`grep "$(touch RAN)" walls.md`,
 		"grep \"`touch RAN`\" walls.md",
-		`grep "a\"; touch RAN; \"" walls.md`,
+		`grep "a\\" ; touch RAN`,
 		`grep 'unclosed walls.md ; touch RAN`,
 		quotedBar + ` > RAN`,
 		quotedBar + ` | tee RAN`,

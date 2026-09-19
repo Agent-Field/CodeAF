@@ -602,7 +602,7 @@ func TestACheckWithAQuotedBarIsAdmittedRunAndItsExitCodeRecorded(t *testing.T) {
 		{check + ` ; touch RAN`, true},
 		{`grep "$(touch RAN)" walls.md`, true},
 		{"grep \"`touch RAN`\" walls.md", true},
-		{`grep "a\"; touch RAN; \"" walls.md`, true},
+		{`grep "a\\" ; touch RAN`, true},
 		{`grep 'unclosed walls.md ; touch RAN`, true},
 		// A trailing arrow or a second stage is taken OFF by the runner (what a
 		// line runs is its first stage), so it runs the check and nothing else.
@@ -619,5 +619,26 @@ func TestACheckWithAQuotedBarIsAdmittedRunAndItsExitCodeRecorded(t *testing.T) {
 		if _, err := os.Stat(marker); err == nil {
 			t.Fatalf("%s ran more than the one command: %s exists", never.said, marker)
 		}
+	}
+
+	// AN ESCAPED QUOTE INSIDE DOUBLE QUOTES DOES NOT CLOSE THEM, AND THE SHELL IS
+	// THE WITNESS. This row stood in the list above while the reader refused
+	// every backslash inside double quotes. It is one command: the shell hands
+	// grep the single argument `a"; touch RAN; "`. So it is admitted, its own door
+	// opens, the checker's real shell runs it, and the file that a second command
+	// would have made is still not there. The row that took its place above is
+	// the one that IS two commands: a doubled backslash leaves the next quote
+	// closing, and the semicolon after it is live.
+	const escaped = `grep "a\"; touch RAN; \"" walls.md`
+	admitted, refusal := declaredCheckList([]string{escaped})
+	if refusal != "" || len(admitted) != 1 || admitted[0] != escaped {
+		t.Fatalf("the proposal door: checks = %q, refusal = %q; want the escaped quote kept byte for byte", admitted, refusal)
+	}
+	tool = checkerBash(t, auditDoorFor(declaringNode(escaped), standingOn(ground)), ground)
+	if text, _ := run(escaped); strings.HasPrefix(text, "refused:") {
+		t.Fatalf("the runner refused a check the door admitted:\n%s", text)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatalf("%s ran more than the one command: %s exists", escaped, marker)
 	}
 }

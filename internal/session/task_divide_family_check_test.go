@@ -404,6 +404,10 @@ func TestTwoPartsSharingMakeSureTheTestsStillPassAreAdmitted(t *testing.T) {
 // both parts and is one command in neither. Refusing on it is a division lost
 // over a piece of text nobody wrote.
 func TestTwoQuotedCommandsThatDifferInsideTheQuotesAreAdmitted(t *testing.T) {
+	const escapedBar = `grep -n "dialTimeout\|waitFor\"Host\|func Dial" notes/a-folder-with-a-long-name/and-another-one-under-it/and-a-third-beneath-that/the-fourth-and-the-last/walls-and-the-notes-kept-beside-them-and-the-n.md`
+	if !wholeClause(escapedBar) {
+		t.Fatalf("wholeClause refused one intact command: %q", escapedBar)
+	}
 	nest := newDivideNest(t, wideBrief, 0)
 	answer := nest.divide(t, divideArgsFor(wideEvidence,
 		dividePart{Title: "alpha", Summary: "s", Brief: "write a",
