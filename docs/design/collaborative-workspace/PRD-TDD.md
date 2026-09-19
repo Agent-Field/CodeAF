@@ -6,7 +6,7 @@ This document is self-contained. It specifies the experience, proposed implement
 
 **Status:** implementation proposal grounded in inspected source, not a claim of shipped behavior. **Required** means established product intent. **Default** means a recommended implementation choice resolving an earlier open question; build with it unless the owner changes it. **Experiment** means optional optimization, not a prerequisite for the promised experience.
 
-**Reading order:** [product and defaults](#2-product-problem-and-promise), [UI design](#6-product-design), [existing code](#7-what-already-exists-and-what-to-extend), [architecture](#8-technical-architecture), [AI workflows](#11-explicit-ai-workflow), [build phases](#18-delivery-plan), and [acceptance](#19-acceptance-matrix). Sections 9–17 contain the technical contracts; section 20 contains the mandatory implementation/testing handoff rules.
+**Reading order:** [product and defaults](#2-product-problem-and-promise), [UI design](#6-product-design), [existing code](#7-what-already-exists-and-what-to-extend), [architecture](#8-technical-architecture), [AI workflows](#11-explicit-ai-workflow), [build phases](#18-delivery-plan), and [acceptance](#19-acceptance-matrix). The four serial GitHub issues, owner journeys J01–J35, and engineering corrections live beside this file: [`serial-plan.md`](serial-plan.md), [`USER-JOURNEYS.md`](USER-JOURNEYS.md), [`ENGINEERING.md`](ENGINEERING.md), [`COLLABORATION-CLARIFICATION.md`](COLLABORATION-CLARIFICATION.md). Sections 9–17 contain the technical contracts; section 20 contains the mandatory implementation/testing handoff rules.
 
 ## 1. Build target and source baseline
 
@@ -18,7 +18,7 @@ This document is self-contained. It specifies the experience, proposed implement
 - The live product surface is `internal/tui3`; the v3 engine is `internal/session`. Extend these, not the separate resident product in `internal/head` and `internal/resident`.
 - Source declares Go 1.26.5, Bubble Tea v2, the AgentField Go AI SDK, and `modernc.org/sqlite`. Reuse the installed architecture; this proposal does not require an AgentField control plane or another application framework.
 
-**Next builder:** refresh branch state and read `AGENTS.md`/`CLAUDE.md` and relevant unreleased changes. Repository policy normally branches from and targets `dev`; inspection of `santos/dev` is not permission to overwrite it or the current checkout. Compare the eventual implementation base with this snapshot. Preserve other sessions' changes. Do not wholesale transplant this branch based on this document.
+**Next builder:** refresh branch state and read `AGENTS.md`/`CLAUDE.md` and relevant unreleased changes. Repository policy normally branches from and targets `dev`. **The owner explicitly requested branch-off-`santos/dev`** at `7cda67c9a066b9c805e4327054a814e0c52c0ef9`; implementation proceeds on `feat/collaborative-workspace-0918` and must not merge, force-push, or push to `dev`, `santos/dev`, `staging`, or `main`. Compare the eventual implementation base with this snapshot. Preserve other sessions' changes. Do not wholesale transplant this branch based on this document.
 
 ## 2. Product problem and promise
 
@@ -58,8 +58,8 @@ These defaults make the proposal buildable without pretending previous discussio
 | Topic | Default and rationale |
 |---|---|
 | Root | One logical Root per local authority/home. Top-level collections and unfiled chats are children of Root. Root is not the filesystem home directory. |
-| Direct communication | Allow identified chat representatives to communicate directly, as well as in shared discussions. Folder representatives are not mandatory relays. |
-| Folder conversation | “Discuss” opens a new persistent chat in that folder, preloaded with its scope. Existing discussions remain listed and can be continued explicitly. No single endless folder transcript. |
+| Direct communication | An existing ordinary chat can coordinate independent chats. Direct request/reply, fan-out to several recipients, and inviting participants into the current discussion share one router. A new group chat is optional when a distinct history is wanted. Folder representatives are not mandatory relays. |
+| Folder conversation | Coordination is a role of an ordinary persistent chat, not a manager subclass. The current chat can host a joint discussion; a separate discussion may be created when useful and filed in multiple folders. Existing discussions remain listed and can be continued explicitly. No single endless folder transcript. |
 | New automatic placements | Apply when the relationship and authority are supported. Record why; no approval card for routine filing. |
 | Automatic removals | Initially allow removal of system fallback placements and correction of the organizer's own mistaken placement. Preserve explicit user placements unless the user authorizes moving/removing them or grants a broader reorganization policy. Additive organization still operates fully. |
 | Membership changes during work | Change navigation immediately. Recompute applicable guidance and coordinator scope before the next affected tool action or work commitment. A conflict pauses affected mutation, not unrelated work or read-only investigation. |
@@ -402,19 +402,18 @@ Apply routine authorized plans automatically. The validator is not an extra user
 
 ## 18. Delivery plan
 
-Each phase should land with source, UI/tool/manual contracts, migrations, and relevant tests. Early phases are foundations, not a substitute for the complete intelligent experience.
+The PRD's seven phases (0–6) are delivered as **four serial GitHub issues**, each leaving a playable TUI on Spark with live tmux chat acceptance. The product contract (P1–P12, A1–A22) is unchanged. Owner journeys J01–J35 in [`USER-JOURNEYS.md`](USER-JOURNEYS.md) are the completion checklist. Engineering corrections are in [`ENGINEERING.md`](ENGINEERING.md). Issue bodies: [`issue-1.md`](issue-1.md) … [`issue-4.md`](issue-4.md).
 
-| Phase | Deliverable | Exit condition |
+**The owner explicitly requested branch-off-`santos/dev`.** Work stays on `feat/collaborative-workspace-0918`. Do not merge or push to `dev`, `santos/dev`, `staging`, or `main`.
+
+| Issue | Deliverable | Exit condition |
 |---|---|---|
-| 0. Reconcile baseline | Refresh source map; identify active runtime roads; specify migrations and interfaces; record defaults. | No assumption that collection UI, global mailbox, semantic retrieval, or one global plan DB already exists. |
-| 1. Manual workspace | Extend collection metadata; Root projection; stable references; TUI browse/add/move/remove; provenance. | Shared chats/folders and old chats work from UI and CLI, survive restart, and preserve existing filesystem behavior. |
-| 2. Scoped guidance | Versioned instructions, delegation, effective-context resolver, membership-change checkpoints. | Multi-parent conflicts cannot silently alter running assignments; selected vs dynamic scopes differ correctly. |
-| 3. Intelligent organization | Source ingestion; hybrid retrieval; observer/judge/organizer roles; automatic naming/placements/folders; correction and review records. | Real new-chat and abandoned-plan journeys work without user-supplied old titles or repeated filing approvals. |
-| 4. Collaboration | Durable cross-chat router, participant attribution, shared discussions, scope-aware coordination. | Planner/critic and five-feature coordination are inspectable and recover after interruption. |
-| 5. Autonomous work | Execution launch-or-join, authority-aware steering, claims/fencing, standing/tick integration, budget/attention handling. | Collaboration can safely launch and follow existing runtime work while no terminal is open on supported hosts. |
-| 6. Hardening | Backfill/upgrade/restart tests, model evaluations, realistic TUI fixtures, performance/spend measurements, rollout controls. | Acceptance matrix passes on the exact release candidate; manuals match live behavior. |
+| 1. Folders you can see | Incremental collections v2 (purpose, provenance, virtual Root); home `folders` panel; `/folders`; new chat here; add/move/remove/why; shared placement | J01–J08. Shared chats work from UI and CLI, survive restart, preserve `/folder`. No speculative later-phase tables. |
+| 2. Semantic discovery and instructions | Real embedding adapter; hybrid retrieval; auto-file with why; user correction; scoped guidance on the main turn | J09–J18 plus affected J01–J08. No keyword-only filer. Guidance affects real mutations. |
+| 3. Ordinary chats coordinate | One router for direct, fan-out, and optional shared discussion; hierarchical parent/Root escalation; durable delivery | J19–J26. Existing chat can manage others; a new group chat is optional. Real per-participant invocations. |
+| 4. Safe execution | Launch-or-join over both task roads; grants; pause vs stop; unattended tick | J27–J35 plus `make pr-ready` against the recorded baseline. Coordinators gain delegated execution here. |
 
-Do not make personal model training a prerequisite for phase 3. Optimize role/model selection against a strong-model baseline on the same cases and compute budget. Avoid shipping a deterministic keyword-only substitute for semantic discovery.
+Hardening (migrations, restart, manuals, live journeys) is an exit condition of each issue, not a fifth issue. Do not make personal model training a prerequisite for issue 2. Avoid shipping a deterministic keyword-only substitute for semantic discovery. After each wave, [`TRY.md`](TRY.md) records how the owner can try that exact behavior without overwriting their global binary or personal home.
 
 ## 19. Acceptance matrix
 
