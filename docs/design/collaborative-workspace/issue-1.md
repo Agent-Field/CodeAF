@@ -47,7 +47,7 @@ This is a usable organizing surface, not a schema-only checkpoint. Automatic sem
 | Tests | `workspace` migration/concurrency/durability; `wsapi` action validation; tui3 panel/card/80-col/selection; session tool; namelaw/iconlaw/manual gates. A new committed test/harness for dual placement + selection stability. |
 | Owner try | Update `TRY.md` with actual keys and a synthetic Spark fixture. Do not overwrite the owner's global binary or `~/.codeaf`. |
 
-Do **not**: change `/folder` semantics; treat `plandb.ParentID` as membership; call models from render; merge chats; invent an eighth tab-bar place; set `HOME`; create speculative later-phase tables.
+Do **not**: change `/folder` semantics; treat `plandb.ParentID` as membership; call models from render; merge chats; set `HOME`; create speculative later-phase tables. Wave 1 still ships Folders as a home panel. The owner later superseded the no-eighth-tab law: Folders-entry (`FOLDERS-ENTRY.md`, CONTRACTS.md) is a dedicated registered place on the Home tab bar.
 
 ### Schema and recovery (before coding)
 

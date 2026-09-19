@@ -1,6 +1,6 @@
 # Wave 1 contracts
 
-Coordination baseline 18 September 2026, **reconciled 19 September 2026** (PlanDB notes n-91ee n-uijj n-ludz n-q2mx n-5r0l n-5sbo n-cw71 n-ux5g). The freeze is not an excuse to ship missing invariants: every finding below must have a test, not only a comment. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent extra tables, tools, or an eighth tab-bar place.
+Coordination baseline 18 September 2026, **reconciled 19 September 2026** (PlanDB notes n-91ee n-uijj n-ludz n-q2mx n-5r0l n-5sbo n-cw71 n-ux5g). The freeze is not an excuse to ship missing invariants: every finding below must have a test, not only a comment. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent extra tables or tools. A Folders tab-bar place is **Folders-entry** (below), not this freeze.
 
 Wave 1 work package: `docs/design/collaborative-workspace/issue-1.md` (branch-local). PUBLICATION-POLICY.md: no GitHub issues, comments, or PRs before owner verification. Journeys J01–J08. Pre-wave source: `610a32ba`.
 
@@ -143,7 +143,7 @@ Deduplicate conversation IDs in counts. Pass Provenance through to the store (do
 
 ## TUI (`internal/tui3`)
 
-- Append `panelFolders` as the last `homePanelID` iota value (do **not** insert it between existing IDs). Insert the slot after `panelRecent` in `homePanelOrder`. `keep: 2`, `least: 3`, `rest: 4`, `most: 8`, not pinned. This is an eighth **home panel**, not a tab-bar place.
+- Append `panelFolders` as the last `homePanelID` iota value (do **not** insert it between existing IDs). Insert the slot after `panelRecent` in `homePanelOrder`. `keep: 2`, `least: 3`, `rest: 4`, `most: 8`, not pinned. Wave 1 shipped this as an eighth **home panel**. Folders-entry (below) promotes Folders to a dedicated tab-bar place; the panel may remain as enter-from.
 - Snapshot is a memo filled on the home **beat** (`readHomeFolders`), never in `View` or on cursor move.
 - `homeFolderRow = 246`, `homeFolderBack = 247`. Member chats reuse `homeSession` with `cell.panel == panelFolders`.
 - `app.pendingFolder` string: set by `n` / `/folders` new; consumed after first-message `renew`/`startChatEnter` via `AddPlacement`. Esc clears it and creates no transcript.
@@ -207,7 +207,7 @@ type Folders interface {
 
 # Wave 2 contracts
 
-Coordination freeze 19 September 2026. Wave 1 types, methods, iota values, origins, and person-facing Wave 1 spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent grant or execution tables, an eighth tab-bar place, a keyword-only filer, or a private HTTP client. Participants and deliveries are Wave 3 (v4), not this freeze.
+Coordination freeze 19 September 2026. Wave 1 types, methods, iota values, origins, and person-facing Wave 1 spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent grant or execution tables, a keyword-only filer, or a private HTTP client. A Folders tab-bar place is **Folders-entry** (below), not this freeze. Participants and deliveries are Wave 3 (v4), not this freeze.
 
 Wave 2 work package: `docs/design/collaborative-workspace/issue-2.md` (branch-local). PUBLICATION-POLICY.md: no GitHub issues, comments, or PRs before owner verification. Journeys J09–J18 plus affected J01–J08. Packages are not implemented in this freeze.
 
@@ -577,7 +577,7 @@ Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`. `mkt
 
 # Wave 3 contracts
 
-Coordination freeze 19 September 2026. Wave 1 and Wave 2 types, methods, iota values, origins, and person-facing spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Grant and execution tables are Wave 4 (v5), not this freeze. Do not invent a manager subclass, a second messaging bus, planner/critic product types, or an eighth tab-bar place.
+Coordination freeze 19 September 2026. Wave 1 and Wave 2 types, methods, iota values, origins, and person-facing spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Grant and execution tables are Wave 4 (v5), not this freeze. Do not invent a manager subclass, a second messaging bus, or planner/critic product types. A Folders tab-bar place is **Folders-entry** (below), not this freeze.
 
 Wave 3 work package: `docs/design/collaborative-workspace/issue-3.md` (branch-local). PUBLICATION-POLICY.md: no GitHub issues, comments, or PRs before owner verification. Journeys J19–J26 plus affected earlier journeys. Packages are not implemented in this freeze.
 
@@ -619,7 +619,7 @@ Wave 1 and Wave 2 names stay. Additive:
 | Escalation | parents may join; **not** “always ask after two turns” as a ban on parent join |
 | Empty participants | emptiness law: nothing, never `0 participants` |
 
-No planner/critic product types, no manager subclass, no eighth tab-bar place. Icons through `tokens` only.
+No planner/critic product types, no manager subclass. A Folders tab-bar place is **Folders-entry** (below), not this freeze. Icons through `tokens` only.
 
 ## `internal/workspace` (schema v4)
 
@@ -953,7 +953,7 @@ Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`. `mkt
 
 # Wave 4 contracts
 
-Coordination freeze 19 September 2026. Wave 1–3 types, methods, iota values, origins, and person-facing spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent a third execution store, a manager subclass, a second daemon, or an eighth tab-bar place. Coordinators may **execute** when an authentic grant says so.
+Coordination freeze 19 September 2026. Wave 1–3 types, methods, iota values, origins, and person-facing spellings stay. Amend only through a PlanDB note and a CONTRACTS.md patch. Do not invent a third execution store, a manager subclass, or a second daemon. A Folders tab-bar place is **Folders-entry** (below), not this freeze. Coordinators may **execute** when an authentic grant says so.
 
 Wave 4 work package: `docs/design/collaborative-workspace/issue-4.md` (branch-local). PUBLICATION-POLICY.md: no GitHub issues, comments, or PRs before owner verification. Journeys J27–J35 plus affected earlier journeys. Packages are not implemented in this freeze.
 
@@ -1327,3 +1327,132 @@ Nil `Options.Exec`: no launch-state chrome; natural-language launch still works 
 ## Isolation
 
 Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`. `mktemp`. Run-unique tmux. Keys via `config.APIKeyAt` / e2e `liveKey`. Synthetic content only. Live journeys must exercise **both** roads. Do not prove only one road and infer the other.
+
+# Folders-entry contracts
+
+Coordination freeze 19 September 2026. This is a **product refinement named Folders entry**, not a fifth GitHub issue. Internal release ordinal is 5 only for `ready.json` later; do not overwrite `control/releases/wave-{1,2,3,4}/`. Wave 1–4 types, methods, iota values, origins, and person-facing spellings stay except where this section names a supersession. Amend only through a PlanDB note and a CONTRACTS.md patch. No GitHub issues, comments, or PRs. Prefer no speculative rewrite.
+
+**Owner supersedes the old no-eighth-tab-bar-place law.** Folders is now a **dedicated registered place** on Home top navigation, not only a home panel.
+
+Inspected live code at freeze (`feat/cw0918-fe-contracts`): `placeOrder` is `home tasks spend settings standing memory search`, `placeBarPlaces=4`, bar words `home tasks spend settings`. `/folders` is already not an alias of `/folder` (`commands.go` `checkCommands`); bare `/folders` currently focuses the home folders panel (`runFoldersCommand` → `showFoldersPanel`). `workspace.organize` unset is **on** (`OrganizeEnabledAt`). Organize jobs are `observe_and_organize` processed by `session.ProcessOrganizeJobs` on the standing pass / `codeaf tick`. Wiring is `cmd/codeaf/folders_adapter.go` (`var _ tui3.Folders`).
+
+## Lane ownership (disjoint)
+
+| Lane | PlanDB | Owns | Must not edit |
+|---|---|---|---|
+| ui | `t-fe-ui` | `internal/tui3` Folders **place** (`place_folders.go` new), `pages.go` `placeOrder` / `placeBarPlaces` / bar tests, `/folders` routing into the place, visible actions, Root/empty, 80-col. **Keep** the home `folders` panel as enter-from (heading still `folders`; enter on the heading opens the place). | workspace internals, wsdiscover, organize job implementation |
+| organize | `t-fe-organize` | `internal/wsapi` organize door, `internal/wsdiscover` / `internal/workspace` job reuse, `cmd/codeaf` + `internal/session` binding of the explicit action. Default: fresh profile does not invent folders. | `internal/tui3` except filling Options |
+| proof | `t-fe-proof` | `internal/e2e` harness + `internal/manual/chat` + TRY/amendment. Journeys J36–J43. **Not** other packages' unit tests. | product logic |
+| gaps | `t-fe-gaps` | read-only audit + PlanDB fix tasks | product files |
+
+Integration (`t-fe-integrate`) applies real lane commits onto `feat/collaborative-workspace-0918`. No temporary production fallback adapters: a missing organize door is a labelled refusal, never a fake `done`, never an empty successful RootView that invented folders.
+
+## Product names (person-facing)
+
+Wave 1–4 names stay (`folders`, `/folders`, `n f e m w x i`, emptiness whisper, `instructions`, `discovery delayed`, `degraded`). Additive and superseded:
+
+| Surface | Spelling |
+|---|---|
+| Tab-bar / place word | `folders` |
+| Bar, left to right | `home` `tasks` `spend` `settings` `folders` |
+| Digit | `alt+5` is Folders (was standing). Standing / memory / search stay off-bar at `alt+6` `alt+7` `alt+8` |
+| Slash | `/folders` **enters this logical Folders place**. Not an alias of `/folder` |
+| Filesystem | `/folder` `/place` `/dir` stay physical directories |
+| Visible actions (not slash-only) | `New folder` · `New chat` · `Organize existing chats` |
+| Optional slash for the survey | `/folders organize` — same door as **Organize existing chats**, never the only door |
+| Empty folder *list* | heading `folders` plus `logical groups of chats · /folders create Billing` — never “no folders yet” |
+| Root unfiled chats | drawn even when the folder list is empty; they are a second truth |
+| Job progress on the Folders place | `queued` · `running` · `delayed` · `done` · `cancel` — never store words `pending` `leased` `completed` `deferred` `cancelled`, never `checked` |
+| Root | virtual; never a `collections` row; never a CLI list entry |
+
+New chat may start at Root (no folder selected) or in the selected folder (pending membership on first message, Esc creates nothing). If a visible-action chord collides, rename the chord, not the action. Record the landed chords in the manual and TRY.md.
+
+## TUI (`internal/tui3`) — ui lane
+
+- Append `pageFolders` as the **last** `page` iota value (do **not** insert it between existing IDs). New file `internal/tui3/place_folders.go` registers the place (`id`, `word` = `folders`) the same way `place_tasks.go` does.
+- `placeOrder` becomes `{pageHome, pageTasks, pageSpend, pageSettings, pageFolders, pageStanding, pageMemory, pageSearch}`. `placeBarPlaces` becomes **5**. The bar draws those five words. `placeWordList` stays read off `placeOrder`.
+- Bare `/folders` is `showPage(pageFolders)` — fate `opens the page` (`fatePlace`). Subcommands (`create`, `add`, `rename`, `nest`, `instruct`, `new`, optional `organize`) keep working and land on the place when they need a surface. `checkCommands` still refuses aliasing `/folders` to `/folder` `/place` `/dir`.
+- **Keep the home `folders` panel as enter-from.** Heading stays `folders`. Enter on the heading opens `pageFolders`. The place owns sequential drill-in of the graph; the panel is a summary door, not a second competing tree. Nil `Options.Folders` still uses `folders are not wired here`.
+- Snapshot on the home **and Folders-place beat**, never in `View`, never on a mere cursor move. No model, no disk, no API on paint.
+- 80-column sequential; `esc` back. Stable selection by object id + navigation path. Composer text retained (P12 / J06 / J43).
+- Wave 1–4 `tui3.Folders` methods stay, in the same order. Additive methods and DTO:
+
+```go
+// FolderOrganize is the explicit survey as the Folders place draws it.
+// State is person-facing: queued | running | delayed | done | cancel.
+type FolderOrganize struct {
+    JobID, State, Detail string
+}
+
+// Additive on Folders (after IndexProgress). Wiring's adapter must compile
+// `var _ tui3.Folders`.
+OrganizeExisting(ctx context.Context) (FolderOrganize, error)
+OrganizeStatus(ctx context.Context) (FolderOrganize, error)
+CancelOrganize(ctx context.Context) error
+```
+
+`OrganizeExisting` is the visible **Organize existing chats** action. A second invoke while `queued` or `running` is a no-op success (same JobID). `CancelOrganize` is the visible `cancel`. Nil seam: all three refuse with `folders are not wired here`, never silent success.
+
+## Organize door (`internal/wsapi` + jobs) — organize lane
+
+Do **not** invent a second scheduler, a second vector DB, a second job type, or a dummy production adapter. Reuse `observe_and_organize` / `internal/wsdiscover` / standing job pipeline (`session.ProcessOrganizeJobs`, `standing.Interval` unchanged, `codeaf tick`). Organize **outside** the collections writer transaction; revalidate expected revisions before apply. Historical text is evidence, not new authority. Manual corrections (suppressions, person-origin placements) stay respected (J11).
+
+```go
+const OrganizeExistingKey = "organize_existing" // CoalesceKey for the explicit survey
+
+type OrganizeView struct {
+    JobID, State, Detail string // State: queued | running | delayed | done | cancel
+}
+
+func (s *Service) OrganizeExistingChats(ctx context.Context) (OrganizeView, error)
+func (s *Service) OrganizeStatus(ctx context.Context) (OrganizeView, error)
+func (s *Service) CancelOrganize(ctx context.Context) error
+```
+
+`OrganizeExistingChats` enqueues `workspace.Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey}` (`observe_and_organize`). Store states stay `pending` `leased` `completed` `deferred` `failed` `cancelled`. The adapter maps them to person-facing strings:
+
+| Store | Person sees |
+|---|---|
+| `pending` | `queued` |
+| `leased` | `running` |
+| `deferred` or `failed` | `delayed` (honest `Detail`; never `checked`) |
+| `completed` | `done` |
+| `cancelled` | `cancel` |
+
+Durable, restartable, idempotent: quit/reopen leaves a `queued`/`running` job for the tick; a second click while `pending`/`leased` returns the same row. Budget-bounded: exhausting the background rail finishes `deferred` and paints `delayed`. Foreground chat stays responsive. `cmd/codeaf/folders_adapter.go` implements the three TUI methods against this door (`var _ tui3.Folders` still holds).
+
+**Fresh profile does not invent folders.** After-message automatic enqueue (Wave 2, CoalesceKey = chat id + source revision) MUST NOT `CreateFolder` while Root has zero collections. The Folders tab stays empty of generated folders until the person uses **New folder** / `/folders create` **or** **Organize existing chats** actually applies. `workspace.organize` unset remains **on** for the pipeline being *allowed*; unset-on no longer means silent first-populate of an empty tab. Off still cancels/defers **automatic** after-message apply; it does not refuse manual Add/Remove and it does **not** cancel an explicit `organize_existing` job.
+
+**Upgrade must not delete or reorganize persisted placements.** Existing chats with no membership stay accessible unfiled at Root. Existing collections stay. Organize existing chats surveys saved conversations and may create useful folders from evidence; it does not wipe the graph first.
+
+No model in render. Actual job launch, not a fake countdown or a synchronous LLM on the UI thread.
+
+## Session / CLI (organize + ui binding)
+
+- `session.ProcessOrganizeJobs` stays the runner. Distinguish explicit (`CoalesceKey == OrganizeExistingKey`) from automatic (chat:rev) when `workspace.organize` is off.
+- Conversation id for membership is still `session.Place.ID()` (16 hex).
+- First-message order unchanged: mint transcript, then `AddPlacement`. Failure leaves the chat unfiled under Root.
+- Trusted origin at ingress unchanged: TUI verbs stamp `OriginPerson`; the folders tool stamps `OriginOrganizer`.
+
+## Tests the lanes owe before handoff
+
+- ui: `pageFolders` registered; bar words `home tasks spend settings folders`; `placeBarPlaces==5`; bare `/folders` enters the place; `/folder` `/place` `/dir` still open the filesystem sheet; empty folder list whisper and unfiled Root chats both draw; `New folder` `New chat` `Organize existing chats` visible without requiring a slash; 80-col sequential; selection/composer stable. Package tests live here, not in the proof lane.
+- organize: `OrganizeExistingChats` enqueues `observe_and_organize` with `OrganizeExistingKey`; repeated click coalesces; cancel; restart resumes; fresh store with chats does not CreateFolder until the explicit door or a person-created folder; upgrade fixture keeps placements; compile-time `var _ tui3.Folders`; no second daemon; no FakeEmbedder in production.
+- proof: e2e/manual/probes/TRY only. **Not** `internal/tui3/*_test.go`. Committed harness covering J36–J43 by frozen names. Live tmux is later acceptance (`t-fe-validate`), not this lane’s pass.
+
+## Journeys this freeze names (proof owns the harness)
+
+| ID | Observable |
+|---|---|
+| J36 | Fresh empty logical Folders tab: heading `folders`, whisper, no generated folders |
+| J37 | Real `/folder` unaffected and never mirrored |
+| J38 | Visible `New folder` / `New chat` start at Root or the selected folder |
+| J39 | Existing chats visible unfiled at Root before organizing |
+| J40 | Visible `Organize existing chats` launches an actual asynchronous job while chatting |
+| J41 | Resulting shared/nested folders can browse/rename/move/why via TUI |
+| J42 | Repeated click + restart + `queued`/`running`/`delayed`/`done`/`cancel` correct |
+| J43 | 80-col navigation; selection and composer stable |
+
+## Isolation
+
+Same as Wave 1. `CODEAF_HOME` + private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. `mktemp`. Run-unique tmux. Keys via `config.APIKeyAt` / e2e `liveKey`. Synthetic content only. Do not start `codeaf` against the owner's HOME.

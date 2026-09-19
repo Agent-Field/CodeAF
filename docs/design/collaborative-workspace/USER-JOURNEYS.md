@@ -2,7 +2,7 @@
 
 **Owner acceptance contract · 18 September 2026**
 
-The owner requires four serial waves, each playable in the real TUI. Collectively, these journeys cover the agreed experience from the conversation and the PRD/TDD—not just a happy-path demonstration of each component. This checklist supplements `PRD-TDD.md`, the four issue bodies, and the supervising architecture corrections. A journey is not complete because its UI exists or a model says it worked.
+The owner requires four serial waves, each playable in the real TUI, plus the Folders-entry refinement (J36–J43). Collectively, these journeys cover the agreed experience from the conversation and the PRD/TDD—not just a happy-path demonstration of each component. This checklist supplements `PRD-TDD.md`, the four issue bodies, [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md), and the supervising architecture corrections. A journey is not complete because its UI exists or a model says it worked.
 
 ## How completion is proved
 
@@ -78,6 +78,23 @@ In the tables, folder names and messages are fixture examples, not keyword rules
 
 **Wave 4 gate:** J27–J35, affected earlier journeys, both execution roads, and final `make pr-ready` against the recorded implementation baseline on Spark. Do not report the feature complete with an untested required journey.
 
+## Folders-entry — dedicated logical Folders place
+
+Product refinement after Wave 4, not a fifth GitHub issue. Freeze: [`CONTRACTS.md`](CONTRACTS.md) Folders-entry · [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md). The owner superseded the no-eighth-tab-bar-place law.
+
+| ID | User journey and actions | Observable result and supporting assertion |
+|---|---|---|
+| J36 | Open a fresh isolated workspace. Go to the Folders tab (`folders` on the Home tab bar, or `/folders`). | Dedicated logical Folders place. Heading `folders`. Empty folder *list* keeps `logical groups of chats · /folders create Billing` — never “no folders yet”. No generated folders. |
+| J37 | Open filesystem `/folder` (and `/place` `/dir`) before and after using the Folders place. | Filesystem chooser unchanged. Logical Folders never mirrored as a project/directory. `/folders` is not an alias of `/folder`. |
+| J38 | On the Folders place, use visible **New folder** and **New chat** at Root, then again inside a selected folder. Cancel one new chat before sending. | Folder is created. New chat starts at Root or the selected folder. Esc creates no transcript. First sent chat keeps its own id. |
+| J39 | With existing unfiled chats and no Organize yet, open Folders. | Unfiled chats are visible at Root. Empty folder list does not hide that work. Upgrade/restart does not delete or reorganize persisted placements. |
+| J40 | Invoke visible **Organize existing chats** while composing in another chat. | An actual asynchronous `observe_and_organize` job runs. Progress is `queued` / `running` (then `done` or `delayed`). Foreground chat stays usable. No model/disk/API on paint. Not a fake countdown. |
+| J41 | After organize, browse a resulting shared/nested folder; rename; move; inspect why. | Same TUI verbs as Wave 1 (`n f e m w x`). Dual placement and why-here still work. `/folder` still a directory. |
+| J42 | Click Organize existing chats twice; quit/reopen mid-job; cancel; exhaust budget or take the organizer down. | Repeated click while queued/running is idempotent. Restart resumes. States `queued` `running` `delayed` `done` `cancel` are honest. Never `checked`. Manual corrections stick. |
+| J43 | Browse Folders at wide and 80 columns; change membership from another window while composing. | Sequential navigation; selection by object id + path; composer retained. No jump to another chat. |
+
+**Folders-entry gate:** J36–J43 plus affected earlier journeys. Production-state assertions, not word matching alone. Live tmux is `t-fe-validate`, not the proof lane’s pass.
+
 ## Coverage map
 
 | Agreed requirement / PRD acceptance | Journey coverage |
@@ -86,12 +103,12 @@ In the tables, folder names and messages are fixture examples, not keyword rules
 | P4 scoped folder purpose/instructions/representatives | J12–J14, J21, J24 |
 | P5 coordination as normal chats; multiple managers | J19–J22, J25 |
 | P6 discovery including old/rejected/mixed-topic content | J09–J10, J15–J18 |
-| P7 automatic organization and manual correction | J05, J11–J12, J16–J17 |
+| P7 automatic organization and manual correction | J05, J11–J12, J16–J17, J40–J42 |
 | P8 shared discussion without merging scopes | J03–J04, J14, J22 |
 | P9 collaboration launches work without duplicate ownership | J27–J33 |
 | P10 source, actor, scope, history, authority | J05, J10–J15, J22–J24, J26, J29–J31, J34 |
 | P11 hundreds of chats without management overload | J07, J18, J25, J34 |
-| P12 stable selection/composer | J06–J07, J35 |
+| P12 stable selection/composer | J06–J07, J35, J43 |
 | A1–A3 | J03, J02, J09 + J28 |
 | A4–A8 | J09 + J18, J12 + J18, J10, J10 + J13 + J29, J11 |
 | A9–A12 | J06 + J13 + J29, J28, J26 + J29 + J30, J23 |

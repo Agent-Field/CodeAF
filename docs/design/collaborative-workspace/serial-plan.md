@@ -11,7 +11,7 @@
 | Inspected baseline | `santos/dev` `7cda67c9a066b9c805e4327054a814e0c52c0ef9` |
 | Design commit (pre-issue-1) | `610a32ba4cdf04053e61e0e14703304842e4b844` |
 | Design | `docs/design/collaborative-workspace/` |
-| Journeys | [`USER-JOURNEYS.md`](USER-JOURNEYS.md) J01–J35 |
+| Journeys | [`USER-JOURNEYS.md`](USER-JOURNEYS.md) J01–J43 |
 | Engineering | [`ENGINEERING.md`](ENGINEERING.md) |
 | Owner try | [`TRY.md`](TRY.md) |
 | Control dir | `/home/santosh/src/codeaf-workspace-0918-control` |
@@ -46,7 +46,7 @@ Inspected against HEAD on this branch (worker-harness waves are already in histo
 
 - `/folder` `/place` `/dir` choose filesystem context (`folderpick.go`). `/workspace` anchors a project. Home’s `projects` panel and `homefolders.go` / `homeband_folders.go` are filesystem places a conversation is “also about”.
 - Home `o` is “open folder” (filesystem). Home `t` starts a chat in that **project**. Home `a` archives. `ctrl+t` is new-chat tab. `+` opens a start page; the conversation is minted on the **first message**.
-- Seven places only: home, tasks, standing, memory, spend, search, settings (`pages.go`). Adding an eighth place would renumber `alt+` chords and fight the home mission-control ruling.
+- Inspected baseline had seven places: home, tasks, standing, memory, spend, search, settings (`pages.go`), with four bar words `home tasks spend settings` (`placeBarPlaces=4`). **Folders-entry supersedes the old no-eighth-tab law:** Folders is a dedicated registered place; bar word `folders`; `placeBarPlaces` becomes 5. Digit `alt+5` becomes Folders (was standing). Standing, memory and search stay off-bar at `alt+6`…`alt+8`. See CONTRACTS.md Folders-entry.
 
 **Transcripts, search, mailbox, assignment, tick, hosts.**
 
@@ -79,9 +79,15 @@ Inspected against HEAD on this branch (worker-harness waves are already in histo
 
 The PRD is the product contract. These defaults replace earlier sketches that would fight this codebase, and they incorporate supervising review plus the owner's collaboration clarification.
 
-### 2.1 Logical folders are a home panel, not an eighth place
+### 2.1 Logical folders are a dedicated place on the Home tab bar
 
-**Default:** logical folders are a **home panel** named `folders` plus slash `/folders` (not `/folder`). Empty panel keeps its heading and one dim line naming what arrives there — never “no folders yet”. Selecting a folder opens a **detail card/sheet** (wide: card beside the list; ≤80 cols: sequential view with `esc` back). Icons go through `tokens.GlyphFolder` / `palette.glyph`, never literals.
+**Default (owner supersession, 19 September 2026):** logical Folders is a **dedicated registered place** on the Home tab bar, word `folders`, not only a home panel. Virtual Root, never a filesystem/project mirror. `/folders` **enters this logical Folders place**. It is not an alias of `/folder`. `/folder` `/place` `/dir` stay physical directories.
+
+The home `folders` panel **stays as enter-from**: heading `folders`; enter on the heading opens the Folders place. Empty folder *list* keeps the heading and one dim line naming what arrives there — never “no folders yet”. Unfiled chats at Root are a second truth and stay visible. Selecting a folder drills sequentially (≤80 cols: `esc` back). Icons go through `tokens.GlyphFolder` / `palette.glyph`, never literals.
+
+Visible keyboard actions, not slash-only: **New folder**, **New chat**, **Organize existing chats**. New chat may start at Root or the selected folder.
+
+Fresh workspace: **no generated folders** until the person creates one **or** explicitly invokes **Organize existing chats**. Existing chats stay accessible unfiled at Root. Upgrade must not delete or reorganize persisted placements.
 
 Filesystem `/folder` is untouched. Logical membership never changes cwd, repo, or `/attach`.
 
@@ -162,7 +168,7 @@ Conflict escalation: one discussion, both positions, hierarchical parent join wi
 
 Wire implementations in `cmd/codeaf`. TUI and session tools are thin adapters. New functions stay at cyclomatic complexity ≤ 15.
 
-Feature switch: profile row `workspace.organize` (default on after v2). Off pauses automatic placements; manual folders, history, and work remain.
+Feature switch: profile row `workspace.organize` (unset currently **on**). Off pauses **automatic** after-message placements; manual folders, history, foreground chat, and the explicit **Organize existing chats** action remain. Unset-on no longer means silent first-populate of an empty Folders tab.
 
 ### 2.9 Automation policy
 
@@ -175,7 +181,7 @@ Feature switch: profile row `workspace.organize` (default on after v2). Off paus
 
 ### 2.10 Do not optimize for a manual folder demo
 
-Wave 1 is a usable folder TUI because later AI has to land *somewhere*. Semantic discovery, collaboration, and safe execution are issues 2–4. All J01–J35 remain required.
+Wave 1 is a usable folder TUI because later AI has to land *somewhere*. Semantic discovery, collaboration, and safe execution are issues 2–4. All J01–J35 remain required. Folders-entry adds J36–J43.
 
 ---
 
@@ -216,8 +222,9 @@ For every issue:
 | 2 | Semantic discovery, automatic filing, and scoped folder instructions | New chat finds old work without the old title; auto-places with reason; user correction sticks; folder instructions load in descendants | 1 |
 | 3 | Inspectable collaboration: ordinary chats coordinate, with optional shared discussion | Existing chat coordinates selected chats via direct, fan-out, and optional joint discussion; inspect and intervene; offline then resume delivers once | 1–2 |
 | 4 | Safe execution: launch-or-join, authority, and unattended recovery | Collaboration can launch or join work without duplicate implementation; pause vs stop; tick while TUI closed; both task roads | 1–3 |
+| Folders-entry | Dedicated logical Folders place and explicit Organize existing chats | Tab-bar word `folders`; `/folders` enters the place; fresh tab does not auto-populate; J36–J43 | product refinement after 1–4, **not** a fifth GitHub issue |
 
-Full bodies: `issue-1.md` … `issue-4.md`. Journeys: J01–J35 in `USER-JOURNEYS.md`.
+Full bodies: `issue-1.md` … `issue-4.md`, then [`FOLDERS-ENTRY.md`](FOLDERS-ENTRY.md). Journeys: J01–J43 in `USER-JOURNEYS.md`. Internal release ordinal is 5 only for `ready.json` later; do not overwrite `releases/wave-{1,2,3,4}/`.
 
 ---
 
