@@ -22,6 +22,7 @@ type fakeStore struct {
 	proposals    []workspace.Proposal
 	suppressions map[string]workspace.Suppression
 	participants []workspace.Participant
+	grants       []workspace.Grant
 	revisionErr  error
 	at           string
 }
@@ -42,6 +43,7 @@ func newFakeStore() *fakeStore {
 
 var _ store = (*fakeStore)(nil)
 var _ collabStore = (*fakeStore)(nil)
+var _ grantStore = (*fakeStore)(nil)
 
 func (f *fakeStore) Close() error { return nil }
 
@@ -500,6 +502,111 @@ func (f *fakeStore) ListParticipants(_ context.Context, discussionID string) ([]
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeStore) PutGrant(_ context.Context, g workspace.Grant) (workspace.Grant, error) {
+	if g.CoordinatorID == "" {
+		return workspace.Grant{}, fmt.Errorf("%w: grant needs a coordinator", workspace.ErrInvalid)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if g.Status == "" {
+		g.Status = workspace.GrantActive
+	}
+	if g.Origin == "" {
+		g.Origin = workspace.OriginPerson
+	}
+	if g.ActionJSON == "" {
+		g.ActionJSON = "[]"
+	}
+	if g.SnapshotJSON == "" {
+		g.SnapshotJSON = "[]"
+	}
+	if issuer, ok := f.grantLocked(g.Issuer); ok && grantWouldExpand(issuer, g) {
+		return workspace.Grant{}, fmt.Errorf("%w: grant cannot expand", workspace.ErrInvalid)
+	}
+	if g.ID != "" {
+		for i, row := range f.grants {
+			if row.ID != g.ID {
+				continue
+			}
+			if grantWouldExpand(row, g) {
+				return workspace.Grant{}, fmt.Errorf("%w: grant cannot expand", workspace.ErrInvalid)
+			}
+			g.Revision = row.Revision + 1
+			g.CreatedAt, g.UpdatedAt = row.CreatedAt, f.at
+			f.grants[i] = g
+			return g, nil
+		}
+		g.ID = ""
+	}
+	f.seq++
+	g.ID = fmt.Sprintf("gr%02d", f.seq)
+	if g.Revision == 0 {
+		g.Revision = 1
+	}
+	g.CreatedAt, g.UpdatedAt = f.at, f.at
+	f.grants = append(f.grants, g)
+	return g, nil
+}
+
+func (f *fakeStore) GetGrant(_ context.Context, id string) (workspace.Grant, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if got, ok := f.grantLocked(id); ok {
+		return got, nil
+	}
+	return workspace.Grant{}, workspace.ErrNotFound
+}
+
+func (f *fakeStore) ListGrants(_ context.Context, coordinatorID string) ([]workspace.Grant, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]workspace.Grant, 0)
+	for _, row := range f.grants {
+		if row.CoordinatorID == coordinatorID {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) RevokeGrant(_ context.Context, id string, expectedRevision int) (workspace.Grant, error) {
+	if id == "" {
+		return workspace.Grant{}, fmt.Errorf("%w: grant revoke needs an id", workspace.ErrInvalid)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, row := range f.grants {
+		if row.ID != id {
+			continue
+		}
+		if expectedRevision != 0 && row.Revision != expectedRevision {
+			return workspace.Grant{}, workspace.ErrConflict
+		}
+		if row.Status == workspace.GrantRevoked {
+			return row, nil
+		}
+		row.Status = workspace.GrantRevoked
+		row.RevocationRevision = row.Revision
+		row.Revision++
+		row.UpdatedAt = f.at
+		f.grants[i] = row
+		return row, nil
+	}
+	return workspace.Grant{}, workspace.ErrNotFound
+}
+
+func (f *fakeStore) grantLocked(id string) (workspace.Grant, bool) {
+	if id == "" {
+		return workspace.Grant{}, false
+	}
+	for _, row := range f.grants {
+		if row.ID == id {
+			return row, true
+		}
+	}
+	return workspace.Grant{}, false
 }
 
 func (f *fakeStore) SetParticipantStatus(_ context.Context, id, status string) error {
