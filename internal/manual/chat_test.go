@@ -1244,6 +1244,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the embed pin", "what-i-remember"},
 		{"why does discovery say degraded", "what-i-remember"},
 		{"what does discovery delayed mean", "what-i-remember"},
+		{"where is discovery.db", "what-i-remember"},
 		{"how do I pin an embeddings model", "models-and-cost"},
 
 		// The third wave: codeaf changing a person's own settings for them.

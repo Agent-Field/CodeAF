@@ -419,6 +419,15 @@ expanded-word path and labels it **`degraded`** / **`discovery delayed`**. That
 is a fallback, not a replacement, and it must not file and must not claim the
 workspace was `checked`. There is no keyword-only filer.
 
+## discovery.db — rebuildable index, not membership truth
+
+The derived search index is **`v3/discovery.db`** in the codeaf home. Journals
+stay the source of membership; this file can be rebuilt. Opening a chat binds
+that file plus the **embed** adapter, or labels the path `discovery delayed` if
+the embedder is down or the file cannot open. A failed discovery open does not
+empty your folders and does not invent a fake `100%` or a successful empty
+index. Dummy production fallbacks are not used.
+
 ## How does something get remembered without me asking?
 
 After a message has been answered — off your path entirely, with nothing waiting
