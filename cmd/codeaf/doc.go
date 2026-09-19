@@ -53,7 +53,7 @@ func runDoc(args []string) error {
 	}
 	// A billed rung records its own usage row on the way through; this process
 	// must outlive the ledger's write queue for the row to land.
-	defer session.FlushUsage()
+	defer session.CloseUsage()
 
 	answer, err := session.ReadDocument(context.Background(), session.DocumentRead{
 		Path:      positionals[0],

@@ -508,6 +508,7 @@ type usageWrite struct {
 // usageWriter is one ledger file's background writer.
 type usageWriter struct {
 	queue       chan usageWrite
+	stopped     chan struct{}
 	beforeWrite func()
 }
 
@@ -571,10 +572,17 @@ var (
 func usageWriterFor(path string) *usageWriter {
 	usageWritersMu.Lock()
 	defer usageWritersMu.Unlock()
+	return usageWriterForLocked(path)
+}
+
+func usageWriterForLocked(path string) *usageWriter {
 	if writer := usageWriters[path]; writer != nil {
 		return writer
 	}
-	writer := &usageWriter{queue: make(chan usageWrite, usageQueueDepth)}
+	writer := &usageWriter{
+		queue:   make(chan usageWrite, usageQueueDepth),
+		stopped: make(chan struct{}),
+	}
 	usageWriters[path] = writer
 	go writer.run(path)
 	return writer
@@ -589,6 +597,7 @@ func usageWriterFor(path string) *usageWriter {
 // record is worth less than the turn that earned it.
 func (w *usageWriter) run(path string) {
 	var file *os.File
+	defer close(w.stopped)
 	defer func() {
 		if file != nil {
 			_ = file.Close()
@@ -683,6 +692,24 @@ func FlushUsage() {
 	}
 }
 
+// CloseUsage stops every writer the process registry started and waits until
+// each run loop has returned. Closing and detaching happen under the same lock
+// as row enqueue, so no sender can retain a queue after its owner closes it.
+func CloseUsage() {
+	usageWritersMu.Lock()
+	writers := make([]*usageWriter, 0, len(usageWriters))
+	for path, writer := range usageWriters {
+		writers = append(writers, writer)
+		delete(usageWriters, path)
+		close(writer.queue)
+	}
+	usageWritersMu.Unlock()
+
+	for _, writer := range writers {
+		<-writer.stopped
+	}
+}
+
 // RecordUsage queues one line. Every failure is silence, for
 // [RecordArtifact]'s reason: the caller has just finished a piece of a person's
 // turn, and there is nothing it could usefully do with the news that a spending
@@ -714,11 +741,14 @@ func RecordUsage(path string, line UsageLine) {
 	// full queue means the writer is stuck on a disk that is not answering, and
 	// a turn made to wait behind it would be this file's fourth rule broken to
 	// save a record of what the turn cost.
+	usageWritersMu.Lock()
+	writer := usageWriterForLocked(path)
 	select {
-	case usageWriterFor(path).queue <- usageWrite{line: append(payload, '\n')}:
+	case writer.queue <- usageWrite{line: append(payload, '\n')}:
 	default:
 		dropUsageRow()
 	}
+	usageWritersMu.Unlock()
 }
 
 // ReadUsage reads the ledger, OLDEST FIRST, keeping only lines at or after
