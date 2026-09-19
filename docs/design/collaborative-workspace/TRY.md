@@ -74,7 +74,7 @@ ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b
 
 ## Wave 3 — ordinary chats coordinate
 
-Status: **candidate** SHA `5ea58452ffe529a7f41889096751bc4841183f72` (integrate bind). Not owner-try until `releases/wave-3/ready.json`. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Copy-paste launch lands beside that receipt (same shape as Wave 2). Wave 1 and Wave 2 launches stay:
+Status: **candidate** SHA `34327b2d0c6b88659f9f2c0663a85df240f75d56` (Activity paint + bounded invite consult). Not owner-try until `releases/wave-3/ready.json`. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Copy-paste launch lands beside that receipt (same shape as Wave 2). Wave 1 and Wave 2 launches stay:
 
 ```
 ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b3b407a676efca3282b9834f05ea956c98a89cd/launch.sh'
