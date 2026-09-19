@@ -54,7 +54,7 @@ func TestPersonTypedTaskCarriesNoQuestion(t *testing.T) {
 	if got := beltRunTaskAt(t, dir, strconv.FormatUint(id, 10)).Question; got != "" {
 		t.Fatalf("person-typed /task question = %q, want empty", got)
 	}
-	close(double.release)
+	endBeltRun(t, agent, double)
 }
 
 func TestOwedRootLandingWakesOnceWithOnlyQuestionAndResult(t *testing.T) {
