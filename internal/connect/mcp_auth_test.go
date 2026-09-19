@@ -262,19 +262,30 @@ func TestAServiceThatWillNotBeIntroducedToSaysSoPlainly(t *testing.T) {
 // The identity survives being disconnected, exactly as a client credential does,
 // so that connecting again is one browser trip and not a second registration.
 func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
-	first := unusedLoopbackAddress(t)
+	held, err := listener.NewOn("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("hold a loopback listener: %v", err)
+	}
+	first := held.Addr().String()
 	previous := newLocalListener
 	calls := 0
 	newLocalListener = func(addresses []string) (net.Listener, *url.URL, error) {
-		address := first
-		if calls > 0 {
-			if addresses[0] != first {
-				t.Fatalf("reconnect first address = %q, want saved %q", addresses[0], first)
-			}
-			address = addresses[0]
+		if calls == 0 {
+			calls++
+			// Hand the product the listener already held, so the initial bind is
+			// never closed and rebound and no other listener can take the port in
+			// between. The product serves on it and closes it at disconnect.
+			return held, held.URL, nil
 		}
 		calls++
-		l, err := listener.NewOn(address)
+		// The reconnect rebinds the saved port on the first try, with no retry:
+		// that success is the guarantee that the finished flow released its
+		// listener before it reported done, so a regression of that release
+		// fails here.
+		if addresses[0] != first {
+			t.Fatalf("reconnect first address = %q, want saved %q", addresses[0], first)
+		}
+		l, err := listener.NewOn(addresses[0])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -412,19 +423,6 @@ func connectFakeAt(t *testing.T, manager *Manager, answer string) {
 	if _, err := flow.Wait(ctx); err != nil {
 		t.Fatalf("Wait: %v", err)
 	}
-}
-
-func unusedLoopbackAddress(t *testing.T) string {
-	t.Helper()
-	local, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("find an unused loopback address: %v", err)
-	}
-	address := local.Addr().String()
-	if err := local.Close(); err != nil {
-		t.Fatalf("release unused loopback address: %v", err)
-	}
-	return address
 }
 
 // gatedListener holds its Close open until release is closed, and signals when
