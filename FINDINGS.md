@@ -9,3 +9,5 @@ The implementation seam is the rail gesture: try the existing task-page reader t
 The committed c295 tests fail at the intended seam: neither click nor enter reads `PlanTaskPage`, and no page survives to paint. The rail page needs an explicit conversation-overlay latch rather than the settling work tab, while reusing `taskSheetPlan` and `taskPlanKey`.
 
 The first implementation compile exposed one missing standard-library import only (`strconv` for the rail number). No design change is needed.
+
+The focused c295 tests now pass. The implementation adds a rail-only page latch: the gesture reads once, stored pages paint from cached state and remain open after settlement, while absent pages retain the existing room path.
