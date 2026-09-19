@@ -44,7 +44,7 @@ func TestWorkTabAppearsAfterConversationOnlyForALiveRun(t *testing.T) {
 
 func TestWorkTabDrawsTheTasksPlacesOwnRows(t *testing.T) {
 	a, _ := workTabFixture(t)
-	a.openWorkTab()
+	openWorkTabNow(t, a)
 	text := plain(strings.Join(a.workTabFrame(a.width, a.height), "\n"))
 	for _, want := range []string{"Root", "Fix the flake", "$ go test ./internal/tui3", "queued · waits: Root"} {
 		if !strings.Contains(text, want) {
@@ -55,7 +55,7 @@ func TestWorkTabDrawsTheTasksPlacesOwnRows(t *testing.T) {
 
 func TestWorkTabNoteUsesPlanNoteAndShowsThePageReceipt(t *testing.T) {
 	a, fake := workTabFixture(t)
-	a.openWorkTab()
+	openWorkTabNow(t, a)
 	for _, r := range "keep the middleware order" {
 		drive(t, a, key(string(r)))
 	}
@@ -70,7 +70,7 @@ func TestWorkTabNoteUsesPlanNoteAndShowsThePageReceipt(t *testing.T) {
 
 func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 	a, fake := workTabFixture(t)
-	a.openWorkTab()
+	openWorkTabNow(t, a)
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
 	if a.workTabOn {
 		t.Fatal("esc left the work tab open")
@@ -87,7 +87,7 @@ func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 func TestWorkTabKeepsTheStripSwitchKey(t *testing.T) {
 	a, _ := workTabFixture(t)
 	keepThree(t, a)
-	a.openWorkTab()
+	openWorkTabNow(t, a)
 	drive(t, a, key(hopOpenKey))
 	if !a.hopShowing() {
 		t.Fatal("the strip switch key did not open its conversation card from the work tab")

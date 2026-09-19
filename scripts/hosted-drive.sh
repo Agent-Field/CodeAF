@@ -33,7 +33,8 @@
 # WHAT IT ASSERTS, in the order it happens. It exits with the number that failed.
 #
 #  1. Two tasks are handed off six seconds apart, with an unsaved file of your
-#     own in the folder.
+#     own in the folder. The side list is opened with its own key first when
+#     your profile starts a conversation with it hidden.
 #     - While the run works, your folder holds only your own file.
 #     - The run works in one copy of its own, kept under the conversation.
 #     - The second hand-off joins the first and shows on the side list.
@@ -236,6 +237,7 @@ copies() { ls -d "$HOME_DIR"/v3/projects/*/*/trees/* 2>/dev/null; }
 only_my_file() { [ "$(git -C "$WORK" status --short)" = "?? notes.txt" ]; }
 one_copy() { [ "$(copies | wc -l | tr -d ' ')" = "1" ]; }
 second_on_the_list() { screen | grep -q '#2'; }
+column_open() { screen | grep -q 'ctrl+g hide'; }
 first_run_home() { [ -f "$WORK/README.md" ] && [ -f "$WORK/muldiv.go" ]; }
 one_new_commit() { [ "$(git -C "$WORK" log --oneline | wc -l | tr -d ' ')" = "2" ]; }
 my_file_untouched() { [ "$(cat "$WORK/notes.txt")" = "mine, unsaved" ] && only_my_file; }
@@ -274,7 +276,18 @@ screen | grep -q 'Daily limit' && {
 
 say "1. two hand-offs, six seconds apart, with an unsaved file of your own in the folder"
 typed '/task add Mul and Div with table tests in muldiv.go and muldiv_test.go'
-sleep 6
+# THE SIDE LIST'S POSTURE IS THE PERSON'S OWN SETTING, and it arrives with the
+# profile this drive copies: a profile whose column was last hidden starts every
+# conversation with it hidden, and every check below that reads the side list
+# would fail on a binary with nothing wrong with it. So the drive opens the
+# column with the column's own key when it is not up, inside the same six
+# seconds the two hand-offs were always apart by.
+sleep 2
+column_open || {
+	t send-keys -t x C-g
+	sleep 1
+}
+sleep 3
 typed '/task write README.md documenting every exported function with one example each'
 sleep 15
 check "while the run works the folder holds only your own file" only_my_file

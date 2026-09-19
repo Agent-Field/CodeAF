@@ -284,7 +284,7 @@ func agentNames(file *ast.File) map[string]bool {
 		case *ast.CallExpr:
 			if fn, ok := rhs.Fun.(*ast.SelectorExpr); ok {
 				switch fn.Sel.Name {
-				case "questionDoors", "stander", "Agent":
+				case "questionDoors", "stander", "Agent", "planReader":
 					return true
 				}
 			}
@@ -433,6 +433,7 @@ func TestClosingTheLineStillAsksWhatIsInIt(t *testing.T) {
 // end (#919).
 var doorsBesideTheLine = map[string]string{
 	"PlanRunSummary":    "reads the run's stored summary for a refresh nobody pressed for",
+	"PlanTasks":         "reads the run's rows for the side list after a message; nobody pressed for it, and a verb's own read is asked only once the verb has landed",
 	"RefreshRunSummary": "asks a model for the run's summary under a budget of seconds; nobody pressed for it and no gesture depends on it",
 }
 

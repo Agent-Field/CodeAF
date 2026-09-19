@@ -38,6 +38,65 @@ func (a *app) planReader() (planAgent, bool) {
 	return agent, ok
 }
 
+// heldPlanRows is the run's rows as the surface last read them, for the
+// conversation in front and no other.
+func (a *app) heldPlanRows() ([]session.PlanTaskRow, bool) {
+	if _, ok := a.planReader(); !ok || !a.planRowsRead || a.planRowsFront != a.frontGen {
+		return nil, false
+	}
+	return a.planRows, true
+}
+
+// refreshPlanRows asks for the run's rows OFF THE LOOP, and decides whether to
+// ask from what the loop already holds. THIS RUNS AFTER EVERY MESSAGE AND IT IS
+// THE ONLY PLACE THE SIDE LIST'S ROWS ARE READ: the frame, the place's beat and
+// the tab strip all draw what is held. Over a connection the read is a call to
+// another process, and a call made from a frame holds every key a person presses
+// for as long as the link takes to answer.
+//
+// THREE THINGS MAKE A READ DUE, and they are the three the frame used to read
+// on. The conversation in front has never been read. A row of this window's own
+// graph moved ([app.railStamp]): a hand-off publishes its row after its store is
+// seeded, and a verb on the run's page bumps the stamp when it lands. Or a beat
+// has passed while a held row can still move by itself, because a run's workers
+// move the store and publish nothing.
+//
+// A CONVERSATION AT REST READS NOTHING. The beat runs only while a held row is
+// queued or running, and the read that finds every row settled is the last.
+//
+// ONE AT A TIME, AND BESIDE THE LINE. Nobody pressed for this read, so it has no
+// place in the order a person's gestures are sent in ([app.besideLine]). The
+// stamp is recorded when the read is ASKED: a verb that lands while it is out
+// leaves the stamps unequal, and the next message asks once more.
+func (a *app) refreshPlanRows() tea.Cmd {
+	agent, ok := a.planReader()
+	if !ok || a.planRowsReading {
+		return nil
+	}
+	fresh := a.planRowsRead && a.planRowsFront == a.frontGen
+	if fresh && a.planRowsStamp == a.railStamp {
+		if !planCanMove(a.planRows) || a.now().Sub(a.planRowsAt) < elsewhereEvery {
+			return nil
+		}
+	}
+	a.planRowsReading = true
+	front, stamp := a.frontGen, a.railStamp
+	return a.besideLine(func() func(bool) tea.Cmd {
+		rows := agent.PlanTasks()
+		return func(here bool) tea.Cmd {
+			a.planRowsReading = false
+			if !here || front != a.frontGen {
+				return nil
+			}
+			a.planRows, a.planRowsRead, a.planRowsFront = rows, true, front
+			a.planRowsStamp, a.planRowsAt = stamp, a.now()
+			a.planRowsGen++
+			a.touch()
+			return nil
+		}
+	})
+}
+
 const runSummaryRefreshEvery = time.Minute
 
 type runSummaryRefreshedMsg struct {

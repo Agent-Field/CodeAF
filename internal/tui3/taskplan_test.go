@@ -156,7 +156,45 @@ func planAppWith(t *testing.T, rows []session.PlanTaskRow, pages map[string]sess
 	// ONE CONVERSATION, NAMED, so the plan rows hang under this chat the way they
 	// do on a real frame rather than standing as orphans.
 	a.file, a.title = "/tmp/lab/chat-1/transcript.jsonl", "the run"
+	// THE FIXTURE STANDS WHERE A WINDOW STANDS ONE MESSAGE IN: the run's rows have
+	// been read once, off the loop, and are held ([app.refreshPlanRows]). The
+	// slice is the fake's own, so a test that moves a state in place moves what
+	// the surface holds; a test that replaces the slice is read again through
+	// [readPlanRows], which is the only way a surface ever learns of one.
+	a.planRows, a.planRowsRead, a.planRowsFront = rows, true, a.frontGen
+	a.planRowsStamp, a.planRowsAt = a.railStamp, now
 	return a, fake
+}
+
+// readPlanRows is what happens after every message: the surface asks for the
+// run's rows if a read is due, the answer is folded in, and the reading is
+// re-filed from what is held. A frame does only the last of the three.
+func readPlanRows(t *testing.T, a *app) {
+	t.Helper()
+	if cmd := a.refreshPlanRows(); cmd != nil {
+		drive(t, a, cmd())
+	}
+	a.taskSheet.regroup(a)
+}
+
+// firstRowsReadHome puts a window where any conversation one message old stands:
+// its first read of the run's rows has been asked, answered and folded in. A
+// test that counts every command or every call over the wire takes its count
+// from here, because that one read is owed to every conversation whose agent can
+// answer it and belongs to none of the gestures such a test is about.
+func firstRowsReadHome(t *testing.T, a *app) {
+	t.Helper()
+	if cmd := a.refreshPlanRows(); cmd != nil {
+		drive(t, a, cmd())
+	}
+}
+
+// openWorkTabNow opens the run's tab and answers the page read it asks for.
+func openWorkTabNow(t *testing.T, a *app) {
+	t.Helper()
+	if cmd := a.openWorkTab(); cmd != nil {
+		drive(t, a, cmd())
+	}
 }
 
 // planLine is the drawn line a row's title is on, and whether there is one.
@@ -1009,18 +1047,18 @@ func TestTheRunsPlanIsReadAgainOnItsOwnBeat(t *testing.T) {
 	a, fake := planAppWith(t, []session.PlanTaskRow{{ID: "1", Title: "the run", Status: "running"}}, nil)
 	now := taskFixtureNow
 	a.clock = func() time.Time { return now }
-	a.taskSheet.regroup(a)
+	readPlanRows(t, a)
 	if got := len(a.taskSheet.mine.plan); got != 1 {
 		t.Fatalf("the first reading holds %d plan rows, want the run's one", got)
 	}
 	fake.plan = append(fake.plan, session.PlanTaskRow{ID: "p1", Parent: "1", Title: "a part the run added", Status: "running"})
 	now = now.Add(elsewhereEvery - time.Millisecond)
-	a.taskSheet.regroup(a)
+	readPlanRows(t, a)
 	if got := len(a.taskSheet.mine.plan); got != 1 {
 		t.Fatalf("the plan was read again inside its beat: %d rows", got)
 	}
 	now = now.Add(time.Millisecond)
-	a.taskSheet.regroup(a)
+	readPlanRows(t, a)
 	if got := len(a.taskSheet.mine.plan); got != 2 {
 		t.Fatalf("a beat later the reading still holds %d plan rows, want the part the run added", got)
 	}

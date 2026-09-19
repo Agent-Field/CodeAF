@@ -1,8 +1,11 @@
 package tui3
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func (a *app) workTab() (chatTab, bool) {
@@ -49,14 +52,15 @@ func (a *app) workTabStable() bool {
 	return stable
 }
 
-func (a *app) openWorkTab() {
-	p, ok := a.planReader()
-	if !ok {
-		return
-	}
-	rows := p.PlanTasks()
-	if len(rows) == 0 {
-		return
+// openWorkTab opens the run's tab on the rows the surface holds and asks for
+// the run's page OFF THE LOOP. The tab is only offered while rows are held
+// ([app.workTab]), so there is nothing to read before it can open; the page
+// arrives through the one door every stored page arrives through
+// ([app.taskSheetPlanAsk]), and until it does the pane draws the run's own row.
+func (a *app) openWorkTab() tea.Cmd {
+	rows, ok := a.heldPlanRows()
+	if !ok || len(rows) == 0 {
+		return nil
 	}
 	// THE READING IS TAKEN AT THE OPENING, ONCE, the way the tasks place takes
 	// it ([app.showTaskPlace]): the disk is walked here and the frames that
@@ -66,14 +70,11 @@ func (a *app) openWorkTab() {
 	a.refreshElsewhere()
 	a.taskSheet = a.takeTaskReading()
 	a.workTabOn, a.taskSheet.planOn, a.taskSheet.detailOn = true, true, true
-	if page, found := p.PlanTaskPage(rows[0].ID); found {
-		a.taskSheet.plan = page
-	} else {
-		a.taskSheet.plan.Row = rows[0]
-	}
+	a.taskSheet.plan = session.PlanTaskPage{Row: rows[0]}
 	a.taskSheet.planNote.reset()
 	a.chatTabBar = tabBar{}
 	a.touch()
+	return a.taskSheetPlanAsk(rows[0].ID, nil, nil, nil)
 }
 
 func (a *app) workTabKey(msg tea.KeyPressMsg) tea.Cmd {
