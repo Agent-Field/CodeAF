@@ -22,8 +22,9 @@ codeaf sends anonymous usage counts to AgentField.
 
 Exactly four events. Each carries the every-event properties; three of them
 add more. Every value is a count, a band, or a word from a fixed list. The
-table is generated from the same allowlist the code is held to, and a test
-fails the build if the two ever drift apart.
+table's names come from the same allowlist the code is held to and its words
+from the table `codeaf telemetry show` prints, and a test fails the build if
+any of the three drift apart.
 
 | Event | Property | What it is |
 | --- | --- | --- |
@@ -116,9 +117,15 @@ usage counts, so the notice's "see exactly what leaves" is true of both.
 
 - `codeaf telemetry status` says whether the counts are on, and why not when
   they are off.
-- `codeaf telemetry show` prints exactly what is waiting to leave the machine,
-  from BOTH streams: the usage counts above, then the Model Pool's rows, each
-  under a line naming where it goes or why it is not sent.
+- `codeaf telemetry show` prints exactly what leaves, from BOTH streams: for
+  the usage counts, every field with the value this machine would send now
+  (the six every-event props, the hashes, what each event adds, the bands, the
+  never list), then the events waiting to leave; for the Model Pool, every
+  field of a row and what it means, the two identities a batch travels under,
+  the never list, then the rows waiting. Each stream sits under a line naming
+  where it goes or why it is not sent. It prints the fields whether or not
+  anything is waiting, because the day a person reads it is the day they
+  install, when nothing is.
 - `codeaf telemetry off` and `codeaf telemetry on` write the profile setting.
 
 ```

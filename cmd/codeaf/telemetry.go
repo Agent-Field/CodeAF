@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
+	"github.com/Agent-Field/codeaf/internal/pool/record"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
@@ -116,21 +117,95 @@ func runTelemetryShow(args []string) error {
 }
 
 // showEverythingWaiting composes the two streams, in the order the notice
-// names them: the usage counts first, the Model Pool second. Each stream is a
-// heading line and then its rows as JSON, the usage counts in the telemetry
-// package's own rendering and the pool rows in the outbox's own line shape,
-// so what is printed is byte for byte what a relay would receive.
+// names them: the usage counts first, the Model Pool second. For each, a
+// heading naming where it goes or why it does not, then WHAT A ROW SAYS —
+// every field, with the value this machine would send for it now where the
+// value is known before a run — then what a row never carries, then the rows
+// waiting to leave, in the bytes a relay would receive.
+//
+// The fields are printed whether or not anything is waiting. A person reads
+// this verb once, on the day they install, when the spool is empty; two empty
+// arrays told them nothing about what would leave the first time they used the
+// program, and the notice had promised them exactly that.
 func showEverythingWaiting(profileDir string, lookup func(string) (string, bool)) string {
 	var out strings.Builder
 	out.WriteString(usageCountsHeading())
 	out.WriteByte('\n')
-	out.WriteString(telemetry.Show())
-	out.WriteString("\n\n")
+	writeUsageCountFields(&out)
+	writeWaiting(&out, telemetry.Show())
+	out.WriteByte('\n')
 	cfg := config.ModelPoolResolved(profileDir, lookup)
 	out.WriteString(modelPoolHeading(cfg))
 	out.WriteByte('\n')
-	out.WriteString(poolRowsWaiting(config.ProfilePath(profileDir, "pool")))
-	return out.String()
+	writeModelPoolFields(&out)
+	writeWaiting(&out, poolRowsWaiting(config.ProfilePath(profileDir, "pool")))
+	return strings.TrimRight(out.String(), "\n")
+}
+
+// showIndent is the two spaces every line under a stream heading starts with.
+const showIndent = "  "
+
+// writeUsageCountFields prints the usage-count row as this machine would fill
+// it: the six every-event props with their live values, the identity and
+// envelope fields with what each is, then what each of the three session
+// events adds, and the never list from the notice.
+func writeUsageCountFields(out *strings.Builder) {
+	fmt.Fprintf(out, "%severy event carries, as this machine would send it now:\n", showIndent)
+	for _, prop := range telemetry.CommonPropValues() {
+		writeField(out, prop.Name, prop.Value, telemetry.PropDoc(telemetry.EveryEvent, prop.Name))
+	}
+	install := "(minted on the first send)"
+	if hash, ok := telemetry.InstallIDHashIfMinted(); ok {
+		install = hash[:12] + "…"
+	}
+	writeField(out, "install_id_hash", install, telemetry.InstallHashDoc)
+	writeField(out, "session_id_hash", "(per session)", telemetry.SessionHashDoc)
+	writeField(out, "event_id", "(per event)", telemetry.EventIDDoc)
+	writeField(out, "event_time", "(per event)", telemetry.EventTimeDoc)
+	for _, event := range telemetry.AllowlistedEvents() {
+		names := telemetry.EventPropNames(event)
+		if len(names) == 0 {
+			fmt.Fprintf(out, "%s%s adds nothing; it is sent once per install\n", showIndent, event)
+			continue
+		}
+		fmt.Fprintf(out, "%s%s adds:\n", showIndent, event)
+		for _, name := range names {
+			writeField(out, name, "", telemetry.PropDoc(event, name))
+		}
+	}
+	fmt.Fprintf(out, "%s%s; %s\n", showIndent, telemetry.CountBandsDoc, telemetry.CostBandsDoc)
+	fmt.Fprintf(out, "%snever: anything about you or your work — no prompts, code, file names, paths, repo names, keys, email, IP, machine name, model names, or error text\n", showIndent)
+}
+
+// writeModelPoolFields prints what one pool row says, field by field, and the
+// two identities a batch travels under.
+func writeModelPoolFields(out *strings.Builder) {
+	fmt.Fprintf(out, "%sone row per judged seat, after a task lands:\n", showIndent)
+	for _, field := range record.Fields() {
+		writeField(out, field.Name, "", field.Meaning)
+	}
+	writeField(out, "nonce", "(per row)", "16 random bytes as hex, so a resend is not a double count")
+	writeField(out, "X-Codeaf-Install", "(header)", "a random per-install id, minted on the first send; not the usage counts' id")
+	fmt.Fprintf(out, "%snever: %s\n", showIndent, record.NeverInARow)
+}
+
+// writeField prints one field line: the name, the value when there is one to
+// show, and what the field is, in columns a person can scan.
+func writeField(out *strings.Builder, name, value, meaning string) {
+	if value == "" {
+		fmt.Fprintf(out, "%s%s%-20s %s\n", showIndent, showIndent, name, meaning)
+		return
+	}
+	fmt.Fprintf(out, "%s%s%-20s %-26s %s\n", showIndent, showIndent, name, value, meaning)
+}
+
+// writeWaiting prints the rows waiting to leave, or one line saying none are.
+func writeWaiting(out *strings.Builder, rows string) {
+	if rows == "[]" {
+		fmt.Fprintf(out, "%swaiting to leave: none\n", showIndent)
+		return
+	}
+	fmt.Fprintf(out, "%swaiting to leave:\n%s\n", showIndent, rows)
 }
 
 // usageCountsHeading names where the usage counts go, or the rung of the

@@ -5,12 +5,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // telemetryHome is the clean room every telemetry-verb test runs in: a
@@ -224,8 +226,10 @@ func TestTelemetryShowPrintsBothStreams(t *testing.T) {
 			t.Errorf("show should print %q, got:\n%s", want, got)
 		}
 	}
-	if strings.Count(got, "[") < 2 {
-		t.Errorf("show should print one JSON array per stream, got:\n%s", got)
+	// The usage spool is empty under go test and says so; the pool has its
+	// one row and prints it as the array a relay would receive.
+	if !strings.Contains(got, "waiting to leave: none") || !strings.Contains(got, "waiting to leave:\n[") {
+		t.Errorf("show should say none waits for the counts and print the pool's array, got:\n%s", got)
 	}
 }
 
@@ -265,8 +269,50 @@ func TestTelemetryShowDoesNotCreateThePoolOutbox(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "pool", "outbox.jsonl")); !os.IsNotExist(err) {
 		t.Fatalf("show must not create the pool outbox, stat: %v", err)
 	}
-	if !strings.HasSuffix(strings.TrimSpace(usageOut.(*strings.Builder).String()), "[]") {
-		t.Fatalf("an empty pool should print [], got:\n%s", usageOut.(*strings.Builder).String())
+	if got := usageOut.(*strings.Builder).String(); strings.Count(got, "waiting to leave: none") != 2 {
+		t.Fatalf("an empty machine should say none is waiting for each stream, got:\n%s", got)
+	}
+}
+
+// TestTelemetryShowNamesEveryFieldOnAnEmptyMachine is the notice's "see
+// exactly what leaves" read on the day a person installs: nothing is waiting
+// yet, and the verb still prints every field a row would carry, with this
+// machine's own values where they are known before a run, and the never list.
+func TestTelemetryShowNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
+	telemetryHome(t)
+	telemetrySink(t)
+	usageOut = &strings.Builder{}
+	defer func() { usageOut = os.Stdout }()
+	if err := runTelemetry([]string{"show"}); err != nil {
+		t.Fatal(err)
+	}
+	got := usageOut.(*strings.Builder).String()
+	for _, want := range []string{
+		"every event carries, as this machine would send it now:",
+		"os                   " + runtime.GOOS,
+		"arch                 " + runtime.GOARCH,
+		"install_method       unknown",
+		"install_id_hash      (minted on the first send)",
+		"session_ended adds:",
+		"stop_reason          done, error, incomplete, budget, turn-cap, deadline, price, question, interrupted, or unknown",
+		"fingerprint          16 hex characters hashed from codeaf function names in the stack",
+		"never: anything about you or your work",
+		"one row per judged seat, after a task lands:",
+		"model                the model slug that held the seat",
+		"X-Codeaf-Install",
+		"never: the brief, the deliverable",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("show should print %q, got:\n%s", want, got)
+		}
+	}
+	for _, name := range telemetry.CommonPropNames() {
+		if !strings.Contains(got, name) {
+			t.Errorf("show should name the every-event prop %q", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home.Dir(), "telemetry", "install_id")); !os.IsNotExist(err) {
+		t.Fatalf("show must not mint an install id, stat: %v", err)
 	}
 }
 
