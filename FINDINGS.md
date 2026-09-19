@@ -18,7 +18,7 @@ Inspect the named `internal/provider` late-first-token rescue test and the rescu
 
 ## Next step
 
-Force the established ordering in the named seam test by holding A before its first token on a channel barrier, then run the focused test to demonstrate the pre-fix expectation fails deterministically. Record the exact command and evidence here before committing the test-only seam change.
+Add a test-only first-token barrier to A in the named seam test and run the focused test. This probes whether forcing B-before-A exposes a product failure or instead confirms the ordering map that the existing failure is only an uncontrolled test expectation. Record either result and its exact command before committing the seam change.
 
 ## Inspection result
 
@@ -39,10 +39,17 @@ A real request can reach either winner ordering because both arms run concurrent
 
 The smallest deterministic change is test-only: hold A before its first token with a channel barrier that is released during cleanup, as the neighboring stall test does at `internal/provider/hedge_test.go:633-653`. Then B's completion, rather than elapsed-time slack, decides the winner. No product change is supported by this seam.
 
+## Forced-order evidence
+
+The smallest seam is `lanestub.Profile.FirstTokenUntil` on lane A in `internal/provider/hedge_test.go`. A cleanup closes the channel only after assertions, so A cannot emit its first token before B completes. The focused command `go test ./internal/provider -run '^TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled$' -count=20` passed all 20 forced-order runs in 4.814 seconds.
+
+This null reproduction confirms the ordering map rather than exposing a product defect. With B forced to finish first, B wins and A is observed cancelled. There is therefore no deterministic wrong product outcome to encode as a failing regression at this seam. The pre-fix failure is the uncontrolled test-side expectation, and the smallest change is the test-only barrier now applied.
+
 ## Ruled-out paths
 
 - No evidence supports a winner overwrite. `decide` rejects every caller after `winner` is set.
 - No evidence supports a loser omitted from cancellation after it is registered. `decide` returns every nonwinner arm and `commit` cancels each one.
 - No evidence supports deriving the winner from report timing. The report is populated from the committed result during settlement.
 - No inspection or change was made under `internal/provider/pool`.
-- Forced-order reproduction and implementation belong to downstream tasks. This task owns only the findings note and recon commits.
+- Forcing B before A does not reproduce a wrong winner or uncancelled loser in 20 focused runs.
+- A deterministic failing product regression is ruled out by this seam evidence. Making A win and continuing to demand B would only encode an invalid expectation, not a product defect.
