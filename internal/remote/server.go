@@ -2713,6 +2713,40 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return nil, door.PlanPriority(args.ID, args.Priority)
 
+	case MethodPlanRunSummary:
+		args, err := arg[PlanRunSummaryArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			PlanRunSummary(string) (session.RunPlanSummary, bool)
+		})
+		if !ok {
+			return json.Marshal(PlanRunSummaryResult{})
+		}
+		summary, found := door.PlanRunSummary(args.RootID)
+		return json.Marshal(PlanRunSummaryResult{Summary: summary, OK: found})
+
+	case MethodRefreshRunSummary:
+		args, err := arg[RefreshRunSummaryArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool)
+		})
+		if !ok {
+			return json.Marshal(PlanRunSummaryResult{})
+		}
+		ctx := context.Background()
+		cancel := func() {}
+		if !args.Deadline.IsZero() {
+			ctx, cancel = context.WithDeadline(ctx, args.Deadline)
+		}
+		defer cancel()
+		summary, found := door.RefreshRunSummary(ctx, args.RootID, args.LastLook)
+		return json.Marshal(PlanRunSummaryResult{Summary: summary, OK: found})
+
 	case MethodPlanSpend:
 		// THE READ SIDE OF THE RUN'S SPEND-BY-SEAT, carried across the way
 		// [MethodRewindPoints] is. It is ASSERTED rather than called on the

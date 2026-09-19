@@ -91,9 +91,11 @@ type fakeAgent struct {
 	taskJournal string
 	cancelled   []string
 
-	spendLines []session.PlanSpendLine
-	spendSince time.Time
-	planSteers []string
+	spendLines      []session.PlanSpendLine
+	spendSince      time.Time
+	planSteers      []string
+	runSummary      session.RunPlanSummary
+	refreshCanceled bool
 }
 
 func (f *fakeAgent) TaskJournal(uint64) string { return f.taskJournal }
@@ -428,6 +430,18 @@ func (f *fakeAgent) PlanAmend(id, text string) error {
 func (f *fakeAgent) PlanPriority(id string, n int) error {
 	f.planSteers = append(f.planSteers, fmt.Sprintf("priority:%s:%d", id, n))
 	return f.failing
+}
+
+func (f *fakeAgent) PlanRunSummary(string) (session.RunPlanSummary, bool) {
+	return f.runSummary, true
+}
+
+func (f *fakeAgent) RefreshRunSummary(ctx context.Context, _ string, _ time.Time) (session.RunPlanSummary, bool) {
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		<-ctx.Done()
+		f.refreshCanceled = errors.Is(ctx.Err(), context.DeadlineExceeded)
+	}
+	return f.runSummary, true
 }
 
 func (f *fakeAgent) PlanSpend(since time.Time) []session.PlanSpendLine {
@@ -1568,4 +1582,26 @@ func (f *fakeAgent) door() session.StopDoor {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.stopDoor
+}
+
+func TestRunSummaryServerRoundTripAndEngineDeadline(t *testing.T) {
+	want := session.RunPlanSummary{What: "working", Now: "wire", WrittenAt: time.Now().UTC()}
+	agent := &fakeAgent{runSummary: want}
+	l := dialAgent(t, engineOn(agent))
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatal(frame.Error)
+	}
+	read := decode[PlanRunSummaryResult](t, l.ok(1, MethodPlanRunSummary, PlanRunSummaryArgs{RootID: "t-root"}).Payload)
+	if !read.OK || !reflect.DeepEqual(read.Summary, want) {
+		t.Fatalf("PlanRunSummary = %+v", read)
+	}
+	refreshed := decode[PlanRunSummaryResult](t, l.ok(2, MethodRefreshRunSummary, RefreshRunSummaryArgs{
+		RootID: "t-root", LastLook: want.WrittenAt, Deadline: time.Now().Add(20 * time.Millisecond),
+	}).Payload)
+	if !refreshed.OK || !reflect.DeepEqual(refreshed.Summary, want) || !agent.refreshCanceled {
+		t.Fatalf("RefreshRunSummary = %+v, engine canceled = %v", refreshed, agent.refreshCanceled)
+	}
+	if err := l.end(); err != nil {
+		t.Fatal(err)
+	}
 }
