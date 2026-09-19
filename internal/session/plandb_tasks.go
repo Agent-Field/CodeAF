@@ -146,10 +146,10 @@ const planTrajectoryFile = "trajectory.jsonl"
 // chats' work: the store is there and this chat's part of it is not.
 func (a *Agent) PlanTasks() []PlanTaskRow {
 	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
 	if len(stores) == 0 {
 		return nil
 	}
-	defer closeStores()
 	var rows []PlanTaskRow
 	for _, store := range stores {
 		dir := filepath.Dir(store.Path())
@@ -182,10 +182,10 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 // task at all: the page is the chat's own reading of its own plan.
 func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
 	if len(stores) == 0 {
 		return PlanTaskPage{}, false
 	}
-	defer closeStores()
 	var store *plandb.Store
 	var task *plandb.Task
 	for _, candidate := range stores {
@@ -287,6 +287,15 @@ func (a *Agent) openPlanReadHandles() ([]*plandb.Store, *planState, func()) {
 	live := plan.open()
 	if live != nil {
 		stores = append(stores, live)
+	}
+	if len(stores) == 0 {
+		// NOTHING TO READ IS NEVER RETURNED LOCKED. A plan is armed before its
+		// store exists, and both readers answer "no stores" by returning at once;
+		// a lock handed back on that path is a lock nobody releases, and every
+		// later read, the run's own driver and the conversation's close then wait
+		// on it for good ([Agent.openPlanHandle] gives it back the same way).
+		plan.mu.Unlock()
+		return nil, nil, func() {}
 	}
 	return stores, plan, func() {
 		if live != nil {

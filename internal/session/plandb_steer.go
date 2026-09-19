@@ -46,10 +46,10 @@ func planNoTask(id string) error {
 // as the store wrote it, because the store is the one that knows its own laws.
 func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) error) error {
 	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
 	if len(stores) == 0 {
 		return errPlanNoStore
 	}
-	defer closeStores()
 
 	key := planTaskID(id)
 	live := stores[len(stores)-1]
