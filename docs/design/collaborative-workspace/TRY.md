@@ -5,6 +5,7 @@ Each completed wave records how to try that exact behavior on Spark. Do not inst
 **Checkout:** `feat/collaborative-workspace-0918`  
 **Verified SHA (Wave 1):** `4b3b407a676efca3282b9834f05ea956c98a89cd`  
 **Verified SHA (Wave 2):** `e606ec555dbb6be87ea2aefccc98e9a5a26157c7`  
+**Verified SHA (Wave 3):** `18e971de96bdd7c4463642b0a7499e22be8414b1`  
 **Baseline:** `santos/dev` `7cda67c9`  
 **Pre-issue-1 design:** `610a32ba`
 
@@ -74,7 +75,20 @@ ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b
 
 ## Wave 3 — ordinary chats coordinate
 
-Status: **candidate** SHA `34327b2d0c6b88659f9f2c0663a85df240f75d56` (Activity paint + bounded invite consult). Not owner-try until `releases/wave-3/ready.json`. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Copy-paste launch lands beside that receipt (same shape as Wave 2). Wave 1 and Wave 2 launches stay:
+Status: **live J19–J26 passed** on SHA `18e971de96bdd7c4463642b0a7499e22be8414b1`. Isolated home already contains that live graph. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Receipt: `releases/wave-3/ready.json`.
+
+### Copy-paste launch (Spark)
+
+```
+ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-3/18e971de96bdd7c4463642b0a7499e22be8414b1/launch.sh'
+```
+
+**Binary (do not rebuild over it):** `/home/santosh/src/codeaf-workspace-0918-control/releases/wave-3/18e971de96bdd7c4463642b0a7499e22be8414b1/codeaf`  
+**sha256:** `b742872fe143d1d5c6b97739b45b4aa3cae5b20cbb55b035eb0354ae8fa383bf`
+
+Live tmux proof: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue-3-18e971de96bdd7c4463642b0a7499e22be8414b1-live5/journey.json`.
+
+Wave 1 and Wave 2 launches stay:
 
 ```
 ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b3b407a676efca3282b9834f05ea956c98a89cd/launch.sh'
