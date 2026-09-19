@@ -3163,6 +3163,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// A checker can independently read the source a worker cited, without
 		// gaining the writable memory store or any additional mutation tool.
 		ConversationHistory: parent.conversationHistory(),
+		HybridSearch:        parent.HybridSearch,
 		// The auditor reads rather than writes, but reading is what makes a
 		// dropping: a long file it looks at is stubbed on its way out of the live
 		// context (stub.go), and with nothing here those bytes landed in the

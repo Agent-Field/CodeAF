@@ -27,10 +27,11 @@ package session
 //
 // ── AND IT IS BEST-EFFORT, ALWAYS ──
 //
-// No store is memory off, which is most builds, and it posts nothing at all. A
-// post that fails is dropped in silence. NEVER FAIL A TURN OVER IT: the session
-// file is still the record it always was, and the announce line after a
-// compaction says which of the two floors this session actually has.
+// No store is no chat log. Memory off still posts when ConversationHistory
+// is the same *store.Store the door opened for history. A post that fails is
+// dropped in silence. NEVER FAIL A TURN OVER IT: the session file is still the
+// record it always was, and the announce line after a compaction says which of
+// the two floors this session actually has.
 //
 // ── WHY A GOROUTINE AND NOT A CALL ──
 //

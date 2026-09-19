@@ -360,7 +360,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// And it takes the DROPPINGS home for the registry's reason: the only thing
 	// the journal does with a Place is spill an over-long message's bytes through
 	// [writeStub], which is a dropping like any other (landing.go).
-	agent.chatlog = newChatJournal(config.Memory, agent.threadID(), config.Workspace, config.droppingsPlace())
+	agent.chatlog = newChatJournal(config.journalStore(), agent.threadID(), config.Workspace, config.droppingsPlace())
 	// And the state card is held before any turn has run, so that the note the
 	// first request carries already has it: a resumed conversation's card is what
 	// it knew yesterday, and a model that had to wait for the first post-turn
@@ -1653,6 +1653,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// hold now, and an order stood up while this conversation was open is not
 	// something the next turn may still be blind to (standing_world.go).
 	a.refreshStandingLocked()
+	a.refreshGuidanceLocked(ctx)
 	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub
