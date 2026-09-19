@@ -66,3 +66,7 @@ The deterministic test-only seam is now active at `internal/exec/jobs_test.go:39
 ## Consumer continuation
 
 The current worker is consuming the committed forced-ordering reproduction and findings. Before inspecting code or tests, the prior note was restored after an accidental replacement. Next step: inspect the reproduction commit, named test, and leaf-end termination seam to validate its claimed ordering and classification.
+
+## Validation step
+
+The committed reproduction was inspected. It deterministically replaces the post-return bare PID probe with success after first observing the original PID absent, proving the failure message can be caused by PID reuse after correct teardown. Next step: inspect existing internal/exec identity helpers and the exact implementation lines to choose the smallest test-only correction without introducing a second identity scheme.
