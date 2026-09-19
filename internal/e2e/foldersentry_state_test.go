@@ -246,8 +246,16 @@ func TestFoldersEntryFreshStoreHasNoGeneratedFolders(t *testing.T) {
 }
 
 func TestFoldersEntryOrganizeJobCoalescesOnTheExplicitKey(t *testing.T) {
-	store := openGraphStore(t)
 	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "v3", "collections.db")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	store, err := workspace.Open(path)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
 	// Create is the store's only door onto a blank file. Organize existing chats
 	// still reuses this same jobs table; the coalescing law is independent of
 	// whether the graph already holds a folder.
@@ -276,6 +284,24 @@ func TestFoldersEntryOrganizeJobCoalescesOnTheExplicitKey(t *testing.T) {
 	}
 	if second.ID != first.ID {
 		t.Fatalf("a second Organize existing chats minted %q after %q; J42 is idempotent while queued", second.ID, first.ID)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := workspace.Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	again, err := reopened.EnqueueJob(ctx, workspace.Job{
+		Type:        workspace.JobOrganize,
+		CoalesceKey: foldersEntryCoalesceKey,
+	})
+	if err != nil {
+		t.Fatalf("restart enqueue: %v", err)
+	}
+	if again.ID != first.ID {
+		t.Fatalf("restart minted %q after %q; J42 resumes the durable job", again.ID, first.ID)
 	}
 }
 

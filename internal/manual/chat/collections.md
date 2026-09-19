@@ -44,10 +44,11 @@ enter runs that command; it is never stored as a folder name.
 **Organize existing chats** surveys saved conversations and may create useful folders
 from evidence. It reuses `observe_and_organize` — no second scheduler. Progress is
 `queued` `running` `delayed` `done` `cancel`. A second click while queued or running
-is the same job. Quit and reopen leaves it for the tick. Cancel is visible `cancel`.
-Foreground chat stays usable. It never paints `pending` `leased` `completed`
-`deferred` `cancelled`, and never `checked`. `/folders organize` is the same door,
-never the only one.
+is the same job. Quit and reopen leaves that same row queued or running for the tick
+— it does not mint a second `organize_existing` job. A later click after `cancel`
+resumes that durable row. Cancel is visible `cancel`. Foreground chat stays usable.
+It never paints `pending` `leased` `completed` `deferred` `cancelled`, and never
+`checked`. `/folders organize` is the same door, never the only one.
 
 A fresh Folders tab stays empty of generated folders until New folder / `/folders create`
 or Organize existing chats actually applies. After-message automatic enqueue no longer
