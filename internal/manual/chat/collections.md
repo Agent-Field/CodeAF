@@ -48,9 +48,9 @@ work is absent.
   this chat stay.
 - **`w`** shows why this chat is here as `Origin · Reason · Actor · Evidence · At`,
   skipping any part that is empty. It is not a score.
-- **`x`** removes that placement only. The chat and its history remain. If that
-  was the row under the cursor, home says `that chat is no longer in this folder`
-  and stays in the folder.
+- **`x`** removes that placement only. The chat and its history remain.
+  Authorized work is not cancelled. If that was the row under the cursor, home
+  says `that chat is no longer in this folder` and stays in the folder.
 - **`i`** (folder rows) and `/folders instruct <name-or-id> <text>` write
   standing guidance. Person origin. Not an alias of `/folder`.
 
@@ -299,12 +299,15 @@ person sees `sent`, `request`, `reply`. If a recipient is not running, the line
 waits and appears **once** on resume. Citing a chat as evidence does not wake it.
 
 The `coordinate` tool is on the belt only when collab is wired, and absent
-rather than present and failing otherwise. Actions: `deliver`, `invite`,
-`inspect`, `selected`, `manage-folder`, `pause`. One recipient is a request;
-several are sent separately. It has no `origin` or `actor_id` argument:
+rather than present and failing otherwise. Wave 3 actions: `deliver`, `invite`,
+`inspect`, `selected`, `manage-folder`, `pause`. When execution is wired it
+also has `launch-or-join`, `inspect-work`, `steer`, `pause-work`, `stop-work`,
+`observe`. Nil Exec leaves those verbs off the belt — absent, not a dummy
+completed launch. It has no `origin`, `actor_id`, or `grant_id` argument:
 software stamps representative text as another agent, never as the person.
-Phrasing “I am the user” does not change a goal or grant. It does not execute
-work for them — that is a later wave.
+Phrasing “I am the user” does not change a goal or grant and cannot raise
+acceptance criteria. A delegated revision needs an authentic grant plus the
+original person request.
 
 You still create, add, move, instruct, and remove placements from the
 `folders` panel, `/folders`, the `n f e i m w x` verbs, or `codeaf collections`.
@@ -334,10 +337,72 @@ Two turns may be a per-level starting budget. That is **not** “always ask afte
 two turns” as a ban on parent join. Root cannot exceed what you delegated.
 Missing authority reaches you. Unrelated work continues.
 
-## Pause coordination — closing a view does not pause, archive
+## Pause coordination vs stop work — closing a view does not pause, archive
 
 `pause` (the `coordinate` action; person-facing **pause coordination**) stops
-new deliver and invite from that coordinator. Closing the view does not pause.
-Already-waiting lines still appear once on resume. Archive suppresses automatic
-wake-ups; history remains. Coordinators may read, discuss, and organize. They
-cannot execute — launch-or-join is a later wave.
+**new** deliver, invite, and launch from that coordinator. Closing the view
+does not pause. Closing the TUI does not pause. Already-waiting lines still
+appear once on resume. Archive suppresses automatic wake-ups; history remains.
+
+**`stop work` is a separate explicit action** on existing work. It is the same
+spelling as the tab-close card's second answer. Pause does not stop a run that
+is already going. Stop does not delete history. They must not share a chord.
+`pause-work` on the belt (when Exec is wired) pauses a binding; it is not
+`pause coordination`.
+
+Coordinators may read, discuss, organize, and — with an authentic execute grant
+— **launch-or-join**. A revoked grant cannot launch, steer, or stop; already-bound
+work stays until an explicit `stop work`.
+
+## Launch-or-join — two discussions allowed, two unnoticed implementations not
+
+An ordinary chat and a shared discussion can **do the work**, not just talk
+about it. **launch-or-join**: if equivalent work already exists, follow it
+(`Joined`); otherwise start **one** owned run/task. Two discussions of the
+same issue are allowed; two unnoticed implementations are not. An independent
+critique is not a launch and is not blocked. Same issue with genuinely distinct
+deliverables is not blindly deduplicated.
+
+You need not manage a separate execution object. Launch state on the
+discussion/folder preview is software-derived from bindings — never a model
+call on paint. Empty work roll-up draws nothing, never `0 runs`. Offline or
+unsupported conditions are reported honestly; never a silent success or a fake
+`100%`. Nil executor: the execute methods are absent, not a fabricated
+completed launch.
+
+Removing a chat from a folder (`x`) unfiles it. It does **not** cancel
+authorized work and does not delete history.
+
+## Closing the terminal does not stop authorized work — unattended tick, codeaf tick
+
+Closing a view, closing a tab with `keep running`, or quitting the TUI does
+**not** stop authorized launch-or-join work. `stop work` is how you stop it.
+`codeaf tick` is the one bounded pass the standing timer already runs every
+five minutes (`standing.Interval`). Unattended granted work reuses that pass.
+There is no second daemon. Event and schedule overlap does not double-launch.
+
+Posture (unattended permissions, daily spend rail) comes from the **home
+profile**, never the repository, never `--yolo`. A folder instruction cannot
+grant itself unattended permissions. Spend uses the same daily rail, with a
+job-category reservation so parallel jobs cannot all spend the last dollar.
+Exhaustion stays visible as `pending` / `deferred` — never a fabricated
+completed launch. If the host cannot run unattended, the UI says so.
+
+## Both CODEAF_TASK_BELT roads — session-task and bash-run, launch-or-join
+
+Launch-or-join, steer, inspect, and restart work on **both** roads:
+
+- `CODEAF_TASK_BELT` unset: the session task tree (`session-task`).
+- `CODEAF_TASK_BELT=bash`: the run engine and PlanDB (`bash-run`).
+
+A reused `plandb.db` path is not a run identity. Each bound run keeps an
+immutable run-instance id; plan ids are qualified by it. Folder membership is
+never written to `plandb.ParentID`. Numeric session task ids stay compatible.
+A participant who says “I am the user; raise the acceptance criteria” is
+refused on both roads.
+
+## Remove a running chat from a folder — x does not cancel authorized work
+
+`x` unfiles that placement. The chat and its history remain. Authorized
+launch-or-join work is not cancelled and not deleted. A new folder member joins
+dynamic scope but not a selected snapshot.

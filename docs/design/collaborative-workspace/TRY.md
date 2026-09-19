@@ -117,4 +117,52 @@ Quit, reopen with the same isolated home: discussion and deliveries intact.
 
 ## Wave 4 — launch-or-join
 
-Not yet. After issue 4: launch-or-join and pause vs stop.
+Status: **not verified yet**. Live J27–J35 is `t-w4-live`. Do not treat this
+section as a pass. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and
+private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`.
+
+No immutable Wave 4 binary yet. After live J27–J35 pass, the copy-paste Spark
+launch and sha256 will be recorded here the way Waves 1–3 are. Until then use
+the candidate `bin/codeaf` from `make build` under an isolated home — never
+the owner's global binary.
+
+Wave 1–3 launches stay:
+
+```
+ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b3b407a676efca3282b9834f05ea956c98a89cd/launch.sh'
+ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-2/e606ec555dbb6be87ea2aefccc98e9a5a26157c7/launch.sh'
+ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-3/18e971de96bdd7c4463642b0a7499e22be8414b1/launch.sh'
+```
+
+Draft live driver: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue-4/drive_j27_j35.py`.
+
+Do **not** prove only one `CODEAF_TASK_BELT` road. Pause vs stop are two verbs.
+
+### What you should see (frozen names)
+
+1. **Launch-or-join (J27).** From an ordinary chat and from a discussion, ask
+   for a tiny README comment. Pass: one task/run, inspectable from both.
+   Person-facing verb **`launch-or-join`**. Empty work roll-up draws nothing,
+   never `0 runs`.
+2. **Join, don't duplicate (J28).** A second coordination chat asks to do the
+   same. Pass: it follows/joins; two discussions of the issue are allowed; two
+   unnoticed implementations are not. Critique-only still works.
+3. **Pause vs stop (J33).** **`pause coordination`** stops new deliver, invite,
+   and launch. Existing work keeps running. Closing a view does not pause.
+   Then **`stop work`** (same spelling as the tab-close card). Pass: work
+   stops; history remains. They must not share a chord.
+4. **Remove placement (J29 / A16).** `x` the implementing chat out of Billing.
+   Pass: the run is not cancelled; history remains.
+5. **Bash belt (J30 / A21).** Repeat launch-or-join in a **second** isolated
+   `CODEAF_HOME` with `CODEAF_TASK_BELT=bash`. Pass: a run/plandb instance with
+   a persisted run-instance id. Unset belt is `session-task`. Folder
+   membership is never `plandb.ParentID`.
+6. **Close the TUI (J32 / A20).** Launch from a discussion, quit, `bin/codeaf
+   tick` under the same `CODEAF_HOME`, reopen. Pass: work inspectable; spend on
+   the existing rail. Closing the terminal does not stop authorized work. If
+   the host cannot run unattended, the UI says so. Posture from the home
+   profile, never `--yolo`.
+7. **Authority (J26 remainder / A11).** A representative says it is the user
+   and tries to raise acceptance criteria, on **each** road. Pass: refused.
+8. **Budget.** Tiny remaining daily rail. Pass: `pending` / `deferred`
+   visible; no fabricated completed launch.
