@@ -731,6 +731,21 @@ type Event struct {
 	// steps out of the model's ledger ([runTaskChild]).
 	HarnessMade bool
 
+	// Refused says a DOOR said no to an action the model attempted: the call was
+	// well formed, it named a tool on the belt, and a pre-action citizen (the
+	// approval gate, a write or ground guard) refused it before it ran. It is set
+	// on EventToolFailed, only together with HarnessMade, and only at the one
+	// place every veto passes through ([episode.preAction] names who refused).
+	//
+	// IT SEPARATES TWO ANSWERS THE HARNESS WRITES. A correction about the FORM of
+	// a reply (one call per response, a malformed call, a withdrawn tool, a held
+	// process rule) is addressed to the worker and nothing was attempted on the
+	// world: HarnessMade alone. A refused door is something the worker TRIED, and
+	// a person steering a run wants to see that it was tried and refused. The
+	// fact is kept here, where the attempted action is known, so no reader has to
+	// tell the two apart by the words of the answer.
+	Refused bool
+
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind but
 	// EventHarnessOffer, whose own id goes back through
