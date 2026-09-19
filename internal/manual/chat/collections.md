@@ -36,7 +36,9 @@ On the Folders place the visible actions are **New folder**, **New chat**, and
 **Organize existing chats**. They are not slash-only. New folder creates at Root, or
 inside the selected folder. New chat starts at Root or that folder: the first sent
 message mints the transcript and files it; Esc before send creates nothing and
-returns to Folders — it does not mint a session-header transcript. Nest, rename,
+returns to Folders from Root and from inside a folder — it does not mint a
+session-header transcript and it does not leave you on `Home new conversation`.
+Nest, rename,
 and move are keyboard actions (`e` then enter the parent, `r` rename, `m` then
 enter the destination). Typing `/folders nest Receipts in Billing` and pressing
 enter runs that command; it is never stored as a folder name.
@@ -121,25 +123,33 @@ known slash command is dispatched, not CreateFolder'd.
 
 ## Rename a folder — /folders rename, both parents, r rename this folder
 
-`/folders rename Receipts Invoices` changes that folder's display name. Receipts
-can sit under Billing and Security at once; the new name shows through both
-paths, and the chats inside it stay. On the Folders place, `r` on a folder row
-opens a name box; enter renames, esc cancels. Nested folders are members whose
-kind is `collection`, not a second copy of a chat. A cycle — making a folder a
-child of its own descendant — is refused and nothing is half-applied.
+`/folders rename Receipts Invoices` changes that folder's display name, including
+after Receipts is nested under Billing — the slash still finds that nested name
+rather than saying `no folder called Receipts`. Receipts can sit under Billing
+and Security at once; the new name shows through both paths, and the chats
+inside it stay. On the Folders place, `r` on a folder row — including a nested
+row inside Billing — opens a name box; enter renames, esc cancels. Nested
+folders are members whose kind is `collection`, not a second copy of a chat. A
+cycle — making a folder a child of its own descendant — is refused and nothing
+is half-applied.
 
 ## Esc from new chat on folders — New chat then Esc creates nothing
 
 **New chat** on the Folders place opens the start page. The first sent message
 mints the transcript and files it. Esc before send creates nothing and returns
-to Folders. It does not dump you into the launch conversation and it does not
-write a session-header transcript for that press.
+to Folders — from Root and from inside a selected folder. It does not dump you
+into the launch conversation (`Home new conversation`) and it does not write a
+session-header transcript for that press.
 
-## Composer text gone after folders — home sentence survives alt+5
+## Composer text gone after folders — home sentence survives alt+5, launch composer, J43
 
 A sentence typed on home stays in the box after `alt+5` / `/folders` opens the
-Folders place, at 80 columns and when the frame is wide. Selection on a folder
-row survives a beat and a resize. Walking back to home keeps the same sentence.
+Folders place, at 80 columns and when the frame is wide. A sentence typed on the
+**launch conversation** composer does too: Folders is not `› say what you want
+done` while those words are still in the box. Selection on a folder row survives
+a beat and a resize. Walking back to home keeps the same sentence. Home
+type-and-enter still sends one sentence; the copy is across the Folders place,
+not every home raise.
 
 ## Also in two folders — one chat, also in Billing and Security
 

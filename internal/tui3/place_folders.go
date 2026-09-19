@@ -412,6 +412,9 @@ func (a *app) restoreFolderPlaceCursor() {
 			}
 		}
 		for i, stop := range p.stops {
+			if stop.kind == folderStopBack {
+				continue
+			}
 			if stop.id == p.selectedID {
 				p.cursor = i
 				return
@@ -831,6 +834,12 @@ func (a *app) enterFolderPlaceFolder(id string) tea.Cmd {
 		p.trail = append(p.trail, cur)
 	}
 	p.open = id
+	// THE CURSOR OPENS ON THE ACTIONS, NOT ON BACK. Back's stop id is the
+	// folder just entered, so restore-by-id used to land on `back · Billing`.
+	// Down then clamped (no wrap) and Enter left the folder; Esc from Root
+	// dumped the person into the launch conversation (J38 inside-folder).
+	p.cursor = 0
+	p.selectedID, p.selectedPath = "", ""
 	a.refreshFolderPlace()
 	return nil
 }

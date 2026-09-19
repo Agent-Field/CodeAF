@@ -374,6 +374,58 @@ func TestFoldersPlaceNewChatEscReturnsWithoutMinting(t *testing.T) {
 	}
 }
 
+func TestFoldersPlaceDrillInLandsOnNewFolderNotBack(t *testing.T) {
+	a := foldersPlaceApp(t, billingSecurityFolders())
+	if !a.pointFolderPlaceID("col-billing") {
+		t.Fatal("could not stand on Billing")
+	}
+	a.enterFolderPlace()
+	if a.folderSheet.open != "col-billing" {
+		t.Fatalf("enter did not drill into Billing, open=%q", a.folderSheet.open)
+	}
+	stop, ok := a.folderPlaceCursor()
+	if !ok || stop.kind != folderStopNewFolder {
+		t.Fatalf("drill-in landed on %+v, want New folder", stop)
+	}
+	a.moveFolderPlace(1)
+	drive(t, a, key("enter"))
+	if !a.startingChat() {
+		t.Fatal("Down+enter from the top of Billing did not open New chat")
+	}
+}
+
+func TestFoldersPlaceNewChatEscInsideAFolderReturnsWithoutMinting(t *testing.T) {
+	lab := newLiveLab(t)
+	started := 0
+	a := lab.app(lab.mine)
+	a.start = func(workspace string) (Conversation, error) {
+		started++
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: lab.mine, Workspace: workspace}, nil
+	}
+	a.width, a.height = 120, 40
+	a.folders = billingSecurityFolders()
+	a.showPage(pageFolders)
+	if !a.pointFolderPlaceID("col-billing") {
+		t.Fatal("could not stand on Billing")
+	}
+	a.enterFolderPlace()
+	a.moveFolderPlace(1)
+	drive(t, a, key("enter"))
+	if !a.startingChat() {
+		t.Fatal("New chat inside Billing did not open the start page")
+	}
+	drive(t, a, key("esc"))
+	if a.startingChat() {
+		t.Fatal("esc left the start page up")
+	}
+	if !a.at(pageFolders) {
+		t.Fatalf("esc from New chat inside a folder opened %q, want folders", a.page.word())
+	}
+	if started != 0 {
+		t.Fatalf("esc minted %d conversations", started)
+	}
+}
+
 func TestFoldersPlaceSlashNestIsNotAFolderName(t *testing.T) {
 	fake := &fakeFolders{
 		root: FolderRoot{Folders: []FolderView{
@@ -474,6 +526,77 @@ func TestFoldersPlaceRenameIsAKeyboardAction(t *testing.T) {
 	}
 }
 
+func TestSlashRenameResolvesANestedFolder(t *testing.T) {
+	fake := &fakeFolders{
+		root: FolderRoot{Folders: []FolderView{
+			{ID: "col-billing", Name: "Billing", Lifecycle: "active"},
+		}},
+		members: map[string][]FolderPlacement{
+			"col-billing": {{
+				CollectionID: "col-billing",
+				RefID:        "col-receipts",
+				Title:        "Receipts",
+				Kind:         folderCollectionKind,
+			}},
+		},
+	}
+	a := foldersPlaceApp(t, fake)
+	a.slash("/folders rename Receipts Invoices")
+	if a.folderSheet.note == "no folder called Receipts" {
+		t.Fatal("nested Receipts was invisible to /folders rename")
+	}
+	if len(fake.renames) != 1 || fake.renames[0] != [2]string{"col-receipts", "Invoices"} {
+		t.Fatalf("rename wrote %v", fake.renames)
+	}
+}
+
+func TestVisibleRenameOnANestedFolder(t *testing.T) {
+	fake := &fakeFolders{
+		root: FolderRoot{Folders: []FolderView{
+			{ID: "col-billing", Name: "Billing", Lifecycle: "active"},
+		}},
+		members: map[string][]FolderPlacement{
+			"col-billing": {{
+				CollectionID: "col-billing",
+				RefID:        "col-receipts",
+				Title:        "Receipts",
+				Kind:         folderCollectionKind,
+			}},
+		},
+	}
+	a := foldersPlaceApp(t, fake)
+	if !a.pointFolderPlaceID("col-billing") {
+		t.Fatal("could not stand on Billing")
+	}
+	a.enterFolderPlace()
+	if !a.pointFolderPlaceID("col-receipts") {
+		t.Fatal("could not stand on nested Receipts")
+	}
+	stop, ok := a.folderPlaceCursor()
+	if !ok {
+		t.Fatal("Receipts was not a restable row")
+	}
+	found := false
+	for _, v := range a.folderPlaceVerbs() {
+		if v.key == 'r' && v.word == folderRenameWord {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("nested Receipts hid the rename verb")
+	}
+	a.beginFolderPlaceRename(stop.line)
+	if a.folderSheet.naming == nil || a.folderSheet.renameID != "col-receipts" {
+		t.Fatal("r did not open a name box on nested Receipts")
+	}
+	a.folderSheet.naming.setText("Invoices")
+	drive(t, a, key("enter"))
+	if len(fake.renames) != 1 || fake.renames[0] != [2]string{"col-receipts", "Invoices"} {
+		t.Fatalf("nested r rename wrote %v", fake.renames)
+	}
+}
+
 func TestHomeComposerSurvivesFoldersAtEightyAndWide(t *testing.T) {
 	a := newLiveLab(t).open()
 	a.folders = billingSecurityFolders()
@@ -502,6 +625,23 @@ func TestHomeComposerSurvivesFoldersAtEightyAndWide(t *testing.T) {
 	a.showPage(pageHome)
 	if a.home.box.String() != "keep this sentence" {
 		t.Fatalf("home lost the sentence after Folders: %q", a.home.box.String())
+	}
+}
+
+func TestLaunchComposerSurvivesFoldersPlace(t *testing.T) {
+	a := newLiveLab(t).open()
+	a.folders = billingSecurityFolders()
+	a.leavePlace()
+	a.input.setText("composer must survive eighty columns")
+	a.width, a.height = 120, 40
+	a.showPage(pageFolders)
+	if a.compose.String() != "composer must survive eighty columns" {
+		t.Fatalf("Folders lost the launch sentence: %q", a.compose.String())
+	}
+	a.width, a.height = 80, 24
+	a.refreshFolderPlace()
+	if a.compose.String() != "composer must survive eighty columns" {
+		t.Fatalf("80-col Folders lost the launch sentence: %q", a.compose.String())
 	}
 }
 
