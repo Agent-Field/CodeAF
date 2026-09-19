@@ -177,9 +177,9 @@ steps
 When the command ends the store clears the live step and the next read draws it as an ordinary
 step, with its number and the head of what came back.
 
-## Why is a step missing from a task's page, the step numbers skip, where did the cd go
+## Why is a step missing, the step numbers skip, the cd at the front of a command is gone
 
-**The steps on a run's task page are the work, cut from the commands as they ran.** Two
+**The steps a run's task shows are the work, cut from the commands as they ran.** Two
 things are left out of a step's row, and nothing else is ever changed:
 
 - a leading change into the run's own copy, which every command starts with and which says

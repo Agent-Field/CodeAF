@@ -2655,8 +2655,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does codeaf do exit with", "worker-harness"},
 		{"does a subtask see my original request", "worker-harness"},
 		{"who checks a task's work", "worker-harness"},
-		{"why do the step numbers skip on a task's page", "worker-harness"},
-		{"a step is missing from the task page, where did the cd go", "worker-harness"},
+		{"why do the step numbers skip", "worker-harness"},
+		{"a step is missing and the cd at the front of the command is gone", "worker-harness"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
