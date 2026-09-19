@@ -480,6 +480,12 @@ type Options struct {
 	// makes that action absent, so a hosted surface never writes a far path here.
 	Archive func(dir string, archived bool) error
 
+	// Folders is the logical-folder seam the home folders panel reads and
+	// mutates. Nil still draws the whisper; mutations no-op with a note. The
+	// interface lives in this package so the surface never imports
+	// internal/workspace; wiring may wrap *wsapi.Service.
+	Folders Folders
+
 	// ── THE PLACES FOLLOW THE SESSION'S MACHINE ─────────────────────────────
 	//
 	// World is the walk of the conversations and projects on THE MACHINE THAT
