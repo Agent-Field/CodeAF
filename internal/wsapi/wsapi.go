@@ -2,9 +2,8 @@
 //
 // Storage stays in internal/workspace. This package projects membership into
 // folder snapshots, unique conversation counts, and why-here, and it never
-// imports session, tui3, provider, or run. Open still calls workspace.Open;
-// tests inject a fake that implements the full frozen store contract while
-// AddWith, Move, and WhyHere are still landing on *workspace.Store.
+// imports session, tui3, provider, or run. Open binds *workspace.Store
+// directly so provenance, atomic Move, WhyHere, and Events are the real store's.
 package wsapi
 
 import (
@@ -40,7 +39,7 @@ type Placement struct {
 
 // Why is the latest membership event for an edge, active or last.
 type Why struct {
-	Event MembershipEvent
+	Event workspace.MembershipEvent
 }
 
 // RootView is virtual Root: parentless collections and unfiled conversations.
@@ -48,30 +47,7 @@ type Why struct {
 type RootView struct {
 	Folders  []Folder
 	Unfiled  []Placement
-	Revision int // root_state.revision; zero until storage exposes the row
-}
-
-// Provenance is the frozen workspace.Provenance record. It is declared here
-// because this worktree's workspace package has not grown that type yet.
-// Integration aliases it onto the storage type once that lands.
-type Provenance struct {
-	Origin, Reason, Actor, Evidence, IdempotencyKey string
-}
-
-// MembershipEvent is the frozen workspace.MembershipEvent record, kept here
-// for the same compile bind as Provenance.
-type MembershipEvent struct {
-	CollectionID   string
-	Kind           workspace.Kind
-	RefID          string
-	SessionID      string
-	Action         string
-	Origin         string
-	Reason         string
-	Actor          string
-	Evidence       string
-	At             string
-	IdempotencyKey string
+	Revision int // root_state.revision; zero until the store exposes RootState
 }
 
 // Service holds a store, an optional inventory, and a clock.
@@ -81,15 +57,15 @@ type Service struct {
 	now   func() time.Time
 }
 
-// Open wraps workspace.Open so wiring can construct a Service before storage
-// grows AddWith. The adapter implements the frozen methods in terms of Add and
-// Remove; tests must not rely on it for provenance or atomic Move.
+// Open wraps workspace.Open. A corrupt, foreign, or unreadable store is an
+// error: the service is not constructed, and callers must not invent an empty
+// RootView. The returned service talks to *workspace.Store directly.
 func Open(path string) (*Service, error) {
 	inner, err := workspace.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	return &Service{store: &storeAdapter{inner: inner}, now: time.Now}, nil
+	return &Service{store: inner, now: time.Now}, nil
 }
 
 // Close releases the underlying store.
@@ -130,7 +106,7 @@ func (s *Service) RenameFolder(ctx context.Context, id, name string) error {
 
 // AddPlacement files a ref in a folder. A second call with the same edge is
 // success: membership is binary, not counted.
-func (s *Service) AddPlacement(ctx context.Context, collectionID string, ref workspace.Ref, p Provenance) error {
+func (s *Service) AddPlacement(ctx context.Context, collectionID string, ref workspace.Ref, p workspace.Provenance) error {
 	if err := s.ready(ctx); err != nil {
 		return err
 	}
@@ -138,7 +114,7 @@ func (s *Service) AddPlacement(ctx context.Context, collectionID string, ref wor
 }
 
 // RemovePlacement drops one edge. The referenced conversation stays itself.
-func (s *Service) RemovePlacement(ctx context.Context, collectionID string, ref workspace.Ref, p Provenance) error {
+func (s *Service) RemovePlacement(ctx context.Context, collectionID string, ref workspace.Ref, p workspace.Provenance) error {
 	if err := s.ready(ctx); err != nil {
 		return err
 	}
@@ -147,7 +123,7 @@ func (s *Service) RemovePlacement(ctx context.Context, collectionID string, ref 
 
 // MovePlacement adds the destination and removes the source in the store's
 // one writer transaction. Other placements of the same ref stay.
-func (s *Service) MovePlacement(ctx context.Context, fromID, toID string, ref workspace.Ref, p Provenance) error {
+func (s *Service) MovePlacement(ctx context.Context, fromID, toID string, ref workspace.Ref, p workspace.Provenance) error {
 	if err := s.ready(ctx); err != nil {
 		return err
 	}
@@ -173,16 +149,9 @@ func (s *Service) ready(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func normalize(p Provenance) Provenance {
+func normalize(p workspace.Provenance) workspace.Provenance {
 	if p.Origin == "" {
-		p.Origin = originPerson
+		p.Origin = workspace.OriginPerson
 	}
 	return p
 }
-
-const (
-	originPerson    = "person"
-	actionAdd       = "add"
-	actionRemove    = "remove"
-	lifecycleActive = "active"
-)

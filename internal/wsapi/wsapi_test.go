@@ -23,14 +23,14 @@ func TestAddMoveRemoveAndIdempotency(t *testing.T) {
 	receipts := createFolder(t, svc, "Receipts")
 	security := createFolder(t, svc, "Security")
 	chat := conv("chat-1")
-	filed := Provenance{Origin: originPerson, Reason: "filed by the person"}
+	filed := workspace.Provenance{Origin: workspace.OriginPerson, Reason: "filed by the person"}
 	if err := svc.AddPlacement(ctx, billing.ID, chat, filed); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.AddPlacement(ctx, billing.ID, chat, filed); err != nil {
 		t.Fatalf("idempotent add: %v", err)
 	}
-	if err := svc.AddPlacement(ctx, security.ID, chat, Provenance{Reason: "also security"}); err != nil {
+	if err := svc.AddPlacement(ctx, security.ID, chat, workspace.Provenance{Reason: "also security"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := placementIDs(t, svc, chat); !sameStrings(got, []string{billing.ID, security.ID}) {
@@ -40,23 +40,23 @@ func TestAddMoveRemoveAndIdempotency(t *testing.T) {
 	if err != nil || len(placed) != 1 || placed[0].Ref.ID != "chat-1" {
 		t.Fatalf("billing snapshot %v, %v", placed, err)
 	}
-	if err := svc.MovePlacement(ctx, billing.ID, receipts.ID, chat, Provenance{Reason: "moved into receipts"}); err != nil {
+	if err := svc.MovePlacement(ctx, billing.ID, receipts.ID, chat, workspace.Provenance{Reason: "moved into receipts"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := placementIDs(t, svc, chat); !sameStrings(got, []string{receipts.ID, security.ID}) {
 		t.Fatalf("after move: %v", got)
 	}
-	if err := svc.RemovePlacement(ctx, security.ID, chat, Provenance{Reason: "not security"}); err != nil {
+	if err := svc.RemovePlacement(ctx, security.ID, chat, workspace.Provenance{Reason: "not security"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RemovePlacement(ctx, security.ID, chat, Provenance{Reason: "not security"}); err != nil {
+	if err := svc.RemovePlacement(ctx, security.ID, chat, workspace.Provenance{Reason: "not security"}); err != nil {
 		t.Fatalf("idempotent remove: %v", err)
 	}
 	if got := placementIDs(t, svc, chat); !sameStrings(got, []string{receipts.ID}) {
 		t.Fatalf("after remove: %v", got)
 	}
 	why, err := svc.WhyHere(ctx, receipts.ID, chat)
-	if err != nil || why.Event.Action != actionAdd || why.Event.Reason != "moved into receipts" {
+	if err != nil || why.Event.Action != workspace.ActionAdd || why.Event.Reason != "moved into receipts" {
 		t.Fatalf("why here %+v, %v", why, err)
 	}
 }
@@ -67,7 +67,7 @@ func TestUniqueCountsWithDualPlacement(t *testing.T) {
 	acme := createFolder(t, svc, "Acme")
 	billing := createFolder(t, svc, "Billing")
 	security := createFolder(t, svc, "Security")
-	nest := Provenance{Origin: originPerson, Reason: "nest"}
+	nest := workspace.Provenance{Origin: workspace.OriginPerson, Reason: "nest"}
 	if err := svc.AddPlacement(ctx, acme.ID, collectionRef(billing.ID), nest); err != nil {
 		t.Fatal(err)
 	}
@@ -75,10 +75,10 @@ func TestUniqueCountsWithDualPlacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	chat := conv("shared")
-	if err := svc.AddPlacement(ctx, billing.ID, chat, Provenance{Reason: "billing"}); err != nil {
+	if err := svc.AddPlacement(ctx, billing.ID, chat, workspace.Provenance{Reason: "billing"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.AddPlacement(ctx, security.ID, chat, Provenance{Reason: "security"}); err != nil {
+	if err := svc.AddPlacement(ctx, security.ID, chat, workspace.Provenance{Reason: "security"}); err != nil {
 		t.Fatal(err)
 	}
 	billingSnap, placed, err := svc.FolderSnapshot(ctx, billing.ID)
@@ -113,10 +113,10 @@ func TestRootSnapshotUnfiledVersusFolders(t *testing.T) {
 	})
 	billing := createFolder(t, svc, "Billing")
 	receipts := createFolder(t, svc, "Receipts")
-	if err := svc.AddPlacement(ctx, billing.ID, collectionRef(receipts.ID), Provenance{Reason: "nest"}); err != nil {
+	if err := svc.AddPlacement(ctx, billing.ID, collectionRef(receipts.ID), workspace.Provenance{Reason: "nest"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.AddPlacement(ctx, billing.ID, conv("filed"), Provenance{Reason: "file"}); err != nil {
+	if err := svc.AddPlacement(ctx, billing.ID, conv("filed"), workspace.Provenance{Reason: "file"}); err != nil {
 		t.Fatal(err)
 	}
 	root, err := svc.RootSnapshot(ctx)
@@ -151,10 +151,10 @@ func TestCycleErrorPropagated(t *testing.T) {
 	svc := testService(t, nil)
 	parent := createFolder(t, svc, "Billing")
 	child := createFolder(t, svc, "Receipts")
-	if err := svc.AddPlacement(ctx, parent.ID, collectionRef(child.ID), Provenance{Reason: "nest"}); err != nil {
+	if err := svc.AddPlacement(ctx, parent.ID, collectionRef(child.ID), workspace.Provenance{Reason: "nest"}); err != nil {
 		t.Fatal(err)
 	}
-	err := svc.AddPlacement(ctx, child.ID, collectionRef(parent.ID), Provenance{Reason: "cycle"})
+	err := svc.AddPlacement(ctx, child.ID, collectionRef(parent.ID), workspace.Provenance{Reason: "cycle"})
 	if !errors.Is(err, workspace.ErrCycle) {
 		t.Fatalf("cycle: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestFakeInventoryTitles(t *testing.T) {
 		titles: map[string]string{"abc123abc123abcd": "Q3 invoices"},
 	})
 	billing := createFolder(t, svc, "Billing")
-	if err := svc.AddPlacement(ctx, billing.ID, conv("abc123abc123abcd"), Provenance{Reason: "title"}); err != nil {
+	if err := svc.AddPlacement(ctx, billing.ID, conv("abc123abc123abcd"), workspace.Provenance{Reason: "title"}); err != nil {
 		t.Fatal(err)
 	}
 	_, placed, err := svc.FolderSnapshot(ctx, billing.ID)
@@ -189,10 +189,22 @@ func TestExpectedRevisionConflict(t *testing.T) {
 	fake := newFakeStore()
 	svc := &Service{store: fake, now: func() time.Time { return time.Time{} }}
 	billing := createFolder(t, svc, "Billing")
-	fake.revisionErr = fmt.Errorf("%w: revision mismatch", workspace.ErrInvalid)
-	err := svc.AddPlacement(ctx, billing.ID, conv("chat"), Provenance{Reason: "stale"})
-	if !errors.Is(err, workspace.ErrInvalid) || !strings.Contains(err.Error(), "revision") {
-		t.Fatalf("revision conflict: %v", err)
+	receipts := createFolder(t, svc, "Receipts")
+	conflict := fmt.Errorf("%w: revision mismatch", workspace.ErrInvalid)
+	fake.revisionErr = conflict
+	for _, name := range []string{"add", "remove", "move"} {
+		var err error
+		switch name {
+		case "add":
+			err = svc.AddPlacement(ctx, billing.ID, conv("chat"), workspace.Provenance{Reason: "stale"})
+		case "remove":
+			err = svc.RemovePlacement(ctx, billing.ID, conv("chat"), workspace.Provenance{Reason: "stale"})
+		case "move":
+			err = svc.MovePlacement(ctx, billing.ID, receipts.ID, conv("chat"), workspace.Provenance{Reason: "stale"})
+		}
+		if !errors.Is(err, workspace.ErrInvalid) || !strings.Contains(err.Error(), "revision") {
+			t.Fatalf("%s revision conflict: %v", name, err)
+		}
 	}
 	wrapped := wrapStoreError(errors.New("stale revision from peer"))
 	if !errors.Is(wrapped, workspace.ErrInvalid) || !strings.Contains(wrapped.Error(), "revision") {
@@ -208,7 +220,14 @@ func TestOpenWrapsExistingStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = svc.Close() })
+	if _, ok := svc.store.(*workspace.Store); !ok {
+		t.Fatalf("Open must bind *workspace.Store, got %T", svc.store)
+	}
 	billing, err := svc.CreateFolder(ctx, "Billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts, err := svc.CreateFolder(ctx, "Receipts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,15 +235,55 @@ func TestOpenWrapsExistingStore(t *testing.T) {
 		ids:    []string{"chat-open"},
 		titles: map[string]string{"chat-open": "Opened"},
 	})
-	if err := svc.AddPlacement(ctx, billing.ID, conv("chat-open"), Provenance{Reason: "open"}); err != nil {
+	filed := workspace.Provenance{
+		Origin:         workspace.OriginPerson,
+		Reason:         "filed from chat",
+		Actor:          "me",
+		Evidence:       "note",
+		IdempotencyKey: "open-1",
+	}
+	if err := svc.AddPlacement(ctx, billing.ID, conv("chat-open"), filed); err != nil {
 		t.Fatal(err)
 	}
+	why, err := svc.WhyHere(ctx, billing.ID, conv("chat-open"))
+	if err != nil || why.Event.Reason != "filed from chat" || why.Event.Origin != workspace.OriginPerson || why.Event.Actor != "me" {
+		t.Fatalf("open must keep provenance: %+v, %v", why, err)
+	}
+	if err := svc.MovePlacement(ctx, billing.ID, receipts.ID, conv("chat-open"), workspace.Provenance{Reason: "moved on open"}); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := svc.WhyHere(ctx, receipts.ID, conv("chat-open"))
+	if err != nil || moved.Event.Action != workspace.ActionAdd || moved.Event.Reason != "moved on open" {
+		t.Fatalf("open move must keep provenance: %+v, %v", moved, err)
+	}
 	root, err := svc.RootSnapshot(ctx)
-	if err != nil || len(root.Folders) != 1 || root.Folders[0].Name != "Billing" {
+	if err != nil || len(root.Folders) != 2 {
 		t.Fatalf("open snapshot %+v, %v", root, err)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOpenCorruptStoreIsError(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "collections.db")
+	if err := os.WriteFile(path, []byte("this is not a collections database"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := Open(path)
+	if err == nil {
+		t.Fatal("corrupt store must not open")
+	}
+	if svc != nil {
+		t.Fatalf("Open must not construct a service on failure, got %+v", svc)
+	}
+	root, snapErr := (*Service)(nil).RootSnapshot(ctx)
+	if snapErr == nil {
+		t.Fatal("a failed Open must not yield a successful RootView")
+	}
+	if len(root.Folders) != 0 || len(root.Unfiled) != 0 {
+		t.Fatalf("must not invent a root view: %+v", root)
 	}
 }
 

@@ -9,9 +9,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
-// store matches the frozen workspace.Store methods so tests can inject a fake
-// while storage lives on another worktree. Open wraps today's *workspace.Store
-// through storeAdapter until AddWith, Move, and WhyHere exist on the real type.
+// store matches the frozen workspace.Store methods so tests can inject a fake.
+// Open assigns *workspace.Store directly: AddWith, RemoveWith, Move, WhyHere,
+// and Events are the real methods, and provenance is never discarded.
 type store interface {
 	Close() error
 	Create(ctx context.Context, name string) (workspace.Collection, error)
@@ -21,81 +21,35 @@ type store interface {
 	CollectionsFor(ctx context.Context, ref workspace.Ref) ([]workspace.Collection, error)
 	Add(ctx context.Context, id string, ref workspace.Ref) error
 	Remove(ctx context.Context, id string, ref workspace.Ref) error
-	AddWith(ctx context.Context, id string, ref workspace.Ref, p Provenance) error
-	RemoveWith(ctx context.Context, id string, ref workspace.Ref, p Provenance) error
-	Move(ctx context.Context, fromID, toID string, ref workspace.Ref, p Provenance) error
-	WhyHere(ctx context.Context, id string, ref workspace.Ref) (MembershipEvent, error)
-	Events(ctx context.Context, id string, ref workspace.Ref) ([]MembershipEvent, error)
+	AddWith(ctx context.Context, id string, ref workspace.Ref, p workspace.Provenance) error
+	RemoveWith(ctx context.Context, id string, ref workspace.Ref, p workspace.Provenance) error
+	Move(ctx context.Context, fromID, toID string, ref workspace.Ref, p workspace.Provenance) error
+	WhyHere(ctx context.Context, id string, ref workspace.Ref) (workspace.MembershipEvent, error)
+	Events(ctx context.Context, id string, ref workspace.Ref) ([]workspace.MembershipEvent, error)
 	SchemaVersion() int
 }
 
-// storeAdapter keeps Open compiling against a v1 Store. Provenance is accepted
-// and discarded: Add is person origin with an empty reason. Move is Add then
-// Remove, not one writer transaction. WhyHere has no events to read.
-//
-// INTEGRATION BINDS THE REAL STORE. Replace this adapter once *workspace.Store
-// carries AddWith, RemoveWith, Move, WhyHere, Events, and workspace.Provenance.
-type storeAdapter struct {
-	inner *workspace.Store
+var _ store = (*workspace.Store)(nil)
+
+// rootStater is the RootState seam. Storage's CAS remediation may still be
+// landing this method; when *workspace.Store grows it, RootSnapshot fills
+// Revision from the same handle Open already bound.
+type rootStater interface {
+	RootState(ctx context.Context) (revision int, purpose, updatedAt string, err error)
 }
 
-func (a *storeAdapter) Close() error { return a.inner.Close() }
-
-func (a *storeAdapter) Create(ctx context.Context, name string) (workspace.Collection, error) {
-	return a.inner.Create(ctx, name)
-}
-
-func (a *storeAdapter) Rename(ctx context.Context, id, name string) error {
-	return a.inner.Rename(ctx, id, name)
-}
-
-func (a *storeAdapter) Collections(ctx context.Context) ([]workspace.Collection, error) {
-	return a.inner.Collections(ctx)
-}
-
-func (a *storeAdapter) Members(ctx context.Context, id string) ([]workspace.Ref, error) {
-	return a.inner.Members(ctx, id)
-}
-
-func (a *storeAdapter) CollectionsFor(ctx context.Context, ref workspace.Ref) ([]workspace.Collection, error) {
-	return a.inner.CollectionsFor(ctx, ref)
-}
-
-func (a *storeAdapter) Add(ctx context.Context, id string, ref workspace.Ref) error {
-	return a.inner.Add(ctx, id, ref)
-}
-
-func (a *storeAdapter) Remove(ctx context.Context, id string, ref workspace.Ref) error {
-	return a.inner.Remove(ctx, id, ref)
-}
-
-func (a *storeAdapter) AddWith(ctx context.Context, id string, ref workspace.Ref, _ Provenance) error {
-	return a.inner.Add(ctx, id, ref)
-}
-
-func (a *storeAdapter) RemoveWith(ctx context.Context, id string, ref workspace.Ref, _ Provenance) error {
-	return a.inner.Remove(ctx, id, ref)
-}
-
-func (a *storeAdapter) Move(ctx context.Context, fromID, toID string, ref workspace.Ref, _ Provenance) error {
-	if err := a.inner.Add(ctx, toID, ref); err != nil {
-		return err
+func rootRevision(ctx context.Context, s store) (int, error) {
+	rs, ok := s.(rootStater)
+	if !ok {
+		return 0, nil
 	}
-	return a.inner.Remove(ctx, fromID, ref)
+	revision, _, _, err := rs.RootState(ctx)
+	return revision, wrapStoreError(err)
 }
-
-func (a *storeAdapter) WhyHere(context.Context, string, workspace.Ref) (MembershipEvent, error) {
-	return MembershipEvent{}, fmt.Errorf("%w: why-here needs membership events", workspace.ErrNotFound)
-}
-
-func (a *storeAdapter) Events(context.Context, string, workspace.Ref) ([]MembershipEvent, error) {
-	return []MembershipEvent{}, nil
-}
-
-func (a *storeAdapter) SchemaVersion() int { return 1 }
 
 // wrapStoreError keeps expected-revision refusals on workspace.ErrInvalid with
-// a stable "revision" mention until storage adds ErrConflict.
+// a stable "revision" mention. ErrConflict wrapping ErrInvalid (when storage
+// grows it) already satisfies errors.Is(..., ErrInvalid) and is left intact.
 func wrapStoreError(err error) error {
 	if err == nil {
 		return nil
