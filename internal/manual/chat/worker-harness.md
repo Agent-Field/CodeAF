@@ -96,8 +96,9 @@ page and never to the conversation: the keys are kept in order and land in the p
 note box when it opens, `enter` included. `esc` in that moment withdraws the press. If
 the row turns out to have no page and its room opens instead, those keys are dropped.
 
-A page opened on a task that is still running follows it, one read at a time, and stops
-reading when the task has settled. A step whose command is many lines long is drawn as
+A page opened on a task that is queued or running follows it: it reads the task again
+every three seconds, so a new step shows within that, and it stops reading when the task
+has settled. A page on a task that has ended is read once, to open it. A step whose command is many lines long is drawn as
 its first line and `…`; what ran is unchanged.
 
 A row the store has no page for opens what it always opened, its room. That is every

@@ -17,7 +17,13 @@ import (
 // call still crosses the real wire to the real engine; the count is how many did.
 type countedPlanAgent struct {
 	*remote.Agent
-	rows atomic.Int64
+	rows  atomic.Int64
+	pages atomic.Int64
+}
+
+func (c *countedPlanAgent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
+	c.pages.Add(1)
+	return c.Agent.PlanTaskPage(id)
 }
 
 func (c *countedPlanAgent) PlanTasks() []session.PlanTaskRow {
@@ -181,5 +187,87 @@ func TestHostedRailPagePendingEscCancelsAndSecondPressSupersedes(t *testing.T) {
 	a.beginRailPlan("second")
 	if a.railPlanPending.id != "second" || len(a.railPlanPending.keys) != 0 {
 		t.Fatalf("second press retained the first target or its keys: %+v", a.railPlanPending)
+	}
+}
+
+// openHostedPage opens the run's own page the way `enter` on its row does, over
+// the real wire, and answers the run's id.
+func openHostedPage(t *testing.T, a *app) string {
+	t.Helper()
+	// THE RUN'S SUMMARY IS KEPT OUT OF A TEST THAT COUNTS THE PAGE'S READS. The
+	// engine here is real and its model's address refuses, so a summary asked
+	// after a message would spend its whole budget finding that out; marking one
+	// as already out is the surface's own way of not asking for another.
+	a.runSummaryRefreshing = true
+	a.taskSheet.regroup(a)
+	if len(a.taskSheet.mine.plan) == 0 {
+		t.Fatal("the first reading did not hold the run's row")
+	}
+	id := a.taskSheet.mine.plan[0].ID
+	cmd := a.taskSheetPlan(id)
+	if cmd == nil {
+		t.Fatal("the page was not asked for")
+	}
+	drive(t, a, cmd())
+	if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != id {
+		t.Fatal("the run's page did not open")
+	}
+	return id
+}
+
+// paintTicks is the paint clock turning `ticks` times inside one beat: every
+// tick offers the page its follow, and whatever the follow asks is answered and
+// folded before the next tick, the way a fast local engine answers.
+func paintTicks(t *testing.T, a *app, ticks int) {
+	t.Helper()
+	for tick := 0; tick < ticks; tick++ {
+		if cmd := a.taskPlanFollow(); cmd != nil {
+			drive(t, a, cmd())
+		}
+	}
+}
+
+// AN OPEN PAGE FOLLOWS ITS TASK ON A BEAT. The follow was offered its read on
+// every tick of the paint clock and held back only while one was out, so a fast
+// engine was asked again the moment it answered: 509 reads over the wire in
+// ninety seconds on a real screen, about six a second, for one open page. A
+// step lands every few seconds at best; the rail learns of the same run on a
+// three second beat, and the page now does too.
+func TestAnOpenPageOnARunningTaskReadsOncePerBeat(t *testing.T) {
+	a, counted, _ := hostedPlanApp(t, false)
+	now := taskFixtureNow
+	a.clock = func() time.Time { return now }
+	openHostedPage(t, a)
+	if !a.taskPlanFollows() {
+		t.Fatalf("the fixture's run is %q, which the page does not follow, so the test proves nothing", a.taskSheet.plan.Row.Status)
+	}
+	opened := counted.pages.Load()
+	const beats = 5
+	for beat := 0; beat < beats; beat++ {
+		paintTicks(t, a, 20)
+		now = now.Add(elsewhereEvery)
+	}
+	paintTicks(t, a, 20)
+	if got := counted.pages.Load() - opened; got != beats {
+		t.Fatalf("an open page on a moving task crossed the wire %d times over %d beats of twenty ticks each, want one read a beat", got, beats)
+	}
+}
+
+// AND A PAGE ON A TASK THAT HAS ENDED READS ONCE, TO OPEN, AND NEVER AGAIN.
+func TestAnOpenPageOnAnEndedTaskReadsOnceAndStops(t *testing.T) {
+	a, counted, _ := hostedPlanApp(t, true)
+	now := taskFixtureNow
+	a.clock = func() time.Time { return now }
+	openHostedPage(t, a)
+	opened := counted.pages.Load()
+	if opened != 1 {
+		t.Fatalf("opening the page crossed the wire %d times, want once", opened)
+	}
+	for beat := 0; beat < 20; beat++ {
+		paintTicks(t, a, 20)
+		now = now.Add(elsewhereEvery)
+	}
+	if got := counted.pages.Load() - opened; got != 0 {
+		t.Fatalf("a page on an ended task crossed the wire %d more times over twenty beats, want none", got)
 	}
 }
