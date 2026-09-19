@@ -7,8 +7,8 @@
 // Wave 2 adds InstructFolder, EffectiveGuidance, SearchEvidence, a typed
 // ActionPlan, and SuppressPlacement. Discovery is an injected interface.
 // Wave 3 adds CoordinateSelected, ManageFolder, Deliver, InviteToDiscussion,
-// and CreateDiscussion. Collaboration is an injected interface — this package
-// never imports wscollab. Wave 4 adds IssueGrant, LaunchOrJoin, and the
+// CreateDiscussion, and OpenConflictDiscussion. Collaboration is an injected
+// interface — this package never imports wscollab. Wave 4 adds IssueGrant, LaunchOrJoin, and the
 // inspect/steer/pause/stop/observe work doors. Execution is an injected
 // interface — this package never imports wsexec. A missing store door,
 // collaborator, or executor leaves those methods absent rather than returning

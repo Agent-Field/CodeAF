@@ -60,7 +60,8 @@ func (a *Agent) refreshGuidanceLocked(ctx context.Context) {
 	a.guidanceSnap = loaded.Snapshot
 	a.guidanceSnap.Conflict = loaded.Conflict
 	a.guidanceConflict = loaded.Conflict
-	a.guidanceText = renderGuidance(loaded)
+	room := a.openConflictIfNeeded(ctx, loaded)
+	a.guidanceText = renderGuidance(loaded, room)
 }
 
 func (a *Agent) loadGuidance(ctx context.Context) EffectiveGuidance {
@@ -79,7 +80,22 @@ func (a *Agent) loadGuidance(ctx context.Context) EffectiveGuidance {
 	return loaded
 }
 
-func renderGuidance(loaded EffectiveGuidance) string {
+func (a *Agent) openConflictIfNeeded(ctx context.Context, loaded EffectiveGuidance) ConflictRoom {
+	if a == nil || a.config.Collab == nil || !loaded.Conflict {
+		return ConflictRoom{}
+	}
+	chat := strings.TrimSpace(a.config.Place.ID())
+	if chat == "" {
+		return ConflictRoom{}
+	}
+	room, err := a.config.Collab.OpenConflict(ctx, chat)
+	if err != nil {
+		return ConflictRoom{}
+	}
+	return room
+}
+
+func renderGuidance(loaded EffectiveGuidance, room ConflictRoom) string {
 	if len(loaded.Items) == 0 {
 		return ""
 	}
@@ -88,6 +104,11 @@ func renderGuidance(loaded EffectiveGuidance) string {
 	b.WriteString("These are standing folder instructions for this chat. They are not retrieved maybe-relevant text.\n")
 	if loaded.Conflict {
 		b.WriteString("These instructions conflict; do not pick one silently.\n")
+		if room.Exhausted {
+			b.WriteString("Unresolved conflict reaches the person. Parent representatives already share one discussion; this is not a ban on parent join after two turns.\n")
+		} else if room.ChatID != "" {
+			b.WriteString("Software opened one conflict discussion and invited parent representatives, including Root. That is automatic parent escalation, not “always ask after two turns”.\n")
+		}
 	}
 	for _, item := range loaded.Items {
 		name := strings.TrimSpace(item.Name)

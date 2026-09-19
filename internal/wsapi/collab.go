@@ -199,7 +199,15 @@ func (s *Service) Deliver(ctx context.Context, req DeliverRequest) ([]DeliverRec
 	if err := s.refuseIfPaused(ctx, req.FromChatID); err != nil {
 		return nil, err
 	}
-	return s.sendEnvelopes(ctx, deliverEnvelopes(req))
+	if err := s.refuseIfConflictExhausted(ctx, req.DiscussionID); err != nil {
+		return nil, err
+	}
+	got, err := s.sendEnvelopes(ctx, deliverEnvelopes(req))
+	if err != nil {
+		return nil, err
+	}
+	_ = s.noteConflictRound(ctx, req.DiscussionID)
+	return got, nil
 }
 
 // InviteToDiscussion records one representative. Actor IDs are minted by the
@@ -212,6 +220,9 @@ func (s *Service) InviteToDiscussion(ctx context.Context, req InviteRequest) (Pa
 		return ParticipantView{}, fmt.Errorf("%w: invite needs a discussion and a source chat", workspace.ErrInvalid)
 	}
 	if err := s.refuseIfPaused(ctx, req.DiscussionID); err != nil {
+		return ParticipantView{}, err
+	}
+	if err := s.refuseIfConflictExhausted(ctx, req.DiscussionID); err != nil {
 		return ParticipantView{}, err
 	}
 	c, err := s.requireCollabStore()

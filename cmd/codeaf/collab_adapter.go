@@ -194,6 +194,17 @@ func (c *sessionCollab) Contribute(ctx context.Context, discussionID string, inv
 	return err
 }
 
+func (c *sessionCollab) OpenConflict(ctx context.Context, conversationID string) (session.ConflictRoom, error) {
+	if c == nil || c.svc == nil {
+		return session.ConflictRoom{}, fmt.Errorf("%w: collaborator is absent", workspace.ErrInvalid)
+	}
+	got, err := c.svc.OpenConflictDiscussion(ctx, conversationID)
+	if err != nil {
+		return session.ConflictRoom{}, err
+	}
+	return session.ConflictRoom{ChatID: got.ChatID, Exhausted: got.Exhausted}, nil
+}
+
 type tuiCollab struct {
 	svc *wsapi.Service
 	mu  sync.Mutex

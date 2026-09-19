@@ -111,6 +111,17 @@ type Collab interface {
 	// Contribute records one participant's own bounded invocation into the
 	// discussion. The manager must not Deliver both sides as itself (J19).
 	Contribute(ctx context.Context, discussionID string, inv CollabInvocation, body string) error
+	// OpenConflict opens or reuses the one parent-conflict discussion when
+	// folder instructions disagree. Nil Collab leaves this undone; the turn
+	// still runs. Exhausted means unresolved conflict reaches the person.
+	OpenConflict(ctx context.Context, conversationID string) (ConflictRoom, error)
+}
+
+// ConflictRoom is the software-opened J24 discussion. ChatID empty means
+// guidance did not conflict. Exhausted is the finite-round/time fence.
+type ConflictRoom struct {
+	ChatID    string
+	Exhausted bool
 }
 
 // CollabLine is one inbound envelope as this package reads it, without

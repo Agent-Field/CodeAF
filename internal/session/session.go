@@ -1367,6 +1367,7 @@ type Config struct {
 	// because a model told it can message other chats will plan around one,
 	// and every call would then refuse. The inbound router is a different
 	// door ([RegisterCollabRouter]); this field must not mint through both.
+	// OpenConflict is software-called from the guidance load, not a belt verb.
 	Collab Collab
 
 	// Exec is the wsapi wrapper the coordinate execute actions talk to
