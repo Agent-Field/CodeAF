@@ -60,3 +60,7 @@ The forced regression makes the product process the owner: `openV3ProcessWith` c
 ### Fixed result
 
 `startPlaceSweep` now accounts for its product-owned goroutine, and `v3Process.closeAll` waits for that account before it returns. The deterministic regression now holds close behind the barrier, releases the forced writer, waits for close, removes the state root, and proves no later file appears. `go test ./cmd/codeaf -run '^TestThePlaceSweepStopsBeforeTheProcessCloses$' -count=10` passed. This changes only the place-sweep lifecycle and its regression; the #1211 waiting-line fix is untouched.
+
+## Regression review correction
+
+Review established that the first fixed-form regression did not pin the join: deleting the direct `sweepWaiting.Wait` call still passed because the test's nonblocking close check could run before the close goroutine. The corrected seam wraps the wait itself. The test waits until that seam is entered, so ordering is channel-controlled rather than scheduler-controlled, then releases the writer and proves the join returns. Removing the product join now prevents the required seam handshake instead of passing by scheduling luck.

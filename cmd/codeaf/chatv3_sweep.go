@@ -55,9 +55,10 @@ func startPlaceSweep() {
 }
 
 var (
-	sweepOnce    sync.Once
-	sweepWaiting sync.WaitGroup
-	sweepHome    = session.SweepHome
+	sweepOnce      sync.Once
+	sweepWaiting   sync.WaitGroup
+	sweepHome      = session.SweepHome
+	waitPlaceSweep = sweepWaiting.Wait
 )
 
 // noteSweep writes one line, and opens the file only when there is a line to
