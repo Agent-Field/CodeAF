@@ -11,6 +11,7 @@ package enginehost
 // made under /tmp directly and never under whatever TMPDIR happens to be.
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,39 +43,80 @@ func liveHost(t *testing.T, workspace string) {
 	})
 }
 
-// waitForHostQuietly waits for a host to be listening WITHOUT connecting to it,
-// which is the whole point of the helper.
-//
-// A connection is reaped on its own goroutine after the far end closes it, so a
-// test that dialled to find out whether the host was up would then race that
-// reaping — and a host with a connection it has not finished letting go of
-// honestly answers that it is holding something. That answer is the safe side
-// of the question in the field (a refusal, never a retirement) and it is a
-// coin toss inside a test. So this asks the two things a host publishes without
-// being spoken to: it has taken the lock, and its socket file exists.
+// waitForHostQuietly waits until the host accepts a connection and completes
+// the remote whois handshake. A socket pathname and a held lock can coexist
+// during startup before the host has replaced a stale socket and begun accepting.
 func waitForHostQuietly(t *testing.T, workspace string) {
 	t.Helper()
-	dir, err := Dir(workspace)
-	if err != nil {
-		t.Fatalf("resolve the directory: %v", err)
-	}
-	socket := filepath.Join(dir, socketName)
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := os.Stat(socket); err == nil {
-			held, err := takeLock(filepath.Join(dir, lockName))
-			if err != nil {
-				// The lock is taken and the socket file is there, which
-				// together are a host that is listening.
-				return
-			}
-			_ = releaseLock(held)
+		if _, err := Ask(workspace, remote.WhoIs{}); err == nil {
+			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("no host came up")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// TestWaitForHostQuietlyRequiresAListeningHost pins the remove-to-listen
+// window: a held host lock plus a stale socket file is not readiness.
+func TestWaitForHostQuietlyRequiresAListeningHost(t *testing.T) {
+	shortHome(t)
+	workspace := "/home/somebody/api"
+	dir, err := Dir(workspace)
+	if err != nil {
+		t.Fatalf("resolve the directory: %v", err)
+	}
+	socket := filepath.Join(dir, socketName)
+	stale, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
+	if err != nil {
+		t.Fatalf("plant stale socket: %v", err)
+	}
+	stale.SetUnlinkOnClose(false)
+	if err := stale.Close(); err != nil {
+		t.Fatalf("close stale socket: %v", err)
+	}
+	lock, err := takeLock(filepath.Join(dir, lockName))
+	if err != nil {
+		t.Fatalf("hold host lock: %v", err)
+	}
+
+	ready := make(chan struct{})
+	go func() {
+		waitForHostQuietly(t, workspace)
+		close(ready)
+	}()
+	select {
+	case <-ready:
+		t.Fatal("stale socket plus held lock was accepted as ready")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := releaseLock(lock); err != nil {
+		t.Fatalf("release staged lock: %v", err)
+	}
+	stopped := make(chan error, 1)
+	go func() {
+		stopped <- Run(workspace, Options{
+			Boot: func(remote.Hello) (*remote.Engine, error) {
+				return &remote.Engine{Agent: stubAgent{}, Workspace: workspace}, nil
+			},
+		})
+	}()
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("listening host was not accepted as ready")
+	}
+	t.Cleanup(func() {
+		_ = Retire(workspace, true)
+		select {
+		case <-stopped:
+		case <-time.After(5 * time.Second):
+		}
+	})
 }
 
 // ── which build is holding this ─────────────────────────────────────────────

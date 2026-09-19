@@ -25,6 +25,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
@@ -580,13 +582,32 @@ func v3TakeHostRoad(workspace string, choice v3HostChoice) bool {
 // to do about an older one, is [localLink.dial]'s question a moment later.
 // Nothing is ever started from here.
 func v3HostAnswers(workspace string) bool {
-	conn, err := enginehost.Dial(workspace)
-	if err != nil {
-		return false
+	deadline := time.Now().Add(v3HostAnswerWait)
+	sawRefused := false
+	for {
+		conn, err := enginehost.Dial(workspace)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+		refused := errors.Is(err, syscall.ECONNREFUSED)
+		if refused {
+			sawRefused = true
+		}
+		if !sawRefused || (!refused && !errors.Is(err, os.ErrNotExist)) || !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(v3HostAnswerPause)
 	}
-	_ = conn.Close()
-	return true
 }
+
+// A host holds its lock before replacing a prior host socket. A headless launch
+// that lands in that small window retries only a refused connection, rather than
+// mistaking the stale socket for proof that no host is starting.
+const (
+	v3HostAnswerWait  = 250 * time.Millisecond
+	v3HostAnswerPause = 10 * time.Millisecond
+)
 
 // v3MachineIsSetUp says this machine can already talk to a model. It is the one
 // question the host road must ask before it spawns anything: [config.Load]
