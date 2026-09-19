@@ -70,6 +70,33 @@ func unit4(v []float32) []float32 {
 	return v
 }
 
+// nearSlipWire puts cafe OCR, receipt paraphrases, espresso warranty paper,
+// and treasury chats on the query's emailed-receipt axis. Policy originals
+// that never used those words sit on a separate axis so a 160-session gather
+// is the ddedd424 near page. Production never binds it.
+type nearSlipWire struct{ calls int }
+
+func (s *nearSlipWire) Embed(_ context.Context, request provider.EmbeddingRequest) (*provider.EmbeddingResponse, error) {
+	s.calls++
+	data := make([]provider.Embedding, len(request.Input))
+	for i, text := range request.Input {
+		data[i] = provider.Embedding{Index: i, Embedding: nearSlipVec(text)}
+	}
+	model := request.Model
+	if model == "" {
+		model = "openai/text-embedding-3-small"
+	}
+	return &provider.EmbeddingResponse{Model: model, Data: data}, nil
+}
+
+func nearSlipVec(text string) []float32 {
+	t := strings.ToLower(text)
+	v := []float32{0, 0, 0, 0}
+	mark(v, 0, t, "emailed", "purchase confirmation", "dinner slip", "restaurant paper", "espresso", "warranty", "treasury", "equity")
+	mark(v, 1, t, "sign in", "signed-in", "authenticated", "logged-in", "after login")
+	return unit4(v)
+}
+
 func TestSQLiteSearchEvidenceFindsOriginalsDespiteDifferentWording(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	wire := &topicEmbedWire{}
@@ -245,6 +272,86 @@ func TestSQLiteSearchEvidenceAccessPolicyBeatsCafeOCRHardNegatives(t *testing.T)
 		}
 	}
 	if gold < 14 || cafe > 0 || abandoned > 0 || para > 0 {
+		t.Fatalf("A4 originals in top-20: %d (want ≥14); cafe=%d abandoned=%d para=%d ids=%v", gold, cafe, abandoned, para, idsOfHits(hits))
+	}
+}
+
+func TestSQLiteSearchEvidenceFourteenSourcesPastACafeFilledNearPage(t *testing.T) {
+	// ddedd424 gathered 160 sessions. Forty cafe OCR plus forty
+	// paraphrases, espresso warranty PDFs, and treasury chats fill that
+	// page; the ten purchase-document originals still match lexically, and
+	// the other thirty policy templates sit behind it. Production
+	// SearchEvidence must read past that page. Isolated CODEAF_HOME only.
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	wire := &nearSlipWire{}
+	client := embed.New(wire, "openai/text-embedding-3-small", nil)
+	svc, adapter := openV3FolderServiceWith(client)
+	if svc == nil || adapter == nil {
+		t.Fatal("Open must bind both stores")
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	ctx := context.Background()
+	var recs []wsdiscover.Record
+	alts := []string{
+		"Customers must sign in to their account before a billed-file hyperlink will work. We refuse to mail the raw address.",
+		"Access to purchase-document links requires an authenticated session. Sending the bare locator in email is rejected.",
+		"Only a logged-in customer may fetch billed files. Unauthenticated link sharing is out.",
+		"A billed document opens after login, never from a mailed bare locator. Keep that refusal.",
+	}
+	for i := 1; i <= 40; i++ {
+		id := fmt.Sprintf("src-%02d", i)
+		recs = append(recs, passage(id, fmt.Sprintf("%s (policy thread %d)", alts[i%len(alts)], i)))
+	}
+	for i := 1; i <= 40; i++ {
+		recs = append(recs, passage(fmt.Sprintf("cafe-%02d", i), fmt.Sprintf(
+			"OCR cafe dinner slip %d into the outing spreadsheet. Restaurant paper, not a billed-file hyperlink policy.", i)))
+		recs = append(recs, passage(fmt.Sprintf("para-%02d", i), fmt.Sprintf(
+			"We keep emailed receipt links and a purchase confirmation PDF. Who is allowed to fetch them? (billing ask %d)", i)))
+		recs = append(recs, passage(fmt.Sprintf("esp-%02d", i), fmt.Sprintf(
+			"I bought espresso machine %d and need the kitchen warranty paper slip. File the appliance PDF with the other cafe gear.", i)))
+		recs = append(recs, passage(fmt.Sprintf("stk-%02d", i), fmt.Sprintf(
+			"Should we roll equity security %d into the treasury ladder this quarter? This is a finance instrument, not login policy.", i)))
+	}
+	for i := 1; i <= 20; i++ {
+		recs = append(recs, passage(fmt.Sprintf("a6-%02d", i),
+			fmt.Sprintf("Plan: mail customers the raw download address for billed files. We abandon mailing the bare locator. The abandoned mailer stays rejected. (%d)", i)))
+	}
+	if err := adapter.store.Ingest(ctx, recs, client); err != nil {
+		t.Fatal(err)
+	}
+	query := "emailed purchase confirmation PDF"
+	lex, err := adapter.SearchLexical(ctx, query, 160)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emb160, err := adapter.SearchEmbed(ctx, query, 160)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countHitPrefix(emb160, "cafe-") < 14 {
+		t.Fatalf("cafe OCR must fill the 160-session near page: lex=%v emb=%v", idsOfHits(lex), idsOfHits(emb160))
+	}
+	if countHitPrefix(lex, "src-")+countHitPrefix(emb160, "src-") >= 14 {
+		t.Fatalf("160-session cafe page should fail at 13/20, got lex=%v emb=%v", idsOfHits(lex), idsOfHits(emb160))
+	}
+	hits, err := svc.SearchEvidence(ctx, wsapi.SearchQuery{Query: query, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gold, cafe, abandoned, para := 0, 0, 0, 0
+	for _, hit := range hits {
+		switch {
+		case strings.HasPrefix(hit.SessionID, "src-"):
+			gold++
+		case strings.HasPrefix(hit.SessionID, "cafe-"):
+			cafe++
+		case strings.HasPrefix(hit.SessionID, "a6-"):
+			abandoned++
+		case strings.HasPrefix(hit.SessionID, "para-"):
+			para++
+		}
+	}
+	if gold < 14 || abandoned > 0 || para > 0 {
 		t.Fatalf("A4 originals in top-20: %d (want ≥14); cafe=%d abandoned=%d para=%d ids=%v", gold, cafe, abandoned, para, idsOfHits(hits))
 	}
 }

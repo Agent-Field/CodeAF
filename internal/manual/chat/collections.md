@@ -276,7 +276,8 @@ the ask uses different wording; restatements of the query are not the original,
 and a nearer abandoned-mailer family does not fill the candidate list.
 A session whose decision is the access policy outranks one that mentions
 billed-file only to refuse it (Cafe dinner slip OCR). Cafe, restaurant, abandon,
-and espresso are not banned words.
+and espresso are not banned words. Fourteen of twenty search rows are still
+those signed-in originals when a nearer restaurant cluster fills the first page.
 Abandoned plans and the words that rejected them stay searchable.
 
 ## Discovery delayed vs checked — did it check the workspace, degraded, not checked
