@@ -3,7 +3,8 @@
 Each completed wave records how to try that exact behavior on Spark. Do not install over the owner's global binary. Do not point at `~/.codeaf`. Do not set `HOME`. Use an isolated `CODEAF_HOME` (and `CODEAF_PROFILE_DIR`) and the immutable wave binary, not a later rebuild.
 
 **Checkout:** `feat/collaborative-workspace-0918`  
-**Verified SHA:** `4b3b407a676efca3282b9834f05ea956c98a89cd`  
+**Verified SHA (Wave 1):** `4b3b407a676efca3282b9834f05ea956c98a89cd`  
+**Verified SHA (Wave 2):** `e606ec555dbb6be87ea2aefccc98e9a5a26157c7`  
 **Baseline:** `santos/dev` `7cda67c9`  
 **Pre-issue-1 design:** `610a32ba`
 
@@ -41,7 +42,20 @@ Live tmux proof: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue
 
 ## Wave 2 — discovery and instructions
 
-Status: **live J09–J18 not verified.** SHA `d993a93c2fb8c7f228fcda72d058e8e00985a748` passed affected suites; live J11 still completed `no-action` after citing the Security chat because hierarchy listed folder names without member conversation ids. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`. Use the wave-2 launch script only after `releases/wave-2/ready.json`. Wave 1 remains:
+Status: **live J09–J18 passed** on SHA `e606ec555dbb6be87ea2aefccc98e9a5a26157c7` (live tmux + real model; J18 10k corpus honestly absent). Isolated home already contains that live graph. Isolation is the same as Wave 1: isolated `CODEAF_HOME` and private `CODEAF_PROFILE_DIR`; never `HOME`; never `~/.codeaf`.
+
+### Copy-paste launch (Spark)
+
+```
+ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-2/e606ec555dbb6be87ea2aefccc98e9a5a26157c7/launch.sh'
+```
+
+**Binary (do not rebuild over it):** `/home/santosh/src/codeaf-workspace-0918-control/releases/wave-2/e606ec555dbb6be87ea2aefccc98e9a5a26157c7/codeaf`  
+**sha256:** `1c0ab7b4cfccedf1c832788ab4ffd758e4fd8a1215aa2d315a3c86a6e5ceb150`
+
+Live tmux proof: `/home/santosh/src/codeaf-workspace-0918-control/receipts/issue-2-e606ec555dbb6be87ea2aefccc98e9a5a26157c7-live9/journey.json`. Receipt: `releases/wave-2/ready.json`.
+
+Wave 1 remains:
 
 ```
 ssh -t spark '/home/santosh/src/codeaf-workspace-0918-control/releases/wave-1/4b3b407a676efca3282b9834f05ea956c98a89cd/launch.sh'
