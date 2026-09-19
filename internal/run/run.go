@@ -246,7 +246,19 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	s.touchClaims()
 	s.releaseStale()
 	if terminalStatus(root.Status) {
-		return s.outcomeForRoot(root.Status)
+		// A ROOT WORKER CAN WRITE DONE BEFORE ITS GOROUTINE RETURNS. Seat its
+		// review from the stored result before accepting that ending; absorb will
+		// see the same association when the worker return arrives.
+		if root.Status == plandb.StatusDone && s.inFlight > 0 {
+			s.addReviewCheck(*root, root.Result)
+			if cancel := s.cancels[rootID]; cancel != nil {
+				cancel()
+			}
+			root = s.store.Task(rootID)
+		}
+		if terminalStatus(root.Status) {
+			return s.outcomeForRoot(root.Status)
+		}
 	}
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit) {
 		// Nothing of ours is running and the run cannot complete itself: the
@@ -487,6 +499,11 @@ func (s *Supervisor) absorb(ret workerReturn) {
 func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 	if !s.limits.ReviewRound || leaf.Role == plandb.RoleCheck {
 		return
+	}
+	for _, checked := range s.checkOf {
+		if checked == leaf.ID {
+			return
+		}
 	}
 	// A TASK WITH CHILDREN ANSWERS PLAN: it is a coordinator, its end is the
 	// store's own bookkeeping, and no check reads it. The shape is read FRESH,
