@@ -854,10 +854,18 @@ type homeView struct {
 	cols      int
 	gridWidth int
 	spend     homeSpendReading
-	grid      homeGrid
-	tilde     string
-	gridX     []int
-	gridMarks []homeMark
+	folders   homeFoldersReading
+	// folderOpen is the logical folder somebody drilled into, and "" at Root.
+	// folderTrail is the parents they walked through to get here, so esc from a
+	// nested/shared child returns to that parent instead of jumping to Root
+	// (J02 sequential browse). The back row pops one step. It lives as long as
+	// the window.
+	folderOpen  string
+	folderTrail []string
+	grid        homeGrid
+	tilde       string
+	gridX       []int
+	gridMarks   []homeMark
 
 	// made is the last reading of the files made since the look stamp, which
 	// `since you left` draws a line each for (homepanel_left.go's
@@ -1315,6 +1323,9 @@ func (a *app) furnishHome() {
 	a.readPlaceSummaries()
 	// AND WHAT THE MACHINE SPENT, for the spend panel (homepanel_spend.go).
 	a.readHomeSpend()
+	// AND THE LOGICAL FOLDERS, on the same beat and never from View or a cursor
+	// move (folders.go's [app.readHomeFolders]).
+	a.readHomeFolders()
 	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
 	// has been written and re-reads the file only when something has
 	// (homeband_deliverables.go). It is taken here, with the other readings,
@@ -2010,7 +2021,7 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript && l.cellKey() == other.cellKey()
 	case homeItem:
 		return l.item.ID != "" && l.item.ID == other.item.ID
-	case homeQuiet, homeItemFold, homeProject, homeProjectRow:
+	case homeQuiet, homeItemFold, homeProject, homeProjectRow, homeFolderRow, homeFolderBack:
 		return l.dir != "" && l.dir == other.dir
 	// a grid panel's fold: one per panel, told apart by the panel.
 	case homeFold:
@@ -2335,7 +2346,7 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 func (l homeLine) stop() bool {
 	switch l.kind {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeExchangeRow, homeProjectRow, homeFold:
+		homeProject, homeExchangeRow, homeProjectRow, homeFold, homeFolderRow, homeFolderBack:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
 	// column (homeplaces.go), and an offered command is one too (homeslash.go).
@@ -2578,9 +2589,15 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.cancelTakeover() {
 			return nil
 		}
+		if a.clearFolderMove() {
+			return nil
+		}
 		if !h.box.empty() {
 			h.box.reset()
 			h.build()
+			return nil
+		}
+		if a.leaveFolder() {
 			return nil
 		}
 		a.closeHome()
@@ -3168,6 +3185,13 @@ func (a *app) homeEnter() tea.Cmd {
 	case homeProjectRow:
 		// A PROJECT ON THE GRID STARTS A CONVERSATION THERE (homepanel_projects.go).
 		return a.homeProjectEnter(line)
+	case homeFolderRow:
+		// A LOGICAL FOLDER DRILLS IN SEQUENTIALLY, so 80-column home never grows
+		// a third column of members (homepanel_folders.go).
+		return a.enterFolder(line.dir)
+	case homeFolderBack:
+		a.leaveFolder()
+		return nil
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
 		// get this?" opens the conversation that asked for it

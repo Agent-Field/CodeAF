@@ -123,6 +123,13 @@ var commands = []command{
 	// the daily command behind a scroll (deliverables_test.go pins exactly
 	// that). So it lands as close to its pair as the law allows (home.go).
 	{name: "home", desc: "every project and conversation on this machine"},
+	// /folders is NOT an alias of /folder. Filesystem /folder /place /dir stay
+	// filesystem; this is logical membership on the home folders panel.
+	{name: "folders", desc: "logical groups of chats"},
+	{name: "folders", args: "create <name>", desc: "…make a logical folder"},
+	{name: "folders", args: "add <name-or-id>", desc: "…file this chat here"},
+	{name: "folders", args: "rename <name-or-id> <new-name>", desc: "…rename a logical folder"},
+	{name: "folders", args: "new", desc: "…start a new chat in the folder under the cursor"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
 	// does. /home, /memory, /standing, /history and /settings each open a place
 	// from the box; search and spend were reachable only by their `alt+` digit,
@@ -470,6 +477,25 @@ func checkCommands(list []command) error {
 				return fmt.Errorf("/%s is an alias of both /%s and /%s", word, owner[word], c.name)
 			}
 			owner[word] = c.name
+		}
+	}
+	// /folders AND /folder ARE DISTINCT COMMANDS. An alias either way would
+	// make the filesystem chooser and the logical-folder panel one word, which
+	// is the collision this table exists to refuse.
+	for _, c := range list {
+		if c.name == "folder" {
+			for _, word := range c.alias {
+				if word == "folders" {
+					return fmt.Errorf("/folders is not an alias of /folder")
+				}
+			}
+		}
+		if c.name == "folders" {
+			for _, word := range c.alias {
+				if word == "folder" || word == "place" || word == "dir" {
+					return fmt.Errorf("filesystem /%s stays filesystem; /folders may not alias it", word)
+				}
+			}
 		}
 	}
 	return nil
