@@ -601,6 +601,25 @@ func TestSupervisorReviewsASelfFinishedRootWhoseWorkerReturnsAnError(t *testing.
 	}
 }
 
+func TestSupervisorStillEndsIncompleteWhenRootErrorsWithoutStoredDone(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = func(_ context.Context, _ plandb.Task) (run.Report, error) {
+		return run.Report{Result: "must not become the root result", Steps: 1}, fmt.Errorf("root worker failed")
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+	if outcome := supervisor.Run(runContext(t)); outcome != run.OutcomeIncomplete {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeIncomplete)
+	}
+	if checks := tasksWithRole(store, plandb.RoleCheck); len(checks) != 0 {
+		t.Fatalf("check tasks = %d, want zero for unfinished root work", len(checks))
+	}
+	root := store.Task(store.RootID())
+	if root.Status == plandb.StatusDone || root.Result != "" {
+		t.Fatalf("root = %s with result %q, want no stored done or result", root.Status, root.Result)
+	}
+}
+
 func TestSupervisorAcceptsARootsReadingDoesNotHoldConclusion(t *testing.T) {
 	store := runOpenStore(t)
 	seat := newFakeSeat()
