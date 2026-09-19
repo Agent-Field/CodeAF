@@ -487,9 +487,8 @@ var handoffFacts = []beltFact{{
 		"\n" +
 		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept, or answer what you\n" +
 		"can, and end your turn when nothing independent of what you handed out remains.\n" +
-		"A landing speaks here only when the person is owed an answer. Asked about\n" +
-		"running work, read the run's rows and the task's own steps and answer from\n" +
-		"them; never redo the work.",
+		"A landing speaks here only when the person is owed an answer. " +
+		"A finished task is asked about with `tasks` and is never redone or rechecked by hand.",
 	bashAbsent: "Work goes out through the plan when it has parts that do not need each other:\n" +
 		"`plandb add` and `plandb split` in bash are how, and every ready task they make\n" +
 		"is given a worker of its own. What is yours alone you carry here, in the order\n" +

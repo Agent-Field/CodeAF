@@ -65,9 +65,12 @@ func runTool(t *testing.T, agent *Agent, name, arguments string) (string, bool) 
 func waitFor(t *testing.T, what string, condition func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
+	for {
 		if condition() {
 			return
+		}
+		if time.Now().After(deadline) {
+			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
