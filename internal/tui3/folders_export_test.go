@@ -33,6 +33,13 @@ func (adapter) MovePlacement(context.Context, string, string, string) error {
 func (adapter) WhyHere(context.Context, string, string) (tui3.FolderWhy, error) {
 	return tui3.FolderWhy{}, nil
 }
+func (adapter) InstructFolder(context.Context, string, string) error { return nil }
+func (adapter) FolderGuidance(context.Context, string) ([]tui3.FolderInstruction, error) {
+	return nil, nil
+}
+func (adapter) IndexProgress(context.Context) (tui3.FolderIndex, error) {
+	return tui3.FolderIndex{}, nil
+}
 
 var _ tui3.Folders = adapter{}
 
@@ -52,5 +59,16 @@ func TestFoldersInterfaceIsImplementableOutsideThePackage(t *testing.T) {
 	why, err := folders.WhyHere(context.Background(), "col-billing", "aaaa")
 	if err != nil || why.Origin != "" {
 		t.Fatalf("empty adapter WhyHere: %+v err=%v", why, err)
+	}
+	if err := folders.InstructFolder(context.Background(), "col-billing", "authenticate"); err != nil {
+		t.Fatalf("empty adapter InstructFolder: %v", err)
+	}
+	items, err := folders.FolderGuidance(context.Background(), "col-billing")
+	if err != nil || items != nil {
+		t.Fatalf("empty adapter FolderGuidance: %+v err=%v", items, err)
+	}
+	idx, err := folders.IndexProgress(context.Background())
+	if err != nil || idx.Passages != 0 || idx.Delayed {
+		t.Fatalf("empty adapter IndexProgress: %+v err=%v", idx, err)
 	}
 }

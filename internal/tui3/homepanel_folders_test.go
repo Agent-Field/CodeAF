@@ -87,6 +87,8 @@ func TestFoldersPanelDoesNotReadTheStoreInView(t *testing.T) {
 	homeText(a)
 	a.home.move(1)
 	homeText(a)
+	a.home.hover = a.home.cursor
+	homeText(a)
 	if fake.reads != reads {
 		t.Fatalf("View or a cursor move read Folders (%d -> %d)", reads, fake.reads)
 	}

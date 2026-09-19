@@ -15,20 +15,25 @@ import (
 // fakeFolders is an in-memory Folders seam. freeze panics on any call so a
 // test can prove View and a cursor move never read the store.
 type fakeFolders struct {
-	mu      sync.Mutex
-	frozen  bool
-	root    FolderRoot
-	members map[string][]FolderPlacement
-	whys    map[string]FolderWhy
-	err     error
-	creates int
-	adds    [][2]string
-	nests   [][2]string
-	nestErr error
-	removes [][2]string
-	moves   [][3]string
-	renames [][2]string
-	reads   int
+	mu        sync.Mutex
+	frozen    bool
+	root      FolderRoot
+	members   map[string][]FolderPlacement
+	whys      map[string]FolderWhy
+	err       error
+	creates   int
+	adds      [][2]string
+	nests     [][2]string
+	nestErr   error
+	removes   [][2]string
+	moves     [][3]string
+	renames   [][2]string
+	instructs [][2]string
+	guidance  map[string][]FolderInstruction
+	index     FolderIndex
+	indexErr  error
+	guideErr  error
+	reads     int
 }
 
 func (f *fakeFolders) freeze() { f.mu.Lock(); f.frozen = true; f.mu.Unlock() }
@@ -163,6 +168,40 @@ func (f *fakeFolders) WhyHere(_ context.Context, collectionID, refID string) (Fo
 		}
 	}
 	return FolderWhy{Origin: "person", Reason: "filed from home"}, nil
+}
+
+func (f *fakeFolders) InstructFolder(_ context.Context, id, text string) error {
+	f.touch("InstructFolder")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.instructs = append(f.instructs, [2]string{id, text})
+	if f.guidance == nil {
+		f.guidance = map[string][]FolderInstruction{}
+	}
+	f.guidance[id] = append(f.guidance[id], FolderInstruction{
+		ScopeID: id, Text: text, Origin: "person",
+	})
+	return nil
+}
+
+func (f *fakeFolders) FolderGuidance(_ context.Context, id string) ([]FolderInstruction, error) {
+	f.touch("FolderGuidance")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.guideErr != nil {
+		return nil, f.guideErr
+	}
+	return append([]FolderInstruction(nil), f.guidance[id]...), nil
+}
+
+func (f *fakeFolders) IndexProgress(context.Context) (FolderIndex, error) {
+	f.touch("IndexProgress")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.indexErr != nil {
+		return FolderIndex{}, f.indexErr
+	}
+	return f.index, nil
 }
 
 func billingSecurityFolders() *fakeFolders {
@@ -340,6 +379,10 @@ func TestNilFoldersIsUnavailableNotEmpty(t *testing.T) {
 		{"e", func() tea.Cmd {
 			return a.beginFolderNest(homeLine{kind: homeFolderRow, dir: "col-receipts"})
 		}},
+		{"i", func() tea.Cmd {
+			return a.instructThisFolder(homeLine{kind: homeFolderRow, dir: "col-billing"})
+		}},
+		{"instruct", func() tea.Cmd { return a.instructNamedFolder("Billing authenticate receipts") }},
 	} {
 		a.home.say("", "")
 		if cmd := step.run(); cmd != nil {
@@ -779,6 +822,7 @@ func TestFolderRowVerbsIncludeNest(t *testing.T) {
 		{'n', folderNewChatWord},
 		{'f', folderAddHereWord},
 		{'e', folderNestWord},
+		{'i', folderInstructWord},
 	}
 	if len(verbs) != len(want) {
 		t.Fatalf("got %d verbs, want %d", len(verbs), len(want))
