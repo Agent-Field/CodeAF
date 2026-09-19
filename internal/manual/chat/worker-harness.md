@@ -79,8 +79,11 @@ shows, in order, each section left out when nothing is behind it:
 - `notes` — every note left on the task, with its moment. A note you left reads
   `you`. A note a worker or the run left names no author: the store knows those
   only by ids of its own, and an id is never drawn on this page;
-- `steps` — the trajectory its worker recorded: each command with the head of what
-  came back, the whole observation on disk behind the row.
+- `steps` — the trajectory its worker recorded: each command that ran with the head
+  of what came back, the whole observation on disk behind the row. A call known not to
+  have run stays in the record and its count and is never drawn as a step: a command the
+  worker tried and was refused is one dim line, `refused` and the command, and any other
+  has no row.
 
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
@@ -191,14 +194,37 @@ things are left out of a step's row, and nothing else is ever changed:
 - any part of the command addressed only to the run's own record of the task, with whatever
   it is piped through. That is the run keeping its page up to date, not doing the task
 
+A call that never ran has no row either. A worker that asks for several commands in one
+answer has none of them run: each stays in the record with the answer it was given, and is
+not drawn as a step, because nothing ran. A command the worker tried and was refused is
+the one exception, and it is a line and not a step (see "A line under steps says refused").
+
 Everything that is kept is drawn exactly as it was typed, spacing included. A command with
 nothing left out is drawn whole. A part inside `$( )` or a bracketed group is never left out,
 and neither is work that is piped into something else.
 
 **A step with nothing of the work in it has no row, and the numbers skip over it.** Every
 row keeps the number the step ran as, so a page whose head says `12 steps` may draw rows
-`1` to `4`, then `9`. The missing numbers are the run's own bookkeeping. What the last of
+`1` to `4`, then `9`. The missing numbers are the run's own bookkeeping and calls that never ran. What the last of
 them said is the task's result, which is in the notes above the steps.
+
+## A line under steps says refused — a command the worker tried and was not allowed to run
+
+**`refused` and then a command, dim, with no number in front, is something the worker tried
+that was not allowed.** The command is drawn as the worker typed it, cut the same way every
+step's command is. Nothing ran, so the line is not a step: it has no number, nothing came
+back to draw under it, and the rows around it keep the numbers they ran as, which is why the
+numbers skip across it. The head's step count is the count of the record, so it includes it.
+
+What was refused is the worker's attempt, by one of the limits a run's worker works inside:
+reaching a remote, moving its copy onto work it did not do, writing outside the folders it
+was given, or a call your permissions say no to. The worker is told why in full and carries
+on with its next step. The page does not draw that answer, because it was written for the
+worker. The whole answer stays in the task's recorded steps on disk.
+
+An answer the run gives a worker about the FORM of its reply is different and draws nothing:
+several commands in one answer, a call that could not be read, a tool that is not on its
+belt. Nothing was tried there, so there is nothing to show.
 
 ## Why does it say queued?
 

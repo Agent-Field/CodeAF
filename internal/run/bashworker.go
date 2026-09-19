@@ -367,6 +367,8 @@ func (r *stepRecorder) record(n int, event session.Event) error {
 		FullOutput:  r.takeSpill(),
 		Writes:      planVerbs(command),
 		Children:    r.takeChildren(),
+		NotRun:      event.HarnessMade,
+		Refused:     event.HarnessMade && event.Refused,
 	}
 	// THE COMMAND'S OWN EXIT IS RECORDED FROM THE EVENT, and only for a bash
 	// command the belt actually ran: an ended bash tool exited zero, a failed one

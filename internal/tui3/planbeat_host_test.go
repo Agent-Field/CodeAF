@@ -336,3 +336,106 @@ func TestHostedPlanPartsCrossTheWireAndFilterThePage(t *testing.T) {
 func hostedJSONQuote(text string) string {
 	return strconv.Quote(text)
 }
+
+// A REFUSAL THE ENGINE ESTABLISHED AS NOT RUN STAYS IN THE RECORD AND IN THE
+// HEAD COUNT, BUT IT IS NOT A STEP A PERSON READS. This fixture writes the real
+// trajectory shape, crosses the real remote server and client, and draws the
+// page the same way the hosted product does. The older unmarked line proves
+// absence still means the old rendering rather than an inferred refusal.
+func TestHostedTaskPageOmitsEngineEstablishedNotRunStep(t *testing.T) {
+	a, _, path := hostedPlanApp(t, false)
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := store.RootID()
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	taskDir := plandb.TaskDir(filepath.Dir(path), root)
+	if err := os.MkdirAll(taskDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	trajectory := filepath.Join(taskDir, "trajectory.jsonl")
+	const beltSentence = "[not run] no action executed: return exactly one bash tool call per response — this belt has one hand"
+	lines := strings.Join([]string{
+		`{"kind":"step","step":1,"command":"printf ran-one","observation":"one"}`,
+		`{"kind":"step","step":2,"command":"cat first second third","observation":"` + beltSentence + `","not_run":true}`,
+		`{"kind":"step","step":3,"command":"printf ran-three","observation":"three"}`,
+		`{"kind":"step","step":4,"command":"printf older-record","observation":"legacy answer"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(trajectory, []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	openHostedPage(t, a)
+	page := taskSheetText(a)
+	for _, want := range []string{"1  printf ran-one", "3  printf ran-three", "4  printf older-record"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("hosted page lost %q or renumbered recorded steps:\n%s", want, page)
+		}
+	}
+	for _, forbidden := range []string{"cat first second third", "[not run]", "no action executed", "this belt has one hand"} {
+		if strings.Contains(page, forbidden) {
+			t.Fatalf("hosted page drew engine-established refusal text %q:\n%s", forbidden, page)
+		}
+	}
+	if !strings.Contains(page, "4 steps") {
+		t.Fatalf("the record count changed when a row was omitted:\n%s", page)
+	}
+}
+
+// AN ACTION THE WORKER ATTEMPTED AND A DOOR REFUSED IS DRAWN, AS ONE LINE AND
+// NOT AS A STEP THAT RAN. The record says which kind of not-run call this is
+// (`refused` beside `not_run`, written by the run engine from the event), and
+// the page reads that fact and nothing else: the line is the permissions page's
+// own word and what was tried, it carries no number, the answer written for the
+// worker is not drawn under it, and the rows around it keep their recorded
+// numbers. A not-run call WITHOUT the fact, in the same record, still has no row.
+func TestHostedTaskPageDrawsARefusedActionAsOneLineAndACorrectionAsNone(t *testing.T) {
+	a, _, path := hostedPlanApp(t, false)
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := store.RootID()
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	taskDir := plandb.TaskDir(filepath.Dir(path), root)
+	if err := os.MkdirAll(taskDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const doorSentence = "DOOR-ANSWER-WRITTEN-FOR-THE-WORKER"
+	const formSentence = "FORM-ANSWER-WRITTEN-FOR-THE-WORKER"
+	lines := strings.Join([]string{
+		`{"kind":"step","step":1,"command":"printf ran-one","observation":"one"}`,
+		`{"kind":"step","step":2,"command":"touch /outside/the-ground","observation":"` + doorSentence + `","not_run":true,"refused":true}`,
+		`{"kind":"step","step":3,"command":"cat first second third","observation":"` + formSentence + `","not_run":true}`,
+		`{"kind":"step","step":4,"command":"printf ran-four","observation":"four"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(taskDir, "trajectory.jsonl"), []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	openHostedPage(t, a)
+	page := taskSheetText(a)
+	refused := taskPlanRefusedWord + railSep + "touch /outside/the-ground"
+	var drawn []string
+	for _, line := range strings.Split(page, "\n") {
+		if strings.Contains(line, "touch /outside/the-ground") {
+			drawn = append(drawn, strings.TrimSpace(line))
+		}
+	}
+	if len(drawn) != 1 || drawn[0] != refused {
+		t.Fatalf("a refused action draws as exactly one line, %q, with no number; drew %q:\n%s", refused, drawn, page)
+	}
+	for _, want := range []string{"1  printf ran-one", "4  printf ran-four", "4 steps"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the page lost %q: a recorded number moved:\n%s", want, page)
+		}
+	}
+	for _, forbidden := range []string{doorSentence, formSentence, "cat first second third", "2  touch"} {
+		if strings.Contains(page, forbidden) {
+			t.Fatalf("the page drew %q, which is the worker's answer, a correction's row, or a number on a call that never ran:\n%s", forbidden, page)
+		}
+	}
+}
