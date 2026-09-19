@@ -1215,6 +1215,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happened to my memory.md file", "what-i-remember"},
 		{"how do I turn memory off", "what-i-remember"},
 		{"it said memory is off but I never turned it off", "what-i-remember"},
+		{"can I search old chats with memory off", "what-i-remember"},
 		{"why does it say could not open graph.db", "what-i-remember"},
 		{"codeaf printed out of memory 14 on startup", "what-i-remember"},
 		{"where is my memory file kept on disk", "what-i-remember"},

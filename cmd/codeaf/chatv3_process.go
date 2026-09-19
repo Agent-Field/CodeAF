@@ -45,6 +45,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
 // v3Process is everything a launch may borrow but must not build twice.
@@ -81,6 +82,14 @@ type v3Process struct {
 	// answer to give. Each conversation still gets its own memory pass and its
 	// own context, which is per-agent already.
 	Memory *store.Store
+	// History is the same graph.db opened for indexed conversation reads, even
+	// when the memory row is off. It is the same handle as Memory when memory
+	// is on, so there is still one pool. Nil is a store that would not open.
+	History *store.Store
+	// Jobs is collections.db for observe_and_organize. Opened once per process
+	// beside Folders so enqueue and tick share a handle. Nil when the store
+	// cannot open: automatic organize is then absent.
+	Jobs *workspace.Store
 	// Folders is the logical-folder membership seam the session `folders`
 	// tool talks to. One handle per process, like Memory. Nil when the store
 	// cannot open: the tool is absent, not a belt that refuses every call.
@@ -187,14 +196,22 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
+	history := v3History()
+	var memory *store.Store
+	if config.MemoryEnabledAt(settings.ProfileDir) {
+		memory = history
+	}
+	handles := openV3FolderHandles()
 	return &v3Process{
 		Settings:   settings,
 		ProfileDir: settings.ProfileDir,
 		Models:     models,
 		Shelf:      shelf,
 		Harnesses:  subharness.Default(),
-		Memory:     v3Memory(settings.ProfileDir),
-		Folders:    openV3Folders(),
+		Memory:     memory,
+		History:    history,
+		Folders:    handles.folders,
+		Jobs:       handles.jobs,
 		Artifacts:  artifactsIndexPath(),
 		Conns:      v3Connect(settings.ProfileDir),
 		LaunchDir:  launchDir,
@@ -451,7 +468,10 @@ func (p *v3Process) closeAll() {
 	if recall != nil {
 		_ = recall.Close()
 	}
-	if p.Memory != nil {
+	if p.History != nil {
+		_ = p.History.Close()
+	}
+	if p.Memory != nil && p.Memory != p.History {
 		_ = p.Memory.Close()
 	}
 	if closer, ok := p.Folders.(interface{ Close() error }); ok {

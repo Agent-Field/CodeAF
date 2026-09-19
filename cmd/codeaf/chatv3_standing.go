@@ -42,6 +42,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
 // standingLogName is where a failed pass says so.
@@ -148,6 +149,7 @@ func v3StandingTicker(store *standing.Store) (*standing.Ticker, error) {
 		// memory_consolidate.go), and a blank path — memory off — leaves the
 		// seam nil and the pass absent.
 		Tidy:         session.NewMemoryTidy(posture, v3MemoryPath(settings.ProfileDir), store.Root(), idle),
+		Organize:     v3OrganizePass(settings.ProfileDir),
 		DailyRailUSD: v3StandingDailyRail(settings.ProfileDir),
 	}, nil
 }
@@ -165,6 +167,26 @@ func v3MemoryPath(profileDir string) string {
 	}
 	return defaultChatDB()
 }
+
+// v3OrganizePass is the standing pass's workspace job walk. It opens
+// collections.db for this pass and closes it afterwards, the same bargain as
+// tidy: a ticker rebuilt every five minutes must not hold a writer all day.
+// A store that will not open is silent — absent, not a stub that claims the
+// workspace was checked. The organizer itself is unbound until the session
+// lane wires RoleOrganize; ProcessOrganizeJobs then leaves pending rows
+// pending rather than inventing membership.
+func v3OrganizePass(profileDir string) func(context.Context) error {
+	return func(ctx context.Context) error {
+		store, err := workspace.Open(collectionsPath())
+		if err != nil {
+			return nil
+		}
+		defer store.Close()
+		return session.ProcessOrganizeJobs(ctx, store, v3Organizer(), config.OrganizeEnabledAt(profileDir), time.Now())
+	}
+}
+
+func v3Organizer() session.Organizer { return nil }
 
 // v3StandingPosture is the config a firing inherits: the person's models, keys,
 // accounts and approval rules, resolved against their HOME rather than against

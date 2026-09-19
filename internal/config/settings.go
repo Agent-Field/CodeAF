@@ -363,6 +363,9 @@ const (
 	// `remember` tool the model reaches for. Off is a conversation that starts
 	// knowing nothing about you, and that makes not one extra call.
 	KeyMemoryEnabled = "memory.enabled"
+	// KeyWorkspaceOrganize pauses automatic placements when off. Manual
+	// folders, history, and chat stay. Default on once collections v3 exists.
+	KeyWorkspaceOrganize = "workspace.organize"
 
 	// KeyStandingBackground is whether this machine's own scheduler keeps
 	// standing items current when no codeaf window is open (internal/standing's
@@ -3867,6 +3870,16 @@ func PromptProfileAt(profileDir string) string {
 // caller has to remember (internal/session's memory.go states the law).
 func MemoryEnabledAt(profileDir string) bool {
 	return MemoryAt(profileDir) == MemoryOn
+}
+
+// OrganizeEnabledAt is the workspace.organize switch. Unset is on: automatic
+// filing is the default once v3 exists. Off cancels or defers apply; it does
+// not drop the journal or refuse a person's Add/Remove.
+func OrganizeEnabledAt(profileDir string) bool {
+	if value, ok := persistedBool(profileDir, KeyWorkspaceOrganize); ok {
+		return value
+	}
+	return true
 }
 
 // BackgroundChecksAt resolves the background-checks row to its word, default
