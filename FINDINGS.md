@@ -1,14 +1,12 @@
 # Findings
 
-## Task
+Task: make a rail task row open the stored task page at the gesture, while preserving the existing room fallback and returning to the conversation on `esc`.
 
-Make a rail task row open the task page held in the run store, while preserving the existing room fallback and returning to the same conversation on `esc`.
+Known facts:
 
-## Known
-
-- The rail currently routes a row through `openRailRoom` and `openRoom`; a task page is already rendered by `taskPlanBody` through the plan reader.
-- The store task number shown by the rail is sufficient to request that task's page, including its parts.
-- The store lookup must happen only on the click or `enter` gesture. If no page exists, the row must keep opening its room.
-- A task page must remain open after the run settles; frame drawing must neither close it nor call the agent.
-- Tests should use `planAppWith` and `planFake.pages` and cover held and missing pages, ten settled frames, `esc`, no room for held tasks, and no agent call while drawing.
-- The manual must say that a rail row opens the task page for running or finished work, and `roomGoneWord` must not be shown when the store holds the task.
+- A rail row currently opens through `openRailRoom` and `openRoom`; a missing transcript can therefore show `roomGoneWord` even when the run store has the task page.
+- `planReader` reads task pages, and `taskPlanBody` draws them; plan rows already open task pages from the tasks place.
+- The store lookup must happen on click or `enter`, not while drawing a frame.
+- A stored page must remain open after the run settles; `workTabStable` currently removes the conversation work tab after settled frames.
+- If the store has no page for the row, the current room behavior must remain unchanged.
+- Tests should use `planAppWith` and `planFake.pages`, cover click/enter, settled frames, `esc`, fallback, and prove frame drawing makes no agent call.
