@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -292,6 +293,11 @@ func prepareBinding(b ExecutionBinding) (ExecutionBinding, error) {
 	if !validOptionalText(b.OwnerChatID, 4096) || !validOptionalText(b.GrantID, 4096) || !validOptionalText(b.CoordinatorID, 4096) {
 		return ExecutionBinding{}, fmt.Errorf("%w: binding field is too long", ErrInvalid)
 	}
+	snap, err := canonicalSnapshot(b.JoinerJSON)
+	if err != nil {
+		return ExecutionBinding{}, err
+	}
+	b.JoinerJSON = snap
 	return b, nil
 }
 
@@ -348,26 +354,73 @@ func mintBindingIDs(b *ExecutionBinding) error {
 }
 
 func (s *Store) GetBinding(ctx context.Context, id string) (ExecutionBinding, error) {
-	return s.loadBindingBy(ctx, `SELECT `+bindingColumns+` FROM execution_bindings WHERE id=?`, id)
+	ready, err := s.v5Ready(ctx)
+	if err != nil || !ready {
+		return ExecutionBinding{}, storeError(ErrNotFound)
+	}
+	return s.loadBindingBy(ctx, `SELECT `+s.bindingColumns()+` FROM execution_bindings WHERE id=?`, id)
 }
 
 func (s *Store) BindingByRequestKey(ctx context.Context, requestKey string) (ExecutionBinding, error) {
-	return s.loadBindingBy(ctx, `SELECT `+bindingColumns+` FROM execution_bindings WHERE request_key=?`, requestKey)
+	ready, err := s.v5Ready(ctx)
+	if err != nil || !ready {
+		return ExecutionBinding{}, storeError(ErrNotFound)
+	}
+	return s.loadBindingBy(ctx, `SELECT `+s.bindingColumns()+` FROM execution_bindings WHERE request_key=?`, requestKey)
 }
 
 func (s *Store) BindingByEquivalence(ctx context.Context, equivalenceKey string) (ExecutionBinding, error) {
-	return s.loadBindingBy(ctx, `SELECT `+bindingColumns+` FROM execution_bindings
+	ready, err := s.v5Ready(ctx)
+	if err != nil || !ready {
+		return ExecutionBinding{}, storeError(ErrNotFound)
+	}
+	return s.loadBindingBy(ctx, `SELECT `+s.bindingColumns()+` FROM execution_bindings
  WHERE equivalence_key=? AND state IN (?,?,?,?) ORDER BY seq LIMIT 1`,
 		equivalenceKey, BindReserved, BindAdmitted, BindBound, BindPaused)
 }
 
-// ListBindingsForChat is the TUI launch-state scan: owner or coordinator.
-// Listing never migrates. Empty chat is emptiness, never a fabricated row.
+// RecordJoiner adds chatID to an existing binding. ADDITIVE: it does not
+// insert a second row and does not Admit. The same chat twice is a no-op.
+func (s *Store) RecordJoiner(ctx context.Context, requestKey, chatID string) (ExecutionBinding, error) {
+	requestKey = strings.TrimSpace(requestKey)
+	chatID = strings.TrimSpace(chatID)
+	if requestKey == "" || chatID == "" {
+		return ExecutionBinding{}, storeError(fmt.Errorf("%w: join needs a request key and a chat", ErrInvalid))
+	}
+	if err := s.writeReady(ctx); err != nil {
+		return ExecutionBinding{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ExecutionBinding{}, storeError(err)
+	}
+	defer tx.Rollback()
+	stored, err := recordJoiner(ctx, tx, requestKey, chatID, s.stamp())
+	if err != nil {
+		return ExecutionBinding{}, storeError(err)
+	}
+	return stored, storeError(tx.Commit())
+}
+
+// ListBindingsForChat is the TUI launch-state scan: owner, coordinator, or
+// recorded joiner. Listing never migrates. Empty chat is emptiness, never a
+// fabricated row.
 func (s *Store) ListBindingsForChat(ctx context.Context, chatID string) ([]ExecutionBinding, error) {
 	if strings.TrimSpace(chatID) == "" {
 		return []ExecutionBinding{}, nil
 	}
-	return s.listBindings(ctx, `SELECT `+bindingColumns+` FROM execution_bindings
+	ready, err := s.v5Ready(ctx)
+	if err != nil || !ready {
+		return make([]ExecutionBinding, 0), err
+	}
+	cols := s.bindingColumns()
+	if s.joinersReady() {
+		return s.listBindings(ctx, `SELECT `+cols+` FROM execution_bindings
+ WHERE owner_chat_id=? OR coordinator_id=? OR EXISTS (
+  SELECT 1 FROM json_each(CASE WHEN joiner_json='' THEN '[]' ELSE joiner_json END) WHERE value=?
+ ) ORDER BY seq`, chatID, chatID, chatID)
+	}
+	return s.listBindings(ctx, `SELECT `+cols+` FROM execution_bindings
  WHERE owner_chat_id=? OR coordinator_id=? ORDER BY seq`, chatID, chatID)
 }
 
@@ -375,23 +428,24 @@ func (s *Store) ListBindingsForChat(ctx context.Context, chatID string) ([]Execu
 // run-instance id yet. Listing never migrates. Tick Recover binds these; it
 // must not Admit a second time (A14).
 func (s *Store) ListUnboundBindings(ctx context.Context) ([]ExecutionBinding, error) {
-	return s.listBindings(ctx, `SELECT `+bindingColumns+` FROM execution_bindings
- WHERE run_instance_id='' AND state IN (?,?) ORDER BY seq`, BindReserved, BindAdmitted)
-}
-
-func (s *Store) listBindings(ctx context.Context, query string, args ...any) ([]ExecutionBinding, error) {
 	ready, err := s.v5Ready(ctx)
 	if err != nil || !ready {
 		return make([]ExecutionBinding, 0), err
 	}
+	return s.listBindings(ctx, `SELECT `+s.bindingColumns()+` FROM execution_bindings
+ WHERE run_instance_id='' AND state IN (?,?) ORDER BY seq`, BindReserved, BindAdmitted)
+}
+
+func (s *Store) listBindings(ctx context.Context, query string, args ...any) ([]ExecutionBinding, error) {
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, storeError(err)
 	}
 	defer rows.Close()
 	result := make([]ExecutionBinding, 0)
+	joiners := s.joinersReady()
 	for rows.Next() {
-		b, err := scanBinding(rows)
+		b, err := scanBinding(rows, joiners)
 		if err != nil {
 			return nil, storeError(err)
 		}
@@ -405,11 +459,24 @@ func (s *Store) loadBindingBy(ctx context.Context, query string, args ...any) (E
 	if err != nil || !ready {
 		return ExecutionBinding{}, storeError(ErrNotFound)
 	}
-	b, err := scanBinding(s.db.QueryRowContext(ctx, query, args...))
+	b, err := scanBinding(s.db.QueryRowContext(ctx, query, args...), s.joinersReady())
 	if errors.Is(err, sql.ErrNoRows) {
 		return ExecutionBinding{}, storeError(ErrNotFound)
 	}
 	return b, storeError(err)
+}
+
+func (s *Store) bindingColumns() string {
+	if s.joinersReady() {
+		return bindingColumnsV6
+	}
+	return bindingColumns
+}
+
+func (s *Store) joinersReady() bool {
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	return s.version >= 6
 }
 
 // BindRuntime moves reserved or admitted to bound. A second distinct
@@ -478,25 +545,76 @@ func (s *Store) v5Ready(ctx context.Context) (bool, error) {
 }
 
 func insertBinding(ctx context.Context, tx *sql.Tx, b ExecutionBinding) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO execution_bindings(`+bindingColumns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := tx.ExecContext(ctx, `INSERT INTO execution_bindings(`+bindingColumnsV6+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.ID, b.RequestKey, b.EquivalenceKey, b.WorkID, b.RunInstanceID, b.Road, b.OwnerChatID, b.GrantID,
 		b.CoordinatorID, b.RuntimeRef, b.AssignmentRev, b.GrantRev, b.State, b.Fence, b.Owner, b.LeaseUntil,
-		b.CreatedAt, b.UpdatedAt, b.BoundAt, b.AdmittedAt)
+		b.CreatedAt, b.UpdatedAt, b.BoundAt, b.AdmittedAt, b.JoinerJSON)
 	return err
 }
 
 func loadBinding(ctx context.Context, tx *sql.Tx, id string) (ExecutionBinding, error) {
-	return scanBinding(tx.QueryRowContext(ctx, `SELECT `+bindingColumns+` FROM execution_bindings WHERE id=?`, id))
+	return scanBinding(tx.QueryRowContext(ctx, `SELECT `+bindingColumnsV6+` FROM execution_bindings WHERE id=?`, id), true)
 }
 
 func lookupRequestKey(ctx context.Context, tx *sql.Tx, key string) (ExecutionBinding, error) {
-	return scanBinding(tx.QueryRowContext(ctx, `SELECT `+bindingColumns+` FROM execution_bindings WHERE request_key=?`, key))
+	return scanBinding(tx.QueryRowContext(ctx, `SELECT `+bindingColumnsV6+` FROM execution_bindings WHERE request_key=?`, key), true)
 }
 
-func scanBinding(row eventScanner) (ExecutionBinding, error) {
+func recordJoiner(ctx context.Context, tx *sql.Tx, requestKey, chatID, now string) (ExecutionBinding, error) {
+	b, err := lookupRequestKey(ctx, tx, requestKey)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ExecutionBinding{}, ErrNotFound
+	}
+	if err != nil {
+		return ExecutionBinding{}, err
+	}
+	next, changed, err := appendJoiner(b, chatID)
+	if err != nil {
+		return ExecutionBinding{}, err
+	}
+	if !changed {
+		return b, nil
+	}
+	next.UpdatedAt = now
+	_, err = tx.ExecContext(ctx, `UPDATE execution_bindings SET joiner_json=?, updated_at=? WHERE id=?`,
+		next.JoinerJSON, next.UpdatedAt, next.ID)
+	return next, err
+}
+
+func appendJoiner(b ExecutionBinding, chatID string) (ExecutionBinding, bool, error) {
+	if chatID == b.OwnerChatID || chatID == b.CoordinatorID || jsonStringSet(b.JoinerJSON)[chatID] {
+		return b, false, nil
+	}
+	raw, err := json.Marshal(append(joinerIDs(b.JoinerJSON), chatID))
+	if err != nil {
+		return ExecutionBinding{}, false, err
+	}
+	snap, err := canonicalSnapshot(string(raw))
+	if err != nil {
+		return ExecutionBinding{}, false, err
+	}
+	b.JoinerJSON = snap
+	return b, true, nil
+}
+
+func joinerIDs(raw string) []string {
+	var items []string
+	if raw == "" || json.Unmarshal([]byte(raw), &items) != nil {
+		return nil
+	}
+	return items
+}
+
+func scanBinding(row eventScanner, withJoiners bool) (ExecutionBinding, error) {
 	var b ExecutionBinding
-	err := row.Scan(&b.ID, &b.RequestKey, &b.EquivalenceKey, &b.WorkID, &b.RunInstanceID, &b.Road, &b.OwnerChatID,
+	dest := []any{
+		&b.ID, &b.RequestKey, &b.EquivalenceKey, &b.WorkID, &b.RunInstanceID, &b.Road, &b.OwnerChatID,
 		&b.GrantID, &b.CoordinatorID, &b.RuntimeRef, &b.AssignmentRev, &b.GrantRev, &b.State, &b.Fence, &b.Owner,
-		&b.LeaseUntil, &b.CreatedAt, &b.UpdatedAt, &b.BoundAt, &b.AdmittedAt)
+		&b.LeaseUntil, &b.CreatedAt, &b.UpdatedAt, &b.BoundAt, &b.AdmittedAt,
+	}
+	if withJoiners {
+		dest = append(dest, &b.JoinerJSON)
+	}
+	err := row.Scan(dest...)
 	return b, err
 }

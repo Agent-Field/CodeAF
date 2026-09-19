@@ -46,6 +46,7 @@ type ExecResult struct {
 // interface lives here so wsapi does not import session.
 type Exec interface {
 	LaunchOrJoin(ctx context.Context, grantID, brief, equivalenceKey string) (ExecView, error)
+	IssuePersonGrant(ctx context.Context, brief string) (string, error)
 	Inspect(ctx context.Context, workID string) (ExecView, error)
 	Steer(ctx context.Context, workID, text, personRequestID string) error
 	PauseWork(ctx context.Context, workID string) error

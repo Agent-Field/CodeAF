@@ -31,13 +31,13 @@ func (a *Adapter) LaunchOrJoin(ctx context.Context, req LaunchRequest) (WorkView
 }
 
 func (a *Adapter) joinExisting(ctx context.Context, req LaunchRequest) (WorkView, bool, error) {
-	if view, ok, err := a.joinBy(ctx, req.EquivalenceKey, a.store.BindingByEquivalence); err != nil || ok {
+	if view, ok, err := a.joinBy(ctx, req, req.EquivalenceKey, a.store.BindingByEquivalence); err != nil || ok {
 		return view, ok, err
 	}
-	return a.joinBy(ctx, req.RequestKey, a.store.BindingByRequestKey)
+	return a.joinBy(ctx, req, req.RequestKey, a.store.BindingByRequestKey)
 }
 
-func (a *Adapter) joinBy(ctx context.Context, key string, lookup func(context.Context, string) (ExecutionBinding, error)) (WorkView, bool, error) {
+func (a *Adapter) joinBy(ctx context.Context, req LaunchRequest, key string, lookup func(context.Context, string) (ExecutionBinding, error)) (WorkView, bool, error) {
 	if strings.TrimSpace(key) == "" {
 		return WorkView{}, false, nil
 	}
@@ -51,7 +51,28 @@ func (a *Adapter) joinBy(ctx context.Context, key string, lookup func(context.Co
 	if !joinable(got.State) {
 		return WorkView{}, false, nil
 	}
-	return bindingView(got, true), true, nil
+	return a.recordJoin(ctx, req, got)
+}
+
+// recordJoin writes the joining chat onto the existing row. ADDITIVE: it does
+// not Admit and does not mint a second binding.
+func (a *Adapter) recordJoin(ctx context.Context, req LaunchRequest, got ExecutionBinding) (WorkView, bool, error) {
+	chatID := joinChat(req)
+	if chatID == "" {
+		return bindingView(got, true), true, nil
+	}
+	stored, err := a.store.RecordJoiner(ctx, got.RequestKey, chatID)
+	if err != nil {
+		return WorkView{}, false, err
+	}
+	return bindingView(stored, true), true, nil
+}
+
+func joinChat(req LaunchRequest) string {
+	if id := strings.TrimSpace(req.OwnerChatID); id != "" {
+		return id
+	}
+	return strings.TrimSpace(req.CoordinatorID)
 }
 
 func (a *Adapter) admitNew(ctx context.Context, req LaunchRequest) (WorkView, error) {

@@ -220,18 +220,47 @@ func (a *Agent) coordinateExecute(ctx context.Context, parsed coordinateArgs) (s
 	}
 }
 
+const launchNeedsGrant = "Invalid arguments: launch-or-join needs a grant and a brief."
+
 func (a *Agent) coordinateLaunch(ctx context.Context, exec Exec, parsed coordinateArgs) (string, bool, error) {
 	if err := a.pauseAffectedMutation(ctx); err != nil {
 		return coordinateRefusal(err), true, nil
 	}
-	if strings.TrimSpace(parsed.Grant) == "" || strings.TrimSpace(parsed.Body) == "" {
-		return "Invalid arguments: launch-or-join needs a grant and a brief.", true, nil
+	if strings.TrimSpace(parsed.Body) == "" {
+		return launchNeedsGrant, true, nil
 	}
-	got, err := exec.LaunchOrJoin(ctx, strings.TrimSpace(parsed.Grant), parsed.Body, strings.TrimSpace(parsed.Equivalence))
+	grantID, err := a.launchGrantID(ctx, exec, parsed)
+	if err != nil {
+		return coordinateRefusal(err), true, nil
+	}
+	if grantID == "" {
+		return launchNeedsGrant, true, nil
+	}
+	got, err := exec.LaunchOrJoin(ctx, grantID, parsed.Body, strings.TrimSpace(parsed.Equivalence))
 	if err != nil {
 		return coordinateRefusal(err), true, nil
 	}
 	return formatExecView(got), false, nil
+}
+
+// launchGrantID cites an existing grant, or on a person-origin turn lets
+// software IssuePersonGrant. THE MODEL DOES NOT MINT grant_id: the schema
+// still has no such field.
+func (a *Agent) launchGrantID(ctx context.Context, exec Exec, parsed coordinateArgs) (string, error) {
+	if grant := strings.TrimSpace(parsed.Grant); grant != "" {
+		return grant, nil
+	}
+	if !a.personOriginTurn() {
+		return "", nil
+	}
+	return exec.IssuePersonGrant(ctx, parsed.Body)
+}
+
+func (a *Agent) personOriginTurn() bool {
+	if a == nil || a.config.InTask {
+		return false
+	}
+	return a.turnSeq == 0 || a.personHeard == a.turnSeq
 }
 
 func (a *Agent) coordinateInspectWork(ctx context.Context, exec Exec, workID string) (string, bool, error) {

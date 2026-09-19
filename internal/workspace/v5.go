@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 const (
@@ -29,6 +30,7 @@ const (
 
 const grantColumns = "id,goal,coordinator_id,scope_kind,folder_id,snapshot_json,action_json,issuer,origin,actor,status,budget_usd,revision,revocation_revision,created_at,updated_at"
 const bindingColumns = "id,request_key,equivalence_key,work_id,run_instance_id,road,owner_chat_id,grant_id,coordinator_id,runtime_ref,assignment_rev,grant_rev,state,fence,owner,lease_until,created_at,updated_at,bound_at,admitted_at"
+const bindingColumnsV6 = bindingColumns + ",joiner_json"
 
 // Grant is a software-minted delegation. ActionJSON is a canonical JSON array
 // of action-class strings. Empty SnapshotJSON with ScopeFolderDynamic resolves
@@ -48,6 +50,18 @@ type ExecutionBinding struct {
 	OwnerChatID, GrantID, CoordinatorID, RuntimeRef             string
 	AssignmentRev, GrantRev, State, Fence, Owner                string
 	LeaseUntil, CreatedAt, UpdatedAt, BoundAt, AdmittedAt       string
+	JoinerJSON                                                  string
+}
+
+// JoinedBy is true when chatID is a recorded joiner and not the owner or
+// original coordinator. THE FLAG IS A VIEW OF THE SHARED ROW: it is not a
+// second binding.
+func (b ExecutionBinding) JoinedBy(chatID string) bool {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" || chatID == b.OwnerChatID || chatID == b.CoordinatorID {
+		return false
+	}
+	return jsonStringSet(b.JoinerJSON)[chatID]
 }
 
 func validGrantStatus(status string) bool {

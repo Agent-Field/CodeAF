@@ -45,6 +45,38 @@ func TestLaunchOrJoinFollowsEquivalentWork(t *testing.T) {
 	}
 }
 
+func TestLaunchOrJoinRecordsTheJoiningChat(t *testing.T) {
+	ctx := context.Background()
+	store, rt, grant := harness(t)
+	ad := Open(store, rt)
+	firstReq := launchReq("rk-a", "issue-join", grant.ID)
+	firstReq.OwnerChatID = "chat-a"
+	first, err := ad.LaunchOrJoin(ctx, firstReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondReq := launchReq("rk-b", "issue-join", grant.ID)
+	secondReq.OwnerChatID = "chat-b"
+	secondReq.CoordinatorID = "coord-b"
+	second, err := ad.LaunchOrJoin(ctx, secondReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.Joined || second.RunInstanceID != first.RunInstanceID {
+		t.Fatalf("joiner view %+v first %+v", second, first)
+	}
+	if rt.admitCalls != 1 {
+		t.Fatalf("joiner admitted a second runtime: %d", rt.admitCalls)
+	}
+	held, err := store.BindingByRequestKey(ctx, first.RequestKey)
+	if err != nil || !strings.Contains(held.JoinerJSON, "chat-b") {
+		t.Fatalf("joiner not recorded on the shared row: %+v, %v", held, err)
+	}
+	if strings.Contains(held.JoinerJSON, "chat-a") {
+		t.Fatalf("owner must not be stored as a joiner: %q", held.JoinerJSON)
+	}
+}
+
 func TestDuplicateRequestKeyDoesNotAdmitTwice(t *testing.T) {
 	ctx := context.Background()
 	store, rt, grant := harness(t)
