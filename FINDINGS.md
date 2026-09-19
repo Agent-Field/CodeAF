@@ -117,3 +117,39 @@ ok github.com/Agent-Field/codeaf/cmd/codeaf 10.332s
 ```
 
 This confirms the command-level real `codeaf do` road now seats the self-finished root review before returning, and it gives no evidence that the sibling check-model failure has a separate cause. The sibling is consistent with the repaired seam, not proven uniquely attributable to it. Next I will run the five required pre-PR commands separately, with tree hashes before and after and no amendment afterward.
+
+## Pre-PR failure and fenced-path correction
+
+The required `go test ./cmd/codeaf/...` exposed one failure: `TestDoOnTheRunEngineRootStoreFinishBeforeWorkerReturnNamesRootResult` returned incomplete. The other four commands passed, `gofmt -l` printed nothing, and the tree hash stayed `8c1691558dad17e6593a61993dc4cc7f728f9194` before and after.
+
+The cause is exact: the new terminal branch canceled an in-flight self-finished root even when `addReviewCheck` was a no-op because the run had no review round. That changes the fenced #1210 path. Before editing, the correction is to reload the root after attempting review creation and cancel the worker only if `AddRootCheck` actually reopened the root. With reviews off, the terminal result road remains byte-for-byte behavioral equivalent and returns immediately without cancellation.
+
+## Fenced test still failed, revised minimal boundary
+
+The conditional cancellation still fails the #1210 test because reviews are enabled there: `AddRootCheck` reopens the root, cancellation interrupts the real session worker, and `absorb` correctly records that worker error as an incomplete root. Cancellation is therefore not part of the product fix.
+
+The deterministic regression's worker was waiting specifically for drain cancellation, which over-constrained the implementation. I will keep the forced terminal observation but release its delayed root return when the check worker starts. With two slots, this still proves the supervisor observed Done and created the check before receiving the root return, without requiring product code to cancel a successfully self-finished worker. The product change then consists only of seating the review and continuing the pass, plus idempotence when the ordinary return is absorbed.
+
+## Final seam decision before correction
+
+The #1210 command test still fails without cancellation because `AddRootCheck` reopens the root while the session worker is still inside the shell command after `plandb done`; the worker then reports an error against its no-longer-terminal task. Therefore creating the check before the worker return is unsafe and bears directly on the fenced behavior.
+
+The smaller fix is to refuse the terminal outcome while the root worker is in flight. The pass leaves the stored Done untouched and waits for the worker return; ordinary `absorb` then creates the check at the established safe point before any run ending. The forced regression will delay the return for several pass intervals, which deterministically exposes Done to the supervisor, then return normally. On the base implementation the pass ends the run during that delay; with the fix it waits and seats the check. No cancellation, early root reopen, `run.Start`, or extra idempotence is needed.
+
+## Final seam first execution
+
+The three command tests, including the fenced #1210 result test, passed 10 of 10 with the wait-for-return fix. The internal forced regression did not compile because its new deterministic delay omitted the standard-library `time` import. This is a test-only import omission, not product evidence. I will add that import, rerun the focused internal and command sets, then commit the correction if both pass.
+
+## Corrected minimal fix evidence
+
+The final implementation passed the forced regression, both established root review laws, and all three command-level seams 10 times each. The fix now only makes `pass` defer a stored Done outcome while the root worker return remains in flight. The worker return is absorbed normally, creates the check, and preserves the #1210 stored-result path. The deterministic test forces terminal observation using a 500 millisecond delayed worker step, several times the 100 millisecond supervisor pass interval, then returns normally.
+
+Commands:
+
+```text
+go test ./internal/run -run 'TestSupervisor(ChecksASelfFinishedRootBeforeAcceptingItsStoredEnding|ChecksAChildlessRootThatCompletedItselfInTheStore|RootWaitsOnAnOpenCheckTask)$' -count=10
+ok github.com/Agent-Field/codeaf/internal/run 7.068s
+
+go test ./cmd/codeaf -run '^(TestDoOnTheRunEngineRootStoreFinishBeforeWorkerReturnNamesRootResult|TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds|TestDoOnTheRunEngineSeatsACheckOnTheCheckModel)$' -count=10
+ok github.com/Agent-Field/codeaf/cmd/codeaf 19.986s
+```

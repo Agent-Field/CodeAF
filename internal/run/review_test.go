@@ -12,6 +12,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/run"
@@ -450,13 +451,13 @@ func TestSupervisorChecksASelfFinishedRootBeforeAcceptingItsStoredEnding(t *test
 	store := runOpenStore(t)
 	seat := newFakeSeat()
 	const result = "the root wrote its own ending"
-	seat.actions["root"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+	seat.actions["root"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
 		if _, err := store.Done(task.ID, task.ID, result, nil, nil); err != nil {
 			return run.Report{}, err
 		}
-		// Hold the worker return behind the supervisor pass that observes Done.
-		// The losing pass enters drain, whose cancellation releases this worker.
-		<-ctx.Done()
+		// Delay the worker return across several supervisor passes. This forces a
+		// pass to observe Done while no return is available, without machine load.
+		time.Sleep(500 * time.Millisecond)
 		return run.Report{Result: result, Steps: 1}, nil
 	}
 	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
