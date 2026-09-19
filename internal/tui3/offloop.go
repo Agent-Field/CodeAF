@@ -36,7 +36,8 @@ import (
 //
 // [TestAnAnswerOverAConnectionAsksTheFarMachineNothingFromUpdate] is the runtime
 // law, and offlooplaw_test.go is the structural one: a door named here may not
-// be called outside an [app.offLoop] literal.
+// be called outside an [app.offLoop] literal, or an [app.besideLine] one for a
+// read nobody pressed for.
 
 // doorMsg is what one door said, on its way back to the update loop.
 //
@@ -74,6 +75,35 @@ func (a *app) offLoop(ask func() func(here bool) tea.Cmd) tea.Cmd {
 	said := a.doorLine.add(ask)
 	return func() tea.Msg {
 		return doorMsg{front: front, fold: <-said}
+	}
+}
+
+// besideLine asks one door off the update loop AND OFF THE ORDERED LINE, and
+// folds what it said back in exactly as [app.offLoop] does.
+//
+// NOTHING A PERSON DID NOT PRESS STANDS IN THE LINE. The line exists for one
+// reason: the engine must see a person's gestures in the order they made them.
+// A read nobody pressed for has no place in that order, and one that waits on a
+// model has no business in front of it. The run's summary is that read: a
+// sentence written under a budget of seconds ([app.refreshRunSummary]). Asked
+// through the line it stood in front of whatever a person did next, and on a
+// real screen a press on a run's row waited 7.6 seconds for a read that took
+// two milliseconds. A stop pressed in that window would have waited the same.
+//
+// WHAT MAY COME HERE IS DECIDED BY PROPERTY, not by how slow a door feels: the
+// ask was not a gesture, and nothing a person does next depends on the engine
+// having seen it first. A gesture never comes here, however slow its door is,
+// because its place in the order is the whole of what the line is for.
+//
+// It runs on the command's own goroutine, which is what every door did before
+// the line existed; what it gives up is the order, and it had none to keep.
+func (a *app) besideLine(ask func() func(here bool) tea.Cmd) tea.Cmd {
+	if ask == nil {
+		return nil
+	}
+	front := a.frontGen
+	return func() tea.Msg {
+		return doorMsg{front: front, fold: ask()}
 	}
 }
 

@@ -148,8 +148,9 @@ does not repeat the request or change the transcript's presentation.
 ## Reading a note on a run task's page — and the page following the newest step
 
 A run's task page — the one `enter` opens on a run's row in the tasks place — keeps up with
-its newest step and follows it until you scroll up; scrolling back to the bottom resumes the
-follow, and a page on a settled task is a still page. Its foot is a **note box**, under the
+its newest step, reading the task again every three seconds while it is queued or running,
+and follows it until you scroll up; scrolling back to the bottom resumes the follow, and a
+page on a settled task is a still page. Its foot is a **note box**, under the
 placeholder `a note for this task`: type in it and press `enter`, and the words go to the
 task's store rather than to a model. The page says when they are read:
 
