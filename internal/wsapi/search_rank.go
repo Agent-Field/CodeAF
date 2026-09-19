@@ -14,10 +14,12 @@ const (
 	coverWeight        = 0.3
 )
 
-// searchPool is how many lexical and embedding candidates to gather before
+// searchPool is how many lexical and embedding SESSIONS to gather before
 // ranking. Top-k from one list used to fill the whole answer: paraphrase
-// restatements of the query occupied every A4 slot, and AND-of-all-terms
-// missed A7/global. The pool has to be wider than the page.
+// restatements of the query occupied every A4 slot, AND-of-all-terms missed
+// A7/global, and at 10k a nearer abandoned-mailer family occupied every
+// passage-level slot so the original never entered. The doors unique by
+// session; this budget has to be wider than the page.
 func searchPool(limit int) int {
 	pool := limit * 8
 	if pool < searchPoolMin {

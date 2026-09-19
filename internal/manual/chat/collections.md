@@ -272,7 +272,8 @@ Learned memory off leaves `remember` and reflex absent. Conversation history
 is still there: `search_conversations` and the search place still run, and
 automatic organization still files. Hybrid search adds embedding (or labelled
 expansion) candidates beside lexical hits. Original passages still rank when
-the ask uses different wording; restatements of the query are not the original.
+the ask uses different wording; restatements of the query are not the original,
+and a nearer abandoned-mailer family does not fill the candidate list.
 Abandoned plans and the words that rejected them stay searchable.
 
 ## Discovery delayed vs checked — did it check the workspace, degraded, not checked

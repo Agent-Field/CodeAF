@@ -34,13 +34,14 @@ func (s *topicEmbedWire) Embed(_ context.Context, request provider.EmbeddingRequ
 func topicVec(text string) []float32 {
 	t := strings.ToLower(text)
 	v := []float32{0, 0, 0, 0}
-	// Same-topic different-wording sits on one axis so the TUI string
-	// "emailed purchase confirmation PDF" still retrieves the signed-in
-	// billed-file original. Splitting the ask and the decision across
-	// axes made SearchEmbed miss unless the query itself said "fetch".
-	mark(v, 0, t, "billed", "sign", "login", "logged", "locator", "session", "fetch", "hyperlink", "authentic", "emailed", "purchase", "confirmation", "pdf", "receipt")
-	mark(v, 1, t, "other one", "the other")
-	mark(v, 2, t, "certificate", "wildcard", "terraform")
+	// The TUI string is closer to an abandoned mailer (mail a file) than to
+	// the signed-in original, and still closer to that original than to an
+	// A7 correction. Unique-by-session admits the original; ranking still
+	// needs the original nearer than the correction family.
+	mark(v, 0, t, "emailed", "purchase", "confirmation", "pdf", "receipt")
+	mark(v, 1, t, "emailed", "mail customers", "raw download", "abandon")
+	mark(v, 2, t, "sign in", "signed-in", "authenticated", "billed", "logged-in", "hyperlink", "login", "logged", "fetch", "purchase", "pdf", "emailed", "receipt")
+	mark(v, 3, t, "other one", "the other", "bare locator", "certificate", "wildcard", "terraform")
 	return unit4(v)
 }
 
@@ -101,6 +102,101 @@ func TestSQLiteSearchEvidenceFindsOriginalsDespiteDifferentWording(t *testing.T)
 	assertFamily(t, svc, "emailed receipt links", "src-", 14, 20)
 	assertFamily(t, svc, "No the other one signed-in session not bare locator", "a7-", 12, 20)
 	assertFamily(t, svc, "billed-file hyperlinks require signed-in session buried in certificate work", "glob-", 10, 20)
+}
+
+func TestSQLiteSearchEvidenceOriginalsEnterWhenAbandonedMailersAreTheMajority(t *testing.T) {
+	// bdab707 gathered 160 passages. Eighty two-turn abandoned mailers
+	// fill that page; demoting "abandon" cannot recover A4 if src- never
+	// entered SearchLexical/SearchEmbed. Gold is still the signed-in original.
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	wire := &topicEmbedWire{}
+	client := embed.New(wire, "openai/text-embedding-3-small", nil)
+	svc, adapter := openV3FolderServiceWith(client)
+	if svc == nil || adapter == nil {
+		t.Fatal("Open must bind both stores")
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	ctx := context.Background()
+	var recs []wsdiscover.Record
+	for i := 1; i <= 20; i++ {
+		recs = append(recs, passage(fmt.Sprintf("src-%02d", i),
+			fmt.Sprintf("Customers must sign in before a billed-file hyperlink will work. Authenticated session only. (policy thread %d)", i)))
+		recs = append(recs, passage(fmt.Sprintf("para-%02d", i),
+			fmt.Sprintf("We keep emailed receipt links and a purchase confirmation PDF. Who is allowed to fetch them? (billing ask %d)", i)))
+	}
+	for i := 1; i <= 80; i++ {
+		id := fmt.Sprintf("a6-%02d", i)
+		recs = append(recs, wsdiscover.Record{
+			SessionID: id, SourceRef: "chat:" + id, Speaker: "user", Generation: 1, Ordinal: 1,
+			Text: fmt.Sprintf("Plan: mail customers the raw download address for billed files so nobody has to log in. (%d)", i),
+		})
+		recs = append(recs, wsdiscover.Record{
+			SessionID: id, SourceRef: "chat:" + id, Speaker: "assistant", Generation: 1, Ordinal: 2,
+			Text: fmt.Sprintf("Understood — we abandon mailing the raw download for billed files. The abandoned mailer stays rejected. (%d)", i),
+		})
+	}
+	if err := adapter.store.Ingest(ctx, recs, client); err != nil {
+		t.Fatal(err)
+	}
+	query := "emailed purchase confirmation PDF"
+	lex, err := adapter.SearchLexical(ctx, query, 160)
+	if err != nil {
+		t.Fatal(err)
+	}
+	embHits, err := adapter.SearchEmbed(ctx, query, 160)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countHitPrefix(lex, "src-")+countHitPrefix(embHits, "src-") < 14 {
+		t.Fatalf("originals must enter SearchLexical/SearchEmbed: lex=%v emb=%v", idsOfHits(lex), idsOfHits(embHits))
+	}
+	hits, err := svc.SearchEvidence(ctx, wsapi.SearchQuery{Query: query, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gold, abandoned, para := 0, 0, 0
+	for _, hit := range hits {
+		switch {
+		case strings.HasPrefix(hit.SessionID, "src-"):
+			gold++
+		case strings.HasPrefix(hit.SessionID, "a6-"):
+			abandoned++
+		case strings.HasPrefix(hit.SessionID, "para-"):
+			para++
+		}
+	}
+	if gold < 14 || abandoned > 0 || para > 0 {
+		t.Fatalf("A4 originals in top-20: %d (want ≥14); abandoned=%d para=%d ids=%v", gold, abandoned, para, idsOfHits(hits))
+	}
+}
+
+func countHitPrefix(hits []wsapi.SearchHit, prefix string) int {
+	n := 0
+	seen := map[string]struct{}{}
+	for _, hit := range hits {
+		if !strings.HasPrefix(hit.SessionID, prefix) {
+			continue
+		}
+		if _, ok := seen[hit.SessionID]; ok {
+			continue
+		}
+		seen[hit.SessionID] = struct{}{}
+		n++
+	}
+	return n
+}
+
+func idsOfHits(hits []wsapi.SearchHit) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(hits))
+	for _, hit := range hits {
+		if _, ok := seen[hit.SessionID]; ok {
+			continue
+		}
+		seen[hit.SessionID] = struct{}{}
+		out = append(out, hit.SessionID)
+	}
+	return out
 }
 
 func assertFamily(t *testing.T, svc *wsapi.Service, query, prefix string, want, limit int) {

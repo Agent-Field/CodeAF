@@ -396,7 +396,8 @@ that names `graph.db` and the disk's reason — not the `memory` row.
   candidates beside those hits. Use a few distinctive words. Original passages
   still rank when the ask uses different wording — emailed receipt links can
   find an earlier authenticated-access decision; restatements of the query do
-  not occupy every row. Short corrections and a buried note in a mixed-topic
+  not occupy every row, and a nearer abandoned-mailer family does not occupy
+  every candidate slot either. Short corrections and a buried note in a mixed-topic
   chat stay findable. Equally relevant matches put newer messages first. Short
   words and Unicode words are supported (at most 32 query words). Names and IDs
   label results; titles are not searched. If a task search misses, codeaf is
@@ -429,7 +430,9 @@ the thing, even when those passages said authenticated document access or
 signed-in billed-file fetch and never used today’s title or id. You do not
 have to phrase it as a question; who, what, why, how, may, can, should, or
 allowed are not required. `/search` and `search_conversations` share that
-ranking.
+ranking. The candidate list is conversations, not repeated turns of the
+nearest family: an abandoned-mailer cluster that is closer in embedding space
+cannot fill the pool so the original never appears.
 
 Chats that merely restate the ask are not the original. A short correction such
 as “No, the other one.” is findable with the surrounding decision. A buried
