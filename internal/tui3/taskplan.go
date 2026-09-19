@@ -18,7 +18,6 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -29,8 +28,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// planAgent names the shared optional capability so the surface and every
-// transport agree on one method set while scripted agents may still omit it.
+// planAgent aliases the shared optional capability so session remains the one
+// source of its complete method set.
 type planAgent = session.PlanAgent
 
 // planReader is the agent under this surface, when it carries a plan at all.
