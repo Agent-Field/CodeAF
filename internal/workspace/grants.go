@@ -361,6 +361,45 @@ func (s *Store) BindingByEquivalence(ctx context.Context, equivalenceKey string)
 		equivalenceKey, BindReserved, BindAdmitted, BindBound, BindPaused)
 }
 
+// ListBindingsForChat is the TUI launch-state scan: owner or coordinator.
+// Listing never migrates. Empty chat is emptiness, never a fabricated row.
+func (s *Store) ListBindingsForChat(ctx context.Context, chatID string) ([]ExecutionBinding, error) {
+	if strings.TrimSpace(chatID) == "" {
+		return []ExecutionBinding{}, nil
+	}
+	return s.listBindings(ctx, `SELECT `+bindingColumns+` FROM execution_bindings
+ WHERE owner_chat_id=? OR coordinator_id=? ORDER BY seq`, chatID, chatID)
+}
+
+// ListUnboundBindings is the recover scan: reserved or admitted rows with no
+// run-instance id yet. Listing never migrates. Tick Recover binds these; it
+// must not Admit a second time (A14).
+func (s *Store) ListUnboundBindings(ctx context.Context) ([]ExecutionBinding, error) {
+	return s.listBindings(ctx, `SELECT `+bindingColumns+` FROM execution_bindings
+ WHERE run_instance_id='' AND state IN (?,?) ORDER BY seq`, BindReserved, BindAdmitted)
+}
+
+func (s *Store) listBindings(ctx context.Context, query string, args ...any) ([]ExecutionBinding, error) {
+	ready, err := s.v5Ready(ctx)
+	if err != nil || !ready {
+		return make([]ExecutionBinding, 0), err
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	defer rows.Close()
+	result := make([]ExecutionBinding, 0)
+	for rows.Next() {
+		b, err := scanBinding(rows)
+		if err != nil {
+			return nil, storeError(err)
+		}
+		result = append(result, b)
+	}
+	return result, storeError(rows.Err())
+}
+
 func (s *Store) loadBindingBy(ctx context.Context, query string, args ...any) (ExecutionBinding, error) {
 	ready, err := s.v5Ready(ctx)
 	if err != nil || !ready {

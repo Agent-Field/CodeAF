@@ -164,6 +164,32 @@ func TestTaskBeltAdmitTaskDoesNotStartTwice(t *testing.T) {
 	}
 }
 
+func TestPauseAndStopAdmittedKeepHistory(t *testing.T) {
+	agent, _ := delegatedTaskAgent(t, "")
+	id, _, _, err := agent.AdmitTask(context.Background(), "one owned run", "rk-pause-stop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := strconv.FormatUint(id, 10)
+	if err := agent.PauseAdmitted(work); err != nil {
+		t.Fatalf("PauseAdmitted: %v", err)
+	}
+	view, err := agent.InspectAdmitted(work)
+	if err != nil || view.State != BindPausedWord || view.RunInstanceID == "" {
+		t.Fatalf("paused inspect %+v, %v", view, err)
+	}
+	if err := agent.StopAdmitted(work); err != nil {
+		t.Fatalf("StopAdmitted: %v", err)
+	}
+	view, err = agent.InspectAdmitted(work)
+	if err != nil || view.State != BindStoppedWord {
+		t.Fatalf("stopped inspect %+v, %v", view, err)
+	}
+	if _, _, ok := agent.TaskByRequestKey("rk-pause-stop"); !ok {
+		t.Fatal("stop must keep the admission, not delete history")
+	}
+}
+
 func TestLaunchOrJoinAbsentWhenExecNil(t *testing.T) {
 	agent := coordinateAgent(t, &fakeCollab{})
 	if agent.executor() != nil {

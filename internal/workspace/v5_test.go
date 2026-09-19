@@ -55,6 +55,14 @@ func TestV4ListDoesNotMigrate(t *testing.T) {
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("v4 binding: %v", err)
 	}
+	listed, err := s.ListBindingsForChat(ctx, "mgmt")
+	if err != nil || len(listed) != 0 {
+		t.Fatalf("v4 list bindings: %v, %v", listed, err)
+	}
+	unbound, err := s.ListUnboundBindings(ctx)
+	if err != nil || len(unbound) != 0 {
+		t.Fatalf("v4 unbound: %v, %v", unbound, err)
+	}
 	if tablesNamed(t, path, v5TableNames...) != nil {
 		t.Fatalf("v4 list created v5 tables: %v", tablesNamed(t, path, v5TableNames...))
 	}
@@ -229,6 +237,14 @@ func TestRequestKeyIsUniqueAndBindRuntimeRefusesASecondInstance(t *testing.T) {
 	if err != nil || first.ID == "model-binding-id" || first.State != BindReserved || first.WorkID == "" {
 		t.Fatalf("reserved: %+v, %v", first, err)
 	}
+	owned, err := s.ListBindingsForChat(ctx, "mgmt")
+	if err != nil || len(owned) != 1 || owned[0].RequestKey != "launch-1" {
+		t.Fatalf("list for chat: %+v, %v", owned, err)
+	}
+	unbound, err := s.ListUnboundBindings(ctx)
+	if err != nil || len(unbound) != 1 || unbound[0].RunInstanceID != "" {
+		t.Fatalf("unbound reserved: %+v, %v", unbound, err)
+	}
 	again, err := s.PutBinding(ctx, ExecutionBinding{
 		RequestKey:     "launch-1",
 		EquivalenceKey: "other",
@@ -240,6 +256,10 @@ func TestRequestKeyIsUniqueAndBindRuntimeRefusesASecondInstance(t *testing.T) {
 	admitted, err := s.BindRuntime(ctx, "launch-1", "run-aaa", "session:1")
 	if err != nil || admitted.State != BindBound || admitted.RunInstanceID != "run-aaa" || admitted.BoundAt == "" || admitted.RuntimeRef != "session:1" {
 		t.Fatalf("bind: %+v, %v", admitted, err)
+	}
+	still, err := s.ListUnboundBindings(ctx)
+	if err != nil || len(still) != 0 {
+		t.Fatalf("bound row must leave the recover scan: %+v, %v", still, err)
 	}
 	same, err := s.BindRuntime(ctx, "launch-1", "run-aaa", "session:1")
 	if err != nil || same.RunInstanceID != "run-aaa" {

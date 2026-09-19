@@ -62,6 +62,7 @@ func v3OpenSession(cfg session.Config) (*session.Agent, error) {
 	// account, because they are all running on one machine.
 	cfg.TaskLanes = v3MachineLanes
 	cfg.Collab = sessionCollabOf(cfg.Folders, conversationChatIDFrom(cfg.Place, cfg.SessionFile))
+	cfg.Exec = sessionExecOf(cfg.Folders, conversationChatIDFrom(cfg.Place, cfg.SessionFile))
 	cfg, runs := v3Adaptive(cfg)
 	agent, err := session.New(cfg)
 	if err != nil {
@@ -69,6 +70,7 @@ func v3OpenSession(cfg session.Config) (*session.Agent, error) {
 	}
 	runs.bind(agent)
 	bindAgentCollab(agent, cfg)
+	bindAgentExec(agent, cfg)
 	return agent, nil
 }
 
