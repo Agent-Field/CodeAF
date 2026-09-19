@@ -1,0 +1,3 @@
+package main
+import "github.com/santosh/aforge/internal/guard"
+func injectedProcessWriter() { guard.Go("chatv3/new-process-writer", func(){}) }
