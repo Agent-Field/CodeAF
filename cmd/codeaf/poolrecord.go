@@ -214,6 +214,14 @@ func poolJudgeLandingContext(ctx context.Context, settings config.Config, profil
 	// one line; a success names the judge that answered and the seats it
 	// scored, with no reason to say.
 	if len(scores) == 0 {
+		// A close cancelled the sweep mid-judge: every candidate failed on the
+		// parent context, not on the run, so this is not a verdict. Leave the
+		// landing unjudged and unrecorded so the next start judges it, rather than
+		// burning it with a permanent marker. ctx here is the parent, the
+		// per-candidate context inside the loop above is out of scope.
+		if ctx.Err() != nil {
+			return
+		}
 		reason := "no judge answered"
 		if err != nil {
 			reason = oneLine(err.Error())
@@ -626,6 +634,14 @@ func sweepClaimContext(ctx context.Context, settings config.Config, profileDir, 
 			continue
 		}
 		poolJudgeLandingContext(ctx, settings, profileDir, models, ask, now, door, row.Landing)
+		if ctx.Err() != nil {
+			// Cancelled mid-judge: poolJudgeLandingContext left this landing
+			// unjudged, so do not count it and stop, leaving the claim for the next
+			// start rather than removing it as a completed sweep would.
+			completed = false
+			left = countUnjudged(poolDir, lines[i:])
+			break
+		}
 		judged++
 	}
 	if completed {
