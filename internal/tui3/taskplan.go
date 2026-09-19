@@ -1562,8 +1562,10 @@ func (a *app) taskPlanBody(width int) []string {
 				continue
 			}
 			add(pal.ink(itoa(step.Step) + "  " + command))
-			if head := planObservationHead(step.Observation); head != "" {
-				add(pal.dim("   " + head))
+			if step.ObservationHeadAttributable {
+				if head := planObservationHead(step.Observation); head != "" {
+					add(pal.dim("   " + head))
+				}
 			}
 		}
 		// THE LIVE STEP IS DRAWN ONE STEP EARLY: the command whose end line has

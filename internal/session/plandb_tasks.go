@@ -147,6 +147,9 @@ type PlanStep struct {
 	// Parts are display facts derived from Command. Command remains the byte-for-byte
 	// record; a surface filters parts instead of rewriting that record.
 	Parts []PlanCommandPart `json:"parts,omitempty"`
+	// ObservationHeadAttributable is true when every part omitted from the row
+	// cannot have written to the observation and stops every later part on failure.
+	ObservationHeadAttributable bool `json:"observation_head_attributable,omitempty"`
 }
 
 // PlanCommandPart is one quote-aware command part and the facts only the
@@ -823,6 +826,16 @@ func planStepDisplayFacts(step PlanStep, copies planRunCopies, recordCommand str
 		i = last + 1
 	}
 	step.Parts = parts
+	// The head belongs under the row only when every omitted part has the
+	// property that it cannot have written to it and stops all later work on
+	// failure. An unchanged row has no omitted part and therefore also holds.
+	step.ObservationHeadAttributable = true
+	for _, part := range parts {
+		if part.RecordAddressed {
+			step.ObservationHeadAttributable = false
+			break
+		}
+	}
 	return step
 }
 

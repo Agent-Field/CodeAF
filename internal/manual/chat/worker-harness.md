@@ -201,7 +201,8 @@ the one exception, and it is a line and not a step (see "A line under steps says
 
 Everything that is kept is drawn exactly as it was typed, spacing included. A command with
 nothing left out is drawn whole. A part inside `$( )` or a bracketed group is never left out,
-and neither is work that is piped into something else.
+and neither is work that is piped into something else. The head of what came back is drawn
+only when every part left out cannot have written to it and stops everything after it on failure.
 
 **A step with nothing of the work in it has no row, and the numbers skip over it.** Every
 row keeps the number the step ran as, so a page whose head says `12 steps` may draw rows
