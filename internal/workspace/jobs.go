@@ -13,7 +13,11 @@ import (
 
 // EnqueueJob records work for the tick. A second enqueue with the same type and
 // coalesce key while the first is still pending or leased is a no-op success:
-// the organizer must not run twice for one source revision.
+// the organizer must not run twice for one source revision. A cancelled,
+// deferred, or failed row with that key is resumed as pending — quit/reopen
+// and a later Organize existing chats must not mint a second organize_existing
+// job beside the durable one. Completed is finished work, so that key may
+// start a new row.
 //
 // A blank collections file is initialized here without creating a folder.
 // Organize existing chats must be able to run on a fresh Root; Create remains
@@ -31,7 +35,11 @@ func (s *Store) EnqueueJob(ctx context.Context, job Job) (Job, error) {
 		return Job{}, storeError(err)
 	}
 	defer tx.Rollback()
-	stored, err := storeJob(ctx, tx, job, s.stamp())
+	now := s.stamp()
+	if err := expireLeases(ctx, tx, now); err != nil {
+		return Job{}, storeError(err)
+	}
+	stored, err := storeJob(ctx, tx, job, now)
 	if err != nil {
 		return Job{}, storeError(err)
 	}
@@ -53,7 +61,7 @@ func normalizeEnqueue(job Job) (Job, error) {
 
 func storeJob(ctx context.Context, tx *sql.Tx, job Job, now string) (Job, error) {
 	if job.CoalesceKey != "" {
-		existing, err := lookupCoalesced(ctx, tx, job.Type, job.CoalesceKey)
+		existing, err := coalesceOrResume(ctx, tx, job.Type, job.CoalesceKey, now)
 		if err == nil {
 			return existing, nil
 		}
@@ -76,6 +84,37 @@ func storeJob(ctx context.Context, tx *sql.Tx, job Job, now string) (Job, error)
 		return Job{}, err
 	}
 	return job, nil
+}
+
+func coalesceOrResume(ctx context.Context, tx *sql.Tx, jobType, key, now string) (Job, error) {
+	existing, err := lookupCoalesced(ctx, tx, jobType, key)
+	if err == nil || !errors.Is(err, sql.ErrNoRows) {
+		return existing, err
+	}
+	return resumeCoalesced(ctx, tx, jobType, key, now)
+}
+
+func resumeCoalesced(ctx context.Context, tx *sql.Tx, jobType, key, now string) (Job, error) {
+	job, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM jobs
+ WHERE type=? AND coalesce_key=? AND state IN (?,?,?) ORDER BY seq DESC LIMIT 1`,
+		jobType, key, JobCancelled, JobDeferred, JobFailed))
+	if err != nil {
+		return Job{}, err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE jobs SET state=?, owner='', fence='', lease_until='', error='', attempt=0, updated_at=?
+ WHERE id=? AND state IN (?,?,?)`,
+		JobPending, now, job.ID, JobCancelled, JobDeferred, JobFailed)
+	if err != nil {
+		return Job{}, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return Job{}, err
+	}
+	if n == 0 {
+		return lookupCoalesced(ctx, tx, jobType, key)
+	}
+	return loadJob(ctx, tx, job.ID)
 }
 
 // LeaseJob moves the oldest matching pending row to leased and mints a fencing
