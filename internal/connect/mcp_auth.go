@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -286,20 +287,36 @@ func tokenStyle(methods []string) oauth2.AuthStyle {
 // have to think about: THE ASKING HAPPENS BEFORE THE ADDRESS EXISTS. There is no
 // sign-in page to name until the service has been asked where its sign-in is, so
 // this call is on the network for as long as that takes, and ctx bounds it.
+// newLocalListener opens the callback listener, seamed so a test can wrap the
+// returned net.Listener, for instance to observe when it closes. It returns the
+// listener and its redirect URL, which is "http://localhost:PORT" for the bound
+// port.
+var newLocalListener = func(addresses []string) (net.Listener, *url.URL, error) {
+	l, err := listener.New(addresses)
+	if err != nil {
+		return nil, nil, err
+	}
+	return l, l.URL, nil
+}
+
 func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer string) (*Flow, error) {
 	answer = strings.TrimSpace(answer)
 	if _, err := plug.at(answer); err != nil {
 		return nil, err
 	}
 	service := plug.service
-	local, err := listener.New(localServerAddresses)
+	addresses := localServerAddresses
+	if record, held := m.registrations().get(service.ID); held {
+		addresses = reconnectAddresses(record, addresses)
+	}
+	local, localURL, err := newLocalListener(addresses)
 	if err != nil {
 		return nil, fmt.Errorf("connect %s: %w", service.Name, err)
 	}
 	// The loopback address is both where the browser is sent first and where
 	// the service sends it back, which is what makes [Flow.URL] one short
 	// address a terminal can print.
-	redirect := local.URL.String()
+	redirect := localURL.String()
 
 	runContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	flow := &Flow{
@@ -310,7 +327,8 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer 
 	}
 	loopback := &mcpLoopback{answers: make(chan mcpAnswer, 1)}
 	server := &http.Server{Handler: loopback, ReadHeaderTimeout: mcpAskTimeout}
-	go func() { _ = server.Serve(local) }()
+	served := make(chan struct{})
+	go func() { _ = server.Serve(local); close(served) }()
 	go func() {
 		<-runContext.Done()
 		// Gracefully, so that a page still being written to the person's
@@ -325,6 +343,14 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer 
 	ready := make(chan string, 1)
 	go func() {
 		status, err := m.connectToolServer(runContext, plug, answer, redirect, loopback, ready)
+		// The callback listener must be released before this flow reports done, so
+		// a reconnect that follows at once finds the registered loopback port free
+		// and keeps its identity instead of falling through to a fresh redirect and
+		// introducing itself again. Cancelling runContext starts the graceful
+		// shutdown wired above; waiting for Serve to return means the port is
+		// actually free, bounded by that shutdown's own timeout.
+		cancel()
+		<-served
 		if err != nil {
 			flow.finish(Status{Service: service}, fmt.Errorf("connect %s: %w", service.Name, err))
 			return
@@ -345,6 +371,32 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer 
 		cancel()
 		return nil, ctx.Err()
 	}
+}
+
+// reconnectAddresses puts previously registered loopback addresses first, so a
+// reconnect can keep using its identity after an ephemeral listener closes.
+func reconnectAddresses(record mcpRegistration, fallback []string) []string {
+	addresses := make([]string, 0, len(record.Redirects)+len(fallback))
+	for _, redirect := range record.Redirects {
+		parsed, err := url.Parse(redirect)
+		if err != nil || parsed.Scheme != "http" || parsed.Port() == "" {
+			continue
+		}
+		host := parsed.Hostname()
+		if host != "localhost" && host != "127.0.0.1" {
+			continue
+		}
+		address := "127.0.0.1:" + parsed.Port()
+		if !slices.Contains(addresses, address) {
+			addresses = append(addresses, address)
+		}
+	}
+	for _, address := range fallback {
+		if !slices.Contains(addresses, address) {
+			addresses = append(addresses, address)
+		}
+	}
+	return addresses
 }
 
 // connectToolServer is the whole trip, from the first question to the keys on

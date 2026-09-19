@@ -2,9 +2,15 @@ package connect
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/int128/listener"
 )
 
 func TestConnectingAToolServerAsksItsWayIn(t *testing.T) {
@@ -256,6 +262,37 @@ func TestAServiceThatWillNotBeIntroducedToSaysSoPlainly(t *testing.T) {
 // The identity survives being disconnected, exactly as a client credential does,
 // so that connecting again is one browser trip and not a second registration.
 func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
+	held, err := listener.NewOn("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("hold a loopback listener: %v", err)
+	}
+	first := held.Addr().String()
+	previous := newLocalListener
+	calls := 0
+	newLocalListener = func(addresses []string) (net.Listener, *url.URL, error) {
+		if calls == 0 {
+			calls++
+			// Hand the product the listener already held, so the initial bind is
+			// never closed and rebound and no other listener can take the port in
+			// between. The product serves on it and closes it at disconnect.
+			return held, held.URL, nil
+		}
+		calls++
+		// The reconnect rebinds the saved port on the first try, with no retry:
+		// that success is the guarantee that the finished flow released its
+		// listener before it reported done, so a regression of that release
+		// fails here.
+		if addresses[0] != first {
+			t.Fatalf("reconnect first address = %q, want saved %q", addresses[0], first)
+		}
+		l, err := listener.NewOn(addresses[0])
+		if err != nil {
+			return nil, nil, err
+		}
+		return l, l.URL, nil
+	}
+	t.Cleanup(func() { newLocalListener = previous })
+
 	fake := startFakeToolServer(t, fakeShape{})
 	manager, _ := withToolServer(t, fake)
 	ctx := context.Background()
@@ -385,5 +422,74 @@ func connectFakeAt(t *testing.T, manager *Manager, answer string) {
 	openInBrowser(t, flow)
 	if _, err := flow.Wait(ctx); err != nil {
 		t.Fatalf("Wait: %v", err)
+	}
+}
+
+// gatedListener holds its Close open until release is closed, and signals when
+// Close is first entered, so a test can prove a flow waits for its callback
+// listener to be released.
+type gatedListener struct {
+	net.Listener
+	release <-chan struct{}
+	started func()
+}
+
+func (g *gatedListener) Close() error {
+	g.started()
+	<-g.release
+	return g.Listener.Close()
+}
+
+// A reconnect that follows a finished flow at once must find the callback
+// listener already closed; otherwise it binds a fresh redirect the service does
+// not know and introduces the identity a second time. Flow.Wait must therefore
+// not report done until the listener the flow served on has been released.
+func TestAFinishedFlowReleasesItsCallbackListenerBeforeItReportsDone(t *testing.T) {
+	release := make(chan struct{})
+	closeStarted := make(chan struct{})
+	var once sync.Once
+	previous := newLocalListener
+	first := true
+	newLocalListener = func(addresses []string) (net.Listener, *url.URL, error) {
+		l, u, err := previous(addresses)
+		if err != nil || !first {
+			return l, u, err
+		}
+		first = false
+		return &gatedListener{Listener: l, release: release, started: func() { once.Do(func() { close(closeStarted) }) }}, u, nil
+	}
+	t.Cleanup(func() { newLocalListener = previous })
+
+	fake := startFakeToolServer(t, fakeShape{})
+	manager, _ := withToolServer(t, fake)
+	ctx := context.Background()
+
+	flow, err := manager.BeginAuth(ctx, "example", "")
+	if err != nil {
+		t.Fatalf("BeginAuth: %v", err)
+	}
+	openInBrowser(t, flow)
+
+	waited := make(chan error, 1)
+	go func() { _, e := flow.Wait(ctx); waited <- e }()
+
+	select {
+	case <-closeStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the flow never began closing its callback listener")
+	}
+	select {
+	case e := <-waited:
+		t.Fatalf("Flow.Wait returned before the callback listener was released: %v", e)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case e := <-waited:
+		if e != nil {
+			t.Fatalf("Wait: %v", e)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Flow.Wait did not return after the listener was released")
 	}
 }
