@@ -369,6 +369,56 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	}
 }
 
+func TestStartTaskBashBeltPassesTheConversationWallLeftToTheRun(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: dir}
+		config.AskConsent = false
+		config.Budget = Budget{Wall: 2 * time.Hour}
+	})
+	agent.startedAt = time.Now().Add(-90 * time.Minute)
+
+	if _, _, _, err := agent.StartTask(context.Background(), "finish within the time left", false); err != nil {
+		t.Fatalf("StartTask: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	got := double.spec.Elapsed
+	double.mu.Unlock()
+	if got < 29*time.Minute || got > 31*time.Minute {
+		t.Fatalf("run elapsed limit = %v, want the roughly 30 minutes left, not the original 2 hours", got)
+	}
+	endBeltRun(t, agent, double)
+}
+
+func TestDriveBeltRunLimitUsesTheOrdinaryLandingRoad(t *testing.T) {
+	agent, _, run, _ := landingSummaryFixture(t, &scriptedCompleter{})
+	landCalls := 0
+	engine := landingRunDouble{
+		summary:   RunSummary{Outcome: "a limit you set stopped it"},
+		landing:   RunLanding{Branch: "task/limited", Changed: []string{"kept.txt"}},
+		landCalls: &landCalls,
+	}
+
+	agent.driveBeltRun(context.Background(), engine, run, RunSpec{})
+
+	if landCalls != 1 {
+		t.Fatalf("Land calls = %d, want exactly one ordinary landing", landCalls)
+	}
+	notice := agent.beltRunNotice(run, engine.summary, engine.landing)
+	if notice.State != TaskFailed {
+		t.Fatalf("limited run row state = %q, want the same failed state as a cost-limited run", notice.State)
+	}
+	if !strings.Contains(notice.Report, "a limit you set stopped it") {
+		t.Fatalf("limited run row report = %q, want the existing limit ending sentence", notice.Report)
+	}
+}
+
 // TestStartTaskBashBeltJoinsTheLiveRun: a run is one store, so a second `/task`
 // while one is live adds its work to that same store — a child of the run's one
 // root — rather than opening another. The second id is in the store, and the
@@ -503,12 +553,16 @@ func TestLandingDigestIsUnchangedWithoutAStoredSummary(t *testing.T) {
 // the summary refresh must have stored its sentence before the outcome note is
 // composed.
 type landingRunDouble struct {
-	summary RunSummary
-	landing RunLanding
+	summary   RunSummary
+	landing   RunLanding
+	landCalls *int
 }
 
 func (d landingRunDouble) Start(context.Context, RunSpec) RunSummary { return d.summary }
 func (d landingRunDouble) Land(context.Context, *plandb.Store, string, string) (RunLanding, error) {
+	if d.landCalls != nil {
+		*d.landCalls++
+	}
 	return d.landing, nil
 }
 

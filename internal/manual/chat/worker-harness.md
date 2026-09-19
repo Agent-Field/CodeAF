@@ -405,6 +405,8 @@ requirement in them, and speed is no permission to skip the walk.
   allows — `/settings` → Spending → **per conversation** — which is off by default.
   The run's width and its dollar ceiling are the conversation's own numbers, so a
   run costs what the conversation costs and runs as wide as the conversation may.
+- **The time limit.** An elapsed-time limit on the session ends a run too: see
+  "Does a time limit stop a running task?" on the page about starting codeaf.
 - **The step cap.** A worker stops at **200** finished tool calls — the same
   figure a node worker carries. The cap is a bound on spend and not a finding about
   the work: the turn is stopped there rather than judged, and a worker stopped this

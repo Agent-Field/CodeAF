@@ -76,6 +76,10 @@ type Supervisor struct {
 	limits    Limits
 	factory   WorkerFactory
 
+	// after provides the run elapsed-limit signal. Production uses time.After;
+	// a test supplies a driven channel so the limit law needs no real sleep.
+	after func(time.Duration) <-chan time.Time
+
 	// staleAfter is how long a claim may go untouched before this pass takes
 	// it over, resolved from Limits (or its default) at the top of Run, so
 	// every pass reads the same window.
@@ -142,6 +146,7 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		slots:     slots,
 		limits:    limits,
 		factory:   factory,
+		after:     time.After,
 		finished:  make(chan workerReturn, slots+1),
 		cancels:   make(map[string]context.CancelFunc),
 		checkOf:   make(map[string]string),
@@ -201,6 +206,10 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 
 	timer := time.NewTimer(passInterval)
 	defer timer.Stop()
+	var elapsed <-chan time.Time
+	if s.limits.Elapsed > 0 {
+		elapsed = s.after(s.limits.Elapsed)
+	}
 	for {
 		if outcome := s.pass(ctx, rootID); outcome != "" {
 			s.drain()
@@ -212,6 +221,28 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 			s.absorb(ret)
 		case <-timer.C:
 			timer.Reset(passInterval)
+		case <-elapsed:
+			// TIME AND COST SHARE ONE ENDING. Mark the same limit state the
+			// spend counter marks, so the next pass launches nothing and answers
+			// the existing OutcomeLimit.
+			//
+			// THE DIFFERENCE IS THE WORK IN FLIGHT. A cost limit lets it finish,
+			// because what it will spend is already committed; a time limit
+			// cannot, because the time is gone. So every worker is ended here, and
+			// ITS ENDING IS ABSORBED, the way the caller's wall below reads its
+			// endings: a return that was dropped would leave its task claimed and
+			// reading as running on a run that is over, and what the worker spent
+			// before it was cut would be missing from the run's account.
+			s.limitHit = true
+			elapsed = nil
+			for _, cancel := range s.cancels {
+				cancel()
+			}
+			for s.inFlight > 0 {
+				ret := <-s.finished
+				s.inFlight--
+				s.absorb(ret)
+			}
 		case <-ctx.Done():
 			// The caller's wall: workers still out there were handed this
 			// context and end with it. Their endings are absorbed so their
@@ -258,7 +289,8 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit) {
 		// Nothing of ours is running and the run cannot complete itself: the
-		// root's own worker failed, or the cost counter has reached its limit.
+		// root's own worker failed, or the run has reached a limit a person set,
+		// in dollars or in time.
 		// The word says which; the store keeps whatever the run reached.
 		if s.limitHit {
 			return OutcomeLimit

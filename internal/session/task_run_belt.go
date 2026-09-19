@@ -63,6 +63,9 @@ type RunSpec struct {
 	// wide as the conversation may.
 	Slots   int
 	CostUSD float64
+	// Elapsed is the conversation time still available when this run starts.
+	// Zero means no time ceiling, matching the run engine's Limits contract.
+	Elapsed time.Duration
 	// StepsPerTask is the per-task step cap, the same figure a node of this
 	// session's own tree carries.
 	StepsPerTask int
@@ -293,6 +296,13 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	workSeat, _ := roles.TierModel(source, roles.TierWorker)
 	planSeat, _ := roles.TierModel(source, roles.TierMastermind)
 
+	wallLeft, _ := a.config.Budget.Left()
+	if a.config.Budget.Wall > 0 && !a.startedAt.IsZero() {
+		wallLeft = a.config.Budget.Wall - time.Since(a.startedAt)
+		if wallLeft <= 0 {
+			wallLeft = time.Nanosecond
+		}
+	}
 	spec := RunSpec{
 		Store:     store,
 		Workspace: run.workspace,
@@ -300,6 +310,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		Brief:     brief,
 		Slots:     a.config.TaskParallel,
 		CostUSD:   a.config.SpendRailUSD,
+		Elapsed:   wallLeft,
 		// The step cap a node of this session's own tree carries, so a run
 		// worker and a node worker stop at the same figure.
 		StepsPerTask: taskMaxSteps,
@@ -585,6 +596,9 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		state = TaskFailed
 	}
 	report := strings.TrimSpace(summary.Result)
+	if report == "" && summary.Outcome != beltRunOutcomeDone {
+		report = strings.TrimSpace(summary.Outcome)
+	}
 	if line := beltLandingLine(landing); line != "" {
 		if report != "" {
 			report += "\n"
