@@ -61,17 +61,71 @@ func (o *doorOrganizer) Organize(ctx context.Context, job workspace.Job) (string
 }
 
 func (o *doorOrganizer) applyJob(ctx context.Context, svc *wsapi.Service, job workspace.Job) (string, string, error) {
+	if explicitOrganizeJob(job) {
+		return o.surveyExisting(ctx, svc, job)
+	}
+	return o.applyChat(ctx, svc, job, false)
+}
+
+func explicitOrganizeJob(job workspace.Job) bool {
+	return job.CoalesceKey == workspace.OrganizeExistingKey
+}
+
+const organizeSurveyCap = 8
+
+func (o *doorOrganizer) surveyExisting(ctx context.Context, svc *wsapi.Service, job workspace.Job) (string, string, error) {
+	ids := surveyChatIDs(ctx, svc)
+	if len(ids) == 0 {
+		return workspace.JobCompleted, wsapi.PlanNoAction, nil
+	}
+	kind := wsapi.PlanNoAction
+	for i, id := range ids {
+		if i >= organizeSurveyCap {
+			return workspace.JobDeferred, embed.LabelDelayed, nil
+		}
+		one := job
+		one.ChatID = id
+		state, detail, err := o.applyChat(ctx, svc, one, true)
+		if err != nil || state == workspace.JobDeferred || state == workspace.JobFailed {
+			return workspace.JobDeferred, embed.LabelDelayed, nil
+		}
+		if state == workspace.JobCompleted && detail != "" && detail != wsapi.PlanNoAction {
+			kind = detail
+		}
+	}
+	return workspace.JobCompleted, kind, nil
+}
+
+func surveyChatIDs(ctx context.Context, svc *wsapi.Service) []string {
+	if svc == nil {
+		return nil
+	}
+	root, err := svc.RootSnapshot(ctx)
+	if err != nil {
+		return nil
+	}
+	ids := make([]string, 0, len(root.Unfiled))
+	for _, place := range root.Unfiled {
+		if id := strings.TrimSpace(place.Ref.ID); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func (o *doorOrganizer) applyChat(ctx context.Context, svc *wsapi.Service, job workspace.Job, survey bool) (string, string, error) {
 	hits, query := gatherEvidence(ctx, svc, job)
 	plan, err := o.rolePlan(ctx, session.OrganizeRequest{
 		ChatID: job.ChatID, SourceRev: job.SourceRev,
 		Evidence:  formatEvidence(query, hits),
 		Hierarchy: formatHierarchy(ctx, svc, job.ChatID),
 		Degraded:  evidenceDegraded(hits),
+		Survey:    survey,
 	})
 	if err != nil {
 		return workspace.JobDeferred, embed.LabelDelayed, nil
 	}
-	return commitPlan(ctx, svc, job, preparePlan(ctx, svc, actionPlanOf(plan, job, hits)))
+	return commitPlan(ctx, svc, job, preparePlan(ctx, svc, actionPlanOf(plan, job, hits), survey))
 }
 
 func (o *doorOrganizer) rolePlan(ctx context.Context, req session.OrganizeRequest) (session.OrganizePlan, error) {
@@ -423,12 +477,51 @@ func passageHash(text string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func preparePlan(ctx context.Context, svc *wsapi.Service, plan wsapi.ActionPlan) wsapi.ActionPlan {
+func preparePlan(ctx context.Context, svc *wsapi.Service, plan wsapi.ActionPlan, allowCreate bool) wsapi.ActionPlan {
 	plan = refuseInventedMembership(plan)
+	if !allowCreate {
+		plan = refuseEmptyRootCreate(ctx, svc, plan)
+	}
 	for i := range plan.Actions {
 		plan.Actions[i] = fillOneRevision(ctx, svc, plan.Actions[i], plan.ChatID)
 	}
 	return plan
+}
+
+func refuseEmptyRootCreate(ctx context.Context, svc *wsapi.Service, plan wsapi.ActionPlan) wsapi.ActionPlan {
+	if !planCreatesFolder(plan) || collectionCount(ctx, svc) > 0 {
+		return plan
+	}
+	plan.Kind = wsapi.PlanNoAction
+	plan.Actions = nil
+	return plan
+}
+
+func planCreatesFolder(plan wsapi.ActionPlan) bool {
+	if plan.Kind == wsapi.PlanCreateFolder {
+		return true
+	}
+	for _, action := range plan.Actions {
+		if action.Kind == wsapi.PlanCreateFolder {
+			return true
+		}
+	}
+	return false
+}
+
+func collectionCount(ctx context.Context, svc *wsapi.Service) int {
+	if svc == nil {
+		return 0
+	}
+	store := svc.Workspace()
+	if store == nil {
+		return 0
+	}
+	cols, err := store.Collections(ctx)
+	if err != nil {
+		return 0
+	}
+	return len(cols)
 }
 
 func refuseInventedMembership(plan wsapi.ActionPlan) wsapi.ActionPlan {
@@ -468,7 +561,15 @@ func fillOneRevision(ctx context.Context, svc *wsapi.Service, action wsapi.Actio
 	if action.Ref.ID == "" && chatID != "" {
 		action.Ref = workspace.Ref{Kind: workspace.ConversationKind, ID: chatID}
 	}
-	if action.ExpectedRevision != 0 || action.CollectionID == "" || svc == nil {
+	if svc == nil {
+		return action
+	}
+	if action.Kind == wsapi.PlanCreateFolder {
+		if root, err := svc.RootSnapshot(ctx); err == nil {
+			action.ExpectedRootRevision = root.Revision
+		}
+	}
+	if action.ExpectedRevision != 0 || action.CollectionID == "" {
 		return action
 	}
 	folder, _, err := svc.FolderSnapshot(ctx, action.CollectionID)

@@ -250,6 +250,77 @@ func TestBlankCreateWritesV5WithGrantTables(t *testing.T) {
 	}
 }
 
+func TestCancelAndLookupFollowTheExplicitKey(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "existing.db"))
+	cols, err := s.Collections(ctx)
+	if err != nil || len(cols) != 0 {
+		t.Fatalf("blank store already had folders: %+v, %v", cols, err)
+	}
+	first, err := s.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey})
+	if err != nil || first.State != JobPending {
+		t.Fatalf("enqueue: %+v, %v", first, err)
+	}
+	cols, err = s.Collections(ctx)
+	if err != nil || len(cols) != 0 {
+		t.Fatalf("enqueue invented folders: %+v, %v", cols, err)
+	}
+	again, err := s.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey})
+	if err != nil || again.ID != first.ID {
+		t.Fatalf("coalesce: %+v vs %s, %v", again, first.ID, err)
+	}
+	got, err := s.LookupJob(ctx, JobOrganize, OrganizeExistingKey)
+	if err != nil || got.ID != first.ID || got.State != JobPending {
+		t.Fatalf("lookup pending: %+v, %v", got, err)
+	}
+	cancelled, err := s.CancelJob(ctx, JobOrganize, OrganizeExistingKey)
+	if err != nil || cancelled.ID != first.ID || cancelled.State != JobCancelled {
+		t.Fatalf("cancel: %+v, %v", cancelled, err)
+	}
+	status, err := s.LookupJob(ctx, JobOrganize, OrganizeExistingKey)
+	if err != nil || status.State != JobCancelled {
+		t.Fatalf("lookup cancelled: %+v, %v", status, err)
+	}
+	next, err := s.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey})
+	if err != nil || next.ID == first.ID || next.State != JobPending {
+		t.Fatalf("re-enqueue after cancel: %+v vs %s, %v", next, first.ID, err)
+	}
+}
+
+func TestFinishAfterCancelIsNoOpAndRestartKeepsPending(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "resume.db")
+	s := openTestStore(t, path)
+	job, err := s.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leased, err := s.LeaseJob(ctx, []string{JobOrganize}, "tick", "2099-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CancelJob(ctx, JobOrganize, OrganizeExistingKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishJob(ctx, leased.ID, leased.Fence, JobCompleted, "add"); err != nil {
+		t.Fatalf("finish after cancel: %v", err)
+	}
+	if got := jobState(t, path, job.ID); got != JobCancelled {
+		t.Fatalf("cancelled job became %q", got)
+	}
+	s.Close()
+
+	again := openTestStore(t, path)
+	pending, err := again.EnqueueJob(ctx, Job{Type: JobOrganize, CoalesceKey: OrganizeExistingKey, ChatID: "chat-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found, err := again.LookupJob(ctx, JobOrganize, OrganizeExistingKey)
+	if err != nil || found.ID != pending.ID || found.State != JobPending {
+		t.Fatalf("restart lost the queued survey: %+v, %v", found, err)
+	}
+}
+
 func requireFenceConflict(t *testing.T, err error) {
 	t.Helper()
 	if !errors.Is(err, ErrConflict) {

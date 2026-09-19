@@ -281,6 +281,176 @@ func writeOrganizeChat(t *testing.T, id, said string) {
 	writeV3Session(t, filepath.Join(session.PlacesRoot(), "lab"), id, said, time.Now())
 }
 
+func TestAutomaticCreateFolderDoesNotInventOnEmptyRoot(t *testing.T) {
+	homeDir := isolateOrganizeHome(t)
+	writeOrganizeChat(t, organizeBillingID, "emailed download links for the receipt")
+
+	live := liveOrganizeEmbedder()
+	svc, _ := openV3FolderServiceWith(live)
+	if svc == nil {
+		t.Fatal("folders did not open")
+	}
+	_ = svc.Close()
+
+	job := enqueueBareOrganizeJob(t, organizeBillingID, "1:cafe")
+	work := newDoorOrganizer(live, createBillingPlan(organizeBillingID))
+	runOrganizeJob(t, work)
+
+	state, detail := readJobFinish(t, homeDir, job.ID)
+	if state != workspace.JobCompleted || detail != wsapi.PlanNoAction {
+		t.Fatalf("automatic create finished %s %s, want completed no-action", state, detail)
+	}
+	assertNoFolders(t)
+}
+
+func TestExplicitSurveyMayCreateAFolderFromEvidence(t *testing.T) {
+	homeDir := isolateOrganizeHome(t)
+	writeOrganizeChat(t, organizeBillingID, "emailed download links for the receipt")
+	writeOrganizeChat(t, organizeSecurityID, "customers must authenticate receipt links")
+
+	live := liveOrganizeEmbedder()
+	svc, _ := openV3FolderServiceWith(live)
+	if svc == nil {
+		t.Fatal("folders did not open")
+	}
+	_ = svc.Close()
+
+	job := enqueueExistingOrganizeJob(t)
+	work := newDoorOrganizer(live, createBillingPlan(organizeBillingID))
+	runOrganizeJob(t, work)
+
+	state, detail := readJobFinish(t, homeDir, job.ID)
+	if state != workspace.JobCompleted {
+		t.Fatalf("explicit survey finished %s (%s), want completed", state, detail)
+	}
+	assertFolderNamed(t, "Billing")
+}
+
+func TestExplicitSurveyKeepsUpgradePlacements(t *testing.T) {
+	ctx := context.Background()
+	homeDir := isolateOrganizeHome(t)
+	writeOrganizeChat(t, organizeBillingID, "emailed download links for the receipt")
+
+	live := liveOrganizeEmbedder()
+	svc, _ := openV3FolderServiceWith(live)
+	if svc == nil {
+		t.Fatal("folders did not open")
+	}
+	billing, err := svc.CreateFolder(ctx, "Billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddPlacement(ctx, billing.ID, workspace.Ref{Kind: workspace.ConversationKind, ID: organizeBillingID}, workspace.Provenance{Origin: workspace.OriginPerson, Reason: "file"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = svc.Close()
+
+	job := enqueueExistingOrganizeJob(t)
+	work := newDoorOrganizer(live, func(context.Context, session.OrganizeRequest) (session.OrganizePlan, error) {
+		return session.OrganizePlan{Kind: session.PlanNoAction, Model: "organize-test"}, nil
+	})
+	runOrganizeJob(t, work)
+
+	state, _ := readJobFinish(t, homeDir, job.ID)
+	if state != workspace.JobCompleted {
+		t.Fatalf("upgrade survey finished %s", state)
+	}
+	assertChatInFolder(t, billing.ID, organizeBillingID)
+	assertFolderNamed(t, "Billing")
+}
+
+func enqueueBareOrganizeJob(t *testing.T, chatID, rev string) workspace.Job {
+	t.Helper()
+	jobs, err := workspace.Open(collectionsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobs.Close()
+	job, err := jobs.EnqueueJob(context.Background(), workspace.Job{
+		Type:        workspace.JobOrganize,
+		ChatID:      chatID,
+		SourceRev:   rev,
+		CoalesceKey: session.OrganizeCoalesceKey(chatID, rev),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return job
+}
+
+func enqueueExistingOrganizeJob(t *testing.T) workspace.Job {
+	t.Helper()
+	jobs, err := workspace.Open(collectionsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobs.Close()
+	job, err := jobs.EnqueueJob(context.Background(), workspace.Job{
+		Type:        workspace.JobOrganize,
+		CoalesceKey: workspace.OrganizeExistingKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return job
+}
+
+func createBillingPlan(chatID string) organizeFn {
+	return func(context.Context, session.OrganizeRequest) (session.OrganizePlan, error) {
+		create, err := json.Marshal(wsapi.Action{Kind: wsapi.PlanCreateFolder, FolderName: "Billing"})
+		if err != nil {
+			return session.OrganizePlan{}, err
+		}
+		add, err := json.Marshal(wsapi.Action{
+			Kind: wsapi.PlanAdd, CollectionID: "Billing",
+			Ref:    workspace.Ref{Kind: workspace.ConversationKind, ID: chatID},
+			Reason: "receipt download links",
+		})
+		if err != nil {
+			return session.OrganizePlan{}, err
+		}
+		return session.OrganizePlan{
+			Kind: session.PlanCreateFolder, Model: "organize-test",
+			Actions: []json.RawMessage{create, add},
+		}, nil
+	}
+}
+
+func assertNoFolders(t *testing.T) {
+	t.Helper()
+	svc, err := wsapi.Open(collectionsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	root, err := svc.RootSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(root.Folders) != 0 {
+		t.Fatalf("automatic apply invented folders: %+v", root.Folders)
+	}
+}
+
+func assertFolderNamed(t *testing.T, name string) {
+	t.Helper()
+	svc, err := wsapi.Open(collectionsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	root, err := svc.RootSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range root.Folders {
+		if folder.Name == name {
+			return
+		}
+	}
+	t.Fatalf("missing folder %s: %+v", name, root.Folders)
+}
+
 func enqueueOrganizeJob(t *testing.T, chatID, rev string) workspace.Job {
 	t.Helper()
 	jobs, err := workspace.Open(collectionsPath())

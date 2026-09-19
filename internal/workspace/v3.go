@@ -8,15 +8,18 @@ import (
 )
 
 const (
-	JobPending         = "pending"
-	JobLeased          = "leased"
-	JobCompleted       = "completed"
-	JobDeferred        = "deferred"
-	JobFailed          = "failed"
-	JobCancelled       = "cancelled"
-	JobOrganize        = "observe_and_organize"
-	GuidanceActive     = "active"
-	GuidanceSuperseded = "superseded"
+	JobPending   = "pending"
+	JobLeased    = "leased"
+	JobCompleted = "completed"
+	JobDeferred  = "deferred"
+	JobFailed    = "failed"
+	JobCancelled = "cancelled"
+	JobOrganize  = "observe_and_organize"
+	// OrganizeExistingKey is the coalesce key for the explicit Folders-place
+	// survey. Automatic after-message jobs use chat id + source revision instead.
+	OrganizeExistingKey = "organize_existing"
+	GuidanceActive      = "active"
+	GuidanceSuperseded  = "superseded"
 )
 
 const jobColumns = "id,type,state,owner,fence,cause_id,coalesce_key,chat_id,source_rev,error,attempt,lease_until,created_at,updated_at"

@@ -85,6 +85,22 @@ func TestProcessOrganizeJobsLeasesOutsideTheWriterAndFinishes(t *testing.T) {
 	}
 }
 
+func TestProcessOrganizeJobsRunsExplicitWhenOrganizeIsOff(t *testing.T) {
+	jobs := &fakeOrganizeJobs{pending: []workspace.Job{{
+		ID: "j1", Type: workspace.JobOrganize, CoalesceKey: workspace.OrganizeExistingKey,
+	}}}
+	work := &fakeOrganizer{state: workspace.JobCompleted, detail: "no-action"}
+	if err := ProcessOrganizeJobs(context.Background(), jobs, work, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if len(work.saw) != 1 || work.saw[0].CoalesceKey != workspace.OrganizeExistingKey {
+		t.Fatalf("off cancelled the explicit survey: %+v", work.saw)
+	}
+	if len(jobs.finished) != 1 || jobs.finished[0].State != workspace.JobCompleted {
+		t.Fatalf("explicit finish %+v", jobs.finished)
+	}
+}
+
 func TestProcessOrganizeJobsCancelsWhenOrganizeIsOff(t *testing.T) {
 	jobs := &fakeOrganizeJobs{pending: []workspace.Job{{ID: "j1", Type: workspace.JobOrganize}}}
 	work := &fakeOrganizer{state: workspace.JobCompleted}

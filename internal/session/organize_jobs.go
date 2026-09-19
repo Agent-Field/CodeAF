@@ -84,7 +84,7 @@ func settleOrganizeJob(ctx context.Context, work Organizer, enabled bool, job wo
 	if job.Attempt >= organizeAttemptCap {
 		return workspace.JobFailed, "too many attempts"
 	}
-	if !enabled {
+	if !enabled && !explicitOrganize(job) {
 		return workspace.JobCancelled, "workspace.organize is off"
 	}
 	state, detail, err := work.Organize(ctx, job)
@@ -103,6 +103,10 @@ func validOrganizeFinish(state string) bool {
 		return true
 	}
 	return false
+}
+
+func explicitOrganize(job workspace.Job) bool {
+	return job.CoalesceKey == workspace.OrganizeExistingKey
 }
 
 func organizeChatID(place Place, fallback string) string {

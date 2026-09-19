@@ -205,9 +205,8 @@ func checkActionFreshness(action Action, world *planWorld) error {
 		}
 		return world.matchRev(action.ToID, action.ExpectedTo)
 	case PlanCreateFolder:
-		if action.ExpectedRootRevision == 0 {
-			return zeroRevision()
-		}
+		// A blank store's root revision is 0. That is the live stamp, not a
+		// missing CAS: mismatch still refuses, including 0 versus a used root.
 		if action.ExpectedRootRevision != world.root {
 			return workspace.ErrConflict
 		}
@@ -222,11 +221,11 @@ func checkActionFreshness(action Action, world *planWorld) error {
 }
 
 func (w *planWorld) matchRev(id string, expected int) error {
-	if expected == 0 {
-		return zeroRevision()
-	}
 	if w.pendingID(id) {
 		return nil
+	}
+	if expected == 0 {
+		return zeroRevision()
 	}
 	if w.revs[id] != expected {
 		return workspace.ErrConflict

@@ -130,6 +130,20 @@ func (a *foldersAdapter) IndexProgress(ctx context.Context) (tui3.FolderIndex, e
 	}, nil
 }
 
+// OrganizeExisting launches the explicit survey. t-fe-ui owns the Folders
+// place DTO; this door returns the wsapi view that place maps.
+func (a *foldersAdapter) OrganizeExisting(ctx context.Context) (wsapi.OrganizeView, error) {
+	return a.svc.OrganizeExistingChats(ctx)
+}
+
+func (a *foldersAdapter) OrganizeStatus(ctx context.Context) (wsapi.OrganizeView, error) {
+	return a.svc.OrganizeStatus(ctx)
+}
+
+func (a *foldersAdapter) CancelOrganize(ctx context.Context) error {
+	return a.svc.CancelOrganize(ctx)
+}
+
 func (a *foldersAdapter) WhyHere(ctx context.Context, collectionID, refID string) (tui3.FolderWhy, error) {
 	why, err := a.svc.WhyHere(ctx, collectionID, conversationRef(refID))
 	if err != nil {
