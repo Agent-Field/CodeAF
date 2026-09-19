@@ -183,6 +183,9 @@ func TestPreparedAuditCommandKeepsAChainAndDropsARedirect(t *testing.T) {
 	if got := preparedAuditCommand(escapedBar); got != escapedBar {
 		t.Fatalf("quoted backslash-bar command was rewritten to %q", got)
 	}
+	if got, ok := firstStage(escapedBar); !ok || got != escapedBar {
+		t.Fatalf("firstStage(quoted backslash-bar command) = %q, %v", got, ok)
+	}
 	if got := preparedAuditCommand("python3 -m pytest tests 2>&1"); got != "python3 -m pytest tests" {
 		t.Fatalf("redirected pytest = %q", got)
 	}
