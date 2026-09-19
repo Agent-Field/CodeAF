@@ -76,6 +76,38 @@ func TestStartNamesTheCostLimit(t *testing.T) {
 	}
 }
 
+// TestTheLimitNamedIsTheFirstOneReached cuts a run by its time limit, and the
+// worker that cut ends comes home with a receipt past the dollar limit. The
+// time limit ended the run; the receipt arrived because of that ending and does
+// not rename it. Read only at the return, the dollar limit took the name.
+func TestTheLimitNamedIsTheFirstOneReached(t *testing.T) {
+	store, err := plandb.Open(t.TempDir()+"/plan.json", "first-limit", "root", "root", "run until the limit")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+	factory := func(task plandb.Task) Worker {
+		return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
+			<-ctx.Done()
+			return Report{USD: 5}, ctx.Err()
+		})
+	}
+	outcome, summary := Start(context.Background(), Spec{
+		Store: store, Workspace: t.TempDir(), Title: "run", Brief: "run until the limit",
+		Limits:  Limits{CostUSD: 1, Elapsed: 20 * time.Millisecond},
+		Factory: factory,
+	})
+	if outcome != OutcomeLimit {
+		t.Fatalf("outcome = %q, want %q", outcome, OutcomeLimit)
+	}
+	if summary.Limit != LimitTime {
+		t.Fatalf("limit fact = %q, want the time limit, which was reached first", summary.Limit)
+	}
+	if summary.USD != 5 {
+		t.Fatalf("run spend = %v, want the receipt counted whichever limit is named", summary.USD)
+	}
+}
+
 // TestRunLimitCrossesTheSeamAsItself keeps the fact a fact across the engine
 // wire: each limit maps one for one onto the session's own words, and a limit
 // this build does not know reads as none rather than as a guess.
