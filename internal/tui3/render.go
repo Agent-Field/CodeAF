@@ -292,6 +292,7 @@ func (a *app) layout(width int) []row {
 		out = append(out, row{text: line, entry: -1})
 	}
 	out = a.withCollabRows(out, inner)
+	out = a.withExecRows(out, inner)
 	// THE GUTTER, BEFORE THE TWO PASSES THAT PAINT THE WHOLE ROW (gutter.go). It
 	// goes here rather than one line later because the wash and the ground below
 	// are statements about the row a person is on, and a band that stopped two
