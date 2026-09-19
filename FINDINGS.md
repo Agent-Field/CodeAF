@@ -29,3 +29,7 @@ The required focused session command passes, as do formatting, the whole build, 
 ## Review finding: refusal must stay at the hand-off door
 
 The run starter correctly rejects a second hand-off whose resolved ground differs from the live run, but the approved-proposal door currently discards that explanation and admits the proposal to the session tree. The next step adds a door-level regression test and returns the clear same-ground refusal instead, so an approved different-ground hand-off cannot silently take another execution road.
+
+## Review finding resolved
+
+The approved-proposal door now preserves the run starter's different-ground refusal and does not admit a session-tree task. A focused door-level test explicitly sets the belt, opens a live run, approves a proposal on another repository, requires the plain same-ground explanation, and proves that no fallback node exists.
