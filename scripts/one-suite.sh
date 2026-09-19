@@ -11,10 +11,9 @@
 # run on the same box refuses to start and says who holds it rather than joining
 # the pile and reporting a red nobody caused.
 #
-# THE LOCK IS A PID WITH ITS COMMAND LINE CHECKED, not a path's existence. A
-# session that died mid-run must not leave the box locked, and a pid that was
-# reused by something else must not either; the lock is stale unless the pid
-# is alive AND is still running this script, and a stale lock is simply taken.
+# THE LOCK IS A KERNEL LOCK HELD BY AN OPEN FILE. Its lifetime does not depend
+# on one pid namespace seeing another, and the kernel drops it if the holder
+# dies. The file contents retain the holder pid and start time for a refusal.
 # The Makefile invokes this wrapper for a full `make test` or `test-report` when
 # PKGS contains `./...`, `./internal/tui3` or `./internal/session`. A
 # `test-focus` selector and lighter packages do not take it, so cheap,
@@ -25,53 +24,17 @@
 # exactly what sessions do not share.
 set -euo pipefail
 
-# The lock is a directory, because mkdir is atomic where a check-then-write
-# of a file is not: two starters in the same instant would both see no holder
-# and both write, and the first to finish would remove the other's lock.
-lock="/tmp/codeaf-suite-$(id -u).lock"
-
-holder_alive() {
-	local pid="$1"
-	[ -n "$pid" ] || return 1
-	kill -0 "$pid" 2>/dev/null || return 1
-	# Linux has /proc; elsewhere ps answers the same question more slowly.
-	local args
-	if [ -r "/proc/$pid/cmdline" ]; then
-		args="$(tr '\0' ' ' <"/proc/$pid/cmdline")"
-	else
-		args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
-	fi
-	case "$args" in *one-suite.sh*) return 0 ;; esac
-	return 1
-}
-
-# Take the lock, or refuse naming the holder. A stale lock — a holder that is
-# dead, or a pid reused by something else — is MOVED ASIDE, not removed: two
-# contenders can both judge it stale, and only one mv of the same directory
-# succeeds, so the other cannot delete a lock the winner has just taken. The
-# take is then tried once more; a failure after that is a live holder that
-# arrived in between, and the refusal stands.
-take() {
-	mkdir "$lock" 2>/dev/null
-}
-if ! take; then
-	holder="$(cat "$lock/pid" 2>/dev/null || true)"
-	if holder_alive "$holder"; then
-		printf '%s\n' "another heavy suite is already running on this box (pid ${holder}, started $(cat "$lock/since" 2>/dev/null || echo '?'))." \
-			'Wait for it, or run one named regression with make test-focus.' >&2
-		exit 1
-	fi
-	stale="$lock.stale.$$"
-	if mv "$lock" "$stale" 2>/dev/null; then
-		rm -rf "$stale"
-	fi
-	if ! take; then
-		echo 'another heavy suite took the lock this instant; try again.' >&2
-		exit 1
-	fi
+lock="/tmp/codeaf-suite-$(id -u).lockfile"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+helper="${CODEAF_SUITE_LOCK_HELPER:-$root/bin/codeaf-suite-lock}"
+if [ -z "${CODEAF_SUITE_LOCK_HELPER:-}" ]; then
+	mkdir -p "$root/bin"
+	tmp="$helper.tmp.$$"
+	trap 'rm -f "$tmp"' EXIT
+	go build -o "$tmp" "$root/cmd/codeaf-suite-lock"
+	mv "$tmp" "$helper"
+	trap - EXIT
 fi
-printf '%s\n' "$$" >"$lock/pid"
-date -u +%Y-%m-%dT%H:%M:%SZ >"$lock/since"
 
 # AND THIS SCRIPT EXPORTS NO STATE ROOT OF ITS OWN.
 #
@@ -104,21 +67,7 @@ if [ "${suite[0]:-}" = go ] && [ "${suite[1]:-}" = test ]; then
 	[ -n "$counted" ] || suite=(go test -count=1 "${suite[@]:2}")
 fi
 
-# THE SCRIPT STAYS ALIVE AS THE HOLDER. An exec would make the holder's command
-# line the suite's own, and the check above would read its lock as stale; so
-# the suite runs as a child, a stop reaches it, and the lock goes when it ends.
-"${suite[@]}" &
-child=$!
-trap 'rm -rf "$lock"' EXIT
-trap 'kill -INT "$child" 2>/dev/null || true' INT
-trap 'kill -TERM "$child" 2>/dev/null || true' TERM
-# AND THE WAIT OUTLIVES THE SIGNAL. A trapped signal returns from `wait` at
-# once, before the child has acted on the one forwarded to it; exiting then
-# would drop the lock with the suite still running. So the wait is repeated
-# until the child is really gone, and only its own status is kept.
-status=0
-while true; do
-	if wait "$child"; then status=0; else status=$?; fi
-	kill -0 "$child" 2>/dev/null || break
-done
-exit "$status"
+# Replace the shell with the lock holder so killing the starter closes the
+# descriptor immediately. The helper forwards ordinary stops to the suite and
+# waits for it before releasing.
+exec "$helper" "$lock" "${suite[@]}"
