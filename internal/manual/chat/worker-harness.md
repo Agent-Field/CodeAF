@@ -59,8 +59,12 @@ Each row wears one state word, mapped off the store's own status:
 - `running` — the store says `ready`, `claimed` or `running`: the work is
   deliverable, or a worker has it.
 - `done` — the store says `done`.
-- `incomplete` — the store says `failed` or `cancelled`. Nothing judged it, so the
-  word must not send you looking for a fault.
+- `incomplete` — the store says `failed`, or `cancelled` by anything but your own
+  stop. Nothing judged it, so the word must not send you looking for a fault.
+- `stopped` — you ended it. A run you stopped, a part you stopped with `x`, and every
+  part that stop ended with it all read `stopped`, on the side list, in the tasks
+  place and on the task's own page alike. A part that had already failed, or that the
+  run cancelled for its own reasons at another moment, keeps `incomplete`.
 - `your call` — the store says `paused`: the task is held at a gate, which is your
   call and nothing else's.
 

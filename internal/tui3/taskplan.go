@@ -166,8 +166,11 @@ func (a *app) refreshRunSummary() tea.Cmd {
 // because nothing was judged and the word must not send them looking for a
 // fault. `paused` is a task held at a gate, which is the person's call and
 // nothing else's.
-func planStateWord(status string) string {
-	switch strings.TrimSpace(status) {
+func planStateWord(row session.PlanTaskRow) string {
+	if row.Stopped {
+		return "stopped"
+	}
+	switch strings.TrimSpace(row.Status) {
 	case "pending":
 		return "queued"
 	case "ready", "claimed", "running":
@@ -188,7 +191,15 @@ func planStateWord(status string) string {
 // glyph comes off (tasktier.go's [tierSlot]), the presence, and the word. It is
 // a [session.TaskStatus] so the place's own row machinery — the glyph, the state
 // cell, the phone card — draws a plan row the one way it draws every other.
-func planStatus(store string) session.TaskStatus {
+func planStatus(row session.PlanTaskRow) session.TaskStatus {
+	if row.Stopped {
+		return session.TaskStatus{
+			Tier:     session.TaskTierOver,
+			Presence: session.TaskPresenceStopped,
+			Word:     planStateWord(row),
+		}
+	}
+	store := row.Status
 	switch strings.TrimSpace(store) {
 	case "pending":
 		// ADMITTED, NOT STARTED — the queued presence, and the moving tier
@@ -197,31 +208,31 @@ func planStatus(store string) session.TaskStatus {
 		return session.TaskStatus{
 			Tier:     session.TaskTierMoving,
 			Presence: session.TaskPresenceQueued,
-			Word:     planStateWord(store),
+			Word:     planStateWord(row),
 		}
 	case "ready", "claimed", "running":
 		return session.TaskStatus{
 			Tier:     session.TaskTierMoving,
 			Presence: session.TaskPresenceWorking,
-			Word:     planStateWord(store),
+			Word:     planStateWord(row),
 		}
 	case "done":
 		return session.TaskStatus{
 			Tier:     session.TaskTierOver,
 			Presence: session.TaskPresenceDone,
-			Word:     planStateWord(store),
+			Word:     planStateWord(row),
 		}
 	case "failed", "cancelled":
 		return session.TaskStatus{
 			Tier:     session.TaskTierOver,
 			Presence: session.TaskPresenceIncomplete,
-			Word:     planStateWord(store),
+			Word:     planStateWord(row),
 		}
 	case "paused":
 		return session.TaskStatus{
 			Tier:      session.TaskTierYourCall,
 			Presence:  session.TaskPresenceNeedsLook,
-			Word:      planStateWord(store),
+			Word:      planStateWord(row),
 			Attention: true,
 		}
 	}
@@ -269,7 +280,7 @@ func planRunning(store string) bool {
 // anything ([app.taskWaitTitles] states that law for the column's own
 // dependencies).
 func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
-	status := planStatus(row.Status)
+	status := planStatus(row)
 	// A ROW HELD BEHIND NAMED WORK SAYS SO ON THE ROW, and the reason rides the
 	// READING rather than being composed at each draw (SURFACE.md §3's second
 	// correction). [session.TaskStatus.RowWord] is the one place this surface
@@ -329,7 +340,7 @@ func planSpendWord(usd float64) string {
 // width chooses a vocabulary tier; marks always come through the palette.
 func planProgress(row session.PlanTaskRow, width int, pal palette) string {
 	if row.Total <= 1 {
-		return planStateWord(row.Status)
+		return planStateWord(row)
 	}
 	if row.Done == row.Total && row.Failed == 0 {
 		return "done"
@@ -471,12 +482,12 @@ func planWaits(row *session.PlanTaskRow, kin planKin) string {
 	}
 	for _, id := range row.Waits {
 		dep := kin[strings.TrimSpace(id)]
-		if dep != nil && strings.TrimSpace(dep.Title) != "" && planStateWord(dep.Status) != "done" {
+		if dep != nil && strings.TrimSpace(dep.Title) != "" && planStateWord(*dep) != "done" {
 			return strings.TrimSpace(dep.Title)
 		}
 	}
 	parent := kin[strings.TrimSpace(row.Parent)]
-	if parent != nil && strings.TrimSpace(parent.Title) != "" && planStateWord(parent.Status) != "done" {
+	if parent != nil && strings.TrimSpace(parent.Title) != "" && planStateWord(*parent) != "done" {
 		return strings.TrimSpace(parent.Title)
 	}
 	return ""
@@ -1139,7 +1150,7 @@ func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
 // against a real store to hold it (stoprun_footlaw_test.go).
 func (a *app) tasksPlanKeyWords(row session.PlanTaskRow) []string {
 	status := row.Status
-	if planEnded(status) {
+	if planEnded(row) {
 		return nil
 	}
 	words := []string{tasksPlanCancelWord}
@@ -1155,9 +1166,9 @@ func (a *app) tasksPlanKeyWords(row session.PlanTaskRow) []string {
 // planEnded reports whether a plan task has ended, read off the ONE word the
 // row already draws for its state, so the key line and the page's sentences
 // cannot disagree about which tasks can still move.
-func planEnded(status string) bool {
-	switch planStateWord(status) {
-	case "done", "incomplete":
+func planEnded(row session.PlanTaskRow) bool {
+	switch planStateWord(row) {
+	case "done", "incomplete", "stopped":
 		return true
 	}
 	return false
@@ -1391,7 +1402,7 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 		// A TASK THAT HAS ENDED TAKES NO NEXT STEP, so the sentence is absent
 		// there rather than false. Its row stays, empty, because the foot's
 		// height is fixed and the caret is placed against it.
-		if planEnded(a.taskSheet.plan.Row.Status) {
+		if planEnded(a.taskSheet.plan.Row) {
 			add("")
 		} else {
 			add(" " + pal.dim(fit(taskPlanPickupWord, width-1)))
@@ -1602,7 +1613,7 @@ func planBriefLines(text string, width int) []string {
 // its title, joined the way the page's own telemetry line joins two facts. The
 // word is the same [planStateWord] every row on this surface wears.
 func planChildWord(row session.PlanTaskRow) string {
-	word, title := planStateWord(row.Status), strings.TrimSpace(row.Title)
+	word, title := planStateWord(row), strings.TrimSpace(row.Title)
 	switch {
 	case word != "" && title != "":
 		return word + railSep + title
@@ -1683,7 +1694,7 @@ func (a *app) taskPlanFollows() bool {
 	if !a.taskSheet.detailOn || !a.taskSheet.planOn {
 		return false
 	}
-	switch planStateWord(a.taskSheet.plan.Row.Status) {
+	switch planStateWord(a.taskSheet.plan.Row) {
 	case "queued", "running":
 		return true
 	}
@@ -1694,7 +1705,7 @@ func (a *app) taskPlanRunning() bool {
 	if !a.taskSheet.detailOn || !a.taskSheet.planOn {
 		return false
 	}
-	return planStateWord(a.taskSheet.plan.Row.Status) == "running"
+	return planStateWord(a.taskSheet.plan.Row) == "running"
 }
 
 // planTelemetryLine is a plan task's own figures as one dim line: whether the
@@ -1702,7 +1713,7 @@ func (a *app) taskPlanRunning() bool {
 // each clause omitted when it has nothing behind it.
 func planTelemetryLine(row session.PlanTaskRow) string {
 	var segs []string
-	if word := planStateWord(row.Status); word != "" {
+	if word := planStateWord(row); word != "" {
 		segs = append(segs, word)
 	}
 	if steps := planStepWords(row.Steps); steps != "" {
@@ -1746,9 +1757,9 @@ func planChildWordWithKin(row session.PlanTaskRow, kin planKin) string {
 func planWaitFigure(pal palette, row session.PlanTaskRow) string {
 	figure := planStepWords(row.Steps)
 	if figure == "" {
-		figure = planStateWord(row.Status)
+		figure = planStateWord(row)
 	}
-	return strings.TrimSpace(tierGlyph(pal, planStatus(row.Status)) + " " + figure)
+	return strings.TrimSpace(tierGlyph(pal, planStatus(row)) + " " + figure)
 }
 
 func planPageTelemetryLine(page session.PlanTaskPage) string {

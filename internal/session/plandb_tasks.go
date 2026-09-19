@@ -45,6 +45,9 @@ type PlanTaskRow struct {
 	ID      string
 	Title   string
 	Status  string
+	// Stopped is true only when this task's own ending records a person's stop.
+	// It is established from store data here and crosses remote reads as row data.
+	Stopped bool
 	Seat    string
 	Parent  string
 	// Depth is the row's level below the page task; direct children are zero.
@@ -573,6 +576,7 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		ID:             planStoreID(task.ID),
 		Title:          task.Title,
 		Status:         status,
+		Stopped:        planTaskStopped(store, task),
 		Seat:           seat,
 		Steps:          len(planTrajectory(dir, task.ID)),
 		USD:            spend[task.ID],
@@ -596,6 +600,46 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		row.Waits = append(row.Waits, planStoreID(dep.TaskID))
 	}
 	return row
+}
+
+// planTaskStopped is the store property that distinguishes a person's stop
+// from every other cancellation. The stop road writes either the bare word or
+// that word followed by the person's reason, and this package writes it
+// ([stopBecause]), so reading it back is reading its own word.
+//
+// WHAT A STOP TOOK DOWN WITH IT WAS STOPPED TOO. The store ends everything
+// under a cancelled task in the same write and at the same instant, under its
+// own reason, so a part reads as stopped when it was cancelled in the very
+// instant an ancestor of it was stopped by a person. A part that failed or was
+// cancelled at any other moment, for any other reason, is not: it keeps the
+// word every other ending without a judgement wears.
+func planTaskStopped(store *plandb.Store, task *plandb.Task) bool {
+	if task == nil || task.Status != plandb.StatusCancelled {
+		return false
+	}
+	if planStopReason(task.Error) {
+		return true
+	}
+	seen := map[string]bool{task.ID: true}
+	for up := task.ParentID; up != "" && !seen[up] && store != nil; {
+		seen[up] = true
+		parent := store.Task(up)
+		if parent == nil {
+			return false
+		}
+		if parent.Status == plandb.StatusCancelled && planStopReason(parent.Error) {
+			return parent.CompletedAt.Equal(task.CompletedAt)
+		}
+		up = parent.ParentID
+	}
+	return false
+}
+
+// planStopReason reports whether an ending's reason is the one a person's stop
+// writes: the word alone, or the word and what they said.
+func planStopReason(reason string) bool {
+	reason = strings.TrimSpace(reason)
+	return reason == taskStoppedWord || strings.HasPrefix(reason, taskStoppedWord+": ")
 }
 
 // planLastNote answers the text of the newest note on a task, empty when there
