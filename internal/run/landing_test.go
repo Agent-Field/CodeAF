@@ -61,7 +61,6 @@ func TestLaunchWakesWaitsUntilAStoreFinishedChildReturnIsAbsorbed(t *testing.T) 
 	s.wakes = make(map[string]int)
 	s.reported = make(map[string]map[string]bool)
 	s.lastReport = make(map[string]string)
-	s.counted = make(map[string]float64)
 	s.cancels[leaf.ID] = func() {}
 	s.launchWakes(context.Background(), "root")
 	if s.inFlight != 0 {
@@ -129,7 +128,6 @@ func TestDrainStillEndsAnUnfinishedRemnant(t *testing.T) {
 			return Report{}, ctx.Err()
 		})
 	})
-	s.counted = make(map[string]float64)
 	s.launch(context.Background(), *store.Task("root"), "")
 	<-started
 	s.drain()
