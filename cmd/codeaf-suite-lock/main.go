@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -53,7 +54,16 @@ func run(path string, argv []string) int {
 				since = fields[1]
 			}
 			fmt.Fprintf(os.Stderr, "another heavy suite is already running on this box (pid %s, started %s).\n", pid, since)
-			fmt.Fprintln(os.Stderr, "Wait for it, or run one named regression with make test-focus.")
+			if held, convErr := strconv.Atoi(pid); convErr == nil && !holderAlive(held) {
+				// The lock is held on an inherited descriptor whose recorded
+				// holder has exited: a test the suite started leaked the
+				// descriptor into a process that outlived it, so the pid in the
+				// lock file is dead while the lock is not. Name a live way to find
+				// the real holder rather than a pid that points at nothing.
+				fmt.Fprintf(os.Stderr, "pid %s is gone; the lock is held by a process that inherited its descriptor. Find the real holder with: lsof %s\n", pid, path)
+			} else {
+				fmt.Fprintln(os.Stderr, "Wait for it, or run one named regression with make test-focus.")
+			}
 			return 1
 		}
 		fmt.Fprintf(os.Stderr, "take heavy-suite lock: %v\n", err)
