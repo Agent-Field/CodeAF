@@ -25,3 +25,7 @@ The isolated-run tests pass after the door began retaining one prepared tree per
 ## Proof results
 
 The required focused session command passes, as do formatting, the whole build, session/run vet, and the run/manual/name-law package tests. `make test-laws` reaches all 120 law files but remains red in five pre-existing `cmd/codeaf` kept-nothing cases: their scripted headless runs stop before any model call with the default model line; every other listed package, including `internal/session`, passes. No implementation or test file outside `internal/session` was changed.
+
+## Review finding: refusal must stay at the hand-off door
+
+The run starter correctly rejects a second hand-off whose resolved ground differs from the live run, but the approved-proposal door currently discards that explanation and admits the proposal to the session tree. The next step adds a door-level regression test and returns the clear same-ground refusal instead, so an approved different-ground hand-off cannot silently take another execution road.
