@@ -114,12 +114,19 @@ it finishes. Two quick tasks that name the same file run one after the other rat
 at once. The *tasks* page has it under *What a quick task is*. Everything below is about
 the ordinary kind.
 
-By default, no. Each code task gets its own checkout of **the repository the work is about**
-— its ground, resolved from what this conversation has been reading and editing (above) — on
-its own branch, so you can keep working in yours while it runs. If your request explicitly
+By default, no. Each code task gets its own copy of **the repository the work is about**
+— its ground, resolved from what this conversation has been reading and editing (above) — so
+you can keep working in yours while it runs. Children of one run share that run's copy; two
+runs never share a copy. A second hand-off may join a live run only when it stands on the
+same ground, and its answer says that it joined. One that stands elsewhere is refused and
+says that it cannot join work already underway on another ground. If your request explicitly
 names another plain folder, the task works in that exact folder instead. A path inside a
 repository still gets a branch from that repository; its card and its `/history` record
 show the resolved place.
+
+Finishing leaves the changes in the run's copy. Bringing them back is a separate step. The
+note says which branch received how many files; if the run only read, it brings back nothing
+and says there is nothing to bring back.
 
 codeaf makes that copy from your folder **as it stands** — see *Does a task see my
 unsaved changes* above for what travels and what does not.

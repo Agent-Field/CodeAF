@@ -128,6 +128,6 @@ func handoffReceipt(t *testing.T, state TaskState) string {
 		return fmt.Sprintf("task %d queued: %s\nIt starts when the work it waits on has finished and a slot is free. %s",
 			7, spec.title, taskHandoffWakeSentence)
 	}
-	return fmt.Sprintf("task %d started: %s\nIt works from the brief alone, in a copy of its own. %s",
+	return fmt.Sprintf("task %d started: %s\nIt works from the brief alone in this run’s own copy. Tasks joined to this run share that copy. Its work stays there until you land it. %s",
 		7, spec.title, taskHandoffWakeSentence)
 }
