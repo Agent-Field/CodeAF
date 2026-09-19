@@ -28,10 +28,12 @@ const (
 
 // OrganizeRequest is what the tick hands the runner after it has leased a job
 // and gathered lexical plus vector (or labelled expansion) candidates.
+// Hierarchy is the live folder id/name list CONTRACTS.md names; without it the
+// model can only return no-action, because add needs a collection_id.
 type OrganizeRequest struct {
-	ChatID, SourceRev, Evidence string
-	High                        bool // restructuring or instruction conflicts
-	Degraded                    bool
+	ChatID, SourceRev, Evidence, Hierarchy string
+	High                                   bool // restructuring or instruction conflicts
+	Degraded                               bool
 }
 
 // OrganizePlan is the typed organizer output the tick validates and applies.
@@ -44,9 +46,10 @@ type OrganizePlan struct {
 
 const organizeSystem = "You organize chats into folders from cited evidence only. Similarity scores are never membership. Answer with one JSON object."
 
-const organizePrompt = `Given the evidence, return one JSON object:
+const organizePrompt = `Given the evidence and folders, return one JSON object:
 {"kind":"no-action"|"add"|"remove"|"move"|"create-folder","chat_id":"...","source_rev":"...","actions":[],"degraded":false}
-kind no-action requires actions empty. Cite only the evidence. Do not invent membership.`
+kind add requires actions like [{"kind":"add","collection_id":"<id from folders>","ref":{"kind":"conversation","id":"<chat_id>"},"reason":"..."}].
+Add this chat to a folder when cited evidence from a chat already in that folder shows the same purpose. Dual membership is allowed. kind no-action when already filed there, overlap is weak, or no folder id to cite. Cite only the evidence. Do not invent folder ids.`
 
 // Organize is the runner the tick calls. Spend is tagged RoleOrganize. A high
 // floor is the high-tier model when the request says the work is restructuring
@@ -60,8 +63,11 @@ func (a *Agent) Organize(ctx context.Context, req OrganizeRequest) (OrganizePlan
 	defer restore()
 	floor := a.organizeFloor(req.High)
 	user := organizePrompt + "\nchat_id " + strings.TrimSpace(req.ChatID) +
-		"\nsource_rev " + strings.TrimSpace(req.SourceRev) +
-		"\nevidence\n" + strings.TrimSpace(req.Evidence)
+		"\nsource_rev " + strings.TrimSpace(req.SourceRev)
+	if hierarchy := strings.TrimSpace(req.Hierarchy); hierarchy != "" {
+		user += "\n" + hierarchy
+	}
+	user += "\nevidence\n" + strings.TrimSpace(req.Evidence)
 	response, named, err := a.callRoleChecked(ctx, roles.RoleOrganize, floor,
 		[]ai.Message{
 			textMessage("system", organizeSystem),

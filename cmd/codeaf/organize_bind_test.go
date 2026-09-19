@@ -63,6 +63,46 @@ func TestBoundOrganizerAppliesAnAddFromCitedEvidence(t *testing.T) {
 	assertChatInFolder(t, security.ID, organizeBillingID)
 }
 
+func TestDoorOrganizerPassesFolderIds(t *testing.T) {
+	ctx := context.Background()
+	isolateOrganizeHome(t)
+	writeOrganizeChat(t, organizeBillingID, "emailed download links for the receipt")
+	live := liveOrganizeEmbedder()
+	svc, _ := openV3FolderServiceWith(live)
+	if svc == nil {
+		t.Fatal("folders did not open")
+	}
+	security, err := svc.CreateFolder(ctx, "Security")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = svc.Close()
+
+	enqueueOrganizeJob(t, organizeBillingID, "1:cafe")
+	var got session.OrganizeRequest
+	work := newDoorOrganizer(live, func(_ context.Context, req session.OrganizeRequest) (session.OrganizePlan, error) {
+		got = req
+		return session.OrganizePlan{Kind: session.PlanNoAction, Model: "spy"}, nil
+	})
+	runOrganizeJob(t, work)
+	if !strings.Contains(got.Hierarchy, security.ID) || !strings.Contains(got.Hierarchy, "Security") {
+		t.Fatalf("RoleOrganize was not handed the folder catalog:\n%s", got.Hierarchy)
+	}
+}
+
+func TestDecodeAddActionReadsCollectionAndRef(t *testing.T) {
+	action, ok := decodeAction(json.RawMessage(`{"kind":"add","collection_id":"ssss","ref":{"kind":"conversation","id":"bbbb"}}`))
+	if !ok {
+		t.Fatal("decodeAction dropped a typed add")
+	}
+	if action.CollectionID != "ssss" {
+		t.Fatalf("collection_id %q, want ssss", action.CollectionID)
+	}
+	if action.Ref.Kind != workspace.ConversationKind || action.Ref.ID != "bbbb" {
+		t.Fatalf("ref %+v, want conversation bbbb", action.Ref)
+	}
+}
+
 func TestOrganizeIngestsJournalsIntoDiscovery(t *testing.T) {
 	ctx := context.Background()
 	isolateOrganizeHome(t)

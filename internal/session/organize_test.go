@@ -81,3 +81,31 @@ func TestRoleOrganizeGoesThroughCallRoleChecked(t *testing.T) {
 		t.Fatalf("restructuring organize rode %q, want the high-tier model", high.model(0))
 	}
 }
+
+func TestOrganizeUserMessageCarriesFolderHierarchy(t *testing.T) {
+	var seen [][]ai.Message
+	completer := &scriptedCompleter{steps: []step{
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			seen = append(seen, messages)
+			return textResponse(`{"kind":"add","chat_id":"c","source_rev":"1","actions":[{"kind":"add","collection_id":"ssss","ref":{"kind":"conversation","id":"c"}}]}`), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	_, err := agent.Organize(context.Background(), OrganizeRequest{
+		ChatID: "c", SourceRev: "1", Evidence: "security chat refused raw URLs",
+		Hierarchy: "folders\nssss Security\n",
+	})
+	if err != nil {
+		t.Fatalf("Organize: %v", err)
+	}
+	if len(seen) == 0 {
+		t.Fatal("Organize never reached the completer")
+	}
+	user := messageText(seen[0][1])
+	if !strings.Contains(user, "ssss") || !strings.Contains(user, "Security") {
+		t.Fatalf("organize user message dropped the folder catalog:\n%s", user)
+	}
+	if !strings.Contains(user, "collection_id") {
+		t.Fatalf("organize prompt dropped the add action shape:\n%s", user)
+	}
+}
