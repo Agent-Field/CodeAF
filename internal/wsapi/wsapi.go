@@ -71,12 +71,24 @@ func Open(path string) (*Service, error) {
 	return &Service{store: inner, now: time.Now}, nil
 }
 
-// Close releases the underlying store.
+// Close releases the membership store and, if the injected discoverer
+// holds a file, that file too. A missing discoverer is not an error.
 func (s *Service) Close() error {
-	if s == nil || s.store == nil {
+	if s == nil {
 		return nil
 	}
-	return s.store.Close()
+	var first error
+	if c, ok := s.disc.(interface{ Close() error }); ok {
+		first = c.Close()
+		s.disc = nil
+	}
+	if s.store != nil {
+		if err := s.store.Close(); err != nil && first == nil {
+			first = err
+		}
+		s.store = nil
+	}
+	return first
 }
 
 // SetInventory replaces the conversation world used for titles and unfiled rows.
@@ -89,9 +101,15 @@ func (s *Service) SetInventory(inv Inventory) {
 
 // SetDiscoverer replaces the discovery index used for SearchEvidence and
 // IndexProgress. A nil discoverer is delayed, not a fake empty success.
+// Replacing a discoverer that owns a file closes the previous one.
 func (s *Service) SetDiscoverer(disc Discoverer) {
 	if s == nil {
 		return
+	}
+	if s.disc != nil && s.disc != disc {
+		if c, ok := s.disc.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
 	}
 	s.disc = disc
 }
