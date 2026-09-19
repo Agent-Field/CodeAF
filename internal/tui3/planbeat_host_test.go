@@ -437,6 +437,7 @@ func TestHostedTaskPageDrawsARefusedActionAsOneLineAndACorrectionAsNone(t *testi
 		if strings.Contains(page, forbidden) {
 			t.Fatalf("the page drew %q, which is the worker's answer, a correction's row, or a number on a call that never ran:\n%s", forbidden, page)
 		}
+	}
 }
 
 // A TASK'S DRAWN STEP NUMBERS CONTINUE ACROSS WAKES. The engine has already
