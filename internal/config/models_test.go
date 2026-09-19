@@ -206,3 +206,21 @@ func TestAModelWordMatchesWholeTokensOrNotAtAll(t *testing.T) {
 		t.Fatal("kimi no longer leads kimi-k2")
 	}
 }
+
+func TestEmbeddingModelIDReadsTheSparkCatalogWords(t *testing.T) {
+	for _, id := range []string{
+		"openai/text-embedding-3-small",
+		"qwen/qwen3-embedding-8b",
+		"mistralai/codestral-embed-2505",
+	} {
+		if !EmbeddingModelID(id) {
+			t.Fatalf("%s is an embeddings slug Spark served", id)
+		}
+	}
+	if EmbeddingModelID("moonshotai/kimi-k3") {
+		t.Fatal("a chat model is not an embeddings slug")
+	}
+	if FallbackMediaModel("embeddings") != preferredEmbedModel {
+		t.Fatalf("the curated embed default drifted from the Spark inspect")
+	}
+}

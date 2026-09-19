@@ -8,9 +8,10 @@ import (
 const minSchemaVersion = 1
 
 // schemaVersion is the latest collections schema this binary writes.
-// Issue 1 owns v2 (purpose, provenance, root_state). Later issues bump this
-// with their own tables; extra empty tables are not created here.
-const schemaVersion = 2
+// Wave 1 owns v2 (purpose, provenance, root_state). Wave 2 owns v3
+// (guidance, jobs, observations, placement_suppressions, proposed_actions).
+// Grant, delivery and execution tables stay absent until a later wave.
+const schemaVersion = 3
 
 const v2CollectionsDDL = `
 CREATE TABLE collections (
@@ -62,6 +63,78 @@ CREATE TABLE root_state (
 );
 `
 
+const v3DDL = `
+CREATE TABLE guidance (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ id TEXT NOT NULL UNIQUE,
+ scope_id TEXT NOT NULL DEFAULT '',
+ text TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL CHECK(status IN ('active','superseded')),
+ origin TEXT NOT NULL CHECK(origin IN ('person','system_fallback','organizer')),
+ actor TEXT NOT NULL DEFAULT '',
+ source_ref TEXT NOT NULL DEFAULT '',
+ supersedes TEXT NOT NULL DEFAULT '',
+ revision INTEGER NOT NULL DEFAULT 1,
+ created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL
+);
+CREATE INDEX guidance_scope ON guidance(scope_id, seq);
+CREATE TABLE jobs (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ id TEXT NOT NULL UNIQUE,
+ type TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('pending','leased','completed','deferred','failed','cancelled')),
+ owner TEXT NOT NULL DEFAULT '',
+ fence TEXT NOT NULL DEFAULT '',
+ cause_id TEXT NOT NULL DEFAULT '',
+ coalesce_key TEXT NOT NULL DEFAULT '',
+ chat_id TEXT NOT NULL DEFAULT '',
+ source_rev TEXT NOT NULL DEFAULT '',
+ error TEXT NOT NULL DEFAULT '',
+ attempt INTEGER NOT NULL DEFAULT 0,
+ lease_until TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL
+);
+CREATE INDEX jobs_lease ON jobs(state, type, seq);
+CREATE UNIQUE INDEX jobs_coalesce ON jobs(type, coalesce_key) WHERE state IN ('pending','leased') AND coalesce_key != '';
+CREATE TABLE observations (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ id TEXT NOT NULL UNIQUE,
+ chat_id TEXT NOT NULL DEFAULT '',
+ source_rev TEXT NOT NULL DEFAULT '',
+ purpose TEXT NOT NULL DEFAULT '',
+ body TEXT NOT NULL DEFAULT '',
+ evidence TEXT NOT NULL DEFAULT '',
+ model TEXT NOT NULL DEFAULT '',
+ prompt_version TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL
+);
+CREATE TABLE placement_suppressions (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ collection_id TEXT NOT NULL REFERENCES collections(id),
+ kind TEXT NOT NULL,
+ ref_id TEXT NOT NULL,
+ session_id TEXT NOT NULL,
+ evidence_hash TEXT NOT NULL,
+ actor TEXT NOT NULL DEFAULT '',
+ at TEXT NOT NULL,
+ UNIQUE(collection_id, kind, ref_id, session_id, evidence_hash)
+);
+CREATE INDEX suppressions_edge ON placement_suppressions(collection_id, kind, ref_id, session_id);
+CREATE TABLE proposed_actions (
+ seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ id TEXT NOT NULL UNIQUE,
+ chat_id TEXT NOT NULL DEFAULT '',
+ source_rev TEXT NOT NULL DEFAULT '',
+ plan_json TEXT NOT NULL DEFAULT '',
+ result TEXT NOT NULL DEFAULT '',
+ idempotency_key TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX proposed_actions_idempotency ON proposed_actions(idempotency_key) WHERE idempotency_key != '';
+`
+
 func verifyVersionTables(ctx context.Context, q schemaQuerier, version int) error {
 	if _, err := q.ExecContext(ctx, "SELECT seq,id,name FROM collections LIMIT 0"); err != nil {
 		return err
@@ -78,7 +151,25 @@ func verifyVersionTables(ctx context.Context, q schemaQuerier, version int) erro
 	if _, err := q.ExecContext(ctx, "SELECT seq,origin,reason,actor,at FROM membership_events LIMIT 0"); err != nil {
 		return err
 	}
-	_, err := q.ExecContext(ctx, "SELECT id,purpose,revision FROM root_state LIMIT 0")
+	if _, err := q.ExecContext(ctx, "SELECT id,purpose,revision FROM root_state LIMIT 0"); err != nil {
+		return err
+	}
+	if version < 3 {
+		return nil
+	}
+	if _, err := q.ExecContext(ctx, "SELECT id,scope_id,text,status FROM guidance LIMIT 0"); err != nil {
+		return err
+	}
+	if _, err := q.ExecContext(ctx, "SELECT id,type,state,owner,fence FROM jobs LIMIT 0"); err != nil {
+		return err
+	}
+	if _, err := q.ExecContext(ctx, "SELECT id,chat_id,body FROM observations LIMIT 0"); err != nil {
+		return err
+	}
+	if _, err := q.ExecContext(ctx, "SELECT collection_id,kind,ref_id,evidence_hash FROM placement_suppressions LIMIT 0"); err != nil {
+		return err
+	}
+	_, err := q.ExecContext(ctx, "SELECT id,plan_json FROM proposed_actions LIMIT 0")
 	return err
 }
 
@@ -94,6 +185,11 @@ func migrateToCurrent(ctx context.Context, tx schemaQuerier, from int, now strin
 			return err
 		}
 		from = 2
+	}
+	if from == 2 {
+		if err := migrateV2ToV3(ctx, tx); err != nil {
+			return err
+		}
 	}
 	_, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version=%d", schemaVersion))
 	return err
@@ -119,12 +215,25 @@ func migrateV1ToV2(ctx context.Context, tx schemaQuerier, now string) error {
 	return err
 }
 
+func migrateV2ToV3(ctx context.Context, tx schemaQuerier) error {
+	_, err := tx.ExecContext(ctx, v3DDL)
+	return err
+}
+
 func createV2(ctx context.Context, tx schemaQuerier, now string) error {
 	if _, err := tx.ExecContext(ctx, v2CollectionsDDL+v2HistoryDDL); err != nil {
 		return err
 	}
 	// Root is virtual: root_state holds its metadata, and no collections row is minted for it.
-	if _, err := tx.ExecContext(ctx, "INSERT INTO root_state(id,purpose,revision,updated_at) VALUES (1,'',1,?)", now); err != nil {
+	_, err := tx.ExecContext(ctx, "INSERT INTO root_state(id,purpose,revision,updated_at) VALUES (1,'',1,?)", now)
+	return err
+}
+
+func createCurrent(ctx context.Context, tx schemaQuerier, now string) error {
+	if err := createV2(ctx, tx, now); err != nil {
+		return err
+	}
+	if err := migrateV2ToV3(ctx, tx); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion))

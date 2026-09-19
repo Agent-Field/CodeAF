@@ -76,15 +76,23 @@ func WithCallNode(ctx context.Context, node string) context.Context {
 	return context.WithValue(ctx, callNodeKey{}, node)
 }
 
+// CallTagFrom is the explicit tag [WithCallTag] stamped, or empty when none
+// was said. It is the spend word a non-chat request (embeddings) asserts
+// without going through the completion door.
+func CallTagFrom(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	tag, _ := ctx.Value(callTagKey{}).(string)
+	return tag
+}
+
 // callTag is what this call was for: the explicit tag when one was set, and
 // otherwise the routing class's own last word — `plan.contract` becomes
 // "contract", `exec.leaf` becomes "leaf". Deriving it rather than asking the
 // planning packages to repeat themselves is what keeps the two from disagreeing.
 func callTag(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	if tag, _ := ctx.Value(callTagKey{}).(string); tag != "" {
+	if tag := CallTagFrom(ctx); tag != "" {
 		return tag
 	}
 	class := string(CallClassFrom(ctx))

@@ -99,7 +99,8 @@ func (a *foldersAdapter) WhyHere(ctx context.Context, collectionID, refID string
 // service. OriginOrganizer is forced here so a caller of Config.Folders cannot
 // claim person; the tool also stamps that origin at ingress.
 type sessionFolders struct {
-	svc *wsapi.Service
+	svc  *wsapi.Service
+	disc *discoveryAdapter
 }
 
 func newSessionFolders(svc *wsapi.Service) session.Folders {

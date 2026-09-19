@@ -360,6 +360,7 @@ var callSiteRoles = map[string]lane.Role{
 	// there; the table's job is to agree with the build.
 	"spellout": lane.RoleAuxiliary,
 	"imagegen": lane.RoleAuxiliary,
+	"embed":    lane.RoleAuxiliary,
 	"worker":   lane.RoleAuxiliary,
 	"speech":   lane.RoleAuxiliary,
 	"video":    lane.RoleAuxiliary,
