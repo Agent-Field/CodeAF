@@ -60,7 +60,7 @@ func TestServiceDoesNotImportSessionTUIProviderOrRun(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, owner := range []string{"session", "tui3", "provider", "run", "wsdiscover"} {
+			for _, owner := range []string{"session", "tui3", "provider", "run", "wsdiscover", "wscollab"} {
 				forbidden := "github.com/Agent-Field/codeaf/internal/" + owner
 				if path == forbidden || strings.HasPrefix(path, forbidden+"/") {
 					t.Errorf("%s imports %s; wsapi talks to workspace only", file.Name(), path)
