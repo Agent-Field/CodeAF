@@ -1,13 +1,11 @@
 package tui3
 
 import (
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE APPROVALS CHIP — what this conversation runs without asking, said on the
@@ -68,9 +66,8 @@ import (
 // asks → guardian → YOLO → asks. The stops are monotonically more autonomy,
 // which is the shape of every wheel like it in every other tool on this
 // machine; `refuses` one press past `YOLO` would be a wheel that breaks a
-// session by accident, so `deny` is reached by name (`/approvals deny`) and
-// never by a press. `auto` — hand the conversation back to the settings rows —
-// is by name too, for [session.ApprovalWheel]'s stated reason.
+// session by accident. The stored `deny` and `auto` postures remain readable,
+// but neither is a stop on the wheel.
 //
 // ── THE CHORD IS alt+a ────────────────────────────────────────────────────
 //
@@ -351,7 +348,7 @@ func (a *app) setApprovalPosture(dial approvalDialer, posture string) tea.Cmd {
 }
 
 // approvalLines is what each posture buys, in a person's words, said in the
-// note after a move and in the list `/approvals` prints.
+// note after a move.
 var approvalLines = map[string]string{
 	session.PostureAsk:      "every call the rules say to ask about is asked about",
 	session.PostureGuardian: "a small model answers the plainly safe ones, you get the rest",
@@ -374,83 +371,3 @@ const (
 	approvalHostedWord      = "what runs without asking is decided on the machine the conversation runs on — its engine has no dial for this window · change it in that machine's /settings"
 	approvalUnavailableWord = "what runs without asking is unavailable — this session has no dial onto it"
 )
-
-// ── the command ─────────────────────────────────────────────────────────────
-
-// runApprovals is `/approvals` (and `/yolo`, which is what fingers type). Bare,
-// it prints the stops with what each one buys and the one in force marked —
-// the wheel alone can only be walked blind, and the sentences are how a person
-// chooses between words that all mean "ask me less". With a word after it, it
-// sets that posture outright through the one path the chord uses.
-//
-// AN UNKNOWN WORD CHANGES NOTHING AND SAYS THE FIVE, which is the shape every
-// choice this surface refuses takes (effortchip.go's [app.runEffort]).
-func (a *app) runApprovals(arg string) tea.Cmd {
-	dial, ok := a.approvalDial()
-	if !ok {
-		a.noteApprovalUnavailable()
-		return nil
-	}
-	arg = strings.ToLower(strings.TrimSpace(arg))
-	if arg == "" {
-		a.noteApprovalLadder(dial)
-		return nil
-	}
-	posture := approvalArgument(arg)
-	if posture == "" {
-		a.noteFacts("/approvals "+arg+" · not a posture · "+strings.Join(approvalCommandWords(), " · "),
-			approvalCommandWords()...)
-		return nil
-	}
-	return a.setApprovalPosture(dial, posture)
-}
-
-// approvalArgument reads the word a person typed into the door's own: the
-// ladder's words, the flag's, and the settings row's, so `/approvals yolo`,
-// `/approvals allow` and `/approvals prompt` all land where they plainly mean to.
-func approvalArgument(word string) string {
-	switch word {
-	case session.PostureAsk, "prompt", approvalAsksWord:
-		return session.PostureAsk
-	case session.PostureGuardian:
-		return session.PostureGuardian
-	case session.PostureAllow, "yolo":
-		return session.PostureAllow
-	case session.PostureDeny, "refuse", approvalRefusesWord:
-		return session.PostureDeny
-	case session.PostureAuto, "off":
-		return session.PostureAuto
-	}
-	return ""
-}
-
-// approvalCommandWords is every word the door takes as the refusal lists them:
-// the wheel, then the two by name.
-func approvalCommandWords() []string {
-	return []string{session.PostureAsk, session.PostureGuardian, "yolo", session.PostureDeny, session.PostureAuto}
-}
-
-// noteApprovalLadder is the bare command's answer: one line per posture, the
-// one in force marked, and the way back to the rows named last.
-func (a *app) noteApprovalLadder(dial approvalDialer) {
-	current := dial.ResolvedApprovalPosture()
-	a.noteFacts("approvals · what this conversation runs without asking · "+approvalKey+" walks it", approvalKey)
-	for _, posture := range []string{session.PostureAsk, session.PostureGuardian, session.PostureAllow, session.PostureDeny} {
-		mark := "  "
-		if posture == current {
-			mark = a.icon(tokens.GPointer) + " "
-		}
-		word := approvalCommandWord(posture)
-		a.noteFacts(mark+word+strings.Repeat(" ", 9-len(word))+approvalLines[posture], word)
-	}
-	a.noteFacts("  "+session.PostureAuto+"     the settings rows decide · /approvals auto", session.PostureAuto)
-}
-
-// approvalCommandWord is the word the list prints for a posture — the one the
-// command takes, so a person can type what they read.
-func approvalCommandWord(posture string) string {
-	if posture == session.PostureAllow {
-		return "yolo"
-	}
-	return posture
-}

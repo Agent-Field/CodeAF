@@ -1232,7 +1232,7 @@ without looking away from what you are typing, and then it goes quiet again. Wal
 back onto `auto` flashes the same way and writes one line: *thinking · auto · the model
 decides*.
 
-## The approvals chip above the message box — `alt+a`, `/approvals`, `/yolo`, turning YOLO on inside a chat, stop asking me for this conversation
+## The approvals chip above the message box — `alt+a`, turning YOLO on inside a chat, stop asking me for this conversation
 
 After the thinking rung, the legend names what this conversation runs **without asking**:
 
@@ -1273,12 +1273,6 @@ is **spent** by that conversation: back on home the cell says the rows' word aga
 open gate is never quietly the default for the one after. *The rule above the box on every
 place* on the Places page has the whole rule.
 
-**`/approvals` prints the stops** with what each one buys and the one in force marked, and
-**`/approvals <word>`** sets one outright: `ask` (or `prompt`), `guardian`, `yolo` (or
-`allow`), `deny` (or `refuse`), and `auto`, which hands the conversation back to whatever
-the settings rows say. `/yolo` is the same command. A word that is none of those changes
-nothing and prints them all.
-
 What it changes and what it does not:
 
 - It sets **this conversation's** posture, live — the very next tool call is decided under
@@ -1286,14 +1280,14 @@ What it changes and what it does not:
   close codeaf and `/resume`. `codeaf resume --yolo` outranks the saved word for that
   launch.
 - It does **not** change other conversations. Their answer is the **"ask before running"**
-  row and the **guardian** row on `/settings`' Safety tab — `/approvals auto` is how this
-  conversation goes back to following them.
+  row and the **guardian** row on `/settings`' Safety tab, unless they have a saved
+  posture of their own.
 - **Neither floor moves.** Dangerous shell commands and anything sent in your name are
   asked about at every stop, `YOLO` included, exactly as under `--yolo`.
 - **It works on a `--host` conversation.** The posture is set on the engine machine, where
   the gate is, and the word on your legend is the one that machine resolved. An engine
   too old to have the door says so when the connection opens: the cell is then a reading
-  of the far machine's own row, and `alt+a`, the press and `/approvals` all answer:
+  of the far machine's own row, and `alt+a` and the press both answer:
   *what runs without asking is decided on the machine the conversation runs on — its engine has no dial for this window · change it in that machine's /settings*.
 
 The cell flashes for about two seconds after it changes and writes one line —

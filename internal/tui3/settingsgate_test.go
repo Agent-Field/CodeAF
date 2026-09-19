@@ -219,7 +219,7 @@ func statusObject(t *testing.T, a *app) map[string]string {
 // the three it is, under the label the phone's sheet already gives the segment.
 func TestStatusNamesTheGateThisConversationIsBehind(t *testing.T) {
 	// THE PAGE SAYS THE LADDER'S WORD — `ask`, `allow`, `deny` — which is what
-	// `/approvals` takes, rather than the row's `prompt` (approvalchip.go's
+	// the engine reports, rather than the row's `prompt` (approvalchip.go's
 	// [app.approvalPostureWord]); the row's word is what this surface was handed.
 	for row, posture := range map[string]string{"prompt": "ask", "allow": "allow", "deny": "deny"} {
 		a := newTestApp(&fakeAgent{model: "m"})

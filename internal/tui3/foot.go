@@ -745,7 +745,7 @@ func (a *app) legendEffortPress(x, y int) (tea.Cmd, bool) {
 
 // legendApprovalPress is a click on the approvals chip after the rung, and it
 // WALKS THE GATE'S WHEEL ONE STOP on the rung's own terms (approvalchip.go):
-// one press, one step, and the words with what each one buys are `/approvals`.
+// one press, one step, with a note describing the resulting posture.
 func (a *app) legendApprovalPress(x, y int) (tea.Cmd, bool) {
 	if a.copy.on || a.at(pageSettings) || a.pick.open || a.roomOpen() {
 		return nil, false

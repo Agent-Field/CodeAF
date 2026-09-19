@@ -506,7 +506,7 @@ registry yet. They name that machine and refuse; they do not report its registry
 7. **The approvals cell is the far machine's posture, and moving it moves the far gate.**
    The posture is read from that machine's own rows rather than off this laptop — a cell
    read off the wrong machine would be a safety claim about a machine nobody consulted —
-   and `alt+a`, a press on it and `/approvals` set it there. An engine too old to have
+   and `alt+a` or a press on it sets it there. An engine too old to have
    the door says so when the connection opens; the cell is then a reading of the posture
    carried once at the welcome, and every door says the far machine's rules decide.
 
@@ -703,8 +703,8 @@ Two consequences you can see:
   it with `/permissions` on the far machine.
 - **The approvals cell is the far machine's posture, and moving it moves the far gate.**
   It is read from the far machine's own rows — not off this laptop; a cell read off the
-  wrong machine would be a safety claim about a machine nobody consulted — and `alt+a`, the
-  press and `/approvals` set it there. An engine too old to have the door leaves the cell
+  wrong machine would be a safety claim about a machine nobody consulted — and `alt+a` or a
+  press sets it there. An engine too old to have the door leaves the cell
   a reading of the posture carried once at the welcome, and every door says so.
 
 ## Harnesses over --host

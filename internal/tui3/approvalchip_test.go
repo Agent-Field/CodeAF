@@ -10,7 +10,7 @@ import (
 )
 
 // The approvals chip's acceptance tests: what the SEAM says about the gate,
-// what the chord, the press and the command do to it, and what a session with
+// what the chord and the press do to it, and what a session with
 // no dial gets instead.
 //
 // Each asserts the FACT the behaviour exists for. The cell must be there at
@@ -297,49 +297,28 @@ func TestARefusedMoveIsSaidAndTheChipStaysPut(t *testing.T) {
 	}
 }
 
-// ── 3. the command ──────────────────────────────────────────────────────────
-
-// `/approvals <word>` SETS THE POSTURE OUTRIGHT, under every word a person
-// plausibly types for it, and the bare form prints the stops with the one in
-// force marked.
-func TestTheApprovalsCommandSetsAPostureUnderEveryWordForIt(t *testing.T) {
-	agent, a := gated(t)
-	cases := map[string]string{
-		"yolo": session.PostureAllow, "allow": session.PostureAllow,
-		"ask": session.PostureAsk, "prompt": session.PostureAsk,
-		"guardian": session.PostureGuardian,
-		"deny":     session.PostureDeny, "refuse": session.PostureDeny,
-		"auto": session.PostureAuto, "off": session.PostureAuto,
-	}
-	for word, posture := range cases {
-		spend(t, a, a.slash("/approvals "+word))
-		if got := agent.stored; got != posture {
-			t.Fatalf("/approvals %s left the conversation at %q, want %q", word, got, posture)
+// Removed commands must neither appear in completion nor change the gate.
+func TestApprovalsSlashCommandsAreRemoved(t *testing.T) {
+	for _, word := range []string{"approvals", "yolo"} {
+		for _, c := range commands {
+			if c.name == word {
+				t.Fatalf("/%s remains in the catalogue", word)
+			}
+			for _, alias := range c.alias {
+				if alias == word {
+					t.Fatalf("/%s remains as an alias", word)
+				}
+			}
 		}
-	}
-	// The alias is the flag's word.
-	spend(t, a, a.slash("/yolo ask"))
-	if got := agent.stored; got != session.PostureAsk {
-		t.Fatalf("/yolo ask left the conversation at %q", got)
-	}
-	// An unknown word changes nothing and names the words.
-	agent.sets = nil
-	spend(t, a, a.slash("/approvals wide"))
-	if len(agent.sets) != 0 {
-		t.Fatalf("an unknown word moved the gate: %v", agent.sets)
-	}
-	screen := plain(frame(a))
-	for _, word := range approvalCommandWords() {
-		if !strings.Contains(screen, word) {
-			t.Fatalf("the refusal does not name %q:\n%s", word, screen)
-		}
-	}
-	// And the bare form lists every stop with what it buys.
-	spend(t, a, a.slash("/approvals"))
-	screen = plain(frame(a))
-	for _, line := range approvalLines {
-		if !strings.Contains(screen, line) {
-			t.Fatalf("the list does not say %q:\n%s", line, screen)
+		agent, a := gated(t)
+		for _, suffix := range []string{"", " yolo", " ask"} {
+			spend(t, a, a.slash("/"+word+suffix))
+			if len(agent.sets) != 0 {
+				t.Fatalf("removed command changed approvals: %v", agent.sets)
+			}
+			if !strings.Contains(plain(frame(a)), unknownCommandWord(word)) {
+				t.Fatalf("removed command /%s was not rejected", word)
+			}
 		}
 	}
 }

@@ -201,7 +201,7 @@ func homeFate(word, rest string) string {
 	case "land", "workspace":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "autonomy",
-		"approvals", "copy", "select", "rewind", "compact", "export", "drafts":
+		"copy", "select", "rewind", "compact", "export", "drafts":
 		return fateNeedsChat
 	case "standing":
 		// Bare it is the standing place; with words it is a card raised in a

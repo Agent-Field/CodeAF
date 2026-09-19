@@ -574,10 +574,9 @@ keystroke, the `◇` cell on the legend moves with them (and the `YOLO` badge on
 the status line, where the legend has no cell — never on the welcome box), and `/status` says the posture
 in words under `approvals`. There is no turn to wait for.
 
-**A conversation that set its own posture keeps it.** `alt+a` and `/approvals`
-give this conversation a posture of its own (the next section); while it has
-one, the rows are what every *other* conversation follows, and `/approvals
-auto` is how this one goes back to following them too.
+**A conversation that set its own posture keeps it.** `alt+a` and a press on the
+approvals cell give this conversation a posture of its own (the next section).
+The settings rows apply to conversations without their own saved posture.
 
 Where the running gate cannot be reached, the row is still saved and the panel
 says, under the list:
@@ -669,18 +668,16 @@ on `allow` — so the badge stays up, because it reports the posture in force.
 inside a running conversation — see the next section — and `codeaf resume
 --yolo` outranks whatever that conversation last set, for that launch.
 
-## Turning YOLO on or off mid-conversation — stop asking me for this chat, run without asking from now on, the approvals chip, `alt+a`, `/approvals`
+## Turning YOLO on or off mid-conversation — stop asking me for this chat, run without asking from now on, the approvals chip, `alt+a`
 
 "Stop asking me for this chat" is one keystroke, and so is asking again. Every
 conversation has its own posture on the gate, moved from inside it. The
 legend above the message box names it after the thinking rung — `◇ asks`,
-`◇ guardian`, `◇ YOLO` or `◇ refuses` — and three doors move it:
+`◇ guardian`, `◇ YOLO` or `◇ refuses` — and two controls move it:
 
 - **`alt+a`** walks `asks → guardian → YOLO → asks`. It never lands on
   `refuses`.
 - **a press on the cell** is the same step.
-- **`/approvals <word>`** sets one outright: `ask`, `guardian`, `yolo`, `deny`,
-  or `auto` to follow the settings rows again. `/yolo` is the same command.
 
 The change is **live** — the next tool call is decided under it — and
 **sticky**: it is written into this session's `meta.json` and is still in force

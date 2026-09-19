@@ -517,7 +517,7 @@ func (a *app) deckItems() []deckItem {
 	// page a person asked for, and a row that went blank at `ask` would be the
 	// emptiness law applied to a fact somebody chose. IT IS THE LADDER'S WORD
 	// AND NOT THE BADGE'S — `ask`, `guardian`, `allow`, `deny`, the words
-	// `/approvals` takes — because a page says which answer is in force, and
+	// the engine reports — because a page says which answer is in force, and
 	// `YOLO` is a mark on a cell (approvalchip.go's [app.approvalPostureWord]).
 	// The one session with no row is one with no posture to report: a hosted
 	// window whose engine carried none, which is the badge's own silence there.

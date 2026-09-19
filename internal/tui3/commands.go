@@ -276,13 +276,6 @@ var commands = []command{
 	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
 		alias: []string{"think", "thinking"}},
 	{name: "effort", args: "<rung>", desc: "…set it outright · ctrl+v walks it, or press it on the seam"},
-	// AND WHAT THIS CONVERSATION RUNS WITHOUT ASKING, under the two rows about
-	// how it thinks, because the chip is the next cell along the same seam
-	// (approvalchip.go). Two rows for one command, on /effort's terms; /yolo is
-	// the alias because it is the flag's word and what fingers type.
-	{name: "approvals", desc: "what this conversation runs without asking · asks, guardian or YOLO · " + approvalKey + " walks it",
-		alias: []string{"yolo"}},
-	{name: "approvals", args: "<posture>", desc: "…set it outright: ask · guardian · yolo · deny · auto"},
 	{name: "ask", args: "<question>", desc: "ask here on home", door: sendDoorAsk},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},

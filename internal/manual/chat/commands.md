@@ -172,8 +172,6 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
-| `/approvals` | `/yolo` | — | prints this conversation's approval postures — asks, guardian, YOLO, refuses — with the one in force marked; `alt+a` walks them |
-| `/approvals` | `/yolo` | `<posture>` | sets it outright: `ask`, `guardian`, `yolo`, `deny` or `auto` |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
@@ -668,7 +666,7 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 ## Is the asking on — what `/status` says under `approvals`, and where the YOLO badge went
 
 `/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
-the words `/approvals` takes: `ask` (it asks you), `guardian` (a small model answers the
+the engine's posture words: `ask` (it asks you), `guardian` (a small model answers the
 plainly safe ones first), `allow` (it runs things without asking) or `deny` (it refuses).
 It is **this conversation's** posture — the one the `◇` cell on the legend shows — whichever
 setting decided it. `/status --json` carries the same fact under the `approvals` key, and
@@ -1094,23 +1092,14 @@ one left alone may be let go of; that is not a refusal of the one you asked for.
 A task another window is running cannot be stopped from home: its `tasks` row says
 `another window` and offers no stop.
 
-## /approvals and /yolo — what this conversation runs without asking, YOLO from inside a chat
+## Changing approvals from the message box
 
-`/approvals` (or `/yolo`) is the typed door onto the approvals chip on the legend above the
-message box. Bare, it prints four lines — `ask`, `guardian`, `yolo`, `deny` — each with what
-it buys, the one in force marked, and a last line naming `auto`. With a word after it, it
-sets that posture for **this conversation** straight away: `/approvals yolo` opens the gate,
-`/approvals ask` closes it, `/approvals guardian` puts the small model in front of you,
-`/approvals deny` refuses every unnamed call, `/approvals auto` hands the conversation back
-to the settings rows. `prompt`, `allow`, `refuse` and `off` are accepted spellings of the
-same five.
+Use `alt+a` (Option+A on macOS) or press the approvals cell above the message box to
+cycle `asks → guardian → YOLO`. This works on home and in conversations. The keys and
+permissions pages describe the scope and meaning of each posture.
 
-The wheel — `alt+a`, or a press on the cell — walks `asks → guardian → YOLO` and never onto
-`deny`; the command is the only way to that one. The keys page covers the chip, and the
-permissions page covers what each posture means for the floors.
-
-Over `--host` the posture is set on the engine machine. An engine too old to have the door
-gets the answer that the far machine's rules decide, and nothing changes.
+`/approvals` and its `/yolo` alias are no longer commands. The `--yolo` launch flag is
+unchanged.
 
 ## /permissions — what runs without asking
 

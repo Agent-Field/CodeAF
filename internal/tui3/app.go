@@ -7056,12 +7056,6 @@ func (a *app) slash(line string) tea.Cmd {
 		// the shape every choice row on this surface refuses in.
 		return a.runEffort(rest)
 
-	case "approvals":
-		// What THIS conversation runs without asking (approvalchip.go). Bare it
-		// prints the postures with what each buys; a word after it sets that
-		// posture outright, through the path the chord and the press share.
-		return a.runApprovals(rest)
-
 	case "ask":
 		return a.runAskCommand(rest)
 

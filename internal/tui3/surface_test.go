@@ -648,7 +648,7 @@ func TestSlashOpensTheCommandListFiltersItAndRunsIt(t *testing.T) {
 		t.Fatalf("a bare slash has to offer everything (%d hits)", len(a.menu.hits))
 	}
 	drawn := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
-	if !strings.Contains(drawn, "/approvals") || !strings.Contains(drawn, "what this conversation runs") {
+	if !strings.Contains(drawn, "/ask") || !strings.Contains(drawn, "ask here on home") {
 		t.Fatalf("the list draws a name and a line about it:\n%s", drawn)
 	}
 
