@@ -51,3 +51,7 @@ The test change will keep the production address order and binding path intact w
 ## Implemented and focused proof
 
 `internal/connect/slack_test.go` now allocates two test-owned dynamic loopback listeners and temporarily supplies their addresses through the existing package address list. The anchor keeps the first listener open, releases the second, and proves the real `BeginAuth` path serves and advertises the second port. The two both-busy tests keep both listeners open. `go test ./internal/connect/...` passes, and none of these tests binds either product port.
+
+## Validation step
+
+The implementation commit is complete. The final validation will record the committed tree before and after five separate commands: repository build, the internal/connect package tests, formatting cleanliness, change-entry validation, and guard plus naming-law tests. Equality of the two tree hashes will prove that validation did not alter the committed implementation tree.
