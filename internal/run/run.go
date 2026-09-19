@@ -246,8 +246,16 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	s.touchClaims()
 	s.releaseStale()
 	if terminalStatus(root.Status) {
-		return s.outcomeForRoot(root.Status)
+		// A ROOT WORKER CAN WRITE DONE BEFORE ITS GOROUTINE RETURNS. Its return
+		// is what seats the review, so do not accept the stored ending first.
+		// Other in-flight workers may be remnants of an already completed tree;
+		// they must be drained rather than mistaken for the root return.
+		_, rootInFlight := s.cancels[rootID]
+		if root.Status != plandb.StatusDone || !rootInFlight {
+			return s.outcomeForRoot(root.Status)
+		}
 	}
+
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit) {
 		// Nothing of ours is running and the run cannot complete itself: the
 		// root's own worker failed, or the cost counter has reached its limit.
