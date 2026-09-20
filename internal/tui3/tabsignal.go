@@ -140,13 +140,26 @@ func (a *app) tabSignalFor(key string, here bool) tabSignal {
 	return held.watch.signal()
 }
 
-// asksStandingOrLanding reports whether the surface holds a standing answer
-// or a landed task whose next step is the person choosing what happens.
-// It deliberately names those kinds instead of treating every question as a
-// signal: a deadline task proposal is a countdown, not a question for now.
-func (a *app) asksStandingOrLanding() bool {
+// asksStanding reports whether the surface holds a standing answer, which is a
+// question a firing put to this person and which nothing else will answer.
+//
+// IT NAMES ONE KIND RATHER THAN TREATING EVERY OPEN QUESTION AS A SIGNAL, and
+// the two it leaves out are left out for different reasons. A task proposal
+// carrying a deadline is a countdown, and a countdown answers itself. A LANDED
+// `your call` IS DELIBERATELY ABSENT, and not because it is unimportant: a
+// landing's question object stays open through the whole settle AFTER the
+// person has answered it (session's publishLandingQuestion retires it only when
+// the node leaves TaskUnverified, and an accept does not move the state until
+// the merge finishes). Counting it here would hold a mark up over an answer
+// already given, which is the one thing a mark must never do. The fact that
+// would tell a live landing from a settling one is not on this surface in any
+// usable shape, so until it is, this lane says nothing rather than saying
+// something stale. The landing is not lost from the screen: it is drawn in the
+// conversation itself ([app.questionDrawnHere] returns true for it) and on its
+// own card, so the person on this tab is already looking at it.
+func (a *app) asksStanding() bool {
 	for _, open := range a.questions {
-		if open.question.Kind == session.QuestionStanding || open.question.Kind == session.QuestionLanding {
+		if open.question.Kind == session.QuestionStanding {
 			return true
 		}
 	}
@@ -165,7 +178,7 @@ func (a *app) frontSignal() tabSignal {
 	if run := a.orchOf(); run != nil && run.gate != nil {
 		return tabNeedsPerson
 	}
-	if a.asking() || a.asksConnect() || a.asksHarness() || a.asksStandingOrLanding() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
+	if a.asking() || a.asksConnect() || a.asksHarness() || a.asksStanding() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
 		return tabNeedsPerson
 	}
 	if a.state == stateWorking || a.tasksInFlight() || a.jobsRunning() > 0 {
