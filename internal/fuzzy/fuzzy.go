@@ -179,10 +179,11 @@ func ScoreFields(fields []string, terms []Term) (int, bool) {
 
 // ── the scoring constants ────────────────────────────────────────────────────
 
-// fzf's calibration, with nucleo's one retune (bonusCamel123) and its gap
-// reading: the gap into a column costs start, and every gap column including
-// the first costs extension on top, so a one-character gap costs 4 — exactly
-// the consecutive floor, which is the balance nucleo tuned for.
+// fzf's calibration, with nucleo's one retune (bonusCamel123): the first
+// byte a gap skips costs start, and each byte after it in the same gap costs
+// extension, so a one-character gap costs 3 and a two-character gap costs 4
+// — the exact price of the consecutive floor, which is the balance nucleo
+// tuned for.
 const (
 	scoreMatch               = 16
 	penaltyGapStart          = 3
