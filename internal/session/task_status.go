@@ -771,10 +771,10 @@ const (
 	// after this sentence (taskCheckReason reads it back).
 	taskAskSettleReason = "it was not settled within its bound"
 
-	taskAskStartYes    = "start"
-	taskAskStartNo     = "don't"
-	taskAskApproveYes  = "approve"
-	taskAskApproveNo   = "decline"
+	taskAskStartYes   = "start"
+	taskAskStartNo    = "don't"
+	taskAskApproveYes = "approve"
+	taskAskApproveNo  = "decline"
 	// The three sentences an interrupted row asks with. The reason states the
 	// two facts a person needs before they answer — that nothing is driving it,
 	// and that what it did is not lost — because without the second one the
