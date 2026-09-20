@@ -346,7 +346,12 @@ func TestTelemetryInfoNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := usageOut.(*strings.Builder).String()
+	// The first line is the fact a person came to check, before either stream.
+	if !strings.HasPrefix(got, "codeaf does NOT collect or share your chat.") {
+		t.Errorf("info should open on the chat-content fact, got:\n%s", got)
+	}
 	for _, want := range []string{
+		"No prompts, replies, code, file names,\npaths, repo names, keys, email, IP or machine name leave for AgentField.",
 		"usage counts (",
 		"every event, as this machine would send it now",
 		"os                   " + runtime.GOOS,

@@ -194,6 +194,17 @@ func modelPoolOffReason(cfg poolcfg.Config) string {
 	return reason
 }
 
+// infoPreface is the first thing `codeaf telemetry info` says, before either
+// stream: the one fact a person came to check. It is true of everything the
+// binary sends to AgentField — the usage counts carry only the allowlisted
+// fields below, and a Model Pool row carries model slugs, a score and a day.
+// The judge that produces a score reads a clipped brief and deliverable, but
+// that is a model call to your own provider, like any turn, and nothing it
+// read rides in the row.
+const infoPreface = `codeaf does NOT collect or share your chat. No prompts, replies, code, file names,
+paths, repo names, keys, email, IP or machine name leave for AgentField. Only the
+fields below do, as this machine would fill them.`
+
 // infoText composes the two streams, in the order the notice names them: the
 // usage counts first, the Model Pool second. Each sits under a heading naming
 // where it goes or why it does not, then WHAT A ROW LOOKS LIKE: the fields
@@ -204,6 +215,8 @@ func modelPoolOffReason(cfg poolcfg.Config) string {
 // not a second disclaimer. What is waiting right now is `show`'s answer.
 func infoText(profileDir string, lookup func(string) (string, bool)) string {
 	var out strings.Builder
+	out.WriteString(infoPreface)
+	out.WriteString("\n\n")
 	out.WriteString(usageCountsHeading())
 	out.WriteByte('\n')
 	writeUsageCountFields(&out)

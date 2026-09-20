@@ -127,8 +127,10 @@ answered for everything the binary sends.
 
 - `codeaf telemetry status` says whether the counts are on, and why not when
   they are off.
-- `codeaf telemetry info` prints what is collected, from BOTH streams, shaped
-  like the data: for the usage counts, every every-event field with the value
+- `codeaf telemetry info` opens on the fact a person came to check — `codeaf
+  does NOT collect or share your chat`, with the never list — then prints what
+  is collected, from BOTH streams, shaped like the data: for the usage counts,
+  every every-event field with the value
   this machine would send now, one example row per event (`mode=chat
   duration=5-30m  turns=6-20 …`, from the contract's own bands) and the stop
   reasons a row can carry; for the Model Pool, one example row in the bytes

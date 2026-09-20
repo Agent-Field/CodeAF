@@ -763,8 +763,8 @@ retracted belief restores, a stopped service starts again, a revoked device pair
 ## What does it count about a run — the anonymous usage counts, and `codeaf telemetry`
 
 `codeaf telemetry` is the door onto the anonymous usage counts: `status` says whether
-they are on and why not when they are off; `info` says what is collected, shaped like the
-data — for each stream, under a line naming where it goes or why it is not sent, every
+they are on and why not when they are off; `info` opens on `codeaf does NOT collect or
+share your chat` and then says what is collected, shaped like the data — for each stream, under a line naming where it goes or why it is not sent, every
 every-event field with the value this machine would send now and one example row per
 event (`session_ended  mode=chat  duration=5-30m  turns=6-20 …`) with the stop reasons a
 row can carry, and for the Model Pool one example row in the relay's own bytes; `show`
