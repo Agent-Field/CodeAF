@@ -263,7 +263,6 @@ func writeUsageCountFields(out *strings.Builder) {
 		}
 		writeField(out, event, exampleRow(event, names))
 	}
-	out.WriteByte('\n')
 	writeField(out, "stop_reason", "one of "+strings.Join(telemetry.StopReasons(), " · "))
 }
 
@@ -290,37 +289,18 @@ func exampleRow(event string, names []string) string {
 }
 
 // writeModelPoolFields prints what one pool row looks like: an example row in
-// the bytes a relay would receive, then the two identities a batch travels
-// under.
+// the bytes a relay would receive, indented so it reads, then the two
+// identities a batch travels under.
 func writeModelPoolFields(out *strings.Builder) {
 	fmt.Fprintf(out, "%sone row per judged seat, after a task lands, for example\n", showIndent)
-	for _, line := range wrapJSONRow(record.ExampleRowJSON(time.Now()), 72) {
-		fmt.Fprintf(out, "%s%s%s\n", showIndent, showIndent, line)
+	// The row is indented by two, the way `show` prints a waiting one, and
+	// set in under the heading; json.Indent keeps the bytes the row's own.
+	var row bytes.Buffer
+	if err := json.Indent(&row, []byte(record.ExampleRowJSON(time.Now())), showIndent+showIndent, "  "); err == nil {
+		fmt.Fprintf(out, "%s%s%s\n", showIndent, showIndent, row.String())
 	}
 	writeField(out, "nonce", "16 random bytes as hex, one per row, so a resend is not a double count")
 	writeField(out, "X-Codeaf-Install", "a header: a random per-install id, minted on the first send; not the usage counts' id")
-}
-
-// wrapJSONRow breaks one flat JSON object over lines of about the width
-// given, only ever at a comma before a key, and indents the continuation by
-// one space so the braces line up; the bytes, read back without the breaks
-// and the indent, are the row's own.
-func wrapJSONRow(row string, width int) []string {
-	var lines []string
-	line := ""
-	for i, part := range strings.Split(row, ",\"") {
-		if i > 0 {
-			part = "\"" + part
-			if len(line)+1+len(part) > width {
-				lines = append(lines, line+",")
-				line = " "
-			} else {
-				line += ","
-			}
-		}
-		line += part
-	}
-	return append(lines, line)
 }
 
 // writeField prints one field line: the key in its column and the value.
@@ -329,23 +309,24 @@ func writeField(out *strings.Builder, key, value string) {
 }
 
 // usageCountsHeading names where the usage counts go, or the rung of the
-// opt-out ladder that keeps them here. It reads the same ladder `telemetry
+// opt-out ladder that keeps them here. The two streams are numbered in the
+// order the notice names them, so a person can say "the second one". It reads the same ladder `telemetry
 // status` reads, so the two verbs cannot disagree about whether anything is
 // sent.
 func usageCountsHeading() string {
 	if reason := telemetry.OffReason(); reason != "" {
-		return fmt.Sprintf("usage counts (off: %s)", reason)
+		return fmt.Sprintf("1. Usage Counts (off: %s)", reason)
 	}
-	return fmt.Sprintf("usage counts (%s)", telemetry.Endpoint())
+	return fmt.Sprintf("1. Usage Counts (%s)", telemetry.Endpoint())
 }
 
 // modelPoolHeading names where the pool rows go, or the mode that keeps them
 // here: `read` uses the pool and sends nothing, `off` asks no judge at all.
 func modelPoolHeading(cfg poolcfg.Config) string {
 	if !cfg.CanSend() {
-		return fmt.Sprintf("Model Pool (model_pool %s, nothing is sent)", cfg.Mode)
+		return fmt.Sprintf("2. Model Pool (model_pool %s, nothing is sent)", cfg.Mode)
 	}
-	return fmt.Sprintf("Model Pool (%s)", cfg.SubmitURL)
+	return fmt.Sprintf("2. Model Pool (%s)", cfg.SubmitURL)
 }
 
 // poolRowsWaiting reads the pool outbox's pending rows the way

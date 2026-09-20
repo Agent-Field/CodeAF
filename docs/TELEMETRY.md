@@ -135,8 +135,8 @@ answered for everything the binary sends.
   duration=5-30m  turns=6-20 …`, from the contract's own bands) and the stop
   reasons a row can carry; for the Model Pool, one example row in the bytes
   the relay receives and the two identities a batch travels under. Each stream
-  sits under a line naming where it goes or why it is not sent. It lists only
-  what is sent — the never lists are the notice's and this page's.
+  sits under a numbered heading, `1. Usage Counts` and `2. Model Pool`, naming
+  where it goes or why it is not sent. It lists only what is sent — the never lists are the notice's and this page's.
 - `codeaf telemetry show` prints what is waiting to leave right now, as one
   JSON object indented by two: a key per destination, `usage` and
   `model_pool`, and under each its `destination`, an `off` reason when

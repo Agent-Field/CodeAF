@@ -352,7 +352,7 @@ func TestTelemetryInfoNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
 	}
 	for _, want := range []string{
 		"No prompts, replies, code, file names,\npaths, repo names, keys, email, IP or machine name leave for AgentField.",
-		"usage counts (",
+		"1. Usage Counts (",
 		"every event, as this machine would send it now",
 		"os                   " + runtime.GOOS,
 		"arch                 " + runtime.GOARCH,
@@ -363,13 +363,13 @@ func TestTelemetryInfoNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
 		"session_started      mode=chat  resumed=false",
 		"session_ended        mode=chat  duration=5-30m  turns=6-20",
 		"stop_reason=done  exit_code=0",
-		"fault                mode=chat  scope=main  fingerprint=",
-		"stop_reason          one of done · error · incomplete",
-		"Model Pool (",
+		// No blank line between the last event and the stop reasons.
+		"fingerprint=3fa9c1e2b7d04e85\n    stop_reason          one of done · error · incomplete",
+		"2. Model Pool (",
 		"one row per judged seat, after a task lands, for example",
-		`{"schema":1,"metric":"role_quality","role":"worker",`,
-		`"door":"task","size":"M",`,
-		`"day":"`,
+		"    {\n      \"schema\": 1,\n      \"metric\": \"role_quality\",\n      \"role\": \"worker\",",
+		"\n      \"door\": \"task\",\n      \"size\": \"M\",\n      \"day\": \"",
+		"\n    }\n    nonce",
 		"nonce                16 random bytes as hex",
 		"X-Codeaf-Install",
 	} {
@@ -445,35 +445,5 @@ func TestTelemetryOffCommandQuietsThePool(t *testing.T) {
 	}
 	if cfg := config.ModelPoolResolved(root, poolOn); !cfg.CanSend() {
 		t.Fatalf("`telemetry on` should hand the pool back, got mode %v from %q", cfg.Mode, cfg.Source.Mode)
-	}
-}
-
-// TestWrapJSONRowKeepsTheBytes holds the wrapped pool row to its bytes: a
-// break lands only at a comma before a key, the continuation is indented by
-// one space so the braces line up, and the lines read back, unindented, as
-// exactly the row that was wrapped.
-func TestWrapJSONRowKeepsTheBytes(t *testing.T) {
-	row := `{"schema":1,"metric":"role_quality","role":"worker","model":"m","score":81,"judge":"j","door":"task","size":"M","day":"2026-09-19"}`
-	lines := wrapJSONRow(row, 40)
-	if len(lines) < 3 {
-		t.Fatalf("a %d-byte row at width 40 should wrap to three or more lines, got %q", len(row), lines)
-	}
-	var back strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			if !strings.HasPrefix(line, ` "`) {
-				t.Errorf("continuation %q should start with a space and a key", line)
-			}
-			line = line[1:]
-		} else if !strings.HasSuffix(line, ",") {
-			t.Errorf("a wrapped line should end at a comma, got %q", line)
-		}
-		back.WriteString(line)
-	}
-	if back.String() != row {
-		t.Errorf("the lines read back as\n%s\nwant\n%s", back.String(), row)
-	}
-	if got := wrapJSONRow(row, 1000); len(got) != 1 || got[0] != row {
-		t.Errorf("a row under the width should not wrap, got %q", got)
 	}
 }
