@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -111,6 +112,79 @@ func screenAt(lines []string, want string) int {
 		}
 	}
 	return -1
+}
+
+// THE MATCHED LETTERS CARRY THE EMPHASIS, AND NOTHING ELSE ON THE ROW DOES.
+// A search that answered should say WHICH letters answered: the bytes the
+// query matched draw in bold over the row's own ink — weight is the one
+// emphasis this surface already owns, the user/assistant distinction's —
+// while the rest of the label keeps the ink it had. No new colour, no
+// ground: it is a reading aid for the scan, which is what "subtle" asked
+// for, and not a louder row.
+func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.openSettings()
+	typeQuery(t, a, "ask")
+	// The approval row, kept by the search, and where the query landed on it:
+	// the label's own head, because "ask" is the word the row's name begins
+	// with — and not its middle, and not a whole word either.
+	at := -1
+	for i, item := range a.sheet.items {
+		if item.restful() && item.row.Key == config.KeyToolApprovalMode {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("\"ask\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
+	}
+	// Walk the cursor off the row: the cursor's row is bold whole already, and
+	// this test is about the resting rows a person scans down.
+	for guard := 0; guard < len(a.sheet.items) && at == a.sheet.cursor; guard++ {
+		drive(t, a, key("down"))
+	}
+	if at == a.sheet.cursor {
+		t.Fatal("the cursor never left the approval row")
+	}
+	hit := a.sheet.itemHit(a.sheet.items[at])
+	if len(hit) != 3 || hit[0] != 0 || hit[1] != 1 || hit[2] != 2 {
+		t.Fatalf("the approval row's label hit is %v; want its first three bytes, 0 1 2", hit)
+	}
+	lines, _ := a.sheet.listLines(a.width, a.height, a.pal, -1)
+	// THE EMPHASIS IS EXACTLY THE MATCHED BYTES: bold over the row's own dim
+	// for "ask", plain dim after it — the whole label spelled out, so a bold
+	// run that bled past the match, or one that skipped a matched byte, does
+	// not contain this string.
+	want := a.pal.bold(a.pal.dim("ask")) + a.pal.dim(" before running")
+	found := false
+	for _, line := range lines {
+		if strings.Contains(line, want) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the approval row did not draw its matched letters in bold; want %q among:\n%s",
+			want, strings.Join(lines, "\n"))
+	}
+	// AND THE MATCH IS ON THE FIELD IT WON AND NOWHERE ELSE: "prompt" is
+	// the approval row's own VALUE — the word the gate carries — and a query
+	// of both words keeps the row with "ask" on its label and nothing else:
+	// the span names exactly the bytes of the term that won the label, and a
+	// term that won the value contributes no emphasis to a field it did not.
+	typeQuery(t, a, " prompt")
+	at = -1
+	for i, item := range a.sheet.items {
+		if item.restful() && item.row.Key == config.KeyToolApprovalMode {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("\"ask prompt\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
+	}
+	if hit := a.sheet.itemHit(a.sheet.items[at]); !reflect.DeepEqual(hit, []int{0, 1, 2}) {
+		t.Fatalf("\"ask prompt\" carried %v on the approval row's label; want exactly \"ask\"'s three bytes — the value's word stays on the value", hit)
+	}
 }
 
 // A SPACE IS A WORD IN THE QUERY. "shell command" is one question with two

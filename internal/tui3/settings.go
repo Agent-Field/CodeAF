@@ -929,6 +929,13 @@ type sheetItem struct {
 	// reason: an item is an item, and only what draws it and what the cursor
 	// does with it ask which kind this one is.
 	read *railReading
+	// hitAt and hitLen say where the search landed on this row's own label —
+	// an offset and a length into the sheet's hit span, the bytes the query
+	// matched, which the row draws carried in bold ([overlayLinesHit]). Both
+	// are zero outside a search, and a row whose match lives in a field that
+	// is not its label carries nothing either: the emphasis goes exactly
+	// where the word landed and nowhere else.
+	hitAt, hitLen int
 }
 
 func (i sheetItem) heading() bool { return i.head != "" }
@@ -981,6 +988,14 @@ type sheet struct {
 	// every row, and a fresh slice per row is the one allocation it does not
 	// need.
 	matchFields []string
+	// hitTerms and hitSpan are the search's scratch over one row — the terms'
+	// answers, rewritten per row — and itemSpan is the span a whole search is
+	// drawn from: every kept row's label hits appended back to back, with the
+	// row's item carrying its own offset and length into it. One buffer per
+	// keystroke, not per row, for [matchFields]' reason.
+	hitTerms []fuzzy.TermHit
+	hitSpan  []int
+	itemSpan []int
 	// defaults is every row's reading on a profile nobody has touched, so a row
 	// that differs from it can be marked. See [settingDefaults].
 	defaults map[string]string
@@ -1363,6 +1378,11 @@ func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) !=
 // them there instead of back where they started.
 func (s *sheet) build() {
 	s.items = s.items[:0]
+	// THE SEARCH'S SPAN STARTS EMPTY WITH THE LIST: every kept row's label
+	// hits are appended here as the build walks its rows, and the offsets the
+	// items carry are offsets into THIS build's span — one buffer, one
+	// keystroke, no per-row allocation.
+	s.itemSpan = s.itemSpan[:0]
 	// THE QUERY IS READ AS TYPED, and the matcher's smart case is the case law
 	// here: a word with no uppercase in it matches anywhere, a word with any
 	// uppercase in it has to be found as typed. The old search folded the
@@ -1446,18 +1466,18 @@ func (s *sheet) build() {
 			if !ok || meta.tab != title {
 				continue
 			}
-			score, hit := s.settingScore(row, meta, title, terms)
+			score, hit, at, n := s.settingMatch(row, meta, title, terms)
 			if !hit {
 				continue
 			}
-			matched = append(matched, settingHit{row: row, meta: meta, score: score})
+			matched = append(matched, settingHit{row: row, meta: meta, score: score, hitAt: at, hitLen: n})
 		}
 		sort.SliceStable(matched, func(a, b int) bool { return matched[a].score > matched[b].score })
 		for _, one := range matched {
 			if len(s.items) == start {
 				s.items = append(s.items, sheetItem{head: title})
 			}
-			s.items = append(s.items, sheetItem{row: one.row, meta: one.meta})
+			s.items = append(s.items, sheetItem{row: one.row, meta: one.meta, hitAt: one.hitAt, hitLen: one.hitLen})
 		}
 		// A ROLE IS FOUND BY ITS OWN NAME, or by the line that says what it does.
 		// Somebody searching for "planner" is not searching for a registry key —
@@ -1562,17 +1582,42 @@ type settingHit struct {
 	row   config.Setting
 	meta  settingMeta
 	score int
+	// hitAt and hitLen are where the search landed on the row's label: an
+	// offset and a length into the sheet's item span, carried to the item the
+	// row becomes so the row draws its own matched bytes in bold
+	// ([sheetItem.hitAt]).
+	hitAt, hitLen int
 }
 
-// settingScore is the search: the fuzzy matcher (internal/fuzzy) over the
-// five fields a settings row answers in — the label as shown, the registry
-// key, the one-line description, the VALUE the row currently holds, and the
-// tab's name.
+// matchHits is the search's answer over one row's fields: the score
+// [fuzzy.ScoreFields] gives, and where the query landed on the row's OWN
+// LABEL — field 0 of the fields it answers in, by the convention of every
+// list this sheet searches (a registry row's label, a role's name, a
+// question kind) — appended to the sheet's item span and carried back as an
+// offset and length for the row's item. A term that won another field
+// contributes nothing to the label's span: the emphasis goes exactly where
+// the word landed and nowhere else, so "yolo" lights nothing on a row it
+// found through its value.
+func (s *sheet) matchHits(fields []string, terms []fuzzy.Term) (score int, matched bool, hitAt, hitLen int) {
+	score, matched = fuzzy.ScoreFieldsHits(fields, terms, &s.hitTerms, &s.hitSpan)
+	if !matched {
+		return score, false, 0, 0
+	}
+	at := len(s.itemSpan)
+	s.itemSpan = hitUnion(s.hitTerms, 0, s.itemSpan)
+	return score, true, at, len(s.itemSpan) - at
+}
+
+// settingMatch is the search over one registry row: the score the fuzzy
+// matcher (internal/fuzzy) answers over the five fields a settings row
+// answers in — the label as shown, the registry key, the one-line
+// description, the VALUE the row currently holds, and the tab's name — and
+// where the terms landed on the label it is drawn with.
 //
 // THE KEY IS IN IT DELIBERATELY — a person who knows the registry knows
 // "spendRail" and should not have to guess what it is called in the product's
-// words. THE VALUE IS IN IT FOR THE OTHER PERSON — the one who knows what the
-// panel does and not what it is called: "yolo" finds the row it names, "on"
+// words. THE VALUE IS IN IT FOR THE OTHER PERSON — the one who knows what
+// the panel does and not what it is called: "yolo" finds the row it names, "on"
 // and "auto" find every row carrying them, and a search reads the panel the
 // way a person who uses it does. THE TAB NAME IS IN IT because "safety" is
 // the word half this sheet's rows answer to and no row carries it.
@@ -1582,9 +1627,9 @@ type settingHit struct {
 // toward the row. The slice is the sheet's own reusable buffer: a rebuild
 // scores every row, and a fresh slice per row is the one allocation it does
 // not need.
-func (s *sheet) settingScore(row config.Setting, meta settingMeta, tab string, terms []fuzzy.Term) (int, bool) {
+func (s *sheet) settingMatch(row config.Setting, meta settingMeta, tab string, terms []fuzzy.Term) (int, bool, int, int) {
 	if len(terms) == 0 {
-		return 0, true
+		return 0, true, 0, 0
 	}
 	if len(s.matchFields) < 5 {
 		s.matchFields = make([]string, 5)
@@ -1595,7 +1640,17 @@ func (s *sheet) settingScore(row config.Setting, meta settingMeta, tab string, t
 	fields[2] = meta.about
 	fields[3] = rowText(row)
 	fields[4] = tab
-	return fuzzy.ScoreFields(fields, terms)
+	return s.matchHits(fields, terms)
+}
+
+// itemHit is where the search landed on one row's own label: the matched
+// bytes, for the row to carry in bold. Nothing outside a search, and a row
+// whose match lives in a field it does not draw carries nothing either.
+func (s *sheet) itemHit(item sheetItem) []int {
+	if item.hitLen <= 0 || item.hitAt+item.hitLen > len(s.itemSpan) {
+		return nil
+	}
+	return s.itemSpan[item.hitAt : item.hitAt+item.hitLen]
 }
 
 // clampCursor keeps the cursor on a row and never on a heading.
@@ -1749,6 +1804,9 @@ func (s *sheet) roleItems(terms []fuzzy.Term) []sheetItem {
 			}
 			row := &roleRow{role: role, tier: tier, tierLabel: s.tierWord(tier)}
 			row.pin, _ = roles.Pinned(source, role)
+			// Where the search landed on this row, for the item to carry: nothing
+			// when no query is on ([sheet.matchHits]).
+			var hitAt, hitLen int
 			// A ROLE WITH NO MODEL ANYWHERE IS STILL A ROW. Resolve refuses when
 			// the ladder runs out — no pin, no tier, no session model — and the
 			// honest drawing of that is the role's name with nothing beside it,
@@ -1762,34 +1820,40 @@ func (s *sheet) roleItems(terms []fuzzy.Term) []sheetItem {
 				row.model = call.String()
 			}
 			if len(terms) > 0 {
-				if _, ok := s.roleMatches(row, terms); !ok {
+				_, ok, at, n := s.roleMatch(row, terms)
+				if !ok {
 					continue
 				}
+				hitAt, hitLen = at, n
 			}
 			if !started {
 				items = append(items, sheetItem{head: rolesHead + " · " + row.tierLabel})
 				started = true
 			}
 			items = append(items, sheetItem{
-				role: row,
-				meta: settingMeta{tab: tabProviders, label: string(role), about: s.roleAbout(row)},
+				role:   row,
+				meta:   settingMeta{tab: tabProviders, label: string(role), about: s.roleAbout(row)},
+				hitAt:  hitAt,
+				hitLen: hitLen,
 			})
 		}
 	}
 	return items
 }
 
-// roleMatches is the search over a role row: its name, the line that says what
-// it does, and the model answering it — the fuzzy matcher (internal/fuzzy) over
-// the fields a role row actually has, scored per term by whichever field
-// carries the word best.
+// roleMatch is the search over a role row: its name, the line that says what
+// it does, and the model answering it — the fuzzy matcher (internal/fuzzy)
+// over the fields a role row actually has, scored per term by whichever
+// field carries the word best — and where the terms landed on the name the
+// row is drawn with. A role found by its description or its model carries
+// nothing on its name: the emphasis goes where the word landed.
 //
 // THE DESCRIPTION IS IN IT DELIBERATELY. Nobody looking for the model that reads
 // their images searches for "vision"; they search for "image", and the sentence
 // under the row is where that word is written.
-func (s *sheet) roleMatches(row *roleRow, terms []fuzzy.Term) (int, bool) {
+func (s *sheet) roleMatch(row *roleRow, terms []fuzzy.Term) (int, bool, int, int) {
 	if len(terms) == 0 {
-		return 0, true
+		return 0, true, 0, 0
 	}
 	if len(s.matchFields) < 3 {
 		s.matchFields = make([]string, 5)
@@ -1798,7 +1862,7 @@ func (s *sheet) roleMatches(row *roleRow, terms []fuzzy.Term) (int, bool) {
 	fields[0] = string(row.role)
 	fields[1] = roles.Describe(row.role)
 	fields[2] = row.model
-	return fuzzy.ScoreFields(fields, terms)
+	return s.matchHits(fields, terms)
 }
 
 // rolesSource is [roles.Source] over THE PANEL'S OWN READING of the registry —
@@ -1890,9 +1954,10 @@ func roleFilter(role roles.Role) modelFilter {
 }
 
 // roleRowLines is one role: its name, the tier it answers under, and the model
-// that answers it. It is [sheet.rowLines]'s shape and [overlayLines]'s row — the
-// same two-line law at [tierPhone], the same band, the same hover.
-func (s *sheet) roleRowLines(row *roleRow, selected, hovered bool, width int, pal palette) []string {
+// that answers it. It is [sheet.rowLines]'s shape and the row every list
+// draws — the same two-line law at [tierPhone], the same band, the same
+// hover — with the search's emphasis carried on the name ([overlayLinesHit]).
+func (s *sheet) roleRowLines(row *roleRow, hit []int, selected, hovered bool, width int, pal palette) []string {
 	// THE CLASS IS THE HEADING THIS ROW SITS UNDER, so it is not repeated on the
 	// row. It used to lead the value — "careful work · some/model" on every one of
 	// ten rows — which spent the widest column on a word the section already said
@@ -1908,7 +1973,7 @@ func (s *sheet) roleRowLines(row *roleRow, selected, hovered bool, width int, pa
 		}
 		value += "pinned"
 	}
-	return overlayLines(string(row.role), value, selected, false, hovered, width, pal)
+	return overlayLinesHit(string(row.role), value, hit, selected, false, hovered, width, pal)
 }
 
 // applyRolePin writes one role's pin back into the row that holds them all.
@@ -3104,10 +3169,10 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 		return head
 	}
 	if item.role != nil {
-		return s.roleRowLines(item.role, selected, hovered, width, pal)
+		return s.roleRowLines(item.role, s.itemHit(item), selected, hovered, width, pal)
 	}
 	if item.autonomy != nil {
-		return s.autonomyRowLines(item.autonomy, selected, hovered, width, pal)
+		return s.autonomyRowLines(item.autonomy, s.itemHit(item), selected, hovered, width, pal)
 	}
 	// A READING IS A ROW WITH NOTHING TO EDIT — `today`, and the two rails this
 	// build enforces somewhere a settings row cannot reach (settingspend.go). It
@@ -3121,7 +3186,7 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	// cells the label leaves — so a narrow frame drops the receipt whole rather
 	// than cutting a figure in half (settingspend.go's [sheet.spendNote]).
 	if item.row.Category == config.CategorySpending && item.row.Kind == config.SettingDollars {
-		return overlayLines(item.meta.label, s.spendNote(item, width, pal.ascii), selected, false, hovered, width, pal)
+		return overlayLinesHit(item.meta.label, s.spendNote(item, width, pal.ascii), s.itemHit(item), selected, false, hovered, width, pal)
 	}
 	// THE ROW DRAWS ITS READING AND THE BOX OPENS ON ITS VALUE. `300` is three
 	// hundred WHAT — seconds, connections, kilobytes? — and the answer used to
@@ -3158,7 +3223,7 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	if receipt := item.row.Receipt(); receipt != "" {
 		value += " · " + receipt
 	}
-	return overlayLines(item.meta.label, value, selected, false, hovered, width, pal)
+	return overlayLinesHit(item.meta.label, value, s.itemHit(item), selected, false, hovered, width, pal)
 }
 
 // laneWord is the tail on the conversation's model row: `auto (cloudflare now)`

@@ -91,6 +91,9 @@ func (s *sheet) autonomyItems(terms []fuzzy.Term) []sheetItem {
 			word = autonomyPersonWord(s.autonomy[kind])
 		}
 		row := &autonomyRow{kind: kind, word: word}
+		// Where the search landed on this row, for the item to carry: nothing
+		// when no query is on ([sheet.matchHits]).
+		var hitAt, hitLen int
 		switch kind {
 		case session.AskConfirmation:
 			row.word, row.fixed = autonomyAskWord+" · "+autonomyAlwaysWord, true
@@ -98,13 +101,17 @@ func (s *sheet) autonomyItems(terms []fuzzy.Term) []sheetItem {
 			row.word, row.fixed = autonomyAskWord+" · "+autonomyNoClockWord, true
 		}
 		if len(terms) > 0 {
-			if _, ok := s.autonomyRowMatches(row, terms); !ok {
+			_, ok, at, n := s.autonomyMatch(row, terms)
+			if !ok {
 				continue
 			}
+			hitAt, hitLen = at, n
 		}
 		items = append(items, sheetItem{
 			autonomy: row,
 			meta:     settingMeta{tab: tabSafety, label: string(kind), about: autonomyRowAbout},
+			hitAt:    hitAt,
+			hitLen:   hitLen,
 		})
 	}
 	if len(items) == 0 {
@@ -113,22 +120,25 @@ func (s *sheet) autonomyItems(terms []fuzzy.Term) []sheetItem {
 	return append([]sheetItem{{head: autonomyRowsHead}}, items...)
 }
 
-// autonomyRowMatches is the search over one of these rows: the kind's own name,
+// autonomyMatch is the search over one of these rows: the kind's own name,
 // the answer it carries, the heading and the section's about line — the fuzzy
 // matcher every picker on this surface shares (internal/fuzzy), scored per
-// term by whichever field carries the word best.
+// term by whichever field carries the word best — and where the terms
+// landed on the kind the row is drawn with. A row found by its answer or by
+// the heading carries nothing on its name: the emphasis goes where the word
+// landed.
 //
 // THE HEADING AND THE ABOUT LINE ARE IN IT DELIBERATELY, because somebody
 // looking for this section searches for "away" or "decide" or "autonomy" —
 // words that live on the heading and in the value rather than in a registry
 // key — and the about line names `/autonomy` as the second door to the same
 // rules, which is the one word this page exists so a person can find.
-func (s *sheet) autonomyRowMatches(row *autonomyRow, terms []fuzzy.Term) (int, bool) {
+func (s *sheet) autonomyMatch(row *autonomyRow, terms []fuzzy.Term) (int, bool, int, int) {
 	if len(terms) == 0 {
-		return 0, true
+		return 0, true, 0, 0
 	}
 	// The sheet's own reusable field buffer, for the same per-keystroke reason
-	// [sheet.settingScore] gives: a rebuild scores every row.
+	// [sheet.settingMatch] gives: a rebuild scores every row.
 	if len(s.matchFields) < 4 {
 		s.matchFields = make([]string, 5)
 	}
@@ -137,7 +147,7 @@ func (s *sheet) autonomyRowMatches(row *autonomyRow, terms []fuzzy.Term) (int, b
 	fields[1] = row.word
 	fields[2] = autonomyRowsHead
 	fields[3] = autonomyRowAbout
-	return fuzzy.ScoreFields(fields, terms)
+	return s.matchHits(fields, terms)
 }
 
 // autonomyPersonWord is one rule in a person's words. It is the sheet's own
@@ -158,10 +168,12 @@ func autonomyPersonWord(rule session.Policy) string {
 	}
 }
 
-// autonomyRowLines draws one row through the page's own row grammar, so it reads
-// as a setting and not as a second kind of thing on the same list.
-func (s *sheet) autonomyRowLines(row *autonomyRow, selected, hovered bool, width int, pal palette) []string {
-	return overlayLines(string(row.kind), row.word, selected, false, hovered, width, pal)
+// autonomyRowLines draws one row through the page's own row grammar, so it
+// reads as a setting and not as a second kind of thing on the same list — with
+// the search's emphasis carried on the kind it is drawn with
+// ([overlayLinesHit]).
+func (s *sheet) autonomyRowLines(row *autonomyRow, hit []int, selected, hovered bool, width int, pal palette) []string {
+	return overlayLinesHit(string(row.kind), row.word, hit, selected, false, hovered, width, pal)
 }
 
 // autonomyRowNext is `enter` on one of these rows: the next answer round the

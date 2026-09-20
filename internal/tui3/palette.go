@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -164,6 +165,18 @@ type picker struct {
 	refresh  bool
 	fetching bool
 
+	// ft is the query as matcher terms, taken when [picker.rank] ran — so the
+	// rows a frame draws can ask where the search landed without re-deriving
+	// the query, and never disagreeing with the ranking they came from. Empty
+	// when nothing is typed, and a row then simply draws as it always has.
+	ft []fuzzy.Term
+	// hitTerms, hitSpan and hitBuf are [picker.rowHit]'s scratch, reused across
+	// rows and frames: the first two are rewritten by [fuzzy.ScoreHits], and
+	// hitBuf holds the one row whose emphasis is being drawn.
+	hitTerms []fuzzy.TermHit
+	hitSpan  []int
+	hitBuf   []int
+
 	filter editor
 }
 
@@ -300,6 +313,10 @@ func (p *picker) rank() {
 	// once here, not once per row: the terms are the same for every id the
 	// keystroke ranks.
 	ft := fuzzyTerms(tokens)
+	// KEPT FOR THE ROWS TO DRAW FROM: the emphasis a frame draws asks where the
+	// search landed, and taking it from here is what keeps it the same ranking
+	// these terms just produced.
+	p.ft = ft
 	now := timeNow()
 	// AN OPEN FOLD IS THE SUBJECT OF WHAT IS TYPED NEXT, and it is read before
 	// the fold is forgotten below ([picker.narrowFold]).
@@ -992,7 +1009,134 @@ func overlayPairRoom(label, note string, width int) int {
 	return room
 }
 
+// ── the search's emphasis ───────────────────────────────────────────────────
+//
+// A list a person is typing into answers them at a glance by saying WHICH
+// LETTERS matched. The matcher (internal/fuzzy) hands back the exact bytes
+// the winning alignment touched, and the row carries those bytes in bold
+// over the row's own ink — the one emphasis this surface already owns, the
+// user/assistant distinction's (styles.go's [palette.bold]). No new colour,
+// no ground, and the rest of the row untouched: the mark is a reading aid
+// for the scan, not a louder row, which is what "subtle" asked for.
+
+// rowLabelInk is a label's own ink for its row's state — the switch every
+// row already paints through, said once so the searched rows and the plain
+// ones keep one grammar ([overlayRowCore] and [overlayLinesCore] below).
+func rowLabelInk(pal palette, marked rowMark, lit bool) func(string) string {
+	switch {
+	case marked == markFront:
+		return pal.accent
+	case marked == markHere:
+		// HOME'S OWN CONVERSATION IS A FACT, NOT A SELECTION. It wore the
+		// front mark's accent-on-selected band for a wave, and on a resting
+		// dashboard that band was the loudest thing in sight — read, every
+		// time, as a cursor nobody had moved. Ground bands on home mean one
+		// thing only: where a person's hands are. So the row says what it is
+		// the way every identity on this surface is said — in words: ink for
+		// the label (readable above its dim siblings, junior to nothing) and
+		// `here` on the tail (homeNote), with no ground and no accent.
+		return pal.ink
+	case marked == markOurs:
+		// Open here, and not the one being drawn. One tier under the here
+		// row's ink, so a person's eye reads "this terminal has these" as one
+		// group rather than as two unrelated paints.
+		return pal.muted
+	case lit || pal.placeRows:
+		return pal.ink
+	default:
+		return pal.dim
+	}
+}
+
+// paintHit paints a row's label in the row's own ink with the bytes the
+// search matched carried in bold. hit is ascending byte indices into label;
+// the walk is by rune, so an emphasis run can never cut one in half, and a
+// position that is not a rune's first byte — or lands past a [fit] cut — is
+// simply not drawn. lit is the row that is already bold whole, the cursor's:
+// there a second bold marks nothing, so the span rides the row's bold
+// quietly rather than wrapping bold inside bold and closing it early.
+// An empty hit is the plain paint exactly, so a list that is not searched
+// never changes what it drew.
+func paintHit(pal palette, label string, hit []int, lit bool, paint func(string) string) string {
+	if len(hit) == 0 || lit {
+		// An empty hit is the plain paint exactly; a LIT row is bold whole
+		// already and the span rides that quietly — one wrap, byte for byte
+		// the row it always was, with no bold opened inside a bold that a close
+		// could cut short.
+		return paint(label)
+	}
+	var out strings.Builder
+	from, hot, hi := 0, false, 0
+	emit := func(to int, on bool) {
+		if from == to {
+			return
+		}
+		if on && !lit {
+			out.WriteString(pal.bold(paint(label[from:to])))
+		} else {
+			out.WriteString(paint(label[from:to]))
+		}
+	}
+	for at := 0; at < len(label); {
+		_, size := utf8.DecodeRuneInString(label[at:])
+		for hi < len(hit) && hit[hi] < at {
+			hi++
+		}
+		on := hi < len(hit) && hit[hi] == at
+		if at == 0 {
+			hot = on
+		} else if on != hot {
+			emit(at, hot)
+			from, hot = at, on
+		}
+		at += size
+	}
+	emit(len(label), hot)
+	return out.String()
+}
+
+// hitUnion is where a search landed on ONE field: the byte positions of
+// every term that won it, appended to dst — merged, ascending, with no
+// duplicates — as the span a row draws its emphasis from. Only the appended
+// part is sorted, so a caller laying rows' spans end to end in one buffer
+// (the settings sheet's build) keeps each row's own bytes in order.
+// Positions pointing past a field's own length, a label a fitter narrowed,
+// are the caller's to keep honest; this only merges what it is given.
+func hitUnion(hits []fuzzy.TermHit, field int, dst []int) []int {
+	at := len(dst)
+	for _, one := range hits {
+		if one.Field != field {
+			continue
+		}
+		dst = append(dst, one.Pos...)
+	}
+	span := dst[at:]
+	sort.Ints(span)
+	// The dedup, in place: two terms may land on the same bytes.
+	n := 0
+	for _, at := range span {
+		if n == 0 || span[n-1] != at {
+			span[n] = at
+			n++
+		}
+	}
+	return dst[:at+n]
+}
+
 func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
+	return overlayRowCore(label, note, nil, tint, oncursor, marked, hovered, width, pal)
+}
+
+// overlayRowHitTinted is [overlayRowTinted] with the search's emphasis: the
+// bytes hit names in the label carry the bold ([paintHit]).
+func overlayRowHitTinted(label, note string, hit []int, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
+	return overlayRowCore(label, note, hit, tint, oncursor, marked, hovered, width, pal)
+}
+
+// overlayRowCore is ONE row of ONE overlay, and every list draws through it —
+// [overlayRowTinted] for the lists that are not searched, [overlayRowHitTinted]
+// for the ones that are. hit is the search's emphasis, nil for none.
+func overlayRowCore(label, note string, hit []int, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
 	lead := overlayLead(oncursor, hovered, pal)
 	// THE NOTE IS CUT TO THE ROW BEFORE THE ROW IS BUDGETED AROUND IT. The label
 	// absorbs whatever the note leaves and the gap below clamps at one cell, so a
@@ -1030,30 +1174,12 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 	// same ground, the same bold subject (styles.go's [palette.placeRows]).
 	lit := oncursor || (hovered && pal.placeRows)
 
-	var painted string
-	switch {
-	case marked == markFront:
-		painted = pal.accent(label)
-	case marked == markHere:
-		// HOME'S OWN CONVERSATION IS A FACT, NOT A SELECTION. It wore the
-		// front mark's accent-on-selected band for a wave, and on a resting
-		// dashboard that band was the loudest thing in sight — read, every
-		// time, as a cursor nobody had moved. Ground bands on home mean one
-		// thing only: where a person's hands are. So the row says what it is
-		// the way every identity on this surface is said — in words: ink for
-		// the label (readable above its dim siblings, junior to nothing) and
-		// `here` on the tail (homeNote), with no ground and no accent.
-		painted = pal.ink(label)
-	case marked == markOurs:
-		// Open here, and not the one being drawn. One tier under the here
-		// row's ink, so a person's eye reads "this terminal has these" as one
-		// group rather than as two unrelated paints.
-		painted = pal.muted(label)
-	case lit || pal.placeRows:
-		painted = pal.ink(label)
-	default:
-		painted = pal.dim(label)
-	}
+	// THE LABEL'S OWN INK, THEN THE EMPHASIS: a searched row carries the bytes
+	// the search matched in bold over that ink ([rowLabelInk] is the switch
+	// every row already paints through, said once), and the rest of the label
+	// keeps it — the mark is on the matched letters and nowhere else.
+	ink := rowLabelInk(pal, marked, lit)
+	painted := paintHit(pal, label, hit, lit, ink)
 	if lit {
 		painted = pal.bold(painted)
 	}
@@ -1152,21 +1278,35 @@ func overlayLines(label, note string, selected, marked, hovered bool, width int,
 	return overlayLinesTinted(label, note, nil, selected, marked, hovered, width, pal)
 }
 
+// overlayLinesHit is [overlayLines] for a list under a search: the bytes hit
+// names in the label carry the emphasis and the rest of the row keeps its
+// own ink.
+func overlayLinesHit(label, note string, hit []int, selected, marked, hovered bool, width int, pal palette) []string {
+	return overlayLinesHitTinted(label, note, hit, nil, selected, marked, hovered, width, pal)
+}
+
 func overlayLinesTinted(label, note string, tint noteInk, selected, marked, hovered bool, width int, pal palette) []string {
+	return overlayLinesCore(label, note, nil, tint, selected, marked, hovered, width, pal)
+}
+
+// overlayLinesHitTinted is [overlayLinesTinted] with the search's emphasis:
+// the bytes hit names in the label carry the bold ([paintHit]).
+func overlayLinesHitTinted(label, note string, hit []int, tint noteInk, selected, marked, hovered bool, width int, pal palette) []string {
+	return overlayLinesCore(label, note, hit, tint, selected, marked, hovered, width, pal)
+}
+
+// overlayLinesCore is one row as the lines it takes: [overlayRowCore]
+// everywhere, and the label/tail pair at [tierPhone]. hit is the search's
+// emphasis over the label, nil for none.
+func overlayLinesCore(label, note string, hit []int, tint noteInk, selected, marked, hovered bool, width int, pal palette) []string {
 	if overlayItemLines(width, note) == 1 {
-		return []string{overlayRowTinted(label, note, tint, selected, markIf(marked), hovered, width, pal)}
+		return []string{overlayRowCore(label, note, hit, tint, selected, markIf(marked), hovered, width, pal)}
 	}
 	head := overlayLead(selected, hovered, pal)
-	painted := fit(label, width-2)
 	lit := selected || (hovered && pal.placeRows)
-	switch {
-	case marked:
-		painted = pal.accent(painted)
-	case lit || pal.placeRows:
-		painted = pal.ink(painted)
-	default:
-		painted = pal.dim(painted)
-	}
+	// The label keeps the row's own ink ([rowLabelInk]) and carries the
+	// search's emphasis in bold over it, exactly as the one-line row does.
+	painted := paintHit(pal, fit(label, width-2), hit, lit, rowLabelInk(pal, markIf(marked), lit))
 	if lit {
 		painted = pal.bold(painted)
 	}
@@ -1262,6 +1402,20 @@ func (f *overlayFill) add(at int, label, note string, selected, marked bool) boo
 // every list on this surface, and a list that drew its own would be a second
 // grammar to keep in step.
 func (f *overlayFill) addTinted(at int, label, note string, tint noteInk, selected, marked bool) bool {
+	return f.addCore(at, label, note, nil, tint, selected, marked)
+}
+
+// addHit is [overlayFill.add] for a list under a search: the bytes hit names
+// in the label carry the emphasis ([paintHit]) and the rest of the row keeps
+// its own ink.
+func (f *overlayFill) addHit(at int, label, note string, hit []int, selected, marked bool) bool {
+	return f.addCore(at, label, note, hit, nil, selected, marked)
+}
+
+// addCore is the one draw behind [overlayFill.add], [addTinted] and [addHit]:
+// hit is the search's emphasis, nil for none, and tint the note's own ink
+// where one was given.
+func (f *overlayFill) addCore(at int, label, note string, hit []int, tint noteInk, selected, marked bool) bool {
 	take, flat := overlayItemLines(f.width, note), false
 	if len(f.out)+take > f.n {
 		// EXCEPT ON A FRAME WITH ONE ROW TO GIVE. A list that answered a one-row
@@ -1276,9 +1430,9 @@ func (f *overlayFill) addTinted(at int, label, note string, tint noteInk, select
 		take, flat = 1, true
 	}
 	hovered := f.hover >= len(f.out) && f.hover < len(f.out)+take
-	lines := overlayLinesTinted(label, note, tint, selected, marked, hovered, f.width, f.pal)
+	lines := overlayLinesHitTinted(label, note, hit, tint, selected, marked, hovered, f.width, f.pal)
 	if flat {
-		lines = []string{overlayRowTinted(label, note, tint, selected, markIf(marked), hovered, f.width, f.pal)}
+		lines = []string{overlayRowHitTinted(label, note, hit, tint, selected, markIf(marked), hovered, f.width, f.pal)}
 	}
 	for _, line := range lines {
 		f.out = append(f.out, line)
@@ -1407,7 +1561,7 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 			continue
 		}
 		label, note := p.entryText(at, width, level)
-		if !fill.add(at, label, note, at == p.cursor, p.marked(at)) {
+		if !fill.addHit(at, label, note, p.rowHit(at, label), at == p.cursor, p.marked(at)) {
 			break
 		}
 		// THE WHY LINE IS UNDER THE CURSOR AND NOWHERE ELSE. One sentence about
@@ -1422,6 +1576,62 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		}
 	}
 	return fill.done()
+}
+
+// rowHit is where the search landed on one drawn model row: the bytes of its
+// name the query matched, as offsets into the label the row is DRAWN with —
+// the emphasis [overlayFill.addHit] carries in bold. The span is the optimal
+// alignment's own bytes ([fuzzy.ScoreHits]), which is why it is asked for
+// here rather than remembered from the ranking: the rows a frame draws are
+// the few, and the span costs nothing on the ones it does not.
+//
+// THE LABEL IS THE ROW'S OWN READING OF THE NAME, not the string the search
+// scored: the fitter drops an author that names no second row and cuts a
+// name that will not fit in the middle. A whole name maps straight onto its
+// row; an author dropped maps with its offset carried; a name cut in the
+// middle has no honest mapping, and the row draws unemphasised rather than
+// bolding bytes that are not its own.
+//
+// ONLY THE MODEL'S OWN ROW IS ASKED: the fold's lane rows and its `auto` and
+// `openrouter` ends answer a different question (a machine the router
+// knows, a way of declining to name one) and are drawn from sentences of
+// their own.
+func (p *picker) rowHit(at int, label string) []int {
+	if len(p.ft) == 0 {
+		return nil
+	}
+	row := p.list[at]
+	if row.lane != laneNone {
+		return nil
+	}
+	text := p.text[p.hits[row.hit]]
+	off := 0
+	switch {
+	case strings.HasPrefix(label, text):
+		// The whole name, perhaps with a level rider the search never saw.
+	case strings.HasSuffix(text, label):
+		// The author gave its name away and the slug names the row alone.
+		off = len(text) - len(label)
+	default:
+		return nil
+	}
+	if _, ok := fuzzy.ScoreHits(text, p.ft, &p.hitTerms, &p.hitSpan); !ok {
+		return nil
+	}
+	// THE SPAN IS THIS ROW'S OWN: the buffer is rewritten per row, so the
+	// merged positions of the row above never bleed into the one being drawn.
+	span := hitUnion(p.hitTerms, 0, p.hitBuf[:0])
+	n := 0
+	for _, pos := range span {
+		if pos < off {
+			// Where the dropped author stood: not the row's bytes.
+			continue
+		}
+		span[n] = pos - off
+		n++
+	}
+	p.hitBuf = span[:n]
+	return p.hitBuf
 }
 
 // pinnedLane is the MACHINE this conversation is held to, and empty for every

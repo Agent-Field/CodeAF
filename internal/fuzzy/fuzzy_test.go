@@ -1,9 +1,29 @@
 package fuzzy
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
+
+// spanOf is the positions a query landed on, one field, flattened across
+// terms — the shape every caller below reads.
+func spanOf(t *testing.T, hay, query string) []int {
+	t.Helper()
+	var hits []TermHit
+	var span []int
+	if _, ok := ScoreHits(hay, terms(query), &hits, &span); !ok {
+		t.Fatalf("%q did not match %q", query, hay)
+	}
+	if len(hits) != len(Terms(query)) {
+		t.Fatalf("%q over %q answered %d hits, want one per term", query, hay, len(hits))
+	}
+	var flat []int
+	for _, h := range hits {
+		flat = append(flat, h.Pos...)
+	}
+	return flat
+}
 
 // terms is [Terms] for a one-word query, spelled out for the table-driven
 // tests below.
@@ -222,6 +242,14 @@ func TestPastTheNeedleGuardTheWalkStillAnswers(t *testing.T) {
 	if _, ok := Score(strings.Repeat("b", 1200), terms(long)); ok {
 		t.Fatal("an over-long term the text cannot complete in order must not match")
 	}
+	// AND IT ANSWERS WITH NO SPAN: a term the guard took has no score behind
+	// it, so no bytes are vouched for either — the match stands, the caller
+	// draws nothing.
+	var hits []TermHit
+	var span []int
+	if _, ok := ScoreHits(strings.Repeat("a", 1200), terms(long), &hits, &span); !ok || len(hits) != 1 || len(hits[0].Pos) != 0 {
+		t.Fatalf("an over-long term answered %+v; want the match, with no span", hits)
+	}
 }
 
 // PER TERM, THE BEST FIELD WINS. A row that answers in several fields is
@@ -255,5 +283,145 @@ func TestTheSlabCarriesNoStateBetweenCalls(t *testing.T) {
 		if again, _ := Score("claude-sonnet-4.5", terms("sonnet")); again != first {
 			t.Fatalf("score changed across calls: %d then %d", first, again)
 		}
+	}
+}
+
+// THE SPAN IS THE OPTIMAL ALIGNMENT, AND IT IS READ OFF THE PASS THAT
+// SCORED IT. fzf rebuilds positions with a second, reversed pass and can
+// return a span its own forward pass never scored — "foo" against "xf foo"
+// answers fzf "xf_oo", f at 1. The two-matrix program scores "x__foo"
+// instead, and the span it hands back is that alignment's own bytes: the f
+// after the space and its two o's. Positions are BYTE indices into the
+// field as the caller holds it, so a row can bold exactly what matched.
+func TestTheSpanIsTheOptimalAlignment(t *testing.T) {
+	if got := spanOf(t, "xf foo", "foo"); !reflect.DeepEqual(got, []int{3, 4, 5}) {
+		t.Fatalf("the span of \"foo\" over \"xf foo\" is %v; want the whole word, 3 4 5 — not fzf's f at 1", got)
+	}
+	// A consecutive chunk mid-word: the alignment runs z-a-b's own a and b.
+	if got := spanOf(t, "zab", "ab"); !reflect.DeepEqual(got, []int{1, 2}) {
+		t.Fatalf("the consecutive chunk came back %v; want 1 2", got)
+	}
+	// A boundary worth travelling for: the second f of "ff" lands after the
+	// hyphen, where the bonus model pays it as a word beginning.
+	if got := spanOf(t, "fuzzy-finder", "ff"); !reflect.DeepEqual(got, []int{0, 6}) {
+		t.Fatalf("the hyphenated initials came back %v; want 0 6", got)
+	}
+	// One skipped byte costs start and nothing more — the span crosses it.
+	if got := spanOf(t, "axb", "ab"); !reflect.DeepEqual(got, []int{0, 2}) {
+		t.Fatalf("the one-byte gap came back %v; want 0 2", got)
+	}
+}
+
+// THE SPAN IS THE FIELD'S OWN BYTES, CASE AND ALL. A lowercase word matches
+// uppercase text through the fold, and the bytes it names are the bytes the
+// field carries: "ds" over "DeepSeek" is the D and the S — position 0 and
+// position 4 — so the fold a caller draws through is the field it holds.
+func TestTheSpanIsTheFieldsOwnBytes(t *testing.T) {
+	if got := spanOf(t, "DeepSeek", "ds"); !reflect.DeepEqual(got, []int{0, 4}) {
+		t.Fatalf("the folded match came back %v; want 0 4, the field's own D and S", got)
+	}
+	if got := spanOf(t, "fooBar", "fb"); !reflect.DeepEqual(got, []int{0, 3}) {
+		t.Fatalf("the camel match came back %v; want 0 3", got)
+	}
+	// A field that had to be folded as a whole — non-ASCII, against a
+	// case-insensitive word — matches and scores, and names no bytes: the
+	// fold's shape is not the field's, and a half-honest span is a lie drawn.
+	var hits []TermHit
+	var span []int
+	if _, ok := ScoreHits("Élan Vital", terms("élan"), &hits, &span); !ok {
+		t.Fatal("the folded field must still match")
+	}
+	if len(hits) != 1 || len(hits[0].Pos) != 0 {
+		t.Fatalf("the whole-field fold named %v; want an honest nothing", hits)
+	}
+}
+
+// PER TERM, THE SPAN NAMES THE FIELD IT WON — the field the score took, and
+// no other: a settings row found by its value carries the match on the
+// value, and a term that won the label carries it on the label, so a caller
+// highlights exactly where each word landed and only there.
+func TestTheSpanNamesTheFieldItWon(t *testing.T) {
+	fields := []string{"ask before running", "tools.approvalMode", "what happens when the model asks", "yolo"}
+	var hits []TermHit
+	var span []int
+	if _, ok := ScoreFieldsHits(fields, terms("yolo"), &hits, &span); !ok {
+		t.Fatal("the value field must carry the match")
+	}
+	if len(hits) != 1 || hits[0].Field != 3 || !reflect.DeepEqual(hits[0].Pos, []int{0, 1, 2, 3}) {
+		t.Fatalf("yolo answered %+v; want field 3, bytes 0 1 2 3", hits)
+	}
+	if _, ok := ScoreFieldsHits(fields, terms("ask yolo"), &hits, &span); !ok {
+		t.Fatal("both terms must match")
+	}
+	if len(hits) != 2 || hits[0].Field != 0 || hits[1].Field != 3 {
+		t.Fatalf("ask yolo answered %+v; want the label then the value", hits)
+	}
+	if !reflect.DeepEqual(hits[0].Pos, []int{0, 1, 2}) {
+		t.Fatalf("ask landed on %v; want the label's first three bytes", hits[0].Pos)
+	}
+	// AND THE SCORE IS [ScoreFields]' ANSWER, TERM FOR TERM AND TIE FOR TIE.
+	for _, query := range []string{"ask", "yolo", "ask yolo", "tools a", "zzz"} {
+		want, wantOK := ScoreFields(fields, terms(query))
+		got, gotOK := func() (int, bool) {
+			var h []TermHit
+			var s []int
+			return ScoreFieldsHits(fields, terms(query), &h, &s)
+		}()
+		if got != want || gotOK != wantOK {
+			t.Fatalf("%q scored (%d, %v) with the span; ScoreFields says (%d, %v)", query, got, gotOK, want, wantOK)
+		}
+	}
+}
+
+// A PREFIX THE GAP FLOORED MATCHES WITHOUT A SPAN. Smith-Waterman floors
+// at zero, so a gap longer than the whole alignment it swallows leaves a
+// cell whose score belongs to the suffix alone — and the best cell of the
+// last row can be exactly that: the early b-run below out-scores every full
+// alignment of "zabbbb" in the same haystack. The match and its score stand
+// — ranking is the score's business — but no span is vouched for, because a
+// highlighted half-alignment is a lie: positions come back empty, and the
+// caller simply has nothing to draw.
+func TestAFlooredPrefixMatchesWithoutASpan(t *testing.T) {
+	hay := "QzQ bbbb" + strings.Repeat("x", 50) + "a" +
+		strings.Repeat("y", 50) + "b" + strings.Repeat("y", 50) + "b" +
+		strings.Repeat("y", 50) + "b" + strings.Repeat("y", 50) + "b"
+	var hits []TermHit
+	var span []int
+	score, ok := ScoreHits(hay, terms("zabbbb"), &hits, &span)
+	if !ok || score != 104 {
+		t.Fatalf("the floored case scored (%d, %v); want the known 104, true", score, ok)
+	}
+	if len(hits) != 1 || len(hits[0].Pos) != 0 {
+		t.Fatalf("the floored lineage named %v; want no span at all", hits)
+	}
+}
+
+// THE SPAN'S SCRATCH IS THE SAME ANSWER EVERY TIME: the caller's hit and
+// span buffers are rewritten per call, and nothing a previous row left in
+// them reaches the next one.
+func TestTheSpanScratchCarriesNoStateBetweenCalls(t *testing.T) {
+	var hits []TermHit
+	var span []int
+	first := spanOf(t, "claude-sonnet-4.5", "sonnet")
+	for i := 0; i < 3; i++ {
+		if _, ok := ScoreHits(strings.Repeat("x y z ", 400), terms("xyz"), &hits, &span); !ok {
+			t.Fatal("the filler row must match")
+		}
+		if again := spanOf(t, "claude-sonnet-4.5", "sonnet"); !reflect.DeepEqual(again, first) {
+			t.Fatalf("span changed across calls: %v then %v", first, again)
+		}
+	}
+	// And a span slice a caller kept must not be rewritten under it: the
+	// buffers belong to the call, and what must survive one is copied out.
+	var keep []int
+	if _, ok := ScoreHits("claude-sonnet-4.5", terms("sonnet"), &hits, &span); !ok {
+		t.Fatal("sonnet must match")
+	}
+	keep = append(keep, hits[0].Pos...)
+	if _, ok := ScoreHits("gpt-4o", terms("gpt"), &hits, &span); !ok {
+		t.Fatal("gpt must match")
+	}
+	if !reflect.DeepEqual(keep, []int{7, 8, 9, 10, 11, 12}) {
+		t.Fatalf("a kept span was rewritten under its caller: %v", keep)
 	}
 }
