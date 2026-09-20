@@ -59,6 +59,17 @@ const (
 	// threshold, a loop guard and a rule the worker would not follow also end
 	// runs, and none of them is this.
 	TaskPresenceStopped TaskPresence = "stopped"
+	// TaskPresenceInterrupted is work NOTHING IS DRIVING, whose every step is
+	// kept. The window closed, the machine slept, the engine died: none of those
+	// is a finding about the work and none of them is a person's decision, so
+	// none of them may read as stopped or incomplete.
+	//
+	// IT IS NOT A SETTLED READING. The work is not over — it is waiting to be
+	// picked up — which is the whole of what this rung says that the two beside
+	// it cannot. `stopped` stays a person ending the work, `incomplete` stays
+	// work that ran and came up short, and reading either over work whose only
+	// misfortune was a closed window is what this rung exists to stop.
+	TaskPresenceInterrupted TaskPresence = "interrupted"
 )
 
 // TaskWaitOn is what a waiting task is waiting on. "Waiting" alone leaves the
@@ -252,6 +263,11 @@ const (
 	TaskAskCheck TaskAskKind = "check"
 	// TaskAskHeld is work the check did not pass, whose answer is being held.
 	TaskAskHeld TaskAskKind = "held"
+	// TaskAskContinue is work nothing is driving, waiting to be picked up. It is
+	// the one ask on this table that is not about a judgement of the work: the
+	// other five are the machine having reached the end of what it can decide,
+	// and this one is the machine not having been there at all.
+	TaskAskContinue TaskAskKind = "continue"
 	// TaskAskCap is a run standing at its fuel gate.
 	TaskAskCap TaskAskKind = "cap"
 )
@@ -449,6 +465,11 @@ func taskLifecycleStatus(status TaskStatus, facts TaskFacts) TaskStatus {
 		status.Fault = taskEndingIsFault(facts.Ending)
 	case TaskDone:
 		status.Presence = TaskPresenceDone
+	case TaskInterrupted:
+		// Nothing was found out about the work and nobody decided anything about
+		// it; there was simply nobody there. It reads as itself and as nothing
+		// else ([TaskInterrupted]).
+		status.Presence, status.On = TaskPresenceInterrupted, TaskWaitPerson
 	}
 	return status
 }
@@ -533,7 +554,11 @@ func taskEndingIsFault(ending TaskEnding) bool {
 func taskStatusDemand(status TaskStatus) TaskStatus {
 	// Keeping a branch is a valid delivery workflow, not a request to merge.
 	// A conflict or an unresolved review is the actionable condition.
-	if (status.Changes == TaskChangesConflicted && status.ChangesUnlanded()) || status.Presence == TaskPresenceNeedsLook {
+	// AND WORK NOTHING IS DRIVING WILL NOT MOVE WITHOUT THEM EITHER. Continuing
+	// always asks first, so an interrupted row sits exactly where a your-call row
+	// sits until somebody answers it.
+	if (status.Changes == TaskChangesConflicted && status.ChangesUnlanded()) ||
+		status.Presence == TaskPresenceNeedsLook || status.Presence == TaskPresenceInterrupted {
 		status.Attention = true
 	}
 	return status
@@ -656,6 +681,11 @@ const (
 	taskWordStopped    = "stopped"
 	taskWordIncomplete = "incomplete"
 	taskWordYourCall   = "your call"
+	// taskWordInterrupted is the word for work nothing is driving. It is the one
+	// word on this list a person ASKED for by name, and it joins the others
+	// rather than replacing one: work is running, finishing, done, incomplete,
+	// your call, stopped, or interrupted.
+	taskWordInterrupted = "interrupted"
 )
 
 // The reason sentences for an incomplete landing, one per ending, in the
@@ -745,6 +775,14 @@ const (
 	taskAskStartNo     = "don't"
 	taskAskApproveYes  = "approve"
 	taskAskApproveNo   = "decline"
+	// The three sentences an interrupted row asks with. The reason states the
+	// two facts a person needs before they answer — that nothing is driving it,
+	// and that what it did is not lost — because without the second one the
+	// only safe answer looks like starting over.
+	taskAskContinueReason = "nothing is driving it; everything it did is kept"
+	taskAskContinueYes    = "continue it"
+	taskAskContinueNo     = "leave it"
+
 	taskAskConflictYes = "resolve it"
 	taskAskConflictNo  = "drop it"
 	taskAskCheckYes    = "accept"
@@ -877,6 +915,27 @@ func taskStatusWords(status TaskStatus, facts TaskFacts) TaskStatus {
 	case TaskPresenceNeedsLook:
 		status.Tier, status.Word = TaskTierYourCall, taskWordYourCall
 		status.Ask = taskAskOf(facts)
+		status.Reason = status.Ask.Reason
+	case TaskPresenceInterrupted:
+		// THE WORD IS THE PERSON'S OWN AND NOT `your call`, though the tier is
+		// theirs. Every other row in this tier is the machine having reached the
+		// end of what it can decide; this one is the machine not having been
+		// there, and a person scanning a list wants those told apart at a glance.
+		status.Tier, status.Word = TaskTierYourCall, taskWordInterrupted
+		// THE ASK IS WRITTEN HERE RATHER THAN IN [taskAskOf], because that reader
+		// walks the facts of a LANDING to work out which judgement is owed, and
+		// there is no judgement here: the answer follows from the presence alone.
+		//
+		// AND THE OWNER IS ALWAYS THE PERSON. Continuing spends money, so no
+		// settle policy hands this one to the model — the same reasoning a
+		// conflict is never the model's.
+		status.Ask = TaskAsk{
+			Kind:   TaskAskContinue,
+			Reason: taskAskContinueReason,
+			Yes:    taskAskContinueYes,
+			No:     taskAskContinueNo,
+			Owner:  TaskAskOwnerPerson,
+		}
 		status.Reason = status.Ask.Reason
 	}
 	return status

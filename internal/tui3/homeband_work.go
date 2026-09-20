@@ -284,7 +284,11 @@ func homeWorkGlyph(status session.TaskStatus, pal palette) string {
 			return homeLiveASCII
 		}
 		return homeLiveGlyph
-	case session.TaskPresenceNeedsLook:
+	case session.TaskPresenceNeedsLook, session.TaskPresenceInterrupted:
+		// WORK NOTHING IS DRIVING WEARS THE ASKING MARK. It is the person's call
+		// in exactly the way the rows beside it are — it will not move until they
+		// answer — and it is where they answer it. The word beside the mark is
+		// what tells the two apart, and the word is the reading's own.
 		if pal.ascii {
 			return homeAskASCII
 		}

@@ -1965,12 +1965,12 @@ and no line claims one did.
 a brief that takes thirty seconds is drawn for thirty seconds with one clock counting the
 whole of it. It does not go blank partway through and it does not restart at zero.
 
-## The four words a task can land with — done, stopped, incomplete, your call
+## The words a task can land with — done, stopped, incomplete, your call, interrupted
 
-Every task ends wearing exactly one of four words, and the words are the same everywhere
-you read them: the card, the rail, the roster, home, and the note codeaf itself reads. Two
-of them say nothing more is coming; the other two carry a reason, which the next section
-sets out in full.
+Every task ends wearing exactly one of these words, and the words are the same everywhere
+you read them: the card, the rail, the roster, home, and the note codeaf itself reads. Done
+and stopped say nothing more is coming; incomplete and your call carry a reason, which the
+next section sets out in full; interrupted is the one that does not mean the work is over.
 
 **Done.** `task 7 done: <title>`. The check held. The branch merges into an ordinary
 checked-out branch, or stays on its task branch when the checkout is protected, moved or
@@ -1980,6 +1980,13 @@ checked on under it — no lead word at all.
 **Stopped.** `task 7 stopped: <title>`. **You** ended it, and that is the whole of what the
 word means. No threshold, no loop guard and no rule a worker would not follow is drawn as a
 stop, and a task you stopped is never coloured as something having broken.
+
+**Interrupted.** `task 7 interrupted: <title>`. **Nothing is driving it, and everything it
+did is kept.** The window closed, the machine slept, or codeaf itself went away. Nothing
+went wrong with the work and nobody decided anything about it, which is exactly why it is
+neither `incomplete` nor `stopped`. It is the one word here that does not mean the work is
+over: the row waits for you, wearing the asking mark, and its line reads `nothing is
+driving it; everything it did is kept`.
 
 ## Why a task landed incomplete or as your call — the reason beside the word
 
