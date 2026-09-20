@@ -1752,7 +1752,7 @@ func TestTheGreetingsFirstFrameCarriesTheSpend(t *testing.T) {
 		t.Fatalf("the greeting read the machine's day as %v, want 1.25 before the first beat", a.machine.spent)
 	}
 	frame, _, _ := a.frame()
-	if plain := ansi.Strip(frame); !strings.Contains(plain, spendTodayWord+" "+dollars(1.25)) {
+	if plain := ansi.Strip(frame); !strings.Contains(plain, dollars(1.25)+" / ") {
 		t.Fatalf("the first frame has no money on it:\n%s", plain)
 	}
 }

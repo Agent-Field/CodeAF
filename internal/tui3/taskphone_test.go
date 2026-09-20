@@ -248,7 +248,18 @@ func TestTappingAPhoneCardOpensTheRecordAndBacksToTheList(t *testing.T) {
 
 	// Tap the earlier card — a row of a conversation that is closed opens the
 	// record, not a room.
-	y, ok := taskSheetHitY(a, taskSheetHitRow)
+	y, ok := 0, false
+	reading := a.tasksFiltered()
+	lines := reading.lay(a.taskSheetListWidth())
+	_, hits, _, _ := a.taskSheetFrame(a.width, a.height)
+	for at, hit := range hits {
+		if hit.kind == taskSheetHitRow {
+			if _, task := reading.at(lines, hit.index); task {
+				y, ok = at, true
+				break
+			}
+		}
+	}
 	if !ok {
 		t.Fatal("the earlier card answers to no press")
 	}

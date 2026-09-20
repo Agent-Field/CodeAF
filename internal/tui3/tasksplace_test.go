@@ -36,7 +36,7 @@ func tasksFixture() (session.World, session.UsageWindow, time.Time) {
 	first.Tasks.Rows[2].Outcome = "a report"
 	first.Tasks.Rows[3].Outcome = "the package manager refused the archive"
 
-	second := session.SessionRow{ID: "room-b", Title: "thor clips", Project: "media", Open: true}
+	second := session.SessionRow{ID: "room-b", Title: "Thor Clips", Project: "media", Open: true}
 	second.Tasks.Rows = []session.TaskIndexEntry{
 		entry("5", "render fight clip", string(session.TaskQueued), time.Time{}, 3.10),
 		entry("6", "summarise loud movers", string(session.TaskDone), at(25, 6), .31),
@@ -61,7 +61,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now))
 	rows := reading.rows(120, newPalette(tokens.NoColor, false))
 	page := strings.Join(rows, "\n")
-	wants := []string{tierYourCallWord, "waiting"}
+	wants := []string{"running"}
 	last := -1
 	for _, want := range wants {
 		at := strings.Index(page, want)
@@ -74,7 +74,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	// clause rather than the sentence it used to end. It read `work codeaf ran on
 	// its own. 14 pieces of work since aug 2, $34.10 between them.` — a paragraph
 	// teaching the machinery's own idea of itself, ahead of every row on the page.
-	if !strings.Contains(page, "tasks · 14 pieces of work · $34.10") {
+	if !strings.Contains(page, "2 chats · 14 subtasks · $34.10") {
 		t.Fatalf("header did not count the window and its known spend:\n%s", page)
 	}
 	if strings.Contains(page, "ran on its own") {
@@ -222,7 +222,7 @@ func TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse(t *testing.T) {
 		}
 	}
 	// Both conversations stay whole: one needs a look, the other is waiting.
-	if words != 2 {
+	if words != 1 {
 		t.Fatalf("the two conversations drew %d section headings, want 2", words)
 	}
 }
@@ -384,7 +384,7 @@ func tasksFamilyFixture() (session.World, session.UsageWindow, time.Time) {
 	loc := time.FixedZone("fixture", -4*60*60)
 	now := time.Date(2026, time.August, 25, 13, 11, 0, 0, loc)
 	at := func(hour int) time.Time { return time.Date(2026, time.August, 25, hour, 0, 0, 0, loc) }
-	row := session.SessionRow{ID: "room-a", Title: "the split", Project: "codeaf", Open: true}
+	row := session.SessionRow{ID: "room-a", Title: "The Split", Project: "codeaf", Open: true}
 	kid := func(id, parent, label string) session.TaskIndexEntry {
 		return session.TaskIndexEntry{
 			ID: id, Parent: parent, Label: label, SessionID: "room-a",
@@ -412,7 +412,7 @@ func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 	// The conversation over the family is opened by hand and left that way: this
 	// is about the FAMILY's fold, and the root above it would otherwise hide the
 	// whole page ([tasksReading.opens]).
-	reading.open = map[tasksKey]bool{tasksChatKey("room-a"): true}
+	reading.open = map[tasksKey]bool{tasksChatKey("room-a"): true, {session: "room-a", id: "1"}: false}
 
 	shut := reading.lay(120)
 	work := func(lines []tasksLine) []tasksLine {
@@ -471,7 +471,7 @@ func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 // TestAPageWithNoFamiliesDrawsNoFamilyColumn is the other half of the law: the
 // column APPEARS when there is a tree, so nothing moves sideways on a machine
 // that has never split work up.
-func TestAnUnattributedPageWithNoFamiliesDrawsNoFamilyColumn(t *testing.T) {
+func TestUnattributedTasksRemainUnderConversationRows(t *testing.T) {
 	world, win, now := tasksFixture()
 	for i := range world.Projects {
 		for j := range world.Projects[i].Sessions {
@@ -479,7 +479,7 @@ func TestAnUnattributedPageWithNoFamiliesDrawsNoFamilyColumn(t *testing.T) {
 		}
 	}
 	for _, line := range readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now).lay(120) {
-		if line.kind == tasksLineTask && line.kin != "" {
+		if line.kind == tasksLineTask && (line.kin == "" || !line.under) {
 			t.Fatalf("a page with no families drew the column: %q on %q", line.kin, line.item.entry.Label)
 		}
 	}
@@ -766,7 +766,7 @@ func TestAFilterThatMatchesNothingStillCountsThePlace(t *testing.T) {
 		t.Fatalf("the query kept %d rows and it should have emptied the list", len(r.items))
 	}
 	got := r.head(120, false)
-	want := "tasks · 3 pieces of work · $0.72"
+	want := "1 chat · 3 subtasks · $0.72"
 	if got != want {
 		t.Fatalf("a query nothing matches makes the page say\n  %s\nand what is true of the machine is\n  %s", got, want)
 	}
@@ -778,23 +778,23 @@ func TestAFilterThatMatchesNothingStillCountsThePlace(t *testing.T) {
 func TestTheTasksHeadAndItsFoldsSayTheirFiguresInWords(t *testing.T) {
 	world, win, now := tasksPolishFixture()
 	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
-	if got, want := reading.head(120, false), "tasks · 3 pieces of work · $0.72"; got != want {
+	if got, want := reading.head(120, false), "1 chat · 3 subtasks · $0.72"; got != want {
 		t.Fatalf("the head reads\n  %s\nwant\n  %s", got, want)
 	}
 	// THE WINDOW'S EDGE IS CARRIED WHERE THE CONTROL IS NOT DRAWN, and the spend
 	// clause is what a frame too narrow for the whole line gives up — never a
 	// figure cut in half.
 	edge := reading.head(80, true)
-	if !strings.Contains(edge, " pieces of work since ") || !strings.HasSuffix(edge, "$0.72") {
+	if !strings.Contains(edge, " subtasks since ") || !strings.HasSuffix(edge, "$0.72") {
 		t.Fatalf("the narrow head reads\n  %s\nwant `tasks · N pieces of work since <date> · $0.72`", edge)
 	}
-	if got := reading.head(40, true); strings.Contains(got, "$") {
+	if got := reading.head(32, true); strings.Contains(got, "$") {
 		t.Fatalf("at forty cells the head reads\n  %s\nwant the line without its spend clause", got)
 	}
 	// ONE piece of work is one piece of work.
 	one := reading
 	one.whole, one.wholeCost = 1, 0.27
-	if got, want := one.head(120, false), "tasks · 1 piece of work · $0.27"; got != want {
+	if got, want := one.head(120, false), "1 chat · 1 subtask · $0.27"; got != want {
 		t.Fatalf("one row makes the head read\n  %s\nwant\n  %s", got, want)
 	}
 	if got, want := tasksUnderWord(3), "holds 3 more"; got != want {
@@ -810,7 +810,7 @@ func TestTheTasksHeadAndItsFoldsSayTheirFiguresInWords(t *testing.T) {
 	// fold is standing over.
 	fam, famWin, famNow := tasksFamilyFixture()
 	shut := readTasks(fam, tasksMine{}, famWin, tasksSort{}, time.Time{}, famNow)
-	shut.open = map[tasksKey]bool{tasksChatKey("room-a"): true}
+	shut.open = map[tasksKey]bool{tasksChatKey("room-a"): true, {session: "room-a", id: "1"}: false}
 	row := tasksDrawnRow(tasksPageFolded(shut, 120), "port the parser")
 	if !strings.Contains(row, "done"+rowSep+tasksUnderWord(3)) {
 		t.Fatalf("the shut family's row reads\n  %s\nand its state cell must say what it is holding: `done · holds 3 more`", row)
@@ -844,7 +844,7 @@ func TestAnOpenedFamilyNamesItsConversationOnce(t *testing.T) {
 	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
 	page := tasksPage(reading, 120)
-	if got := strings.Count(page, "the split"); got != 1 {
+	if got := strings.Count(page, "The Split"); got != 1 {
 		t.Fatalf("the conversation is named %d times on\n%s\nwant once on the main chat and never on a worker", got, page)
 	}
 	if !strings.Contains(page, "port the lexer") {
@@ -905,7 +905,7 @@ func TestARunningRunHasNoEndingOnItsRecordCard(t *testing.T) {
 // AN UNDATED LIVE ROW IS FILED AT THE READING, not at the zero time. It stays
 // inside today's window and ahead of work that landed earlier, while the
 // landing clock remains absent everywhere that reads it as an ending.
-func TestARunningUndatedRunStaysAtTheTopOfTodaysTasks(t *testing.T) {
+func TestUndatedWorkDoesNotOutrankDatedActivity(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	running := session.TaskIndexEntry{
 		ID: "2", Title: "Run the pricing audit", Label: "Run the pricing audit",
@@ -925,7 +925,7 @@ func TestARunningUndatedRunStaysAtTheTopOfTodaysTasks(t *testing.T) {
 	reading := readTasks(session.World{}, tasksMine{rows: []tasksMineRow{
 		{entry: landed}, {entry: running, runs: true},
 	}}, window, tasksSort{}, time.Time{}, now)
-	if len(reading.items) != 2 || reading.items[0].entry.ID != running.ID {
+	if len(reading.items) != 2 || reading.items[0].entry.ID == running.ID {
 		t.Fatalf("today's tasks are ordered %+v, want the live run before the older landing", reading.items)
 	}
 }

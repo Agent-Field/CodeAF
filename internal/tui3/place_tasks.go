@@ -46,9 +46,8 @@ type tasksPlace struct {
 	// ([tasksChatKey], which cannot collide with the other).
 	//
 	// A KEY THAT IS NOT HERE IS THE ROW'S OWN DEFAULT AND NOT `SHUT`
-	// ([tasksReading.opens] holds the two defaults and says why they differ). So
-	// nil is the page as it opens — every conversation showing its work, every
-	// family folded — and shutting a conversation is REMEMBERED here as false
+	// ([tasksReading.opens]). Nil opens every conversation and nested family.
+	// Shutting a conversation is REMEMBERED here as false
 	// rather than deleted, which is the whole reason this map is read as
 	// presence-and-value instead of as a set.
 	opened map[tasksKey]bool
@@ -247,7 +246,7 @@ func (p *tasksPlace) regroup(a *app) {
 	//
 	// [tasksPlace.cursor] is a LINE of a layout this replaces whole, and the
 	// layout moves for reasons that have nothing to do with the person: a task
-	// finishing leaves the `running` section and joins `finished today`, and every
+	// finishing can move its whole conversation into `completed`, and every
 	// row below where it was shifts by one. The cursor stayed on the number and so
 	// changed which piece of work it was on — silently, on a three-second beat,
 	// between somebody reading a row and pressing enter on it. That is the
@@ -300,13 +299,14 @@ func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 // place is holding at this instant.
 func (p *tasksPlace) filtered(a *app) tasksReading {
 	r := p.reading
+	r.chatViews = make(map[string]tasksChatView)
+	for _, tab := range a.tabList() {
+		working, unread := a.homeChatState(&homeCell{chatKey: tab.key})
+		r.chatViews[tab.file] = tasksChatView{title: tab.word, working: working, unread: unread}
+	}
 	r.open = p.opened
-	// THE ORDER IS THE PLACE'S TOO, and it is joined here for the same reason the
-	// folds are: this is the one door onto the reading, so a key pressed between
-	// two frames reaches every one of its readers at once ([tasksReading.tree]
-	// rebuilds the shape when the order it was built in is not the one being
-	// asked for).
-	r.order = p.order
+	// Every rebuild retains the fixed chronological order.
+	r.order = tasksSort{}
 	needle := a.taskSheetFilter()
 	// AND SO IS WHAT IS IN THE BOX, because the box is a ROW of the list now
 	// ([tasksControlRow]) and a row cannot ask the surface anything. It is the
@@ -329,6 +329,7 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 		if kept != nil {
 			r.items = kept
 			tree := tasksTreeOf(kept, r.now, r.order, r.chats...)
+			tree.keepConversationStates(p.reading.tree())
 			r.shape = &tree
 		}
 		return r
@@ -346,7 +347,7 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	hit := make(map[tasksKey]bool, len(r.items))
 	found := make([]tasksKey, 0, len(r.items))
 	for _, item := range r.items {
-		if tasksMatches(item, needle) {
+		if tasksMatches(item, needle) || session.TaskWordsMatch(r.chatViews[item.row.Transcript].title, needle) {
 			key := tasksKeyOf(item.entry)
 			hit[key] = true
 			found = append(found, key)
@@ -377,12 +378,13 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 		owners[tasksChatOf(item)] = true
 	}
 	for _, row := range r.chats {
-		if owners[row.ID] || session.TaskWordsMatch(row.Title+" "+row.Project, needle) {
+		if owners[row.ID] || session.TaskWordsMatch(row.Title+" "+row.Project+" "+r.chatViews[row.Transcript].title, needle) {
 			chats = append(chats, row)
 		}
 	}
 	r.chats = chats
 	tree = tasksTreeOf(kept, r.now, r.order, chats...)
+	tree.keepConversationStates(p.reading.tree())
 	r.shape = &tree
 	return r
 }
@@ -433,7 +435,7 @@ func (a *app) taskSheetSelfRow() session.SessionRow {
 	if file := row.Transcript; file != "" {
 		row.ID = filepath.Base(filepath.Dir(file))
 	}
-	row.At, row.Open, row.Live = a.now(), true, true
+	row.Open, row.Live = true, true
 	row.Presence.State = a.taskSheetSelfState()
 	return row
 }
@@ -512,6 +514,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			Cost:      node.cost,
 			Model:     node.model,
 			SessionID: self,
+			StartedAt: node.started,
 			EndedAt:   taskNodeEnded(node),
 		})
 	}
@@ -766,30 +769,6 @@ func (a *app) taskSheetFold(open bool) bool {
 	return true
 }
 
-// taskSheetSortBy re-orders the page by one column, and it is THE ONE DOOR ONTO
-// THAT — the chord and the click both come here, so a label pressed twice and a
-// key cycled round to itself behave identically ([tasksSort.on] holds the rule).
-//
-// THE CURSOR STAYS ON THE ROW IT IS ON. Re-ordering moves rows under a person
-// who is reading one of them, and the cursor is a LINE; it is remembered by the
-// pair that identifies the work, exactly as it is across a rebuild
-// ([tasksPlace.regroup] states the law and the failure it exists to stop).
-func (a *app) taskSheetSortBy(key tasksSortKey) {
-	was, held := a.taskSheet.rowAt(a, a.taskSheet.cursor)
-	a.taskSheet.order = a.taskSheet.order.on(key)
-	a.taskSheet.top = 0
-	if held {
-		if line, found := a.taskSheet.lineOf(a, was); found {
-			a.taskSheet.cursor = a.tasksSettle(line)
-			a.taskSheet.top = 0
-			a.touch()
-			return
-		}
-	}
-	a.taskSheet.cursor = a.tasksSettle(0)
-	a.touch()
-}
-
 // taskSheetTyped is what every edit of the filter ends with: the list has
 // changed under the cursor, so the cursor goes back to the first row of it and
 // the window with it. A cursor left at row forty of a list that now has three is
@@ -896,10 +875,6 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.taskSheetMove(len(a.taskSheet.stops(a)))
 	case "enter":
 		return a.taskSheetEnter(), true
-	case tasksSortBackChord:
-		// THE SAME KEY AGAIN REVERSES ([tasksSort.on]), which is what a person
-		// means by this chord: not "the previous key" but "the other way round".
-		a.taskSheetSortBy(a.taskSheet.order.key)
 
 	// ── the filter's own edits, in the settings panel's spelling ──────────────
 	case "backspace":
@@ -1152,14 +1127,8 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	if hits[y].kind == taskSheetHitBar {
 		return a.taskSheetBarPress(x)
 	}
-	// A COLUMN LABEL IS PRESSED WHERE IT IS DRAWN. The control row resolves its
-	// own press against the SAME arithmetic the paint used ([tasksColumns], asked
-	// through [tasksControlHit]) — a pointer with its own idea of where a column
-	// sits is exactly how a click comes to sort by the wrong thing.
+	// Column labels are readings; the list always stays newest first.
 	if hits[y].kind == taskSheetHitControl {
-		if key, ok := tasksControlHit(x, a.taskSheetListWidth(), a.taskSheet.order); ok {
-			a.taskSheetSortBy(key)
-		}
 		return nil
 	}
 	if hits[y].kind != taskSheetHitRow {
@@ -1536,29 +1505,8 @@ func (p *tasksPlace) hint(a *app) string {
 	return strings.Join(a.tasksPageKeys(parts), railSep)
 }
 
-// tasksPageKeys puts THE TWO THINGS THE KEYBOARD DOES TO THE WHOLE PAGE on the
-// end of the foot's row clauses. They are last because every clause before them
-// is about the row under the cursor and these two are about the page.
-//
-// IT IS ONE FUNCTION BECAUSE THE FOOT HAS TWO ROADS THROUGH IT. A conversation's
-// row returns early — its clauses are its own — and with every fold now opening
-// shut the cursor's FIRST resting place is a conversation, so a page key named
-// only on the other road would be named on no frame a person meets first. The
-// tmux drive is what found that: the page as it opens said neither key.
-//
-// THE FILTER OWNS EVERY PRINTABLE KEY ON THIS PAGE, so sorting cannot be `s` — a
-// bare `s` would cost `sweep`, `stop` and `site` — and it is `alt+s` (the ruling
-// of 2026-09-11). A chord nobody can find is a chord that does not exist, so the
-// foot names it. And the other half has to be named beside it: the control row
-// draws the box, but nothing else on the frame says that a letter goes INTO that
-// box rather than to the page's own keys.
-//
-// WHILE A FILTER IS ON, THE SECOND CLAUSE IS THE ONE THAT MOVED — that esc now
-// means the filter and not the page, which is the one fact the box itself cannot
-// show — and inviting somebody to type a filter they have already typed would be
-// the frame naming one thing twice on one screen.
+// tasksPageKeys names the filter and the way back after the selected row's actions.
 func (a *app) tasksPageKeys(parts []string) []string {
-	parts = append(parts, tasksSortHint(a.taskSheet.order))
 	if a.taskSheetFiltering() {
 		return append(parts, tasksClearFilterWord)
 	}
@@ -1776,23 +1724,8 @@ func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.chan
 // so shared editing and filtering controls can act on the same value.
 func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 
-// alt is `alt+s`: WHICH COLUMN THIS LIST IS ORDERED BY, one key at a time.
-//
-// IT IS HERE AND NOT IN [app.taskSheetKeyPress] BECAUSE THE ROUTER OWNS THE
-// CLASS. `alt+<letter>` means "change how THIS place is shown" on every place
-// (placekeys.go), and it SWALLOWS an undeclared letter rather than passing it
-// down — so an arm written in this place's own key switch would never be
-// reached. Which is also the argument for the binding: a sort IS a view, the
-// memory place already walks its shelves with the same chord, and the ruling of
-// 2026-09-11 settled that it cannot be a bare `s` because the filter here owns
-// every printable key.
-func (placeTasks) alt(a *app, letter rune) bool {
-	if letter != 's' {
-		return false
-	}
-	a.taskSheetSortBy(a.taskSheet.order.key.next())
-	return true
-}
+// Sorting is fixed; this place has no alternate sort binding.
+func (placeTasks) alt(a *app, letter rune) bool { return false }
 
 // tasksFilterHint is the short spelling of that invitation. It is the control
 // row's own placeholder ([tasksControlRow]) and it is repeated on the FOOT'S KEY

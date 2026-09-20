@@ -2355,7 +2355,7 @@ ctrl+. earlier
 
 - **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
   tasks place opens with every task this machine has run on it, grouped by what you do next
-  — `your call`, `running`, `waiting`, `finished today`, `earlier`. `/history` is the same page.
+  — `running` and `completed`. `/history` is the same page.
 - **It says what is behind it.** With a record behind it the line reads `ctrl+. earlier`;
   with no record, on a column that has merely folded a family away, the same line reads
   `ctrl+. view more`. There is only ever one such line.
@@ -2581,9 +2581,10 @@ pages here take the frame — the settings panel, this one, and `/home` — and 
 them is ever up**: opening any one closes the other two.
 
 It opens on one heading saying what it is holding. A page holding conversations reads, for
-example, `tasks · 15 chats · 13 subtasks · $2.98`: chats first, then the work under them. A
-page holding work with no conversation on it reads, for example,
-`tasks · 148 pieces of work since aug 11 · $34.10`. The count is every row the time window
+example, `15 chats · 13 subtasks · $2.98`: chats first, then the work under them. A
+page whose conversation metadata is unavailable still groups its tasks under a conversation
+row and reads, for example,
+`1 chat · 148 subtasks since aug 11 · $34.10`. The count is every row the time window
 holds, the date is the far edge of that window, and the money is what those rows are known
 to have cost. A window with no known start drops the `since`, and rows nobody priced drop
 the money: zero means "nobody published a price", never "free". **A frame too narrow for
@@ -2601,25 +2602,27 @@ does not make the machine's history empty. What matched is said on the line unde
 list instead: `nothing matches`. The words you typed are on the control row at the top of
 the list, where you typed them.
 
-**When the time window holds none of it, that line says `tasks · nothing since jul 29`** —
+**When the time window holds none of it, that line says `nothing since jul 29`** —
 in words, because a `0` there is the figure the emptiness law forbids, and with the date
 still on it because the date is what says the window is the reason. The sentence stays on the frame in that state: it is the only thing naming the
 window the four shift-arrows move, so a page that replaced it with the teaching prose
 would have swallowed the way back. The teaching prose is for a machine that has run
 nothing IN ANY WINDOW, which is a different screen.
 
-Under it, **five sections, in the order you act on them**: `your call`, `running`,
-`waiting`, `finished today`, then `earlier`. `running` is work a worker is actually inside;
-`waiting` is work that has been admitted and that nothing is doing — behind the piece that
-needs a person, or behind a slot. A waiting row **carries no age at all**: it has not
-started, so there is nothing to count from. A conversation and everything under it stand
-together, in the section its most urgent piece of work puts it in. Conversations still sit
-beside one another regardless of whose work they hold — this conversation's, another
-window's, or one from a session you closed last week.
+Under it are only **running** and **completed**, with a conversation at the top of every
+tree. A chat belongs to running while it is answering or has running, queued, waiting or
+unanswered work. Otherwise it belongs to completed. Its entire tree moves together as
+work starts and finishes; completed children stay beside their active siblings.
 
-`finished today` is **everything that ended today, however it ended** — work that came off,
-work that failed, work somebody stopped. It was called `done today` and held all three,
-which made `done` untrue of some of its own rows; each row still says which it was.
+Both sections are always **newest activity first**, using the newest recorded conversation
+or task timestamp. Nested siblings also sort newest first. The time window selects whole
+conversations, retaining older parents and children instead of splitting their trees.
+Filtering never moves a conversation into a different section.
+
+Conversation names use the full title shown on Home and truncate only to fit. Their
+bullets also match Home: dim at rest, working while answering, bright for unread replies,
+and a question mark when an answer is needed. A missing transcript still leaves its tasks
+under an identified conversation row; nothing is promoted into a top-level task.
 
 Each row is one line: a state glyph, then **the name, whole**, and then a dim tail of facts
 joined by ` · ` — how long ago, the conversation or project it came out of, what it is doing
@@ -2672,7 +2675,7 @@ this window's own live work, and the window next door are read together and join
 conversation and the id, with the freshest of them winning.
 
 **A family can be folded away.** Where it is, the section's own heading says so —
-`finished today · 3 folded away` — and `→` opens it. Everything else the window holds has a
+`completed · 3 folded away` — and `→` opens it. Everything else the window holds has a
 line, and the page scrolls —
 `↑`/`↓`, `pgup`/`pgdown`, `home`/`end` and the wheel all walk it. **The last rows fade** when
 the list runs on below the bottom of the window: three rows, each a step fainter, saying
@@ -2680,20 +2683,16 @@ there is more under them. The row the cursor is on never fades wherever it sits,
 short enough to fit fades nothing at all — see *Why the bottom rows of a long list look
 dimmer* on the screen page.
 
-## Why the count at the bottom does not match the rows or headings
+## Why completed tasks can appear in the running section
 
-At the bottom, written into the rule over the composer, one dim count says what each piece
-of work IS. The sections answer a different question: they file a conversation and
-everything under it where the CONVERSATION stands, according to its most urgent work. A
-finished `✓` row can therefore sit under `waiting`, and the foot can name `running` or
-`finished today` when there is no heading for that state on the page at all. Each work row
-still says what it is with its own mark and its own words. A fold is a second, smaller
-difference: when it hides filed rows, that section's heading says exactly how many are
-`folded away`.
+Sections describe whole conversations, not individual tasks. A finished child stays under
+its conversation in running while any sibling is still active or awaiting an answer. Each
+task keeps its own state word. When the last active task settles, the complete conversation
+tree moves into completed. New work can move it back again.
 
-The foot can read, for example,
-`2 your call · 3 running · 12 finished today · 148 earlier`. A state with no work in it is
-not counted at all, and the keys sit under the line.
+The count above the filter is the number of chats and subtasks in the selected time window;
+it does not shrink as you type a filter. All levels start expanded. Folding a branch by
+hand adds the number of hidden rows to the section heading as `folded away`.
 
 **Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
 a bare `/task`, `ctrl+.`, `alt+2` and `tab` all reach the same page, and with nothing on it
@@ -2990,9 +2989,6 @@ too — see *I started a task over ssh and the sidebar stayed empty* above.
 | `enter` | open the main chat, task room, or record card named by this row |
 | `→` | open the family under this row, where it has one; a second `→` on an open family opens the row's verbs |
 | `←` | fold that conversation or family back up |
-| `alt+s` | sort by the next column: age, name, state, files, cost |
-| `alt+shift+s` | turn the column you are sorted on round |
-| a press on a column label | sort by that column; press it again to turn it round |
 | any printable key | type into the filter — except `1` and `2` over a row the pane is offering those two answers for, which answer it |
 | `backspace` `ctrl+w` `ctrl+u` | edit the filter |
 | `esc` | clear the filter, or close the page when there is none |
@@ -3029,24 +3025,23 @@ The **main chat is the parent** of the work it requested. Tasks hang beneath the
 conversation; a task's children hang beneath that task, including deeper levels.
 Chats in the selected time window appear even before they delegate any work.
 
-**Everything opens shut**, so the page you arrive at is a page of main chats, each saying how
-much is under it and how urgent the most urgent of it is (`5 your call`, `9 done`). `→` opens
-one, `←` shuts it. A hundred conversations with a hundred and ninety subtasks under them is a
-page nobody can scan, and the work you came for would be behind the ninety conversations you
-did not want.
+**Everything starts expanded**, including every nested task. `←` folds a branch and
+`→` opens it again. Those explicit choices survive refreshes; a filter temporarily opens
+the ancestors of its matches and restores your folds when cleared.
 
 ```
-your call
-  ▾ Repair the parser                  codeaf
+running
+  ▾ ? Repair the parser                  codeaf
       ▾ Update the parser
         ├ Port the lexer
         └ Port the tests
       Update the documentation
 ```
 
-Conversations stay together and move to their most urgent work's section. Each child
+Conversations stay together under running while any work is active or unanswered, and
+move to completed when it settles. Each child
 keeps its own state: a finished sibling does not become a decision because another
-child needs you. The footer counts those actual task states.
+child needs you. The top count includes every chat and subtask in the window.
 
 **Click a conversation title or press `enter` to open its main chat.** A task title
 opens that task's room or record through the existing owner-aware navigation.
@@ -5052,16 +5047,14 @@ Pressing `x` on a run that has already finished does nothing but say so.
 
 ## The tasks place — the table, its two columns, folds, and the time-window keys
 
-The **tasks** place lists main chats and their nested work across projects, grouped by what you do
-next: `your call`, `running`, `waiting`, `finished today`, then `earlier` — where
-`waiting` is admitted work nothing is doing, drawn with no age on it, and `finished today`
-is everything that ended today however it ended.
+The **tasks** place lists conversations and their nested work across projects, under
+**running** or **completed**. The whole conversation moves together. Both sections and
+nested sibling lists are always newest activity first, and every level starts expanded.
 
 **Every row is a row of a table, and the columns are in the same cells on every row.** Left
-to right: the fold, the mark, the name, then `state`, then the column the list is **sorted
-by**, right-aligned, then one cell of air. A main chat's row has no mark and its name runs
-to the state column. Only the name flexes — the two columns are fixed at 90 cells and over.
-Under 90 the `state` column goes and the sorted column stays, because a figure has nowhere
+to right: the fold, the mark, the name, then `state`, then **age**, right-aligned, then one cell of air. A main chat wears the same activity,
+unread or question bullet as on Home. Only the name flexes — the two columns are fixed at 90 cells and over.
+Under 90 the `state` column goes and the age column stays, because a figure has nowhere
 else on the page to be. Under 60 the rows are phone cards, two lines each, unchanged.
 
 **The `state` column is never blank on a row of work.** It is the task-states word —
@@ -5088,14 +5081,12 @@ keypress away through `enter`, and in the pane beside the list where the frame i
 for one. On a frame under 110 cells there is no pane, so the row **under the cursor** grows
 one dim line of its own: `your call · nobody could check it`, and the first sentence of a
 landed task's report after it. One row said whole, rather than twenty rows each missing the
-same word. The row's kind is not drawn, and neither is its cost unless you are sorted by it.
+same word. The row's kind is not drawn, and its cost is available in the detail view.
 
-**Everything opens shut.** Every main chat and every family of work opens folded, so a fresh
-page is a page of main chats with a count on each. `→` opens the one under the cursor and
-`←` shuts it again; the section's own heading says how many rows are behind the folds
-(`your call · 4 folded away`), so the count on the row and the count on the heading are
-about the same rows. Nothing is capped: the list scrolls through everything the time window
-holds, and the window's edge is named once in the page header.
+**Everything starts expanded.** Every main chat and every nested family shows its work.
+`←` folds the branch under the cursor and `→` opens it again. When you fold one, the
+section heading says how many rows are hidden, such as `completed · 4 folded away`.
+The list scrolls through every conversation tree selected by the time window.
 
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 The one printable keys that are not the filter are `1` and `2` over a row the pane is offering
@@ -5106,7 +5097,7 @@ take the cursor too, and what `enter` does with one is *Opening a task another w
 running*, below.
 
 **The cursor stays on the row it is on while the list re-files itself.** The page re-groups
-every few seconds, and a task finishing moves out of `running` and into `finished today` —
+every few seconds, and the last active task finishing moves its conversation tree from `running` into `completed` —
 which shifts every row below it. The cursor is remembered by the conversation-and-number pair
 that identifies the work, not by which line it was on, so a task landing while you are
 reading cannot move what `enter` is about to open. If the row you were on leaves the page
@@ -5204,36 +5195,16 @@ asking its question in *that* window, and this one cannot answer for it — so t
 `enter open` alone, and `1` and `2` are typed into the filter like any other character. That
 is also what happens on a frame too narrow for the pane: nothing on screen names the digits, so
 nothing takes them.
-## sort the tasks list — alt+s, clicking a column label, and what age, name, state, files and cost each order
+## sort the tasks list — chronological order, most recent activity first
 
-**The sort key is the column you see.** There are five keys and the second column always
-shows the one the list is ordered by:
+The Tasks tab always sorts **running** and **completed** by the newest recorded activity
+in each conversation, including task starts and completions. A conversation with no tasks
+uses its own activity time. Unknown times sort after known times; refreshing the screen
+does not replace an unknown timestamp with the current time.
 
-| key | what the column draws |
-| --- | --- |
-| `age` | how long ago — `7h`, `1d`, `now`. This is the default, newest first. |
-| `name` | the age, because the name is already the widest thing on the row. |
-| `state` | the age, because `state` is the column standing right beside it. |
-| `files` | what the work touched — `2 files`, `12 files`. |
-| `cost` | what it cost — `$1.50`, in the money's own ink. This is the **only** place money is drawn on this page. |
-
-**`alt+s` walks the keys** — age, name, state, files, cost, and round again — and
-**`alt+shift+s` turns the column you are on round**. It is a chord rather than a bare `s`
-because on this place every printable key goes into the filter: `s` alone would cost you
-`sweep`, `stop` and `site`.
-
-**Or click a label.** The two column labels are drawn at the right of the control row at the
-top of the list, over the columns they name, and pressing one sorts by it. Pressing the one
-already sorted turns it round. The sorted label wears the arrow: `cost ↓` newest or dearest
-first, `cost ↑` the other way. The foot names the chord (`alt+s sort`) and the label wears the
-column.
-
-**Sorting happens inside each level of the tree, and the tree never flattens.** The sections
-keep their order — a sort may not move `your call` below `finished today` — main chats order
-by their **aggregate** inside their section (their total cost, their newest row, their whole
-file count), and the work under one chat orders among itself. A blank cell is a true answer,
-not a missing one: a row nobody priced sinks to the bottom of its group whichever way the
-column points.
+Sorting preserves the tree. Each conversation keeps every task, and sibling tasks also
+sort newest first. The columns show `state` and `age ↓`. Clicking these labels does not
+change the order. `alt+s` and `alt+shift+s` no longer sort or reverse the Tasks list.
 
 ## filter the tasks list — type to filter, what it matches, and esc to clear it
 
@@ -5262,7 +5233,7 @@ under the cursor**, and never from a fixed sentence. Over a task this window is 
 reads
 
 ```
-enter open its room · → verbs: stop it · alt+s sort · type to filter · alt+. map · tab next place
+enter open its room · → verbs: stop it · type to filter · alt+. map · tab next place
 ```
 
 The last two keys are on every place and the router adds them. What comes before them
@@ -5286,11 +5257,9 @@ changes with the cursor:
   in, on the one line the foot draws them on.
 - `→ what ran under it` or `← fold it back up` over a fold, whichever the fold is not.
 
-The last two clauses are about the **page** rather than the row, and they are always there:
+The final clauses describe the **page** rather than the row:
 
-- `alt+s sort` names the chord. A chord nobody can find is a chord that does not exist, and
-  every printable key here belongs to the filter, so sorting cannot be a bare letter. WHICH
-  column the list is on is on the control row's own label, wearing the arrow.
+- `esc home` returns to Home when the filter is clear.
 - `type to filter`, because nothing else on the frame says that a letter goes into the box on
   the control row rather than to the page's own keys. While a filter **is** on, that slot
   says `esc clear the filter` instead — the one fact the box itself cannot show is that esc

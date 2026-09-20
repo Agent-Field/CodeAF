@@ -32,16 +32,21 @@ func (a *app) homeAnsweringLine() int {
 
 func (a *app) homeConversationBullet(cell *homeCell, pal palette) string {
 	working, unread := a.homeChatState(cell)
+	mark := pal.glyph(tokens.GWorking)
+	first := a.homeAnsweringLine()
+	if working && !a.linear && a.home.spin < 0 && first >= 0 && a.home.lines[first].cell == cell {
+		mark = a.homeSpinGlyph()
+	}
+	return conversationBullet(pal, working, unread, cell != nil && cell.mark == cellMarkNeeds, mark)
+}
+
+// conversationBullet keeps conversation state marks identical across Home and Tasks.
+func conversationBullet(pal palette, working, unread, question bool, workingMark string) string {
 	switch {
-	case cell != nil && cell.mark == cellMarkNeeds:
+	case question:
 		return pal.warn(pal.glyph(tokens.GNeedsHuman))
 	case working:
-		mark := pal.glyph(tokens.GWorking)
-		first := a.homeAnsweringLine()
-		if !a.linear && a.home.spin < 0 && first >= 0 && a.home.lines[first].cell == cell {
-			mark = a.homeSpinGlyph()
-		}
-		return pal.accent(mark)
+		return pal.accent(workingMark)
 	case unread:
 		return pal.bold(pal.accent(pal.glyph(tokens.GStepDone)))
 	default:

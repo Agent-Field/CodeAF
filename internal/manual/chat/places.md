@@ -465,14 +465,14 @@ bullets on the conversation or task, with no separate `needs you` heading.
 
 ## tasks — the tasks page, and how to get to it without a command
 
-Everything this machine has run, across every project and every conversation, grouped by
-what you do next: `your call`, `running`, `waiting`, `finished today`, `earlier`.
-`/history` and `ctrl+.` both open it, and so does `alt+2`.
+The full-screen conversation tree groups every chat and its tasks into **running** and
+**completed**. A conversation stays under running while it is answering or has running,
+queued, waiting or unanswered work. Once that work settles, its whole tree moves to
+completed; new work moves it back. Each task retains its own state word.
 
-The groups describe each task's own tier. An unrelated approval in its conversation
-does not move running tasks into `your call`. A live design approval stays there
-until you answer; a provider or dependency wait belongs under `waiting`. A retained
-branch stays available to inspect and does not, by itself, ask you to merge it.
+Both sections stay newest-activity-first. Conversation titles match Home, and the same
+bullets mark answering, unread and unanswered states. Every conversation and nested task
+starts expanded; you can fold a branch yourself. `/history`, `ctrl+.` and `alt+2` open it.
 
 **Typing here narrows the list.** While this place is up every printable key goes to its
 filter — the one exception being `1` and `2` over a row the record pane beside the list is
@@ -483,7 +483,7 @@ row on the screen was inviting a message the page cannot send. `enter` opens a t
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
 the row's options: `x close`, `n new in project`, `o open folder`, and
 `p copy project` where the local conversation and project are available. A task this
-conversation is holding that is still queued or running also offers `s stop it`. Nothing is behind a fold; the list scrolls and its
+conversation is holding that is still queued or running also offers `s stop it`. Everything starts expanded; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
 the list already draws, and it says `nothing matches` only when your filter has emptied the
 page — and the foot names only what is true of the row you are on: `enter open its room ·

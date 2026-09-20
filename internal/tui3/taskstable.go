@@ -302,64 +302,6 @@ func tasksControlRow(query string, by tasksSort, width int, pal palette) string 
 	return out + pad(tasksColumnAir)
 }
 
-// tasksControlHit is which label one cell of the control row is under, and
-// whether it is under one at all.
-//
-// IT IS THE SAME ARITHMETIC THE PAINT USES ([tasksColumns]), asked from the other
-// end. The pointer resolving a press against its own idea of where a column sits
-// is exactly how a click comes to sort by the wrong thing, which is the argument
-// the frame and the hit map are one function for (place_tasks.go).
-//
-// `x` is the cell of the LIST's line and `width` the list's own width — which on
-// a frame split for the pane is not the frame's ([app.taskSheetListWidth]).
-func tasksControlHit(x, width int, by tasksSort) (tasksSortKey, bool) {
-	stateCells, secondCells, nameCells := tasksColumns(width, by.key)
-	switch {
-	case stateCells > 0 && x >= nameCells && x < nameCells+stateCells:
-		return tasksByState, true
-	case secondCells > 0 && x >= nameCells+stateCells && x < nameCells+stateCells+secondCells:
-		// THE SECOND LABEL NAMES THE COLUMN AND NOT THE KEY. Sorting by name puts
-		// the age in that column, so a click on it asks for the age — which is what
-		// the word under the pointer says.
-		return by.key.column(), true
-	}
-	return 0, false
-}
-
-// ── the keys ────────────────────────────────────────────────────────────────
-
-// THE SORT KEYS ARE CHORDS AND NOT BARE LETTERS, and that is a deliberate
-// departure from the spec's own `s` / `S`.
-//
-// EVERY PRINTABLE KEY ON THIS PAGE IS THE FILTER (place_tasks.go's
-// [app.taskSheetKeyPress] says why: the frame is the page, so there is no draft
-// underneath for a keystroke to reach, and a record of four hundred tasks is
-// found by remembering a word of a title). A bare `s` would take the filter's
-// commonest letter away from it — `sweep`, `stop`, `site`, `session` — and the
-// list a person was trying to narrow would re-sort instead. The two cannot both
-// be bare, the filter box is the thing this wave put ON SCREEN, and the spec's
-// own frame draws the invitation to type into it.
-//
-// So the chord is alt, which is what this surface already spends on a place's
-// own verbs (`alt+.` the map, `alt+t` the roster, `alt+enter` a task), and the
-// pointer keeps the gesture the spec leads with: the column labels are pressed.
-const (
-	tasksSortKeyChord  = "alt+s"
-	tasksSortBackChord = "alt+shift+s"
-)
-
-// tasksSortHint is how the foot names the chord, in the hint slot's own grammar:
-// the key, then what it does.
-//
-// IT NAMES THE KEY AND NOT THE COLUMN THE PAGE IS ON. It said `alt+s sort: age`
-// for a while and the five cells that cost were exactly the five that did not
-// fit: at a hundred columns the foot's fitter dropped this clause AND the filter
-// beside it, so the one width most people are on named neither of the page's two
-// keys — which is the defect the ruling that put them here was written against.
-// WHICH column the list is on is already drawn, on the control row's own label,
-// wearing the arrow ([tasksControlLabels]); the foot's job is the key.
-func tasksSortHint(by tasksSort) string { return tasksSortKeyChord + " sort" }
-
 // ── the reason, off the row and under the cursor ────────────────────────────
 
 // THE REASON LEFT THE ROW AND IT HAS TO LAND SOMEWHERE.

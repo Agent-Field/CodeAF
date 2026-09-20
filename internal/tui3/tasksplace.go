@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -58,14 +59,13 @@ const (
 	tasksParked
 	tasksToday
 	tasksEarlier
+	tasksCompleted
 	tasksSectionCount
 )
 
-// tasksSectionOrder is the one order the page is drawn in and counted in, and
-// there is exactly one of it: a heading list and a tally list that were spelled
-// out separately are two places a new section can be forgotten, and the foot
-// would then count a page it does not describe.
-var tasksSectionOrder = [...]tasksSection{tasksNeeds, tasksRunning, tasksParked, tasksToday, tasksEarlier}
+// tasksSectionOrder names the two conversation categories in display order.
+// Individual tasks retain their own state for their marks and descriptions.
+var tasksSectionOrder = [...]tasksSection{tasksRunning, tasksCompleted}
 
 // tasksItem is one piece of work as this place files it: the row itself, the
 // conversation it came out of, and the two judgements the reading is not allowed
@@ -159,12 +159,16 @@ type tasksMineRow struct {
 	live  *session.TaskStatus
 }
 
+// tasksChatView carries the same current title and activity flags Home reads.
+type tasksChatView struct {
+	title           string
+	working, unread bool
+}
+
 // tasksReading is everything drawing and routing need from one world reading.
-//
-// seen is deliberately retained even though state grouping does not use it: it
-// is the look stamp paired with this snapshot, and a later place adapter must
-// not need to reach back to disk to preserve that boundary.
+// The seen stamp travels with the snapshot across place adapters.
 type tasksReading struct {
+	chatViews  map[string]tasksChatView
 	items      []tasksItem
 	shape      *tasksTree
 	chats      []session.SessionRow
@@ -245,6 +249,7 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // graph, then the other windows — which are reading a presence file written
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
+	by = tasksSort{}
 	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by}
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
@@ -286,7 +291,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 		}
 		entry := session.TaskIndexEntry{
 			ID: task.Task.ID, Label: title, Title: title,
-			Status: task.Task.State, SessionID: task.SessionID,
+			Status: task.Task.State, SessionID: task.SessionID, StartedAt: task.Task.StartedAt,
 		}
 		key := tasksKeyOf(entry)
 		entry.Parent = held[key].entry.Parent
@@ -325,11 +330,21 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 			break
 		}
 	}
-	r.wholeChats = len(r.chats)
 	r.held = len(order) + len(r.chats)
+	// The time window chooses conversations, never fragments of their trees.
+	included := make(map[string]bool)
+	for _, row := range r.chats {
+		included[row.ID] = true
+	}
 	for _, key := range order {
 		item := held[key]
-		if !r.win.Holds(tasksEntryAt(item.entry, now)) {
+		if r.win.Holds(tasksEntryAt(item.entry, now)) {
+			included[tasksChatOf(item)] = true
+		}
+	}
+	for _, key := range order {
+		item := held[key]
+		if !included[tasksChatOf(item)] {
 			continue
 		}
 		item.section = tasksSectionOf(item, now)
@@ -341,6 +356,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	tree := tasksTreeOf(visible, now, by, r.chats...)
 	r.items = tree.order()
 	r.shape = &tree
+	r.wholeChats = len(tree.groups)
 	// WHAT THE PLACE IS HOLDING IS COUNTED HERE, ONCE, off the rows before any
 	// query has touched them ([tasksReading.whole] states why).
 	r.whole = len(r.items)
@@ -648,6 +664,10 @@ func (r tasksReading) lay(width int) []tasksLine {
 					folds: len(g.roots) > 0, family: g.chat.key, kids: g.chat.kids,
 					open: r.opens(g.chat.key), rank: g.chat.rank,
 				}
+				if view, ok := r.chatViews[line.chat.row.Transcript]; ok {
+					line.chat.title = view.title
+					line.chat.working, line.chat.unread = view.working, view.unread
+				}
 				mark := tasksKinPad
 				if line.folds {
 					mark = tasksFoldShut
@@ -870,7 +890,8 @@ type tasksChat struct {
 	word string
 	// state is where that puts it, kept beside the word so the cell and the
 	// section cannot be worked out two ways.
-	state tasksSection
+	state                     tasksSection
+	working, unread, question bool
 }
 
 // tasksGroup is what one section holds: a conversation and the work under it,
@@ -936,6 +957,7 @@ func (s tasksSort) on(key tasksSortKey) tasksSort {
 // walking the rows their own way. The tally deliberately reads each piece of
 // work's own state instead ([tasksReading.tally]).
 func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...session.SessionRow) tasksTree {
+	order = tasksSort{}
 	t := tasksTree{
 		kids:  map[tasksKey][]tasksItem{},
 		up:    make(map[tasksKey]tasksKey, len(items)),
@@ -1022,9 +1044,7 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 	for _, root := range roots {
 		folded(root)
 	}
-	// AND THE ORDER IS THE CHOSEN ONE, AT EVERY LEVEL. The tree never flattens:
-	// what changes with the key is which of two SIBLINGS comes first, never
-	// whether a row is still under its parent.
+	// Every level stays newest first among siblings, without flattening the tree.
 	for key, kids := range t.kids {
 		sort.SliceStable(kids, func(i, j int) bool {
 			return t.sort.key.less(t.rank[tasksKeyOf(kids[i].entry)], t.rank[tasksKeyOf(kids[j].entry)], t.sort.back)
@@ -1068,17 +1088,23 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 	// [chatProjectWord] still sees the row, so a project that is not this name
 	// does not echo the word back as a project tag beside it.
 	tasksName := func(row session.SessionRow) string {
-		if trimmed := strings.TrimSpace(row.Title); trimmed != "" && !strings.EqualFold(trimmed, row.ID) {
-			return trimmed
+		if strings.EqualFold(strings.TrimSpace(row.Title), row.ID) || (row.Title == "" && row.Transcript != "") {
+			return unnamedConversationWord
 		}
-		return unnamedConversationWord
+		return homeName(row)
 	}
 	for _, root := range roots {
 		id := tasksChatOf(root)
 		row, named := names[id]
 		if !named {
-			t.groups = append(t.groups, tasksGroup{roots: []tasksItem{root}})
-			continue
+			row = root.row
+			row.ID = id
+			if row.Title == "" && row.Transcript == "" {
+				row.Title = "unknown conversation"
+				if id != "" {
+					row.Title = "conversation " + id
+				}
+			}
 		}
 		if at, found := group[id]; found {
 			t.groups[at].roots = append(t.groups[at].roots, root)
@@ -1104,13 +1130,14 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 
 	for i := range t.groups {
 		g := &t.groups[i]
-		g.section = tasksSectionCount
+		g.section = tasksCompleted
 		g.chat.rank = tasksRankZero()
 		if g.named {
 			g.order, g.chat.at = g.chat.row.At, g.chat.row.At
 			g.chat.rank.name = g.chat.title
+			g.chat.rank.at = g.chat.row.At
 			if g.chat.row.NeedsPerson() {
-				g.section = tasksNeeds
+				g.section = tasksRunning
 			} else if g.chat.row.Live && g.chat.row.Presence.State == session.PresenceWorking {
 				g.section = tasksRunning
 			}
@@ -1123,8 +1150,8 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		for _, root := range g.roots {
 			t.under(root, func(item tasksItem, _ int) {
 				g.held++
-				if item.section < g.section {
-					g.section = item.section
+				if item.runs || item.status().Attention || item.status().Presence == session.TaskPresenceWaiting {
+					g.section = tasksRunning
 				}
 				if urgent == nil || item.section < urgent.section {
 					held := item
@@ -1141,10 +1168,12 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		for _, root := range g.roots {
 			g.chat.rank = g.chat.rank.fold(t.rank[tasksKeyOf(root.entry)])
 		}
-		if g.section == tasksSectionCount {
-			g.section = tasksEarlier
-		}
 		g.chat.state = g.section
+		g.chat.working = g.chat.row.Live && g.chat.row.Presence.State == session.PresenceWorking
+		g.chat.question = g.chat.row.NeedsPerson()
+		if urgent != nil && urgent.status().Attention {
+			g.chat.question = true
+		}
 		if urgent != nil {
 			g.chat.word = taskStateWord(urgent.entry, urgent.runs)
 			if urgent.live != nil {
@@ -1284,14 +1313,8 @@ func (r tasksReading) tree() tasksTree {
 // opens reports whether one foldable row is open: what a person set, and the
 // row's own default where they have set nothing.
 //
-// EVERYTHING OPENS SHUT (owner, 2026-09-11). A conversation used to open showing
-// its work, on the argument that a page of chat titles hides the thing the place
-// is for. What that argument missed is the SIZE of a real record: a hundred
-// conversations with a hundred and ninety subtasks under them is a page nobody
-// can scan, and the work a person came for is behind the ninety conversations
-// they did not want. A shut root says what it is holding and how urgent the most
-// urgent of it is ([tasksChatStateField]), which is enough to decide whether to
-// open it — and `→` opens it.
+// Every conversation and nested task opens by default so the full tree is
+// visible on arrival. Explicit folds remain in force until the person opens them.
 //
 // AND A QUERY OPENS EVERYTHING ([tasksReading.unfolded]). A row that matched and
 // is sitting behind a shut fold is a row the query appears not to have found, and
@@ -1303,7 +1326,7 @@ func (r tasksReading) opens(key tasksKey) bool {
 	if open, set := r.open[key]; set {
 		return open
 	}
-	return false
+	return true
 }
 
 // rows is the whole page painted with no cursor anywhere on it, which is what a
@@ -1453,7 +1476,7 @@ func (r tasksReading) head(width int, edge bool) string {
 		since = " since " + start
 	}
 	if r.whole == 0 && r.wholeChats == 0 {
-		return tasksHeadWord + " · nothing" + since
+		return "nothing" + since
 	}
 	// IT IS A HEADING AND NO LONGER A PARAGRAPH. It read `work codeaf ran on its
 	// own. 14 pieces of work since aug 2, $34.10 between them.` — three clauses,
@@ -1465,9 +1488,9 @@ func (r tasksReading) head(width int, edge bool) string {
 	//
 	// So: the place, the count, the window edge, in the punctuation every other
 	// heading on this surface uses.
-	said := tasksHeadWord + railSep + itoa(r.whole) + " " + plural("piece", r.whole) + " of work" + since
+	said := itoa(r.whole) + " " + plural("piece", r.whole) + " of work" + since
 	if r.wholeChats > 0 {
-		said = tasksHeadWord + railSep + itoa(r.wholeChats) + " " + plural("chat", r.wholeChats)
+		said = itoa(r.wholeChats) + " " + plural("chat", r.wholeChats)
 		if r.whole > 0 {
 			said += railSep + itoa(r.whole) + " " + plural("subtask", r.whole)
 		}
@@ -1551,7 +1574,7 @@ func (r tasksReading) tally() string {
 		counts[item.section]++
 	}
 	var segs []string
-	for _, section := range tasksSectionOrder {
+	for _, section := range [...]tasksSection{tasksNeeds, tasksRunning, tasksParked, tasksToday, tasksEarlier} {
 		if n := counts[section]; n > 0 {
 			segs = append(segs, itoa(n)+" "+tasksSectionWord(section))
 		}
@@ -1629,6 +1652,8 @@ func tasksSectionWord(section tasksSection) string {
 		// way but a slot and `waiting` for work blocked behind other work; this
 		// section holds both, and every row in it is waiting for something.
 		return railGroupWords[railParked]
+	case tasksCompleted:
+		return "completed"
 	case tasksToday:
 		// `done today` HELD FAILURES. Three rows under it, one of them `× install
 		// the render toolchain · failed` — and `done` is the word this surface uses
@@ -1654,9 +1679,8 @@ func tasksLabel(entry session.TaskIndexEntry) string {
 // tasksChatRow is one MAIN CONVERSATION on the page: what it is called, what
 // opening it would put on the page, and its aggregate under the sorted column.
 //
-// IT WEARS NO MARK. The fold mark already identifies a conversation root, and its
-// name runs all the way to the state column because there is no state glyph in
-// front of it to make room for.
+// It shares Home's conversation-state bullet, with its independent fold control
+// beside it so activity and tree navigation do not compete for one mark.
 //
 // AND IT NAMES ITS PROJECT ONLY WHERE THAT IS NEWS ([chatProjectWord],
 // projecttag.go). The project used to be a fact at the right of this row, which
@@ -1670,10 +1694,9 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 	if project := chatProjectWord(folderOf, folder, tilde); project != "" && project != chat.title {
 		name += rowSep + project
 	}
-	// A ROOT HAS NO MARK and its name starts where the marks are, which is the
-	// rule (spec.md §2): a conversation is not a piece of work and has no state
-	// of its own to wear one for.
-	return tasksTableRow(tasksBareLead+pal.dim(line.kin), ansi.StringWidth(tasksBareLead+line.kin), name,
+	bullet := conversationBullet(pal, chat.working, chat.unread, chat.question, pal.glyph(tokens.GWorking))
+	lead := tasksBareLead + pal.dim(line.kin) + bullet + " "
+	return tasksTableRow(lead, ansi.StringWidth(lead), name,
 		tasksChatStateField(chat), tasksKeyField(by.key, line.rank, now),
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
@@ -1704,50 +1727,20 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
 
-// tasksAgeField is HOW LONG AGO, and it is the fact this page's own headings
-// promise.
-//
-// A STOPPED ROW IS NOT DATED `now`. [tasksEntryAt] files an undated row at the
-// moment of the reading, which is the right answer for a WINDOW — a window
-// cannot judge a row with no stamp on it — and the wrong one for an AGE: a row
-// reading `The Certificate Rotation incomplete now` says in one half that the
-// window running this is gone and in the other that it is happening this
-// second, and the age is the half a person believes.
-//
-// AND NOTHING DATES IT. The index holds one stamp, [session.TaskIndexEntry]'s
-// EndedAt, and it is zero on exactly the rows this case is about — a row that
-// claims to be running has not landed, and no start time is written anywhere a
-// window that died could have left one. So the row says NOTHING about when,
-// which is the emptiness law's own answer, and the note beside it carries the
-// whole of what is known: `incomplete`.
-//
-// NOR IS A PARKED ROW DATED `now`. A node admitted and waiting behind the piece
-// that needs a person has not started, so there is no age to count from either
-// end of it, and `now` on that row said the work was happening this second.
+// tasksAgeField reads recorded activity rather than dating every live task now.
+// Undated legacy records remain blank, as required by the emptiness law.
 func tasksAgeField(item tasksItem, now time.Time) rowField {
 	return rowSay(sinceAt(tasksEntryStamp(item, now), now))
 }
 
-// tasksEntryStamp is the moment a row's work IS, for DRAWING AN AGE FROM, and
-// the zero time whenever nobody knows one — which [sinceAt] then draws as
-// nothing at all.
-//
-// IT IS NOT [tasksEntryAt], AND THE DIFFERENCE IS THE WHOLE POINT. That one
-// answers the time WINDOW, which cannot judge a row with no stamp on it and so
-// files an undated row at the moment of the reading rather than dropping it off
-// the page. This one answers a person, and a person told `now` about work that
-// nothing is doing has been told something false. The three silences here are a
-// node nothing has started, a row whose window died, and work replayed out of an
-// older checkpoint whose record genuinely never carried its landing time. A
-// current record carries that fact and the surface reads it directly.
+// tasksEntryStamp is the latest recorded start or completion. Unlike
+// tasksEntryAt, which keeps undated work inside the time window, it never
+// invents an activity time from the current clock.
 func tasksEntryStamp(item tasksItem, now time.Time) time.Time {
-	if item.entry.Live() {
-		if tasksWorking(item) {
-			return now
-		}
-		return time.Time{}
+	if item.entry.EndedAt.After(item.entry.StartedAt) {
+		return item.entry.EndedAt
 	}
-	return item.entry.EndedAt
+	return item.entry.StartedAt
 }
 
 // tasksCardHead is the first line of a phone card: the state and the name, in

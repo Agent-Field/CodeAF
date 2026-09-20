@@ -282,24 +282,22 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 		t.Fatalf("a settled node of this session dropped off the page:\n%s", text)
 	}
 	// AND SO IS WORK ANOTHER CONVERSATION RAN, which the column cannot show at all.
-	for _, want := range []string{"Sweep the call sites", "Port the parser", taskSheetPastHead} {
+	for _, want := range []string{"Sweep the call sites", "Port the parser", "completed"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the page is missing %q:\n%s", want, text)
 		}
 	}
-	// THE GROUPING IS BY WHAT YOU DO NEXT AND NEVER BY WHOSE WORK IT IS: what is
-	// running leads, what landed today follows, and everything older is last.
+	// Completed work stays under its own conversation, and each conversation
+	// appears in only one of the two sections.
 	running := strings.Index(text, taskSheetNowHead)
-	today := strings.Index(text, "finished today")
-	earlier := strings.Index(text, taskSheetPastHead)
-	if running < 0 || today < running || earlier < today {
-		t.Fatalf("the sections are absent or out of order (%d/%d/%d):\n%s", running, today, earlier, text)
+	completed := strings.Index(text, "completed")
+	if running < 0 || completed < running {
+		t.Fatalf("sections out of order:\n%s", text)
 	}
-	if at := strings.Index(text, "Port the parser"); at < earlier {
-		t.Fatalf("work from forty hours ago is drawn above %q:\n%s", taskSheetPastHead, text)
-	}
-	if at := strings.Index(text, "Sweep the call sites"); at < today || at > earlier {
-		t.Fatalf("work that landed today is not under `finished today`:\n%s", text)
+	for _, title := range []string{"Port the parser", "Sweep the call sites"} {
+		if strings.Index(text, title) < completed {
+			t.Fatalf("completed conversation split: %s", text)
+		}
 	}
 	// The live graph's parent links survive the list conversion.
 	for _, connector := range []string{tasksKinCont, tasksKinLast} {
@@ -317,7 +315,7 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 	// [taskNodeEnded] carries the whole reasoning).
 	// (`waiting` is a state the tally named and the page draws no heading for —
 	// the sections file by where the CONVERSATION stands, tasksplace.go says why.)
-	for _, want := range []string{taskSheetNowHead, "finished today", taskSheetPastHead} {
+	for _, want := range []string{taskSheetNowHead, "completed"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the page lost the %q section:\n%s", want, text)
 		}
@@ -405,10 +403,7 @@ func TestTheTaskPageCursorNeverLandsOnASectionWord(t *testing.T) {
 
 	lines := a.tasksFiltered().lay(a.width)
 	for step := 0; step < len(lines)+4; step++ {
-		if _, ok := a.taskSheetCurrent(); !ok {
-			t.Fatalf("the cursor fell off the page after %d steps down", step)
-		}
-		if kind := lines[a.taskSheet.cursor].kind; kind != tasksLineTask {
+		if kind := lines[a.taskSheet.cursor].kind; kind != tasksLineTask && kind != tasksLineChat {
 			t.Fatalf("the cursor landed on a line of kind %v, which answers to nothing", kind)
 		}
 		drive(t, a, key("down"))
@@ -858,7 +853,7 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	text := taskSheetText(a)
 	for _, want := range []string{
 		taskSheetNowHead, "Ship the port",
-		"finished today", "Port the parser",
+		"completed", "Port the parser",
 		// AND THE WORDS ARE ON THE CONTROL ROW, at the top of the list, where the
 		// typing lands — not echoed on a note line under the rows they changed.
 		a.pal.glyph(tokens.GFilter) + " port",
