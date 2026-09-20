@@ -2586,25 +2586,6 @@ type railEntry struct {
 	worst  *taskNode
 }
 
-// workingNowAgent is the engine door behind the ONE NUMBER this surface takes
-// from the live work tree: how many hands are moving right now, which the
-// column's head quotes (margin.go's [app.marginHead]). Each surface asserts
-// only the slice it reads, so an engine without the door draws the
-// byte-identical roster it drew before the door existed.
-//
-// IT IS A COUNT AND NOT A SECOND ROSTER, and that is the whole of the rule this
-// column keeps about live work. Every worker [session.WorkingNow] reports —
-// a node of the task graph, an adaptive run, one planned node inside one —
-// publishes a TaskNotice naming who spawned it, and this column grows its
-// families out of exactly those notices ([app.railForest]). So a worker already
-// has a row here by the time the engine can be asked about it, and a preview
-// hung under that row would be the same family drawn twice, one copy of it
-// carrying less than the other. What the engine's tree can say that the rows
-// cannot is how MANY of them are moving at once, so that is what is taken.
-type workingNowAgent interface {
-	WorkingNow() []session.WorkNode
-}
-
 // railSpot names a row by IDENTITY rather than by index, and it is what the
 // focus is stored as.
 //
@@ -2853,9 +2834,7 @@ func (a *app) railTwigLive(t *railTwig) bool {
 // and a name, under the fuller row that was already there.
 //
 // So the ownership rule, stated once: A WORKER IS DRAWN BY THE FAMILY THAT
-// OWNS IT, on the row its own notice minted. The live tree is still read — for
-// the count in the column's head, which is the one thing about it a row cannot
-// say (see [workingNowAgent]).
+// OWNS IT, on the row its own notice minted.
 func (a *app) railEntries() []railEntry {
 	out := make([]railEntry, 0, len(a.taskOrder))
 	for _, tree := range a.railForest() {
