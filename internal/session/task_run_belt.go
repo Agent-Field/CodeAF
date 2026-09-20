@@ -338,7 +338,14 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		born: born,
 	}
 	a.installBeltRun(g, run)
-	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: born})
+	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
+	// the branch it names exists only in this variable until it is: the road that
+	// cut it minted the name at random and wrote it nowhere ([runCopyOf] says the
+	// whole of why). A run published without it is a run nobody can carry on.
+	a.publishRunRow(g, TaskNotice{
+		ID: id, Title: title, State: TaskRunning, StartedAt: born,
+		Copy: runCopyOf(tree),
+	})
 
 	// THE CONVERSATION'S OWN SEATS, read off its role ladder so the engine's
 	// crew factory seats the work and plan roles on what this conversation's
@@ -427,7 +434,22 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // rows are published: a notice on the standing lane and a row the graph holds.
 // The id is the graph's own, minted once, so a row drawn now and the same row
 // replayed from the checkpoint are the same row.
+// THE COPY IS CARRIED ACROSS HERE AND NOT AT EACH CALLER. Every publish after
+// the first REPLACES the row, and only the first one knows where the work is —
+// so a later publish that had not thought about it would quietly drop the one
+// fact nothing else can recover ([runCopyOf] says why the branch is that fact).
+// Carrying it forward in the one function every publisher goes through is what
+// keeps that from depending on each of them remembering. A notice that names a
+// copy of its own wins, because it is the more recent reading.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
+	if notice.Copy == nil {
+		for _, kept := range g.runRows(notice.ID) {
+			if kept.ID == notice.ID && kept.Copy != nil {
+				notice.Copy = kept.Copy
+				break
+			}
+		}
+	}
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
 }
