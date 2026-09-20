@@ -97,6 +97,12 @@ func TestAQuestionIsNotAPermissionLine(t *testing.T) {
 		"may I re-run it?",
 		"the fix touches migrations",
 		"",
+		// AND A QUESTION MAY SAY NOBODY IS AROUND. The words a firing asks in
+		// are its own and it can put the absence of a person into a question as
+		// readily as into a refusal. Nothing here was refused, so nothing here
+		// is a permission stop, and a person pausing the item must not lose it.
+		"there is nobody on call, who do you want me to ask",
+		"nobody has said yes to this yet — is there someone else to ask?",
 	} {
 		if IsPermissionLine(line) {
 			t.Fatalf("a question was read as a permission stop: %q", line)

@@ -596,8 +596,16 @@ const NeedsPermissionLead = "stopped: it needed your ok to run "
 // three literals would mean a fourth door, or a reworded third, silently
 // stopped counting as a permission stop — which is exactly how the spelling on
 // disk today came to be unrecognised.
+// THE ABSENCE ALONE IS NOT ENOUGH, and the refusal word is what makes the
+// first shape safe. This field's other tenant is a QUESTION the firing put to
+// the person in its own words, which is model prose and can say anything: "there
+// is nobody on call, who do you want me to ask" carries the absence and is a
+// question. Reading it as a permission stop would put it down the moment the
+// person paused the item, losing the one thing the field exists to carry. Both
+// doors that state the absence also say they refused, so requiring that costs
+// nothing.
 var permissionRefusals = [][]string{
-	{"nobody", "to ask"},
+	{"nobody", "to ask", "refus"},
 	{"no resolver is attached"},
 }
 
