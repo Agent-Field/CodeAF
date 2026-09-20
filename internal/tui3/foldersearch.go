@@ -27,7 +27,6 @@ package tui3
 // somebody uses every day is the one they meant. A scorer that let a two-cell
 // difference in match offset outrank a week of use would reorder the top of the
 // list every time a person added a letter.
-//
 //	codeaf      → the leaf name, spelled out          folderTierName
 //	cod         → the leaf name starts with it        folderTierNameLead
 //	~/code      → the path itself starts with it      folderTierPathLead
@@ -37,6 +36,11 @@ package tui3
 //	de/co       → somewhere else in the path          folderTierPathIn
 //	oea         → the letters, in order               folderTierLoose
 //	codefa      → one slip away from a name           folderTierSlip
+//
+// THE LOOSE RUNG SCORES WITH THE MATCHER EVERY PICKER SHARES (internal/fuzzy):
+// the rung and its place in the ladder are this file's, and the ordering inside
+// it — a tight run of letters over the same letters spread wide — is the
+// alignment's.
 //
 // THE LAST RUNG IS THE ONE THAT PAYS FOR ITSELF. `codefa` is the typo people
 // actually make on this program's name, and every tier above it answers it with
@@ -50,6 +54,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 )
 
 // folderTier is HOW a query matched, and the order of the constants is the
@@ -105,6 +111,11 @@ func (h folderHit) better(other folderHit) bool {
 type folderQuery struct {
 	// text is trimmed and lowercased, and is what every tier is asked about.
 	text string
+	// terms is the query as the fuzzy matcher reads it (internal/fuzzy), built
+	// once per pass: the loose rung scores every candidate against the same
+	// terms, and building them per candidate would rebuild a keystroke's one
+	// allocation once per folder.
+	terms []fuzzy.Term
 	// slip is how many slips a segment may be away and still answer this query
 	// — zero for a query too short to guess at (see [folderSlipBound]).
 	slip int
@@ -113,7 +124,7 @@ type folderQuery struct {
 // newFolderQuery prepares one query.
 func newFolderQuery(raw string) folderQuery {
 	text := strings.ToLower(strings.TrimSpace(raw))
-	return folderQuery{text: text, slip: folderSlipBound(text)}
+	return folderQuery{text: text, terms: fuzzy.Terms(text), slip: folderSlipBound(text)}
 }
 
 // blank reports whether nothing has been typed. AN EMPTY BOX MATCHES EVERYTHING
@@ -245,8 +256,14 @@ func folderScore(q folderQuery, f folderFolded) (folderHit, bool) {
 	if at := strings.Index(lower, needle); at >= 0 {
 		return folderHit{tier: folderTierPathIn, detail: at<<8 + len(lower) - len(needle)}, true
 	}
-	if span, ok := subsequence(lower, needle); ok {
-		return folderHit{tier: folderTierLoose, detail: span<<8 + len(lower)}, true
+	// THE LOOSE RUNG IS THE SHARED MATCHER'S OWN (internal/fuzzy): the letters
+	// in order, anywhere, scored by the best alignment rather than by where the
+	// first one happened to land — so a tight run of them outranks the same
+	// letters spread wide. The rung keeps its place in the ladder and the
+	// detail line carries the alignment with its sign flipped, because the
+	// ladder's detail is lower-better and the matcher's score is higher-better.
+	if score, ok := fuzzy.Score(lower, q.terms); ok {
+		return folderHit{tier: folderTierLoose, detail: -score}, true
 	}
 	return folderSlipHit(f, needle, q.slip)
 }

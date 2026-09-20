@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 )
 
 // THE CONNECTIONS TAB: the sixth page of the settings sheet, and the only one
@@ -523,6 +524,10 @@ func filterConnections(groups []connGroup, query string) []connGroup {
 	if query == "" {
 		return groups
 	}
+	// The terms are built once per call and scored against every row: a
+	// keystroke re-ranks the whole catalog, and the one allocation a query
+	// costs is its own words.
+	terms := fuzzy.Terms(query)
 	type ranked struct {
 		group connGroup
 		best  int
@@ -538,8 +543,8 @@ func filterConnections(groups []connGroup, query string) []connGroup {
 		hits := make([]hit, 0, len(group.rows))
 		best := 0
 		for i, row := range group.rows {
-			score := connMatch(row, query)
-			if score == 0 {
+			score, ok := connMatch(row, terms)
+			if !ok {
 				continue
 			}
 			hits = append(hits, hit{row: row, score: score, order: i})
@@ -581,24 +586,20 @@ func filterConnections(groups []connGroup, query string) []connGroup {
 	return out
 }
 
-// connMatch scores one service against a folded query: a name it starts with
-// beats a name it is inside, which beats the category it is filed under, which
-// beats nothing at all.
-func connMatch(row connect.Status, query string) int {
-	name := strings.ToLower(strings.TrimSpace(row.Name))
+// connMatch scores one service against the query's terms — the fuzzy matcher
+// every picker on this surface shares (internal/fuzzy) over the three fields
+// a service answers in: the name a person reads (the id when it has none), the
+// category it is filed under, and the address its calls go to. A word the NAME
+// carries outranks the same word a category holds, not by rule but because a
+// prefix or a boundary in the name scores higher than the same letters inside
+// a category — which is what keeps `stri` landing on Stripe while `billing`
+// reaches the three services filed under it, in one list.
+func connMatch(row connect.Status, terms []fuzzy.Term) (int, bool) {
+	name := strings.TrimSpace(row.Name)
 	if name == "" {
-		name = strings.ToLower(strings.TrimSpace(row.ID))
+		name = strings.TrimSpace(row.ID)
 	}
-	switch {
-	case strings.HasPrefix(name, query):
-		return 3
-	case strings.Contains(name, query):
-		return 2
-	case strings.Contains(strings.ToLower(strings.TrimSpace(row.Category)), query) &&
-		strings.TrimSpace(row.Category) != "":
-		return 1
-	}
-	return 0
+	return fuzzy.ScoreFields([]string{name, strings.TrimSpace(row.Category), strings.TrimSpace(row.Address)}, terms)
 }
 
 // label is the group's heading as it is drawn: the word, and — only while a

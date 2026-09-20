@@ -1,11 +1,11 @@
 package tui3
 
 import (
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -73,7 +73,7 @@ type autonomyRow struct {
 // A CONVERSATION WITH NO PROJECT HAS NO ROWS AT ALL, which is the emptiness law
 // over a setting that is stored per project: rules that cannot be kept are not
 // drawn as rules that are.
-func (s *sheet) autonomyItems(query string) []sheetItem {
+func (s *sheet) autonomyItems(terms []fuzzy.Term) []sheetItem {
 	if !s.autonomyDoor {
 		return nil
 	}
@@ -97,8 +97,10 @@ func (s *sheet) autonomyItems(query string) []sheetItem {
 		case session.AskClarification:
 			row.word, row.fixed = autonomyAskWord+" · "+autonomyNoClockWord, true
 		}
-		if query != "" && !autonomyRowMatches(row, query) {
-			continue
+		if len(terms) > 0 {
+			if _, ok := s.autonomyRowMatches(row, terms); !ok {
+				continue
+			}
 		}
 		items = append(items, sheetItem{
 			autonomy: row,
@@ -112,16 +114,30 @@ func (s *sheet) autonomyItems(query string) []sheetItem {
 }
 
 // autonomyRowMatches is the search over one of these rows: the kind's own name,
-// the answer it carries, and the heading — because somebody looking for this
-// section searches for "away" or "decide", which is the heading and the value
-// rather than the row's name.
-func autonomyRowMatches(row *autonomyRow, query string) bool {
-	for _, field := range []string{string(row.kind), row.word, autonomyRowsHead, autonomyRowAbout} {
-		if strings.Contains(strings.ToLower(field), strings.ToLower(query)) {
-			return true
-		}
+// the answer it carries, the heading and the section's about line — the fuzzy
+// matcher every picker on this surface shares (internal/fuzzy), scored per
+// term by whichever field carries the word best.
+//
+// THE HEADING AND THE ABOUT LINE ARE IN IT DELIBERATELY, because somebody
+// looking for this section searches for "away" or "decide" or "autonomy" —
+// words that live on the heading and in the value rather than in a registry
+// key — and the about line names `/autonomy` as the second door to the same
+// rules, which is the one word this page exists so a person can find.
+func (s *sheet) autonomyRowMatches(row *autonomyRow, terms []fuzzy.Term) (int, bool) {
+	if len(terms) == 0 {
+		return 0, true
 	}
-	return false
+	// The sheet's own reusable field buffer, for the same per-keystroke reason
+	// [sheet.settingScore] gives: a rebuild scores every row.
+	if len(s.matchFields) < 4 {
+		s.matchFields = make([]string, 5)
+	}
+	fields := s.matchFields[:4]
+	fields[0] = string(row.kind)
+	fields[1] = row.word
+	fields[2] = autonomyRowsHead
+	fields[3] = autonomyRowAbout
+	return fuzzy.ScoreFields(fields, terms)
 }
 
 // autonomyPersonWord is one rule in a person's words. It is the sheet's own

@@ -124,7 +124,8 @@ page says which is which.
 **Typing filters what is already on the page.** The store is read once, when you walk in, and
 again on the same three-second beat every place runs on — never on a keystroke. Every letter
 narrows the shelves and lines already in memory, matched against title, text, kind, status
-and tags, with the same prefix, substring and fuzzy ranking the model picker uses — **every
+and tags, with the same fuzzy ranking the model picker uses — a word landing on the
+start of a title or a tag ahead of the same letters scattered through a line — **every
 letter, `u` included**. A filter that matches nothing says so in one line and draws nothing
 else.
 
