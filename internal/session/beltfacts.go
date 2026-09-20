@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec"
@@ -386,10 +387,16 @@ var beltFacts = []beltFact{{
 	// answer — and a sentence saying "do not sign" would spend the prefix
 	// teaching the model to think about signing on every turn of a person who
 	// switched it off.
-	tools:   []string{"bash"},
-	holds:   Config.signsGitWork,
-	present: "- " + exec.AttributionLaw,
-	absent:  "",
+	//
+	// AND THE ASSISTED-BY LINE IS THIS PAGE'S OWN, spelled above the co-author
+	// and filled with the model the session is running: the chat is the one
+	// surface that knows its model, so the line that names it is delivered here
+	// and not in the law the leaf loop also reads.
+	tools: []string{"bash"},
+	holds: Config.signsGitWork,
+	present: "- " + exec.AttributionLaw + " The trailer block is two lines, the co-author " +
+		"last: `" + exec.AttributionAssistedBy + "` and then `" + exec.AttributionTrailer + "`.",
+	absent: "",
 }}
 
 // handoffFacts is `## Work or words`: the ways work leaves this turn, composed
@@ -670,6 +677,17 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 			}
 		}
 		if text != "" {
+			// THE ASSISTED-BY LINE IS FILLED HERE because this is the one point
+			// that holds both the belt's bytes and the session's configured
+			// model: the attribution fact quotes [exec.AttributionAssistedBy],
+			// whose %s is the model id, and it is the only fact on any belt
+			// that carries a verb. The leaf loop's standing contract has no
+			// model id to fill it with — exec is handed facts about the model,
+			// never its name — which is why the line rides this page and not
+			// the law.
+			if strings.Contains(text, exec.AttributionAssistedBy) {
+				text = fmt.Sprintf(text, config.Model)
+			}
 			lines = append(lines, text)
 		}
 	}
