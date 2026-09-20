@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // THE SECOND LOCK EXISTS BECAUSE THE FIRST ONE IS INVISIBLE TO HALF THE BOX.
@@ -34,7 +36,24 @@ import (
 const dirLockEnv = "CODEAF_SUITE_DIRLOCK_PATH"
 
 // dirLockPath is the directory lock this run should take, or empty for none.
-func dirLockPath() string { return strings.TrimSpace(os.Getenv(dirLockEnv)) }
+func dirLockPath() string { return strings.TrimSpace(env.Get(dirLockEnv)) }
+
+// suiteEnviron is the environment the SUITE runs in, which is this one without
+// the directory lock's name in it.
+//
+// THE SUITE IS NOT PART OF THE LOCKING SCHEME AND MUST NOT INHERIT ITS
+// IDENTITY. It already never sees the file lock's descriptor, for the reason
+// main.go gives: anything the suite can inherit, the suite's children keep
+// alive. The name is the same hazard one level up and it bites harder, because
+// it is inherited silently and forever.
+//
+// Measured rather than reasoned: with the name exported, `make check` ran two
+// of this package's own tests INSIDE a suite that already held the box, so the
+// wrapper each test started was correctly refused by the gate's own directory
+// lock, wrote nothing, and the test failed reading an empty pipe. A locking
+// scheme that cannot be tested from inside a locked box is a locking scheme
+// nobody can gate.
+func suiteEnviron() []string { return env.EnvironWithout(dirLockEnv) }
 
 // takeDirLock claims the directory lock by creating it, which is the whole
 // mechanism: mkdir either makes the directory or says somebody else already
@@ -55,6 +74,19 @@ func takeDirLock(path string) (taken bool, held string, err error) {
 		}
 		return false, "", mkErr
 	}
+	// NAMED THE INSTANT IT IS CLAIMED, and named again later with the suite's
+	// pid once there is a suite. The second write is not this one being
+	// repeated: it replaces a placeholder with the answer somebody actually
+	// wants, and between the two there is a window this process can be killed in.
+	//
+	// A CASE YOU CANNOT CHEAPLY PREVENT MUST AT LEAST NOT BE INDISTINGUISHABLE
+	// FROM ONE YOU HANDLED. A SIGKILL here leaks the directory and no deferred
+	// cleanup can cover that, because SIGKILL runs no defers. What this write
+	// buys is that the leak NAMES SOMEBODY: a reader finds a pid, asks whether
+	// it is alive, and gets an answer. Without it the directory is held by
+	// nobody, reads as a busy box rather than a broken one, and the first
+	// diagnostic anyone reaches for comes back empty.
+	nameDirLockHolder(path, os.Getpid())
 	return true, "", nil
 }
 

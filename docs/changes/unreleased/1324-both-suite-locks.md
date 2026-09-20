@@ -22,3 +22,9 @@ The two paths are named independently in the configuration rather than one
 trimmed from the other: a name spelled twice is a fact that can disagree with
 itself, and a derived name would follow a test harness driving a private lock
 straight to the real one.
+
+The suite itself runs WITHOUT the lock's name in its environment. Exporting it
+so the wrapper could read it handed it to the suite as well, and every process
+the suite started then tried to take a lock the suite was already holding and
+refused itself. The suite already never sees the file lock's descriptor, for the
+same reason: what a suite inherits, its children keep alive.

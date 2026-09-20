@@ -171,6 +171,10 @@ func run(path string, argv []string) int {
 
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	// Without the directory lock's name, for the reason dirlock.go gives beside
+	// [suiteEnviron]: the suite is not part of the locking scheme and anything
+	// it inherits it passes on.
+	cmd.Env = suiteEnviron()
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "start heavy suite: %v\n", err)
 		return 2

@@ -1210,6 +1210,15 @@ var OperatorEnvPins = []string{
 	// give the page real questions. A row offering to persist it would be
 	// offering to open a fixture over somebody's conversation every launch.
 	"CODEAF_QUESTION_DEMO",
+	// CODEAF_SUITE_DIRLOCK_PATH names the older directory lock a heavy suite
+	// takes beside its file lock, so that a checkout too old to know about the
+	// file lock can still see the box is busy (scripts/one-suite.sh, #1307). It
+	// is plumbing in the plainest sense: it is a path to a lock on one machine,
+	// set by the wrapper that runs the suite, meaningless to anybody not
+	// running one, and it goes the day the last checkout behind #1264 does. A
+	// row offering to persist it would be offering to point a person's box at
+	// somebody else's lock.
+	"CODEAF_SUITE_DIRLOCK_PATH",
 	// CODEAF_PROMPT_PROFILE used to sit here, on the reasoning that the profile
 	// is derived and the pin belongs to a bench measuring one arm against the
 	// other. It is a settings row's pin now ([KeyPromptProfile]), because the
