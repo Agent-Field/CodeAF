@@ -1059,21 +1059,23 @@ func runRowRecord(notice TaskNotice) runRecord {
 	}
 }
 
-// runRowNotice is one record as the row a column draws again, SETTLED.
+// runRowNotice is one record as the row a column draws again.
 //
-// Done stays done and failed stays failed, verbatim: those rows said their last
-// word before the process ended and nothing has happened to them since. A row
-// that was still QUEUED OR MOVING is the only one this changes, and it changes
-// because the truth about it changed while nobody was watching — the work behind
-// it stopped existing the moment the process did. It settles the way a run's own
-// nodes settle when they are called off (orchestrate.go's
-// [orchestrateFamily.retire]): failed, with Stopped beside it, because nothing
-// went wrong with the work and nobody made a finding about it.
+// A row that said its last word before the process ended comes back verbatim:
+// done stays done, failed stays failed, and nothing has happened to either
+// since. A row that was still QUEUED OR MOVING is the only one this changes,
+// and it changes because the truth about it changed while nobody was watching —
+// nothing has been driving it since the process went away.
 //
-// A RESTORED ROW IS NEVER MOVING, which is why Doing is not restored and why
+// IT COMES BACK INTERRUPTED AND NOT FAILED. `failed` says something went wrong
+// with the work and `stopped` says a person ended it, and neither happened:
+// nothing was found out and nobody decided anything ([TaskInterrupted]).
+//
+// A RESTORED ROW IS NOT MOVING, which is why Doing is not restored and why
 // Elapsed is whatever was frozen onto it. Nothing here re-enters the frontier:
 // these rows are not in the graph's `nodes` and never were, so there is nothing
 // for a scheduler to find (task_run.go's [TaskGraph.runs] says it at length).
+// That is a fact about this reader and not a statement that the work is over.
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
 		ID:      record.ID,
@@ -1093,6 +1095,20 @@ func runRowNotice(record runRecord) TaskNotice {
 		EndedAt:   record.EndedAt,
 	}
 	if !notice.State.settled() {
+		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live
+		// when the process that held it went away, and that is a fact about the
+		// window rather than about the work: nothing was found out, nobody
+		// decided anything, and every step it took is in its store. Stamping it
+		// failed and stopped told a person their work had gone wrong and had been
+		// ended by somebody, and neither was true ([TaskInterrupted]).
+		//
+		// A JOB IS THE ONE THING THAT REALLY DID END. A forked process cannot
+		// outlive the program that forked it, so there is nothing to continue and
+		// `stopped` is the honest word for it.
+		if record.Kind != TaskKindJob {
+			notice.State = TaskInterrupted
+			return notice
+		}
 		notice.State, notice.Stopped = TaskFailed, true
 		// A JOB'S ROW KEEPS ITS OWN SENTENCE, because for a job that sentence is
 		// not prose — it is where the log IS ([jobRowLead] mints
@@ -1110,9 +1126,6 @@ func runRowNotice(record runRecord) TaskNotice {
 		// comes back stopped, which is what the column and the page both show, and
 		// "it ended when codeaf closed" is what stopped MEANS for a process that
 		// cannot outlive the program that forked it.
-		if record.Kind != TaskKindJob {
-			notice.Report = orchestrateEndedReport
-		}
 	}
 	return notice
 }
@@ -1124,18 +1137,13 @@ func runRowNotice(record runRecord) TaskNotice {
 // carrying the log's path — so the sentence had stopped being read and had
 // started deleting the path instead ([runRowNotice] says the rest).
 //
-// orchestrateEndedReport is what a row of an adaptive run says for itself when
-// it was still moving as codeaf closed.
-//
-// IT IS THE SENTENCE AND NOT A STATE WORD, because the state word is already
-// "stopped" and it would be answering the wrong question: a person looking at
-// this row wants to know why it stopped, and the answer is that the program it
-// was running inside went away. The second clause is the useful half — what the
-// run got through is on disk, in the same journal the run's page reads
-// (orchestrate.go's orchestrateJournalPath) — and it is the same promise the
-// sibling sentence for a subharness makes (subharness_run.go's
-// subharnessInterruptedReport).
-const orchestrateEndedReport = "it ended when codeaf closed; its journal is kept"
+// AND THE RUN'S OWN VERSION OF IT IS GONE TOO, for a different reason: it was
+// not true. `it ended when codeaf closed; its journal is kept` said the work was
+// over, and the work is not over — nothing is driving it and every step it took
+// is in its store. What the sentence was carrying is now carried by the reading:
+// the state is [TaskInterrupted] and the row asks whether to continue it
+// ([TaskAskContinue]), whose own words say that nothing is driving it and that
+// everything it did is kept.
 
 // recordLocked copies one node out, with the graph held.
 func (n *TaskNode) recordLocked() taskRecord {

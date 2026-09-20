@@ -1965,12 +1965,12 @@ and no line claims one did.
 a brief that takes thirty seconds is drawn for thirty seconds with one clock counting the
 whole of it. It does not go blank partway through and it does not restart at zero.
 
-## The four words a task can land with — done, stopped, incomplete, your call
+## The words a task can land with — done, stopped, incomplete, your call, interrupted
 
-Every task ends wearing exactly one of four words, and the words are the same everywhere
-you read them: the card, the rail, the roster, home, and the note codeaf itself reads. Two
-of them say nothing more is coming; the other two carry a reason, which the next section
-sets out in full.
+Every task ends wearing exactly one of these words, and the words are the same everywhere
+you read them: the card, the rail, the roster, home, and the note codeaf itself reads. Done
+and stopped say nothing more is coming; incomplete and your call carry a reason, which the
+next section sets out in full; interrupted is the one that does not mean the work is over.
 
 **Done.** `task 7 done: <title>`. The check held. The branch merges into an ordinary
 checked-out branch, or stays on its task branch when the checkout is protected, moved or
@@ -1980,6 +1980,36 @@ checked on under it — no lead word at all.
 **Stopped.** `task 7 stopped: <title>`. **You** ended it, and that is the whole of what the
 word means. No threshold, no loop guard and no rule a worker would not follow is drawn as a
 stop, and a task you stopped is never coloured as something having broken.
+
+## Why my task says interrupted — what interrupted means, my work stopped when I closed the window, did I lose it, can I carry on where it left off
+
+**Interrupted means nothing is driving it, and everything it did is kept.**
+
+`task 7 interrupted: <title>`. The window closed, the machine slept, or codeaf itself went
+away. Nothing went wrong with the work and nobody decided anything about it.
+
+**Nothing is lost.** Every step the work took is in its own store, on disk, exactly as it
+was at the moment the last process went away.
+
+It is the one landing word that does not mean the work is over. The row waits for you,
+wearing the asking mark, and offers two answers: `continue it`, or `leave it`. Its line
+reads:
+
+```
+nothing is driving it; everything it did is kept
+```
+
+**It is neither of the two words it is easy to mistake it for.** `stopped` is you ending
+the work, and nobody ended this. `incomplete` is work that ran and came up short, and
+nothing here came up short. Reading either over work whose only misfortune was a closed
+window would be telling you something that did not happen.
+
+**Nothing continues by itself.** Continuing spends money, so it is always asked for first,
+and the five-minute background pass never continues a run on its own.
+
+**A background job is different.** A job is a process codeaf forked, and a forked process
+cannot outlive the program that forked it — so a job that was running comes back `stopped`,
+which is the honest word for it, and its row still carries the path to its log.
 
 ## Why a task landed incomplete or as your call — the reason beside the word
 
