@@ -410,7 +410,7 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 	// questions lane solely as something [Agent.OpenQuestions] derived at
 	// subscription time, so a second window learned of it by replay and was
 	// never told it had been answered or withdrawn.
-	letGo := a.raiseQuestion(a.connectQuestion(id, ask), func() {
+	letGo := a.presenceAskingWhole(a.connectQuestion(id, ask), func() {
 		hub.send(Event{
 			Kind:        EventConnectAsk,
 			ConnectID:   id,
