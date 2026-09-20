@@ -297,16 +297,16 @@ func TestASettingsCycleWritesTheRegistryKey(t *testing.T) {
 	a.openSettings()
 	cursorTo(t, a, config.KeyToolApprovalMode)
 
-	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
-		t.Fatalf("the gate did not start at prompt: %q", got)
-	}
-	drive(t, a, key("enter"))
 	if got := config.ToolApprovalModeAt(dir); got != "allow" {
-		t.Fatalf("the cycle wrote %q, want the next choice after prompt", got)
+		t.Fatalf("the gate did not start at allow: %q", got)
 	}
 	drive(t, a, key("enter"))
 	if got := config.ToolApprovalModeAt(dir); got != "deny" {
-		t.Fatalf("the second cycle wrote %q, want deny", got)
+		t.Fatalf("the cycle wrote %q, want the next choice after allow", got)
+	}
+	drive(t, a, key("enter"))
+	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
+		t.Fatalf("the second cycle wrote %q, want prompt", got)
 	}
 }
 

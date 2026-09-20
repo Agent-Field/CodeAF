@@ -1495,3 +1495,22 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 		t.Fatalf("a stale word did not fall back to on: %+v", got)
 	}
 }
+
+// Saved choices must outlast changes to the shipped approval default.
+func TestToolApprovalDefaultIsYoloWithoutReplacingSavedChoices(t *testing.T) {
+	if got := ToolApprovalModeAt(t.TempDir()); got != "allow" {
+		t.Fatalf("fresh profile = %q, want allow", got)
+	}
+	for _, mode := range []string{"prompt", "allow", "deny", "invalid"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := profileWith(t, map[string]any{KeyToolApprovalMode: mode})
+			want := mode
+			if mode == "invalid" {
+				want = "prompt"
+			}
+			if got := ToolApprovalModeAt(dir); got != want {
+				t.Fatalf("saved %q resolved to %q, want %q", mode, got, want)
+			}
+		})
+	}
+}

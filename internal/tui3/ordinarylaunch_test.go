@@ -192,13 +192,22 @@ func TestAHostedWindowIsAskedNothingOnAnOrdinaryLaunch(t *testing.T) {
 // Four cases, which is the whole matrix: the ordinary launch and the hosted
 // window, under both postures.
 func TestTheApprovalsChipMatchesThePostureInForce(t *testing.T) {
-	t.Run("an ordinary launch that asks first says asks", func(t *testing.T) {
+	t.Run("a fresh ordinary launch says YOLO", func(t *testing.T) {
 		a := ordinaryLaunch(t, Options{}, nil)
 		if force := config.ToolApprovalModeAt(""); force != config.DefaultToolApprovalMode {
-			t.Fatalf("the gate in force on a fresh profile is %q, want the strict default", force)
+			t.Fatalf("the gate in force on a fresh profile is %q, want the shipped default", force)
 		}
+		if got := a.approvalWord(); got != approvalYoloWord {
+			t.Fatalf("the chip reads %q over the default YOLO gate", got)
+		}
+	})
+
+	t.Run("an ordinary launch preserves a saved ask choice", func(t *testing.T) {
+		a := ordinaryLaunch(t, Options{}, func() {
+			writeOrdinaryRow(t, config.KeyToolApprovalMode, "prompt")
+		})
 		if got := a.approvalWord(); got != approvalAsksWord {
-			t.Fatalf("the chip reads %q over a gate that asks first", got)
+			t.Fatalf("a saved prompt choice drew %q", got)
 		}
 	})
 
@@ -240,7 +249,7 @@ func TestTheApprovalsChipMatchesThePostureInForce(t *testing.T) {
 			t.Fatalf("the chip never reached the frame once the greeting was spent:\n%s", screen)
 		}
 		if force := config.ToolApprovalModeAt(""); force != config.DefaultToolApprovalMode {
-			t.Fatalf("the launch wrote %q into a profile whose strict default should stand", force)
+			t.Fatalf("the launch wrote %q into a profile whose default should stand", force)
 		}
 	})
 
@@ -259,7 +268,7 @@ func TestTheApprovalsChipMatchesThePostureInForce(t *testing.T) {
 	// chip drawn from this side would be a safety claim about a machine nobody
 	// consulted, and the engine's own answer travelled once on the welcome.
 	t.Run("a hosted window whose engine asks first says asks", func(t *testing.T) {
-		a := ordinaryLaunch(t, Options{Host: "devbox", ApprovalMode: config.DefaultToolApprovalMode}, func() {
+		a := ordinaryLaunch(t, Options{Host: "devbox", ApprovalMode: "prompt"}, func() {
 			writeOrdinaryRow(t, config.KeyToolApprovalMode, "allow")
 		})
 		if got := a.approvalWord(); got != approvalAsksWord {

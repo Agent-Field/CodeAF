@@ -558,8 +558,8 @@ labelled **"ask before running"**.
 
 | value | what it means |
 |---|---|
-| `prompt` | ask you. **This is the default.** |
-| `allow` | run it |
+| `prompt` | ask you |
+| `allow` | run it. **This is the default, shown as YOLO.** |
 | `deny` | refuse it |
 
 The row's own hint reads: "what happens when the model asks to run a tool:
@@ -591,7 +591,11 @@ its gate — the same answer `/permissions` gives when it drops a rule.
 `--no-host` lands the change at once; over `--host` the gate is the far
 machine's.
 
-A persisted value codeaf does not recognise reads as the default. A garbled
+New conversations without a saved approval choice start in **YOLO**. Existing
+profile, project and conversation choices still win. This default does not make
+a session unattended; `--yolo` retains its launch behavior.
+
+A persisted value codeaf does not recognise still reads as `prompt`. A garbled
 setting must never be the one that opens the gate.
 
 **No gate row can be pinned by an environment variable.** This is deliberate: a
@@ -797,13 +801,13 @@ already turned it into a prompt of its own.
 
 ## Who can see or view my files — privacy, file access and workspace visibility, what codeaf can read without asking, does git status need approval
 
-**Privacy: who can see my files.** In the default `prompt` mode, a look is not
+**Privacy: who can see my files.** Even in `prompt` mode, a look is not
 a question. codeaf can read and open these files without asking — the policy
 itself allows these without a card, even before the seeded row below is applied:
 
 - **`read`, `ls`, `grep`, `find`** — they change no file.
 - **`tasks` when it is a look** — a search, or one task's page. `say`,
-  `continue` and `resolve` still ask, because they write into a node.
+  `continue` and `resolve` follow the blanket mode, because they write into a node.
 - **`services` and `use_service`** — the first only lists accounts; the second
   has its own connect card as the one question about connecting, and every tool
   it brings is judged when called.
@@ -822,7 +826,7 @@ underneath whatever you wrote:
 
 - **Reads of this machine** — `read`, `grep`, `find`, `ls`.
 - **`jobs`**, whose list and output are reads of processes you already started.
-  Its kill is **not** on the floor; that inherits the blanket mode, which asks.
+  Its kill is **not** on the floor; that inherits the blanket mode.
 - **The agent's own bookkeeping** — `remember`, `track` and `recall`. These
   write to and read from the working state codeaf keeps for itself.
 - **`manual`**, which reads pages compiled into this binary and touches no disk

@@ -99,15 +99,23 @@ func TestTheSettingsRowsReachTheSessionConfig(t *testing.T) {
 	}
 }
 
-func TestAnEmptyProfileGatesEverythingAndFollowsTheSessionModel(t *testing.T) {
+func TestAnEmptyProfileUsesYoloAndFollowsTheSessionModel(t *testing.T) {
 	cfg, err := applyV3Governance(session.Config{Model: "session/model"}, t.TempDir(), false, false)
 	if err != nil {
 		t.Fatalf("a fresh install has to boot: %v", err)
 	}
-	// The strictest default is the one an unconfigured install gets: a session
-	// with no settings should ask, not run.
-	if got := cfg.ApprovalPolicy.Check("bash", json.RawMessage(`{"command":"ls"}`)); got.Action != approval.ActionPrompt {
+	// A fresh profile runs in YOLO without implying an unattended launch.
+	if got := cfg.ApprovalPolicy.Check("bash", json.RawMessage(`{"command":"ls"}`)); got.Action != approval.ActionAllow {
 		t.Fatalf("an unconfigured gate answered %s", got)
+	}
+	if cfg.Unattended {
+		t.Fatal("the default approval mode made the launch unattended")
+	}
+	if got := cfg.ApprovalGate.Standing(); got != session.PostureAllow {
+		t.Fatalf("the new-conversation seam would show %q, want allow", got)
+	}
+	if got := cfg.ApprovalPolicy.Check("bash", json.RawMessage(`{"command":"rm -rf /"}`)); got.Action != approval.ActionPrompt {
+		t.Fatalf("the default YOLO posture lifted the critical floor: %s", got)
 	}
 	// Pure reads never ask — the gate's business is what can change the system.
 	if got := cfg.ApprovalPolicy.Check("read", json.RawMessage(`{"path":"x"}`)); got.Action != approval.ActionAllow {

@@ -112,12 +112,12 @@ nothing — the whole reply is thrown away and asked again (see *A reply that ne
 finished*).
 
 `read` never asks your permission. `edit` and `write` follow whatever approval
-mode you are in, which asks by default.
+mode you are in, which defaults to **YOLO** (`allow`).
 
 There is **no tool that deletes, renames or moves a file**. Those happen through
 `bash`, by running `rm`, `mv` or `rename` like you would yourself — so they are
-governed by the shell rules rather than the file rules, they ask before running
-under the default approval mode, and the most destructive forms of `rm` are on
+governed by the shell rules rather than the file rules. YOLO runs them unless
+a more specific rule asks or refuses, and the most destructive forms of `rm` are on
 the short list of commands that always ask no matter what the settings say.
 
 ## Can you find a file or search the code?
@@ -211,7 +211,7 @@ interrupted one answers `Command aborted`. If the workspace directory is gone:
 Anything you already know is meant to keep running — a server, a dev watcher —
 is better started in the background from the start, where no clock runs at all.
 
-`bash` follows your approval mode, which asks by default.
+`bash` follows your approval mode, which defaults to **YOLO** (`allow`).
 
 ## The command took too long — is the work lost, or does it keep running?
 
@@ -939,8 +939,8 @@ live belief is never dropped.
 
 **`commit`** closes one record by `id`, e.g. `p2`. A progress item becomes
 `done`; a belief becomes stale and leaves the block. It is the one hand that
-declares work finished, so unlike the others it follows your approval mode and
-asks by default.
+declares work finished, so unlike the others it follows your approval mode,
+which defaults to YOLO.
 
 **`recall`** shows the current block — beliefs first, then open items, then done,
 newest first inside each. Empty, it answers:
