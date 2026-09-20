@@ -1114,3 +1114,56 @@ func TestAFinishedTasksPageOffersNoVerbItWouldRefuse(t *testing.T) {
 		}
 	}
 }
+
+// THE BRIEF SECTION DRAWS THE WORK ORDER THROUGH THE READER THE TRANSCRIPT
+// ALREADY USES. A store task's description can be the generated work order a
+// run hands its workers — the same document the conversation's own transcript
+// reshapes through [requestDisplayText] — and a page that drew it raw opened on
+// the machinery addressed to the model: the shouted scaffold heading, the rule
+// under it, and only then the person's ask. A person must never read machinery,
+// so the page draws the brief through the reader's own reshaping: plain
+// headings, this task's own work first. THE STORE'S TEXT IS THE STORE'S: only
+// the drawing changes, and a brief that is not the generated document draws
+// exactly as it always did.
+func TestThePlanPageDrawsItsBriefThroughTheRequestReader(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Parent: "t-run", Title: "Alpha", Status: "claimed"}}
+	// The generated opening and the shouted headings under it, with the
+	// person's own sentence carried in the work order's own work section.
+	brief := strings.Join([]string{
+		taskRequestAsk + "\nThis is the message the whole job came out of, and this task is ONE PIECE of it: preserve the scope.\n\nthe page a person opens for one task of a run draws that task's brief plainly",
+		"THE WORK\n\nthe page a person opens for one task of a run draws that task's brief through the reader the transcript already uses",
+		"DONE WHEN\n\nthe drawn lines carry the person's own sentence and no scaffold heading",
+	}, "\n\n")
+	pages := map[string]session.PlanTaskPage{
+		"t-alpha": {Row: rows[0], Description: brief},
+	}
+	a, _ := planAppWith(t, rows, pages)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	if item, ok := a.taskSheetCurrent(); !ok || item.plan == nil {
+		t.Fatalf("the cursor is not on a plan row: %+v", item.entry)
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !a.taskSheet.planOn {
+		t.Fatal("enter over a plan row did not open its page")
+	}
+	page := taskSheetText(a)
+	// THE DRAWN LINES CARRY THE PERSON'S OWN SENTENCE, under the reader's plain
+	// heading for the work, and none of the machinery the work order opens with.
+	for _, want := range []string{"brief", "Task request", "the page a person opens for one task of a run draws that task's brief through the reader"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the plan page is missing %q:\n%s", want, page)
+		}
+	}
+	for _, never := range []string{taskRequestAsk, "ONE PIECE", "THE WORK", "DONE WHEN"} {
+		if strings.Contains(page, never) {
+			t.Fatalf("the plan page drew the work order's machinery %q:\n%s", never, page)
+		}
+	}
+	// THE STORED BRIEF DOES NOT CHANGE: the page drew through the reader and the
+	// sheet still holds the work order byte for byte.
+	if a.taskSheet.plan.Description != brief {
+		t.Fatalf("drawing changed the stored brief:\n%s", a.taskSheet.plan.Description)
+	}
+}
