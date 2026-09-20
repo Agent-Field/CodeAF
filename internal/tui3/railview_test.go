@@ -217,7 +217,7 @@ func TestTheStandingSectionIsNotStarvedByALongRoster(t *testing.T) {
 
 	rail := marginRail(a)
 	for _, want := range []string{
-		marginTasksWord, marginDoorWord(marginTaskType),
+		marginDoorWord(marginTaskType),
 		marginStandWord, "keep the tests green", "draft the weekly update",
 		marginDoorWord(marginStandType),
 	} {
@@ -239,16 +239,15 @@ func TestTheStandingSectionIsNotStarvedByALongRoster(t *testing.T) {
 	}
 }
 
-// THE SECTION LABEL IS PINNED, because a heading that scrolls away is a heading
-// nobody has at the moment they need it.
-func TestTheTasksLabelStaysWhileTheRosterScrolls(t *testing.T) {
+// The blank spacer under the hide control stays while tasks scroll.
+func TestTheTasksSpacerStaysWhileTheRosterScrolls(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railLanded(a, 40)
 	a.railScroll(12)
 
 	rows := railText(a, 20)
-	if len(rows) < 2 || !strings.Contains(rows[0], railStowHint) || !strings.Contains(rows[1], marginTasksWord) {
-		t.Fatalf("the label scrolled away with the list:\n%s", strings.Join(rows, "\n"))
+	if len(rows) < 2 || !strings.Contains(rows[0], railStowHint) || strings.TrimSpace(strings.TrimPrefix(rows[1], "│")) != "" {
+		t.Fatalf("the spacer changed while scrolling:\n%s", strings.Join(rows, "\n"))
 	}
 }
 

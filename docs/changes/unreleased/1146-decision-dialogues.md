@@ -4,6 +4,7 @@ title: Decision dialogs support updated requests and concurrent clarification
 pr: 1146
 surface: [chat, engine, remote, docs]
 invalidates:
+  - "The tasks heading and its working count beneath the sidebar hide hint are replaced by a blank spacer row."
   - "The conversation sidebar previously put its hide control after the task rows and reordered families by activity. The hide control now stays pinned at the top, task families and their children retain creation order, and + /task follows the scrolling list."
   - "Decision panels previously displayed c change and ? ask back, plus keyboard hints below the frame. They now display only esc later, o other and ? clarify on the lower boundary, with cyclic navigation in both directions."
   - "Other previously sent lane-dependent corrections, which could implicitly approve a task proposal. It now withdraws the pending decision without approval and starts the updated request in the same conversation."

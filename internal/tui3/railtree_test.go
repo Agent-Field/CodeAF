@@ -107,7 +107,7 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 	spin := tokens.Spinner(0)
 	want := []string{
 		"│ " + railGripOpenGlyph + " " + railStowHint,
-		"│ " + marginTasksWord,
+		"│ ",
 		"│ " + spin + " Ship the port           #1",
 		"│ ├─ " + glyphDone + " Read the law         #2",
 		"│ ├─ " + spin + " Write the tree       #3",

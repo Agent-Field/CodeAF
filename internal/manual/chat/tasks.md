@@ -1942,8 +1942,8 @@ land between chips a few cells apart, so the phone tier trades the tab row for o
 
 ## The roster: the column of all the work
 
-The roster is the **top section of the column on the right**, under a dim lowercase label
-reading `tasks`. Under it the same column carries a second section labelled `standing` —
+The roster is the **top section of the column on the right**, separated from the pinned
+hide hint by one blank row. There is no `tasks` heading. Under it the same column carries a second section labelled `standing` —
 the orders standing over this conversation — and, when this conversation has started any,
 a third labelled `jobs`. The standing orders page has that half; *Background jobs on the
 column* below has the jobs section.
@@ -1996,9 +1996,7 @@ of them is an ordinary row of the forest above: its own state glyph, its own nam
 `#id`, reachable with `↑`/`↓` and openable with `→`. A worker you can see is a row you can
 walk to.
 
-When two or more workers are running anywhere in the live work, the section label carries
-the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
-zero or one running worker there is no tail at all, so the label remains `tasks`.
+The blank row above the tasks stays blank even while several workers are running.
 
 ## What is the diamond symbol next to each task? — why the sidebar has no diamond, the mark on the cards
 
@@ -2170,9 +2168,8 @@ is the same brightness the roster already uses for live work versus history.
 `job 3 · log /…/3.log`. It is on the job's page now. Open the row (enter or a click) to
 see it.
 
-**A running job still counts as working** in the live-work tree, so when more than one
-worker is running the `tasks` label can read `tasks · N working` with jobs included. The
-jobs section's own label is the count of *jobs*: `jobs · 2 running`.
+**A running job still counts as working** in the live-work tree. The jobs section's own
+label is the count of *jobs*: `jobs · 2 running`.
 
 **What a job's row does not have**, because a job has none of them:
 
