@@ -285,10 +285,17 @@ func TestAJobStillMovingComesBackStoppedAndKeepsItsLog(t *testing.T) {
 	if job.State != JobStopped {
 		t.Fatalf("a job that was cut short came back as %q", job.State)
 	}
-	// AND A RUN'S ROW STILL SAYS ITS OWN SENTENCE. A run has a journal to name
-	// and a row that still draws it, so nothing about the above is true of one.
-	if run := runRowNotice(runRecord{ID: 5, State: TaskRunning}); run.Report != orchestrateEndedReport {
-		t.Fatalf("a run's row now says %q", run.Report)
+	// AND A RUN'S ROW IS NOT A JOB'S. A job's process died with the program that
+	// forked it, so `stopped` is the honest word; a run's work is in its store
+	// and nothing is driving it, which is a different fact and a different word
+	// ([TaskInterrupted]). It carries no sentence of its own, because the reading
+	// says both halves already.
+	run := runRowNotice(runRecord{ID: 5, State: TaskRunning})
+	if run.State != TaskInterrupted || run.Stopped {
+		t.Fatalf("a run's row came back as %s (stopped %v), want it interrupted and nobody's stop", run.State, run.Stopped)
+	}
+	if run.Report != "" {
+		t.Fatalf("a run's row invents a sentence: %q", run.Report)
 	}
 }
 

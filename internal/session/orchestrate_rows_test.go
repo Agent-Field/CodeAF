@@ -164,8 +164,14 @@ func resumedRunRows(t *testing.T, script func(*orchestrateFamily)) (*Agent, []Ta
 
 // THE OWNER'S SCENARIO. A run was mid-flight when codeaf closed; the next
 // morning the conversation is reopened and its rows are on the column again —
-// settled, saying what happened to them, and not pretending to be alive.
-func TestAResumedConversationRedrawsAMidFlightRunSettled(t *testing.T) {
+// not pretending to be alive, and not pretending to have failed either.
+//
+// THE ROWS COME BACK INTERRUPTED. They were stamped failed and stopped, which
+// told a person two untrue things at once: that something had gone wrong with
+// the work, and that somebody had ended it. Nothing went wrong and nobody did
+// anything; the window closed. What each row got through is in its store
+// ([TaskInterrupted]).
+func TestAResumedConversationRedrawsAMidFlightRunInterrupted(t *testing.T) {
 	today, rows := resumedRunRows(t, func(family *orchestrateFamily) {
 		family.upsert([]orchestrate.NodeStatus{
 			node("n1", "tariff table", "You are reading the tariff table.", orchestrate.Running),
@@ -176,14 +182,22 @@ func TestAResumedConversationRedrawsAMidFlightRunSettled(t *testing.T) {
 		t.Fatalf("%d rows redrawn, want the run and its two workers: %+v", len(rows), rows)
 	}
 	for _, row := range rows {
+		if row.State != TaskInterrupted {
+			t.Fatalf("row %d came back %s, want it interrupted — nothing is driving it and nothing went wrong: %+v", row.ID, row.State, row)
+		}
+		// AND NOBODY STOPPED IT. The flag is a person's own act, and a closed
+		// window is not one.
+		if row.Stopped {
+			t.Fatalf("row %d came back as somebody's stop: %+v", row.ID, row)
+		}
+		// AND NO WORKER HOLDS IT. Interrupted is settled in the scheduler's sense
+		// even though the work is not over, which is what keeps a restored row off
+		// the live tree.
 		if !row.State.settled() {
-			t.Fatalf("row %d came back %s — a restored run is history, not work: %+v", row.ID, row.State, row)
+			t.Fatalf("row %d still reads as work in flight: %+v", row.ID, row)
 		}
-		if !row.Stopped {
-			t.Fatalf("row %d came back as a failure rather than as work that was cut short: %+v", row.ID, row)
-		}
-		if row.Report != orchestrateEndedReport {
-			t.Fatalf("row %d says %q, want %q", row.ID, row.Report, orchestrateEndedReport)
+		if row.Report != "" {
+			t.Fatalf("row %d invents a sentence about how it ended: %q", row.ID, row.Report)
 		}
 		if row.Doing != "" {
 			t.Fatalf("row %d came back mid-phase, saying %q", row.ID, row.Doing)

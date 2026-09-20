@@ -1811,25 +1811,28 @@ redraws a live run whole: the run's own row, every node under it, and each one i
 it is in *right now*, including `forming the work` if the run is still in its opening
 minute. Nothing is lost by looking somewhere else, and nothing has to be re-asked for.
 
-**Reopening the conversation tomorrow** redraws the run's rows as **history**. The run
-itself does not come back — see *What happens to a run when codeaf closes or restarts* —
-but the rows do, settled:
+**Reopening the conversation tomorrow** redraws the run's rows. The run itself is not
+running — see *What happens to a run when codeaf closes or restarts* — but the rows come
+back, each saying what is true of it:
 
 - a node that **finished** comes back done, with its digest and what it spent
 - a node that **failed** comes back failed, with what it said
-- the run's own row and anything still queued or still moving come back **stopped**, and
-  the row reads:
+- the run's own row and anything still queued or still moving come back **interrupted**
+
+`interrupted` means **nothing is driving it, and everything it did is kept**. It is not
+`stopped`, which is you ending the work, and it is not `incomplete`, which is work that
+ran and came up short. Nothing went wrong and nobody decided anything: the window closed.
+The row wears the asking mark, and its line reads:
 
 ```
-it ended when codeaf closed; its journal is kept
+nothing is driving it; everything it did is kept
 ```
 
-**These restored rows are history the column keeps, not work.** Nothing on them runs.
-Nothing on them can be stopped — `x` and the header's `Stop` are not offered over a run that
-ended with the last process, because there is nothing left to stop. They are not counted
-in the running total on the status line, and no queued row among them will start. Opening
-one still opens the run's page, and the page says `no shape published yet`, because the
-frontier it would draw died with the process. Each node's transcript is still on disk at
+**Nothing on a restored row is running.** It is not counted in the running total on the
+status line, and no queued row among them starts by itself. `x` and the header's `Stop`
+are not offered over one, because there is nothing left to stop. Opening one still opens
+the run's page, and the page says `no shape published yet`, because the frontier it would
+draw went with the process. Each node's transcript is still on disk at
 `~/.codeaf/v3/runs/<session>/<run>/<node>.jsonl`.
 
 A conversation you have reopened several times keeps every run it ever started, in the

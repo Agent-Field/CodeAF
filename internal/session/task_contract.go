@@ -341,6 +341,18 @@ const (
 	// person — [Agent.ResolveUnverified], reachable from the `tasks` tool — accepting
 	// the work as done, asking for another audit, or refuting it themselves.
 	TaskUnverified TaskState = "unverified"
+	// TaskInterrupted says NOTHING IS DRIVING THE NODE and every step it took is
+	// kept. The window closed, the machine slept, the engine died. It is settled
+	// in the scheduler's sense — no worker holds it, the slot is back — and it is
+	// deliberately NOT TaskFailed, because nothing was found out about the work.
+	//
+	// "The work did not finish" and "nobody was there to carry it on" are
+	// different news with different consequences, and collapsing the second into
+	// the first is how a run whose window was closed came back reading as though
+	// it had gone wrong. A person's answer is the only thing that moves it, and
+	// the answer is to continue it or to leave it ([TaskAskContinue]); continuing
+	// spends money, so nothing here moves on its own.
+	TaskInterrupted TaskState = "interrupted"
 )
 
 // TaskResolution is what a person decides about a node no auditor could judge.
