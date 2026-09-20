@@ -4,6 +4,7 @@ title: UX changes — clearer home panels and consistent message-box controls
 pr: 1071
 surface: [chat]
 invalidates:
+  - "Home’s spend heading no longer repeats today’s cost and daily allowance; those remain on the top line. The spend panel retains its meter, fortnight history, model shares and heading link."
   - "The shipped approval mode used to ask. Unconfigured profiles now use allow (YOLO), shared by Home and new conversations. Saved profile, project and conversation choices still take precedence, invalid mode strings still ask, and tool rules and critical-command floors are unchanged. The default does not mark the session unattended."
   - "Tasks, spend and settings now advertise esc home at rest, including the compact task footer. Home’s since you left heading opens memory. The needs you heading and empty whisper are removed; unanswered questions decorate the existing conversation or task with an amber question mark and keep their answer controls, rather than repeating that item in a second panel. Questions without a matching visible row remain reachable as unheaded rows."
   - "The conversation footer now labels Escape home, and task conversations label it main. Submitting /ask or a follow-up starts its animation clock immediately. Home conversation rows now have bullets: dim at rest, a working mark while answering, and a bright filled mark for replies completed out of view; viewing the conversation clears unread state. Closed rows remain dim, and the existing one-animated-row rule is preserved."

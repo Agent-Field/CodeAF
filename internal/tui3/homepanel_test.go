@@ -455,8 +455,8 @@ func spendPanelText(a *app, width int) []string {
 	return out
 }
 
-// SPEND IS A SMALL HUD: today against the allowance spelled the pulse's way on
-// the heading, one thin meter, the fortnight in block cells with its total and
+// SPEND IS A SMALL HUD: a bare heading, one thin meter, the fortnight in
+// block cells with its total and
 // its loudest day, and the models beside what the day was spent on.
 func TestSpendIsASmallHudOfThreeLines(t *testing.T) {
 	a := homeSpendLab(t)
@@ -464,8 +464,8 @@ func TestSpendIsASmallHudOfThreeLines(t *testing.T) {
 	if len(rows) != 4 {
 		t.Fatalf("the spend panel is %d rows at 58 cells, want a heading and three lines:\n%s", len(rows), strings.Join(rows, "\n"))
 	}
-	if !strings.HasSuffix(rows[0], "today $170.00 of $500") || strings.Contains(rows[0], "$500.00") {
-		t.Fatalf("the heading does not say today against the allowance the pulse's way: %q", rows[0])
+	if strings.TrimSpace(rows[0]) != "spend" {
+		t.Fatalf("the heading repeats the top line's daily spend: %q", rows[0])
 	}
 	if !strings.Contains(rows[1], homeSpendRun+homeSpendRest) || !strings.HasSuffix(rows[1], " 34%") {
 		t.Fatalf("the meter is not one thin line with its share: %q", rows[1])

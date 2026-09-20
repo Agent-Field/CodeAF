@@ -11,9 +11,9 @@ import (
 )
 
 // spendPanel is `spend`: a small HUD, THREE LINES THAT EACH SAY ONE THING. The
-// heading carries what today has cost against the day's allowance, and — once
-// the day has spent enough of it to see — one thin meter says how much of it is
-// gone. Then the fortnight, one block cell a day with today at the right, its
+// heading names the panel; today's cost and allowance are already on the top
+// line. Once the day has spent enough of its allowance to see, one thin meter
+// says how much is gone. Then the fortnight, one block cell a day with today at the right, its
 // total and its loudest day. Then who it went to and what for: the two models
 // most of it bought, and how many chats and tasks today has seen. NO ROW OF IT
 // IS A DOOR: the lines under the heading are a reading and not things to do
@@ -37,7 +37,7 @@ const (
 	homeSpendMeterCells = homeSpendDays
 	// homeSpendMeterFloor is the least share of the allowance the meter is
 	// drawn for. UNDER A TWENTIETH A METER READS AS BROKEN — a one-cell run on a
-	// fourteen-cell line looks like a bar that failed to draw — and the heading
+	// fourteen-cell line looks like a bar that failed to draw — and the top line
 	// already says the figure.
 	homeSpendMeterFloor = 1.0 / 20
 	// homeSpendModels is how many models the last line names.
@@ -129,9 +129,6 @@ func (a *app) readHomeSpend() {
 func (spendPanel) rows(in *homeGridInput) homePanelRows {
 	s := in.spend
 	var out homePanelRows
-	if s.today > 0 {
-		out.right, out.money = s.todayWords(), dollars(s.today)
-	}
 	if share := s.used(); share >= homeSpendMeterFloor {
 		out.lines = append(out.lines, spendLine("\x00bar", &homeCell{kind: cellBar, share: share}))
 	}
@@ -165,16 +162,6 @@ func spendLine(key string, cell *homeCell) homeLine {
 // used is how much of the day's allowance is gone, and nothing for a machine
 // that has none ([session.SpendShare]).
 func (s homeSpendReading) used() float64 { return session.SpendShare(s.today, s.ceiling) }
-
-// todayWords is the heading's clause: `today $6.51 of $500`, the allowance
-// spelled the way the pulse spells a figure somebody typed ([railFigure]).
-func (s homeSpendReading) todayWords() string {
-	words := spendTodayWord + " " + dollars(s.today)
-	if s.ceiling > 0 {
-		words += " of " + railFigure(s.ceiling)
-	}
-	return words
-}
 
 // fortnightWords is `14 days $204.36`.
 func (s homeSpendReading) fortnightWords() string {

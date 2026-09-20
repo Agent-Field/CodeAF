@@ -19,7 +19,7 @@ answering one question you would ask walking up to a colleague's desk:
    thread: Searching for Apartments Near Minto      ~/pricing-site   5 chats
 
    needs your ok to run bash  1 allow once  2 always
- ? Clever Bet Prediction Model              6h   spend                    today $0.14 of $20
+ ? Clever Bet Prediction Model              6h   spend
                                                   ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
  unread                                           opus 63%  ·  3 chats and 1 task today
    tier-B subs                                1d
@@ -2076,15 +2076,14 @@ pointer does not light them, and a press on one does nothing. The heading is the
 cannot reach it, but a click on the word `spend` opens the spend place, as does `/spend` or `alt+3`:
 
 ```
- spend                                  today $6.51 of $500
+ spend
    ━━━━━╌╌╌╌╌╌╌╌╌ 34%
    ▂▄▅█▄▆▅▇▄▅▂▅▂▄  14 days $204.36 · loudest sun $88.10
    glm-5.3 55% · opus 31%  ·  3 chats and 1 task today
 ```
 
-- **The heading** carries `today $X of $Y` — everything spent since midnight against the
-  day's allowance, spelled the way the top line spells it. A machine with no allowance
-  reads `today $X`.
+- **The heading** says `spend`. Today's cost and allowance appear only on the top line,
+  without a duplicate beside this heading.
 - **A thin meter** follows once the day has spent a twentieth of the allowance.
 - **The fortnight**, a block a day with today at the right, then `14 days $N · loudest
   <weekday> $M`.
