@@ -386,6 +386,13 @@ type Item struct {
 	SpentUSD    float64   `json:"spentUsd"`
 	// NeedsPerson is set while the latest run is stopped waiting on the person,
 	// with the one line it is stopped on. Home sorts on it.
+	//
+	// TWO THINGS CLEAR IT, and for most of this field's life there was only one.
+	// The pass clears it on the next firing ([Ticker] writes it whole), and the
+	// PERSON clears it by changing the item ([Item.ClearNeedsPerson]). With only
+	// the first, an item that could not fire again — one that had spent its
+	// allowance for the day — kept a row on home saying it needed somebody, for
+	// as long as that stayed true, with no act of theirs able to put it down.
 	NeedsPerson string `json:"needsPerson,omitempty"`
 	// CleanRuns is HOW MANY FIRINGS IN A ROW CAME BACK CLEAN — fired with
 	// nothing waiting for the person and no failure. It is the count the rope
@@ -567,6 +574,19 @@ func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 		}
 	}
 	return false
+}
+
+// ClearNeedsPerson answers the line the last firing stopped on by the person's
+// own hand: they have changed the item, so what it stopped on before is no
+// longer news about what it will do next.
+//
+// IT IS A CHANGE AND NOT A LOOK. Opening an item and closing it again leaves
+// the row exactly as it was, because nothing about the item moved and the
+// reason it stopped is still true. Pausing it, stopping it, letting it go
+// again, or rewording what it does are all acts that make the old line stale.
+func (it Item) ClearNeedsPerson() Item {
+	it.NeedsPerson = ""
+	return it
 }
 
 // Glyph is the one character a row leads with, decided here so every surface
