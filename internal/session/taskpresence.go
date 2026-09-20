@@ -1001,8 +1001,36 @@ func (a *Agent) waitingOnPerson() personAsk {
 	// AND UNDER THE GRAPH'S OWN LOCK, never the agent's — this file's standing
 	// rule about anything with a lock of its own, kept by calling
 	// [Agent.PendingDecisions] with a.mu already released.
-	if pending := a.PendingDecisions(); len(pending) > 0 {
-		return personAsk{waiting: true, reason: yourCallLine + strings.TrimSpace(pending[0].Notice.Title)}
+	if ask := a.personAskLanding(); ask.waiting {
+		return ask
+	}
+	return personAsk{}
+}
+
+// personAskLanding reads the landed-task lane out of the pending list, and it
+// is the arm of [Agent.waitingOnPerson] that answers it. The list itself is
+// state-in, state-out (pending.go) and other readers depend on that, so the
+// settling question is skipped HERE rather than filtered there.
+//
+// AN ANSWER IN FLIGHT IS NOT A QUESTION. The record card already knows this
+// (question.go checks the decision record before it says `accepted · still
+// working on it`), but the arm read only the list and took its first entry, so
+// after a person accepted a landing and while the merge was still running, the
+// card said they had answered and home still asked them to. The fact is already
+// in the list: PendingDecisions builds each entry from noticeLocked, and the
+// notice carries Settling for as long as a settle or a merge round holds the
+// node (task_run.go). Skip any entry whose Settling is not empty and take the
+// first one that is not.
+//
+// AND WHEN EVERY OPEN LANDING IS SETTLING, this arm contributes NO mark and NO
+// sentence: every question on it has been answered and the merge is doing the
+// rest, so a person must not be prodded for a question there is not one.
+func (a *Agent) personAskLanding() personAsk {
+	for _, pending := range a.PendingDecisions() {
+		if strings.TrimSpace(pending.Notice.Settling) != "" {
+			continue
+		}
+		return personAsk{waiting: true, reason: yourCallLine + strings.TrimSpace(pending.Notice.Title)}
 	}
 	return personAsk{}
 }
