@@ -2394,7 +2394,7 @@ another one's without the column ever saying it had. Everything they offered is 
 other side of the door, whole: every row, the filter, the cards, and `m` for the mention.
 
 **Where old work is listed now:** the task page (`ctrl+.`, `/history`, or that line), and
-home (`/home`, or space twice on an empty box). The chat can also read the whole project
+home (`/home`, or Escape from the conversation). The chat can also read the whole project
 record for you with its `tasks` tool — just ask.
 
 **Running work in another codeaf window** is on no surface but the task page. An ordinary
@@ -3373,13 +3373,13 @@ local conversation the same page tails that log live.
 | clicking empty space | nothing | nothing — leaving is `esc`, `←`, or the pinned header |
 | what `enter` does | sends to the model, or holds the message above the box while a turn is running | **steers the task** — never held |
 | what `↑`/`↓` do | walk your history, then select a tool row, then scroll | the same walk through **the same history** — steered lines are in it — then scroll the page |
-| what `esc` does | interrupts the running turn | leaves the room. It never interrupts and never stops work |
+| what `esc` does | backs out to Home, preserving work | leaves the room. It never interrupts and never stops work |
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
 | pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; a dim `+N` at the strip's right end counts the tabs it could not spell, and `alt+k` opens the chats card | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
 | legend word | the model, effort and approvals, with the remote machine when connected | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
-| legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
+| legend hint | `ctrl+c interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
 | clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next request — and does nothing at all once the task has landed |
 | `ctrl+b` | freezes the transcript | freezes the room's own rows |

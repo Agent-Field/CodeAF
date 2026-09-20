@@ -2193,7 +2193,12 @@ func (a *app) closeModals() {
 	a.connPanel.close()
 	a.harnPanel.close()
 	a.permPanel.close()
-	a.subPage.close()
+	// Navigation hides an unanswered offer without resolving or losing it.
+	if a.subPage.card.asked() {
+		a.subPage.open = false
+	} else {
+		a.subPage.close()
+	}
 	// AND HOME'S OWN MODEL LIST, which IS drawn where it stands and is still a
 	// list nobody left open on purpose: walking to another place and back to a
 	// list you had not finished with is a list you have to remember opening

@@ -47,8 +47,8 @@ most of those left-hand panels have nothing in them, and they gather under the p
 in the right-hand rail instead — heading and one dim line each — so the left of the screen
 is only ever the things that are actually going on.
 
-`esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
-nothing was sent while you were looking. The resting foot reads
+Escape stays on Home once its local layers are dismissed. Open a conversation row
+or use `alt+k` to return; drafts and work stay intact. The resting foot reads
 `alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands`.
 The project, approvals and chats hints appear only where those controls can act.
 The controls stay the same as the cursor walks between rows. `→` opens the selected
@@ -409,9 +409,8 @@ ordinary row, and in its place `another window` for one a terminal is sitting in
 here` while one moves over, `folder gone` for one whose folder was deleted — the one kind
 of word allowed to stand where a time does, because it is the truth about the key. An `ask here` errand you started a minute ago sits at the very top.
 
-**On `space` `space` the cursor is already on the chat you were in before this one**, so a
-switch back is two keys — `space` `space`, then `enter` — and `esc` still goes back to the
-conversation behind home.
+**Escape opens Home with the previous conversation selected.** Press `enter` to open
+the selected row. Further Escape presses stay on Home.
 
 ## Start a chat in another folder — the projects panel is read, not pressed; ctrl+t starts a chat elsewhere
 
@@ -550,7 +549,7 @@ own tab stack — so going back is `enter`. A window that has held only one conv
 "before", and the cursor is on its own row in `threads`, which says `here`.
 
 **On a launch** — home greeting you — the cursor is on the conversation this window is
-holding, the row `esc` drops back into.
+holding, the row you can open to return.
 
 **`↑` off the top row of home stays on it.** The tab bar — the row of four words — is
 reached by clicking a word, by `tab`, or by a place's own chord (`alt+2` and the rest); on
@@ -688,13 +687,12 @@ tasks, `spend` of spend, `scheduled` of standing.
 ## Why did a dashboard open when I started codeaf — home greets you
 
 **Home is the first thing you see when you open codeaf.** The conversation your launch
-would have opened is loaded and waiting underneath it: `esc` drops straight into it. In
+would have opened is loaded and waiting underneath it: opening its row returns to it. In
 effect the launch is the launch you always had, with home already open on top of it.
 
 **The cursor starts on the conversation this window is holding** — its row in `where you
 were`, wearing `here` — so the first frame already answers "where am I". `↑` off the top of
-the column stays there (see *Where the cursor starts*); `esc` goes on with
-what you were doing.
+the column stays there (see *Where the cursor starts*); opening a conversation row resumes it.
 
 Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
 always did — this directory's most recently spoken-in chat, or a fresh one — before home is
@@ -726,7 +724,7 @@ There is no setting for this and no flag to turn it off: whether home greets you
 from how you launched and what the machine holds, both of which answer themselves.
 
 Not being greeted is not the same as being out of reach. Once you are in a conversation,
-`/home` — or `space` twice on an empty box — opens the screen whenever you want it, on a
+`/home` — or `esc` from the conversation — opens the screen whenever you want it, on a
 machine with one conversation and on one with none (see *Why is the home screen empty*).
 
 ## Close or archive a conversation — put junk away and clean up home
@@ -867,7 +865,7 @@ sentence in the other window's box arrives in yours.
 
 **`codeaf chat` in a folder whose conversation is open elsewhere** — you opened codeaf and it
 said `open in another window` — does not start a second one silently. It opens home with that row pointed at, so one `enter` continues where you
-left off and `esc` gets on with a new conversation instead. A plain `codeaf` in a folder
+left off and typing and submitting a new message starts a conversation instead. A plain `codeaf` in a folder
 whose engine is already holding a conversation simply **sits down in the one the engine
 has**.
 
@@ -877,7 +875,7 @@ has**.
 cannot happen at all**: the row says
 `open in another window — go there, or start a new conversation here`.
 
-## Moving a conversation from a window with no engine asks first — the move card, enter moves nothing, the cursor starts on leave it there
+## I pressed enter twice on the held row and it did not move — moving a conversation from a window with no engine asks first — the move card, enter moves nothing, the cursor starts on leave it there
 
 This is the road a window takes when there is no engine holding the conversation —
 `--no-host`, `--debug`, a test. On the ordinary `codeaf chat` you will not meet it: see
@@ -1174,8 +1172,8 @@ which beats a word inside it, which beats the letters appearing in order. Then t
 break ties: a conversation **waiting on you** beats a cold one it ties with, whatever their
 ages, and after that the more recent one wins.
 
-`↑`/`↓` walk the matches, `enter` opens the highlighted one. `esc` clears the box and puts
-the panels back; a second `esc` closes home.
+`↑`/`↓` walk the matches, `enter` opens the highlighted one. Escape preserves the draft and stays on Home. Clear the box with `ctrl+u` to restore
+the unfiltered panels.
 
 **The matches grow upward out of the box, best one first** — see *Why is the best search
 result at the bottom* below. On a frame 136 columns or wider the card beside them follows
@@ -1405,101 +1403,32 @@ Typed on home — bare, or with a path after it — it opens the folder browser 
 already changed. `/place` and `/dir` are the same command. Nothing on that sheet touches the
 conversation behind home.
 
-## How do I get back to the dashboard or the home screen from any page — press space twice
+## How do I get back to the dashboard or the home screen from any page — Escape
 
-**From inside any conversation, press the space bar twice with an empty message box.**
-That is the way back to home, and it lands with the cursor on the chat you were in before
-this one.
+Press `esc` to go back one layer: close a picker, leave an editor or room, or put a
+question aside. With no layer left, Escape opens Home. Further presses stay on Home.
+Message drafts, running turns and queued messages are preserved. Filters may clear first.
+Escape never starts rewind or stops a turn. `ctrl+c` interrupts a running turn and quits
+when idle; `/rewind` opens the rewind timeline.
 
-There is no `ctrl+` chord for it: every `ctrl+<letter>` this surface has is already taken,
-and `esc` was not available either — on an idle conversation it already arms rewind and
-already drops a message you parked. What was left is the one keystroke that reliably means
-nothing: a message that starts with two spaces is a message nobody meant to send that way.
+The double-space binding has been removed. Spaces type normally in message boxes.
+`/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row or use
+`alt+k` to return to a conversation; Escape does not leave Home.
 
-**The first space types itself, plainly.** It is the *second* space, arriving to find a box
-that still shows nothing with that space behind the cursor, that takes the whole draft away
-and opens home. So a space you actually wanted is never eaten: space then `x` leaves ` x`.
+## What does pressing space twice do — space space does nothing now
 
-**Wherever the door is drawn, two spaces open it.** That includes a box holding only blank
-lines, from a `ctrl+j` or an `alt+enter` you did not mean. It also includes the other
-places: the same two spaces, typed into a place's own empty box — the tasks roster's filter,
-the memory filter, the search and spend composers — open home from there. The door still
-loses to a space that already means something where you are standing: on the settings panel
-space is the row's `activate` verb, inside a task's record `space` pages the card, and on
-home itself two spaces type into home's own box.
-
-It works with a turn running — `esc` puts you back in it, still running. It does nothing
-when the box already has words in it. It works on a machine with one conversation, on one
-with none, and over `--host` — where what opens is the **far machine's** home.
-
-## What does pressing space twice do — the home door at the foot of a conversation
-
-When the box is empty, the keys row under the box — the last row of the frame — reads
-exactly:
-
-```
-/ commands · space space home
-```
-
-That is the whole advertisement. It costs no extra row — it is the keys row the frame
-already has — and it **vanishes the moment you type anything**, because it is a door
-and not decoration. It also goes while a turn is running, where the same row has something
-more urgent to say (`esc interrupt`); the gesture still works then, it is just not being
-advertised. (Until 2026-09-17 these words were the right end of the rule above the box.)
-
-**You can click it.** A press on the words `space space home` opens home; a press on the
-rule beside them is a press on a rule.
-
-It appears on a fresh machine too, from the first minute, and over `--host` as well: a
-machine with one conversation or with none still has a home to go to. The rule that keeps
-home from *greeting* a first run is a different rule — not being greeted by home and not
-being able to reach it are two different things.
-
-## space space does nothing — why the gesture did not open home
-
-Three reasons, and neither the machine holding nothing nor `--host` is one of them any
-more:
-
-- **The box had words in it.** The gesture fires only when the second space arrives to find
-  a box with nothing in it a person would call text. ` x` and then two spaces is a draft.
-  The dim line at the foot is the honest test: if it reads `space space home`, two spaces
-  open home.
-- **It was a paste.** Pasted text arrives whole and never reaches the key router, so two
-  leading spaces in a paste are two spaces (*Is there a key for home?*).
-- **Home is already open.** On home, space is a character in the search box.
-
-A machine with one conversation, or with none, opens home all the same: its panels keep
-their headings and the dim lines naming what arrives there (*Why is the home screen empty*),
-not a refusal. So does a session over `--host`, which opens the **far machine's** home.
+Two spaces are ordinary text. The old Home shortcut is removed. Use `esc` to back out
+to Home, even when a draft is nonempty or work is running.
 
 ## how do I get back to home with one chat
 
-Three ways, and they all work from the first minute on a fresh machine:
-
-- `space` twice on an empty message box
-- `/home`
-- a click on the words `space space home` in the dim line above the box
-
-The launch itself does not greet you with home while the only conversation on the machine
-is the one it just opened — that is a rule about greeting, not about reach — so on a
-machine with one chat, home is something you go to rather than something you land on.
-What you find there is that chat as the first row of `threads`, saying `here`, and
-this folder as the first row of `projects`.
+Escape backs out to Home even on a machine with one conversation or none. Over `--host`
+it opens the far machine's Home. `/home` and the clickable `esc back` hint work too.
 
 ## Is there a key for home?
 
-Three of them. **`alt+1`** goes straight there from anywhere — home is the first of the
-four places on the tab bar, and each answers to its own position, `alt+1` through `alt+4`
-(the three places off the bar answer `alt+5` through `alt+7`).
-**Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
-it from any other place. `/home` opens it too.
-
-`alt+<digit>` arrives in every terminal codeaf runs in — it is sent as escape-then-digit and
-has been for forty years — which is why the place keys are on `alt`. `ctrl+<digit>` has no
-encoding a terminal can send at all.
-
-There is still no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
-tasks place, `/history`).
+Escape backs out one layer at a time until Home. `alt+1` (`opt+1` on a Mac) and `/home`
+open Home directly where the current layer accepts those controls.
 
 ## What landed while I was away — since you left, and the look stamp
 

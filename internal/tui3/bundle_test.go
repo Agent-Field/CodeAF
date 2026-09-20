@@ -2257,10 +2257,10 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	}
 
 	a.state = stateWorking
-	if got := a.hintWord(); got != "esc interrupt" {
+	if got := a.hintWord(); got != "ctrl+c interrupt" {
 		t.Fatalf("a working surface offered %q", got)
 	}
-	if line := plain(a.hintRow(120)); !strings.Contains(line, "esc interrupt") ||
+	if line := plain(a.hintRow(120)); !strings.Contains(line, "ctrl+c interrupt") ||
 		strings.Contains(line, microcopy) {
 		t.Fatalf("the hint did not take the slot: %q", line)
 	}
@@ -3323,7 +3323,7 @@ func TestEscFoldsTheProposalRatherThanDecliningItOrTheTurn(t *testing.T) {
 		t.Fatalf("esc answered the proposal: %+v", agent.answered)
 	}
 	if agent.stops != 0 {
-		t.Fatal("esc interrupted the turn")
+		t.Fatal("ctrl+c interrupted the turn")
 	}
 	if !a.awaitingTask() || a.questionCount() != 1 {
 		t.Fatalf("esc closed the proposal: awaiting=%v open=%d", a.awaitingTask(), a.questionCount())

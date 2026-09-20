@@ -601,8 +601,7 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 			return nil
 		}
-		a.leavePlace()
-		return nil
+		return a.openHome()
 	case "enter":
 		// ONE SPELLING OF WHAT `enter` DOES HERE, and it is the interface's
 		// ([placeMemory.enter]). This arm held a second copy of it, which is how

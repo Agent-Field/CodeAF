@@ -558,10 +558,8 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 // homePhoneHead is the one row at the top: what this is, and the way out.
 func (a *app) homePhoneHead(width int, pal palette) string {
 	head := " " + pal.bold(pal.ink("home"))
-	escape := pal.dim("esc close")
-	if ansi.StringWidth(head)+ansi.StringWidth(escape)+2 <= width {
-		gap := width - ansi.StringWidth(head) - ansi.StringWidth(escape) - 1
-		head += strings.Repeat(" ", gap) + escape
+	if gap := width - ansi.StringWidth(head) - 1; gap > 0 {
+		head += strings.Repeat(" ", gap)
 	}
 	return head
 }

@@ -1905,8 +1905,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if a.connEsc() {
 			return nil, true
 		}
-		a.closeSettings()
-		return nil, true
+		return a.openHome(), true
 
 	// ← AND → MOVE THIS PANEL'S OWN SECTIONS, and `tab` no longer does. `tab` is
 	// the way to the NEXT PLACE now (pages.go), and a key that meant "next

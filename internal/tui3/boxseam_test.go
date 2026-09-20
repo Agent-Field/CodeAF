@@ -335,7 +335,7 @@ func TestConversationControlsMatchHomeAndKeepTheHomeDoor(t *testing.T) {
 	a.chords.meta = chordMetaWord
 	a.notices.enabled = false
 	a.branch = "dev"
-	want := "ctrl+v effort · opt+a approvals · opt+k chats · / commands · space space home"
+	want := "ctrl+v effort · opt+a approvals · opt+k chats · / commands · esc back"
 	if got := a.footHint(200); got != want {
 		t.Fatalf("conversation controls = %q, want %q", got, want)
 	}
@@ -364,7 +364,9 @@ func TestConversationControlsMatchHomeAndKeepTheHomeDoor(t *testing.T) {
 		if got := ansi.Cut(line, a.homeDoor.from, a.homeDoor.to); got != homeDoorWord {
 			t.Fatalf("home hit target covers %q at %d columns: %q", got, width, line)
 		}
-		if _, took := a.homeDoorPress(a.homeDoor.from, row); !took || !a.at(pageHome) {
+		cmd, took := a.homeDoorPress(a.homeDoor.from, row)
+		drive(t, a, runCmd(cmd)...)
+		if !took || !a.at(pageHome) {
 			t.Fatalf("home hint did not open home at %d columns", width)
 		}
 		a.closeHome()

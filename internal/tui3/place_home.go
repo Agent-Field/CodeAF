@@ -516,8 +516,8 @@ func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 //
 // The phone tier's sheet over the inbox is the first (homesheet.go). The second
 // is a FOCUSED ERRAND: while it holds the keyboard, `tab` hands it back to the
-// list and `esc` clears a half-typed follow-up before it does, which is the two-
-// zone law homeexchange.go states in full — and a `tab` the router took first
+// list; `esc` also returns there while preserving a half-typed follow-up. This
+// is the zone law homeexchange.go states in full — a `tab` the router took first
 // would walk the person out of home mid-sentence.
 //
 // THE KEYBOARD IS SETTLED BEFORE THE KEY IS READ. An exchange holds it only

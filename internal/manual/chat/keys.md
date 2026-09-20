@@ -84,7 +84,7 @@ one.
 |---|---|
 | `enter` | stops the current generation and sends the words into this turn |
 | `cmd+enter` | holds the message for an ordinary turn after this answer |
-| `esc` | stops the answer and clears both waiting-message queues |
+| `ctrl+c` | stops the answer and clears both waiting-message queues |
 | `→` over an empty box | steers the oldest waiting words into the running answer |
 | click `→ steers it in` | the same, with the pointer |
 | `ctrl+shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
@@ -96,7 +96,7 @@ Attachments in the tray go with the held message, and come back on the tray if y
 it back. `/`-commands are **not** held: a slash command is something you said to this
 surface rather than to the model, and it runs at once.
 
-**Limits.** `esc` with nothing waiting is exactly the plain interrupt it always was.
+**Limits.** `ctrl+c` interrupts only while a turn is running; at rest it quits.
 With messages waiting, it clears both the editable parked queue and the `ctrl+q`
 follow-up queue. Each nonempty queue says what was dropped — `1 waiting message dropped`
 or `N waiting messages dropped` for parked messages, and the corresponding `queued`
@@ -166,11 +166,11 @@ line does not offer `→ steers it in`.
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · ctrl+shift+enter stops and sends · esc interrupt
+enter steers it in · ctrl+shift+enter stops and sends · ctrl+c interrupt
 ```
 
 That is the terminal-capable form when no command can be kept. A running foreground
-command adds `ctrl+g backgrounds` immediately before `esc interrupt`; a terminal that
+command adds `ctrl+g backgrounds` immediately before `ctrl+c interrupt`; a terminal that
 cannot deliver `ctrl+shift+enter` leaves that clause out. `cmd+enter` still waits, but the
 one-line slot no longer advertises it.
 
@@ -291,25 +291,25 @@ of ending work is `x` and a card that asks first. The chord is ignored there.
 can tell it apart from a plain `enter` — the kitty keyboard protocol, xterm's
 modifyOtherKeys, or win32-input. Where it cannot, the key arrives as an ordinary `enter`
 and your message **steers** instead. On those terminals codeaf never advertises the
-chord. Use `esc` to stop the whole turn, then send the next message normally.
+chord. Use `ctrl+c` to stop the whole turn, then send the next message normally.
 
 **The line that teaches it.** While a turn is running and you have typed something, the
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · esc interrupt
+enter steers it in · ctrl+c interrupt
 ```
 
 On a terminal that can spell the secondary chords, the line reads
-`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt`. A foreground
+`enter steers it in · ctrl+shift+enter stops and sends · ctrl+c interrupt`. A foreground
 command that can be kept inserts `ctrl+g backgrounds` before the final stop clause.
 
 **A picture on the tray is a message even when the box has no words.** It cannot steer, so
-that form reads `enter waits · esc interrupt`, or
-`enter waits · ctrl+shift+enter stops and sends · esc interrupt` on a terminal that can
+that form reads `enter waits · ctrl+c interrupt`, or
+`enter waits · ctrl+shift+enter stops and sends · ctrl+c interrupt` on a terminal that can
 spell the secondary chord. With neither words nor a picture, the line is simply
-`esc interrupt`, unless a command can be kept, when it is
-`ctrl+g backgrounds · esc interrupt`.
+`ctrl+c interrupt`, unless a command can be kept, when it is
+`ctrl+g backgrounds · ctrl+c interrupt`.
 
 ## I typed while it was working — did my message get lost?
 
@@ -335,9 +335,21 @@ The one thing that is not answered is a message you queued with `ctrl+q` for a
 turn you then **interrupted**. A drain never restarts a turn you stopped, so those
 are dropped — press `enter` again to send it.
 
+## Escape, esc, back, and getting home without stopping work
+
+Press `esc` to go back one layer: close a picker, leave an editor or room, or put a
+question aside. With no layer left, Escape opens Home. Further presses stay on Home.
+Message drafts, running turns and queued messages are preserved. Filters may clear first.
+Escape never starts rewind or stops a turn. `ctrl+c` interrupts a running turn and quits
+when idle; `/rewind` opens the rewind timeline.
+
+The double-space binding has been removed. Spaces type normally in message boxes.
+`/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row or use
+`alt+k` to return to a conversation; Escape does not leave Home.
+
 ## Interrupting a running turn — how do I stop it mid answer
 
-Press `esc` or `ctrl+c`. While a turn is running, both do the same thing: the turn
+Press `ctrl+c` while a turn is running. The turn
 is stopped and everything it already said is kept.
 
 What happens:
@@ -349,9 +361,7 @@ What happens:
    dropped`, or `N queued messages dropped`.
 4. The status word becomes `stopping`, then `interrupted`, and `interrupted` stays as the
    status word until the next turn starts.
-5. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
-   immediately as the next turn. That is the whole difference `esc` makes while
-   something is waiting.
+5. Parked messages are dropped too. Escape preserves both queues and goes back instead.
 
 **The words codeaf uses for one stop.** They are five slots and one key press, so they
 are worth reading together: `stopping` is the status word while the turn is being let go,
@@ -364,23 +374,20 @@ you are looking for the word *interrupted* anywhere else on the screen, that is 
 is — the status line, and only after the turn has truly ended.
 
 **What the screen says.** While a turn runs, the right end of the row under the
-message box ends with `esc interrupt` — for example
-`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while you have
+message box ends with `ctrl+c interrupt` — for example
+`enter steers it in · ctrl+shift+enter stops and sends · ctrl+c interrupt` while you have
 typed something and this terminal can deliver `ctrl+shift+enter`. A foreground command that
 can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
-`esc stops and drops`. On the very first frame of a session the conversation carries the note
-`esc interrupts · ctrl+c quits · ? for help`.
+`ctrl+c stops and drops`. On the very first frame of a session the conversation carries the note
+`esc back · ctrl+c interrupts or quits · ? for help`.
 
 **Stopping it and saying something new at once.** `ctrl+shift+enter` does both in one key —
-see "Interrupt and say something new in one key" above. `esc` on its own stops without
+see "Interrupt and say something new in one key" above. `ctrl+c` on its own stops without
 sending anything you have not already committed with `enter`.
 
-**Limits.** Interrupting does nothing at all when no turn is running. `esc` reaches
-the interrupt last: a history recall is cancelled first, rewind is armed on the way
-past, and any open list or overlay takes the key before the message box sees it. So
-`esc` while the command list or the `@` list is open closes that list and does
-**not** interrupt.
+**Escape is back, not stop.** It dismisses the nearest layer and eventually reaches
+Home, preserving drafts and running work. Ctrl+C at rest quits the application.
 
 **Mid-turn `ctrl+c` only ever interrupts — that press never leaves.** It is spent on
 the model. The NEXT press is read at rest, and at rest `ctrl+c` is the way out — so the
@@ -391,11 +398,10 @@ codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
 
 ## Esc is not stopping it — how long does a stop take, why the turn is still finishing, how long stopping takes, and what happens if it will not let go
 
-**I pressed escape and it is still running.** That is this section: escape is not being
-ignored, the turn is being let go of, and if it will not let go codeaf ends it for you
-after ten seconds.
+**Escape no longer stops work.** Use `ctrl+c` to interrupt. After Ctrl+C, the turn
+may need a few seconds to let go; codeaf stops waiting after ten seconds.
 
-`esc` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
+`ctrl+c` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
 `bash` call whose command left something holding its output waits up to three seconds
 before the pipes are forced shut, and a `jobs` kill spends two seconds on a polite signal
 and two more on the one that is not polite. For those seconds the status line reads
@@ -417,10 +423,8 @@ becomes a row. Two things do still land, because neither can draw anything new: 
 that was **already** on screen reports its own result if it returns in that moment, and
 what the turn spent is still counted.
 
-**No key makes it stop harder, because the second stage is a clock and not a key.** A
-second `esc` inside half a second is the rewind's door and `ctrl+c` at rest is the way
-out, so neither is free — and you do not need one. The `esc` you already pressed started the
-10-second window, and when it runs out codeaf stops waiting on its own.
+**No key makes it stop harder.** The first Ctrl+C starts the ten-second window;
+codeaf stops waiting when it expires. Another Ctrl+C at rest quits. Escape goes back.
 
 **What happens at 10 seconds.** codeaf detaches from the turn: the waits codeaf holds are
 ended and whatever request was still open to the model is aborted. A wait that ignores
@@ -450,7 +454,7 @@ writes your draft to disk and exits. There is no second press to make, no window
 beat, and nothing asking you to confirm it.
 
 **If `ctrl+c` did not quit, a turn was running.** Mid-turn that key is the interrupt —
-the same thing `esc` does — and the press is spent on the model. Press it again once the
+the press is spent on the model. Escape only navigates back. Press it again once the
 answer has stopped and codeaf leaves.
 
 **Nothing you typed is lost by leaving.** The unsent sentence in the box goes to disk,
@@ -475,8 +479,8 @@ one that does.
 
 The quit gesture is one `ctrl+c`, but where the press lands changes what it does.
 
-**Mid-turn it is only the interrupt.** While an answer is streaming, `ctrl+c` is the same
-key `esc` is: it stops the turn, and that press does not leave. The next one, at rest,
+**Mid-turn it is only the interrupt.** While an answer is streaming, `ctrl+c`
+stops the turn, and that press does not leave. The next one, at rest,
 does — so the two-tap people make mid-turn stops the model once and then quits.
 
 **It works over everything.** `ctrl+c` is read above every picker, panel, room, mode
@@ -555,8 +559,8 @@ These apply with no overlay up, no room open, and no mode on.
 | `shift+enter` | Open a new line without sending, on home and in conversations |
 | `alt+enter` | Open a new line in a conversation |
 | `ctrl+j` | Same as `alt+enter` |
-| `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
-| `esc` `esc` | Two presses inside a short window open the quick inline rewind mode. `/rewind` opens the full timeline instead |
+| `esc` | Back one layer, then Home; preserves message drafts and running work |
+| `/rewind` | Opens the rewind timeline; repeated Escape never rewinds |
 | `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: quit codeaf, on that press |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | A foreground command that can be kept: send that command to the background. Otherwise: close the task column, or bring it back. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
@@ -907,7 +911,7 @@ your sent message too. It adds no characters and no cells; see "Slash commands a
 as chips" in the commands page for the whole of it.
 
 **A key chord is never given that background.** Where codeaf names a key — the hint slot
-on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c quits · ? for
+on the legend, the `/help` sheet, the opening `esc back · ctrl+c interrupts or quits · ? for
 help` — the
 chord is drawn one tier brighter than the words around it and nothing else changes. A
 tinted background always means a slash command and only ever that, so the two marks
@@ -1055,7 +1059,7 @@ that has moved on. There is nothing to press; it is automatic.
   leave behind, and what `ctrl+enter` and `shift+enter` leave behind on a terminal that
   cannot send those chords, and nothing on the frame draws them. One kept on disk used
   to be adopted by the next window in the directory, which then opened with a box that
-  looked empty, was not, and refused `space space` for home.
+  looked empty but still held invisible whitespace.
 - The file is keyed by the directory plus this process's id, and is written with mode
   0600.
 - At startup, if this window's own draft file is missing, codeaf takes the newest
@@ -1868,9 +1872,9 @@ own line, so you can read it.
 
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
 else — and says so by not being there: no card, and the keys row under the box does not
-name it. Everywhere else that row reads `ctrl+v effort · alt+a approvals · alt+k chats · / commands · space space home` — `opt` in place of `alt` on a Mac. Effort and approvals appear only when the session
+name it. Everywhere else that row reads `ctrl+v effort · alt+a approvals · alt+k chats · / commands · esc back` — `opt` in place of `alt` on a Mac. Effort and approvals appear only when the session
 has those controls. As the frame narrows, controls give way from the left, keeping
-`/ commands · space space home`, then `/ commands` on its own.
+`/ commands · esc back`, then `/ commands` on its own.
 
 **Taking a row is never refused for having too many open.** The card draws the first twelve
 rows and hands a digit to the first nine; past that the cursor is the way, and home is the
@@ -2093,8 +2097,7 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 
 ## Keys on home, and is there a shortcut for it
 
-**Press the space bar twice with an empty message box.** That is the way back to home from
-inside a conversation, and `/home` opens it too.
+**Press `esc` to back out one layer at a time until Home.** `/home` opens it too.
 
 **There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the four places on
 the tab bar — `home  tasks  spend  settings` — and each answers to its position there,
@@ -2127,51 +2130,15 @@ such a page the line under the box names only the way out** — `tab next place 
 tasks, on standing orders and on memory alike: a foot that offered `enter` or `type to
 filter` over a body with no rows would be naming a key with nothing to act on.
 
-There is no `ctrl+<letter>` chord for home: every one this surface could use is already
-taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
-standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
-takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
-already arms rewind and already clears messages waiting from the turn, and a third
-meaning on one key in that state is how a surface stops being predictable.
+Press `esc` to go back one layer: close a picker, leave an editor or room, or put a
+question aside. With no layer left, Escape opens Home. Further presses stay on Home.
+Message drafts, running turns and queued messages are preserved. Filters may clear first.
+Escape never starts rewind or stops a turn. `ctrl+c` interrupts a running turn and quits
+when idle; `/rewind` opens the rewind timeline.
 
-**The first space types itself.** The second one, finding a box that still shows nothing
-with that space behind the cursor, takes the whole draft away and opens home — so a leading
-space you actually wanted is never eaten (space then `x` leaves ` x`). It does nothing when
-the box has words in it, and it is not a paste: text pasted with two leading spaces is two
-spaces. A machine with one conversation, or none, opens an empty home; so does a session
-over `--host`, where what opens is the **far machine's** home.
-
-**It answers from every place as well as from a conversation.** Wherever a place is
-standing, the two spaces are read against that place's own filter — tasks, memory, search —
-and open home just as they do from a draft; on spend and standing, which have nothing to
-type into, two bare spaces open it and any key between them disarms it. On home itself the
-door is a no-op: the page is already open, and two spaces type into home's own filter. It also does not answer from under a layer that owns the
-keyboard: on the settings panel space is the drawn verb on a row (`activate`),
-memory's card editor keeps every key while it is open, and inside a task's
-record — the room the roster opens on `enter` — `space` pages the card the way
-`pgdown` and `ctrl+f` do, so the door yields there and the key scrolls. Standing
-cannot arm the door — its own keys never type into its box — but the box is the
-shared composer, so a space left in it on another place still opens home from
-standing.
-
-**A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
-`alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,
-draw nothing on the frame — and the gesture reads the box the same way the frame does, so
-two spaces open home and the blank lines go with the draft. The rule in one sentence:
-wherever the foot advertises `space space home`, two spaces open it.
-
-It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
-back in it.
-
-When the box is empty, the keys row under the box says so:
-`/ commands · space space home`, after any effort, approvals and chats hints. Clicking
-`space space home` opens home; that clause vanishes as soon as you type.
-
-**The door does not ask what the machine holds.** It is open on a machine with only this
-conversation and on one with none, from the first minute, and starting a second
-conversation with `/new` changes nothing about it. It used to be shut until the launch
-found somewhere else to go, and that rule is gone (the home page, *space space does
-nothing*).
+The double-space binding has been removed. Spaces type normally in message boxes.
+`/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row or use
+`alt+k` to return to a conversation; Escape does not leave Home.
 
 Once it is open, **home is seven panels in one, two or three columns** (the home page has
 what each holds), and its keys are a small grammar:
@@ -2184,12 +2151,12 @@ what each holds), and its keys are a small grammar:
 | `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a `scheduled` row opens standing, a fold line opens or shuts its panel. `spend`'s lines are not stops, so the cursor never reaches them |
 | `pgup` / `pgdown` | jump a screenful |
 | `tab` | **the next place** on the bar |
-| `esc` | clears the box if anything is in it, and closes home otherwise |
+| `esc` | dismisses a local layer; otherwise stays on Home and preserves the draft |
 | `alt+.` | the map |
 | `backspace`, `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` | edit the box |
 | anything else | goes into the box, which searches the whole machine and offers to start a new conversation at the same time |
 
-**Opening home puts the cursor on the chat you were in before this one**, so `space` `space`
+**Opening home puts the cursor on the chat you were in before this one**, so `esc`
 then `enter` is a switch back; a window with only one conversation opens on its own row,
 which says `here`. The panel holding the cursor marks its heading with the cursor's ground,
 which is how you tell which column your arrows are in. **`alt+g` and `alt+q` are unbound on
@@ -2260,7 +2227,7 @@ With all controls available the resting foot is
 `alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands`.
 The project and approvals hints are absent where those controls cannot act. `ctrl+o`
 still opens the selected row's folder and `tab` still moves to the next place, but neither
-has a hint in home's bottom row. `esc` still closes home; `alt+.` draws the whole map.
+has a hint in home's bottom row. `esc` stays on Home; `alt+.` draws the whole map.
 
 Every ordinary grid row keeps the same list keys as the cursor walks. A fold names
 its own keys, with the available draft controls before `esc`. Submission modes add no
@@ -2274,7 +2241,7 @@ the card beside the results follows the selected match.
 
 **On an `ask here` row** — the `?` rows an errand leaves at the top of `threads` —
 the line under the box reads
-`↑↓ move · enter or tab answer this ask here · esc close`. `enter` or `tab` hands the
+`↑↓ move · enter or tab answer this ask here`. `enter` or `tab` hands the
 keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
 `esc` or `tab` hands it back (*Asking from home*).
 
@@ -2453,12 +2420,10 @@ words is news and the elbow's position is the whole of the record. They used to 
 as fresh questions with a `›`, which made yesterday's correction read as a second
 instruction and made the page count turns nobody opened.
 
-**`esc` in a room never interrupts and never stops.** Out in the conversation `esc`
-interrupts the running turn; inside a room the first `esc` leaves the room and the next
-one interrupts. Ending the task itself is `x` and its card. The legend's left end always
+**`esc` in a room never interrupts and never stops.** Inside a room the first `esc` leaves the room and the next opens Home. Ending the task itself is `x` and its card. The legend's left end always
 names what the next `esc` does: `room · esc/←← main`, and `room · esc your line back`
 while a history walk is on. The keys row under the box reads `x stop` while there
-is work here to stop and `↑↓ history` during a walk — it never reads `esc interrupt`
+is work here to stop and `↑↓ history` during a walk — it never reads `ctrl+c interrupt`
 inside a room, because in here that is not what the key does.
 
 **A click inside the room's page does not leave it.** A press that lands on nothing —
@@ -3063,7 +3028,7 @@ trailing marks, and the turn carries straight on. Read it as "go on" — let the
 command run and get on with the work.
 
 This is the key for the moment you realise `go test ./...` is going to take nine
-minutes. The alternatives are `esc`, which stops the turn and throws the run
+minutes. The alternatives are `ctrl+c`, which stops the turn and throws the run
 away, and waiting.
 
 Afterwards it is an ordinary job: ask codeaf to list them, tail one, or kill one,
@@ -3087,7 +3052,7 @@ been running longest**, which is the one you are waiting on.
 
 While a command can be kept, this meaning takes precedence over hiding or restoring the
 task column, so the column stays where it was. With no such command the key belongs to
-the column as described above. `ctrl+b` is copy mode and `esc` interrupts; neither changes.
+the column as described above. `ctrl+b` is copy mode and `ctrl+c` interrupts; neither changes.
 
 ## When a settings change lands
 
@@ -3285,7 +3250,7 @@ live-applies on the next render; work stays indented in either mode.
   `/resume`, `/permissions` and the rest do: the commands page.
 - **The status line, the legend under the box, and the layout**: the screen page.
 - **Tasks, rooms, proposals and the roster**: the tasks pages.
-- **Rewind**, which `esc` `esc` opens quick and `/rewind` opens whole: the sessions and
+- **Rewind**, which `/rewind` opens: the sessions and
   rewind page.
 
 ## Starting a new chat with plus

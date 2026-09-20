@@ -149,11 +149,9 @@ const (
 	subRunVerbs = "↑↓ · enter runs it · esc back"
 	// subOfferVerbs is the hint while the cursor is on the answer row of a card
 	// CHAT raised. It names the keys that row actually draws and not one more:
-	// the chips are walked with ←/→ and taken with enter, and both `0` and `esc`
-	// are the no — `esc` because it is the dismiss key everywhere in a
-	// conversation, `0` because it is the decline every card on this surface
-	// answers to (standing.go's [session.StandingNoKey]).
-	subOfferVerbs = "←→ · enter takes it · 0 or esc, no"
+	// The chips are walked with arrows and taken with Enter. Zero declines;
+	// Escape hides the card without answering.
+	subOfferVerbs = "←→ · enter takes it · 0 no · esc back"
 	// subEditHint is the placeholder in the box while one field is being typed
 	// into. It takes the filter's place — one box under the overlay, answering
 	// one question at a time (the connections panel's key box does the same).
@@ -864,6 +862,11 @@ func (p *subPage) drawCard(a *app, width, n int, hover int) []string {
 // onto it, so the refusal names that machine before this code asks the local
 // seam. A capability that cannot work is absent rather than broken.
 func (a *app) openSubharness(name string) {
+	if a.subPage.card.asked() {
+		a.subPage.open = true
+		a.touch()
+		return
+	}
 	if a.hosted() {
 		a.note(a.remoteProfileWord("subharnesses"))
 		return
@@ -1004,11 +1007,11 @@ func (a *app) withdrawSubharnessProposal(id uint64, name string) {
 // turn is technically working — the propose_subharness call is parked inside its
 // batch — and what is true about it that a person can act on is that it is
 // waiting for them (render.go's [app.stateWord]).
-func (a *app) awaitingSubharness() bool { return a.subPage.open && a.subPage.card.asked() }
+func (a *app) awaitingSubharness() bool { return a.subPage.card.asked() }
 
 // answerSubharnessOffer is the one place [subharnessOfferAgent.ResolveSubharness]
-// is called from, and every road off this card ends here: the two chips, `esc`,
-// `0`, and the run row's own enter.
+// is called from: the two chips,
+// `0`, and the run row's own enter. Escape only defers the card.
 //
 // THE CARD CLOSES EITHER WAY, because both answers are answers — a decline is
 // not an abandonment, and the engine is told so rather than left to time out on
@@ -1124,12 +1127,11 @@ func (a *app) subCardKey(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	switch msg.String() {
 	case "esc":
-		// ESC ON A CARD CHAT RAISED IS THE NO, AND NOT AN ABANDONMENT. There is
-		// a turn on the other end of this question; walking away from it would
-		// leave that turn parked for a quarter of an hour on an answer the person
-		// has already given by pressing the dismiss key.
+		// Back defers the offer without answering it. /subharness restores
+		// this same card until the engine answers or withdraws it.
 		if c.asked() {
-			cmd = a.answerSubharnessOffer(false)
+			a.subPage.open = false
+			a.note("subharness waiting · /subharness to return")
 			break
 		}
 		// BACK OUT BY ONE. A card opened off the list goes back to the list; one

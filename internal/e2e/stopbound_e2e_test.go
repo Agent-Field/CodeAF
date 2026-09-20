@@ -330,14 +330,14 @@ func runRealModelBoundedStop(t *testing.T) {
 	}
 
 	pressed := time.Now()
-	rig.keys("Escape")
+	rig.keys("C-c")
 
 	stopping := rig.waitFor(10*time.Second, say(t, "stopDetachWord"))
-	t.Logf("=== REAL MODEL: pane after esc (the bound, stated) ===\n%s", stopping)
+	t.Logf("=== REAL MODEL: pane after ctrl+c (the bound, stated) ===\n%s", stopping)
 
 	detached := rig.waitFor(stopBoundPatience, say(t, "stopDetachedWord"))
 	took := time.Since(pressed)
-	t.Logf("=== REAL MODEL: pane after the detach (%s after esc) ===\n%s", took.Round(time.Second), detached)
+	t.Logf("=== REAL MODEL: pane after the detach (%s after ctrl+c) ===\n%s", took.Round(time.Second), detached)
 	if took > stopBoundPatience {
 		t.Fatalf("the turn took %s to detach, which is past the bound", took)
 	}
@@ -364,14 +364,14 @@ func runStoppedInTime(t *testing.T, stub *stopStub, name, ask string) {
 	waitUntilParked(t, rig, stub)
 
 	pressed := time.Now()
-	rig.keys("Escape")
+	rig.keys("C-c")
 
 	// THE SURFACE'S WAIT ENDS INSIDE THE BOUND. `interrupted` is the word the
 	// status line takes once the turn is genuinely over (internal/tui3's
 	// render.go), so waiting for it is waiting for the stream to have closed.
 	settled := rig.waitFor(stopBoundPatience, say(t, "interruptedWord"))
 	took := time.Since(pressed)
-	t.Logf("=== pane %s after esc: the never-ending stream is over ===\n%s", took.Round(time.Second), settled)
+	t.Logf("=== pane %s after ctrl+c: the never-ending stream is over ===\n%s", took.Round(time.Second), settled)
 	if took > stopGraceE2E {
 		t.Fatalf("the stream took %s to end, which is past the bound", took)
 	}
@@ -425,19 +425,19 @@ func runBoundedStop(t *testing.T, stub *stopStub, name, ask string) {
 	waitUntilParked(t, rig, stub)
 
 	pressed := time.Now()
-	rig.keys("Escape")
+	rig.keys("C-c")
 
 	// 1. THE BOUND IS ON THE SCREEN BEFORE IT FIRES.
 	stopping := rig.waitFor(10*time.Second, say(t, "stopDetachWord"))
 	if !strings.Contains(stopping, say(t, "stoppingWord")) {
 		t.Fatalf("the countdown is drawn without the word it belongs to:\n%s", stopping)
 	}
-	t.Logf("=== pane after esc (the bound, stated) ===\n%s", stopping)
+	t.Logf("=== pane after ctrl+c (the bound, stated) ===\n%s", stopping)
 
 	// 2. AND IT FIRES INSIDE THE BOUND.
 	detached := rig.waitFor(stopBoundPatience, say(t, "stopDetachedWord"))
 	took := time.Since(pressed)
-	t.Logf("=== pane after the detach (%s after esc) ===\n%s", took.Round(time.Second), detached)
+	t.Logf("=== pane after the detach (%s after ctrl+c) ===\n%s", took.Round(time.Second), detached)
 	if took > stopBoundPatience {
 		t.Fatalf("the turn took %s to detach, which is past the bound", took)
 	}

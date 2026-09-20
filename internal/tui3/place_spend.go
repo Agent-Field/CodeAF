@@ -453,8 +453,7 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 			return nil
 		}
-		a.leavePlace()
-		return nil
+		return a.openHome()
 	case "up", "ctrl+p":
 		a.moveSpend(-1)
 		a.touch()

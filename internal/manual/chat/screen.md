@@ -182,8 +182,7 @@ rule above the message box remain. Below 6 rows those give way too, leaving the 
 the box, and the status line. Blank rows cannot activate the content beneath them.
 
 **Home at the left opens the home page**, keeping your conversation and unsent words.
-It is separate from the tabs and breadcrumbs. Space twice on an empty composer still
-opens Home. Home disappears when the connection cannot open conversations, and on
+It is separate from the tabs and breadcrumbs. Escape backs out to Home. Home disappears when the connection cannot open conversations, and on
 very narrow frames the current tab takes priority.
 
 The switcher floats on a separate background inside a rounded outline, with space
@@ -683,8 +682,8 @@ and it came off because a title takes the room the numbers need: the name is on 
 strip at the top of the frame and on the breadcrumb bar, and nowhere else. Nothing stands
 in for it — an unnamed conversation draws the same line.
 
-Until 2026-09-17 the right end carried the keys that work now (`space space home · /
-commands`, `esc interrupt`); those are on the row under the box now — see *The keys row
+Until 2026-09-17 the right end carried the keys that work now (`esc back · /
+commands`, `ctrl+c interrupt`); those are on the row under the box now — see *The keys row
 under the box* below — and the numbers came up here from the last row of the frame, so
 that home and a conversation end in the same shape: a rule of facts, the box, a line of
 keys.
@@ -755,15 +754,15 @@ long title could never push the numbers off the frame, and the name moved off ag
 2026-09-17 it was the right end of the rule above the box; the numbers took that end and
 the keys got a row of their own. It names the keys that work right now when a state has
 keys of its own — for example `y allow · n deny · a always` while a question is up,
-`esc interrupt` while a turn is running,
-`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while a turn is
+`ctrl+c interrupt` while a turn is running,
+`enter steers it in · ctrl+shift+enter stops and sends · ctrl+c interrupt` while a turn is
 running and you have typed words on a terminal that can deliver the secondary key,
-`enter waits · ctrl+shift+enter stops and sends · esc interrupt` while an otherwise empty
+`enter waits · ctrl+shift+enter stops and sends · ctrl+c interrupt` while an otherwise empty
 box has a picture on its tray on that terminal,
-`enter steers it in · ctrl+shift+enter stops and sends · ctrl+g backgrounds · esc interrupt`
+`enter steers it in · ctrl+shift+enter stops and sends · ctrl+g backgrounds · ctrl+c interrupt`
 when that turn also has a foreground command that can be kept, or `↑↓ · enter · esc`
 while a list is open. A waiting message changes the final clause to
-`esc stops and drops`; with neither words nor a picture the send clauses are absent.
+`ctrl+c stops and drops`; with neither words nor a picture the send clauses are absent.
 
 **A question that cannot remember its answer loses the `a always` clause**, on this line and
 on the offer above it: a stuck turn is asked about with a scope codeaf cannot save, so the
@@ -783,7 +782,7 @@ at least the first fitting clause remains, and a running turn never loses the ro
 because every clause would not fit. The row is the keys' own: nothing on the frame competes
 with them for it.
 
-**The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
+**The key itself is drawn apart from the word beside it.** In `ctrl+c interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
 own dim — the thing you press reads at a glance and the explanation of it does not
 compete. It is the same in every hint the slot carries, in home's foot hint, in the verbs
@@ -793,20 +792,20 @@ below.
 **At rest it names the shared controls in home's order**, followed by the way home:
 
 ```
-ctrl+v effort · alt+a approvals · alt+k chats · / commands · space space home
+ctrl+v effort · alt+a approvals · alt+k chats · / commands · esc back
 ```
 
 On a Mac the modifier reads `opt`. Effort and approvals appear only when the session
 has those controls, and chats appears when there is another conversation to switch to.
 `tab` still returns to the last conversation but has no hint here. On narrow frames,
-clauses give way from the left until `/ commands · space space home` remains, then
+clauses give way from the left until `/ commands · esc back` remains, then
 `/ commands` alone if needed.
 
-Pressing the space bar twice on an empty box opens home; clicking `space space home`
-does the same. That clause disappears when you type. `/` opens the command list.
+Escape backs out one layer toward Home; clicking `esc back` does the same.
+The hint remains available with a draft. `/` opens the command list.
 A state with its own keys, or an earned tip, takes over this row while it applies.
 
-**Inside a task's room the slot is the room's**, and it never says `esc interrupt` there
+**Inside a task's room the slot is the room's**, and it never says `ctrl+c interrupt` there
 — in a room `esc` leaves the page rather than interrupting anything. It reads `x stop`
 while there is work here to stop, `↑↓ history` while a history walk is on, and nothing
 otherwise. The left end of that legend is the room too: `room · esc/←← main`, or
@@ -859,7 +858,7 @@ What steps up, in the lines you will see it in:
 | the legend's hint slot | the key, never the verb beside it |
 | `/help` | the key at the head of each row, never its explanation |
 | `/status` and `/cost` | the figure in the second column, never its label |
-| the opening `esc interrupts · ctrl+c quits · ? for help` | the three keys |
+| the opening `esc back · ctrl+c interrupts or quits · ? for help` | the three keys |
 
 Three rules hold it to one gesture, and they are worth knowing because they tell you what
 a mark means:
@@ -1205,7 +1204,7 @@ words:
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
 | `starting task` | a task proposal has a countdown and will start automatically | accent |
 | `waiting · your call` | an approval, standing or saved-program question requires an answer, or a task proposal has no countdown | the question hue, bold |
-| `stopping · detaching in 7s` | you pressed `esc` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before codeaf detaches | dim |
+| `stopping · detaching in 7s` | you pressed `ctrl+c` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before codeaf detaches | dim |
 | `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |
 
@@ -1218,7 +1217,7 @@ against anything else. In the screen-reader tier the spinner is a still `*`.
 
 ## What the word stopping means in the status line, and why it is not interrupted yet
 
-Because it has not finished stopping. `esc` cancels the turn instantly, but the turn does
+Because it has not finished stopping. `ctrl+c` cancels the turn instantly, but the turn does
 not close instantly: a `bash` call whose command left something holding its output waits
 up to three seconds before the pipes are forced shut, and a `jobs` kill spends two seconds
 on a polite signal and two more on the one that is not polite. For those few seconds the
@@ -1230,11 +1229,8 @@ nothing new is drawn — a reply the model was still speaking and a call it was 
 through asking for both stop where they were rather than landing under the `interrupted`
 line. The word becomes `interrupted` the moment the turn is actually over.
 
-**The second stop is a clock, not a key.** There is no key to press, and there does not
-need to be: `esc` again is the rewind's door (see the sessions and rewind page) and
-`ctrl+c` at rest is the door, so neither is free, and a stop you have to ask for twice is a
-stop that did not work the first time. So the window is bounded at 10 seconds from the
-key you already pressed. The status line counts it down — `stopping · detaching in 7s` —
+**The second stop is a clock, not a key.** The window is bounded at 10 seconds from
+the Ctrl+C you already pressed. Escape remains back navigation. The status line counts it down — `stopping · detaching in 7s` —
 and at the bound codeaf detaches: the waits inside the tool are ended, whatever request
 was still in flight is aborted, the conversation reads `detached — the turn was let go of
 and nothing is waiting for it`, and the turn is written to the journal as abandoned with
@@ -1714,7 +1710,7 @@ glyph your messages wear in the conversation. Under it sits one dim line:
 
 ```
 › do much more of a deep research please
-  waits for this answer · esc stops and drops · → steers it in · ↑ or click to edit
+  waits for this answer · ctrl+c stops and drops · → steers it in · ↑ or click to edit
 ```
 
 The dim line trims from the right on a narrow terminal: the last piece goes first, then
@@ -1735,7 +1731,7 @@ What happens to it:
 - **When the answer finishes**, it sends itself as an ordinary new turn and appears in
   the conversation as a normal message of yours. Several waiting messages go **one per
   finished turn**, oldest first, in the order you typed them.
-- **`esc`** stops the answer and drops every parked message and queued follow-up. None
+- **`ctrl+c`** stops the answer and drops every parked message and queued follow-up. None
   starts a turn when the interrupted stream closes.
 - **`→` over an empty box**, or a **click on the words `→ steers it in`**, sends it
   **into** the running answer instead of leaving it to wait. A streaming generation
@@ -1750,7 +1746,7 @@ What happens to it:
   or `N waiting messages dropped`.
 
 While something is waiting, the keys row under the box ends with
-`esc stops and drops` instead of `esc interrupt`.
+`ctrl+c stops and drops` instead of `ctrl+c interrupt`.
 
 ## Long lines inside a fence — code cut off at the edge, the tail of a line missing, `↳`
 
@@ -3034,8 +3030,8 @@ What stands in their place is **one dim door** at the foot of the column: `ctrl+
 
 **Everything earlier lives one press away.** `ctrl+. earlier` opens the full-screen task
 page (`ctrl+.`, `/history`), which holds every task the project has ever run, across every
-session, with the filter, the cards and the mention. Home (`/home`, or space twice on an
-empty box) is the other place old work is listed. Running work belonging to *other*
+session, with the filter, the cards and the mention. Home (`/home`, or Escape from the
+conversation) is the other place old work is listed. Running work belonging to *other*
 windows is not on the column at all, and never was; `/history` carries that too.
 
 The footer is up to three dim lines of counts — `3 running · 1 needs you`, `148 waiting ·
@@ -3490,7 +3486,7 @@ models produce a run of thought before the answer, on the same connection, bille
 way, and on a big conversation it can run for a minute before a word of answer appears.
 Nothing is wrong. The clock beside the word counts up, so a number that is moving is a
 program that is alive and painting; a clock that has **stopped** is the thing to worry
-about. `esc` interrupts at any point.
+about. `ctrl+c` interrupts at any point.
 
 `first word` is the other slow one, and it means something different: codeaf's request was
 accepted and the endpoint has written nothing at all — a queue, a cold model loading, or a
@@ -3562,7 +3558,7 @@ thinking. A known phase is shown separately because it has better information.
 
 An advancing clock confirms the view is repainting. A still indicator alone
 does not prove a freeze: reduced-motion views use static marks, and narrow rows
-can omit the clock. `esc` interrupts the turn.
+can omit the clock. `ctrl+c` interrupts the turn.
 
 The waiting clock stops when the stream speaks or tools run. A tool uses its own
 activity and elapsed time. The request after a three-minute `go test` starts a

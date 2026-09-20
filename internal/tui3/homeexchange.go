@@ -1277,14 +1277,7 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "esc":
-		// ONE LAYER AT A TIME, home's own rule: a half-typed follow-up is
-		// cleared first and the second esc hands the keyboard back. NEITHER
-		// CLOSES THE EXCHANGE — it stands as a row on the column, which on a
-		// narrow frame is also how the list comes back over the stacked pane.
-		if !ex.box.empty() {
-			ex.box.reset()
-			return nil
-		}
+		// Leave the reply draft in place when returning to the list.
 		ex.focused, ex.onOffer, ex.changing = false, false, false
 		return nil
 
@@ -2155,7 +2148,7 @@ func exchangeAnswerWords(q session.Question) string {
 // does, and `continue as a conversation` when the first reply has landed.
 func exchangeHint(ex *homeExchange) string {
 	if ex.changing {
-		return homeAskChangeWord + " · esc clear"
+		return homeAskChangeWord + " · esc back"
 	}
 	var parts []string
 	if ex.asking() {

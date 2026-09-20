@@ -49,21 +49,21 @@ func TestHomeSlashOffersCommandRows(t *testing.T) {
 	// "/clea" reaches /new through its clear alias, and the row that appears
 	// must be the canonical one — the word this surface runs — with the alias
 	// printed beside it, the same bargain chat's list makes.
-	a.homeKey(key("esc"))
+	a.homeKey(key("ctrl+u"))
 	typeHome(a, "/clea")
 	if text := homeText(a); !strings.Contains(text, "/new") {
 		t.Fatalf("typing clea did not offer the canonical /new row:\n%s", text)
 	}
 
 	// "/mo" offers /model — the acceptance's own word.
-	a.homeKey(key("esc"))
+	a.homeKey(key("ctrl+u"))
 	typeHome(a, "/mo")
 	if text := homeText(a); !strings.Contains(text, "/model") {
 		t.Fatalf("typing /mo did not offer the model command row:\n%s", text)
 	}
 
 	// "/conf" reaches /settings through its config alias.
-	a.homeKey(key("esc"))
+	a.homeKey(key("ctrl+u"))
 	typeHome(a, "/conf")
 	if text := homeText(a); !strings.Contains(text, "/settings") {
 		t.Fatalf("typing /conf did not offer the canonical settings row:\n%s", text)
@@ -424,8 +424,8 @@ func TestModelThenEscLeavesNoPickerOverTheConversation(t *testing.T) {
 	}
 	runCmd(a.key(key("esc")))
 	runCmd(a.key(key("esc")))
-	if a.at(pageHome) {
-		t.Fatal("two escapes did not leave home")
+	if !a.at(pageHome) {
+		t.Fatal("two escapes left home")
 	}
 	if a.pick.open || a.target.pick.open {
 		t.Fatal("a model list is standing over the conversation home was in front of")

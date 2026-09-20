@@ -875,8 +875,7 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			a.taskSheetTyped()
 			return nil, true
 		}
-		a.leavePlace()
-		return nil, true
+		return a.openHome(), true
 	case taskSheetKey:
 		// The chord that opened this is the chord that closes it — the roster's own
 		// bargain with alt+t — and it closes it from inside a filter as well,
@@ -1775,8 +1774,7 @@ func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.chan
 // place goes into it and the list narrows as it fills. Its letters are drawn on
 // the first row of the list, over the rows they changed ([tasksControlRow]);
 // the foot draws no box here ([place.box]). The editor stays the place's box
-// because a box is more than a row of letters — the two-space door home is
-// armed from it ([app.placeHomeGesture]).
+// so shared editing and filtering controls can act on the same value.
 func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 
 // alt is `alt+s`: WHICH COLUMN THIS LIST IS ORDERED BY, one key at a time.

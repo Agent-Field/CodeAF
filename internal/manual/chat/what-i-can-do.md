@@ -250,7 +250,7 @@ not.
 
 Two things it does **not** do:
 
-- **A command you interrupted is interrupted.** Pressing `esc` cancels the turn,
+- **A command you interrupted is interrupted.** Pressing `ctrl+c` cancels the turn,
   and a cancelled command is never kept as a job: it dies, no job appears, and the
   answer is `Command aborted`. Stop means stop.
 - **It does not outlive the conversation.** A foreground command kept as a job is a job, so it is
@@ -845,7 +845,7 @@ absolute path**, however you spelled it in the call:
 **One look gets ten minutes**, and then the tool answers without it. A model that
 takes the picture and goes quiet used to leave the row running for the rest of
 the conversation; now the window runs out and you get the line above instead.
-Press esc and the look stops on the same beat everything else does.
+Press ctrl+c and the look stops on the same beat everything else does.
 
 **When no looking model can be reached, the tool is not there at all** — it is
 left off the toolbelt rather than offered and made to refuse. Ask for a picture

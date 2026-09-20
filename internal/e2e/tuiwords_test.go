@@ -146,7 +146,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the promise in home's box with nothing typed into it — the one box on a place",
 	},
 	"homeDoorWord": {
-		screen: "space space home",
+		screen: "esc back",
 		why:    "the gesture back to home, named on the conversation's own rule",
 	},
 	"microcopy": {
@@ -529,7 +529,7 @@ var tuiWords = map[string]tuiWord{
 			"words home's own row draws, so this gate holds the spelling without a second copy of it here",
 	},
 	"landingKeysWord": {
-		screen: "esc interrupts · ctrl+c quits",
+		screen: "esc back · ctrl+c interrupts or quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
 	},
 	"questionWaitingWord": {

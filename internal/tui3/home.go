@@ -946,7 +946,7 @@ func (a *app) raiseHome() tea.Cmd {
 //
 //     BEING GREETED BY HOME AND BEING ABLE TO GO THERE ARE TWO QUESTIONS, and
 //     this condition answers only the first. The door from inside the
-//     conversation — `space space`, `/home`, the advertisement at the foot — is
+//     conversation — `esc`, `/home`, the advertisement at the foot — is
 //     open on every machine home can read at all ([app.homeDoorOpen]), and an
 //     empty home is a designed screen rather than a refusal ([homeEmptyRow]).
 //     What this condition decides is whether that screen is put in front of a
@@ -962,7 +962,7 @@ func (a *app) landHome() {
 	// call down the wire has come back, so the world here is not an answer yet
 	// ([app.worldKnown]) — there is nothing to decide "is there work elsewhere"
 	// from, and a greeting that waited on a round trip would be a launch that
-	// waited on a round trip. `space space` opens the same screen a moment later,
+	// waited on a round trip. `esc` opens the same screen a moment later,
 	// with the far machine's rows on it.
 	if a.hosted() || !a.canOpen() {
 		return
@@ -2468,23 +2468,15 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// circle, unrolled onto the two keys that already point the way"), and the
 	// errand in the pane is taken into with `→` from its own row.
 	case "esc":
-		// ONE LAYER AT A TIME, the settings panel's rule: a box with something
-		// in it is cleared first, and the second esc leaves. A person who typed
-		// a search and meant to keep looking must not be thrown back into the
-		// conversation for pressing the key that means "undo that".
-		//
-		// A REQUEST OUT ON THE DISK IS THE INNERMOST LAYER OF ALL, because it is
-		// the only one that is doing something to another window while it stands
-		// (takeover.go's [app.cancelTakeover]).
+		// Home is the final back destination. Dismissing a command list keeps
+		// the draft, just as it does in a conversation.
 		if a.cancelTakeover() {
 			return nil
 		}
-		if !h.box.empty() {
-			h.box.reset()
+		if h.cmd.open {
+			h.cmd.dismiss(h.cmd.at)
 			h.build()
-			return nil
 		}
-		a.closeHome()
 		return nil
 
 	// THE FOUR KEYS THAT MOVE THE CURSOR ASK FOR NOTHING HERE. What the card
@@ -3732,120 +3724,18 @@ func homeBucketOf(transcript string) string {
 // homeDoorWord is the dim advertisement at the foot of an idle conversation,
 // and it is written in the hint slot's own grammar — the key, then the noun,
 // exactly as `ctrl+g tasks` is (render.go's [app.hintWord]).
-const homeDoorWord = "space space home"
+const homeDoorWord = "esc back"
 
-// homeGesture is TWO SPACES TYPED INTO AN EMPTY BOX, and it is the way back to
-// home — from inside a conversation, and from every place standing over it.
-//
-// WHY A GESTURE AND NOT A KEY. Every ctrl+letter is taken. `esc` was the
-// obvious candidate and is not available: on an idle conversation it already
-// arms rewind (the hint slot says `esc again to rewind`) and it already drops a
-// message parked against a turn that has ended, and a third meaning on one key
-// in that state is how a surface becomes unpredictable. What was left is a
-// gesture, and a leading run of spaces in an empty message is the one keystroke
-// on this surface that is reliably NOTHING: a message that begins with two
-// spaces is a message nobody meant to send that way.
-//
-// THE INTERMEDIATE SPACE IS REAL, AND THAT IS THE POINT. The first space types
-// itself, plainly, the way every other character does — there is no pending
-// state, no timer, and no ghost. The SECOND one, arriving to find a box that
-// still SHOWS nothing with that space behind the caret, takes the whole draft
-// away and opens home. So somebody who genuinely wanted a leading space types it
-// and carries on: space then `x` leaves ` x`, untouched, because the gesture only
-// ever fires on a space and only ever over a box with no words in it.
-//
-// WHEREVER THE DOOR IS ADVERTISED, TWO SPACES OPEN IT — and the two halves used
-// to disagree, which is the bug this asks [editor.empty] rather than counting
-// runes. The foot draws `space space home` whenever the box holds nothing a
-// person would call text ([app.homeDoorShowing]), and the gesture demanded a box
-// holding EXACTLY one space. Every draft the two disagreed about was a door
-// drawn over a gesture that could not fire — and one of them is easy to land in
-// and impossible to see: `ctrl+enter` and `shift+enter` (standmark.go,
-// bargein.go) arrive as a bare `ctrl+j` on every terminal that cannot spell
-// them, and `ctrl+j` opens a line (input.go). Two of those on an empty box left
-// `\n\n` in it, the frame drew an empty box over an advertised door, and the
-// chord was dead in that conversation for good — [writeDraft] kept the invisible
-// draft and the next window on the directory adopted it (draft.go).
-//
-// THE CARET IS WHAT "THE SPACE YOU JUST TYPED" MEANS, rather than the end of the
-// draft: a space typed at the FRONT of a box holding a blank line is the same
-// two keystrokes against the same blank-looking box as one typed after it.
-//
-// PASTED TEXT CANNOT FIRE IT. A bracketed paste arrives as its own message and
-// never reaches this router at all, and a paste whose brackets leak is absorbed
-// key by key into the bracket's buffer above it (app.go's [app.pasteKey]) —
-// so two spaces at the start of pasted text are two characters, not a door. The
-// one hole is a terminal that does not speak bracketed paste at all, where a
-// paste IS a stream of keystrokes and there is nothing anywhere in this program
-// that can tell it from typing.
-//
-// A RUNNING TURN IS NO OBSTACLE. Home takes the frame the way the settings
-// panel does, and the settings panel does not disturb a turn: the stream events
-// are their own messages and land whatever is drawn over them (app.go's
-// Update). The turn goes on underneath and is still there when esc comes back.
-func (a *app) homeGesture(msg tea.KeyPressMsg) bool {
-	if !a.homeDoorOpen() {
-		return false
-	}
-	return a.homeDoorArmed(&a.input, msg)
-}
-
-// homeDoorArmed is the part of the door that is about THE BOX, asked the same
-// way whichever box the press landed in — the conversation's draft
-// ([app.homeGesture]) or the box the standing place types into
-// ([app.placeHomeGesture]). A door with two laws about emptiness would be a
-// door that behaved differently depending on which room a person was standing
-// in, which is exactly what this keeps from happening.
-//
-// The law is the one [app.homeGesture] always kept: a space, a box that shows
-// nothing ([editor.empty]), and the space the person just typed behind the
-// caret. It answers for a nil box as well, because a place with no box has no
-// door — there is nothing to type two spaces into.
-func (a *app) homeDoorArmed(box *editor, msg tea.KeyPressMsg) bool {
-	if msg.Key().Text != " " || box == nil {
-		return false
-	}
-	return box.empty() && box.cursor > 0 &&
-		box.value[box.cursor-1] == ' '
-}
-
-// homeDoorOpen reports whether home is reachable from where this keypress is
-// standing — any place or any conversation, except home itself, where the
-// gesture is a no-op and the foot draws no door. It is the gesture's guard and
-// the advertisement's condition, which is deliberate: a door that is drawn is
-// a door that works.
-//
-// HOME IS ALWAYS REACHABLE, AND AN EMPTY HOME IS A SCREEN. This used to ask one
-// more thing — that the machine held a conversation other than this one — on
-// the argument that a door which opened on nothing should be neither drawn nor
-// bound. That argument confused two questions. Whether home should GREET a
-// launch that has nowhere else to go is [app.landHome]'s, and it still says no.
-// Whether a person who asks for home should get it is this one's, and the
-// answer is yes on any machine home can read: a fresh machine gets the same
-// head, columns and foot as a full one, with this conversation's row under its
-// project and `nothing here yet` where the rest will be ([homeEmptyRow]).
-// A gesture that silently typed two spaces on the one day a person first tried
-// it was the surface teaching them the door does not exist.
-//
-// The one condition left is about the machine, not its contents: the surface has
-// a disk to read ([app.canOpen]).
-//
-// --host USED TO BE A SECOND CONDITION AND IS NOT ONE ANY MORE. Home refused
-// over --host, so a door onto a refusal was correctly kept shut; then it opened
-// with one sentence where its rows would be; and it now opens on THE FAR
-// MACHINE'S OWN PROJECTS ([app.readWorld]) with that machine's name at the right
-// end of the tab bar. A gesture that worked from `alt+1` and not from two spaces
-// would be the surface teaching two different answers to one question.
+// homeDoorOpen reports whether the Home destination can be opened here.
 func (a *app) homeDoorOpen() bool {
 	return a.canOpen() && !a.at(pageHome)
 }
 
 // homeDoorShowing reports whether the foot of the conversation should advertise
-// it: the door is open, and the box is EMPTY. It vanishes on the first
-// character typed, because it is a door and not chrome — the space it takes is
-// the keys row's, which the frame already has (render.go's [app.footHint]).
+// it: Home is reachable and no copy or rewind mode owns the foot. The draft
+// may contain words because back navigation preserves them.
 func (a *app) homeDoorShowing() bool {
-	return a.homeDoorOpen() && a.input.empty() && !a.copy.on && !a.rew.on
+	return a.homeDoorOpen() && !a.copy.on && !a.rew.on
 }
 
 // homeDoorPress is a click on that advertisement.
@@ -3857,7 +3747,9 @@ func (a *app) homeDoorPress(x, y int) (tea.Cmd, bool) {
 	if !ok || mark.kind != a.hintRowKind() {
 		return nil, false
 	}
-	return a.openHome(), true
+	// Re-enter through the event router so task rooms and roster focus get
+	// the same first refusal as a physical Escape press.
+	return func() tea.Msg { return tea.KeyPressMsg{Code: tea.KeyEscape} }, true
 }
 
 // ── the pointer ─────────────────────────────────────────────────────────────
@@ -5268,6 +5160,9 @@ const homeVerbsWord = "→ verbs"
 
 // homeHintWords is that line before the tier's own key is put on it.
 func (a *app) homeHintWords() string {
+	if a.home.cmd.open {
+		return "↑↓ pick · enter use it · esc back"
+	}
 	if ex := a.paneExchange(); ex != nil {
 		if ex.focused {
 			return exchangeHint(ex)
@@ -5276,7 +5171,7 @@ func (a *app) homeHintWords() string {
 		// standing beside the column with no line saying how to reach it is the
 		// half of the toggle nobody finds; the list's own verbs come first,
 		// because that is the zone the hand is in.
-		return "↑↓ move · enter or tab answer this " + homeAskHereWord + " · esc close"
+		return "↑↓ move · enter or tab answer this " + homeAskHereWord
 	}
 	line, _ := a.home.focusedLine()
 	switch {
@@ -5295,30 +5190,30 @@ func (a *app) homeHintWords() string {
 		// The panel's fold is a toggle and the foot says which way it will go;
 		// the words are the ones every fold door on every place uses
 		// (placeprose.go's [foldEnterWord]).
-		return foldEnterWord(!line.folded) + " · esc close"
+		return foldEnterWord(!line.folded)
 	case line.kind == homeQuiet && line.folded:
-		return "enter or → show them · esc close"
+		return "enter or → show them"
 	case line.kind == homeQuiet:
-		return "enter or ← fold them away · esc close"
+		return "enter or ← fold them away"
 	case line.kind == homeItemFold && line.folded:
-		return "enter or → show them · esc close"
+		return "enter or → show them"
 	case line.kind == homeItemFold:
-		return "enter or ← fold them away · esc close"
+		return "enter or ← fold them away"
 	case line.kind == homeProject && line.folded:
-		return "enter or → open this project here · esc close"
+		return "enter or → open this project here"
 	case line.kind == homeProject:
-		return "enter or ← fold this project away · esc close"
+		return "enter or ← fold this project away"
 	case line.kind == homeLedger:
 		// THE ROW SAYS WHERE IT GOES, so the hint says what the key does with it
 		// and never repeats the name (place_home.go).
-		return "enter opens the place this happened in · esc close"
+		return "enter opens the place this happened in"
 	case line.kind == homeItem:
 		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
 		// hand is. One vocabulary, two places (homestanding.go's
 		// [homeItemActions]). Grid rows already took the resting sentence above.
-		return homeItemActions + " · esc close"
+		return homeItemActions
 	case a.home.searching():
-		return "enter open · ↓ back to starting a new conversation · esc clear"
+		return "enter open · ↓ back to starting a new conversation"
 	}
 	// At rest only the draft controls are added by homeHint.
 	return ""

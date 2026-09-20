@@ -51,7 +51,7 @@ done**. They sit at the very **top of home's `threads` panel**, above every
 conversation — an errand is a thing you asked for a minute ago.
 
 `enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
-`↑↓ move · enter or tab answer this ask here · esc close`. (`tab` on the row was the way in
+`↑↓ move · enter or tab answer this ask here`. (`tab` on the row was the way in
 until the places arrived and took that key for the next place; `→` points at the column the
 pane is drawn in, which is where the gesture went.)
 
@@ -184,8 +184,8 @@ it:
   its own keys, which is why one half of the toggle stayed and the other moved to the arrow
   that points at the pane.) It works from
   `continue as a conversation` row, an open card. It never loses what is in the pane.
-- **`esc`** in the pane hands the keyboard to the list. One layer at a time: if you have
-  half a follow-up typed, the first `esc` clears that and the second one leaves.
+- **`esc`** in the pane hands the keyboard to the list, preserving any half-written
+  follow-up for when you return.
 - **`enter`** on the exchange's row in the list hands the keyboard to its pane.
 - **clicking** puts the keyboard where the pointer is. A click on a list row opens that
   row, as `enter` would, *and* takes the keyboard to the column; a click anywhere in the
@@ -299,7 +299,7 @@ created until you answer it:
   keyboard goes back to the list. **This is the only way to say no in this pane**: `esc` here
   hands the keyboard back to the list without answering anything, and a card left standing on
   the column is not an answer. It is the same key on home's answer row and in a conversation,
-  where `esc` also declines.
+  where `esc` also defers; `0` explicitly declines.
 
 Those four answers are the only four, and a card draws three of them where `3` is not one
 it can offer. Each answer is a row of its own and **a click anywhere along it takes that

@@ -416,7 +416,7 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	// LOWEST RUNG. A running turn's own key outranks it, and so does a box with
 	// words in it.
 	a.state = stateWorking
-	if got := a.footHint(a.width); got != "esc interrupt" {
+	if got := a.footHint(a.width); got != "ctrl+c interrupt" {
 		t.Fatalf("a tip outranked a running turn's key: %q", got)
 	}
 	a.state = stateIdle

@@ -170,7 +170,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
-| `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
+| `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (Escape backs out without rewinding) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
@@ -239,7 +239,7 @@ drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
 back` — the places row, the task roster on `alt+t`, the conversation switcher on `alt+k`,
-`space space` — and that is the same two words the cards, pickers, the rewind sheet and the
+`esc` — and that is the same two words the cards, pickers, the rewind sheet and the
 switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
 and `esc leaves` on four different rows, which read as four gestures on the one screen you
 open to find out how many there are. The longer `esc leaves it as it was` is a different
@@ -268,7 +268,7 @@ any filter box, picker or panel: those have the keyboard first, so the key never
 this binding.
 
 The key is named on the first row of `/help` itself, and on the line every session opens
-with — `esc interrupts · ctrl+c quits · ? for help`. `/?` is also an alias of
+with — `esc back · ctrl+c interrupts or quits · ? for help`. `/?` is also an alias of
 `/help`, and has been all along.
 
 `/quit` (or `/exit`, `/q`) **closes the conversation in front**, and it does it at once —
@@ -368,11 +368,8 @@ maintained a little at a time by the reader that runs after each turn.
 ## /rewind — go back to an earlier point in the conversation
 
 `/rewind` (or `/undo`, `/back`) opens the **rewind timeline**: a fullscreen list of the
-whole conversation, oldest first, that you pick a point out of. It is the deliberate way
-in. The quick way is esc esc, which draws a cut line through the transcript on screen
-instead of opening anything — see the sessions and rewind page for both.
-
-The command row reads `go back to an earlier point · esc esc takes back the last`.
+whole conversation, oldest first, that you pick a point out of. Escape is back navigation;
+it no longer opens rewind. The command row reads `go back to an earlier point`.
 
 On the timeline: ↑↓ move, typing searches, the first `enter` places the pick and the
 second `enter` on that same point does the rewind, `esc` clears the search and then
@@ -1030,16 +1027,14 @@ conversation in them**, which is the one thing `/resume` cannot show you: `/resu
 "which conversation, here", and this is "what is there at all".
 
 **It is also what a bare `codeaf` opens on.** The conversation the launch picked is loaded
-underneath, and `esc` — or `enter` on the row the cursor starts on, which is that same
-conversation — drops into it. Home stays out of the way when you named a conversation
+underneath; opening its row returns to it. Escape stays on Home. Home stays out of the way when you named a conversation
 (`--session`, `codeaf resume`), on a `--once` or `--host` run, and on a machine whose only
 conversation is the one already open. There is no welcome box when home greets you. Not
-greeting you is not the same as being out of reach: `/home`, or `space` twice on an empty
-box, opens it on a one-conversation machine and on an empty one alike, and over `--host`
+greeting you is not the same as being out of reach: `/home`, or `esc` from a conversation, opens it on a one-conversation machine and on an empty one alike, and over `--host`
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+of the four places on the tab bar; **`esc`** from a conversation; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
@@ -1053,8 +1048,7 @@ at the left, and the **rail** at the right holds `projects` and `spend` at its t
 quiet panels under them. An empty panel keeps its heading and one dim line naming what
 arrives there.
 
-`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
-conversation you came from. **Typing does two things at once**: what you type is a new
+`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` dismisses a local layer and otherwise stays on Home. **Typing does two things at once**: what you type is a new
 conversation waiting to be sent AND a live search over every project on the machine — the
 panels give way to the matches, with none selected until you navigate into them.
 Type-and-enter starts a chat. `/ask <question>` asks in a home pane instead. **A line that starts with `/` is

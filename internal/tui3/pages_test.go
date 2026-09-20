@@ -770,9 +770,9 @@ func placeAt(id page) int {
 // seizing keys somebody has muscle memory for. The digits are the spare class.
 func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	a := placeApp(t)
-	drive(t, a, key("esc"))
+	a.closeHome()
 	if a.at(pageHome) {
-		t.Fatal("esc did not put the conversation back")
+		t.Fatal("close did not put the conversation back")
 	}
 	drive(t, a, key("alt+2"))
 	if a.page != pageTasks || !a.at(pageTasks) {
@@ -784,7 +784,7 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 		t.Fatalf("%s from the conversation landed on %q", placeChord(pageStanding), a.page.word())
 	}
 	// AND `tab` IS STILL THE CONVERSATION'S OWN KEY THERE.
-	drive(t, a, key("esc"))
+	a.leavePlace()
 	page := a.page
 	drive(t, a, key("tab"))
 	if a.page != page || a.at(pageTasks) || a.at(pageStanding) {

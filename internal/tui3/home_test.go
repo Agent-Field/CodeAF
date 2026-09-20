@@ -327,38 +327,8 @@ func TestHomeTakesExactlyTheWholeFrame(t *testing.T) {
 	}
 }
 
-func TestHomeEscGoesBackToTheConversation(t *testing.T) {
-	lab := newHomeLab(t)
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
-	a := lab.app(mine)
-	a.openHome()
-	a.homeKey(key("esc"))
-	if a.at(pageHome) {
-		t.Fatal("esc did not close home")
-	}
-}
-
 // esc peels one layer: a box with something in it is cleared before the screen
 // is left.
-func TestHomeEscClearsTheBoxBeforeItLeaves(t *testing.T) {
-	lab := newHomeLab(t)
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
-	a := lab.app(mine)
-	a.openHome()
-	a.homeKey(key("@"))
-	a.homeKey(key("x"))
-	a.homeKey(key("esc"))
-	if !a.at(pageHome) {
-		t.Fatal("the first esc left home instead of clearing the box")
-	}
-	if !a.home.box.empty() {
-		t.Fatalf("the box still holds %q", a.home.box.String())
-	}
-	a.homeKey(key("esc"))
-	if a.at(pageHome) {
-		t.Fatal("the second esc did not close home")
-	}
-}
 
 // THE EMPTINESS LAW. A conversation that ran nothing and spent nothing says
 // nothing about either.
@@ -917,25 +887,15 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	// ESC STILL WORKS, which is why losing the clause is a wording change and
 	// not a capability going quiet.
 	a.homeKey(key("esc"))
-	if a.at(pageHome) {
-		t.Fatal("esc did not close home")
+	if !a.at(pageHome) {
+		t.Fatal("esc left home")
 	}
 
-	// AND EVERY ROW THAT IS NOT THE RESTING ONE STILL ENDS WITH IT. The old law
-	// held for the whole screen; it holds now for the rows the design does not
-	// spell itself, which is every state home enters once a person acts.
-	a.openHome()
-	for _, r := range "pricing" {
-		a.homeKey(key(string(r)))
+	// Home has no back destination once its local layers are dismissed.
+	if strings.Contains(a.homeHintWords(), "esc") {
+		t.Fatal("Home advertised an unavailable back action")
 	}
-	// The clause names what esc will do on THAT row — `esc clear` on a typed box,
-	// `esc close` on a card — so what is demanded is the key in the last slot
-	// rather than one spelling of it.
-	hint := a.placeHint()
-	clauses := strings.Split(hint, " · ")
-	if last := clauses[len(clauses)-1]; !strings.HasPrefix(last, "esc ") {
-		t.Fatalf("a typed home's hint reads %q, want a way out on the end", hint)
-	}
+
 }
 
 // Typing clears result selection; clearing the box restores the resting list.
@@ -1308,26 +1268,6 @@ func TestNeedsYouOutranksAColdRowItTiesWith(t *testing.T) {
 }
 
 // esc peels one layer at a time.
-func TestEscPeelsTheQueryThenCloses(t *testing.T) {
-	lab := newHomeLab(t)
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
-	a := lab.app(mine)
-	a.openHome()
-	for _, r := range "abc" {
-		a.homeKey(key(string(r)))
-	}
-	a.homeKey(key("esc"))
-	if !a.at(pageHome) {
-		t.Fatal("the first esc left home instead of clearing the query")
-	}
-	if !a.home.box.empty() {
-		t.Fatalf("the box still holds %q", a.home.box.String())
-	}
-	a.homeKey(key("esc"))
-	if a.at(pageHome) {
-		t.Fatal("the second esc did not close home")
-	}
-}
 
 // ── the two columns ─────────────────────────────────────────────────────────
 
@@ -1869,9 +1809,9 @@ func TestTheWelcomeBoxRetiresWhenHomeLands(t *testing.T) {
 	if !a.welcome.spent {
 		t.Fatal("the welcome box was hidden rather than retired, so it can come back")
 	}
-	a.homeKey(key("esc"))
+	a.closeHome()
 	if a.at(pageHome) {
-		t.Fatal("esc did not leave home")
+		t.Fatal("close did not leave home")
 	}
 	if a.welcome.open {
 		t.Fatalf("the welcome box appeared after home closed:\n%s", ansi.Strip(mustFrame(a)))
@@ -1882,21 +1822,6 @@ func TestTheWelcomeBoxRetiresWhenHomeLands(t *testing.T) {
 }
 
 // esc drops into the conversation that was loaded underneath all along.
-func TestEscFromTheLandingLandsInTheSession(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one the door picked", "/tmp/alpha", now)
-	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
-
-	a := lab.launch(mine, true)
-	a.homeKey(key("esc"))
-	if a.at(pageHome) {
-		t.Fatal("esc did not close the landing")
-	}
-	if a.file != mine {
-		t.Fatalf("esc changed the conversation to %q", a.file)
-	}
-}
 
 // enter on the row the window is already in is the same door, and it says
 // nothing on the way through: the conversation is what happens next.
@@ -2083,31 +2008,6 @@ func (l *homeLab) door(standing string) *app {
 }
 
 // TWO SPACES IN AN EMPTY BOX GO HOME.
-func TestDoubleSpaceInAnEmptyBoxGoesHome(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
-	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
-
-	a := lab.door(mine)
-	if !a.homeDoorOpen() {
-		t.Fatal("the door is shut on a machine with somewhere to go")
-	}
-	a.key(key(" "))
-	if got := a.input.String(); got != " " {
-		t.Fatalf("the first space did not type itself: %q", got)
-	}
-	if a.at(pageHome) {
-		t.Fatal("one space opened home")
-	}
-	a.key(key(" "))
-	if !a.at(pageHome) {
-		t.Fatal("two spaces did not open home")
-	}
-	if got := a.input.String(); got != "" {
-		t.Fatalf("the gesture left %q behind in the box", got)
-	}
-}
 
 // …AND IT CANNOT EAT A SPACE SOMEBODY WANTED. The first one types itself and
 // stays typed unless the very next key is another space.
@@ -2143,85 +2043,21 @@ func TestASingleSpaceThenALetterTypesNormally(t *testing.T) {
 // opening a line — so the two chords the steer wave taught left a NEWLINE in a
 // box that had nothing in it. Nothing on the screen changed: [editor.empty]
 // calls a whitespace-only draft empty, so the foot went on advertising
-// `space space home`, and the gesture — which asked for exactly one space and
+// `esc back`, and the gesture — which asked for exactly one space and
 // found "\n " — never fired again. Worse, [writeDraft] kept that draft on disk
 // and the next window on the directory ADOPTED it, so the door stayed dead
 // across restarts.
-func TestDoubleSpaceGoesHomeFromABoxThatShowsNothingButHoldsANewline(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
-	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
-
-	a := lab.door(mine)
-	// ctrl+j is the key a terminal sends for both of the enter chords it cannot
-	// spell, and over an empty box it opens a line.
-	a.key(key("ctrl+j"))
-	if got := a.input.String(); got != "\n" {
-		t.Fatalf("ctrl+j left %q in the box, want a newline", got)
-	}
-	if !a.homeDoorShowing() {
-		t.Fatal("the foot stopped advertising the door, so the test is no longer about the bug")
-	}
-	a.key(key(" "))
-	a.key(key(" "))
-	if !a.at(pageHome) {
-		t.Fatalf("two spaces did not open home from a box holding %q", a.input.String())
-	}
-	if got := a.input.String(); got != "" {
-		t.Fatalf("the gesture left %q behind in the box", got)
-	}
-}
 
 // AND THE LAW IN ONE SENTENCE: WHEREVER THE DOOR IS ADVERTISED, TWO SPACES OPEN
 // IT. The advertisement and the gesture used to ask different questions about
 // the same box — one whitespace-insensitive, one demanding exactly one space —
 // and every draft the two disagreed about was a door drawn over a gesture that
 // could not fire.
-func TestEveryBoxTheFootCallsEmptyAnswersTheDoubleSpace(t *testing.T) {
-	for _, held := range []string{"", " ", "  ", "\n", "\n\n", "\n  ", " \n", "\t"} {
-		lab := newHomeLab(t)
-		now := time.Now()
-		mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
-		lab.session("-tmp-alpha", "aaaa000000000002", "elsewhere", "/tmp/alpha", now.Add(-time.Hour))
-
-		a := lab.door(mine)
-		a.input.setText(held)
-		if !a.homeDoorShowing() {
-			t.Fatalf("a box holding %q is not advertising the door", held)
-		}
-		a.key(key(" "))
-		a.key(key(" "))
-		if !a.at(pageHome) {
-			t.Errorf("a box holding %q advertised the door and refused the gesture", held)
-		}
-	}
-}
 
 // AND THE CARET IS WHAT "THE SPACE YOU JUST TYPED" MEANS. A space typed at the
 // FRONT of a box holding a newline is behind the caret exactly as one typed at
 // the back is, so the gesture fires either way — it is the same two keystrokes
 // against the same blank-looking box.
-func TestTheGestureReadsTheSpaceBehindTheCaretAndNotTheEndOfTheDraft(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
-	lab.session("-tmp-alpha", "aaaa000000000002", "elsewhere", "/tmp/alpha", now.Add(-time.Hour))
-
-	a := lab.door(mine)
-	a.input.setText("\n")
-	// Straight onto the caret: [editor.home] is line-relative, and the line this
-	// draft ends on is the empty one after the break.
-	a.input.cursor = 0
-	a.key(key(" "))
-	if got := a.input.String(); got != " \n" {
-		t.Fatalf("the first space landed as %q", got)
-	}
-	a.key(key(" "))
-	if !a.at(pageHome) {
-		t.Fatal("two spaces at the front of a blank-looking box did not open home")
-	}
-}
 
 // AND A DRAFT WITH WORDS IN IT IS STILL A DRAFT. The widened gesture may not
 // reach past the one thing it was always forbidden to touch: a sentence.
@@ -2272,8 +2108,7 @@ func TestAPasteWhileHomeIsOpenLandsInHomesBox(t *testing.T) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
 
 	a := lab.door(mine)
-	a.key(key(" "))
-	a.key(key(" "))
+	a.key(key("esc"))
 	if !a.at(pageHome) {
 		t.Fatal("home did not open")
 	}
@@ -2296,8 +2131,7 @@ func TestHomesBoxWrapsALongDraftInsteadOfTruncatingIt(t *testing.T) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
 
 	a := lab.door(mine)
-	a.key(key(" "))
-	a.key(key(" "))
+	a.key(key("esc"))
 	if !a.at(pageHome) {
 		t.Fatal("home did not open")
 	}
@@ -2324,8 +2158,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	if got := a.footHint(a.width); got != microcopy+" · "+homeDoorWord {
 		t.Fatalf("the hint slot reads %q on a one-conversation machine", got)
 	}
-	a.key(key(" "))
-	a.key(key(" "))
+	a.key(key("esc"))
 	if !a.at(pageHome) {
 		t.Fatal("two spaces did not open home with only this conversation")
 	}
@@ -2359,8 +2192,7 @@ func TestTheDoorIsOpenOnAMachineThatHoldsNothing(t *testing.T) {
 	if got := a.footHint(a.width); got != microcopy+" · "+homeDoorWord {
 		t.Fatalf("the hint slot reads %q on an empty machine", got)
 	}
-	a.key(key(" "))
-	a.key(key(" "))
+	a.key(key("esc"))
 	if !a.at(pageHome) {
 		t.Fatal("two spaces did not open home on an empty machine")
 	}
@@ -2539,8 +2371,7 @@ func TestTheDoorOpensWhenThisWindowStartsASecondConversation(t *testing.T) {
 	if !a.homeDoorShowing() {
 		t.Fatal("the door works and is not advertised")
 	}
-	a.key(key(" "))
-	a.key(key(" "))
+	a.key(key("esc"))
 	if !a.at(pageHome) {
 		t.Fatal("the gesture did not open home")
 	}
@@ -2568,8 +2399,7 @@ func TestAReadingOfNothingDoesNotShutTheDoor(t *testing.T) {
 	if !a.homeDoorOpen() {
 		t.Fatal("the door is shut after home closed on a reading of nothing")
 	}
-	a.key(key(" "))
-	a.key(key(" "))
+	a.key(key("esc"))
 	if !a.at(pageHome) {
 		t.Fatal("the gesture did not open home")
 	}
@@ -2628,10 +2458,10 @@ func TestTheDoorIsAdvertisedWhileIdleAndEmpty(t *testing.T) {
 	}
 
 	a.key(key("h"))
-	if a.homeDoorShowing() {
-		t.Fatal("the door is still advertised while something is being typed")
+	if !a.homeDoorShowing() {
+		t.Fatal("the back hint disappeared while typing")
 	}
-	if got := a.footHint(a.width); got != microcopy {
+	if got := a.footHint(a.width); got != microcopy+" · "+homeDoorWord {
 		t.Fatalf("the slot reads %q while typing", got)
 	}
 }
@@ -2661,9 +2491,11 @@ func TestClickingTheDoorGoesHome(t *testing.T) {
 	if row < 0 {
 		t.Fatal("no keys row on the frame")
 	}
-	if _, took := a.homeDoorPress(a.homeDoor.from, row); !took {
+	cmd, took := a.homeDoorPress(a.homeDoor.from, row)
+	if !took {
 		t.Fatal("a click on the door did nothing")
 	}
+	drive(t, a, runCmd(cmd)...)
 	if !a.at(pageHome) {
 		t.Fatal("the click did not open home")
 	}
@@ -2676,7 +2508,7 @@ func TestClickingTheDoorGoesHome(t *testing.T) {
 	}
 }
 
-// THE ROUND TRIP: home → enter → the conversation → space space → home.
+// The round trip is Home, Enter on a conversation, then Escape back to Home.
 func TestTheDoorAndHomeBounceBackAndForth(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -2697,14 +2529,13 @@ func TestTheDoorAndHomeBounceBackAndForth(t *testing.T) {
 	if a.file != mine {
 		t.Fatalf("enter landed in %q", a.file)
 	}
-	a.key(key(" "))
-	a.key(key(" "))
+	a.key(key("esc"))
 	if !a.at(pageHome) {
 		t.Fatal("the gesture did not go back home")
 	}
 	a.homeKey(key("esc"))
-	if a.at(pageHome) || a.file != mine {
-		t.Fatal("esc did not come back to the conversation")
+	if !a.at(pageHome) || a.file != mine {
+		t.Fatal("esc left the home destination")
 	}
 }
 
@@ -2717,8 +2548,7 @@ func TestTheGestureWorksWhileATurnIsRunning(t *testing.T) {
 
 	a := lab.door(mine)
 	a.state = stateWorking
-	a.key(key(" "))
-	a.key(key(" "))
+	a.key(key("esc"))
 	if !a.at(pageHome) {
 		t.Fatal("the gesture did not work with a turn running")
 	}
@@ -3293,55 +3123,10 @@ func driveToPlace(t *testing.T, lab *homeLab, where page) (*app, *editor) {
 // space types itself into the place's own filter, exactly as it does into a
 // conversation's draft, and the second opens home and leaves nothing behind
 // in the box.
-func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
-	for _, where := range []page{pageTasks, pageMemory, pageSearch} {
-		lab := newHomeLab(t)
-		a, box := driveToPlace(t, lab, where)
-		if box == nil {
-			t.Fatalf("%v has no box to type into", where)
-		}
-		a.key(key(" "))
-		if got := box.String(); got != " " {
-			t.Fatalf("%v: the first space did not type itself: %q", where, got)
-		}
-		if a.at(pageHome) {
-			t.Fatalf("%v: one space opened home", where)
-		}
-		a.key(key(" "))
-		if !a.at(pageHome) {
-			t.Fatalf("%v: two spaces did not open home", where)
-		}
-		if got := box.String(); got != "" {
-			t.Fatalf("%v: the gesture left %q behind in the box", where, got)
-		}
-	}
-}
 
 // AND FROM A PLACE WITH NO BOX AT ALL — spend, standing — TWO BARE SPACES GO
 // HOME, and a letter between them disarms the door (placekeys.go's
 // [app.placeHomeGesture]).
-func TestDoubleSpaceFromABoxlessPlaceGoesHome(t *testing.T) {
-	for _, where := range []page{pageSpend, pageStanding} {
-		lab := newHomeLab(t)
-		a, box := driveToPlace(t, lab, where)
-		if box != nil {
-			t.Fatalf("%v has a box, and only home starts things", where)
-		}
-		a.key(key(" "))
-		if a.at(pageHome) {
-			t.Fatalf("%v: one space opened home", where)
-		}
-		a.key(key("x"))
-		a.key(key(" "))
-		if a.at(pageHome) {
-			t.Fatalf("%v: a letter between two spaces did not disarm the door", where)
-		}
-		a.key(key(" "))
-		if !a.at(pageHome) {
-			t.Fatalf("%v: two spaces did not open home", where)
-		}
-	}
-}
 
 // SPACE IS SETTINGS' OWN VERB, and the door loses to it: `activate` is what the
 // panel draws space meaning on every row, and a door that swallowed the key

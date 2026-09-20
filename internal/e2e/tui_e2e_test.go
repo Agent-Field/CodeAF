@@ -407,27 +407,19 @@ func testHomeShape(t *testing.T) {
 	}
 	t.Logf("padding row above the foot rule (row %d) is blank", foot-1)
 
-	// esc closes home into the conversation the launch loaded, and the rule over
-	// that conversation's box names both doors back.
-	r.keys("Escape")
-	closed := r.waitFor(15*time.Second, say(t, "homeDoorWord"), say(t, "microcopy"))
-	t.Logf("esc closed home into the conversation the launch loaded:\n%s", closed)
-	if strings.Contains(closed, say(t, "placeRestWord")) {
-		t.Errorf("esc did not close home:\n%s", closed)
+	// Open the selected conversation, then return with Escape. Home is the
+	// final destination even after repeated presses.
+	r.keys("Down", "Enter")
+	r.waitFor(15*time.Second, say(t, "homeDoorWord"), say(t, "microcopy"))
+	r.keys("Space", "Space")
+	spaces := r.waitFor(15*time.Second, say(t, "homeDoorWord"))
+	if strings.Contains(spaces, say(t, "placeRestWord")) {
+		t.Fatalf("two spaces navigated instead of typing:\n%s", spaces)
 	}
-	r.lit("/home")
-	time.Sleep(700 * time.Millisecond)
-	r.keys("Enter")
+	r.keys("Escape", "Escape", "Escape")
 	back := r.waitFor(15*time.Second, say(t, "placeRestWord"), "Seed Alpha")
-	t.Logf("/home reopened it:\n%s", back)
+	t.Logf("Escape settled on Home:\n%s", back)
 
-	// And two spaces on an empty box is the other door.
-	r.keys("Escape")
-	time.Sleep(1200 * time.Millisecond)
-	r.keys("Space")
-	r.keys("Space")
-	gesture := r.waitFor(15*time.Second, say(t, "placeRestWord"))
-	t.Logf("space space opened home:\n%s", gesture)
 }
 
 // ── 2 ───────────────────────────────────────────────────────────────────────
@@ -628,7 +620,7 @@ func testAskHere(t *testing.T) {
 	// card, which is the case asking-from-home.md states outright: closing home
 	// does not touch it, and neither does opening another conversation. The
 	// keyboard is already on the list, so ONE esc closes home.
-	r.keys("Escape") // home closes into the conversation underneath
+	r.keys("C-t") // leave Home through the new-conversation page
 	time.Sleep(2500 * time.Millisecond)
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
@@ -782,8 +774,8 @@ func testFiringReachesThePerson(t *testing.T) {
 	// Back into the conversation and wait. The window runs the same pass the
 	// timer runs, every standing.Interval (five minutes), the first one an
 	// interval after launch. Answering the card already handed the keyboard
-	// back to the list, so ONE esc closes home.
-	r.keys("Escape")
+	// back to the list; the new-chat chord opens a conversation composer.
+	r.keys("C-t")
 	time.Sleep(2500 * time.Millisecond)
 
 	// /status, while something stands: the derived `keeping watch` line, and the
@@ -925,8 +917,8 @@ func testFiringReachesThePerson(t *testing.T) {
 	// ── the second half: nobody is here when it fires ──
 	//
 	// A firing wakes the conversation it lands in, so the model may still be
-	// answering it. esc ends whatever is in flight before the next errand.
-	r.keys("Escape")
+	// answering it. Ctrl+C stops the turn before the next errand.
+	r.keys("C-c")
 	time.Sleep(2 * time.Second)
 	openHome(t, r)
 	standReminder(t, r, "remind me in 1 minute to stretch")
@@ -1121,7 +1113,7 @@ func testAnswerFromHome(t *testing.T) {
 	// and the clock, because the panels are the counts; in a conversation it keeps
 	// `1 want you` (DESIGN §1 law 11), read on the chat's own ten-second beat. So
 	// B steps into its own conversation, reads its head, and comes back.
-	b.keys("Escape")
+	b.keys("Down", "Enter")
 	inChat := b.waitFor(30*time.Second, say(t, "homeDoorWord"), say(t, "pulseWantWord"))
 	t.Logf("window B's own conversation counts the question on its top line:\n%s", firstMatch(inChat, say(t, "pulseWantWord")))
 	openHome(t, b)
@@ -1272,7 +1264,7 @@ func testFold(t *testing.T) {
 	} else {
 		t.Logf("typing found the row behind the fold: %q", row)
 	}
-	r.keys("Escape")
+	r.keys("C-u")
 	time.Sleep(1500 * time.Millisecond)
 	back := r.capture()
 	if !strings.Contains(back, say(t, "foldMoreWord")) {
@@ -1580,7 +1572,7 @@ func testOneSpendFigure(t *testing.T) {
 	} else {
 		t.Logf("FINDING: the live strip was never caught — the turn may have finished first")
 	}
-	r.keys("Escape")
+	r.keys("C-c")
 	// The ledger's writer is a background goroutine and both places read the
 	// file on a three-second beat, so the reading is taken after one beat has
 	// certainly turned rather than in the same instant as the keystroke.
