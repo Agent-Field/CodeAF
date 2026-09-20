@@ -779,6 +779,22 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	cfg.WorktreeRoot = place.Trees()
 	cfg.AskConsent = false
 	cfg.InTask = true
+	// A FIRING GETS THE GATE A TASK NODE GETS, for the same reason and in the
+	// same words (task_run.go): allow everything except the floor. Without this
+	// line a firing inherited the conversation's policy, which on a fresh
+	// install is prompt-a-human, while also being told it is inside a task where
+	// no human exists, so consent.go answered every decision with "refused in a
+	// task: default, nobody to ask". What survived was the read-only lift and
+	// nothing else, so a watch could not run one shell command, not even one the
+	// person had explicitly allowed. That is not a safer watch, it is a watch
+	// that burns a model call every morning to write a refusal.
+	//
+	// It is not wider than a node. approval's critical table still turns an
+	// allow into a prompt for the handful of shapes that destroy a disk or drop
+	// the machine, and a prompt with nobody to ask is a refusal the firing can
+	// read; the calls that act in the person's name outside this machine stay
+	// refused; a bash call whose arguments cannot be read stays refused.
+	cfg.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
 	cfg.Standing = nil
 	cfg.standingItems = nil
 	// WHOSE MONEY THIS IS. A firing runs in a folder of its own with a session id
