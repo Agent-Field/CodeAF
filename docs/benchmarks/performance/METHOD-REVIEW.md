@@ -1,24 +1,22 @@
-# Method review: would a competitor's engineer accept these numbers?
+# Method review: would these numbers survive an independent rerun?
 
 reviewed tree: `e5fde7fa49467ebd625a018cc43409e0cb0cab50` — this branch as the review found it
 review taken: 2026-09-18, morning EDT. Fixes applied since are listed under "Fixes applied" below.
 
 ## The question, answered
 
-**Would a competitor's engineer, handed `measure-cli.sh` and `README.md`, accept every
+**Would anyone handed `measure-cli.sh` and `README.md` land on every
 number in `results-2026-09-17.md` as a fair like-for-like measurement?**
 
-**No — not every number.** The startup, first-frame, idle and startup-work columns would
-survive their reading: the script is inspectable, every CLI ran under the same isolated
+**No — not every number.** The startup, first-frame, idle and startup-work columns would survive a careful reading: the script is inspectable, every CLI ran under the same isolated
 profile, private tmux socket, pinned geometry and same TERM, and the README states most
-of the caveats that matter. Three things would not be accepted, and none of them is in
+of the caveats that matter. Three things would fail that test, and none of them is in
 the startup comparison itself:
 
 1. **Three of the seven version rows name versions that have not existed on this box
    since before the session ran.** pi 0.73.1, opencode 1.18.31 and omp 18.2.4 — every
    conflicting install's mtime predates the 2026-09-17 evening session, so the box's
-   PATH could not have printed those versions that day. A competitor re-checking gets a
-   different answer from the table.
+   PATH could not have printed those versions that day. Anyone re-checking gets a different answer from the table.
 2. **The on-disk column's counting rule is stated nowhere** (`measure-cli.sh` does not
    measure disk at all), and its rows cannot be reproduced: two match natural trees
    exactly (one of them the wrong version), four match nothing on the machine.
@@ -26,8 +24,7 @@ the startup comparison itself:
    nothing committed lets a second engineer re-run or check it.
 
 Neither gap invalidates the headline startup comparison — but both are the kind of thing
-a competitor's engineer finds in an afternoon, and the first is a table going out while
-we compete on it.
+an independent rerun finds in an afternoon, and the first is a table going out that a rerun contradicts.
 
 ## Conditions of this review
 
@@ -186,7 +183,7 @@ recorded that day; the README says to compare runs at similar load.
 Disclosed by the table's own header — honest, and **not invalidating**. `--version`
 (12.5 ms) is measured on the post-package-init build; the first-frame figure (208 ms)
 predates those changes, so it is **conservative against codeaf** — the pre-init build is
-the slower one — and the memory rows sit at the noted commit. A competitor can accept
+the slower one — and the memory rows sit at the noted commit. A reader can accept
 each figure as a real measurement of a disclosed build; what fails the read is that the
 header buries which figure is from which build. Fix: one per-figure clause ("`--version`
 and the memory rows are post-package-init; first frame predates them"). The named run
@@ -280,8 +277,7 @@ and unrecorded last time, are the load finding demonstrated rather than argued.*
 
 The script computes four statistics per CLI and the table publishes one. CodeAF's twenty
 runs give min 13 ms, median 16.0, mean 17.6, stddev 3.5. Best-of-N is the most flattering
-statistic available; applying it uniformly makes it fair, but a competitor's engineer will
-ask why the three numbers that show spread were computed and discarded. **Fix, and it is
+statistic available; applying it uniformly makes it fair, but anyone reading the script will ask why the three numbers that show spread were computed and discarded. **Fix, and it is
 free: publish median and stddev beside the minimum. The script already has them.**
 
 ### The idle memory column: not reproducible, and the verdict moves
@@ -354,5 +350,5 @@ The reproducibility gap is not theoretical. This section is what happened when s
 the script, the README, the same machine and the same seven CLIs tried to reproduce the
 table three weeks later: the startup columns came back close enough to believe, and one
 column came back systematically different for reasons the committed material cannot settle.
-A competitor's engineer doing the same thing gets the same result, and reaches for the
+Anyone doing the same thing gets the same result, and reaches for the
 simplest explanation available to them, which is not a charitable one.
