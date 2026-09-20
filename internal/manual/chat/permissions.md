@@ -874,11 +874,15 @@ A row your environment has pinned refuses like it does everywhere else:
 Yes, unless you turn it off. There are three marks and no others, and this is
 exactly what each one looks like.
 
-**A commit** ends with a blank line and one trailer:
+**A commit** ends with a blank line and two trailer lines, the co-author last:
 
 ```
-Co-Authored-By: codeaf <agentfield-bot@users.noreply.github.com>
+Assisted-by: CodeAF (z-ai/glm-5.3)
+Co-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>
 ```
+
+The parenthesised id on the first line is the model that wrote the commit —
+the session's configured model, whatever it is that day.
 
 **A pull request or an issue** ends its body with a line holding an em dash, and
 then one sentence:
@@ -897,9 +901,13 @@ with one small muted line, no em dash above it:
 <sub>drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>
 ```
 
-`agentfield-bot` is codeaf's own GitHub account and the address is the one GitHub
-hands out for it. The marks are provenance — another pair of hands typed this —
-and they are the only trace left on your work.
+`agentfield-bot` is codeaf's own GitHub account. The address is written with
+the account's numeric id in front — `267109073+agentfield-bot@users.noreply.github.com`
+— because that ID-prefixed form is the one GitHub links to the CodeAF account
+and renders the co-author with its avatar. The `Assisted-by` line above it
+names the model that wrote the commit, so `git interpret-trailers` can answer
+who typed it beyond the account. The marks are provenance — another pair of
+hands typed this — and they are the only trace left on your work.
 
 ## Will it sign every comment it leaves — how gentle the comment line is, and where none of the three ever appear
 
