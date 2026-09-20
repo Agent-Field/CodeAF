@@ -2293,6 +2293,18 @@ func (a *Agent) Close() error {
 	// because it is the one background lane that owes nothing to the quit: a
 	// beat holds no write anybody is waiting for.
 	a.stopLaneBeat()
+	// AND THE BELT RUN, on the adaptive runs' own terms above: it holds a context
+	// of its own precisely because the turn that proposed it ended, so this is
+	// the only thing that can reach it. A RUN'S LIFE IS THE CONVERSATION'S. Until
+	// this line the run's life was neither the turn's nor the conversation's but
+	// the PROCESS's, so a conversation that ended while a run was going left
+	// workers spending money against a room nobody could read or stop.
+	//
+	// It is cut out here rather than under the lock above because the run is
+	// held under its own ([Agent.beltMu]) and nothing else in this package takes
+	// the two together; the line above has already stopped anything new from
+	// being started against this conversation.
+	a.cutBeltRun()
 
 	// EVERY CANCEL FIRST, THEN THE JOINS. The naming errand may be asleep in a
 	// backoff or parked on a provider, and it is the one thing here that owes

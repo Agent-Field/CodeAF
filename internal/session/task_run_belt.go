@@ -223,6 +223,11 @@ type beltRun struct {
 	cut        context.CancelFunc
 	stopped    bool
 	stopReason string
+	// born is when this run started, off the conversation's own clock, and it is
+	// what the run's row in the work tree ages from ([Agent.beltRunWorkingNow]).
+	// It is the same reading the row published to the surface carries, so the
+	// tree and the row cannot disagree about when the work began.
+	born time.Time
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -326,12 +331,14 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	// context no turn's ending cancels); what it must not outlive is the person
 	// saying stop, and until this cancel was kept nothing could say it (stoprun.go).
 	runCtx, cut := context.WithCancel(ctx)
+	born := a.taskClockNow()
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
 		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
+		born: born,
 	}
 	a.installBeltRun(g, run)
-	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: a.taskClockNow()})
+	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: born})
 
 	// THE CONVERSATION'S OWN SEATS, read off its role ladder so the engine's
 	// crew factory seats the work and plan roles on what this conversation's
@@ -423,6 +430,27 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
+}
+
+// cutBeltRun ends the live run because the CONVERSATION is ending. It is what
+// makes a run's life the conversation's rather than the process's, and it is
+// called from exactly one place ([Agent.Close]).
+//
+// IT IS NOT A PERSON'S STOP AND MUST NOT BE MISTAKEN FOR ONE. A stop writes the
+// person's reason on the store's root and settles the row in their words
+// (stoprun.go); this writes nothing and says nothing, because nobody asked for
+// anything — the room simply closed. What the run did is in its store, which is
+// where the next launch reads it from.
+func (a *Agent) cutBeltRun() {
+	a.beltMu.Lock()
+	var cut context.CancelFunc
+	if a.beltRun != nil {
+		cut = a.beltRun.cut
+	}
+	a.beltMu.Unlock()
+	if cut != nil {
+		cut()
+	}
 }
 
 // driveBeltRun runs one run to its outcome and writes the ending back where the
