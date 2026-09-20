@@ -493,8 +493,10 @@ const usageQueueDepth = 256
 // it, across every ledger it is flushing. Two seconds is far longer than a disk
 // that is answering needs — a flush costs microseconds on a working mount — and
 // far shorter than a person will wait for a terminal to come back from a mount
-// that is not.
-const usageFlushLimit = 2 * time.Second
+// that is not. It is a var only so a test can shrink it: a test that wants the
+// deadline to fire should say so in one line rather than put load on the box to
+// provoke it.
+var usageFlushLimit = 2 * time.Second
 
 // usageWrite is one thing a writer is asked to do: append a row, or — where the
 // row is nil — close `done` once everything queued before it has been written.
@@ -656,7 +658,16 @@ func openUsageLedger(path string) *os.File {
 // IT IS THE ONE PLACE IN THIS FILE THAT WAITS, deliberately: a caller asking for
 // a flush is asking to be told when the writing is done, and a flush that gave
 // up early would be an answer about nothing. Nothing on a turn path may call it.
-func FlushUsage() {
+//
+// IT ANSWERS WHICH OF THE TWO THINGS HAPPENED, true when everything in front of
+// it reached the disk and false when the ceiling fired first. Returning either
+// way is deliberate and stays; what was missing is the one bit the caller cannot
+// work out for itself, and a caller that reads the return as a JOIN when it was
+// a deadline goes on to do something the rows are still in the way of. A test
+// that treats it as a join and then lets its temp directory be removed is
+// exactly that: the writer's next append rebuilds the directory underneath the
+// cleanup. A caller that wants a join wants [StopUsageWriter] or [CloseUsage].
+func FlushUsage() bool {
 	dones := enqueueUsageFlush()
 	// IT WAITS UNDER A CEILING, because the one thing it waits on is the thing
 	// this whole file exists to survive. A writer parked inside [openUsageLedger]
@@ -673,9 +684,51 @@ func FlushUsage() {
 		select {
 		case <-done:
 		case <-deadline.C:
-			return
+			return false
 		}
 	}
+	return true
+}
+
+// StopUsageWriter ends ONE path's writer and waits for it, the same detach and
+// join [CloseUsage] performs for every writer at once, for a caller that is
+// finished with one ledger while the process goes on. A test that made its
+// ledger a stalled path is the caller that needs it: its directory is about to
+// be removed, and a writer still holding rows for that path would rebuild it.
+//
+// It answers true when the writer is really finished. False is the same bargain
+// the rest of this file states: a writer parked inside [openUsageLedger] on a
+// path that never answers is left behind rather than held onto, because a
+// spending record is worth less than the exit.
+func StopUsageWriter(path string) bool {
+	writer := detachUsageWriter(path)
+	if writer == nil {
+		return true
+	}
+	deadline := time.NewTimer(usageFlushLimit)
+	defer deadline.Stop()
+	select {
+	case <-writer.stopped:
+		return true
+	case <-deadline.C:
+		return false
+	}
+}
+
+// detachUsageWriter removes one path's writer from the registry and closes its
+// queue UNDER the writers lock, [detachUsageWriters]' rule for the same reason:
+// a concurrent [RecordUsage] or [enqueueUsageFlush] must never send on a queue
+// that is closing.
+func detachUsageWriter(path string) *usageWriter {
+	usageWritersMu.Lock()
+	defer usageWritersMu.Unlock()
+	writer := usageWriters[path]
+	if writer == nil {
+		return nil
+	}
+	delete(usageWriters, path)
+	close(writer.queue)
+	return writer
 }
 
 // enqueueUsageFlush hands a flush marker to every live writer UNDER the writers
