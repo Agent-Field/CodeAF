@@ -596,6 +596,12 @@ type TaskNotice struct {
 	// Branch is the task's branch ("task/fix-nil-map"), kept after a protected
 	// landing, a conflict or a kill so the work is never silently thrown away.
 	Branch string
+	// Copy is WHERE THE WORK HAPPENED, written down so a later process can find
+	// it again rather than make it again (task_run_copy.go). It is set on a
+	// RUN's row and nowhere else: a node of the session's own graph already
+	// carries these facts in its own record. Nil is a row whose copy was never
+	// recorded, which is a run that cannot be carried on.
+	Copy *TaskCopyRecord
 	// Merge is how the branch came home: "merged", "kept" (finished but left
 	// on its branch), "conflicted" (branch kept), "inplace" (a non-git
 	// workspace ran in the person's tree), or "" while running.
