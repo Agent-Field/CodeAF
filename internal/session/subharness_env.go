@@ -516,7 +516,13 @@ func (e *subharnessEnv) Ask(ctx context.Context, question string, opts exec.AskO
 	// reached the questions lane only through a replay before this, so a window
 	// that drew it had nothing that would ever close it — the answer and the
 	// withdrawal both speak now.
-	defer e.agent.raiseQuestion(e.agent.subharnessAskQuestion(id, *asking), func() {
+	// AND THE ROW GOES TO THE DESK WITH IT ([Agent.presenceAskingWhole]), which
+	// is what the lanes beside this one do and what makes the mark mean
+	// something: presence reads its sentence off the desk
+	// ([Agent.presenceAsk]), so a lane that only raised the question would turn
+	// the session amber with nothing under it, the exact shape the fuel gate was
+	// fixed for (taskpresence.go). Both go up and come down together.
+	defer e.agent.presenceAskingWhole(e.agent.subharnessAskQuestion(id, *asking), func() {
 		if e.room != nil {
 			e.room.publish(Event{Kind: EventSubharnessAsk, ID: id, Text: question, Args: string(input)})
 		}
