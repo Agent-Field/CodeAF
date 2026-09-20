@@ -140,6 +140,19 @@ func (a *app) tabSignalFor(key string, here bool) tabSignal {
 	return held.watch.signal()
 }
 
+// asksStandingOrLanding reports whether the surface holds a standing answer
+// or a landed task whose next step is the person choosing what happens.
+// It deliberately names those kinds instead of treating every question as a
+// signal: a deadline task proposal is a countdown, not a question for now.
+func (a *app) asksStandingOrLanding() bool {
+	for _, open := range a.questions {
+		if open.question.Kind == session.QuestionStanding || open.question.Kind == session.QuestionLanding {
+			return true
+		}
+	}
+	return false
+}
+
 // frontSignal is the same question about the conversation on screen, which has
 // no watcher — [app.bringForward] stops it when a conversation comes forward —
 // and needs none: everything it would have cached is on this surface.
@@ -152,7 +165,7 @@ func (a *app) frontSignal() tabSignal {
 	if run := a.orchOf(); run != nil && run.gate != nil {
 		return tabNeedsPerson
 	}
-	if a.asking() || a.asksConnect() || a.asksHarness() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
+	if a.asking() || a.asksConnect() || a.asksHarness() || a.asksStandingOrLanding() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
 		return tabNeedsPerson
 	}
 	if a.state == stateWorking || a.tasksInFlight() || a.jobsRunning() > 0 {
