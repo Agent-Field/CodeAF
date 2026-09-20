@@ -494,6 +494,9 @@ func placeFootText(frame string) string {
 func TestAClickOnAHomeHeadingOpensThePlaceItNames(t *testing.T) {
 	for _, width := range []int{120, 180} {
 		for _, slot := range homePanelOrder {
+			if slot.word == "" {
+				continue
+			}
 			t.Run(itoa(width)+"/"+slot.word, func(t *testing.T) {
 				a := newSwitchLab(t).open(width, 45)
 				x, y, ok := homeHeadingAt(a, slot.word)
@@ -524,6 +527,9 @@ func TestAClickOnAHomeHeadingOpensThePlaceItNames(t *testing.T) {
 func TestAHomeHeadingThatOpensAPlaceUnderlinesUnderThePointer(t *testing.T) {
 	for _, width := range []int{120, 180} {
 		for _, slot := range homePanelOrder {
+			if slot.word == "" {
+				continue
+			}
 			t.Run(itoa(width)+"/"+slot.word, func(t *testing.T) {
 				a := newSwitchLab(t).open(width, 45)
 				if a.pal.profile == tokens.NoColor {

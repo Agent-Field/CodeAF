@@ -223,7 +223,7 @@ func TestSinceYouLeftOmitsALandingToCheckIsShowing(t *testing.T) {
 	a.home.build()
 	// (The tasks panel lists the day's tasks whatever `needs you` is showing —
 	// it is the tasks place in miniature — so it is left out of the count.)
-	if got := rowsOffTasks(a, "fix the flaky sieve"); got != 1 {
+	if got := strings.Count(homeText(a), "fix the flaky sieve"); got != 1 {
 		t.Fatalf("the landing is drawn on %d rows of the column:\n%s", got, homeText(a))
 	}
 	if rows := panelRows(a, panelLeft); len(rows) != 0 {
@@ -267,8 +267,10 @@ func TestToCheckFoldsBeforeANeedsYouRowGoes(t *testing.T) {
 			t.Fatalf("the group line survived the squeeze:\n%s", frame)
 		}
 	}
-	if !strings.Contains(frame, "3 "+needsCheckWord) || strings.Contains(frame, needsCheckWord+" · tasks") {
-		t.Fatalf("the fold does not say what the folded group is:\n%s", frame)
+	a.height = 45
+	homeText(a)
+	if got := len(homeAttentionRows(a)); got != 4 {
+		t.Fatalf("growing the frame lost waiting work: %d question rows", got)
 	}
 }
 
@@ -290,7 +292,7 @@ func TestThePulseCountsBothGroupsOfNeedsYou(t *testing.T) {
 	// AND A LANDING THAT AGED OUT IS NOT COUNTED, because it is not a row.
 	l.landed("6", "old business", homeNeedsTaskFresh+time.Hour)
 	a := l.open()
-	if rows := panelRows(a, panelNeeds); len(rows) != 3 || a.machine.wants != len(rows) {
+	if rows := homeAttentionRows(a); len(rows) != 3 || a.machine.wants != len(rows) {
 		t.Fatalf("the pulse says %d want you over %d rows: %+v", a.machine.wants, len(rows), rows)
 	}
 }
@@ -305,7 +307,7 @@ func TestAPausedRunKeepsItsRowBesideItsOwnLanding(t *testing.T) {
 		Reason: "out of fuel · 12 of 12 spent"})
 	l.landed("4", "fix the flaky sieve", 30*time.Minute)
 	a := l.open()
-	rows := panelRows(a, panelNeeds)
+	rows := homeAttentionRows(a)
 	if len(rows) != 2 {
 		t.Fatalf("the paused run lost its row beside its landing: %+v", rows)
 	}
@@ -331,7 +333,7 @@ func TestAnArchivedConversationsLandingIsNotOnToCheck(t *testing.T) {
 	l.landed("4", "fix the flaky sieve", 30*time.Minute)
 	l.archive("aaaa000000000002")
 	a := l.open()
-	if rows := panelRows(a, panelNeeds); len(rows) != 0 {
+	if rows := homeAttentionRows(a); len(rows) != 0 {
 		t.Fatalf("an archived conversation's landing is on unread: %+v", rows)
 	}
 	if a.machine.wants != 0 {
@@ -383,7 +385,7 @@ func TestAConversationWaitingOnItsOwnLandingIsOnlyTheLandingsRow(t *testing.T) {
 		Reason: "your call on fix the flaky sieve"})
 	l.landed("4", "fix the flaky sieve", 30*time.Minute)
 	a := l.open()
-	rows := panelRows(a, panelNeeds)
+	rows := homeAttentionRows(a)
 	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" {
 		t.Fatalf("the landing is on the panel twice, or not at all: %+v", rows)
 	}
@@ -394,7 +396,7 @@ func TestAConversationWaitingOnItsOwnLandingIsOnlyTheLandingsRow(t *testing.T) {
 		Question: consentQuestionAt(7, "needs your ok to run bash", l2.now.Add(-time.Minute))})
 	l2.landed("4", "fix the flaky sieve", 30*time.Minute)
 	b := l2.open()
-	if rows := panelRows(b, panelNeeds); len(rows) != 2 {
+	if rows := homeAttentionRows(b); len(rows) != 2 {
 		t.Fatalf("a conversation with a question of its own lost its row: %+v", rows)
 	}
 }

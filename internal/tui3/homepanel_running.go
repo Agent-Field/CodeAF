@@ -127,6 +127,7 @@ func (runningPanel) rows(in *homeGridInput) homePanelRows {
 	}
 	// THE HEADING IS THE BARE WORD (owner, 2026-09-17): no count and no
 	// explainer after it, like `threads`; the rows under it are the count.
+	homeDecorateQuestions(in, lines)
 	return homePanelCut(in, panelRunning, lines)
 }
 

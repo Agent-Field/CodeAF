@@ -3266,7 +3266,13 @@ func (a *app) homeWalkIn(line homeLine) (tea.Cmd, string) {
 // holding still answers with its own word and no card is ever raised over a
 // conversation nobody walked into.
 func (a *app) homeLandOnTask(line homeLine) tea.Cmd {
-	if line.task == nil {
+	record := line.task
+	// A live question uses the conversation's answer route while its task row
+	// keeps the original task as the target for Enter.
+	if record == nil && line.cell != nil && line.cell.row != nil {
+		record = line.cell.row.task
+	}
+	if record == nil {
 		// A conversation row opens main, even if a child view was left behind it.
 		a.closeRoom()
 		return nil
@@ -3275,7 +3281,7 @@ func (a *app) homeLandOnTask(line homeLine) tea.Cmd {
 	// the row that was pressed, so esc is one layer at a time from here: the card
 	// backs out to the record, and the record's own esc leaves the conversation
 	// on the screen (taskrecord.go's [app.openTaskRecord]).
-	return a.openTaskRecord(line.task)
+	return a.openTaskRecord(record)
 }
 
 // homeFolderThere reports whether a project's directory is still on the disk.

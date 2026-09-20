@@ -886,11 +886,11 @@ func (placeSpend) hint(a *app) string {
 	}
 	if len(parts) == 0 {
 		// A PAGE WITH NOTHING ON IT STILL HAS A WAY OUT, and that is all it has.
-		// [placeTailed] adds `tab next place`, so this is `esc` alone rather than
+		// [placeTailed] adds `tab next place`, so this is `esc home` rather than
 		// a foot naming three keys over an empty ledger.
-		return "esc"
+		return homeDoorWord
 	}
-	return strings.Join(parts, railSep) + railSep + "esc"
+	return strings.Join(parts, railSep) + railSep + homeDoorWord
 }
 
 func (placeSpend) press(a *app, y int) (tea.Cmd, bool) {

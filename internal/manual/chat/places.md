@@ -27,7 +27,8 @@ Every place is drawn in the same frame:
 5. a rule, then the **composer** — one line you can type into, wherever you are
 6. the hint line — what the keys do here
 
-`esc` dismisses an editor or filter first, then returns to Home. Places are not
+`esc` dismisses an editor or filter first, then returns to Home. The resting tasks,
+spend and settings footers say `esc home`, including compact task screens. Places are not
 stacked: opening one closes whichever was up. Further Escape presses stay on Home.
 
 ## How to get to a place — the keyboard shortcut to jump between pages
@@ -443,11 +444,11 @@ it was always going to do. `esc` just takes it away.
 It is a chord rather than a hold because a terminal cannot tell a program that a modifier is
 being held down — it only reports what arrived.
 
-## home — what wants you, as seven panels
+## home — conversations, tasks and project panels
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
 project, in one, two or three columns — an unheaded list of open tabs and up to
-three dimmed closed conversations, then `needs you`,
+three dimmed closed conversations, then
 `projects`, `tasks`, `since you left`, `spend`, `scheduled`, always in that order. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
@@ -455,9 +456,12 @@ them, whichever panels are quiet today. An empty panel keeps its heading and one
 naming what arrives there.
 
 Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
-answers the one row of `needs you` drawing its answers, and `enter` opens a row. `tab` is the way to the
+answers the question row drawing its answers, and `enter` opens a row. `tab` is the way to the
 next place, and the errand pane is taken into with `→` rather than `tab`. Home has no
 `alt+<letter>` keys — `alt+g` and `alt+q` are unbound there.
+
+Clicking Home’s `since you left` heading opens memory. Questions appear as amber `?`
+bullets on the conversation or task, with no separate `needs you` heading.
 
 ## tasks — the tasks page, and how to get to it without a command
 
@@ -589,7 +593,7 @@ one word most people guess for "what has this cost" printed one conversation's b
 never mentioned the machine-wide ledger. It opens the place now.
 
 **The foot names the keys this place has**, and it is built from the row under the cursor:
-`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc`.
+`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc home`.
 Where the head row is too narrow to draw its own arrows the window clause is dropped, and
 over an empty ledger only the way out is named.
 

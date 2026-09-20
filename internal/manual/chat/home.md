@@ -88,7 +88,6 @@ from home stands there as a card. Nothing else stands in it.
 
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
-| `needs you` | a question waiting on a person, anywhere, and under them the `unread` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
 | Unheaded conversation list | an open tab, then up to three dimmed closed conversations | opens or reopens it | nothing |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
 | `tasks` | a task or adaptive run from the last day, running or landed | opens the task itself | `the last day's tasks land here · /task starts one` |
@@ -102,27 +101,19 @@ the line wraps onto a second line rather than being cut. This is the one deliber
 exception to the rule that nothing zero is drawn: a panel that vanished would teach nothing,
 while a number still draws nothing at zero — never `$0.00`, never `0 tasks`.
 
-## What needs me — the needs you panel, the ? rows at the top of home
+## What needs me — unanswered questions, the ? bullet on conversations and tasks
 
-**The first panel of the field whenever it holds anything**, so a question waiting on you
-is at the top left corner of the screen. The panel holds **two groups**: the questions that
-have stopped something, then the work that landed and has not been checked. With nothing
-waiting it is in the rail down the right edge, as its heading and its dim line.
+Home has no `needs you` heading or empty attention panel. An amber `?` beside a
+conversation or task means it has an unanswered question. The question stays on
+that item's existing row instead of creating a duplicate. A task decision names
+the task when its question identifies it; other questions stay on the conversation.
+The question mark takes priority over the conversation's answering or unread mark.
 
-**The first group is the questions, and only they wear the amber `?`.** A row is there when
-something has stopped and cannot go on without you, from any project:
-
-- a conversation stopped on a question — a command to approve, a task to approve, a card
-  about something standing;
-- a reminder, watch or rule that stopped and wants an answer.
-
-Each is **one line at rest**: the amber `?`, the title, and **how long it has waited** at the
-right. **What it is asking shows only while the row is being read** — under the mouse
-pointer, or under the cursor when nothing is pointed at — as a second line in the question's
-own words, with its answers at the right (owner, 2026-09-17; the question used to stand
-there on every frame). The `?` never goes away. **The longest wait is at the top.** The
-heading is the two words alone — it carries no count, whether two things are stopped or
-none; the rows under it are the count.
+The selected row's description shows the question and its available answers. The
+same digit keys answer it. Once the question is resolved and Home refreshes, the
+question mark disappears. Questions belonging to items outside the visible lists
+remain reachable as unheaded rows; they are not dropped because their owner is absent.
+Standing items that need an answer also keep an unheaded question row.
 
 **Every description opens with the thread the row belongs to**, as a title line of its
 own — `thread: Searching for Apartments Near Minto`, spelled exactly as the conversation list spells
@@ -195,7 +186,7 @@ watch that needs somebody, never age off home.
 as an ordinary line once it has been answered or has aged out of the group.
 
 **On a short frame the whole group folds to one line before any question gives way** —
-`8 unread`. `enter` on it opens the panel; the `needs you` heading opens the tasks place.
+`8 unread`. `enter` expands that group; the `tasks` heading opens the tasks place.
 
 ## Answer from home — a digit answers the question that is drawing its answers
 
@@ -279,7 +270,7 @@ not where it is settled.**
 ## What is running — the tasks panel: what is running on this machine right now, and the last day's tasks, running or landed
 
 **The `tasks` panel is the last twenty-four hours of work, flattened**, in the field with
-the other panels that hold something — under `needs you` and the conversation list, which outrank it
+the other panels that hold something — below the conversation list
 — and in the rail on the right when there is none. It is the tasks place in miniature:
 every task and adaptive run that started or landed inside the last day, from every
 conversation and every project, plus anything still running however old, newest first.
@@ -398,8 +389,8 @@ or placeholder. A short terminal folds the rows that do not fit behind `N more`.
 
 Closing with `→`, then `x close`, or `ctrl+e`, removes the same conversation from
 Home's open rows, the tab strip and the default chats menu immediately. It keeps
-running work and drafts. A waiting conversation can also appear under `needs you`;
-that panel describes the question, independently of whether its tab is open.
+running work and drafts. A waiting conversation carries a `?`;
+the question remains reachable even when its tab is closed.
 
 `/ask` exchanges follow the conversation rows. Escape opens Home; Enter opens the
 selected row. Further Escape presses stay on Home.
@@ -476,7 +467,7 @@ each of those is a panel of its own now.
 
 | It used to be | It is now |
 | --- | --- |
-| `?` rows at the top of the list | the `needs you` panel |
+| `?` beside a conversation or task | an unanswered question on that row |
 | `◐` rows under them | the `tasks` panel |
 | the quiet rows and `▸ 15 more, quiet since 6d` | the conversation list, then `N more` |
 | project headings, `alt+g` | the `projects` panel |
@@ -507,8 +498,8 @@ Nothing on the rail — `projects`, `spend`, or a panel with nothing in it — c
 onto or pressed.
 
 **The panel the cursor is in marks its heading** with the cursor's ground; the words stay
-where they were. So one heading on the frame is lit — `needs you`, `tasks`, whichever the
-cursor is in — and that is how you tell which column your arrows are in. The row you are on
+where they were. A headed panel such as `tasks` lights its heading when the cursor is
+inside it. The conversation and question rows have no heading. The row you are on
 wears the same ground and its title goes bold; the row under your mouse pointer wears it too
 while the pointer is on it.
 
@@ -518,10 +509,10 @@ over, or the conversation a `since you left` line happened in; `ctrl+y` copies t
 `ctrl+e` puts away or pauses, `ctrl+x` stops. The foot does not change from row to row and
 names none of them; `alt+.` draws the map when you want the rest.
 
-A digit answers the one row of `needs you` drawing its answers, wherever you are standing. `enter` acts on
+A digit answers the question row drawing its answers, wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
 
-## Why is the needs you heading highlighted, why is one project name darker than the others
+## Why is a heading highlighted, why is one project name darker than the others
 
 **Because the cursor is in that panel.** The heading of the panel holding the cursor wears
 the cursor's ground — one heading per frame, following the keyboard, and never the mouse.
@@ -578,25 +569,26 @@ panels at all — a whisper over a server full of work would be untrue.
 ## Where did the rest of my chats go — N more, expand a panel, and panels cut off on a short or small terminal
 
 **Every panel folds inside itself** with one dim line, `N more`, counting everything it is
-not showing — the rows past its budget, the rows a short window took, and on `needs you` the
+not showing — the rows past its budget, the rows a short window took, and on the additional question rows the
 landings that aged off it. **The fold is a toggle.** Walk onto it and press `enter` (or
 click it): the panel opens and takes the column — every row it has, with the other panels
 squeezed to their floors in the order below — and the line reads `N fewer`. `enter` again
 folds it. One panel is open at a time; opening a second folds the first. An open panel
 taller than the window shows what fits and its line still counts the rest — `3 fewer · 40
 more` — and names no place, because `enter` on it folds rather than opens. The way to
-those rows is the panel's **heading**: `needs you`, `tasks` and `since you left` open the
-tasks place, `scheduled` opens standing; the conversation list and `projects` open nothing. The foot under a fold says
+those rows is the panel's **heading**: `tasks` opens tasks, `since you left` opens memory,
+and `scheduled` opens standing. Conversations and extra question rows have no heading;
+`projects` opens nothing. The foot under a fold says
 which way it will go: `enter shows the rest`, then `enter folds them`. Opening lasts as long
 as the window; a relaunch starts folded. The fold wears no mark: home spends its two marks
 on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
-`needs you`, `tasks`, `since you left` and `projects` to eight rows, the conversation list up to the tab limit plus three closed rows, `scheduled` from three to five. `spend` never grows. What is left over is air
+additional question rows, `tasks`, `since you left` and `projects` to eight rows, the conversation list up to the tab limit plus three closed rows, `scheduled` from three to five. `spend` never grows. What is left over is air
 under the shorter column.
 
 **A short terminal squeezes them in a fixed order**: `scheduled` gives way first, then `spend`,
-then `since you left`, then `tasks`, then `projects`; the conversation list and `needs you`
+then `since you left`, then `tasks`, then `projects`; the conversation list and additional question rows
 shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
 only when every panel is down to that is a panel dropped — and the panels that are only
 whispering go before any panel with rows, whatever their rank, so a very short window
@@ -758,8 +750,8 @@ stays empty until you select a result.
 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A click on a panel's **heading** opens the place the heading names:
-`needs you`, `tasks` and `since you left` open tasks, `spend` opens spend, `scheduled` opens
-standing. The conversation list has no heading. The `projects` heading opens nothing
+`tasks` opens tasks, `since you left` opens memory, `spend` opens spend, and
+`scheduled` opens standing. There is no `needs you` heading. The conversation list has no heading. The `projects` heading opens nothing
 and stays dim. **A heading that opens somewhere underlines on mouse-over.** The
 pointer on a heading moves neither the cursor nor the marked heading.
 A click on a `/` command only selects it; `enter` runs it.
@@ -2133,8 +2125,8 @@ phone-width frame is walked one row at a time rather than scanned.
 Top to bottom:
 
 1. The unheaded conversation list: open tabs, then up to three dimmed closed rows.
-2. `waiting on you` — every conversation stopped on a question, every standing item that
-   needs a look, and every `ask here` errand holding a card, from **any** project.
+2. Additional question rows, without a heading — conversations not already listed above,
+   standing items that need a look, and `/ask` panes holding a card, from **any** project.
 3. `tasks` — everything with work in flight, wherever it is.
 4. `since you left` — what landed while you were not in the room.
 5. **The projects.** This window's own project is drawn open with its remaining rows; every
@@ -2143,17 +2135,19 @@ Top to bottom:
 
 Each section shows **three rows** and folds the rest into `▸ …N more`; `enter` or a tap on
 that line opens it in place. A section with nothing in it is not drawn at all. **A row
-appears once**: a conversation lifted into `waiting on you` is not drawn again under its
-project.
+appears once**: a conversation carrying a question is not repeated in the additional
+question rows or under its project.
 
 Conversation tabs are single lines with status bullets, followed by up to three dimmed closed
 conversations. Other inbox rows are **two lines** — the label, and its dim tail
-indented under it. A tab with a pending question also has a waiting row.
+indented under it. A tab with a pending question carries an amber `?` on its existing row,
+including when the question belongs to a task inside that conversation.
 
 **Typing still searches**, exactly as at every other width. Enter starts a conversation
 by default; `/ask <question>` asks in a home pane. Only results appear above the seam.
 
-A tap on a section's heading folds that section away. Mouse motion does nothing at this
+A tap on `since you left` opens memory. Other section headings fold their section away.
+Mouse motion does nothing at this
 width — there is no hover on glass — and every key still works.
 
 ## Opening a row on a phone — the sheet, and ‹ back
@@ -2240,8 +2234,8 @@ their heights and their sides move with the terminal and the day.
 
 Every conversation in Home has a bullet. A dim bullet means there is no unread
 reply known to this window. A working mark means the conversation is answering;
-the first answering row animates when no other Home row owns the spinner. A bright
-filled bullet means a reply finished while you were away. Opening the conversation
+the first answering row animates when no other Home row owns the spinner. An amber `?` means there is an unanswered question and takes priority over those marks.
+A bright filled bullet means a reply finished while you were away. Opening the conversation
 clears that unread state. Recently closed rows keep dim bullets. These indicators
 use this window’s live conversations; they do not infer unread history from other
 windows or persist read status across restarts.

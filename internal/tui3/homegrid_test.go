@@ -45,7 +45,7 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 	a := newSwitchLab(t).open(80, 24)
 	frame := homeText(a)
 	last := -1
-	for _, word := range []string{"Porting the Resume Picker", "needs you", "projects", "tasks"} {
+	for _, word := range []string{"Porting the Resume Picker", "projects", "tasks"} {
 		row, col := homeRowOf(frame, word)
 		if row < 0 {
 			t.Fatalf("%q is not on an eighty-cell home:\n%s", word, frame)
@@ -82,16 +82,16 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 func TestAtOneTwentyWhatHasRowsTakesTheFieldAndTheQuietGatherInTheRail(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	frame := homeText(a)
-	needs, needsCol := homeRowOf(frame, "needs you")
+	needs, needsCol := homeRowOf(frame, "Porting the Resume Picker")
 	projects, railCol := homeRowOf(frame, "projects")
-	if needs < 0 || needs <= projects || railCol <= needsCol {
+	if needs < 0 || needs != projects || railCol <= needsCol {
 		t.Fatalf("needs you (row %d) and projects (row %d) are not the heads of the field and the rail:\n%s", needs, projects, frame)
 	}
 	// WHERE YOU WERE HAS ROWS, SO IT IS IN THE FIELD under the panel that
 	// outranks it — the rank inside a column is the order table's as it always
 	// was, and only the column is the content's to say.
 	recent, recentCol := homeRowOf(frame, "Porting the Resume Picker")
-	if recent >= needs || recentCol != needsCol+homeGridLead {
+	if recent != needs || recentCol != homeGridMargin+homeGridLead {
 		t.Fatalf("threads has rows and is not under needs you in the field:\n%s", frame)
 	}
 	// AND SPEND IS PINNED UNDER PROJECTS AT THE TOP OF THE RAIL, with the quiet
@@ -141,16 +141,16 @@ func TestTheRailKeepsTheQuietPanelsAnExtraRowBelowThePinnedPair(t *testing.T) {
 func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	frame := homeText(a)
-	needs, needsCol := homeRowOf(frame, "needs you")
+	needs, needsCol := homeRowOf(frame, "Porting the Resume Picker")
 	recent, recentCol := homeRowOf(frame, "Porting the Resume Picker")
 	projects, railCol := homeRowOf(frame, "projects")
-	if needs <= projects || needsCol >= railCol {
+	if needs != projects || needsCol >= railCol {
 		t.Fatalf("needs you and projects do not head the field and the rail:\n%s", frame)
 	}
-	if recent >= needs || recentCol != needsCol+homeGridLead {
+	if recent != needs || recentCol != homeGridMargin+homeGridLead {
 		t.Fatalf("threads is not under needs you in the first field column:\n%s", frame)
 	}
-	if needsCol != homeGridMargin {
+	if needsCol != homeGridMargin+homeGridLead {
 		t.Fatalf("the field does not start at the left margin (cell %d):\n%s", needsCol, frame)
 	}
 	// AND THE QUIET PANELS ARE ALL IN THE LAST COLUMN, none of them left behind
@@ -477,8 +477,8 @@ func TestATallColumnGrowsWhatAPersonCameForFirst(t *testing.T) {
 	// A heading, the rows and a fold each, and a blank between: 6 + 1 + 7 = 14.
 	// Three rows to spare go needs, recent, needs.
 	fitColumn(column, 16)
-	if needs.shown != 6 || recent.shown != 6 {
-		t.Fatalf("three spare rows grew needs to %d and recent to %d, want 6 and 6", needs.shown, recent.shown)
+	if needs.shown != 6 || recent.shown != 7 {
+		t.Fatalf("three spare rows grew needs to %d and recent to %d, want 6 and 7", needs.shown, recent.shown)
 	}
 	fitColumn(column, 200)
 	if needs.shown != 8 || recent.shown != 10 {
@@ -516,7 +516,7 @@ func TestATallFrameShowsOpenTabsAndAShortFrameFoldsThem(t *testing.T) {
 func TestTheSqueezeAtOneTwentyByTwentyFourKeepsNeedsAndRecent(t *testing.T) {
 	a := newSwitchLab(t).open(120, 24)
 	frame := homeText(a)
-	for _, word := range []string{"Porting the Resume Picker", "needs you"} {
+	for _, word := range []string{"Porting the Resume Picker"} {
 		if row, _ := homeRowOf(frame, word); row < 0 {
 			t.Fatalf("%q was squeezed off a 120×24 home:\n%s", word, frame)
 		}
@@ -583,7 +583,7 @@ func TestAShortFrameDropsWhisperingPanelsBeforeAnyPanelWithRows(t *testing.T) {
 	if row, _ := homeRowOf(frame, homeName(a.home.focused())); row < 0 {
 		t.Fatalf("a 120×14 home kept a whisper and dropped every conversation:\n%s", frame)
 	}
-	if row, _ := homeRowOf(frame, homeWhisper[panelNeeds]); row >= 0 {
+	if row, _ := homeRowOf(frame, "questions from any chat or task land here"); row >= 0 {
 		t.Fatalf("a 120×14 home spent its rows on the needs-you whisper:\n%s", frame)
 	}
 }
@@ -633,10 +633,10 @@ func TestAWhisperWrapsAtItsColumnAndIsNeverCut(t *testing.T) {
 	a := newLiveLab(t).open()
 	frame := homeText(a)
 	_, rail := homeRowOf(frame, "projects")
-	first, head := homeRowOf(frame, "questions from any chat")
-	second, at := homeRowOf(frame, "answers them")
+	first, head := homeRowOf(frame, "reminders, routines")
+	second, at := homeRowOf(frame, `6" or`)
 	if first < 0 || second != first+1 || at != head || at != rail+homeGridLead {
-		t.Fatalf("the needs whisper is cut rather than wrapped in the rail:\n%s", frame)
+		t.Fatalf("the scheduled whisper is cut rather than wrapped in the rail:\n%s", frame)
 	}
 }
 
@@ -659,7 +659,7 @@ func firstRowOf(a *app, panel homePanelID) (int, bool) {
 // homeEmptyWhispers are what an empty machine's home always whispers: the two
 // panels the squeeze never drops.
 func homeEmptyWhispers() []string {
-	return []string{homeWhisper[panelNeeds]}
+	return []string{homeWhisper[panelRunning]}
 }
 
 // focusedTitle is the title of the row the cursor is on.

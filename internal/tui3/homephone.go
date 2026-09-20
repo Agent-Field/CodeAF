@@ -183,8 +183,31 @@ func (h *homeView) buildPhone() {
 	in := h.gridInput()
 	in.errands = nil // The phone inbox places exchanges in its own triage sections.
 	conversations := (recentPanel{homePanelBase{panelRecent}}).rows(&in)
+	// The compact inbox represents live task questions through their conversation.
+	// Decorate that row before dropping the duplicate from the waiting rows.
+	questions := make(map[string]homeLine)
+	for _, item := range needsAsked(&in) {
+		questions[homeQuestionRowKey(item.line)] = item.line
+	}
+	for i := range conversations.lines {
+		line := &conversations.lines[i]
+		if question, ok := questions[homeQuestionRowKey(*line)]; ok && line.cell != nil {
+			homeDecorateQuestion(line, question)
+		}
+	}
 	h.lines = append(h.lines, conversations.lines...)
-	h.phoneSection(homePhoneWaitingWord, homePhoneWaitingKey, h.phoneWaiting(lifted))
+	waiting := h.phoneWaiting(lifted)
+	seen := make(map[string]bool)
+	for _, line := range conversations.lines {
+		seen[homeQuestionRowKey(line)] = true
+	}
+	remaining := waiting[:0]
+	for _, line := range waiting {
+		if !seen[homeQuestionRowKey(line)] {
+			remaining = append(remaining, line)
+		}
+	}
+	h.phoneSection(homePhoneWaitingWord, homePhoneWaitingKey, remaining)
 	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, h.phoneRunning(lifted))
 	h.phoneSection(homePhoneNewsWord, homePhoneNewsKey, h.phoneNews())
 	h.phoneProjects(lifted)
@@ -198,7 +221,9 @@ func (h *homeView) phoneSection(word, key string, rows []homeLine) {
 		return
 	}
 	h.blank()
-	h.lines = append(h.lines, homeLine{kind: homePhoneSection, project: word, dir: key})
+	if word != "" && key != homePhoneWaitingKey {
+		h.lines = append(h.lines, homeLine{kind: homePhoneSection, project: word, dir: key})
+	}
 	shown, hidden := rows, 0
 	if !h.sections[key] && len(rows) > homePhoneShown {
 		shown, hidden = rows[:homePhoneShown], len(rows)-homePhoneShown
@@ -882,6 +907,9 @@ func (a *app) homePhonePress(x, y int) tea.Cmd {
 	// resolved before the stop test below rather than after it — the pointer can
 	// reach a row the keyboard has no reason to walk onto.
 	if line.kind == homePhoneSection {
+		if line.dir == homePhoneNewsKey {
+			return a.showPage(pageMemory)
+		}
 		a.home.foldSection(line.dir)
 		a.touch()
 		return nil

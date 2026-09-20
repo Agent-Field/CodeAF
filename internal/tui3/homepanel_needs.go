@@ -11,35 +11,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// needsPanel is `needs you` (docs/design/home-mission-control/DESIGN.md §1, §3
-// P1): everything on the machine that is waiting on a person, in TWO GROUPS on
-// one panel.
-//
-// BLOCKING FIRST, THEN WHAT HAS LANDED (the spec of record for #884). The top
-// group is the live questions — a conversation stopped on a question or on a
-// consent card, a watch that needs somebody — longest wait first
-// ([attentionOlder]), each wearing the amber mark and carrying its own sentence.
-// Under them the `unread` group is every task whose call is the person's,
-// newest first, one line each. A live question is always above a landing however
-// old the landing is, because a landing costs nothing while it waits and a
-// stopped conversation costs everything.
-//
-// THE DIFFERENCE BETWEEN THE TWO GROUPS IS SAID ONCE, ON THE GROUP'S OWN LINE,
-// and it is one word: `unread` (placeprose.go's [needsCheckWord]). It used to be
-// said under every landing row, which was the same nine words nine times and
-// pushed `threads` off a forty-row frame (owner, 2026-09-11); then as a
-// clause at the group line's right, which the owner cut on 2026-09-15.
-//
-// A LANDING IS ONE LINE AT REST AND TWO UNDER THE CURSOR. The second line is the
-// first sentence of what the work came to and the two answers the task itself
-// offers ([session.TaskAsk]), which is the whole of what "check it" means; the
-// panel reserves the line it grows into ([homeCell.grows]) so the column does
-// not move as the cursor walks.
-//
-// THE ANSWERS ARE DRAWN ON ONE ROW OF THE FRAME AND NOWHERE ELSE (law 7): the
-// row under the cursor when it can take an answer, and the top row that can
-// otherwise ([app.homeAnswerAt]). Drawing and routing ask that one function, so
-// a `1` on the screen and the key a person presses cannot be two different rows.
+// needsPanel keeps questions whose conversation or task has no visible row.
+// It has no heading: normal conversation and task rows carry their own questions,
+// and these fallback rows keep off-list questions reachable. Live questions sort
+// before task decisions, with older questions first and newer decisions first.
+// Answers still use the shared homeAnswerAt routing so the painted action and
+// the row receiving it cannot disagree.
 type needsPanel struct{ homePanelBase }
 
 // needsAnswersCap is how many of a question's answers fit on its row. A
@@ -62,14 +39,33 @@ type needsItem struct {
 }
 
 func (needsPanel) rows(in *homeGridInput) homePanelRows {
+	// Questions already carried by a conversation or task do not get a second row.
+	shown := make(map[string]bool)
+	for _, panel := range []homePanel{recentPanel{homePanelBase{panelRecent}}, runningPanel{homePanelBase{panelRunning}}} {
+		for _, line := range panel.rows(in).lines {
+			shown[homeQuestionRowKey(line)] = true
+		}
+	}
 	asked := needsAsked(in)
+	kept := asked[:0]
+	for _, item := range asked {
+		if !shown[homeQuestionTargetKey(item.line)] {
+			kept = append(kept, item)
+		}
+	}
+	asked = kept
 	sort.SliceStable(asked, func(i, j int) bool { return attentionOlder(asked[i].asked, asked[j].asked) })
 	// AND THE LANDINGS ARE NEWEST FIRST, which is the opposite order and the
 	// right one for them: `needs you` is ranked by how long something has been
 	// stopped, and nothing is stopped here — the freshest landing is the work
 	// still in the person's head, and the oldest ages out of the group entirely
 	// ([needsFresh]).
-	calls := append([]needsItem(nil), in.calls...)
+	var calls []needsItem
+	for _, item := range in.calls {
+		if !shown[homeQuestionTargetKey(item.line)] {
+			calls = append(calls, item)
+		}
+	}
 	sort.SliceStable(calls, func(i, j int) bool { return attentionOlder(calls[j].asked, calls[i].asked) })
 	lines := make([]homeLine, 0, len(asked)+len(calls))
 	for _, item := range append(asked, calls...) {
@@ -98,8 +94,8 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 // 2026-09-10: a machine with twenty-four week-old landings drew twenty-four rows
 // over rows nobody was going to answer, and a live question arriving under them
 // would have been the twenty-fifth). They stay one press away — the fold counts
-// them, opening the panel shows them, and the heading opens the tasks place,
-// where every one of them still is. Only a task's
+// them and opening the panel shows them. The tasks place also keeps every
+// record. Only a task's
 // call ages: a conversation stopped on a question and a watch that needs
 // somebody are live, and are never aged out. A landing with no time on it is
 // not known to be old, and stays.
@@ -338,7 +334,7 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	// THE THREAD IT BELONGS TO HEADS THE DESCRIPTION (owner, 2026-09-17),
 	// spelled as `threads` spells the same conversation ([homeName]); under
 	// that title line come the files and what the work came to.
-	cell := &homeCell{panel: panelNeeds, title: title, right: sinceAt(asked, now),
+	cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: title, right: sinceAt(asked, now),
 		key: needsCallKey + entry.ID, thread: homeName(row),
 		grows: true, sub: rowClauses(needsCallFiles(entry), needsCallSub(entry, status)), answers: needsCallAnswers(status)}
 	line := homeLine{kind: homeSession, row: row, project: project.Name,

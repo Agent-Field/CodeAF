@@ -1147,11 +1147,10 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	if y < 0 || y >= len(hits) {
 		return nil
 	}
-	// phone lane: the foot is a `‹ back` band rather than a key legend, so a press
+	// On a compact frame the foot is an `esc home` band, so a press
 	// on it is the way out (taskphone.go).
 	if hits[y].kind == taskSheetHitBar {
-		a.taskSheetBarPress(x)
-		return nil
+		return a.taskSheetBarPress(x)
 	}
 	// A COLUMN LABEL IS PRESSED WHERE IT IS DRAWN. The control row resolves its
 	// own press against the SAME arithmetic the paint used ([tasksColumns], asked
@@ -1482,7 +1481,7 @@ func (p *tasksPlace) hint(a *app) string {
 	// press. What is true there is the way out, and [placeTailed] puts `tab next
 	// place` in front of it.
 	if !p.detailOn && a.tasksFiltered().held == 0 {
-		return "esc"
+		return homeDoorWord
 	}
 	var parts []string
 	// THE CONVERSATION'S OWN CLAUSE, and it is the word this surface already uses
@@ -1563,7 +1562,7 @@ func (a *app) tasksPageKeys(parts []string) []string {
 	if a.taskSheetFiltering() {
 		return append(parts, tasksClearFilterWord)
 	}
-	return append(parts, tasksFilterHint)
+	return append(parts, tasksFilterHint, homeDoorWord)
 }
 
 func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }

@@ -33,6 +33,7 @@ func (recentPanel) rows(in *homeGridInput) homePanelRows {
 		lines = append(lines, switcherRowLine(row, cell))
 	}
 	lines = append(lines, in.errands...)
+	homeDecorateQuestions(in, lines)
 	return homePanelCut(in, panelRecent, lines)
 }
 

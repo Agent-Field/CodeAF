@@ -77,7 +77,7 @@ func TestOnAPhoneHomeIsAnInboxOfWaitingRunningAndSinceYouLeft(t *testing.T) {
 
 	a := phoneHome(t, lab, mine)
 	rows := phoneRows(a)
-	waiting := rowAt(rows, homePhoneWaitingWord)
+	waiting := rowAt(rows, "Port the Picker")
 	running := rowAt(rows, homePhoneRunningWord)
 	if waiting < 0 {
 		t.Fatalf("no %q section:\n%s", homePhoneWaitingWord, strings.Join(rows, "\n"))
@@ -125,12 +125,12 @@ func TestAPhoneSectionShowsThreeAndFoldsTheRest(t *testing.T) {
 	}
 	a := phoneHome(t, lab, mine)
 	text := phoneText(a)
-	if !strings.Contains(text, "…2 more") {
+	if !strings.Contains(text, "…1 more") {
 		t.Fatalf("five waiting conversations drew no fold:\n%s", text)
 	}
 	// AND THE DOOR OPENS IN PLACE. It is the same gesture the quiet tail has.
 	a.home.foldSection(homePhoneWaitingKey)
-	if text := phoneText(a); !strings.Contains(text, "…2 fewer") {
+	if text := phoneText(a); !strings.Contains(text, "…1 fewer") {
 		t.Fatalf("the fold did not open:\n%s", text)
 	}
 }
@@ -449,20 +449,19 @@ func TestAVeryNarrowPhoneDrawsTheHintRatherThanTheBar(t *testing.T) {
 // ── touch facts ─────────────────────────────────────────────────────────────
 
 // A TAP ON A SECTION HEADING FOLDS IT.
-func TestATapOnAPhoneSectionHeadingFoldsIt(t *testing.T) {
+func TestPhoneQuestionsHaveNoSeparateHeading(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", "/tmp/alpha", now)
 	lab.presence("-tmp-alpha", "aaaa000000000001", session.PresenceWaiting, "a question", now)
 	a := phoneHome(t, lab, mine)
-	rows := phoneRows(a)
-	at := rowAt(rows, homePhoneWaitingWord)
-	if at < 0 {
-		t.Fatalf("no heading to press:\n%s", strings.Join(rows, "\n"))
+	for _, line := range a.home.lines {
+		if line.kind == homePhoneSection && line.dir == homePhoneWaitingKey {
+			t.Fatal("phone Home still draws a waiting heading")
+		}
 	}
-	a.homePress(1, at)
-	if !a.home.sections[homePhoneWaitingKey] {
-		t.Fatal("a tap on the heading did not fold the section")
+	if !strings.Contains(phoneText(a), "Port the Picker") {
+		t.Fatal("removing the heading also removed the waiting conversation")
 	}
 }
 
@@ -581,6 +580,11 @@ func TestThePhoneInboxCarriesSinceYouLeft(t *testing.T) {
 			t.Fatalf("the section does not carry %q:\n%s", want, text)
 		}
 	}
+	at := rowAt(phoneRows(a), homePhoneNewsWord)
+	a.homePress(3, at)
+	if !a.at(pageMemory) {
+		t.Fatal("the compact since you left heading did not open memory")
+	}
 }
 
 // ── the errand's sheet ──────────────────────────────────────────────────────
@@ -644,7 +648,7 @@ func TestAPhoneInboxDrawsAStandingItemOnlyOnce(t *testing.T) {
 	if n := strings.Count(text, words); n != 1 {
 		t.Fatalf("the watch was drawn %d times, want once — lifted into `waiting on you` and not again under its project:\n%s", n, text)
 	}
-	if !strings.Contains(text, homePhoneWaitingWord) {
-		t.Fatalf("the watch was not lifted into %q at all:\n%s", homePhoneWaitingWord, text)
+	if strings.Contains(text, "\n "+homePhoneWaitingWord+" ") {
+		t.Fatal("the watch still has a separate waiting heading")
 	}
 }

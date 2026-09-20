@@ -102,7 +102,7 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	l.live("-alpha", "aaaa000000000002", session.SessionPresence{State: session.PresenceWaiting,
 		Question: consentQuestionAt(9, "needs your ok to run write", l.now.Add(-5*time.Minute))})
 	a := l.open()
-	rows := panelRows(a, panelNeeds)
+	rows := homeAttentionRows(a)
 	if len(rows) != 2 || rows[0].title != "Pricing Site" || rows[1].title != "Prime Sieve" {
 		t.Fatalf("needs you is not the two waits, oldest first: %+v", rows)
 	}
@@ -126,10 +126,11 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	if under := homeLineAfter(frame, "Prime Sieve"); strings.Contains(under, "allow once") || strings.Contains(under, "enter") {
 		t.Fatalf("the second row drew answers or a door word the cursor is not on:\n%s", frame)
 	}
-	// AND THE HEADING IS THE WORD ALONE. It used to count the questions
-	// (`needs you · 2`); the rows are under it (owner, 2026-09-15).
-	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
-		t.Fatalf("the heading counts its rows:\n%s", frame)
+	// The question's own sentence may say "needs your ok"; there is no heading.
+	for _, text := range strings.Split(frame, "\n") {
+		if strings.TrimSpace(text) == "needs you" {
+			t.Fatalf("the removed heading is still drawn:\n%s", frame)
+		}
 	}
 }
 
@@ -142,7 +143,7 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute),
 		FilesChanged: 3})
 	a := l.open()
-	rows := panelRows(a, panelNeeds)
+	rows := homeAttentionRows(a)
 	// THE MARGIN IS WHEN IT LANDED AND NOTHING ELSE; its description leads with
 	// the thread it belongs to, spelled as `threads` spells it (owner,
 	// 2026-09-17), then the files it wrote (owner, 2026-09-15: the right margin
@@ -150,24 +151,11 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "30m" || rows[0].thread != "Prime Sieve" || !strings.HasPrefix(rows[0].sub, "3 files · ") {
 		t.Fatalf("the task's call is not a one-line row of needs you with its files in its description: %+v", rows)
 	}
-	if rows[0].mark != cellMarkNone {
+	if rows[0].mark != cellMarkNeeds {
 		t.Fatalf("a landing wears a mark: %+v", rows[0])
 	}
-	frame := homeText(a)
-	// THE GROUP LINE IS THE WORD ALONE — no count after it and no clause at its
-	// right (owner, 2026-09-15; it used to say `to check · 1` and `finished,
-	// nobody has checked it`).
-	if !strings.Contains(frame, needsCheckWord) || strings.Contains(frame, needsCheckWord+" · ") ||
-		strings.Contains(frame, "nobody has checked") {
-		t.Fatalf("the group line does not name the group, or says more than its name:\n%s", frame)
-	}
-	if strings.Contains(frame, "landed unchecked") {
-		t.Fatalf("the retired sub-line is still drawn:\n%s", frame)
-	}
-	for _, line := range panelLines(a, panelNeeds) {
-		if line.cell.kind == cellRow && (line.task == nil || line.task.ID != "4") {
-			t.Fatalf("the row does not carry the task its door opens: %+v", line)
-		}
+	if rows[0].panel != panelRunning {
+		t.Fatal("the question is not on the task's existing row")
 	}
 }
 
@@ -197,18 +185,18 @@ func TestNeedsBlockingRowsSortFirst(t *testing.T) {
 	l.task("-alpha", session.TaskIndexEntry{ID: "4", SessionID: "aaaa000000000002", Label: "fix the flaky sieve",
 		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-40 * time.Hour)})
 	a := l.open()
-	rows := panelRows(a, panelNeeds)
+	rows := homeAttentionRows(a)
 	if len(rows) != 2 || rows[0].title != "Pricing Site" || rows[1].title != "fix the flaky sieve" {
 		t.Fatalf("the week-old landing did not sort under the fresh question: %+v", rows)
 	}
-	if rows[0].mark != cellMarkNeeds || rows[1].mark != cellMarkNone {
+	if rows[0].mark != cellMarkNeeds || rows[1].mark != cellMarkNeeds {
 		t.Fatalf("the mark is not on the stopped row alone: %+v", rows)
 	}
 	kinds := []homeCellKind{}
 	for _, line := range panelLines(a, panelNeeds) {
 		kinds = append(kinds, line.cell.kind)
 	}
-	if len(kinds) < 4 || kinds[0] != cellHead || kinds[1] != cellRow || kinds[len(kinds)-2] != cellGroup {
+	if len(kinds) < 3 || kinds[0] != cellRow || kinds[len(kinds)-2] != cellGroup {
 		t.Fatalf("the group line does not stand between the question and the landing: %v", kinds)
 	}
 }
@@ -223,7 +211,7 @@ func TestToCheckDrawsTheNewestLandingFirst(t *testing.T) {
 			Title: "call " + id, Status: string(session.TaskUnverified), EndedAt: l.now.Add(-ago)})
 	}
 	a := l.open()
-	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
+	if rows := homeAttentionRows(a); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
 		t.Fatalf("unread is not newest first: %+v", rows)
 	}
 }
@@ -310,17 +298,17 @@ func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
 			Status: string(session.TaskUnverified), EndedAt: l.now.Add(-ago)})
 	}
 	a := l.open()
-	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
+	if rows := homeAttentionRows(a); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
 		t.Fatalf("needs you is not the two fresh calls: %+v", rows)
 	}
 	frame := homeText(a)
 	// AND NEITHER THE HEADING NOR THE GROUP LINE COUNTS ANYTHING: the rows are
 	// under them. The one count is the fold's, which counts the aged landings
 	// with everything else it hides — `3 more`, no longer `3 older · tasks`.
-	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
+	if strings.Contains(frame, "needs you") {
 		t.Fatalf("the heading counted the landings:\n%s", frame)
 	}
-	if !strings.Contains(frame, needsCheckWord) || strings.Contains(frame, needsCheckWord+" · ") {
+	if strings.Contains(frame, needsCheckWord) {
 		t.Fatalf("the group line says more than its name:\n%s", frame)
 	}
 	fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)].cell.title
@@ -331,7 +319,7 @@ func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
 	// of what it counted would have lied about its own number.
 	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
 	drive(t, a, key("enter"))
-	if rows := panelRows(a, panelNeeds); len(rows) != 5 {
+	if rows := homeAttentionRows(a); len(rows) != 5 {
 		t.Fatalf("opening needs you drew %d rows, want all five landings:\n%s", len(rows), homeText(a))
 	}
 }
@@ -342,7 +330,7 @@ func TestNeedsYouKeepsALiveQuestionPastTwoDays(t *testing.T) {
 	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
 		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-5*24*time.Hour))})
 	a := l.open()
-	if rows := panelRows(a, panelNeeds); len(rows) != 1 || rows[0].title != "Pricing Site" {
+	if rows := homeAttentionRows(a); len(rows) != 1 || rows[0].title != "Pricing Site" {
 		t.Fatalf("a question five days old is not on needs you: %+v", rows)
 	}
 	for _, line := range panelLines(a, panelNeeds) {
@@ -355,8 +343,8 @@ func TestNeedsYouKeepsALiveQuestionPastTwoDays(t *testing.T) {
 // AN EMPTY PANEL WHISPERS what arrives there, and never that it is empty.
 func TestNeedsYouWhispersWhenNothingWaits(t *testing.T) {
 	a := newLiveLab(t).open()
-	if frame := homeText(a); !strings.Contains(frame, "questions from any chat or task land here") {
-		t.Fatalf("an empty needs you does not whisper:\n%s", frame)
+	if frame := homeText(a); strings.Contains(frame, "questions from any chat or task land here") || strings.Contains(frame, "needs you") {
+		t.Fatalf("an empty attention panel is still visible:\n%s", frame)
 	}
 }
 
@@ -708,4 +696,15 @@ func writeArtifacts(t *testing.T, path string, rows ...session.Artifact) {
 	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Question rows may live in either the conversation or task list now.
+func homeAttentionRows(a *app) []*homeCell {
+	var out []*homeCell
+	for _, line := range a.home.lines {
+		if line.cell != nil && line.cell.kind == cellRow && line.cell.mark == cellMarkNeeds {
+			out = append(out, line.cell)
+		}
+	}
+	return out
 }

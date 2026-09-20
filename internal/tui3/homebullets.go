@@ -33,6 +33,8 @@ func (a *app) homeAnsweringLine() int {
 func (a *app) homeConversationBullet(cell *homeCell, pal palette) string {
 	working, unread := a.homeChatState(cell)
 	switch {
+	case cell != nil && cell.mark == cellMarkNeeds:
+		return pal.warn(pal.glyph(tokens.GNeedsHuman))
 	case working:
 		mark := pal.glyph(tokens.GWorking)
 		first := a.homeAnsweringLine()

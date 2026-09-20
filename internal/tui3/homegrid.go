@@ -173,10 +173,10 @@ type homePanelSlot struct {
 // heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
 	{panel: recentPanel{homePanelBase{panelRecent}}, keep: 5, least: 3, rest: tabsCap + homeClosedLimit, most: tabsCap + homeClosedLimit},
-	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: needsPanel{homePanelBase{panelNeeds}}, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "tasks", keep: 3, least: 4, rest: 10, most: 10, place: pageTasks, head: pageTasks},
-	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageMemory},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
 	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
@@ -199,7 +199,6 @@ const homeNeedsTaskFresh = 48 * time.Hour
 // than being cut ([homeWhisperLines]), so a `…` on one of these lines could only
 // be read as the screen having run out of room.
 var homeWhisper = map[homePanelID]string{
-	panelNeeds:   "questions from any chat or task land here · a digit answers them",
 	panelRunning: "the last day's tasks land here · /task starts one",
 	panelLeft:    "what watches and tasks did while the terminal was shut",
 	panelSpend:   "every chat and task is priced here",
@@ -1438,7 +1437,7 @@ func (a *app) homeOffersAnswer(at int) bool {
 // folder to leave the answer in can be answered from here, and one without
 // cannot (homepanel_needs.go's [app.homeAnswerLanding]).
 func (a *app) homeRowOffer(line homeLine) string {
-	if line.cell == nil || line.cell.panel != panelNeeds || line.cell.answers == "" {
+	if line.cell == nil || line.cell.answers == "" {
 		return ""
 	}
 	row, now := a.homeTrue(line.row), a.home.world.Read
