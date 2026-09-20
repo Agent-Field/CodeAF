@@ -177,11 +177,12 @@ func beltToolConstantValues(path string) (map[string]bool, error) {
 	return values, nil
 }
 
-// TestCatalogTextIsASCII holds the assumption toLower and scoreSubsequence
-// both document: every seeded verb, description, and alias is plain ASCII,
-// so byte-indexed lowercasing and matching are exact rather than merely fast.
-// A future entry that fails this test needs those two functions revisited
-// before it ships, not a silent wrong match.
+// TestCatalogTextIsASCII holds the assumption toLower and the shared matcher
+// both lean on: every seeded verb, description, and alias is plain ASCII, so
+// byte-indexed lowercasing is exact rather than merely fast, and internal/fuzzy
+// reads a real character class off every byte of a field. A future entry that
+// fails this test needs both revisited before it ships, not a silent wrong
+// match.
 func TestCatalogTextIsASCII(t *testing.T) {
 	for _, entry := range entries {
 		for _, field := range []string{entry.ID, entry.Verb, entry.Description, entry.Key, entry.Slash} {

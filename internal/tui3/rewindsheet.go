@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -503,13 +504,21 @@ func (a *app) rewindSheetSearching() bool { return a.rewindSheetQuery() != "" }
 // every one of them is the answer they searched for — so every one of them takes
 // the point it belongs to.
 func (a *app) rewindSheetItems() []rewindSheetRow {
-	needle := strings.ToLower(a.rewindSheetQuery())
-	if needle == "" {
+	query := a.rewindSheetQuery()
+	if query == "" {
 		return a.rewSheet.rows
 	}
+	// The search is the fuzzy matcher's own (internal/fuzzy): every word typed
+	// has to be found in the row, in order. The rows keep the timeline's own
+	// order, because this list is a history and not an answer key — a loose
+	// word finds more than a substring did, which is the point.
+	terms := fuzzy.Terms(strings.ToLower(query))
 	out := make([]rewindSheetRow, 0, len(a.rewSheet.rows))
 	for _, row := range a.rewSheet.rows {
-		if row.point < 0 || !strings.Contains(strings.ToLower(row.full), needle) {
+		if row.point < 0 {
+			continue
+		}
+		if _, hit := fuzzy.Score(row.full, terms); !hit {
 			continue
 		}
 		row.head = true
