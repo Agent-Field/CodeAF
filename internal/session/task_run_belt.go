@@ -347,6 +347,19 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		Copy: runCopyOf(tree),
 	})
 
+	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
+	return nil
+}
+
+// beltRunSpec is what the engine is handed for a run of this conversation: its
+// seats, its bounds and the copy it works in.
+//
+// IT IS ONE FUNCTION BECAUSE A RUN THAT IS CARRIED ON IS THE SAME RUN. The
+// door that picks an interrupted run back up builds no spec of its own
+// ([Agent.ContinueRun]); if it did, the two would drift on the day somebody
+// changed a seat or a cap on one road, and a continued run would quietly be
+// working under different rules from the one it continues.
+func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	// THE CONVERSATION'S OWN SEATS, read off its role ladder so the engine's
 	// crew factory seats the work and plan roles on what this conversation's
 	// planner and worker calls already resolve through, rather than asking the
@@ -362,10 +375,10 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 			wallLeft = time.Nanosecond
 		}
 	}
-	spec := RunSpec{
-		Store:     store,
+	return RunSpec{
+		Store:     run.store,
 		Workspace: run.workspace,
-		Title:     title,
+		Title:     run.title,
 		Brief:     brief,
 		Slots:     a.config.TaskParallel,
 		CostUSD:   runCostLeft(a.railCap(0), a.Usage().CostUSD),
@@ -378,8 +391,6 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		PlanModel:    planSeat,
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 	}
-	go a.driveBeltRun(runCtx, engine, run, spec)
-	return nil
 }
 
 // openBeltRunStore opens the conversation's store for a run, creating it under
