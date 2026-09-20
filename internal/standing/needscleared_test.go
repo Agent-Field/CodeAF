@@ -61,3 +61,38 @@ func TestAnItemNeedingNobodyIsUnmovedByTheChange(t *testing.T) {
 		t.Fatalf("an item with no line was changed: %+v", changed)
 	}
 }
+
+// AND IT KNOWS WHAT OLDER BUILDS WROTE. Every item stuck on disk today carries
+// the engine's own refusal verbatim, because that is what was put on the item
+// before this change, and an item that has spent its allowance for the day
+// cannot fire again to have it rewritten. A predicate that knew only the new
+// spelling would leave every one of those rows exactly as it found them.
+func TestTheOldSpellingIsStillAPermissionLine(t *testing.T) {
+	for _, line := range []string{
+		"refused in a task: default — nobody to ask",
+		`"bash" needs somebody to say yes (default) and nobody is here to ask, so it was refused`,
+		"needs approval but no resolver is attached: default",
+		NeedsPermissionLead + "something",
+	} {
+		if !IsPermissionLine(line) {
+			t.Fatalf("this is a permission stop and was not recognised: %q", line)
+		}
+		item := Item{ID: "an-item", NeedsPerson: line}
+		if changed := item.ClearNeedsPerson(); changed.NeedsPerson != "" {
+			t.Fatalf("a person's change did not put down %q", line)
+		}
+	}
+}
+
+func TestAQuestionIsNotAPermissionLine(t *testing.T) {
+	for _, line := range []string{
+		"should I send it to the whole team?",
+		"may I re-run it?",
+		"the fix touches migrations",
+		"",
+	} {
+		if IsPermissionLine(line) {
+			t.Fatalf("a question was read as a permission stop: %q", line)
+		}
+	}
+}

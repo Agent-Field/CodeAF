@@ -750,9 +750,10 @@ func (a *app) homeItemEnter(line homeLine) tea.Cmd {
 	// an idle room with nothing to answer and nowhere to act. What they can
 	// actually do is pause the item, stop it or let it go, and the item's own
 	// page is where those are. So the two readings of the field get the two
-	// doors, told apart by the line's own opening
-	// ([standing.NeedsPermissionLead]).
-	if strings.HasPrefix(line.item.NeedsPerson, standing.NeedsPermissionLead) {
+	// doors, told apart by the one predicate
+	// ([standing.IsPermissionLine]), which knows the spelling older builds
+	// wrote as well as this one's.
+	if standing.IsPermissionLine(line.item.NeedsPerson) {
 		a.closeHome()
 		return a.openStandingAt(line.item.ID)
 	}

@@ -93,3 +93,23 @@ func TestAnItemAskingAQuestionStillOpensItsConversation(t *testing.T) {
 		t.Fatalf("enter on an item that asked a question stayed on home, saying %q", a.home.msg)
 	}
 }
+
+// AND THE ROW HIS WATCH ACTUALLY CARRIES TAKES THE ITEM'S DOOR. The line on
+// disk today is the engine's own refusal, written by every build before this
+// one, and a watch that has spent its allowance for the day cannot fire again
+// to have it rewritten. If this row did not move, nothing a person can see
+// would have changed.
+func TestAnItemStuckInTheOldSpellingOpensTheItem(t *testing.T) {
+	lab := newHomeLab(t)
+	a, _, watch := needsDoorItem(t, lab, "refused in a task: default — nobody to ask")
+
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeItem })
+	drive(t, a, key("enter"))
+
+	if !a.at(pageStanding) {
+		t.Fatalf("enter on a row in the old spelling opened %q rather than the item", a.file)
+	}
+	if got, ok := a.orders.current(); !ok || got.ID != watch.ID {
+		t.Fatalf("enter landed standing on %q (%v), want the item %q", got.ID, ok, watch.ID)
+	}
+}
