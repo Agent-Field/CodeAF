@@ -1992,8 +1992,7 @@ away. Nothing went wrong with the work and nobody decided anything about it.
 was at the moment the last process went away.
 
 It is the one landing word that does not mean the work is over. The row waits for you,
-wearing the asking mark, and offers two answers: `continue it`, or `leave it`. Its line
-reads:
+wearing the asking mark. Its line reads:
 
 ```
 nothing is driving it; everything it did is kept
@@ -2004,8 +2003,10 @@ the work, and nobody ended this. `incomplete` is work that ran and came up short
 nothing here came up short. Reading either over work whose only misfortune was a closed
 window would be telling you something that did not happen.
 
-**Nothing continues by itself.** Continuing spends money, so it is always asked for first,
-and the five-minute background pass never continues a run on its own.
+**Nothing picks it up again today.** There is no key, no command and no background pass
+that starts an interrupted run's work a second time. The word and the line above are the
+whole of what the row says about it, and the store keeps every step in the meantime.
+Starting work again spends money, so nothing will ever do it without being asked.
 
 **A background job is different.** A job is a process codeaf forked, and a forked process
 cannot outlive the program that forked it — so a job that was running comes back `stopped`,
