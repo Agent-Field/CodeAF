@@ -387,12 +387,17 @@ type Item struct {
 	// NeedsPerson is set while the latest run is stopped waiting on the person,
 	// with the one line it is stopped on. Home sorts on it.
 	//
-	// TWO THINGS CLEAR IT, and for most of this field's life there was only one.
-	// The pass clears it on the next firing ([Ticker] writes it whole), and the
-	// PERSON clears it by changing the item ([Item.ClearNeedsPerson]). With only
-	// the first, an item that could not fire again — one that had spent its
-	// allowance for the day — kept a row on home saying it needed somebody, for
-	// as long as that stayed true, with no act of theirs able to put it down.
+	// IT CARRIES TWO DIFFERENT THINGS, and a reader has to know which. One is a
+	// QUESTION the firing put to the person, in its own words. The other is the
+	// line written when a call was refused for want of somebody to allow it,
+	// which opens with [NeedsPermissionLead].
+	//
+	// The pass writes this field whole on the next firing. The PERSON can put
+	// down the permission line by changing the item ([Item.ClearNeedsPerson]),
+	// and can never lose a question that way. With only the pass, an item that
+	// could not fire again — one that had spent its allowance for the day — kept
+	// a row on home saying it needed somebody for as long as that stayed true,
+	// with no act of theirs able to put it down.
 	NeedsPerson string `json:"needsPerson,omitempty"`
 	// CleanRuns is HOW MANY FIRINGS IN A ROW CAME BACK CLEAN — fired with
 	// nothing waiting for the person and no failure. It is the count the rope
@@ -576,15 +581,33 @@ func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 	return false
 }
 
-// ClearNeedsPerson answers the line the last firing stopped on by the person's
-// own hand: they have changed the item, so what it stopped on before is no
-// longer news about what it will do next.
+// NeedsPermissionLead opens the one line a firing leaves when it stopped
+// because a call needed permission and nobody was there to give it. It is
+// declared here, beside the field, because two packages must agree on it: the
+// session writes it and [Item.ClearNeedsPerson] recognises it.
+const NeedsPermissionLead = "stopped: it needed your ok to run "
+
+// ClearNeedsPerson puts down the line about a permission a firing could not
+// get, on the person's own act of changing the item. The acts are the ones this
+// build has: pausing it, stopping it, and letting it go again. What a run before
+// that could not be allowed to do is no longer news about what this item will
+// do next.
+//
+// IT LEAVES A QUESTION ALONE, and that is the whole of why it reads the line
+// before clearing it. This field carries two different things. One is a
+// QUESTION the firing actually put to the person, in its own words, which is
+// theirs to answer and which nothing may throw away behind their back — pausing
+// a watch is not answering it. The other is the line this build writes when a
+// call was refused for want of somebody to allow it, which goes stale the
+// moment the item changes. Only the second is put down.
 //
 // IT IS A CHANGE AND NOT A LOOK. Opening an item and closing it again leaves
 // the row exactly as it was, because nothing about the item moved and the
-// reason it stopped is still true. Pausing it, stopping it, letting it go
-// again, or rewording what it does are all acts that make the old line stale.
+// reason it stopped is still true.
 func (it Item) ClearNeedsPerson() Item {
+	if !strings.HasPrefix(it.NeedsPerson, NeedsPermissionLead) {
+		return it
+	}
 	it.NeedsPerson = ""
 	return it
 }

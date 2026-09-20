@@ -970,7 +970,12 @@ func standingEvidence(text, evidence string) string {
 // switcher and home both draw it, and the manual quotes it), so a firing that
 // stopped on the same gate says the same words rather than a second sentence
 // about the same fact.
-const standingRefusalLead = "stopped: it needed your ok to run "
+//
+// IT IS THE STORE'S CONSTANT and not a copy of it, because the item's own
+// document reads the line back to tell a permission it could not get apart from
+// a QUESTION a firing asked the person ([standing.Item.ClearNeedsPerson]). Two
+// spellings of this sentence would be two answers to that.
+const standingRefusalLead = standing.NeedsPermissionLead
 
 // standingRefusalSomething is what the line names when the call's arguments
 // cannot be read. It is deliberately vague, because the honest answer to "what

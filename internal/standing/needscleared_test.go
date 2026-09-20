@@ -14,9 +14,21 @@ import (
 )
 
 func TestChangingAnItemPutsDownTheLineItStoppedOn(t *testing.T) {
-	item := Item{ID: "an-item", NeedsPerson: "stopped: it needed your ok to run something"}
+	item := Item{ID: "an-item", NeedsPerson: NeedsPermissionLead + "something"}
 	if changed := item.ClearNeedsPerson(); changed.NeedsPerson != "" {
 		t.Fatalf("the line survived the person's change: %q", changed.NeedsPerson)
+	}
+}
+
+// AND A QUESTION IS NOT A LINE ABOUT A PERMISSION. The same field carries a
+// question the firing put to the person in its own words, and pausing a watch
+// is not answering it. Losing one behind their back would be the surface
+// throwing away the one thing it exists to carry.
+func TestChangingAnItemKeepsAQuestionTheFiringAsked(t *testing.T) {
+	const asked = "should I send it to the whole team?"
+	item := Item{ID: "an-item", NeedsPerson: asked}
+	if changed := item.ClearNeedsPerson(); changed.NeedsPerson != asked {
+		t.Fatalf("a question the firing asked was thrown away: %q", changed.NeedsPerson)
 	}
 }
 
@@ -28,7 +40,7 @@ func TestClearingTheLineChangesNothingElseAboutTheItem(t *testing.T) {
 		SpentUSD:    1.25,
 		CleanRuns:   3,
 		LastOutcome: "needs-you",
-		NeedsPerson: "stopped: it needed your ok to run something",
+		NeedsPerson: NeedsPermissionLead + "something",
 	}
 	changed := item.ClearNeedsPerson()
 	want := item
