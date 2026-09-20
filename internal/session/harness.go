@@ -470,7 +470,7 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 		Model:     match.Model,
 		ModelNote: match.ModelNote,
 	}
-	defer a.raiseQuestion(a.harnessQuestion(id, offer), func() { hub.send(offer) })()
+	defer a.presenceAskingWhole(a.harnessQuestion(id, offer), func() { hub.send(offer) })()
 
 	select {
 	case answer := <-answers:
