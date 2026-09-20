@@ -75,7 +75,7 @@ on mouse-over on both seams; the model stays bold and bright. Paths truncate on 
 project field disappears if the controls and telemetry leave too little room. The model stays
 bold and bright cyan on home and in conversations, and the effort has no badge.
 The box says `› type to search or start something new`. Its bottom row carries
-`alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands`
+`alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`
 when those controls are available. `/model` or a press on the model opens the list;
 `alt+o` no longer does on home. The `ctrl+o` and `tab` keys work without footer hints.
 Every other place ends in its rule and
@@ -703,11 +703,11 @@ nothing about something else ever separates the model from its machine.
 **Two of those are doors.** Press the model's name and the model picker opens, exactly as
 typing `/model` does. Press the thinking rung and it walks one step up the ladder —
 auto → low → medium → high → xhigh → max, and back to auto — which is the same thing
-`ctrl+v` does and the same thing pressing a task's thinking row does inside a task. From
+`alt+e` does and the same thing pressing a task's thinking row does inside a task. From
 `auto` the first press lands on `low`, and one press past `max` hands the conversation
 back to `auto` again; `/effort auto` gets there in one move. Each brightens
 under the pointer over exactly its own cells, so you can see which of the two you are
-about to press. With the mouse turned off (`ui.mouse`), `/model`, `/effort` and `ctrl+v`
+about to press. With the mouse turned off (`ui.mouse`), `/model`, `/effort` and `alt+e`
 do all three jobs. See "The thinking chip above the message box" on the keys page.
 
 Until 2026-09-09 the rung was spelled onto the model id with a colon
@@ -792,7 +792,7 @@ below.
 **At rest it names the shared controls in home's order**, followed by the way home:
 
 ```
-ctrl+v effort · alt+a approvals · alt+k chats · / commands · esc back
+alt+e effort · alt+a approvals · alt+k chats · / commands · esc back
 ```
 
 On a Mac the modifier reads `opt`. Effort and approvals appear only when the session
@@ -1003,7 +1003,7 @@ the frame (the room chip that used to lead this row is gone with the row), and t
 above the box becomes the task's: `room · esc/←← main · task glm-5.2 (friendli):high
 · ◇ on its own`, with the conversation's numbers after it. **Pressing the model's name
 there moves the task**, not the conversation: the same picker opens aimed at that node, and
-the task switches from its next request onward; pressing the rung, or `ctrl+v`, walks the
+the task switches from its next request onward; pressing the rung, or `alt+e`, walks the
 task's thinking. One `esc` restores both lines. Where the pick could not land the name is
 drawn and simply does not react: a task that has finished, failed, been stopped or needs
 your look, one that has not started, an adaptive run's page, or a node inside a run. The
@@ -3111,7 +3111,7 @@ scroll away, and the `tasks` label stays with it.
 From the keyboard it is `alt+t` to take the column, then `↑` `↓` to walk it — the window
 follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `alt+w` to
 widen the column, and `esc` to give the keyboard back. The column's hint line says the
-same: `↑↓ move · →← tree · enter open · alt+w wide · esc`, and it gains `ctrl+v think harder`
+same: `↑↓ move · →← tree · enter open · alt+w wide · esc`, and it gains `alt+e think harder`
 before the `esc` while the row under the cursor is work that has not finished — that chord
 moves the task's own thinking rung. And on a row that says **`your call`** the whole slot
 becomes that row's own answers and an `esc` — `a` says yes to what it is asking, `n` says

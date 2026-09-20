@@ -53,7 +53,7 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 		// window keeps every key that asks nothing of the disk and loses the ones
 		// that do (homestanding.go's [app.homeItemWrite] refuses in words).
 		if a.stands.SetEffort != nil {
-			clauses = append(clauses, effortKeyClause)
+			clauses = append(clauses, a.chords.say(effortKeyClause))
 		}
 		clauses = append(clauses, "→ more")
 	default:

@@ -198,7 +198,7 @@ box:
 ```
 ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser
 › type to search or start something new
-alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands
+alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
 ```
 
 At the left it says **what model** answers, then a colon and **how hard it thinks**
@@ -213,7 +213,7 @@ available project, effort and approval controls; the cells can also be pressed:
 |---|---|---|
 | the folder | `alt+p` walks to the next project | press the path |
 | the model | `/model` opens the model list | press the name |
-| the rung | `ctrl+v` walks auto → low → … → max → auto | press the cell |
+| the rung | `alt+e` walks auto → low → … → max → auto | press the cell |
 | the gate | `alt+a` walks asks → guardian → YOLO → asks | press the cell |
 
 Each one changes **the draft** — the next conversation you start from home — and says so

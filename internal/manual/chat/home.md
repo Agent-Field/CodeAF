@@ -49,7 +49,7 @@ is only ever the things that are actually going on.
 
 Escape stays on Home once its local layers are dismissed. Open a conversation row
 or use `alt+k` to return; drafts and work stay intact. The resting foot reads
-`alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands`.
+`alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`.
 The project, approvals and chats hints appear only where those controls can act.
 The controls stay the same as the cursor walks between rows. `→` opens the selected
 row's verbs; `←` closes them.
@@ -792,7 +792,7 @@ straight back to it, for the same reason: it is alive, so there is nothing to re
 The resting foot reads, when all its controls are available:
 
 ```
-alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands
+alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
 ```
 
 (the box above it says `› type to search or start something new`, which is where that
@@ -1229,7 +1229,7 @@ your words. Use `/ask <question>` to ask in a home pane instead.
  ○ Pricing                                                             12m   ← one ↑
  ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
  › pricing
- alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands
+ alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
 ```
 
 **Where it opens is on the rule above the box, and `enter` honours it.** That line reads
@@ -1238,7 +1238,7 @@ start at the left, with `project: <path>` at the far right naming where the conv
 The effort word follows a colon with no badge. A long project path is cut on the right.
 With nothing pinned the folder **follows the row your cursor is on** — walk onto another
 project's row and the rule re-points — and with nothing under the cursor it is this window's
-own project. `alt+p` pins it, `/model` pins the model, `ctrl+v` walks the rung and `alt+a`
+own project. `alt+p` pins it, `/model` pins the model, `alt+e` walks the rung and `alt+a`
 walks the gate; *Change the model before starting* has the whole of all four.
 
 One `↑` selects the best result; Enter then opens that result. Walking `↓` past
@@ -1378,9 +1378,9 @@ as `project: <path>` on the seam. If `/folder` selected a destination outside th
 the next cycle starts at its first project. With just one destination already selected,
 `alt+p project` is absent.
 
-**`ctrl+v` and `alt+a` are the same gesture for the two cells after the model.** `auto`
+**`alt+e` and `alt+a` are the same gesture for the two cells after the model.** `auto`
 is how hard the next conversation will think — with nothing pinned, the `thinking` row in
-`/settings` folded with any level set on the model — and `ctrl+v`, or a press on the cell,
+`/settings` folded with any level set on the model — and `alt+e`, or a press on the cell,
 walks it one rung: home says `thinking · high · for the next conversation you start here`.
 `◇ asks` is what it will run without asking — with nothing pinned, the `ask before running`
 row, or `YOLO` under `--yolo` — and `alt+a`, or a press, walks asks → guardian → YOLO →
@@ -1578,7 +1578,7 @@ three ways:**
   what it is asking under it;
 - **while it is firing**, it is a row of `scheduled` like any other order — it is not a
   task and has no row on `tasks`. It is still the item — `ctrl+e` pauses it, `ctrl+x` stops
-  it, and `ctrl+v` raises how hard it thinks;
+  it, and `alt+e` raises how hard it thinks;
 - **while it is simply waiting for its time**, it is a row of `scheduled`, soonest first, with
   when it goes off at the right — `in 20h`, `mon 8:30`.
 
@@ -1606,7 +1606,7 @@ stops it for good**, from any column, with no strip (on a `tasks` row this windo
 middle column on a wide home, or under the row on a narrower layout. While they are
 drawn those letters are the verbs. `esc` or `←` closes them.
 
-A third chord, **`ctrl+v`**, raises how hard that item thinks — see "Make a reminder think
+A third chord, **`alt+e`**, raises how hard that item thinks — see "Make a reminder think
 harder" below. Home says `paused · <your words>` or `stopped · <your words>` at the foot and
 redraws the row from the store, so what you see is what is on disk rather than what the
 keypress hoped for.
@@ -1622,13 +1622,13 @@ it` rather than pretending.
 "why did I get this?", whatever project it belongs to. Something you set up from home that
 never became a conversation opens the standing place with the cursor on it instead.
 
-## Make a reminder think harder — how hard a standing item thinks, and ctrl+v on its row
+## Make a reminder think harder — how hard a standing item thinks, and alt+e on its row
 
 The machine's **thinking** row does not reach a standing firing at all. An install
 dialled to `max` still does not turn every check on the machine into a deep pass,
 and an item nobody has dialled asks for nothing.
 
-**`ctrl+v` on an item's row is how you raise the one that deserves it.** Put the cursor on
+**`alt+e` on an item's row is how you raise the one that deserves it.** Put the cursor on
 the standing item — on home at rest it has a row under `scheduled`, or under `needs you`
 while it is asking you something — and press it: the rung climbs one step each
 press — `low`, `medium`, `high`, `xhigh`, `max`, then back to `low` — and home says
@@ -1640,7 +1640,7 @@ An item nobody has dialled says **nothing** at all about it, which is not the sa
 survives closing codeaf, and it is what that item's firings **and** its checks ask for
 from then on.
 
-`ctrl+v` does nothing on a conversation's row: that rung belongs to the window that
+`alt+e` does nothing on a conversation's row: that rung belongs to the window that
 conversation is open in, and the machine's own default is the `thinking` row of `/settings`.
 A window that cannot write to the store says `this window cannot change it`.
 
@@ -1858,7 +1858,7 @@ are looking at: the row under your pointer when there is one, the cursor's row o
 | `ctrl+y` | copies the workspace path |
 | `ctrl+e` | puts the conversation away, or pauses a standing item |
 | `ctrl+x` | stops a standing item for good |
-| `ctrl+v` | raises how hard a standing item thinks; nothing on a conversation row |
+| `alt+e` | raises how hard a standing item thinks; nothing on a conversation row |
 
 `y` and `n` are a question's own first two answers on the `→` strip — `y let it send`,
 `n not this time` — and exist only while that strip is drawn.

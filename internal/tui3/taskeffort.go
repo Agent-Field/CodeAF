@@ -4,7 +4,7 @@ package tui3
 //
 // A task is a whole session of its own with its own workers, and the rung it
 // runs at is its own fact (internal/session's [Agent.SetTaskEffort], which rides
-// the checkpoint). This file is the surface's half: what `ctrl+v` is aimed at
+// the checkpoint). This file is the surface's half: what `alt+e` is aimed at
 // while a person is standing on a task, and the clause the room states the rung
 // in. The scope rules for every other surface are in effortscope.go.
 
@@ -44,7 +44,7 @@ func (a *app) taskEffortDoors() (taskEffortDoor, bool) {
 // shape [taskModelUnavailableWord] says the same thing about the model.
 const taskEffortUnavailableWord = "changing how hard a task thinks is unavailable — this session has no door onto it"
 
-// effortTaskHere is the node `ctrl+v` is aimed at while a person is standing on
+// effortTaskHere is the node `alt+e` is aimed at while a person is standing on
 // a task, and false when they are not standing on one.
 //
 // THE ROSTER'S HOLD OUTRANKS THE ROOM, and that is the dispatcher's own order
@@ -98,7 +98,7 @@ func (a *app) taskRung(id uint64) effort.Rung {
 	return rung
 }
 
-// cycleTaskEffort is `ctrl+v` on a task: one step up the wheel, on the node
+// cycleTaskEffort is `alt+e` on a task: one step up the wheel, on the node
 // under the person's hand, and a line in the conversation saying so.
 //
 // THE NOTE IS THE RECORD OF A DECISION and is left where every other change to

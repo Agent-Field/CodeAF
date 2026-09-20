@@ -118,11 +118,9 @@ import (
 // binds it, the manual prints it and the menu's foot names it, and a surface
 // that printed a key nobody bound would be lying about itself.
 //
-// ctrl+v is free here and only here. In a terminal, paste is the TERMINAL's
-// gesture — it arrives as a bracketed paste and never as a keystroke — so the
-// chord reaches this application only on the terminals that decline to spend it
-// themselves, and on those it was doing nothing at all.
-const effortKey = "ctrl+v"
+// The shared chord spelling renders this as opt+e on macOS and alt+e elsewhere,
+// matching the project and approvals controls beside it.
+const effortKey = "alt+e"
 
 // effortAutoWord is what this surface calls absence: the dial left alone, with
 // nothing asked for and the model thinking however it thinks.

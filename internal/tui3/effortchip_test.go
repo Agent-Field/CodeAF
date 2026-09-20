@@ -323,7 +323,7 @@ func TestANarrowSeamDropsTheRungRatherThanCuttingIt(t *testing.T) {
 // state an install ships at was the one the walk could not reach, so a
 // conversation dialled up once had to be put back through `/effort` — a
 // different door for the one stop people most want back.
-func TestCtrlVCyclesTheConversationRungAndComesBackToAuto(t *testing.T) {
+func TestAltECyclesTheConversationRungAndComesBackToAuto(t *testing.T) {
 	agent, a := shipped(t)
 	a.slash("/effort high")
 	agent.sets = nil
@@ -405,7 +405,7 @@ func TestClearingOnAnInstallWithItsOwnRungNamesThatRow(t *testing.T) {
 
 // THE CHORD RIDES THE CHORD NAMESPACE, so it reaches the ladder with a sentence
 // half typed — and leaves the sentence and the caret exactly where they were.
-// A letter still types: ctrl+v carries no text, and the router reads it in the
+// A letter still types: alt+e carries no text, and the router reads it in the
 // plain switch under everything that could have wanted it.
 func TestTheChordWorksMidDraftAndDisturbsNeitherTextNorCaret(t *testing.T) {
 	agent, a := dialled(t)
@@ -413,7 +413,11 @@ func TestTheChordWorksMidDraftAndDisturbsNeitherTextNorCaret(t *testing.T) {
 	drive(t, a, key("left"), key("left"), key("left"))
 
 	want, caret := a.input.String(), a.input.cursor
-	drive(t, a, key(effortKey))
+	drive(t, a, key("ctrl+v"))
+	if len(agent.sets) != 0 {
+		t.Fatalf("the retired effort chord still changed thinking: %v", agent.sets)
+	}
+	drive(t, a, key("alt+e"))
 
 	if got := a.input.String(); got != want {
 		t.Fatalf("the chord changed the draft to %q, want %q", got, want)
@@ -794,9 +798,8 @@ func TestClickingALadderRowPicksThatRung(t *testing.T) {
 }
 
 // THE ROUTER REACHES THE CHORD WITH A DRAFT IN PROGRESS, asserted at the router
-// rather than at the wire: ctrl+v is a single byte (0x16) that every terminal
-// sends the same way, so what is worth pinning is that none of the seventeen
-// claims above the plain switch swallows it while somebody is typing.
+// through a real modified key event, so none of the claims above the plain
+// switch may swallow it while somebody is typing.
 func TestTheRouterReachesTheChordWithADraftInProgress(t *testing.T) {
 	_, a := dialled(t)
 	typeInto(t, a, "/hel")

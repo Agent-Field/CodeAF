@@ -3705,7 +3705,7 @@ func (a *app) idleHint() string {
 	doors := make([]string, 0, 5)
 	if !a.roomOpen() {
 		if _, ok := a.effortDial(); ok {
-			doors = append(doors, targetEffortKeyWord)
+			doors = append(doors, a.chords.say(targetEffortKeyWord))
 		}
 		if _, ok := a.approvalDial(); ok {
 			doors = append(doors, a.chords.say(targetApprovalKeyWord))
@@ -3819,7 +3819,7 @@ func (a *app) hintWord() string {
 		// and a word and has no room for a key, so the slot under the ladder is
 		// where somebody who arrived by clicking learns how to arrive by typing
 		// (effortchip.go).
-		return "↑↓ · enter apply · esc · " + effortKey + " next rung"
+		return a.chords.say("↑↓ · enter apply · esc · " + effortKey + " next rung")
 	case a.roster.open:
 		return "enter open · esc"
 	case a.shelf.open:

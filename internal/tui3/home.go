@@ -2673,8 +2673,8 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 
-	case "ctrl+v":
-		// CTRL+V MOVES THE RUNG OF WHATEVER THIS CARD IS ABOUT, which on home is
+	case effortKey:
+		// ALT+E MOVES THE RUNG OF WHATEVER THIS CARD IS ABOUT, which on home is
 		// two things and not one: at rest the card is the machine's own and the
 		// rung is the install's default (homeband_thinking.go), and on a standing
 		// item's row it is that item's. Both go through [app.cycleHomeEffort],
@@ -5133,7 +5133,7 @@ func (a *app) homeHint() string {
 	// cheapest clauses on it — [hintFit] gives up the clause nearest the tail
 	// first — because the rule above says what they change, and a person who
 	// has found the rule has found the cells to press.
-	return withChords(a.homeHintWords(), a.targetChordWords())
+	return a.chords.say(withChords(a.homeHintWords(), a.targetChordWords()))
 }
 
 // withChords puts the draft's chords on a foot sentence BEFORE ITS WAY OUT:

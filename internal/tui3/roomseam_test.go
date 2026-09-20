@@ -13,7 +13,7 @@ import (
 // (roomseam.go).
 
 // roomEffortFake is a [roomFake] with the task's rung doors, so the seam has a
-// rung to draw and `ctrl+v` has one to move.
+// rung to draw and `alt+e` has one to move.
 type roomEffortFake struct {
 	*roomFake
 	rungs map[uint64]string
@@ -53,17 +53,17 @@ func TestTheRoomsSeamCarriesTheNodesModelRungAndGate(t *testing.T) {
 	}
 }
 
-// `ctrl+v` INSIDE A ROOM WALKS THE NODE'S RUNG, and the cell says the new
+// `alt+e` INSIDE A ROOM WALKS THE NODE'S RUNG, and the cell says the new
 // word on the same keystroke; the conversation's own rung is untouched.
-func TestCtrlVInARoomWalksTheNodesRungAndTheSeamSaysSo(t *testing.T) {
+func TestAltEInARoomWalksTheNodesRungAndTheSeamSaysSo(t *testing.T) {
 	a, fake := roomModelApp(t, "z-ai/glm-5.2")
 	doors := &roomEffortFake{roomFake: fake, rungs: map[uint64]string{9: effort.High.String()}}
 	a.agent = doors
 	a.width = 160
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	next := effortNextClearing(effort.High).String()
 	if got := doors.rungs[9]; got != next {
-		t.Fatalf("ctrl+v in the room set the node's rung to %q, want %s", got, next)
+		t.Fatalf("alt+e in the room set the node's rung to %q, want %s", got, next)
 	}
 	if seam := plain(a.legend(a.width)); !strings.Contains(seam, a.effortChip(next)) {
 		t.Fatalf("the seam does not say the node's new rung:\n%q", seam)

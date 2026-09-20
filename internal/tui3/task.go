@@ -2255,7 +2255,7 @@ const (
 	// quoted from the handler rather than authored twice.
 	//
 	// It is split at the dismiss key because ONE OF THOSE KEYS IS CONDITIONAL:
-	// ctrl+v moves the focused node's rung and the engine refuses a node whose
+	// alt+e moves the focused node's rung and the engine refuses a node whose
 	// run is over, so it is named only while the row under the cursor could take
 	// it ([app.railHoldHintWord]), and esc stays last because leaving is what a
 	// person looks to the end of the line for.
@@ -3946,7 +3946,7 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		a.railWiden(!a.railWide)
 		return nil, true
-	case "ctrl+v":
+	case effortKey:
 		// HOW HARD THE FOCUSED NODE THINKS, one step up the ladder. It is read
 		// here — inside the hold, beside the keys that move the cursor — because
 		// the roster's cursor IS what "the task you are standing on" means while

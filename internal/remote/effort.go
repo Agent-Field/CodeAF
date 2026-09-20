@@ -7,7 +7,7 @@ import "encoding/json"
 // internal/session holds the ladder and the dial (its effort.go), and until this
 // file a HOSTED conversation had neither: the surface asserts the dial on its
 // agent, *remote.Agent did not carry it, so `codeaf chat --host devbox` drew no
-// rung, answered `ctrl+v` with nothing, and said nowhere that the knob every
+// rung, answered `alt+e` with nothing, and said nowhere that the knob every
 // local conversation has was missing. The task's own rung crossed
 // (wire_task.go); the conversation's did not.
 //

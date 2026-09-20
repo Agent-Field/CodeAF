@@ -29,14 +29,14 @@ import (
 // starts things (pages.go's [place.box]). Both begin with WHAT answers,
 // HOW HARD it thinks, WHAT IT MAY RUN WITHOUT ASKING, and WHERE it runs.
 // Home cycles the draft's project; a conversation names its workspace. The model is a door
-// onto the model list, the rung walks the thinking ladder (`ctrl+v`, or a
+// onto the model list, the rung walks the thinking ladder (`alt+e`, or a
 // press), and the gate walks the approvals wheel (`alt+a`, or a press). One
 // shape, learned once.
 //
 // ── WHY THE DRAFT CARRIES THE RUNG AND THE GATE ────────────────────────────
 //
 // Until this file the rule on home said the folder and the model and nothing
-// else; `alt+a` and `ctrl+v` did nothing outside a conversation; and the
+// else; `alt+a` and `alt+e` did nothing outside a conversation; and the
 // `YOLO` word was a chip on one screen and a badge on another. A person who
 // learned the seam in a conversation arrived on home and found nothing they
 // knew. (The six other places had a box of their own then, under a note or a
@@ -152,7 +152,7 @@ func (a *app) targetEffortChip() string {
 	return a.effortChip(word)
 }
 
-// cycleTargetEffort is `ctrl+v` on a place with a draft, and the press on the
+// cycleTargetEffort is `alt+e` on a place with a draft, and the press on the
 // cell: one step up the same wheel the conversation's rung walks, from the
 // word the cell shows, back to `auto` off the top.
 func (a *app) cycleTargetEffort() tea.Cmd {
@@ -308,16 +308,16 @@ func (a *app) applyTargetPins() tea.Cmd {
 func (a *app) placeHasDraft() bool { return a.at(pageHome) }
 
 // placeTargetKey edits the draft on home: `alt+p` moves the project,
-// `ctrl+v` walks the rung and `alt+a` walks the gate. The model list opens
+// `alt+e` walks the rung and `alt+a` walks the gate. The model list opens
 // through `/model` or a press on the model, not a separate shortcut.
 //
 // It is read from home's [placeHome.owns], after the phone sheet and before
 // the grid; no other place has a draft ([app.placeHasDraft]).
 //
-// `ctrl+v` ON A STANDING ITEM'S CARD IS THAT ITEM'S. The card names the key
+// `alt+e` ON A STANDING ITEM'S CARD IS THAT ITEM'S. The card names the key
 // for the item's own rung (homeband_keys.go), and a card that named a key the
 // draft then took would be the surface lying about the next keystroke; so on
-// that one row the chord falls through to the card ([app.cycleHomeEffort]),
+// that one row routes straight to the card ([app.cycleHomeEffort]),
 // and the draft's rung is still one press on its cell.
 func (a *app) placeTargetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.placeHasDraft() {
@@ -333,7 +333,7 @@ func (a *app) placeTargetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case effortKey:
 		if a.at(pageHome) {
 			if subject, ok := a.homeSubject(); ok && subject.kind == bandKindItem {
-				return nil, false
+				return a.cycleHomeEffort(), true
 			}
 		}
 		return a.cycleTargetEffort(), true

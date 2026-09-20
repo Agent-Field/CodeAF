@@ -293,7 +293,7 @@ machine answering for it, `via friendli`, whoever served it.
 
 **The model and the rung are doors, while the task can still be moved.** Press the model
 name, and the picker opens aimed at *that task*: it switches from its next request on and
-your conversation's model is untouched. Press the rung, or `ctrl+v`, and the task's rung
+your conversation's model is untouched. Press the rung, or `alt+e`, and the task's rung
 walks one step — the note reads `task 9 · thinking · high · its next call takes it`. A task
 that has finished, failed, been stopped, needs your look, or is a node inside an adaptive
 run keeps both words as facts that do not react.

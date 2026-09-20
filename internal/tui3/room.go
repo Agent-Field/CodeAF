@@ -1909,7 +1909,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.roomDetailsScroll(a.scrollPage())
 		return nil, true
 
-	case "ctrl+v":
+	case effortKey:
 		// HOW HARD THIS NODE THINKS, one step up the ladder — the same chord that
 		// moves the install's rung on home at rest and a standing item's on its
 		// own card, bound here to the node whose page this is (taskeffort.go).

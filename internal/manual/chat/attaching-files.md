@@ -262,7 +262,8 @@ codeaf does not read picture bytes from the Windows or macOS clipboard. If the c
 contains a picture rather than a file path, the terminal sends no path into the message
 box, so its paste shortcut with that picture pastes nothing into the box. Most terminals
 consume their paste shortcut before codeaf sees a key. If a terminal does pass `ctrl+v`
-through, codeaf uses that chord to change thinking, never to read clipboard pixels.
+through, codeaf leaves it unbound; it does not read clipboard pixels. Effort uses
+`alt+e` (`opt+e` on macOS).
 
 Two things do work: drag the screenshot file onto the terminal, or paste the screenshot's
 path. Either one gives codeaf a real local file to put on the tray. If your screenshot is

@@ -237,7 +237,7 @@ func (a *app) walkPage(back bool) tea.Cmd {
 // segment in the status line already follows and the reason there is no
 // settings page anywhere in this gesture: pressing the model is `/model`,
 // pressing the folder is `alt+p`, and the rung and the gate walk one step on a
-// press exactly as the conversation's own cells do (`ctrl+v`, `alt+a`) — so
+// press exactly as the conversation's own cells do (`alt+e`, `alt+a`) — so
 // the pointer and the keyboard reach the same four doors by the same names,
 // on every place with a draft (boxseam.go).
 //

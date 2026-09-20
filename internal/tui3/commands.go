@@ -269,13 +269,13 @@ var commands = []command{
 	// something into the draft instead of running it.
 	//
 	// It is the LADDER'S door and not its only one. The rung is on the seam
-	// beside the model, `ctrl+v` walks it and so does a press on it
+	// beside the model, `alt+e` walks it and so does a press on it
 	// (effortchip.go) — this is the row for the person who wants to read the
 	// five before choosing, and the word people reach for is `thinking`, which
 	// is what the settings row calls the same ladder.
 	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
 		alias: []string{"think", "thinking"}},
-	{name: "effort", args: "<rung>", desc: "…set it outright · ctrl+v walks it, or press it on the seam"},
+	{name: "effort", args: "<rung>", desc: "…set it outright · " + effortKey + " walks it, or press it on the seam"},
 	{name: "ask", args: "<question>", desc: "ask here on home", door: sendDoorAsk},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},

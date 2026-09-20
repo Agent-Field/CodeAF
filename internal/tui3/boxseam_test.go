@@ -118,14 +118,14 @@ func TestTheDraftsCellsAreTheSeamsOwnSpelling(t *testing.T) {
 
 // ── 2. the chords, on every place ───────────────────────────────────────────
 
-// `alt+a` AND `ctrl+v` WALK THE DRAFT'S GATE AND RUNG ON HOME, one stop per
+// `alt+a` AND `alt+e` WALK THE DRAFT'S GATE AND RUNG ON HOME, one stop per
 // press, on the conversation's own wheels: the gate never lands on `refuses`,
 // and the rung comes back to `auto` off the top.
 func TestTheDraftsChordsWalkTheRungAndTheGateOnHome(t *testing.T) {
 	for _, id := range draftPlaces {
 		_, a := drafting(t)
 		a.showPage(id)
-		if hint := a.homeHint(); !strings.Contains(hint, "ctrl+v effort · alt+a approvals") {
+		if hint := a.homeHint(); !strings.Contains(hint, "alt+e effort · alt+a approvals") {
 			t.Fatalf("home does not name its approval control: %q", hint)
 		}
 		drive(t, a, key("alt+a"))
@@ -143,15 +143,20 @@ func TestTheDraftsChordsWalkTheRungAndTheGateOnHome(t *testing.T) {
 		if got, _ := a.targetApproval(); got != session.PostureAsk {
 			t.Fatalf("%s: the wheel went to %q past YOLO, want ask and never refuses", id.word(), got)
 		}
+		before, _ := a.targetEffort()
 		drive(t, a, key("ctrl+v"))
+		if got, _ := a.targetEffort(); got != before {
+			t.Fatalf("the retired effort chord changed the home draft from %q to %q", before, got)
+		}
+		drive(t, a, key("alt+e"))
 		if got, _ := a.targetEffort(); got != effortNextClearing(effort.High).String() {
-			t.Fatalf("%s: one ctrl+v from the install's high lands on %q, want %s", id.word(), got, effortNextClearing(effort.High))
+			t.Fatalf("%s: one alt+e from the install's high lands on %q, want %s", id.word(), got, effortNextClearing(effort.High))
 		}
 	}
 }
 
 // AND THE CELLS ARE DOORS UNDER THE POINTER, at the columns the frame drew
-// them — a press on the rung is `ctrl+v` and a press on the gate is `alt+a`.
+// them — a press on the rung is `alt+e` and a press on the gate is `alt+a`.
 func TestTheDraftsCellsAreDoorsUnderThePointer(t *testing.T) {
 	_, a := drafting(t)
 	a.showPage(pageHome)
@@ -189,7 +194,7 @@ func TestADraftWithNoDialDrawsNoRungAndNoGate(t *testing.T) {
 	if hint := a.homeHint(); strings.Contains(hint, "alt+a") {
 		t.Fatalf("home advertises an unavailable approval control: %q", hint)
 	}
-	drive(t, a, key("alt+a"), key("ctrl+v"))
+	drive(t, a, key("alt+a"), key("alt+e"))
 	if a.target.approval != "" || a.target.effort != "" {
 		t.Fatalf("a chord pinned something the rule never offered: gate %q, rung %q", a.target.approval, a.target.effort)
 	}
@@ -206,7 +211,7 @@ func TestThePinsRideOntoTheConversationAndTheGateIsSpent(t *testing.T) {
 	a.start = func(workspace string) (Conversation, error) {
 		return Conversation{Agent: next, SessionFile: workspace + "/next/transcript.jsonl", Workspace: workspace}, nil
 	}
-	drive(t, a, key("alt+a"), key("alt+a"), key("ctrl+v"))
+	drive(t, a, key("alt+a"), key("alt+a"), key("alt+e"))
 	rung, _ := a.targetEffort()
 
 	typeHome(a, "why is the lexer allocating")
@@ -335,7 +340,7 @@ func TestConversationControlsMatchHomeAndKeepTheHomeDoor(t *testing.T) {
 	a.chords.meta = chordMetaWord
 	a.notices.enabled = false
 	a.branch = "dev"
-	want := "ctrl+v effort · opt+a approvals · opt+k chats · / commands · esc back"
+	want := "opt+e effort · opt+a approvals · opt+k chats · / commands · esc back"
 	if got := a.footHint(200); got != want {
 		t.Fatalf("conversation controls = %q, want %q", got, want)
 	}
@@ -370,5 +375,27 @@ func TestConversationControlsMatchHomeAndKeepTheHomeDoor(t *testing.T) {
 			t.Fatalf("home hint did not open home at %d columns", width)
 		}
 		a.closeHome()
+	}
+}
+
+// The same effort control names the platform's modifier on both message boxes
+// and on the ladder, so a Mac never shows an Alt hint beside Option hints.
+func TestEffortHintsUseThePlatformModifier(t *testing.T) {
+	for _, modifier := range []string{chordAltWord, chordMetaWord} {
+		t.Run(modifier, func(t *testing.T) {
+			_, a := drafting(t)
+			a.chords.meta = modifier
+			a.showPage(pageHome)
+			if got := a.homeHint(); !strings.Contains(got, modifier+"e effort") {
+				t.Fatalf("home effort hint: %q", got)
+			}
+			if got := a.idleHint(); !strings.Contains(got, modifier+"e effort") {
+				t.Fatalf("conversation effort hint: %q", got)
+			}
+			a.effPick.open = true
+			if got := a.hintWord(); !strings.Contains(got, modifier+"e next rung") {
+				t.Fatalf("effort picker hint: %q", got)
+			}
+		})
 	}
 }

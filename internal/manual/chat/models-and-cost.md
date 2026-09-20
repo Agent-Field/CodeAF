@@ -1089,7 +1089,7 @@ Several things can name a rung, and the most specific one wins:
    anybody set. Your own turn, and the task workers you hand work out to, take the default.
 5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
-**`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
+**`alt+e` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which is named on the line above the box, beside the model:
 `glm-5.3-flash:high`. On a task — the roster row under the cursor, or the page you are
 inside — it moves that task's rung. On a standing item's card it moves that item's. A
@@ -1101,14 +1101,14 @@ and wrapped from `max` to `low`.) `/effort auto` and the top row of `/effort` st
 this conversation in one move from any rung. A standing item's rung is the one that never
 walks back to "nobody said": it is cleared in the item's own document. The **thinking**
 row in `/settings` stays what it is: the answer for every conversation that has not been
-dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
+dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *alt+e — how hard the
 thing you are looking at thinks*.
 
-**Three doors, one rung.** `ctrl+v`, a press on the rung itself, and `/effort`:
+**Three doors, one rung.** `alt+e`, a press on the rung itself, and `/effort`:
 
 | What you do | What happens |
 |---|---|
-| `ctrl+v` | one step up the ladder, and back to `auto` off the top |
+| `alt+e` | one step up the ladder, and back to `auto` off the top |
 | press the rung on the line above the box | the same one step, the same six stops, and it lights under the pointer first |
 | `/effort` (or `/thinking`, `/think`) | six rows — `auto` and the five rungs — with what each one buys and the one in force marked |
 | `/effort max` | that rung, outright |

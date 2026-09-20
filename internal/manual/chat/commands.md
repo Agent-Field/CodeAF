@@ -1058,7 +1058,7 @@ Type-and-enter starts a chat. `/ask <question>` asks in a home pane instead. **A
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
 the command list*). The box says `› type to search or start something new` and the foot
 names the available draft controls:
-`alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands`. The arrow, `enter`, `ctrl+o` and `tab`
+`alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`. The arrow, `enter`, `ctrl+o` and `tab`
 keys still work, without hints on this row.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —

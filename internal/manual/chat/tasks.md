@@ -3429,7 +3429,7 @@ chips off the end and says how many went, `a accept · n not right · +1` and th
 `a accept · +2`: the same answers in the same order, with a count of the ones that did not
 fit. Every letter keeps working whether or not it is printed.
 
-**`ctrl+v` inside a room moves that task's thinking rung**, one step up each press and back
+**`alt+e` inside a room moves that task's thinking rung**, one step up each press and back
 round to `low` from `max`. It is the same chord home uses on the machine's own default and
 on a standing item, bound here to the task whose page you are standing in; the keys page
 has the whole of it. A worker already running keeps the rung it started with, so the line

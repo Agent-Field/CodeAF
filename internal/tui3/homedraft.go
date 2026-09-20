@@ -62,7 +62,7 @@ type homeTarget struct {
 	model string
 	// effort is the rung the next conversation thinks at, "" for what the
 	// install would do anyway ([app.targetEffortStanding]). It is pinned by
-	// `ctrl+v` and a press on the cell, and — like the model — it survives the
+	// `alt+e` and a press on the cell, and — like the model — it survives the
 	// conversation that uses it: how hard you think is how you work
 	// (boxseam.go).
 	effort string
@@ -244,7 +244,7 @@ func (a *app) clearTargetSpans() {
 
 // ── the chords ──────────────────────────────────────────────────────────────
 //
-// `alt+p`, `ctrl+v`, `alt+a` and every key the model list over the
+// `alt+p`, `alt+e`, `alt+a` and every key the model list over the
 // target takes are [app.placeTargetKey] (boxseam.go), read from
 // [placeHome.owns] before the router claims a single chord and from
 // [app.placeKeyPress] on the other places.

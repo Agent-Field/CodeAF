@@ -785,7 +785,7 @@ func (a *app) homeSheetKeyFirst(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return a.homeItemWrite(line, standing.StatusRetired), true
 		}
 		return nil, true
-	case "ctrl+v":
+	case effortKey:
 		// AND THE ITEM'S RUNG, at this width too, on the rule above: a key the
 		// card's legend names works wherever the card is drawn (homeeffort.go).
 		// An item's rung is the only one this chord moves anywhere now, so there

@@ -230,7 +230,7 @@ func homeFate(word, rest string) string {
 		// /crew and /model. The crew is the machine's, the model has a target
 		// rule home can pin — and a thinking rung is the CONVERSATION's own scope
 		// (effortchip.go), so there is nothing here for it to be set on. Home's
-		// own rung is not this one either: `ctrl+v` on a standing item's card
+		// own rung is not this one either: `alt+e` on a standing item's card
 		// moves that item's, and the install's default is the `thinking` row of
 		// /settings (effortscope.go).
 		return fateNeedsChat

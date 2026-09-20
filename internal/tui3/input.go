@@ -933,7 +933,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 
 	case effortKey:
 		// WALK THE THINKING LADDER (effortchip.go). It is bound here, in the plain
-		// switch, so it survives a draft: a chord is not a character, ctrl+v
+		// switch, so it survives a draft: a chord is not a character, alt+e
 		// carries no text of its own, and everything above this line has already
 		// had its say — so a person mid-sentence can dial the conversation up and
 		// keep typing into the same words. It sits beside ctrl+, because the two
