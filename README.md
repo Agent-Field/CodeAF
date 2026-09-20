@@ -253,6 +253,13 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 | how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
 | without you | it stops | headless, standing orders, a phone in your pocket |
 
+## Performance benchmark
+
+- One Go binary, 53 MB on disk: up to 21x smaller than the field.
+- 27 MB of RAM per parallel session; the heaviest rival adds 653 MB, 24x for the same tab.
+- Sixteen of ours fit in half a gigabyte; claude's fourth tab alone needs more.
+- Harness, method and every table: [docs/benchmarks/performance](docs/benchmarks/performance/).
+
 ## Docs
 
 - `codeaf manual`, or `alt+.` for the key map. The manual ships in the binary and the chat reads it too.
