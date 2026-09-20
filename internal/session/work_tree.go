@@ -83,9 +83,55 @@ type WorkNode struct {
 // possible yes. It joins the tree for the same reason it joins the roster
 // (jobrow.go): the door that started the work does not change where the work
 // shows.
+// AND A RUN OF THE BELT IS WORK, which is the plainest statement this door can
+// make and was for a long time the one it did not make. A run's rows are kept
+// beside the graph rather than in it ([TaskGraph.keepRunRows]), so the walk over
+// the graph's own nodes never saw them, and a conversation whose ONLY live work
+// was a run read as idle. What reads this answer is the engine deciding whether
+// to retire a conversation (internal/remote's workingNow), so the run that was
+// invisible here was a run whose conversation was retired out from under it,
+// mid-run, at thirty minutes. Saying so here is what keeps the engine alive
+// while a run lives; nothing else had to change to get that.
 func (a *Agent) WorkingNow() []WorkNode {
 	nodes := append(a.tasker().workingNow(), a.runsWorkingNow()...)
+	nodes = append(nodes, a.beltRunWorkingNow()...)
 	return append(nodes, a.jobsWorkingNow()...)
+}
+
+// beltRunWorkingNow is the belt run's row in the tree, and there is at most one:
+// a conversation drives one run at a time and a second hand-off joins the run
+// already going ([Agent.startKnownTaskRun]).
+//
+// THE ID IS THE ONE A PERSON CAN ALREADY ACT ON. A run is known to every surface
+// by the number of the row it was published under, and that number is what the
+// stop road resolves to the run's owner (stoprun.go), so the tree hands back
+// `task:<row>` rather than minting a spelling of its own for work that already
+// has one.
+//
+// A RUN A PERSON HAS STOPPED IS STILL LIVE HERE. The stop cuts its context and
+// the run settles a moment later on its own road; until it does, the workers are
+// still out and the honest answer to "is anything happening" is yes. It leaves
+// this tree when the run leaves the Agent, which is the one place a run's life
+// ends ([Agent.driveBeltRun]).
+func (a *Agent) beltRunWorkingNow() []WorkNode {
+	a.beltMu.Lock()
+	run := a.beltRun
+	var row uint64
+	var title string
+	var born time.Time
+	if run != nil {
+		row, title, born = run.row, run.title, run.born
+	}
+	a.beltMu.Unlock()
+	if run == nil {
+		return nil
+	}
+	return []WorkNode{{
+		ID:    CancelTask + ":" + strconv.FormatUint(row, 10),
+		Title: clip(firstLine(title), titleLimit),
+		State: WorkRunning,
+		Born:  born,
+	}}
 }
 
 // workingNow is the task graph's half of the tree. It is nil-safe: a session
