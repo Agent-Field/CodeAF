@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: work nothing is driving comes back interrupted, not failed and stopped
-pr: 1292
+pr: 1296
 surface: [chat, engine]
 invalidates:
   - "A row that was live when the process holding it went away came back stamped failed and stopped, and the run's row read `it ended when codeaf closed; its journal is kept`. That told a person two untrue things in one line: that something had gone wrong with the work, and that somebody had ended it. Such a row now reads `interrupted`, which means nothing is driving it and everything it did is kept. It sits in the person's own tier, wearing the asking mark, and offers two answers: continue it, or leave it. The old sentence is deleted; the reading carries what it was carrying."
