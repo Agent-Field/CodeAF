@@ -85,3 +85,28 @@ and is not in this table.
 - First-frame timing depends on terminal size; the script fixes the pane geometry so runs
   are comparable, but a different geometry gives different numbers.
 - Peak RSS is a high-water mark and is sensitive to what the CLI did before the sample.
+
+## 2026-09-20: the second day
+
+![memory vs parallel sessions, and peak memory during one turn, for seven agent CLIs](footprint-hero.png)
+
+A second day of tables extends the footprint past the single idle instance:
+
+- [results-scale-2026-09-20.md](results-scale-2026-09-20.md): PSS and RSS at
+  N = 1, 2, 4, 8, 16 concurrent idle sessions, and the marginal cost of each
+  added session, measured with `scale2.sh`.
+- [results-decay-2026-09-20.md](results-decay-2026-09-20.md): memory and
+  session-state growth over 100 turns in one session.
+  [cause-analysis-decay-2026-09-20.md](cause-analysis-decay-2026-09-20.md)
+  traces this binary's own growth to a GC constant and to WAL churn, with
+  file:line citations.
+- [results-crash-steer-2026-09-20.md](results-crash-steer-2026-09-20.md):
+  milliseconds to stop on interrupt, and what survives kill -9 mid-turn.
+- [results-repo-scale-2026-09-20.md](results-repo-scale-2026-09-20.md): idle
+  cost in a 3,334-file repository versus a one-file repository, with inotify
+  watch counts.
+
+Turns were driven against `stub.py`, a loopback model endpoint, so no measured
+turn spent a provider token. A CLI the stub cannot drive has an empty row with
+the reason, never a substituted figure. `scale2.sh` and `stub.py` sit beside
+`measure-cli.sh` in this directory.

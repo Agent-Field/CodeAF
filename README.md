@@ -253,6 +253,12 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 | how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
 | without you | it stops | headless, standing orders, a phone in your pocket |
 
+## Footprint
+
+53 MB on disk. Sixteen parallel sessions hold about half a
+gigabyte of RAM, others do.
+The harness, the method and every table: [docs/benchmarks](docs/benchmarks/).
+
 ## Docs
 
 - `codeaf manual`, or `alt+.` for the key map. The manual ships in the binary and the chat reads it too.
