@@ -255,10 +255,8 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 
 ## Performance benchmark
 
-- One Go binary, 53 MB on disk: up to 21x smaller than the field.
-- 27 MB of RAM per parallel session; the heaviest rival adds 653 MB, 24x for the same tab.
-- Sixteen of ours fit in half a gigabyte; claude's fourth tab alone needs more.
-- Reopens a 50-turn session in 145 ms, 2.7x faster than the nearest CLI measured.
+One Go binary, 53 MB on disk: up to 21x smaller than the field.
+
 |                          | CodeAF  | claude         | heaviest rival measured |
 | ------------------------ | ------- | -------------- | ----------------------- |
 | On disk                  | 53 MB   | 224 MB, 4x     | 1.1 GB, 21x (omp)       |
@@ -267,7 +265,9 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 | Peak during one turn     | 122 MB  | 421 MB, 3.4x   | 1.0 GB, 8x (opencode)   |
 | Resume a 50-turn session | 145 ms  | 392 ms, 2.7x   | 3.0 s, 20x (opencode)   |
 
-- Harness, method and every table: [docs/benchmarks/performance](docs/benchmarks/performance/).
+Sixteen of ours fit in half a gigabyte; claude's fourth tab alone needs more.
+
+Harness, method and every table: [docs/benchmarks/performance](docs/benchmarks/performance/).
 
 ## Docs
 
