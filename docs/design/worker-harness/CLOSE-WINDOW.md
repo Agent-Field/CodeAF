@@ -1,9 +1,9 @@
 # Closing the window: work keeps going, or waits to be continued
 
-PROPOSED 2026-09-19, not approved. Two questions at the foot are the owner's.
-It builds on `DESIGN.md` (D4, one working copy per run), `CHAT-ROLE.md` and
-`WORK-TAB.md`. Existing words only, plus ONE proposed state word,
-`interrupted`.
+SETTLED 2026-09-20. Proposed 2026-09-19; the two questions at the foot were
+the owner's and he answered both. It builds on `DESIGN.md` (D4, one working
+copy per run), `CHAT-ROLE.md` and `WORK-TAB.md`. Existing words only, plus ONE
+new state word, `interrupted`.
 
 ## What the owner asked
 
@@ -118,8 +118,30 @@ change how a run is started.
 Every cell is accepted on the real binary in hosted mode, which is how a
 person runs codeaf: close the window mid-run, reopen, read the screen.
 
-## The owner's two questions
+Two parts of that are easy to drop and are part of each cell's definition of
+done rather than a follow-up:
 
-1. Is `interrupted` the word? It joins running, finishing, done, incomplete
-   and your call.
-2. Continuing always asks first, and the tick never continues a run. Yes?
+- **A cell that has to end an engine ends it by the process id recorded when
+  it was launched**, confirmed by reading that process's own executable. Never
+  by matching a pattern against a command line, which matches the wrapper
+  around it, and never by signalling a group.
+- **Cell b carries the manual in both directions.** The new word has to reach
+  the pages, AND the page that today tells a person their run ended when
+  codeaf closed has to be found and corrected in the same change. A page that
+  names a word while denying the thing around it satisfies every gate and
+  still lies.
+
+## The owner's two questions, and his answers
+
+He answered both on 2026-09-20, in his own words:
+
+> 1. `interrupted` is the state word. Yes.
+> 2. Continuing always asks first, and the five-minute tick never continues a
+>    run on its own. Yes.
+>
+> The design is settled on those two points. Build it as written.
+
+So `interrupted` joins running, finishing, done, incomplete and your call, and
+it means only "nothing is driving this". Continuing is always asked for and
+never assumed. Cell d stays unbuilt: the tick continuing a run is off, with no
+setting, and would need its own design and its own cap before it came back.
