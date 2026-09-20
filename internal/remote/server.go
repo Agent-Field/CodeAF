@@ -1157,6 +1157,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
 		TaskSetup:  taskSetupKnown(sess.agent),
+		TaskRetry:  taskRetryKnown(sess.agent),
 		// Whether this engine has a dial on the conversation's own thinking,
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
@@ -1944,13 +1945,31 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
 	case MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop:
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
 	}
 
 	switch call.Method {
+	case MethodTaskRetry:
+		args, err := arg[TaskSetupArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		want, agreed := steerConversation(s.joined, args.Session)
+		if !agreed || want == "" {
+			return nil, session.ErrNotThatConversation
+		}
+		owner, mine := sess.agentOf(want)
+		if !mine {
+			return nil, session.ErrNotThatConversation
+		}
+		door, ok := owner.(taskRetryDoor)
+		if !ok {
+			return nil, errors.New("retrying tasks is unavailable in this engine")
+		}
+		return nil, door.RetryTask(args.ID)
 	case MethodTaskModel, MethodTaskEffort, MethodTaskSetEffort:
 		args, err := arg[TaskSetupArgs](call)
 		if err != nil {

@@ -51,6 +51,15 @@ func (a *Agent) ContinueTask(id uint64, words string) error {
 	return a.tasker().reopen(node, words)
 }
 
+// RetryTask restarts incomplete work without changing its identity or assignment.
+func (a *Agent) RetryTask(id uint64) error {
+	node := a.taskNode(id)
+	if node == nil {
+		return fmt.Errorf("no task %d in this session", id)
+	}
+	return a.tasker().reopenAttempt(node, "", true)
+}
+
 // reopen puts a settled node back on the frontier as queued work of ITS OWN
 // id. It is the transformation [interrupt] already performs for a process
 // death, reached here by a person for any ending.
@@ -63,6 +72,11 @@ func (a *Agent) ContinueTask(id uint64, words string) error {
 // stopped, the first-cause ending — because those are facts about the
 // attempt that just ended.
 func (g *TaskGraph) reopen(node *TaskNode, words string) error {
+	return g.reopenAttempt(node, words, false)
+}
+
+// The retry key checks the ending under the same lock that admits the attempt.
+func (g *TaskGraph) reopenAttempt(node *TaskNode, words string, failedOnly bool) error {
 	if g == nil || node == nil {
 		return errors.New("no task to continue")
 	}
@@ -70,6 +84,10 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 	if node.graph != g || g.nodes[node.id] != node {
 		g.mu.Unlock()
 		return fmt.Errorf("no task %d in this session", node.id)
+	}
+	if failedOnly && node.state != TaskFailed {
+		g.mu.Unlock()
+		return fmt.Errorf("task %d is not incomplete", node.id)
 	}
 	// ONLY WORK THAT IS HANDED A FINDING CAN BE CONTINUED, and three kinds are
 	// not. A design and a saved shape's run have no worker that reads one, and a
@@ -136,6 +154,12 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 		node.spec.effort = restoredRung(*node.nextEffort)
 		node.nextEffort = nil
 	}
+	// The last finding was captured above; current telemetry belongs to this attempt.
+	// Each attempt owns its stream; the old done channel may still be closing it.
+	node.room = nil
+	node.ended = time.Time{}
+	node.report = ""
+	node.stopReason = ""
 	node.publishing = false
 	node.continuing = true
 	node.state = TaskQueued

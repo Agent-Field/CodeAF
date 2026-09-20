@@ -1038,6 +1038,8 @@ type Welcome struct {
 	// would believe the engine was guarding something nobody is guarding.
 	SteerOwner bool `json:"steerOwner,omitempty"`
 	// TaskSetup advertises task-scoped model and thinking controls.
+	// TaskRetry advertises retrying incomplete tasks in place.
+	TaskRetry bool `json:"taskRetry,omitempty"`
 	TaskSetup bool `json:"taskSetup,omitempty"`
 	// TaskSettle says this engine can be ASKED TO DECIDE A LANDING — accept, not
 	// right, one more merge round, the hand-over and the take-back

@@ -2077,6 +2077,7 @@ type app struct {
 	// MACHINE'S whole record of work that ran on its own rather than this
 	// session's, which is the one question the roster's column cannot answer.
 	// Closed, it costs the frame nothing.
+	taskRetry taskRetryState
 	taskSheet tasksPlace
 	// home is /home (home.go): the FIFTH fullscreen thing, the third that exists
 	// at every width, and the only one of them that is not about this

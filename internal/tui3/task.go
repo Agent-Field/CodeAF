@@ -137,7 +137,9 @@ func (c *taskCard) settled() bool { return c.verdict != "" }
 // elapsed clock counts on the frame tick instead of freezing at whatever the
 // last update happened to say. Everything else is the notice, kept.
 type taskNode struct {
-	id uint64
+	// retried keeps the conversation card in its original position across attempts.
+	retried bool
+	id      uint64
 	// title is what the rail draws: the NAME, two or three words, derived once
 	// from the engine's own title (taskident.go). label is that title whole,
 	// kept because the cards have width for it and because a name is a cut of
@@ -5550,6 +5552,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if a.room != nil && a.room.id == node.id && a.room.title == taskIDWord(node.id) {
 		a.room.title = node.title
 	}
+	var resumed tea.Cmd
+	if (notice.State == session.TaskQueued || notice.State == session.TaskRunning) &&
+		(node.state == session.TaskFailed || node.state == session.TaskDone || node.state == session.TaskUnverified) {
+		a.resetRetriedTask(node)
+		resumed = a.resumeRetriedRoom(node)
+	}
 	node.state = notice.State
 	if len(notice.DependsOn) > 0 {
 		node.dependsOn = notice.DependsOn
@@ -5589,15 +5597,11 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if notice.Mode != "" {
 		node.mode = notice.Mode
 	}
-	// WHO ENDED IT IS KEPT AND NEVER UNSET, on the rule the branch and the price
-	// are kept by: a person stopping this node is a fact about the work, and an
-	// update that says nothing about it is not an update that undid it. It also
-	// cannot arrive twice — nothing on the engine's side ever un-stops a node.
+	// Ending facts remain stable within an attempt; resetRetriedTask clears them
+	// when the same node returns to queued or running.
 	if notice.Stopped {
 		node.stopped = true
 	}
-	// AND WHY, kept on the same rule: an ending is a fact about how the work
-	// ended, and no later update un-ends it.
 	if notice.Ending != "" {
 		node.ending = notice.Ending
 	}
@@ -5709,6 +5713,9 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		a.dropTaskQuestion(a.task.id, taskStartedItselfReason)
 		a.markCardStale(a.task)
 	}
+	if node.retried && (notice.State == session.TaskQueued || notice.State == session.TaskRunning) {
+		a.landedCard(node)
+	}
 	var pilot tea.Cmd
 	switch notice.State {
 	case session.TaskRunning:
@@ -5761,7 +5768,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		}
 	}
 	a.touch()
-	return pilot
+	if node.retried && a.taskSheet.detailOn && a.taskSheetNodeFor(&a.taskSheet.detail) == node &&
+		notice.State != session.TaskRunning && notice.State != session.TaskQueued {
+		a.taskSheet.detail = a.currentTaskEntry(a.taskSheet.detail)
+		return tea.Batch(resumed, pilot, a.readTaskTail(a.taskSheet.detail))
+	}
+	return tea.Batch(resumed, pilot)
 }
 
 // cardFor is the proposal this surface drew about one node, or nil.

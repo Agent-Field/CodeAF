@@ -5310,8 +5310,18 @@ only then does `s` mean anything, which is two deliberate presses with the verb 
 you. The card is also not available here: it is drawn in the conversation's chrome, and a
 question raised over a full-screen place would be one nobody could see.
 
-**`continue` re-arms the same task.** There is still no `run it again` key on this place —
-a row here is an account of work that happened — but a failed or finished task is
+**`enter retry` re-arms incomplete or errored work on its task card.** It is the first
+footer action, before `m puts it in your message`. The task must belong to the current
+conversation and support continuation; quick tasks, designs and saved-shape runs do not.
+The key also works over an empty message box in that task's conversation page. A pending
+retry cannot be submitted twice. Failure leaves the task unchanged and says why on the
+page. A read-only view or an older engine without retry support offers no retry key.
+
+The existing task updates in place in the sidebar, task list, card and conversation
+receipt. It keeps its ID, original assignment, branch and journal. Earlier attempts stay
+in the journal; the current status and outcome follow the new attempt.
+
+**`continue` also re-arms the same task.** A failed or finished task can be
 continued by saying `continue task 7`, or by the `tasks` tool with `id` and `continue`.
 That is the same node: same id, same brief, same working copy and journal, the last
 report as this round's finding. Starting the same brief again with `/task` or

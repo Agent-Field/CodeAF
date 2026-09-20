@@ -219,7 +219,7 @@ const doneWindow = 20
 func (a *app) landedCard(node *taskNode) {
 	title := taskTitleOf(node.label, node.assignment, node.id)
 	landed := node.ended
-	if landed.IsZero() && !node.restored {
+	if landed.IsZero() && !node.restored && node.state != session.TaskRunning && node.state != session.TaskQueued {
 		landed = a.now()
 	}
 	card := &taskDone{
@@ -262,6 +262,14 @@ func (a *app) landedCard(node *taskNode) {
 	// whose only news is who is deciding (session's agent.go), so the card that is
 	// already on the page picks up its chips instead of a duplicate landing below
 	// it (see [app.handedBackCard]).
+	if node.retried {
+		if at := a.doneEntryFor(node.id); at >= 0 {
+			card.open = a.entries[at].done.open
+			a.entries[at].done = card
+			a.settleTouched(card)
+			return
+		}
+	}
 	if a.handedBackCard(card) {
 		return
 	}
