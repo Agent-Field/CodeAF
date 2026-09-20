@@ -360,8 +360,10 @@ func (a *Agent) askHarnessDesign(ctx context.Context, node *TaskNode, page subha
 	a.harnessAsks[id] = harnessAsk{answers: answers, card: card}
 	a.mu.Unlock()
 
-	// THE PAGE IS RAISED THROUGH THE ONE DOOR, with the card as its announcement
-	// (question.go's [Agent.raiseQuestion]). letGo is called on every road out
+	// THE PAGE IS RAISED THROUGH THE ONE DOOR AND BANKED AT THE DESK, with the
+	// card as its announcement (taskpresence.go's [Agent.presenceAskingWhole],
+	// which is [Agent.raiseQuestion] plus the row that says what the question
+	// is). letGo is called on every road out
 	// of this function, and a question somebody answered has already claimed its
 	// own words, so the withdrawal it sends is the one nobody answered.
 	letGo := a.presenceAskingWhole(a.harnessQuestion(id, card), func() { a.emitHarness(card) })

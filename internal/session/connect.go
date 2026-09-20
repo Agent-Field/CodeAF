@@ -404,8 +404,10 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 		return connectAnswer{}, errNobodyWatching
 	}
 
-	// THE OFFER IS RAISED THROUGH THE ONE DOOR, with the lane's own event as its
-	// announcement (question.go's [Agent.raiseQuestion]). Before that this lane
+	// THE OFFER IS RAISED THROUGH THE ONE DOOR AND BANKED AT THE DESK, with the
+	// lane's own event as its announcement (taskpresence.go's
+	// [Agent.presenceAskingWhole], which is [Agent.raiseQuestion] plus the row
+	// that says what the question is). Before that this lane
 	// spoke only to the window holding the turn: the question existed on the
 	// questions lane solely as something [Agent.OpenQuestions] derived at
 	// subscription time, so a second window learned of it by replay and was
