@@ -1,6 +1,7 @@
 ---
 kind: changed
 title: the commit co-author links to the CodeAF account, and assisted-by names the model
+pr: 1325
 surface: [engine, docs]
 invalidates:
   - "The commit trailer was `Co-Authored-By: codeaf <agentfield-bot@users.noreply.github.com>`. That bare-username noreply form renders as a dead mailto on GitHub; the address is now ID-prefixed (`267109073+agentfield-bot@users.noreply.github.com`), the form GitHub links to the CodeAF account and renders with its avatar."
