@@ -57,9 +57,20 @@ with nobody present unless the person turned that on.
 
 1. **The engine is alive when the window closes: the run keeps running.** It
    is what detaching already promises for a turn, and a run is the longer case
-   of the same promise. Three plain fixes make it true: a live run counts as
-   work in `WorkingNow`; the run's context belongs to the conversation, not to
-   the turn that proposed it; the engine does not exit while a run is live.
+   of the same promise. **Two** plain fixes make it true: a live run counts as
+   work in `WorkingNow`, and the run's context belongs to the conversation
+   rather than to the turn that proposed it.
+
+   This page first said three, the third being that the engine does not exit
+   while a run is live. Building it showed that one is not a fix but a
+   CONSEQUENCE of the first. The retirement of a conversation and the host's own
+   quiet both hang off one reading — `WorkingNow`, through internal/remote's
+   `workingNow` — so a run that appears there keeps its conversation, and a
+   conversation that stays keeps the host. An engine-side rule of its own would
+   be a second authority over one fact, and the first thing it would do is
+   disagree with this one. Corrected after the cell landed, because a design
+   page that stays wrong after the build teaches the next person the wrong
+   shape.
 2. **Nothing is driving it: the run is `interrupted`, never failed.** The
    engine died, the machine slept or restarted, or a `--no-host` window was
    closed. The store already holds the truth: tasks done, tasks ready, and
@@ -110,7 +121,7 @@ change how a run is started.
 
 | # | Cell | Size | New words |
 | --- | --- | --- | --- |
-| a | a live run counts as work; the run's context is the conversation's; the engine stays while a run lives | S | none |
+| a | a live run counts as work, and the run's context is the conversation's; the engine staying while a run lives falls out of the first | S | none |
 | b | on reopen, an unsettled run reads `interrupted` from the store's own state, never failed and stopped | S | `interrupted` |
 | c | the card, and continue through the existing supervisor on the existing store | M | none beyond b |
 | d | the tick continues a run | not built | a setting, its own design |
