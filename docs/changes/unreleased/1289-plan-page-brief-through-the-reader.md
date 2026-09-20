@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a task's page draws its brief through the reader the transcript already uses
-pr: 1286
+pr: 1289
 surface: [chat]
 invalidates:
   - "A run task's page drew the stored brief raw, so a task whose description was the generated work order opened on the scaffold addressed to its worker — the shouted heading, the rule under it, and one line of the ask — and a person read machinery before they read the work. The page draws the brief through the same reader the conversation's transcript uses: plain headings, this task's own work first, and a brief that is not the generated document draws exactly as it always did. The stored brief itself never changes; only what is drawn does."
