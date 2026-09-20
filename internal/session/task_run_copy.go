@@ -88,6 +88,28 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 // destructive road wearing a helpful face.
 var errNoRunCopy = fmt.Errorf("this run's working copy was not written down when it started, so there is nothing to carry on from")
 
+// runCannotContinue answers WHY a run cannot be carried on, in the words a
+// person reads, or the empty string when it can.
+//
+// IT IS THE SAME SENTENCE THE DOOR REFUSES WITH ([errNoRunCopy]) AND NOT A
+// PARALLEL ONE. This is the third place those words could appear — the reader,
+// the door, and now a row — and it is the one most likely to drift, because a
+// row invites phrasing written for a row rather than for a person. One
+// sentence, taken from one constant, cannot drift.
+//
+// IT READS NO DISK, because it is asked while a row is being drawn. What it can
+// answer without one is the permanent half: a run whose copy was never written
+// down can never be carried on, whatever is on the disk today. The other half —
+// a copy that WAS written down and is no longer there — is a fact about this
+// moment, so the door finds it out at the moment it matters ([runCopyTree]) and
+// says so then.
+func runCannotContinue(record *TaskCopyRecord) string {
+	if record == nil || strings.TrimSpace(record.Dir) == "" {
+		return errNoRunCopy.Error()
+	}
+	return ""
+}
+
 // runCopyTree rebuilds the tree a run was working in, from the record alone.
 //
 // IT ADOPTS AND NEVER MAKES. Nothing here carves a directory, cuts a branch or

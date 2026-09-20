@@ -221,6 +221,16 @@ type TaskFacts struct {
 	// said nothing: work whose owner nobody recorded is work waiting on whoever is
 	// looking at it.
 	Decider TaskAskOwner
+
+	// CannotContinue is WHY work nothing is driving cannot be picked up again,
+	// in the words a person reads, and empty when it can be. It is the sentence
+	// and not a flag, because the row has to say it and a flag would make some
+	// surface write those words a second time ([runCannotContinue] holds the
+	// one spelling).
+	//
+	// IT IS ONLY EVER SET ON AN INTERRUPTED ROW. Every other state is either
+	// over or moving, and neither has anything to carry on.
+	CannotContinue string
 }
 
 // ── the three tiers ─────────────────────────────────────────────────────────
@@ -628,6 +638,12 @@ func (n TaskNotice) StatusFacts() TaskFacts {
 		Shifted:    n.Shifted,
 		GroundHeld: n.GroundHeld,
 		Decider:    n.Decider,
+		// AND WHETHER THIS RUN CAN BE CARRIED ON AT ALL. It is the sentence
+		// rather than a flag, because the row has to SAY it and a flag would
+		// make some surface write those words a second time
+		// ([runCannotContinue]). It reads no disk, which is what keeps this
+		// method the pure function every drawing road relies on.
+		CannotContinue: runCannotContinue(n.Copy),
 	}
 }
 
@@ -922,23 +938,40 @@ func taskStatusWords(status TaskStatus, facts TaskFacts) TaskStatus {
 		// end of what it can decide; this one is the machine not having been
 		// there, and a person scanning a list wants those told apart at a glance.
 		status.Tier, status.Word = TaskTierYourCall, taskWordInterrupted
-		// THE ASK IS WRITTEN HERE RATHER THAN IN [taskAskOf], because that reader
-		// walks the facts of a LANDING to work out which judgement is owed, and
-		// there is no judgement here: the answer follows from the presence alone.
-		//
-		// AND THE OWNER IS ALWAYS THE PERSON. Continuing spends money, so no
-		// settle policy hands this one to the model — the same reasoning a
-		// conflict is never the model's.
-		status.Ask = TaskAsk{
-			Kind:   TaskAskContinue,
-			Reason: taskAskContinueReason,
-			Yes:    taskAskContinueYes,
-			No:     taskAskContinueNo,
-			Owner:  TaskAskOwnerPerson,
-		}
+		status.Ask = taskAskContinuing(facts)
 		status.Reason = status.Ask.Reason
 	}
 	return status
+}
+
+// taskAskContinuing is what a row nothing is driving asks, and it is a reader of
+// its own beside [taskAskOf] rather than an arm inside it: that one walks the
+// facts of a LANDING to work out which judgement is owed, and there is no
+// judgement here. The answer follows from the presence alone.
+//
+// THE OWNER IS ALWAYS THE PERSON. Continuing spends money, so no settle policy
+// hands this one to the model, which is the same reasoning that keeps a conflict
+// out of the model's hands.
+//
+// AND A RUN THAT CANNOT BE CARRIED ON SAYS WHY, WHERE THE OFFER WOULD HAVE BEEN.
+// It does not quietly lose the key, which is the shape of every defect this
+// design has been removing: a surface that knew something and did not say it. A
+// row that simply lacked the offer would teach a person that carrying on is
+// unreliable, when the truth is that this one run predates the record of where
+// its work is. The NO survives, because leaving it alone is still a real answer
+// and the only one left.
+func taskAskContinuing(facts TaskFacts) TaskAsk {
+	ask := TaskAsk{
+		Kind:   TaskAskContinue,
+		Reason: taskAskContinueReason,
+		Yes:    taskAskContinueYes,
+		No:     taskAskContinueNo,
+		Owner:  TaskAskOwnerPerson,
+	}
+	if why := strings.TrimSpace(facts.CannotContinue); why != "" {
+		ask.Reason, ask.Yes = why, ""
+	}
+	return ask
 }
 
 // taskAskOf is the closed set of your-call questions, in the order the most
