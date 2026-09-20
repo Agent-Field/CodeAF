@@ -932,10 +932,12 @@ each rung used only when the one above it came back empty after filtering:
 3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
    `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
 
-Filtering splits your text on whitespace and every token must match, each in one of three
-tiers: prefix, then substring, then subsequence. So `ds v4` finds
-`deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, with
-fuzzy hits sitting at the bottom rather than mixed through.
+Filtering splits your text on whitespace and every word must match, each scored by
+the fuzzy alignment every picker on this surface shares: a word that starts an id,
+or lands right after a `/` or a hyphen, outranks the same letters sitting loose inside
+it. So `ds v4` finds `deepseek/deepseek-v4-flash` and `claude 4.5` finds
+`anthropic/claude-sonnet-4.5`, and a tight prefix sits above a scattered match
+without needing tiers to hold it there.
 
 Twelve rows show at a time. A row reads `<id>:<level>` on the left and, dimly on the
 right, what the catalog published: window, price per million prompt and completion, arena
@@ -1540,10 +1542,11 @@ Moving in it:
   bar is the second one, under the places' bar.
 - **Any printable key types into a search box** that filters across all tabs at once,
   grouping matches under faint tab headings and moving the tab bar to the first match's
-  tab, so backing out leaves you where the thing lives. backspace, ctrl+w and ctrl+u edit
-  the query. The search matches the label, the settings key, the one-line description and
-  the registry's own label — so `spendRail` finds a row as well as "ceiling" does.
-- enter and space open or change the row under the cursor.
+  tab, so backing out leaves you where the thing lives. backspace,
+  ctrl+w and ctrl+u edit the query. The search matches the label, the settings
+  key, the description, the value and the tab's name — `spendRail`, `ceiling`
+  and `prompt` all find rows.
+- enter and space open or change the row; while a search is on, space types.
 - A click on a tab word switches tabs. A click on a row **selects** it, and a second click
   on the already-selected row **acts** on it. One press never does both.
 
