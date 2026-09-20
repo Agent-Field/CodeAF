@@ -25,6 +25,15 @@
 set -euo pipefail
 
 lock="${CODEAF_SUITE_LOCK_PATH:-/tmp/codeaf-suite-$(id -u).lockfile}"
+# THE SECOND LOCK, AND THE CONFIGURATION SAYS BOTH NAMES RATHER THAN DERIVING
+# ONE FROM THE OTHER. A checkout behind #1264 takes a DIRECTORY lock and cannot
+# see the flock above, so a current tree takes both and becomes visible to every
+# stale reader still on the box without a single old checkout being changed
+# (#1307). Deriving this name by trimming the one above would make two names one
+# fact, which is a fact that can disagree with itself, and it would silently
+# follow a test harness driving a private path somewhere it was never meant to
+# go. Empty means this run takes no directory lock at all.
+export CODEAF_SUITE_DIRLOCK_PATH="${CODEAF_SUITE_DIRLOCK_PATH-/tmp/codeaf-suite-$(id -u).lock}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 helper="${CODEAF_SUITE_LOCK_HELPER:-$root/bin/codeaf-suite-lock}"
 if [ -z "${CODEAF_SUITE_LOCK_HELPER:-}" ]; then
