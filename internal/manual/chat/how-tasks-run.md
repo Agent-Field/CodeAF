@@ -3153,7 +3153,9 @@ both. A check that leads with a directory change
 (`cd <folder> && <command>`) is refused like any other composition, and its refusal ends
 with the form that passes: `A check runs from the root of the task's own copy: leave the
 directory change out and name each file by its path`. It is never quietly repaired, because
-the command kept would run where its files may not be. The same argument is on
+the command kept would run where its files may not be. A check longer than 1000 bytes is
+refused with its cause and its own length: `Invalid arguments: checks must each be ONE
+rerunnable command: this check is 1001 bytes and a check may be at most 1000`. The same argument is on
 `divide_work`, where each part declares what its own checker may run — and a check every
 part declares is taken off all of them and given once to the task that divided them, which
 is the only one that can honestly make it after its parts are home.
