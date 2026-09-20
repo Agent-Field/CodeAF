@@ -77,7 +77,14 @@ func TestRecordingUsageNeverWaitsOnTheDisk(t *testing.T) {
 			}
 		}
 	}()
-	FlushUsage()
+	// STOPPING THE WRITER IS THE JOIN. The flush below waits under a ceiling
+	// and comes back either way, so on a loaded box the test would return with
+	// rows still queued for a path whose directory is about to be removed, and
+	// the writer's next append would rebuild it underneath the cleanup.
+	defer StopUsageWriter(path)
+	if !FlushUsage() {
+		t.Fatal("the flush hit its deadline rather than draining; the rows in front of it are still queued")
+	}
 
 	select {
 	case line := <-first:
@@ -141,5 +148,44 @@ func TestFlushingUsageGivesUpOnAStalledLedger(t *testing.T) {
 	case <-returned:
 	case <-time.After(usageFlushLimit + 3*time.Second):
 		t.Fatal("FlushUsage never came back from a ledger nobody is reading")
+	}
+}
+
+// A FLUSH THAT HIT ITS DEADLINE IS NOT A JOIN, AND SAYS SO.
+//
+// FlushUsage waits under a ceiling and returns either way, which is the right
+// bargain: a stalled ledger must not hold a terminal open. What a caller cannot
+// work out for itself is WHICH of the two happened, and a caller that reads a
+// deadline as a join goes on to do what the queued rows are in the way of. The
+// deadline is shrunk here rather than provoked with load, because a test that
+// needs a timer to fire should say so in one line.
+func TestAFlushThatHitsItsDeadlineSaysSoAndStoppingTheWriterIsTheJoin(t *testing.T) {
+	previous := usageFlushLimit
+	usageFlushLimit = time.Millisecond
+	defer func() { usageFlushLimit = previous }()
+
+	home := t.TempDir()
+	path := filepath.Join(home, UsageLedgerName)
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		t.Skipf("this filesystem has no fifos to stall on: %v", err)
+	}
+	at := usageAt(t, "2026-08-25 08:00")
+	// Nobody is reading the fifo, so the writer parks inside its open and every
+	// row stays queued behind it.
+	RecordUsage(path, UsageLine{At: at, Model: "opus-4.1", Calls: 1, Input: 10, USD: 0.01})
+
+	if FlushUsage() {
+		t.Fatal("the flush claimed a drain while its writer was parked on a fifo nobody reads")
+	}
+
+	// The writer is parked inside an open that will never answer, so the join
+	// reports that it gave up rather than pretending. Either way the path is off
+	// the registry, so no later row can be queued for this home.
+	StopUsageWriter(path)
+	usageWritersMu.Lock()
+	_, kept := usageWriters[path]
+	usageWritersMu.Unlock()
+	if kept {
+		t.Fatal("the stopped path is still on the writer registry, so a later row would queue for a home that is going away")
 	}
 }
