@@ -255,9 +255,10 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 
 ## Performance benchmark
 
-One Go binary: 53 MB on disk, up to 21x smaller than the other agent CLIs
-measured, and up to 20x lighter at 16 parallel sessions. The harness, the
-method and every table: [docs/benchmarks/performance](docs/benchmarks/performance/).
+One Go binary: 53 MB on disk, adding 27 MB of RAM per parallel session.
+Sixteen of ours fit in half a gigabyte; claude's fourth tab alone needs
+more. The harness, the method and every table:
+[docs/benchmarks/performance](docs/benchmarks/performance/).
 
 ## Docs
 
