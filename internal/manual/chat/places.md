@@ -470,9 +470,10 @@ The full-screen conversation tree groups every chat and its tasks into **running
 queued, waiting or unanswered work. Once that work settles, its whole tree moves to
 completed; new work moves it back. Each task retains its own state word.
 
-Both sections stay newest-activity-first. Conversation titles match Home, and the same
+Both sections default to newest activity first; click the age heading to reverse. Conversation titles match Home, and the same
 bullets mark answering, unread and unanswered states. Every conversation and nested task
-starts expanded; you can fold a branch yourself. `/history`, `ctrl+.` and `alt+2` open it.
+starts expanded, with connecting tree lines and fold arrows on the right. Projects
+have their own column. You can fold a branch yourself. `/history`, `ctrl+.` and `alt+2` open it.
 
 **Typing here narrows the list.** While this place is up every printable key goes to its
 filter — the one exception being `1` and `2` over a row the record pane beside the list is

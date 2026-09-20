@@ -300,7 +300,7 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 		}
 	}
 	// The live graph's parent links survive the list conversion.
-	for _, connector := range []string{tasksKinCont, tasksKinLast} {
+	for _, connector := range []string{a.pal.glyph(tokens.GTreeBranch) + a.pal.glyph(tokens.GTreeDash), a.pal.glyph(tokens.GTreeLast) + a.pal.glyph(tokens.GTreeDash)} {
 		if !strings.Contains(text, connector) {
 			t.Fatalf("the expanded live family lost its connector %q:\n%s", connector, text)
 		}

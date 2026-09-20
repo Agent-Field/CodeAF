@@ -101,12 +101,18 @@ func TestTaskRetryFailureIsVisibleAndForeignTasksStayUntouched(t *testing.T) {
 
 func TestTaskRetryDoesNotOfferUnsupportedKinds(t *testing.T) {
 	a, _, entry := retryFixture(t)
-	for _, kind := range []session.TaskKind{session.TaskKindQuick, session.TaskKindHarness, session.TaskKindSubharness, session.TaskKindJob} {
+	for _, kind := range []session.TaskKind{session.TaskKindJob, session.TaskKindAdaptive} {
 		a.tasks[7].kind = kind
 		if a.taskCanRetry(entry) {
 			t.Fatalf("unsupported kind %s offers retry", kind)
 		}
 	}
+	a.tasks[7].kind = ""
+	a.tasks[7].run = "separate-run"
+	if a.taskCanRetry(entry) {
+		t.Fatal("a run's child was offered the task worker's retry door")
+	}
+
 }
 
 func TestTaskRetryRestartsAnOpenHostedPageWithoutLosingItsReading(t *testing.T) {
@@ -135,5 +141,18 @@ func TestTaskRetryRestartsAnOpenHostedPageWithoutLosingItsReading(t *testing.T) 
 	a.Update(roomClosedMsg{gen: gen})
 	if a.room.done {
 		t.Fatal("old stream closure stopped the new page")
+	}
+}
+
+func TestTaskRetryOffersEveryStoredRunnerAndUnsuccessfulEnding(t *testing.T) {
+	for _, kind := range []session.TaskKind{"", session.TaskKindQuick, session.TaskKindHarness, session.TaskKindSubharness} {
+		for _, ending := range []session.TaskEnding{session.TaskEndingStopped, session.TaskEndingInterrupted, session.TaskEndingWire, session.TaskEndingRefused} {
+			a, _, entry := retryFixture(t)
+			a.tasks[7].kind = kind
+			a.tasks[7].ending = ending
+			if !a.taskCanRetry(entry) {
+				t.Fatalf("no retry for %s / %s", kind, ending)
+			}
+		}
 	}
 }

@@ -27,11 +27,11 @@ type taskRetriedMsg struct {
 // Retry belongs to the owning conversation and only to work the engine can resume.
 func (a *app) taskCanRetry(entry session.TaskIndexEntry) bool {
 	node := a.taskSheetNodeFor(&entry)
-	if node == nil || node.state != session.TaskFailed || a.taskSheet.awayOwner.on {
+	if node == nil || node.state != session.TaskFailed || node.run != "" || a.taskSheet.awayOwner.on {
 		return false
 	}
 	switch node.kind {
-	case session.TaskKindHarness, session.TaskKindSubharness, session.TaskKindQuick, session.TaskKindJob:
+	case session.TaskKindJob, session.TaskKindAdaptive:
 		return false
 	}
 	if _, ok := a.agent.(taskRetryDoor); !ok {

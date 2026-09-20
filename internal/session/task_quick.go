@@ -1022,7 +1022,11 @@ func (a *Agent) runQuickNode(ctx context.Context, node *TaskNode, listed *job) T
 	room.speaking(child)
 	room.bill(child)
 
-	wrote, stopped, runErr := runTaskChild(ctx, child, node, quickBrief(node.spec), a.config.Workspace, a.taskLimits(node), room, log)
+	brief := quickBrief(node.spec)
+	if node.continuing && node.finding != "" {
+		brief += "\n\n" + node.finding
+	}
+	wrote, stopped, runErr := runTaskChild(ctx, child, node, brief, a.config.Workspace, a.taskLimits(node), room, log)
 	// The answer itself, whole, kept before the transcript is closed — this is
 	// the last moment anybody can read it, and everything downstream that wants
 	// the work rather than the card reads the node (task_result.go).

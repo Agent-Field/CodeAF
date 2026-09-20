@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -305,8 +306,8 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 		r.chatViews[tab.file] = tasksChatView{title: tab.word, working: working, unread: unread}
 	}
 	r.open = p.opened
-	// Every rebuild retains the fixed chronological order.
-	r.order = tasksSort{}
+	// Age stays the sort key; the header chooses its direction.
+	r.order = tasksSort{back: p.order.back}
 	needle := a.taskSheetFilter()
 	// AND SO IS WHAT IS IN THE BOX, because the box is a ROW of the list now
 	// ([tasksControlRow]) and a row cannot ask the surface anything. It is the
@@ -769,6 +770,19 @@ func (a *app) taskSheetFold(open bool) bool {
 	return true
 }
 
+// Reversing age preserves the selected row even when its line number changes.
+func (a *app) taskSheetReverseAge() {
+	was, held := a.taskSheet.rowAt(a, a.taskSheet.cursor)
+	a.taskSheet.order = tasksSort{back: !a.taskSheet.order.back}
+	if held {
+		if line, found := a.taskSheet.lineOf(a, was); found {
+			a.taskSheet.cursor = a.tasksSettle(line)
+		}
+	}
+	a.taskSheet.top = 0
+	a.touch()
+}
+
 // taskSheetTyped is what every edit of the filter ends with: the list has
 // changed under the cursor, so the cursor goes back to the first row of it and
 // the window with it. A cursor left at row forty of a list that now has three is
@@ -1127,8 +1141,11 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	if hits[y].kind == taskSheetHitBar {
 		return a.taskSheetBarPress(x)
 	}
-	// Column labels are readings; the list always stays newest first.
+	// The age header toggles direction using the same cells as the painter.
 	if hits[y].kind == taskSheetHitControl {
+		if tasksAgeHeaderHit(x, a.taskSheetListWidth()) {
+			a.taskSheetReverseAge()
+		}
 		return nil
 	}
 	if hits[y].kind != taskSheetHitRow {
@@ -1147,10 +1164,10 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	lines := r.lay(taskPaneList(width))
 	if at := a.taskSheet.cursor; at >= 0 && at < len(lines) && lines[at].folds {
 		line := lines[at]
-		foldX := ansi.StringWidth(tasksBareLead) + ansi.StringWidth(line.kin) - 2
+		foldX := a.taskSheetListWidth() - tasksColumnAir - 1
 		if x == foldX && y < len(painted) {
 			mark := ansi.Cut(ansi.Strip(painted[y]), x, x+1)
-			if mark == strings.TrimSpace(tasksFoldOpen) || mark == strings.TrimSpace(tasksFoldShut) {
+			if mark == a.pal.glyph(tokens.GExpanded) || mark == a.pal.glyph(tokens.GCollapsed) {
 				a.taskSheetFold(!line.open)
 				return nil
 			}
@@ -1724,7 +1741,7 @@ func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.chan
 // so shared editing and filtering controls can act on the same value.
 func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 
-// Sorting is fixed; this place has no alternate sort binding.
+// Age direction changes through the header; no alternate sort keys are bound.
 func (placeTasks) alt(a *app, letter rune) bool { return false }
 
 // tasksFilterHint is the short spelling of that invitation. It is the control

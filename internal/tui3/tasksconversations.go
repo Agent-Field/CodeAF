@@ -81,6 +81,6 @@ func (t *tasksTree) keepConversationStates(full tasksTree) {
 		if t.groups[i].section != t.groups[j].section {
 			return t.groups[i].section < t.groups[j].section
 		}
-		return tasksByAge.less(t.groups[i].chat.rank, t.groups[j].chat.rank, false)
+		return tasksByAge.less(t.groups[i].chat.rank, t.groups[j].chat.rank, t.sort.back)
 	})
 }

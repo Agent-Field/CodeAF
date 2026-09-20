@@ -85,34 +85,9 @@ func (g *TaskGraph) reopenAttempt(node *TaskNode, words string, failedOnly bool)
 		g.mu.Unlock()
 		return fmt.Errorf("no task %d in this session", node.id)
 	}
-	if failedOnly && node.state != TaskFailed {
+	if err := node.reopenErrorLocked(failedOnly); err != nil {
 		g.mu.Unlock()
-		return fmt.Errorf("task %d is not incomplete", node.id)
-	}
-	// ONLY WORK THAT IS HANDED A FINDING CAN BE CONTINUED, and three kinds are
-	// not. A design and a saved shape's run have no worker that reads one, and a
-	// quick task has no brief a finding could join ([quickBrief] is its line and
-	// its list) and no copy for the next attempt to stand in — so a quick node
-	// re-queued here would run its line again from nothing, in the folder the
-	// first attempt already wrote in. Asking for it again is the honest door, and
-	// the refusal says which kind it is in the same words for all three.
-	switch node.kind {
-	case TaskKindHarness, TaskKindSubharness, TaskKindQuick:
-		kind := TaskKindWord(node.kind)
-		g.mu.Unlock()
-		return fmt.Errorf("task %d is %s, not a run that can be continued", node.id, kind)
-	}
-	switch node.state {
-	case TaskRunning:
-		g.mu.Unlock()
-		return fmt.Errorf("task %d is still running", node.id)
-	case TaskQueued:
-		g.mu.Unlock()
-		return fmt.Errorf("task %d has not started yet", node.id)
-	case TaskDone, TaskFailed, TaskUnverified:
-	default:
-		g.mu.Unlock()
-		return fmt.Errorf("task %d is %s, not a task that has ended", node.id, node.state)
+		return err
 	}
 	if g.quitting {
 		g.mu.Unlock()
@@ -161,7 +136,12 @@ func (g *TaskGraph) reopenAttempt(node *TaskNode, words string, failedOnly bool)
 	node.report = ""
 	node.stopReason = ""
 	node.publishing = false
-	node.continuing = true
+	node.continuing = node.spec.design == nil && node.spec.run == nil
+	if node.spec.design != nil {
+		node.spec.design.resume = nil
+		node.offer = nil
+		node.revise = nil
+	}
 	node.state = TaskQueued
 	node.claimed = false
 	node.stopped = false
@@ -458,7 +438,12 @@ func (g *TaskGraph) runAgainFromItsBranch(node *TaskNode) bool {
 		node.nextEffort = nil
 	}
 	node.publishing = false
-	node.continuing = true
+	node.continuing = node.spec.design == nil && node.spec.run == nil
+	if node.spec.design != nil {
+		node.spec.design.resume = nil
+		node.offer = nil
+		node.revise = nil
+	}
 	node.state = TaskQueued
 	node.claimed = false
 	node.stopped = false

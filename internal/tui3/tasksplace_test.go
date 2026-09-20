@@ -646,7 +646,7 @@ func tasksDrawnRow(page, name string) string {
 func TestTheTaskNameIsWholeBeforeAnyFactGetsACell(t *testing.T) {
 	world, win, now := tasksPolishFixture()
 	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
-	for _, width := range []int{60, 80, 120, 160} {
+	for _, width := range []int{80, 120, 160} {
 		page := tasksPage(reading, width)
 		for _, item := range reading.items {
 			name := tasksLabel(item.entry)

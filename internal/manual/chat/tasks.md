@@ -217,7 +217,8 @@ Six limits, and they are the price of there being no ceremony:
   after a restart* below — but the working stops when the window does.
 - **It cannot be continued.** `continue task 7` on a quick task is refused —
   `task 7 is quick, not a run that can be continued` — because there is no copy to pick up
-  from and no brief a finding could join. Ask for it again; it starts at once.
+  from. Instead, use **enter retry** on its task page when it is stopped or incomplete;
+  it keeps the same task and checklist and works in the same folder.
 - **It cannot be divided.** A quick task never splits itself into parts. Work too wide for
   one worker was never quick.
 - **It cannot land anything.** No merge, no branch kept, no conflict to resolve — those
@@ -2614,8 +2615,8 @@ tree. A chat belongs to running while it is answering or has running, queued, wa
 unanswered work. Otherwise it belongs to completed. Its entire tree moves together as
 work starts and finishes; completed children stay beside their active siblings.
 
-Both sections are always **newest activity first**, using the newest recorded conversation
-or task timestamp. Nested siblings also sort newest first. The time window selects whole
+Both sections default to **newest activity first**; click `age ↓` to reverse them, using the newest recorded conversation
+or task timestamp. Nested siblings follow the same direction. The time window selects whole
 conversations, retaining older parents and children instead of splitting their trees.
 Filtering never moves a conversation into a different section.
 
@@ -5045,17 +5046,22 @@ stop, one word, wherever you reach it from.
 
 Pressing `x` on a run that has already finished does nothing but say so.
 
-## The tasks place — the table, its two columns, folds, and the time-window keys
+## The tasks place — tree lines, project column, folds, and the time-window keys
 
 The **tasks** place lists conversations and their nested work across projects, under
 **running** or **completed**. The whole conversation moves together. Both sections and
-nested sibling lists are always newest activity first, and every level starts expanded.
+nested sibling lists default to newest activity first, and every level starts expanded.
 
-**Every row is a row of a table, and the columns are in the same cells on every row.** Left
-to right: the fold, the mark, the name, then `state`, then **age**, right-aligned, then one cell of air. A main chat wears the same activity,
-unread or question bullet as on Home. Only the name flexes — the two columns are fixed at 90 cells and over.
-Under 90 the `state` column goes and the age column stays, because a figure has nowhere
-else on the page to be. Under 60 the rows are phone cards, two lines each, unchanged.
+**The connecting lines show ancestry.** A continuing vertical line links siblings;
+branches and elbows connect each task to its parent. The collapse/expand arrow sits at
+the right edge of the row, separate from the conversation's Home-style activity bullet.
+Click that arrow, or use `←` and `→`, to fold and expand without changing the task.
+
+The columns are **name**, **project**, **state**, and **age**, followed by the fold arrow.
+Project has its own column; it is not appended to the conversation title. The project
+column appears from 60 list cells, including the current project and `~` where recorded.
+Under 90 list cells, state moves to the detail view; age and project remain. Under 60,
+tasks use compact cards. Long names and projects truncate to fit.
 
 **The `state` column is never blank on a row of work.** It is the task-states word —
 `your call`, `running`, `waiting`, `done`, `incomplete`, `stopped` — and nothing else, except
@@ -5069,12 +5075,6 @@ for three additions that belong in that cell:
   how much work is under it altogether and how urgent the most urgent of it is, which is the
   question a shut fold raises.
 - work **another window is running** says `another window` here instead.
-
-**A main chat's row names its folder only where that folder is news.** A conversation in the
-folder this window is already sitting in wears no tag — the tag would be the same word on
-every row — and neither does one whose workspace is your home directory or a scratch folder
-at the top of `/tmp`. Another project's conversation keeps its name. The **projects** panel on
-home still lists all three, as the paths they are.
 
 **The reason is not on the row.** Why work ended as it did is on the task's record, one
 keypress away through `enter`, and in the pane beside the list where the frame is wide enough
@@ -5167,8 +5167,7 @@ $9.30`, the first few rows under it in the order the page files them, and `enter
 
 **The list's own `state` column goes while the pane is up**, and that is the table's rule
 rather than a special case: the list is drawn in 72 of the frame's 122 cells, which is under
-the 90 the two fixed columns need, so the name keeps what it can and the column the list is
-sorted by stays. What the state column was saying is in the pane, said whole and with its
+the 90 cells the state column needs, so the name keeps what it can while project and age stay. What the state column was saying is in the pane, said whole and with its
 reason.
 
 **Under 110 columns there is no pane and no rule.** The place is the list alone, and the row
@@ -5197,14 +5196,16 @@ is also what happens on a frame too narrow for the pane: nothing on screen names
 nothing takes them.
 ## sort the tasks list — chronological order, most recent activity first
 
-The Tasks tab always sorts **running** and **completed** by the newest recorded activity
+The Tasks tab defaults to sorting **running** and **completed** by the newest recorded activity
 in each conversation, including task starts and completions. A conversation with no tasks
 uses its own activity time. Unknown times sort after known times; refreshing the screen
 does not replace an unknown timestamp with the current time.
 
 Sorting preserves the tree. Each conversation keeps every task, and sibling tasks also
-sort newest first. The columns show `state` and `age ↓`. Clicking these labels does not
-change the order. `alt+s` and `alt+shift+s` no longer sort or reverse the Tasks list.
+follow the selected age direction. Click **age ↓** to show oldest first (**age ↑**),
+and click again for newest first. The selection stays on the same item. Filtering and
+refreshing preserve this choice. Other column labels do not sort; `alt+s` and
+`alt+shift+s` remain unbound on Tasks.
 
 ## filter the tasks list — type to filter, what it matches, and esc to clear it
 
@@ -5283,10 +5284,20 @@ question raised over a full-screen place would be one nobody could see.
 
 **`enter retry` re-arms incomplete or errored work on its task card.** It is the first
 footer action, before `m puts it in your message`. The task must belong to the current
-conversation and support continuation; quick tasks, designs and saved-shape runs do not.
+conversation. Stopped, interrupted, errored and incomplete ordinary tasks, quick tasks,
+designs and saved-workflow runs can retry. Quick tasks keep their checklist and receive
+the previous result; designs and saved workflows restart their original inputs.
 The key also works over an empty message box in that task's conversation page. A pending
 retry cannot be submitted twice. Failure leaves the task unchanged and says why on the
 page. A read-only view or an older engine without retry support offers no retry key.
+
+**Some rows cannot be restarted from their record.** Older designs and saved-workflow
+runs may lack the original inputs; they report `no saved restart instructions` rather
+than running a different kind of work. New records retain these inputs across restarts.
+Background-job and adaptive-run rows are summaries owned by separate runners, not
+restartable task records. Open the owning conversation to retry its tasks; read-only
+views cannot restart another owner's work. Successful or still-running tasks do not
+offer Retry.
 
 The existing task updates in place in the sidebar, task list, card and conversation
 receipt. It keeps its ID, original assignment, branch and journal. Earlier attempts stay

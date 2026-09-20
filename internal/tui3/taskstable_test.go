@@ -94,7 +94,7 @@ func TestTheTasksTableHoldsItsColumnsToTheCellAtEveryWidth(t *testing.T) {
 			t.Fatalf("at %d cells the columns came out state=%d key=%d, want %d and %d",
 				width, state, second, tasksStateCells, tasksKeyCells)
 		}
-		if want := width - state - second - tasksColumnAir; name != want {
+		if want := width - state - second - tasksColumnAir - tasksFoldCells - tasksProjectCells(width); name != want {
 			t.Fatalf("at %d cells the name took %d and the columns left %d", width, name, want)
 		}
 		// AND THE PAGE REALLY DRAWS THEM: every row of work says its state word.
@@ -117,8 +117,8 @@ func TestTheTasksTableHoldsItsColumnsToTheCellAtEveryWidth(t *testing.T) {
 		if second != tasksKeyCells {
 			t.Fatalf("at %d cells the sort key's column came out %d cells", width, second)
 		}
-		if name != width-second-tasksColumnAir {
-			t.Fatalf("at %d cells the name took %d of the %d left to it", width, name, width-second-tasksColumnAir)
+		if name != width-second-tasksColumnAir-tasksFoldCells-tasksProjectCells(width) {
+			t.Fatalf("at %d cells the name took %d of the %d left to it", width, name, width-second-tasksColumnAir-tasksFoldCells-tasksProjectCells(width))
 		}
 	}
 }
@@ -142,7 +142,7 @@ func TestEveryRowOfOneFramePutsItsColumnsInTheSameCells(t *testing.T) {
 		if stateCells == 0 {
 			continue
 		}
-		start := nameCells
+		start := nameCells + tasksProjectCells(width)
 		lines := reading.lay(width)
 		checked := 0
 		for i, line := range lines {
@@ -254,7 +254,7 @@ func TestAShutRootCountsEveryRowItHides(t *testing.T) {
 func TestLegacySortSettingsCannotChangeChronologicalOrder(t *testing.T) {
 	world, win, now := tasksTableFixture()
 	baseline := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
-	for _, by := range []tasksSort{{key: tasksByCost}, {key: tasksByAge, back: true}} {
+	for _, by := range []tasksSort{{key: tasksByCost}, {key: tasksByName}} {
 		reading := readTasks(world, tasksMine{}, win, by, time.Time{}, now)
 		if tasksPage(reading, 122) != tasksPage(baseline, 122) {
 			t.Fatal("a legacy sort changed the newest-activity-first view")
@@ -276,16 +276,10 @@ func TestTasksIgnoreRetiredSortControls(t *testing.T) {
 	if got := tasksPage(a.tasksFiltered(), 122); got != before {
 		t.Fatal("retired sort chords changed the chronological view")
 	}
-	state, _, name := tasksColumns(a.taskSheetListWidth(), tasksByAge)
-	_, hits, _, _ := a.taskSheetFrame(a.width, a.height)
-	for y, hit := range hits {
-		if hit.kind == taskSheetHitControl {
-			a.taskSheetPress(name+state, y)
-			break
-		}
-	}
+	x, y := tasksLabelAt(t, a, "project")
+	a.taskSheetPress(x, y)
 	if got := tasksPage(a.tasksFiltered(), 122); got != before {
-		t.Fatal("a column-label click changed the chronological view")
+		t.Fatal("the project label changed the chronological view")
 	}
 }
 

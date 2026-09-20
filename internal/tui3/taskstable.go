@@ -8,32 +8,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// taskstable.go is THE LEFT HALF OF THE TASKS PLACE AS A TABLE: what the columns
-// are, where they land at every width, and what one row puts in each of them.
-//
-// WHY IT IS A TABLE AND NO LONGER A RANKED TAIL. The old row offered six facts
-// and degraded them by spelling from the right (rowfit.go's laws 2 and 3), which
-// is the right shape for a list whose facts are OPTIONAL — a model's prices, a
-// lane's numbers. It is the wrong shape for a page a person SCANS: every row gave
-// up a different fact at a different width, so no two rows on one frame answered
-// the same questions, most rows could only say two of the six, and the right edge
-// was holes and prose. A blank cell meant either "this row has nothing to say" or
-// "the frame ran out", with nothing on screen telling the two apart.
-//
-// So the facts are FIXED COLUMNS and the name is what flexes. rowfit.go's law 1
-// is unchanged and is in fact the whole design: the name keeps every cell the two
-// columns do not need, and it is the only thing on the row that is ever cut. Law
-// 2 has little left to do — a fixed column cannot degrade by spelling, though the
-// two cells that can say a longer and a shorter thing still do — and law 3's
-// ranked prefix is answered by both columns being always filled.
-//
-// THE COLUMNS ARE FOUR AND THE LAST TWO ARE FIXED:
-//
-//	fold and family · mark · name · state · the sort key's column · one cell of air
-//
-// The fold and the family column in front are [tasksKin]'s and are decided in the
-// layout; the mark is [tasksGlyph]'s. What is here is everything from the name
-// rightwards.
+// The Tasks table shares column measurements between rows, headings and clicks.
+// Identity flexes around project, state and age; the fold control ends the row.
 
 // The table's own measurements, and THE ONE PLACE THEY ARE WRITTEN DOWN. The
 // manual quotes them and the tests interpolate them; a number restated anywhere
@@ -47,6 +23,7 @@ const (
 	// tasksColumnAir is the one cell between the last column and the frame's edge,
 	// so a figure never touches the right border.
 	tasksColumnAir = 1
+	tasksFoldCells = 2
 	// tasksStateFloor is the narrowest frame that still draws the state column.
 	// Under it the state goes and the sort key's column stays, because the key is
 	// the column a person CHOSE and the state is the one they get for nothing.
@@ -58,28 +35,14 @@ const (
 	tasksNameFloor = tierTitleFloor
 )
 
-// tasksColumns is where the two fact columns land on a frame this wide: how many
-// cells the state gets, how many the sort key's column gets, and what is left
-// over for the name.
-//
-// IT IS ASKED BY THE PAINT AND BY THE POINTER ALIKE, which is why it is a
-// function rather than arithmetic in each of them: a label a person clicks and
-// the cells it stands over have to be the same cells, and two answers to where
-// the `cost` column is is a click that sorts by the wrong thing.
-//
-// `width` is THE LIST'S WHOLE WIDTH, with nothing spent out of it yet. Every
-// caller passes that same figure — the paint, the control row over it and the
-// pointer resolving a press — and a row's own lead comes out of the NAME it
-// returns ([tasksTableRow] says why). Asked of what one row's lead left, the
-// ninety-cell floor would fall on a worker four levels down a family a few cells
-// before it fell on the conversation standing over it, and one frame would draw
-// the state column on some of its rows.
+// tasksColumns reserves the same fact columns for every row at a given width.
+// Tree connectors come out of the name cell, so nested rows remain aligned.
 func tasksColumns(width int, key tasksSortKey) (state, second, name int) {
 	second = key.cells()
 	if width >= tasksStateFloor {
 		state = tasksStateCells
 	}
-	if name = width - state - second - tasksColumnAir; name >= tasksNameFloor {
+	if name = width - state - second - tasksColumnAir - tasksFoldCells - tasksProjectCells(width); name >= tasksNameFloor {
 		return state, second, name
 	}
 	// A FRAME WITH NO ROOM FOR A NAME DROPS THE COLUMNS AND KEEPS THE NAME, in
@@ -87,14 +50,28 @@ func tasksColumns(width int, key tasksSortKey) (state, second, name int) {
 	// it has not named has said nothing at all (rowfit.go, law 1).
 	if state > 0 {
 		state = 0
-		if name = width - second - tasksColumnAir; name >= tasksNameFloor {
+		if name = width - second - tasksColumnAir - tasksFoldCells - tasksProjectCells(width); name >= tasksNameFloor {
 			return state, second, name
 		}
 	}
-	if name = width - tasksColumnAir; name < 1 {
+	if name = width - tasksColumnAir - tasksFoldCells - tasksProjectCells(width); name < 1 {
 		name = 1
 	}
 	return 0, 0, name
+}
+
+// The project column is shared by all rows and yields space on compact frames.
+func tasksProjectCells(width int) int {
+	if layoutTier(width) == tierPhone {
+		return 0
+	}
+	return min(24, width/5)
+}
+
+func tasksAgeHeaderHit(x, width int) bool {
+	_, cells, _ := tasksColumns(width, tasksByAge)
+	right := width - tasksColumnAir - tasksFoldCells
+	return cells > 0 && x >= right-cells && x < right
 }
 
 // ── what one row puts in the columns ────────────────────────────────────────
@@ -179,7 +156,7 @@ func tasksChatStateField(chat tasksChat) rowField {
 
 // tasksTableRow lays one row of the table out: the row's lead — its family
 // connectors and its mark — then the name in what the columns leave, then the
-// two columns, then one cell of air.
+// project, state and age columns, the fold control, and one cell of air.
 //
 // EVERY ROW OF ONE FRAME ANSWERS THE SAME TWO QUESTIONS IN THE SAME CELLS. That
 // is the whole difference from the tail it replaces — the eye reads DOWN a
@@ -194,11 +171,15 @@ func tasksChatStateField(chat tasksChat) rowField {
 // columns move is a tail with extra steps. Only the NAME flexes (rowfit.go law
 // 1), and the lead eats into the name.
 func tasksTableRow(lead string, leadCells int, name string, state, second rowField,
-	secondInk func(string) string, width int, key tasksSortKey, pal palette, lit bool) string {
+	secondInk func(string) string, width int, key tasksSortKey, pal palette, lit bool, project, fold string) string {
 	stateCells, secondCells, nameCells := tasksColumns(width, key)
 	nameCells = max(nameCells-leadCells, 1)
 	said := fit(name, nameCells)
 	out := lead + placeSubject(said, lit, pal) + pad(nameCells-ansi.StringWidth(said))
+	if cells := tasksProjectCells(width); cells > 0 {
+		word := fit(project, cells-1)
+		out += placeFactInk(lit, pal)(word) + pad(cells-ansi.StringWidth(word))
+	}
 	if stateCells > 0 {
 		word := rowTail([]rowField{state}, stateCells)
 		out += placeFactInk(lit, pal)(word) + pad(stateCells-ansi.StringWidth(word))
@@ -210,7 +191,7 @@ func tasksTableRow(lead string, leadCells int, name string, state, second rowFie
 		figure := rowTail([]rowField{second}, secondCells)
 		out += pad(secondCells-ansi.StringWidth(figure)) + secondInk(figure)
 	}
-	return out + pad(tasksColumnAir)
+	return out + " " + pal.dim(fold) + pad(tasksFoldCells-1-ansi.StringWidth(fold)) + pad(tasksColumnAir)
 }
 
 // pad is n spaces, and none for a negative count.
@@ -244,15 +225,7 @@ const (
 	tasksSortUp   = "↑"
 )
 
-// tasksControlLabels is the right-hand end of the control row: the two labels,
-// with the arrow on whichever column the list is sorted by.
-//
-// THERE ARE EXACTLY TWO LABELS BECAUSE THERE ARE EXACTLY TWO COLUMNS. `state` is
-// always one of them; the other is whatever the second column is showing, which
-// is the sort key itself or the age standing in for a key that has no cell
-// ([tasksSortKey.column]). Sorting by name puts the arrow on neither, because
-// neither column is the name — and that is honest rather than a gap: the control
-// row's left half is showing the filter, and the foot names the key.
+// tasksControlLabels supplies state and age labels with the current age direction.
 func tasksControlLabels(by tasksSort) (state, second string) {
 	arrow := tasksSortDown
 	if by.back {
@@ -291,6 +264,10 @@ func tasksControlRow(query string, by tasksSort, width int, pal palette) string 
 		said, ink = fit(query, boxCells), pal.ink
 	}
 	out := tasksBareLead + pal.dim(mark) + " " + ink(said) + pad(boxCells-ansi.StringWidth(said))
+	if cells := tasksProjectCells(width); cells > 0 {
+		label := fit("project", cells-1)
+		out += pal.dim(label) + pad(cells-ansi.StringWidth(label))
+	}
 	if stateCells > 0 {
 		label := fit(stateLabel, stateCells)
 		out += pal.dim(label) + pad(stateCells-ansi.StringWidth(label))
@@ -299,7 +276,7 @@ func tasksControlRow(query string, by tasksSort, width int, pal palette) string 
 		label := fit(secondLabel, secondCells)
 		out += pad(secondCells-ansi.StringWidth(label)) + pal.dim(label)
 	}
-	return out + pad(tasksColumnAir)
+	return out + pad(tasksFoldCells+tasksColumnAir)
 }
 
 // ── the reason, off the row and under the cursor ────────────────────────────

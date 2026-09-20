@@ -249,7 +249,7 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // graph, then the other windows — which are reading a presence file written
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
-	by = tasksSort{}
+	by = tasksSort{back: by.back}
 	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by}
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
@@ -508,7 +508,10 @@ const (
 )
 
 type tasksLine struct {
-	kind tasksLineKind
+	branches  []bool
+	treeChild bool
+	lastChild bool
+	kind      tasksLineKind
 	// text is the words on a prose line.
 	text string
 	// item is the work a task line and its tail are about.
@@ -599,13 +602,13 @@ func (r tasksReading) lay(width int) []tasksLine {
 	// cells and three things they could say; the fold is a key a person can press,
 	// the connector is furniture, and the indent in front of both has already said
 	// where the row sits.
-	var work func(item tasksItem, depth int, last, named, nested bool)
-	work = func(item tasksItem, depth int, last, named, nested bool) {
+	var work func(item tasksItem, depth int, last, named, nested bool, branches []bool)
+	work = func(item tasksItem, depth int, last, named, nested bool, branches []bool) {
 		key := tasksKeyOf(item.entry)
 		kids := tree.kids[key]
 		own := len(lines)
 		line := tasksLine{kind: tasksLineTask, item: item, owner: own, under: named || nested,
-			rank: tree.rank[key]}
+			rank: tree.rank[key], branches: append([]bool(nil), branches...), treeChild: named || nested, lastChild: last}
 		mark := ""
 		switch {
 		case len(kids) > 0:
@@ -630,6 +633,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 		if phone && tasksCardTail(item, r.now) != "" {
 			lines = append(lines, tasksLine{
 				kind: tasksLineTail, item: item, owner: own,
+				branches: line.branches, treeChild: line.treeChild, lastChild: line.lastChild,
 				kin: tasksKin(depth, levels, tasksKinPad),
 			})
 		}
@@ -637,7 +641,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 			return
 		}
 		for at, kid := range kids {
-			work(kid, depth+1, at == len(kids)-1, named, true)
+			work(kid, depth+1, at == len(kids)-1, named, true, append(append([]bool(nil), branches...), !last))
 		}
 	}
 
@@ -668,14 +672,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 					line.chat.title = view.title
 					line.chat.working, line.chat.unread = view.working, view.unread
 				}
-				mark := tasksKinPad
-				if line.folds {
-					mark = tasksFoldShut
-				}
-				if line.folds && line.open {
-					mark = tasksFoldOpen
-				}
-				line.kin = tasksKin(0, levels, mark)
+				line.kin = ""
 				lines = append(lines, line)
 				if !line.open {
 					continue
@@ -683,7 +680,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 				depth = 1
 			}
 			for at, root := range g.roots {
-				work(root, depth, at == len(g.roots)-1, g.named, false)
+				work(root, depth, at == len(g.roots)-1, g.named, false, nil)
 			}
 		}
 	}
@@ -721,6 +718,52 @@ func (r tasksReading) headLine(width int) string {
 // second chance for the control to be drawn where it is not bound.
 func (r tasksReading) headRow(width int, pal palette) string {
 	return r.paint([]tasksLine{{kind: tasksLineWord, text: r.headLine(width), owner: -1}}, 0, width, pal, false)
+}
+
+// Tree strokes retain the continuation of every ancestor that has later siblings.
+func tasksTreeLead(line tasksLine, width int, pal palette) string {
+	if !line.treeChild {
+		return line.kin
+	}
+	var out strings.Builder
+	out.WriteString(tasksKinStep)
+	branches := line.branches
+	_, _, nameCells := tasksColumns(width, tasksByAge)
+	levels := max(0, min(tasksKinRoom(width), (nameCells-tasksNameFloor-8)/2))
+	if len(branches) > levels {
+		branches = branches[len(branches)-levels:]
+	}
+	for _, continues := range branches {
+		if continues {
+			out.WriteString(pal.glyph(tokens.GTreeVert) + " ")
+		} else {
+			out.WriteString(tasksKinStep)
+		}
+	}
+	if line.kind == tasksLineTail {
+		if line.lastChild {
+			out.WriteString("   ")
+		} else {
+			out.WriteString(pal.glyph(tokens.GTreeVert) + "  ")
+		}
+		return out.String()
+	}
+	id := tokens.GTreeBranch
+	if line.lastChild {
+		id = tokens.GTreeLast
+	}
+	out.WriteString(pal.glyph(id) + pal.glyph(tokens.GTreeDash) + " ")
+	return out.String()
+}
+
+func tasksFoldMark(line tasksLine, pal palette) string {
+	if !line.folds {
+		return ""
+	}
+	if line.open {
+		return pal.glyph(tokens.GExpanded)
+	}
+	return pal.glyph(tokens.GCollapsed)
 }
 
 // tasksKin is the family column in front of one row: one step of indent for
@@ -957,7 +1000,7 @@ func (s tasksSort) on(key tasksSortKey) tasksSort {
 // walking the rows their own way. The tally deliberately reads each piece of
 // work's own state instead ([tasksReading.tally]).
 func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...session.SessionRow) tasksTree {
-	order = tasksSort{}
+	order = tasksSort{back: order.back}
 	t := tasksTree{
 		kids:  map[tasksKey][]tasksItem{},
 		up:    make(map[tasksKey]tasksKey, len(items)),
@@ -1370,22 +1413,26 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		return tasksChatRow(line, width, r.now, r.folder, r.tilde, r.order, pal, lit)
 	case tasksLineTail:
 		indent := strings.Repeat(" ", taskSheetPhoneIndent)
-		tail := room - taskSheetPhoneIndent - ansi.StringWidth(line.kin)
+		kin := tasksTreeLead(line, width, pal)
+		tail := room - taskSheetPhoneIndent - ansi.StringWidth(kin)
 		if tail < 1 {
 			tail = 1
 		}
-		return lead + pal.dim(line.kin) + indent + placeFactInk(lit, pal)(fit(tasksCardTail(line.item, r.now), tail))
+		return lead + pal.dim(kin) + indent + placeFactInk(lit, pal)(fit(tasksCardTail(line.item, r.now), tail))
 	}
 	// THE FAMILY COLUMN IS CHOSEN IN THE LAYOUT AND PAINTED BY THE ROW. It is dim
 	// everywhere — a connector is the surface's own furniture, not the row's
 	// words. The TABLE spends it out of the name so its columns stand still
 	// ([tasksTableRow]); the phone card has no columns and takes what is left.
 	if layoutTier(width) == tierPhone {
-		card := room - ansi.StringWidth(line.kin)
+		kin := tasksTreeLead(line, width, pal)
+		card := room - ansi.StringWidth(kin) - tasksFoldCells - tasksColumnAir
 		if card < 1 {
 			card = 1
 		}
-		return lead + pal.dim(line.kin) + tasksCardHead(line.item, card, pal, lit)
+		name := tasksCardHead(line.item, card, pal, lit)
+		fold := tasksFoldMark(line, pal)
+		return lead + pal.dim(kin) + name + pad(card-ansi.StringWidth(name)) + " " + pal.dim(fold) + pad(1-ansi.StringWidth(fold)) + pad(tasksColumnAir)
 	}
 	return tasksRow(line, width, r.now, r.order, pal, lit)
 }
@@ -1682,23 +1729,19 @@ func tasksLabel(entry session.TaskIndexEntry) string {
 // It shares Home's conversation-state bullet, with its independent fold control
 // beside it so activity and tree navigation do not compete for one mark.
 //
-// AND IT NAMES ITS PROJECT ONLY WHERE THAT IS NEWS ([chatProjectWord],
-// projecttag.go). The project used to be a fact at the right of this row, which
-// is where the sorted column now lives; on a table there is nowhere to put it
-// that is not a column, so it joins the NAME — the one thing on the row that
-// flexes, and the one thing the project was ever qualifying.
+// Project identity has its own column, leaving the title identical to Home.
 func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string, by tasksSort, pal palette, lit bool) string {
 	chat := line.chat
 	name := chat.title
-	folderOf := chatFolder{project: chat.row.Project, workspace: chat.row.Workspace, dir: chat.row.ProjectDir}
-	if project := chatProjectWord(folderOf, folder, tilde); project != "" && project != chat.title {
-		name += rowSep + project
+	project := strings.TrimSpace(chat.row.Project)
+	if project == "" {
+		project = chat.row.ProjectDir
 	}
 	bullet := conversationBullet(pal, chat.working, chat.unread, chat.question, pal.glyph(tokens.GWorking))
-	lead := tasksBareLead + pal.dim(line.kin) + bullet + " "
+	lead := tasksBareLead + pal.dim(tasksTreeLead(line, width, pal)) + bullet + " "
 	return tasksTableRow(lead, ansi.StringWidth(lead), name,
 		tasksChatStateField(chat), tasksKeyField(by.key, line.rank, now),
-		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
+		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, project, tasksFoldMark(line, pal))
 }
 
 // tasksRow is one piece of work on a wide frame, and it is A ROW OF A TABLE: the
@@ -1720,11 +1763,11 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palette, lit bool) string {
 	item := line.item
 	glyph, glyphInk := tasksGlyph(item, pal)
-	lead := tasksBareLead + pal.dim(line.kin) + glyphInk(glyph) + " "
-	cells := ansi.StringWidth(tasksBareLead+line.kin) + ansi.StringWidth(glyph) + 1
+	lead := tasksBareLead + pal.dim(tasksTreeLead(line, width, pal)) + glyphInk(glyph) + " "
+	cells := ansi.StringWidth(lead)
 	return tasksTableRow(lead, cells, tasksLabel(item.entry),
 		tasksStateField(line), tasksKeyField(by.key, line.rank, now),
-		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
+		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, "", tasksFoldMark(line, pal))
 }
 
 // tasksAgeField reads recorded activity rather than dating every live task now.
