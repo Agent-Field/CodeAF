@@ -90,7 +90,7 @@ func TestHomeAndTabsShareFullTitleAndTruncateWithThreeDots(t *testing.T) {
 		}
 		found = true
 		line := plain(a.homeCellRow(row, -1, 28, a.pal, false)[0])
-		if !strings.Contains(line, "...") || !strings.HasPrefix(line, "understanding") || ansi.StringWidth(line) > 28 {
+		if !strings.Contains(line, "...") || !strings.Contains(line, "understanding") || ansi.StringWidth(line) > 28 {
 			t.Fatalf("Home title = %q", line)
 		}
 	}

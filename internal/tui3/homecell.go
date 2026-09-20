@@ -499,7 +499,7 @@ func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) [
 	lead := a.homeCellLead(cell, at, pal)
 	leadWidth := homeGridLead
 	if cell.panel == panelRecent && line.kind == homeSession {
-		lead, leadWidth = "", 0
+		lead = a.homeConversationBullet(cell, pal) + " "
 	}
 	body := homeCellBody(a.homeCellDoor(cell, at, width-leadWidth), width-leadWidth, pal, lit)
 	rows := []string{homeCellBand(lead+body, width, pal, lit)}

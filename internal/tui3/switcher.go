@@ -61,6 +61,7 @@ const (
 // switcherRow holds every kind of door the router can open. Zero fields are
 // deliberately meaningful: a row never fabricates an address it was not given.
 type switcherRow struct {
+	chatKey string
 	kind    switcherKind
 	session session.SessionRow
 	item    StandingItemView

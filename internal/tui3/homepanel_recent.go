@@ -20,6 +20,7 @@ func (recentPanel) rows(in *homeGridInput) homePanelRows {
 		if !in.desc {
 			cell.sub, cell.grows = "", false
 		}
+		cell.chatKey = row.chatKey
 		lines = append(lines, switcherRowLine(row, cell))
 	}
 	for _, row := range in.closedChats {
@@ -28,6 +29,7 @@ func (recentPanel) rows(in *homeGridInput) homePanelRows {
 		if !in.desc {
 			cell.sub, cell.grows = "", false
 		}
+		cell.chatKey = row.chatKey
 		lines = append(lines, switcherRowLine(row, cell))
 	}
 	lines = append(lines, in.errands...)

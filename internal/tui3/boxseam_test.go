@@ -340,7 +340,7 @@ func TestConversationControlsMatchHomeAndKeepTheHomeDoor(t *testing.T) {
 	a.chords.meta = chordMetaWord
 	a.notices.enabled = false
 	a.branch = "dev"
-	want := "opt+e effort · opt+a approvals · opt+k chats · / commands · esc back"
+	want := "opt+e effort · opt+a approvals · opt+k chats · / commands · esc home"
 	if got := a.footHint(200); got != want {
 		t.Fatalf("conversation controls = %q, want %q", got, want)
 	}

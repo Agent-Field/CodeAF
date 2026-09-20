@@ -490,7 +490,7 @@ const (
 	// already carrying that key while a room is open, and one row saying the same
 	// thing twice is the defect the rewind mode's empty hint exists to avoid.
 	roomRecallHint = "↑↓ history"
-	roomStopHint   = "/stop · x with empty input"
+	roomStopHint   = "/stop · x with empty input · esc main"
 	// roomGoneWord is the one line a landed node's room draws when there is
 	// NOTHING to replay: no lane, and no journal entries. The engine keeps the
 	// transcript's path across restarts and finds it by id when it was not
@@ -1990,7 +1990,7 @@ func (a *app) roomHint() string {
 		return roomRecallHint
 	case a.stopOffered():
 		if a.roomOrganized() {
-			return "/model · /stop"
+			return "/model · /stop · esc main"
 		}
 		// THE ROOM'S ANSWER TO "HOW DO I STOP THIS". It is the honest counterpart
 		// to the conversation's "ctrl+c interrupt": the work in here ends through a

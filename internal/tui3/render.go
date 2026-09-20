@@ -3506,9 +3506,9 @@ func (a *app) legendLinePainted(left, right, rightPainted string, width int, pai
 	// legend had just recorded, and `esc back` became a label nothing
 	// answered for. What makes the span its own answer to "was it drawn" is
 	// [app.legend] clearing it before its own ladder starts.
-	if offset := strings.Index(right, homeDoorWord); offset >= 0 {
+	if offset := strings.Index(right, a.escapeDoorWord()); offset >= 0 {
 		from := at + ansi.StringWidth(right[:offset])
-		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(homeDoorWord)}
+		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(a.escapeDoorWord())}
 	}
 	line := a.pal.dim("─")
 	if left != "" {
@@ -3716,7 +3716,7 @@ func (a *app) idleHint() string {
 	}
 	doors = append(doors, microcopy)
 	if a.homeDoorShowing() {
-		doors = append(doors, homeDoorWord)
+		doors = append(doors, a.escapeDoorWord())
 	}
 	return strings.Join(doors, hintSegment)
 }

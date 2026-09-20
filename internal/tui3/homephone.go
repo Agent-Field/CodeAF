@@ -50,7 +50,7 @@ package tui3
 //     open; the rest are one line each, exactly as the `elsewhere` block already
 //     draws them, without the rule line that costs a row nobody can spare.
 //
-//   - OPEN TABS COME FIRST, as bare lines followed by bounded closed history.
+//   - OPEN TABS COME FIRST, with status bullets followed by bounded closed history.
 //     Waiting details may also have a triage row; project groups do not repeat
 //     conversations. Their standing items remain below the inbox.
 //

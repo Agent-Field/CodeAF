@@ -440,10 +440,12 @@ const (
 // line is built. It is a reading and holds no state: the cursor, the pointer
 // and the spinner's frame are the paint's.
 type homeCell struct {
-	kind  homeCellKind
-	panel homePanelID
-	mark  homeCellMark
-	title string
+	// chatKey is an already resolved tab identity for live conversation bullets.
+	chatKey string
+	kind    homeCellKind
+	panel   homePanelID
+	mark    homeCellMark
+	title   string
 	// pad is the cells the title is padded to before the note, so a panel's
 	// notes stand in one column (the projects panel's counts).
 	pad int

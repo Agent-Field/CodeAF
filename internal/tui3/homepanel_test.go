@@ -138,8 +138,8 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	a.home.build()
 	frame := homeText(a)
 	own, col := homeRowOf(frame, "Porting the Resume Picker")
-	if own != placeHeadRows || col != homeGridMargin || strings.Contains(frame, "threads") {
-		t.Fatalf("conversations do not start as bare lines:\n%s", frame)
+	if own != placeHeadRows || col != homeGridMargin+homeGridLead || strings.Contains(frame, "threads") {
+		t.Fatalf("conversations do not start with bullets and no heading:\n%s", frame)
 	}
 	lines := strings.Split(frame, "\n")
 	if mine := panelRows(a, panelRecent)[0]; !mine.bold || mine.sub != "" {

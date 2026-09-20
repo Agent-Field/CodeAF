@@ -386,6 +386,10 @@ func (a *app) frameBody() (string, int, int) {
 		lines, caretX, caretY := a.contextModalOver(under, width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
+	// A reply is read only once its main transcript is actually on screen.
+	if !a.roomOpen() && !a.railFull() {
+		delete(a.unreadChats, a.frontTabKey())
+	}
 	lines, caretX, caretY := a.chatFrameLines(width, height)
 	return strings.Join(lines, "\n"), caretX, caretY
 }

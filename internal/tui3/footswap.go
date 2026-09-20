@@ -235,9 +235,9 @@ func (a *app) hintRow(width int) string {
 	} else {
 		hint = ""
 	}
-	if offset := strings.Index(hint, homeDoorWord); offset >= 0 {
+	if offset := strings.Index(hint, a.escapeDoorWord()); offset >= 0 {
 		from := 1 + ansi.StringWidth(hint[:offset])
-		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(homeDoorWord)}
+		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(a.escapeDoorWord())}
 	}
 	// THE ROW FILLS THE FRAME, as every foot row does: a row shorter than the
 	// frame would leave the cells behind it to whatever the last frame drew.

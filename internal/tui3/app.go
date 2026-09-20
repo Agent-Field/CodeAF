@@ -1020,8 +1020,10 @@ type app struct {
 	title string
 	// openingPrompt names a sent conversation until its generated title arrives.
 	openingPrompt string
-	cost          float64
-	tokens        int
+	// unreadChats keeps replies that landed while their conversation was hidden.
+	unreadChats map[string]bool
+	cost        float64
+	tokens      int
 	// dayCost is what this MACHINE has spent since midnight and dayCosted
 	// whether anything counted it at all — the pair the Spending tab's `today`
 	// receipt is drawn from (settingspend.go). It is a reading taken on the way
@@ -5416,6 +5418,10 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.retrying = true
 
 	case session.EventTurnDone:
+		if a.unreadChats == nil {
+			a.unreadChats = make(map[string]bool)
+		}
+		a.unreadChats[a.frontTabKey()] = true
 		// Both notes go in BEFORE the turn settles, so they land under the reply
 		// they are about rather than above whatever is said next. What was
 		// CHANGED comes first and what it COST second: the files are the work,

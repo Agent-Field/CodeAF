@@ -793,16 +793,17 @@ below.
 **At rest it names the shared controls in home's order**, followed by the way home:
 
 ```
-alt+e effort · alt+a approvals · alt+k chats · / commands · esc back
+alt+e effort · alt+a approvals · alt+k chats · / commands · esc home
 ```
 
 On a Mac the modifier reads `opt`. Effort and approvals appear only when the session
 has those controls, and chats appears when there is another conversation to switch to.
 `tab` still returns to the last conversation but has no hint here. On narrow frames,
-clauses give way from the left until `/ commands · esc back` remains, then
+clauses give way from the left until `/ commands · esc home` remains, then
 `/ commands` alone if needed.
 
-Escape backs out one layer toward Home; clicking `esc back` does the same.
+The conversation footer says `esc home`; a task conversation says `esc main`. Clicking
+that hint takes the same route as Escape. Nested menus still close one layer first.
 The hint remains available with a draft. `/` opens the command list.
 A state with its own keys, or an earned tip, takes over this row while it applies.
 

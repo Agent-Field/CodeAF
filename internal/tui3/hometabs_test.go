@@ -63,7 +63,7 @@ func assertHomeTabParity(t *testing.T, a *app) {
 	}
 }
 
-func TestHomeConversationsMirrorTabsWithoutHeadingOrIndent(t *testing.T) {
+func TestHomeConversationsMirrorTabsWithBulletsAndNoHeading(t *testing.T) {
 	a, files := homeTabsFixture(t)
 	assertHomeTabParity(t, a)
 	open, closed := homeConversationLines(a)
@@ -76,8 +76,8 @@ func TestHomeConversationsMirrorTabsWithoutHeadingOrIndent(t *testing.T) {
 	}
 	for _, line := range open {
 		row := plain(a.homeCellRow(line, -1, 60, a.pal, false)[0])
-		if !strings.HasPrefix(row, line.cell.title) {
-			t.Fatalf("conversation is indented: %q", row)
+		if !strings.HasPrefix(row, plain(a.homeConversationBullet(line.cell, a.pal))+" "+line.cell.title) {
+			t.Fatalf("conversation lost its bullet: %q", row)
 		}
 	}
 	// A remembered tab has no held agent, but must still be on every list.

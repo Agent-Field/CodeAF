@@ -1032,7 +1032,7 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 	// exchange and shown a preview of something else.
 	h.pointExchange(ex)
 	a.touch()
-	return errandSend(ex, text)
+	return tea.Batch(errandSend(ex, text), a.wake())
 }
 
 // errandSend is one Submit, off the update loop for the reason [app.submit] is:
@@ -1396,7 +1396,7 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
 	ex.said = a.now()
 	ex.startTurn(a.now())
-	return errandSend(ex, text)
+	return tea.Batch(errandSend(ex, text), a.wake())
 }
 
 // startTurn is the pane admitting that something is now happening, and it is

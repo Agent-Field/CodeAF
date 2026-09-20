@@ -593,6 +593,9 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	// raised either banner above raised it because there is a question in there or
 	// a turn landed in it, and [app.keptQuiet] refuses both.
 	a.sweepKept()
+	if a.homeAnimating() {
+		return tea.Batch(next, banner, a.wake())
+	}
 	return tea.Batch(next, banner)
 }
 

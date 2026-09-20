@@ -383,7 +383,8 @@ nothing.
 
 ## Threads, open conversations and recently closed chats — the Home list
 
-Home starts with **bare conversation lines, with no heading or row indent**. Open
+Home starts with **bulleted conversation lines and no heading**. The bullets show
+answering and unread replies. Open
 conversations have exactly the same membership and order as this window's tabs and
 `alt+k chats` (`opt+k` on macOS), including remembered tabs whose agents are elsewhere.
 The current conversation is bold; on a wide frame its description says `here` and
@@ -2145,7 +2146,7 @@ that line opens it in place. A section with nothing in it is not drawn at all. *
 appears once**: a conversation lifted into `waiting on you` is not drawn again under its
 project.
 
-Conversation tabs are bare single lines, followed by up to three dimmed closed
+Conversation tabs are single lines with status bullets, followed by up to three dimmed closed
 conversations. Other inbox rows are **two lines** — the label, and its dim tail
 indented under it. A tab with a pending question also has a waiting row.
 
@@ -2234,3 +2235,16 @@ are said where they happen: in the conversation that met them, and on `/status`.
 which column each stands in is read off what it holds — a panel with rows is in the field at
 the left, a quiet one in the rail at the right — so nothing about them is yours to set; only
 their heights and their sides move with the terminal and the day.
+
+## Conversation bullets — answering and unread replies
+
+Every conversation in Home has a bullet. A dim bullet means there is no unread
+reply known to this window. A working mark means the conversation is answering;
+the first answering row animates when no other Home row owns the spinner. A bright
+filled bullet means a reply finished while you were away. Opening the conversation
+clears that unread state. Recently closed rows keep dim bullets. These indicators
+use this window’s live conversations; they do not infer unread history from other
+windows or persist read status across restarts.
+
+In `/ask`, the thinking, writing and running indicator starts animating as soon as
+you submit, including follow-up messages. Linear mode keeps a still mark.

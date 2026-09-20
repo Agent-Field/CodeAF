@@ -33,6 +33,7 @@ func (h *homeView) conversationRows() (open, closed []switcherRow) {
 	fromTab := func(tab chatTab, isOpen bool) switcherRow {
 		row := byFile[filepath.Clean(tab.file)]
 		row.kind, row.title, row.here = switcherConversation, tab.word, isOpen && tab.here
+		row.chatKey = tab.key
 		row.session.Transcript = tab.file
 		row.held = row.session.Open && !tab.held && !tab.here
 		row.door = row.held && !h.far && row.session.Dir != ""

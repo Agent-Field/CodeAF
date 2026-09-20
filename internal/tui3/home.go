@@ -164,7 +164,7 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 // twenty things out wakes it exactly as often — and costs the wire exactly as
 // much — as a machine with one.
 func (a *app) homeAnimating() bool {
-	return a.at(pageHome) && a.homeSpins(a.home.spin)
+	return a.at(pageHome) && !a.linear && (a.homeSpins(a.home.spin) || a.homeAnsweringLine() >= 0)
 }
 
 // homeGutter is the empty space between the two columns, and it is the ONLY
@@ -3725,7 +3725,15 @@ func homeBucketOf(transcript string) string {
 // homeDoorWord is the dim advertisement at the foot of an idle conversation,
 // and it is written in the hint slot's own grammar — the key, then the noun,
 // exactly as `ctrl+g tasks` is (render.go's [app.hintWord]).
-const homeDoorWord = "esc back"
+const homeDoorWord = "esc home"
+
+// The footer names the destination of Escape at this depth.
+func (a *app) escapeDoorWord() string {
+	if a.roomOpen() {
+		return "esc main"
+	}
+	return homeDoorWord
+}
 
 // homeDoorOpen reports whether the Home destination can be opened here.
 func (a *app) homeDoorOpen() bool {
@@ -3736,7 +3744,7 @@ func (a *app) homeDoorOpen() bool {
 // it: Home is reachable and no copy or rewind mode owns the foot. The draft
 // may contain words because back navigation preserves them.
 func (a *app) homeDoorShowing() bool {
-	return a.homeDoorOpen() && !a.copy.on && !a.rew.on
+	return (a.roomOpen() || a.homeDoorOpen()) && !a.copy.on && !a.rew.on
 }
 
 // homeDoorPress is a click on that advertisement.

@@ -50,7 +50,11 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 		if row < 0 {
 			t.Fatalf("%q is not on an eighty-cell home:\n%s", word, frame)
 		}
-		if row <= last || col != homeGridMargin {
+		wantCol := homeGridMargin
+		if word == "Porting the Resume Picker" {
+			wantCol += homeGridLead
+		}
+		if row <= last || col != wantCol {
 			t.Fatalf("%q is at row %d cell %d, after row %d in one column:\n%s", word, row, col, last, frame)
 		}
 		last = row
@@ -87,7 +91,7 @@ func TestAtOneTwentyWhatHasRowsTakesTheFieldAndTheQuietGatherInTheRail(t *testin
 	// outranks it — the rank inside a column is the order table's as it always
 	// was, and only the column is the content's to say.
 	recent, recentCol := homeRowOf(frame, "Porting the Resume Picker")
-	if recent >= needs || recentCol != needsCol {
+	if recent >= needs || recentCol != needsCol+homeGridLead {
 		t.Fatalf("threads has rows and is not under needs you in the field:\n%s", frame)
 	}
 	// AND SPEND IS PINNED UNDER PROJECTS AT THE TOP OF THE RAIL, with the quiet
@@ -143,7 +147,7 @@ func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	if needs <= projects || needsCol >= railCol {
 		t.Fatalf("needs you and projects do not head the field and the rail:\n%s", frame)
 	}
-	if recent >= needs || recentCol != needsCol {
+	if recent >= needs || recentCol != needsCol+homeGridLead {
 		t.Fatalf("threads is not under needs you in the first field column:\n%s", frame)
 	}
 	if needsCol != homeGridMargin {
