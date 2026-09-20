@@ -1244,7 +1244,7 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.taskPlanScroll(taskSheetRows)
 		return nil
 	case "ctrl+o":
-		if len(planBriefLines(a.taskSheet.plan.Description, a.bodyWidth())) > briefFoldLines {
+		if len(planBriefRows(a.taskSheet.plan.Description, a.bodyWidth())) > briefFoldLines {
 			a.taskSheet.planBriefFull = !a.taskSheet.planBriefFull
 			a.taskSheet.detailTop = 0
 			a.taskSheet.planStick = false
@@ -1486,7 +1486,17 @@ func (a *app) taskPlanBody(width int) []string {
 	}
 	if desc := strings.TrimSpace(page.Description); desc != "" {
 		section("brief")
-		lines := planBriefLines(desc, width)
+		// THE BRIEF IS DRAWN THROUGH THE READER THE TRANSCRIPT ALREADY USES
+		// ([requestDisplayFor]). A plan task's description can be the generated
+		// work order a run hands its workers, and a page that drew it raw opened
+		// on the machinery addressed to the model — the shouted scaffold heading,
+		// the rule under it, and only then the person's ask. The reader reshapes
+		// that document into plain headings with this task's own work first, the
+		// same service the conversation's own transcript gives the same text;
+		// a brief that is not the generated document passes through unchanged, so
+		// a person's own typed brief draws exactly as it always did. THE STORED
+		// TEXT IS NEVER TOUCHED: only what is drawn changes.
+		lines := planBriefRows(desc, width)
 		if !a.taskSheet.planBriefFull && len(lines) > briefFoldLines {
 			for _, line := range lines[:briefFoldLines] {
 				add(pal.ink(line))
@@ -1635,6 +1645,18 @@ func planBriefLines(text string, width int) []string {
 		}
 	}
 	return lines
+}
+
+// planBriefRows is the brief section's own read of a stored description: the
+// work order drawn through the reader the conversation's transcript already
+// uses ([requestDisplayFor]) before the page wraps it. Every surface that
+// holds this text gives a person the same reading of it — plain headings, the
+// task's own work first, no machinery addressed to a worker — and the door
+// counts the lines this function draws, so the fold and the count it names can
+// never disagree. A description that is not the generated document is wrapped
+// as it was always wrapped.
+func planBriefRows(desc string, width int) []string {
+	return planBriefLines(requestDisplayFor(strings.TrimSpace(desc)), width)
 }
 
 // planChildWord is one child's own line on the task's page: its state word and
