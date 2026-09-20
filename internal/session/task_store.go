@@ -1059,21 +1059,23 @@ func runRowRecord(notice TaskNotice) runRecord {
 	}
 }
 
-// runRowNotice is one record as the row a column draws again, SETTLED.
+// runRowNotice is one record as the row a column draws again.
 //
-// Done stays done and failed stays failed, verbatim: those rows said their last
-// word before the process ended and nothing has happened to them since. A row
-// that was still QUEUED OR MOVING is the only one this changes, and it changes
-// because the truth about it changed while nobody was watching — the work behind
-// it stopped existing the moment the process did. It settles the way a run's own
-// nodes settle when they are called off (orchestrate.go's
-// [orchestrateFamily.retire]): failed, with Stopped beside it, because nothing
-// went wrong with the work and nobody made a finding about it.
+// A row that said its last word before the process ended comes back verbatim:
+// done stays done, failed stays failed, and nothing has happened to either
+// since. A row that was still QUEUED OR MOVING is the only one this changes,
+// and it changes because the truth about it changed while nobody was watching —
+// nothing has been driving it since the process went away.
 //
-// A RESTORED ROW IS NEVER MOVING, which is why Doing is not restored and why
+// IT COMES BACK INTERRUPTED AND NOT FAILED. `failed` says something went wrong
+// with the work and `stopped` says a person ended it, and neither happened:
+// nothing was found out and nobody decided anything ([TaskInterrupted]).
+//
+// A RESTORED ROW IS NOT MOVING, which is why Doing is not restored and why
 // Elapsed is whatever was frozen onto it. Nothing here re-enters the frontier:
 // these rows are not in the graph's `nodes` and never were, so there is nothing
 // for a scheduler to find (task_run.go's [TaskGraph.runs] says it at length).
+// That is a fact about this reader and not a statement that the work is over.
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
 		ID:      record.ID,
