@@ -738,6 +738,15 @@ type runRecord struct {
 	StartedAt time.Time `json:"startedAt,omitzero"`
 	EndedAt   time.Time `json:"endedAt,omitzero"`
 
+	// Copy is WHERE THE RUN'S WORK HAPPENED (task_run_copy.go). It is the one
+	// fact about a run that nothing else can recover: the directory is derived
+	// from the run's own number and could be worked out again, but the branch is
+	// minted at random when the copy is cut and is written nowhere else. A row
+	// saved before this field existed decodes with nil, and a run with no copy
+	// recorded is one that cannot be carried on — which [runCopyTree] says out
+	// loud rather than repairing.
+	Copy *TaskCopyRecord `json:"copy,omitempty"`
+
 	// ElapsedMS is whatever age the row was last published with, frozen. A run's
 	// rows do not carry one today — the family publishes no Elapsed — so it is
 	// absent on every record this code writes, and it is here rather than left
@@ -1056,6 +1065,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		ElapsedMS: notice.Elapsed.Milliseconds(),
 		StartedAt: notice.StartedAt,
 		EndedAt:   notice.EndedAt,
+		Copy:      notice.Copy,
 	}
 }
 
@@ -1093,6 +1103,7 @@ func runRowNotice(record runRecord) TaskNotice {
 
 		StartedAt: record.StartedAt,
 		EndedAt:   record.EndedAt,
+		Copy:      record.Copy,
 	}
 	if !notice.State.settled() {
 		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live
