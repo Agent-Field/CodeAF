@@ -162,6 +162,30 @@ func TestTheWatcherRecordsWhatTheStripReads(t *testing.T) {
 	}
 }
 
+// THE SAME CONVERSATION MUST NOT CHANGE ITS ANSWER WHEN IT MOVES. A landed
+// task saying `your call` is held as needing a person, and the surface already
+// carries that question when the conversation comes forward. An automatic
+// proposal remains excluded on both sides because its deadline will answer it.
+func TestTheSameConversationAgreesInFrontAndBehind(t *testing.T) {
+	a, watch, _ := signalLab(t)
+	watch.waits.Store(true)
+	held := a.tabSignalFor("/tmp/lab/two.jsonl", false)
+	a.questions = append(a.questions, questionShown{question: session.Question{
+		ID: 7, Kind: session.QuestionLanding, Ask: session.AskLanding,
+	}})
+	if front := a.tabSignalFor(a.file, true); front != held {
+		t.Fatalf("landed your-call conversation reads %v in front and %v behind", front, held)
+	}
+
+	watch.waits.Store(false)
+	a.questions = nil
+	a.task = &taskCard{id: 21, title: "Repair the reporting pipeline",
+		born: a.now(), deadline: a.now().Add(10 * time.Second)}
+	if front, held := a.tabSignalFor(a.file, true), a.tabSignalFor("/tmp/lab/two.jsonl", false); front != held {
+		t.Fatalf("deadline proposal conversation reads %v in front and %v behind", front, held)
+	}
+}
+
 // ── AND WHAT IS NOT A QUESTION ──────────────────────────────────────────────
 //
 // This is the one that has to be right before a mark is worth drawing at all.
