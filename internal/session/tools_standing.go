@@ -1435,6 +1435,9 @@ func (a *Agent) standSetStatus(parsed standArguments, status standing.Status) (s
 func (a *Agent) standingMove(store standingStore, item standing.Item, status standing.Status) (standing.Item, string, error) {
 	item.Status = status
 	item.RetiredWhy = ""
+	// Changing the item is the person's answer to whatever its last firing
+	// stopped on ([standing.Item.ClearNeedsPerson]).
+	item = item.ClearNeedsPerson()
 	word := "resumed"
 	switch status {
 	case standing.StatusPaused:
