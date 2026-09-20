@@ -987,9 +987,11 @@ const standingRefusalSomething = "something"
 // is owed when the failure was "somebody would have had to allow this".
 //
 // The sentences it matches are the ones this build writes for a call that
-// needed a person and had none (consent.go): the node's own words, and the
-// headless one. Anything else is an ordinary tool failure, which is the run's
-// business and not the person's.
+// needed a person and had none: the node's own words and the headless one
+// (consent.go), and the one the door that runs this program underneath another
+// one writes. They do not share a spelling, so the predicate matches what each
+// one SAYS rather than how it says it. Anything else is an ordinary tool
+// failure, which is the run's business and not the person's.
 //
 // WHAT IT ANSWERS IS NOT THAT LINE. The engine's own refusal is written for the
 // worker that must act on it, and it reads `refused in a task: default — nobody

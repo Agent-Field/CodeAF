@@ -67,6 +67,13 @@ func TestAnItemNeedingNobodyIsUnmovedByTheChange(t *testing.T) {
 // before this change, and an item that has spent its allowance for the day
 // cannot fire again to have it rewritten. A predicate that knew only the new
 // spelling would leave every one of those rows exactly as it found them.
+//
+// The three below the new lead are quoted from the doors that write them: the
+// turn inside a task and the turn with no resolver, both in the session's
+// consent, and the door that runs this program underneath another one. They
+// state the same fact three different ways, which is why the predicate reads
+// what a line SAYS rather than holding three literals: the third spelling was
+// already shipping when this test first went red on it.
 func TestTheOldSpellingIsStillAPermissionLine(t *testing.T) {
 	for _, line := range []string{
 		"refused in a task: default — nobody to ask",

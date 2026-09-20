@@ -587,11 +587,19 @@ func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 // session writes it and [IsPermissionLine] recognises it.
 const NeedsPermissionLead = "stopped: it needed your ok to run "
 
-// permissionRefusals are the two sentences the ENGINE itself writes for a call
-// that needed a person and had none. They are what [IsPermissionLine] matches
-// besides its own lead, and they are the same two the session's own reader
-// names, so the two cannot come to disagree about what a permission stop is.
-var permissionRefusals = []string{"nobody to ask", "no resolver is attached"}
+// permissionRefusals are the sentences this program writes for a call that
+// needed a person and had none, matched by the PROPERTY each one states rather
+// than by its exact words. Three doors write such a sentence and they do not
+// share a spelling: the turn inside a task says `— nobody to ask`, the turn
+// with no resolver says `no resolver is attached`, and the door that runs this
+// program underneath another one says `nobody is here to ask`. Holding the
+// three literals would mean a fourth door, or a reworded third, silently
+// stopped counting as a permission stop — which is exactly how the spelling on
+// disk today came to be unrecognised.
+var permissionRefusals = [][]string{
+	{"nobody", "to ask"},
+	{"no resolver is attached"},
+}
 
 // IsPermissionLine reports whether a line on an item is about a permission the
 // firing could not get, rather than a QUESTION it put to the person. It is the
@@ -616,11 +624,24 @@ func IsPermissionLine(line string) bool {
 	}
 	lower := strings.ToLower(line)
 	for _, said := range permissionRefusals {
-		if strings.Contains(lower, said) {
+		if saysAllOf(lower, said) {
 			return true
 		}
 	}
 	return false
+}
+
+// saysAllOf reports whether the line carries every part of one of the shapes in
+// [permissionRefusals]. The parts are looked for anywhere and in any order,
+// which is what lets one shape cover both `nobody to ask` and `nobody is here
+// to ask` without either spelling being written down twice.
+func saysAllOf(lower string, parts []string) bool {
+	for _, part := range parts {
+		if !strings.Contains(lower, part) {
+			return false
+		}
+	}
+	return true
 }
 
 // ClearNeedsPerson puts down the line about a permission a firing could not
