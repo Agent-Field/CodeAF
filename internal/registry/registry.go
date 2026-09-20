@@ -212,8 +212,6 @@ type Entry struct {
 	// It carries exactly one %s, which is the item's own name as the user knows
 	// it. Read it through [Entry.SteerFor] rather than formatting it by hand.
 	Steer string
-
-	lowerVerb, lowerDescription string
 }
 
 // SteerFor is this entry's composer seed for one named item, or "" when the
@@ -283,22 +281,11 @@ func barePrintable(key string) bool {
 }
 
 // entries is the seeded catalog, built once at package init from
-// catalog.go's authored rows. Static package data: nothing here allocates on
-// a query path, because there is nothing left for a query to build — every
-// field, including the lowercase copies fuzzy matching reads, is already
-// sitting in the slice.
-var entries = buildEntries()
-
-func buildEntries() []Entry {
-	rows := seedRows()
-	built := make([]Entry, len(rows))
-	for index, row := range rows {
-		row.lowerVerb = toLower(row.Verb)
-		row.lowerDescription = toLower(row.Description)
-		built[index] = row
-	}
-	return built
-}
+// catalog.go's authored rows. Static package data: nothing here allocates on a
+// query path, because there is nothing left for a query to build — the case
+// fold a search needs happens inside the shared matcher, byte-wise, on the
+// spot.
+var entries = seedRows()
 
 // ByID finds the one entry with this id. O(entries) worst case, no
 // allocation — a linear scan over static data, which is cheap enough at this
