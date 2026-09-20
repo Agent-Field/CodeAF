@@ -41,9 +41,10 @@ import (
 //     Quiet rows past the first few collapse to one dim line, because density
 //     here is omission and never compression.
 //   - RECALL. `@` turns the same column into a search over every conversation
-//     on the machine, ranked by [tokenScore] — the same ladder the model picker
-//     and the resume picker rank with, so three characters find a chat from
-//     last week the way they find a model.
+//     on the machine, ranked by [homeRank] — a weighted composite over the
+//     same word-matching idea the model picker and the resume picker rank
+//     with, so three characters find a chat from last week the way they find
+//     a model.
 //   - THE DOOR. Typing anything else is the start of a new conversation: the
 //     words go in the box at the foot, and enter opens a fresh session in this
 //     project and sends them. No picker, no ceremony, no structure declared

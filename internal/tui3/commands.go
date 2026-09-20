@@ -580,7 +580,8 @@ func (c command) bareFor(needle string) bool {
 
 // matchAt is where needle was found in this command's words and whether it was
 // found at all — the name first, then the aliases a rung below it. Lower is
-// better, the same way the model picker's tiers are (palette.go's [tokenScore]).
+// better: this is a plain offset, the one ranking the command list has always
+// kept, and not the fuzzy matcher the pickers rank with (internal/fuzzy).
 func (c command) matchAt(needle string) (int, bool) {
 	if needle == "" {
 		return 0, true

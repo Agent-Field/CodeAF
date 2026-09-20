@@ -6,13 +6,13 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -44,12 +44,13 @@ const pickerRows = 12
 type picker struct {
 	open bool
 
-	// all is the list as it was resolved, and lower the same ids folded once at
-	// open: filtering is per keystroke over every row, and lowercasing a few
-	// hundred ids on each of them is the one allocation this path cannot afford
-	// to repeat.
-	all   []Model
-	lower []string
+	// all is the list as it was resolved, and text the string each row is scored
+	// against — the id, or the notice an unavailable row carries instead —
+	// held once at open because deriving it per keystroke over a few hundred
+	// rows is work this path does not need to repeat. The case fold the
+	// matcher needs happens inside it, byte-wise, and allocates nothing.
+	all  []Model
+	text []string
 	// score is per-model scratch, indexed by the same index as all, reused
 	// across keystrokes.
 	score []int
@@ -190,13 +191,13 @@ func (p *picker) start(models []Model, current string) {
 func (p *picker) restock(models []Model) {
 	p.all = models
 	p.shared = sharedSlugs(models)
-	p.lower = make([]string, len(models))
+	p.text = make([]string, len(models))
 	for i, model := range models {
 		label := model.ID
 		if model.Unavailable {
 			label = model.Notice
 		}
-		p.lower[i] = strings.ToLower(label)
+		p.text[i] = label
 	}
 	p.score = make([]int, len(models))
 	// THE CURSOR GOES BACK TO THE MODEL IN USE WHATEVER IS TYPED. [picker.rank]
@@ -266,27 +267,28 @@ func (p *picker) relist() {
 // remembered last week's query would open onto a list with no explanation.
 func (p *picker) close() { *p = picker{} }
 
-// rank re-filters against the filter box: case-insensitive, EVERY TOKEN MUST
-// MATCH, and each token matches in one of three tiers — prefix, then substring,
-// then subsequence.
+// rank re-filters against the filter box: case-insensitive, EVERY TERM MUST
+// MATCH, and each term is scored by the fzf alignment this repo keeps for all
+// its pickers (internal/fuzzy).
 //
 // THE QUERY IS TOKENS AND NOT A PHRASE. A person hunting a model types the
 // pieces they remember in the order they remember them, and the pieces are not
 // adjacent in the id: "ds v4" is deepseek/deepseek-v4-flash, "claude 4.5" is
-// anthropic/claude-sonnet-4.5. Whitespace splits, and the tokens are ANDed — a
+// anthropic/claude-sonnet-4.5. Whitespace splits, and the terms are ANDed — a
 // second word narrows a list, which is the only thing typing more can sensibly
 // do.
 //
-// THE TIERS ARE A LADDER AND THE SCORE IS THEIR RUNG PLUS THE OFFSET, summed
-// over the tokens. A prefix scores zero, so "gpt" still puts gpt-5-classic
-// first; a substring scores its offset above every prefix, so openai/gpt-4.1
-// (offset 7) comes before anthropic/claude-gpt-echo (offset 17); and a
-// subsequence — the letters in order, gaps allowed — scores above every
-// substring, so the fuzzy hits land at the BOTTOM of the list rather than mixed
-// through it. That ordering is what makes the third tier affordable at all:
-// "sonnet" over six hundred ids does match a lot of them loosely, and every one
-// of those sits under the models that really carry the word. Ties keep source
-// order, which is the catalog's, so an empty box shows the list as handed over.
+// THE SCORE IS THE ALIGNMENT AND NOT A LADDER OF RUNGS. The matcher pays for
+// the best way a term's letters can sit in an id: a boundary bonus for landing
+// after a word start, a `/` or a hyphen; a consecutive bonus for a tight run,
+// floored so adjacency always beats a gap; the first character's boundary
+// doubled, so a word beginning where the id begins is worth the most. A prefix
+// therefore outranks a substring which outranks a scattered subsequence —
+// the same ordering the tiers used to hold apart, produced by the bonus model
+// instead of enforced by it, and "sonnet" over six hundred ids still puts the
+// models that really carry the word above the ones that merely contain its
+// letters. Higher is better, [GroupOrder] leads, and ties keep source order,
+// which is the catalog's, so an empty box shows the list as handed over.
 func (p *picker) rank() {
 	// THE QUERY IS SPLIT BEFORE IT IS SCORED. A token that parses as a question
 	// about the machines behind a model (lanes.go's [parseLaneTerm]) is a
@@ -294,16 +296,20 @@ func (p *picker) rank() {
 	// was — which is why a person who has never heard of any of this types the
 	// same query and gets the same list.
 	tokens, terms := splitQuery(p.filter.String())
+	// The words are already folded by [splitQuery] and become matcher terms
+	// once here, not once per row: the terms are the same for every id the
+	// keystroke ranks.
+	ft := fuzzyTerms(tokens)
 	now := timeNow()
 	// AN OPEN FOLD IS THE SUBJECT OF WHAT IS TYPED NEXT, and it is read before
 	// the fold is forgotten below ([picker.narrowFold]).
 	open := p.unfold
 	p.hits = p.hits[:0]
 	p.unfold, p.lanes, p.first, p.auto = "", nil, "", ""
-	if p.narrowFold(open, tokens, terms, now) {
+	if p.narrowFold(open, ft, terms, now) {
 		return
 	}
-	for i, id := range p.lower {
+	for i, text := range p.text {
 		if len(terms) > 0 && !keepsLanes(p.all[i], terms, now) {
 			continue
 		}
@@ -311,7 +317,7 @@ func (p *picker) rank() {
 			p.hits = append(p.hits, i)
 			continue
 		}
-		total, hit := queryScore(id, tokens)
+		total, hit := fuzzy.Score(text, ft)
 		if !hit {
 			continue
 		}
@@ -324,7 +330,7 @@ func (p *picker) rank() {
 			if left.GroupOrder != right.GroupOrder {
 				return left.GroupOrder < right.GroupOrder
 			}
-			return p.score[p.hits[a]] < p.score[p.hits[b]]
+			return p.score[p.hits[a]] > p.score[p.hits[b]]
 		})
 	}
 	p.orderByLanes(terms, now)
@@ -359,12 +365,12 @@ func (p *picker) rank() {
 // in (issue #1022). So an open fold gets the tokens first, and only a query that
 // matches none of its machines falls through to the models.
 //
-// IT IS THE SAME MATCHER AND NOT A SECOND ONE ([tokenScore], every token ANDed),
-// so `cloud fl` finds Cloudflare in a fold exactly as it finds a model in the
-// list, and a lane term (`@name`, `<1s`) is left to the list because those are
-// questions about which MODELS to keep.
-func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now time.Time) bool {
-	if model == "" || len(tokens) == 0 || len(terms) > 0 {
+// IT IS THE SAME MATCHER AND NOT A SECOND ONE ([fuzzy.Score], every term
+// ANDed), so `cloud fl` finds Cloudflare in a fold exactly as it finds a
+// model in the list, and a lane term (`@name`, `<1s`) is left to the list
+// because those are questions about which MODELS to keep.
+func (p *picker) narrowFold(model string, ft []fuzzy.Term, terms []laneTerm, now time.Time) bool {
+	if model == "" || len(ft) == 0 || len(terms) > 0 {
 		return false
 	}
 	at := -1
@@ -380,20 +386,21 @@ func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now
 	views := laneViews(model, now)
 	matched := make([]scoredLane, 0, len(views))
 	for _, view := range views {
-		if total, hit := queryScore(strings.ToLower(view.Name), tokens); hit {
+		if total, hit := fuzzy.Score(view.Name, ft); hit {
 			matched = append(matched, scoredLane{view: view, score: total})
 		}
 	}
 	if len(matched) == 0 {
 		return false
 	}
-	// THE MACHINES ARE RANKED THE WAY THE MODELS ARE, by the same rungs: a
-	// prefix first, then a substring by where it starts, then the loose letters
-	// last. `core` matches Cloudflare too — c-l-o-u-d-f-l-a-r-e carries the four
-	// letters in order — and a list that left it on top would put the cursor on
-	// the machine nobody typed for. Ties keep the ledger's own order, which is
-	// the order the fold draws when nothing is typed.
-	sort.SliceStable(matched, func(a, b int) bool { return matched[a].score < matched[b].score })
+	// THE MACHINES ARE RANKED THE WAY THE MODELS ARE, by the same alignment: a
+	// machine whose name carries the word at a boundary or as a prefix outranks
+	// one that merely contains its letters somewhere. `core` matches
+	// Cloudflare too — c-o-r-e sit in order inside the word — and a list that
+	// left it on top would put the cursor on the machine nobody typed for.
+	// Ties keep the ledger's own order, which is the order the fold draws when
+	// nothing is typed.
+	sort.SliceStable(matched, func(a, b int) bool { return matched[a].score > matched[b].score })
 	kept := make([]laneView, 0, len(matched))
 	for _, one := range matched {
 		kept = append(kept, one.view)
@@ -427,18 +434,16 @@ type scoredLane struct {
 	score int
 }
 
-// queryScore is [tokenScore] over a whole query: every token has to match and
-// the rungs are summed, which is exactly what [picker.rank] does to a model id.
-func queryScore(text string, tokens []string) (int, bool) {
-	total := 0
-	for _, token := range tokens {
-		score, hit := tokenScore(text, token)
-		if !hit {
-			return 0, false
-		}
-		total += score
+// fuzzyTerms is the ranking words of one query as matcher terms, built once
+// per keystroke and scored against every row. [splitQuery] has already folded
+// the words, so they match case-insensitively exactly as they always have; the
+// join and split is the one small allocation a keystroke makes, in place of
+// the per-row fold the old ladder precomputed.
+func fuzzyTerms(tokens []string) []fuzzy.Term {
+	if len(tokens) == 0 {
+		return nil
 	}
-	return total, true
+	return fuzzy.Terms(strings.Join(tokens, " "))
 }
 
 // splitQuery divides what is typed into the words that rank and the terms that
@@ -510,51 +515,6 @@ func laneTermWord(terms []laneTerm) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// The three rungs, far enough apart that no offset inside one can reach the
-// next: an id is a few dozen characters, so a thousand is a wall.
-const (
-	rungPrefix      = 0
-	rungSubstring   = 1_000
-	rungSubsequence = 1_000_000
-)
-
-// tokenScore is how well one token matches one id, and whether it matches at
-// all. Lower is better; the rungs are [rungPrefix] and friends.
-func tokenScore(id, token string) (int, bool) {
-	switch {
-	case token == "" || strings.HasPrefix(id, token):
-		return rungPrefix, true
-	}
-	if at := strings.Index(id, token); at >= 0 {
-		return rungSubstring + at, true
-	}
-	if at, ok := subsequenceAt(id, token); ok {
-		return rungSubsequence + at, true
-	}
-	return 0, false
-}
-
-// subsequenceAt reports whether every rune of token appears in id in order, and
-// where the first of them sits — so "ds" over deepseek scores by how early the
-// run starts, the same way a substring scores by its offset.
-func subsequenceAt(id, token string) (int, bool) {
-	first, at := -1, 0
-	for _, want := range token {
-		found := strings.IndexRune(id[at:], want)
-		if found < 0 {
-			return 0, false
-		}
-		if first < 0 {
-			first = at + found
-		}
-		at += found + utf8.RuneLen(want)
-	}
-	if first < 0 {
-		return 0, false
-	}
-	return first, true
 }
 
 // move walks the list, clamping at both ends rather than wrapping: a list that
