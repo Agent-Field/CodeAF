@@ -1958,7 +1958,7 @@ neither does `/new` — that takes this session's tasks with it and leaves the c
 standing, with the door onto the project's record still at its foot. With no foreground
 command to keep, `ctrl+g` closes it and leaves the work exactly where it was. While a
 command can be kept, that command takes the key instead; the column's `❯` pointer door
-still closes it. The bottom line names whichever keyboard action is available.
+still closes it. The pinned top line names whichever keyboard action is available.
 
 The column is permanent: it stands from the session's first keystroke, before any task
 exists, at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24
@@ -1976,22 +1976,13 @@ two-column edge at the right of the frame that opens it again on a click — see
 bar disappeared* below.
 
 The roster is a forest. Each root task is followed by its whole family, with children
-joined by three-cell connectors (`├─ `, `└─ `, `│  `). Families are ordered by their most
-urgent member: needs you, running, queued, waiting, then done. `queued` is admitted work
-with nothing in its way but a slot; `waiting` is admitted work held behind other work, and
-the row says what it is held behind. (They were `idle` and `parked`, which were two
-unrelated words for one shape of fact and disagreed with the tasks page, where the same
-node read `parked`.) There are no state-group
-headings. The footer keeps those totals as counts, such as
-`3 running · 2 needs you · 12 done`.
+joined by three-cell connectors (`├─ `, `└─ `, `│  `). Root tasks appear in creation
+order, oldest first, and children keep creation order within their parent. Changes in
+state do not move rows. The kin line on a task's page uses the same child order.
 
-**The pieces INSIDE a family are ranked the same way.** They used to be drawn in the order
-the session admitted them, so a run that hands four errands out and finishes them one at a
-time read `done, done, running, running` — with the only rows anybody was watching at the
-bottom of the block. The same ladder now applies all the way down: needs you, running,
-queued, waiting, done, with admission order deciding between two pieces in the same state.
-Two settled siblings therefore never trade places while you are looking at them. The kin
-line under a task's own page shows the same order.
+The sidebar begins with `❯ ctrl+g hide`, pinned above the task list. New tasks and
+scrolling never move that control. `+ /task` follows the task list, above any standing
+orders or jobs. The footer keeps state totals, such as `3 running · 2 needs you · 12 done`.
 
 Folding belongs to each node. Families with a running, needs-you, or queued member start
 open. Settled families and families containing only waiting work start folded to their
@@ -2065,18 +2056,10 @@ anything stands over this project, a separate `◦ 2 standing orders` line follo
 
 Below those are up to two door lines: `ctrl+. earlier` or `ctrl+. view more` when the
 full-screen page holds something this column does not, `alt+w widen · click seam` when a
-wider column would stop cutting a title. The column’s own way out sits immediately
-above `+ /task`, after the visible task rows. It reads `❯ ctrl+g hide` when no foreground command can be kept and only `❯ hide` while
-a command owns that key. Click either form and the column goes away. The `❯` is in ink and
-the words are dim, because the chevron is what the pointer presses and the words name only
-the keyboard action available now.
-
-**Work that is running never scrolls off it.** Families are already ordered so that
-anything running or waiting on you leads the column, and those rows are also *pinned*: when
-you walk the cursor down into a long list of finished work, everything under the running
-head scrolls and the running head stays where it is. The pin gives way only on a column with more running
-work than it has rows, where it keeps one row back for everything else — a session that big
-is read on the task page instead.
+wider column would stop cutting a title. The column's own way out is pinned at the top,
+above every task. It reads `❯ ctrl+g hide` when no foreground command can be kept and
+only `❯ hide` while a command owns that key. Click either form and the column goes away.
+The task list scrolls below it in creation order; `+ /task` stays below the visible list.
 
 **Non-running rows are drawn quieter.** A running task's name is in the ordinary text
 colour; queued, waiting and finished names are muted, the tree connectors and every detail

@@ -810,11 +810,8 @@ func railMoreLine(t *testing.T, a *app) int {
 
 // ── the column keeps what is running ────────────────────────────────────────
 
-// WORK THAT IS RUNNING IS NEVER SCROLLED OFF THE COLUMN. The families already
-// sort so that everything moving leads; this is the other half of it — a cursor
-// walked down through sixty landed nodes takes the window with it and leaves the
-// running head where it is.
-func TestRunningWorkStaysOnTheColumnHoweverFarTheCursorWalks(t *testing.T) {
+// The hide control stays pinned while all tasks scroll in creation order.
+func TestSidebarHeaderStaysWhileRunningWorkScrolls(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	for i := 2; i <= 60; i++ {
@@ -827,11 +824,13 @@ func TestRunningWorkStaysOnTheColumnHoweverFarTheCursorWalks(t *testing.T) {
 		drive(t, a, key("down"))
 	}
 	rail := rosterText(a, a.viewHeight())
-	if !strings.Contains(rail, "Ship the port") {
-		t.Fatalf("the running task scrolled off the column:\n%s", rail)
+	if strings.Contains(rail, "Ship the port") {
+		t.Fatalf("the running task did not scroll with the list:\n%s", rail)
 	}
-	// And the record under it did move, which is what the cursor was walking
-	// through: the pin is the head alone.
+	// The hide control remains the first row.
+	if !strings.Contains(railText(a, a.viewHeight())[0], railStowHint) {
+		t.Fatal("the hide control moved with the task list")
+	}
 	if strings.Contains(rail, "landed 2 ") {
 		t.Fatalf("nothing scrolled at all:\n%s", rail)
 	}

@@ -3750,11 +3750,11 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 			name = "Fix the nil-ma"
 		}
 		top := a.bodyTop()
-		if tc.rail && !strings.Contains(lines[top], marginTasksWord) {
-			t.Fatalf("at %d columns the column does not open with its label:\n%q", tc.width, lines[top])
+		if tc.rail && !strings.Contains(lines[top], railStowHint) {
+			t.Fatalf("at %d columns the column does not open with its hide control:\n%q", tc.width, lines[top])
 		}
-		if tc.rail && !strings.Contains(lines[top+1], name) {
-			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top+1])
+		if tc.rail && !strings.Contains(lines[top+2], name) {
+			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top+2])
 		}
 		// AND THE STRIP IS THE ROW ABOVE IT ONLY WHERE THERE IS NO ROSTER: the two
 		// answer the same question, and the wide frame answers it in the column.
@@ -3797,7 +3797,7 @@ func rosterText(a *app, height int) string {
 // frame lent it, every row stays inside the column, and the window follows the
 // focus down rather than stopping at whatever fitted first.
 
-func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
+func TestTheRosterKeepsCreationOrderAndCountsTheWhole(t *testing.T) {
 	a, _, _ := taskApp(t)
 	// Use the wide tier so this aggregate test can see every count.
 	a.width, a.railWide = 160, true
@@ -3813,9 +3813,7 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 			Report: "the merge conflicted", Merge: mergeWordConflicted, Branch: "task/render",
 		})},
 		streamEventMsg{gen: a.gen, ev: update(5, "Cut the trailer", session.TaskQueued, session.TaskNotice{})},
-		// A FAILURE THAT KEPT NOTHING IS NOT A DEMAND, so it stands with the record
-		// at the bottom of the column rather than at the top (task.go's
-		// [app.railGroupOf]).
+		// A failure without a retained branch is counted as finished work.
 		streamEventMsg{gen: a.gen, ev: update(6, "Trim silence", session.TaskFailed, session.TaskNotice{
 			Report: "the tests did not build",
 		})},
@@ -3823,11 +3821,10 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 	a.cost, a.tokens = 1.42, 312_000
 	rail := rosterText(a, 24)
 
-	// The order IS the design: what is asking, what is running, what is waiting
-	// for a slot, what is parked behind other work, what is over.
+	// Creation order stays stable across every task state.
 	at := -1
-	for _, want := range []string{"Render titles", "Fix the nil-map", "Cut the trailer", "Mix audio",
-		"Collect sources", "Trim silence"} {
+	for _, want := range []string{"Collect sources", "Fix the nil-map", "Mix audio", "Render titles",
+		"Cut the trailer", "Trim silence"} {
 		found := strings.Index(rail, want)
 		if found < 0 {
 			t.Fatalf("the roster has no %q row:\n%s", want, rail)
@@ -3906,15 +3903,13 @@ func TestTheRosterTakesTheKeyboardOnlyWhenItIsHandedIt(t *testing.T) {
 	if !strings.Contains(rosterText(a, 16), railMark) {
 		t.Fatalf("the focused row has no marker:\n%s", rosterText(a, 16))
 	}
-	// The cursor opens on the first row, and the first row is the oldest of the
-	// two running nodes — equal urgency, so the column is in admission order (the
-	// session opened with node 7 running).
+	// The cursor opens on the oldest task; the session began with node 7.
 	if a.railWhere.id != 7 {
 		t.Fatalf("the cursor opened on %+v, want the first running node", a.railWhere)
 	}
 	drive(t, a, key("down"))
-	if a.railWhere.id != 2 {
-		t.Fatalf("↓ walked to %+v, want the second running node", a.railWhere)
+	if a.railWhere.id != 1 {
+		t.Fatalf("↓ walked to %+v, want the next task created", a.railWhere)
 	}
 
 	// Typing still reaches the box while the roster holds the arrows: only the
@@ -3959,7 +3954,7 @@ func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 		t.Fatalf("the cursor is on %+v, want the second running node", a.railWhere)
 	}
 	// It finishes with its branch conflicted, which is the one outcome that needs a
-	// person — so the row moves to the top group, and the cursor moves with it.
+	// person — while both its row and the cursor keep their place.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(2, "Fix the nil-map crash", session.TaskFailed,
 		session.TaskNotice{Merge: mergeWordConflicted, Branch: "task/fix-nil-map"})})
 	entries := a.railEntries()
@@ -3967,10 +3962,9 @@ func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 	if at < 0 || entries[at].node == nil || entries[at].node.id != 2 {
 		t.Fatalf("the cursor did not follow the node: %+v", entries)
 	}
-	// AND THE ROW ITSELF MOVED: a conflicted branch is the one outcome that needs a
-	// person, so it is the top of the column now (task.go's [app.railGroupOf]).
-	if at != 0 {
-		t.Fatalf("the node with a conflicted branch is at row %d, want the top of the column", at)
+	// Neither the row nor the cursor moves when the task needs input.
+	if at != 1 {
+		t.Fatalf("the node with a conflicted branch moved to row %d, want its original row", at)
 	}
 }
 
@@ -3991,8 +3985,8 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	// Three hundred families of one, all equally urgent, so the column is in the
 	// order the session admitted them — under the section label the column opens
 	// with (margin.go).
-	if !strings.Contains(plain(rows[1]), "node 1") {
-		t.Fatalf("the first row is not the first node the session met:\n%q", rows[1])
+	if !strings.Contains(plain(rows[2]), "node 1") {
+		t.Fatalf("the first row is not the first node the session met:\n%q", rows[2])
 	}
 
 	// Twenty rows down is past the window, so the window moves.
@@ -4004,16 +3998,12 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	if !strings.Contains(rail, "node 21") || !strings.Contains(rail, railMark) {
 		t.Fatalf("the window did not follow the cursor down:\n%s", rail)
 	}
-	// AND WHAT IS RUNNING DID NOT GO WITH IT. The head of the column is pinned
-	// (task.go's [app.railMovingHead]): a person who walks the cursor down into
-	// the record must not take the work that is happening off the one surface
-	// that exists to say it is happening. Everything under the head scrolls,
-	// which is what the cursor is standing in.
-	if !strings.Contains(rail, "node 1 ") {
-		t.Fatalf("the running head scrolled off the column:\n%s", rail)
+	// The task sequence scrolls together while the hide control stays fixed.
+	if strings.Contains(rail, "node 1 ") {
+		t.Fatalf("the first task did not scroll with the list:\n%s", rail)
 	}
-	if strings.Contains(rail, "node 20 ") {
-		t.Fatalf("nothing scrolled at all — the row above the cursor is still drawn:\n%s", rail)
+	if rows := railText(a, 12); !strings.Contains(rows[0], railStowHint) {
+		t.Fatalf("the hide control scrolled away: %v", rows)
 	}
 	// And the footer still counts the whole roster rather than the window.
 	if !strings.Contains(rail, "300 "+railGroupWords[railRunning]) {

@@ -247,7 +247,7 @@ func TestTheTasksLabelStaysWhileTheRosterScrolls(t *testing.T) {
 	a.railScroll(12)
 
 	rows := railText(a, 20)
-	if len(rows) == 0 || !strings.Contains(rows[0], marginTasksWord) {
+	if len(rows) < 2 || !strings.Contains(rows[0], railStowHint) || !strings.Contains(rows[1], marginTasksWord) {
 		t.Fatalf("the label scrolled away with the list:\n%s", strings.Join(rows, "\n"))
 	}
 }
