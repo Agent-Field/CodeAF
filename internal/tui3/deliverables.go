@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -206,11 +207,11 @@ type copyTo struct {
 type shelf struct {
 	open bool
 
-	// all is the list as it was read, newest first, and lower the titles folded
+	// all is the list as it was read, newest first, and text the titles held
 	// once at open — the filter is over what a person NAMED the thing, which is
 	// the only half of a row they remember. A path is where a machine put it.
 	all   []deliverable
-	lower []string
+	text  []string
 	score []int
 
 	// hits are indexes into all, in rank order; cursor indexes hits, and top is
@@ -235,9 +236,9 @@ type shelf struct {
 // start opens the shelf over list.
 func (s *shelf) start(list []deliverable, home string) {
 	*s = shelf{open: true, all: list, home: home}
-	s.lower = make([]string, len(list))
+	s.text = make([]string, len(list))
 	for i, row := range list {
-		s.lower[i] = strings.ToLower(row.title)
+		s.text[i] = row.title
 	}
 	s.score = make([]int, len(list))
 	s.rank()
@@ -245,34 +246,29 @@ func (s *shelf) start(list []deliverable, home string) {
 
 func (s *shelf) close() { *s = shelf{} }
 
-// rank re-filters against the filter box with the model picker's own ladder
-// ([tokenScore]): every token must match, prefix beats substring beats
-// subsequence.
+// rank re-filters against the filter box with the matcher every picker on
+// this surface shares (internal/fuzzy, by way of palette.go's [fuzzyTerms]):
+// every term must match, and each is scored by its best alignment — a
+// boundary or a prefix on the title outranks the same letters scattered
+// through it. Higher is better; ties keep source order.
 func (s *shelf) rank() {
 	tokens := strings.Fields(strings.ToLower(s.filter.String()))
+	ft := fuzzyTerms(tokens)
 	s.hits = s.hits[:0]
-	for i, text := range s.lower {
+	for i, text := range s.text {
 		if len(tokens) == 0 {
 			s.hits = append(s.hits, i)
 			continue
 		}
-		total, matched := 0, true
-		for _, token := range tokens {
-			score, hit := tokenScore(text, token)
-			if !hit {
-				matched = false
-				break
-			}
-			total += score
-		}
-		if !matched {
+		total, hit := fuzzy.Score(text, ft)
+		if !hit {
 			continue
 		}
 		s.score[i] = total
 		s.hits = append(s.hits, i)
 	}
 	if len(tokens) > 0 {
-		sort.SliceStable(s.hits, func(a, b int) bool { return s.score[s.hits[a]] < s.score[s.hits[b]] })
+		sort.SliceStable(s.hits, func(a, b int) bool { return s.score[s.hits[a]] > s.score[s.hits[b]] })
 	}
 	// Ties keep source order, which is newest first — so an empty box is the
 	// list as it was read and a filtered one is the best match first.

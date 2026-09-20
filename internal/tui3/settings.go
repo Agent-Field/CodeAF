@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -975,6 +976,11 @@ type sheet struct {
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
 	rows []config.Setting
+	// matchFields is the field list the search hands the fuzzy matcher one row
+	// at a time, reused rather than rebuilt: a rebuild runs per keystroke over
+	// every row, and a fresh slice per row is the one allocation it does not
+	// need.
+	matchFields []string
 	// defaults is every row's reading on a profile nobody has touched, so a row
 	// that differs from it can be marked. See [settingDefaults].
 	defaults map[string]string
@@ -1357,7 +1363,13 @@ func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) !=
 // them there instead of back where they started.
 func (s *sheet) build() {
 	s.items = s.items[:0]
-	query := strings.ToLower(strings.TrimSpace(s.query.String()))
+	// THE QUERY IS READ AS TYPED, and the matcher's smart case is the case law
+	// here: a word with no uppercase in it matches anywhere, a word with any
+	// uppercase in it has to be found as typed. The old search folded the
+	// query and left the words it searched folded too, so an uppercase word
+	// matched nothing at all.
+	query := strings.TrimSpace(s.query.String())
+	terms := fuzzy.Terms(query)
 	// THE CONNECTIONS TAB BUILDS ITS OWN ROWS, from the engine rather than from
 	// the registry (connectcaps.go). It is one branch and no second list: what
 	// it appends is [sheetItem]s, so everything downstream of here — the cursor,
@@ -1406,7 +1418,7 @@ func (s *sheet) build() {
 			// section further down the tab would be a second place to look for one
 			// answer.
 			if row.Key == config.KeyModelRoles {
-				s.items = append(s.items, s.roleItems("")...)
+				s.items = append(s.items, s.roleItems(nil)...)
 			}
 			// AND THE AUTONOMY ROWS HANG OFF THE LAST OF THE THREE ROWS THEY
 			// STAND BESIDE. `ask before running` says what happens when the model
@@ -1414,7 +1426,7 @@ func (s *sheet) build() {
 			// of question when nobody answers it, which is the same question
 			// asked one step wider (settingsautonomy.go).
 			if row.Key == config.KeyConsentTimeout {
-				s.items = append(s.items, s.autonomyItems("")...)
+				s.items = append(s.items, s.autonomyItems(nil)...)
 			}
 		}
 		s.cursor = s.clampCursor(s.cursor)
@@ -1423,22 +1435,36 @@ func (s *sheet) build() {
 	first := -1
 	for tab, title := range settingTabs {
 		start := len(s.items)
+		// THE ROWS A TAB KEEPS ARE RANKED BY HOW WELL THEY ANSWERED, best first
+		// and stable within equal scores on the registry's own order — so a
+		// search reads as an answer key rather than as the panel reordered. The
+		// tabs keep their own order and their own headings: the ranking is
+		// within a tab, never across them.
+		matched := make([]settingHit, 0, len(s.rows)/len(settingTabs)+1)
 		for _, row := range s.rows {
 			meta, ok := s.metaFor(row)
-			if !ok || meta.tab != title || !settingMatches(row, meta, query) {
+			if !ok || meta.tab != title {
 				continue
 			}
+			score, hit := s.settingScore(row, meta, title, terms)
+			if !hit {
+				continue
+			}
+			matched = append(matched, settingHit{row: row, meta: meta, score: score})
+		}
+		sort.SliceStable(matched, func(a, b int) bool { return matched[a].score > matched[b].score })
+		for _, one := range matched {
 			if len(s.items) == start {
 				s.items = append(s.items, sheetItem{head: title})
 			}
-			s.items = append(s.items, sheetItem{row: row, meta: meta})
+			s.items = append(s.items, sheetItem{row: one.row, meta: one.meta})
 		}
 		// A ROLE IS FOUND BY ITS OWN NAME, or by the line that says what it does.
 		// Somebody searching for "planner" is not searching for a registry key —
 		// the word is not in one — so the section answers the search itself, under
 		// the tab it lives on.
 		if title == tabProviders {
-			if matched := s.roleItems(query); len(matched) > 0 {
+			if matched := s.roleItems(terms); len(matched) > 0 {
 				if len(s.items) == start {
 					s.items = append(s.items, sheetItem{head: title})
 				}
@@ -1450,7 +1476,7 @@ func (s *sheet) build() {
 		// They search for "away", or "decide", or "autonomy" — words that are on
 		// the heading and in the value rather than in a registry key.
 		if title == tabSafety {
-			if matched := s.autonomyItems(query); len(matched) > 0 {
+			if matched := s.autonomyItems(terms); len(matched) > 0 {
 				if len(s.items) == start {
 					s.items = append(s.items, sheetItem{head: title})
 				}
@@ -1529,17 +1555,47 @@ func (s *sheet) tabRows() []config.Setting {
 	return ordered
 }
 
-// settingMatches is the search: the label, the key and the one-line description,
-// case-folded, substring. The KEY is in it deliberately — a person who knows
-// the registry knows "spendRail" and should not have to guess what it is called
-// in the product's words.
-func settingMatches(row config.Setting, meta settingMeta, query string) bool {
-	for _, field := range []string{meta.label, row.Key, meta.about, row.Label} {
-		if strings.Contains(strings.ToLower(field), query) {
-			return true
-		}
+// settingHit is one registry row beside how well it answered the search, so
+// the two can be sorted together — the score higher-better, the order the
+// registry's own, kept by the stable sort when two rows answer equally.
+type settingHit struct {
+	row   config.Setting
+	meta  settingMeta
+	score int
+}
+
+// settingScore is the search: the fuzzy matcher (internal/fuzzy) over the
+// five fields a settings row answers in — the label as shown, the registry
+// key, the one-line description, the VALUE the row currently holds, and the
+// tab's name.
+//
+// THE KEY IS IN IT DELIBERATELY — a person who knows the registry knows
+// "spendRail" and should not have to guess what it is called in the product's
+// words. THE VALUE IS IN IT FOR THE OTHER PERSON — the one who knows what the
+// panel does and not what it is called: "yolo" finds the row it names, "on"
+// and "auto" find every row carrying them, and a search reads the panel the
+// way a person who uses it does. THE TAB NAME IS IN IT because "safety" is
+// the word half this sheet's rows answer to and no row carries it.
+//
+// The fields are scored per term, the best field winning each term, so a
+// word that lands in the key and a word that lands in the value both count
+// toward the row. The slice is the sheet's own reusable buffer: a rebuild
+// scores every row, and a fresh slice per row is the one allocation it does
+// not need.
+func (s *sheet) settingScore(row config.Setting, meta settingMeta, tab string, terms []fuzzy.Term) (int, bool) {
+	if len(terms) == 0 {
+		return 0, true
 	}
-	return false
+	if len(s.matchFields) < 5 {
+		s.matchFields = make([]string, 5)
+	}
+	fields := s.matchFields[:5]
+	fields[0] = meta.label
+	fields[1] = row.Key
+	fields[2] = meta.about
+	fields[3] = rowText(row)
+	fields[4] = tab
+	return fuzzy.ScoreFields(fields, terms)
 }
 
 // clampCursor keeps the cursor on a row and never on a heading.
@@ -1682,7 +1738,7 @@ type roleRow struct {
 // you. Inside a class the order is the registry's own sorted one, because it is a
 // map filled from init functions and a list that reshuffled per launch is a list
 // nobody trusts.
-func (s *sheet) roleItems(query string) []sheetItem {
+func (s *sheet) roleItems(terms []fuzzy.Term) []sheetItem {
 	source := s.rolesSource()
 	var items []sheetItem
 	for _, tier := range roles.Tiers {
@@ -1705,8 +1761,10 @@ func (s *sheet) roleItems(query string) []sheetItem {
 			if call, err := roles.ResolveCall(source, role, s.sessionModel); err == nil {
 				row.model = call.String()
 			}
-			if query != "" && !roleMatches(row, query) {
-				continue
+			if len(terms) > 0 {
+				if _, ok := s.roleMatches(row, terms); !ok {
+					continue
+				}
 			}
 			if !started {
 				items = append(items, sheetItem{head: rolesHead + " · " + row.tierLabel})
@@ -1722,19 +1780,25 @@ func (s *sheet) roleItems(query string) []sheetItem {
 }
 
 // roleMatches is the search over a role row: its name, the line that says what
-// it does, and the model answering it — case-folded, substring, [settingMatches]
-// over the fields a role row actually has.
+// it does, and the model answering it — the fuzzy matcher (internal/fuzzy) over
+// the fields a role row actually has, scored per term by whichever field
+// carries the word best.
 //
 // THE DESCRIPTION IS IN IT DELIBERATELY. Nobody looking for the model that reads
 // their images searches for "vision"; they search for "image", and the sentence
 // under the row is where that word is written.
-func roleMatches(row *roleRow, query string) bool {
-	for _, field := range []string{string(row.role), roles.Describe(row.role), row.model} {
-		if strings.Contains(strings.ToLower(field), query) {
-			return true
-		}
+func (s *sheet) roleMatches(row *roleRow, terms []fuzzy.Term) (int, bool) {
+	if len(terms) == 0 {
+		return 0, true
 	}
-	return false
+	if len(s.matchFields) < 3 {
+		s.matchFields = make([]string, 5)
+	}
+	fields := s.matchFields[:3]
+	fields[0] = string(row.role)
+	fields[1] = roles.Describe(row.role)
+	fields[2] = row.model
+	return fuzzy.ScoreFields(fields, terms)
 }
 
 // rolesSource is [roles.Source] over THE PANEL'S OWN READING of the registry —
@@ -2007,7 +2071,23 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "end":
 		s.cursor = s.clampCursor(len(s.items) - 1)
 
-	case "enter", " ", "space":
+	case "enter":
+		return a.activate(), true
+	case " ", "space":
+		// A SPACE WHILE A SEARCH IS TYPED IS A WORD IN THE QUERY and not a
+		// press on whatever row the cursor happens to share the screen with.
+		// The search owns the panel while it holds anything at all, and space
+		// was the one letter it refused: every other printable key reached the
+		// box, so a phrase like "shell command" could not be typed, and the
+		// space instead ACTIVATED THE ROW UNDER THE CURSOR mid-search — a
+		// setting flipped by a word's separator. Out of a search the key keeps
+		// activating rows exactly as it always has, because there it is the
+		// panel's own gesture and not the box's.
+		if s.searching() {
+			s.query.insert(" ")
+			s.build()
+			return nil, true
+		}
 		return a.activate(), true
 	case "ctrl+r":
 		// The add and switcher rows are doors, not connections; a reconnect
@@ -2037,6 +2117,10 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		s.build()
 
 	default:
+		// The space is left out here because the case above is the only honest
+		// owner of it: mid-search it types into the query, and out of one it
+		// activates the row. No other printable text reaches this branch —
+		// which is how every word except space always reached the box.
 		if text := msg.Key().Text; text != "" && text != " " {
 			s.query.insert(text)
 			s.build()
