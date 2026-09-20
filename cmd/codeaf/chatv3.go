@@ -425,7 +425,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// itself and is a no-op the second time it is called.
 	defer proc.closeAll()
 
-	guard.Go("chatv3/models", func() { warmV3Models(models, agent, chosen) })
+	proc.warmModels("chatv3/models", models, agent, chosen)
 
 	// The two things this surface keeps on the person's behalf rather than the
 	// session's: what they have typed before, and what they have half-typed
@@ -906,6 +906,23 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		media = v3ImageGen(mediaSettings)
 	}
 
+	// The Model Pool's judge reads every landing through the engine's one hook.
+	// It is built here, where the seats above are wired, so the answer to
+	// "may this process read the pool at all" is one posture for the whole
+	// door: a mode that forbids reading builds no hook, and a nil hook is the
+	// engine's own nothing. The ask is built once and a client is made from it
+	// per call, each billed to the judge's own seat.
+	taskLanded := poolJudgeHook(settings, settings.ProfileDir, workspace,
+		config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now, "task")
+	// The runs a live process would have judged but a process death left unjudged,
+	// and the headless doors that never had this hook: at start, on a goroutine
+	// nobody waits on, judge the resumed session's own final-state nodes and the
+	// pending file's rows, each exactly once, bounded so it never holds the prompt.
+	guard.Go("pool/judge-sweep", func() {
+		poolJudgeSweep(settings, settings.ProfileDir, found.Place.Tasks(),
+			config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
+	})
+
 	cfg := session.Config{
 		Workspace:      workspace,
 		Model:          chosen,
@@ -914,6 +931,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		Sources:        settings.Sources,
 		CompactEnabled: !opts.NoCompact,
 		SessionFile:    transcript,
+		TaskLanded:     taskLanded,
 		// The folder this conversation keeps everything in (Decision 26). It is
 		// the zero Place for a launch opened on a flat legacy transcript, which
 		// is what keeps that session deriving its sidecars the way it always did.
@@ -2332,14 +2350,27 @@ func v3ContextWindow(models []tui3.Model, model string) int {
 // (FetchedAt is zero for the built-in fallbacks), which is what keeps a machine
 // that has never reached OpenRouter from caching five hardcoded names as if
 // they were the catalog.
-func warmV3Models(models *catalog.Catalog, agent *session.Agent, started string) {
+//
+// Its reads go through the catalog's never-waiting doors ([Catalog.Warmed]
+// first, then [Catalog.ContextLengthNow] and [Catalog.FetchedAtNow]), so the
+// only wait in the function is the context-observing one the close can end.
+func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.Agent, started string) {
 	if models == nil || agent == nil {
 		return
 	}
-	if window := models.ContextLength(started); window > 0 && agent.Model() == started {
+	// THE CLOSE REACHES THE WAIT, and that is the point of the context here: the
+	// catalog's own resolution is a network round-trip on a cold cache, and this
+	// errand rides the profile's start-up tracker ([v3Process.warmModels]), whose
+	// context [stopPoolErrands] cancels. A process that closes ends the wait HERE
+	// rather than leaving the write below to land in whatever state root happens
+	// to be current when the rows finally arrive.
+	if !models.Warmed(ctx) {
+		return
+	}
+	if window := models.ContextLengthNow(started); window > 0 && agent.Model() == started {
 		agent.SetContextWindow(window)
 	}
-	if models.FetchedAt().IsZero() {
+	if models.FetchedAtNow().IsZero() {
 		return
 	}
 	_ = tui3.WriteModelCache(v3Models(models))

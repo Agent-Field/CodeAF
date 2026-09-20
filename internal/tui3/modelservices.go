@@ -28,6 +28,7 @@ type modelConnectStep uint8
 const (
 	modelConnectRegion modelConnectStep = iota
 	modelConnectAddress
+	modelConnectName
 	modelConnectKey
 )
 
@@ -39,6 +40,19 @@ type modelConnectDraft struct {
 	row    config.PersistedSource
 	step   modelConnectStep
 	sheet  bool
+	// entryID is the row the flow's answer boxes hang under, fixed at draft
+	// time. A custom connection that is still being minted has no persisted id
+	// of its own until the name answer lands, so the boxes cannot look the row
+	// up again mid-flow.
+	entryID string
+	// editing marks a draft that started from a row already in the profile, so
+	// the answers REWRITE that row: the id is kept, an empty key keeps the
+	// stored one, and a changed name is a rename the result carries.
+	editing bool
+	// renamedFrom is the Written name the row carried when the draft opened.
+	// A rename re-prefixes every already-picked model id, or the picker rows
+	// strand onto the default service under the old name.
+	renamedFrom string
 }
 
 func modelConnectionID(id string) string { return modelConnectionPrefix + strings.TrimSpace(id) }
@@ -157,6 +171,32 @@ func (a *app) modelConnectionRows() []connect.Status {
 			appendSource(service.Source)
 		}
 	}
+	// THE PANEL'S ADD ROW: once one custom connection is connected, the
+	// catalog's own row has become that instance's edit door, and a second
+	// instance would be unreachable from here without a row that always mints
+	// (startCustomAdd). An empty profile needs no row: the catalog row is
+	// still the unconnected door onto the first connection. The gate is the
+	// CUSTOM count and not the switcher's ring, which always holds the default
+	// service and would put a second door onto the first connection here.
+	if len(customInstances(a.sources)) > 0 {
+		rows = append(rows, connect.Status{Service: connect.Service{
+			ID: modelConnectionID(customAddRowID), Name: "add custom connection",
+			Blurb: "address · key", Auth: connect.AuthKey, Category: "models",
+		}})
+	}
+	// THE PANEL CARRIES THE SWITCHER TOO: the Providers tab's active-connection
+	// row and this one read the same ring and answer to the same enter
+	// (switchActiveConnection), so neither door is the only door. One row per
+	// reading; the sentence is the tab's own (switchSentence). The gate is the
+	// ring alone and not the add row's: the row is offered when there is
+	// somewhere to move to, whatever the panel's other doors are.
+	if reading, ok := switchReading(a.conversationModel(), a.sources); ok {
+		rows = append(rows, connect.Status{Service: connect.Service{
+			ID: modelConnectionID(connectionSwitchRowID), Name: "active connection",
+			Blurb: reading.sentence,
+			Auth:  connect.AuthKey, Category: "models",
+		}})
+	}
 	return rows
 }
 
@@ -165,13 +205,26 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 	switch {
 	case source.ID == "ollama":
 		need = ""
-	case source.ID == "custom":
+	case modelsource.IsCustomID(source.ID):
 		need = "address · key"
 	case len(source.Regions) > 0:
 		need = "region · key"
 	}
+	// A CONNECTED INSTANCE IS CALLED WHAT THE PERSON CALLED IT. The vendored
+	// template's own name stops being true the moment a connection has a
+	// name; without this every instance reads identically on the panel. THE
+	// UNCONNECTED ROW KEEPS THE VENDORED NAME: the catalog template's Written
+	// is the bare id, and a person who has connected nothing yet finds the
+	// row by the name the manual and the README spell, `Custom
+	// OpenAI-compatible API`, never by `custom`.
+	name := source.Name
+	if held && modelsource.IsCustomID(source.ID) {
+		if written := strings.TrimSpace(source.Written); written != "" {
+			name = written
+		}
+	}
 	service := connect.Service{
-		ID: modelConnectionID(source.ID), Name: source.Name, Blurb: need,
+		ID: modelConnectionID(source.ID), Name: name, Blurb: need,
 		Auth: connect.AuthKey, Category: "models",
 	}
 	if source.ID == "ollama" {
@@ -185,10 +238,14 @@ func modelServiceTag(row connect.Status) string {
 	if !ok {
 		return ""
 	}
-	switch id {
-	case "ollama":
+	switch {
+	case id == "ollama":
 		return ""
-	case "custom":
+	case id == connectionSwitchRowID:
+		// The switch row's sentence is its own Blurb, drawn as the row's
+		// value; a tag would say it twice.
+		return ""
+	case modelsource.IsCustomID(id):
 		return "address · key"
 	}
 	if strings.TrimSpace(row.Blurb) != "" {
@@ -207,24 +264,38 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 		return nil
 	}
 	persisted := config.PersistedSource{ID: source.ID, Written: source.Written, Order: a.nextModelServiceOrder()}
+	editing := false
 	for _, existing := range config.PersistedSources(a.profileDir) {
 		if strings.EqualFold(existing.ID, source.ID) {
 			// A reconnect starts with the row that actually landed, so an automatic
 			// name such as z-ai-direct stays put instead of being suggested again.
+			// For a custom row the same match is what makes the flow an EDIT: the
+			// id is kept, the answers prefill, and a changed name is a rename.
 			persisted = existing
+			editing = true
 			break
 		}
 	}
-	draft := &modelConnectDraft{source: source, row: persisted, sheet: fromSheet}
+	draft := &modelConnectDraft{
+		source: source, row: persisted, sheet: fromSheet, entryID: row.ID,
+		editing: editing, renamedFrom: strings.TrimSpace(persisted.Written),
+	}
+	if !editing {
+		draft.renamedFrom = ""
+	}
 	a.modelDraft = draft
 	switch {
 	case len(source.Regions) > 0:
 		draft.step = modelConnectRegion
 		a.showModelEntry(newModelChoiceEntry(row.ID, source.Name, "region", regionChoices(source)), fromSheet)
 		return nil
-	case source.ID == "custom":
+	case modelsource.IsCustomID(source.ID):
 		draft.step = modelConnectAddress
-		a.showModelEntry(newModelEntry(row.ID, source.Name, "base URL", nil, false), fromSheet)
+		entry := newModelEntry(row.ID, source.Name, "base URL", nil, false)
+		if editing {
+			entry.box.setText(persisted.Address)
+		}
+		a.showModelEntry(entry, fromSheet)
 		return nil
 	case source.ID == "ollama":
 		return a.beginModelConnect(*draft)
@@ -270,6 +341,38 @@ func (a *app) nextModelServiceOrder() int {
 	return next
 }
 
+// startCustomAdd is the Providers tab's own door onto a NEW custom
+// connection. The panel's custom row doubles as the first instance's edit
+// door once one is connected, so the tab carries the add row that always
+// mints: the same PrepareCustomSource and ConnectService path, never a second
+// implementation of either.
+func (a *app) startCustomAdd(inSheet bool) tea.Cmd {
+	source, ok := a.modelSource(modelsource.CustomID)
+	if !ok {
+		for _, candidate := range modelsource.Vendored() {
+			if candidate.ID == modelsource.CustomID {
+				source, ok = candidate, true
+				break
+			}
+		}
+	}
+	if !ok {
+		return nil
+	}
+	id := customAddRowID
+	draft := &modelConnectDraft{
+		source: source, row: config.PersistedSource{Order: a.nextModelServiceOrder()},
+		sheet: inSheet, entryID: modelConnectionID(id), step: modelConnectAddress,
+	}
+	a.modelDraft = draft
+	a.showModelEntry(newModelEntry(modelConnectionID(id), source.Name, "base URL", nil, false), inSheet)
+	// A COMMAND, ALWAYS. The box is up over the list and the keyboard belongs to
+	// it, which is a change of state a keypress produced — the same act the
+	// panel's other activations answer with a command, and a nil here read as
+	// "enter started nothing" by the caller's own test for that.
+	return a.frameTick()
+}
+
 // modelEntryAnswer advances a region/address answer to the key box, or starts
 // the checked connection once the last answer has been supplied.
 func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
@@ -278,7 +381,7 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 		return nil
 	}
 	answer := entry.value()
-	if answer == "" {
+	if answer == "" && draft.step != modelConnectName {
 		a.showModelEntry(entry, draft.sheet)
 		return nil
 	}
@@ -288,7 +391,7 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 		// nothing left to validate or refuse here.
 		draft.row.Region = answer
 		draft.step = modelConnectKey
-		a.showModelEntry(newModelEntry(modelConnectionID(draft.source.ID), draft.source.Name, "key", nil, true), draft.sheet)
+		a.showModelEntry(newModelEntry(draft.entryID, draft.source.Name, "key", nil, true), draft.sheet)
 		return nil
 	case modelConnectAddress:
 		parsed, err := url.Parse(answer)
@@ -298,11 +401,60 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 			return nil
 		}
 		draft.row.Address = strings.TrimRight(answer, "/")
-		draft.row.Written = modelServiceSlug(parsed.Hostname())
+		draft.step = modelConnectName
+		// THE NAME IS ASKED, NOT ASSUMED. The default is the host's own slug,
+		// shared with config through modelsource.SourceSlug so every surface
+		// spells a host the same way; an edit starts from the name it already
+		// has, because changing it is a rename with consequences downstream.
+		name := modelsource.SourceSlug(modelsource.AddressHost(answer))
+		if draft.editing && draft.renamedFrom != "" {
+			name = draft.renamedFrom
+		}
+		nameEntry := newModelEntry(draft.entryID, draft.source.Name, "name", nil, false)
+		nameEntry.box.setText(name)
+		a.showModelEntry(nameEntry, draft.sheet)
+		return nil
+	case modelConnectName:
+		// AN EMPTY ANSWER MEANS WHAT THE BOX ALREADY SHOWED: a new connection
+		// takes the host slug the surface itself suggested, and an edit keeps
+		// the name the row already has, because re-slugging the host would be
+		// a rename the person never asked for.
+		answer = strings.TrimSpace(answer)
+		if answer == "" {
+			answer = strings.TrimSpace(draft.row.Written)
+		}
+		if answer == "" {
+			answer = modelsource.SourceSlug(modelsource.AddressHost(draft.row.Address))
+		}
+		// THE NAME IS THE ROUTING PREFIX. It becomes the first segment of
+		// every model id this connection qualifies, so a / in it would give
+		// modelsource.Split two breaks where it expects one, and a space would
+		// travel into every id and into the persisted row. The box stays open
+		// on a refused name.
+		if fault := connectionNameFault(answer); fault != "" {
+			a.modelServiceMessage(fault)
+			a.showModelEntry(entry, draft.sheet)
+			return nil
+		}
+		if draft.editing {
+			draft.row.Written = answer
+		} else {
+			// The instance id is minted HERE, on the shared path, so a second
+			// custom connection keeps the first: the first keeps the vendored id,
+			// later ones take custom-<slug> with a numeric tiebreak.
+			draft.row = config.PrepareCustomSource(a.profileDir, draft.row.Address, answer)
+		}
 		draft.step = modelConnectKey
-		a.showModelEntry(newModelEntry(modelConnectionID(draft.source.ID), draft.source.Name, "key", nil, true), draft.sheet)
+		a.showModelEntry(newModelEntry(draft.entryID, draft.source.Name, "key", nil, true), draft.sheet)
 		return nil
 	case modelConnectKey:
+		if answer == "" && draft.editing && (draft.row.Key != "" || draft.row.KeyEnv != "") {
+			// An edit that leaves the key box empty keeps the stored key: a
+			// rename or an address fix is not a reason to re-type a secret.
+			copy := *draft
+			a.modelDraft = nil
+			return a.beginModelConnect(copy)
+		}
 		if env, ok := modelKeyEnvironment(answer); ok {
 			draft.row.KeyEnv, draft.row.Key = env, ""
 		} else {
@@ -313,6 +465,21 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 		return a.beginModelConnect(copy)
 	}
 	return nil
+}
+
+// connectionNameFault says why a name cannot be a connection's Written word,
+// empty when it can. The name becomes the first segment of every model id the
+// connection qualifies and part of the persisted row, so the / that separates
+// connection from model and the spaces that would travel into both are the
+// two characters it cannot carry.
+func connectionNameFault(name string) string {
+	if strings.Contains(name, "/") {
+		return "a connection name cannot contain / · the slash is what separates connection from model"
+	}
+	if strings.ContainsFunc(name, unicode.IsSpace) {
+		return "a connection name cannot contain spaces · they would travel into every model id"
+	}
+	return ""
 }
 
 func modelKeyEnvironment(answer string) (string, bool) {
@@ -328,37 +495,13 @@ func modelKeyEnvironment(answer string) (string, bool) {
 	return word, true
 }
 
-func modelServiceSlug(host string) string {
-	host = strings.ToLower(strings.TrimSpace(host))
-	parts := strings.Split(host, ".")
-	if len(parts) > 2 {
-		parts = parts[:len(parts)-1]
-		host = parts[len(parts)-1]
-	} else if len(parts) > 0 {
-		host = parts[0]
-	}
-	var out []rune
-	for _, r := range host {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			out = append(out, r)
-		case len(out) > 0 && out[len(out)-1] != '-':
-			out = append(out, '-')
-		}
-	}
-	word := strings.Trim(string(out), "-")
-	if word == "" {
-		return "custom"
-	}
-	return word
-}
-
 func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	dir := a.profileDir
+	instance := draft.row.ID
 	authors := modelAuthorSegments(a.defaultServiceModels())
 	refresh := a.serviceModelRefresh
 	return func() tea.Msg {
@@ -368,7 +511,10 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 			// Resolve the row back through config after ConnectService writes it.
 			// That is the one door which owns key and address precedence; rebuilding
 			// a Connected here would create a second, subtly different account door.
-			connected, found := config.ResolveSources(dir, "", "").ByID(draft.source.ID)
+			// THE ROW'S OWN ID is what resolves, never the template's: a minted
+			// custom instance persists under custom-<slug>, and looking the template
+			// id up would find the first instance or nothing at all.
+			connected, found := config.ResolveSources(dir, "", "").ByID(instance)
 			if found {
 				fixedDoorCatalog := len(outcome.Door.Models) > 0
 				if fixedDoorCatalog {
@@ -377,9 +523,9 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 						seed = append(seed, modelcatalog.Model{ID: model.ID})
 					}
 					_ = modelcatalog.Remember(modelcatalog.Options{
-						Source: draft.source.ID, BaseURL: connected.Address, Dir: dir,
+						Source: instance, BaseURL: connected.Address, Dir: dir,
 					}, seed)
-					_ = WriteModelCacheFor(draft.source.ID, connected.Address, models)
+					_ = WriteModelCacheFor(instance, connected.Address, models)
 				} else if refresh != nil {
 					if refreshed, refreshErr := refresh(ctx, connected, models); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
@@ -390,21 +536,22 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 						seed = append(seed, modelcatalog.Model{ID: model.ID})
 					}
 					_ = modelcatalog.Remember(modelcatalog.Options{
-						Source: draft.source.ID, BaseURL: connected.Address, Dir: dir,
+						Source: instance, BaseURL: connected.Address, Dir: dir,
 					}, seed)
 					catalog, refreshErr := modelcatalog.Refresh(ctx, modelcatalog.Options{
-						Source: draft.source.ID, BaseURL: connected.Address, APIKey: connected.Key, Dir: dir,
+						Source: instance, BaseURL: connected.Address, APIKey: connected.Key, Dir: dir,
 					})
 					if refreshed := surfaceModels(catalog.ModelsNow()); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
 					}
-					_ = WriteModelCacheFor(draft.source.ID, connected.Address, models)
+					_ = WriteModelCacheFor(instance, connected.Address, models)
 				}
 			}
 		}
 		return modelConnectResultMsg{
-			service: draft.source.ID, name: draft.source.Name, written: draft.row.Written,
+			service: instance, name: draft.source.Name, written: draft.row.Written,
 			keyEnv: draft.row.KeyEnv, outcome: outcome, models: models, err: err,
+			renamedFrom: draft.renamedFrom,
 		}
 	}
 }
@@ -486,16 +633,36 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	service = strings.ToLower(service)
 	line := ""
 	nextModel := ""
+	renamedNext := ""
 	switch msg.outcome.Kind {
 	case modelsource.OutcomeConnected, modelsource.OutcomeAccountCannotPay:
 		a.reloadModelSources()
 		connected, found := a.sources.ByID(msg.service)
+		wasRenamed := false
 		if found {
+			// A RENAME IS CARRIED BEFORE ANYTHING ELSE MOVES. Routing keys on
+			// the Written prefix of a model id, so the conversation's picked
+			// id has to follow the new name before anything else reads it, or
+			// it answers on the default service while the picker shows it
+			// nowhere. The RESOLVED Written is what carries: Collides inside
+			// ConnectService may have adjusted the name that was typed, and a
+			// reconnect that kept its name is not a rename at all.
+			oldWritten := strings.TrimSpace(msg.renamedFrom)
+			wasRenamed = oldWritten != "" && !strings.EqualFold(oldWritten, strings.TrimSpace(connected.Source.Written))
+			renamedNext = a.reprefixRenamedModel(oldWritten, connected.Source.Written)
+			if wasRenamed {
+				a.reprefixStoredModels(oldWritten, connected.Source.Written)
+			}
 			service = strings.ToLower(connected.Source.Written)
 		}
 		if msg.outcome.Kind == modelsource.OutcomeConnected {
 			a.sourceModels[msg.service] = cleanModels(msg.models)
-			if found {
+			// THE PREFERRED-MODEL MOVE BELONGS TO A FRESH CONNECT, and to a
+			// reconnect that kept its name: connecting a service is wanting to
+			// answer on it. A RENAME is a change of label, and it keeps the
+			// model the person already picked, re-prefixed above, instead of
+			// replacing it with the connection's preferred one.
+			if found && !wasRenamed {
 				if modelUsesService(a.deferredModelServiceModel, connected.Source.Written) {
 					a.deferredModelServiceModel = ""
 				}
@@ -519,6 +686,8 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	a.modelServiceMessage(line)
 	if nextModel != "" {
 		a.moveConversationToConnectedModel(nextModel)
+	} else if renamedNext != "" {
+		a.moveConversationToConnectedModel(renamedNext)
 	}
 	if a.connPanel.open {
 		a.connPanel.adopt(a.connectionRows())
@@ -529,6 +698,107 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 		a.sheet.build()
 	}
 	a.touch()
+}
+
+// reprefixRenamedModel carries a rename down to the model ids already picked
+// under the old name, and returns the conversation's new id, empty when this
+// conversation was not on the old name. Routing keys on the Written prefix of
+// a model id, so a connection renamed from mybox to newbox leaves every
+// mybox/... pick pointing at a service that no longer exists: they resolve to
+// no service and answer on the default one instead. The pick follows the
+// rename under its own id — the SAME model, spelled the new way — and never
+// the connection's preferred one, because a rename is a change of label and
+// not a change of mind.
+func (a *app) reprefixRenamedModel(oldWritten, newWritten string) string {
+	oldWritten, newWritten = strings.TrimSpace(oldWritten), strings.TrimSpace(newWritten)
+	if oldWritten == "" || newWritten == "" || strings.EqualFold(oldWritten, newWritten) {
+		return ""
+	}
+	if modelUsesService(a.deferredModelServiceModel, oldWritten) {
+		a.deferredModelServiceModel = config.ReprefixModelID(a.deferredModelServiceModel, oldWritten, newWritten)
+	}
+	if !modelUsesService(a.model, oldWritten) {
+		return ""
+	}
+	next := config.ReprefixModelID(a.model, oldWritten, newWritten)
+	if a.state == stateWorking {
+		// A working turn's model is frozen until it settles; the move waits
+		// with it ([app.applyDeferredModelServiceMove]). The pick is rewritten,
+		// not cleared: it names the same model under the new prefix, and
+		// dropping it would leave the settle to invent its own answer.
+		//
+		// BUT IT MAY ONLY TAKE A FREE SLOT. Whatever is pending — a move to
+		// another connection, or the same move already carried under the new
+		// name by the branch above — is what the person last asked for and
+		// was promised out loud ([deferredMoveWord]); this re-spelling is
+		// bookkeeping, and bookkeeping never outranks what the person last
+		// asked for.
+		if strings.TrimSpace(a.deferredModelServiceModel) == "" {
+			a.deferredModelServiceModel = next
+		}
+		return ""
+	}
+	return next
+}
+
+// reprefixStoredModels carries a rename across every STORED model id that
+// carries the old Written name. The conversation slot's id is the one that
+// answers the next turn ([app.reprefixRenamedModel]); these are the stored
+// ones: the reasoning levels the surface learned, the role pins, the fallback
+// chain, and the capability slots the registry writes into the profile. Miss
+// one and it resolves to no service, so the whole string hands itself to the
+// default service as a model id: a silent misroute that only fails at send.
+func (a *app) reprefixStoredModels(oldWritten, newWritten string) {
+	if oldWritten == "" || newWritten == "" || strings.EqualFold(oldWritten, newWritten) {
+		return
+	}
+	// The reasoning table is memory keyed by model id. A stale key costs only
+	// a relearn, but the pair moves together and moving it costs nothing.
+	for key, level := range a.levels {
+		if next := config.ReprefixModelID(key, oldWritten, newWritten); next != key {
+			delete(a.levels, key)
+			a.levels[next] = level
+		}
+	}
+	for key := range a.levelWanted {
+		if next := config.ReprefixModelID(key, oldWritten, newWritten); next != key {
+			delete(a.levelWanted, key)
+			a.levelWanted[next] = true
+		}
+	}
+	// THE RENAME MOVES EVERY STORED ID THE PROFILE HOLDS: the crew's five tier
+	// rows, the fallback chain, the role pins and the capability slots
+	// ([config.RenameConnectionModels]). Node pins on already-created tasks and
+	// journaled role bindings are history — what ran, not what to run — and
+	// are not rewritten.
+	changed, err := config.RenameConnectionModels(a.profileDir, oldWritten, newWritten)
+	if err != nil {
+		a.modelServiceMessage("could not move every model to " + newWritten + " · " + err.Error())
+		return
+	}
+	// THE REASONING TABLE MOVES WITH THE RENAME, and so does everything else
+	// the rename moved: the fallback chain, the role pins and the capability
+	// slots are drawn on the same sheet as the tier rows, so a refresh that
+	// waited for a TIER key would leave the panel naming yesterday's rows
+	// while the profile holds today's.
+	if len(changed) > 0 {
+		a.refreshSettings()
+	}
+}
+
+// conversationModel is the model THIS conversation runs — the one the
+// switcher rows read the active connection from. IT IS THE LIVE MODEL AND NOT
+// THE PROFILE SLOT: [config.ChatModelAt] is the LAST model any conversation
+// settled on, written asynchronously by the engine host, so two tabs on
+// different connections would read each other's; and while a turn is working,
+// the move this conversation is waiting on ([app.deferredModelServiceModel])
+// is where it is going, which is the answer the row owes (switchActiveConnection,
+// modelConnectionRows).
+func (a *app) conversationModel() string {
+	if strings.TrimSpace(a.deferredModelServiceModel) != "" {
+		return a.deferredModelServiceModel
+	}
+	return a.model
 }
 
 // listedModelIDs keeps the ids in the service's own order for modelsource's
@@ -561,7 +831,52 @@ func (a *app) moveConversationToConnectedModel(next string) {
 func (a *app) applyDeferredModelServiceMove() {
 	next := a.deferredModelServiceModel
 	a.deferredModelServiceModel = ""
+	was := a.model
 	a.moveConversationToConnectedModel(next)
+	if a.model == was {
+		return
+	}
+	// THE REFRESH FOLLOWS A MOVE THAT ACTUALLY HAPPENED: an open /connect
+	// panel and the Providers tab each read the conversation's model for their
+	// active-connection row ([app.connectionRows], [sheet.build]), and a move
+	// they did not see would leave the row naming the old target until
+	// something else redrew it. A settle with nothing to spend — or whose
+	// deferred id is the model already running — changed nothing, and this
+	// function runs on every settled turn: a re-adopt there re-ranks the open
+	// panel (connectPanel.rank sends the cursor and the scroll back to the
+	// top) and clears the second-enter disconnect confirmation standing on a
+	// row (connectPanel.adopt clears armed).
+	if a.connPanel.open {
+		a.connPanel.adopt(a.connectionRows())
+	}
+	if a.at(pageSettings) {
+		a.sheet.build()
+	}
+}
+
+// moveConversationOrDefer is the ONE move-or-defer step the switcher makes:
+// while a turn is working the model is frozen until it settles, so the move
+// waits in [app.deferredModelServiceModel] (recorded only when it is a
+// change) and the answering turn spends it ([app.applyDeferredModelServiceMove])
+// — and the person who pressed enter hears that the press landed
+// ([deferredMoveWord]); once idle, the move goes through the one road a model
+// change takes ([app.moveConversationToConnectedModel]). A rename keeps its
+// own quieter deferral ([app.reprefixRenamedModel]).
+func (a *app) moveConversationOrDefer(id, written string) {
+	id = strings.TrimSpace(id)
+	if a.state == stateWorking {
+		if !strings.EqualFold(id, strings.TrimSpace(a.deferredModelServiceModel)) {
+			a.deferredModelServiceModel = id
+		}
+		a.modelServiceFollowup(deferredMoveWord(written))
+		return
+	}
+	// Routing folds case, so an id differing from the running model only in
+	// case is the same pick — the deferred guard above already compares with
+	// EqualFold, and the idle road does too.
+	if !strings.EqualFold(id, strings.TrimSpace(a.model)) {
+		a.moveConversationToConnectedModel(id)
+	}
 }
 
 func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
@@ -644,6 +959,14 @@ func serviceDisconnectedWord(service string) string {
 
 func serviceMovedWord(was, next string) string {
 	return "this conversation was on " + was + " · it is now on " + next
+}
+
+// deferredMoveWord is what a move that has to wait says: the answering turn
+// freezes the model until it settles (app.applyDeferredModelServiceMove
+// spends the move), and a person pressing enter deserves to know the press
+// landed rather than vanished.
+func deferredMoveWord(written string) string {
+	return "the move to " + written + " waits for this turn to finish"
 }
 
 func serviceStrandedWord(was string) string {
@@ -741,6 +1064,19 @@ func (a *app) modelIsDirect(model string) bool {
 	return service.Source.ID != "" && !strings.EqualFold(service.Source.ID, modelsource.DefaultID)
 }
 
+// defaultServiceHasKey is whether the default service can answer a turn: the
+// profile carries a key for it, the connected default holds one of its own, or
+// the service itself accepts a blank. It is the ONE spelling of that rule, so
+// the switcher's refusal ([switchActiveConnection]) and the prerequisite
+// reading below cannot drift apart.
+func (a *app) defaultServiceHasKey() bool {
+	if config.APIKeyConfigured(a.profileDir) {
+		return true
+	}
+	service := a.sources.Default()
+	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
+}
+
 // defaultProviderNeeded is the ONE answer to "does this person still owe us an
 // OpenRouter key before they can say anything". A CONNECTED SERVICE THAT CAN
 // CARRY THE CONVERSATION IS THE PROVIDER: opening the default service's browser
@@ -748,7 +1084,7 @@ func (a *app) modelIsDirect(model string) bool {
 // does not use. Blank is usable only when the service says so explicitly, which
 // is how a local Ollama seat remains a real seat rather than a broken key row.
 func (a *app) defaultProviderNeeded() bool {
-	if a.routerConnect == nil || config.APIKeyConfigured(a.profileDir) {
+	if a.routerConnect == nil || a.defaultServiceHasKey() {
 		return false
 	}
 	return !a.connectedServiceCarriesModel()
@@ -842,6 +1178,218 @@ type modelServiceRow struct {
 	name      string
 	value     string
 	planPause bool
+	// addCustom marks the Providers tab's add row, the door onto a NEW custom
+	// connection that always mints an instance (startCustomAdd). Enter on an
+	// ordinary service row is that row's EDIT; this row is the only one that
+	// mints.
+	addCustom bool
+	// switcher marks the active-connection row: one reading of which service
+	// this conversation answers on, and the one enter that moves it to the
+	// next (switchActiveConnection).
+	switcher bool
+}
+
+// customAddRowID is the add row's sentinel id. A SENTINEL ROW ID LIVES OUTSIDE
+// THE custom/custom- NAMESPACE, so modelsource.IsCustomID is false for it and
+// config.PrepareCustomSource — which mints custom or custom-<name> — can never
+// mint it: cursor and armed state are keyed by row id, and an id that could
+// also be a connection named `add` would make one row answer for two
+// (customAddRow, modelConnectionRows, connectAct).
+const customAddRowID = "new-custom-connection"
+
+// connectionSwitchRowID is the /connect panel's active-connection row. A
+// SENTINEL ID BY THE SHARED CONTRACT: it does not start with `custom` and it
+// equals no vendored id, so modelsource.IsCustomID is false for it and
+// config.PrepareCustomSource can never mint it.
+const connectionSwitchRowID = "switch-connection"
+
+// customAddRow is the Providers tab's add row. It stands whether or not any
+// connection exists, because a profile with no custom connection yet is the
+// one that needs the door; the flow behind it is the ONE flow /connect runs,
+// never a second implementation of the mint or the connect.
+func customAddRow() *modelServiceRow {
+	return &modelServiceRow{
+		id: customAddRowID, name: "add custom connection",
+		value: "an OpenAI-compatible base URL · a name of your own", addCustom: true,
+	}
+}
+
+// conversationModel is the sheet's reading of this conversation's model,
+// through the door raiseSettings handed it. A sheet with no door is a sheet
+// nobody is drawing — [sheet.liveModel] is set on the way up and the drop
+// clears the whole sheet — so the empty answer is the never-drawn case
+// rather than a fallback.
+func (s *sheet) conversationModel() string {
+	if s.liveModel == nil {
+		return ""
+	}
+	return s.liveModel()
+}
+
+// switchReading is the one reading the three switcher sites share: which
+// service this conversation answers on ([Connected], hasActive), which one
+// enter would take it to ([nextConnection]), and the sentence the row says
+// ([switchSentence]). The gate is the ring's own — false when it holds fewer
+// than two services, because a ring of one has nowhere to move to
+// (connectionSwitcherRow, modelConnectionRows, switchActiveConnection).
+type connectionSwitch struct {
+	active    modelsource.Connected
+	hasActive bool
+	next      modelsource.Connected
+	sentence  string
+}
+
+func switchReading(model string, sources modelsource.Set) (connectionSwitch, bool) {
+	ring := switchableConnections(sources)
+	if len(ring) < 2 {
+		return connectionSwitch{}, false
+	}
+	active, hasActive := config.ActiveConnectionFor(model, sources)
+	next := nextConnection(ring, active, hasActive)
+	reading := connectionSwitch{
+		active: active, hasActive: hasActive,
+		next:     next,
+		sentence: switchSentence(hasActive, active, next),
+	}
+	return reading, true
+}
+
+// connectionSwitcherRow is the Providers tab's active-connection row, nil
+// when no custom connection is connected, because a row that could never do
+// anything is a row that only says there is nothing here. THE ACTIVE
+// CONNECTION IS DERIVED FROM THIS CONVERSATION'S MODEL, NEVER STORED
+// (config.ActiveConnectionFor): the model this conversation runs — or the
+// move it is waiting out a working turn on — already carries the answer in
+// its Written prefix, and a stored key would be a second source of truth that
+// can disagree with the model actually in use. The sheet has no app, so the
+// model reaches it the way `sources` does, as a door handed over on the way
+// up ([sheet.conversationModel], raiseSettings): a snapshot taken when the
+// panel opened would go on naming the model the conversation left behind.
+func (s *sheet) connectionSwitcherRow() *modelServiceRow {
+	reading, ok := switchReading(s.conversationModel(), s.sources)
+	if !ok {
+		return nil
+	}
+	return &modelServiceRow{name: "active connection", value: reading.sentence, switcher: true}
+}
+
+// serviceWrittenWord is the name a person calls a service in the switcher's
+// sentence: its Written spelling, and the service's own display name when the
+// Written word is empty. It is lowercased because the sentence reads as
+// speech, the way every word below a service row does.
+func serviceWrittenWord(service modelsource.Connected) string {
+	word := strings.TrimSpace(service.Source.Written)
+	if word == "" {
+		word = strings.TrimSpace(service.Source.Name)
+	}
+	return strings.ToLower(word)
+}
+
+// switchSentence is what the active-connection row says: where the
+// conversation is answering and where enter takes it.
+func switchSentence(hasActive bool, active, next modelsource.Connected) string {
+	to := serviceWrittenWord(next)
+	if !hasActive {
+		return "enter moves this conversation onto " + to
+	}
+	return "answering on " + serviceWrittenWord(active) + " · enter moves it to " + to
+}
+
+// switchableConnections is the ring the switcher walks: the default service
+// first, then the custom connections [customInstances] answers — the same
+// walk, spelled once, with the default service put in front of it. THE
+// SWITCHER IS THE CUSTOM-CONNECTION FEATURE'S DOOR, so its ring is the default
+// service and the connections a person added; vendored non-custom services
+// (deepseek, ollama and the rest) are not in it — they are reached by
+// connecting them and then picking a model, which /model is the door for, and
+// a switcher that wrapped through every vendored service would turn one enter
+// into a walk across doors /model already owns.
+func switchableConnections(sources modelsource.Set) []modelsource.Connected {
+	if sources.Empty() {
+		return nil
+	}
+	customs := customInstances(sources)
+	ring := make([]modelsource.Connected, 0, len(customs)+1)
+	ring = append(ring, sources.Default())
+	return append(ring, customs...)
+}
+
+// nextConnection is the service a switcher enter lands on: the one after the
+// active one by id, wrapping; the first ring entry that is not the active
+// service when the conversation is on nothing, or on something that is not in
+// the ring. With a ring holding one service the entry is that service itself,
+// which is why the row is offered only when the ring holds two or more
+// (connectionSwitcherRow, modelConnectionRows).
+func nextConnection(ring []modelsource.Connected, active modelsource.Connected, hasActive bool) modelsource.Connected {
+	for at, service := range ring {
+		if hasActive && strings.EqualFold(strings.TrimSpace(service.Source.ID), strings.TrimSpace(active.Source.ID)) {
+			return ring[(at+1)%len(ring)]
+		}
+	}
+	return ring[0]
+}
+
+// customInstances is the custom connections a person has added, in the set's
+// own order. It is the add row's gate and NOT the switcher's ring
+// (switchableConnections), which always holds the default service too and
+// would show a second door onto the first connection on a profile that has
+// only the catalog's unconnected row (modelConnectionRows).
+func customInstances(sources modelsource.Set) []modelsource.Connected {
+	out := make([]modelsource.Connected, 0, 2)
+	for _, service := range sources.All() {
+		if modelsource.IsCustomID(service.Source.ID) {
+			out = append(out, service)
+		}
+	}
+	return out
+}
+
+// switchActiveConnection is the switcher row's answer: move this conversation
+// onto the next service in the ring's preferred model, through a.switchModel
+// — the ONE road a model change takes and the same write the /model picker
+// makes. The active connection is derived from the slot's model, so rewriting
+// the slot IS the switch; there is nothing else to store.
+func (a *app) switchActiveConnection() {
+	reading, ok := switchReading(a.conversationModel(), a.sources)
+	if !ok {
+		return
+	}
+	next := reading.next
+	written := serviceWrittenWord(next)
+	// A DEFAULT SERVICE WITH NO USABLE KEY CANNOT TAKE THE CONVERSATION: the
+	// model list may be cached, so the move would succeed here and the next
+	// send would open a key door nobody asked for. The refusal keeps the
+	// conversation where it is and names the door a key goes through
+	// (defaultServiceHasKey); a custom connection's key was checked when it
+	// connected.
+	if !modelsource.IsCustomID(next.Source.ID) && !a.defaultServiceHasKey() {
+		a.modelServiceMessage(written + " has no key yet · add one in /connect first")
+		return
+	}
+	var preferred string
+	if modelsource.IsCustomID(next.Source.ID) {
+		preferred = next.Source.PreferredModel(next.Door, listedModelIDs(a.modelsForConnectedService(next)))
+	} else {
+		preferred = next.Source.PreferredModel(next.Door, listedModelIDs(a.defaultServiceModels()))
+	}
+	if strings.TrimSpace(preferred) == "" {
+		a.modelServiceMessage("no model list for " + written + " yet · reconnect it (ctrl+r on its row) or type a model id in /model")
+		return
+	}
+	id := preferred
+	if modelsource.IsCustomID(next.Source.ID) {
+		id = next.Qualify(preferred)
+	}
+	// THE DEFAULT SERVICE'S OWN IDS ARE ALREADY BARE: [Connected.Qualify] says
+	// so, and it is spelled out here because the two roads below look like
+	// they might differ. The id is rewritten only when it IS a change; a
+	// conversation that answers on the ring's next service already keeps the
+	// pick it has.
+	a.moveConversationOrDefer(id, written)
+	if a.at(pageSettings) {
+		a.sheet.build()
+	}
+	a.touch()
 }
 
 func (a *app) cyclePlanPause(id string) {

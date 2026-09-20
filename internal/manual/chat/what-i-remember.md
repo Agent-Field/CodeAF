@@ -539,7 +539,8 @@ here. The two that ride every message are both on the cheapest of the five crew
 classes — the
 `reflex` class, which exists precisely because a call made twice a turn is a
 different economy from one made once a session. It ships pointed at
-`mistralai/mistral-nemo`. Each goes out with a short
+`google/gemini-2.5-flash`, and at `mistralai/mistral-nemo` under the `open`
+crew family. Each goes out with a short
 prompt and a 200-token ceiling, and each is asked to answer in a few words of
 JSON.
 

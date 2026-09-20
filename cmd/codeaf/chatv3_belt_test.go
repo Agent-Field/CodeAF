@@ -2,6 +2,9 @@ package main
 
 import (
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // THE SEAMS THE BIG MACHINES ARE BUILT FROM.
@@ -27,6 +30,14 @@ import (
 //	the anchored adaptive cue       OrchestrateRunner + AskConsent
 func TestTheV3DoorFillsEverySeamTheBigHandsNeed(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	// EVERY ROOT THAT DECIDES WHERE A WRITE GOES, because the door this test
+	// walks through loads the process's profile: openV3Process builds one launch,
+	// and that launch fetches the model catalog (catalog.LoadLazy, Dir =
+	// settings.ProfileDir) and starts the pool's index refresh, both of which
+	// write through config.ProfilePath with the directory the environment named —
+	// the live profile the harness exports, when neither of these is pinned.
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv(config.ProfileDirEnv, "")
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 
 	proc, err := openV3Process("chat")

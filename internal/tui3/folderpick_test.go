@@ -29,7 +29,7 @@ func folderLab(t *testing.T) (*app, string) {
 			t.Fatal(err)
 		}
 	}
-	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: filepath.Join(root, "here")})
+	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: filepath.Join(root, "here"), ProfileDir: t.TempDir()})
 	a.width, a.height = 100, 24
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.entries = nil

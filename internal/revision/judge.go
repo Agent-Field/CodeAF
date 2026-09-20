@@ -2127,6 +2127,12 @@ func GapHandover(gaps string, revised bool, refused string) string {
 	return handover
 }
 
+// maxUnexercisedRounds bounds how many rounds one unexercised-only finding may
+// buy. One is enough: the round exists to add checks for the behaviours the
+// request states, and a second round aimed at the same finding measures nothing
+// the first did not.
+const maxUnexercisedRounds = 1
+
 // ExtendForGap is the authority the delivery gate never had.
 //
 // The judgement at the job root was already the right one and its maximum power
@@ -2231,6 +2237,22 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	if settled, met := metExtension(ctx, extension, unmet); met {
 		return settled
 	}
+	// ONE COVERAGE ROUND, AND NO MORE. An unexercised-only finding names
+	// behaviours the request states that no check exercises or asserts, and the
+	// round it buys exists to write those checks. That it STANDS until a
+	// measurement closes it is right — a behaviour an earlier round proved
+	// nothing exercises does not become exercised because this round took no
+	// reading — but it is also what let the same finding raise the same round at
+	// every later gate with nothing to bound it: a run whose named fix was
+	// committed minutes in spent the rest of its wall and most of its bill
+	// writing more tests, because a coverage round could be bought again and
+	// again. One is enough. See maxUnexercisedRounds.
+	if unexercisedOnly(unmet) && coverageRoundAlreadyBought(graph, base) {
+		extension.Refused = "the coverage round was already bought once, and the behaviours " +
+			"with no check that exercises them are left to the person"
+		extension.Unclosed = true
+		return extension
+	}
 	if refusal := outOfWall(ctx, node); refusal != "" {
 		extension.Refused, extension.Unclosed = refusal, true
 		return extension
@@ -2278,6 +2300,58 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	}
 	extension.Spliced = spliced
 	return extension
+}
+
+// unexercisedOnly says this finding is the coverage measurement and nothing
+// else: behaviours the request states that no check exercises or asserts, with
+// no other gap a round could be aimed at.
+//
+// A MODEL JUDGE'S OWN PROSE IS NOT ONE OF THESE. A judgement that still carries
+// one is unsourced — the citation it names has not been weighed — so it is not
+// unexercised-only however many behaviours ride on it; the round it buys is for
+// the prose, and the coverage finding travels along. measuredHalf is what turns
+// such a judgement into an unexercised-only one, and it is the same door every
+// other measured finding goes through.
+func unexercisedOnly(unmet Judgment) bool {
+	if len(unmet.Unexercised) == 0 && len(unmet.Unasserted) == 0 {
+		return false
+	}
+	if !unmet.Sourced {
+		return false
+	}
+	return !unmet.Mechanical && len(unmet.Constraint) == 0 && len(unmet.Consumers) == 0 &&
+		len(unmet.Unbound) == 0 && len(unmet.OwnFailing) == 0
+}
+
+// coverageRoundAlreadyBought answers whether one of this job's earlier gates
+// already grew work for an unexercised-only finding. The gate row carries the
+// finding in Unexercised and Unasserted, and Extended says a round actually
+// landed for it — the round counter is derived from these rows, so the ledger
+// that bounds the next round is the one every other reader already replays.
+// A read that fails answers no, which is the fail-safe direction: it buys the
+// round rather than refusing one on evidence it could not see.
+func coverageRoundAlreadyBought(graph *store.Store, base string) bool {
+	if graph == nil {
+		return false
+	}
+	gates, err := graph.DeliveryGateLineage(base)
+	if err != nil {
+		log.Printf("note: could not read the coverage ledger for %s: %v", base, err)
+		return false
+	}
+	bought := 0
+	for _, gate := range gates {
+		if !gate.Extended || gate.Mechanical {
+			continue
+		}
+		if len(gate.Consumers) > 0 || len(gate.Unbound) > 0 || len(gate.OwnFailing) > 0 || len(gate.Constraint) > 0 {
+			continue
+		}
+		if len(gate.Unexercised) > 0 || len(gate.Unasserted) > 0 {
+			bought++
+		}
+	}
+	return bought >= maxUnexercisedRounds
 }
 
 // coverageRefused reads the growth journal for the refusal that has just

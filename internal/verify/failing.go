@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // failingTestPatterns is the failure vocabulary of the runners this program
@@ -23,81 +24,83 @@ import (
 // direction it is written for: a phantom name read out of BOTH runs cancels,
 // and a phantom read out of the AFTER run alone is scored as a new failure,
 // which fails the run. Nothing here can turn a real regression green.
-var failingTestPatterns = []*regexp.Regexp{
-	// go test
-	regexp.MustCompile(`(?m)^\s*--- FAIL:\s+([^\s(]+)`),
-	regexp.MustCompile(`(?m)^FAIL\s+(\S+)\s`),
-	// pytest
-	regexp.MustCompile(`(?m)^(?:FAILED|ERROR)\s+(\S+::\S+)`),
-	regexp.MustCompile(`(?m)^(?:FAILED|ERROR)\s+(\S+\.py)\s*$`),
-	// python unittest
-	regexp.MustCompile(`(?m)^(?:FAIL|ERROR):\s+([\w.]+\s*\([\w.]+\))`),
-	// jest / vitest / mocha
-	regexp.MustCompile(`(?m)^\s*[✕✗×]\s+(.+?)\s*$`),
-	regexp.MustCompile(`(?m)^\s*●\s+(.+?)\s*$`),
-	// A failure banner naming a file and the chain of names inside it. The
-	// shape is the whole of the match — a path, then " > ", then the names the
-	// check is nested under — and it is here because a runner that prints its
-	// failures this way prints them NOWHERE ELSE: vitest's default reporter
-	// names its red checks in this banner and its green ones only per file, so
-	// a reading of a failing suite through the old vocabulary named nothing at
-	// all. Measured on the ofetch s5 run, whose five red checks were invisible.
-	regexp.MustCompile(`(?m)^\s+FAIL\s+(\S+\s+>\s+.+?)\s*$`),
-	// cargo test
-	regexp.MustCompile(`(?m)^test\s+(\S+)\s+\.\.\.\s+FAILED`),
-	// maven surefire / gradle. Gradle's line is `com.example.ApiTest >
-	// testHeaders FAILED`, and both halves are captured so that CheckIdentity
-	// can keep the second: the method is the check, the class is only where it
-	// lives, and the roster in roster.go captures the same shape.
-	regexp.MustCompile(`(?m)^\[ERROR\]\s+(\S+)\s+Time elapsed`),
-	regexp.MustCompile(`(?m)^\s*(\S+\s+>\s+\S+)\s+FAILED\s*$`),
-	// dotnet test / xunit. The name is FULLY QUALIFIED — that is the runner's
-	// own grammar, and it is required rather than assumed, because `\S+` after
-	// an English word matches an English word. ofetch's nemotron n1 run read
-	// vitest's collection failure — `Failed to load url ./circuit-breaker …` —
-	// as one red check named `to`, subtracted it against a baseline of 28, and
-	// failed the delivery with `This work broke checks that were passing before
-	// it: to.` A NAME COMES FROM THE RUNNER'S OWN TEST-RECORD GRAMMAR AND NEVER
-	// FROM A SENTENCE.
-	regexp.MustCompile(`(?m)^\s*(?:Failed|X)\s+([\w+]+(?:\.[\w+]+)+(?:\([^)]*\))?)(?:\s|$)`),
-	// rspec
-	regexp.MustCompile(`(?m)^rspec\s+(\./\S+:\d+)`),
-	// ctest
-	regexp.MustCompile(`(?m)^\s*\d+\s+-\s+(\S+)\s+\(Failed\)`),
-	// TAP
-	regexp.MustCompile(`(?m)^not ok\s+\d+\s+-?\s*(.+?)\s*$`),
-}
+var failingTestPatterns = sync.OnceValue(func() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		// go test
+		regexp.MustCompile(`(?m)^\s*--- FAIL:\s+([^\s(]+)`),
+		regexp.MustCompile(`(?m)^FAIL\s+(\S+)\s`),
+		// pytest
+		regexp.MustCompile(`(?m)^(?:FAILED|ERROR)\s+(\S+::\S+)`),
+		regexp.MustCompile(`(?m)^(?:FAILED|ERROR)\s+(\S+\.py)\s*$`),
+		// python unittest
+		regexp.MustCompile(`(?m)^(?:FAIL|ERROR):\s+([\w.]+\s*\([\w.]+\))`),
+		// jest / vitest / mocha
+		regexp.MustCompile(`(?m)^\s*[✕✗×]\s+(.+?)\s*$`),
+		regexp.MustCompile(`(?m)^\s*●\s+(.+?)\s*$`),
+		// A failure banner naming a file and the chain of names inside it. The
+		// shape is the whole of the match — a path, then " > ", then the names the
+		// check is nested under — and it is here because a runner that prints its
+		// failures this way prints them NOWHERE ELSE: vitest's default reporter
+		// names its red checks in this banner and its green ones only per file, so
+		// a reading of a failing suite through the old vocabulary named nothing at
+		// all. Measured on the ofetch s5 run, whose five red checks were invisible.
+		regexp.MustCompile(`(?m)^\s+FAIL\s+(\S+\s+>\s+.+?)\s*$`),
+		// cargo test
+		regexp.MustCompile(`(?m)^test\s+(\S+)\s+\.\.\.\s+FAILED`),
+		// maven surefire / gradle. Gradle's line is `com.example.ApiTest >
+		// testHeaders FAILED`, and both halves are captured so that CheckIdentity
+		// can keep the second: the method is the check, the class is only where it
+		// lives, and the roster in roster.go captures the same shape.
+		regexp.MustCompile(`(?m)^\[ERROR\]\s+(\S+)\s+Time elapsed`),
+		regexp.MustCompile(`(?m)^\s*(\S+\s+>\s+\S+)\s+FAILED\s*$`),
+		// dotnet test / xunit. The name is FULLY QUALIFIED — that is the runner's
+		// own grammar, and it is required rather than assumed, because `\S+` after
+		// an English word matches an English word. ofetch's nemotron n1 run read
+		// vitest's collection failure — `Failed to load url ./circuit-breaker …` —
+		// as one red check named `to`, subtracted it against a baseline of 28, and
+		// failed the delivery with `This work broke checks that were passing before
+		// it: to.` A NAME COMES FROM THE RUNNER'S OWN TEST-RECORD GRAMMAR AND NEVER
+		// FROM A SENTENCE.
+		regexp.MustCompile(`(?m)^\s*(?:Failed|X)\s+([\w+]+(?:\.[\w+]+)+(?:\([^)]*\))?)(?:\s|$)`),
+		// rspec
+		regexp.MustCompile(`(?m)^rspec\s+(\./\S+:\d+)`),
+		// ctest
+		regexp.MustCompile(`(?m)^\s*\d+\s+-\s+(\S+)\s+\(Failed\)`),
+		// TAP
+		regexp.MustCompile(`(?m)^not ok\s+\d+\s+-?\s*(.+?)\s*$`),
+	}
+})
 
 var (
-	ansiEscape     = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
-	trailingTiming = regexp.MustCompile(`\s*[\(\[]\s*[\d.,]+\s*(?:ms|s|sec|secs|seconds)?\s*[\)\]]\s*$`)
-	digitRun       = regexp.MustCompile(`\d+`)
-	spaceRun       = regexp.MustCompile(`\s+`)
+	ansiEscape     = lazyRegexp(`\x1b\[[0-9;?]*[a-zA-Z]`)
+	trailingTiming = lazyRegexp(`\s*[\(\[]\s*[\d.,]+\s*(?:ms|s|sec|secs|seconds)?\s*[\)\]]\s*$`)
+	digitRun       = lazyRegexp(`\d+`)
+	spaceRun       = lazyRegexp(`\s+`)
 	// goCheckIdentity is go's own grammar for naming a check inside a package
 	// and a subtest inside a check: `example.com/pkg.TestThing/the_empty_case`.
 	// The capture is the declaration a source reader can see — the function's
 	// own name — with the import path in front of it and the subtest behind it.
-	goCheckIdentity = regexp.MustCompile(`(?:^|[./])((?:Test|Benchmark|Fuzz|Example)\w*)(?:/|$)`)
+	goCheckIdentity = lazyRegexp(`(?:^|[./])((?:Test|Benchmark|Fuzz|Example)\w*)(?:/|$)`)
 	// qualifiedTail is the last segment of a dotted qualification, and it is a
 	// plain identifier or it is not a qualification at all: rspec names a red
 	// example by `./spec/api_spec.rb:12`, whose final dot is a file extension
 	// with a line number behind it.
-	qualifiedTail = regexp.MustCompile(`\.(\w+)$`)
+	qualifiedTail = lazyRegexp(`\.(\w+)$`)
 	// sourceFileSuffix is the dot that is NOT a qualifier. `tests/api_test.py`
 	// is a file a runner named because a whole file failed to collect, and a
 	// file is not a check: reducing it the way a qualified name reduces would
 	// leave every such reading identified as `py`.
-	sourceFileSuffix = regexp.MustCompile(`(?i)\.(?:py|go|ts|tsx|js|jsx|mjs|cjs|rb|java|kt|kts|cs|rs|php|swift|scala|c|cc|cpp|h|hpp|m|mm|ex|exs|sh)$`)
+	sourceFileSuffix = lazyRegexp(`(?i)\.(?:py|go|ts|tsx|js|jsx|mjs|cjs|rb|java|kt|kts|cs|rs|php|swift|scala|c|cc|cpp|h|hpp|m|mm|ex|exs|sh)$`)
 )
 
 // FailingTests reads every test identity a runner named as failing, sorted and
 // deduplicated so two runs of one suite compare as sets rather than as
 // transcripts.
 func FailingTests(output string) []string {
-	clean := ansiEscape.ReplaceAllString(output, "")
+	clean := ansiEscape().ReplaceAllString(output, "")
 	seen := map[string]bool{}
 	var names []string
-	for _, pattern := range failingTestPatterns {
+	for _, pattern := range failingTestPatterns() {
 		for _, match := range pattern.FindAllStringSubmatch(clean, -1) {
 			name := normalizeTestName(match[1])
 			if name == "" || seen[name] {
@@ -118,8 +121,8 @@ func FailingTests(output string) []string {
 // It says what a name IS. CheckIdentity, below, says which checks two names are
 // two readings of.
 func normalizeTestName(raw string) string {
-	name := strings.TrimSpace(trailingTiming.ReplaceAllString(strings.TrimSpace(raw), ""))
-	name = spaceRun.ReplaceAllString(name, " ")
+	name := strings.TrimSpace(trailingTiming().ReplaceAllString(strings.TrimSpace(raw), ""))
+	name = spaceRun().ReplaceAllString(name, " ")
 	name = strings.Trim(name, ":.,")
 	// A "name" that is a count, a bare verb or a punctuation run is a false
 	// read of a summary line, and carrying it would make two identical runs
@@ -127,7 +130,7 @@ func normalizeTestName(raw string) string {
 	if len(name) < 2 || len(name) > 200 {
 		return ""
 	}
-	if digitRun.ReplaceAllString(name, "") == "" {
+	if digitRun().ReplaceAllString(name, "") == "" {
 		return ""
 	}
 	switch strings.ToLower(name) {
@@ -271,7 +274,7 @@ func bareCheckName(name string, printed bool) string {
 	}
 	// Go names a check by its package and a subtest by its parent, and the
 	// parent is the `func` a source reader can see.
-	if match := goCheckIdentity.FindStringSubmatch(name); match != nil {
+	if match := goCheckIdentity().FindStringSubmatch(name); match != nil {
 		return match[1]
 	}
 	// A SLASH MEANS A PATH, AND A PATH IS NOT QUALIFIED BY ITS DOTS. Whatever
@@ -287,8 +290,8 @@ func bareCheckName(name string, printed bool) string {
 	// `ApiTest.headers` — names the check in its last segment. A file named
 	// without a directory in front of it is still a file, and is still not
 	// reduced.
-	if match := qualifiedTail.FindStringSubmatch(name); match != nil &&
-		!sourceFileSuffix.MatchString(name) {
+	if match := qualifiedTail().FindStringSubmatch(name); match != nil &&
+		!sourceFileSuffix().MatchString(name) {
 		return match[1]
 	}
 	return name

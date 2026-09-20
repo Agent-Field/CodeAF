@@ -126,6 +126,15 @@ var settingReaders = map[string]string{
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
 	KeyAttribution:    "Attribution",
+	KeyModelPool:      "ModelPoolSettingAt",
+	// The pool key row names the resolver that reads it: [ModelPoolAt] carries
+	// the word into poolcfg beside the mode, and the puller's keys resolve
+	// from there (cmd/codeaf's poolTrustedKeys).
+	KeyModelPoolPublicKey: "ModelPoolAt",
+	// The crew's pick row names its resolver: the surfaces read the pick to
+	// say it beside the crew word, and the ladder turns it into computed seats
+	// ([pickedSeat]) — the identifier proves the word reaches a surface.
+	KeyCrewPick: "CrewPickAt",
 	// The prompt-profile row names the session field the word lands in, which
 	// is what the far side actually reads: cmd/codeaf's applyV3Governance puts
 	// PromptProfileAt's answer there and internal/session's promptprofile.go
@@ -256,6 +265,12 @@ var settingReaders = map[string]string{
 	// rather than the writer, because a row that could be set and never read
 	// would be exactly the dial-wired-to-nothing this table exists to catch.
 	KeyCrew: "CrewAt",
+	// The source row's own reader is CrewSourceAt, and the picker reaches it by
+	// that name (internal/tui3's crew.go), so the row names its reader rather
+	// than the crew derivation one hop away. The crew's writer resolves through
+	// the same reader, so the row and the five ids it produces cannot disagree
+	// about which family the preset words mean.
+	KeyCrewSource: "CrewSourceAt",
 	// The reflex row names the ROLE that reaches it rather than TierKey, which
 	// its two neighbours share: internal/reflex resolves [roles.RoleReflex] and
 	// nothing else lands on this key, so naming the shared spelling a third

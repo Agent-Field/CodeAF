@@ -370,6 +370,31 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "reflex", widget: widgetSelect,
 		about: "near-free · reads every turn — memory, titles, safety",
 	},
+
+	// The row is placed by build(), not by this map, and it sits directly under
+	// the crew word because it changes what that word means rather than pinning a
+	// model of its own: the three presets answer from open weights or from the
+	// whole catalog, and this is the switch.
+	config.KeyCrewSource: {
+		tab: tabProviders, label: "model family", widget: widgetCycle,
+		about: "which models the crew word draws from: open weights, or the whole " +
+			"catalog with closed and frontier models in it. All is the default.",
+	},
+	// WHERE THE CREW'S MODELS COME FROM, beside the crew word itself. The crew
+	// row says how much to spend and this says where the models for that money
+	// are read from when a class row does not hold a person's own id: the rows
+	// this build measured, or the same budgets recomputed off the catalog on
+	// every read, with or without what the Model Pool and the person's own
+	// judged runs measured. The about is the registry's own hint whole, not its
+	// first sentence, because the three words are the answer and the first
+	// sentence alone would send a person hunting for what catalog means.
+	config.KeyCrewPick: {
+		tab: tabProviders, label: "picked from", widget: widgetCycle,
+		about: "where the crew's models come from. table: the rows we measured. " +
+			"catalog: recomputed from today's published prices and scores at your " +
+			"crew's budget. learn: catalog plus the Model Pool's measurements and " +
+			"your own judged runs.",
+	},
 	config.KeyTierLowModel: {
 		tab: tabProviders, label: "small work", widget: widgetSelect,
 		about: "cheap · the small calls — names, digests, the safety gate",
@@ -647,6 +672,24 @@ var settingUI = map[string]settingMeta{
 		about:  "Rich icons normally; plain symbols when your terminal needs them.",
 		widget: widgetCycle,
 	},
+	// The pool row sits with the models it chooses among: the word decides
+	// whether this machine reads the shared measurements and whether its own
+	// runs are sent back, and nothing about the code leaves either way.
+	config.KeyModelPool: {
+		tab: tabProviders, label: "model pool", widget: widgetCycle,
+		about: "codeaf picks your models from the public Model Pool, and your runs " +
+			"improve it. On by default: what leaves is computed, text-free numbers " +
+			"under a per-install nonce, never code, prompts or paths. read uses " +
+			"the pool and sends nothing; off does neither.",
+	},
+	// The key sits under the pool row it guards: a private relay is the same
+	// code under another keypair, and this is where the install is told whose
+	// signature to trust. Blank is the key built into this binary.
+	config.KeyModelPoolPublicKey: {
+		tab: tabProviders, label: "pool key", widget: widgetText,
+		about: "the public key a Model Pool index must be signed with. Blank " +
+			"trusts the key built into codeaf; set it to read a relay of your own.",
+	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
 		about: "the model that looks at images. Blank picks one that can see.",
@@ -733,7 +776,7 @@ func init() {
 	// same row, the same write, the same live seam onto [app.switchModel] — only
 	// the word above the Models section changed.
 	crew := settingUI[config.KeyCrew]
-	crew.about = crewAbout()
+	crew.about = crewAbout(config.DefaultCrewSource)
 	settingUI[config.KeyCrew] = crew
 
 	talk := settingUI[config.ModelSettingKey(talkSlot)]
@@ -745,12 +788,14 @@ func init() {
 
 // crewAbout is the crew row's one line: the five rows it writes, then each preset
 // with its own sentence, then what makes the row read custom. The sentences are
-// [config.CrewLine]'s, so the panel and /crew say the same words about the same
-// thing (internal/config's crew.go holds the table).
-func crewAbout() string {
+// [config.CrewLineFor]'s IN THE FAMILY ON SCREEN, so the panel and /crew say the
+// same words about the same thing and neither names an open model above frontier
+// ids. The init-time value is the default family; [sheet.metaFor] re-says it from
+// the profile, which is where a family that is not the default comes from.
+func crewAbout(source string) string {
 	said := make([]string, 0, len(config.CrewPresets))
 	for _, preset := range config.CrewPresets {
-		said = append(said, preset+" — "+config.CrewLine(preset))
+		said = append(said, preset+" — "+config.CrewLineFor(source, preset))
 	}
 	// The three options lead, because they are what the keypress chooses between
 	// and the panel gives a row's line the width it has: what gets cut on a narrow
@@ -793,6 +838,10 @@ func modelsSectionOrder() []string {
 		config.KeyRouting,
 		config.KeyPromptProfile,
 		config.KeyCrew,
+		// THE PICK ANSWERS THE CREW WORD'S OWN QUESTION ONE LEVEL DOWN — where
+		// the models for that budget come from — so it reads directly under the
+		// crew word, before the classes it seats.
+		config.KeyCrewPick,
 	}
 	for _, tier := range roles.Tiers {
 		order = append(order, tierSettingKey(tier))
@@ -914,6 +963,15 @@ type sheet struct {
 	// in the same keystroke — so a value copied when the panel opened would be
 	// the tail describing the pin before the one a person had just set.
 	force func() laneForce
+	// liveModel is this conversation's LIVE model, asked of the surface rather
+	// than copied, for the switcher's active-connection row
+	// (connectionSwitcherRow). IT IS A DOOR FOR THE SAME REASON `force` IS: a
+	// snapshot taken here would name the model the conversation had when the
+	// panel opened, and the switcher is exactly the row whose answer changes
+	// from underneath a panel — a move made from the tab itself, or the one
+	// waiting out a working turn ([app.deferredModelServiceModel]).
+	liveModel func() string
+
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
 	rows []config.Setting
@@ -1219,6 +1277,7 @@ func (a *app) raiseSettings() {
 		autonomyDoor: a.hasAutonomyDoor(),
 		conns:        a.conns,
 		modelRows:    a.modelConnectionRows,
+		liveModel:    a.conversationModel,
 		sources:      a.sources,
 		force:        a.laneForceNow,
 		defaults:     settingDefaults(),
@@ -1320,13 +1379,25 @@ func (s *sheet) build() {
 		for _, row := range s.tabRows() {
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
-			if row.Key == config.KeyAPIKey {
+			if row.Key == config.KeyAPIKey && !s.sources.Empty() {
+				// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no services
+				// head, no connection row, no switcher (the emptiness test pins the
+				// absence of the section), because a row that could do nothing is
+				// decoration. The add row is an action, not decoration — a profile with
+				// no custom connection yet is the one that needs the door — so it stands
+				// alone when no service row stands beside it (customAddRow).
 				services := modelServiceRows(s.profileDir, s.sources)
 				if len(services) > 0 {
 					s.items = append(s.items, sheetItem{head: "services"})
 					for _, service := range services {
 						s.items = append(s.items, sheetItem{service: service})
 					}
+					s.items = append(s.items, sheetItem{service: customAddRow()})
+					if switcher := s.connectionSwitcherRow(); switcher != nil {
+						s.items = append(s.items, sheetItem{service: switcher})
+					}
+				} else {
+					s.items = append(s.items, sheetItem{service: customAddRow()})
 				}
 			}
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
@@ -1408,6 +1479,11 @@ func (s *sheet) metaFor(row config.Setting) (settingMeta, bool) {
 	meta, ok := settingMetaFor(row)
 	if ok && row.Key == config.KeySearchProvider {
 		meta.about = config.SearchProviderHintAt(s.profileDir)
+	}
+	// The crew row names three presets in whichever family the profile is on, so
+	// its sentence is read from the profile for the same reason.
+	if ok && row.Key == config.KeyCrew {
+		meta.about = crewAbout(config.CrewSourceAt(s.profileDir))
 	}
 	// AND THE `lane` ROW IS EXPLAINED BY THE ROUTING IN FORCE, because `auto` is
 	// a different promise under `simple` than under the row codeaf ships with —
@@ -1933,7 +2009,10 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter", " ", "space":
 		return a.activate(), true
 	case "ctrl+r":
-		if item, ok := s.current(); ok && item.service != nil && !item.service.planPause {
+		// The add and switcher rows are doors, not connections; a reconnect
+		// is asked of a connected service's own row and of nothing else here.
+		if item, ok := s.current(); ok && item.service != nil && !item.service.planPause &&
+			!item.service.addCustom && !item.service.switcher {
 			return a.reconnectModelService(item.service.id), true
 		}
 
@@ -2001,6 +2080,19 @@ func (a *app) activate() tea.Cmd {
 			a.cyclePlanPause(item.service.id)
 			return nil
 		}
+		if item.service.addCustom {
+			// THE ADD ROW MINTS: the same PrepareCustomSource and
+			// ConnectService path /connect runs, never a second one
+			// (startCustomAdd).
+			return a.startCustomAdd(true)
+		}
+		if item.service.switcher {
+			a.switchActiveConnection()
+			return nil
+		}
+		// ENTER ON A CONNECTED SERVICE IS ITS EDIT: the id is kept, the
+		// answers prefill, and a changed name is a rename whose re-prefix the
+		// connect result carries (modelservices.go's reprefixRenamedModel).
 		source, ok := a.modelSource(item.service.id)
 		if !ok {
 			return nil

@@ -18,6 +18,2043 @@ rule.
 
 <!-- codeaf-changes inserts new versions directly below this line -->
 
+## v0.3.0 — 2026-09-18
+
+### Added
+
+- **A model family toggle under the crew, so a preset can answer from open weights or from everything** — [#1073](https://github.com/Agent-Field/codeaf/pull/1073) · `chat` `engine`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - The three crew preset words (frugal, balanced, max) always resolved to open-weight models, and `crewModels` in `internal/config/crew.go` was the whole table of what they meant. There is now a second table `crewAllModels`, and `CrewModelsForSource(source, preset)` picks between them on the new `models.crew.source` setting (`open` default, `all` for closed and frontier). A profile that never answers the row still resolves the open table.
+  - The careful seat was only ever required to be a different vendor from the worker by convention. It is now asserted by a test over both families: within each preset of `crewModels` and `crewAllModels`, the worker and high ids name different providers.
+  - `models.crew` was the only crew setting. The crew row's derivation and `ApplyCrew` now also read `models.crew.source`, so the preset word and the five ids it summarizes can never be drawn from different families; flipping the family reads the crew as `custom` while the tier rows are written and match no preset in the new family; seats nobody pinned follow the family and keep the preset word.
+  - The open table's frugal mastermind and its balanced careful and mastermind seats moved onto the roster chosen seat by seat, and the shipped default crew, which is exactly the balanced row, moved with it. Only the default moved; a profile that answered the crew keeps its rows.
+  - A profile that applied the old `frugal` or the old `balanced` now matches no preset in the open table, because the roster moved: the crew word, the `/crew` highlight and the seat rung read `custom` until the preset is re-applied, which writes the new roster.
+  - `CrewConfigured` counted only the tier rows, so a person who chose a family and never pinned a tier could still be handed a preset by the first-run setup. It now counts `models.crew.source` too: a chosen family is an answered crew.
+
+  The crew shipped open-weight models for a reason: a default nobody's pricing can
+  move under them. That reason still holds for the default, so the toggle defaults to
+  `open` and changes nothing for anyone who does not ask. It is for the person who
+  has decided the frontier models are worth it on a given machine, and wants the same
+  three preset words to mean them.
+
+  The two families are a table apiece, not a filter over one, because the picks are
+  argued seat by seat rather than chosen by a rule about vendors or price. The all
+  table is new and mirrors the open one's three presets; the open table moved onto the
+  roster this work chose, which is the one edit here that changes a shipped default.
+
+  </details>
+
+- **custom connections are named, sit beside each other, and switch from the Providers tab** — [#1089](https://github.com/Agent-Field/codeaf/pull/1089) · `chat` `engine`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A custom connection was one unnamed row: codeaf derived its name from the host and that name was final. `/connect` asks for a name after the base URL now, with the host's own spelling pre-filled, so a connection to `127.0.0.1` is called `127-0-0-1` unless you type another. A name carrying `/` or a space is refused in the box, with the reason, and a name another service or a default-service model author already uses is settled in the same attempt: codeaf takes an available spelling and the connect line names what it used.
+  - A second custom connection replaced the first, because both were stored under one id. Custom connections now coexist as named instances, each with its own row, its own key, its own cache and its own heading in `/model`.
+  - Connecting, editing or switching a custom connection meant opening `/connect`. The Providers tab in `/settings` now ends its services section with an `add custom connection` row and, once a custom connection is connected, an `active connection` row: enter on the add row connects a new one, enter on a connected service row edits it, and enter on the active connection row moves this conversation onto the next one, wrapping around.
+  - Renaming a connection was not possible; its name was whatever the host slug produced, for good. Enter on a connection's Providers row edits it now, and a changed name is a rename that follows the picks: the conversation's own model id is re-spelled under the new name (a turn still answering is waited out first) and every stored id moves with it, the conversation's model, reasoning levels, the crew's role models, role pins, the fallback chain and the capability slots. The model itself does not change; a rename is a change of label, not of mind.
+
+  A connection's name is its routing prefix: the first segment of every model id the
+  connection qualifies (`homelab/glm-5.3`), the heading its models sit under in
+  `/model`, and the row's name in `/connect` and on the Providers tab. The active
+  connection is read from the model the conversation is on and stored nowhere, so the
+  switcher rewrites the pick through the same write the `/model` picker makes and there
+  is no second source of truth to disagree with what is answering.
+
+  </details>
+
+- **The crew's seats are picked from a row — table, catalog or learn** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A seat on the computed rung read `crew frugal, computed`; it now reads `crew frugal, computed from the catalog`.
+  - The crew word was derived from the five live seats; under a pick of catalog or learn it is derived from the five stored rows, because the live seats are computed ids the preset tables do not hold.
+  - An unwritten seat read the preset's own table row on every surface; under a pick of catalog or learn the worker, careful work and mastermind seats are computed at the crew's preset instead, and a hand-typed model id still wins.
+
+  `models.crew.pick` is a new choice row beside the crew row: `table` (the default),
+  `catalog` and `learn`. The crew row keeps its meaning — how much to spend — and the pick
+  row says where the models for that budget come from when a tier row does not hold a model
+  id of its own.
+
+  - `config.CrewPickAt` and `config.SetCrewPick` are the row's reader and writer; a word
+    the build does not know reads as the default and a writer refuses it, the way every
+    choice row folds.
+  - The ladder applies the pick in one seam both ladders call — `config.pickedSeat`,
+    beside `autoRow` in internal/config/auto.go. Under `catalog` or `learn` the worker,
+    careful work and mastermind seats are computed at the crew's preset
+    (`config.crewPresetUnder`), reflex and small work always read the table, a stored
+    model id that is not the preset's own table value wins with source `crew`, and a flag
+    or `CODEAF_MODEL`/`CODEAF_PLAN_MODEL` still outrank everything below them.
+  - `config.AutoPickWith(tier, family, preset, models, prior)` is the pick with the
+    measured quality named: `catalog` passes a nil prior, `learn` passes the Model Pool's
+    role-quality prior (`config.autoPrior`), and `config.AutoPick` keeps its behaviour —
+    prior included — for the bare `auto` word a tier row may hold.
+  - `config.SeatLearned` is the new rung. `Seat.Rung()` says `crew balanced, computed from
+    the catalog` for `SeatComputed` and `crew balanced, learned` for `SeatLearned`;
+    `Seats.Report()`, `Seats.Line()` and the receipts follow. The headless doors read the
+    same pick through `config.ResolveSeats`, so a run from the shell is seated exactly as
+    the conversation is.
+  - internal/tui3: the row is on the Providers tab directly under the crew word
+    (`picked from`, a cycle widget), `/crew` takes the three words beside the presets and
+    refuses an unknown word by naming all six, and the crew word and status segment read
+    `balanced · learn` / `crew balanced · learn` when the pick is off the table. The
+    chooser names the pick on a reading line under the presets, and a crew applied under a
+    pick confirms with the pick named beside the preset (`config.CrewSummaryPick`).
+  - internal/manual: the class-row section is now `Where the seats are picked from —
+    table, catalog, learn`, with the bare `auto` word kept inside it as the per-seat
+    alias, and the headless ladder page names the two rung words.
+
+  </details>
+
+- **Three pure packages — a crew picker, an additive tally and a measurement-index reader** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>why</summary>
+
+  Standard library only, no disk, no network, and nothing on a surface wired to
+  them yet.
+
+  - `internal/crewpick` scores every (worker, high, mastermind) combination a
+    candidate list can field by the bill its seat volumes run up against the mean
+    of its seat qualities, and reads the frugal, balanced and max picks — and a
+    knob between them — off the non-dominated front. A candidate that publishes
+    some but not all of its three indexes is scored on the ones it publishes,
+    each missing one estimated from the call's own candidates carrying the pair
+    and never above the largest measured value of that index; `Crew.Estimated`
+    says which of a pick's indexes were estimated, and a tie in bill and quality
+    runs to the crew on fewer of them. Only a candidate publishing no index at
+    all is out of the running.
+  - `internal/pool/tally` keeps per-address sufficient statistics (n, sum, sum of
+    squares) and paired-comparison counts, so two sheets merge by addition in any
+    order and marshal to a byte-identical schema-1 document.
+  - `internal/pool/index` parses a schema-versioned JSON document of per-model
+    measurements into an immutable value every goroutine can share, resolving
+    model aliases and ignoring fields, metric kinds and dims it does not know.
+
+  </details>
+
+- **The pool client gains the relay's real addresses, an install nonce, and the index signer's key** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - The pool's default addresses were `https://pool.invalid/index.json` and `https://pool.invalid/submit`. They derive from one base now — `DefaultRelayURL` is `https://codeaf.agentfield.ai/pool`, the index at `…/index.json`, the submit at `…/v1/rows` — and `CODEAF_MODEL_POOL_RELAY_URL` moves the base. The two per-address pins (`CODEAF_MODEL_POOL_URL`, `CODEAF_MODEL_POOL_SUBMIT_URL`) still override, and `pool show` prints a `relay` line beside the two derived addresses.
+  - `pool verify` refused with `no public key built into this build; pass --key` because the build carried no key. The index signer's key is decoded into `poolPublicKeys` at init now, so `verify` fetches without a flag; `--key` checks a document signed under some other key, and the new `models.pool.public_key` row (env `CODEAF_MODEL_POOL_PUBLIC_KEY`) replaces the built-in key when set — and only it: a stored word that does not decode trusts nothing.
+  - A stored pool index was read only at the fetch that brought it. `refreshPoolIndex` now runs daily under the config's TTL from a build that carries the key, and a changed document is still read at the next start.
+  - An outbox batch carried no identity. Every batch over http now rides `X-Codeaf-Install` with the install's nonce — 32 lowercase hex in `<poolDir>/install`, replaced when it stops being that shape — and when `model_pool` is on the outbox is pushed after each judged run and once at start-up, budget 5 s each, errors at debug level only.
+
+  The relay wants a nonce on every batch and signs its index under one key; this
+  wave gives the client both, so an install with `model_pool` on reads the
+  signed index and sends its rows the day the relay answers. Until it answers,
+  every path falls back the way it did: the cache, the seed, and the install's
+  own sheet, with nothing said at a person.
+  The relay's index has a second address — the same signed document copied to
+  GitHub — held as `DefaultMirrorURL` (env `CODEAF_MODEL_POOL_MIRROR_URL`, a
+  value set and empty to turn the fallback off) and printed by `pool show` beside
+  the other addresses. A refresh that fails for any reason other than a signature
+  failure falls through to the mirror, which shares the cache directory, so the
+  document with the higher version is the one kept; a signature failure is a
+  statement about the primary's bytes and does not fall through at all. `pool
+  status` now asks the relay, and the mirror when the relay does not answer, under
+  a three-second budget and TTL 0, and prints one line: whether each answered,
+  the index version it served, or the reason it did not — with `--key` to check a
+  document signed under a key other than the one built in. Status still exits 0
+  whether or not anything answered.
+
+  </details>
+
+- **Three more `internal/pool` packages — an outbox, a settings resolver and a signed-document fetcher** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>why</summary>
+
+  Standard library only, and nothing on a surface wired to them yet.
+
+  - `internal/pool/outbox` keeps small measurement rows in a local
+    newline-delimited JSON file and hands them to a destination in batches, over
+    http or into a file. A row that arrived is marked sent and the mark outlives
+    the handle, so nothing is delivered twice; a batch that did not arrive leaves
+    its rows and every row after it pending, with an error naming what failed.
+    The file is capped from the old end, the payload is stored compacted, and a
+    caller never has a full disk or a dead destination raised at it as anything
+    but a returned error.
+  - `internal/pool/poolcfg` resolves how the pool behaves from one stored setting
+    and an environment handed in as a function, so there is no clock, no disk and
+    no reading of the process environment in it. Every field carries where its
+    value came from — `default`, `setting`, `env` or `ci` — and the addresses it
+    accepts are https, http on loopback only, `file://` and absolute paths.
+  - `internal/pool/pull` fetches a JSON document, checks a detached ed25519
+    signature at the same location with `.sig` appended, and keeps the last good
+    copy under a cache directory so a run that cannot reach the source still has
+    an answer. A young cache skips the network entirely, an ETag turns into a
+    conditional request, a version lower than the cached one is refused, and every
+    failure hands back the cached copy beside a non-nil error.
+
+  </details>
+
+- **a landed task is scored by a model outside the crew into the own sheet, outbox and judge seat** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The Model Pool's own sheet (`own.json` under the pool directory) could only hold scores a machine put there by hand. After a task lands in a chat-door conversation, a judge model outside the crew now scores each seat the work ran on, the scores are observed into that sheet, and the picker reads the new cells in the same process at once (`config.AutoOwnCells` repointed after every landing).
+  - The outbox (`outbox.jsonl` beside the sheet) gained the same rows when `model_pool` is `on` and a submit address is set; `read` keeps them local and `off` asks no judge at all.
+  - The judge's provider calls are billed to the `judge` seat in the usage ledger, with the dollars from the model's published price when the provider sent no receipt of its own.
+
+  The engine grew the one seam it was missing: `session.Config.TaskLanded`, called
+  once per landed node on its own goroutine through `guard.Go`, carrying the
+  node's record as the landing left it plus the worker's model and the model its
+  checking pass ran on (`session.TaskLanding`). The chat door wires it to the
+  pool's judge (`cmd/codeaf/poolrecord.go`): pick a judge outside the crew
+  (`judge.Pick`), ask one question per held seat (`judge.Judge`), record what came
+  back (`record.Recorder`), and hand the new cells to the picker. A mode that
+  forbids reading builds no hook, and a nil hook costs the engine nothing.
+
+  </details>
+
+- **A pure package that scores a finished run seat by seat, by a judge outside the crew** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>why</summary>
+
+  Standard library and `internal/catalog` only, no disk, no network, and nothing
+  on a surface wired to it yet.
+
+  - `internal/pool/judge` reads a run's record — its brief and deliverable, its
+    report, claim and ending, the files it wrote and the checks it ran, and which
+    model held each of the worker, high and mastermind seats — and asks one
+    question per seat, in role order, through a caller-supplied `Ask`. Each answer
+    is read as one JSON object carrying a 0-100 score and a one-sentence reason,
+    on the same scale crewpick reads seat quality on and a pool records its
+    `role_quality` metric in. A seat whose model is the judge's own is skipped; a
+    seat whose answer cannot be read fails alone, and the scores obtained come
+    back beside an error naming it. The caller owns the model, the transport and
+    the bill, and bills the judge's calls to its own seat.
+  - `judge.Pick` chooses that judge from a catalog: the cheapest row whose
+    published coding index reaches `judge.DefaultFloor`, that carries tools, that
+    no crew seat holds and whose vendor is not the worker's, ties broken by id.
+
+  </details>
+
+- **A pure package that records a run's judged scores into an own sheet and outbox rows** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>why</summary>
+
+  `internal/pool/record` turns the scores `judge.Judge` answered into the two
+  records an install keeps of them. `Recorder.Record` observes every valid score
+  into the sheet it holds, under the `role_quality` metric the crew picker reads
+  seat quality from, and appends one row per score to its outbox when it holds
+  one; a nil outbox records locally only. A score whose role is not one of the
+  judged seats, or that is not on the 0-100 scale, is skipped and named in the
+  error beside the others that were recorded, and the sheet is observed whatever
+  the outbox does.
+
+  - `SaveSheet` and `LoadSheet` keep that sheet at `own.json` under the pool
+    directory — a missing file is an empty sheet, a save is a temp-file rename
+    into a 0600 file beside a 0700 directory — and `record.Cells` reads the
+    sheet's plain `role_quality` cells back as the cells a prior reads, sorted
+    by seat then model.
+  - `config.AutoOwnCells` is the start-up seam beside `config.AutoIndex`, and
+    `autoPrior` folds the own cells into the index's prior seat by seat through
+    `crewpick.MergePriors`, the means combined by observation count, at a floor
+    of one rather than the index's min_installs: an install's own scores are its
+    own evidence. A nil seam changes nothing.
+  - `cmd/codeaf` reads the own sheet once at start-up beside the index
+    (`wirePoolIndex`); a sheet that does not parse is said under the debug
+    record's switch and read as absent, not as a fault a pick stops for.
+    `codeaf pool show` and `pool status` say what it holds — `own sheet: <n>
+    cells, <m> observations`, or `own sheet: none` — with the same counts under
+    `--json`'s `own`.
+  - The seat vocabulary a usage row's `seat` field carries grows a seventh
+    word, `judge`, between mastermind and talk: the seat a run's judge is
+    billed to, mapped from no tier and no role. No tier and no registered role
+    answer it; the word reaches a row through the billing door's seat argument.
+
+  </details>
+
+- **A Cloudflare Worker relay that folds installs' rows into a signed, versioned pool index** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>why</summary>
+
+  The relay under `relay/` accepts NDJSON measurement rows at `POST /pool/v1/rows`,
+  keyed by the install's `X-Codeaf-Install` header, folds each install's rows into
+  per-install per-day running totals in KV, and once an hour publishes a signed,
+  versioned JSON index at `GET /pool/index.json` beside its Ed25519 detached
+  signature at `GET /pool/index.json.sig`. The document is what
+  `internal/pool/index` reads and is signed with a key whose public half is built
+  into the client.
+
+  </details>
+
+- **The Model Pool's index is seated at start-up from a seed in the binary** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `config.AutoIndex` was a seam nothing in the binary set, so a tier row that says `auto` picked on the catalog's published figures alone. `cmd/codeaf` seats it at start-up from the seed the binary carries or a fresher cached document, so the pool's measured quality reaches the picker.
+  - The binary carried no index of its own, and `codeaf pool show` said only `no index cached yet`. `internal/pool/index` embeds a seed document, and show names it — `no index cached yet · built-in seed of <date>`.
+
+  `internal/pool/index` embeds a seed measurement document (`Seed`, `SeedIndex`)
+  so a machine that has never fetched an index still has numbers to pick a seat
+  against. `cmd/codeaf` reads the cached `doc.json` beside that seed through
+  `index.Fallback` once at start-up — the newer `generated` day wins — and hands
+  the result to `config.AutoIndex` where `config.AutoModels` is already seated, on
+  every door that resolves a seat (`sharedCatalog`, and the three chat doors).
+  The read is start-up work and never on a run's path.
+
+  A background goroutine, started where the index is seated, refreshes the cache
+  through `pull` only when the mode allows reading and the build carries a public
+  key; with no key compiled in today it starts nothing. A fresh document lands in
+  the puller's own cache and is read at the next start — the running process keeps
+  the index it was seated with. `codeaf pool show` names the seed when no cache is
+  present, and its `--json` shape carries the index it read with a `source` field
+  naming `cache` or `seed`.
+
+  </details>
+
+- **A tier row that says `auto` computes its model from the catalog** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>why</summary>
+
+  Any of the five tier rows (`models.tiers.*`) may hold the bare word `auto`,
+  case folded: the seat's model is computed from the catalog's own published
+  figures through `internal/crewpick` — the three indexes against the three
+  prices, under each seat's call shape — every time the row is read. The word
+  stays on disk; the id is derived on every read.
+
+  - `config.AutoValue`, `config.IsAuto` and `config.AutoPick` are the word and
+    its pure pick; `config.AutoModels` is how the catalog reaches seat
+    resolution, set once at start-up from the binary's non-blocking read,
+    never a fetch. Nil is an ordinary state, not an error.
+  - Two new rungs on the seat ladder: `config.SeatComputed` and
+    `config.SeatTable`. An auto row resolves on both ladders
+    (`config.TierSeatAt` and `config.ResolveSeats`) through one seam — to the
+    computed id, or, when nothing can be computed, to the family's table row
+    for the preset the stored rows name. It never resolves to `auto` and never
+    to empty.
+  - A seat on either new rung names the preset it ran at: `crew frugal,
+    computed` on a run's receipt.
+  - The preset an auto row runs at is read from the profile's other stored
+    rows, an auto row matching whichever preset is being compared. **When the
+    stored rows match more than one preset, the default preset — `balanced` —
+    wins the tie**, which is also what a profile matching none of them reads.
+    Since `max` differs from `balanced` only in the worker seat, a crew with
+    `auto` on the worker and the shipped rows elsewhere matches both and reads
+    as `balanced`; the worker's own id is what identifies `max` to the seam.
+  - Rows that don't say auto are unchanged, and so is everything above the
+    crew: a flag, `--plan-model` and the environment still outrank an auto
+    row, and a flag whose text is `auto` is handed on whole.
+
+  </details>
+
+- **The Model Pool reaches its first surface — a `model_pool` setting and a `codeaf pool` verb** — [#1102](https://github.com/Agent-Field/codeaf/pull/1102) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `internal/pool` was reachable from nothing outside itself. `config.ModelPoolAt` resolves the stored word and the four pool names, and `codeaf pool show|status|verify` answers from it, so the packages have a surface and the resolver in internal/config is the one place the process environment is read for the pool.
+  - `CODEAF_MODEL_POOL` sat in `OperatorEnvPins` with a comment saying the word had no row because nothing in the binary called poolcfg. It fronts the `model_pool` row now — choices `on`/`read`/`off`, default `on` — and renders through the row the way `CODEAF_DOC_ENGINE` does; the two URL names and the TTL stay plumbing.
+  - `codeaf --help` was at its 110-line cap. The pool entry takes two lines, paid for by folding the devices-revoke sentence and dropping `--model` from `plan new`'s synopsis, both carried by the per-command pages; exec keeps `--out` and `--debug`.
+
+  The setting is one choice row in the models group, pinned by
+  `CODEAF_MODEL_POOL`. The verb has three forms: `show` — also bare
+  `codeaf pool` — prints the resolved config with the word saying where each
+  value came from (`default`, `setting`, `env` or `ci`) and the cached index
+  with its age, or `no index cached yet`; `status` adds the outbox's pending
+  count and whether the mode allows sending and reading; `verify` fetches a
+  fresh index through `pull` with TTL 0 and checks its detached ed25519
+  signature under `--key` or a built-in key, refusing at the door with exit 2
+  while no build carries the published key and leaving on exit 1 when a fetch
+  or a signature fails. `--json` prints one object on every form that answers.
+  Nothing sends anything yet: no run records a measurement, so the outbox is
+  always empty and `verify` is the one form that reaches the network.
+
+  </details>
+
+- **a headless exec run leaves a pending judge record at its tail for the pool's sweep** — [#1137](https://github.com/Agent-Field/codeaf/pull/1137) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A headless `codeaf exec` run was invisible to the Model Pool: `pool/pending.jsonl` carried no row for it, so no later start had anything to judge. The door now appends one row at its tail, under the `exec` door, and the restart-time sweep scores it like any other landing.
+
+  The pool's judge reaches a headless run the way it reaches a chat task — off
+  that run's own road, never on it. `exec` builds no session graph and so has no
+  live landing hook, so it writes the one thing that outlives the process: a
+  pending row carrying the run's model, answer, files and tokens, in the
+  `unverified` state a judge scores. Nothing waits on the judge; the write is one
+  `O_APPEND` of one line and the process exits at once. The row's id is the wall
+  clock in nanoseconds, because the sweep dedups on it and two runs must never
+  share one. A pool that forbids reading, or a run that never ran, writes nothing.
+
+  </details>
+
+- **the headless task door leaves a pending judge record at its tail** — [#1138](https://github.com/Agent-Field/codeaf/pull/1138) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `codeaf run` — the headless door that runs one saved program with nobody watching and owns no session graph — left nothing behind for the Model Pool, so a program run outside a conversation was never scored: the chat door judged a task through a live landing hook, and this door had none. Its one ending (`reportSubharnessRun`) now appends the run's landing to `<profile>/pool/pending.jsonl` under the door `run`, where the restart-time sweep scores it on the next chat start.
+  - The row carries the run's model, its report, the files it wrote and its token count, with no high seat (this door has none) and a unique id drawn from the run's start in nanoseconds, so two runs never collide in the sweep's judged markers. A run that stopped incomplete leaves its row too, with whatever report it managed. A pool whose mode forbids reading writes nothing.
+
+  The last of the three headless doors reached for the pool. `codeaf run` runs one
+  saved program with nobody watching, so it has no task surface, no live landing
+  hook, and nothing to hand the judge when the work ends. It now builds the same
+  `session.TaskLanding` the chat door's hook is handed — at the one place its
+  endings are decided, `reportSubharnessRun`, so both the `--json` and the prose
+  paths leave exactly one row — and appends it to the pool's pending file for the
+  restart sweep (`poolrecord.go`). The process still exits at once: the row is one
+  `O_APPEND`, nothing waits on a judge, and a run whose pool cannot read writes
+  nothing at all.
+
+  </details>
+
+- **a `codeaf do` errand leaves a pending landing for the Model Pool's judge** — [#1139](https://github.com/Agent-Field/codeaf/pull/1139) · `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A headless `codeaf do` run was never scored by the Model Pool. The do door runs the resident's brain over a store journal and builds no `session.Agent`, so `Config.TaskLanded` — the seam a chat landing reaches the live judge on (`cmd/codeaf/poolrecord.go`) — never fired for it. The errand now appends one row to `<profile>/pool/pending.jsonl` at its tail, door `do`, for the restart-time sweep to judge later under that row's door. Nothing waits on a judge; the process exits at once.
+  - The pending row carries the run's own worker (`seats.Work.Model`, because the outcome's own seat is stamped after the errand returns), the root's deliverable, its artifact count, the tokens summed by `priceErrand`, and the unverified state a judge exists to resolve. Its id is minted from the run's start in nanoseconds so two runs never share one — the sweep's judged markers dedup on it.
+  - A pool whose mode forbids reading (`poolcfg.CanRead` false) writes nothing, and a run this process handed to a resident writes no row either: that work happens in another process, and a landing written here would name a model and a deliverable that are not this errand's.
+
+  The row is written by hand at the errand's tail, after `priceErrand`, because that
+  is the one place the run's own bill is already settled and there is no live
+  landing hook to carry it. The judge's own later spend stays in the usage ledger
+  under its own seat; it never enters this envelope, whose `Spend` is a read of
+  `SpendSinceSeq` and may not disagree with it.
+
+  </details>
+
+- **pool status says what is waiting for a judge and what the last sweep did** — [#1142](https://github.com/Agent-Field/codeaf/pull/1142) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `codeaf pool status` counted only the outbox's rows and named the last live judge. It now also counts the unjudged rows in the pending file the headless doors leave — `pending judge: 1 · oldest do run 3h` — prints the restart sweep's own record — `last sweep: 2m ago · judged 3 · 2 still pending · 41s of 10m` — and carries both as `pending_judge` and `last_sweep` in --json beside the outbox and judge records. An install with nothing waiting and no sweep yet says `pending judge: none` and `last sweep: none yet`.
+  - Pending rows carry the moment they were written (`at` in `pool/pending.jsonl`), which their age in status is read against; rows written before the stamp existed read as zero and say an unknown age.
+
+  The restart sweep judged the headless doors' waiting rows at chat start but left
+  no trace of itself, and nothing counted the rows it existed for, so a person
+  could not tell whether their `exec`/`run`/`do` runs were being scored at all.
+  `poolJudgeSweep` now leaves one record of itself at its end (`pool/sweep-last.json`:
+  `{at, judged, left, budget_used, cut}`, where `cut` means the deadline ended the
+  sweep with unjudged rows left behind) beside the per-landing judge record, and
+  `pool status` reads it into one line in the last-judge line's shape, with the
+  pending file's unjudged rows and the oldest waiting run's door and age above it.
+  The count is of the pending file alone — the outbox's `pending` count keeps its
+  meaning and sits beside it.
+
+  </details>
+
+- **The seed index is regenerated from the relay by one in-repo command** — [#1148](https://github.com/Agent-Field/codeaf/pull/1148) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - Nothing in the repository regenerated `internal/pool/index/seed.json` — it was a hand-authored snapshot, and `relay/tools/prime.py` only compared against it. `internal/pool/index/cmd/seedgen` fetches the signed index through `pull` (signature and size checked, the mirror read when the relay does not answer), reads it through `index.Parse`, and writes the seed deterministically, so the fallback a fresh install picks from is a verified copy of the pool rather than a figure that lags it.
+  - The seed carried none of what the relay now publishes: a `version`, an `installs` count on every cell, the `acceptable` metric and its rubric, the relay's floor on installs, and the relay's judge list. Regenerating it fills all of them in, and the copy names no metric and no cell address, so a metric or a dim this build has never seen passes through verbatim.
+  - The build's trusted pool key was a base64 literal in `cmd/codeaf` — package `main`, so nothing else could import it. It lives in `internal/pool/poolkey` now, and both the verb and the generator check signatures under the one spelling.
+
+  `internal/pool/index/seed.json` is the index a machine with no cache picks a
+  seat against, and it is the same pool the relay publishes: the one difference
+  is that the embedded seed's aliases are merged under the live document's, so an
+  alias the relay has since dropped from its own map survives rather than
+  vanishing on a verbatim copy.
+
+  `go run ./internal/pool/index/cmd/seedgen` regenerates it. The command fetches
+  the signed index through `internal/pool/pull`, reads it through
+  `internal/pool/index.Parse`, refuses a document the reader would not trust
+  whole — a version that is not an integer, a day that does not parse, a cell
+  below the floor — and writes the seed with its keys in a fixed order and its
+  cells sorted by metric, then by the metric's own declared dims. A metric or a
+  dim it has never seen is copied rather than understood, because the copier
+  names neither. It also refreshes the paper's cell table,
+  `docs/design/model-pool/data/seed-cells.csv`, from the same cells.
+
+  The same command with `-check` writes nothing and leaves on exit 1 when either
+  file has drifted, which is the release step in the runbook: the regenerated
+  seed rides the release's pull request and change note.
+
+  </details>
+
+- **pool show --cells lists the held index's cells with their installs and dims** — [#1149](https://github.com/Agent-Field/codeaf/pull/1149) · `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `codeaf pool show` answered what the held index holds as counts and one line per metric, and a person who wanted what a single cell is — which model, which role, what stood behind the measurement — had to parse `doc.json`. show now takes `--cells`: a `cells:` header after the metric lines, one line per cell — `role_quality · worker · vendor/model · mean 71.2 · sd 9.4 · n 42 · installs 5`, and for a metric whose cells are split by a dim, the dims between the model and the measurement, `acceptable · worker · vendor/model · source grader · share 0.83 · n 20 · installs 4`, the share word picked by the kind the document spells. The order is the index's own — metric, then role, model, dims — never a sort by a number, and a metric with no cells says `none`.
+  - `pool show --json --cells` carries the same cells as a `cells` array of `{metric, role, model, dims, mean, sd, n, installs}` beside the existing `index` summary; without `--cells` neither the words nor the object move.
+  - `internal/pool/index` read a cell's `installs` for the floor and dropped them. They are now carried on `Cell`, zero where the cell spells none — the shape the seed carries — so a reader can say what stood behind the measurement.
+
+  The flag, and not a fourth verb: the cells are part of what show shows —
+  the held document read one layer deeper, under the metric lines the form
+  already prints — so they ride show's own answer and its `--json` rather
+  than a `pool cells` verb that would carry a summary of its own. The dims
+  are said in the order the metric declares them, so `source` reads where
+  the document declares it, and a cell that spells no dim says nothing
+  between the model and the measurement.
+
+  </details>
+
+- **a chat surface now runs under a soft memory limit drawn from the machine** — [#1158](https://github.com/Agent-Field/codeaf/pull/1158) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The surface launch raised GOGC to 400 with nothing bounding it. A surface now also sets a soft GOMEMLIMIT of half the machine's physical memory, and carries it to the engine host the way GOMAXPROCS is carried.
+
+  `tuneForTheSurface` capped the scheduler and raised the heap target but left the
+  other half of that bargain open: a heap five times the live heap had no ceiling,
+  so a surface left open for a day could find the ceiling by exhausting the
+  machine. It now sets `debug.SetMemoryLimit` — a soft limit over all
+  runtime-managed memory — to half the machine's physical memory, with a 512 MiB
+  floor, and writes `GOMEMLIMIT` into the environment so the separate
+  `engine --daemon` inherits it at its own startup. An explicit `GOMEMLIMIT`
+  decides untouched, exactly as an explicit `GOGC` does, and a machine whose half
+  would fall under the floor — or whose memory cannot be read — has nothing set at
+  all, because a limit below the live heap makes the collector thrash and is worse
+  than the growth it prevents.
+
+  The limit is drawn from physical memory rather than a fixed ceiling or a cgroup
+  limit: a fixed ceiling is wrong on both a small and a large machine at once, and
+  a cgroup limit adds a second kernel interface that fails to nothing in a
+  container with no limit. Physical memory over-estimates inside a container, and
+  an over-estimate is the safe error — it makes the limit loose, never tight.
+
+  **What this does not establish.** No measurement was made and none is claimed:
+  this cell says only that a surface now has a bound and that an explicit setting
+  still wins. That the bound improves anything — RSS, pause time, anything — is a
+  separate question a separate cell measures.
+
+  </details>
+
+- **the relay can purge fixture vendors and refuse them at the door** — [#1167](https://github.com/Agent-Field/codeaf/pull/1167) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The relay accepted any row whose model and judge matched `<vendor>/<id>`, and a stored fixture row — model vendor `crew`, judge vendor `other` — could only be removed one key at a time with `wrangler kv key delete`. `validateRow` now refuses a row whose model or judge vendor is not in `ALLOWED_VENDORS` when that variable is set, and `relay/tools/purge.js` lists and deletes the stored keys that carry a fixture vendor.
+
+  Two things under `relay/` only. The purge is `relay/src/purge.js`: it reads the
+  `sheet/` keys through the same list/delete calls the Worker's KV binding and the
+  tests' fake KV both answer, keeps the ones whose model or judge vendor is in the
+  named set, and deletes them — the tested logic. `relay/tools/purge.js` is the
+  thin wrapper that drives `wrangler kv key list` and `wrangler kv key delete`
+  through it, printing the keys under `--dry-run` and the count otherwise. The
+  stored keys are the only place a judge lives, so a purge followed by a publish
+  drops the judge from the document.
+
+  The rule is a third argument to `validateRow`, an allowed-vendor set applied to
+  the model and the judge vendors, each refusal naming its field. `worker.js`
+  reads it from `ALLOWED_VENDORS` through a `listVar` beside `intVar` and passes
+  it into the row loop; unset or blank, the set is null and every vendor passes as
+  it always did, so the default behaviour does not move. Neither `relay/` nor the
+  document names the vendors the pool serves, so the runbook points at the
+  published index — its cells' `model` vendors and its `judges` — as the source to
+  read them from before setting the variable.
+
+  </details>
+
+- **pool status says the install identity, the judged total, and that nothing has landed** — [#1169](https://github.com/Agent-Field/codeaf/pull/1169) · `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `pool status` said `last judge: none yet` both for an install whose pool never ran a judge and for one with no landing judged. With no judge record it says `last judge: none yet (no landing judged)`, and `--json`'s `last_judge` stays null.
+  - `pool status` counted only what the last sweep judged. It now folds every landing judged in all, from the judge's markers, into the sweep line as `judged N in all`, and `--json` carries `judged_total`.
+  - `pool status` never said whether the install had minted the nonce it sends under. It ends the outbox line with `· identity set` when `pool/install` is present, and `--json` carries `identity` — and the reading form never mints the file, because a reading form writes nothing.
+
+  The three are status-only: `pool show`, its words and its `--json`, are the
+  ones they always were, and none of the readers creates a file. `judged_total`
+  counts the markers under `pool/judged/`, so it is every landing-and-attempt
+  ever scored, not just the last sweep's own count; `identity` is the presence of
+  `pool/install`, read the way the install's own nonce reader must not — by
+  asking, never by minting.
+
+  </details>
+
+- **A non-verified `codeaf do` run names its kept branch and its verdict** — [#1182](https://github.com/Agent-Field/codeaf/pull/1182) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `codeaf do --json` said how a run stopped and named no branch and no verdict for a run that did not settle whole. The envelope now carries `kept_branch`, the branch the errand's own work is standing on, and `verdict`, the record's own word for what left it there, on those runs.
+
+  A run that ends without the gate's approval keeps its work rather than throwing
+  it away — "not proven" is not "throw it away", and it is not "land it either".
+  The work is real and recoverable; it simply has not come home. Until this change
+  the `--json` envelope said only *how* the run stopped, so a machine reading it
+  could see the work had not landed and had no field naming where it was or why it
+  was left there.
+
+  **Where the envelope came from, and what it carried.** The `do`-specific keys
+  are built by `legacyErrandFields` (`cmd/codeaf/envelope.go:501`), which turns a
+  `headlessOutcome` into the field map; the outcome itself is filled at the
+  settling seam in `settlementWatch.compose` (`cmd/codeaf/do.go:2508`). A
+  non-verified end set `stop`, `Deliverable` and `Unjudged` there and stopped, so
+  the envelope carried neither a branch nor a verdict word for the work it would
+  not land.
+
+  `verdict` is the record's own word — `failed` for a node the store settled
+  failed or cancelled, `unverified` for one that ran and then nothing could say the
+  work holds — read at the settling seam so it can never disagree with `stop`
+  (`cmd/codeaf/do.go:2528`, `:2531`). `kept_branch` is the branch the errand's own
+  work is standing on, read off the workspace once the run is over
+  (`cmd/codeaf/do.go:708`, `:773`). Both ride the omitempty spirit of `unjudged` and
+  `judged_by` (`cmd/codeaf/envelope.go:549`, `:552`): a run that settled whole
+  carries neither, so the presence of either is itself the answer to "was this work
+  landed?". A workspace that is not a repository, or whose HEAD is detached, names
+  no branch — there is none a person could check out — and still carries its
+  verdict, because the word is the record's and does not depend on git.
+
+  `codeaf do` works IN PLACE: it edits the directory it was handed, on whichever
+  branch is checked out there, so that directory's own branch is what `kept_branch`
+  names here. The `task/<slug>` branch a `/task` node keeps is a property of the
+  chat door's own task worktree and does not reach this road.
+
+  </details>
+
+- **The `tasks` text and the record line name a failed node's kept branch and verdict** — [#1184](https://github.com/Agent-Field/codeaf/pull/1184) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The `tasks` text and a task's record line named no branch and no verdict for a node that ended failed or unverified. Both now name the kept `task/<slug>` branch and the record's own verdict word (`failed`/`unverified`), the same two words #1182 put on the headless envelope.
+  - `TaskIndexEntry` carried a node's kept branch only inside its `artifactUri` (`git:<branch>`). It now carries the branch verbatim in a `branch` field, and a `tasks` row drops the duplicate `artifact` spelling when it only repeats it.
+
+  A `/task` node that ends failed or unverified keeps its deliverable on its own
+  `task/<slug>` branch and does **not** merge it home ([`keptWork`], #1178). The
+  headless `do` envelope already names that branch and its verdict (#1182:
+  `kept_branch`, `verdict`). This is the chat-side counterpart: the same two facts
+  now reach a person and a model through the `tasks` tool's plain text and through
+  the record line a resumed session opens with — in the record's own words, so a
+  reader joining the two surfaces reads one vocabulary and not two.
+
+  **The record line.** A resumed graph's summary ([`taskRecovery.note`],
+  `internal/session/task_store.go`) counted failed and unverified nodes
+  ([`taskRecovery.countSettled`]) but dropped their branch, so a person told
+  `1 incomplete` had nowhere to go and look; only `interrupted` nodes named a kept
+  branch ([`taskRecovery.branches`]). The two settled states now collect their kept
+  branches beside it and wear the same `(branch <b> kept)` clause, reusing
+  [`keptBranches`]. A node that kept no branch — one that never reached a
+  repository — gains no clause.
+
+  **The `tasks` text.** The row a `tasks` answer is built from
+  ([`TaskIndexEntry`], `internal/session/task_index.go`) carried the branch only
+  inside `artifactUri`. It now carries it verbatim in a new `branch` field, set
+  from the node's own branch and merge word ([`keptBranchOf`]). The row text
+  ([`taskWhereClauses`], `internal/session/tools_tasks.go`) names `kept branch <b>`
+  — and drops the bare `artifact git:<b>` when it only repeats that — and names the
+  record's verdict word, `failed` or `unverified`, read from the row's own `Status`
+  ([`TaskFailed`]/[`TaskUnverified`]) exactly as #1182's envelope carries `verdict`.
+
+  Only the record and the plain text moved: the surface renderer is untouched and
+  reads the branch and verdict off the record the way it always reads a row.
+
+  [`keptWork`]: ../../internal/session/task_run.go
+  [`taskRecovery.note`]: ../../internal/session/task_store.go
+  [`taskRecovery.countSettled`]: ../../internal/session/task_store.go
+  [`taskRecovery.branches`]: ../../internal/session/task_store.go
+  [`keptBranches`]: ../../internal/session/task_store.go
+  [`keptBranchOf`]: ../../internal/session/task_store.go
+  [`TaskIndexEntry`]: ../../internal/session/task_index.go
+  [`taskWhereClauses`]: ../../internal/session/tools_tasks.go
+  [`TaskFailed`]: ../../internal/session/task_contract.go
+  [`TaskUnverified`]: ../../internal/session/task_contract.go
+
+  </details>
+
+- **A non-verified `codeaf exec` or `codeaf run` run names its kept branch and its verdict** — [#1186](https://github.com/Agent-Field/codeaf/pull/1186) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `codeaf exec --json` and `codeaf run --json` said how a run stopped and named no branch and no verdict, while `codeaf do --json` has carried `kept_branch` and `verdict` on its non-verified ends since #1182. Both doors now carry the same two keys, in the same words, so a caller reading one object shape across all three verbs reads the same two facts on all of them.
+
+  An exec run and a run-door run end the same way a `do` errand can end: with work
+  on disk that nothing has judged. Both doors work in place in the directory they
+  were pointed at, own no session graph, and leave a pending judge record with
+  `State: session.TaskUnverified` for the Model Pool's restart-time sweep to score —
+  so until that sweep reads it, the work is standing in the workspace and no
+  envelope field said where or with what verdict. That is the gap this closes, in
+  the vocabulary #1182/#1184 already use — `session.TaskFailed`/`TaskUnverified`,
+  no new words.
+
+  **Where the two keys come from.** The merge lives at the one seam all three
+  verbs build their envelope through (`buildResultEnvelope` over `runResult`,
+  `cmd/codeaf/envelope.go`), so the keys cannot drift apart between doors; `do`'s
+  own emission moved onto the same seam unchanged. `exec`'s word is decided by
+  `execVerdict` (`cmd/codeaf/exec.go`) off the same condition the pending landing
+  uses: a run the landing refuses — never started, or broke with no text and no
+  artifacts — says `failed`; everything else that ran says `unverified`. The run
+  door's word is decided by which ending it left through (`cmd/codeaf/
+  subharness_run.go`): `sayEnvelope` is `unverified` on both of its endings (the
+  landing is written whatever the stop), `sayFailedEnvelope` is `failed`, that
+  road writing no landing at all. `kept_branch` is the workspace's own branch,
+  read once the run is over by `keptBranchIn` (extracted from `do`'s
+  `errandKeptBranch`, `cmd/codeaf/do.go`): empty for a detached HEAD or a
+  workspace that is not a repository, and the key absent with it — while the
+  verdict still stands, because the word does not depend on git.
+
+  Both ride the omitempty spirit of #1182's emission: a run that names no verdict
+  carries neither key, so the presence of either is itself the answer to "was this
+  work landed?". Nothing else about either envelope moved.
+
+  </details>
+
+- **a job subtree is cut when it passes its CPU or process bound** — [#1190](https://github.com/Agent-Field/codeaf/pull/1190) · `chat` `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A run's only bounds were its dollar cap and, since #1158, its memory. Nothing bounded a job subtree's CPU or its process count, so a model that spawned busy loops as bash jobs (`yes`, `awk 'BEGIN{for(;;){}}'`) spent no tokens and no bound ever fired. A job subtree is now cut when it passes its bound, and the run is told why.
+
+  A job subtree is the process group #1155 already records at launch with its
+  leader's identity, plus every process under it. It now has a bound of its own: a
+  Go-side watch, portable, sampling the subtree's cumulative CPU and its live
+  process count through the group handle. The bound has two halves that apply in
+  different places.
+
+  **The process backstop applies always.** A subtree may not hold more than 128
+  processes — about four times the measured honest peak of 34 — quota'd or not,
+  because a fork storm that has not yet accumulated CPU is invisible to a rate and
+  a cgroup CPU quota does nothing to a process count.
+
+  **The CPU rate rule applies only where nothing else caps the process.** When a
+  cgroup CPU quota or an affinity mask BINDS this process — the cores it may use
+  are fewer than the machine's — the quota is already the ceiling on what any
+  subtree under it can burn, and #1187's park bound is what returns a turn wedged
+  on a job that never ends. A CPU rule there would only cut honest work early:
+  inside a four-core cell an ordinary `go test` legitimately uses most of its four
+  cores, and a share of them would end it. So under a binding quota the CPU rule is
+  OFF and only the process backstop applies. When NOTHING binds — the process may
+  use the whole machine — the CPU rule is the only thing between a spinner storm
+  and the box: a subtree may not sustain more than three fifths of the machine's
+  cores. On the 20-core box the numbers came from that is 12 cores, clearing the
+  honest peak (8.5) and cutting the storm (16 loops → 16 cores, 64 → 20).
+
+  Whether a quota binds is read from the process's own cgroup CPU quota (v2
+  `cpu.max`, v1 `cpu.cfs_quota_us`/`cpu.cfs_period_us`, walked from the process's
+  cgroup to the hierarchy root the way the memory bound is read, #1162) and its
+  scheduler affinity mask; off Linux nothing binds and the machine-cores rule
+  governs as before.
+
+  **Sustained over half a minute, not a spike.** A build burst can pass twelve
+  cores for several seconds, so the bound trips only after the subtree has been
+  over on fifteen consecutive readings at a two-second interval — thirty seconds
+  sustained. A transient never cuts, and a storm — over on every reading by
+  construction — is cut half a minute in. A subtree whose usage cannot be read
+  (off Linux, or a group whose identity no longer matches) is never cut: silence is
+  not pressure.
+
+  **The run learns it, and it is not a silent kill.** A subtree that passes its
+  bound is ended and the run is handed the record `the job subtree was not settled
+  within its bound`, naming the job and what it was holding — #1183's and #1187's
+  family, said about the subtree. The kill is a requested death, so the registry's
+  own ending says nothing and this record is the only account of it.
+
+  </details>
+
+
+### Changed
+
+- **the coverage round buys once, and the envelope says when the requested work was done** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `resident` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - An unexercised-only finding bought a repair round at every later delivery gate, because the finding stands until a measurement closes it and nothing bounded how many rounds `no check exercises this behaviour` could raise. A job buys at most one such round now (`maxUnexercisedRounds`), and a second finding is recorded unclosed rather than funded.
+  - Growth was bounded only by the round counter, the job-size ceiling, the wall and the daily dollar rail. A share-of-spend rail (`growthSpendShare`) refuses a round once growth has spent more than the requested work itself cost, counted from the gate that first found that work done, and journaled as `CauseSpendShare`.
+  - `codeaf do --json` carried no figure for when the requested work was finished. `core_done_seconds` now appears, in seconds from the start, when a delivery gate first passed or found only a coverage gap, and is absent when no gate said so.
+
+  An unexercised-only finding is a measurement, so it stands until a measurement
+  closes it — right, but unbounded, it raised the same test-writing round at every
+  gate. A run whose named fix was committed minutes in spent the rest of its wall
+  and most of its bill writing more tests. The round is bounded to one, and growth
+  past the point the work was done is bounded against the bill that got it done.
+
+  </details>
+
+- **The crew's default family is `all`, and both families' worker, careful and mastermind seats moved** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - `models.crew.source` defaulted to `open`, so a profile that never answered the row resolved the open-weight table. The default is now `all`: `DefaultCrewSource = CrewSourceAll`, and a profile that never chose a family resolves the all family's balanced row — `google/gemini-2.5-flash`, `deepseek/deepseek-v4-flash-0731`, `z-ai/glm-5.3-flash`, `anthropic/claude-fable-5.1`, `anthropic/claude-fable-5.1`.
+  - The five shipped tier defaults were the open table's balanced row. `DefaultReflexModel` is now `google/gemini-2.5-flash`, `DefaultHighModel` and `DefaultMastermindModel` are `anthropic/claude-fable-5.1`; `DefaultLowModel` and `DefaultWorkerModel` are unchanged. The identity the crew row rests on still holds: the five defaults are exactly the DEFAULT family's balanced row.
+  - `config.CrewModels` and `config.CrewLine` answered the OPEN family. They answer the default family, which is now `all`; the open table is reached through `CrewModelsForSource(CrewSourceOpen, …)` and `CrewLineFor(CrewSourceOpen, …)`. A blank, misspelt or retired family word still folds to the default, which is `all` rather than `open`.
+  - A profile that applied a preset under an older build now reads `custom`, because the worker, careful and mastermind seats moved in both families. The crew word, the `/crew` highlight and the seat rung all say `custom` until the preset is applied again, which writes the new five.
+  - The open table's worker column is unchanged and its mastermind column is not: frugal now plans on `z-ai/glm-5.3-flash`, and balanced and max both plan on `z-ai/glm-5.3` rather than `moonshotai/kimi-k3`. The all table's worker holds `z-ai/glm-5.3-flash` through balanced and `openai/gpt-5.6-sol` and `anthropic/claude-opus-5` are in no preset of it any more.
+  - The `/crew` listing named the family whenever the row was not `open`. It names it whenever the row is not the default family, so an `open` listing carries the `family · open models` line and an `all` one does not.
+
+  Both tables are read off one plot, computed seat by seat on 2026-09-16: the
+  expected bill a seat's own call shape runs up, built from the catalog's
+  published prompt, completion and cache-read prices, against that seat's quality
+  from its published intelligence, coding and agentic indexes. The worker and the
+  careful seats are priced as long cached loops and the mastermind as one-shot
+  calls, which is why the columns no longer climb together in either family.
+
+  In the all family the worker stays on `glm-5.3-flash` through balanced because
+  the worker seat carries most of a task's tokens: a step there multiplies through
+  the whole bill, where a step on the careful or the mastermind seat is paid a
+  handful of times. The laws around the tables are untouched — the careful seat is
+  a different vendor from the worker in every preset of both families and still
+  sees images, and the reflex and small-work columns still never vary.
+
+  </details>
+
+- **Six cells of the fixed crew tables moved to the measured seats** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The all family's frugal careful seat is `qwen/qwen3.8-max-0902` (was `google/gemini-3.8-flash`). Its balanced mastermind is `anthropic/claude-opus-5` (was `anthropic/claude-fable-5.1`). Its max row works on `z-ai/glm-5.3` (was `anthropic/claude-fable-5.1`), checks on `anthropic/claude-fable-5.1` (was `openai/gpt-6-astra`) and plans on `anthropic/claude-opus-5` (was `anthropic/claude-fable-5.1`). The open family's frugal row works on `z-ai/glm-5.3-flash` (was `deepseek/deepseek-v4-flash-0731`).
+  - `config.DefaultMastermindModel` is `anthropic/claude-opus-5`, so the five shipped defaults are still exactly the default family's balanced row. An untouched profile plans on opus-5 and reads the crew as `balanced`; a profile that pinned the mastermind on the old default now reads `custom` until it pins again.
+  - Max now differs from balanced only in the worker seat, so an `auto` row on the worker can no longer tell the two presets apart — the stored-rows reading answers `balanced`, the default preset, and the worker's own id is what identifies max to the seam. The open family's frugal row has worker and careful on the same vendor, `glm-5.3-flash`, the one standing exception to the second-vendor law.
+
+  The cells move to the same measured plot the tables already name: expected bill
+  under each seat's call shape against published quality, nothing quoted. Max
+  spends on the seat that pays most of a task's bill; the careful and mastermind
+  seats settle at balanced and hold through max.
+
+  </details>
+
+- **The fuel meter asks an installed tariff first, and its table holds the ids this build ships** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `orchestrate.PriceOf` answered from one package-level table and nothing else. An installed `PriceSource` is asked first and the table is the fallback behind it; `UsePrices` installs or removes one, and `CatalogPrices` adapts a per-token catalog reader into the per-million shape the meter uses.
+  - The fuel table now holds exactly the nine ids the shipped defaults and crew tables name: `google/gemini-2.5-flash`, `mistralai/mistral-nemo`, `deepseek/deepseek-v4-flash-0731`, `z-ai/glm-5.3-flash`, `z-ai/glm-5.3`, `moonshotai/kimi-k3`, `qwen/qwen3.8-max-0902`, `anthropic/claude-fable-5.1` and `anthropic/claude-opus-5`. `anthropic/claude-opus` and `openai/gpt-5` are gone, and both now meter at the unpriced rate rather than at a row of their own.
+  - An orchestrated run metered against the fuel table whenever a call reported no cost of its own. It meters against the catalog's published price when the session has one, and falls back to the table only for a model the catalog publishes nothing for.
+
+  The seam is a function value, so the meter never imports a catalog: the one
+  place an orchestrated run is built already holds a reader and installs it
+  there. A session with no reader installs nothing and leaves whatever is
+  installed alone, because the seam is shared by every run in the process.
+
+  </details>
+
+- **A re-dispatch after running out is granted more room, and one that banks nothing new is refused** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `resident` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A leaf that ran out of its token budget was re-dispatched with the identical budget and the identical brief, up to the round cap, and bought the same truncated ending each time. The dispatch's grant is attempt-aware now: `regrantAfterRunningOut` in `cmd/codeaf/subharness.go` grows the token grant by three halves per re-dispatch, never above `overrunGrantCeiling` (four flat leaf grants; a fan-in that measured more keeps every token it measured), and the wall the leaf is given follows the larger grant.
+  - A leaf that ran out was requeued whenever anything at all was banked, for as many rounds as the cap allowed. A re-dispatch that banks nothing the attempt before it had not banked is failed now, with the refusal named in the node's error; the count it is measured against is the one the hand-on release journaled, read back through `store.ReleasedTurnsFor`.
+  - The `--json` envelope had no field for in-place re-dispatches. `redispatches` counts them across the run's nodes off the journal (`store.NodeRedispatches`), and is absent rather than zero when there were none.
+
+  The two halves are one mechanism: the grant moves with the attempt, and the
+  record says whether moving it moved anything. A re-dispatch is worth buying only
+  when the room grows and the work follows; either half alone is the old loop with
+  a bigger bill.
+
+  </details>
+
+- **Every usage row names the seat the call ran under** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The usage ledger's header said a row could not answer which class of model took the money, and `UsageLine.Role` was carried by only a handful of auxiliary calls. A row now carries `seat` — one word of a closed vocabulary, `reflex`, `low`, `worker`, `high`, `mastermind` or `talk` — and `role` is written by every call that goes through the role registry, so a spend page can say whether the money went on the seat that does the work or the seat that thinks.
+  - `session.UsageLine` gained a `Seat` field. It is `omitempty` like every additive field before it, so every row already in the file still decodes and reads back with an empty seat and an empty role, which is the truth about it.
+  - `Agent.recordUsageLine` took five arguments — the usage, the model, the role, the lane facts and the reconciled flag. It takes the one `bankedCall` those came off, because the seat needs a sixth fact from the same value and a door with six arguments is a door somebody passes in the wrong order.
+
+  The seat is derived and never typed at a call site: an agent's own turns bill
+  to the seat its kind answers for — `talk` for a conversation, `worker` for a
+  task node, `high` for the checker and a repair round — and every other row
+  falls back to the tier the role registry already has for that role
+  (`session.SeatOfRole` is `roles.TierOf` followed by one hand-written table of
+  five tiers to five words). A call that resolved its model outside the registry
+  — a media pin, a document reader, a tool ask — is nobody's seat and stays
+  wordless rather than guessed, and no free text ever reaches the field.
+
+  The seat names the chair, not the id that answered, so it stays true of a row
+  whose model was a fallback, a pin or a rescue. It is NOT the router's slot:
+  nothing in the program records which slot a call ran under, and a page that
+  labelled this column with those words would be inventing the join.
+
+  </details>
+
+- **The crew picker blends a measured pool rating into a seat's quality by its observation count** — [#1101](https://github.com/Agent-Field/codeaf/pull/1101) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `crewpick.SeatQuality` and `crewpick.Front` read a seat's quality from the catalog's published indexes alone. They now have `SeatQualityWith` and `FrontWith`, which blend a `crewpick.Prior` — a pool's measured quality per seat, per canonical model id — into each seat by N/(N+PriorWeightAt): a rating the prior holds with a positive count moves the seat towards the rating's mean, and `Crew.Measured` says which seats a rating entered. `SeatQuality` and `Front` keep their signatures and read no prior.
+  - `config.AutoPick` resolved a seat from the catalog's published figures and nothing else. It now reads `config.AutoIndex`, a Model Pool index seam beside `config.AutoModels`, and blends the index's `role_quality` cells (a gaussian metric only, through `config.PoolQualityMetric`) into the pick through `crewpick.FrontWith`. A nil index leaves the answer exactly what it was.
+
+  The table of published indexes is a statement about models, and a pool that has
+  actually run a model on a seat holds something the table cannot: what it scored
+  there, over however many observations. The blend carries each by its evidence,
+  so a handful of pool ratings nudges a seat and a large pool of them decides it,
+  while a picker with no index in hand is unchanged.
+
+  </details>
+
+- **The README telemetry section is one collapsed block at the end of Docs** — [#1115](https://github.com/Agent-Field/codeaf/pull/1115) · `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - README.md had a `## Telemetry` heading between Install and the product tour: the notice, the install.json paragraph and every off switch, 23 lines. There is no Telemetry heading now; the notice sits verbatim inside a `<details>` block at the end of the Docs section, with one sentence and the link to docs/TELEMETRY.md, and the rest lives only in docs/TELEMETRY.md.
+  - test/installer-telemetry.sh still pins the README to the notice: it reads the first ```text block containing `codeaf sends anonymous usage counts`, wherever it is in the file. Moving the block is fine; changing a character of it is not.
+
+  Install flows straight into the product. Anyone who asks about telemetry finds
+  the answer in one search, and nobody trying the tool has to read past it first.
+
+  </details>
+
+- **a launch compiles 78 fewer patterns, and a surface holds 8 Ps instead of every core** — [#1125](https://github.com/Agent-Field/codeaf/pull/1125) · `chat` `engine` `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `internal/verify` compiled all 78 of its regexps in package-level vars, so every one was built before `main` on every invocation, `--version` included. They are lazy now: package init falls from 1.5 ms and 1539664 bytes to 0.033 ms and 15216 bytes, and best-of-20 `--version` from 14236 us to 12455 us. `MustCompile`'s panic on a malformed pattern is kept, at first use rather than at init.
+  - `tuneForTheSurface` capped nothing but the GC percent, so a surface and its engine host each held one runtime GC-worker goroutine per P — twenty of them on a twenty-core box. The surfaces now cap GOMAXPROCS at 8 and the engine host inherits it: the idle daemon drops from 33 to 21 goroutines and 13 to 11 OS threads. An explicit GOMAXPROCS still decides, as an explicit GOGC already did, and a machine no bigger than the cap is untouched. RSS does not change, and idle wakeups were too noisy across runs of one build (0 to 84/s) to claim anything from.
+
+  </details>
+
+- **the relay carries the acceptable metric beside the judge's opinion** — [#1129](https://github.com/Agent-Field/codeaf/pull/1129) · `build`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `relay/src/schema.js` refused any row whose metric was not `role_quality`, and a cell key held five segments. The relay now accepts `acceptable` too — the harness's own model-free grade of a landing, 100 or 0 per seat, with the grader (`codeaf/grader`, `codeaf/grader-build`) in the row's judge column. A `role_quality` key keeps its five segments, so no stored triple moves; any other metric leads its key with its own name. `aggregate` groups graded cells per (role, model, source) with no judge severity removed and fits severity over judged cells only; the document declares both metrics and writes a graded cell's `source` with its vendor sliced off. THE RELAY DEPLOYS BEFORE THE CLIENT (#1123): an older relay refuses a batch holding an `acceptable` row and the client's outbox retries it until the relay learns the word. Relay tests: 38 pass, 0 fail; #1128's nonce dedup is untouched.
+
+  The relay half of #1123 on its own, so the Worker deploys from a `santos/dev`
+  head that maps to one commit. Six files under `relay/`, nothing else.
+
+  </details>
+
+- **the relay writes a submit batch once per distinct cell and day** — [#1136](https://github.com/Agent-Field/codeaf/pull/1136) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A folded row's identity lived under its own `seen/<install>/<nonce>` key, so a submit batch spent one KV `get` and one KV `put` per row: an install re-sending a 200-row outbox spent 400 writes and reads to fold a handful of cells. The nonces of a day now live together under one `seen/<install>/<day>` key, and a batch costs one read and one write per distinct (day, cell) it folds into plus one read and one write per day for that day's seen set and its quota counter — 12 writes for 200 rows over ten cells on one day.
+
+  The submit path in `relay/src/worker.js` groups a batch's rows by day and by
+  their sheet key before touching the store, and reads a day's seen set once
+  instead of once per row. `fold` now runs in memory over the rows that share a
+  sheet key before the key is written, so two rows of one batch in the same
+  (day, cell) fold against each other rather than against whatever KV last
+  answered. The counts per batch are writes = distinct (day, cell) keys +
+  distinct fresh days (the seen set) + distinct fresh days (the quota counter),
+  and the same order of reads; neither scales with the rows.
+
+  The idempotence contract is unchanged: a nonce already in its day's set is
+  neither folded nor charged again, and a wholly remembered batch still answers
+  202 with `accepted: 0`. One consequence of the new key shape: a nonce the old
+  per-row key still holds is not consulted, so a retry that straddles the deploy
+  may fold once more — the same eventual-consistency window the per-row key had,
+  now stated on one key, where two batches from one install on one day race and
+  the last put wins. The day's set holds at most `ROWS_PER_INSTALL_PER_DAY`
+  nonces (16,500 bytes at the 500 default) against KV's 25 MiB value limit, and a
+  quota raised past what one value holds is refused rather than allowed to drop
+  nonces. `docs/design/model-pool/RUNBOOK.md` now states the per-batch cost and
+  the plan's daily KV write limit.
+
+  </details>
+
+- **pool show and verify say both metrics the index carries** — [#1141](https://github.com/Agent-Field/codeaf/pull/1141) · `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `codeaf pool show` printed the held index as a metric count (`… 2 metrics …`) and `codeaf pool verify` ended its sentence with the same count, so the relay's second metric was invisible and a person could not tell which cells are judged scores and which are graded shares. show now prints one line per declared metric after the index line — `role_quality: gaussian score · 12 cells · dims role, model`, and for the metric whose cells are split by the grader or judge that produced each share, the distinct sources beside them: `acceptable: bernoulli share · 7 cells · dims role, model, source · sources reviewer, grader`. verify says `metrics role_quality, acceptable` where it counted.
+  - The `--json` answers of show, status and verify carry `metric_list` — one object per declared metric with `name`, `kind`, `unit`, `dims`, `cells` and, where the cells are split by one, `sources` — beside the `metrics` count, which stays an integer: the count is what a reader of today's shape already reads, and the array is the detail added beside it, not instead of it.
+  - `internal/pool/index` read a metric's `unit` from the document and dropped it unread. `Unit(metric)` and `Dims(metric)` now answer the words the document spells — the unit folded like `Kind`'s word, the dims the metric declares beyond role and model, sorted — and a one-metric document, the seed's, prints one line.
+
+  The line shape follows the index's own order, sorted, and a metric the
+  document spells no unit for says its kind alone. The sources are gathered
+  off the cells, so a metric without a `source` dim says none, and a source
+  the cells spell two ways is matched the way the index matches a name —
+  lowercased, trimmed — and said once. `verify --json` carries the same array
+  beside its count, so both doors answer the same shape.
+
+  </details>
+
+- **the seed index follows the relay's first clean publish** — [#1180](https://github.com/Agent-Field/codeaf/pull/1180) · `chat` `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `internal/pool/index/seed.json` was the relay's index as published on 2026-09-18 before the pool's fixture rows were purged: 14 cells, with judges the relay has since refused. It is regenerated by `seedgen` from the relay's first publish after the purge and the vendor allowlist (version 1789715873): 18 cells, `min_installs` 3, the relay's own judge list — and `docs/design/model-pool/data/seed-cells.csv`, the paper's `role_quality` cells, beside it. `seedgen -check` exits 0 against the two files.
+
+  A fresh install with no cache picks its first crew from the seed, so the seed
+  is the index the relay would answer with today, not one that predates the
+  purge. Nothing in the reader changed; the files are what `seedgen` writes.
+
+  </details>
+
+- **a settle turn runs under the checker's own bound, not the run's wall** — [#1183](https://github.com/Agent-Field/codeaf/pull/1183) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The turn a landing note wakes under `task.settle = auto` — the one that reads the work and settles it — was an ordinary full-belt turn with no bound of its own: no call ceiling, no dollar bound, no window. In one measured run it was a single 28-minute turn of 49 tool-call rounds on the high-tier model, stopped only by the run's wall, over a tree that was already clean. The wake is now marked a settle wake and the turn it starts runs under the checker's own contract: a call window it is told (the model reads the clock the same way the checker does), a ceiling of `settleCallCeiling` provider calls, and — when the run carries a ceiling of its own — a share of the run's money. When one of those trips, the node comes back to the person with the reason and the count on its report (`it was not settled within its bound — N calls`) instead of stopping silently. A node whose own check saw a clean tree with no declared check settles after a single call, and a conversation's ordinary turn — and every wake that is not a landing handing over a decision — keeps no ceiling, exactly as before.
+
+  </details>
+
+- **the status word says working while a task subtree still turns at rest** — [#1191](https://github.com/Agent-Field/codeaf/pull/1191) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The status row's state word read `idle` whenever the conversation's own turn was over, even while a task it had handed out was still turning — so the row said `idle` under a tab strip that already drew the same conversation as `working`. It now reads `working` for a door at rest whose task subtree (or background job) is still running, the tab strip's own word, with no spinner and no clock — those belong to a turn, and the turn is over.
+
+  The figures on the row — the ledger, the meter, the job and watch counts — are
+  untouched and were already right. Only the word moved, and it moved at the render
+  site (`app.stateWord`), reading the surface's frame-safe `app.frontSignal` rather
+  than writing `app.state`, which stays the behavioural predicate the spinner, the
+  clock, ticking, barge-in and the background-work question all read.
+
+  </details>
+
+
+### Renamed
+
+- **the /connect row for a custom service reads Custom OpenAI-compatible API, not Something else** — [#1107](https://github.com/Agent-Field/codeaf/pull/1107) · `chat` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The `/connect` row (and its Providers twin in `/settings`) that adds a custom connection was called **Something else**. It reads **Custom OpenAI-compatible API** now, in the row, in the manual's services and commands pages, and in the connect tests that name the row. The connection id is still `custom`, so stored connections, their model ids and renames are untouched by the wording.
+
+  The old name said nothing about what the row does; the new one says it
+  exactly. Nothing else in the flow moved.
+
+  </details>
+
+
+### Fixed
+
+- **a finishing task can read the evidence its context has archived** — [#808](https://github.com/Agent-Field/codeaf/pull/808) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The finishing turn kept only tools that save a deliverable and removed read. It now retains read alongside the existing saving tools: compacted results name files, so withdrawing their retrieval tool made the retained evidence unreachable exactly when the worker had to finish.
+  - The landing instruction prohibited all further observation. It now permits reading existing evidence while still forbidding new exploration. Reading does not count as saving or reset the progress counter; savingTools and the exclusions for asynchronous generation are unchanged.
+
+  The combined regression archives a tool result, retrieves its full text, applies the
+  same tool narrowing as the finishing turn, and retrieves the same evidence again.
+  It needs no live model or benchmark repository. The fix adds no new state, provider
+  choice, budget or task-specific exception.
+
+  </details>
+
+- **a question's own answer box answers to the whole caret vocabulary, not a hand-rolled copy of it** — [#1032](https://github.com/Agent-Field/codeaf/pull/1032) · `chat` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The `something else…` row on a question — the one box on the block a person writes an answer in — bound its own short key map, so ⌘←/⌘→ reached no part of the caret, ⌘⌫ killed no line and ⌥⌫/ctrl+⌫ killed no word, all while the message box directly beneath it answered to every one of them. It now reads the same shared vocabulary every other box on the surface reads (`editorMotion`/`editorWordKill`).
+  - `internal/manual/chat/keys.md` listed the boxes that answer the one caret vocabulary and left the question's own answer box off it. It is on the list, and `questions.md` says so at the `something else…` row.
+
+  The row hand-rolled `left`/`right`/`home`/`end` and `alt+←`/`alt+b` and nothing
+  else — a copy of the surface's word-and-line vocabulary that had drifted from
+  the one every other box reads. It is one more caller of `internal/tui3/editkeys.go`
+  now, so the next chord added there reaches it too.
+
+  </details>
+
+- **an answered landing carries its answer's fate, and an in-flight settle holds the question down** — [#1086](https://github.com/Agent-Field/codeaf/pull/1086) · `chat` `engine`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A landed task's `your call` question was re-raised with the same words on every node move while the node stayed unverified, even after somebody answered it — the session that reported it accepted the same card twelve times in an hour (#1077). The raise now consults the decision record, and a re-raised card leads with the answer's fate: `accepted 18:20 · nobody could check it`.
+  - A notice emitted while an accept, refute, re-audit or merge round was still running re-asked the question the person had just answered, seconds later and with no new fact. Node notices now carry `TaskNotice.Settling`, and a notice that names a resolution in flight raises nothing and withdraws nothing — except a decision that changed hands mid-flight, which redraws at once — while a node that left unverified still withdraws its question, and the settle's own terminal notice still asks.
+  - An answer to a replayed landing card — a fresh window, a restored graph — settled the node but recorded no decision, so restarts lost it from the record (the reporting session had fourteen `you took this as done` receipts against twelve records). Replayed-card answers record now, whenever the question can be read back.
+  - A killed re-audit and a failed merge round left the node unverified with no word back: the question was held down or silently swallowed. Those roads release the claim and emit, so the question comes back with the answer's fate on it — the kill and the round's failure live on the job row and the node's kept report.
+
+  </details>
+
+- **the headless doors wait for the catalog rows a pick reads** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `codeaf do`, `codeaf exec` and every door through `useAutoSeats` resolved their seats while the lazy catalog was still warming, so a pick taken off the table — or a tier row that says `auto` — read no rows and fell to the family's table row, reported as `crew balanced, table`, on a machine whose catalog was already cached beside the profile. They now wait for the warm within a three-second bound when the profile needs the rows, and fall exactly as before when the bound runs out — with the rung word saying which happened.
+  - internal/catalog's `Warmed(ctx)` is the bounded wait at the warm's door — true at once for an eagerly loaded catalog, false at the bound for one still fetching — and `config.AnyTierAutoAt` answers whether any tier row says `auto`, the second reason a door waits, beside `config.CrewPickAt`.
+
+  A pick off the table and a tier row that says `auto` are both computed from the
+  rows the process already holds (`config.AutoModels`), which the headless doors
+  set from a lazy catalog's non-blocking read. The chat surface never met the
+  defect because its picks happen after the warm has landed; a headless door's
+  picks happen a line after the read, so the warm was always still in flight and
+  the resolver saw no rows. The wait is bounded — three seconds, sized to the
+  disk read of a cached catalog — and the fetch is never waited on past it: a
+  cold cache on a slow network still resolves from the family's table row, and
+  the seat's receipt still names the rung that answered, so a run that fell says
+  it fell. A profile with neither a pick nor an auto row waits for nothing.
+
+  </details>
+
+- **No git command runs without a directory, and the checkout guard reads a linked worktree's own share** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `worktreeDirtIn` and `UnsavedEditsNote` built `git -C <dir>` themselves, and `git -C ""` is a no-op, so an empty directory ran the command where the process stood. Both go through `gitWith` now (`gitContext` is the same call under a caller's context), where the refusal of an empty directory and the pinned environment live once.
+  - `taskTree.releaseLanded` removed a worktree and deleted its branch with no empty-root guard and without the root lock. It refuses a tree with no root or directory and takes the root lock, as `releaseKept` does.
+  - The session package's checkout guard read branches and worktree registrations for the whole shared clone, so from a linked worktree a sibling's task/* churn was reported as the run's damage, and its live-codeaf probe walked `/proc`, which does not exist on darwin. From a linked worktree the branch reading is skipped and the worktree reading keeps only registrations under the checkout; the probe reads the process table.
+
+  A command with no directory runs wherever the process happens to be. Every
+  spelling of a git call in this package is a wrapper of one function that
+  refuses that, and the two that had gone round it are wrappers of it now.
+
+  </details>
+
+- **A node retry asks the router to avoid the upstream machine that just failed it** — [#1094](https://github.com/Agent-Field/codeaf/pull/1094) · `engine`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A node call's three attempts used to be THE SAME REQUEST SENT AGAIN. `internal/exec`'s `complete` rebuilt each attempt from the caller's own context, so the router's default routing answered all three identically and a machine that failed the first failed all three — the run ended `after 3 node call attempts: provider ended the response with finish_reason=error` having produced no work. An attempt that failed on a named machine now records it and the next attempt carries it in `provider.ignore`, accumulating across the attempts of one call.
+  - The simple routing row used to mean NO `provider` OBJECT ON THE WIRE for a request with no pin. It still does for a first attempt; a retry after a failure that named its machine now sends one carrying the veto alone. A base that has not shown it carries a preference object, and a routing row of `off` — including the direct, one-road services that resolve to it — still send none.
+  - The field law over `only`, `order` and `ignore` used to live inside `Client.dropRefusedHere`. It is `providerPrefs.strike` now, walked by that method and by `Client.applyRetryAvoid` alike; behaviour is unchanged for the refusal list.
+  - The final sentence of a node call that failed every attempt used to name only the count and the last failure. It names the machines that were tried too, when any were learned: `after 3 node call attempts (providers tried: A and B): …`. A call whose failures named nobody reads exactly as it always did.
+
+  The list is the caller's own to scope: it is built in the node's retry loop,
+  handed over on each attempt's context, and gone when the call is over. Nothing
+  reaches a later call or a stored setting, and a call that never failed this way
+  carries an empty list — so every healthy request is byte-for-byte the request it
+  has always been.
+
+  A person's pin for the model wins outright and nothing is ignored beside it, on
+  the same law that forbids one object naming a machine and refusing it in the
+  same breath. A machine a demand still names is never also written into `ignore`,
+  and a demand the veto emptied stops being a demand rather than going out as
+  "these machines and no others" about no machines at all.
+
+  </details>
+
+- **Usage counts from a hosted chat carry real numbers, and nothing without a version ever leaves** — [#1111](https://github.com/Agent-Field/codeaf/pull/1111) · `chat` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A chat attached to the session host reported 0 turns, 0 model calls and 0 tool calls in its session_ended usage event; it now counts them from the events it receives.
+
+  Three fixes from the first day of real usage counts. A chat that attaches to
+  the workspace's session host now counts its turns, model calls and tool calls
+  from the events the host sends it, so `session_ended` carries real bands
+  instead of zeros (a `--no-host` chat already counted in-process and is
+  unchanged). An event whose `codeaf_version` is missing or `unknown` is dropped
+  on the send path itself and never leaves the machine, whatever switched the
+  opt-out ladder on. And the smoke tests, which build and run a stamped binary,
+  now run it with telemetry off, so a test run no longer counts as a new install.
+
+  </details>
+
+- **a service connected mid-conversation reaches the conversation that is open** — [#1114](https://github.com/Agent-Field/codeaf/pull/1114) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A service connected while a conversation was open reached only conversations opened afterwards, on the session-host road interactive chat takes by default. It now reaches the conversation that is open: the engine registers every conversation it builds, so the broadcast that carries a freshly resolved profile finds it. Connecting a service and answering on one of its models no longer needs a new conversation or a relaunch in between.
+  - An engine registered no conversation, so nothing it served could be reached by a profile broadcast and nothing had to be released either. It now registers and releases each one through Engine.Closed, which is told on both roads a conversation ends — a person's goodbye and the swap that /new and /resume make. A door that only registered would grow its held list for the life of a daemon that outlives every conversation in it.
+
+  The conversation kept the account set it was born with, so the written name it had
+  just been switched onto matched no member of its set, and the model id fell through
+  to the default service with its prefix still on it. That is a 400 about a model no
+  router publishes, which the person read as the request could not be sent as it was.
+
+  The structural test reads the engine door with go/ast and counts the conversations
+  it builds against the ones it registers; it fails on the unfixed door naming both
+  numbers. Nothing here needs a live model or a second machine.
+
+  </details>
+
+- **a decision card under --yolo takes its own default instead of waiting for somebody** — [#1117](https://github.com/Agent-Field/codeaf/pull/1117) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A decision card raised under `--yolo` put itself up and waited, the same as it would with somebody watching, so the run hung until something else timed it out. A card that carries a default now takes it and carries on, and the record says the default was taken automatically rather than chosen. A card with NO default is unchanged: it still parks, because it has nothing to take.
+
+  </details>
+
+- **a design's thread stops its parts before it closes, and a node machinery cut says what cut it** — [#1118](https://github.com/Agent-Field/codeaf/pull/1118) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The nursery law was enforced on one road only. `workTaskNode` stopped a worker's parts before closing it, but the design body closed its thread with a bare `child.Close()` and no `stopChildren` — and that thread is not a leaf, so parts it had handed out were cut down with it unmarked, read their own cancel as a process quitting, and landed on the `paused — it resumes` road with their state left running for a recovery that was never coming. The design body now carries the same guard, on every road out.
+  - A node whose context ended without anybody marking it stopped wrote nothing about why: no ending, no cancelling party, no reason, so an interruption a person caused and machinery cutting the work read the same on the record — which is to say, neither read as anything. Such a node now carries `TaskEndingInterrupted` and a report saying the cut came from outside the work. It still does not move the state and still leaves the checkpoint resumable: an interruption is not a finding about the work.
+  - `TaskNotice.Ending` was set only on a node that settled `failed`. It is now also set on a node machinery cut where it stood, which stays running for recovery to resume; every other state still carries none.
+
+  </details>
+
+- **a bare auto row names the pick word's rung, so a seat computed under learn says learned** — [#1119](https://github.com/Agent-Field/codeaf/pull/1119) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A tier row that says `auto` reported its rung as `computed from the catalog` whatever the crew pick word was, so a seat resolved under `pick=learn` claimed the catalog had answered it. It now names the word that ran: `learned` under `learn`, the catalog's rung under `catalog`. The rung names WHICH pick ran, not whether the pool's measurements moved the id — the rule a pick-computed seat already followed.
+  - The rung decision lived in two places, `autoRow` and `pickedModel`, and they disagreed. It now lives once, in `computedRung`, which both call, so the seam that exists to stop a seat meaning one thing in chat and another headless cannot drift again.
+
+  </details>
+
+- **a bare auto row under picked from = catalog reads the catalog's figures alone** — [#1120](https://github.com/Agent-Field/codeaf/pull/1120) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Under `picked from = catalog` a tier row that says `auto` answered with the Model Pool's measurements blended in while its rung said `computed from the catalog`; it now answers the catalog's published figures alone, the same computation the pick word's own seat runs.
+  - The prior decision lived in two places — `AutoPick`, which always carried the measurements, and `pickedModel`, which carried them only under `learn`. Both seams now read one helper, `priorFor`, so a bare `auto` row and the pick word's own seat cannot disagree about what `catalog` means again.
+
+  </details>
+
+- **the do door seats its worker from the settings the run will use** — [#1122](https://github.com/Agent-Field/codeaf/pull/1122) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `doErrand` resolved the process's one catalog from a separate keyless settings read (`config.LoadKeyless`) while the run loaded its own keyed settings later, so a `codeaf do` launch read its settings twice and seated its worker from the first read. Its seats are now resolved from the same settings the run uses, the way `codeaf exec` and the chat surface seat theirs, with the keyless read kept as the second rung for a profile that has no key anywhere.
+
+  A `codeaf do` launch used to load its settings twice: one keyless read to seat
+  the two models before anything was opened, and the run's own settings
+  afterwards. The process keeps a single catalog, built by whichever caller
+  arrives first and never rebuilt, so the seats were computed against the catalog
+  the keyless read had seated — while the run itself called with the settings it
+  loaded later. The do door now resolves its seats from the settings the run will
+  use, as `codeaf exec` and the chat surface do, so a fresh profile whose key
+  arrives with the shell seats its worker and its plan from the pool. A profile
+  with no key anywhere still seats keyless on the second rung, prints its seat
+  line before the missing-key sentence, and reads a warm cache with or without a
+  key.
+
+  </details>
+
+- **a launch's pool writers stop when the process closes** — [#1124](https://github.com/Agent-Field/codeaf/pull/1124) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The Model Pool's two start-up errands — the index refresh that writes `doc.json` beside its signature under the profile's pool directory, and the outbox push that opens the outbox and writes the install nonce there — were started fire-and-forget through `guard.Go`, which joins nothing at shutdown. A process that closed left them writing into a profile nobody was waiting for: a test whose profile is a temporary directory failed its own clean-up with `unlinkat …/pool: directory not empty`, and a door that reopened on another profile could write into a directory it no longer owned. They are now seated on one context and one `sync.WaitGroup` per profile (`cmd/codeaf/poolindex.go`), and `v3Process.closeAll` cancels and waits for them before it closes the conversations and the stores.
+  - The errands' own budgets did not keep this. A budget bounds one fetch, not the life of the goroutine, so a relay that did not answer left the refresh running past the close — the failure it caused was a race that passed on the rerun. The join, not the budget, is what makes the profile quiet once the process is gone.
+
+  </details>
+
+- **The pool index's min_installs floor counts a cell's installs, not its rows** — [#1127](https://github.com/Agent-Field/codeaf/pull/1127) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `internal/pool/index` held a cell against the document's `min_installs` by its `n`, the rows, so a cell one contributor filled with nine rows passed a floor of three while a cell three contributors shared over three rows was held below it. The floor is now counted on the cell's `installs` where it carries them, falling back to `n` where it does not, which is the shape the seed carries.
+  - A cell's `installs` field was unknown to the reader and dropped unread. It is now a reserved cell field, read for the floor, and a metric declaring an `installs` dim is skipped the way one declaring a `mean` dim is.
+
+  The relay computes `min_installs` over distinct contributors and folds their
+  rows into a cell's `n`, so flooring the client on rows admitted the one heavy
+  contributor and held the three light shares — the opposite of what the floor
+  is for. `crewpick.PriorFromCells` keeps its own floor on rows, which every
+  cell the reader now keeps still meets, since rows cannot be fewer than the
+  installs that produced them; the cells built outside a document, an
+  install's own sheet, carry rows alone. `N` keeps meaning rows everywhere, so
+  the learn blend still weighs a rating by its rows.
+
+  </details>
+
+- **The pool relay folds a retried batch once** — [#1128](https://github.com/Agent-Field/codeaf/pull/1128) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A resubmitted batch was folded again. The relay keyed nothing by a row's identity, so a row whose 202 the client never saw — the client holds every row that did not get one and re-sends its outbox on the next judged run and at start-up, and a timeout after the relay had already stored the batch is the ordinary case — was summed into the install's running total a second time and charged against its daily quota a second time. A row's own nonce now names it under `seen/<install>/<nonce>`, and a nonce the relay has already stored is neither folded nor charged again; a batch that was entirely already stored still answers 202 with `accepted: 0`.
+
+  The submit path in `relay/src/worker.js` now drops the rows whose nonce it has
+  already folded before the quota check and the fold, and records the nonce of
+  every row it folds under a per-row `seen/<install>/<nonce>` key with a one-week
+  TTL. The key is per row and not per batch because a retry carries the rows that
+  did not get a 202, which may be fewer than the batch that first sent them, and
+  only the nonce each row carries survives that re-grouping. Idempotence is only
+  as strong as KV, which is eventually consistent — two concurrent copies of a
+  batch can still both fold a row; within what KV answers, a stored nonce is not
+  folded or charged again. A nonce repeated inside one batch folds once too.
+  `accepted` counts the rows folded now, so a wholly remembered batch answers 202
+  with `accepted: 0` — the client needs only the 202 to mark its rows sent.
+
+  </details>
+
+- **A row the relay refuses by line leaves the outbox and the rows around it are sent** — [#1130](https://github.com/Agent-Field/codeaf/pull/1130) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - An outbox Send that met a refused batch left every row of it, and every row behind it, pending: the relay refuses a whole batch on the first line it cannot validate and answers `400 {"error":"line N: <why>"}`, so one row the pool's schema would never accept — a payload written by an older or newer client, or schema drift — was retried at the head of the batch on every judged run and every start-up, refused again, and nothing from that install reached the pool again.
+  - A 400 whose reply names `line N` now marks the named row dropped — the one marker that keeps it gone across a reopen — and posts the rest of the batch again within the same Send, one POST per refused line at the most and still inside the Send's budget. A 400 that names no row, a 413 and a 429 still answer an error and keep their rows pending: none of them names a row, so retiring one would be a guess, and the pending cap still drops rows from the old end when the retries would pile up. 5xx is unchanged.
+
+  </details>
+
+- **The published pool index holds only the cells that meet its min_installs floor** — [#1131](https://github.com/Agent-Field/codeaf/pull/1131) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `relay/src/sheet.js` published every cell, the ones below `min_installs` sorted after the ones that meet it, so a cell one contributor filled was public in the document although every client dropped it unread. The sheet now drops a below-floor cell before it leaves the relay, and the document's cells all meet the floor.
+
+  The floor exists so no single install's numbers are published, which a cell
+  below `min_installs` sitting in the signed document defeated: the client held
+  it back, but the bytes were already out. The document whose every cell falls
+  below the floor now renders with an empty `cells` array, still signed and
+  published. The cells' only reader is the publish path that builds the
+  document, so the sheet is where the floor is applied and the sort that carried
+  the below-floor cells to the end simplifies to the tie-break it still is.
+
+  </details>
+
+- **A run a process death left unjudged is judged on the next chat start** — [#1132](https://github.com/Agent-Field/codeaf/pull/1132) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The Model Pool judge ran only from the live landing hook, on a fire-and-forget goroutine, so a process that died between a node reaching its terminal state and that goroutine finishing left the node final in `tasks.json` but never scored into `own.json`/`outbox`. A bounded start-time sweep now judges the resumed session's own final-state nodes that carry no judged marker, each exactly once.
+
+  The judge is news a live process delivers, and a process that is gone delivers
+  nothing: a node that landed and then lost its process was final on disk and
+  scored nowhere. The chat door now runs a sweep at start, on a goroutine nobody
+  waits on, that reads the resumed session's checkpoint and the pool's own pending
+  file and judges every landed run that carries no `pool/judged/<id>-<attempt>`
+  marker — the headless doors' recorded landings and the chat door's own
+  process-death residue alike. The live hook writes that marker but never reads it,
+  so a person re-auditing a landing still re-judges it; only the sweep reads it, so
+  each run is judged at most once. The sweep is a no-op with the pool off or no
+  judge-capable key present, in which case the pending rows simply wait; it is
+  bounded so it never holds the prompt; and it claims the pending file by an atomic
+  rename so a door appending to it concurrently never has a row torn out from under
+  it. The checker seat and the attempt are now carried on the checkpoint so a run
+  rebuilt after the process is gone keeps the high seat it ran with.
+
+  </details>
+
+- **the outbox file is compacted back to the rows it still holds** — [#1133](https://github.com/Agent-Field/codeaf/pull/1133) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The outbox file at `<profile>/pool/outbox.jsonl` was append-only with nothing that ever rewrote it, so it carried a line for every row an install ever judged — the row, and later the marker that retired it — and grew without bound. Every `Send` and every `Pending` read the whole file back, so a long-lived install's work per judgement grew with the total it had ever judged. A `Send` now rewrites the file to exactly the rows still pending when it has grown mostly into retired ones — more lines than twice the pending rows, past a floor of 1024 lines — through a temporary file fsynced and renamed over the original, and the markers of the rows that are gone go with them. A crash before the rename leaves the old file whole and one after it leaves a file holding the same pending rows, so no row is lost and no retired row comes back to be sent twice. A second codeaf on the same profile that already holds the file keeps writing to the inode the rename unlinked and those appends are lost — the one-writer-per-profile assumption the file already rested on, now made explicit.
+
+  The file is still append-only between compactions, which is what keeps a crash
+  mid-write from losing or double-sending a row; the rewrite happens only where
+  the file's own size is the cost, at the start of a `Send`, before its first POST
+  and under the same lock that serialises Sends. What stays is only the pending
+  rows, because a marker means nothing once the row it retired is gone.
+
+  </details>
+
+- **The finished-tree check finds a project cloned into a subdirectory** — [#1135](https://github.com/Agent-Field/codeaf/pull/1135) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `internal/verify/photograph.go` took the reading at the workspace root only, so a task whose project was cloned into a subdirectory (awilix under `./repo`, bandit under `./bandit`) discovered no manifest, Makefile or script and the reading came back "this project declares no way of checking itself" — no check ran and broken work shipped. The reading is now taken at the immediate subdirectory that declares a check when the root declares none.
+
+  The reading has to be taken where the project is, and a corpus task's project
+  is often one directory down from the errand's workspace root. When the root
+  declares no way of checking itself, `photograph` now looks one level down and
+  takes the reading at the single immediate subdirectory that does — chosen by its
+  own files, the same evidence the root is held to, never by its name, and sorted
+  so two readings of one workspace choose the same directory. The reading is
+  re-rooted onto that project so the second reading, the journal and the delivery
+  gate all run the command where the project is. A root that declares its own
+  check is unchanged.
+
+  </details>
+
+- **the manual said the status row's ledger stays the conversation's; it is the tree's** — [#1143](https://github.com/Agent-Field/codeaf/pull/1143) · `docs` `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The chat screen's manual said the ledger, the meter and the job counts on the status row all stay the conversation's. The ledger has not since c7142ca4 (2026-08-31): spendShown draws the larger of the subtree receipt and the conversation's own books, so a running task's spend is in the bill whether or not its room is open. The meter and the job counts are still the conversation's.
+
+  The same page already described the bill correctly where it introduces the groups — what
+  this conversation and its tasks have spent — so the page contradicted itself, and no gate
+  could catch it: the Manual CI step checks commands and aliases, not prose about a figure.
+  /cost is where the bill's two halves are taken apart, and it stays where it was.
+
+  </details>
+
+- **The wall refuses a first replan round it cannot hold** — [#1144](https://github.com/Agent-Field/codeaf/pull/1144) · `resident`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `growJob` in `internal/resident/grow.go` never refused a round with `CauseOutOfWall` for a job with no measured pace: `jobPace` answered zero and zero read as "not near", so a first replan round was admitted at 40m22s of a 45m wall (ds1, awilix), ran long, was killed by the clock mid-round, and the job was released with its root unlanded and no delivery gate ever cut. A job with no measured pace is now read against the elapsed runtime of the leaf that just overran and refused, through the existing `RefusedOutOfWall` close-out, when the wall cannot hold even that.
+
+  A round the wall cannot hold is now handed over rather than killed mid-flight,
+  through the same `closeOutJob` path every other out-of-wall refusal takes, so a
+  gate precedes the wall on the first replan round too. The refusal turns only on
+  evidence: a measured pace, or an overrun leaf whose elapsed life the wall cannot
+  fit. A job with nothing run and nothing measured has no estimate at all, so its
+  genuine first round is admitted rather than refused — refusing a round that
+  cannot be costed produces nothing, and it would take every do and headless run
+  (each under a wall shorter than any fixed floor) down with it. The measured-pace
+  branch is unchanged.
+
+  </details>
+
+- **a fault test writes its crash fixture only into a profile it owns** — [#1145](https://github.com/Agent-Field/codeaf/pull/1145) · `chat` `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Tests in cmd/codeaf moved HOME and CODEAF_HOME to directories of their own but left CODEAF_PROFILE_DIR alone, and reportFault appends through config.ProfilePath(config.ProfileDir(), "chat.log"). A harness that exports CODEAF_PROFILE_DIR at a live profile therefore sent the fixture — `slice bounds out of range [:-1]` — into somebody's real chat.log, where it read as a genuine crash. Every test and helper that writes through a profile path now pins CODEAF_PROFILE_DIR as well.
+  - Moving CODEAF_HOME was enough to keep a test's writes out of a real profile. It is not: config.ProfilePath answers an exported CODEAF_PROFILE_DIR before it falls back to the state root, and the pool's start-up errands follow it, so a test that seats a launch mints `pool/install` and opens `pool/outbox.jsonl` in the inherited profile however far the state root was moved.
+
+  The fault log follows CODEAF_PROFILE_DIR and not HOME or CODEAF_HOME, so a test
+  that pins only the latter two still writes into whatever profile the environment
+  names. `nopanic_test.go` and `telemetry_test.go`'s `telemetryHome` — the second
+  writes the profile's own telemetry row through `config.WriteTelemetry` — were the
+  two tests in this class found by name; `chatv3_belt_test.go` writes the model
+  catalog and the pool's start-up errands through the same resolution. All three
+  now name every variable that decides where their writes go.
+
+  READING FOUND THREE AND MISSING ONE. The rest of the audit ran the roads instead:
+  every `cmd/codeaf` test that seats a launch or writes a profile path was run with
+  CODEAF_PROFILE_DIR pointed at an empty directory, and the directory was then
+  read. That measured a fourth leak — `vocabulary_test.go`'s shorthand test seats
+  `do` and `exec`, and the pool's errands it starts left `pool/install` and
+  `pool/outbox.jsonl` in the inherited profile on every run. It is fixed the same
+  way. The other launch-seating rows in that file stopped at a missing key before
+  any errand started and wrote nothing across three runs each.
+
+  `faultprofile_test.go` holds the fault case down from the outside, because a test
+  that pins the variable itself cannot fail on the tree that leaked: it runs the
+  fault test as a child process under an inherited profile and reads the stand-in.
+  It failed before this change and passes after it.
+
+  WHAT WOULD STOP THE CLASS, PROPOSED AND NOT DONE. `cmd/codeaf`'s TestMain already
+  gives the package a floor — `isolateTestEnvironment` in `testenv_test.go` — and
+  that floor pins HOME and CODEAF_HOME but not CODEAF_PROFILE_DIR. `pinTestEnv`
+  also leaves alone any variable the process was deliberately started with, so a
+  harness that exports a profile is precisely the case the floor does not reach.
+  Clearing CODEAF_PROFILE_DIR unconditionally in that helper, the way
+  `internal/tui3`'s TestMain already does, would cover all 170 test files in the
+  package at once instead of one at a time. It is not in this change: it alters
+  what every test here inherits, which is a wider claim than the leak needs.
+
+  </details>
+
+- **cmd/codeaf's test floor clears CODEAF_PROFILE_DIR, covering the whole package** — [#1150](https://github.com/Agent-Field/codeaf/pull/1150) · `chat` `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The cmd/codeaf test floor was believed to isolate every variable that decides where a test writes. It moved HOME and CODEAF_HOME but answered an exported CODEAF_PROFILE_DIR as a deliberate pin and left it alone; the floor now clears it unconditionally, so no test in the package inherits a profile the environment named.
+  - The four per-test CODEAF_PROFILE_DIR pins from #1145 were what kept a test's writes out of an inherited profile. They still hold but are now belt and braces: the package floor clears the variable before any test runs, and deleting the pins is a separate decision.
+
+  #1145 fixed one test at a time and proposed the class-stopper without doing it:
+  `isolateTestEnvironment` — the floor `TestMain` gives every test file in
+  `cmd/codeaf` — pins HOME and CODEAF_HOME through `pinTestEnv`, and `pinTestEnv`
+  leaves any variable the process was deliberately started with. An exported
+  `CODEAF_PROFILE_DIR` is precisely that case, and it is the variable that decides
+  where the package's writes go (`config.ProfilePath` answers it before the state
+  root), so a harness exporting it at a live profile reached the whole package
+  however far the roots were moved. Routing the profile through `pinTestEnv` would
+  have been a no-op in exactly that case, so the floor clears it unconditionally —
+  the way `internal/tui3`'s TestMain already does — and restores whatever it
+  cleared when the run ends.
+
+  The floor is held down by `testfloor_test.go`, which runs a child of the test
+  binary with the variable exported at an empty stand-in, has the child take the
+  real fault road and assert what the floor left it, and reads the stand-in back.
+  It failed before the fix and passes after, and the measurement behind that is
+  the whole package rather than one road: `go test ./cmd/codeaf -count=1` with
+  `CODEAF_PROFILE_DIR` exported at an empty stand-in left nine entries in it on
+  the pre-change floor — `chat.log`, `model-catalog.json`, and a `pool/`
+  directory holding the six files of the pool's start-up errands #1145 measured
+  in one test — while every other test in the package passed. That is why no
+  road in this package can see the leak and a floor guard has to. The same run on
+  this tree passes in 89s and leaves the stand-in empty. No real profile is
+  touched by any of it, not even to check it.
+
+  Now redundant under the floor, and deliberately left in place: the four per-test
+  pins from #1145 — `nopanic_test.go`'s two reportFault tests, `telemetry_test.go`'s
+  `telemetryHome`, `chatv3_belt_test.go`'s door walk, and `vocabulary_test.go`'s
+  shorthand test. They cost one `t.Setenv` each and keep each test true on its own
+  if the floor is ever lifted.
+
+  </details>
+
+- **an unstamped binary says it was built outside a git checkout, not without make build** — [#1151](https://github.com/Agent-Field/codeaf/pull/1151) · `build` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `codeaf --version` on a build with no revision said it was "built without `make build`", and the design note for that row recorded that the tree embeds no `vcs.revision` under a plain `go build`. Both are false on go1.26.5: a plain `go build` inside the checkout embeds `vcs=git`, `vcs.revision`, `vcs.time` and `vcs.modified`, internal/buildinfo falls back to them, and `--version` prints a full pseudo-version such as `v0.2.2-0.20260918035413-2ab365d6cb3e` with no linker stamp involved. The revision goes missing when there is no VCS to read — a tree that is not a checkout, an archive, a vendored copy, `-buildvcs=false` — and `make build` does not rescue that case either, because its own stamp comes from `git rev-parse --short HEAD`.
+
+  The sentence now names the condition rather than a target, because the target cannot fix the case
+  where the sentence appears: both roads to a revision need a checkout. The assertion in
+  `polishrows_test.go` required the old wording, so it changed too, and its comment carries the
+  measurement that settles it.
+
+  </details>
+
+- **the terminal audit names the gitignored build products a run left in the deliverable tree** — [#1152](https://github.com/Agent-Field/codeaf/pull/1152) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The terminal audit could not see a build product a subprocess left behind: it sorted only the created-file ledger (files the session's own tools wrote) and read the tree with `ls-files --others --exclude-standard`, which leaves out what .gitignore covers, so a latex run's leftover .aux/.log/.out sat in the deliverable tree for everybody's eyes but the audit's. The `reconciled` journal row now names them under `ignored` — build products, ignored by git, not in the landing — and only what appeared during the run, against the tree's own baseline photograph.
+  - An ignored build product is a report and never work for the sweep: it reaches no set the tidy acts on, no complete landing turns incomplete over one, and nothing is deleted for being on the list — an ignored target/ or node_modules/ a build made is removed, if ever, by a decision of its own.
+
+  </details>
+
+- **the opening hint test names its own profile and pins the welcome contract both ways** — [#1153](https://github.com/Agent-Field/codeaf/pull/1153) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - TestTheOpeningHintNamesBothDoors was believed to be a self-contained read of the welcome contract. It named no profile, so its answer came from whatever an earlier test in the same process had written into the package's one shared temporary profile — green in a package run, red alone. Both apps it builds now read a profile the test made, and the marker case is written by the test.
+  - The test asserted the pre-#680 behaviour — a keystroke lands the hint. #680 made the first conversation's greeting stand through typing on purpose, so the assertion was wrong rather than the surface. The test now pins the shipped contract: greeting stands through typing on a profile with no setup_seen_at marker and the hint lands at the send; with the marker written, a keystroke dismisses and the hint lands then.
+
+  The test built its app with no `ProfileDir`, so `a.profileDir` was empty and
+  `config.SetupSeenAt("")` resolved through the state root — and TestMain moves
+  that root to ONE directory for the whole package run (`tui3_test.go`'s
+  `runTests`, which sets `CODEAF_HOME` and clears `CODEAF_PROFILE_DIR`), so every
+  test that does not name a profile reads and writes the same one. With
+  `a.recentSessions` nil, the marker is the whole of `welcome.first`
+  (`welcome.go`: `len(recent) == 0 && SetupSeenAt(dir).IsZero()`), and an earlier
+  test in the package had stamped `setup_seen_at` into the shared directory — so
+  the same test run in the same minute passed inside the package and failed alone,
+  and the answer it was asserting came from another test's write.
+
+  #680 (`f9db3b9c`) made the first conversation's greeting stand through typing on
+  purpose: the composer must not move out from under the sentence a person started,
+  so the greeting is spent by the send (`spendWelcome`), not the keystroke. The
+  test had never been updated for that and still asserted the keystroke path, so
+  the failing frame was the greeting standing with `› h` in the box — the shipped
+  contract doing what it says. The surface is unchanged by this fix; the contract
+  is deliberate and now pinned instead of fought.
+
+  Both apps the test builds read profiles the test made, and the contract stands
+  in two deterministic cases, neither of which reads a profile the test did not
+  create: with no marker, the greeting stands through typing (the three starting
+  points are still on the frame under the word typed into the box) and the hint
+  lands at the send; with `config.MarkSetupSeen` called on the test's own
+  directory, the same keystroke dismisses and the hint lands on that frame. The
+  three assertions that were true before stay: the greeting never teaches the exit
+  before the entrance, a resumed session gets the line on its first frame, and
+  help names `alt+enter`.
+
+  Both roads measured on this tree, in the same hour:
+
+  - `go test ./internal/tui3 -run '^TestTheOpeningHintNamesBothDoors$' -count=1 -timeout 600s` —
+    green in 0.16s. This was the failing road: the same command on the pre-change
+    test went red alone and green only inside the package.
+  - `go test ./internal/tui3 -count=1 -timeout 600s` — green in 318.2s, one run.
+
+  The package-wide coupling that made an empty profile dir mean "whatever the
+  process's neighbours wrote" is a separate question and is not fixed here.
+
+  </details>
+
+- **status says when the relay dropped a row and why** — [#1154](https://github.com/Agent-Field/codeaf/pull/1154) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A row the relay refused by line, and one the pending cap dropped, were retired as `dropped` with the reason thrown away: the outbox file held `{"dropped":"<nonce>"}` and no more. `pool status` counted only the pending rows, so it printed `pending 0 · can send yes · can read yes` for an install whose every measurement was being thrown away and for a working one alike, and a person could not tell the two apart.
+  - A dropped marker now carries the reason — the relay's own text after `line N:`, trimmed and capped at 200 bytes, or `over cap` for a row the pending cap aged out — and the outbox answers them with `Dropped()`, oldest first. `pool status` adds a dropped segment only when something was dropped — `pending 0 · dropped 2 (last: <reason>) · can send yes · can read yes` — and `--json` carries `dropped` (the count) and `dropped_last` (the most recent reason) beside the pending count. A file written before reasons were kept still parses: its drops read with the reason empty and the line says the count alone.
+
+  </details>
+
+- **a job teardown never signals a process group whose pid was reused** — [#1155](https://github.com/Agent-Field/codeaf/pull/1155) · `chat` `engine` `resident`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A job was torn down by signalling its recorded process-GROUP id with no check that the pgid still belonged to the job: `internal/processgroup`'s `Kill`/`Terminate`/`Alive` all act on `kill(-pid, …)`, which reaches whatever process group currently holds that pgid. Under pid pressure a finished job's number is handed out again, so a settle/close sweeping several job groups could SIGKILL an unrelated, live group — observed twice taking down a tmux server and ~12 running jobs. A group is now recorded at launch with the leader's identity, and every group signal is sent only while that identity still matches the live process; on a mismatch, a reaped child or a free pid nothing is signalled.
+  - The detached-group sweep that runs when a shell exits after backgrounding a child (`terminateDetachedGroup`) read and signalled a bare pgid after `cmd.Wait` had already reaped the leader, so it had nothing to check the group against. On Linux the reaper now holds the shell as a zombie with `waitid(WNOWAIT)` so the sweep runs while the leader's identity is still readable, and the sweep is identity-checked; where there is no wait-without-reap the sweep keeps its old shape rather than leak every detached child.
+  - `StopServiceProcess` killed the whole detached session of a service by its recorded pid alone. It now refuses unless the live process still matches the start time the service was recorded with.
+
+  A process-group id is not an identity. `kill(-pid, SIG)` reaches whatever
+  process group holds that pgid now, and pids are recycled — the incident this
+  fixes was a long-lived codeaf tearing several job groups down at once and
+  SIGKILLing a pgid that had by then become the DOE's `tmux -L pareto` server,
+  taking about a dozen running jobs with it. So a group is recorded at launch
+  with the leader's start-time identity (`/proc/<pid>/stat` field 22 on Linux, `ps
+  -o lstart=` elsewhere), and `internal/processgroup.Group` gates `Terminate`,
+  `Kill` and `Alive` behind that check: a signal is sent only while the recorded
+  identity still matches the live process, and on any doubt — a mismatch, a reaped
+  child, a free pid — nothing is sent. The safe default is one-sided on purpose: a
+  missed kill leaks one process, a wrong kill destroys somebody else's work.
+
+  `internal/exec/jobs.go` and `internal/session/jobs.go` record the group where
+  they fork and route every teardown signal through it; `internal/exec/services.go`
+  checks the recorded start time before stopping a service. The Windows path keeps
+  its old, ungated `taskkill` behaviour, and non-Linux Unix keeps the old detached
+  sweep because there is no `waitid(WNOWAIT)` to hold the leader readable.
+
+  </details>
+
+- **an exhausted leaf continues the plan it has instead of a second full planning pass** — [#1156](https://github.com/Agent-Field/codeaf/pull/1156) · `resident` `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - Every remainder of an exhausted leaf was planned from scratch: the overrun splice called plan.Build again on each round, paying a fresh planning call and re-emitting the planner's phases over a job that already had a plan. It now continues the plan it drew, whenever the lineage has recorded turns and the job still holds a plan, and falls back to the full re-plan only when either is missing.
+  - The shape a job was planned with could be replaced by a one-step shape after its first overrun, because the re-plan overwrote what the job already carried. The plan is retained across an overrun round now; a five-step plan stays a five-step plan.
+  - Nothing told the planner why a round was being planned, so a planner could not tell an exhausted leaf from a reviewer's finding. The round's reason now rides into the planning call as resident.GrowthReasonFrom, the same overrun/gap/cooperative vocabulary the growth journal already uses.
+
+  Only an overrun round continues. The delivery gate's gap round buys work a
+  reviewer named and a worker's cooperative split is that worker's own division,
+  so both still buy the full planning pass; so does a cold start and a job that
+  never earned a plan.
+
+  </details>
+
+- **pool status's index line says what this run's own fetch did to the cache** — [#1161](https://github.com/Agent-Field/codeaf/pull/1161) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `codeaf pool status` read the cache, printed the index line, and only then ran the probe that fetches and stores the index — so on a fresh profile the line said `no index cached yet · built-in seed of …` underneath a fetch that had just cached one, and a person had to run status twice to learn it landed. Status runs the probe before the index line now: the line describes the document this run holds, tailed with what the probe displaced — `index · … · cached now (was built-in seed)`, or `(was <old generated day>)` when it replaced a cached document.
+  - `pool status --json` built its `index` from the pre-fetch cache the same way. It carries `cached_now: true` beside `source: "cache"` on the one status whose probe stored the document, and the field is left out on every other answer.
+
+  `probePool` already pulled under `TTL 0` and stored whatever verified, and the
+  pull's `Result.Changed` already said whether that store was a document the cache
+  did not hold — `probeSummary` now carries it, and status reads the cache again
+  after the probe and says the document it now holds. A probe that stored nothing
+  (a relay that served the cache's own version, a 304, or an address that did not
+  answer) leaves the index line exactly as it was, and `pool show`, which asks no
+  address, is untouched.
+
+  </details>
+
+- **the soft memory limit now takes the cgroup bound, not just physical memory** — [#1162](https://github.com/Agent-Field/codeaf/pull/1162) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The soft GOMEMLIMIT a surface sets was half of the machine's PHYSICAL memory. It is now half of the SMALLEST finite bound the machine and the process's cgroup give, so inside a container the limit follows the container rather than the host.
+  - The tuner's comment argued a cgroup limit adds a second kernel interface for a bound that is only ever tighter and 'fails to nothing in a container with no limit'. The cgroup is read now, and a hierarchy with no limit — no files, `max`, the v1 sentinel — is a zero that simply does not participate, so physical memory remains the fallback.
+
+  `surfaceMemoryLimit` took half of physical memory, and inside a container
+  physical memory is the HOST's: the limit landed far above what the process could
+  actually use, never bound, and the kernel OOM-killed instead of the collector
+  working — the exact failure setting `GOMEMLIMIT` is meant to avoid. The
+  derivation now takes the minimum of every finite bound it can read: physical
+  memory, the cgroup v2 `memory.max` for the process, and the cgroup v1
+  `memory.limit_in_bytes`. A bound that is absent, unreadable, the literal `max`,
+  non-numeric, or the cgroup v1 sentinel is not a bound and is not counted; if none
+  is readable the surface behaves exactly as before. The 512 MiB floor is
+  unchanged and still a refusal.
+
+  THE WHOLE PATH IS WALKED, NOT JUST THE LEAF. A parent slice can be tighter than
+  the process's own cgroup — a container often leaves the leaf at `max` while a
+  slice above it is bounded — so the reader takes the minimum over the leaf and
+  every ancestor up to the hierarchy root. Walking can only tighten the answer,
+  never loosen it, and costs a few extra stats once at startup. On this machine
+  every level reads `max`, so the walk finds no cgroup bound and the limit is
+  exactly what it was.
+
+  `hostCgroupMemoryLimit` is the reader seam, the same shape as `hostTotalMemory`,
+  so a test stands a bound in front of the tuner without owning a cgroup; the
+  reader itself takes the cgroup root and the `/proc/self/cgroup` path, so the unit
+  tests run against a `t.TempDir()` and a written stand-in and never touch the real
+  `/sys/fs/cgroup`.
+
+  </details>
+
+- **the pool spells a seat by its bare model id** — [#1163](https://github.com/Agent-Field/codeaf/pull/1163) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A seat's model id reached the pool's records spelled the way the client routes it — the `~` alias marker on the front, a thinking level on the back — and the relay's wire schema admits only `<vendor>/<id>`, so a fresh install's first measurement rows were refused and dropped. The pool's copy of a seat's id is now the bare `<vendor>/<id>` at every entry: the landing's seat map and its judge-last record, and the pending rows the headless doors leave. The client's own routing path keeps the tilde.
+
+  A seat reaches the pool's records carrying the id it ran under, and a fresh
+  install's default routes by a floating alias: the id arrives with a leading
+  `~` and may carry a thinking level. Neither is part of the model's name. The
+  pool's rows — the own sheet, the outbox, the judge-last record, the pending
+  file — name a model by its bare `<vendor>/<id>`, which is also the only
+  spelling the relay's schema admits, so a tilde-spelled seat's rows were
+  refused on arrival and dropped. The same spelling defeated the judge picker's
+  same-vendor exclusion: the exclusion read the marker as its own vendor and
+  let the crew's own maker into the judge's running.
+
+  The normalising now happens once, where a seat's spelling enters the pool.
+  `poolSeatID` takes the level and the marker off — mirroring
+  `internal/catalog`'s own normaliser, which is unexported — and it is applied
+  to the landing's seat map and held record in `poolJudgeLanding` and to the
+  seats a pending row carries in `writePendingLanding`. The judge's
+  `vendor()` strips them too, because `Candidates` reads the seats its callers
+  wrote and must not depend on every caller having normalised first. The
+  client's own routing path keeps the tilde: only the pool's copy of the id
+  loses it.
+
+  </details>
+
+- **The relay bounds judge severity and publishes mean and sd on one scale** — [#1165](https://github.com/Agent-Field/codeaf/pull/1165) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `relay/src/sheet.js` fitted each judge's severity with no bound and published a cell's mean over the severity-adjusted sums while its sd was pooled from the raw ones, so a judge far enough off centre pushed a published mean past 100 — the rubric's own top — with an sd that described the unadjusted rows; the robust mean also fell back to the plain mean when the MAD was zero. Each severity is now held inside ±10 (the rubric is 100 points wide; a judge further off than a tenth of it is a different rubric, not a severity), every adjusted score is clamped back into [0, 100] before it is folded, the sd is pooled from the same adjusted triples, and the zero-MAD fallback answers the median. The priming script's all-0/100 rows under one judge id can no longer pull a published cell more than 10 points either way.
+
+  A severity with no bound let one judge's taste outweigh the rubric: a cell
+  whose raw scores all sat inside [0, 100] published 117.5 once the fitted
+  shift was taken out, above every score any judge had actually given, while
+  its sd still described the raw spread — a mean and an sd on two different
+  scales. The fit holds each β inside ±10 after every sweep's re-centring, and
+  the clamp runs at the triple level, where the store holds `{n, s, s2}` and
+  not the scores: the adjusted mean is `clamp((s − n·β)/n, 0, 100)` and the
+  adjusted sum of squares is `s2 − 2β·s + n·β²` — the exact shift, from
+  expanding `(x − β)²` — or `n·b²` when the mean clamps to a bound `b`. The sd
+  is pooled from those adjusted triples, so the published pair names one
+  scale. `huberMean`'s zero-MAD case answers the median: half the values sit
+  there, and the plain mean let the far half drag a cell below (or above) every
+  repeated value. Existing expectations did not move — every one of them
+  either fits severities inside ±10 or holds a single judge, whose β
+  re-centres to zero. `docs/design/model-pool/RUNBOOK.md` now states, in its
+  observability section, how the priming script's 0/100 rows move the fit.
+
+  </details>
+
+- **a job's shell cannot reach the tmux server hosting codeaf** — [#1166](https://github.com/Agent-Field/codeaf/pull/1166) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A bash call the model ran inherited the parent's environment, TMUX and TMUX_PANE included, so a bare `tmux` it ran targeted the server hosting the chat — `tmux kill-server` once took down the chat that ran it and, on a shared socket, every run on the box.
+  - TMUX_TMPDIR was whatever the host had (usually unset). Every model command's shell now gets TMUX and TMUX_PANE removed and TMUX_TMPDIR set to the profile's own tmux directory, so a job's `tmux` reaches its own server and nothing else.
+
+  A model's shell was handed this process's whole environment. `runShell`
+  (`internal/exec/tools.go`) starts `bash -lc` from `os.Environ()` only when a
+  shelf must be added and otherwise leaves `cmd.Env` nil, and the background-job
+  registry (`internal/exec/jobs.go`) and the bare streaming env
+  (`internal/exec/bare/streaming.go`) did the same — so the child inherited
+  `TMUX` and `TMUX_PANE` verbatim. A bare `tmux` the model ran then targeted the
+  server hosting codeaf itself. That is how a worker probing issue #576 ran
+  `tmux kill-server` and killed the chat it was running in; on a shared socket the
+  same reach took every run on the box. A person running codeaf inside tmux had
+  the same exposure.
+
+  **The floor is both halves, not either.** Unsetting `TMUX`/`TMUX_PANE` alone
+  lets a bare `tmux` land on the user's default socket — the host server is safe,
+  but the user's own tmux is still reachable. Setting a private `TMUX_TMPDIR`
+  alone leaves the inherited `TMUX`/`TMUX_PANE` pointing straight at the host.
+  Only together do they name a namespace a job's `tmux` can reach and nothing
+  else.
+
+  One helper, `JobShellEnv` (`internal/exec/tools.go`, beside `replaceEnv`), takes
+  an environment slice and returns it with `TMUX` and `TMUX_PANE` removed and
+  `TMUX_TMPDIR` set to the profile's own tmux directory — the directory source is
+  `config.ProfilePath(config.ProfileDir(), "tmux")`, i.e. `CODEAF_PROFILE_DIR`'s
+  `tmux` directory when that is set and the state root's otherwise. It creates the
+  directory if missing. A nil slice is read as `os.Environ()`, so the bare path
+  that used to inherit by leaving `cmd.Env` nil now hands an explicit,
+  TMUX-stripped environment instead. It is applied at all three seams: `runShell`,
+  the background-job env, and `bare.StreamingEnv` (which the foreground bash tool
+  and the session's job registry both reach).
+
+  A test that needs its own tmux still works: it gets the private `TMUX_TMPDIR`
+  rather than a stripped-to-broken env, and can start its own server there.
+
+  </details>
+
+- **An unattended run cannot push or move a branch it did not create** — [#1168](https://github.com/Agent-Field/codeaf/pull/1168) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - An unattended `codeaf chat --yolo` run could push any branch from its own bash: `--yolo` made the consent default allow, so no card was drawn, and the git guard left the run's `[Person]` unguarded. A run standing on a branch it did not create is now refused `git push`, `git merge` and `git rebase`.
+  - The bash `git push` acts a task and a steward are refused were the whole of the git guard's reach. A third register (`refusedUnattendedBranchMovement`) now refuses an unattended run the three verbs that MOVE a branch it did not cut, while its reading, saving and branch-creating stay its own.
+
+  THE MECHANISM. The git guard (`internal/session/taskgit.go`) gains a third
+  register, `refusedUnattendedBranchMovement`, reached only when neither the task
+  gate nor the steward gate answered. A session that is an unattended run
+  (`Config.Unattended`, the door's record of `--yolo`) standing on a branch it did
+  not cut is refused `git push`, `git merge` and `git rebase` — the three acts that
+  SEND a branch out or REWRITE the commits it points at. Ownership is read from the
+  two records a cut makes: the conversation's standing copies
+  (`StandingTree.Branch`, standingtree.go's `cutStandingTree`) and the graph's task
+  branches (`TaskNode.branch`, task_run.go's `prepareTaskTree`), gathered by
+  `Agent.branchesThisRunCut`; the branch the run is standing on is read off its own
+  workspace (`currentBranch(config.Workspace)`, task_branch_protection.go). The
+  branch the checkout stood on when the run began is not among the cut set, which is
+  what covers `santos/dev` without growing `protectedBranchNames`
+  (task_branch_protection.go) into a name-containment test.
+
+  THE TEST'S SHAPE, AND WHY IT CHANGED. `TestAYoloRunDoesNotPushToABranchItDidNotCreate`
+  was written before the fix, in a posture that could no longer reach the closed road:
+  it set `Config.Interactive` and the `--yolo` policy but NOT `Config.Unattended`, so
+  the guard never saw an unattended run, and it gave the session no workspace, so
+  there was no branch to be wrong about. It now records the two facts the incident
+  launch really carried — `Config.Unattended` (the door's `cfg.Unattended = opts.Yolo`)
+  and a `Config.Workspace` standing on a real repository checked out on `santos/dev` —
+  and sends the same three verbatim lines down the same `ep.preAction` chain. Nothing
+  was weakened: the three lines, the chain and the assertion are unchanged; only the
+  posture and the branch are now the incident's. A companion test,
+  `TestAnUnattendedRunMayMoveOnlyTheBranchItCut`, covers the three scope lines apart —
+  a run's own branch (standing copy or task branch) still pushable, an attended
+  session untouched, and a foreign branch's push, merge and rebase refused while its
+  reading, saving and branch-creating stay its own.
+
+  THE ALTERNATIVE IT REJECTS. A `git push` entry on the critical-command floor
+  (`internal/approval/bash.go`) would also be consulted before an allow
+  short-circuits consent. It loses on two counts: it would refuse an INTERACTIVE
+  session's own push too — the act taskgit.go's header calls deliberately the
+  person's — and it matches command TEXT, so it can say nothing about which branch a
+  push would move, which is the whole question here.
+
+  WHAT THIS DOES NOT COVER. The resident's CONSEQUENCE classifier
+  (`internal/head/head.go:1123`'s `consequenceGated`, consulted from the resident's
+  own tool road at `internal/head/bash.go:214`) is the v1 resident's road:
+  `internal/session` imports `internal/head` in no non-test file, so that classifier
+  never sees a chat door's tool call, and this fix does not wire it up. The chat
+  road's own verb reading — `firstBranchMover`, added here — reads push, merge and
+  rebase and nothing about how much a command matters, which is a different question
+  from the one that classifier answers. Wiring the resident's classifier to the chat
+  road is another product's work and is left alone.
+
+  </details>
+
+- **an exec run's worker spend reaches the usage ledger** — [#1170](https://github.com/Agent-Field/codeaf/pull/1170) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A headless `codeaf exec` run's worker calls never reached `usage.jsonl`: the door ran its own agent outside `internal/session`, so no row was ever minted and the status row's spend, the run cap and the pool's own accounting all under-counted every exec run — only the pool's judge rows and the chat seats were written. The door now leaves one row per run, under the run's own id, seated and roled as the worker.
+
+  `codeaf exec` talks to the provider through `internal/exec`'s own loop, which is
+  not the session engine and never was — so the one door every call's money goes
+  through (`session.RecordUsage`) was never reached, and a headless run spent real
+  money that no spending surface could see. The door now mints a row from what the
+  loop reported at its tail, so the run's cost and tokens land in the ledger the
+  limits are read from, whether or not anything else runs.
+
+  THE ROW IS MINTED AT THE DOOR AND NOT INSIDE THE RUNNER, and that is forced
+  rather than chosen: `internal/session` imports `internal/exec` (the attribution
+  law in `beltfacts.go`), so the runner cannot import the ledger's package without
+  a cycle. The grain is therefore one row per run where a chat seat writes one per
+  call — the row's shape is a seat's exactly, with the run's whole spend on it and
+  its request count in `calls`, and only its width differs. It carries two names:
+  `worker` as the role, in the ledger's own vocabulary, and the worker seat, since
+  that is the chair this run actually ran in. A run that made no call leaves
+  nothing, because `session.RecordUsage` refuses an all-zero row, and the door
+  waits on the background writer before it exits so the last row is on disk.
+
+  </details>
+
+- **the task door honors a stored crew word, and keeps its pins under the learned pick** — [#1171](https://github.com/Agent-Field/codeaf/pull/1171) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `models.crew` was derived from the five tier rows and no reader consulted a stored one, so a run that wrote a single crew word into config.json and none of the tier rows seated the balanced crew whatever word it named. A stored preset word now names the budget its seats run at, and a seat nobody wrote reads that word's own row.
+  - Under `models.crew.pick=learn` a class row holding the preset's own table value was recomputed by the pick, so a run that pinned the crew table's own ids had them overridden. A class row written on its own is now a pin the pick leaves alone — and a stored crew word marks every row beside it as one — while a `/crew` apply, which writes all five rows at once, keeps the old computation.
+
+  The v3 task door resolves its worker seat through `internal/roles`
+  (`session`'s `defaultTaskModel` reads `roles.TierWorker` off the key map
+  `cmd/codeaf`'s `v3RolesSource` builds), and that map fills the seat from
+  `internal/config`'s tier ladder. The crew word a run stored was read by nothing:
+  the preset is derived from the five tier rows (`crewPresetUnder`), and a run that
+  wrote one word instead of the rows fell to the default preset — balanced — for
+  every arm.
+
+  `config.storedCrewWord` reads a `models.crew` word that names a preset, and both
+  the preset reading (`crewPresetUnder`, `crewStoredAt`) and the two ladders
+  (`tierSeatUnder`, `resolveSeat`) honor it: a seat nobody wrote reads that word's
+  own table row (`unwrittenSeat`). And `pickedSeat` now treats a class row written
+  on its own as a pin: it leaves the row alone when the profile stores the crew
+  word, when the five tier rows are not all written (`allTiersWritten` — a hand pin
+  writes one, a `/crew` apply writes all five), or when the row's id is not the
+  preset's own.
+
+  </details>
+
+- **internal/tui3: a test may not read a profile it did not create** — [#1173](https://github.com/Agent-Field/codeaf/pull/1173) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `newTestApp` and seventeen other helpers in `internal/tui3` built their surface with no profile directory, so every test that used one read and wrote the ONE state root `TestMain` pins for the package run and an earlier test's `setup_seen_at` decided what a later one saw — this had already hidden a red for a week (TestTheOpeningHintNamesBothDoors green in the package run, red alone, from #680). Each app-building helper now gives its app a profile of its own.
+
+  The test floor points an empty profile directory at one shared state root for the
+  whole run (`tui3_test.go`'s `runTests`), and `internal/home`'s `resolve` prefers
+  `CODEAF_HOME` over `HOME` — so a bare `newTestApp`, which named no profile,
+  resolved under that one root and shared it with every other bare app in the run.
+  The fix is at the helpers, not the call sites.
+
+  ## What the helpers do now
+
+  - `newTestApp` (663 call sites) and `benchApp` (9) have no `*testing.T` to call
+    `t.TempDir()` through, so they mint a directory with `mintProfileDir()` — a
+    fresh subdirectory of the run's own `CODEAF_HOME`, thrown away with the run.
+    A sweep of the 663 call sites to thread a `t` was avoided on purpose, as the
+    brief asked: another branch carries `internal/tui3` changes and would collide.
+  - The sixteen other helpers that take a `t` name `ProfileDir: t.TempDir()`:
+    attachLab, mixedLab, newRewindApp, modalLab, browseLab, fileLab, asyncApp,
+    hostLab, welcomeApp, recallApp, memoryPlaceApp, hostedSurface, exportLab,
+    folderLab, aliasApp, completionApp.
+  - `newTestAppWithProfile(dir, agent)` is the escape hatch for a test that means
+    two surfaces to share ONE profile. It is used by
+    `TestAnOrdinaryLaunchCarriesTheCrewOnItsPageAtEveryWidth` (crew_test.go), which
+    seeds a profile with `config.ApplyCrew` and has two surfaces read it.
+
+  ## Tests that legitimately depend on a shared root
+
+  **None found.** `go test ./internal/tui3` with every helper now isolating its app
+  produced exactly one failure, and it was not a shared-root dependence: it was
+  `TestAnEmptyProfileDirectoryIsTheOrdinaryProfileAndStillHasACrew` (crew_test.go),
+  whose subject IS the launch that names no profile — it asserted
+  `a.profileDir == ""` and could not be built by `newTestApp` any more. It now
+  builds through `ordinaryLaunch`, which names no profile and still pins a state
+  root of the test's own.
+
+  The tests that DO carry a setting from one surface to another already name the
+  directory themselves, so nothing had to be shared implicitly: e.g.
+  `TestTheColumnsPostureIsRememberedAcrossSessions` (railaway_test.go:220),
+  `TestChoosingAModelWritesItWhereTheNextLaunchReadsIt` (modelmemory_test.go:17),
+  and `noticeApp`/`sheetApp` (notice_test.go:366, chrome_test.go:25).
+
+  ## Still exposed, and left alone
+
+  The law is about helpers. The brief narrowed it that way, so 45 direct `newApp(`
+  calls inside test and benchmark bodies still name no profile and still share the
+  run's root (measured: 62 direct calls in test bodies, 17 naming a `ProfileDir`).
+  They are a call-site sweep this brief forbade; a future change that widens the
+  law to test bodies would need to give each one an `ordinaryLaunch`-style root.
+
+  ## Verification
+
+  - `go test ./internal/tui3 -count=1 -timeout 600s` — green (once the crew test
+    above was moved to `ordinaryLaunch`); the first run reported that one failure
+    and nothing else.
+  - `go test ./internal/tui3 -run '^TestTheOpeningHintNamesBothDoors$' -count=1` —
+    green on its own, which is the whole point: it no longer depends on a marker a
+    test before it happened to write.
+  - `go test ./internal/tui3 -run '^TestEveryHelperThatBuildsASurfaceNamesAProfile$'`
+    — green: the structural law reads this package's `_test.go` files with go/ast
+    and fails a helper that builds a surface without naming a profile or moving the
+    state root.
+
+  </details>
+
+- **a landing card under --yolo takes its default instead of parking the run** — [#1174](https://github.com/Agent-Field/codeaf/pull/1174) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Under `codeaf chat --yolo` a task that landed on the check road — the check ran out of time, nobody could check it — raised the landing card (`▸a accept · n not right · s tell it`) and parked on it for ever: a surface existed and nobody was at it, and the card never took a default. An unattended run now takes the check road's own default (accept) and settles, and the record says the dial answered rather than a person, so a restart sweep or `pool status` can tell it from a landing a check passed. A conflict, a shift or a ground that moved stays the person's and parks as it always did.
+
+  </details>
+
+- **the model warm stops when the process closes** — [#1179](https://github.com/Agent-Field/codeaf/pull/1179) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The model catalog warm — the goroutine a v3 door started through `guard.Go` to learn the session model's context window and refresh `~/.codeaf/v3/models.json` — was fire-and-forget, and `guard.Go` joins nothing at shutdown. It writes the picker cache through `tui3.WriteModelCache`, which resolves `CODEAF_HOME` AT THE MOMENT IT WRITES, so a warm that outlived the process that asked for it landed in whichever state root was current when the rows finally arrived: in a package run the NEXT test's own `TempDir`, whose clean-up then failed with `unlinkat …: directory not empty`, and on a door that reopened on another profile, a directory the process no longer owned. It is now seated on the profile's start-up errand tracker (`cmd/codeaf/chatv3_process.go`'s `warmModels`, through `poolindex.go`'s `poolErrandGoCtx`) and the errand observes the tracker's context, so `v3Process.closeAll` cancels the warm's wait and joins the goroutine before it closes the conversations and the stores.
+  - The tracker's context was previously only a `Done` signal for the errand's own bookkeeping; nothing an errand waited on read it, so a close could cancel and still block on an errand stuck in a network round-trip. The warm waits on the catalog through `Catalog.Warmed(ctx)` now, so the close ends the wait instead of racing it.
+  - The warm's catalog reads used to go through the resolving door — `Catalog.ContextLength` and `Catalog.FetchedAt`, which count as blocking questions and can wait on a cold cache. It now reads through two never-waiting twins, `Catalog.ContextLengthNow` and `Catalog.FetchedAtNow` (`rowsNow`-based, same id matching), so the warm never resolves the catalog at all.
+
+  A warmer is a writer, and the two v3 doors — `codeaf chat` and the `codeaf engine` daemon — start one per boot conversation (`cmd/codeaf/chatv3.go`, `cmd/codeaf/engine.go`). #1124 closed this exact race for the Model Pool's start-up errands; the model warm was the one start-up writer that was never seated on the tracker, so `closeAll`'s own promise — that nothing the process started is still writing under its profile once it closes — was false for it. `cmd/codeaf/chatv3_modelswarm_test.go` holds the catalog fetch open, moves `CODEAF_HOME`, closes the process, releases the fetch, and fails if the write lands in the moved root. The warm's own reads go through the catalog's never-waiting doors (`ContextLengthNow`, `FetchedAtNow`), so it neither resolves the catalog nor waits on anything but the close-observing `Warmed`.
+
+  </details>
+
+- **the auditor's calls say they are the auditor's and which node they check** — [#1181](https://github.com/Agent-Field/codeaf/pull/1181) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - An auditor's provider calls were indistinguishable from a conversation's own turns in every record: the model-call log tagged both `turn` and named no node, and the usage ledger wrote no role and no task on either. A check and a session turn on the same model were the same row. The auditor's calls now tag `auditor` — its role's own word — and name the id of the node they check; the usage row carries `role: auditor` and that node's `task` on the high seat.
+  - `Config.taskID` is the node an agent IS and stays 0 for the auditor, because the auditor is not the node it reads. The node it CHECKS now travels in the new `Config.checksNode` fact, set by `newAuditAgent` from the node it was handed.
+
+  The auditor is rebuilt for one node at a time (`newAuditAgent`), has that node in
+  hand, and recorded nothing of it: `crewRole` was already set so the router priced
+  its calls as a judge's, but the two reader-facing records never learned either
+  fact. This is the smallest cut that gets them there.
+
+  `loop.go` stamps `callPurpose(a.config.crewRole)` and `WithCallNode(checksNode)`
+  for an agent that answers for a crew role, before the turn/task branch a worker
+  takes — the role's word is a role's, not a new constant in `clientdoor.go`'s
+  block of non-roles, and it resolves through `roles.RoleAuditor` like every other
+  role-worn purpose. `addUsage` banks the turn with that same role word so
+  `TagUsage` writes it beside the seat the auditor already billed to, and
+  `usageNode` files the row under the node the auditor checked rather than the
+  `taskID` it deliberately leaves empty.
+
+  The progress check's auditor (`task_run.go`) shares `newAuditAgent`, so it carries
+  the same two facts without a second change. The pool's record was read and left
+  alone, and no file under `internal/pool/record` changed: its `Row` is one row per
+  judged seat score — metric, seat, model, score, judge, door, size, day — written by
+  `Recorder.Record` out of judge scores at the pool's own `record` command and never
+  out of a provider call, and it carries no call count and no cost. An auditor's tag
+  and the node it checks have no field there to land in.
+
+  </details>
+
+- **the identical-effects test is made deterministic — no clock, no load, no turn-guard race** — [#1185](https://github.com/Agent-Field/codeaf/pull/1185) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `TestARunOfIdenticalEffectsEndsNothingByItself` was believed to flake only under load. It flaked without any: forty identical `write` calls make the child turn's own repetition guard (looped.go) hand the turn over at its seventh write, and whether the run's drain reached its second repeat checkpoint before that turn closed was already a race — `len(rounds)` came back 2 or 3 across 250 runs of the untouched test. The `>= 2` assertion sat on that boundary.
+
+  The test rode two real-time dependencies, neither of them the leash threshold it
+  exists to guard (the deadline branch cannot fire: the run's allowance is 60
+  minutes and this run lasted 0.21s). It now spells its forty saves differently
+  while leaving the same effect, so the turn's repetition guard — which keys on the
+  call — never fires, and it saves an empty file, so the leash's fingerprint of that
+  file cannot race the next truncating write. The assertion now holds the behaviour
+  `effects.pardon` exists for: the reader is asked once per run of identical effects
+  and never on every step, which it fails on when that reset is removed.
+
+  </details>
+
+- **a parked worker is handed back with a record at a third of its allowance** — [#1187](https://github.com/Agent-Field/codeaf/pull/1187) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A task worker parked on a command it started (`Agent.parkOnOwedJob`) waited the node's whole allowance before anything ended the wait, and the turn then resumed with no account of what it had been waiting for. The park now arms a bound of its own — a third of the allowance — and on that bound posts the record `the park was not settled within its bound` onto the queue before returning, so the turn comes back to the model with a sentence well before the wall.
+  - The wait on a promoted command was ended only by the command's ending, a stop, or the allowance timer. The bound now ends the WAIT and never the WORK: the promoted command is left running, so a job still producing output is not cut, its log keeps filling, and its own ending still arrives as a note in front of the model.
+
+  A foreground `bash` call that the background-after clock promotes into a job is
+  still the call the worker is waiting for, and the park holds the turn until that
+  ending arrives. When the ending never came, that wait was the node's whole
+  allowance: the turn sat silent to the wall and then came back to the model with
+  nothing to say about it.
+
+  The park now waits under `jobParkBoundShare` of the allowance it was given — a
+  third. A share is what scales: whatever wall the node was handed, the bound is
+  always strictly inside it, and two thirds of the run remain when the model hears
+  that the wait ran long, so it can act on the news rather than be handed it as the
+  run ends.
+
+  It is safe for a command that is honestly still working because the bound ends
+  the WAIT and never the WORK. The promoted command is untouched — the registry is
+  not signalled and its process is not killed — so a job that is still producing
+  output keeps producing it, and its own ending is still handed to the model as a
+  note when it finally lands. Only the turn that was parked on it comes back early,
+  and it comes back with the record of why.
+
+  </details>
+
+- **santos/dev lands on dev, and a finished background job is reported done at once again** — [#1194](https://github.com/Agent-Field/codeaf/pull/1194) · `engine` `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - On Linux a background job's ending was reported two seconds late since #1155 (on `santos/dev` only, never on `dev`): the detached sweep runs while the job's shell is still a zombie, and `Group.Alive` probed the group with `kill(-pgid, 0)`, which a zombie answers, so every finished job read as still alive, was sent SIGTERM, and waited out the whole termination grace. `Alive` reads the group's members from /proc now and counts no zombie; a finished job is reported the moment its shell is reaped.
+  - The `touched packages` job on #1108 was red on every completed run of 2026-09-18 for two tests that pass on every laptop: `TestWirePoolIndexStartsTheRefreshAndThePush` counted one start-up errand because the pool resolver reads GitHub's `CI=true` as read-only (the test now empties `CI` for its duration), and `TestTurnBoundaryReportsRunningAndOneTerminalTransition` overran its four-second bound by the two seconds above. Neither is red on this head.
+
+  The 152 commits of `santos/dev` (#1108) are on `dev` as one squash; #1108 and
+  the ninety-three entries beside this one say what they carry.
+
+  </details>
+
+- **the unconnected custom row on /connect reads Custom OpenAI-compatible API again, not custom** — [#1195](https://github.com/Agent-Field/codeaf/pull/1195) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Since #1194 the `/connect` row that adds a custom connection — and its Providers twin — read `custom` on a profile with no custom connection yet, because the rename that calls a connected instance what the person called it also took the catalog template's `Written`, which is the bare id. The unconnected row reads `Custom OpenAI-compatible API` again, as #1107, the manual and the README spell it; only a connected instance is called by the name the person gave it.
+
+  A person who has connected nothing is looking for the row by the name the
+  manual gives them, and `custom` is not that name. The rename exists for the
+  opposite case — two instances that would otherwise read identically — so it
+  now applies only when the row is a connected instance.
+
+  </details>
+
+
+### Internal
+
+- **The lane a failed call names is read by internal/provider, not internal/exec** — [#1105](https://github.com/Agent-Field/codeaf/pull/1105) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `internal/exec` had a private `failedLane` that compared a provider status itself. It is gone; the fact is `provider.FailedLane(err)`, beside `WithRetryAvoid`, with the same behaviour.
+  - `TestOnlyTheTaxonomyTurnsAStatusIntoAMove` failed on `santos/dev` at `internal/exec/linear.go`. It passes, and its allowlist stayed empty.
+
+  </details>
+
+- **v0.2.1 is rolled up into CHANGELOG.md** — [#1113](https://github.com/Agent-Field/codeaf/pull/1113) · `build` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `docs/changes/unreleased/` held every entry since the v0.2.0 roll-up — 33 of them, from the alt+k switcher to the update-download clock. They are the `## v0.2.1` section of `CHANGELOG.md` now, and the folder holds only what has landed since; stable v0.2.1's release notes are that section.
+  - Five of those entries (#1045, #1047, #1050, #1051, #1056) landed after the v0.2.0 roll-up commit and before the v0.2.0 tag, so they shipped in v0.2.0 and read under v0.2.1. The roll tool reads the folder, not the tags; cutting a tag from the roll-up commit itself is what keeps a section and a release the same set.
+
+  A stable release takes its notes from its own `## <tag>` section, so the roll-up
+  is the release notes and has to be on the commit that is tagged. It lands on
+  `dev` and is promoted like anything else, never written onto a pointer.
+
+  </details>
+
+- **the Model Pool mirror workflow copies the signed index onto the model-pool branch** — [#1116](https://github.com/Agent-Field/codeaf/pull/1116) · `build`
+- **the pool errand tracker's critical sections unlock from a defer** — [#1134](https://github.com/Agent-Field/codeaf/pull/1134) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `stopPoolErrands` and `poolErrandGo` in `cmd/codeaf/poolindex.go` took `poolErrandsMu` without a deferred unlock, which the guarded tree's lock law refuses because an absorbed panic inside the section would deadlock every later pool start-up. Each section is its own function now and unlocks from a defer; the wait and the goroutine start still happen with the lock released.
+
+  </details>
+
+- **one readPendingRows test helper in cmd/codeaf, not two** — [#1140](https://github.com/Agent-Field/codeaf/pull/1140) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - #1137 and #1138 each added a `readPendingRows` test helper to `cmd/codeaf`; each was green alone and together they redeclared it, so the package's tests did not compile on `santos/dev`. One copy remains.
+
+  </details>
+
+- **No test in cmd/codeaf can push pool rows to the default relay** — [#1164](https://github.com/Agent-Field/codeaf/pull/1164) · `engine`
+
+  <details><summary>why</summary>
+
+  Two sweep tests in `cmd/codeaf` recorded judged pool rows and pinned no
+  submit address, so the push each recorded landing runs resolved the
+  relay's own address — the one `poolcfg` holds whenever nothing names a
+  submit address — and sent the fixture's scores to the public pool on
+  every run of the package's tests.
+
+  - `TestMain` now pins `CODEAF_MODEL_POOL_SUBMIT_URL` to a dead loopback
+    (`http://127.0.0.1:1/v1/rows`) unless the environment deliberately
+    named one, the same floor the call log and the state root already
+    stand on. Rows a test built never reach the pool; a test that means it
+    still pins its own with `t.Setenv`, the way the pool tests'
+    neighbours do.
+  - The two sweep tests pin the dead loopback beside their other pins and
+    read the outbox back after the sweep: every row the sweep recorded is
+    still pending there, none sent.
+  - A new `pool_guard_test.go` resolves the pool's config the way the
+    binary resolves one under the package's test environment, with no pin
+    of its own, and fails when the submit address names the relay's own or
+    any `https://` address — so a test that forgets its pin fails instead
+    of sending.
+
+  </details>
+
+
 ## v0.2.1 — 2026-09-17
 
 ### Added

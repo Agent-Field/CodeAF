@@ -323,10 +323,11 @@ producing nothing, exactly as the conversation's line reads them: `running go te
 vendor serves its own model — and while the task's first answer is still being written, as
 soon as the machine writing it has named itself.
 
-**It does not go quiet because your conversation is idle.** That is the ordinary state
+**It does not go quiet because your conversation's own turn has ended.** That is the ordinary state
 while a task runs: you hand the work out, your turn ends, and the task works for minutes
-with nothing happening in the conversation. The line keeps drawing the task's own reading
-throughout.
+with nothing happening in the conversation (the conversation's own row says `working`
+through it, the state word's own table on the screen page says why). The row keeps
+drawing the task's own reading throughout.
 
 **What is on that row and is still the conversation's**: the bill, the cache, the context
 meter and the job count. Those measure a session, and a task

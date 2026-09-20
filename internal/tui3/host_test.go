@@ -19,9 +19,10 @@ func hostLab(t *testing.T) (*app, *fakeAgent) {
 	t.Helper()
 	agent := &fakeAgent{model: "vendor/model"}
 	a := newApp(context.Background(), Options{
-		Agent:     agent,
-		Host:      "devbox",
-		Workspace: "/srv/code/app",
+		Agent:      agent,
+		Host:       "devbox",
+		Workspace:  "/srv/code/app",
+		ProfileDir: t.TempDir(),
 	})
 	// Wide, for exportLab's reason: what these tests read back is a line with a
 	// path in it, and an assertion that had to know where it wrapped would be a

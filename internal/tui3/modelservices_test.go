@@ -12,6 +12,7 @@ import (
 
 	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -333,15 +334,23 @@ func TestAConnectedServicesModelsAppearGroupedWithoutARestart(t *testing.T) {
 		}
 	}
 	if rowAt < 0 {
-		t.Fatal("the models group did not contain Something else")
+		t.Fatal("the models group did not contain Custom OpenAI-compatible API")
 	}
 	a.connPanel.cursor = rowAt
 	if cmd := a.connectAct(rowAt); cmd != nil || a.connPanel.entry == nil {
-		t.Fatal("enter on Something else did not open the address box")
+		t.Fatal("enter on Custom OpenAI-compatible API did not open the address box")
 	}
 	a.connPanel.entry.box.setText(server.URL())
 	if cmd := a.connectEntryKey(key("enter")); cmd != nil || a.connPanel.entry == nil {
-		t.Fatal("the completed address did not open the key box")
+		t.Fatal("the completed address did not open the name box")
+	}
+	// THE NAME STEP IS PART OF THE FLOW: the connection's Written word is the
+	// routing prefix of every model id it qualifies, and the box opens
+	// pre-filled with the host slug. A typed name is what the connection is
+	// called everywhere below (the assertions derive `written` from it).
+	a.connPanel.entry.box.setText("localhost")
+	if cmd := a.connectEntryKey(key("enter")); cmd != nil || a.connPanel.entry == nil || !a.connPanel.entry.secret {
+		t.Fatal("the completed name did not open the key box")
 	}
 	a.connPanel.entry.box.setText("sk-direct-1234567890")
 	cmd := a.connectEntryKey(key("enter"))
@@ -450,6 +459,444 @@ func TestAPaymentRefusalConnectsTheAuthenticatedAccount(t *testing.T) {
 	}
 	if got := noteSaying(t, a, "accepted the key"); got != "localhost accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge." {
 		t.Fatalf("payment connection note = %q", got)
+	}
+}
+
+func TestARenameCarriesTheModelIdsAlreadyPicked(t *testing.T) {
+	server := sourcestub.New("glm-5.3", "glm-5.3-flash")
+	defer server.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+	source := modelsource.Vendored()[6]
+	source.Listing = modelsource.ListingNone
+	draft := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "mybox", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	a.switchModel("mybox/glm-5.3", 0)
+	// Role pins, the fallback chain and a capability slot are picked under the
+	// old name too; the rename has to carry them or they misroute at send.
+	registry := config.NewSettings(config.SettingsOptions{ProfileDir: dir})
+	roles, ok := registry.Row(config.KeyModelRoles)
+	if !ok {
+		t.Fatal("the roles row is missing")
+	}
+	if err := roles.Apply("planner:mybox/glm-5.3"); err != nil {
+		t.Fatal(err)
+	}
+	fallbacks, ok := registry.Row(config.KeyModelFallbacks)
+	if !ok {
+		t.Fatal("the fallbacks row is missing")
+	}
+	if err := fallbacks.Apply("mybox/glm-5.3-flash, openai/gpt-4.1-mini"); err != nil {
+		t.Fatal(err)
+	}
+	image, ok := registry.Row(config.ModelSettingKey("image"))
+	if !ok {
+		t.Fatal("the image slot row is missing")
+	}
+	if err := image.Apply("mybox/glm-5.3"); err != nil {
+		t.Fatal(err)
+	}
+	// THE CREW'S TIER ROWS are stored ids under the old name too, and the one
+	// the rename has to carry or the planner and the worker keep answering on
+	// a service that no longer exists. The level suffix is the row's own
+	// notation and moves with the id.
+	worker, ok := registry.Row(config.KeyTierWorkerModel)
+	if !ok {
+		t.Fatal("the worker tier row is missing")
+	}
+	if err := worker.Apply("mybox/glm-5.3:low"); err != nil {
+		t.Fatal(err)
+	}
+
+	// THE RENAME: an edit draft whose Written moved, exactly what the name
+	// step builds on an answer that differs from the stored one.
+	persisted := config.PersistedSources(dir)
+	if len(persisted) != 1 {
+		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "renamed-box"
+	renamedDraft := modelConnectDraft{
+		source:      modelsource.Source{ID: "custom", Written: "renamed-box", Listing: modelsource.ListingNone},
+		row:         renamed,
+		renamedFrom: "mybox",
+		entryID:     modelConnectionID("custom"),
+		editing:     true,
+	}
+	msg = a.beginModelConnect(renamedDraft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	if a.model != "renamed-box/glm-5.3" {
+		t.Fatalf("the rename left the conversation on %q", a.model)
+	}
+	if got := config.ChatModelAt(dir); got != "renamed-box/glm-5.3" {
+		t.Fatalf("the persisted slot did not follow the rename: %q", got)
+	}
+	if roles, _ := registry.Row(config.KeyModelRoles); roles.Value() != "planner:renamed-box/glm-5.3" {
+		t.Fatalf("the role pin did not follow the rename: %q", roles.Value())
+	}
+	if fallbacks, _ := registry.Row(config.KeyModelFallbacks); fallbacks.Value() != "renamed-box/glm-5.3-flash, openai/gpt-4.1-mini" {
+		t.Fatalf("the fallback chain did not follow the rename: %q", fallbacks.Value())
+	}
+	if image, _ := registry.Row(config.ModelSettingKey("image")); image.Value() != "renamed-box/glm-5.3" {
+		t.Fatalf("the capability slot did not follow the rename: %q", image.Value())
+	}
+	if got := config.TierModelAt(dir, config.ModelTierWorker); got != "renamed-box/glm-5.3:low" {
+		t.Fatalf("the crew's worker tier did not follow the rename: %q", got)
+	}
+	// A NAME THAT WAS NEVER THE OLD ONE COMES BACK UNTOUCHED.
+	if fallbacks, _ := registry.Row(config.KeyModelFallbacks); strings.Contains(fallbacks.Value(), "mybox/") {
+		t.Fatalf("the old prefix survived the rename: %q", fallbacks.Value())
+	}
+}
+
+// groupedModelIDs is every id the picker shows under one connection's group,
+// which is the qualified spelling the person actually selects (modelsFor is
+// the single door that calls Connected.Qualify).
+func groupedModelIDs(a *app, group string) []string {
+	var ids []string
+	for _, model := range a.modelList() {
+		if !model.Unavailable && strings.EqualFold(model.Group, group) {
+			ids = append(ids, model.ID)
+		}
+	}
+	return ids
+}
+
+// renamedRelistedApp connects a custom connection written `homelab` whose stub
+// lists the one model, renames it to `lab`, and lists it AGAIN from the renamed
+// connection — the road ctrl+r on the row and a reconnect both take
+// ([app.reconnectModelService] -> [app.beginModelConnect]). The re-listing is
+// the moment nothing covered before: a listing path that qualified an id that
+// was already qualified would draw lab/homelab/... or lab/lab/....
+func renamedRelistedApp(t *testing.T, model string) *app {
+	t.Helper()
+	server := sourcestub.New(model)
+	t.Cleanup(server.Close)
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+
+	source := modelsource.Vendored()[6] // Custom OpenAI-compatible API
+	first := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "homelab", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	a.adoptModelConnectResult(a.beginModelConnect(first)().(modelConnectResultMsg))
+	a.switchModel("homelab/"+model, 0)
+
+	// THE RENAME: an edit draft whose Written moved, exactly what the name step
+	// builds on an answer that differs from the stored one.
+	persisted := config.PersistedSources(dir)
+	if len(persisted) != 1 {
+		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "lab"
+	renamedSource := source
+	renamedSource.Written = "lab"
+	renamedDraft := modelConnectDraft{
+		source: renamedSource, row: renamed, renamedFrom: "homelab",
+		entryID: modelConnectionID("custom"), editing: true,
+	}
+	a.adoptModelConnectResult(a.beginModelConnect(renamedDraft)().(modelConnectResultMsg))
+	if a.model != "lab/"+model {
+		t.Fatalf("the rename left the conversation on %q", a.model)
+	}
+
+	// THE RE-LISTING: the row's own road, carrying no renamedFrom at all.
+	cmd := a.reconnectModelService("custom")
+	if cmd == nil {
+		t.Fatal("the renamed connection did not offer a re-listing")
+	}
+	a.adoptModelConnectResult(cmd().(modelConnectResultMsg))
+	return a
+}
+
+// A RE-LISTING AFTER A RENAME CARRIES THE PREFIX ONCE. The written name is the
+// routing prefix of every model id the connection qualifies, so a re-listing
+// must draw the id the connection's own name spells — never the previous name
+// and never its own name twice.
+func TestReListingARenamedConnectionCarriesOnePrefix(t *testing.T) {
+	a := renamedRelistedApp(t, "qwen-local")
+
+	ids := groupedModelIDs(a, "lab")
+	if len(ids) != 1 || ids[0] != "lab/qwen-local" {
+		t.Fatalf("the re-listed group = %q, want exactly [lab/qwen-local]", ids)
+	}
+	for _, id := range ids {
+		if id == "lab/homelab/qwen-local" || id == "lab/lab/qwen-local" || strings.Count(id, "/") != 1 {
+			t.Fatalf("the re-listing qualified the prefix more than once: %q", id)
+		}
+	}
+	if a.model != "lab/qwen-local" {
+		t.Fatalf("the conversation model after the re-listing = %q, want lab/qwen-local", a.model)
+	}
+}
+
+// THE STORED LIST HOLDS THE BARE IDS THE SERVER ANSWERED. The prefix is added
+// at ONE door ([app.modelsFor] calling Connected.Qualify) and must not be baked
+// into the cache: a cache that stored lab/qwen-local would be qualified again
+// on the next read and read lab/lab/qwen-local.
+func TestReListingStoresTheBareModelIDsTheServerAnswered(t *testing.T) {
+	a := renamedRelistedApp(t, "qwen-local")
+
+	got := a.sourceModels["custom"]
+	if len(got) != 1 || got[0].ID != "qwen-local" {
+		t.Fatalf("the stored list = %+v, want the bare qwen-local the server answered", got)
+	}
+}
+
+// TWO CONNECTIONS DO NOT BORROW EACH OTHER'S PREFIX. Each connection's own
+// listing is qualified with its OWN written name, including a bare id whose
+// spelling could be read as the other connection's prefix.
+func TestTwoConnectionsDoNotBorrowEachOthersPrefix(t *testing.T) {
+	labServer := sourcestub.New("qwen-local", "shared")
+	defer labServer.Close()
+	studioServer := sourcestub.New("qwen-local", "shared")
+	defer studioServer.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+
+	template := modelsource.Vendored()[6] // Custom OpenAI-compatible API
+	labSource := template
+	labSource.ID, labSource.Written = "custom", "lab"
+	a.adoptModelConnectResult(a.beginModelConnect(modelConnectDraft{source: labSource, row: config.PersistedSource{
+		ID: "custom", Written: "lab", Address: labServer.URL(), Key: "a-custom-key", Order: 1,
+	}})().(modelConnectResultMsg))
+	studioSource := template
+	studioSource.ID, studioSource.Written = "custom-studio", "studio"
+	a.adoptModelConnectResult(a.beginModelConnect(modelConnectDraft{source: studioSource, row: config.PersistedSource{
+		ID: "custom-studio", Written: "studio", Address: studioServer.URL(), Key: "a-custom-key2", Order: 2,
+	}})().(modelConnectResultMsg))
+
+	for _, want := range []string{"lab/qwen-local", "lab/shared", "studio/qwen-local", "studio/shared"} {
+		found := false
+		for _, model := range a.modelList() {
+			found = found || model.ID == want
+		}
+		if !found {
+			t.Fatalf("the picker missed %q: %+v", want, a.modelList())
+		}
+	}
+	for _, model := range a.modelList() {
+		if strings.HasPrefix(model.ID, "lab/studio/") || strings.HasPrefix(model.ID, "studio/lab/") {
+			t.Fatalf("a connection borrowed the other's prefix: %q", model.ID)
+		}
+	}
+}
+
+// A RENAME DURING A WORKING TURN FREEZES THE LIVE PICK AND CARRIES THE PENDING
+// MOVE UNDER THE NEW NAME. reprefixRenamedModel leaves a.model alone while a
+// turn is working — the answering turn is frozen to its model until it settles
+// — and rewrites the deferred move instead, spending it through
+// applyDeferredModelServiceMove once the turn settles. The pending move
+// follows the rename under its new name (homelab/b becomes lab/b) and the
+// frozen live pick does not displace it: the move is what the person last
+// asked for, and the re-spelled live pick may claim the slot only when it is
+// empty.
+func TestARenameWhileATurnIsWorkingCarriesThePendingMoveUnderTheNewName(t *testing.T) {
+	server := sourcestub.New("glm-5.3", "glm-5.3-flash")
+	defer server.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+	source := modelsource.Vendored()[6]
+	source.Listing = modelsource.ListingNone
+	draft := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "homelab", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	a.model = "homelab/a"
+	a.state = stateWorking
+	a.deferredModelServiceModel = "homelab/b"
+
+	// THE RENAME: an edit draft whose Written moved, exactly what the name
+	// step builds on an answer that differs from the stored one.
+	persisted := config.PersistedSources(dir)
+	if len(persisted) != 1 {
+		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "lab"
+	renamedDraft := modelConnectDraft{
+		source:      modelsource.Source{ID: "custom", Written: "lab", Listing: modelsource.ListingNone},
+		row:         renamed,
+		renamedFrom: "homelab",
+		entryID:     modelConnectionID("custom"),
+		editing:     true,
+	}
+	msg = a.beginModelConnect(renamedDraft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	// THE LIVE PICK IS FROZEN while the turn works, and the pending move
+	// follows the rename under the new name: the earlier deferred id
+	// (homelab/b) was re-spelled to lab/b, and the frozen live pick does not
+	// displace it.
+	if a.model != "homelab/a" {
+		t.Fatalf("the rename moved the working conversation's model to %q", a.model)
+	}
+	if a.deferredModelServiceModel != "lab/b" {
+		t.Fatalf("the pending move did not follow the rename: %q", a.deferredModelServiceModel)
+	}
+
+	// THE TURN SETTLES: the deferred move is spent, and the conversation lands
+	// on its own model under the new name.
+	a.state = stateIdle
+	a.applyDeferredModelServiceMove()
+	if !strings.HasPrefix(a.model, "lab/") {
+		t.Fatalf("the settled conversation stayed on %q", a.model)
+	}
+	if a.deferredModelServiceModel != "" {
+		t.Fatalf("the pending move was not spent: %q", a.deferredModelServiceModel)
+	}
+}
+
+// A RENAME DURING A WORKING TURN WITH NO MOVE PENDING DEFERS THE RE-SPELLED
+// LIVE PICK: the answering turn is frozen to its model until it settles, so
+// the slot — empty here — takes the conversation's own model under the new
+// name and spends it when the turn settles, never leaving the settled
+// conversation on a dead old-name id.
+func TestARenameWhileATurnIsWorkingAndNoMoveIsPendingDefersTheRespelledLivePick(t *testing.T) {
+	server := sourcestub.New("glm-5.3", "glm-5.3-flash")
+	defer server.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+	source := modelsource.Vendored()[6]
+	source.Listing = modelsource.ListingNone
+	draft := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "homelab", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	a.model = "homelab/a"
+	a.state = stateWorking
+
+	persisted := config.PersistedSources(dir)
+	if len(persisted) != 1 {
+		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "lab"
+	msg = a.beginModelConnect(modelConnectDraft{
+		source:      modelsource.Source{ID: "custom", Written: "lab", Listing: modelsource.ListingNone},
+		row:         renamed,
+		renamedFrom: "homelab",
+		entryID:     modelConnectionID("custom"),
+		editing:     true,
+	})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	// THE SLOT WAS EMPTY, so the re-spelled live pick takes it: the frozen
+	// turn still answers on homelab/a, and the settle moves the conversation
+	// to the same model under the new name instead of leaving it resolving to
+	// a dead one.
+	if a.model != "homelab/a" {
+		t.Fatalf("the rename moved the working conversation's model to %q", a.model)
+	}
+	if a.deferredModelServiceModel != "lab/a" {
+		t.Fatalf("the empty slot did not take the re-spelled live pick: %q", a.deferredModelServiceModel)
+	}
+
+	a.state = stateIdle
+	a.applyDeferredModelServiceMove()
+	if a.model != "lab/a" {
+		t.Fatalf("the settled conversation stayed on %q", a.model)
+	}
+	if a.deferredModelServiceModel != "" {
+		t.Fatalf("the deferred pick was not spent: %q", a.deferredModelServiceModel)
+	}
+}
+
+// A RENAME DURING A WORKING TURN DOES NOT EAT A PENDING SWITCH TO ANOTHER
+// CONNECTION. The person pressed enter on the switcher row, was told the move
+// to the second connection waits for the turn to finish, and only then renamed
+// the connection this conversation is on. The re-spelling of the live pick is
+// bookkeeping — the pending move is what was last asked for and promised out
+// loud — so the deferred slot keeps it and the settle spends it. Rewriting the
+// slot here would drop the promised move silently: nothing else records it.
+func TestARenameDuringAWorkingTurnLeavesAPendingSwitchAlone(t *testing.T) {
+	mybox := sourcestub.New("a", "a-flash")
+	defer mybox.Close()
+	homelab := sourcestub.New("b", "b-flash")
+	defer homelab.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+	source := modelsource.Vendored()[6]
+	source.Listing = modelsource.ListingNone
+
+	// TWO CONNECTIONS, minted the way the surface mints them: the first keeps
+	// the vendored id, the second takes custom-homelab.
+	first := config.PrepareCustomSource(dir, mybox.URL(), "mybox")
+	first.Key = "a-custom-key"
+	msg := a.beginModelConnect(modelConnectDraft{source: source, row: first})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+	second := config.PrepareCustomSource(dir, homelab.URL(), "homelab")
+	second.Key = "another-custom-key"
+	msg = a.beginModelConnect(modelConnectDraft{source: source, row: second})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+	if second.ID == first.ID {
+		t.Fatalf("both connections minted the id %q", second.ID)
+	}
+
+	// A WORKING TURN on mybox, with the promised move to homelab pending.
+	a.model = "mybox/a"
+	a.state = stateWorking
+	a.deferredModelServiceModel = "homelab/b"
+
+	// THE RENAME of the connection the conversation is on: an edit draft whose
+	// Written moved, exactly what the name step builds.
+	renamed, found := config.PersistedSource{}, false
+	for _, row := range config.PersistedSources(dir) {
+		if row.ID == first.ID {
+			renamed, found = row, true
+		}
+	}
+	if !found {
+		t.Fatalf("the first connection did not persist: %+v", config.PersistedSources(dir))
+	}
+	renamed.Written = "newname"
+	msg = a.beginModelConnect(modelConnectDraft{
+		source:      modelsource.Source{ID: first.ID, Written: "newname", Listing: modelsource.ListingNone},
+		row:         renamed,
+		renamedFrom: "mybox",
+		entryID:     modelConnectionID(first.ID),
+		editing:     true,
+	})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	if a.deferredModelServiceModel != "homelab/b" {
+		t.Fatalf("the rename overwrote the pending move with %q", a.deferredModelServiceModel)
+	}
+	if a.model != "mybox/a" {
+		t.Fatalf("the rename moved the working conversation's model to %q", a.model)
+	}
+
+	// THE TURN SETTLES: the conversation lands on what the person asked for,
+	// the second connection, and not on the re-spelled current model.
+	a.state = stateIdle
+	a.applyDeferredModelServiceMove()
+	if a.model != "homelab/b" {
+		t.Fatalf("the settled conversation landed on %q, not the pending move", a.model)
+	}
+	if a.deferredModelServiceModel != "" {
+		t.Fatalf("the pending move was not spent: %q", a.deferredModelServiceModel)
 	}
 }
 
@@ -1114,10 +1561,26 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 		}
 	}
 	a.sheet.build()
+	// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no services head,
+	// no switcher, no connection row — but the add row stands, because a profile
+	// with no custom connection yet is the one that needs the door (customAddRow).
+	addRows, connectionRows := 0, 0
 	for _, item := range a.sheet.items {
-		if item.head == "services" || item.service != nil {
-			t.Fatal("an empty profile drew the services section")
+		if item.head == "services" {
+			t.Fatal("an empty profile drew the services head")
 		}
+		if item.service != nil && item.service.switcher {
+			t.Fatal("an empty profile drew the switcher row")
+		}
+		if item.service != nil && !item.service.addCustom {
+			connectionRows++
+		}
+		if item.service != nil && item.service.addCustom {
+			addRows++
+		}
+	}
+	if addRows != 1 || connectionRows != 0 {
+		t.Fatalf("an empty profile drew add=%d connection=%d rows, want one add row and no connection row", addRows, connectionRows)
 	}
 
 	row := config.PersistedSource{ID: "deepseek", Written: "deepseek-direct", Key: "sk-direct-1234567890", Order: 1}
@@ -1200,5 +1663,338 @@ func TestThePlanDoorSaysItsPositionAndDefaultsToWait(t *testing.T) {
 	written = config.PersistedSources(dir)
 	if len(written) != 1 || written[0].PlanPaused != "" {
 		t.Fatal("the default wait value was not stored as the default")
+	}
+}
+
+// A MOVE A TURN SPENT MUST BE A MOVE ITS PANELS SEE: the deferred switch is
+// recorded while the turn works (moveConversationOrDefer) and spent when it
+// settles (applyDeferredModelServiceMove), and the /connect panel's switch
+// row reads the conversation's model to say what it answers on
+// (switchReading) — so a move that lands under an open panel would leave the
+// row naming the old target until something else redrew it.
+func TestSpendingADeferredMoveReadoptsTheOpenConnectPanelSoItsSwitchRowFollowsTheMove(t *testing.T) {
+	dir := t.TempDir()
+	customs := connectionWriteSources(t, dir, "homelab")
+	sources := modelsource.NewSet(append([]modelsource.Connected{connectionDefaultService()}, customs...)...)
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini", sources, []Model{{ID: config.DefaultModel}})
+	a.modelsForService = func(service modelsource.Connected) []Model {
+		return []Model{{ID: "qwen-local"}}
+	}
+	a.state = stateWorking
+	a.openConnect()
+	row, _, ok := connectionFindRow(t, a, connectionSwitchRowID)
+	if !ok {
+		t.Fatal("the /connect panel drew no active-connection row with a custom connection connected")
+	}
+	if !strings.Contains(row.Blurb, "answering on openrouter") {
+		t.Fatalf("the panel's switch row before the switch said %q", row.Blurb)
+	}
+	// The switch is pressed while the turn works: the move waits in the
+	// deferred slot (moveConversationOrDefer) and the row keeps naming the
+	// service the conversation is still answering on.
+	a.moveConversationOrDefer("homelab/qwen-local", "homelab")
+	if a.deferredModelServiceModel != "homelab/qwen-local" || a.model != "openai/gpt-4.1-mini" {
+		t.Fatalf("the working switch did not defer: model %q, deferred %q", a.model, a.deferredModelServiceModel)
+	}
+	// The settling turn is idle before it spends the move (app.settle), so the
+	// move here goes through the road a spent move really takes.
+	a.state = stateIdle
+	a.applyDeferredModelServiceMove()
+	if a.model != "homelab/qwen-local" || a.deferredModelServiceModel != "" {
+		t.Fatalf("the deferred move did not spend: model %q, deferred %q", a.model, a.deferredModelServiceModel)
+	}
+	row, _, ok = connectionFindRow(t, a, connectionSwitchRowID)
+	if !ok {
+		t.Fatal("the /connect panel drew no active-connection row after the move")
+	}
+	if !strings.Contains(row.Blurb, "answering on homelab") || strings.Contains(row.Blurb, "answering on openrouter") {
+		t.Fatalf("the panel's switch row did not follow the spent move: %q", row.Blurb)
+	}
+}
+
+// A SETTLE WITH NOTHING TO SPEND LEAVES THE PANEL WHERE IT WAS:
+// applyDeferredModelServiceMove runs on every settled turn (app.settle), and
+// its refresh is for the panels to follow a move that actually happened. With
+// no deferred move the spend is a no-op, so the open /connect panel must not
+// be re-adopted: a re-adopt re-ranks the list — cursor and scroll back to the
+// top (connectPanel.rank) — and clears the second-enter disconnect
+// confirmation standing on a row (connectPanel.adopt clears armed).
+func TestASettleWithNothingToSpendLeavesTheConnectPanelWhereItWas(t *testing.T) {
+	dir := t.TempDir()
+	customs := connectionWriteSources(t, dir, "homelab")
+	sources := modelsource.NewSet(append([]modelsource.Connected{connectionDefaultService()}, customs...)...)
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini", sources, []Model{{ID: config.DefaultModel}})
+	a.openConnect()
+	row, _, ok := connectionFindRow(t, a, "custom")
+	if !ok {
+		t.Fatal("the /connect panel drew no row for the connected custom connection")
+	}
+	if len(a.connPanel.hits) < 2 {
+		t.Fatalf("the /connect panel drew %d rows, want at least 2", len(a.connPanel.hits))
+	}
+	// The cursor sits on the LAST row and the connected row carries an armed
+	// disconnect: both are positions a re-adopt loses.
+	a.connPanel.cursor = len(a.connPanel.hits) - 1
+	a.connPanel.armed = row.ID
+
+	a.applyDeferredModelServiceMove()
+
+	if a.connPanel.cursor != len(a.connPanel.hits)-1 {
+		t.Fatalf("a settle with nothing to spend moved the panel's cursor to %d", a.connPanel.cursor)
+	}
+	if a.connPanel.armed != row.ID {
+		t.Fatalf("a settle with nothing to spend dropped the armed disconnect on %q", row.ID)
+	}
+	if a.model != "openai/gpt-4.1-mini" {
+		t.Fatalf("a settle with nothing to spend moved the conversation to %q", a.model)
+	}
+}
+
+// customConnectionApp is the picker-grouping fixture: the default service plus
+// the two custom connections homelab (id custom) and studio (id custom-studio),
+// in persisted order, with each connection's own model list served from held by
+// the connection id. A connection missing from held has no model list, which is
+// the empty group the notice row stands for.
+func customConnectionApp(t *testing.T, held map[string][]Model) *app {
+	t.Helper()
+	dir := t.TempDir()
+	customs := connectionWriteSources(t, dir, "homelab", "studio")
+	sources := modelsource.NewSet(append([]modelsource.Connected{connectionDefaultService()}, customs...)...)
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini", sources, []Model{{ID: "openai/gpt-4.1-mini"}})
+	a.modelsForService = func(service modelsource.Connected) []Model {
+		return append([]Model(nil), held[service.Source.ID]...)
+	}
+	return a
+}
+
+// groupPickerLines is the drawn list as a reader sees it, with room for every
+// service heading and its rows: [pickerLines] hands the picker the row count as
+// the line budget, which is right when every row is one line but cuts a list
+// with headings off partway through.
+func groupPickerLines(a *app) []string {
+	lines := a.pick.rows(a.width, a.pick.height(a.width), a.pal, -1, a.reasoningFor)
+	plainLines := make([]string, len(lines))
+	for at, line := range lines {
+		plainLines[at] = plain(line)
+	}
+	return plainLines
+}
+
+// lineIndex is the first line whose trimmed text satisfies match, -1 when none.
+func lineIndex(lines []string, match func(string) bool) int {
+	for at, line := range lines {
+		if match(strings.TrimSpace(line)) {
+			return at
+		}
+	}
+	return -1
+}
+
+// headingLines counts the drawn service headings equal to group. A heading is a
+// dim line whose whole text is the group's name; a model's own row carries more
+// than the name, so this counts headings and never rows.
+func headingLines(lines []string, group string) int {
+	count := 0
+	for _, line := range lines {
+		if strings.TrimSpace(line) == group {
+			count++
+		}
+	}
+	return count
+}
+
+// TWO CUSTOM CONNECTIONS GROUP APART: the default service and two custom
+// connections each carry their own heading, in persisted order, and every custom
+// model's id is qualified with its own connection's name so no row can sit under
+// the wrong heading. The drawn picker shows each heading once, above its models.
+func TestTwoCustomConnectionsGroupApartInThePicker(t *testing.T) {
+	a := customConnectionApp(t, map[string][]Model{
+		"custom":        {{ID: "qwen-local"}},
+		"custom-studio": {{ID: "mistral-local"}},
+	})
+
+	list := a.modelList()
+	want := []struct {
+		id, group string
+		order     int
+	}{
+		{"openai/gpt-4.1-mini", "openrouter", 0},
+		{"homelab/qwen-local", "homelab", 1},
+		{"studio/mistral-local", "studio", 2},
+	}
+	if len(list) != len(want) {
+		t.Fatalf("model list = %+v, want %d rows", list, len(want))
+	}
+	for at, w := range want {
+		row := list[at]
+		if row.ID != w.id || row.Group != w.group || row.GroupOrder != w.order || row.Unavailable {
+			t.Fatalf("row %d = %+v, want id=%q group=%q order=%d", at, row, w.id, w.group, w.order)
+		}
+		// NO MODEL APPEARS UNDER THE WRONG HEADING: a custom row's own group is
+		// the Written prefix its id carries, and the default row is bare.
+		if w.order > 0 && !strings.HasPrefix(row.ID, row.Group+"/") {
+			t.Fatalf("row %d is not qualified by its own heading: %+v", at, row)
+		}
+	}
+
+	a.openPicker()
+	lines := groupPickerLines(a)
+	drawn := strings.Join(lines, "\n")
+	for _, group := range []string{"openrouter", "homelab", "studio"} {
+		if got := headingLines(lines, group); got != 1 {
+			t.Fatalf("the picker drew the %q heading %d times, want once:\n%s", group, got, drawn)
+		}
+	}
+	for _, id := range []string{"homelab/qwen-local", "studio/mistral-local"} {
+		group := id[:strings.Index(id, "/")]
+		headAt := lineIndex(lines, func(line string) bool { return line == group })
+		modelAt := lineIndex(lines, func(line string) bool { return strings.Contains(line, id) })
+		if headAt < 0 || modelAt < 0 || headAt > modelAt {
+			t.Fatalf("the %q heading did not stand above %q:\n%s", group, id, drawn)
+		}
+	}
+}
+
+// A RENAME MOVES THE HEADING: after a custom connection is renamed through the
+// same edit draft the name step builds, the next picker build draws the new name
+// as the heading and qualifies its models under the new prefix, and no heading
+// with the old name remains.
+func TestRenamingACustomConnectionMovesItsPickerHeading(t *testing.T) {
+	a := customConnectionApp(t, map[string][]Model{
+		"custom":        {{ID: "qwen-local"}},
+		"custom-studio": {{ID: "mistral-local"}},
+	})
+	if list := a.modelList(); len(list) != 3 || list[1].ID != "homelab/qwen-local" {
+		t.Fatalf("the fixture did not start on homelab/qwen-local: %+v", list)
+	}
+
+	persisted := config.PersistedSources(a.profileDir)
+	if len(persisted) != 2 || persisted[0].Written != "homelab" {
+		t.Fatalf("the profile does not hold the two custom connections: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "lab"
+	// THE RENAME: an edit draft whose Written moved, exactly what the name step
+	// builds on an answer that differs from the stored one. The probe is empty,
+	// so the connect persists the renamed row without a network read.
+	msg := a.beginModelConnect(modelConnectDraft{
+		source:      modelsource.Source{ID: "custom", Written: "lab", Listing: modelsource.ListingModels},
+		row:         renamed,
+		renamedFrom: "homelab",
+		entryID:     modelConnectionID("custom"),
+		editing:     true,
+	})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	list := a.modelList()
+	if len(list) != 3 || list[1].ID != "lab/qwen-local" || list[1].Group != "lab" {
+		t.Fatalf("the renamed connection's models did not move to lab: %+v", list)
+	}
+	if list[2].ID != "studio/mistral-local" || list[2].Group != "studio" {
+		t.Fatalf("the rename touched the other connection: %+v", list[2])
+	}
+	for _, row := range list {
+		if row.Group == "homelab" || strings.HasPrefix(row.ID, "homelab/") {
+			t.Fatalf("the old name survived the rename: %+v", row)
+		}
+	}
+
+	a.openPicker()
+	lines := groupPickerLines(a)
+	drawn := strings.Join(lines, "\n")
+	if got := headingLines(lines, "lab"); got != 1 {
+		t.Fatalf("the picker drew the %q heading %d times, want once:\n%s", "lab", got, drawn)
+	}
+	if got := headingLines(lines, "homelab"); got != 0 {
+		t.Fatalf("a heading with the old name remained:\n%s", drawn)
+	}
+	if !strings.Contains(drawn, "lab/qwen-local") || strings.Contains(drawn, "homelab/") {
+		t.Fatalf("the picker did not draw the models under the new prefix:\n%s", drawn)
+	}
+}
+
+// A CONNECTION WITH NO LIST KEEPS ITS PLACE: one of the two custom connections
+// holds no model list, and its heading still draws with the notice row, between
+// the others in persisted order.
+func TestACustomConnectionWithNoListKeepsItsPlaceInThePicker(t *testing.T) {
+	a := customConnectionApp(t, map[string][]Model{
+		"custom": {{ID: "qwen-local"}},
+	})
+
+	list := a.modelList()
+	if len(list) != 3 {
+		t.Fatalf("model list = %+v", list)
+	}
+	if list[1].ID != "homelab/qwen-local" || list[1].Group != "homelab" || list[1].Unavailable {
+		t.Fatalf("the listing connection did not sit second: %+v", list[1])
+	}
+	placeholder := list[2]
+	if !placeholder.Unavailable || placeholder.ID != "" || placeholder.Group != "studio" ||
+		placeholder.GroupOrder != 2 || placeholder.Notice != noServiceModelListWord {
+		t.Fatalf("the listing-less connection did not keep its place: %+v", placeholder)
+	}
+
+	a.openPicker()
+	lines := groupPickerLines(a)
+	drawn := strings.Join(lines, "\n")
+	if got := headingLines(lines, "studio"); got != 1 {
+		t.Fatalf("the listing-less service drew its heading %d times, want once:\n%s", got, drawn)
+	}
+	if !strings.Contains(drawn, noServiceModelListWord) {
+		t.Fatalf("the listing-less service drew no notice row:\n%s", drawn)
+	}
+	homelabAt := lineIndex(lines, func(line string) bool { return line == "homelab" })
+	studioAt := lineIndex(lines, func(line string) bool { return line == "studio" })
+	if homelabAt < 0 || studioAt < 0 || homelabAt > studioAt {
+		t.Fatalf("the listing-less service was drawn out of order:\n%s", drawn)
+	}
+}
+
+// THE UNCONNECTED CUSTOM ROW IS CALLED WHAT THE MANUAL CALLS IT. The catalog
+// template's Written is the bare id `custom`, so a rename that reads Written for
+// every custom id drew the row a person has not connected yet as `custom` — and
+// the manual, the README and #1107 all send them looking for `Custom
+// OpenAI-compatible API`. Only a connected instance is called what the person
+// called it.
+func TestTheUnconnectedCustomRowKeepsItsVendoredNameAndAConnectedOneTakesThePersons(t *testing.T) {
+	const vendored = "Custom OpenAI-compatible API"
+	defaults := []Model{{ID: "openai/gpt-4.1-mini"}}
+	customRow := func(a *app) (connect.Status, bool) {
+		for _, row := range a.modelConnectionRows() {
+			if row.ID == modelConnectionID("custom") {
+				return row, true
+			}
+		}
+		return connect.Status{}, false
+	}
+
+	dir := t.TempDir()
+	bare := modelServiceTestApp(t, dir, defaults[0].ID, modelsource.NewSet(testDefaultService("sk-default-1234567890")), defaults)
+	installModelServiceShelf(bare, dir)
+	row, ok := customRow(bare)
+	if !ok {
+		t.Fatal("the models group did not offer the custom row")
+	}
+	if row.Connected {
+		t.Fatalf("nothing is connected, yet the custom row reads connected: %+v", row)
+	}
+	if row.Name != vendored {
+		t.Fatalf("the unconnected custom row is drawn %q, want %q", row.Name, vendored)
+	}
+
+	named := modelsource.Connected{
+		Source:  modelsource.Source{ID: "custom", Written: "alpha", Name: vendored, Address: "http://127.0.0.1:1/v1"},
+		Key:     "sk-alpha-1234567890",
+		Address: "http://127.0.0.1:1/v1",
+	}
+	dir2 := t.TempDir()
+	held := modelServiceTestApp(t, dir2, defaults[0].ID, modelsource.NewSet(testDefaultService("sk-default-1234567890"), named), defaults)
+	installModelServiceShelf(held, dir2)
+	row, ok = customRow(held)
+	if !ok {
+		t.Fatal("the connected custom instance has no row")
+	}
+	if !row.Connected || row.Name != "alpha" {
+		t.Fatalf("a connected custom instance the person named alpha is drawn %q (connected=%t), want alpha", row.Name, row.Connected)
 	}
 }

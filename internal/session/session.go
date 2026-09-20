@@ -1077,6 +1077,32 @@ func (u Usage) CachedShare() (float64, bool) {
 // BaseURL are required. APIKey may be empty for a session opened before the
 // person has handed one over — the first-run setup's case — and every request
 // refuses until [Agent.SetAPIKey] lands it.
+// TaskLanding is one landed node, handed whole to Config.TaskLanded. It is the
+// record a caller outside this package needs to judge the work: what was asked,
+// what came home, who ran it and who checked it, and what the run spent. The
+// fields are copied from the node's own record at the moment the node reached a
+// final state, so a reader that arrives late reads a fact rather than a
+// half-open run.
+type TaskLanding struct {
+	ID          uint64
+	State       TaskState
+	Brief       string
+	Deliverable string
+	Report      string
+	Claim       string
+	Ending      string
+	Wrote       []string
+	Changed     int
+	Checks      []string
+	Worker      string
+	High        string
+	CostUSD     float64
+	Tokens      int
+	// Attempt is which run of this node the landing is, so a per-run judged
+	// marker survives a resettle (same id, re-judged) and a re-run (new attempt).
+	Attempt int
+}
+
 type Config struct {
 	Workspace string // tools root here; all relative paths resolve inside it
 	Model     string
@@ -1398,6 +1424,18 @@ type Config struct {
 	// TaskProgressCheck is the test seam for leash checkpoints. Production uses
 	// the node's ordinary read-only checker; a test may answer deterministically.
 	TaskProgressCheck func(brief string, evidence []string) (working bool, reason string)
+
+	// TaskLanded is called once per landed node, on its own goroutine, after the
+	// node's row is in the project's index (task_run.go's [Agent.reportTaskNode]).
+	// It carries [TaskLanding]: the node's record as the landing left it, the
+	// worker's model and the model the checking pass ran on (empty when there was
+	// none). A final state only — running and queued nodes land nothing — and a
+	// call that never blocks the reporting path: the reporting goroutine hands the
+	// landing over and moves on, and a caller that is slow holds up nothing but
+	// its own goroutine. Nil is off, which is what every caller that does not
+	// want the news hands in, and what this package then spends nothing on.
+	TaskLanded func(TaskLanding)
+
 	// TaskDeadline overrides one checkpoint interval. Zero keeps the one-hour
 	// production interval and lets deadline behavior be tested without an hour.
 	TaskDeadline time.Duration
@@ -1822,6 +1860,33 @@ type Config struct {
 	// (#941). A worker leaves it empty; the zero value is the node it always was.
 	crewRole roles.Role
 
+	// checksNode is the node an agent BUILT TO CHECK one is checking — the
+	// auditor a node's landing waits on, which reads a node's finished work and
+	// is deliberately NOT that node ([Config.taskID] stays 0 for it, session.go's
+	// own law). It exists so a checker's records can say WHICH node it is about:
+	// the node on the model-call log's row (loop.go) and the task on the usage
+	// ledger's (usage_ledger.go), neither of which could be filled from taskID
+	// without the checker claiming to be the node it judges.
+	//
+	// It is set by the one builder that has the node in hand
+	// ([Agent.newAuditAgent]) and nowhere else; a worker leaves it zero, because
+	// it IS its node and taskID already says so.
+	checksNode uint64
+
+	// repairRound marks this agent as ONE REPAIR ROUND'S FRESH WORKER
+	// (task_audit.go's [Agent.repairNode]) rather than the node's own. It
+	// exists for the usage ledger's seat ([Agent.agentKind]): a round is the
+	// node's escalation onto the careful tier, and a row that read it as the
+	// worker's seat would hide the cascade's whole bill inside the ordinary
+	// work's. It is set by the one builder that takes a model outright
+	// ([Agent.newTaskAgentOn]) and nowhere else.
+	//
+	// IT DOES NOT TOUCH [Config.crewRole] ON PURPOSE. A crew role is what this
+	// agent's calls are FOR in the router's vocabulary ([Agent.laneRole]), and
+	// a repair round is a leaf's turns of work in a worktree, not a one-answer
+	// gate — erranding its lane role would re-price every call it makes.
+	repairRound bool
+
 	// Errand marks this agent as the short exchange behind home's `ask here`
 	// (cmd/codeaf's chatv3_exchange.go) rather than a conversation somebody
 	// sits in. It is a conversation in every other way — a real model, a real
@@ -2125,6 +2190,19 @@ type Agent struct {
 	// ([Agent.stashedWork]).
 	stashBefore     map[string]bool
 	stashBeforeRead bool
+
+	// ignoredBefore is every gitignored file the deliverable tree ALREADY HELD
+	// when the run began, by path, and ignoredBeforeRead says that reading
+	// happened — which is not the same as the set being empty, because a
+	// repository with no ignored files at all reads as none
+	// ([Agent.readIgnoredBefore]).
+	//
+	// IT IS THE SAME SUBTRACTION THE STASH GETS, FOR THE SAME REASON. Only
+	// what appeared during the run may be named a build product this run left
+	// ([Agent.ignoredBuildProducts]), and with no photograph the honest answer
+	// about the tree is silence rather than a guess.
+	ignoredBefore     map[string]bool
+	ignoredBeforeRead bool
 
 	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
 	// so one unit of work whose job somebody else did is said once rather than

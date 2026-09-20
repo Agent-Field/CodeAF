@@ -92,6 +92,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -648,6 +649,12 @@ type TaskNode struct {
 	// reaches the project index (task_index.go) and the node's own notice on the
 	// way past.
 	cost float64
+	// checkedOn is the model the node's checking pass ran on, read off the
+	// auditor when its spend folds in (task_audit.go) and empty when there was
+	// none — a node that never reached a check, or one whose check could not
+	// start. It is a fact about the last check, not a setting, and it is read by
+	// the landing hook ([Agent.reportTaskNode]) beside the worker's own model.
+	checkedOn string
 	// input, output, cacheRead and cacheWrite are that same accumulation in
 	// TOKENS, folded in beside the dollars and kept on the checkpoint with them.
 	//
@@ -738,6 +745,15 @@ type TaskNode struct {
 	// ask while one is in flight is refused rather than run beside it.
 	mergeRounds int
 	resolving   bool
+	// resolvingGen and settleGen are the CLAIM'S IDENTITY, not its words: two
+	// accepts say the same thing ("your accept"), and a release that matches
+	// words cannot tell its own claim from a newer one's — the deferred
+	// release of the first would wipe the second’s guard mid-flight. Each
+	// claim takes the next number, and a release hands the claim back only
+	// when its own number is still the live one ([TaskNode.releaseSettle],
+	// [TaskNode.releaseResolving]).
+	resolvingGen uint64
+	settleGen    uint64
 	// offer is a finished harness page waiting on the person, held for exactly
 	// as long as its card is up so the checkpoint can carry it across a restart
 	// ([TaskNode.carryOffer], task_store.go's harnessOfferRecord). Nil on every
@@ -852,6 +868,14 @@ type TaskNode struct {
 	// the repair rounds the gate spent (task_audit.go's [Agent.auditWithRepair]).
 	checked provider.Reading
 	repairs int
+	// noDeclaredCheck and cleanGround are WHAT THE NODE'S OWN CHECK SAW, carried
+	// onto the node because that pair is known only inside the check and dies with
+	// it ([auditDoor.window]'s predicate, [groundManifestClean]). They are written
+	// when the check runs (task_audit.go) and read when the landing note is
+	// minted, where a node that has both needs one call and no more to settle
+	// ([TaskNode.settleCeiling], agent.go's [settleCallCeiling]).
+	noDeclaredCheck bool
+	cleanGround     bool
 	// blockedBy names the task whose working copy refused this node's writes
 	// (treehold.go's treeClaimGuard), in the words the refusal used, and "" when
 	// nothing ever refused it. It is what turns a "going in circles" ending into
@@ -2072,6 +2096,24 @@ func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
 	node.ended = time.Now()
+	// AND THE SETTLE'S OWN CLAIM IS HANDED BACK IN THE SAME WRITE — the claim
+	// covers everything down to the resettle ([TaskNode.claimSettle]), so
+	// the resettle is where it ends: cleared here, under the lock, the
+	// announcement below is built AFTER it and carries an empty
+	// [TaskNotice.Settling], which is what lets the terminal notice of an
+	// accept or a re-audit still raise the node's question with the answer's
+	// fate on it. Every caller also defers its own release, and that release
+	// hands back only its own claim's generation ([TaskNode.releaseSettle])
+	// — a
+	// settle another window started in the gap after this clear keeps its
+	// claim, and the deferred release is not that claim's to wipe.
+	//
+	// THE ROUND'S CLAIM IS NOT THIS CLAIM'S TO CLEAR. A merge round's flag
+	// survives the resettle ([TaskNode.claimResolving] clears it only when the
+	// round itself hands it back): the round may still be running under this
+	// settle, and wiping its guard would un-guard its door mid-flight. The
+	// round's own defer is what lets it go.
+	node.settling = ""
 	g.mu.Unlock()
 
 	g.checkpoint()
@@ -3184,7 +3226,7 @@ func (a *Agent) emitTaskPhase(notice TaskPhaseNotice) {
 //
 // what is the claim in PLAIN WORDS — "a re-audit", "your accept" — because it
 // is read back to whoever lost the race. [TaskNode.releaseSettle] hands it back.
-func (n *TaskNode) claimSettle(what string) error {
+func (n *TaskNode) claimSettle(what string) (uint64, error) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	if n.state != TaskUnverified {
@@ -3192,19 +3234,52 @@ func (n *TaskNode) claimSettle(what string) error {
 		// Losing the race here means the same thing it means at the door: the
 		// question is gone, and a surface holding a card about it needs to know
 		// that rather than to keep asking.
-		return settledAlready(n.id, n.state)
+		return 0, settledAlready(n.id, n.state)
 	}
 	if n.settling != "" {
-		return fmt.Errorf("task %d is already being resolved — %s is in flight — so wait for that to land rather than putting a second answer on top of it", n.id, n.settling)
+		return 0, fmt.Errorf("task %d is already being resolved — %s is in flight — so wait for that to land rather than putting a second answer on top of it", n.id, n.settling)
+	}
+	// THE OTHER CLAIM'S DOOR IS THE SAME DOOR. A merge round and a settle
+	// are both work in the node's own working copy ([TaskNode.claimResolving]),
+	// so neither may start over the other's claim — two doors refusing on their
+	// own field alone let a settle start under a round and then un-guard the
+	// round's door when it landed first.
+	if n.resolving {
+		return 0, fmt.Errorf("task %d is already being resolved — a merge round is in flight — so wait for that to land rather than putting a second answer on top of it", n.id)
 	}
 	n.settling = what
-	return nil
+	n.settleGen++
+	return n.settleGen, nil
 }
 
-func (n *TaskNode) releaseSettle() {
+func (n *TaskNode) releaseSettle(gen uint64) {
+	// ONLY ITS OWN CLAIM. The claim may already have been handed back by the
+	// resettle ([TaskGraph.resettle]), and a settle another window started in
+	// the gap owns the field now — wiping it would un-guard that window's
+	// working copy mid-flight, exactly what the claim exists to prevent. The
+	// generation is the identity: words are shared between answers, numbers
+	// are not.
 	n.graph.mu.Lock()
-	n.settling = ""
+	if n.settleGen == gen {
+		n.settling = ""
+	}
 	n.graph.mu.Unlock()
+}
+
+// resolutionInFlightLocked is [TaskNotice.Settling]'s source: the name of the
+// resolution in flight over this node, read from the graph's own claim fields
+// with the lock already held. A settle claims the node in plain words
+// ([TaskNode.claimSettle]); a merge round claims it only in the flag
+// ([TaskNode.claimResolving]), so the round borrows its two words here rather
+// than growing a second claiming vocabulary.
+func (n *TaskNode) resolutionInFlightLocked() string {
+	if n.settling != "" {
+		return n.settling
+	}
+	if n.resolving {
+		return "a merge round"
+	}
+	return ""
 }
 
 // keepClaim records the work's own account of itself, and clears nothing: a
@@ -3640,6 +3715,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Context:     n.context,
 		Mending:     n.mend,
 		Waiting:     waiting,
+		Settling:    n.resolutionInFlightLocked(),
 		Stopped:     n.stopped,
 		Ending:      n.endingLocked(),
 		// AND WHAT CLASHED, WHICH ROAD PUT IT THERE, AND WHOSE DECISION IT IS. None
@@ -3679,6 +3755,15 @@ func (n *TaskNode) endingNow() TaskEnding {
 // wrote it — the flag was the whole of that fact before the ending existed, and
 // it stays the source of it.
 func (n *TaskNode) endingLocked() TaskEnding {
+	// A NODE MACHINERY CUT WHERE IT STOOD IS STILL RUNNING AND STILL HAS A REASON.
+	// The paused road leaves the state alone so recovery resumes the node, and it
+	// used to carry no ending at all — so a reader could not tell a node machinery
+	// had cut from one still being worked. The ending is surfaced for a running
+	// node exactly as it is for a failed one; every other state still carries none,
+	// and the flag a person's stop sets outranks the field wherever it is.
+	if n.state == TaskRunning {
+		return n.ending
+	}
 	if n.state != TaskFailed {
 		return ""
 	}
@@ -3744,6 +3829,64 @@ func (n *TaskNode) burned() int {
 
 // ── the world hearing about a node ──────────────────────────────────────────
 
+// tellTaskLanded hands one landed node to the session's own landing reader
+// (Config.TaskLanded), when a door wired one. It runs on its own goroutine
+// through guard.Go, so a reader that is slow — a call to a model outside the
+// crew takes as long as it takes — holds up nothing on the reporting path,
+// which is already answering to the note delivery beside it.
+//
+// The snapshot is taken here, on the reporting goroutine, under the node's own
+// lock discipline (graph.mu, the room's spend read outside it as notice does):
+// a landing built later on the reader's goroutine could read a node already
+// re-armed, and the record the reader judged would not be the one that landed.
+func (a *Agent) tellTaskLanded(node *TaskNode) {
+	hook := a.config.TaskLanded
+	if hook == nil {
+		return
+	}
+	// A landing is a final state only — work that ended on an answer: done,
+	// failed, or ended where nobody could check it. A node still queued or
+	// running has no record to judge yet, and its own updates already travelled
+	// the reporting path above.
+	switch node.stateNow() {
+	case TaskDone, TaskFailed, TaskUnverified:
+	default:
+		return
+	}
+	landing := node.landing()
+	guard.Go("task landed", func() { hook(landing) })
+}
+
+// landing copies the node out from under the graph's lock, shaped for a reader
+// outside this package. The spend is read BEFORE the graph lock is taken, the
+// same order [TaskNode.notice] keeps.
+func (n *TaskNode) landing() TaskLanding {
+	tokens := n.burned()
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	wrote := make([]string, len(n.wrote))
+	copy(wrote, n.wrote)
+	checks := make([]string, len(n.Checks))
+	copy(checks, n.Checks)
+	return TaskLanding{
+		ID:          n.id,
+		State:       n.state,
+		Brief:       n.spec.brief,
+		Deliverable: n.spec.deliverable,
+		Report:      n.report,
+		Claim:       n.claim,
+		Ending:      string(n.endingLocked()),
+		Wrote:       wrote,
+		Changed:     len(n.changed),
+		Checks:      checks,
+		Worker:      n.spec.model,
+		High:        n.checkedOn,
+		CostUSD:     n.cost,
+		Tokens:      tokens,
+		Attempt:     n.attempt,
+	}
+}
+
 // reportTaskNode is the graph's report hook: one event for a surface, a row in
 // the project's index, and — on a final state — one note for the model.
 //
@@ -3772,6 +3915,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
+	a.tellTaskLanded(node)
 	transcript := taskURI(node.journalPath())
 	note := landingNoteLead(notice) + taskNote(notice, transcript, a.settlePolicy(), a.addressLanding(notice))
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
@@ -3809,6 +3953,29 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 	}
 }
 
+// settleMark is WHETHER ONE LANDING NOTE HANDS THE MODEL THE DECISION, and the
+// ceiling the settle turn it wakes runs under. It is zero for every landing that
+// does not, which is every landing under `ask`, every conflict, and every ground
+// that moved — none of which is the model's to settle ([Agent.handToModelOnAuto]).
+type settleMark struct {
+	wake    bool
+	ceiling int
+}
+
+// settleMarkOf is whether THIS landing wakes a settle turn, read off the same
+// mark the card reads rather than off a second copy of the policy: the node is
+// the model's to decide only after [Agent.handToModelOnAuto] has said so, and
+// that is the whole of the condition.
+func (a *Agent) settleMarkOf(node *TaskNode) settleMark {
+	if node == nil || a.settlePolicy() != TaskSettleAuto {
+		return settleMark{}
+	}
+	if node.decidedBy() != TaskAskOwnerModel {
+		return settleMark{}
+	}
+	return settleMark{wake: true, ceiling: node.settleCeiling()}
+}
+
 // deliverTaskNote hands one landed node's news to WHOEVER ASKED FOR THE WORK:
 // the conversation for a task it proposed itself, and the PARENT NODE'S OWN
 // AGENT for a sub-task, whose model is the one that has to fold the piece back
@@ -3837,7 +4004,7 @@ func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, n
 	// the acknowledgement, and until then this landing stays owed, so a session
 	// that closed with the note unread re-tells it on resume rather than losing
 	// it (task_store.go).
-	got := a.postTaskMessage(node, tag, note, record, []durableDelivery{node.settlesNote(claim)},
+	got := a.postTaskMessage(node, tag, note, record, []durableDelivery{node.settlesNote(claim)}, a.settleMarkOf(node),
 		func() { node.noteQueued(claim) })
 	if !got.accepted() {
 		// Nobody is left to read it, so the claim goes back and no mark is made.
@@ -3882,8 +4049,12 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 // under one lock ([Agent.handOverTaskNews]) because the waiter reads them as one
 // fact ([Agent.taskNewsStanding]). The checkpoint the mark owes the disk is
 // written by the caller, after the seam.
-func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record string, durable []durableDelivery, mark func()) deliveryReceipt {
+func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record string, durable []durableDelivery, settle settleMark, mark func()) deliveryReceipt {
 	message := wakeNote(note)
+	// AND A LANDING THAT HANDS THE MODEL THE DECISION MARKS ITS WAKE A SETTLE ONE,
+	// so the turn it starts runs under the checker's own bound rather than the
+	// run's wall ([settleWake], agent.go's [Agent.wakeLocked]).
+	message.settle, message.settleCeiling = settle.wake, settle.ceiling
 	// THE TAG IS THE CALLER'S SNAPSHOT AND IS NOT RE-READ FROM THE NODE HERE.
 	// This delivery happens after a claim is won and a reader is found, and a
 	// node can be re-armed and revised in that gap: composing the tag here would
@@ -4442,6 +4613,86 @@ func (a *Agent) handBackUnsettled() {
 	}
 }
 
+// markSettleBound writes the bound and the count onto every node THIS TURN was
+// asked to settle, so that a bound that ended the settle turn hands the question
+// back WITH A SENTENCE rather than as a silent stop. It runs before
+// [Agent.handBackUnsettled] emits, which is what puts the sentence on the card.
+//
+// IT IS THE SAME SET OF NODES THE FLOOR TAKES BACK (the model holds the decision
+// and this turn is its reader) and for the floor's own reason: a node nobody here
+// was asked about is not this turn's to describe.
+func (a *Agent) markSettleBound(count string) {
+	graph := a.tasker()
+	if graph == nil {
+		return
+	}
+	lead := taskAskSettleReason + yourCallDash + count
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	for _, id := range graph.order {
+		node := graph.nodes[id]
+		if node == nil || node.decider != TaskAskOwnerModel || node.state != TaskUnverified || !a.readsTheDecisionLocked(node) {
+			continue
+		}
+		node.setSettleBoundLeadLocked(lead)
+	}
+}
+
+// setSettleBoundLeadLocked puts the settle bound's sentence in front of the
+// landing's own report. The lock is the caller's.
+//
+// IT IS SAID ONCE. A turn can cross its bound at one boundary and be read at the
+// next, and a report carrying the sentence twice would be the machinery
+// stuttering about one ending.
+func (n *TaskNode) setSettleBoundLeadLocked(lead string) {
+	if strings.HasPrefix(strings.TrimSpace(n.report), taskAskSettleReason) {
+		return
+	}
+	n.landed = withReport(lead, n.landed)
+	n.composeReportLocked()
+}
+
+// sawNoDeclaredCheck records that this node's check found nothing re-runnable to
+// run, which is [auditDoor.window]'s own predicate — the first half of what makes
+// settling the landing one call's work.
+func (n *TaskNode) sawNoDeclaredCheck() {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	n.noDeclaredCheck = true
+}
+
+// sawCleanGround records that the tree this node's check stood in held nothing —
+// nothing staged, nothing modified, nothing untracked ([groundManifestClean]) —
+// the second half of the same pair.
+func (n *TaskNode) sawCleanGround() {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	n.cleanGround = true
+}
+
+// settleCeiling is how many provider calls the turn that reads this node's
+// landing may spend before it is handed back: ONE for a node whose check saw a
+// clean tree with no repeatable check on it — the whole of what settling it takes
+// is reading a report about a tree nothing moved — and the ordinary ceiling
+// otherwise.
+func (n *TaskNode) settleCeiling() int {
+	if n == nil || n.graph == nil {
+		return settleCallCeiling
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.noDeclaredCheck && n.cleanGround {
+		return 1
+	}
+	return settleCallCeiling
+}
+
 // handBackOnLoad is THE SAME FLOOR APPLIED TO A GRAPH COMING OFF THE DISK, and
 // it is the half [Agent.handBackUnsettled] cannot reach.
 //
@@ -4928,7 +5179,7 @@ func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
 	// ([Agent.deliverTaskNote]) — so nothing is claimed or marked here.
 	// The sentence says only what happened and whose decision it now is, so it
 	// is its own record ([delivery.record]).
-	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), "", nil, nil)
+	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), "", nil, settleMark{}, nil)
 }
 
 // park hands a RUNNING node's lane back while it waits on the work it handed
@@ -5198,9 +5449,15 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 			node.finish(withReport(node.stoppedLead(), report), changed, tree.branch, merge)
 			return TaskFailed, true
 		}
-		// Lifecycle cancellation is an interruption, never a finding about the
-		// work. The running checkpoint is deliberately left resumable.
-		node.finish(withReport("paused — it resumes", report), changed, tree.branch, abortedMerge(tree))
+		// A LIFECYCLE CANCELLATION IS AN INTERRUPTION, NEVER A FINDING ABOUT THE
+		// WORK, so the state does not move and the running checkpoint stays
+		// resumable. BUT IT IS NO LONGER SILENT: the machinery that cut it is named
+		// on the record, so a person reading it can tell an interruption they caused
+		// from machinery that cut the work. A node a person stopped takes the arm
+		// above and carries [TaskEndingStopped]; this one carries
+		// [TaskEndingInterrupted] and says why, and the two do not read the same.
+		node.end(TaskEndingInterrupted)
+		node.finish(withReport("paused — it resumes · cut short from outside the work, not by a person", report), changed, tree.branch, abortedMerge(tree))
 		return "", true
 	case runErr != nil:
 		merge, changed := keepHome(node, tree, changed, a.signsGitWork())
@@ -6596,15 +6853,15 @@ func worktreeDirt(dir string) string { return worktreeDirtIn(context.Background(
 // worktreeDirtIn is [worktreeDirt] under a context, for a reading somebody may
 // have to stop ([treeWatch.close]).
 func worktreeDirtIn(ctx context.Context, dir string) string {
-	args := []string{"-C", dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", "."}
+	args := []string{"--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", "."}
 	for _, dropping := range taskDroppingNames() {
 		args = append(args, ":(exclude)"+dropping)
 	}
-	out, err := exec.CommandContext(ctx, "git", args...).Output()
+	out, err := gitContext(ctx, dir, nil, args...)
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(out)
+	sum := sha256.Sum256([]byte(out))
 	return string(sum[:8])
 }
 
@@ -6752,13 +7009,15 @@ var landsLater = map[string]bool{
 	"generate_video": true,
 }
 
-// landingBelt is the belt a node keeps for its LAND NOW turn: [savingTools]
-// minus [landsLater], in the order the node already had them so the model sees
-// the same list minus the hands it is being told not to reach for.
+// landingBelt keeps saving tools that finish before the call returns, plus read.
+// CRITICAL: compaction replaces old evidence with readable archive references.
+// Finishing must retain their retrieval door or an accurate save becomes
+// impossible even though the evidence is still on disk. Reading is not saving
+// and must not be added to savingTools, which also measures actual progress.
 func landingBelt(tools []bare.Tool) []bare.Tool {
 	kept := make([]bare.Tool, 0, len(savingTools))
 	for _, tool := range tools {
-		if savingTools[tool.Name] && !landsLater[tool.Name] {
+		if tool.Name == "read" || (savingTools[tool.Name] && !landsLater[tool.Name]) {
 			kept = append(kept, tool)
 		}
 	}
@@ -6779,8 +7038,8 @@ func landingInstruction(tools []bare.Tool) string {
 		names = append(names, tool.Name)
 	}
 	return "LAND NOW. Write the deliverable or final summary from what you already have. " +
-		"Do no new exploration. Do not call tools except " + englishList(names) +
-		" when needed to save the deliverable."
+		"Read existing evidence if needed; do not start new exploration. Do not call tools except " + englishList(names) +
+		" when needed to finish the deliverable."
 }
 
 // englishList joins names the way a sentence does: "a", "a or b", "a, b or c".
@@ -7119,7 +7378,7 @@ func (a *Agent) spendLedger(node *TaskNode) *Agent {
 // has come back ([nodeMemory]). No store, no reflex, or a router that answered
 // nothing: the node opens with exactly the prompt it always did.
 func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
-	return a.newTaskAgentOn(ctx, dir, node, suffix, "")
+	return a.newTaskAgentOn(ctx, dir, node, suffix, "", false)
 }
 
 // newTaskAgentOn is [Agent.newTaskAgent] with the model said outright, and it
@@ -7132,7 +7391,13 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 // is recorded as a bill rather than as a retarget — a repair round is one worker
 // among several a node takes, and a node whose row started naming the repair's
 // model would be telling a person their work moved when it did not.
-func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, suffix, on string) (*Agent, error) {
+// AND `repair` IS THE CALLER SAYING WHICH KIND OF WORKER THIS IS, not something
+// read off the model. It seats the round's usage rows high ([Agent.agentKind]),
+// and it is stated rather than inferred from a named model because the two come
+// apart: the cascade may floor to the model the work is already on, and a node
+// that was admitted without an id has nothing to name at all — both of which
+// would leave a round the ladder really did lift billing as ordinary work.
+func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, suffix, on string, repair bool) (*Agent, error) {
 	// The model it is ACTUALLY on rather than the id it was admitted with, so a
 	// second worker built for a node that was moved is built for where the node
 	// now is ([TaskNode.runOn]). They are the same string for every node nothing
@@ -7326,6 +7591,12 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// node hears about it while it happens: a card that would otherwise show
 		// a task working says it is waiting instead.
 		pacing: node.pacing,
+		// AND THE REPAIR ROUND SAYS SO, from the caller that knows it is one
+		// (task_audit.go's [Agent.repairNode]). The marker is what seats the
+		// round's rows high ([Agent.agentKind]); the crew role is deliberately
+		// left unset, because a round is a leaf's turns of work and erranding
+		// its lane role would re-price every call in it.
+		repairRound: repair,
 		// AND THE NODE'S PULSE TRAVELS THE SAME WAY, for the same reason: the
 		// checker and each repair round are the same NODE working, so a reader
 		// outside the process must see one heartbeat across all of them rather
@@ -8959,13 +9230,22 @@ func git(dir string, args ...string) (string, error) {
 	return gitWith(dir, nil, args...)
 }
 
-// gitWith is [git] with something extra in its environment, and it exists for
-// exactly one caller: the ground ladder stages a parent's tree into AN INDEX OF
-// ITS OWN so that handing out a child never moves the parent's index
-// ([sealGroundWork]). GIT_INDEX_FILE is the only way to say that to git, and a
+// gitWith is [gitContext] with [context.Background] in place of a caller's own
+// context, kept as its own name because nearly every call here is that. The
+// environment it takes exists for exactly one caller: the ground ladder stages
+// a parent's tree into AN INDEX OF ITS OWN so that handing out a child never
+// moves the parent's index ([sealGroundWork]). GIT_INDEX_FILE is the only way to say that to git, and a
 // second copy of the pager and editor settings beside it would be the drift the
 // one-source-of-truth law forbids.
 func gitWith(dir string, environment []string, args ...string) (string, error) {
+	return gitContext(context.Background(), dir, environment, args...)
+}
+
+// gitContext is [gitWith] under a context, for a command somebody may have to
+// stop before git answers ([worktreeDirtIn]'s watch). The refusal of an empty
+// directory and the pinned environment live here, so there is one copy of
+// each; every other spelling of a git call in this package is a wrapper of it.
+func gitContext(ctx context.Context, dir string, environment []string, args ...string) (string, error) {
 	// A COMMAND WITH NO DIRECTORY RUNS WHEREVER THE PROCESS HAPPENS TO BE.
 	//
 	// exec.Cmd reads an empty Dir as "the calling process's working directory",
@@ -8984,7 +9264,7 @@ func gitWith(dir string, environment []string, args ...string) (string, error) {
 	if strings.TrimSpace(dir) == "" {
 		return "", errors.New("git: no directory to run in")
 	}
-	command := exec.Command("git", args...)
+	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = dir
 	// A pager or an editor in the middle of a merge would hang a node forever on
 	// a terminal it does not have.

@@ -1315,8 +1315,16 @@ func (a *app) questionLineRows(q questionShown, width int) []string {
 	} else {
 		out = append(out, a.questionRowOffer(q, width))
 	}
-	if reason := strings.TrimSpace(q.question.Reason); reason != "" && a.questionSubjectAt(q.question) < 0 {
-		out = append(out, a.pal.dim(fit("  "+reason, width)))
+	if reason := strings.TrimSpace(q.question.Reason); reason != "" {
+		// SUPPRESSED ONLY WHILE IT IS THE SENTENCE THE SUBJECT CARD IS ALREADY
+		// DRAWING (questionAttribution): the two are the same sentence while
+		// the question is unanswered, and an answered-and-re-raised landing's
+		// reason carries the answer's fate, which the card cannot have —
+		// suppressing it would draw the twelfth card byte-identical to the
+		// first (session's landingAnsweredStamp, #1077).
+		if a.questionSubjectAt(q.question) < 0 || a.questionReasonIsNews(q.question, reason) {
+			out = append(out, a.pal.dim(fit("  "+reason, width)))
+		}
 	}
 	// AND WHILE THE BOX IS WRITING TO THE QUESTION, that row says what the box
 	// means now instead of naming keys that are letters and type.
@@ -1328,6 +1336,39 @@ func (a *app) questionLineRows(q questionShown, width int) []string {
 		out = append(out, keys)
 	}
 	return out
+}
+
+// questionReasonIsNews says the question's reason is NOT the sentence the
+// landed subject's own card is already drawing under itself (taskdone.go's
+// [app.doneUnder]). While the question is unanswered it is: the reason is the
+// ask's own sentence, or that sentence with the decider clause appended
+// (session's landingReason) — both are the card's to say. An answered-and-
+// re-raised landing's reason LEADS with the answer's fate instead (session's
+// landingAnsweredStamp), which the card cannot have — and suppressing it
+// would draw the twelfth card byte-identical to the first (#1077). A subject
+// with no done card in the transcript has no sentence to double.
+func (a *app) questionReasonIsNews(q session.Question, reason string) bool {
+	// NEWEST FIRST: the newest done card is the one that says where the work
+	// stands now, and older ones are frozen at older states — a state
+	// round-trip leaves two done cards on one id, and the oldest-first walk
+	// compared against a card no screen draws. [app.doneEntryFor] walks
+	// entries the same way for the same reason.
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.kind == entryDone && e.done != nil && e.done.id == q.Subject.ID {
+			drawn := strings.TrimSpace(e.done.status.Ask.Reason)
+			// A CARD WITH NO ASK REASON STILL SAYS WHO IS DECIDING — the decider
+			// is drawn in the card's own chips, and [session.LandingDecidingWord]
+			// is that clause — so the question repeating the clause alone beside
+			// it is a duplication, not news. The clause with a reason after it IS
+			// news the card cannot have.
+			if drawn == "" {
+				return reason != session.LandingDecidingWord
+			}
+			return reason != drawn && !strings.HasPrefix(reason, drawn+" · ")
+		}
+	}
+	return false
 }
 
 // questionRowOffer is that row: the mark, the head, and every answer beside it,
@@ -3177,13 +3218,37 @@ func (a *app) questionWalkCount(q questionShown) int {
 // still *later* (it is read before this, with every other question's esc). A key
 // this row does not know is handed back rather than swallowed — the block takes
 // only the keys it draws, and a box is not a reason to stop being that.
+//
+// THE WORD JUMPS AND THE WORD KILL ARE THE SURFACE'S AND NOT THIS BOX'S
+// (editkeys.go). This row is a box like every other on the program, so it reads
+// the one vocabulary they all read rather than a hand-rolled copy of it — the
+// copy this file carried bound `alt+←`/`alt+b` and the two ends of the line and
+// nothing else, so ⌘←/⌘→ reached no part of the caret, ⌘⌫ killed no line and
+// ⌥⌫/ctrl+⌫ killed no word in the one box a person writes an answer in. A box
+// that answers to fewer names than the message box directly beneath it is the
+// defect editkeys.go was written for, said about the last box it had not reached.
 func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	open := a.questionHeld(head.token())
 	if open == nil {
 		return nil, false
 	}
 	box := &open.other.words
-	switch key := msg.String(); key {
+	key := msg.String()
+	// THE CARET JUMPS ANSWER TO EVERY NAME A TERMINAL SENDS THEM BY: `alt+←`,
+	// `alt+b`, `ctrl+←`, `super+←`/`meta+←` (⌘←), `ctrl+a` for the start of the
+	// line, and the same four forward for its end.
+	if editorMotion(box, key) {
+		a.touch()
+		return nil, true
+	}
+	// AND SO DOES THE WORD KILL: ⌥⌫ (`alt+backspace`), ctrl+⌫ (`ctrl+backspace`).
+	// `ctrl+w` is deliberately absent here as it is in the message box — it shuts
+	// the tab in front, read far above this box (tabclosekey.go).
+	if editorWordKill(box, key) {
+		a.touch()
+		return nil, true
+	}
+	switch key {
 	case questionEnterKey:
 		words := strings.TrimSpace(box.String())
 		if words == "" {
@@ -3213,14 +3278,22 @@ func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 		box.left()
 	case "right", "ctrl+f":
 		box.right()
-	case "home", "ctrl+a":
+	case "home":
 		box.home()
 	case "end", "ctrl+e":
 		box.end()
-	case "alt+left", "alt+b":
-		box.wordLeft()
-	case "alt+right", "alt+f":
-		box.wordRight()
+	// THE LINE KILL ANSWERS TO BOTH OF ITS NAMES, exactly as it does in the
+	// message box and in every filterable overlay (input.go, palette.go's
+	// [listNavigate], settings.go): `ctrl+u` is readline's, and `super+backspace`
+	// is what ⌘⌫ sends on a terminal that reports the modifier at all.
+	case "ctrl+u", "super+backspace":
+		box.killToStart()
+	case "ctrl+k":
+		// AND KILL TO THE END OF IT, the other half of readline's pair and the same
+		// key the message box and home's box bind (input.go, home.go). A box that
+		// answered `ctrl+u` alone is the half-gesture killpairlaw_test.go holds
+		// shut.
+		box.killToEnd()
 	case "backspace":
 		box.deleteBackward()
 	case "delete":

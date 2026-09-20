@@ -177,6 +177,10 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	}
 	models := catalog.LoadLazy(context.Background(), discovery)
+	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// the same non-blocking read, never a fetch, and set once at start-up.
+	config.AutoModels = models.ModelsNow
+	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
 	return &v3Process{
@@ -239,6 +243,41 @@ func (p *v3Process) track(agent *session.Agent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.agents = append(p.agents, agent)
+}
+
+// forget drops a conversation this process tracked, once that conversation has
+// been closed by whoever owns it.
+//
+// IT IS THE PAIR OF [v3Process.track] AND THE REASON TRACKING IS SAFE ON A
+// LONG-LIVED PROCESS. A surface tracks the handful of conversations one
+// terminal opens and goes away with them; an engine process outlives every
+// conversation it serves, so without this the list would grow for as long as
+// the daemon runs, and every broadcast — [v3Process.setModelSources],
+// [v3Process.setAPIKey] — would walk agents that ended hours ago.
+//
+// The match is POINTER IDENTITY, because two conversations on one workspace are
+// two agents with the same everything else. Removing is order-preserving: the
+// list is small and the boot conversation being first in it is what makes
+// [v3Process.closeAll] read in the order the person opened them.
+func (p *v3Process) forget(agent *session.Agent) {
+	if agent == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	kept := p.agents[:0]
+	for _, held := range p.agents {
+		if held != agent {
+			kept = append(kept, held)
+		}
+	}
+	// The tail is cleared rather than left pointing at what was dropped: the
+	// slice keeps its array, and a retained agent there would outlive the
+	// conversation for as long as this process holds the list.
+	for i := len(kept); i < len(p.agents); i++ {
+		p.agents[i] = nil
+	}
+	p.agents = kept
 }
 
 // setAPIKey is the key arriving after the door: the first-run screen or the
@@ -324,6 +363,27 @@ func (p *v3Process) takeForClose() (agents []*session.Agent, recall *history.Sto
 	return agents, recall, true
 }
 
+// warmModels seats the model warm on the profile's start-up errand tracker, so
+// [v3Process.closeAll] cancels and waits for it exactly as it does the pool
+// errands (poolindex.go's [poolErrandGoCtx]).
+//
+// A WARMER IS A WRITER, AND [guard.Go] JOINS NOTHING. The warm resolves the
+// model catalog — a network round-trip on a cold cache — and then writes the
+// picker's cache through [tui3.WriteModelCache], which resolves CODEAF_HOME AT
+// THE MOMENT IT WRITES. Started fire-and-forget, a warm that outlives the
+// conversation that asked for it lands in whichever state root is current when
+// the rows arrive: in a test, the next test's own TempDir, whose clean-up then
+// fails with `directory not empty`; on a door that reopens on another profile, a
+// directory the process no longer owns. Seating it on the tracker is what makes
+// closeAll's own promise — that nothing this process started is still writing
+// under its profile once it closes — true for this writer too. The context the
+// tracker hands the errand is what lets the warm's own wait end at the close.
+func (p *v3Process) warmModels(scope string, models *catalog.Catalog, agent *session.Agent, started string) {
+	poolErrandGoCtx(p.ProfileDir, scope, func(ctx context.Context) {
+		warmV3Models(ctx, models, agent, started)
+	})
+}
+
 // closeAll closes every conversation this process opened and then the stores
 // they shared. It is IDEMPOTENT and it is the door's defer.
 //
@@ -346,6 +406,14 @@ func (p *v3Process) closeAll() {
 	if !first {
 		return
 	}
+
+	// The start-up errands this process seated on its profile — the pool index
+	// refresh and the outbox push — were started fire-and-forget.
+	// [stopPoolErrands] cancels them and waits, so nothing this process started
+	// is still writing under its profile once it closes (poolindex.go states
+	// the seam). It runs first, before the conversations and the stores, because
+	// it is the process's own errand and not a conversation's.
+	stopPoolErrands(p.ProfileDir)
 
 	var waiting sync.WaitGroup
 	for _, agent := range agents {

@@ -187,8 +187,9 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	}
 	// The person pays for it, so it is folded into the session's auxiliary usage
 	// — the same pocket the title and the summary come out of, and for the same
-	// reason it is not charged to the turn: no turn asked for it.
-	a.addAuxiliaryUsage(response, judge, 1)
+	// reason it is not charged to the turn: no turn asked for it. It names
+	// itself as a gate, so the row is seated by the gate's own tier.
+	a.addAuxiliaryUsageAs(response, judge, 1, string(roles.RoleGuardian))
 
 	if !guardianSaysAllow(response.Text()) {
 		return false

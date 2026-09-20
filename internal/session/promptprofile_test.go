@@ -75,8 +75,8 @@ func TestTheCatalogsWindowOutranksTheConfiguredOne(t *testing.T) {
 
 // THE CREW'S WORKER SEAT IS NOT A TRIGGER, AND A BIG WINDOW ON IT GETS THE WHOLE
 // PAGE. An earlier draft went lean whenever the conversation rode the crew's
-// `worker` model, which is `deepseek/deepseek-v4-flash-0731` on the frugal preset
-// and `z-ai/glm-5.3-flash` on the balanced one — models served with a hundred and
+// `worker` model, which is `z-ai/glm-5.3-flash` through the balanced preset and
+// `z-ai/glm-5.3` at max — models served with a hundred and
 // twenty-eight thousand tokens of room. That would have dropped sections, shelved
 // `propose_task` and turned saved memories off for anybody who picked a preset and
 // then chose that same model in chat, with nothing on screen saying so. Open

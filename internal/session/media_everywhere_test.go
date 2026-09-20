@@ -120,8 +120,8 @@ func TestAnAdaptiveRunNodeCarriesTheMediaVerbsAndLacksThemWithoutModels(t *testi
 // to keep two tools chosen by name — write and edit. A node that had spent its
 // whole life painting was therefore told to save its deliverable with the verb
 // that saves one taken away, and answered "I have no image tooling available
-// now." The landing belt is [savingTools] now, which is the same map that
-// decides whether a call SAVED something — one question, one answer.
+// now." The landing belt retains those saving tools and the read door for
+// evidence archived by compaction; retrieval itself is not a saved deliverable.
 func TestTheLandingBeltKeepsEveryVerbThatSavesADeliverable(t *testing.T) {
 	agent, _ := newMediaAgent(t, &scriptedMedia{}, nil)
 	// THE NARROWING ONLY EVER RUNS OVER A NODE'S BELT, and a node shelves nothing
@@ -144,9 +144,12 @@ func TestTheLandingBeltKeepsEveryVerbThatSavesADeliverable(t *testing.T) {
 			t.Errorf("the landing belt kept %s, whose file lands after the node is already closed", verb)
 		}
 	}
-	// And it is a NARROWING and not the whole belt: landing is for finishing,
-	// so the hands that only look must be gone.
-	for _, verb := range []string{"read", "bash", "grep", "find", "ls"} {
+	// Reading retained evidence remains possible, while new searches, commands
+	// and asynchronous jobs are still outside this finishing turn.
+	if !landing["read"] {
+		t.Fatal("finishing cannot retrieve its retained evidence")
+	}
+	for _, verb := range []string{"bash", "grep", "find", "ls"} {
 		if landing[verb] {
 			t.Errorf("the landing belt kept %s; the turn forbids new exploration", verb)
 		}
