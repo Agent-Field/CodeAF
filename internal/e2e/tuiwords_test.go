@@ -153,10 +153,6 @@ var tuiWords = map[string]tuiWord{
 		screen: "/ commands",
 		why:    "the other half of that rule, which is how a conversation is told from home",
 	},
-	"homeGoneShort": {
-		screen: "folder gone",
-		why:    "a row whose project folder is not there any more says so before enter is pressed",
-	},
 
 	// ── home's panels (docs/design/home-mission-control/DESIGN.md) ────────────
 	//
@@ -168,11 +164,6 @@ var tuiWords = map[string]tuiWord{
 	"homeNeedsHeading": {
 		screen: "needs you",
 		why:    "the top of the left column: every question on the machine lands in it, and every resting home draws it",
-	},
-	"homePanelRecent": {
-		screen: "threads",
-		why: "the panel of conversations, this window's own first — the panel every resting home draws. " +
-			"It was `where you were` until 2026-09-17",
 	},
 	"homePanelProjects": {
 		screen: "projects",
@@ -201,11 +192,7 @@ var tuiWords = map[string]tuiWord{
 			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
 			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",
 	},
-	"foldMoreWord": {
-		screen: " more",
-		why:    "every panel's fold counts what it stands over — `14 more` — and is a toggle, not a door",
-		pkg:    tui3Pkg,
-	},
+
 	"barHomeWord": {
 		screen: "home",
 		why:    "the first of the four words on the tab bar",

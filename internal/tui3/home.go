@@ -532,6 +532,10 @@ type homeBare struct {
 // what every surface starts as — and closing is assigning the zero value, so
 // there is no field that can be left behind from the last time it was up.
 type homeView struct {
+	// Conversation membership comes from the tab strip, never the disk census.
+	tabs       func() []chatTab
+	closedTabs func() []chatTab
+
 	// why is the one line drawn where the rows would be when there CANNOT be any.
 	// It is EMPTY EVERYWHERE TODAY: the one state that filled it was --host,
 	// where this process's ~/.codeaf/v3 belonged to the wrong machine, and the
@@ -1209,11 +1213,13 @@ func (a *app) dropHome() {
 // both roads get.
 func (a *app) newHomeView(world session.World, known bool) homeView {
 	return homeView{
-		why:   a.homeWhyEmpty(),
-		world: world,
-		known: known,
-		far:   a.hosted(),
-		seen:  session.LastLook(a.looksRoot()),
+		tabs:       a.tabList,
+		closedTabs: func() []chatTab { return a.closedTabs },
+		why:        a.homeWhyEmpty(),
+		world:      world,
+		known:      known,
+		far:        a.hosted(),
+		seen:       session.LastLook(a.looksRoot()),
 		// WHERE THIS WINDOW IS STANDING, broad and exact. The bucket decides
 		// whether a row's door can open at all; the session is the one row that
 		// wears `here` instead of an age (place_home.go).
@@ -2630,23 +2636,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		if line, ok := h.previewLine(); ok {
 			switch line.kind {
 			case homeSession:
-				err := error(nil)
-				if a.archive != nil {
-					err = a.archive(line.row.Dir, !line.row.Archived)
-				} else {
-					err = session.SetArchived(line.row.Dir, !line.row.Archived)
-				}
-				if err != nil {
-					h.say("could not change conversation visibility", "")
-					return nil
-				}
-				if line.row.Archived {
-					h.say("reopened", "")
-				} else {
-					h.say(homeClosedWord, "")
-				}
-				a.refreshHome()
-				a.home.build()
+				return a.homeArchiveRow(line.row)
 			case homeItem:
 				return a.homeItemWrite(line, standing.StatusPaused)
 			}
@@ -3097,6 +3087,17 @@ func (a *app) homeEnter() tea.Cmd {
 // the phone tier had the older one.
 func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 	h := &a.home
+	if line.row.Archived {
+		if err := a.writeHomeArchived(line.row, false); err != nil {
+			h.say("could not reopen conversation", "")
+			return nil
+		}
+	}
+	if line.row.Transcript == a.file {
+		a.rememberOpen(a.frontTabKey())
+		a.closeHome()
+		return a.homeLandOnTask(line)
+	}
 	// THE ORDER OF THESE CHECKS IS THE FEATURE. Identity comes first, because a
 	// transcript THIS PROCESS holds answers [session.InUse] true about itself —
 	// a flock rides the open file description rather than the process — so a

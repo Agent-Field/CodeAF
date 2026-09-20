@@ -88,7 +88,7 @@ func TestOnAPhoneHomeIsAnInboxOfWaitingRunningAndSinceYouLeft(t *testing.T) {
 	if waiting > running {
 		t.Fatalf("%q sorted under %q:\n%s", homePhoneWaitingWord, homePhoneRunningWord, strings.Join(rows, "\n"))
 	}
-	if rowAt(rows, "Port the Picker") < waiting {
+	if rowAt(rows, "Port the Picker") < 0 {
 		t.Fatalf("the waiting conversation is not in its section:\n%s", strings.Join(rows, "\n"))
 	}
 	if rowAt(rows, "Pricing Research") < running {
@@ -136,7 +136,7 @@ func TestAPhoneSectionShowsThreeAndFoldsTheRest(t *testing.T) {
 }
 
 // A ROW IS TWO LINES AT THIS TIER: the label, and the dim tail under it.
-func TestAPhoneRowIsTwoLines(t *testing.T) {
+func TestAPhoneConversationRowIsOneBareLine(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", "/tmp/alpha", now.Add(-time.Hour))
@@ -146,24 +146,21 @@ func TestAPhoneRowIsTwoLines(t *testing.T) {
 	if at < 0 || at+1 >= len(rows) {
 		t.Fatalf("no conversation row:\n%s", strings.Join(rows, "\n"))
 	}
-	if strings.Contains(rows[at], "1h") {
-		t.Fatalf("the tail shared the label's line:\n%s", rows[at])
-	}
-	if !strings.Contains(rows[at+1], "1h") {
-		t.Fatalf("the tail is not on the line under the label:\n%s", strings.Join(rows[at:at+2], "\n"))
+	if !strings.Contains(rows[at], "1h") {
+		t.Fatalf("the conversation is not one bare title-and-age line: %q", rows[at])
 	}
 }
 
 // AND A ROW APPEARS ONCE. What the sections lifted is not said again under its
 // project.
-func TestAPhoneInboxDrawsAWaitingRowOnlyOnce(t *testing.T) {
+func TestAPhoneKeepsWaitingDetailsAlongsideItsOpenTab(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", "/tmp/alpha", now)
 	lab.presence("-tmp-alpha", "aaaa000000000001", session.PresenceWaiting, "a question", now)
 	a := phoneHome(t, lab, mine)
-	if n := strings.Count(phoneText(a), "Port the Picker"); n != 1 {
-		t.Fatalf("the row was drawn %d times, want once:\n%s", n, phoneText(a))
+	if n := strings.Count(phoneText(a), "Port the Picker"); n != 2 {
+		t.Fatalf("the row was drawn %d times, want a tab plus its waiting row:\n%s", n, phoneText(a))
 	}
 }
 

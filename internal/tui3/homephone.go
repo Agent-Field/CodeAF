@@ -50,9 +50,9 @@ package tui3
 //     open; the rest are one line each, exactly as the `elsewhere` block already
 //     draws them, without the rule line that costs a row nobody can spare.
 //
-//   - A ROW APPEARS ONCE. A conversation lifted into `waiting on you` is not
-//     drawn again under its project. The desktop can afford to say a thing twice
-//     because the eye takes both in at once; twelve rows of screen cannot.
+//   - OPEN TABS COME FIRST, as bare lines followed by bounded closed history.
+//     Waiting details may also have a triage row; project groups do not repeat
+//     conversations. Their standing items remain below the inbox.
 //
 //   - THREE, THEN A DOOR. Every section shows three rows and folds the rest into
 //     `▸ …N more`, which is the same fold mark, the same word and the same
@@ -60,7 +60,7 @@ package tui3
 //     with nothing in it is not drawn at all — the emptiness law applied to a
 //     whole heading.
 //
-//   - A ROW IS TWO LINES. The label on one, the dim tail under it, which is the
+//   - A TRIAGE ROW IS TWO LINES. The label on one, the dim tail under it, which is the
 //     two-line law this tier already keeps for every list ([overlayLines]).
 //
 // AND SEARCH IS UNTOUCHED. Typing filters exactly as it does at every other
@@ -180,6 +180,10 @@ func (h *homeView) buildPhone() {
 	// every wider frame and may not be handed a phone's bookkeeping. It is nil
 	// everywhere else, and nil is "nothing was lifted".
 	h.liftedItems = lifted.items
+	in := h.gridInput()
+	in.errands = nil // The phone inbox places exchanges in its own triage sections.
+	conversations := (recentPanel{homePanelBase{panelRecent}}).rows(&in)
+	h.lines = append(h.lines, conversations.lines...)
 	h.phoneSection(homePhoneWaitingWord, homePhoneWaitingKey, h.phoneWaiting(lifted))
 	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, h.phoneRunning(lifted))
 	h.phoneSection(homePhoneNewsWord, homePhoneNewsKey, h.phoneNews())
@@ -341,21 +345,6 @@ func (h *homeView) phoneProjects(lifted phoneLifted) {
 	var found []homeHit
 	for _, project := range h.world.Projects {
 		hit := homeHit{project: project, at: project.At()}
-		for _, row := range project.Sessions {
-			// A PUT-AWAY ROW IS NOT IN THE INBOX. The phone tier has no room
-			// for the archive's own fold; searching still finds the row, and
-			// the wide frame is where it is brought back (home.go's
-			// the ranked reading leaves them out, and typing a name is the way
-			// back to one).
-			if row.Archived {
-				continue
-			}
-			// A ROW APPEARS ONCE (this file's second law). What the sections
-			// lifted out is not drawn again down here.
-			if !lifted.rows[row.Transcript] {
-				hit.rows = append(hit.rows, row)
-			}
-		}
 		found = append(found, hit)
 	}
 	for _, bare := range h.bare {
@@ -628,6 +617,9 @@ func headingKind(kind homeRowKind) bool {
 // band across both, and the pointer's lead are decided in one place for every
 // list on this surface (palette.go).
 func (a *app) homePhoneRow(line homeLine, at, width int, pal palette) []string {
+	if line.kind == homeSession && line.cell != nil && line.cell.panel == panelRecent {
+		return a.homeCellRow(line, at, width, pal, at == a.home.cursor)
+	}
 	h := &a.home
 	switch line.kind {
 	case homeBlank:

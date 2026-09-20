@@ -337,13 +337,13 @@ func testHomeShape(t *testing.T) {
 	ws := newWorkspace(t, "shapews", false)
 	r := start(t, "afe2e_shape", home, ws, tuiPlain, 40)
 
-	screen := r.waitFor(20*time.Second, say(t, "placeRestWord"), say(t, "homePanelRecent"))
+	screen := r.waitFor(20*time.Second, say(t, "placeRestWord"), say(t, "homePanelProjects"))
 	t.Logf("home greeted on launch:\n%s", screen)
 
 	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all seven at their
 	// floors in two columns, so a heading missing here is a panel the grid lost
 	// rather than one a short frame squeezed out.
-	for _, name := range []string{"homeNeedsHeading", "homePanelRecent", "homePanelProjects",
+	for _, name := range []string{"homeNeedsHeading", "homePanelProjects",
 		"homePanelRunning", "switcherSinceLeft", "homePanelSpend", "homePanelNext"} {
 		if !strings.Contains(screen, say(t, name)) {
 			t.Errorf("home has no %q panel:\n%s", say(t, name), screen)
@@ -363,20 +363,11 @@ func testHomeShape(t *testing.T) {
 		t.Errorf("the tab bar reads %q, want %q:\n%s", got, want, screen)
 	}
 
-	// EVERY SEEDED CONVERSATION IS ON `threads`, whichever project it
-	// belongs to — five of them and this launch's own is inside the panel's
-	// growth budget on a forty-row frame.
-	for _, want := range []string{"Seed Alpha", "Seed Beta", "Seed Gamma", "Seed Delta", "Seed Epsilon"} {
-		if !strings.Contains(screen, want) {
-			t.Errorf("home is missing %q", want)
+	// Saved history is searchable but is not an open tab on this launch.
+	for _, title := range []string{"Seed Alpha", "Seed Beta", "Seed Gamma", "Seed Delta", "Seed Epsilon"} {
+		if strings.Contains(screen, title) {
+			t.Errorf("unopened history appeared as a tab: %q", title)
 		}
-	}
-	// AND THE ROW SAYS THE PROJECT FOLDER IS NOT THERE, before anything is
-	// pressed. The fixture's workspaces are paths under /tmp that were never
-	// created, which is exactly the case the row's refusal exists for.
-	if !strings.Contains(screen, say(t, "homeGoneShort")) {
-		t.Errorf("no row says %q about a seeded project whose folder was never made:\n%s",
-			say(t, "homeGoneShort"), screen)
 	}
 	// Home keeps the command door but omits the ordinary navigation hints.
 	if !strings.Contains(screen, say(t, "microcopy")) || strings.Contains(screen, "↑↓ pick") || strings.Contains(screen, "enter open ·") {
@@ -483,18 +474,11 @@ func testRealConversation(t *testing.T) {
 	// `threads` with the person's own last words under it, and its
 	// folder is the first row of `projects` with the repository clause beside
 	// it. The reading of `git status` arrives a beat after the first frame.
-	panels := r.waitFor(20*time.Second, say(t, "placeRestWord"), say(t, "homePanelRecent"), want)
+	panels := r.waitFor(20*time.Second, say(t, "placeRestWord"), say(t, "homePanelProjects"), want)
 	t.Logf("home at rest, with this conversation on the panels:\n%s", panels)
-	// THE `here` ROW AND THE WORDS UNDER IT. At [tuiWide] the panels are three
-	// columns of a third each, and `threads` is the left one: its first
-	// row is this window's conversation wearing the word `here`, and the row
-	// under it is what the person last said in it (DESIGN.md §3 G3).
-	recent := strings.Split(strings.TrimRight(panelColumn(panels, say(t, "homePanelRecent"), tuiWide/3), "\n"), "\n")
-	if len(recent) < 3 || !strings.HasSuffix(recent[1], " "+say(t, "homeHereWord")) {
-		t.Errorf("`threads` does not lead with this window's own `%s` row:\n%s",
-			say(t, "homeHereWord"), strings.Join(recent, "\n"))
-	} else if !strings.Contains(recent[2], "what is 2+2?") {
-		t.Errorf("the line under the `here` row is not the person's own last words:\n%s", strings.Join(recent, "\n"))
+	// The current tab starts the unheaded list; its last words are in the middle.
+	if !strings.Contains(panels, say(t, "homeHereWord")) || !strings.Contains(panels, "what is 2+2?") {
+		t.Errorf("the current tab lost its description:\n%s", panels)
 	}
 	if strings.Contains(rightPane(panels), say(t, "homeCardMoreWord")) {
 		t.Errorf("a card is standing beside the panels at rest:\n%s", panels)
@@ -705,7 +689,7 @@ func testAskHere(t *testing.T) {
 	// esc puts the list back, and the exchange is still a row on it: a settled
 	// errand stays where it was asked until it is put away.
 	r.keys("Escape")
-	back := r.waitFor(20*time.Second, say(t, "homePanelRecent"), "? remind me in 1 minute")
+	back := r.waitFor(20*time.Second, say(t, "homePanelProjects"), "? remind me in 1 minute")
 	if strings.Contains(back, "› remind me in 1 minute to drink water") {
 		t.Errorf("esc left the pane drawn over the list:\n%s", back)
 	}
@@ -1213,21 +1197,9 @@ func testHover(t *testing.T) {
 
 // ── 7 ───────────────────────────────────────────────────────────────────────
 
-// testFold seeds more conversations than `threads` draws and reads the
-// fold at the foot of that panel.
-//
-// THE FOLD IS NOT A DOOR ANY MORE, AND THAT IS WHAT IS TESTED. The old list had
-// one fold at its foot — `▸ 15 more, quiet since 6d` — that `→` opened and `←`
-// shut. Every panel folds inside itself now (DESIGN.md §1 law 9) with one dim
-// line, `N more`, that names no place: `enter` on it opens the panel. So the
-// claim is the fold's words, a row it stands over being off the screen, and
-// typing reaching that row anyway.
+// testFold proves saved history remains searchable without occupying open tabs.
 func testFold(t *testing.T) {
 	home := newHome(t, nil)
-	// MORE CONVERSATIONS THAN THE PANEL'S BUDGET, WHICH IS WHAT MAKES A FOLD.
-	// `threads` grows to ten rows in a tall frame and no further; twenty
-	// seeds on a twenty-row terminal is a panel squeezed to what fits, with most
-	// of them behind the fold.
 	for i, name := range []string{
 		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
 		"k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
@@ -1237,19 +1209,10 @@ func testFold(t *testing.T) {
 	ws := newWorkspace(t, "foldws", false)
 	r := start(t, "afe2e_fold", home, ws, tuiWide, 20)
 
-	screen := r.waitFor(25*time.Second, say(t, "placeRestWord"), say(t, "foldMoreWord"))
-	t.Logf("`threads` with a fold at its foot:\n%s", screen)
-	// THE FOLD IS A COUNT AND THE WORD, AND NOTHING AFTER: a place word after it
-	// would be a door `enter` does not take.
-	if fold := firstMatch(screen, say(t, "foldMoreWord")); !foldCounts.MatchString(fold) {
-		t.Errorf("the fold does not read `N more` alone: %q", fold)
-	}
-	// THE OLDEST SEED IS BEHIND THE FOLD. The panel is the most recent first, and
-	// the twentieth project is the quietest, so it is the one the fold stands over.
+	screen := r.waitFor(25*time.Second, say(t, "placeRestWord"))
 	if strings.Contains(screen, "Seed T") {
-		t.Errorf("a row the fold stands over is drawn:\n%s", screen)
+		t.Errorf("unopened history appears on Home:\n%s", screen)
 	}
-
 	// AND TYPING SEES STRAIGHT THROUGH IT: a search matches every conversation on
 	// the machine, including the ones no panel is drawing.
 	r.lit("Seed T")
@@ -1267,8 +1230,8 @@ func testFold(t *testing.T) {
 	r.keys("C-u")
 	time.Sleep(1500 * time.Millisecond)
 	back := r.capture()
-	if !strings.Contains(back, say(t, "foldMoreWord")) {
-		t.Errorf("esc did not put the panels back with their fold:\n%s", back)
+	if strings.Contains(back, "Seed T") || !strings.Contains(back, say(t, "placeRestWord")) {
+		t.Errorf("clearing search did not restore the tab list:\n%s", back)
 	}
 }
 
@@ -1359,7 +1322,7 @@ func testGrouped(t *testing.T) {
 	if headingRow(after, "alpha") {
 		t.Errorf("alt+g drew a project heading on home:\n%s", after)
 	}
-	if !strings.Contains(after, say(t, "homePanelRecent")) {
+	if !strings.Contains(after, say(t, "homePanelProjects")) {
 		t.Errorf("alt+g took the panels away:\n%s", after)
 	}
 }

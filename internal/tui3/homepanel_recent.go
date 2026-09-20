@@ -6,50 +6,32 @@ import (
 	"strings"
 )
 
-// recentPanel is `threads`: this window's own conversation first, in
-// bold, with the last thing said in it on the line under it; then the most
-// recently active of the rest; then `N more · type to find one`.
-//
-// IT IS EVERY CONVERSATION NOT WAITING ON A PERSON. One that is waiting is on
-// `needs you`, and a row drawn twice is the same reading said twice. One that is
-// mid-turn or coming here stays: `running` lists the work a conversation sent
-// out (tasks and jobs), never the conversation itself, so a chat dropped from
-// here for moving would be on no panel at all. And this window's own
-// conversation is always the first row, because `threads` without the
-// place you were is not an answer.
-//
-// AND THE ERRANDS STAND OVER IT. An `ask here` exchange is a conversation this
-// window started a minute ago, with no row in the world at all
-// (homeexchange.go), and the top of this panel is where the thing you asked
-// for belongs.
+// recentPanel mirrors this window's tabs, followed by a bounded list of closed
+// conversations. The tab strip owns membership and order on every surface.
 type recentPanel struct{ homePanelBase }
 
 func (recentPanel) rows(in *homeGridInput) homePanelRows {
-	var own *switcherRow
-	var rest []switcherRow
-	for _, row := range in.rows {
-		switch {
-		case row.kind != switcherConversation:
-		case row.here:
-			mine := row
-			own = &mine
-		case !row.needs:
-			rest = append(rest, row)
+	var lines []homeLine
+	for _, row := range in.openChats {
+		cell := recentCell(row, in)
+		if row.here {
+			cell = recentOwnCell(row, in)
 		}
+		if !in.desc {
+			cell.sub, cell.grows = "", false
+		}
+		lines = append(lines, switcherRowLine(row, cell))
 	}
-	lines := append([]homeLine(nil), in.errands...)
-	// The panel hands the layout as many conversations as its budget in the
-	// order table, and the layout draws five of them or, in a tall frame, more.
-	room := in.cap(panelRecent)
-	if own != nil {
-		lines = append(lines, switcherRowLine(*own, recentOwnCell(*own, in)))
-		room--
+	for _, row := range in.closedChats {
+		cell := recentCell(row, in)
+		cell.closed = true
+		if !in.desc {
+			cell.sub, cell.grows = "", false
+		}
+		lines = append(lines, switcherRowLine(row, cell))
 	}
-	shown := min(room, len(rest))
-	for _, row := range rest[:shown] {
-		lines = append(lines, switcherRowLine(row, recentCell(row, in)))
-	}
-	return homePanelRows{lines: lines, more: len(rest) - shown}
+	lines = append(lines, in.errands...)
+	return homePanelCut(in, panelRecent, lines)
 }
 
 // recentOwnCell is this window's own row: bold, `here` at the margin, and the

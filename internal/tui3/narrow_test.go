@@ -253,6 +253,7 @@ func TestAConversationWithNoTitleIsNamedInWordsNotHex(t *testing.T) {
 	for _, width := range []int{60, 80, 120, 160} {
 		a := lab.app(mine)
 		a.width, a.height = width, 30
+		openHomeFixtureTabs(a)
 		a.openHome()
 		frame := homeText(a)
 		if strings.Contains(frame, "927D303242f9d00e") || strings.Contains(frame, "927d303242f9d00e") {

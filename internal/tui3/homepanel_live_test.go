@@ -389,6 +389,7 @@ func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
 	openOn := func() *app {
 		a := l.app(fresh)
 		a.width, a.height = 120, 45
+		openHomeFixtureTabs(a)
 		a.openHome()
 		a.home.last = map[string]session.Summary{fresh: {LastUser: "explain open addressing"}}
 		a.home.build()
@@ -406,8 +407,12 @@ func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
 	if err := session.SaveMeta(dir, meta); err != nil {
 		t.Fatal(err)
 	}
-	if next := homeLineAfter(homeText(openOn()), unnamedConversationWord); !strings.Contains(next, "explain open addressing") {
-		t.Fatalf("the first message did not arrive under the row:\n%s", next)
+	wide := openOn()
+	wide.width = 180
+	homeText(wide)
+	wide.home.point(fresh)
+	if frame := homeText(wide); !strings.Contains(frame, "explain open addressing") {
+		t.Fatalf("the first message did not reach the description column:\n%s", frame)
 	}
 }
 

@@ -173,6 +173,12 @@ func (l *homeLab) app(standing string) *app {
 	// went red the first time anything on the machine cost a cent.
 	a.usageLedger = filepath.Join(l.root, session.UsageLedgerName)
 	a.file = standing
+	// A launch carries the saved title and workspace into its live tab.
+	for _, row := range a.readWorld().Sessions() {
+		if row.Transcript == standing {
+			a.title, a.workspace = homeName(row), row.Workspace
+		}
+	}
 	// AND THE CLOCK IS THE LAB'S WHERE IT PINNED ONE ([homeLab.pin]).
 	if !l.pinned.IsZero() {
 		at := l.pinned
@@ -293,6 +299,7 @@ func TestHomeListsEveryProjectAndItsConversations(t *testing.T) {
 	lab.session("-tmp-beta", "bbbb000000000001", "pricing research", "/tmp/beta", now.Add(-3*time.Hour))
 
 	a := lab.app(mine)
+	openHomeFixtureTabs(a)
 	a.openHome()
 	if !a.at(pageHome) {
 		t.Fatal("/home did not open")
@@ -411,6 +418,7 @@ func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
 	// A card tier: the row says what is running in one clause and the card says
 	// what it IS and where the window holding it stands (homebridge.go).
 	a.width, a.height = 200, 30
+	openHomeFixtureTabs(a)
 	a.openHome()
 	// The cursor opens on the conversation this window is in, so the running one
 	// — which is the SECOND window's — is stepped onto here.
@@ -554,8 +562,8 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 			order = append(order, homeName(line.row))
 		}
 	}
-	if len(order) != 3 || order[0] != "Pricing Research" {
-		t.Fatalf("the column reads %v, want the waiting one first", order)
+	if len(order) != 2 || order[0] != "The Newest Chat" || order[1] != "Pricing Research" {
+		t.Fatalf("the column reads %v, want the open tab followed by the waiting conversation", order)
 	}
 }
 
@@ -1161,6 +1169,7 @@ func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 	// A FRAME THE ROWS DO NOT FIT IN, because a panel draws as many as its
 	// budget holds and folds only what is genuinely under them (homegrid.go).
 	a.width, a.height = 100, 17
+	openHomeFixtureTabs(a)
 	a.openHome()
 	if !strings.Contains(homeText(a), "more") {
 		t.Fatal("nothing was collapsed, so this proves nothing")
@@ -1286,6 +1295,7 @@ func TestHomeOpensAnotherProjectAndTheOneYouLeaveGoesOnRunning(t *testing.T) {
 	standing := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := lab.app(mine)
 	a.agent = standing
+	openHomeFixtureTabs(a)
 	a.openHome()
 	a.home.point(other)
 	a.homeEnter()
@@ -1358,6 +1368,7 @@ func TestHomeRefusesARowWhoseFolderIsGone(t *testing.T) {
 		filepath.Join(lab.root, "no-such-repository"), now.Add(-time.Hour))
 
 	a := lab.app(mine)
+	openHomeFixtureTabs(a)
 	a.openHome()
 	a.home.point(gone)
 	a.homeEnter()
@@ -1392,6 +1403,7 @@ func TestHomeMarksARowWhoseFolderIsGoneWhereverItsAddressIsDrawn(t *testing.T) {
 
 	a := lab.app(mine)
 	a.width, a.height = 200, 30
+	openHomeFixtureTabs(a)
 	a.openHome()
 
 	// AT REST: THE ROW'S OWN MARGIN.
@@ -1649,11 +1661,16 @@ func TestHomeRescanPicksUpAConversationFromAnotherWindow(t *testing.T) {
 	}
 	lab.session("-tmp-alpha", "aaaa000000000002", "arrived later", "/tmp/alpha", now.Add(-time.Minute))
 	a.refreshHome()
-	if !strings.Contains(homeText(a), "Arrived Later") {
-		t.Fatalf("the rescan missed a new conversation:\n%s", homeText(a))
+	if strings.Contains(homeText(a), "Arrived Later") {
+		t.Fatal("the rescan added an unopened conversation as a tab")
 	}
 	if a.home.focused().Transcript != mine {
-		t.Fatal("the rescan moved the cursor off the conversation it was on")
+		t.Fatal("the rescan moved the cursor")
+	}
+	a.home.box.setText("arrived")
+	a.home.build()
+	if !strings.Contains(homeText(a), "Arrived Later") {
+		t.Fatal("search did not find the newly saved conversation")
 	}
 }
 
@@ -1899,6 +1916,7 @@ func TestHomeOverHostListsTheFarMachine(t *testing.T) {
 	if !a.homeDoorOpen() {
 		t.Fatal("the door to home is shut over --host")
 	}
+	openHomeFixtureTabs(a)
 	a.openHome()
 	if !a.at(pageHome) {
 		t.Fatal("home did not open over --host")
@@ -2175,7 +2193,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 			t.Fatalf("a one-conversation home is missing %q:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, homeWhisper[panelRecent]) {
+	if homeWhisper[panelRecent] != "" && strings.Contains(text, homeWhisper[panelRecent]) {
 		t.Fatalf("a home holding this conversation whispers that one will arrive:\n%s", text)
 	}
 }
@@ -2244,7 +2262,7 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		// empty (DESIGN.md §4) but its rows are read and not stood on (owner,
 		// 2026-09-17), and every other panel whispers — a whisper names what
 		// arrives rather than a thing to open.
-		if stops := (placeHome{}).stops(a); len(stops) != 0 {
+		if stops := (placeHome{}).stops(a); len(stops) != 1 || a.home.lines[stops[0]].row.Transcript != "" {
 			t.Fatalf("at %d columns an empty home offered rows of kind %v to stand on", tc.width, a.home.lines[stops[0]].kind)
 		}
 		// The arrows have nothing to land on and must not land on the furniture.
@@ -2293,7 +2311,7 @@ func TestAFreshConversationTheWalkCannotSeeStillHasARow(t *testing.T) {
 			t.Fatalf("home opened from a fresh conversation does not list it (%q):\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, homeWhisper[panelRecent]) {
+	if homeWhisper[panelRecent] != "" && strings.Contains(text, homeWhisper[panelRecent]) {
 		t.Fatalf("home whispers that a conversation will arrive while this one is here:\n%s", text)
 	}
 	a.home.point(mine)
@@ -2596,6 +2614,7 @@ func TestALockedRowSaysSoOnItsRowAtRestAndWhenTyped(t *testing.T) {
 
 	a := lab.app(mine)
 	a.width, a.height = 200, 30
+	openHomeFixtureTabs(a)
 	a.openHome()
 	said := false
 	for _, line := range strings.Split(homeText(a), "\n") {
@@ -2631,6 +2650,7 @@ func TestEnterOnALockedRowOffersToMoveItInHomesOwnVoice(t *testing.T) {
 		asked++
 		return &fakeAgent{model: "m"}, nil
 	}
+	openHomeFixtureTabs(a)
 	a.openHome()
 	a.home.point(theirs)
 	before := len(a.entries)
@@ -2678,6 +2698,7 @@ func TestPressingEnterOverAndOverOnAHeldRowAsksOnce(t *testing.T) {
 	lab.hold(theirs)
 
 	a := lab.app(mine)
+	openHomeFixtureTabs(a)
 	a.openHome()
 	a.home.point(theirs)
 	before := len(a.entries)
@@ -2712,6 +2733,7 @@ func TestTheRaceLosesInTheSameWordsNotARawError(t *testing.T) {
 	a.open = func(_, file string) (Conversation, error) {
 		return Conversation{}, &session.SessionLockedError{Path: file}
 	}
+	openHomeFixtureTabs(a)
 	a.openHome()
 	a.home.point(theirs)
 	before := len(a.entries)
@@ -2766,6 +2788,7 @@ func TestAnUnlockedRowStillOpens(t *testing.T) {
 	free := lab.session("-tmp-alpha", "aaaa000000000002", "nobody has this one", where, now.Add(-time.Hour))
 
 	a := lab.app(mine)
+	openHomeFixtureTabs(a)
 	a.openHome()
 	a.home.point(free)
 	if strings.Contains(homeText(a), homeHeldShort) {
@@ -2940,9 +2963,10 @@ func TestHomeCaretStaysInTheDraftWhenItWraps(t *testing.T) {
 func TestPuttingARowAwayTakesItOffTheListAndItsNameFindsItAgain(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "keep this one", "/tmp/alpha", now)
-	lab.session("-tmp-alpha", "aaaa000000000002", "the junk drawer plan", "/tmp/alpha", now.Add(-time.Minute))
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "keep this one", lab.workspace("alpha"), now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "the junk drawer plan", lab.workspace("alpha"), now.Add(-time.Minute))
 	a := lab.app(mine)
+	openHomeFixtureTabs(a)
 	a.openHome()
 	a.width, a.height = 100, 30
 
@@ -2960,8 +2984,9 @@ func TestPuttingARowAwayTakesItOffTheListAndItsNameFindsItAgain(t *testing.T) {
 	a.home.cursor, a.home.picked = at, true
 	drive(t, a, key("ctrl+e"))
 
-	if text := homeText(a); strings.Contains(text, "Junk Drawer") {
-		t.Fatalf("the put-away row is still on the resting list:\n%s", text)
+	_, closed := homeConversationLines(a)
+	if len(closed) != 1 || !closed[0].cell.closed {
+		t.Fatal("closed conversation did not become a dimmed row")
 	}
 	// AND THE SCREEN SAYS WHERE IT WENT. A row that vanished with no sentence
 	// would be the surface hiding something on a keystroke.
@@ -2984,10 +3009,10 @@ func TestPuttingARowAwayTakesItOffTheListAndItsNameFindsItAgain(t *testing.T) {
 	}
 	a.home.cursor, a.home.picked = back, true
 	drive(t, a, key("ctrl+e"))
-	a.home.box.reset()
-	a.home.build()
-	if !strings.Contains(homeText(a), "Junk Drawer") {
-		t.Fatalf("ctrl+e did not bring the row back to the list:\n%s", homeText(a))
+	drain(t, a, a.openHome())
+	assertHomeTabParity(t, a)
+	if a.file != closed[0].row.Transcript || a.tabShut[a.convKey(a.file)] {
+		t.Fatal("ctrl+e did not reopen the saved conversation's tab")
 	}
 }
 

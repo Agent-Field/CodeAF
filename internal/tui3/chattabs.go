@@ -302,9 +302,8 @@ func (a *app) frontTabKey() string {
 // exactly that recency — without constructing an unbounded candidate list. The recency scan can still
 // walk older dismissed entries; only the candidate membership checks are bounded.
 //
-// It is called ONCE PER FRAME, by the draw. The geometry ([app.tabsHeight]) does
-// not ask it — there is always at least one tab, the conversation on screen — so
-// nothing else can observe the slice mid-refill.
+// The strip, Home and the chats menu all read this same membership and order.
+// A dismissed final tab stays absent while Home is showing.
 func (a *app) tabList() []chatTab {
 	front := a.frontTabKey()
 	tabs := a.chatTabs[:0]
@@ -323,7 +322,7 @@ func (a *app) tabList() []chatTab {
 		// makes it a close rather than a flicker: the conversation is still held,
 		// still running and still on the switcher, so every pass below would put
 		// its tab straight back the frame after it was taken off.
-		if tab.key != front && a.tabShut[tab.key] {
+		if a.tabShut[tab.key] {
 			continue
 		}
 		if tab = a.tabAs(tab, held, front); strings.TrimSpace(tab.word) == "" {
@@ -354,7 +353,7 @@ func (a *app) tabList() []chatTab {
 	// written to, and a strip that waited for that would be a strip missing from
 	// the frame a person meets codeaf on — which is exactly the frame where being
 	// told what this window is holding is worth most.
-	if !tabsHold(tabs, front) {
+	if !tabsHold(tabs, front) && !a.tabShut[front] {
 		tabs = append(tabs, a.tabAs(chatTab{key: front, file: a.file}, nil, front))
 	}
 	return tabsCapped(tabs, a.prev)
@@ -1132,6 +1131,9 @@ func (a *app) tabShutKey(key string) {
 	}
 	a.chatTabs = kept
 	a.chatTabBar = tabBar{}
+	if a.at(pageHome) && a.home.tabs != nil {
+		a.home.build()
+	}
 }
 
 // tabActivePaint gives the chosen tab a full contrasting surface, including

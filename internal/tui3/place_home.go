@@ -221,6 +221,9 @@ func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 		if row.gone && v.answer == "" && (v.key == 'n' || v.key == 'o') {
 			continue
 		}
+		if v.key == 'x' && row.kind == switcherConversation && (row.session.Archived || line.cell != nil && line.cell.closed) {
+			v.word = "reopen"
+		}
 		verbs = append(verbs, a.homeSwitchVerb(line, row, v))
 	}
 	return verbs
@@ -260,26 +263,43 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 	return verb{key: v.key, word: v.word, do: do}
 }
 
-// homeArchiveRow is `x close` — the same write `ctrl+e` makes, said once
-// so the key and the strip can never mean two different things.
+// homeArchiveRow closes the same tab the row names, keeping its work and draft.
+// Reopening returns through the normal conversation door, restoring the tab too.
 func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
-	err := error(nil)
-	if a.archive != nil {
-		err = a.archive(row.Dir, !row.Archived)
-	} else {
-		err = session.SetArchived(row.Dir, !row.Archived)
+	if a.homeConversationClosed(row) {
+		return a.homeOpenLine(homeLine{kind: homeSession, row: row})
 	}
-	if err != nil {
-		a.home.say("could not change conversation visibility", "")
+	if err := a.writeHomeArchived(row, true); err != nil {
+		a.home.say("could not close conversation", "")
 		return nil
 	}
-	if row.Archived {
-		a.home.say("reopened", "")
-	} else {
-		a.home.say(homeClosedWord, "")
+	key := a.convKey(row.Transcript)
+	if row.Transcript == a.file {
+		key = a.frontTabKey()
 	}
+	a.tabShutKey(key)
+	a.home.say(homeClosedWord, "")
 	a.refreshHome()
 	return nil
+}
+
+func (a *app) homeConversationClosed(row session.SessionRow) bool {
+	key := a.convKey(row.Transcript)
+	if row.Transcript == a.file {
+		key = a.frontTabKey()
+	}
+	return row.Archived || a.tabShut[key]
+}
+
+// A new tab without a saved session has no archive record yet.
+func (a *app) writeHomeArchived(row session.SessionRow, closed bool) error {
+	if row.Dir == "" {
+		return nil
+	}
+	if a.archive != nil {
+		return a.archive(row.Dir, closed)
+	}
+	return session.SetArchived(row.Dir, closed)
 }
 
 // homeOpenFolder is `o open folder`, and homeCopyPath is `p copy project` — the

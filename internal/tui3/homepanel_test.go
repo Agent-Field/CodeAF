@@ -137,28 +137,25 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	a.home.last[lab.mine] = session.Summary{LastUser: "explain open addressing vs chaining"}
 	a.home.build()
 	frame := homeText(a)
-	head, _ := homeRowOf(frame, "threads")
-	own, _ := homeRowOf(frame, "Porting the Resume Picker")
-	if head < 0 || own != head+1 {
-		t.Fatalf("this window's own conversation is not the first row of threads:\n%s", frame)
+	own, col := homeRowOf(frame, "Porting the Resume Picker")
+	if own != placeHeadRows || col != homeGridMargin || strings.Contains(frame, "threads") {
+		t.Fatalf("conversations do not start as bare lines:\n%s", frame)
 	}
 	lines := strings.Split(frame, "\n")
-	// (The rail beside it may say `here` in a whisper of its own, so the row is
-	// asked for its words rather than the screen line searched for the word.)
-	if mine := panelRows(a, panelRecent)[0]; mine.right == homeHereWord || !mine.bold || !strings.Contains(lines[own+1], "explain open addressing") {
-		t.Fatalf("the own row does not carry its last words under it, with nothing but a time at its right:\n%s", frame)
+	if mine := panelRows(a, panelRecent)[0]; !mine.bold || mine.sub != "" {
+		t.Fatalf("the narrow own row is not one bare bold line: %+v", mine)
 	}
 	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does
 	// not. The conversation mid-turn is here too: `running` lists the work a
 	// conversation sent out and never the conversation, so this is its panel.
-	if moving := lines[own+2]; !strings.Contains(moving, "Bounty Reward Companies") || strings.Contains(moving, "beta") {
+	if moving := lines[own+1]; !strings.Contains(moving, "Bounty Reward Companies") || strings.Contains(moving, "beta") {
 		t.Fatalf("a row from another folder wears its project on its own line:\n%s", frame)
 	}
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Bounty Reward Companies" })
-	if bounty := a.home.lines[a.home.cursor]; bounty.cell.sub != "beta" || !bounty.cell.grows {
+	if bounty := a.home.lines[a.home.cursor]; bounty.cell.sub != "" || bounty.cell.grows {
 		t.Fatalf("a row from another folder does not carry its project as its description: %+v", bounty.cell)
 	}
-	if quiet := lines[own+3]; !strings.Contains(quiet, "Quiet Chat a") {
+	if quiet := lines[own+2]; !strings.Contains(quiet, "Quiet Chat a") {
 		t.Fatalf("the quiet rows do not follow in recency order:\n%s", frame)
 	}
 	// AND THE TWO ROWS THAT ARE ON OTHER PANELS ARE NOT HERE A SECOND TIME.
@@ -195,7 +192,8 @@ func TestHomePreselectsTheConversationThisWindowWasInBefore(t *testing.T) {
 			before = row.Transcript
 		}
 	}
-	a.prev = []string{before}
+	_ = a.tabsRow(a.width)
+	rememberUnheldTab(a, before, a.workspace, "Quiet Chat c")
 	a.openHome()
 	homeText(a)
 	if got := a.home.focused(); got.Transcript != before {

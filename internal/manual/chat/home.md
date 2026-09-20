@@ -11,7 +11,10 @@ answering one question you would ask walking up to a colleague's desk:
   home   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
- needs you                                       projects
+ Understanding Hash Tables                  2m    projects
+ Understanding Bloom Filters               11h
+
+ needs you
  ? Searching for Apartments Near Minto      2h     ~/codeaf      12 chats · 1 running  master
    thread: Searching for Apartments Near Minto      ~/pricing-site   5 chats
 
@@ -22,12 +25,6 @@ answering one question you would ask walking up to a colleague's desk:
    tier-B subs                                1d
    package release radar                      1d
    16 more
-
- threads
-   Understanding Hash Tables                here
-   explain open addressing vs chaining
-   Understanding Bloom Filters               11h
-   70 more
 
  tasks
  ⠋ Generate and Display First 200 Primes     4m
@@ -78,7 +75,7 @@ height is the same on every machine on every day. A blank row separates that pai
 panels below them, which are in the rail only because they are quiet today.
 
 **The rank never moves, only the side.** Within the field and within the rail the order is
-always `needs you`, `threads`, `projects`, `tasks`, `since you left`, `spend`,
+always the unheaded conversation list, `needs you`, `projects`, `tasks`, `since you left`, `spend`,
 `scheduled` — so two panels that both fill never swap places.
 
 One column under 110 cells, where every panel is in that one order and there is no rail;
@@ -92,14 +89,14 @@ from home stands there as a card. Nothing else stands in it.
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
 | `needs you` | a question waiting on a person, anywhere, and under them the `unread` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
-| `threads` | a conversation | opens it | `your conversations · what you type below starts one` |
+| Unheaded conversation list | an open tab, then up to three dimmed closed conversations | opens or reopens it | nothing |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
 | `tasks` | a task or adaptive run from the last day, running or landed | opens the task itself | `the last day's tasks land here · /task starts one` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
 | `spend` | today, the fortnight, who it went to | nothing — its lines are read, never stood on or pressed; the heading opens the spend place | `every chat and task is priced here` |
 | `scheduled` | a standing order — reminder, routine, watch or rule — soonest first | opens the standing place | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
 
-**An empty panel keeps its heading and that one dim line** — it names what arrives there and
+**An empty headed panel keeps its heading and that one dim line** — it names what arrives there and
 the one thing that puts it there, and it never says the panel is empty. On a narrow column
 the line wraps onto a second line rather than being cut. This is the one deliberate
 exception to the rule that nothing zero is drawn: a panel that vanished would teach nothing,
@@ -128,7 +125,7 @@ heading is the two words alone — it carries no count, whether two things are s
 none; the rows under it are the count.
 
 **Every description opens with the thread the row belongs to**, as a title line of its
-own — `thread: Searching for Apartments Near Minto`, spelled exactly as `threads` spells
+own — `thread: Searching for Apartments Near Minto`, spelled exactly as the conversation list spells
 that conversation — then a blank line, and then the rest: the question, or a landing's
 files and sentence, with the answers at the right. A watch made from home's own box belongs
 to no thread and has no title line. On a frame with no description column the read row
@@ -282,7 +279,7 @@ not where it is settled.**
 ## What is running — the tasks panel: what is running on this machine right now, and the last day's tasks, running or landed
 
 **The `tasks` panel is the last twenty-four hours of work, flattened**, in the field with
-the other panels that hold something — under `needs you` and `threads`, which outrank it
+the other panels that hold something — under `needs you` and the conversation list, which outrank it
 — and in the rail on the right when there is none. It is the tasks place in miniature:
 every task and adaptive run that started or landed inside the last day, from every
 conversation and every project, plus anything still running however old, newest first.
@@ -297,7 +294,7 @@ its row on `scheduled`.
    Spark Fleet Ssh Audit                                                     9h
 ```
 
-**A row is a title and a time, like a row of `threads`**: how long a running task has
+**A row is a title and a time, like a row of the conversation list**: how long a running task has
 been going, or how long ago a landed one landed. Its description is under the cursor —
 for a running task what its worker is doing, else the life it is in (`checking what it
 left`), else `working` or `queued`, with `2 of 5` for how far a run has got; for a landed
@@ -310,7 +307,7 @@ its record inside the tasks place, parked on its row, so `esc` comes back to the
 
 **Ten rows show, then `N more`**, which opens the panel and shows the rest; on a short
 terminal fewer fit and the fold counts what did not. The heading is the bare word `tasks`,
-with no count and no clause after it, like `threads`. A task older than a day is the tasks
+with no count and no clause after it, like the conversation list. A task older than a day is the tasks
 place's to show — the `tasks` heading opens it.
 
 **`s` stops only what this window is running.** `→` on a task this window's own
@@ -384,33 +381,27 @@ the panel keeps its heading and `what watches and tasks did while the terminal w
 The memory line is not wired yet: its figures read zero on this surface, and a zero draws
 nothing.
 
-## Threads — this window's chat, the one before it, and N more; it was called where you were
+## Threads, open conversations and recently closed chats — the Home list
 
-**The `threads` panel is your conversations**, under `needs you`. It was headed `where you were`
-until 2026-09-17, and its heading opens nothing: the box under home is how you search them.
+Home starts with **bare conversation lines, with no heading or row indent**. Open
+conversations have exactly the same membership and order as this window's tabs and
+`alt+k chats` (`opt+k` on macOS), including remembered tabs whose agents are elsewhere.
+The current conversation is bold; on a wide frame its description says `here` and
+shows the last thing you wrote. A narrower frame keeps each conversation to one line.
 
-- **this window's own conversation first**, in bold, with when you last spoke in it at the
-  right and **`here` and the last thing you said in it** in its description — your own
-  words, never a note the session left for itself. A conversation this launch has only just
-  started is one bold line, `new conversation`, until you say something in it. On a frame
-  too narrow for the description column the bold alone says it is this window's;
-- then **the most recently spoken-in of the rest**, each with its age at the right. A
-  conversation in another project carries that project's name in its description, under
-  the cursor, before the last thing you said; one in this window's folder carries none, and
-  neither does one in your home directory or in a scratch folder at the top of `/tmp`;
-- then `N more` — `enter` on it opens the panel and shows them; typing finds any
-  conversation on the machine whether or not it is drawn.
+**Up to three recently closed conversations follow, dimmed.** This window's most
+recently closed tabs come first; saved archived conversations fill remaining places,
+ordered by their last activity. Enter reopens one and restores its tab. Older history
+is still searchable by typing into the box. An empty conversation list has no heading
+or placeholder. A short terminal folds the rows that do not fit behind `N more`.
 
-A conversation waiting on you is on `needs you` and not here too. One that is mid-reply or
-on its way here stays. Five rows show, ten in a tall window.
+Closing with `→`, then `x close`, or `ctrl+e`, removes the same conversation from
+Home's open rows, the tab strip and the default chats menu immediately. It keeps
+running work and drafts. A waiting conversation can also appear under `needs you`;
+that panel describes the question, independently of whether its tab is open.
 
-**The margin is a time, unless it has to say what `enter` will do**: the age for an
-ordinary row, and in its place `another window` for one a terminal is sitting in, `coming
-here` while one moves over, `folder gone` for one whose folder was deleted — the one kind
-of word allowed to stand where a time does, because it is the truth about the key. An `ask here` errand you started a minute ago sits at the very top.
-
-**Escape opens Home with the previous conversation selected.** Press `enter` to open
-the selected row. Further Escape presses stay on Home.
+`/ask` exchanges follow the conversation rows. Escape opens Home; Enter opens the
+selected row. Further Escape presses stay on Home.
 
 ## Start a chat in another folder — the projects panel is read, not pressed; ctrl+t starts a chat elsewhere
 
@@ -464,7 +455,7 @@ Where to go for the whole figure instead:
 
 **Nothing on the resting screen is collapsed by project.** There are no project blocks, no
 `elsewhere` rule and no `▸` project line to open: projects are rows of the `projects`
-panel, and conversations are rows of `threads`, each wearing its project's name when
+panel, and conversations are rows of the conversation list, each wearing its project's name when
 it is not this window's.
 
 What is folded is **the tail of each panel** — one `N more` line under it — and the fold
@@ -486,7 +477,7 @@ each of those is a panel of its own now.
 | --- | --- |
 | `?` rows at the top of the list | the `needs you` panel |
 | `◐` rows under them | the `tasks` panel |
-| the quiet rows and `▸ 15 more, quiet since 6d` | `threads`, then `N more` |
+| the quiet rows and `▸ 15 more, quiet since 6d` | the conversation list, then `N more` |
 | project headings, `alt+g` | the `projects` panel |
 | the `since you left` ledger above the list | the `since you left` panel |
 | the card on the right | nothing at rest; a card still stands beside a search on a wide frame |
@@ -503,9 +494,8 @@ every conversation in it, and `ctrl+t` on one of them starts a new one there.
 
 **You cannot any more, and `alt+q` does nothing.** The panels already keep the quiet
 ones out of the way: `needs you` and `tasks` hold what wants you or is moving, and
-`threads` shows this window's conversation — the last thing you typed in it on the
-line under it — and the four most recent, nine in a tall window, folding the rest behind
-`N more`, which `enter` opens. Typing finds any conversation on the machine.
+the conversation list shows this window's open tabs followed by up to three dimmed
+closed conversations. A short frame folds what does not fit behind `N more`. Typing finds any conversation on the machine.
 
 ## Which column am I in — move between the columns on home: ↑↓ walk a panel, ←→ cross columns
 
@@ -538,7 +528,7 @@ Walk into `tasks` and `tasks` is the heading that is marked.
 
 No project is ever drawn darker than another on its own. If one row looks different, it is
 one of two things: the **row under the cursor or the pointer**, which wears the ground and a
-bold title, or **this window's own conversation** in `threads`, which is always bold
+bold title, or **this window's own conversation** in the conversation list, which is always bold
 and says `here`.
 
 ## Where the cursor starts on home — on my previous chat — and where the first down arrow goes
@@ -546,7 +536,7 @@ and says `here`.
 **Opening home with `space` `space`, `/home` or `alt+1` puts the cursor on the conversation
 this window was in before the one in front** — the most recent other one on this window's
 own tab stack — so going back is `enter`. A window that has held only one conversation has no
-"before", and the cursor is on its own row in `threads`, which says `here`.
+"before", and the cursor is on its own row in the conversation list, which says `here`.
 
 **On a launch** — home greeting you — the cursor is on the conversation this window is
 holding, the row you can open to return.
@@ -569,13 +559,13 @@ done nothing yet, every panel but one keeps its heading and one dim line naming 
 arrives there — `questions from any chat or task land here · a digit answers them` under
 `needs you`, `work you send off with /task runs here on its own` under `tasks`, and so on
 (*See everything at once*). `projects` always has the folder this window opened in, and
-`threads` has this conversation from its first minute.
+the conversation list has this conversation from its first minute.
 
 **That dim line is not a status.** It never says `nothing is running` or `no chats yet`; it
 says what would put something there. It goes the moment the first row arrives.
 
 A quiet morning on a busy machine is the same screen with fewer rows: `needs you` whispering,
-`tasks` whispering, `threads` full, `since you left` holding what fired overnight.
+`tasks` whispering, the conversation list full, `since you left` holding what fired overnight.
 There is no accent anywhere when nothing is waiting on you.
 
 Typing works exactly as it does anywhere: Enter starts a conversation and `/ask` asks
@@ -595,18 +585,17 @@ folds it. One panel is open at a time; opening a second folds the first. An open
 taller than the window shows what fits and its line still counts the rest — `3 fewer · 40
 more` — and names no place, because `enter` on it folds rather than opens. The way to
 those rows is the panel's **heading**: `needs you`, `tasks` and `since you left` open the
-tasks place, `scheduled` opens standing; `threads` and `projects` open nothing. The foot under a fold says
+tasks place, `scheduled` opens standing; the conversation list and `projects` open nothing. The foot under a fold says
 which way it will go: `enter shows the rest`, then `enter folds them`. Opening lasts as long
 as the window; a relaunch starts folded. The fold wears no mark: home spends its two marks
 on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
-`needs you`, `tasks`, `since you left` and `projects` to eight rows, `threads` from
-five to ten, `scheduled` from three to five. `spend` never grows. What is left over is air
+`needs you`, `tasks`, `since you left` and `projects` to eight rows, the conversation list up to the tab limit plus three closed rows, `scheduled` from three to five. `spend` never grows. What is left over is air
 under the shorter column.
 
 **A short terminal squeezes them in a fixed order**: `scheduled` gives way first, then `spend`,
-then `since you left`, then `tasks`, then `projects`; `threads` and `needs you`
+then `since you left`, then `tasks`, then `projects`; the conversation list and `needs you`
 shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
 only when every panel is down to that is a panel dropped — and the panels that are only
 whispering go before any panel with rows, whatever their rank, so a very short window
@@ -618,7 +607,7 @@ machine, including the ones no panel is drawing.
 
 ## How do I see the collapsed sessions — 13 more
 
-**Open the fold, or type.** `threads` shows the most recent conversations and then
+**Open the fold, or type.** The conversation list shows open tabs and then
 `13 more`; `enter` on that line opens the panel and shows them all, squeezing the other
 panels, and `enter` again folds it. The box at the foot still searches every conversation on
 the machine as you type — a project's name, a folder's name or a word from what a task came
@@ -705,8 +694,8 @@ It greets you only when it has something to say. All of these have to be true:
   else to go, in other words.
 - It is a real terminal session — not `--once`, not `--host`.
 
-When home greets you there is no welcome box: `threads` already holds every
-conversation the box's `recent sessions` would have, and more.
+When Home greets you there is no welcome box. Open tabs are listed immediately;
+typing searches the rest of the saved conversations.
 
 ## Skip the home screen — launching straight into a conversation
 
@@ -729,22 +718,19 @@ machine with one conversation and on one with none (see *Why is the home screen 
 
 ## Close or archive a conversation — put junk away and clean up home
 
-Walk the cursor onto a conversation (or point at it), then press **`ctrl+e`**, or — where
-the row's verbs are one `→` away — press **`x close`** on its strip. The row **leaves
-`threads`** and home is cleaner by one line. The foot says
-`closed · type its name to find it again`.
+Select a conversation, press `→`, then **`x close`**. `ctrl+e` does the same.
+Its tab closes and it leaves the default `alt+k chats` list immediately. Home keeps
+up to three recently closed conversations as dimmed lines below its open tabs. The
+foot says `closed · type its name to find it again`.
 
-Nothing is deleted and nothing moves on disk — the conversation keeps its transcript, its
-tasks and its project, and can still be opened. Closing is a fact about home's panels
-and nothing else.
+Nothing is deleted: its transcript, tasks, running work and draft remain. Closing
+from Home also saves its archived status, so the bounded closed list can find it
+after a restart. Closing a tab with `ctrl+w` retains it in this window's close stack
+without archiving it on disk.
 
-**Getting one back: type its name.** A search matches put-away conversations along with
-everything else — a filter that hid a match would be lying about the machine — so the row
-comes back as an ordinary match. Use `→`, then `x reopen`, or `ctrl+e`, to restore it
-to the unfiltered list. The foot says `reopened`.
-
-There is no bulk gesture: rows are put away and brought back one at a time, each with one
-keystroke.
+**Enter on a dimmed row reopens the conversation and its tab.** `→`, then `x reopen`,
+or `ctrl+e`, does the same. Older closed conversations remain searchable by name.
+On a phone-width terminal, Enter first opens the row's sheet; use its open action.
 
 ## Why did the list jump to the bottom when I typed — home's two shapes
 
@@ -772,10 +758,9 @@ stays empty until you select a result.
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A click on a panel's **heading** opens the place the heading names:
 `needs you`, `tasks` and `since you left` open tasks, `spend` opens spend, `scheduled` opens
-standing, and `threads` and `projects` open nothing. **A heading that opens somewhere
-underlines its word while the mouse pointer is over it**; `threads` and `projects` never
-underline, are drawn dim (grey) rather than in the heading ink so they do not read as
-doors, and the pointer on a heading moves neither the cursor nor the marked heading.
+standing. The conversation list has no heading. The `projects` heading opens nothing
+and stays dim. **A heading that opens somewhere underlines on mouse-over.** The
+pointer on a heading moves neither the cursor nor the marked heading.
 A click on a `/` command only selects it; `enter` runs it.
 
 `enter` opens the session under the cursor — **any row on the screen, in any project.**
@@ -981,7 +966,7 @@ others finishing, is what collects a quiet one.
 
 Each conversation that is still held is fully alive whether or not you are looking at it.
 `/quit` closes the one in front. `alt+k` shows the first twelve as rows; home's
-`threads` panel reaches every one. `/status` carries the count as `2 open · 1 waiting`.
+the conversation list shows open tabs; typing searches every saved conversation. `/status` carries the count as `2 open · 1 waiting`.
 
 ## let go · quiet a while — a conversation this window let go of, too many open
 
@@ -1062,7 +1047,7 @@ Tuesday notes                            1d · also about wisp +2
 ```
 
 One name and a count, never a list. The card beside a search names them in full under
-`also about`. The resting panels do not carry the clause — a row of `threads` is its
+`also about`. The resting panels do not carry the clause — a row of the conversation list is its
 title, its project and its age — so typing the folder's name is the way to find every
 conversation about it.
 
@@ -1537,7 +1522,7 @@ less to go on, not a different one.
 
 A machine that has held nothing yet draws the same panels as a full one: each keeps its
 heading and the dim line naming what arrives there, `projects` has the folder this window
-opened in, and `threads` has the conversation you opened it from as soon as there is
+opened in, and the conversation list has the conversation you opened it from as soon as there is
 one (*Why is the home screen empty*).
 
 Over `--host` home lists **the machine your session is running on**. The projects, the
@@ -1771,7 +1756,7 @@ Home and asks there too. If asking is unavailable, the draft remains editable. T
 existing `ctrl+enter` shortcut still works on Home. No ask/new action rows or mode hints
 appear above or below the message box.
 
-**Every exchange is a row at the very top of `threads`**, marked `?`, because it is
+**Every exchange is a row below the conversation rows**, marked `?`, because it is
 the thing you asked for a minute ago — with what it is doing in the tail:
 
 ```
@@ -1783,7 +1768,7 @@ the thing you asked for a minute ago — with what it is doing in the tail:
 first. `enter` on the row hands the keyboard to the exchange, and **on the panels the
 exchange takes the whole screen while it holds the keyboard**, at every width — the panels
 have no column to spare for it; `esc` or `tab` brings them back, with the row still at the
-top of `threads`.
+end of the conversation list.
 
 **An exchange outlives home.** Closing this screen does not end it, and neither does opening
 another conversation; the row is still here, still waiting, when home opens again. It is
@@ -2146,11 +2131,12 @@ phone-width frame is walked one row at a time rather than scanned.
 
 Top to bottom:
 
-1. `waiting on you` — every conversation stopped on a question, every standing item that
+1. The unheaded conversation list: open tabs, then up to three dimmed closed rows.
+2. `waiting on you` — every conversation stopped on a question, every standing item that
    needs a look, and every `ask here` errand holding a card, from **any** project.
-2. `tasks` — everything with work in flight, wherever it is.
-3. `since you left` — what landed while you were not in the room.
-4. **The projects.** This window's own project is drawn open with its remaining rows; every
+3. `tasks` — everything with work in flight, wherever it is.
+4. `since you left` — what landed while you were not in the room.
+5. **The projects.** This window's own project is drawn open with its remaining rows; every
    other project is one folded line — `▸ wisp   6 · 2d` — that `enter` or a tap opens in
    place.
 
@@ -2159,7 +2145,9 @@ that line opens it in place. A section with nothing in it is not drawn at all. *
 appears once**: a conversation lifted into `waiting on you` is not drawn again under its
 project.
 
-Every row is **two lines** — the label, and its dim tail indented under it.
+Conversation tabs are bare single lines, followed by up to three dimmed closed
+conversations. Other inbox rows are **two lines** — the label, and its dim tail
+indented under it. A tab with a pending question also has a waiting row.
 
 **Typing still searches**, exactly as at every other width. Enter starts a conversation
 by default; `/ask <question>` asks in a home pane. Only results appear above the seam.
@@ -2215,7 +2203,7 @@ Tap one, or press the key it names. Below width **24** the plain hint line is dr
 
 ## Main chat versus subtasks — why is the work nested on Home?
 
-A row of `threads` is the **main conversation**; opening it returns to its chat. The
+A row of the conversation list is the **main conversation**; opening it returns to its chat. The
 work it sent out is on `tasks` for a day — one row per task, never nested, running or
 landed — and on `since you left` once it lands, one line per piece of work you asked for,
 not one per part.

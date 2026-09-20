@@ -161,22 +161,19 @@ type homePanelSlot struct {
 // 2026-09-15). What the table still fixes is the rank inside whichever column
 // the panel lands in, so two panels that both fill never swap places:
 //
-//	field (panels with rows)   needs · recent · running · left · next
+//	field (panels with rows)   recent · needs · running · left · next
 //	rail (pinned, then quiet)  projects · spend  ·  the quiet ones in the same rank
 //
 // The keep column is the order a short frame takes rows away in and a tall one
 // hands them out in, and rest and most are each panel's natural height and its
 // growth budget (owner, 2026-09-10: a fifty-five-row terminal was two short
 // columns over thirty rows of air). Spend's budget is its rest: it never grows.
-// The head column is where a press on each heading goes; `projects` and
-// `threads` name no place but themselves, so their headings open nothing (the
-// search place used to be `threads`'s head, until the owner ruled on 2026-09-17
-// that the box under home already searches and a second door to it was one
-// door too many). The explainer is the dim clause a heading may carry after its
-// word — see [homePanelSlot.explainer].
+// The head column is where a press on a heading goes. The conversation list
+// has no heading; projects is read-only. The explainer is the dim clause a
+// heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
+	{panel: recentPanel{homePanelBase{panelRecent}}, keep: 5, least: 3, rest: tabsCap + homeClosedLimit, most: tabsCap + homeClosedLimit},
 	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: recentPanel{homePanelBase{panelRecent}}, word: "threads", keep: 5, least: 4, rest: 5, most: 10},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "tasks", keep: 3, least: 4, rest: 10, most: 10, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
@@ -205,7 +202,6 @@ var homeWhisper = map[homePanelID]string{
 	panelNeeds:   "questions from any chat or task land here · a digit answers them",
 	panelRunning: "the last day's tasks land here · /task starts one",
 	panelLeft:    "what watches and tasks did while the terminal was shut",
-	panelRecent:  "your conversations · what you type below starts one",
 	panelSpend:   "every chat and task is priced here",
 	panelNext:    `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"`,
 }
@@ -213,7 +209,7 @@ var homeWhisper = map[homePanelID]string{
 // homePanelCut is a panel's rows cut at its cap, with the count of what the
 // fold stands for past it. Which of the kept rows are drawn is the layout's to
 // say ([homeGridLayout]); a panel only ever hands it at most this many, so a
-// machine with four hundred conversations builds ten lines and not four hundred
+// panel with four hundred records builds its budget rather than four hundred
 // — unless it is THE panel somebody opened, whose cap is lifted
 // ([homeGridInput.cap]).
 func homePanelCut(in *homeGridInput, id homePanelID, lines []homeLine) homePanelRows {
@@ -284,6 +280,8 @@ func homeColumnOf(slot homePanelSlot, cols int, empty bool) int {
 // and never from a seam. It is built by [homeView.gridInput] on the beat and on
 // every rebuild, and it is a plain value so a test can hand one to a panel.
 type homeGridInput struct {
+	openChats, closedChats []switcherRow
+
 	// rows is every row the switcher ranks — conversations and the standing
 	// things that need somebody or are firing — in its own order: what needs
 	// you (oldest first), then what is moving, then the rest by recency.
@@ -346,7 +344,8 @@ func (h *homeView) gridInput() homeGridInput {
 	if h.openedOn && h.opened == panelNeeds {
 		calls, older = needsCalls(world, h.world.Read), 0
 	}
-	return homeGridInput{rows: reading.rows, ledger: reading.ledger, calls: calls, callsOlder: older,
+	open, closed := h.conversationRows()
+	return homeGridInput{openChats: open, closedChats: closed, rows: reading.rows, ledger: reading.ledger, calls: calls, callsOlder: older,
 		opened: h.opened, openedOn: h.openedOn,
 		desc: homeDescOn(h.cols), world: world, items: h.items,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
@@ -453,6 +452,8 @@ type homeCell struct {
 	note, tag, right string
 	// bold is this window's own conversation.
 	bold bool
+	// closed conversations stay dim even when the cursor is on them.
+	closed bool
 	// path says the title is a folder's path, which is cut FROM THE LEFT —
 	// `…/code/codeaf` — so the folder's own name and the facts beside it
 	// stay on the row ([homeCellPathTitle]).
@@ -619,7 +620,10 @@ func (p homeGridPanel) height() int {
 		}
 		return 1 + len(p.whisper)
 	}
-	n := 1
+	n := 0
+	if p.slot.word != "" {
+		n = 1
+	}
 	for _, line := range p.read.lines[:p.shown] {
 		// A ROW IS ONE LINE WHERE THE DESCRIPTION COLUMN HAS ITS SECOND, and the
 		// reservation below goes with it — unless it is a row that keeps its own
@@ -1027,7 +1031,10 @@ func (p homeGridPanel) lines() []homeLine {
 	if p.read.said != "" {
 		head += rowSep + p.read.said
 	}
-	out := []homeLine{{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, note: p.slot.explainer, right: p.read.right, money: p.read.money}}}
+	var out []homeLine
+	if head != "" {
+		out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, note: p.slot.explainer, right: p.read.right, money: p.read.money}})
+	}
 	if p.empty() {
 		for _, words := range p.whisper {
 			out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellWhisper, panel: id, title: words}})
@@ -1521,7 +1528,7 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 // homePreselect puts the cursor on THE CONVERSATION THIS WINDOW WAS IN BEFORE
 // THIS ONE (law 6): the most recent key on this window's own stack that is not
 // the one in front and is on the grid. Enter is then a switch in two keys, and
-// esc still goes back to the conversation behind home.
+// repeated Escape presses stay on Home.
 func (a *app) homePreselect() {
 	if !a.home.gridOn() {
 		return
@@ -1529,8 +1536,10 @@ func (a *app) homePreselect() {
 	front := a.frontTabKey()
 	for at := len(a.prev) - 1; at >= 0; at-- {
 		if key := a.prev[at]; key != "" && key != front {
-			a.home.point(key)
-			return
+			if tab, ok := chatTabAt(a.tabList(), key); ok {
+				a.home.point(tab.file)
+				return
+			}
 		}
 	}
 }

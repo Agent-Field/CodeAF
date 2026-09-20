@@ -682,6 +682,9 @@ func (a *app) rememberOpen(key string) {
 		delete(a.tabShut, key)
 		a.chatTabBar = tabBar{}
 	}
+	if a.at(pageHome) && a.home.tabs != nil {
+		a.home.build()
+	}
 }
 
 // forget takes a key off the previous-stack, every occurrence of it.

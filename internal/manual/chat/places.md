@@ -446,7 +446,8 @@ being held down — it only reports what arrived.
 ## home — what wants you, as seven panels
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
-project, as **seven panels** in one, two or three columns — `needs you`, `threads`,
+project, in one, two or three columns — an unheaded list of open tabs and up to
+three dimmed closed conversations, then `needs you`,
 `projects`, `tasks`, `since you left`, `spend`, `scheduled`, always in that order. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under

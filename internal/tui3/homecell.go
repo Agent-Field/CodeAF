@@ -496,8 +496,13 @@ func homeCellBand(text string, width int, pal palette, lit bool) string {
 // panel reserves for it ([homeGridPanel.height]).
 func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) []string {
 	cell := line.cell
-	body := homeCellBody(a.homeCellDoor(cell, at, width-homeGridLead), width-homeGridLead, pal, lit)
-	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
+	lead := a.homeCellLead(cell, at, pal)
+	leadWidth := homeGridLead
+	if cell.panel == panelRecent && line.kind == homeSession {
+		lead, leadWidth = "", 0
+	}
+	body := homeCellBody(a.homeCellDoor(cell, at, width-leadWidth), width-leadWidth, pal, lit)
+	rows := []string{homeCellBand(lead+body, width, pal, lit)}
 	// THE DESCRIPTION COLUMN HAS THIS LINE WHERE THERE IS ONE, so the row is one
 	// line and the panel above it is that much shorter ([homeDescCol]).
 	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.previewAt()) {
@@ -588,6 +593,9 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	}
 	if lit {
 		factInk = pal.ink
+	}
+	if cell.closed {
+		titleInk, factInk = pal.dim, pal.dim
 	}
 	line := titleInk(title)
 	used := ansi.StringWidth(title)

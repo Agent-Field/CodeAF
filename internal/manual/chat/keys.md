@@ -2033,10 +2033,10 @@ everything else this window is not showing — so pressing it again closes the n
 rather than the same one, and several go in a row. Its conversation, its work and its
 draft are untouched; `→` reaches it and `enter` brings it back.
 
-**It does not put the conversation away.** Putting one away is a different act and is
-not on this card: `ctrl+e` on a home row archives it, and home says
-`closed · type its name to find it again`. A conversation whose tab you closed here
-is still running, still on this list, and still on home.
+**Tab closing does not archive the saved conversation.** Home shows up to three
+recently closed tabs as dimmed rows. `ctrl+e` or `→`, then `x close`, on Home also
+archives the conversation and closes its tab, removing it from the default chats
+list. Both routes keep work and drafts. Enter on a dimmed Home row reopens it.
 
 On the row marked `you are here`, the card closes and the window selects the most
 recently used remaining tab, or Home when none remain. This is the same action as
@@ -2178,8 +2178,9 @@ While something is typed the two arrows move the caret in the box instead.
 strip is the one state where a printable key is a verb, and it is why it has to be drawn.
 Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
 actions otherwise ride chords, which can never begin a word, and they work from any column:
-**`ctrl+e` puts the conversation away** — it leaves `threads`, and typing its name is
-how you find it again, with `ctrl+e` on the found row bringing it back. **`ctrl+o`** opens
+**`ctrl+e` closes the conversation tab** — it leaves the open Home list and the
+default chats menu. Up to three closed rows stay dimmed on Home; typing finds older
+ones. Enter or `ctrl+e` on a closed row reopens it. **`ctrl+o`** opens
 its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row still
 starts a new one in that row's folder, though `enter` on a row of the `projects` panel is
 the way home offers now. On a standing item's row — in `needs you` while it asks, in
@@ -2240,7 +2241,7 @@ the seam.** The best match is nearest the box. One `↑` selects it; `↓` past 
 result returns to composing. Clearing the box restores the panels. On wider frames,
 the card beside the results follows the selected match.
 
-**On an `ask here` row** — the `?` rows an errand leaves at the top of `threads` —
+**On an `ask here` row** — the `?` rows an errand leaves at the end of the conversation list —
 the line under the box reads
 `↑↓ move · enter or tab answer this ask here`. `enter` or `tab` hands the
 keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
@@ -3312,3 +3313,10 @@ reopening it does not restart the work.
 returns to its conversation. It leaves approvals alone. `alt+a` (`opt+a`) now cycles
 approvals; the two shortcuts exchanged roles. A question with no answer remains open
 when you put it off with `esc`.
+
+## Get to my other conversation without going home — alt+k chats
+
+Press `alt+k` (`opt+k` on macOS) to open the chats menu from a conversation.
+It lists the same open tabs as Home, in the tab strip's order. Select one and press
+Enter. Closed conversations are behind the menu's fold; Home also keeps up to
+three recently closed conversations dimmed below the open list.
