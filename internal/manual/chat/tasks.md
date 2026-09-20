@@ -5310,6 +5310,8 @@ only then does `s` mean anything, which is two deliberate presses with the verb 
 you. The card is also not available here: it is drawn in the conversation's chrome, and a
 question raised over a full-screen place would be one nobody could see.
 
+## Retry an incomplete or errored task — enter retry on its task screen
+
 **`enter retry` re-arms incomplete or errored work on its task card.** It is the first
 footer action, before `m puts it in your message`. The task must belong to the current
 conversation and support continuation; quick tasks, designs and saved-shape runs do not.
