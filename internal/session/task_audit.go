@@ -220,9 +220,17 @@ const (
 	// is an auditor spending the person's attention on its own reasoning.
 	auditEvidenceLines = 3
 
-	// auditCommandLimit keeps a refused command readable when it is handed back
-	// to the auditor as a refusal.
-	auditCommandLimit = 200
+	// auditCommandClipLimit keeps a refused command readable when it is handed
+	// back to the auditor as a refusal.
+	auditCommandClipLimit = 200
+
+	// declaredCheckByteLimit is the longest a declared check may be, and it is a
+	// judgement rather than a budget: the longest check met in real use runs a
+	// little over 200 bytes, and a thousand is five times that. What it guards
+	// against is a program pasted in where a check belongs, not the cost of the
+	// text. Its cost is small and worth saying plainly: a check's prompt carries
+	// at most sixteen declarations, so at most sixteen thousand bytes.
+	declaredCheckByteLimit = 1000
 
 	// auditReaderHint rides every refusal and the bash description itself.
 	//
@@ -3433,7 +3441,7 @@ func refuseOutsideDoor(command string, door auditDoor, voice shellLeash) (string
 	}
 	if offending, composed := approval.FirstCompositionOutsideQuotes(command); composed {
 		return fmt.Sprintf("refused: %s runs ONE %s command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
-			voice.who, voice.forWhat, string(offending), clip(command, auditCommandLimit),
+			voice.who, voice.forWhat, string(offending), clip(command, auditCommandClipLimit),
 			door.offer(), voice.hint), false
 	}
 	// Whitespace is normalized so "make  check" is the same command as
@@ -3453,7 +3461,7 @@ func refuseOutsideDoor(command string, door auditDoor, voice shellLeash) (string
 		}
 	}
 	return fmt.Sprintf("refused: %s is not %s, and %s only runs %s.\nYou may run: %s\n%s",
-		clip(normalized, auditCommandLimit), voice.forWhat, voice.who, voice.forWhat,
+		clip(normalized, auditCommandClipLimit), voice.forWhat, voice.who, voice.forWhat,
 		door.offer(), voice.hint), false
 }
 
