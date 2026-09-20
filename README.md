@@ -253,11 +253,11 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 | how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
 | without you | it stops | headless, standing orders, a phone in your pocket |
 
-## Footprint
+## Performance benchmark
 
-53 MB on disk. Sixteen parallel sessions hold about half a
-gigabyte of RAM, others do.
-The harness, the method and every table: [docs/benchmarks](docs/benchmarks/).
+One Go binary: 53 MB on disk, up to 21x smaller than the other agent CLIs
+measured, and up to 20x lighter at 16 parallel sessions. The harness, the
+method and every table: [docs/benchmarks/performance](docs/benchmarks/performance/).
 
 ## Docs
 
