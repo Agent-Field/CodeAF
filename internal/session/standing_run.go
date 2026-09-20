@@ -73,6 +73,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
@@ -961,6 +962,22 @@ func standingEvidence(text, evidence string) string {
 	return text + "\n\nWHAT THE CHECK FOUND:\n" + evidence
 }
 
+// standingRefusalLead opens the one line a person reads about a firing that
+// stopped on something only they can allow.
+//
+// IT IS THE SENTENCE THE SURFACE ALREADY SAYS, in the past tense. A conversation
+// waiting on consent writes `needs your ok to run bash` (internal/tui3's
+// switcher and home both draw it, and the manual quotes it), so a firing that
+// stopped on the same gate says the same words rather than a second sentence
+// about the same fact.
+const standingRefusalLead = "stopped: it needed your ok to run "
+
+// standingRefusalSomething is what the line names when the call's arguments
+// cannot be read. It is deliberately vague, because the honest answer to "what
+// did it want" is that this build could not tell, and a tool name offered in
+// place of the truth is a fact a person would act on.
+const standingRefusalSomething = "something"
+
 // standingRefusal reads a failed tool row and answers the one line the person
 // is owed when the failure was "somebody would have had to allow this".
 //
@@ -968,16 +985,55 @@ func standingEvidence(text, evidence string) string {
 // needed a person and had none (consent.go): the node's own words, and the
 // headless one. Anything else is an ordinary tool failure, which is the run's
 // business and not the person's.
+//
+// WHAT IT ANSWERS IS NOT THAT LINE. The engine's own refusal is written for the
+// worker that must act on it, and it reads `refused in a task: default — nobody
+// to ask`: four machinery words in a row that ends up on a person's home screen
+// under a mark that says they are needed. So the match is on the engine's
+// sentence and the ANSWER is the person's, built from what the call actually
+// wanted ([standingRefusalWant]). The engine's line is untouched and still
+// reaches the model exactly as it did.
+//
+// IT NEVER SAYS HOW MUCH WAS REFUSED. This fires on the FIRST failure that
+// matches and knows nothing about the calls that succeeded before it, so a
+// firing that read ten files and was refused once must not print a sentence
+// claiming nothing was allowed.
 func standingRefusal(event Event) string {
 	line := strings.TrimSpace(event.Hint)
 	if line == "" {
 		line = strings.TrimSpace(firstLine(event.Output))
 	}
 	lower := strings.ToLower(line)
-	if strings.Contains(lower, "nobody to ask") || strings.Contains(lower, "no resolver is attached") {
-		return line
+	if !strings.Contains(lower, "nobody to ask") && !strings.Contains(lower, "no resolver is attached") {
+		return ""
 	}
-	return ""
+	want := standingRefusalWant(event)
+	if want == "" {
+		want = standingRefusalSomething
+	}
+	return standingRefusalLead + want
+}
+
+// standingRefusalWant is WHAT THE FIRING WANTED, in the words a person would
+// use for it: the command a shell call was refused for, or the name of the tool
+// for every other hand.
+//
+// A shell call is the one that names its argument, because `bash` says nothing
+// a person can act on and the command says the whole of it. The argument is
+// read through [glossField], this package's one table of which argument says
+// what a call is doing, so this line and the row the same call would have drawn
+// in a conversation name the same thing. The length is [hintLimit]'s, for the
+// same reason.
+func standingRefusalWant(event Event) string {
+	tool := strings.TrimSpace(event.Tool)
+	if tool != approval.ToolBash {
+		return tool
+	}
+	var args map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(event.Args), &args); err != nil {
+		return ""
+	}
+	return clip(glossValue(args, glossField[tool]), hintLimit)
 }
 
 // standingTail keeps the LAST n bytes, on a line boundary where it can find

@@ -635,6 +635,9 @@ func (p *standingPlace) write(a *app, item standing.Item, status standing.Status
 		return nil
 	}
 	item.Status = status
+	// Changing the item is the person's answer to whatever its last firing
+	// stopped on ([standing.Item.ClearNeedsPerson]).
+	item = item.ClearNeedsPerson()
 	if status == standing.StatusRetired {
 		// THE DOCUMENT RECORDS WHY IN THE PERSON'S OWN TERMS, in the one spelling
 		// every surface that stops an order uses ([homeStoppedWhy]).

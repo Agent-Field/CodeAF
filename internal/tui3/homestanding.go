@@ -810,6 +810,9 @@ func (a *app) homeItemWrite(line homeLine, status standing.Status) tea.Cmd {
 	}
 	item := line.item
 	item.Status = status
+	// Changing the item is the person's answer to whatever its last firing
+	// stopped on ([standing.Item.ClearNeedsPerson]).
+	item = item.ClearNeedsPerson()
 	if status == standing.StatusRetired {
 		item.RetiredWhy = homeStoppedWhy
 	}

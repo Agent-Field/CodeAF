@@ -53,9 +53,11 @@ const (
 	// which is the emptiness law rather than an instruction repeated on every
 	// row. enter still opens the record ([app.homeLandOnTask]).
 	needsOpenWord = "enter"
-	// needsStandingWord is the same key on a watch with no conversation behind
-	// it: `enter` opens the item on the standing place, which is where an item
-	// made at home lives.
+	// needsStandingWord is the same key on a standing item's row: `enter` opens
+	// the item on the standing place, which is where the item lives and the only
+	// place anything about it can be changed. It is what EVERY standing row in
+	// this panel says, including one whose item was asked for in a conversation,
+	// because what stopped is the item and the conversation holds no question.
 	needsStandingWord = "enter on standing"
 	// needsAnswersCap is how many of a question's answers fit on its row. A
 	// question with more draws the first ones and then [needsOpenWord], because
@@ -162,16 +164,16 @@ func needsAsked(in *homeGridInput) []needsItem {
 			}
 		case switcherStanding:
 			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
-			// AND THE KEY SAYS WHICH DOOR IT IS. A watch asked for in a
-			// conversation opens that conversation; one made from home's own box
-			// has none — its exchange is kept under the item's folder rather than
-			// as a session ([standing.Origin.Exchange]) — and `enter` opens the
-			// item where it does live, on standing ([app.homeItemEnter]). Two
-			// doors, two words, and neither row advertises the other's.
-			cell.subRight = needsOpenWord
-			if strings.TrimSpace(row.item.Item.Origin.Transcript) == "" {
-				cell.subRight = needsStandingWord
-			}
+			// AND THE DOOR IS THE ITEM, WHATEVER IT WAS ASKED FOR IN. This row
+			// used to send a person to the conversation the item was made in
+			// when it had one, and that conversation holds NOTHING to answer:
+			// it is idle, its own presence carries no question, and the thing
+			// that stopped is the item. Measured on a real watch — the row said
+			// a person was needed, `enter` opened a conversation with nothing in
+			// it, and there was nowhere on the screen to act. The item is where
+			// it can be paused, reworded or let go ([app.homeItemEnter]), so the
+			// item is where the key goes.
+			cell.subRight = needsStandingWord
 		}
 		item.line = switcherRowLine(row, cell)
 		items = append(items, item)
