@@ -975,8 +975,15 @@ func (a *Agent) waitingOnPerson() personAsk {
 	// only this predicate that did not know to look. Measured in two terminals
 	// on one machine: a question raised in the first, and home in the second
 	// drawing that conversation as `working` with nothing to answer.
+	// A RUNNING SUB-HARNESS'S OWN QUESTION IS ONE OF THESE LANES TOO, and
+	// leaving it out was the worst of the set: that run is BLOCKED inside
+	// [subharnessEnv.Ask] until somebody answers, so a session holding one said
+	// `working` while nothing it was doing could move. The question was
+	// registered and readable through [Agent.OpenQuestions] the whole time; it
+	// was this predicate that did not look, and the lane's own comment already
+	// claimed the row said so.
 	asked := len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
-		len(a.standingAnswers) > 0 || a.asked.anyLocked()
+		len(a.standingAnswers) > 0 || len(a.subharnessAsks) > 0 || a.asked.anyLocked()
 	for _, proposal := range a.taskAnswers {
 		if proposal != nil && proposal.notice.Deadline.IsZero() {
 			asked = true
