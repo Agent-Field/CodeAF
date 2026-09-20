@@ -372,7 +372,7 @@ func consentQuestionAt(id uint64, text string, asked time.Time) session.Presence
 // A BRAND-NEW LAUNCH'S OWN ROW IS ONE LINE: `new conversation` in bold, no age
 // and nothing under it — whatever the journal's tail has on hand — until
 // its person says something, and then the line under it is what they said.
-func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
+func TestAFreshLaunchHasNoHomeRowUntilItsFirstMessage(t *testing.T) {
 	l := newLiveLab(t)
 	dir := filepath.Join(l.project("-alpha"), "aaaa000000000009")
 	fresh := filepath.Join(dir, "transcript.jsonl")
@@ -396,18 +396,18 @@ func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
 		return a
 	}
 	a := openOn()
-	own := panelRows(a, panelRecent)[0]
-	if own.title != unnamedConversationWord || own.right != "" || own.sub != "" || !own.bold {
-		t.Fatalf("the fresh launch's row is not one bold line with nothing at its right: %+v", own)
-	}
-	if next := homeLineAfter(homeText(a), unnamedConversationWord); !strings.Contains(next, "Porting the Resume Picker") {
-		t.Fatalf("the fresh launch's row carries a line under it:\n%s", homeText(a))
+	for _, own := range panelRows(a, panelRecent) {
+		if own.title == unnamedConversationWord {
+			t.Fatalf("empty launch has a saved row: %+v", own)
+		}
 	}
 	meta.LastUserAt = l.now
 	if err := session.SaveMeta(dir, meta); err != nil {
 		t.Fatal(err)
 	}
 	wide := openOn()
+	wide.openingPrompt = "explain open addressing"
+	wide.home.build()
 	wide.width = 180
 	homeText(wide)
 	wide.home.point(fresh)

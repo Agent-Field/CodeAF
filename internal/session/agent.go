@@ -235,10 +235,6 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// about the conversation in the file, and re-deriving it from the same
 		// opening exchange would pay for an answer we already have.
 		agent.title = file.Title()
-		agent.shortTitle = compactTitle(file.ShortTitle())
-		if agent.shortTitle == "" {
-			agent.shortTitle = compactTitle(agent.title)
-		}
 		// And it keeps its cache lineage for the same reason, which matters
 		// more: a session resumed tomorrow re-sends the transcript it built
 		// today, and a key that changed with the process would ask the router
@@ -2009,14 +2005,8 @@ func (a *Agent) Title() string {
 	return a.title
 }
 
-func (a *Agent) ShortTitle() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if strings.TrimSpace(a.shortTitle) != "" {
-		return a.shortTitle
-	}
-	return a.title
-}
+// ShortTitle is a compatibility alias for older callers. Conversations have one name.
+func (a *Agent) ShortTitle() string { return a.Title() }
 
 // Compact runs a compaction pass now (the surface's /compact). It is a no-op
 // when the transcript is smaller than the keep-recent floor.

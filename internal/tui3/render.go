@@ -4089,6 +4089,17 @@ func noteBlockLines(text string, width int) []string {
 	return out
 }
 
+// Conversation names use a visible three-dot suffix without changing the stored name.
+func fitConversationTitle(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(s) <= width {
+		return s
+	}
+	return ansi.Truncate(s, width, strings.Repeat(".", min(width, 3)))
+}
+
 // fit truncates to a printable width, or returns nothing at all when there is
 // no room — a one-cell ellipsis in a one-cell gap says less than a space.
 func fit(s string, width int) string {

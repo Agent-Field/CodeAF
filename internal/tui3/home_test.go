@@ -2262,8 +2262,8 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		// empty (DESIGN.md §4) but its rows are read and not stood on (owner,
 		// 2026-09-17), and every other panel whispers — a whisper names what
 		// arrives rather than a thing to open.
-		if stops := (placeHome{}).stops(a); len(stops) != 1 || a.home.lines[stops[0]].row.Transcript != "" {
-			t.Fatalf("at %d columns an empty home offered rows of kind %v to stand on", tc.width, a.home.lines[stops[0]].kind)
+		if stops := (placeHome{}).stops(a); len(stops) != 0 {
+			t.Fatalf("at %d columns an empty home offered rows to stand on: %v", tc.width, stops)
 		}
 		// The arrows have nothing to land on and must not land on the furniture.
 		drive(t, a, key("down"))

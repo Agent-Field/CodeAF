@@ -206,21 +206,17 @@ func openingPlaceholder(dir string) string {
 
 // stampTitle records the earned name. Snapshot agent state first, then serialize
 // its metadata patch without holding the lock a foreground turn is waiting on.
-func (a *Agent) stampTitle(title string, shorts ...string) {
+func (a *Agent) stampTitle(title string, _ ...string) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return
-	}
-	short := title
-	if len(shorts) > 0 && strings.TrimSpace(shorts[0]) != "" {
-		short = shorts[0]
 	}
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
 		// Earned names keep the same guards as the journal they mirror. The
 		// narrower metadata limit belongs only to the opening-message placeholder.
 		meta.Title = clip(title, titleLimit)
-		meta.ShortTitle = clip(strings.TrimSpace(short), shortTitleLimit)
+		meta.ShortTitle = ""
 	})
 }
 

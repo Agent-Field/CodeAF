@@ -76,7 +76,6 @@ package session
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -92,14 +91,10 @@ import (
 // it is read, and the system line only says who is being asked.
 const titleSystem = "You name conversations."
 
-// titlePrompt is the whole instruction, and it is the LAST thing in the user
-// message, after the exchange it is about. Short, because the shape of the
-// answer IS the requirement: one descriptive library title and one stable,
-// compact tab label. Lowercase and unquoted is what every other label in this
-// surface looks like.
-const shortTitleWords = 2
+// titlePrompt requests the one name shared by every conversation surface.
+// Width is a presentation choice, not a second naming job.
+const titlePrompt = "Name this conversation with a descriptive 5-8 word phrase, lowercase, no quotes. Answer with the name only."
 
-var titlePrompt = fmt.Sprintf("Name this conversation twice. First line: full: a descriptive title in ≤12 words. Second line: tab: a distinct compact label in ≤%d words. Lowercase, no quotes, those two lines only.", shortTitleWords)
 var errInvalidName = errors.New("naming response contained no usable name")
 
 const legacyTitlePrompt = "Name this session in ≤8 words, lowercase, no quotes. Answer with the name only."
@@ -107,21 +102,20 @@ const legacyTitlePrompt = "Name this session in ≤8 words, lowercase, no quotes
 // titleClip bounds each half of the opening exchange handed to the namer. A
 // title is derived from what the session is ABOUT, and the first paragraph of
 // the question and of the answer says that; sending a 300KB tool-assisted reply
-// would pay for a whole context to produce two short labels.
+// would pay for a whole context to produce one short title.
 const titleClip = 2000
 
-// titleLimit bounds the full name itself. Twelve words asked for, 80 bytes accepted:
+// titleLimit bounds the full name itself. Five to eight words asked for, 80 bytes accepted:
 // the cap is a guard against a model that answers with a paragraph, not a
 // second attempt at the instruction.
 const titleLimit = 80
-const shortTitleLimit = 32
 
 // A title is visible housekeeping. Its low-tier outer patience is shared with
 // slower auxiliary work, so one naming ask states its own tighter worth. The
 // two-minute parent still owns retries and cancellation across asks.
 const titleAskWindow = 20 * time.Second
 
-type conversationTitle struct{ full, short string }
+type conversationTitle struct{ full string }
 
 // titleWindow bounds the WHOLE errand — every ask, every backoff and the waits
 // inside them. The per-call bound is the role tier's ([roles.PatienceFor],
@@ -278,7 +272,7 @@ func (a *Agent) stillNeedsName() bool {
 // A failed request or an unusable reply may spend another bounded attempt.
 func (a *Agent) askForName(ctx context.Context, question, answer, model string) (name conversationTitle, again bool) {
 	// One errand, through the one door errands go through (auxiliary.go): the
-	// role's tier bounds how long two short labels may take, and a model that cannot
+	// role's tier bounds how long one title may take, and a model that cannot
 	// answer at all costs one fall-through down the ladder rather than the
 	// session's name. No tools — the namer's only job is to produce the title pair.
 	callCtx, cancel := context.WithTimeout(ctx, titleAskWindow)
@@ -366,10 +360,10 @@ func (a *Agent) publishTitle(ctx context.Context, title conversationTitle) {
 	if ctx.Err() != nil {
 		return
 	}
-	if !a.setTitleIfUnnamed(title.full, title.short) {
+	if !a.setTitleIfUnnamed(title.full) {
 		return
 	}
-	event := Event{Kind: EventTitleChanged, Text: title.full, ShortTitle: title.short}
+	event := Event{Kind: EventTitleChanged, Text: title.full}
 	a.mu.Lock()
 	hub := a.hub
 	watchers := make([]*eventStream, len(a.titleWatchers))
@@ -416,7 +410,7 @@ func (a *Agent) WatchTitle() (<-chan Event, func()) {
 	}
 	a.titleWatchers = append(a.titleWatchers, stream)
 	if title := strings.TrimSpace(a.title); title != "" {
-		stream.send(Event{Kind: EventTitleChanged, Text: title, ShortTitle: a.shortTitle})
+		stream.send(Event{Kind: EventTitleChanged, Text: title})
 	}
 	a.mu.Unlock()
 	var once sync.Once
@@ -474,27 +468,22 @@ func (a *Agent) waitForTitle() {
 // the same answer for the same reason: this is the last gate in front of a
 // journal append, and a session that has left is not one anything may still be
 // written to. Nothing is journaled, nothing is stamped, and no event is sent.
-func (a *Agent) setTitleIfUnnamed(title string, shorts ...string) bool {
-	short := title
-	if len(shorts) > 0 && strings.TrimSpace(shorts[0]) != "" {
-		short = shorts[0]
-	}
+func (a *Agent) setTitleIfUnnamed(title string, _ ...string) bool {
 	a.mu.Lock()
 	if a.closed || strings.TrimSpace(a.title) != "" {
 		a.mu.Unlock()
 		return false
 	}
-	short = compactTitle(short)
-	a.title, a.shortTitle = title, short
+	a.title = title
 	file := a.file
 	a.mu.Unlock()
 	if file != nil {
-		file.appendTitle(title, short)
+		file.appendTitle(title, "")
 	}
 	// The folder's row says what the journal says. Until now it has carried the
 	// person's opening words as a placeholder (placemeta.go); this is the name
 	// the conversation actually earned.
-	a.stampTitle(title, short)
+	a.stampTitle(title)
 	return true
 }
 
@@ -540,7 +529,7 @@ func messageContentText(message ai.Message) string {
 }
 
 func cleanConversationTitle(raw string) conversationTitle {
-	var full, short string
+	var full string
 	labeled := false
 	for _, line := range strings.Split(raw, "\n") {
 		line = stripMarkup(strings.TrimSpace(line))
@@ -555,11 +544,11 @@ func cleanConversationTitle(raw string) conversationTitle {
 			full = cleanTitle(strings.TrimSpace(line[len("full:"):]))
 		case strings.HasPrefix(lower, "tab:"):
 			labeled = true
-			short = cleanTitle(strings.TrimSpace(line[len("tab:"):]))
+			// A legacy paired answer contributes only its full title.
 		}
 	}
 	// Old providers and saved test fixtures answer one plain line. It remains a
-	// valid full title and the tab falls back to it, preserving compatibility.
+	// valid full title, preserving compatibility with older providers.
 	if full == "" && labeled {
 		return conversationTitle{}
 	}
@@ -569,16 +558,7 @@ func cleanConversationTitle(raw string) conversationTitle {
 	if full == "" {
 		return conversationTitle{}
 	}
-	if short == "" {
-		short = full
-	}
-	short = compactTitle(short)
-	return conversationTitle{full: full, short: short}
-}
-
-// compactTitle also repairs short labels saved before the word cap existed.
-func compactTitle(raw string) string {
-	return clip(firstWordsOf(cleanTitle(raw), shortTitleWords), shortTitleLimit)
+	return conversationTitle{full: full}
 }
 
 // cleanTitle takes the first line and strips the things a model adds against

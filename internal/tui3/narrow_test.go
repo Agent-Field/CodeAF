@@ -253,16 +253,17 @@ func TestAConversationWithNoTitleIsNamedInWordsNotHex(t *testing.T) {
 	for _, width := range []int{60, 80, 120, 160} {
 		a := lab.app(mine)
 		a.width, a.height = width, 30
+		a.openingPrompt = "explain open addressing"
 		openHomeFixtureTabs(a)
 		a.openHome()
 		frame := homeText(a)
 		if strings.Contains(frame, "927D303242f9d00e") || strings.Contains(frame, "927d303242f9d00e") {
 			t.Fatalf("at %d columns home drew\n\t%q\nwith the folder's id where the name goes; it should read\n\t%q",
-				width, rowSaying(frame, "927"), "○ "+unnamedConversationWord+"   alpha  here")
+				width, rowSaying(frame, "927"), "○ "+"explain open addressing"+"   alpha  here")
 		}
-		if !strings.Contains(frame, unnamedConversationWord) {
+		if !strings.Contains(frame, "explain open addressing") {
 			t.Fatalf("at %d columns home drew\n%s\nand nothing on it names the conversation with no title; the row should read\n\t%q",
-				width, frame, "○ "+unnamedConversationWord)
+				width, frame, "○ "+"explain open addressing")
 		}
 		// AND A CONVERSATION THAT HAS A NAME STILL WEARS IT.
 		if !strings.Contains(frame, "Porting the Picker") {
@@ -275,7 +276,7 @@ func TestAConversationWithNoTitleIsNamedInWordsNotHex(t *testing.T) {
 		t.Fatalf("a folder that reads as words was named %q, and it should keep its own words: %q", got, want)
 	}
 	if got := listName("", "/p/01J8ZK4Q2M7X/transcript.jsonl"); got != unnamedConversationWord {
-		t.Fatalf("an id-shaped folder was named %q, and a name that cannot be had is said in words: %q", got, unnamedConversationWord)
+		t.Fatalf("an id-shaped folder was named %q, and a name that cannot be had is said in words: %q", got, "explain open addressing")
 	}
 }
 

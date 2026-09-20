@@ -817,7 +817,7 @@ func TestALongTitleIsCutBeforeItsAge(t *testing.T) {
 	title := strings.Repeat("Generate and Display First 200 Primes ", 2)[:70]
 	cell := &homeCell{panel: panelRecent, title: title, right: "1h"}
 	row := plain(homeCellBody(cell, width-homeGridLead, newTestPalette(), false))
-	if !strings.HasSuffix(row, " 1h") || strings.Contains(row, title) || !strings.Contains(row, "…") {
+	if !strings.HasSuffix(row, " 1h") || strings.Contains(row, title) || !strings.Contains(row, "...") {
 		t.Fatalf("the title was not cut to keep its age: %q", row)
 	}
 	if got := len([]rune(row)); got > width-homeGridLead {

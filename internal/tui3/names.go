@@ -10,7 +10,7 @@ import (
 
 // WHAT A SESSION IS CALLED, AND WHAT IT IS CALLED ON SCREEN.
 //
-// A session names itself once, from its first exchange, in eight lowercase words
+// A session names itself once, from its first exchange, in five to eight lowercase words
 // (internal/session's title.go). That is the name in the file and the name this
 // surface draws — except when it is not: a session named by something other than
 // that namer, or by a model that answered the instruction with a slug, arrives
@@ -38,10 +38,8 @@ import (
 // own, read back as words when it arrived as one token.
 func (a *app) sessionName() string { return readableName(a.title) }
 
-// unnamedConversationWord is what a conversation with no name yet is CALLED on
-// its tab, in its breadcrumb root, and on the switcher card. It is the word the
-// entry line already uses for the same fact — `new conversation · …` — and it
-// is one word in all those places because one thing has one name.
+// unnamedConversationWord describes an empty conversation in breadcrumbs and
+// notices. Empty shells have no tab; drafts and sent prompts supply their own names.
 const unnamedConversationWord = "new conversation"
 
 func chatTabName(raw string) string {
@@ -51,38 +49,34 @@ func chatTabName(raw string) string {
 	return unnamedConversationWord
 }
 
-// EventTitleChanged updates a.title and invalidates the frame when naming finishes.
-func (a *app) chatDisplayName() string { return chatTabName(a.title) }
-
-type shortTitleAgent interface{ ShortTitle() string }
-
-func shortTitleOf(agent Agent) string {
-	if named, ok := agent.(shortTitleAgent); ok {
-		if short := strings.TrimSpace(named.ShortTitle()); short != "" {
-			return short
+// conversationName keeps generated names separate from the opening prompt so
+// erasing a draft removes an empty tab without losing a submitted conversation.
+func (a *app) conversationName() string {
+	if name := strings.TrimSpace(a.title); name != "" && name != unnamedConversationWord {
+		return readableName(name)
+	}
+	if name := strings.TrimSpace(a.openingPrompt); name != "" {
+		return promptName(name)
+	}
+	for _, e := range a.entries {
+		if e.kind == entryUser && strings.TrimSpace(e.text) != "" {
+			return promptName(e.text)
 		}
 	}
-	if agent != nil {
-		return strings.TrimSpace(agent.Title())
-	}
-	return ""
+	main := a.mainComposer()
+	return promptName(main.box.String())
 }
 
-func shortTitleWithSide(agent Agent, side *aside) string {
-	if named, ok := agent.(shortTitleAgent); ok {
-		if short := strings.TrimSpace(named.ShortTitle()); short != "" {
-			return short
-		}
-	}
-	return hopRawTitle(agent, side)
-}
+// Prompt names preserve the person's words; only whitespace and display width change.
+func promptName(text string) string { return strings.Join(strings.Fields(text), " ") }
 
-func (a *app) chatTabDisplayName() string {
-	if short := strings.TrimSpace(a.shortTitle); short != "" {
-		return chatTabName(short)
+func (a *app) chatDisplayName() string {
+	if name := a.conversationName(); name != "" {
+		return name
 	}
-	return a.chatDisplayName()
+	return unnamedConversationWord
 }
+func (a *app) chatTabDisplayName() string { return a.chatDisplayName() }
 
 // ── the naming lane ─────────────────────────────────────────────────────────
 //

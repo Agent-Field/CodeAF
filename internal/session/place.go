@@ -182,7 +182,7 @@ type Meta struct {
 	// Title is what a picker row says. Empty until something names the
 	// session; an empty title marks a session the launch groom may reuse.
 	Title      string `json:"title,omitempty"`
-	ShortTitle string `json:"shortTitle,omitempty"`
+	ShortTitle string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 	// Workspace is the REAL workspace path — the resolved git root for a
 	// borrowed session, the work/ directory for an owned one. The encoded
 	// bucket directory above the session folder is derived from it and is
@@ -307,7 +307,7 @@ func LoadMeta(dir string) (Meta, error) {
 		meta.Title = openingPlaceholder(dir)
 	}
 	meta.Title = healedTitle(meta.Title)
-	meta.ShortTitle = compactTitle(healedTitle(meta.ShortTitle))
+	meta.ShortTitle = "" // Old tab labels no longer participate in naming.
 	return meta, nil
 }
 

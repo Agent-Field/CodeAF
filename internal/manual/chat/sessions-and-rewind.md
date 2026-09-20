@@ -429,8 +429,7 @@ model's (`gpt-4.1-mini:high`), and the name came off it on 2026-09-17 because a 
 takes the room the numbers need.
 
 **It starts with your first message.** The small model on the `title` role is shown the
-opening question and asked for a descriptive conversation title plus a compact tab label
-in one response. The answer and the naming request run independently. A late name still
+opening question and asked for one descriptive **5–8 word phrase**. The answer and the naming request run independently. A late name still
 reaches an idle chat, a background tab, or a hosted chat after the connection is restored;
 no refresh or follow-up message is needed.
 
@@ -438,16 +437,15 @@ Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the exi
 fallback promptly. Temporary provider failures are asked again for as long as the
 two-minute parent window lasts, with a wait that doubles in front of each ask; nothing
 counts the asks. Closing the session cancels this work. Failed or invalid naming
-leaves the conversation usable with its existing `new conversation` placeholder; an existing name is never
+leaves the conversation usable under your opening prompt; an existing name is never
 overwritten. Title calls remain billed to the session and cost history, separately from
 an unrelated turn that happens to be running when the name arrives.
 
-The full name is capped at **80 bytes** in both its journal and folder metadata. The
-stable compact label is capped at **32 bytes** in both places, and the tab strip fits it
-to its available cells. A name written in Chinese or Japanese costs three bytes per
-character, so the full name fits about 26 characters and its compact label about 10. Old
-saved conversations have no separate compact label and use their full title in the tab,
-exactly as before.
+The name is capped at **80 bytes** in both its journal and folder metadata. A name
+written in Chinese or Japanese costs three bytes per character, so it fits about 26
+characters. Home and tabs use that same full title, truncating with `...` to fit their
+available cells. Older short tab labels are ignored. Until naming finishes, the input
+prompt supplies the temporary name. Empty new-conversation boxes create no saved tab.
 
 **There is no command to rename a conversation.** The name lives in the transcript as its
 own appended line, and the last one wins when the file is read back — but nothing on this

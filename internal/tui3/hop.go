@@ -771,6 +771,12 @@ func hopRawTitle(agent Agent, side *aside) string {
 	}
 	if title == "" && side != nil {
 		title = strings.TrimSpace(side.title)
+		if title == "" || title == unnamedConversationWord {
+			title = promptName(side.openingPrompt)
+			if title == "" {
+				title = promptName(side.draft)
+			}
+		}
 	}
 	return title
 }

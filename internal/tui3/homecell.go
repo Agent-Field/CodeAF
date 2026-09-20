@@ -585,7 +585,11 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	}
 	if over := homeCellWidth(title, pad, note, tag, right) - width; over > 0 {
 		keep := max(1, ansi.StringWidth(title)-over)
-		title = fit(title, keep)
+		if cell.panel == panelRecent {
+			title = fitConversationTitle(title, keep)
+		} else {
+			title = fit(title, keep)
+		}
 	}
 	titleInk, factInk := pal.ink, pal.dim
 	if cell.bold || lit {

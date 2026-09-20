@@ -2006,8 +2006,13 @@ func TestNewOnAUsedConversationAddsOneAndClearsTheTranscript(t *testing.T) {
 		t.Fatalf("this terminal holds %d conversations", a.openCount())
 	}
 	got := plain(frame(a))
-	if strings.Contains(got, "something old") {
-		t.Fatalf("the old conversation survived /new:\n%s", got)
+	for _, e := range a.entries {
+		if e.kind == entryUser && e.text == "something old" {
+			t.Fatal("the old transcript survived /new")
+		}
+	}
+	if tabs := a.tabList(); len(tabs) != 1 || tabs[0].word != "something old" {
+		t.Fatalf("/new should retain only the used conversation's tab: %+v", tabs)
 	}
 	if !strings.Contains(got, "new conversation · lab") {
 		t.Fatalf("/new has to say which of the two happened:\n%s", got)

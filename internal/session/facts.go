@@ -36,7 +36,7 @@ type Facts struct {
 	// Title is the name the session gave itself ([Agent.Title]), and empty for
 	// a conversation that has not earned one yet.
 	Title      string `json:"title,omitempty"`
-	ShortTitle string `json:"shortTitle,omitempty"`
+	ShortTitle string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 	// Spent is the session's running total ([Agent.Usage]).
 	Spent Usage `json:"spent,omitzero"`
 	// ContextTokens is what the conversation weighs right now
@@ -141,9 +141,6 @@ func FactsOf(source FactSource) Facts {
 		Spent:         source.Usage(),
 		ContextTokens: source.ContextTokens(),
 		Reasoning:     source.ReasoningLevels(),
-	}
-	if named, ok := source.(interface{ ShortTitle() string }); ok {
-		facts.ShortTitle = named.ShortTitle()
 	}
 	// AND THE FOLDERS, ASSERTED RATHER THAN REQUIRED. A capability that cannot
 	// work is absent rather than broken, and a source that does not keep places —

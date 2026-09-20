@@ -199,12 +199,13 @@ role works in the background alongside the answer. Each naming ask has twenty se
 reach an answer or its existing fallback. The answer does not wait for a title, and the
 title does not wait for the answer to finish.
 
-1. `+` opens the `New chat` page. A newly created conversation starts as `new conversation`.
-2. Sending your first message starts both the conversation and background naming.
-3. One response supplies a full conversation title and a one- or two-word tab label. The tab strip
-   and the terminal's own title use the compact label; breadcrumbs, the status line, Home,
-   the switcher and recent sessions keep the full title. This also works after the answer has
-   finished or you have switched to another tab.
+1. `+` opens a new-conversation message box. An empty box creates no conversation tab.
+2. A nonempty draft uses your input as its temporary tab name. Clearing the unsent draft
+   removes that tab. After the first prompt is sent, its words remain the temporary name.
+3. The background model is asked for one descriptive **5–8 word phrase**. Home displays
+   that full title, shortening it with `...` when needed. Tabs shorten the same title to
+   their available width; there is no separately generated tab label. The title also
+   reaches an idle chat or a chat you have switched away from.
 
 Hover over a tab to reveal its full title beneath it. Long titles wrap; the tab and
 conversation stay in place, and the preview disappears when the pointer leaves.
@@ -214,20 +215,20 @@ short increasing delays, for as long as a **two-minute** window lasts — the wi
 whole of the bound and there is no count of attempts. You do not need to send
 another message. A failed title never interrupts the answer or changes its working state.
 Empty answers, instruction echoes and placeholders are rejected, and the next configured
-naming model can answer within the same budget. If those attempts fail, the tab remains
-`new conversation`; an unnamed saved conversation can try again on its next message after reopening.
+naming model can answer within the same budget. If those attempts fail, the tab keeps
+your opening prompt; an unnamed saved conversation can try again on its next message after reopening.
 
 **An existing name wins.** Naming runs once per session lifetime, and a chat that already
 has a name is not named again. Older saved names with a leaked `Full:` label are cleaned
-when read — including one written behind a `-` or `1.` list marker — and saved tab labels
-are limited to two words. Closing the session cancels unfinished naming. There is no
+when read — including one written behind a `-` or `1.` list marker. Older short tab labels
+are ignored; the full title is used everywhere. Closing the session cancels unfinished naming. There is no
 command or tab action to rename a conversation manually.
 
-**`new conversation` is the one name placeholder.** The tab, its breadcrumb root and the
-`alt+k` switcher row all use it, and no conversation-name surface calls the same unnamed
-chat `Untitled`. The project in the status line is a separate fact. The placeholder is not
-`main` either — `main` is the conversation as a place, the one you get back to from a task
-page, which is what `esc/← main` and `say it to main` both mean.
+**`new conversation` describes an empty box in breadcrumbs and notices.** It is not
+saved as a tab or an `alt+k` row. As soon as there are draft or submitted words, those
+words supply the name until the generated title arrives. The project is a separate fact.
+`main` means the conversation as a place — the destination of `esc/← main` and
+`say it to main` from a task page — rather than its title.
 
 ## Closing a tab — the × on a tab, Ctrl+W, where do I go next
 
@@ -360,7 +361,7 @@ leaves you exactly where you began. The conversation is made when you **submit t
 
 The page is the launch screen drawn inside the frame you are already in: the wordmark, the
 model and crew line, a blank message box with the caret in it, and this project's recent
-conversations under it. A selected **New chat** tab labels this page. The other chat tabs remain available, with overflow reachable from the chats card (`alt+k`). The footer belongs to the start page and shows no previous conversation costs. The previous chat’s sidebar and compact task strip are hidden.
+conversations under it. An empty start page adds no tab. Once you type, a selected tab shows your draft, truncated to fit. The other chat tabs remain available, with overflow reachable from the chats card (`alt+k`). The footer belongs to the start page and shows no previous conversation costs. The previous chat’s sidebar and compact task strip are hidden.
 
 | Key or click | What it does |
 | --- | --- |

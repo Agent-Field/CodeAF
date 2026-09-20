@@ -1014,13 +1014,14 @@ type app struct {
 
 	state runState
 	model string
-	// title is the name the session gave itself, shown left of the model. Empty
+	// title is the name the session gave itself, shared by Home and the tabs. Empty
 	// until the session has one (session's title.go starts naming it with the
 	// first accepted message); a resumed session opens with the name it already had.
-	title      string
-	shortTitle string
-	cost       float64
-	tokens     int
+	title string
+	// openingPrompt names a sent conversation until its generated title arrives.
+	openingPrompt string
+	cost          float64
+	tokens        int
 	// dayCost is what this MACHINE has spent since midnight and dayCosted
 	// whether anything counted it at all — the pair the Spending tab's `today`
 	// receipt is drawn from (settingspend.go). It is a reading taken on the way
@@ -2850,7 +2851,6 @@ func newApp(ctx context.Context, opts Options) *app {
 		// conversation on screen: it belongs in the first frame, not after the
 		// next turn (session's title.go re-names nothing).
 		a.title = strings.TrimSpace(a.agent.Title())
-		a.shortTitle = shortTitleOf(a.agent)
 		// AND THE LEVEL IS SEEDED HERE, beside the two facts above and for the
 		// same reason: the status row spells it onto the model segment, and a
 		// level fetched on the frame clock instead would leave the FIRST frame
@@ -5958,18 +5958,16 @@ func (a *app) setTitle(title string) {
 	a.setTitleEvent(title, title)
 }
 
-func (a *app) setTitleEvent(title, short string) {
+func (a *app) setTitleEvent(title, _ string) {
 	title = strings.TrimSpace(title)
-	short = strings.TrimSpace(short)
-	if short == "" {
-		short = title
-	}
-	if title == "" || (title == a.title && short == a.shortTitle) {
+	if title == "" || title == a.title {
 		return
 	}
 	a.title = title
-	a.shortTitle = short
 	a.touch()
+	if a.at(pageHome) && a.home.tabs != nil {
+		a.home.build()
+	}
 }
 
 // submit sends one message. It always goes through a command: Submit talks to
@@ -6031,6 +6029,9 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 				acted = append(acted, s)
 			}
 		}
+	}
+	if a.openingPrompt == "" {
+		a.openingPrompt = shown
 	}
 	a.said(entry{kind: entryUser, text: shown, turn: a.turn, actedTags: acted, began: a.now(), context: a.turnContext()})
 	// AND OVER A CONNECTION THE LINE IS MARKED UNTIL THE ENGINE HAS IT. The

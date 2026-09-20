@@ -3214,7 +3214,6 @@ type Agent struct {
 
 	title      string
 	titleTried bool
-	shortTitle string
 
 	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
 	// that may be running. They are memoryCtx's bargain above, for the same

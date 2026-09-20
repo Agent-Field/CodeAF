@@ -44,6 +44,8 @@ import (
 // keep correct while it is not drawing it, which is the expensive kind of
 // state; the test is "would a person notice it was gone", not "could we".
 type aside struct {
+	// openingPrompt survives a switch while the title and transcript arrive.
+	openingPrompt string
 	// draft is the unsent sentence with every parked message folded in after it,
 	// and chips are the pictures attached to it.
 	//
@@ -261,14 +263,15 @@ func (a *app) detachConversation() *aside {
 		// A conversation can be put down while a task's page is in front, and the
 		// box then holds that page's steering line — which is not this
 		// conversation's unsent message and must not come back as one.
-		draft:  a.leavingDraft(),
-		chips:  main.chips,
-		pastes: main.pastes,
-		sends:  main.sends,
-		offset: a.offset,
-		stick:  a.stick,
-		since:  a.now(),
-		title:  a.title,
+		draft:         a.leavingDraft(),
+		chips:         main.chips,
+		pastes:        main.pastes,
+		sends:         main.sends,
+		offset:        a.offset,
+		stick:         a.stick,
+		since:         a.now(),
+		title:         a.title,
+		openingPrompt: a.openingPrompt,
 	}
 	// Appended parked messages are new text at the end; otherwise a switch
 	// restores the exact insertion point the person left in the main composer.
@@ -493,6 +496,10 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 		a.forgetQuestions()
 	}
 	agent := a.agent
+	a.openingPrompt = ""
+	if side != nil {
+		a.openingPrompt = side.openingPrompt
+	}
 	// WHEN THIS ONE CAME FORWARD, stamped on the way in so the switcher's own row
 	// can say how long you have been sitting here (hop.go). Every other row
 	// measures from the sidecar its detach left; this is that stamp's other half.
@@ -502,7 +509,10 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if agent != nil {
 		a.model = agent.Model()
 		a.title = strings.TrimSpace(agent.Title())
-		a.shortTitle = shortTitleOf(agent)
+		// A cached earned name survives an agent whose snapshot is still arriving.
+		if a.title == "" && side != nil {
+			a.title = side.title
+		}
 		// THE DIAL BELONGS TO THE AGENT, so what was held about the last one is
 		// dropped and this one's current model is asked about directly — the
 		// third of the three seeded moments (reasoninglevel.go).
