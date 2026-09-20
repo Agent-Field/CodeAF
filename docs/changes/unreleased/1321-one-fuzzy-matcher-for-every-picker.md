@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: one fzf-style fuzzy matcher ranks every quick-search picker, and the settings search takes spaces
-pr: 1089
+pr: 1321
 surface: [chat]
 invalidates:
   - "Every picker on the chat surface kept its own quick-search scorer. The model picker, the harness picker, the subharness page, the resume roster and the deliverables shelf ranked by a prefix-then-substring-then-subsequence token ladder (palette.go's [tokenScore], lower score better); the settings sheet, the autonomy rows, the connections catalog, the memory place, the folder picker's loose rung and the rewind sheet matched by substring. All of them now rank with one matcher, internal/fuzzy — a port of fzf's FuzzyMatchV2 with helix/nucleo's two-matrix correction — and a higher score is better everywhere."

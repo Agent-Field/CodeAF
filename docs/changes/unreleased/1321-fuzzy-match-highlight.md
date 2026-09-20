@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: quick-search rows draw the matched letters in bold, and internal/fuzzy says where each term hit
-pr: 1089
+pr: 1321
 surface: [chat]
 invalidates:
   - "internal/fuzzy answered scores only: no caller could ask where a term matched. It now records its DP decisions as it runs and backtracks the best cell, and ScoreHits and ScoreFieldsHits return per term the winning field and the matched byte indices into caller-reused slices — the optimal span: `foo` against `xf foo` lights the whole word after the space, not fzf's `xf_oo`."
