@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a live run counts as work, so its conversation is not retired out from under it
-pr: 1290
+pr: 1291
 surface: [chat, engine]
 invalidates:
   - "A conversation whose only live work was a run read as idle, because a run's rows are kept beside the task graph rather than in it and the work tree walked only the graph. The engine retires an idle conversation at thirty minutes and asks that same door what idle means, so a run longer than thirty minutes had its room taken down while its workers were out. A live run is now a row in the work tree, which is the whole of what keeps the engine alive while a run lives."
