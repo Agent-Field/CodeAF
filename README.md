@@ -258,6 +258,7 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 - One Go binary, 53 MB on disk: up to 21x smaller than the field.
 - 27 MB of RAM per parallel session; the heaviest rival adds 653 MB, 24x for the same tab.
 - Sixteen of ours fit in half a gigabyte; claude's fourth tab alone needs more.
+- Reopens a 50-turn session in 145 ms, 2.7x faster than the nearest CLI measured.
 - Harness, method and every table: [docs/benchmarks/performance](docs/benchmarks/performance/).
 
 ## Docs

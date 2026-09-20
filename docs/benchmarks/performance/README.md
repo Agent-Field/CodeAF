@@ -101,6 +101,10 @@ A second day of tables extends the footprint past the single idle instance:
   cost in a 3,334-file repository versus a one-file repository, with inotify
   watch counts.
 
+- [results-resume-2026-09-20.md](results-resume-2026-09-20.md): the
+  cost of reopening a 50-turn session, in memory and in milliseconds
+  to usable.
+
 Turns were driven against `stub.py`, a loopback model endpoint, so no measured
 turn spent a provider token. A CLI the stub cannot drive has an empty row with
 the reason, never a substituted figure. `scale2.sh` and `stub.py` sit beside
