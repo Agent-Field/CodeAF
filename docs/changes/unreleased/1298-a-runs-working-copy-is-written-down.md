@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a run's working copy is written down, so carrying it on adopts the work instead of deleting it
-pr: 1297
+pr: 1298
 surface: [chat, engine]
 invalidates:
   - "Nothing recorded where a run's work was. A run's directory is derived from its own number and could be worked out again, but its branch is minted with a random suffix when the copy is cut and was written nowhere, so after a restart the product knew a run had existed and knew nothing about where its work was. A run row now carries its copy: the directory, the branch, the repository, the ground and mode, the checkout it was cut from, and which rung of the ground ladder made the world. The field is additive and a row written before it decodes with nothing, which is a run that genuinely cannot be carried on."
