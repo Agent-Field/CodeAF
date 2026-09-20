@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a session stopped on a sub-harness question says so instead of working
-pr: 1292
+pr: 1293
 surface: [chat, engine]
 invalidates:
   - "A sub-harness run blocked on its own question left the session reporting itself as working. The question was registered and readable, but the predicate behind presence never read that lane, so no row appeared on home, no mark was drawn, and the work stopped in silence until somebody happened to open the conversation."
