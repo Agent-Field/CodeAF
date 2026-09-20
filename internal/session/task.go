@@ -819,10 +819,17 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		question := questionAtTaskHandoff(a.owedAsks)
 		a.mu.Unlock()
 		description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
-		// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT. This context is the turn's,
-		// and the turn cancels it on its way out (agent.go, `defer cancel(nil)`);
-		// a run driven under it would be stopped the moment the model finished
-		// its sentence. The values ride along, the cancellation does not.
+		// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
+		// This context is the turn's, and the turn cancels it on its way out
+		// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped
+		// the moment the model finished its sentence. The values ride along, the
+		// cancellation does not.
+		//
+		// What ends it instead is the conversation: the person's stop
+		// (stoprun.go) or the room closing ([Agent.cutBeltRun]). Dropping the
+		// turn's cancellation here without either of those is what left a run's
+		// life belonging to the PROCESS, and a run whose room had closed went on
+		// spending with nobody able to read it or stop it.
 		joined := a.beltRunStandsOn(p.stand)
 		err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
 		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
