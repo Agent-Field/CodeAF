@@ -208,16 +208,17 @@ func availableCount(rows []connect.Status) int {
 // part of the match — typing "billing" has to reach Stripe and Chargebee and
 // Recurly, none of which contain it — and a name hit outranks a category hit,
 // because somebody typing "stripe" wants Stripe and not the eleven other things
-// filed beside it. The panel used to rank by [tokenScore] over a folded
-// "name id" string, which could answer neither question and answered the second
-// one differently from the settings sheet listing the same catalog.
+// filed beside it. The panel used to rank by its own token ladder over a
+// folded "name id" string, which could answer neither question and answered
+// the second one differently from the settings sheet listing the same
+// catalog.
 //
 // CONNECTED STILL COMES FIRST, above the ranking, and [filterConnections] is
 // where that is decided now: the held group is pinned whatever the scores say. A
 // person who typed three letters is narrowing the list, not asking it to forget
 // which accounts they already hold.
 func (p *connectPanel) rank() {
-	query := strings.ToLower(strings.TrimSpace(p.filter.String()))
+	query := strings.TrimSpace(p.filter.String())
 	groups := p.groups
 	if query != "" {
 		groups = filterConnections(groups, query)

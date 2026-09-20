@@ -1342,9 +1342,10 @@ func (a *app) taskSheetScroll(delta int) {
 // and the pointer resolves against them, and two answers to "where is the
 // running section" is how a click opens the wrong task.
 //
-// The caret is reported as (0, 0) and never moves, because nothing on this list
-// is typed into. It is returned all the same so the place plugs into view.go's
-// [app.frame] beside the two sheets that do.
+// The caret is handed back from the frame the place was drawn in, and while
+// this place is up it belongs to THE FILTER'S CONTROL ROW rather than the
+// foot's composer ([placeTasks.caretRow] — the box moved into the list when
+// [placeTasks.boxOnBody] did, and the caret moved with it).
 func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, int) {
 	// THE CARD IS DRAWN INSTEAD OF THE LIST, not over the top of it. It is a mode
 	// of this place and it takes the whole of the frame, so the rows below are not
@@ -1872,6 +1873,35 @@ func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 // screen twice is the defect this page's own title row was removed for.
 func (placeTasks) boxOnBody() bool { return true }
 
+// caretRow is the filter: [placeTasks.boxOnBody] moved the box into the list's
+// control row, and the caret that was parked in the foot's silhouette stayed
+// behind — blinking under a dim invitation at the bottom of the frame while
+// the letters land rows above it. The control row is painted by the reading's
+// own layout (taskstable.go's [tasksControlRow]), so the hook asks the same
+// painter with the same inputs the layout painted with — the place's untrimmed
+// query and its sort order, at the width the list half is drawn in
+// ([taskPaneList] splits the list from the pane at this width) — and finds the
+// line among the rows the frame just built. The split body pads the line out
+// to the seam (taskpane.go), so the line is a PREFIX of the drawn row.
+func (placeTasks) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	// AN EMPTY PLACE TEACHES RATHER THAN FILTERS ([app.taskSheetBody]): the
+	// teach prose draws no control row, and the foot's invitation is the only
+	// box on the frame.
+	if a.taskSheet.reading.held == 0 {
+		return 0, 0, false
+	}
+	line, column := tasksControlRow(a.taskSheet.query.String(), a.taskSheet.order, taskPaneList(width), a.pal)
+	for j, row := range rows {
+		if strings.HasPrefix(row.text, line) {
+			return j, column, true
+		}
+	}
+	// The window scrolled the control row off this frame — a short frame over a
+	// long list. The caret is hidden rather than parked in the foot's resting
+	// sentence, which is not the box the person is typing into.
+	return -1, 0, true
+}
+
 // resting is what that box says when nothing is typed in it, and it is THIS
 // PLACE'S sentence rather than the router's (pages.go's [place.resting]).
 //
@@ -1935,6 +1965,13 @@ func (placeTasks) ownFrame(a *app, width, height int) ([]string, []placeHit, int
 		lines, caretX, caretY := a.taskPlanFrame(width, height)
 		return lines, nil, caretX, caretY, true
 	}
+	// NOTHING ON THE CARD IS TYPED INTO, so the caret is hidden rather than
+	// parked at the frame's origin over the title — the same law the job page
+	// and home at rest follow (view.go states it in [app.frameBody]), and the
+	// one this card's own header has claimed all along. The card is a record a
+	// person reads: a blinking bar with no box behind it is a cursor pointing at
+	// a key that does not exist.
+	a.caret = false
 	lines, _, caretX, caretY := a.taskCardFrame(width, height)
 	return lines, nil, caretX, caretY, true
 }

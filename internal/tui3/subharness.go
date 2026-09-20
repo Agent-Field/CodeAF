@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -37,10 +38,11 @@ import (
 //     to leave. Every row goes through [overlayFill], so the ground ladder, the
 //     two-line row at [tierPhone] and the pointer's own step arrive by
 //     construction rather than by this file remembering them.
-//   - THE FILTER IS THE MODEL PICKER'S ([tokenScore]) over the NAME, THE ONE
-//     LINE AND THE CUES. Cues are the words a designer wrote down meaning "this
-//     is that kind of work" (exec.Manifest.Cues), so a person who remembers what
-//     a subharness is FOR and not what it is called still finds it.
+//   - THE FILTER IS THE MODEL PICKER'S ([fuzzy.ScoreFields] by way of
+//     palette.go's [fuzzyTerms]) over the NAME, THE PURPOSE AND THE CUES. Cues
+//     are the words a designer wrote down meaning "this is that kind of work"
+//     (exec.Manifest.Cues), so a person who remembers what a subharness is FOR
+//     and not what it is called still finds it.
 //   - THE CARD IS ONE CARD FOR ALL THREE DOORS. `/subharness` opening it on a
 //     row, `/subharness <name>` opening it cold, and CHAT ITSELF offering one
 //     (internal/session's EventSubharnessProposal, drawn by
@@ -299,13 +301,14 @@ func subSpanWord(d time.Duration) string {
 type subPage struct {
 	open bool
 
-	// rows are the registry as it was when the page opened, and lower the same
-	// rows' searchable text folded once: filtering runs per keystroke, and
-	// folding a few dozen names, purposes and cue lists on each of them is the
-	// one allocation this path does not need to repeat.
-	rows  []session.SubharnessRow
-	lower []string
-	score []int
+	// rows are the registry as it was when the page opened, and fields each
+	// row's own words held once: the name, the purpose and the cues as separate
+	// fields, so the matcher can take, per term, whichever of them carries it
+	// best — filtering runs per keystroke, and building this per keystroke over
+	// a few dozen rows is the one allocation this path does not need to repeat.
+	rows   []session.SubharnessRow
+	fields [][]string
+	score  []int
 
 	// hits are indexes into rows, in rank order; cursor indexes hits, and top is
 	// the first hit drawn.
@@ -367,24 +370,22 @@ func (p *subPage) close() { *p = subPage{} }
 // start opens the list over rows as the registry handed them over.
 func (p *subPage) start(rows []session.SubharnessRow) {
 	*p = subPage{open: true, rows: rows}
-	p.lower = make([]string, len(rows))
+	p.fields = make([][]string, len(rows))
 	for i, row := range rows {
-		p.lower[i] = strings.ToLower(strings.Join(append([]string{
-			row.Manifest.Name, row.Manifest.Purpose,
-		}, row.Manifest.Cues...), " "))
+		p.fields[i] = append([]string{row.Manifest.Name, row.Manifest.Purpose}, row.Manifest.Cues...)
 	}
 	p.score = make([]int, len(rows))
 	p.rank()
 }
 
-// rank narrows the list to the filter box: case-insensitive, EVERY TOKEN MUST
-// MATCH, and each token matches in one of the model picker's three tiers —
-// prefix, then substring, then subsequence ([tokenScore]). It is that scoring
-// and not a second one, because "which of these did I mean" is the same question
-// in both lists and two answers to it would be two lists that behave alike until
-// the day they do not.
+// rank narrows the list to the filter box: case-insensitive, EVERY TERM MUST
+// MATCH, scored by the fzf alignment every picker on this surface shares
+// (internal/fuzzy, by way of palette.go's [fuzzyTerms]) — and not a second
+// one, because "which of these did I mean" is the same question in every
+// list and two answers to it would be two lists that behave alike until the
+// day they do not.
 //
-// WHAT IS SCORED IS THE NAME, THE ONE LINE AND THE CUES. The cues are the words
+// WHAT IS SCORED IS THE NAME, THE PURPOSE AND THE CUES. The cues are the words
 // somebody wrote down at design time meaning "this is that kind of work"
 // (exec.Manifest.Cues), and they are the half a person is most likely to
 // remember: nobody recalls that the program chasing flaky tests is called
@@ -394,29 +395,22 @@ func (p *subPage) start(rows []session.SubharnessRow) {
 // list as it stands rather than as a second opinion about it.
 func (p *subPage) rank() {
 	tokens := strings.Fields(strings.ToLower(p.filter.String()))
+	ft := fuzzyTerms(tokens)
 	p.hits = p.hits[:0]
-	for i, hay := range p.lower {
+	for i, fields := range p.fields {
 		if len(tokens) == 0 {
 			p.hits = append(p.hits, i)
 			continue
 		}
-		total, matched := 0, true
-		for _, token := range tokens {
-			score, hit := tokenScore(hay, token)
-			if !hit {
-				matched = false
-				break
-			}
-			total += score
-		}
-		if !matched {
+		total, hit := fuzzy.ScoreFields(fields, ft)
+		if !hit {
 			continue
 		}
 		p.score[i] = total
 		p.hits = append(p.hits, i)
 	}
 	if len(tokens) > 0 {
-		sort.SliceStable(p.hits, func(a, b int) bool { return p.score[p.hits[a]] < p.score[p.hits[b]] })
+		sort.SliceStable(p.hits, func(a, b int) bool { return p.score[p.hits[a]] > p.score[p.hits[b]] })
 	}
 	// A changed query is a changed list, and a cursor left at row nine of the old
 	// one points at nothing anybody chose (palette.go says it first).

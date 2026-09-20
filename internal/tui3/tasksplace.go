@@ -1615,7 +1615,8 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 	case tasksLineAir:
 		return ""
 	case tasksLineControl:
-		return tasksControlRow(r.query, r.order, width, pal)
+		line, _ := tasksControlRow(r.query, r.order, width, pal)
+		return line
 	case tasksLineWord:
 		if i == 0 {
 			// THE HEAD LINE IS THE WINDOW'S CONTROL TOO (SCREEN 3d), drawn by the

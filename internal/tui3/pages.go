@@ -213,6 +213,26 @@ type place interface {
 	// of its OWN body, so the foot draws the resting sentence and never the
 	// letters. It is false everywhere but tasks ([placeTasks.boxOnBody]).
 	boxOnBody() bool
+	// caretRow is where a place parks the terminal's caret when the box a person
+	// is typing into is ONE OF THE ROWS IT JUST BUILT, rather than the composer
+	// the frame draws at the foot: the row within `rows`, the column within that
+	// row, and whether the place's own box owns the caret on this frame at all.
+	// It is asked with the slice the frame is about to draw, so the place answers
+	// from the same rows the pointer will be resolving against.
+	//
+	// THE SETTINGS SHEET AND THE TASKS PLACE ARE THE TWO WHO ANSWER. The sheet's
+	// connections key entry is a box inside a row (connectcaps.go), and the tasks
+	// filter lives in the list's control row ([placeTasks.boxOnBody]) — and a
+	// caret parked in the foot's resting silhouette while somebody types into
+	// either is a cursor blinking in a box that is not the one the words are
+	// landing in, which is the wrongness this hook exists to end.
+	//
+	// A TRUE ANSWER OF row < 0 SAYS THE BOX OWNS THE CARET AND HAS NO LINE ON
+	// THE FRAME — a key entry showing its choice list, a control row the window
+	// cut off — and the caret is HIDDEN rather than parked on some other row's
+	// first cell (input.go states the same law for the /connect panel's box).
+	// False hands the caret back to the frame's composer untouched.
+	caretRow(a *app, width int, rows []placeRow) (row, column int, drawn bool)
 	// resting is WHAT THAT BOX SAYS WITH NOTHING TYPED IN IT, and "" takes the
 	// router's own sentence.
 	//
@@ -323,6 +343,14 @@ func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // that each forget ([app.compose]).
 func (placeBase) box(a *app) *editor { return &a.compose }
 func (placeBase) boxOnBody() bool    { return false }
+
+// caretRow defaults to NO: a box drawn in the composer at the foot is parked
+// by the frame itself, and a place with no row-box of its own has nothing to
+// say here. The two places whose live box is a row of their own body answer in
+// their own file.
+func (placeBase) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	return 0, 0, false
+}
 
 // ── THERE IS NO DEFAULT hint, AND THAT IS THE WHOLE POINT ───────────────────
 //
@@ -1329,7 +1357,24 @@ func placeFrameWithBar(a *app, width, height int,
 			}
 		}
 	}
-	for _, row := range placeStripInline(a, drawn, inline) {
+	// AND THE PLACE'S OWN BOX MAY BE ONE OF THESE ROWS, asked before they are
+	// added: the settings sheet's key entry and the tasks filter are boxes
+	// drawn inside the body ([place.caretRow]), and a caret that stays parked in
+	// the foot's rest silhouette while somebody types into either is a cursor
+	// blinking in a box that is not the one the words are landing in. The
+	// overlays that take the whole keyboard — the composer layer, the
+	// switcher, home's model list — are excluded here because their boxes are
+	// their own and drawn elsewhere, and the place's row-box has the keyboard's
+	// backwards under every one of them.
+	rows := placeStripInline(a, drawn, inline)
+	ownRow, ownColumn, ownDrawn := -1, 0, false
+	if !a.composer.open && !a.hopShowing() && !a.targetPickShowing() {
+		if pl := a.showing(); pl != nil {
+			ownRow, ownColumn, ownDrawn = pl.caretRow(a, width, rows)
+		}
+	}
+	ownBase := len(lines)
+	for _, row := range rows {
 		add(row.text, row.hit)
 	}
 	add("", nil)
@@ -1425,6 +1470,20 @@ func placeFrameWithBar(a *app, width, height int,
 	}
 	if caretX > width-1 {
 		caretX = width - 1
+	}
+	// AND THE PLACE'S OWN ROW-BOX TAKES THE CARET FROM THE COMPOSER when its
+	// hook answered: the park above is the foot's box, and the hook's is a row
+	// of the body — the one box on this frame that the person's keys are
+	// actually landing in. A row below zero is the hook saying the box owns the
+	// caret and has no line to park it on, and the caret is hidden rather than
+	// left blinking in a box that is not the one being typed into. The clamp
+	// below adjusts this park by the same law it adjusts the composer's own.
+	if ownDrawn {
+		if ownRow >= 0 {
+			caretX, caretY = min(ownColumn, width-1), ownBase+ownRow
+		} else {
+			a.caret = false
+		}
 	}
 	for _, row := range layer {
 		add(row, nil)
