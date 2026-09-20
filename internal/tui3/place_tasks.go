@@ -486,7 +486,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 		if self == "" && a.taskNodeAnswersTo(&a.comp.tasks[i]) {
 			continue
 		}
-		entry := a.comp.tasks[i]
+		entry := a.currentTaskEntry(a.comp.tasks[i])
 		if node := a.taskSheetNodeFor(&entry); node != nil && node.parent != "" {
 			entry.Parent = node.parent
 		}

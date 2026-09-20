@@ -1177,6 +1177,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
 		TaskSetup:  taskSetupKnown(sess.agent),
+		TaskRetry:  taskRetryKnown(sess.agent),
 		// Whether this engine has a dial on the conversation's own thinking,
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
@@ -1968,14 +1969,32 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmit, MethodFollowUp, MethodSteer, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop:
+	case MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
 	}
 
 	switch call.Method {
+	case MethodTaskRetry:
+		args, err := arg[TaskSetupArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		want, agreed := steerConversation(s.joined, args.Session)
+		if !agreed || want == "" {
+			return nil, session.ErrNotThatConversation
+		}
+		owner, mine := sess.agentOf(want)
+		if !mine {
+			return nil, session.ErrNotThatConversation
+		}
+		door, ok := owner.(taskRetryDoor)
+		if !ok {
+			return nil, errors.New("retrying tasks is unavailable in this engine")
+		}
+		return nil, door.RetryTask(args.ID)
 	case MethodTaskModel, MethodTaskEffort, MethodTaskSetEffort:
 		args, err := arg[TaskSetupArgs](call)
 		if err != nil {
@@ -2339,6 +2358,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		events, err := agent.Submit(context.Background(), args.Text)
 		return s.stream(MethodSubmit, args.Text, events, err)
 
+	case MethodQuestionReplace:
+		args, err := arg[QuestionArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			ReplaceQuestion(context.Context, session.Answer) (<-chan session.Event, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot replace a pending request")
+		}
+		events, err := door.ReplaceQuestion(context.Background(), args.Answer)
+		return s.stream(MethodQuestionReplace, args.Answer.Change, events, err)
 	case MethodFollowUp:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {

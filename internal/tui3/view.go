@@ -726,6 +726,16 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.questionRows(width) {
 		add(line, a.questionRowMark(i))
 	}
+	if head, up := a.questionDialog(width); up {
+		// The decision is the last object on screen. Its optional text field
+		// lives inside the frame rather than in a second composer below it.
+		a.caret = a.questionPanelTyping(head)
+		if a.caret {
+			input, x, row := a.inputBlock(frameInner(width) - len(questionPanelGap))
+			return rows, marks, x + 1 + len(questionPanelGap), len(rows) - 1 - len(input) + row
+		}
+		return rows, marks, 0, 0
+	}
 	// THE CONNECT OFFER USED TO SIT DIRECTLY UNDER IT, in a block of its own with
 	// its own answers row, its own click targets and a key router that took every
 	// keystroke while it was up. It is a card ON the block now (connect.go), so
@@ -915,6 +925,13 @@ func (a *app) chromeHeight() int { return a.chromeBaseHeight() + a.overlayHeight
 // command list borrows the remaining rows above the seam.
 func (a *app) chromeBaseHeight() int {
 	width, _ := a.size()
+	if _, up := a.questionDialog(width); up {
+		n := a.questionHeight() + a.welcomeHeight()
+		if clear := a.footClearance(); clear > 0 && a.welcomeHeight() == 0 {
+			n += clear + 1
+		}
+		return n
+	}
 	// The status (one row, or two when the telemetry wraps — and always two at
 	// the phone tier, where it is a deck rather than a row: [app.statusHeight]
 	// answers that one from the tier alone, so this count never has to run a

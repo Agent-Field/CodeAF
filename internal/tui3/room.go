@@ -1900,6 +1900,12 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// caret over a sentence.
 
 	case "enter":
+		if !a.roomIsGuest() && strings.TrimSpace(a.input.String()) == "" {
+			entry := a.roomRetryEntry()
+			if a.taskCanRetry(entry) {
+				return a.retryTask(entry), true
+			}
+		}
 		return a.steer(), true
 
 	case "alt+pgup":
@@ -1980,6 +1986,15 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // would be the surface repeating itself in the one place a person reads for the
 // next keystroke.
 func (a *app) roomHint() string {
+	if a.room != nil && !a.roomIsGuest() && !a.guarding() && !a.asking() && !a.stopping() {
+		entry := a.roomRetryEntry()
+		if hint := a.taskRetryHint(entry); hint != "" {
+			return hint
+		}
+		if a.taskCanRetry(entry) && strings.TrimSpace(a.input.String()) == "" {
+			return taskRetryWord
+		}
+	}
 	switch {
 	case a.guarding() || a.stopping():
 		// Both draw their own answers on their own row, directly above the box

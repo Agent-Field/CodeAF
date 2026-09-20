@@ -62,6 +62,9 @@ func (a *Agent) SetApprovalPolicy(policy *approval.Policy) {
 // [Agent.SetApprovalPolicy] existed, a single unguarded read became a race the
 // detector finds in a second and a person would never reproduce.
 func (a *Agent) approvalGate() *approval.Policy {
+	if a.approvalParent != nil {
+		return a.approvalParent.approvalGate()
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.approvalPolicy != nil {

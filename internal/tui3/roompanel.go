@@ -48,11 +48,7 @@ func (a *app) roomPanelView(height int) ([]railLine, int) {
 		footer[i] = railLine{text: s, entry: -1, hint: i == marks.hint,
 			more: i == marks.more, keeping: i == marks.keeping}
 	}
-	// The task room keeps its own footer exit; the conversation places this
-	// control above its + /task action instead (railContentView).
-	if ansi.StringWidth(a.railDoorHint())+2 <= width {
-		footer = append(footer, railLine{text: a.railDoorLine(), entry: -1, stow: true})
-	}
+	// The shared sidebar header owns the hide control in this view too.
 	available := height - len(controls) - len(footer)
 	detailHeight := min(roomDetailsMax, max(available/3, 3))
 	if len(a.roomDetailContent(width)) == 0 {

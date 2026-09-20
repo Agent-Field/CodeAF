@@ -88,7 +88,7 @@ func TestTheTaskColumnClosesAndReopensOnItsKey(t *testing.T) {
 	}
 }
 
-// THE CONTROL ABOVE + /task NAMES THE KEY, AND THE LINE IS A BUTTON. A door that
+// THE TOP CONTROL NAMES THE KEY, AND THE LINE IS A BUTTON. A door that
 // only the keyboard can open is a door half this surface cannot find.
 func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 	a, _, _ := taskApp(t)
@@ -113,7 +113,7 @@ func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 		!strings.Contains(painted, a.pal.dim(" hide")) {
 		t.Fatalf("the close door does not use the shared hint palette:\n%q", painted)
 	}
-	// Hiding is the action immediately above + /task, not a footer after totals.
+	// Hiding stays at the top while the task action follows the list.
 	lines, _ := a.railView(a.viewHeight())
 	door, task := -1, -1
 	for i, line := range lines {
@@ -124,8 +124,8 @@ func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 			task = i
 		}
 	}
-	if door < 0 || task != door+1 {
-		t.Fatalf("hide row %d is not immediately above task action %d", door, task)
+	if door != 0 || task <= door+1 {
+		t.Fatalf("hide row %d is not pinned above the list and task action %d", door, task)
 	}
 
 	pressed := false

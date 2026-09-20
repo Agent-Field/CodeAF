@@ -289,13 +289,10 @@ func TestTheConsentQuestionIsAmberEverywhereAtOnce(t *testing.T) {
 		t.Fatalf("the asked-about row is not marked: %q", row)
 	}
 
-	// And the status line says so in words as well as in colour.
+	// The open decision owns the request for attention; the seam does not repeat it.
 	status := a.legend(a.width)
-	if !strings.Contains(plain(status), waitingWord) {
-		t.Fatalf("the status line does not say the surface is waiting: %q", plain(status))
-	}
-	if !strings.Contains(status, violet) {
-		t.Fatalf("the status line's state is not in the question hue: %q", status)
+	if strings.Contains(plain(status), waitingWord) {
+		t.Fatalf("the seam repeats the open decision: %q", plain(status))
 	}
 	if strings.Contains(plain(status), "working") {
 		t.Fatalf("a blocked turn still calls itself working: %q", plain(status))
@@ -780,18 +777,13 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 	if strings.Contains(last, product) {
 		t.Fatalf("the seam is still carrying %q: %q", product, last)
 	}
-	// AND THE SEAM CARRIES THE MODEL as its BASENAME — the vendor is a
-	// routing address, and it stays in the picker — and not the name, which
-	// is the tab strip's (foot.go, 2026-09-17).
+	// The seam carries the full model identifier; the title belongs to the tab.
 	seam := plain(a.legend(a.width))
-	if !strings.Contains(seam, "gpt-4.1-mini") || strings.Contains(seam, "porting the parser") {
+	if !strings.Contains(seam, "openai/gpt-4.1-mini") || strings.Contains(seam, "porting the parser") {
 		t.Fatalf("the seam is not the model alone:\n%q", seam)
 	}
-	if strings.Contains(seam, "openai/") {
-		t.Fatalf("the vendor prefix is on the seam: %q", seam)
-	}
 	// NO TOP BAR. Nothing above the conversation says any of this.
-	for _, line := range lines[:len(lines)-1] {
+	for _, line := range lines[:len(lines)-3] {
 		if strings.Contains(line, "openai/gpt-4.1-mini") && !strings.Contains(line, "model ·") {
 			t.Fatalf("the model is still drawn above the conversation: %q", line)
 		}

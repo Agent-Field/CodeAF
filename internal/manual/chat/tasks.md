@@ -1942,8 +1942,8 @@ land between chips a few cells apart, so the phone tier trades the tab row for o
 
 ## The roster: the column of all the work
 
-The roster is the **top section of the column on the right**, under a dim lowercase label
-reading `tasks`. Under it the same column carries a second section labelled `standing` —
+The roster is the **top section of the column on the right**, separated from the pinned
+hide hint by one blank row. There is no `tasks` heading. Under it the same column carries a second section labelled `standing` —
 the orders standing over this conversation — and, when this conversation has started any,
 a third labelled `jobs`. The standing orders page has that half; *Background jobs on the
 column* below has the jobs section.
@@ -1958,7 +1958,7 @@ neither does `/new` — that takes this session's tasks with it and leaves the c
 standing, with the door onto the project's record still at its foot. With no foreground
 command to keep, `ctrl+g` closes it and leaves the work exactly where it was. While a
 command can be kept, that command takes the key instead; the column's `❯` pointer door
-still closes it. The bottom line names whichever keyboard action is available.
+still closes it. The pinned top line names whichever keyboard action is available.
 
 The column is permanent: it stands from the session's first keystroke, before any task
 exists, at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24
@@ -1976,22 +1976,13 @@ two-column edge at the right of the frame that opens it again on a click — see
 bar disappeared* below.
 
 The roster is a forest. Each root task is followed by its whole family, with children
-joined by three-cell connectors (`├─ `, `└─ `, `│  `). Families are ordered by their most
-urgent member: needs you, running, queued, waiting, then done. `queued` is admitted work
-with nothing in its way but a slot; `waiting` is admitted work held behind other work, and
-the row says what it is held behind. (They were `idle` and `parked`, which were two
-unrelated words for one shape of fact and disagreed with the tasks page, where the same
-node read `parked`.) There are no state-group
-headings. The footer keeps those totals as counts, such as
-`3 running · 2 needs you · 12 done`.
+joined by three-cell connectors (`├─ `, `└─ `, `│  `). Root tasks appear in creation
+order, oldest first, and children keep creation order within their parent. Changes in
+state do not move rows. The kin line on a task's page uses the same child order.
 
-**The pieces INSIDE a family are ranked the same way.** They used to be drawn in the order
-the session admitted them, so a run that hands four errands out and finishes them one at a
-time read `done, done, running, running` — with the only rows anybody was watching at the
-bottom of the block. The same ladder now applies all the way down: needs you, running,
-queued, waiting, done, with admission order deciding between two pieces in the same state.
-Two settled siblings therefore never trade places while you are looking at them. The kin
-line under a task's own page shows the same order.
+The sidebar begins with `❯ ctrl+g hide`, pinned above the task list. New tasks and
+scrolling never move that control. `+ /task` follows the task list, above any standing
+orders or jobs. The footer keeps state totals, such as `3 running · 2 needs you · 12 done`.
 
 Folding belongs to each node. Families with a running, needs-you, or queued member start
 open. Settled families and families containing only waiting work start folded to their
@@ -2005,9 +1996,7 @@ of them is an ordinary row of the forest above: its own state glyph, its own nam
 `#id`, reachable with `↑`/`↓` and openable with `→`. A worker you can see is a row you can
 walk to.
 
-When two or more workers are running anywhere in the live work, the section label carries
-the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
-zero or one running worker there is no tail at all, so the label remains `tasks`.
+The blank row above the tasks stays blank even while several workers are running.
 
 ## What is the diamond symbol next to each task? — why the sidebar has no diamond, the mark on the cards
 
@@ -2065,18 +2054,10 @@ anything stands over this project, a separate `◦ 2 standing orders` line follo
 
 Below those are up to two door lines: `ctrl+. earlier` or `ctrl+. view more` when the
 full-screen page holds something this column does not, `alt+w widen · click seam` when a
-wider column would stop cutting a title. The column’s own way out sits immediately
-above `+ /task`, after the visible task rows. It reads `❯ ctrl+g hide` when no foreground command can be kept and only `❯ hide` while
-a command owns that key. Click either form and the column goes away. The `❯` is in ink and
-the words are dim, because the chevron is what the pointer presses and the words name only
-the keyboard action available now.
-
-**Work that is running never scrolls off it.** Families are already ordered so that
-anything running or waiting on you leads the column, and those rows are also *pinned*: when
-you walk the cursor down into a long list of finished work, everything under the running
-head scrolls and the running head stays where it is. The pin gives way only on a column with more running
-work than it has rows, where it keeps one row back for everything else — a session that big
-is read on the task page instead.
+wider column would stop cutting a title. The column's own way out is pinned at the top,
+above every task. It reads `❯ ctrl+g hide` when no foreground command can be kept and
+only `❯ hide` while a command owns that key. Click either form and the column goes away.
+The task list scrolls below it in creation order; `+ /task` stays below the visible list.
 
 **Non-running rows are drawn quieter.** A running task's name is in the ordinary text
 colour; queued, waiting and finished names are muted, the tree connectors and every detail
@@ -2187,9 +2168,8 @@ is the same brightness the roster already uses for live work versus history.
 `job 3 · log /…/3.log`. It is on the job's page now. Open the row (enter or a click) to
 see it.
 
-**A running job still counts as working** in the live-work tree, so when more than one
-worker is running the `tasks` label can read `tasks · N working` with jobs included. The
-jobs section's own label is the count of *jobs*: `jobs · 2 running`.
+**A running job still counts as working** in the live-work tree. The jobs section's own
+label is the count of *jobs*: `jobs · 2 running`.
 
 **What a job's row does not have**, because a job has none of them:
 
@@ -5330,8 +5310,20 @@ only then does `s` mean anything, which is two deliberate presses with the verb 
 you. The card is also not available here: it is drawn in the conversation's chrome, and a
 question raised over a full-screen place would be one nobody could see.
 
-**`continue` re-arms the same task.** There is still no `run it again` key on this place —
-a row here is an account of work that happened — but a failed or finished task is
+## Retry an incomplete or errored task — enter retry on its task screen
+
+**`enter retry` re-arms incomplete or errored work on its task card.** It is the first
+footer action, before `m puts it in your message`. The task must belong to the current
+conversation and support continuation; quick tasks, designs and saved-shape runs do not.
+The key also works over an empty message box in that task's conversation page. A pending
+retry cannot be submitted twice. Failure leaves the task unchanged and says why on the
+page. A read-only view or an older engine without retry support offers no retry key.
+
+The existing task updates in place in the sidebar, task list, card and conversation
+receipt. It keeps its ID, original assignment, branch and journal. Earlier attempts stay
+in the journal; the current status and outcome follow the new attempt.
+
+**`continue` also re-arms the same task.** A failed or finished task can be
 continued by saying `continue task 7`, or by the `tasks` tool with `id` and `continue`.
 That is the same node: same id, same brief, same working copy and journal, the last
 report as this round's finding. Starting the same brief again with `/task` or

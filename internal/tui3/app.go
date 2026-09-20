@@ -234,6 +234,10 @@ func (s toolState) live() bool { return s == toolQueued || s == toolConsent || s
 type responseConfirmation struct{ done bool }
 
 type entry struct {
+	// Clarification entries are owned by their independent feed.
+	discussionID    string
+	discussionIndex int
+
 	kind entryKind
 	text string
 	turn int
@@ -807,6 +811,10 @@ type (
 )
 
 type app struct {
+	questionReplacement *questionReplacement
+
+	discussionFeeds map[string]*discussionFeed
+
 	// ruler measures a string the way the RENDERER will draw it rather than the
 	// way this package would prefer to read it. The two disagree about a
 	// variation-selector emoji and a flag, and the rail bent two cells wherever
@@ -2075,6 +2083,7 @@ type app struct {
 	// MACHINE'S whole record of work that ran on its own rather than this
 	// session's, which is the one question the roster's column cannot answer.
 	// Closed, it costs the frame nothing.
+	taskRetry taskRetryState
 	taskSheet tasksPlace
 	// home is /home (home.go): the FIFTH fullscreen thing, the third that exists
 	// at every width, and the only one of them that is not about this
@@ -3551,6 +3560,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
+		if a.questionDialogWheel(msg) {
+			return a, nil
+		}
 		// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
 		// the press: it is the router's row, drawn on all seven places in the same
 		// cells, so a wheel answered by the place under it would scroll a list for
@@ -4214,6 +4226,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.stream = nil
+		if a.questionReplacement != nil {
+			settled := a.settle()
+			return a, tea.Batch(settled, a.startQuestionReplacement())
+		}
 		// The turn is over, so a message that was waiting for it starts now
 		// (followup.go). Nil when nothing is queued.
 		//
@@ -5654,7 +5670,7 @@ func (a *app) settle() tea.Cmd {
 func (a *app) dropForming() {
 	now := a.now()
 	for i := range a.entries {
-		if e := &a.entries[i]; e.forming() {
+		if e := &a.entries[i]; e.discussionID == "" && e.forming() {
 			e.ended = now
 		}
 	}
@@ -5729,6 +5745,9 @@ func (a *app) settleTurn() {
 	a.settledTurn = a.turn
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
+		if e.discussionID != "" {
+			continue
+		}
 		if e.turn != a.turn {
 			return
 		}
