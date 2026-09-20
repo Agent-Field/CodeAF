@@ -53,6 +53,11 @@ func holdLock(suite int, token string) int {
 		return 2
 	}
 	defer lock.Close()
+	// THE DIRECTORY LOCK GOES WHEN THIS DESCRIPTOR GOES. The holder is the only
+	// process whose lifetime is the suite's, so it is the only honest place to
+	// free the second lock: freeing it in the wrapper would open the box to a
+	// stale reader while the suite still ran and still held the flock.
+	defer dropDirLock(dirLockPath())
 	for {
 		if !pidVisibleHere(suite) {
 			return 0

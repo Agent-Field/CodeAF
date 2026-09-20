@@ -327,3 +327,40 @@ func TestAHolderStillRunningAfterItsSuiteIsNamedWithLsof(t *testing.T) {
 		t.Fatalf("the holder was ended rather than named: %v", err)
 	}
 }
+
+// THE DIRECTORY LOCK NAMES ITS HOLDER ON THE WAY OUT OF THE CLAIM, before any
+// file lock is opened and long before the suite exists.
+//
+// This pins an ORDERING, and it exists because the ordering is one line that a
+// later reader will want to tidy. Writing the pid once, later, beside the file
+// lock's own metadata, is the tidier arrangement and it is what the first draft
+// of this did; the window it opens is the one in which a killed wrapper leaves
+// a directory lock held by nobody. That state pins a box's ceiling while
+// nothing runs and presents as busy rather than broken, and the diagnostic for
+// it is exactly the pid file that would not be there.
+func TestTheDirectoryLockNamesItsHolderAsSoonAsItIsClaimed(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "suite.lock")
+	taken, held, err := takeDirLock(dir)
+	if err != nil {
+		t.Fatalf("take the directory lock: %v", err)
+	}
+	if !taken {
+		t.Fatalf("a fresh path reported the lock already held by %q", held)
+	}
+	defer dropDirLock(dir)
+
+	raw, err := os.ReadFile(filepath.Join(dir, "pid"))
+	if err != nil {
+		t.Fatalf("the directory lock named nobody on return from the claim: %v", err)
+	}
+	named, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatalf("the directory lock named %q, which is not a pid: %v", strings.TrimSpace(string(raw)), err)
+	}
+	if !pidVisibleHere(named) {
+		t.Fatalf("the directory lock names pid %d, which is not running", named)
+	}
+	if named != os.Getpid() {
+		t.Fatalf("the directory lock names pid %d, want the process that claimed it, %d", named, os.Getpid())
+	}
+}

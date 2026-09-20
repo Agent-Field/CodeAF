@@ -89,6 +89,28 @@ func dispatch(args []string) int {
 }
 
 func run(path string, argv []string) int {
+	// THE DIRECTORY LOCK IS CLAIMED FIRST, and the order is the point rather
+	// than a preference. It is the only lock a checkout behind #1264 can see,
+	// so a current tree that took the flock first would be invisible to a stale
+	// runner for the width of that window, which is the exact collision this
+	// closes (dirlock.go says why there are two). Only the REFUSAL is reported
+	// later, after the flock has had its say, and the reason is beside it.
+	dirPath := dirLockPath()
+	dirTaken, dirHeldBy, dirErr := takeDirLock(dirPath)
+	if dirErr != nil {
+		fmt.Fprintf(os.Stderr, "take heavy-suite directory lock: %v\n", dirErr)
+		return 2
+	}
+	// OWNERSHIP MOVES TO THE HOLDER AND THIS UNDOES ONLY WHAT IT STILL OWNS.
+	// Every road out of this function before the holder exists must free the
+	// directory, or a refused run would leave a lock nothing releases; after the
+	// holder exists, freeing it here would unlock a box that is still running.
+	dirOurs := dirTaken
+	defer func() {
+		if dirOurs {
+			dropDirLock(dirPath)
+		}
+	}()
 	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "take heavy-suite lock: %v\n", err)
@@ -129,8 +151,30 @@ func run(path string, argv []string) int {
 		return 2
 	}
 
+	// THE FLOCK IS OURS AND THE DIRECTORY IS NOT, so the holder is a checkout
+	// that cannot see the lock we just took. This is the case the file lock is
+	// structurally unable to report: it read free and it was right to, and the
+	// box is busy anyway.
+	//
+	// The refusal is reported HERE rather than where the directory was claimed,
+	// although the claim comes first and deliberately so. Two CURRENT trees
+	// collide on the flock, and the refusal above knows things this one cannot:
+	// whether the recorded pid is visible from this namespace, and what to run
+	// when it is not. Reporting the directory first would have replaced that
+	// diagnosis with a cruder one for the common case, to describe a rarer one.
+	if dirPath != "" && !dirTaken {
+		fmt.Fprintf(os.Stderr, "another heavy suite is already running on this box (directory lock %s, pid %s).\n", dirPath, dirLockHolderName(dirHeldBy))
+		fmt.Fprintln(os.Stderr, "That is the lock a checkout behind #1264 takes. Its holder cannot see the file lock this run uses, and the file lock read free, so waiting on that alone would have started a second heavy suite beside it.")
+		fmt.Fprintf(os.Stderr, "Find the holder where every process is visible: cat %s/pid\n", dirPath)
+		return 1
+	}
+
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	// Without the directory lock's name, for the reason dirlock.go gives beside
+	// [suiteEnviron]: the suite is not part of the locking scheme and anything
+	// it inherits it passes on.
+	cmd.Env = suiteEnviron()
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "start heavy suite: %v\n", err)
 		return 2
@@ -144,6 +188,11 @@ func run(path string, argv []string) int {
 	holderPID := 0
 	if started, err := startHolder(self(), path, lock, cmd.Process.Pid); err == nil {
 		holder, holderPID = started, started.Pid
+		// The holder inherited this run's environment, so it knows the directory
+		// lock by the same name this process does and frees it when the suite
+		// ends. From here the two locks share one lifetime, which is the whole
+		// reason the holder and not this wrapper drops it.
+		dirOurs = false
 	} else if !errors.Is(err, errNoHolder) {
 		fmt.Fprintf(os.Stderr, "hold heavy-suite lock beside the suite: %v\n", err)
 		fmt.Fprintln(os.Stderr, "this wrapper is holding it instead, so killing this wrapper would unlock a box that is still running a suite.")
@@ -166,6 +215,11 @@ func run(path string, argv []string) int {
 		fmt.Fprintf(os.Stderr, "write heavy-suite lock: %v\n", err)
 		return 2
 	}
+	// NAMED AFTER THE FILE LOCK IS, never before. Anything written between the
+	// suite starting and the lock being named widens the window in which a
+	// reader that waited for the suite to come up finds an empty lock file, and
+	// the acceptance arms read it exactly that way.
+	nameDirLockHolder(dirPath, cmd.Process.Pid)
 	if holderPID != 0 {
 		// Dropping our own descriptor is what makes the lock the suite's rather
 		// than this wrapper's: from here the holder's copy is the only one, so
