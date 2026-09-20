@@ -4076,12 +4076,14 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 			t.Fatalf("the roster is missing %q:\n%s", want, rail)
 		}
 	}
-	// The two demands lead the column and the record follows them, whole.
-	demands := strings.Index(rail, "Cut the trailer")
-	for _, news := range []string{"Render titles", "Write the auth", "Collect sources"} {
-		if at := strings.Index(rail, news); at < 0 || at < demands {
-			t.Fatalf("%q stands above the work that needs a person:\n%s", news, rail)
+	// Demands retain their state without displacing earlier tasks.
+	previous := -1
+	for _, title := range []string{"Collect sources", "Render titles", "Mix audio", "Port the parser", "Cut the trailer", "Write the auth"} {
+		at := strings.Index(rail, title)
+		if at <= previous {
+			t.Fatalf("%q moved out of creation order:\n%s", title, rail)
 		}
+		previous = at
 	}
 }
 

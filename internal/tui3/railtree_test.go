@@ -272,8 +272,8 @@ func TestTheTreeGrammarOpensStepsInFoldsAndWalksUp(t *testing.T) {
 		t.Fatalf("→ opened the family and moved the cursor to %+v", a.railWhere)
 	}
 	drive(t, a, key("right"))
-	if a.railWhere.id != 3 {
-		t.Fatalf("→ stepped to %+v, want the first visible child (running before done)", a.railWhere)
+	if a.railWhere.id != 2 {
+		t.Fatalf("→ stepped to %+v, want the first child created", a.railWhere)
 	}
 
 	// ← FROM A LEAF JUMPS TO THE PARENT ROW. A cursor left pointing at nothing is
