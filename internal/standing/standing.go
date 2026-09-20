@@ -584,8 +584,44 @@ func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 // NeedsPermissionLead opens the one line a firing leaves when it stopped
 // because a call needed permission and nobody was there to give it. It is
 // declared here, beside the field, because two packages must agree on it: the
-// session writes it and [Item.ClearNeedsPerson] recognises it.
+// session writes it and [IsPermissionLine] recognises it.
 const NeedsPermissionLead = "stopped: it needed your ok to run "
+
+// permissionRefusals are the two sentences the ENGINE itself writes for a call
+// that needed a person and had none. They are what [IsPermissionLine] matches
+// besides its own lead, and they are the same two the session's own reader
+// names, so the two cannot come to disagree about what a permission stop is.
+var permissionRefusals = []string{"nobody to ask", "no resolver is attached"}
+
+// IsPermissionLine reports whether a line on an item is about a permission the
+// firing could not get, rather than a QUESTION it put to the person. It is the
+// ONE predicate for that, asked by the store when a person changes an item and
+// by the surface when it decides which door a row takes, so a line cannot be a
+// permission in one place and a question in another.
+//
+// IT KNOWS THE OLD SPELLING AS WELL AS THE NEW ONE, and that is not tidiness.
+// Builds before this one put the engine's own refusal on the item verbatim, and
+// those items are on disk now: a watch stuck for days carries `refused in a
+// task: default — nobody to ask` and will carry it until it fires again, which
+// an item that has spent its allowance for the day cannot do. A predicate that
+// knew only the new lead would leave every row that provoked this exactly as it
+// was, which is the one outcome that would make the change pointless.
+func IsPermissionLine(line string) bool {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return false
+	}
+	if strings.HasPrefix(line, NeedsPermissionLead) {
+		return true
+	}
+	lower := strings.ToLower(line)
+	for _, said := range permissionRefusals {
+		if strings.Contains(lower, said) {
+			return true
+		}
+	}
+	return false
+}
 
 // ClearNeedsPerson puts down the line about a permission a firing could not
 // get, on the person's own act of changing the item. The acts are the ones this
@@ -605,7 +641,7 @@ const NeedsPermissionLead = "stopped: it needed your ok to run "
 // the row exactly as it was, because nothing about the item moved and the
 // reason it stopped is still true.
 func (it Item) ClearNeedsPerson() Item {
-	if !strings.HasPrefix(it.NeedsPerson, NeedsPermissionLead) {
+	if !IsPermissionLine(it.NeedsPerson) {
 		return it
 	}
 	it.NeedsPerson = ""

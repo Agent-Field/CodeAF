@@ -174,7 +174,7 @@ func needsAsked(in *homeGridInput) []needsItem {
 			// firing asked was asked in words, and the conversation that asked
 			// for the item is where it reads.
 			cell.subRight = needsOpenWord
-			if strings.HasPrefix(row.item.Item.NeedsPerson, standing.NeedsPermissionLead) ||
+			if standing.IsPermissionLine(row.item.Item.NeedsPerson) ||
 				strings.TrimSpace(row.item.Item.Origin.Transcript) == "" {
 				cell.subRight = needsStandingWord
 			}

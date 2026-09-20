@@ -986,7 +986,7 @@ const standingRefusalSomething = "something"
 // standingRefusal reads a failed tool row and answers the one line the person
 // is owed when the failure was "somebody would have had to allow this".
 //
-// The two sentences it matches are the two this build writes for a call that
+// The sentences it matches are the ones this build writes for a call that
 // needed a person and had none (consent.go): the node's own words, and the
 // headless one. Anything else is an ordinary tool failure, which is the run's
 // business and not the person's.
@@ -1008,8 +1008,11 @@ func standingRefusal(event Event) string {
 	if line == "" {
 		line = strings.TrimSpace(firstLine(event.Output))
 	}
-	lower := strings.ToLower(line)
-	if !strings.Contains(lower, "nobody to ask") && !strings.Contains(lower, "no resolver is attached") {
+	// THE ONE PREDICATE ANSWERS IT, the same one the store asks when a person
+	// changes an item and the surface asks when it picks a row's door
+	// ([standing.IsPermissionLine]). A second list of these sentences here is a
+	// second answer to "was this a permission stop".
+	if !standing.IsPermissionLine(line) {
 		return ""
 	}
 	want := standingRefusalWant(event)
