@@ -448,8 +448,16 @@ const fixedPrefixTarget = 48_000
 // the page's copy as one law paid for twice. Tightening the surrounding
 // sentence paid for the truth with room to spare: fixed is 55,280 and lean is
 // 47,055, so both waivers fall by 31 and again sit exactly on the measurement.
+//
+// 2026-09-20, the assisted-by trailer line. The commit-signing belt fact now
+// spells the whole two-line trailer block — the co-author's ID-prefixed
+// address, and above it the `Assisted-by` line naming the model, filled in at
+// the render because the chat is the one surface that knows its model — and
+// the widest page pays for it: fixed is 55,442, over its 55,280 by 162, so that
+// waiver rises by 162. The lean shape's page never renders the attribution row
+// and lean is 47,055 still, exactly on its measurement.
 const (
-	fixedPrefixWaiver = 7_280
+	fixedPrefixWaiver = 7_442
 	leanPrefixWaiver  = 15_555
 )
 
