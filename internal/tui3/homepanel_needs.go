@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // needsPanel is `needs you` (docs/design/home-mission-control/DESIGN.md §1, §3
@@ -53,9 +54,11 @@ const (
 	// which is the emptiness law rather than an instruction repeated on every
 	// row. enter still opens the record ([app.homeLandOnTask]).
 	needsOpenWord = "enter"
-	// needsStandingWord is the same key on a watch with no conversation behind
-	// it: `enter` opens the item on the standing place, which is where an item
-	// made at home lives.
+	// needsStandingWord is the same key on a standing item's row: `enter` opens
+	// the item on the standing place, which is where the item lives and the only
+	// place anything about it can be changed. It is what an item made at home
+	// says, having no conversation at all, and what an item STOPPED ON A
+	// PERMISSION says, whose conversation holds nothing to answer.
 	needsStandingWord = "enter on standing"
 	// needsAnswersCap is how many of a question's answers fit on its row. A
 	// question with more draws the first ones and then [needsOpenWord], because
@@ -162,14 +165,17 @@ func needsAsked(in *homeGridInput) []needsItem {
 			}
 		case switcherStanding:
 			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
-			// AND THE KEY SAYS WHICH DOOR IT IS. A watch asked for in a
-			// conversation opens that conversation; one made from home's own box
-			// has none — its exchange is kept under the item's folder rather than
-			// as a session ([standing.Origin.Exchange]) — and `enter` opens the
-			// item where it does live, on standing ([app.homeItemEnter]). Two
-			// doors, two words, and neither row advertises the other's.
+			// AND THE KEY SAYS WHICH DOOR IT IS, which is the door
+			// [app.homeItemEnter] actually takes and not a word beside it. An
+			// item stopped on a PERMISSION opens the item: nobody wrote that
+			// line, the conversation holds nothing to answer, and what a person
+			// can do about it — pause it, stop it, let it go — is on the item's
+			// own page. Everything else keeps the door it had: a QUESTION the
+			// firing asked was asked in words, and the conversation that asked
+			// for the item is where it reads.
 			cell.subRight = needsOpenWord
-			if strings.TrimSpace(row.item.Item.Origin.Transcript) == "" {
+			if standing.IsPermissionLine(row.item.Item.NeedsPerson) ||
+				strings.TrimSpace(row.item.Item.Origin.Transcript) == "" {
 				cell.subRight = needsStandingWord
 			}
 		}

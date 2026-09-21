@@ -580,7 +580,11 @@ func v3TakeHostRoad(workspace string, choice v3HostChoice) bool {
 // to do about an older one, is [localLink.dial]'s question a moment later.
 // Nothing is ever started from here.
 func v3HostAnswers(workspace string) bool {
-	conn, err := enginehost.Dial(workspace)
+	// A host takes its lock before it replaces a prior socket, so a refused
+	// connect while the lock is held is a host coming up and worth a short wait;
+	// [enginehost.DialStartingHost] makes that judgement and answers at once when
+	// no host is starting.
+	conn, err := enginehost.DialStartingHost(workspace)
 	if err != nil {
 		return false
 	}

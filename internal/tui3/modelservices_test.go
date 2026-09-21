@@ -358,6 +358,7 @@ func TestAConnectedServicesModelsAppearGroupedWithoutARestart(t *testing.T) {
 		t.Fatal("the completed key did not start the connection")
 	}
 	msg := cmd()
+	firstRowsReadHome(t, a)
 	if _, follow := a.Update(msg); follow != nil {
 		t.Fatal("a settled direct connection unexpectedly started another command")
 	}

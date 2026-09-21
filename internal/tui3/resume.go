@@ -34,6 +34,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 )
 
 // resumeRows is how many sessions are on offer at once. Ten is a screenful a
@@ -64,12 +66,13 @@ const (
 type roster struct {
 	open bool
 
-	// all is the list as it was resolved, and lower the same rows folded once at
-	// open — name and description together, because a person hunting a
-	// conversation types a word out of EITHER of them.
-	all   []Session
-	lower []string
-	score []int
+	// all is the list as it was resolved, and fields each row's own words held
+	// once at open — the name and the last line separately, because a person
+	// hunting a conversation types a word out of EITHER of them and the
+	// matcher takes, per term, whichever of the two carries it better.
+	all    []Session
+	fields [][]string
+	score  []int
 
 	// hits are indexes into all, in rank order; cursor indexes hits, and top is
 	// the first hit drawn.
@@ -88,9 +91,9 @@ type roster struct {
 // start opens the roster over list, with the session already open marked.
 func (r *roster) start(list []Session, current string) {
 	*r = roster{open: true, all: list, current: current}
-	r.lower = make([]string, len(list))
+	r.fields = make([][]string, len(list))
 	for i, session := range list {
-		r.lower[i] = strings.ToLower(humanName(session) + " " + session.Last)
+		r.fields[i] = []string{humanName(session), session.Last}
 	}
 	r.score = make([]int, len(list))
 	r.rank()
@@ -110,36 +113,30 @@ func (r *roster) start(list []Session, current string) {
 
 func (r *roster) close() { *r = roster{} }
 
-// rank re-filters against the filter box with the model picker's own ladder
-// ([tokenScore]): every token must match, prefix beats substring beats
-// subsequence. The rows are ranked over the NAME AND THE DESCRIPTION as one
-// string, which is the whole reason a person can type "migration" and land on
-// the session they never named.
+// rank re-filters against the filter box with the matcher every picker on
+// this surface shares (internal/fuzzy, by way of palette.go's [fuzzyTerms]):
+// every term must match, each over the name or the last line — per term,
+// whichever field carries it better — which is the whole reason a person can
+// type "migration" and land on the session they never named. A boundary or
+// prefix hit outranks the same letters scattered. Higher is better.
 func (r *roster) rank() {
 	tokens := strings.Fields(strings.ToLower(r.filter.String()))
+	ft := fuzzyTerms(tokens)
 	r.hits = r.hits[:0]
-	for i, text := range r.lower {
+	for i, fields := range r.fields {
 		if len(tokens) == 0 {
 			r.hits = append(r.hits, i)
 			continue
 		}
-		total, matched := 0, true
-		for _, token := range tokens {
-			score, hit := tokenScore(text, token)
-			if !hit {
-				matched = false
-				break
-			}
-			total += score
-		}
-		if !matched {
+		total, hit := fuzzy.ScoreFields(fields, ft)
+		if !hit {
 			continue
 		}
 		r.score[i] = total
 		r.hits = append(r.hits, i)
 	}
 	if len(tokens) > 0 {
-		sort.SliceStable(r.hits, func(a, b int) bool { return r.score[r.hits[a]] < r.score[r.hits[b]] })
+		sort.SliceStable(r.hits, func(a, b int) bool { return r.score[r.hits[a]] > r.score[r.hits[b]] })
 	}
 	// Ties keep source order, which is newest first — so an empty box is the
 	// list as it was handed over and a filtered one is the best match first.

@@ -107,10 +107,11 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 	},
 
 	// ── SILENTLY ABSENT, which is the law obeyed. Still missing, still owed.
-	"abandonAgent":                    {loses: "abandoning a turn's second stage; the surface falls back to an ordinary stop"},
-	"elsewhereAgent":                  {loses: "the work this conversation started that is running somewhere else"},
-	"leavableRunner":                  {loses: "watching orchestration runs, which leaves the run page dark"},
-	"leavableWaker":                   {loses: "watching wakes, which leaves a woken turn unannounced"},
+	"abandonAgent":   {loses: "abandoning a turn's second stage; the surface falls back to an ordinary stop"},
+	"elsewhereAgent": {loses: "the work this conversation started that is running somewhere else"},
+	"leavableRunner": {loses: "watching orchestration runs, which leaves the run page dark"},
+	"leavableWaker":  {loses: "watching wakes, which leaves a woken turn unannounced"},
+
 	"promoteAgent":                    {loses: "promoting a call out of the background"},
 	"runAgent":                        {loses: "listing orchestration runs"},
 	"spellOutAgent":                   {loses: "spelling a reply out again in longer form"},
@@ -347,10 +348,18 @@ func interfacesIn(t *testing.T, _ *token.FileSet, dir string) map[string]map[str
 					continue
 				}
 				shape, ok := typed.Type.(*ast.InterfaceType)
-				if !ok {
+				if ok {
+					found[typed.Name.Name] = interfaceMethods(shape)
 					continue
 				}
-				found[typed.Name.Name] = interfaceMethods(shape)
+				// An alias is still the surface declaration an assertion names.
+				// Following its selected interface keeps this law effective when a
+				// capability moves to one shared package instead of duplicating methods.
+				if typed.Assign.IsValid() {
+					if selected, selectedOK := typed.Type.(*ast.SelectorExpr); selectedOK {
+						found[typed.Name.Name] = map[string]bool{"embed:" + selected.Sel.Name: true}
+					}
+				}
 			}
 		}
 	})

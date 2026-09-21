@@ -118,6 +118,20 @@ func (a *Agent) reviseAssignment(_ context.Context, args json.RawMessage) (strin
 		return reviseRefusal(err), true, nil
 	}
 	node.graph.checkpoint()
+	// AND THE STORE LEARNS THE REVISION, when this node is a plan task: the
+	// plan is the record of what the work is (plandb_plan.go), so the revised
+	// contract is written through to the task's description. Best-effort by
+	// design — the node's own brief is what the worker acts on, and the root
+	// task, which the runtime owns end to end, keeps its description.
+	if node.spec.planID != "" {
+		now := node.assignmentNow()
+		var revised strings.Builder
+		if work := strings.TrimSpace(parsed.Work); work != "" {
+			revised.WriteString(work + "\n\n")
+		}
+		revised.WriteString("Done when: " + strings.TrimSpace(now.acceptance))
+		node.graph.planReviseThrough(node.spec.planID, revised.String())
+	}
 	now := node.assignmentNow()
 	var out strings.Builder
 	fmt.Fprintf(&out, "The assignment is at revision %d. Done now means:\n%s\n", version, now.acceptance)

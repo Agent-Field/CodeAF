@@ -410,20 +410,29 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	var agent *Agent
 	var claims atomic.Int64
+	var queued atomic.Bool
+	var revisionEvents <-chan Event
 	completer := &scriptedCompleter{steps: grindingFinishedScript(40,
 		checkpointNothingLeft, "(done)\nEverything asked for is written.")}
-	// THE DIRECTION IS TYPED THE MOMENT THE FIRST DROP IS TAKEN, which is the
-	// window the person is actually in: they watched the turn say it was done and
-	// asked for one more thing. The turn then grinds on — disproving its first
-	// claim, which is what brings the ceiling back — and STOPS once the second
-	// claim has been made, because a turn that ground on past THAT one would be
-	// handed over for the reason the case above pins and this one is not about.
+	// THE DIRECTION IS TYPED IN THE FIRST ORDINARY RESPONSE AFTER THE FIRST DROP.
+	// That is the narrow window in question: the old request has already been
+	// built, but its response has not yet crossed the next checkpoint. The turn
+	// then stops once the second claim has been made, because grinding past that
+	// claim belongs to the case above.
 	steps := completer.steps
 	for index := range steps {
 		inner := steps[index]
 		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-			if askedForHandoff(messages) && claims.Add(1) == 1 {
-				queueDirection(agent, revision)
+			if askedForHandoff(messages) {
+				claims.Add(1)
+			}
+			if claims.Load() == 1 && !askedForSketch(messages) && !askedForHandoff(messages) &&
+				!askedToWriteHandoff(messages) && !askedForRemains(messages) && queued.CompareAndSwap(false, true) {
+				events, err := agent.Submit(ctx, revision)
+				if err != nil {
+					return nil, fmt.Errorf("submit revision: %w", err)
+				}
+				revisionEvents = events
 			}
 			if claims.Load() >= 2 && !askedForSketch(messages) && !askedForHandoff(messages) &&
 				!askedToWriteHandoff(messages) && !askedForRemains(messages) {
@@ -440,7 +449,11 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 		t.Fatalf("Submit: %v", err)
 	}
 	collect(t, events)
+	collect(t, revisionEvents)
 
+	if !queued.Load() {
+		t.Fatal("the forced ordering never queued the revision")
+	}
 	if count := admitted(graph); count != 0 {
 		t.Fatalf("%d tasks were admitted; a revision inherited the claim spent on the sentence before it", count)
 	}

@@ -738,6 +738,25 @@ func standFacts(item standing.Item) string {
 func (a *app) homeItemEnter(line homeLine) tea.Cmd {
 	h := &a.home
 	transcript := strings.TrimSpace(line.item.Origin.Transcript)
+	// AN ITEM STOPPED ON A PERMISSION OPENS THE ITEM, whatever it was asked for
+	// in. The rest of this door is unchanged and deliberately so: a firing that
+	// put a QUESTION to the person asked it in words, and the conversation that
+	// asked for the watch is where that reads — which is the owner's own ruling
+	// of 2026-09-15, and the test above this one holds it.
+	//
+	// A PERMISSION IS THE OTHER THING THIS FIELD CARRIES and it is not a
+	// question. Nobody wrote it, nothing in the conversation is waiting on it,
+	// and a person who pressed a key on a row marked as needing them landed in
+	// an idle room with nothing to answer and nowhere to act. What they can
+	// actually do is pause the item, stop it or let it go, and the item's own
+	// page is where those are. So the two readings of the field get the two
+	// doors, told apart by the one predicate
+	// ([standing.IsPermissionLine]), which knows the spelling older builds
+	// wrote as well as this one's.
+	if standing.IsPermissionLine(line.item.NeedsPerson) {
+		a.closeHome()
+		return a.openStandingAt(line.item.ID)
+	}
 	if transcript == "" {
 		// AN ITEM MADE AT HOME HAS NO CONVERSATION TO OPEN, and the standing
 		// place is where it does live — so `enter` goes there rather than
@@ -810,6 +829,9 @@ func (a *app) homeItemWrite(line homeLine, status standing.Status) tea.Cmd {
 	}
 	item := line.item
 	item.Status = status
+	// Changing the item is the person's answer to whatever its last firing
+	// stopped on ([standing.Item.ClearNeedsPerson]).
+	item = item.ClearNeedsPerson()
 	if status == standing.StatusRetired {
 		item.RetiredWhy = homeStoppedWhy
 	}

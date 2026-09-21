@@ -2,8 +2,12 @@ package catalog
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -148,5 +152,87 @@ func TestIndexKeepsTheFirstRowForANormalizedID(t *testing.T) {
 	}
 	if !indexed.Supports("vendor/pinned", "output", "text") {
 		t.Fatal("Supports must read the same row Model does")
+	}
+}
+
+func TestCloseJoinsLateSuccessfulWarmWithoutWritingEitherHome(t *testing.T) {
+	oldHome := t.TempDir()
+	newHome := t.TempDir()
+	t.Setenv("CODEAF_HOME", oldHome)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		close(started)
+		<-release
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     http.StatusText(http.StatusOK),
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(catalogPayload)),
+		}, nil
+	})}
+	first := LoadLazy(context.Background(), Options{
+		BaseURL: "https://catalog.example/v1", HTTPClient: client,
+	})
+	<-started
+	t.Setenv("CODEAF_HOME", newHome)
+
+	closed := make(chan struct{})
+	go func() {
+		first.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+		t.Fatal("Close returned while the warm fetch was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not join the completed warm fetch")
+	}
+	assertEmptyTree(t, oldHome)
+	assertEmptyTree(t, newHome)
+
+	second := LoadLazy(context.Background(), Options{
+		BaseURL:    "https://catalog.example/v1",
+		HTTPClient: catalogClient(t, http.StatusOK, catalogPayload, nil),
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if !second.Warmed(ctx) {
+		t.Fatal("a second launch did not warm")
+	}
+	second.Close()
+	entries, err := os.ReadDir(newHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("the second launch did not write its cache")
+	}
+}
+
+func assertEmptyTree(t *testing.T, root string) {
+	t.Helper()
+	var found string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path != root {
+			found = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found != "" {
+		t.Fatalf("late warm wrote %s", found)
 	}
 }
