@@ -283,6 +283,11 @@ type briefWriter struct {
 	// leaves the brief exactly as durable as it was before this hook existed.
 	journal BriefJournal
 
+	// skills is the active shelf the caller read before the build started
+	// (Options.Skills), handed in frozen. The brief pass composes each leaf's
+	// attachment from it at apply time; nil attaches nothing.
+	skills []store.Fact
+
 	// sink is the deliverable owner, which is written for even though it is not
 	// KindWork. It is a single id rather than a predicate because every other
 	// non-work node in a graph is an expanded container — structure nobody runs —
@@ -408,6 +413,14 @@ func (w *briefWriter) apply(graph *Graph) (Usage, error) {
 			node.Spec.Instruction = written.Instruction
 			node.Spec.Done = written.Done
 			node.Spec.Sources = node.Sources
+			// The skills this leaf is served from the shelf, composed here where
+			// the brief is final: skills the goal names outright first, retrieval
+			// candidates behind them. The same order is written onto the node and
+			// journaled on the brief, so precedence is one fact everywhere it is
+			// read. An empty shelf composes nothing, and everything below reads
+			// exactly as it did before attachment existed.
+			node.Skills = ComposeSkills(PinnedSkills(graph.Goal, w.skills),
+				RetrieveSkills(node.Brief, graph.Workspace, w.skills))
 			// Journal the rendered brief as a first-class event per node, so a
 			// run's sufficiency sentence is queryable from its own artifacts
 			// rather than only as a field inside the plan blob. The caller forms
@@ -422,6 +435,7 @@ func (w *briefWriter) apply(graph *Graph) (Usage, error) {
 					// from a written one after the fact.
 					Fault:      written.fault,
 					Subharness: node.Subharness,
+					Skills:     node.Skills,
 				})
 			}
 		}

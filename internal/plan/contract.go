@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // contractPrompt writes the working method one agent will follow.
@@ -403,4 +405,182 @@ func ComposeSkills(pinned, candidates []string) []string {
 		}
 	}
 	return result
+}
+
+// SkillEntry is one attached skill rendered in a worker's instruction block.
+// Name is the skill's shelf name; Doc is the one-line description from its
+// fact; ShelfPath is the path to the skill's directory on disk.
+type SkillEntry struct {
+	Name      string
+	Doc       string
+	ShelfPath string
+}
+
+// RenderSkillsBlock renders attached skills as doc lines and shelf paths.
+// Each skill produces one line: "- <doc> [<path>]" when both exist, or a
+// shorter form when only one is available. Zero entries returns zero bytes —
+// no header, no placeholder, no blank line. The final line states that
+// earlier-listed skills take precedence in case of conflict.
+//
+// This renders beside the composition above because the two are one path: the
+// brief pass composes the attachment and the executor renders it into the
+// instruction, and the executor cannot reach a package that itself imports the
+// subharness. A render the worker prompt cannot call is a render that never
+// runs.
+func RenderSkillsBlock(skills []SkillEntry) string {
+	if len(skills) == 0 {
+		return ""
+	}
+	var buf strings.Builder
+	for _, s := range skills {
+		buf.WriteString("- ")
+		if s.Doc != "" {
+			buf.WriteString(s.Doc)
+			if s.ShelfPath != "" {
+				buf.WriteString(" [")
+				buf.WriteString(s.ShelfPath)
+				buf.WriteString("]")
+			}
+		} else if s.ShelfPath != "" {
+			buf.WriteString(s.ShelfPath)
+		}
+		buf.WriteString("\n")
+	}
+	buf.WriteString("Earlier-listed skills win when two skills conflict.")
+	return buf.String()
+}
+
+// retrieveSkillCap bounds how many retrieved candidates one leaf may carry.
+// Pinned skills are the person's own naming and are never capped; the fuzzy
+// half is, so a runaway shelf cannot bury a leaf's instruction in recipes.
+const retrieveSkillCap = 3
+
+// attachmentStopwords are the function words that share with every instruction
+// there is — "the" with all of them, "and" with almost as many. They are
+// dropped from the cue side so a shelf doc saying "the" once cannot claim
+// relevance to every leaf; a body word can only score against a cue the
+// territory actually names.
+var attachmentStopwords = map[string]bool{
+	"the": true, "and": true, "for": true, "with": true, "that": true,
+	"this": true, "from": true, "into": true, "your": true, "are": true,
+	"was": true, "were": true, "has": true, "have": true, "will": true,
+	"them": true, "they": true, "their": true, "there": true, "then": true,
+	"than": true, "when": true, "what": true, "where": true, "which": true,
+	"out": true, "off": true, "too": true, "also": true, "both": true,
+	"about": true, "after": true, "before": true, "while": true,
+	"through": true, "without": true, "within": true, "each": true,
+}
+
+// PinnedSkills returns the skills the person's own words name outright: every
+// shelf skill whose name appears in the text. It is simple name-in-text
+// matching — deterministic, no model call — because a person naming a skill is
+// the strongest relevance signal there is, and it is read off the goal, which
+// is the person's proposal in whatever words they used.
+func PinnedSkills(text string, skills []store.Fact) []string {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	pinned := make([]string, 0, len(skills))
+	for _, fact := range skills {
+		if name := fact.SkillName(); name != "" && strings.Contains(text, name) {
+			pinned = append(pinned, name)
+		}
+	}
+	return pinned
+}
+
+// RetrieveSkills returns the skills retrieval would attach to one leaf: those
+// whose scope or doc line cues against the leaf's own territory — its rendered
+// instruction, and the workspace it runs in. The shape is the chat catalog's
+// window scorer (skillcatalog.go): a scope naming something in front of the
+// leaf outweighs anything, a shared doc word is the weaker cue. One shared
+// word is coincidence — "the" shares with every instruction there is — so only
+// scores a real cue produces come back, most relevant first, capped.
+func RetrieveSkills(text, workspace string, skills []store.Fact) []string {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	cues := cueWords(text)
+	for word := range cueWords(workspace) {
+		cues[word] = true
+	}
+	type scored struct {
+		name  string
+		score int
+	}
+	found := make([]scored, 0, len(skills))
+	for _, fact := range skills {
+		name := fact.SkillName()
+		if name == "" {
+			continue
+		}
+		score := 0
+		if scopeWords(fact.Scope, cues) {
+			score += 100
+		}
+		for _, word := range docWords(fact.Body) {
+			if cues[word] {
+				score += 5
+			}
+		}
+		if score >= 10 {
+			found = append(found, scored{name: name, score: score})
+		}
+	}
+	sort.SliceStable(found, func(first, second int) bool { return found[first].score > found[second].score })
+	if len(found) > retrieveSkillCap {
+		found = found[:retrieveSkillCap]
+	}
+	names := make([]string, 0, len(found))
+	for _, hit := range found {
+		names = append(names, hit.name)
+	}
+	return names
+}
+
+// docWords is the comparable words of one text: lowercase, split on everything
+// that is not a letter or a digit, and dropping the short words that match
+// everything. It is the chat catalog's own tokenizer (skillcatalog.go), held
+// at this spelling because the composition here has to agree with what the
+// shelf's one other reader scores with.
+func docWords(text string) []string {
+	fields := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+	})
+	words := fields[:0]
+	for _, field := range fields {
+		if len(field) >= 3 {
+			words = append(words, field)
+		}
+	}
+	return words
+}
+
+// cueWords is the cue side of the match: the comparable words of a territory
+// after the function words are dropped. A body word can only score against a
+// cue the territory actually names, so "the" and friends never make one.
+func cueWords(text string) map[string]bool {
+	cues := make(map[string]bool)
+	for _, word := range docWords(text) {
+		if !attachmentStopwords[word] {
+			cues[word] = true
+		}
+	}
+	return cues
+}
+
+// scopeWords asks whether a skill's scope names something the cue words hold.
+// A scope is `kind:value` ("repo:/path", "tool:git", "domain:x"), so its parts
+// are compared against the words the way the catalog's scope match does it:
+// a scope of `repo:/…/codeaf` matches a workspace that ends in `codeaf`, and
+// `tool:git` matches nothing unless the territory happens to say `git`.
+func scopeWords(scope string, cues map[string]bool) bool {
+	for _, part := range strings.FieldsFunc(strings.ToLower(scope), func(r rune) bool {
+		return r == ':' || r == '/' || r == '\\' || r == '.' || r == '-' || r == '_' || r == ' '
+	}) {
+		if part != "" && cues[part] {
+			return true
+		}
+	}
+	return false
 }

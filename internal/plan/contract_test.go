@@ -2,12 +2,14 @@ package plan
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 type contractCaptureClient struct {
@@ -445,5 +447,130 @@ func TestComposeSkillsSkipsEmptyNames(t *testing.T) {
 	want := []string{"a", "b", "c"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ComposeSkills(%q, %q) = %q, want %q", pinned, candidates, got, want)
+	}
+}
+
+// skillFact is a shelf fact as the store holds it: named by the directory on
+// the shelf, described by the one line the notebook recorded.
+func skillFact(artifact, scope, body string) store.Fact {
+	return store.Fact{Artifact: artifact, Scope: scope, Body: body}
+}
+
+func TestPinnedSkillsMatchesShelfNamesInTheText(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/home/.codeaf/skills/imgshrink", Body: "optimize images without losing quality"},
+		{Artifact: "/home/.codeaf/skills/lint", Body: "run linters"},
+	}
+	got := PinnedSkills("shrink the report images with imgshrink", skills)
+	if want := []string{"imgshrink"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PinnedSkills = %q, want %q", got, want)
+	}
+}
+
+func TestPinnedSkillsKeepsShelfOrder(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/skills/lint", Body: "run linters"},
+		{Artifact: "/skills/build", Body: "build the project"},
+	}
+	got := PinnedSkills("lint first, then build", skills)
+	if want := []string{"lint", "build"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PinnedSkills = %q, want shelf order %q", got, want)
+	}
+}
+
+func TestPinnedSkillsMatchesNothingWhenNothingIsNamed(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/skills/imgshrink", Body: "optimize images without losing quality"},
+	}
+	if got := PinnedSkills("review the pull request and deliver REVIEW.md", skills); len(got) != 0 {
+		t.Fatalf("PinnedSkills = %q, want nothing attached", got)
+	}
+}
+
+func TestRetrieveSkillsScoresScopeAndSharedDocWords(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/skills/parser", Scope: "repo:/work/parser", Body: "validate and format parser fixtures"},
+		{Artifact: "/skills/lint", Scope: "tool:lint", Body: "gofmt vet and lint the tree"},
+	}
+	// The workspace names the parser repo, so the scoped skill scores high
+	// even where the instruction shares none of its doc words.
+	got := RetrieveSkills("tidy the fixtures in the parser repository", "/tmp/work/parser", skills)
+	if want := []string{"parser"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("RetrieveSkills = %q, want %q", got, want)
+	}
+}
+
+func TestRetrieveSkillsCuesOnTwoSharedDocWordsNotOne(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/skills/imgshrink", Body: "optimize images without losing quality"},
+		{Artifact: "/skills/lint", Body: "gofmt vet and lint the tree"},
+	}
+	// One shared word is coincidence — "and" and "the" share with every
+	// instruction there is — so a single-word overlap attaches nothing.
+	got := RetrieveSkills("review the change and deliver REVIEW.md", "", skills)
+	if len(got) != 0 {
+		t.Fatalf("RetrieveSkills = %q, want nothing from one shared word", got)
+	}
+	// Two shared doc words are a cue.
+	got = RetrieveSkills("optimize the images the report embeds", "", skills)
+	if want := []string{"imgshrink"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("RetrieveSkills = %q, want %q", got, want)
+	}
+}
+
+func TestRetrieveSkillsCapsCandidates(t *testing.T) {
+	skills := make([]store.Fact, 0, retrieveSkillCap+1)
+	for index := 0; index < retrieveSkillCap+1; index++ {
+		skills = append(skills, store.Fact{
+			Artifact: fmt.Sprintf("/skills/worker-%02d", index),
+			Body:     "polish the README prose and cover",
+		})
+	}
+	got := RetrieveSkills("rewrite the README prose and cover page", "", skills)
+	if len(got) != retrieveSkillCap {
+		t.Fatalf("RetrieveSkills = %d candidates, want the cap %d", len(got), retrieveSkillCap)
+	}
+}
+
+func TestRenderSkillsBlockRendersDocAndPath(t *testing.T) {
+	skills := []SkillEntry{
+		{Name: "imgshrink", Doc: "optimize images without losing quality", ShelfPath: "~/.codeaf/skills/imgshrink"},
+		{Name: "parser", Doc: "validate and format parser fixtures", ShelfPath: "~/.codeaf/skills/parser"},
+	}
+	got := RenderSkillsBlock(skills)
+	want := "- optimize images without losing quality [~/.codeaf/skills/imgshrink]\n- validate and format parser fixtures [~/.codeaf/skills/parser]\nEarlier-listed skills win when two skills conflict."
+	if got != want {
+		t.Fatalf("RenderSkillsBlock:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestRenderSkillsBlockEmpty(t *testing.T) {
+	if got := RenderSkillsBlock(nil); got != "" {
+		t.Fatalf("RenderSkillsBlock(nil) = %q, want \"\"", got)
+	}
+	if got := RenderSkillsBlock([]SkillEntry{}); got != "" {
+		t.Fatalf("RenderSkillsBlock([]) = %q, want \"\"", got)
+	}
+}
+
+func TestRenderSkillsBlockPreservesPrecedenceOrder(t *testing.T) {
+	skills := []SkillEntry{
+		{Name: "lint", Doc: "run linters", ShelfPath: "~/.codeaf/skills/lint"},
+		{Name: "test", Doc: "run tests", ShelfPath: "~/.codeaf/skills/test"},
+		{Name: "build", Doc: "build the project", ShelfPath: "~/.codeaf/skills/build"},
+	}
+	got := RenderSkillsBlock(skills)
+	lines := strings.Split(got, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines (3 skills + 1 precedence), got %d", len(lines))
+	}
+	if !strings.HasPrefix(lines[0], "- run linters") {
+		t.Errorf("first skill should be 'lint', got: %s", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "- run tests") {
+		t.Errorf("second skill should be 'test', got: %s", lines[1])
+	}
+	if !strings.HasPrefix(lines[2], "- build the project") {
+		t.Errorf("third skill should be 'build', got: %s", lines[2])
 	}
 }
