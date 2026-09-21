@@ -744,3 +744,43 @@ func TestAPriceWithOneHalfMissingSortsWithTheBlanks(t *testing.T) {
 		}
 	}
 }
+
+// EVERY DOOR ONTO THE LIST SORTS IT, or the arrow on the heading is a lie. The
+// task composer's own door handed every key straight to the walk, so `alt+o`
+// drew the headed table with `model ↓` on it and then swallowed the chord that
+// moves it: a list you can see is sorted and cannot sort. The fold's key map is
+// the LIST's ([picker.foldKey]) and all four doors read it.
+func TestEveryDoorOntoTheModelListAnswersTheSortChord(t *testing.T) {
+	a := layerApp(t, pageSpend, 120)
+	a.placeKeyPress(key("alt+o"))
+	if !a.composer.pick.open {
+		t.Fatal("alt+o opened no model list")
+	}
+	if got := a.composer.pick.sort; got != (tableSort{}) {
+		t.Fatalf("the composer's list opened on sort %+v, want the zero value", got)
+	}
+	a.placeKeyPress(key(tasksSortKeyChord))
+	first := a.composer.pick.sort
+	if first == (tableSort{}) {
+		t.Fatal("alt+o's list swallowed the sort chord; the arrow on its heading cannot be moved")
+	}
+	// AND THE BACK CHORD RETRACES IT, which is the other half of the same map.
+	a.placeKeyPress(key(tasksSortBackChord))
+	if got := a.composer.pick.sort; got != (tableSort{}) {
+		t.Fatalf("the back chord left the sort at %+v, want the rung it started on", got)
+	}
+	// AND THE FOOT NAMES THE KEY, because a chord that works and is never named
+	// is a chord nobody presses.
+	if !strings.Contains(plain(layerText(a)), sortKeyWord) {
+		t.Fatalf("the composer's foot does not name %q:\n%s", sortKeyWord, plain(layerText(a)))
+	}
+}
+
+// AND SO DOES THE SETTINGS PANEL'S SLOT ROW: the key already worked there, and
+// the legend under it never said so.
+func TestTheSettingsSlotLegendNamesTheSortItAnswers(t *testing.T) {
+	s := &sheet{sel: &sheetSelect{}}
+	if got := s.keysLine(); !strings.Contains(got, sortKeyWord) {
+		t.Fatalf("the slot's legend is %q, which names no sort", got)
+	}
+}

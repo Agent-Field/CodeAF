@@ -130,7 +130,7 @@ func (a *app) targetModelPinned() bool {
 // it` was a second word for one gesture on one rung of it.
 func (a *app) targetPickFoot() string {
 	before, enter, after := a.target.pick.keysParts()
-	// `use it` AND NOT `switch`, because nothing switches here: a choice made on
+	// `choose` AND NOT `switch`, because nothing switches here: a choice made on
 	// this list is a pin on the next conversation ([app.pinTargetModel]). The
 	// other two words enter can take — `choose` a provider, `unpin` the one the
 	// requests already go to — mean the same at either door and are kept.

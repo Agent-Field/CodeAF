@@ -133,9 +133,10 @@ written anywhere: the model a remote session opens on is resolved on that machin
 that machine's profile. And reasoning effort is kept per model for the session, not
 written to the profile.
 
-esc leaves the picker and changes **nothing** — your half-typed draft, the model in use and
-the frame all come back exactly as they were. The picker holds its own filter text, and the
-filter is forgotten when it closes.
+esc closes the picker and **undoes nothing**. It gives your half-typed draft and the frame
+back as they were — the picker holds its own filter text, and the filter is forgotten when
+it closes — but the model in use does not come back: enter already switched it, then and
+there, and esc is only the way out. To go back to the model you were on, choose it.
 
 ## Moving and filtering in the model picker
 
@@ -3179,7 +3180,7 @@ no unsorted state, and the heading always carries an arrow saying which order yo
 
 ```
 model ↓  model ↑  via ↓  via ↑  first ↓  first ↑  in/M ↓  in/M ↑
-window ↓  window ↑  t/s ↓  t/s ↑  elo ↓  elo ↑   → back to model ↓
+out/M ↓  out/M ↑  window ↓  window ↑  t/s ↓  t/s ↑  elo ↓  elo ↑   → back to model ↓
 ```
 
 and one key reaches every order the table has. **The first of each pair is the way that

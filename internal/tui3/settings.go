@@ -3383,13 +3383,17 @@ func (s *sheet) keysLine() string {
 		// be the foot of the screen promising a gesture that does nothing.
 		// And INSIDE the fold it says the way back out, for the reason /model's
 		// hint slot does ([picker.keysHint]): the keys are the row's.
+		//
+		// AND THE SORT IS NAMED ON ALL THREE, because it is the LIST's key and
+		// not the row's: wherever this slot draws the headed table the chord
+		// moves it, so leaving it out made an arrow nobody could turn.
 		if s.sel.pick.laneSlot == "" {
-			return "↑↓ move · enter choose · esc cancel · type to filter"
+			return "↑↓ move · " + sortKeyWord + " · enter choose · esc cancel · type to filter"
 		}
 		if _, inside := s.sel.pick.laneUnder(); inside {
-			return "↑↓ move · ← or tab back · enter choose · esc cancel · type to filter"
+			return "↑↓ move · ← or tab back · " + sortKeyWord + " · enter choose · esc cancel · type to filter"
 		}
-		return "↑↓ move · → or tab providers · enter choose · esc cancel · type to filter"
+		return "↑↓ move · → or tab providers · " + sortKeyWord + " · enter choose · esc cancel · type to filter"
 	case s.conn.entry != nil:
 		return s.connKeysLine()
 	case s.onConnections():

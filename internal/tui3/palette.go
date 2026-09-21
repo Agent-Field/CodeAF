@@ -22,8 +22,7 @@ import (
 // It is called picker and not palette because [palette] in styles.go is already
 // this surface's colour table. The FILE is palette.go because the thing it
 // holds is the palette gesture — a filter box you type into, a short list under
-// it, arrows to move, enter to switch, esc to leave everything exactly as it
-// was.
+// it, arrows to move, enter to switch, esc to close.
 //
 // Three properties are the whole design:
 //
@@ -34,9 +33,13 @@ import (
 //   - It is bottom-anchored and takes the input line's place. The conversation
 //     shrinks above it; nothing pops up over the middle of what somebody was
 //     reading.
-//   - It changes nothing until enter. esc restores the draft that was being
-//     typed, the model in use, and the frame — the picker holds its own filter
-//     text, and the person's half-written sentence is never in it.
+//   - ENTER APPLIES AND THE LIST STAYS UP; esc only closes, and undoes nothing.
+//     Two models can be compared on their prices, chosen between and changed
+//     back without the list going away ([app.pickerKey] argues it). What esc
+//     does give back is the draft that was being typed and the frame — the
+//     picker holds its own filter text, and the person's half-written sentence
+//     is never in it. It used to close on enter and restore the model in use,
+//     which made every comparison a round trip.
 const pickerRows = 12
 
 // picker is the overlay's whole state. The zero value is closed.

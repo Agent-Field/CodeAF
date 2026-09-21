@@ -975,10 +975,12 @@ published — `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, `inputs` 
 catalog's own words: `text`, `image`, `audio`, `video`, `file`, `speech`, `music`. The heading names the unit, so the figure
 under it does not: `$0.18` under `out/M`, `1290` under `elo`. An empty cell means nobody
 published that fact; a column no row published is not drawn at all. A price shows only when
-both halves are known — a zero means "nobody said", never "free". A plain text chat model
-says `text` under both. `outputs` is not drawn in `/model` — a model that answers with
-anything but text cannot hold a conversation and is not on that list, so every row would
-say `text` and a column every row agrees on is dropped. A narrow window gives up columns from the right, and under sixty
+both halves are known — a zero means "nobody said", never "free". `text` is never drawn on either
+side — every model on this list reads and writes it, so the cell is for what a model can do
+**beyond** holding a conversation, and an empty `inputs` cell means text in and nothing
+else. `outputs` is not drawn in `/model` at all: a model that answers with anything but
+text cannot hold a conversation and is not on that list, so the column every row agrees on
+is dropped. A narrow window gives up columns from the right, and under sixty
 columns the table gives way to the older `·` tail on a line of its own (the *models and
 cost* page, "What each row in the model picker tells you").
 
