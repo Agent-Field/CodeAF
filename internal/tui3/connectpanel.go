@@ -690,7 +690,6 @@ func (a *app) connectAct(at int) tea.Cmd {
 		if id, model := modelConnectionSource(row.ID); model {
 			// THE ADD ROW MINTS, never edits: startModelConnect on the
 			// catalog's custom row is instance one's edit door.
-<<<<<<< HEAD
 			if id == customAddRowID {
 				return a.startCustomAdd(false)
 			}
@@ -702,12 +701,6 @@ func (a *app) connectAct(at int) tea.Cmd {
 				a.switchActiveConnection()
 				a.connPanel.adopt(a.connectionRows())
 				return nil
-||||||| a38492026
-		if _, model := modelConnectionSource(row.ID); model {
-=======
-			if id == "custom-add" {
-				return a.startCustomAdd(false)
->>>>>>> feat/1089-custom-connections
 			}
 			return a.startModelConnect(row, false)
 		}

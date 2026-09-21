@@ -1959,16 +1959,12 @@ func (placeTasks) ownFrame(a *app, width, height int) ([]string, []placeHit, int
 	if !a.taskSheet.detailOn {
 		return nil, nil, 0, 0, false
 	}
-<<<<<<< HEAD
 	// THE PLAN PAGE DRAWS IN THE CARD'S PLACE, through the same latch and the
 	// same frame slot ([app.taskPlanFrame]).
 	if a.taskSheet.planOn {
 		lines, caretX, caretY := a.taskPlanFrame(width, height)
 		return lines, nil, caretX, caretY, true
 	}
-||||||| a38492026
-=======
->>>>>>> feat/1089-custom-connections
 	// NOTHING ON THE CARD IS TYPED INTO, so the caret is hidden rather than
 	// parked at the frame's origin over the title — the same law the job page
 	// and home at rest follow (view.go states it in [app.frameBody]), and the

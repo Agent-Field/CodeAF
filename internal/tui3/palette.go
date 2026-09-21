@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -312,14 +313,10 @@ func (p *picker) rank() {
 	// once here, not once per row: the terms are the same for every id the
 	// keystroke ranks.
 	ft := fuzzyTerms(tokens)
-<<<<<<< HEAD
 	// KEPT FOR THE ROWS TO DRAW FROM: the emphasis a frame draws asks where the
 	// search landed, and taking it from here is what keeps it the same ranking
 	// these terms just produced.
 	p.ft = ft
-||||||| a38492026
-=======
->>>>>>> feat/1089-custom-connections
 	now := timeNow()
 	// AN OPEN FOLD IS THE SUBJECT OF WHAT IS TYPED NEXT, and it is read before
 	// the fold is forgotten below ([picker.narrowFold]).
