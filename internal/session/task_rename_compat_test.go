@@ -38,7 +38,7 @@ func TestH5TaskCommitIdentityUsesTheCurrentName(t *testing.T) {
 // and lands through the ordinary cleanup road. The directory and Git's
 // registration both disappear only after its commit reaches the person's tree.
 func TestLegacyRegisteredWorktreeResumesLandsAndCleansUp(t *testing.T) {
-	repo := newTestRepo(t)
+	repo := canonicalPath(newTestRepo(t))
 	homeBranch := currentBranch(repo)
 	homeSHA := branchCommit(repo, homeBranch)
 	sessionID := "legacy-session"
@@ -90,7 +90,7 @@ func TestLegacyRegisteredWorktreeResumesLandsAndCleansUp(t *testing.T) {
 	if lock.Name() != wantLock {
 		t.Fatalf("repository lock = %q, want pre-rename lock %q", lock.Name(), wantLock)
 	}
-	fresh := newTestRepo(t)
+	fresh := canonicalPath(newTestRepo(t))
 	freshLock := openGitRootLock(Place{}, fresh)
 	if freshLock == nil {
 		t.Fatal("fresh repository lock could not be opened")

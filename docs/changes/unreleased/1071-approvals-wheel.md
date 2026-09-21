@@ -4,6 +4,7 @@ title: UX changes — clearer home panels and consistent message-box controls
 pr: 1071
 surface: [chat]
 invalidates:
+  - "Merged regression tests now wait for a question’s publication rather than racing its early lane registration. Update and legacy-worktree fixtures compare resolved paths consistently on macOS as well as Linux."
   - "The dev task-runner merge retains Sessions conversation trees, expanded task families, chronological page order and project columns. The compact rail keeps its own running-first projection without changing the page’s cached order. Run tabs no longer overwrite their parent conversation titles or create duplicate Home and chats-menu rows. Settings search and picker carets follow the visible filters in the page body. Both approval and plan-task remote calls retain their routing classes."
   - "CI regression coverage now follows the unified Sessions list, full model names, prompt-derived tabs, single pointer/keyboard selection and Escape back behavior. Credential answers no longer become draft tab titles; running session bullets animate after the old task panel’s removal; Sessions survives a short Home layout ahead of auxiliary panels; task decisions do not also mark their parent as a separate question; Settings shows its live model filter above the picker."
   - "Home now starts its resting footer with → options while the message box is empty, making the selected session’s action menu discoverable. Typing removes this hint; modal pickers retain their own navigation hints."

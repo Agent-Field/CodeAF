@@ -40,6 +40,7 @@ func TestHomeEffortSurvivesTheEngineConnectionAtAuto(t *testing.T) {
 			a.agent = loop.Client.Agent()
 			a.model = engine.Model()
 			a.showPage(pageHome)
+			firstRowsReadHome(t, a)
 			before := loop.Client.CallsMade()
 			frame := placeFrameText(a)
 			if !strings.Contains(frame, ":"+word) || !strings.Contains(a.homeHint(), targetEffortKeyWord) {
