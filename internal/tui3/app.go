@@ -958,6 +958,26 @@ type app struct {
 	// exactly that boundary (the entryCompact block), and a second line saying
 	// the same thing two rows above it is the surface stuttering.
 	earlierSeam bool
+	// recordRows is how many blocks at the FRONT of entries were drawn from the
+	// session's own record rather than said into this window: the opening
+	// replay, every helping [app.backfill] handed up afterwards, and the seam
+	// rows drawn between them.
+	//
+	// IT EXISTS SO A SECOND REPLAY CANNOT DRAW THE CONVERSATION ON TOP OF
+	// ITSELF. [app.replayList] keeps what is already on screen, and that is
+	// right for what it was written for: the record is fetched off the loop and
+	// the box is live the whole time it is in flight, so a person can type while
+	// it is coming and their sentence must not be buried. But it kept ALL of it,
+	// and rows a PREVIOUS replay drew from this same record are not something
+	// said afterwards. A replay arriving onto a surface already drawing the
+	// record put the whole conversation above itself: the same answers twice and
+	// two seams, which is the one thing [session.EarlierHistory] is written to
+	// prevent.
+	//
+	// It is counted in the walk that draws the rows rather than recognised
+	// afterwards by their text, because two rows of one conversation are equal
+	// in every field a comparison could reach.
+	recordRows int
 	// historyLoading admits one page command at a time, and historyGen makes its
 	// answer belong to the replay that asked for it.
 	historyLoading bool
@@ -5462,7 +5482,17 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// blocks the next time a person scrolled off the top. [app.rebase] carries
 		// the place over into the region the pass just created, so the history
 		// stays reachable and stays in order.
-		a.rebase()
+		//
+		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. The event is sent on both
+		// paths, so this used to hand the bookkeeping over on a pass that found
+		// nothing to stub and nothing to fold: replayFrom was dropped to a floor
+		// the reader was nowhere near, the seam was marked drawn without being
+		// drawn, and the conversation between the two went quiet. The surface
+		// then said there was nothing above it. Nothing had moved, so there is
+		// nothing to carry over ([session.Event.Unchanged]).
+		if !ev.Unchanged {
+			a.rebase()
+		}
 		// AND RE-READ THE METER HERE. The pass just changed what the
 		// conversation weighs by an order of magnitude, and the status line's
 		// only other reader is the end of the turn — which is a long way off

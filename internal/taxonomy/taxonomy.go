@@ -371,6 +371,18 @@ type Evidence struct {
 	// so the extra asks buy nothing and the allowance narrows.
 	Rerouted bool
 
+	// OneMachine says the cut request had NO ENDPOINT DIVERSITY AT ALL — it
+	// named no machine and none served it, which is a build with no router
+	// behind it and a set of one.
+	//
+	// IT IS THE OPPOSITE CASE TO THE ONE ABOVE, not a second spelling of it.
+	// Rerouted false with a pool means the next attempt lands in the same place
+	// by the same rules, so the extra asks buy nothing. Rerouted false with ONE
+	// machine means asking again is the only move there is, and the thing that
+	// mends a machine which answered nothing is time — so the allowance grows
+	// and a wait goes in front of each ask ([transportBudget], [waitFor]).
+	OneMachine bool
+
 	// FallbackAvailable says the caller has a NEXT MODEL to ask when this one's
 	// budget is spent. It is the whole difference between [ActionHop] and
 	// [ActionGiveUp], and it is the caller's fact: an empty chain, a completer
