@@ -676,6 +676,15 @@ type Event struct {
 	// back out of that sentence would break the first time somebody improved
 	// the wording or a skill name held a comma, and would break silently,
 	// because a test written against the same sentence agrees with it.
+	//
+	// AN ABSENT LIST MEANS UNKNOWN AND NOT NONE. The tag is omitempty because
+	// an event with no skills has to serialise as it did before this field
+	// existed, which is what keeps a new session and an older peer talking
+	// (internal/remote's wire tests). The cost is that a turn that carried
+	// nothing and a peer too old to send the field put the same bytes on the
+	// wire, so a surface may draw a non-empty list and must say nothing at all
+	// otherwise — a sentence like "no skills used" is a claim this field
+	// cannot support.
 	Skills []string `json:"Skills,omitempty"`
 
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
