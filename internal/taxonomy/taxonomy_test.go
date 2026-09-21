@@ -452,3 +452,55 @@ func TestNamedReadsTheUpstreamAndNothingElse(t *testing.T) {
 		}
 	}
 }
+
+// A PERSON ON ONE MACHINE IS THE CASE THE SHORT ALLOWANCE WAS WRONG ABOUT.
+// `Rerouted` false is narrowed because the next attempt is drawn from the same
+// pool by the same rules and buys nothing. With no pool at all — a person's own
+// base url, a local server, one connected service — the next attempt is the
+// only move there is, and the thing that mends a machine which answered nothing
+// is time. So the allowance is longer AND the wait comes back.
+func TestACutAgainstOneMachineAsksLongerAndWaitsBetweenAsks(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	if OneMachineCutAttempts <= BlindCutAttempts {
+		t.Fatalf("one machine gets %d attempts, which is no more than the %d a blind cut in a pool gets",
+			OneMachineCutAttempts, BlindCutAttempts)
+	}
+	for spent := 1; spent < OneMachineCutAttempts; spent++ {
+		verdict := Classify(Evidence{Cut: true, OneMachine: true, Cuts: spent}, limits)
+		if !verdict.Retries() {
+			t.Fatalf("cut %d of %d did %q, want a retry", spent, OneMachineCutAttempts, verdict.Action)
+		}
+		if verdict.Attempts != OneMachineCutAttempts {
+			t.Errorf("cut %d reads an allowance of %d, want %d", spent, verdict.Attempts, OneMachineCutAttempts)
+		}
+		// THE WAIT IS THE POINT. Asking the same server again the same instant
+		// is not patience; it is the same request twice.
+		if want := time.Second << (spent - 1); verdict.Backoff != want {
+			t.Errorf("cut %d waits %s, want %s", spent, verdict.Backoff, want)
+		}
+	}
+	// AND THE ENDING IS THE SAME ENDING. A spent allowance hops when there is a
+	// next model and says so when there is not.
+	full := Evidence{Cut: true, OneMachine: true, Cuts: OneMachineCutAttempts}
+	if verdict := Classify(full, limits); verdict.Action != ActionGiveUp {
+		t.Errorf("a spent allowance with no chain did %q, want %q", verdict.Action, ActionGiveUp)
+	}
+	full.FallbackAvailable = true
+	if verdict := Classify(full, limits); verdict.Action != ActionHop {
+		t.Errorf("a spent allowance with a chain did %q, want %q", verdict.Action, ActionHop)
+	}
+}
+
+// AND A POOL KEEPS ITS OWN ANSWER. The field narrows nothing: a cut that had
+// endpoint diversity still spends the short allowance with no wait, because
+// what mends it is being served by somebody else.
+func TestOneMachineChangesNothingForACutThatHadAPool(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	verdict := Classify(Evidence{Cut: true, Rerouted: true, Cuts: 1}, limits)
+	if verdict.Attempts != SilentCutAttempts {
+		t.Errorf("a rerouted cut reads an allowance of %d, want %d", verdict.Attempts, SilentCutAttempts)
+	}
+	if verdict.Backoff != 0 {
+		t.Errorf("a rerouted cut waits %s, want no wait", verdict.Backoff)
+	}
+}
