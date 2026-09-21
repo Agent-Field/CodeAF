@@ -139,6 +139,24 @@ func TestSkillCatalogAlwaysCarriesItsHeader(t *testing.T) {
 	}
 }
 
+// TestSkillCatalogRendersAnImportedSkillsNameAndDoc: an agentskills folder
+// reaches the shelf as a fact like any other, and the catalog — which carries
+// a name and a doc and never a path — needs no change for it: the folder's
+// base name is the name, the Body is the doc, and no SKILL.md path leaks
+// into a section whose whole budget is one line per skill.
+func TestSkillCatalogRendersAnImportedSkillsNameAndDoc(t *testing.T) {
+	brain := openTestBrain(t)
+	agentskillsShelfSkill(t, brain, "pdf-extract", "extract pages from PDFs")
+
+	catalog := renderSkillCatalog(Config{Memory: brain, Workspace: "/srv/app"})
+	if !strings.Contains(catalog, "- pdf-extract: extract pages from PDFs") {
+		t.Fatalf("the imported skill's name and doc are missing from the catalog:\n%s", catalog)
+	}
+	if strings.Contains(catalog, "SKILL.md") {
+		t.Fatalf("the catalog carries a path, which it must not:\n%s", catalog)
+	}
+}
+
 // TestSkillCatalogRendersOnThePageWhenSkillsExist: the section is wired into
 // renderSystemAt, so a conversation with a shelf reads it and one without does
 // not.

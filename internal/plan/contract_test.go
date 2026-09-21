@@ -3,6 +3,8 @@ package plan
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -594,5 +596,100 @@ func TestRenderSkillsBlockPreservesPrecedenceOrder(t *testing.T) {
 	}
 	if !strings.HasPrefix(lines[2], "- build the project") {
 		t.Errorf("third skill should be 'build', got: %s", lines[2])
+	}
+}
+
+// writeSkillFile puts one file inside a skill's artifact directory, making
+// the directory first — the fixture half of the agentskills convention, whose
+// whole test is what the artifact directory holds at its top level.
+func writeSkillFile(t *testing.T, dir, name string, mode os.FileMode) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("make skill directory %s: %v", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("body\n"), mode); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+// TestSkillEntryFromFactPointsAnAgentskillsFolderAtItsBodyFile: a skill that
+// arrived as an agentskills folder — a directory whose top level holds a
+// SKILL.md — is read through that FILE, because `read` refuses the directory,
+// so the attached entry carries the SKILL.md path and the rendered line says
+// the body is in it.
+func TestSkillEntryFromFactPointsAnAgentskillsFolderAtItsBodyFile(t *testing.T) {
+	folder := filepath.Join(t.TempDir(), "pdf-extract")
+	writeSkillFile(t, folder, "SKILL.md", 0o644)
+
+	entry := SkillEntryFromFact(skillFact(folder, "tool:pdf", "extract pages from PDFs"))
+	want := SkillEntry{
+		Name:       "pdf-extract",
+		Doc:        "extract pages from PDFs",
+		ShelfPath:  filepath.Join(folder, "SKILL.md"),
+		BodyInPath: true,
+	}
+	if entry != want {
+		t.Fatalf("SkillEntryFromFact = %+v, want %+v", entry, want)
+	}
+
+	got := RenderSkillsBlock([]SkillEntry{entry})
+	wantLine := "- extract pages from PDFs [" + filepath.Join(folder, "SKILL.md") + " — body in this file]\n"
+	if !strings.Contains(got, wantLine) {
+		t.Fatalf("RenderSkillsBlock agentskills line:\ngot:  %q\nwant: %q", got, wantLine)
+	}
+	if strings.Contains(got, "["+folder+"]") {
+		t.Fatalf("the bare directory is still rendered:\n%s", got)
+	}
+}
+
+// TestSkillEntryFromFactKeepsNonAgentskillsFoldersByteForByte is the
+// compatibility law: a skill whose directory has no top-level SKILL.md — the
+// forge's own executable shape, a folder where SKILL.md is itself a directory,
+// an empty directory — renders exactly the line this block has always
+// rendered, asserted literally.
+func TestSkillEntryFromFactKeepsNonAgentskillsFoldersByteForByte(t *testing.T) {
+	shelf := t.TempDir()
+	executive := filepath.Join(shelf, "imgshrink")
+	writeSkillFile(t, filepath.Join(executive, "scripts"), "shrink.sh", 0o755)
+	writeSkillFile(t, executive, "run.sh", 0o755)
+	writeSkillFile(t, executive, "check.sh", 0o755)
+	empty := filepath.Join(shelf, "empty")
+	if err := os.MkdirAll(empty, 0o755); err != nil {
+		t.Fatalf("make empty skill directory: %v", err)
+	}
+	nested := filepath.Join(shelf, "nested-skill-md")
+	if err := os.MkdirAll(filepath.Join(nested, "SKILL.md"), 0o755); err != nil {
+		t.Fatalf("make SKILL.md directory: %v", err)
+	}
+
+	for _, artifact := range []string{executive, empty, nested} {
+		entry := SkillEntryFromFact(skillFact(artifact, "tool:img", "optimize images without losing quality"))
+		if entry.BodyInPath {
+			t.Fatalf("%s was mistaken for an agentskills folder: %+v", artifact, entry)
+		}
+		got := RenderSkillsBlock([]SkillEntry{entry})
+		want := "- optimize images without losing quality [" + artifact + "]\n" +
+			"Earlier-listed skills win when two skills conflict."
+		if got != want {
+			t.Fatalf("RenderSkillsBlock for %s:\ngot:  %q\nwant: %q", artifact, got, want)
+		}
+	}
+}
+
+// TestSkillEntryFromFactToleratesAMissingArtifact: the shelf has always held
+// facts whose directories come and go, so a path that does not resolve renders
+// as it always did — no error, no panic, the artifact untouched.
+func TestSkillEntryFromFactToleratesAMissingArtifact(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "gone")
+
+	entry := SkillEntryFromFact(skillFact(missing, "tool:gone", "a skill whose directory left"))
+	if entry.ShelfPath != missing || entry.BodyInPath {
+		t.Fatalf("SkillEntryFromFact = %+v, want the artifact untouched", entry)
+	}
+	got := RenderSkillsBlock([]SkillEntry{entry})
+	want := "- a skill whose directory left [" + missing + "]\n" +
+		"Earlier-listed skills win when two skills conflict."
+	if got != want {
+		t.Fatalf("RenderSkillsBlock:\ngot:  %q\nwant: %q", got, want)
 	}
 }
