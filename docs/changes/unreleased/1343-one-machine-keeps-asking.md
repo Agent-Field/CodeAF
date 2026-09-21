@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a quiet reply from the only machine there is gets asked again, with a wait
-pr: 1349
+pr: 1343
 surface: [engine]
 invalidates:
   - "A stream the guard cut that struck no endpoint spent two attempts with no wait between them, on the reasoning that the next ask lands in the same place by the same rules and buys nothing. That reasoning is about a POOL. A build with one machine behind it — a person's own base url, a local server, one connected service — struck nothing because there was nothing to strike, and the same narrow allowance ended the turn after two immediate asks."
