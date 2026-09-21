@@ -1,25 +1,31 @@
-# Which skills did it use — and did it use my skill
+# Skills a turn used
 
-When a message carries skills, one dim line under your message names them:
+## Which skills did it use?
+
+When a turn carries skills, a dim line under your message names them:
 
 ```
 skills carried: linter, release-check
 ```
 
-That is the list of skills codeaf put into that turn for the model to read while
-answering your message. A skill you attached comes first; skills your words name or
-match can follow it. If your skill's name is on the line, that turn carried it. The
-line reports the names that actually resolved from the active skill shelf, rather
-than names guessed from the sentence on screen.
+Those names come from the turn's skill list, not by taking apart the words in the
+line. The row is a record of what that turn carried with it. It is not a warning,
+a question or work waiting for you, so it has no attention mark, count or action.
 
-## Why is that line under my message
+## Did it use my skill?
 
-The skills belong to the message that selected them, not to the answer as a whole.
-Two messages in the same conversation can carry different skills, so the line sits
-under the message it describes. It is a quiet receipt, not a warning, a provider
-retry, or something you need to act on.
+If your skill's name is in that line, the turn carried it. The line belongs to that
+one turn; it is not a list of every skill on the shelf and does not say what a later
+turn will carry.
 
-The line appears only for a non-empty list. If there is no line, codeaf does not say
-that the turn used no skills: an older remote peer that does not send skill details
-looks the same as a turn with no list, so absence means **unknown**, not **none**.
-An empty list is treated the same way and draws no skills sentence.
+No line does **not** mean "no skills used." Older peers do not send a skill list,
+and an absent list and an empty list arrive with the same uncertainty. codeaf can
+therefore draw a non-empty list, but it cannot honestly turn silence into a claim
+that the turn used none.
+
+## Why is that line under my message?
+
+The skills belong to the turn your message opened, so their row sits with that
+message rather than with the answer or with provider status. It is dim on purpose:
+it tells you what the turn carried after the fact, and there is nothing to approve,
+answer or fix.
