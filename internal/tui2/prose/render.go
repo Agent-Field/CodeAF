@@ -294,6 +294,11 @@ func (r *renderer) list(n *ast.List) {
 		saved := r.push(first, indent)
 		before := len(r.out)
 		r.container(c, !n.IsTight)
+		// A marker with no item body is still source text. Emit the pending
+		// prefix so a reply such as "32." cannot collapse to zero rows.
+		if len(r.out) == before {
+			r.emit(nil)
+		}
 		r.pop(saved, len(r.out) > before)
 	}
 }
