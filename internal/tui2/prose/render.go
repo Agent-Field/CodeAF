@@ -294,7 +294,19 @@ func (r *renderer) list(n *ast.List) {
 		saved := r.push(first, indent)
 		before := len(r.out)
 		r.container(c, !n.IsTight)
-		r.pop(saved, len(r.out) > before)
+		drew := len(r.out) > before
+		// AN ITEM WITH NO BODY IS STILL SOMETHING THE SOURCE SAID. Nothing
+		// inside it reached [renderer.emit], so the marker is still pending
+		// and [renderer.pop] would hand it back unspent — the item, and its
+		// number with it, would leave no row at all. A reply that is only
+		// "32." is exactly that shape: one ordered list, one empty item, zero
+		// rows, and a turn that showed the reader nothing (#1072). Spend the
+		// marker on a row of its own instead, so the number is drawn.
+		if !drew {
+			r.emit(nil)
+			drew = true
+		}
+		r.pop(saved, drew)
 	}
 }
 

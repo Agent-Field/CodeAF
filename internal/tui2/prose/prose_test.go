@@ -164,6 +164,31 @@ func TestOrderedListsShareARightEdge(t *testing.T) {
 	}
 }
 
+// TestABareNumberedReplyStillDraws is #1072. A whole answer of "32." is not a
+// sentence to Markdown, it is an ordered list starting at 32 with one empty
+// item, and an item that draws nothing used to take its own marker with it:
+// the reply rendered to zero rows and the turn showed the reader nothing while
+// the transcript held the text. The number is what the model said, so the
+// number is what the row reads.
+func TestABareNumberedReplyStillDraws(t *testing.T) {
+	for _, src := range []string{"32.", "1024."} {
+		if got := joined(render(t, src, Options{Width: 80})); got != src {
+			t.Errorf("Render(%q) = %q, want %q", src, got, src)
+		}
+	}
+}
+
+// TestAnEmptyItemKeepsItsNumber is the same loss in the middle of a list: the
+// body-less item vanished entirely, so a reader of a three-item list saw two
+// items numbered 1 and 3 and no sign that anything had gone.
+func TestAnEmptyItemKeepsItsNumber(t *testing.T) {
+	got := joined(render(t, "1. one\n2.\n3. three\n", Options{Width: 40}))
+	want := "1. one\n2.\n3. three"
+	if got != want {
+		t.Errorf("Render = %q, want %q", got, want)
+	}
+}
+
 // TestBlockquoteCarriesItsGutter checks that the bar runs down EVERY row of the
 // quote including the blank one between its paragraphs — a dashed bar reads as
 // two quotes.
