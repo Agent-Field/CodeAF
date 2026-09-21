@@ -321,6 +321,7 @@ func (a *app) detachConversation() *aside {
 // rare. It is not latent here.
 func (a *app) clearConversation() {
 	a.entries = nil
+	a.recordRows = 0
 	abandonLive(a.entries, &a.live)
 	abandonLive(a.entries, &a.think)
 	a.sel = -1
