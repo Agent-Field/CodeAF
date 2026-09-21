@@ -451,7 +451,7 @@ func TestC16RotatingRefreshIsSafeAcrossProcesses(t *testing.T) {
 	}))
 	defer server.Close()
 
-	gate, err := lockTokenFile(dir)
+	gate, err := lockTokenFile(context.Background(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,6 +500,95 @@ func TestC16RotatingRefreshIsSafeAcrossProcesses(t *testing.T) {
 	}
 	if kept.AccessToken != access || kept.RefreshToken != "rotated-refresh-token" || !Connected(dir) {
 		t.Fatalf("shared token file did not end signed in: %+v", kept)
+	}
+}
+
+func TestC16HungRefreshEndsAtTheRequestDeadlineWithoutChangingTokens(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+	tokens := validTokens(now)
+	tokens.ExpiresAt = now.Add(-time.Minute)
+	if err := Save(dir, tokens); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		time.Sleep(250 * time.Millisecond)
+	}))
+	defer issuer.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err = List(ctx, dir, Options{
+		Issuer: issuer.URL, Backend: issuer.URL, HTTPClient: issuer.Client(),
+		Now: func() time.Time { return now },
+	})
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("hung issuer error = %v, want the request deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("hung issuer returned after %s, want a bounded refresh", elapsed)
+	}
+	after, err := os.ReadFile(Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Fatalf("hung issuer changed token bytes:\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+func TestC16CancelledRefreshWaiterLeavesPromptlyAndTheLockIsOwnerOnly(t *testing.T) {
+	dir := t.TempDir()
+	lockPath := Path(dir) + ".lock"
+	if err := os.WriteFile(lockPath, nil, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(lockPath, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := lockTokenFile(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = filelock.Unlock(owner)
+		_ = owner.Close()
+	}()
+	info, err := owner.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("refresh lock mode = %04o, want 0600", got)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	type result struct {
+		file *os.File
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		file, waitErr := lockTokenFile(ctx, dir)
+		done <- result{file: file, err: waitErr}
+	}()
+	select {
+	case answer := <-done:
+		if answer.file != nil {
+			_ = filelock.Unlock(answer.file)
+			_ = answer.file.Close()
+			t.Fatal("an already-cancelled waiter acquired the refresh lock")
+		}
+		if answer.err == nil || answer.err.Error() != errRefreshAlreadyRunning.Error() {
+			t.Fatalf("cancelled waiter error = %v, want %q", answer.err, errRefreshAlreadyRunning)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("an already-cancelled waiter remained behind the refresh owner")
 	}
 }
 

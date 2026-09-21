@@ -29,6 +29,14 @@ var refreshLocks struct {
 	byPath map[string]*sync.Mutex
 }
 
+const (
+	refreshExchangeTimeout = 30 * time.Second
+	refreshLockTimeout     = 60 * time.Second
+	refreshLockCadence     = 25 * time.Millisecond
+)
+
+var errRefreshAlreadyRunning = errors.New("another codeaf is refreshing the codex sign-in and has not finished")
+
 // Client returns the refreshing and translating client for one profile.
 func Client(profileDir string) *http.Client { return ClientWithOptions(profileDir, Options{}) }
 
@@ -342,9 +350,13 @@ func lockFor(path string) *sync.Mutex {
 
 func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tokens, error) {
 	mutex := lockFor(Path(t.profileDir))
-	mutex.Lock()
+	lockCtx, cancelLock := context.WithTimeout(ctx, refreshLockTimeout)
+	defer cancelLock()
+	if err := lockRefreshMutex(lockCtx, mutex); err != nil {
+		return Tokens{}, err
+	}
 	defer mutex.Unlock()
-	lock, err := lockTokenFile(t.profileDir)
+	lock, err := lockTokenFile(lockCtx, t.profileDir)
 	if err != nil {
 		return Tokens{}, err
 	}
@@ -374,7 +386,9 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 		"refresh_token": {tokens.RefreshToken},
 		"client_id":     {ClientID},
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.options.issuer()+tokenPath, strings.NewReader(form.Encode()))
+	refreshCtx, cancelRefresh := context.WithTimeout(ctx, refreshExchangeTimeout)
+	defer cancelRefresh()
+	request, err := http.NewRequestWithContext(refreshCtx, http.MethodPost, t.options.issuer()+tokenPath, strings.NewReader(form.Encode()))
 	if err != nil {
 		return Tokens{}, err
 	}
@@ -430,11 +444,38 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 	return Load(t.profileDir)
 }
 
+// lockRefreshMutex gives callers in this process the same cancellation and
+// patience as the file lock below. A plain sync.Mutex would strand an already
+// cancelled turn behind the network request that currently owns the refresh.
+func lockRefreshMutex(ctx context.Context, mutex *sync.Mutex) error {
+	ticker := time.NewTicker(refreshLockCadence)
+	defer ticker.Stop()
+	for {
+		if ctx.Err() != nil {
+			return errRefreshAlreadyRunning
+		}
+		if mutex.TryLock() {
+			if ctx.Err() == nil {
+				return nil
+			}
+			mutex.Unlock()
+			return errRefreshAlreadyRunning
+		}
+		select {
+		case <-ctx.Done():
+			return errRefreshAlreadyRunning
+		case <-ticker.C:
+		}
+	}
+}
+
 // lockTokenFile extends the in-process refresh mutex across codeaf processes.
 // The sidecar is never removed: the operating system owns the live lock, and a
 // process exit releases it without a stale-file protocol. The token file is
-// re-read only after this returns, so a waiter sees whichever refresh won.
-func lockTokenFile(profileDir string) (*os.File, error) {
+// re-read only after this returns, so a waiter sees whichever refresh won. A
+// non-blocking attempt keeps cancellation observable while another process is
+// inside its issuer round trip.
+func lockTokenFile(ctx context.Context, profileDir string) (*os.File, error) {
 	path := Path(profileDir)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("refresh codex sign-in: make profile directory: %w", err)
@@ -443,11 +484,37 @@ func lockTokenFile(profileDir string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("refresh codex sign-in: open token lock: %w", err)
 	}
-	if err := filelock.Lock(lock, true, false); err != nil {
+	if err := lock.Chmod(0o600); err != nil {
 		_ = lock.Close()
-		return nil, fmt.Errorf("refresh codex sign-in: lock tokens: %w", err)
+		return nil, fmt.Errorf("refresh codex sign-in: protect token lock: %w", err)
 	}
-	return lock, nil
+	ticker := time.NewTicker(refreshLockCadence)
+	defer ticker.Stop()
+	for {
+		if ctx.Err() != nil {
+			_ = lock.Close()
+			return nil, errRefreshAlreadyRunning
+		}
+		err := filelock.Lock(lock, true, true)
+		if err == nil {
+			if ctx.Err() == nil {
+				return lock, nil
+			}
+			_ = filelock.Unlock(lock)
+			_ = lock.Close()
+			return nil, errRefreshAlreadyRunning
+		}
+		if !filelock.IsBusy(err) {
+			_ = lock.Close()
+			return nil, fmt.Errorf("refresh codex sign-in: lock tokens: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			_ = lock.Close()
+			return nil, errRefreshAlreadyRunning
+		case <-ticker.C:
+		}
+	}
 }
 
 func translateRequest(profileDir string, raw []byte) ([]byte, bool, error) {
