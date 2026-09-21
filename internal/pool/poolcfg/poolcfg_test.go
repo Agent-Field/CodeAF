@@ -146,6 +146,9 @@ func TestResolveModeUnderTheTelemetryOffSwitch(t *testing.T) {
 		{"telemetry false, padded and mixed case", "", envOf(map[string]string{"CODEAF_TELEMETRY": "  False "}), Read, "telemetry"},
 		{"do not track 1 caps the default", "", envOf(map[string]string{"DO_NOT_TRACK": "1"}), Read, "telemetry"},
 		{"do not track true caps the default", "", envOf(map[string]string{"DO_NOT_TRACK": "true"}), Read, "telemetry"},
+		{"an empty endpoint caps the default", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": ""}), Read, "telemetry"},
+		{"a blank endpoint caps an explicit env on", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": "   ", "CODEAF_MODEL_POOL": "on"}), Read, "telemetry"},
+		{"a set endpoint does not cap", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": "https://example.test/t"}), On, "default"},
 		{"telemetry off caps an explicit setting on", "on", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Read, "telemetry"},
 		{"telemetry off caps an explicit env on", "off", envOf(map[string]string{"CODEAF_TELEMETRY": "off", "CODEAF_MODEL_POOL": "on"}), Read, "telemetry"},
 		{"telemetry off leaves read as read", "read", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Read, "setting"},
@@ -543,17 +546,18 @@ func TestResolveNilLookupUsesSetting(t *testing.T) {
 	}
 }
 
-// TestResolveAsksTenNames pins the whole of what Resolve reads: the eight
-// pool names, and the two names of the telemetry off switch, which the pool
-// obeys so the one switch the notice names stops everything that leaves.
-func TestResolveAsksTenNames(t *testing.T) {
+// TestResolveAsksElevenNames pins the whole of what Resolve reads: the eight
+// pool names, and the three environment rungs of the telemetry off switch,
+// which the pool obeys so the one switch the notice names stops everything
+// that leaves.
+func TestResolveAsksElevenNames(t *testing.T) {
 	var asked []string
 	Resolve("", "", func(name string) (string, bool) {
 		asked = append(asked, name)
 		return "", false
 	})
 	sort.Strings(asked)
-	want := []string{envMode, envCI, envRelay, envIndex, envSubmit, envMirror, envTTL, envKey, envTelemetry, envDoNotTrack}
+	want := []string{envMode, envCI, envRelay, envIndex, envSubmit, envMirror, envTTL, envKey, envTelemetry, envDoNotTrack, envEndpoint}
 	sort.Strings(want)
 	if !reflect.DeepEqual(asked, want) {
 		t.Errorf("Resolve asked lookup for %v, want %v", asked, want)

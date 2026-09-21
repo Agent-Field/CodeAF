@@ -425,10 +425,10 @@ if ! download_release "$DOWNLOAD_REPOSITORY"; then
 		# Remove after the renamed repository has carried releases for one release.
 		DOWNLOAD_REPOSITORY="$LEGACY_REPOSITORY"
 		if ! download_release "$DOWNLOAD_REPOSITORY"; then
-			fail "could not download codeaf-${OS}-${ARCH}${extension}; check the tag on the Releases page"
+			fail "no codeaf-${OS}-${ARCH}${extension} in release ${TAG}; check the tag on the Releases page"
 		fi
 	else
-		fail "could not download codeaf-${OS}-${ARCH}${extension}; check the tag on the Releases page"
+		fail "no codeaf-${OS}-${ARCH}${extension} in release ${TAG}; check the tag on the Releases page"
 	fi
 fi
 

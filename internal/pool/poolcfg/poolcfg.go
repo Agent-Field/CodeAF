@@ -87,12 +87,15 @@ type Config struct {
 	Source    Sources
 }
 
-// The ten names Resolve reads, and no others. The last two are the telemetry
-// off switch, spelled exactly as internal/telemetry's ladder spells it, so
-// the one switch the notice names turns off everything that leaves.
+// The eleven names Resolve reads, and no others. The first three are the
+// telemetry off switch's environment rungs, spelled exactly as
+// internal/telemetry's ladder spells them — the variable, the ecosystem's
+// word, and an endpoint set to nothing — so the one switch the notice names
+// turns off everything that leaves.
 const (
 	envTelemetry  = "CODEAF_TELEMETRY"
 	envDoNotTrack = "DO_NOT_TRACK"
+	envEndpoint   = "CODEAF_TELEMETRY_ENDPOINT"
 	envMode       = "CODEAF_MODEL_POOL"
 	envCI         = "CI"
 	envRelay      = "CODEAF_MODEL_POOL_RELAY_URL"
@@ -132,7 +135,7 @@ const (
 // Config, it keeps nothing between calls, and many goroutines may call it at
 // once.
 func Resolve(setting, publicKey string, lookup func(name string) (value string, set bool)) Config {
-	// One injection for the whole environment: the eight names are read once,
+	// One injection for the whole environment: every name is read once,
 	// here, in this order, and each value is trimmed as it is read.
 	get := func(name string) (string, bool) {
 		if lookup == nil {
@@ -148,6 +151,7 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 	ciWord, _ := get(envCI)
 	telemetryWord, _ := get(envTelemetry)
 	doNotTrackWord, _ := get(envDoNotTrack)
+	endpointWord, endpointSet := get(envEndpoint)
 	relayWord, _ := get(envRelay)
 	indexWord, _ := get(envIndex)
 	submitWord, submitSet := get(envSubmit)
@@ -174,7 +178,7 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 	// that sentence untrue. It caps rather than turns off: the pool is still
 	// read, the judge still scores into the install's own sheet, and nothing
 	// leaves.
-	if telemetrySaysOff(telemetryWord, doNotTrackWord) && mode == On {
+	if telemetrySaysOff(telemetryWord, doNotTrackWord, endpointWord, endpointSet) && mode == On {
 		mode, modeSrc = Read, srcTelemetry
 	}
 
@@ -282,9 +286,11 @@ func parseMode(word string) (Mode, bool) {
 
 // telemetrySaysOff reads the telemetry off switch the way internal/telemetry's
 // ladder reads it, spelling for spelling: CODEAF_TELEMETRY is off, 0 or false,
-// or DO_NOT_TRACK is 1 or true. Two readers of one switch must agree, and this
-// is the second one.
-func telemetrySaysOff(telemetryWord, doNotTrackWord string) bool {
+// DO_NOT_TRACK is 1 or true, or CODEAF_TELEMETRY_ENDPOINT is set and empty —
+// docs/TELEMETRY.md's fifth rung, which stopped the counts and not the pool
+// until 2026-09-21. Two readers of one switch must agree, and this is the
+// second one.
+func telemetrySaysOff(telemetryWord, doNotTrackWord, endpointWord string, endpointSet bool) bool {
 	switch strings.ToLower(telemetryWord) {
 	case "off", "0", "false":
 		return true
@@ -293,7 +299,7 @@ func telemetrySaysOff(telemetryWord, doNotTrackWord string) bool {
 	case "1", "true":
 		return true
 	}
-	return false
+	return endpointSet && endpointWord == ""
 }
 
 // Quieted is the config with sending capped by the telemetry off switch's
