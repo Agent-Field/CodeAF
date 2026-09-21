@@ -128,6 +128,9 @@ func (a *app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	a.ptr.still = false
 	switch msg := msg.(type) {
 	case tea.MouseMotionMsg:
+		if !a.placeMotionAllowed(msg) {
+			return a, nil
+		}
 		return a, a.pointerMoved(msg)
 
 	case tea.MouseWheelMsg:

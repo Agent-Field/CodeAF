@@ -21,10 +21,15 @@ type projectsPanel struct{ homePanelBase }
 // row.
 const homeProjectPad = 24
 
-// homeProjectRow is ONE PROJECT ON THE PROJECTS PANEL, and a cursor stop whose
-// door is a fresh conversation in that folder. It is numbered beside the
-// switcher's own kinds (place_home.go) for their reason: the iota block in
-// home.go is edited by other lanes.
+// homeProjectRow is ONE PROJECT ON THE PROJECTS PANEL: a reading and never a
+// door. It was a cursor stop whose enter started a conversation in that folder
+// and whose strip offered its chats and its folder; the owner ruled
+// (2026-09-17) that the panel and its rows carry no interactivity at all — the
+// heading opens nothing, the rows are not stops, a press on one does nothing —
+// so a person walking the field can never wander onto the rail. `ctrl+t` from
+// a conversation and the folder on any field row's strip are the ways to a
+// folder now. It is numbered beside the switcher's own kinds (place_home.go)
+// for their reason: the iota block in home.go is edited by other lanes.
 const homeProjectRow homeRowKind = 244
 
 func (projectsPanel) rows(in *homeGridInput) homePanelRows {

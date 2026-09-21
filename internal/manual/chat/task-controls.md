@@ -20,7 +20,7 @@ Scrolling over task setup does not move the transcript.
 
 Task setup sits below these windows. `Model` names the working model; `Thinking`
 shows the task's own reasoning override, or `auto` when none is set. Clicking its
-cycle control changes the open task, like `ctrl+v` in that task's room. It cycles
+cycle control changes the open task, like `alt+e` in that task's room. It cycles
 `auto → low → medium → high → xhigh → max → auto`. `auto` clears the task
 override; on a completed task, that choice is saved for its continuation. Unsupported
 controls are absent. Ordinary settled tasks show `Next run setup`: model and

@@ -28,6 +28,12 @@ import (
 // on the column itself ([tableColumn.sorts] and `up`) rather than in a second list
 // here that would have to be kept in step with the first.
 
+// The picker owns its sorting chords independently of the Sessions page.
+const (
+	pickerSortKeyChord  = "alt+s"
+	pickerSortBackChord = "alt+shift+s"
+)
+
 // tableSort is which column a table is ordered by and which way round.
 //
 // THE ZERO VALUE IS THE NAME COLUMN, ASCENDING, which is the first column of

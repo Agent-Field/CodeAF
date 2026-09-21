@@ -229,6 +229,8 @@ type questionAsk struct {
 // card out in the conversation and by home, and three readers of one object
 // cannot each hold a different version of it.
 type questionRoom struct {
+	replacing bool
+
 	// head is the question AND its resolver, exactly as the block was holding it
 	// (question.go's [questionShown]). It travels whole rather than being taken
 	// apart, because who resolves this question — a lane over the wire, or this
@@ -634,6 +636,8 @@ func (a *app) questionRoomSeam() int {
 func (a *app) questionPromptWord() string {
 	room := a.qroom
 	switch {
+	case room.replacing:
+		return questionCommentKeyWord
 	case room.commenting != "":
 		return questionCommentWord
 	case room.asking != "":
@@ -901,8 +905,9 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// and changed their mind is asking for the comment to go away, not for the
 		// question to fold — and a single esc that did both would lose the page
 		// they were reading.
-		if room.commenting != "" || room.asking != "" || room.reframing || room.deciding {
+		if room.replacing || room.commenting != "" || room.asking != "" || room.reframing || room.deciding {
 			room.commenting, room.asking, room.reframing, room.deciding = "", "", false, false
+			room.replacing = false
 			a.questionRoomTouched()
 			return nil, true
 		}
@@ -930,7 +935,7 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// the `n` to the reframe, because the box was still empty and the page was
 	// still reading letters as keys. A prompt that says "type it" has to mean it
 	// on the first keystroke, not on the third.
-	if typing || room.commenting != "" || room.asking != "" || room.reframing {
+	if typing || room.replacing || room.commenting != "" || room.asking != "" || room.reframing {
 		return nil, false
 	}
 	// ANY KEY BUT `d` PUTS THE HAND BACK ON THE WHEEL. The you-decide row is a
@@ -994,6 +999,8 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case questionCompareKey:
 		room.compare = !room.compare
 	case questionCommentKey:
+		room.replacing = true
+	case questionNoteKey:
 		room.commenting, room.asking, room.reframing = a.questionFocusKey(), "", false
 	case questionAskBackKey:
 		a.questionStartAsk()
@@ -1199,6 +1206,13 @@ func (a *app) questionRoomEnter() tea.Cmd {
 	room := a.qroom
 	said := strings.TrimSpace(a.input.String())
 	switch {
+	case room.replacing:
+		room.replacing = false
+		if said == "" {
+			return nil
+		}
+		a.input.reset()
+		return a.replaceQuestion(room.head, said)
 	case room.commenting != "":
 		if said != "" {
 			room.comments[room.commenting] = said

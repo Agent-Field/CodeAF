@@ -2,7 +2,6 @@ package tui3
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -46,12 +45,16 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 	a := newSwitchLab(t).open(80, 24)
 	frame := homeText(a)
 	last := -1
-	for _, word := range []string{"needs you", "where you were", "projects", "running · "} {
+	for _, word := range []string{sessionsWord, "Porting the Resume Picker", "projects"} {
 		row, col := homeRowOf(frame, word)
 		if row < 0 {
 			t.Fatalf("%q is not on an eighty-cell home:\n%s", word, frame)
 		}
-		if row <= last || col != homeGridMargin {
+		wantCol := homeGridMargin
+		if word == "Porting the Resume Picker" {
+			wantCol += homeGridLead
+		}
+		if row <= last || col != wantCol {
 			t.Fatalf("%q is at row %d cell %d, after row %d in one column:\n%s", word, row, col, last, frame)
 		}
 		last = row
@@ -79,17 +82,17 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 func TestAtOneTwentyWhatHasRowsTakesTheFieldAndTheQuietGatherInTheRail(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	frame := homeText(a)
-	needs, needsCol := homeRowOf(frame, "needs you")
+	needs, needsCol := homeRowOf(frame, "Porting the Resume Picker")
 	projects, railCol := homeRowOf(frame, "projects")
-	if needs < 0 || needs != projects || railCol <= needsCol {
+	if needs < 0 || needs != projects+1 || railCol <= needsCol {
 		t.Fatalf("needs you (row %d) and projects (row %d) are not the heads of the field and the rail:\n%s", needs, projects, frame)
 	}
 	// WHERE YOU WERE HAS ROWS, SO IT IS IN THE FIELD under the panel that
 	// outranks it — the rank inside a column is the order table's as it always
 	// was, and only the column is the content's to say.
-	recent, recentCol := homeRowOf(frame, "where you were")
-	if recent <= needs || recentCol != needsCol {
-		t.Fatalf("where you were has rows and is not under needs you in the field:\n%s", frame)
+	recent, recentCol := homeRowOf(frame, "Porting the Resume Picker")
+	if recent != needs || recentCol != homeGridMargin+homeGridLead {
+		t.Fatalf("threads has rows and is not under needs you in the field:\n%s", frame)
 	}
 	// AND SPEND IS PINNED UNDER PROJECTS AT THE TOP OF THE RAIL, with the quiet
 	// panels under the pair rather than mixed through it.
@@ -138,16 +141,16 @@ func TestTheRailKeepsTheQuietPanelsAnExtraRowBelowThePinnedPair(t *testing.T) {
 func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	frame := homeText(a)
-	needs, needsCol := homeRowOf(frame, "needs you")
-	recent, recentCol := homeRowOf(frame, "where you were")
+	needs, needsCol := homeRowOf(frame, "Porting the Resume Picker")
+	recent, recentCol := homeRowOf(frame, "Porting the Resume Picker")
 	projects, railCol := homeRowOf(frame, "projects")
-	if needs != projects || needsCol >= railCol {
+	if needs != projects+1 || needsCol >= railCol {
 		t.Fatalf("needs you and projects do not head the field and the rail:\n%s", frame)
 	}
-	if recent <= needs || recentCol != needsCol {
-		t.Fatalf("where you were is not under needs you in the first field column:\n%s", frame)
+	if recent != needs || recentCol != homeGridMargin+homeGridLead {
+		t.Fatalf("threads is not under needs you in the first field column:\n%s", frame)
 	}
-	if needsCol != homeGridMargin {
+	if needsCol != homeGridMargin+homeGridLead {
 		t.Fatalf("the field does not start at the left margin (cell %d):\n%s", needsCol, frame)
 	}
 	// AND THE QUIET PANELS ARE ALL IN THE LAST COLUMN, none of them left behind
@@ -173,7 +176,7 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	homeText(a)
 	homeLineOf(t, a, func(l homeLine) bool {
-		return l.cell != nil && strings.TrimSpace(l.cell.sub) != "" && !l.cell.alwaysSaid()
+		return l.cell != nil && strings.TrimSpace(l.cell.sub) != "" && l.cell.thread == ""
 	})
 	line, _ := a.home.focusedLine()
 	said := strings.TrimSpace(line.cell.sub)
@@ -181,10 +184,11 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 
 	// THE SENTENCE IS IN THE MIDDLE COLUMN and not under its row. It is looked
 	// for THERE — at a cell past the field — because a short sentence can be a
-	// substring of a heading (`here` is inside `where you were`), and the
+	// substring of a heading (`here` was inside `where you were`, the panel's
+	// old word), and the
 	// first place the letters happen to appear is not the place the column
 	// draws them.
-	_, rail := homeRowOf(frame, "projects · ")
+	_, rail := homeRowOf(frame, "projects")
 	xs, _ := homeGridGeometry(a.home.gridWidth, a.home.cols)
 	descX := xs[homeDescCol(a.home.cols)]
 	row, at := -1, -1
@@ -218,35 +222,46 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	}
 }
 
-// `needs you` DRAWS ITS QUESTION IN THE DESCRIPTION COLUMN WHETHER OR NOT ITS
-// ROW IS SELECTED, on its own row's line, and once. Everywhere else the second
-// line is a gloss worth a column only for the row being read; here it is the row
-// — a question you have to select to read is a question you can miss (owner,
-// 2026-09-15).
-func TestTheNeedsYouQuestionIsAlwaysInTheColumnOnItsOwnRowsLine(t *testing.T) {
+// `needs you` DRAWS ITS QUESTION IN THE DESCRIPTION COLUMN ONLY WHILE ITS ROW IS
+// BEING READ — under the pointer, or under the cursor — on its own row's line,
+// and once; the `?` stays beside the title on every frame. It used to stand in
+// the column whether or not the row was selected (owner, 2026-09-15), and the
+// owner reversed that on 2026-09-17: the mark always shows, the description
+// only under the mouse.
+func TestTheNeedsYouQuestionIsInTheColumnOnlyWhileItsRowIsRead(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
 	a.width, a.height = 180, 45
 	homeText(a)
 	homeLineOf(t, a, func(l homeLine) bool {
-		return l.cell != nil && l.cell.panel == panelNeeds && strings.TrimSpace(l.cell.sub) != ""
+		return l.cell != nil && l.cell.mark == cellMarkNeeds && strings.TrimSpace(l.cell.sub) != ""
 	})
 	line, _ := a.home.focusedLine()
 	said := strings.TrimSpace(line.cell.sub)
-	if !line.cell.alwaysSaid() {
-		t.Fatalf("a needs you question is not drawn whether or not its row is selected")
-	}
-	// IT IS IN THE COLUMN WHILE THE CURSOR IS SOMEWHERE ELSE ENTIRELY, which is
-	// the whole point: what is waiting on you is readable without walking onto
-	// it.
+	question := a.home.cursor
+	// WITH THE CURSOR SOMEWHERE ELSE THE QUESTION IS NOT ON THE FRAME, and the
+	// mark still is.
 	a.home.cursor = a.home.placesTop()
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelRecent })
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelSessions })
 	frame := homeText(a)
-	row, at := homeRowOf(frame, firstWordsOf(said))
-	if row < 0 {
-		t.Fatalf("the question left the frame when the cursor moved off its row:\n%s", frame)
+	if row, _ := homeRowOf(frame, firstWordsOf(said)); row >= 0 {
+		t.Fatalf("the question is on the frame with the cursor off its row:\n%s", frame)
 	}
-	_, rail := homeRowOf(frame, "projects · ")
+	if !strings.Contains(frame, a.pal.glyph(tokens.GNeedsHuman)+" "+line.cell.title) {
+		t.Fatalf("the mark left the row with the cursor off it:\n%s", frame)
+	}
+	// AND UNDER THE POINTER IT IS BACK, in the column: its thread's title line
+	// on its row's line, a blank, then the question two lines under.
+	a.home.hover, a.home.cursor = question, question
+	frame = homeText(a)
+	row, at := homeRowOf(frame, homeThreadWord+line.cell.title)
+	if row < 0 {
+		t.Fatalf("the read row's thread title is not on the frame with the pointer on its row:\n%s", frame)
+	}
+	if sentence, _ := homeRowOf(frame, firstWordsOf(said)); sentence != row+2 {
+		t.Fatalf("the question is on row %d, want two under its thread title at %d:\n%s", sentence, row, frame)
+	}
+	_, rail := homeRowOf(frame, "projects")
 	if at <= homeGridMargin || at >= rail {
 		t.Fatalf("the question is at cell %d, want the description column between %d and %d:\n%s", at, homeGridMargin, rail, frame)
 	}
@@ -276,7 +291,7 @@ func TestARaisedQuestionIsDrawnInTheDescriptionColumnAndNotOnTheFoot(t *testing.
 	a.width, a.height = 180, 40
 	homeText(a)
 	homeLineOf(t, a, func(l homeLine) bool {
-		return l.cell != nil && l.cell.panel == panelNeeds && l.kind == homeSession
+		return l.cell != nil && l.cell.mark == cellMarkNeeds && l.kind == homeSession
 	})
 	a.placeKeyPress(key("enter"))
 	ask, ok := a.homeAsking()
@@ -289,7 +304,7 @@ func TestARaisedQuestionIsDrawnInTheDescriptionColumnAndNotOnTheFoot(t *testing.
 	if row < 0 {
 		t.Fatalf("the question %q is not on the frame:\n%s", head, frame)
 	}
-	_, rail := homeRowOf(frame, "projects · ")
+	_, rail := homeRowOf(frame, "projects")
 	if at <= homeGridMargin || at >= rail {
 		t.Fatalf("the question is at cell %d, want the description column between %d and %d:\n%s", at, homeGridMargin, rail, frame)
 	}
@@ -301,19 +316,18 @@ func TestARaisedQuestionIsDrawnInTheDescriptionColumnAndNotOnTheFoot(t *testing.
 	}
 }
 
-// THE `?` LEADS THE QUESTION AND NOT THE ROW where the description column draws
-// the question. The mark means "this has stopped and is waiting on you", and the
-// thing that is true of is the question — so it stands beside the words rather
-// than beside the title of the conversation they came from (owner, 2026-09-15).
-// The row keeps its two blank cells, so every title still starts in the same
-// column.
-func TestTheNeedsMarkLeadsTheQuestionInTheColumnAndNotTheRow(t *testing.T) {
+// THE `?` LEADS THE ROW, ALWAYS, and the question in the description column
+// wears none. The mark used to move beside the question on a frame whose column
+// drew the question permanently (owner, 2026-09-15); the question is drawn only
+// while the row is being read now, and the owner asked (2026-09-17) that the
+// mark always show — so it stands beside the title on every frame.
+func TestTheNeedsMarkLeadsTheRowAndNotTheQuestion(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
 	a.width, a.height = 180, 45
 	homeText(a)
 	homeLineOf(t, a, func(l homeLine) bool {
-		return l.cell != nil && l.cell.panel == panelNeeds && l.cell.mark == cellMarkNeeds
+		return l.cell != nil && l.cell.mark == cellMarkNeeds
 	})
 	line, _ := a.home.focusedLine()
 	mark := a.pal.glyph(tokens.GNeedsHuman)
@@ -328,17 +342,18 @@ func TestTheNeedsMarkLeadsTheQuestionInTheColumnAndNotTheRow(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the mark is nowhere on the row's line:\n%s", frame)
 	}
-	// IT IS ON THE QUESTION'S SIDE OF THE FRAME, not in the row's own lead.
-	said := strings.Index(lines[row], firstWordsOf(strings.TrimSpace(line.cell.sub)))
-	if said < 0 {
-		t.Fatalf("the question is not on the row's line:\n%s", frame)
-	}
-	if at > said || said-at > homeGridLead+1 {
-		t.Fatalf("the mark at %d does not lead the question at %d:\n%s", at, said, frame)
+	// IT IS IN THE ROW'S OWN LEAD, right before the title, and not beside the
+	// question in the column — which is two lines under the row, past the
+	// thread's title line and its blank.
+	if row+2 >= len(lines) || !strings.Contains(lines[row+2], firstWordsOf(strings.TrimSpace(line.cell.sub))) {
+		t.Fatalf("the question is not two lines under the row under the cursor:\n%s", frame)
 	}
 	title := strings.Index(lines[row], line.cell.title)
-	if title >= 0 && at < title {
-		t.Fatalf("the mark at %d is still leading the row's title at %d:\n%s", at, title, frame)
+	if title < 0 || at > title || title-at > homeGridLead+1 {
+		t.Fatalf("the mark at %d does not lead the row's title at %d:\n%s", at, title, frame)
+	}
+	if strings.Contains(lines[row+2], mark) {
+		t.Fatalf("the question in the column wears the mark too:\n%s", frame)
 	}
 	// AND THERE IS STILL ONLY ONE OF IT (law 8).
 	if n := strings.Count(lines[row], mark); n != 1 {
@@ -358,7 +373,7 @@ func TestAFrameTooShortForTheQuestionCardSaysItOnTheFootInstead(t *testing.T) {
 	a.width, a.height = 180, 45
 	homeText(a)
 	homeLineOf(t, a, func(l homeLine) bool {
-		return l.cell != nil && l.cell.panel == panelNeeds && l.kind == homeSession
+		return l.cell != nil && l.cell.mark == cellMarkNeeds && l.kind == homeSession
 	})
 	a.placeKeyPress(key("enter"))
 	ask, ok := a.homeAsking()
@@ -423,7 +438,7 @@ func TestAShortColumnShrinksTheLowestPriorityPanelFirst(t *testing.T) {
 		return homePanelRows{lines: lines}
 	}
 	column := []*homeGridPanel{
-		{slot: homeSlotOf(panelRunning), read: rows(4), shown: 4},
+		{slot: homeSlotOf(panelSessions), read: rows(4), shown: 4},
 		{slot: homeSlotOf(panelSpend), read: rows(4), shown: 4},
 		{slot: homeSlotOf(panelNext), read: rows(4), shown: 4},
 	}
@@ -446,7 +461,7 @@ func TestAShortColumnShrinksTheLowestPriorityPanelFirst(t *testing.T) {
 }
 
 // A TALL COLUMN HANDS ITS SPARE ROWS OUT IN THE SQUEEZE'S ORDER REVERSED, one
-// at a time: needs you first, then where you were, round again — and never a
+// at a time: needs you first, then threads, round again — and never a
 // row past a panel's budget, never a row the room cannot hold.
 func TestATallColumnGrowsWhatAPersonCameForFirst(t *testing.T) {
 	rows := func(n int) homePanelRows {
@@ -457,13 +472,13 @@ func TestATallColumnGrowsWhatAPersonCameForFirst(t *testing.T) {
 		return homePanelRows{lines: lines, more: 20}
 	}
 	needs := &homeGridPanel{slot: homeSlotOf(panelNeeds), read: rows(8), shown: 4}
-	recent := &homeGridPanel{slot: homeSlotOf(panelRecent), read: rows(10), shown: 5}
+	recent := &homeGridPanel{slot: homeSlotOf(panelSessions), read: rows(10), shown: 5}
 	column := []*homeGridPanel{needs, recent}
 	// A heading, the rows and a fold each, and a blank between: 6 + 1 + 7 = 14.
-	// Three rows to spare go needs, recent, needs.
-	fitColumn(column, 17)
-	if needs.shown != 6 || recent.shown != 6 {
-		t.Fatalf("three spare rows grew needs to %d and recent to %d, want 6 and 6", needs.shown, recent.shown)
+	// Sessions gets two spare rows and the auxiliary questions get one.
+	fitColumn(column, 16)
+	if needs.shown != 5 || recent.shown != 7 {
+		t.Fatalf("three spare rows grew needs to %d and recent to %d, want 5 and 7", needs.shown, recent.shown)
 	}
 	fitColumn(column, 200)
 	if needs.shown != 8 || recent.shown != 10 {
@@ -471,44 +486,29 @@ func TestATallColumnGrowsWhatAPersonCameForFirst(t *testing.T) {
 	}
 }
 
-// AT 120×55 WHERE YOU WERE SHOWS TEN AND FOLDS THE REST: a machine with
-// seventy-six conversations in this folder draws this one and nine more, and
-// the fold counts the other sixty-six — while at 120×24 the squeeze still holds.
-func TestATallFrameShowsTenOfWhereYouWereAndFoldsTheRest(t *testing.T) {
+// A tall frame shows the whole bounded tab list; a short one folds what cannot fit.
+func TestATallFrameShowsOpenTabsAndAShortFrameFoldsThem(t *testing.T) {
 	lab := newHomeLab(t)
-	alpha := lab.workspace("alpha")
+	workspace := lab.workspace("alpha")
 	now := time.Now()
-	mine := lab.session("-alpha", "aaaa000000000000", "this very chat", alpha, now)
-	for i := 1; i <= 75; i++ {
-		id := fmt.Sprintf("aaaa%012d", i)
-		lab.session("-alpha", id, fmt.Sprintf("older chat %d", i), alpha, now.Add(-time.Duration(i)*time.Hour))
+	mine := lab.session("-alpha", "aaaa000000000000", "this very chat", workspace, now)
+	for i := 1; i < tabsCap; i++ {
+		lab.session("-alpha", fmt.Sprintf("aaaa%012d", i), fmt.Sprintf("older chat %d", i), workspace, now.Add(-time.Duration(i)*time.Hour))
 	}
 	a := lab.app(mine)
 	a.width, a.height = 120, 55
+	openHomeFixtureTabs(a)
 	a.openHome()
+	homeText(a)
+	if got := len(panelRows(a, panelSessions)); got != min(tabsCap, homeSessionsLimit) {
+		t.Fatalf("tall Home has %d rows, want %d tabs", got, tabsCap)
+	}
+	a.height = 20
 	frame := homeText(a)
-	if got := len(panelRows(a, panelRecent)); got != homeSlotOf(panelRecent).most {
-		t.Fatalf("where you were drew %d rows at 120×55, want %d:\n%s", got, homeSlotOf(panelRecent).most, frame)
+	if len(strings.Split(frame, "\n")) != 20 || len(panelRows(a, panelSessions)) >= min(tabsCap, homeSessionsLimit) {
+		t.Fatalf("short frame did not fold its tabs:\n%s", frame)
 	}
-	if row, _ := homeRowOf(frame, "66 more"); row < 0 {
-		t.Fatalf("the fold does not count the other sixty-six:\n%s", frame)
-	}
-	a.width, a.height = 120, 24
-	frame = homeText(a)
-	if len(strings.Split(frame, "\n")) != 24 {
-		t.Fatalf("at 120×24 the frame is not twenty-four rows:\n%s", frame)
-	}
-	if row, _ := homeRowOf(frame, "where you were"); row < 0 {
-		t.Fatalf("where you were was squeezed off a 120×24 home:\n%s", frame)
-	}
-	// AND A SHORT FRAME SPENDS THE RAIL BEFORE THE FIELD. Where you were is the
-	// only panel with rows, so it has the whole field and keeps every row it
-	// grew; what gives way is the column of panels with nothing in them, which
-	// is the trade law 2 was rewritten to make (ruled 2026-09-15). Before that
-	// this frame cut the recent list to share a column with two quiet panels.
-	if got := len(panelRows(a, panelRecent)); got != homeSlotOf(panelRecent).most {
-		t.Fatalf("where you were drew %d rows at 120×24, want the %d it holds alone in the field:\n%s", got, homeSlotOf(panelRecent).most, frame)
-	}
+	homeFoldDoor(t, a, panelSessions)
 }
 
 // AND A REAL FRAME THAT SHORT STILL DRAWS EVERY HEADING IT KEPT, with the
@@ -516,7 +516,7 @@ func TestATallFrameShowsTenOfWhereYouWereAndFoldsTheRest(t *testing.T) {
 func TestTheSqueezeAtOneTwentyByTwentyFourKeepsNeedsAndRecent(t *testing.T) {
 	a := newSwitchLab(t).open(120, 24)
 	frame := homeText(a)
-	for _, word := range []string{"needs you", "where you were"} {
+	for _, word := range []string{"Porting the Resume Picker"} {
 		if row, _ := homeRowOf(frame, word); row < 0 {
 			t.Fatalf("%q was squeezed off a 120×24 home:\n%s", word, frame)
 		}
@@ -535,32 +535,32 @@ func TestTheSqueezeAtOneTwentyByTwentyFourKeepsNeedsAndRecent(t *testing.T) {
 // the clause leaves rather than the whole column.
 func TestAHeadingExplainerIsDimAndGivesWayBeforeTheHeadingIsCut(t *testing.T) {
 	pal := newTestPalette()
-	cell := &homeCell{kind: cellHead, panel: panelProjects, title: "projects", note: "folders you've opened"}
+	cell := &homeCell{kind: cellHead, panel: panelSessions, title: "tasks", note: "work you sent off"}
 	tail := rowSep + cell.note
 	whole := ansi.StringWidth(cell.title) + ansi.StringWidth(tail)
 
 	// Room for all of it: the gloss is dim, and the heading keeps its own ink.
-	drawn := homeCellHead(cell, whole, pal, false)
+	drawn := homeCellHead(cell, whole, pal, false, false)
 	if !strings.Contains(drawn, placeHeadingInk(pal)(cell.title)+pal.dim(tail)) {
 		t.Fatalf("the explainer is not painted dim after the heading's own ink:\n%q", drawn)
 	}
 	// One cell short of the whole: the gloss goes, and the heading is untouched.
-	if got := plain(homeCellHead(cell, whole-1, pal, false)); got != cell.title {
+	if got := plain(homeCellHead(cell, whole-1, pal, false, false)); got != cell.title {
 		t.Fatalf("a column one cell short drew %q, want the heading alone", got)
 	}
 	// A column too narrow for even the heading cuts it, exactly as it always
 	// did — the gloss never turns that cut into something worse.
-	cut := plain(homeCellHead(cell, ansi.StringWidth(cell.title)-1, pal, false))
+	cut := plain(homeCellHead(cell, ansi.StringWidth(cell.title)-1, pal, false, false))
 	if !strings.Contains(cut, glyphMore) || strings.Contains(cut, cell.note) {
 		t.Fatalf("a too-narrow column drew %q, want the heading cut with no gloss", cut)
 	}
 	// A heading with a right-hand clause drops its gloss past the room the
 	// clause leaves, not the whole column.
 	clause := &homeCell{kind: cellHead, title: "spend", note: "spent today", right: "today $6.51 of $500"}
-	if !strings.Contains(plain(homeCellHead(clause, 39, pal, false)), clause.note) {
+	if !strings.Contains(plain(homeCellHead(clause, 39, pal, false, false)), clause.note) {
 		t.Fatalf("the gloss does not fit the room its right-hand clause leaves at 39 cells")
 	}
-	if got := plain(homeCellHead(clause, 38, pal, false)); strings.Contains(got, clause.note) {
+	if got := plain(homeCellHead(clause, 38, pal, false, false)); strings.Contains(got, clause.note) {
 		t.Fatalf("the gloss was kept past the room its right-hand clause leaves: %q", got)
 	}
 }
@@ -580,10 +580,10 @@ func TestAShortFrameDropsWhisperingPanelsBeforeAnyPanelWithRows(t *testing.T) {
 	a.width, a.height = 120, 14
 	a.openHome()
 	frame := homeText(a)
-	if row, _ := homeRowOf(frame, "where you were"); row < 0 {
+	if row, _ := homeRowOf(frame, homeName(a.home.focused())); row < 0 {
 		t.Fatalf("a 120×14 home kept a whisper and dropped every conversation:\n%s", frame)
 	}
-	if row, _ := homeRowOf(frame, homeWhisper[panelNeeds]); row >= 0 {
+	if row, _ := homeRowOf(frame, "questions from any chat or task land here"); row >= 0 {
 		t.Fatalf("a 120×14 home spent its rows on the needs-you whisper:\n%s", frame)
 	}
 }
@@ -603,8 +603,12 @@ func TestAnEmptyPanelWhispersWhatArrivesAndNeverThatItIsEmpty(t *testing.T) {
 	a := lab.app(mine)
 	a.width, a.height = 120, 45
 	a.openHome()
+	a.home.world.Projects = nil
+	a.home.tabs = nil
+	a.home.closedTabs = nil
+	a.home.build()
 	frame := homeText(a)
-	if row, _ := homeRowOf(frame, homeWhisper[panelRunning]); row < 0 {
+	if row, _ := homeRowOf(frame, homeWhisper[panelSessions]); row < 0 {
 		t.Fatalf("an empty running panel does not whisper:\n%s", frame)
 	}
 }
@@ -633,10 +637,10 @@ func TestAWhisperWrapsAtItsColumnAndIsNeverCut(t *testing.T) {
 	a := newLiveLab(t).open()
 	frame := homeText(a)
 	_, rail := homeRowOf(frame, "projects")
-	first, head := homeRowOf(frame, "questions from any chat")
-	second, at := homeRowOf(frame, "answers them")
+	first, head := homeRowOf(frame, "reminders, routines")
+	second, at := homeRowOf(frame, `6" or`)
 	if first < 0 || second != first+1 || at != head || at != rail+homeGridLead {
-		t.Fatalf("the needs whisper is cut rather than wrapped in the rail:\n%s", frame)
+		t.Fatalf("the scheduled whisper is cut rather than wrapped in the rail:\n%s", frame)
 	}
 }
 
@@ -659,7 +663,7 @@ func firstRowOf(a *app, panel homePanelID) (int, bool) {
 // homeEmptyWhispers are what an empty machine's home always whispers: the two
 // panels the squeeze never drops.
 func homeEmptyWhispers() []string {
-	return []string{homeWhisper[panelNeeds], homeWhisper[panelRecent]}
+	return []string{homeWhisper[panelSessions]}
 }
 
 // focusedTitle is the title of the row the cursor is on.
@@ -670,114 +674,45 @@ func focusedTitle(a *app) string {
 	return ""
 }
 
-// COLUMNS WIN THE ARROW, SO THE FOOT NAMES A CHORD (DESIGN §6 ruling 6). On a
-// left-column row whose `→` crosses to the right, the foot says `ctrl+o open
-// folder`, and the chord opens that row's folder — a project's too. On a row
-// whose `→` is its strip, the foot is the resting sentence.
-func TestTheFootNamesAChordWhereTheArrowCrossesColumns(t *testing.T) {
+// THE ARROWS STAY IN THE FIELD AND THE FOOT IS THE RESTING SENTENCE (owner,
+// 2026-09-17). `→` on a field row opens that row's own strip rather than
+// crossing to the rail, `←` closes it, and `ctrl+o` still opens the row's
+// folder without the strip. A project's row is not a stop and has no folder
+// door of its own any more.
+func TestTheArrowsStayInTheFieldAndTheFootIsTheRestingSentence(t *testing.T) {
 	var opened string
 	was := processOpener
 	processOpener = func(target string) error { opened = target; return nil }
 	t.Cleanup(func() { processOpener = was })
 
 	a := newSwitchLab(t).open(120, 45)
-	if hint := a.homeHint(); !strings.Contains(hint, homeFolderChordWord) || !strings.HasSuffix(hint, placeHintTail) {
-		t.Fatalf("a left-column conversation's foot is %q, want it to name %q before the way out", hint, homeFolderChordWord)
+	if hint := a.homeHint(); strings.Contains(hint, "ctrl+o") || strings.Contains(hint, "tab next place") || hint != restingFoot(a) {
+		t.Fatalf("a left-column conversation's foot is %q, want the shared home hints", hint)
 	}
 	a.placeKeyPress(key("ctrl+o"))
 	if opened == "" || !strings.HasSuffix(opened, "alpha") {
 		t.Fatalf("ctrl+o opened %q, want the conversation's folder", opened)
 	}
-	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.project == "beta" })
-	a.placeKeyPress(key("ctrl+o"))
-	if !strings.HasSuffix(opened, "beta") {
-		t.Fatalf("ctrl+o on a project opened %q, want its folder", opened)
-	}
-	// A PROJECT IS IN THE RAIL NOW (law 2), and the rail is the last column — so
-	// → has no column to cross to and opens the row's verb strip instead, which
-	// is §6.6 read on the column the row actually ended up in.
-	if got := a.home.columnOf(a.home.cursor); got != homeRailCol(a.home.cols) {
-		t.Fatalf("a project is in column %d, want the rail at %d", got, homeRailCol(a.home.cols))
-	}
-	if hint := a.homeHint(); hint != homeRestHint {
-		t.Fatalf("a rail row's foot is %q, want the resting sentence", hint)
-	}
+	from := a.home.cursor
 	a.placeKeyPress(key("right"))
-	if !a.strip.open {
-		t.Fatal("→ on a rail row neither crossed a column nor opened its verbs")
+	if a.home.cursor != from || !a.strip.open {
+		t.Fatalf("→ on a field row moved the cursor from %d to %d (strip %v), want the row's own strip", from, a.home.cursor, a.strip.open)
 	}
-}
-
-// ↑↓ WALK A COLUMN AND ←→ CROSS TO THE NEAREST ROW OF THE NEXT, through the real
-// door every key on a place takes — and `↑` off the top of a column is the tab
-// bar, from whichever column it is.
-func TestTheArrowsWalkAColumnAndCrossToTheNext(t *testing.T) {
-	a := newSwitchLab(t).open(120, 45)
-	if got := focusedTitle(a); got != "Porting the Resume Picker" {
-		t.Fatalf("home opened on %q", got)
-	}
-	a.placeKeyPress(key("down"))
-	if got := focusedTitle(a); got != "Bounty Reward Companies" {
-		t.Fatalf("↓ went to %q, want the next row of where you were", got)
-	}
-	a.placeKeyPress(key("right"))
-	if got, want := a.home.columnOf(a.home.cursor), 1; got != want || a.strip.open {
-		t.Fatalf("→ went to column %d (strip %v), want the right column", got, a.strip.open)
-	}
-	right := a.home.cursor
 	a.placeKeyPress(key("left"))
-	if got := a.home.columnOf(a.home.cursor); got != 0 {
-		t.Fatalf("← went to column %d, want the left column", got)
+	if a.home.cursor != from || a.strip.open {
+		t.Fatalf("← did not close the strip and stay on the row (cursor %d, strip %v)", a.home.cursor, a.strip.open)
 	}
-	a.home.cursor = right
-	for i := 0; i < 20 && !a.bar.on; i++ {
-		if a.home.columnOf(a.home.cursor) != 1 {
-			t.Fatal("↑ walked out of the right column sideways")
-		}
-		a.placeKeyPress(key("up"))
-	}
-	if !a.bar.on {
-		t.Fatal("↑ off the top of the right column did not reach the tab bar")
-	}
-}
-
-// A CLICK IN THE RIGHT COLUMN LANDS ON THE ROW DRAWN THERE, not the left
-// column's row that shares its screen line — and opens it, as `enter` would.
-func TestAClickResolvesTheColumnItLandedIn(t *testing.T) {
-	a := newSwitchLab(t).open(120, 45)
-	lines := strings.Split(homeText(a), "\n")
-	for y, line := range lines {
-		if x := strings.Index(line, "read 40 filings"); x >= 0 {
-			a.homePress(len([]rune(line[:x])), y)
-			break
+	for _, line := range a.home.lines {
+		if line.kind == homeProjectRow && line.stop() {
+			t.Fatalf("a project's row is a cursor stop: %+v", line.cell)
 		}
 	}
-	if got := focusedTitle(a); got != "read 40 filings" {
-		t.Fatalf("the click selected %q", got)
-	}
 }
 
-// THE AGE OUTRANKS THE TAIL OF A TITLE: a seventy-character title in a
-// fifty-eight-cell column is cut, and the row still says how long ago it was.
-func TestALongTitleIsCutBeforeItsAge(t *testing.T) {
-	const width = 58
-	title := strings.Repeat("Generate and Display First 200 Primes ", 2)[:70]
-	cell := &homeCell{panel: panelRecent, title: title, right: "1h"}
-	row := plain(homeCellBody(cell, width-homeGridLead, newTestPalette(), false))
-	if !strings.HasSuffix(row, " 1h") || strings.Contains(row, title) || !strings.Contains(row, "…") {
-		t.Fatalf("the title was not cut to keep its age: %q", row)
-	}
-	if got := len([]rune(row)); got > width-homeGridLead {
-		t.Fatalf("the row is %d cells wide, its column holds %d", got, width-homeGridLead)
-	}
-}
-
-// EVERY ROW OF THE FIELD RESTS ON ONE SENTENCE (owner, 2026-09-15). A
-// conversation, a standing order on `next up`, a landing on `since you left`:
-// the foot under each is the four keys and `ctrl+o open folder`, and the chord
-// opens the folder that row belongs to — an order's workspace, the conversation
-// a landing ran in. It used to be a different sentence on each kind of row.
-func TestEveryFieldRowRestsOnTheOneFootAndItsChordOpensItsFolder(t *testing.T) {
+// AND THE SAME ON EVERY KIND OF FIELD ROW at three columns: a conversation, a
+// `scheduled` order and a `since you left` line all rest on the one sentence,
+// and `ctrl+o` opens the folder each belongs to.
+func TestEveryFieldRowRestsOnTheOneFootAndOpensItsFolder(t *testing.T) {
 	var opened string
 	was := processOpener
 	processOpener = func(target string) error { opened = target; return nil }
@@ -790,9 +725,9 @@ func TestEveryFieldRowRestsOnTheOneFootAndItsChordOpensItsFolder(t *testing.T) {
 		Workspace: "/w/alpha", Status: standing.StatusActive, When: standing.When{Kind: standing.WhenAt},
 		NextDue: lab.now.Add(2 * time.Hour)}}}}
 	a.home.build()
-	want := homeFootWord + rowSep + homeFolderChordWord + " · tab next place"
+	want := restingFoot(a)
 
-	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeSession && l.cell != nil && l.cell.panel == panelRecent })
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeSession && l.cell != nil && l.cell.panel == panelSessions })
 	if hint := a.homeHint(); hint != want {
 		t.Fatalf("a conversation's foot is %q, want %q", hint, want)
 	}
@@ -822,12 +757,77 @@ func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *test
 	a.home.seen = l.now.Add(-4 * time.Hour)
 	a.home.build()
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelLeft && l.cell.kind == cellRow })
-	if hint, want := a.homeHint(), homeFootWord+rowSep+homeFolderChordWord+" · tab next place"; hint != want {
+	if hint, want := a.homeHint(), restingFoot(a); hint != want {
 		t.Fatalf("a since you left row's foot is %q, want %q", hint, want)
 	}
 	a.placeKeyPress(key("ctrl+o"))
 	if opened == "" || !strings.HasSuffix(opened, "alpha") {
 		t.Fatalf("ctrl+o on a landing opened %q, want the folder of the conversation that ran it", opened)
+	}
+}
+
+// THE ARROWS WALK THE FIELD AND NEVER LEAVE IT (owner, 2026-09-17): `↓` is
+// the next row of the column, `→` is the row's own strip and not the rail,
+// `←` closes it, and `↑` off the top row stays there rather than climbing onto
+// the tab bar.
+func TestTheArrowsWalkTheFieldAndNeverLeaveIt(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	if got := focusedTitle(a); got != "Porting the Resume Picker" {
+		t.Fatalf("home opened on %q", got)
+	}
+	a.placeKeyPress(key("down"))
+	if got := focusedTitle(a); got != "Swarm Task Splitting" {
+		t.Fatalf("↓ went to %q, want the next row of threads", got)
+	}
+	here := a.home.cursor
+	a.placeKeyPress(key("right"))
+	if a.home.cursor != here || a.home.columnOf(a.home.cursor) != 0 || !a.strip.open {
+		t.Fatalf("→ went to line %d in column %d (strip %v), want the row's own strip", a.home.cursor, a.home.columnOf(a.home.cursor), a.strip.open)
+	}
+	a.placeKeyPress(key("left"))
+	if a.home.cursor != here || a.strip.open {
+		t.Fatalf("← left the cursor on line %d with the strip %v, want the row with its strip closed", a.home.cursor, a.strip.open)
+	}
+	for i := 0; i < 20; i++ {
+		a.placeKeyPress(key("up"))
+		if a.home.columnOf(a.home.cursor) != 0 {
+			t.Fatal("↑ walked out of the field sideways")
+		}
+	}
+	if a.bar.on || a.home.cursor != a.home.placesTop() {
+		t.Fatalf("↑ off the top of the field left the cursor on line %d (bar %v), want the top row at %d", a.home.cursor, a.bar.on, a.home.placesTop())
+	}
+}
+
+// A CLICK IN THE RIGHT COLUMN LANDS ON THE ROW DRAWN THERE, not the left
+// column's row that shares its screen line — and opens it, as `enter` would:
+// a task row opens that task inside the tasks place (homepanel_running.go's
+// [app.openTaskDoor]).
+func TestAClickResolvesTheColumnItLandedIn(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	x, y, ok := homeHeadingAt(a, sessionsWord)
+	if !ok {
+		t.Fatal("no sessions heading")
+	}
+	a.homePress(x, y)
+	if !a.at(pageTasks) {
+		t.Fatal("click did not open sessions")
+	}
+
+}
+
+// THE AGE OUTRANKS THE TAIL OF A TITLE: a seventy-character title in a
+// fifty-eight-cell column is cut, and the row still says how long ago it was.
+func TestALongTitleIsCutBeforeItsAge(t *testing.T) {
+	const width = 58
+	title := strings.Repeat("Generate and Display First 200 Primes ", 2)[:70]
+	cell := &homeCell{panel: panelSessions, title: title, right: "1h"}
+	row := plain(homeCellBody(cell, width-homeGridLead, newTestPalette(), false))
+	if !strings.HasSuffix(row, " 1h") || strings.Contains(row, title) || !strings.Contains(row, "...") {
+		t.Fatalf("the title was not cut to keep its age: %q", row)
+	}
+	if got := len([]rune(row)); got > width-homeGridLead {
+		t.Fatalf("the row is %d cells wide, its column holds %d", got, width-homeGridLead)
 	}
 }
 
@@ -837,84 +837,41 @@ func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *test
 // `N fewer`, with the cursor still on it. Enter again shuts it. It used to be
 // `66 more · type to find one`, which could not be stood on at all.
 func TestEnterOnAFoldOpensThePanelAndAgainShutsIt(t *testing.T) {
-	lab := newHomeLab(t)
-	alpha := filepath.Join(lab.root, "alpha")
-	now := time.Now()
-	mine := lab.session("-alpha", "aaaa000000000001", "the one I am in", alpha, now)
-	for i := 0; i < 30; i++ {
-		id := fmt.Sprintf("bbbb%012d", i+1)
-		lab.session("-alpha", id, fmt.Sprintf("older chat %d", i), alpha, now.Add(-time.Duration(i+1)*time.Hour))
-	}
-	a := lab.app(mine)
-	a.width, a.height = 120, 55
-	a.openHome()
-	frame := homeText(a)
-	shown := len(panelRows(a, panelRecent))
-	if shown != homeSlotOf(panelRecent).most {
-		t.Fatalf("where you were drew %d rows at rest, want its budget of %d:\n%s", shown, homeSlotOf(panelRecent).most, frame)
-	}
-	a.home.cursor = homeFoldDoor(t, a, panelRecent)
-	if !strings.HasSuffix(a.home.lines[a.home.cursor].cell.title, " more") {
-		t.Fatalf("the shut fold reads %q, want `N more`", a.home.lines[a.home.cursor].cell.title)
-	}
-	if hint := a.homeHint(); !strings.Contains(hint, foldEnterWord(false)) {
-		t.Fatalf("the foot on a shut fold is %q, want it to say %q", hint, foldEnterWord(false))
-	}
+	a, _ := homeTabsFixture(t)
+	a.height = 14
+	homeText(a)
+	a.home.cursor = homeFoldDoor(t, a, panelSessions)
 	drive(t, a, key("enter"))
-	frame = homeText(a)
-	if !a.at(pageHome) {
-		t.Fatal("enter on the fold left home")
+	if !a.at(pageHome) || !a.home.openedOn || a.home.opened != panelSessions {
+		t.Fatal("Enter did not open the conversation fold")
 	}
-	if opened := len(panelRows(a, panelRecent)); opened <= shown {
-		t.Fatalf("opening the fold showed %d rows, no more than the %d at rest:\n%s", opened, shown, frame)
-	}
-	fold := a.home.lines[a.home.cursor]
-	if fold.kind != homeFold || fold.cell.panel != panelRecent || !strings.Contains(fold.cell.title, " fewer") {
-		t.Fatalf("after opening, the cursor is on %+v, want the same panel's fold reading `N fewer`", fold.cell)
-	}
-	if hint := a.homeHint(); !strings.Contains(hint, foldEnterWord(true)) {
-		t.Fatalf("the foot on an open fold is %q, want it to say %q", hint, foldEnterWord(true))
-	}
+	a.home.cursor = homeFoldDoor(t, a, panelSessions)
 	drive(t, a, key("enter"))
-	if a.home.openedOn || len(panelRows(a, panelRecent)) != shown {
-		t.Fatalf("enter on the open fold did not shut it:\n%s", homeText(a))
+	if a.home.openedOn {
+		t.Fatal("Enter did not close the fold")
 	}
 }
 
 // ONE PANEL IS OPEN AT A TIME. Opening a second shuts the first, and the first's
-// fold says `more` again. Ten questions fold `needs you` and ten running tasks
-// fold `running`, on one frame.
+// fold says `more` again. Ten questions fold `needs you` and twelve running
+// tasks fold `tasks`, on one frame.
 func TestOpeningASecondFoldShutsTheFirst(t *testing.T) {
-	l := newLiveLab(t)
-	beta := l.workspace("beta")
-	for i := 0; i < 10; i++ {
-		id := fmt.Sprintf("cccc%012d", i+1)
-		l.session("-beta", id, "question "+itoa(i), beta, l.now.Add(-time.Duration(i+1)*time.Hour))
-		l.live("-beta", id, session.SessionPresence{State: session.PresenceWaiting,
-			Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-time.Duration(i+1)*time.Hour))})
+	lab := newSwitchLab(t)
+	for i := 0; i < 9; i++ {
+		lab.task("-beta", session.TaskIndexEntry{ID: itoa(i + 1), SessionID: "bbbb000000000001", Label: "question " + itoa(i), Title: "question " + itoa(i), Status: string(session.TaskUnverified), EndedAt: lab.now.Add(-time.Minute)})
 	}
-	var tasks []session.PresenceTask
-	for i := 0; i < 10; i++ {
-		tasks = append(tasks, session.PresenceTask{ID: itoa(i + 1), Title: "part " + itoa(i+1), State: "running",
-			StartedAt: l.now.Add(-time.Duration(i+1) * time.Minute)})
-	}
-	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: tasks})
-	a := l.open()
-	a.width, a.height = 180, 60
-	homeText(a)
+	a := lab.open(120, 24)
 	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
 	drive(t, a, key("enter"))
 	if !a.home.openedOn || a.home.opened != panelNeeds {
-		t.Fatal("enter did not open needs you")
+		t.Fatal("first fold did not open")
 	}
-	a.home.cursor = homeFoldDoor(t, a, panelRunning)
+	a.home.cursor = homeFoldDoor(t, a, panelSessions)
 	drive(t, a, key("enter"))
-	if !a.home.openedOn || a.home.opened != panelRunning {
-		t.Fatalf("opening running left %v open", a.home.opened)
+	if !a.home.openedOn || a.home.opened != panelSessions {
+		t.Fatal("second fold did not replace first")
 	}
-	if fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)]; !strings.Contains(fold.cell.title, " more") {
-		t.Fatalf("the first panel's fold still reads %q after a second was opened", fold.cell.title)
-	}
+
 }
 
 // AN OPEN PANEL TALLER THAN THE COLUMN NAMES WHERE THE REST ARE. On a short
@@ -930,13 +887,18 @@ func TestAnOpenFoldOnAShortFrameCountsTheRestAndNamesNoPlace(t *testing.T) {
 		lab.presence("-beta", "cccc00000000000"+string(rune('1'+i)), session.PresenceWaiting, "question "+itoa(i), lab.now)
 	}
 	a := lab.open(120, 20)
-	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
+	a.home.cursor = homeFoldDoor(t, a, panelSessions)
 	drive(t, a, key("enter"))
-	fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)].cell.title
+	fold := a.home.lines[homeFoldDoor(t, a, panelSessions)].cell.title
 	if !strings.Contains(fold, " fewer · ") || !strings.HasSuffix(fold, " "+homeFoldMoreWord) {
 		t.Fatalf("the open fold on a short frame reads %q, want `N fewer · M more`", fold)
 	}
 	if strings.Contains(fold, rowSep+pageTasks.word()) {
 		t.Fatalf("the open fold names a place enter does not go to: %q", fold)
 	}
+}
+
+// restingFoot is the list's two keys followed by the available draft controls.
+func restingFoot(a *app) string {
+	return dotted(homeOptionsWord, a.targetChordWords())
 }

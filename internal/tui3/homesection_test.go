@@ -94,7 +94,7 @@ func sectionLab(t *testing.T) *app {
 // on the grid.
 func TestACursorMarksTheHeadingOfThePanelItIsIn(t *testing.T) {
 	a := sectionLab(t)
-	for _, panel := range []homePanelID{panelNeeds, panelRecent, panelLeft} {
+	for _, panel := range []homePanelID{panelSessions, panelLeft} {
 		standInPanel(t, a, panel)
 		want := homeSlotOf(panel).word
 		if got := markedHeadings(a); len(got) != 1 || !strings.HasPrefix(got[0], want) {
@@ -135,22 +135,15 @@ func TestASearchingHomeMarksNoHeading(t *testing.T) {
 	}
 }
 
-// THE POINTER MOVES NOTHING. A hover previews a card without moving the
-// selection ([homeView.previewLine]), and the marked heading answers "where is
-// my keyboard" — so a pointer resting in another block must leave it exactly
-// where the cursor put it.
-func TestAHoverDoesNotMoveTheMarkedHeading(t *testing.T) {
+// Mouse selection moves the marked heading to the same panel as its row.
+func TestMouseSelectionMovesTheMarkedHeading(t *testing.T) {
 	a := sectionLab(t)
-	hovered := standInPanel(t, a, panelNeeds)
-	standInPanel(t, a, panelRecent)
-	want := markedHeadings(a)
-	if len(want) != 1 {
-		t.Fatalf("the cursor marks %v to begin with, so the hover proves nothing", want)
-	}
-	// The pointer goes to a row in ANOTHER panel.
-	a.home.hover = hovered
-	if got := markedHeadings(a); strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("the pointer moved the marked heading from %v to %v:\n%s", want, got, homeText(a))
+	hovered := standInPanel(t, a, panelLeft)
+	want := strings.Join(markedHeadings(a), "|")
+	standInPanel(t, a, panelSessions)
+	a.selectPlaceRow(&a.home.cursor, hovered)
+	if got := strings.Join(markedHeadings(a), "|"); got != want {
+		t.Fatalf("mouse selection marked %q, want %q", got, want)
 	}
 }
 
@@ -175,7 +168,7 @@ func TestEveryCursorStopMarksExactlyOneHeadingOrNone(t *testing.T) {
 // BUDGET forbids it (docs/DESIGN-LANGUAGE.md).
 func TestTheMarkedHeadingWearsTheGroundAndKeepsItsWords(t *testing.T) {
 	a := sectionLab(t)
-	standInPanel(t, a, panelRecent)
+	standInPanel(t, a, panelSessions)
 	head := homeNoLine
 	for at := range a.home.lines {
 		if a.home.marksPanel(at) {
@@ -183,17 +176,23 @@ func TestTheMarkedHeadingWearsTheGroundAndKeepsItsWords(t *testing.T) {
 		}
 	}
 	if head == homeNoLine {
-		t.Fatalf("standing in where you were marks no heading:\n%s", homeText(a))
+		t.Fatalf("standing in threads marks no heading:\n%s", homeText(a))
 	}
 	cell := a.home.lines[head].cell
-	marked := homeCellHead(cell, 40, a.pal, true)
+	marked := homeCellHead(cell, 40, a.pal, true, false)
 	if !strings.HasPrefix(marked, cursorGround(a.pal)) {
 		t.Fatalf("the marked heading wears no ground: %q", marked)
 	}
-	if !strings.Contains(marked, a.pal.muted(cell.title)) || strings.Contains(marked, a.pal.accent(cell.title)) {
+	// (A heading that opens nothing is dim rather than muted, marked or not —
+	// `threads` is one — and the ground still lands on it.)
+	want := a.pal.muted(cell.title)
+	if !homeHeadOpens(cell.panel) {
+		want = a.pal.dim(cell.title)
+	}
+	if !strings.Contains(marked, want) || strings.Contains(marked, a.pal.accent(cell.title)) {
 		t.Fatalf("the marked heading's words changed ink: %q", marked)
 	}
-	if rest := homeCellHead(cell, 40, a.pal, false); strings.HasPrefix(rest, cursorGround(a.pal)) {
+	if rest := homeCellHead(cell, 40, a.pal, false, false); strings.HasPrefix(rest, cursorGround(a.pal)) {
 		t.Fatalf("an unmarked heading wears the ground: %q", rest)
 	}
 }

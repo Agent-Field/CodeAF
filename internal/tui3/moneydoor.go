@@ -70,10 +70,18 @@ func (a *app) moneyDoorAt(x, y int) bool {
 		return false
 	}
 	mark, ok := a.chromeAt(y)
-	if !ok || mark.kind != chromeStatus {
+	if !ok {
 		return false
 	}
-	return mark.index == a.moneyRow && a.moneySpan.holds(x)
+	// THE DOOR IS ON THE SEAM on every tier but the phone's (footswap.go), and
+	// on the deck's own row there.
+	switch mark.kind {
+	case chromeLegend:
+		return a.moneyRow == legendDoorRow && a.moneySpan.holds(x)
+	case chromeStatus:
+		return a.moneyRow == mark.index && a.moneySpan.holds(x)
+	}
+	return false
 }
 
 // hoveringMoney is whether the pointer is on the door right now (render.go's

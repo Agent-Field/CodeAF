@@ -210,7 +210,7 @@ func (a *app) questionSetOf(open []questionShown) []questionShown {
 	batch := open[0].question.Batch
 	var set []questionShown
 	for _, q := range open {
-		if q.question.Batch == batch && a.questionJoinsSet(q) {
+		if q.question.ClarificationDepth == open[0].question.ClarificationDepth && q.question.Batch == batch && a.questionJoinsSet(q) {
 			set = append(set, q)
 		}
 	}

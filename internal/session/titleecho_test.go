@@ -96,7 +96,7 @@ func TestANameThatIsAPlanIsRefusedByBothNamers(t *testing.T) {
 		if got := cleanTaskName(said); got != "" {
 			t.Errorf("cleanTaskName(%q) = %q, want a plan refused", said, got)
 		}
-		if got := cleanConversationTitle(said); got.full != "" || got.short != "" {
+		if got := cleanConversationTitle(said); got.full != "" {
 			t.Errorf("cleanConversationTitle(%q) = %+v, want a plan refused", said, got)
 		}
 	}
@@ -147,6 +147,9 @@ func TestTheNamerAsksAtTheEndOfTheUserMessage(t *testing.T) {
 		t.Fatalf("the namer's system message = %q, want %q", got, titleSystem)
 	}
 	user := messageContentText(asked[1])
+	if !strings.Contains(user, "5-8 word phrase") || strings.Contains(user, "tab:") || strings.Contains(user, "≤12") {
+		t.Fatalf("namer must request only one five-to-eight-word title: %s", user)
+	}
 	if !strings.HasSuffix(user, titlePrompt) {
 		t.Fatalf("the instruction is not the last thing the namer says:\n%s", user)
 	}

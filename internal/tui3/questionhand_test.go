@@ -20,7 +20,7 @@ import (
 // A QUESTION RAISED WHILE NOBODY WAS AT THE WINDOW IS STILL ON THE BLOCK.
 //
 // Away used to REPLACE the block with a note and a bell: nothing was pinned,
-// the chip counted nothing, `alt+a` refused, and nothing re-delivered when the
+// the chip counted nothing, `alt+y` refused, and nothing re-delivered when the
 // person came back. A ten-minute turn that ends in a question is exactly the
 // case, and it left a stopped screen with nothing on it to work.
 func TestAQuestionRaisedWhileNobodyWasThereIsStillOnTheBlock(t *testing.T) {
@@ -311,7 +311,7 @@ func TestTheFirstLetterOfASentenceIsNotAVerbOnTheBlock(t *testing.T) {
 	}
 	// AND SO IS EVERY OTHER VERB ON THE TABLE. They are each the first letter of
 	// a word somebody types into a box.
-	for _, key := range []string{questionCommentKey, questionAskBackKey, questionRuleKey, questionUndoKey, questionOpenKey, questionCompareKey} {
+	for _, key := range []string{questionRuleKey, questionUndoKey, questionOpenKey, questionCompareKey} {
 		if lab.press(key) {
 			t.Fatalf("the block took %q from an empty box nobody had aimed at it", key)
 		}
@@ -406,7 +406,7 @@ func TestEnterThatSentAMessageDoesNotGiveTheBlockTheKeyboard(t *testing.T) {
 		t.Fatal("the block took the enter that was sending a message")
 	}
 	lab.a.input.reset()
-	if lab.press(questionCommentKey) {
+	if lab.press(questionDecideKey) {
 		t.Fatal("the enter that went to the conversation gave the block the keyboard")
 	}
 	if len(lab.answer) != 0 {
@@ -433,7 +433,7 @@ func TestTheQuestionBehindTheFoldedOneDoesNotInheritTheHand(t *testing.T) {
 	if !ok || head.token() == first.token() {
 		t.Fatal("esc did not put the first question behind the second")
 	}
-	if lab.press(questionCommentKey) {
+	if lab.press(questionDecideKey) {
 		t.Fatal("the second question inherited the hand aimed at the one that was folded")
 	}
 	if len(lab.answer) != 0 {
@@ -454,7 +454,7 @@ func TestAKeyDroppedByTheSettleGuardDoesNotGiveTheHand(t *testing.T) {
 	lab.press("down")
 	lab.tick(questionSettle * 2)
 	lab.rows()
-	if lab.press(questionCommentKey) {
+	if lab.press(questionDecideKey) {
 		t.Fatal("a key the settle guard dropped handed the block the keyboard")
 	}
 }

@@ -21,7 +21,7 @@ func TestTUIWaitingFamily(t *testing.T) {
 	home := newHome(t, nil)
 	ws := newWorkspace(t, "familylayout", false)
 	r := start(t, "afe2e_familylayout", home, ws, 180, 40, "chat", "--one-model", "--no-host")
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
+	r.waitForAny(20*time.Second, say(t, "placeRestWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
 	r.keys("Escape")
 	r.lit("/task solo Delegate two independent file checks. You MUST call propose_task twice before doing anything else. Give the first child the title 'Check alpha document and record the available task inspection capabilities'; give the second child the title 'Check beta document and record the available task delegation capabilities'. Each child must first run bash sleep 60, then write its own file alpha.txt or beta.txt containing hello and whether propose_task and tasks are actually present in its tool list. Do not ask children to call missing tools. Acceptance: both files exist and honestly describe their tool availability. Wait for both children, then report their results. Do not do their work yourself.")
 	r.keys("Enter")

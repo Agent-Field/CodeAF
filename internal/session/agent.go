@@ -245,10 +245,6 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// about the conversation in the file, and re-deriving it from the same
 		// opening exchange would pay for an answer we already have.
 		agent.title = file.Title()
-		agent.shortTitle = compactTitle(file.ShortTitle())
-		if agent.shortTitle == "" {
-			agent.shortTitle = compactTitle(agent.title)
-		}
 		// And it keeps its cache lineage for the same reason, which matters
 		// more: a session resumed tomorrow re-sends the transcript it built
 		// today, and a key that changed with the process would ask the router
@@ -1998,6 +1994,7 @@ func (a *Agent) InterruptNamed(door StopDoor, name string) {
 }
 
 func (a *Agent) interruptNamed(door StopDoor, name string) {
+	a.interruptDiscussions()
 	// ONE GENERATION FOR THIS STOP, minted before the turn context dies so a
 	// leftover handler that has not yet entered callRole shares the same
 	// "what changed" decision as the redirect that follows (interrupt_fan.go).
@@ -2028,14 +2025,8 @@ func (a *Agent) Title() string {
 	return a.title
 }
 
-func (a *Agent) ShortTitle() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if strings.TrimSpace(a.shortTitle) != "" {
-		return a.shortTitle
-	}
-	return a.title
-}
+// ShortTitle is a compatibility alias for older callers. Conversations have one name.
+func (a *Agent) ShortTitle() string { return a.Title() }
 
 // Compact runs a compaction pass now (the surface's /compact). It is a no-op
 // when the transcript is smaller than the keep-recent floor.
@@ -2325,6 +2316,7 @@ func (a *Agent) Close() error {
 	// that has already earned a name owes the journal one line, and cutting the
 	// process between the answer and the append would lose it (title.go).
 	a.waitForTitle()
+	a.closeDiscussions()
 	if done != nil {
 		timer := time.NewTimer(closeGrace)
 		select {
@@ -3040,6 +3032,15 @@ func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
 // become one authored user-role message; control guidance and a person's steer
 // remain their own messages.
 func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool) {
+	for _, message := range a.discussionHistory {
+		a.recordLocked(message)
+	}
+	a.discussionHistory = nil
+	for _, id := range a.discussionPending {
+		a.discussionRecorded[id] = true
+	}
+	a.discussionPending = nil
+	a.forgetRecordedDiscussionsLocked()
 	queued := a.steering
 	a.steering = nil
 	if includeAmbient {

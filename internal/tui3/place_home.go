@@ -180,10 +180,9 @@ func (a *app) homeRowVerbs() []verb {
 	if !ok {
 		return nil
 	}
-	// A RUNNING ROW IS A PIECE OF WORK AND NOT ITS CONVERSATION, so its verbs
-	// are the work's (homepanel_running.go) and never `put it away`. A firing
-	// watch on it is still an item, and falls through to the item's own verbs.
-	if line.cell != nil && line.cell.panel == panelRunning && line.kind != homeItem {
+	// A task's options address that task, including its own archive mark.
+	// The containing conversation and any sibling work keep their state.
+	if line.cell != nil && line.cell.row != nil && line.cell.row.task != nil {
 		return a.runningVerbs(line)
 	}
 	// A ROW OF THE GRID CARRIES THE SWITCHER'S OWN ROW ON ITS CELL, so its verbs
@@ -191,15 +190,12 @@ func (a *app) homeRowVerbs() []verb {
 	if line.cell != nil && line.cell.row != nil {
 		return a.homeReadingVerbs(line, *line.cell.row)
 	}
-	if line.kind == homeProjectRow {
-		return a.homeProjectVerbs(line)
-	}
 	// A ROW THE TYPED SURFACE BUILT, WHICH THE READING NEVER SAW. Under a query
 	// the column is [homeRank]'s drop-up and a standing item's row is the one
 	// thing on it with verbs — the two actions home has been ADVERTISING on such
 	// a row without binding (`homeItemActions`, homestanding.go), bound to ctrl+e
 	// and ctrl+x, which the line never named, and whose bare `p` and `s` typed.
-	if line.kind != homeItem {
+	if !line.standsForItem() {
 		return nil
 	}
 	return []verb{
@@ -213,7 +209,7 @@ func (a *app) homeRowVerbs() []verb {
 func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 	var verbs []verb
 	for _, v := range switcherVerbsFor(row) {
-		if a.hosted() && (v.key == 'o' || v.key == 'c' || v.key == 't') {
+		if a.hosted() && row.kind == switcherConversation && v.answer == "" && (v.key == 'o' || v.key == 'p' || v.key == 'n') {
 			continue
 		}
 		// A VERB THAT CANNOT WORK IS ABSENT, NOT BROKEN. Two of the doors want a
@@ -222,8 +218,11 @@ func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 		// would offer two keystrokes it has already decided against. It is the
 		// place that drops them and not the reading: the reading is pure and has
 		// no disk, and this is what the cached stat map is for.
-		if row.gone && (v.key == 't' || v.key == 'o') {
+		if row.gone && v.answer == "" && (v.key == 'n' || v.key == 'o') {
 			continue
+		}
+		if v.key == 'x' && row.kind == switcherConversation && (row.session.Archived || line.cell != nil && line.cell.closed) {
+			v.word = "reopen"
 		}
 		verbs = append(verbs, a.homeSwitchVerb(line, row, v))
 	}
@@ -248,13 +247,13 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 			cmd, _ := a.sendAnswer(live, question, v.answer)
 			return cmd
 		}
-	case v.key == 'a':
+	case v.key == 'x':
 		do = func() tea.Cmd { return a.homeArchiveRow(row.session) }
-	case v.key == 't':
-		do = func() tea.Cmd { return a.homeStart(homeWhere(line)) }
+	case v.key == 'n':
+		do = func() tea.Cmd { return a.homeStartInProject(homeWhere(line)) }
 	case v.key == 'o':
 		do = func() tea.Cmd { return a.homeOpenFolder(row.session) }
-	case v.key == 'c':
+	case v.key == 'p' && row.kind == switcherConversation:
 		do = func() tea.Cmd { return a.homeCopyPath(row.session) }
 	case v.key == 'p':
 		do = func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }
@@ -264,29 +263,46 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 	return verb{key: v.key, word: v.word, do: do}
 }
 
-// homeArchiveRow is `a put it away` — the same write `ctrl+e` makes, said once
-// so the key and the strip can never mean two different things.
+// homeArchiveRow closes the same tab the row names, keeping its work and draft.
+// Reopening returns through the normal conversation door, restoring the tab too.
 func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
-	err := error(nil)
-	if a.archive != nil {
-		err = a.archive(row.Dir, !row.Archived)
-	} else {
-		err = session.SetArchived(row.Dir, !row.Archived)
+	if a.homeConversationClosed(row) {
+		return a.homeOpenLine(homeLine{kind: homeSession, row: row})
 	}
-	if err != nil {
-		a.home.say("could not put it away", "")
+	if err := a.writeHomeArchived(row, true); err != nil {
+		a.home.say("could not close conversation", "")
 		return nil
 	}
-	if row.Archived {
-		a.home.say("brought back", "")
-	} else {
-		a.home.say(homePutAwayWord, "")
+	key := a.convKey(row.Transcript)
+	if row.Transcript == a.file {
+		key = a.frontTabKey()
 	}
+	a.tabShutKey(key)
+	a.home.say(homeClosedWord, "")
 	a.refreshHome()
 	return nil
 }
 
-// homeOpenFolder is `o open folder`, and homeCopyPath is `c copy path` — the
+func (a *app) homeConversationClosed(row session.SessionRow) bool {
+	key := a.convKey(row.Transcript)
+	if row.Transcript == a.file {
+		key = a.frontTabKey()
+	}
+	return row.Archived || a.tabShut[key]
+}
+
+// A new tab without a saved session has no archive record yet.
+func (a *app) writeHomeArchived(row session.SessionRow, closed bool) error {
+	if row.Dir == "" {
+		return nil
+	}
+	if a.archive != nil {
+		return a.archive(row.Dir, closed)
+	}
+	return session.SetArchived(row.Dir, closed)
+}
+
+// homeOpenFolder is `o open folder`, and homeCopyPath is `p copy project` — the
 // same two doors ctrl+o and ctrl+y are.
 func (a *app) homeOpenFolder(row session.SessionRow) tea.Cmd {
 	return a.homeOpenPath(row.Workspace)
@@ -314,9 +330,9 @@ func (a *app) homeCopyPath(row session.SessionRow) tea.Cmd {
 	return tea.Raw(osc52(path, a.tmux))
 }
 
-// homePutAwayWord is what putting a conversation away says, in one place because
+// homeClosedWord is what closing a conversation says, in one place because
 // the key and the strip both say it.
-const homePutAwayWord = "put away · type its name to find it again"
+const homeClosedWord = "closed · type its name to find it again"
 
 // ── the place ───────────────────────────────────────────────────────────────
 
@@ -520,8 +536,8 @@ func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 //
 // The phone tier's sheet over the inbox is the first (homesheet.go). The second
 // is a FOCUSED ERRAND: while it holds the keyboard, `tab` hands it back to the
-// list and `esc` clears a half-typed follow-up before it does, which is the two-
-// zone law homeexchange.go states in full — and a `tab` the router took first
+// list; `esc` also returns there while preserving a half-typed follow-up. This
+// is the zone law homeexchange.go states in full — a `tab` the router took first
 // would walk the person out of home mid-sentence.
 //
 // THE KEYBOARD IS SETTLED BEFORE THE KEY IS READ. An exchange holds it only
@@ -531,25 +547,22 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := a.homeSheetKeyFirst(msg); took {
 		return cmd, true
 	}
-	// THE TARGET IS READ NEXT, and it is read here rather than in [app.placeKey]
-	// because the router SWALLOWS its two chords for every place (placekeys.go's
-	// `case "alt+w", "alt+o"`). Home is the one place with something for them to
-	// do — the rule above its box states exactly the two facts they change — and
-	// the model list one of them opens has the whole keyboard while it is up
-	// (homedraft.go's [app.homeTargetKey]).
+	// THE TARGET IS READ NEXT, before the router swallows unclaimed chords.
+	// Home owns the draft's project, thinking and approval controls, and the
+	// model list opened by `/model` owns the keyboard while it is up.
 	//
 	// IT LOSES TO THE PHONE SHEET AND WINS OVER EVERYTHING ELSE. The sheet is a
 	// full-frame card a thumb is in the middle of, and the phone's rule names no
 	// chord at all — there is no `alt` on a phone to press.
-	if cmd, took := a.homeTargetKey(msg); took {
+	if cmd, took := a.placeTargetKey(msg); took {
 		return cmd, true
 	}
 	a.settleExchangeFocus()
 	ex := a.paneExchange()
 	if ex == nil || !ex.focused {
-		// AND THE GRID'S TWO ARROWS, read before the router claims `→` for a
-		// row's verbs (homegrid.go's [app.homeGridCross] says why).
-		return nil, a.homeGridCross(msg)
+		// THE ARROWS ARE THE ROUTER'S: `→` opens the row's verbs and `←` closes
+		// them, on every column (homegrid.go, "the arrows stay in their column").
+		return nil, false
 	}
 	a.home.say("", "")
 	cmd := a.exchangeKey(ex, msg)
@@ -559,54 +572,4 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	a.sweepExchanges()
 	a.touch()
 	return cmd, true
-}
-
-// ── a project's doors ───────────────────────────────────────────────────────
-
-// homeProjectEnter is enter on a project of the grid: A FRESH CONVERSATION IN
-// THAT FOLDER, down the road `ctrl+t` has always taken — the folder is pinned as
-// the target and home's own start door opens there, stepping the conversation in
-// front aside into the keeper when the folder is somewhere else (keeper.go's
-// [app.startBeside]).
-func (a *app) homeProjectEnter(line homeLine) tea.Cmd {
-	where := strings.TrimSpace(line.proj.Path)
-	if where == "" {
-		return nil
-	}
-	if !homeFolderThere(where) {
-		a.home.say(homeGoneWord+rowSep+where, "")
-		return nil
-	}
-	a.target.where = where
-	return a.homeStart("")
-}
-
-// The two verbs a project offers. `its chats` puts the project's name in the box,
-// where the live query answers with every conversation in it.
-const (
-	homeProjectChatsWord  = "its chats"
-	homeProjectFolderWord = "open folder"
-)
-
-// homeProjectVerbs is `→` on a project: its chats, and its folder in the
-// machine's file manager — the second absent where the folder is on another
-// machine or not recorded at all, for [app.homeRowVerbs]' reason.
-func (a *app) homeProjectVerbs(line homeLine) []verb {
-	verbs := []verb{{key: 'c', word: homeProjectChatsWord, do: func() tea.Cmd {
-		a.home.box.setText(line.project)
-		a.home.build()
-		return nil
-	}}}
-	where := strings.TrimSpace(line.proj.Path)
-	if where == "" || a.hosted() || a.home.gone[where] {
-		return verbs
-	}
-	return append(verbs, verb{key: 'o', word: homeProjectFolderWord, do: func() tea.Cmd {
-		if processOpener(where) != nil {
-			a.home.say("could not open "+where, "")
-			return nil
-		}
-		a.home.say("opened "+where, where)
-		return nil
-	}})
 }

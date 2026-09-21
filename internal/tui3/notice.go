@@ -212,7 +212,7 @@ var notices = []notice{
 	{
 		id: "rewind-after-long-answer", slot: slotHint, priority: 70,
 		armed:  func(a *app) bool { return a.lastAnswerRunes() >= longAnswerRunes },
-		text:   "esc esc takes back the last message",
+		text:   "/rewind takes back an earlier message",
 		retire: eventRewound,
 	},
 	{

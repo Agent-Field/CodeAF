@@ -207,12 +207,6 @@ type place interface {
 	// has none, carries a door the move makes necessary — the spend place re-asks
 	// its seat rollup over the new window, off the update loop ([place.tick]).
 	window(a *app, key string) (bool, tea.Cmd)
-	// box is the composer this place types into — the shared one by default.
-	box(a *app) *editor
-	// boxOnBody reports that this place draws what is typed into its box in a row
-	// of its OWN body, so the foot draws the resting sentence and never the
-	// letters. It is false everywhere but tasks ([placeTasks.boxOnBody]).
-	boxOnBody() bool
 	// caretRow is where a place parks the terminal's caret when the box a person
 	// is typing into is ONE OF THE ROWS IT JUST BUILT, rather than the composer
 	// the frame draws at the foot: the row within `rows`, the column within that
@@ -222,7 +216,7 @@ type place interface {
 	//
 	// THE SETTINGS SHEET AND THE TASKS PLACE ARE THE TWO WHO ANSWER. The sheet's
 	// connections key entry is a box inside a row (connectcaps.go), and the tasks
-	// filter lives in the list's control row ([placeTasks.boxOnBody]) — and a
+	// filter lives in the list's control row ([placeTasks.body]) — and a
 	// caret parked in the foot's resting silhouette while somebody types into
 	// either is a cursor blinking in a box that is not the one the words are
 	// landing in, which is the wrongness this hook exists to end.
@@ -233,20 +227,16 @@ type place interface {
 	// first cell (input.go states the same law for the /connect panel's box).
 	// False hands the caret back to the frame's composer untouched.
 	caretRow(a *app, width int, rows []placeRow) (row, column int, drawn bool)
-	// resting is WHAT THAT BOX SAYS WITH NOTHING TYPED IN IT, and "" takes the
-	// router's own sentence.
+	// box is the editor this place types into, and nil where it has none.
 	//
-	// IT EXISTS BECAUSE THE SLOT WAS TELLING A LIE ON ONE PLACE. Every place's
-	// box row said `say what you want done` — which is exactly right where the box
-	// sends a message, and exactly wrong on the tasks place, where the box IS the
-	// filter and every printable key narrows the list. A person read an invitation
-	// to give an instruction, typed one, and watched their history disappear
-	// instead. The box was always the place's own editor ([placeTasks.box] has
-	// returned the query for as long as the place has existed) and the pointer has
-	// always resolved a caret against whatever was drawn there
-	// (placemouse.go's [app.placeBoxPress]); the only thing that was shared and
-	// should not have been is the sentence.
-	resting(a *app) string
+	// ONLY HOME HAS A BOX THAT SENDS ANYTHING (the owner's ruling, 2026-09-17).
+	// Tasks, memory and search keep an editor because typing there FILTERS or
+	// SEARCHES, and each of them draws its own letters in its own body; the
+	// standing and spend places take no text at all, and the foot under every
+	// place but home draws no box. The shared composer that used to sit under
+	// all seven — `enter talk about it · alt+enter send it off as a task` — was a
+	// box on six pages where `enter` opened a row and the sentence went nowhere.
+	box(a *app) *editor
 	// note is the one line a place may say about what it is HOLDING, drawn under
 	// the rule and above the composer.
 	note(a *app, width int) []string
@@ -326,7 +316,6 @@ func (placeBase) verbs(a *app) []verb                       { return nil }
 func (placeBase) alt(a *app, letter rune) bool              { return false }
 func (placeBase) window(a *app, key string) (bool, tea.Cmd) { return false, nil }
 func (placeBase) note(a *app, width int) []string           { return nil }
-func (placeBase) resting(a *app) string                     { return "" }
 func (placeBase) changed(a *app, since time.Time) int       { return 0 }
 func (placeBase) summary(a *app) string                     { return "" }
 func (placeBase) press(a *app, y int) (tea.Cmd, bool)       { return nil, false }
@@ -341,8 +330,7 @@ func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // box of its own. A sentence half typed on one place is still there after `tab`,
 // which is what makes a permanent bottom line a composer rather than seven boxes
 // that each forget ([app.compose]).
-func (placeBase) box(a *app) *editor { return &a.compose }
-func (placeBase) boxOnBody() bool    { return false }
+func (placeBase) box(a *app) *editor { return nil }
 
 // caretRow defaults to NO: a box drawn in the composer at the foot is parked
 // by the frame itself, and a place with no row-box of its own has nothing to
@@ -491,6 +479,14 @@ func (p page) word() string {
 		return pl.word()
 	}
 	return ""
+}
+
+// lookKey preserves the saved visit stamp when a tab's displayed name changes.
+func (p page) lookKey() string {
+	if p == pageTasks {
+		return "tasks"
+	}
+	return p.word()
 }
 
 // counted answers whether a number in front of a place would mean anything.
@@ -704,7 +700,8 @@ func (a *app) barWordsAt(width int, numbered bool) (map[page]bool, int) {
 			spent += cost(id)
 		}
 	}
-	reserve := tabPadCols + ansi.StringWidth("+"+itoa(len(shown)))
+	folds := foldSpellings(len(shown), "")
+	reserve := tabPadCols + ansi.StringWidth(folds[len(folds)-1])
 	for _, id := range shown {
 		if keep[id] {
 			continue
@@ -990,6 +987,13 @@ func (a *app) barReach() bool {
 	if pl == nil || a.bar.on || a.tabRow < 1 {
 		return false
 	}
+	// HOME'S COLUMN HAS NO WAY UP ONTO THE BAR (owner, 2026-09-17: "don't let
+	// users scroll up out of the left column onto the tabs"). `↑` at the top of
+	// the field stays where it is; the bar is reached by a press on it, `tab`,
+	// or a place's own chord. Every other place keeps the walk.
+	if pl.id() == pageHome {
+		return false
+	}
 	stops := pl.stops(a)
 	if len(stops) == 0 {
 		// A ROOM WITH NOTHING IN IT STILL HAS A BAR OVER IT. An almost-empty page
@@ -1210,6 +1214,11 @@ func placeFrameWithBar(a *app, width, height int,
 		add(row, nil)
 	}
 
+	// ONE BOX, ON HOME ([place.box] states the ruling). Every other place's foot
+	// is the blank, the rule with the place's note on it, and the hint — three
+	// rows — and a person who wants to start something presses `tab` to home,
+	// whose rule already says where it will land.
+	hasBox := a.at(pageHome)
 	box := a.placeBox()
 	var draftRows []string
 	var draftCX, draftCY int
@@ -1222,7 +1231,9 @@ func placeFrameWithBar(a *app, width, height int,
 		// picker's own hint stands in while nothing is typed.
 		draftRows, draftCX, draftCY = draftBlock(&a.target.pick.filter, pal, width-2, 1,
 			a.target.pick.hintAt(width-2-ansi.StringWidth(prompt)), "")
-	case box != nil && !box.empty() && !a.placeBoxOnBody():
+	case hasBox && box != nil && len(box.value) > 0:
+		// Blank lines still hold the caret. The send-time emptiness check
+		// discards whitespace, but the editor must draw everything typed.
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
 	}
 	// THE BOX HAS A FLOOR ([boxFloor]) AND EVERY BRANCH ABOVE IS HELD TO IT, the
@@ -1246,9 +1257,12 @@ func placeFrameWithBar(a *app, width, height int,
 	// move on the first keystroke: a box that jumped from one row to three the
 	// moment a letter landed would shift the list up under the hand that was
 	// reaching for it.
-	draftHeight := len(draftRows)
-	if floor := boxFloor(height); draftHeight < floor {
-		draftHeight = floor
+	draftHeight := 0
+	if hasBox {
+		draftHeight = len(draftRows)
+		if floor := boxFloor(height); draftHeight < floor {
+			draftHeight = floor
+		}
 	}
 	// THE VERB STRIP IS A ROW OF THE BODY AND THE ANSWER STRIP IS A ROW OF THE
 	// FOOT, and they are asked for separately because they are two different
@@ -1270,10 +1284,14 @@ func placeFrameWithBar(a *app, width, height int,
 	// A note builder fits its words to the width it is handed less the two cells
 	// its own row spent on a lead and a margin, so it is handed the rule's room
 	// plus those two — and drops a whole clause, rather than the rule cutting one.
-	var note, legend []string
-	if a.at(pageHome) {
-		note = a.placeNote(width)
-	} else {
+	//
+	// AND WHERE THE RULE IS THE DRAFT'S SEAM (every place with a draft,
+	// boxseam.go) the note rides that seam's right slot instead, through
+	// [app.placeNoteLegend] inside [app.targetLegend] — still no row, still one
+	// foot height on every place. What is built here is the note for the one
+	// rule that is not a seam (settings).
+	var legend []string
+	if !hasBox {
 		legend = a.placeNote(width - placeNoteRuleFrame + 2)
 	}
 	// AND THE TRAY IS A ROW OF THE FOOT, directly over the box, exactly where the
@@ -1289,7 +1307,7 @@ func placeFrameWithBar(a *app, width, height int,
 	// after the body would push the box down by three cells the moment the chord
 	// was pressed.
 	layer := a.composerRows(width, pal)
-	foot := 2 + len(note) + len(tray) + draftHeight + len(strip) + len(layer)
+	foot := 2 + len(tray) + draftHeight + len(strip) + len(layer)
 	room := height - len(lines) - foot - spacingRuleClearance
 	if room < 1 {
 		room = 1
@@ -1305,6 +1323,11 @@ func placeFrameWithBar(a *app, width, height int,
 	// layer has claimed the whole keyboard (composerlayer.go), so every letter on
 	// a strip drawn under it would be a letter that does nothing — which is the
 	// one state this surface may never be in.
+	// A wide home keeps row options beneath the middle-column description,
+	// so opening them takes no space from the list or its pointer map.
+	if a.homeStripInDescription(width, room) {
+		inline = nil
+	}
 	bodyRoom := room - len(inline)
 	// AND THE SWITCHER TAKES THE STRIP DOWN FOR THE LAYER'S REASON EXACTLY: it
 	// has claimed the whole keyboard (hop.go), so every letter on a strip drawn
@@ -1390,35 +1413,25 @@ func placeFrameWithBar(a *app, width, height int,
 	// reason: the clamp is what decides which rows this frame really kept.
 	targetTop := -1
 	ruleLine := placeNoteRule(legend, width, pal)
-	if a.at(pageHome) {
+	if hasBox {
 		if line, drew := a.targetLegend(width, pal); drew {
 			ruleLine, targetTop = line, len(lines)
 		}
 	}
 	add(ruleLine, nil)
-	// A PLACE MAY SAY ONE LINE ABOUT WHAT IT IS HOLDING, and it says it on the
-	// rule above ([placeNoteRule]); only home, whose rule is its target legend,
-	// still spends rows on one here.
-	for _, row := range note {
-		add(row, nil)
-	}
 
 	caretX, caretY := 0, 0
-	// THE BOX ROW CARRIES THE SCOPE CHIP AT ITS RIGHT EDGE, and it carries it at
-	// rest too. `alt+enter` sends what is typed off as a task from any place, and
-	// a verb that is always in reach has to always say where it will land —
-	// otherwise "start a task from anywhere" is "start a task somewhere".
-	chip := a.scopeChip()
-	// AND HOME HAS NO CHIP, because home's rule says the same fact one row up and
-	// says it better: `→ new conversation in ~/src/parser · glm-5.3-flash` is
-	// where the sentence lands AND what it will run on, and `here ~/src/parser`
-	// competing with the draft for the same row was the one reading on this
-	// screen that `enter` did not honour (homedraft.go's header). The other six
-	// places keep it — `alt+enter` sends a task from any of them, and a verb
-	// always in reach has to always say where it will land.
-	if a.at(pageHome) {
-		chip = ""
-	}
+	// THE BOX ROW CARRIES NO CHIP. It used to wear `here ~/src/parser` at its
+	// right edge on every place but home, on the argument that `alt+enter` sends
+	// a task from anywhere and a verb always in reach has to say where anywhere
+	// is. The rule one row up says that now on every place with a draft — `◎
+	// new conversation in ~/src/parser · glm-5.3-flash …` — and says it better,
+	// with the model, the rung and the gate beside it (boxseam.go); and it is the
+	// same folder the layer opens a task in ([app.composerOpensAt]). A chip
+	// repeating half of it a row lower was one fact spelled twice on one frame,
+	// which is the defect the model's colon suffix made once (effortchip.go).
+	// Settings, whose box is a value editor, has no draft and never had a chip
+	// that meant anything.
 	// AND THE POINTER IS TOLD WHERE THE BOX ENDED UP, on the tab bar's own
 	// bargain: a press resolves against the rows that were actually drawn
 	// ([app.boxRow], placemouse.go's [app.placeBoxPress]). It is recorded as a
@@ -1432,8 +1445,15 @@ func placeFrameWithBar(a *app, width, height int,
 		add(row, nil)
 	}
 	boxTop, boxHeight := len(lines), len(draftRows)
-	if len(draftRows) == 0 {
-		add(a.placeChipped(" "+pal.dim(fit(a.placeRestWord(), width-2)), chip, width, pal), nil)
+	switch {
+	case !hasBox:
+		// NO BOX, NO CARET. A blinking bar with nothing under it is a cursor
+		// with no box — the law the job page and the task card already keep by
+		// hiding it rather than parking it on a title.
+		boxTop, boxHeight = 0, 0
+		a.caret = false
+	case len(draftRows) == 0:
+		add(" "+pal.dim(fit(a.placeRestWord(), width-2)), nil)
 		// AND THE REST OF THE BLOCK IS HELD OPEN UNDER IT, so the box is the same
 		// shape before the first keystroke as after it. The span stays EMPTY
 		// (boxHeight is still zero above): these rows are the box's silhouette
@@ -1458,12 +1478,8 @@ func placeFrameWithBar(a *app, width, height int,
 		// hiding it: unplaced, it blinks at the frame's origin over the `home`
 		// heading.
 		caretX, caretY = 1+ansi.StringWidth(prompt), boxTop
-	} else {
-		for i, row := range draftRows {
-			if i == 0 {
-				add(a.placeChipped(" "+row, chip, width, pal), nil)
-				continue
-			}
+	default:
+		for _, row := range draftRows {
 			add(" "+row, nil)
 		}
 		caretX, caretY = 1+draftCX, len(lines)-len(draftRows)+draftCY
@@ -1481,6 +1497,7 @@ func placeFrameWithBar(a *app, width, height int,
 	if ownDrawn {
 		if ownRow >= 0 {
 			caretX, caretY = min(ownColumn, width-1), ownBase+ownRow
+			a.caret = true
 		} else {
 			a.caret = false
 		}
@@ -1552,7 +1569,7 @@ func placeFrameWithBar(a *app, width, height int,
 	a.boxRow, a.boxRows = boxTop, boxHeight
 	a.targetRow = targetTop
 	if targetTop < 0 {
-		a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
+		a.clearTargetSpans()
 	}
 	for len(lines) < height {
 		add("", nil)
@@ -1565,55 +1582,19 @@ func placeFrameWithBar(a *app, width, height int,
 	return lines, hits, caretX, caretY
 }
 
-// placeChipped puts the scope chip against the right edge of the box row, and
-// drops it rather than crowding the sentence when there is no room for both.
-func (a *app) placeChipped(row, chip string, width int, pal palette) string {
-	if chip == "" {
-		return row
-	}
-	painted := pal.dim(chip)
-	gap := width - ansi.StringWidth(row) - ansi.StringWidth(chip) - 1
-	if gap < 1 {
-		return row
-	}
-	return row + strings.Repeat(" ", gap) + painted
-}
-
-// scopeChip is the right of the box row: WHERE what you type will land.
+// scopeWorkspace is where what is typed will land, as a REAL PATH and with
+// nothing pinned: the project the cursor is standing on, then this window's
+// own. It is the unpinned half of [app.targetWhere], which the rule over the
+// box, `enter` and the composer layer all read.
 //
-// It is derived and never stored, from the three answers that already exist, in
-// this order: the project the cursor is standing on (home's own [homeWhere],
-// which is what `ctrl+t` already asks when it decides where a fresh conversation
-// goes), then this window's own workspace ([app.placePath], the same answer the
-// phone's status sheet prints as its `place` row). A person who typed a path
-// outranks both, and that is the composer's business rather than the chip's.
-func (a *app) scopeChip() string {
-	// IT IS SHORTENED THE WAY EVERY OTHER PATH ON THIS SURFACE IS ([shortPath],
-	// and [app.placePath] applies it to this window's own project). A raw
-	// `~/work/codeaf` in this chip while the very next place drew
-	// `codeaf` would be one fact spelled two ways on two frames a `tab` apart,
-	// and the design draws the short form (SCREEN 2b's `here ~/codeaf`).
-	//
-	// AND THE CHIP'S OWN DECORATIONS GO ON TOP OF THAT ONE FACT: a session opened
-	// over `--host` says whose disk the path is on, and an owned place says the
-	// word it is called instead of a path at all (host.go). Both are about how
-	// this row READS and neither is about where the sentence goes.
-	if where := a.hostedPath(a.placeWord(shortPath(a.scopeWorkspace(), a.tilde, 0))); where != "" {
-		return placeScopeWord + " " + where
-	}
-	return ""
-}
-
-// scopeWorkspace is the chip's answer as a REAL PATH: the project the cursor is
-// standing on, then this window's own.
-//
-// IT IS ONE ANSWER BECAUSE IT IS ON ONE FRAME TWICE. The chip says where what
+// IT IS ONE ANSWER BECAUSE IT IS ON ONE FRAME TWICE. The rule says where what
 // you type will land, and the composer layer's first line says where the task
 // will run (composerlayer.go) — one row apart, on the same screen. Two readings
 // of "where" that could disagree is exactly the drift the ONE SOURCE OF TRUTH
-// law exists for, and they did: the chip drew this window's project on a place
-// that is not home while the errand door fell through to the person's home
-// directory, so a person read `here ~/codeaf` and started a task in `~`.
+// law exists for, and they did: the box row's old chip drew this window's
+// project on a place that is not home while the errand door fell through to
+// the person's home directory, so a person read `here ~/codeaf` and started a
+// task in `~`.
 func (a *app) scopeWorkspace() string {
 	if a.at(pageHome) {
 		if line, ok := a.home.previewLine(); ok {
@@ -1658,14 +1639,13 @@ func scopeAddress(line homeLine) string {
 // The sentences the router says. Each is quoted in the manual exactly as it is
 // spelled here.
 const (
-	// placeScopeWord leads the scope chip. One word, because the chip's whole job
-	// is the path beside it.
-	placeScopeWord = "here"
-	// placeRestWord is what the box row says on a place with nothing typed into
-	// it — home included, exactly as SCREEN 2b draws it. What home's box ALSO
-	// does is filter, and that is said on the foot rather than in the box, where
-	// the design puts it ([homeRestHint]).
-	placeRestWord = "say what you want done"
+	// placeRestWord is what home's box row says with nothing typed into it: the
+	// promise the foot used to open with. It said `say what you want done` on
+	// every place until 2026-09-17, when the box came off every place but home
+	// and the owner ruled that the one box left says what it is for — both of
+	// its readings, the search and the start — and the foot under it keeps
+	// only the draft controls ([app.targetChordWords]).
+	placeRestWord = "type to search or start something new"
 	// placeHintWords is the second line of the composer, AND IT IS THE DESIGN'S
 	// OWN SENTENCE WORD FOR WORD (SCREEN 2b, and FIDELITY.md item 3 quotes it as
 	// the composer's foot). Four clauses: what enter does, what the chord does,
@@ -1704,8 +1684,12 @@ const (
 	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · " +
+	placeMapWords = "alt+1…7 go to a place · " + placeMapTaskWords + " · " +
 		placeMapVerbWords + " · " + mapCloseWords
+	// placeMapTaskWords is the map's clause about the chord that starts a task,
+	// named so the line can be drawn WITHOUT it: only home starts things, so on
+	// every other place the chord does nothing and is not on the map.
+	placeMapTaskWords = "alt+enter send it off as a task"
 	// mapCloseWords is that line's last clause, named so the switcher's own
 	// clause can be spliced IN FRONT of it rather than after it (hop.go): `esc
 	// close` is the way out and the way out is always said last.
@@ -1720,6 +1704,20 @@ const (
 // is the number every place is measured against ([placeFrameWithBar] builds it
 // row by row and TestEveryPlaceSpendsTheSameHeadAndFoot reads it back).
 const placeFootRows = 3 + homeDraftFloor
+
+// placeBareFootRows is the foot on every place but home: the blank, the rule
+// with the place's note on it, and the hint. There is no box to hold a floor
+// open for ([place.box] states the ruling).
+const placeBareFootRows = 3
+
+// placeFootRowsFor is the foot of one place on a frame of a given height —
+// home's with its box, every other place's bare — so a law reads one answer.
+func placeFootRowsFor(id page, height int) int {
+	if id == pageHome {
+		return placeFootRowsAt(height)
+	}
+	return placeBareFootRows
+}
 
 // placeSmallestFrame is the shortest terminal this surface is laid out for, and
 // the height nearly every law in this package is stated at. Eighty by
@@ -1783,34 +1781,14 @@ func boxFloor(height int) int {
 	return homeDraftFloor
 }
 
-// placeRestWord is what this place's box row says with nothing typed in it.
-//
-// IT IS THE SAME SENTENCE ON EVERY PLACE THAT SENDS ONE — home included (SCREEN
-// 2b) — AND THE PLACE'S OWN WHERE THE BOX DOES SOMETHING ELSE. The design's
-// argument for one sentence is that the box is one box wherever you stand, and
-// that argument holds exactly as far as the box doing one thing. On the tasks
-// place it does not: there is no message to send from there, every printable key
-// goes to the filter ([placeTasks.box]), and the shared prompt was inviting an
-// instruction into a slot that could only ever narrow a list ([place.resting]
-// carries the whole of that story).
-// placeBoxOnBody is that hook asked of whichever place is standing.
-func (a *app) placeBoxOnBody() bool {
-	pl := a.showing()
-	return pl != nil && pl.boxOnBody()
-}
-
-func (a *app) placeRestWord() string {
-	if pl := a.showing(); pl != nil {
-		if said := strings.TrimSpace(pl.resting(a)); said != "" {
-			return "› " + said
-		}
-	}
-	return "› " + placeRestWord
-}
+// placeRestWord is what home's box row says with nothing typed in it — the
+// design's own sentence (SCREEN 2b). It is home's alone now: no other place
+// draws a box ([place.box]).
+func (a *app) placeRestWord() string { return "› " + placeRestWord }
 
 // placeHintSaid is the line under the composer, IN THE ONE SPELLING EVERY
 // CONSTANT ON THIS SURFACE IS AUTHORED IN. Home writes its own sentence for
-// every row it can stand on ([app.homeHint]) and gains the router's tail; every
+// every row it can stand on ([app.homeHint]) without the router's tail; every
 // other place says the router's own line.
 //
 // WHAT THIS TERMINAL ACTUALLY DRAWS IS [app.placeHint], one call above it: on a
@@ -1858,11 +1836,9 @@ func (a *app) placeHintSaid() string {
 	if pl := a.showing(); pl != nil && a.sheetLayerOwnsKeys() {
 		return pl.hint(a)
 	}
-	// AND THE MODEL LIST OVER HOME'S TARGET IS THE THIRD OF THOSE, on identical
-	// terms: it has taken `tab` along with every other key while it is up
-	// (homedraft.go's [app.homeTargetKey]), so the tail would name two keys that
-	// do nothing.
-	if a.targetPickShowing() {
+	// HOME OWNS ITS WHOLE FOOT, including the model list's keys while it is
+	// open. Its navigation chords still work but no longer get a router tail.
+	if a.at(pageHome) {
 		return a.homeHint()
 	}
 	// EVERY PLACE'S OWN SENTENCE, WITH THE ROUTER'S KEYS ON THE END OF IT. The
@@ -1894,10 +1870,15 @@ func (a *app) placeHintSaid() string {
 // lists are built per row on every place that has any.
 func (a *app) placeMapSaid() string {
 	pl := a.showing()
-	if pl != nil && len(pl.verbs(a)) > 0 {
-		return placeMapWords
+	line := placeMapWords
+	if pl == nil || len(pl.verbs(a)) == 0 {
+		line = strings.Replace(line, placeMapVerbWords+railSep, "", 1)
 	}
-	return strings.Replace(placeMapWords, placeMapVerbWords+railSep, "", 1)
+	// AND THE TASK CHORD IS HOME'S ALONE ([place.box]).
+	if !a.at(pageHome) {
+		line = strings.Replace(line, placeMapTaskWords+railSep, "", 1)
+	}
+	return line
 }
 
 // placeTailed puts the router's own keys on a place's sentence, and puts them
@@ -2028,13 +2009,13 @@ func hintFit(hint string, room int) string {
 // everywhere else.
 //
 // THE NOTE IS ONE SENTENCE AND NOT A CLAUSE LIST. A question's note arrives
-// assembled (`allow rm -rf build? · waiting in this conversation · alt+a`),
+// assembled (`allow rm -rf build? · waiting in this conversation · alt+y`),
 // and it can arrive already opening with the separator — a question with no
 // head leaves the rail's own ` · ` at the front — so the join strips a leading
 // one rather than adding a second: [railSep] is the one joiner down this whole
 // column, and a doubled ` · · ` is a line lying about its own shape. The note's
 // own clauses are never dropped one by one, because the note is the thing the
-// person is being told and a note that lost its `alt+a` would be a question
+// person is being told and a note that lost its `alt+y` would be a question
 // with no way left to reach it.
 //
 // A FRAME TOO NARROW FOR THE DOOR AND THE NOTE ALONE is the one case left, and
@@ -2292,7 +2273,12 @@ func (a *app) closeModals() {
 	a.connPanel.close()
 	a.harnPanel.close()
 	a.permPanel.close()
-	a.subPage.close()
+	// Navigation hides an unanswered offer without resolving or losing it.
+	if a.subPage.card.asked() {
+		a.subPage.open = false
+	} else {
+		a.subPage.close()
+	}
 	// AND HOME'S OWN MODEL LIST, which IS drawn where it stands and is still a
 	// list nobody left open on purpose: walking to another place and back to a
 	// list you had not finished with is a list you have to remember opening
@@ -2351,11 +2337,8 @@ func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	return pl.press(a, y)
 }
 
-// placeBodyHover is the pointer resting over one place's rows: THE POINTER
-// PREVIEWS AND THE CURSOR SELECTS, which is home's own law owed to every place
-// the router promoted. A place repaints only when the row under the pointer
-// actually changed, exactly as [app.setHover] does, because motion is the
-// commonest message this surface gets.
+// placeBodyHover selects the row reached by the pointer. The same cursor
+// drives keyboard actions, and a place repaints only when that row changes.
 func (a *app) placeBodyHover(y int) bool {
 	pl := a.showing()
 	return pl != nil && !a.composer.open && pl.hover(a, y)

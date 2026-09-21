@@ -494,7 +494,9 @@ func openChatV3Host(launch hostLaunch) error {
 	if launch.pick && launch.once != "" {
 		return fmt.Errorf(`codeaf resume opens the session picker; for one headless message use: codeaf chat --host %s --once "text"`, dest)
 	}
-	link, err := dialEngine(dest, workspace, launchHello(launch.session, launch.model, launch.level))
+	hello := launchHello(launch.session, launch.model, launch.level)
+	hello.Headless = launch.once != ""
+	link, err := dialEngine(dest, workspace, hello)
 	if err != nil {
 		return err
 	}

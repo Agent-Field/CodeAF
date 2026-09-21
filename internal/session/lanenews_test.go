@@ -233,3 +233,40 @@ func TestTypingReachesTheTransportAndOnlyWhereThereIsOne(t *testing.T) {
 	plain := &Agent{client: &scriptedCompleter{}, model: "openrouter/model"}
 	plain.Typing()
 }
+
+// A SIGHTING TOLD WHILE NOBODY WAS LISTENING REACHES THE NEXT READER. An
+// engine host replays a conversation's last sighting during the welcome, which
+// is before the window's reader is registered; the desk holds the last landed
+// one and hands it over as the reader arrives — once, and never a rescue in
+// flight ([laneNewsHeld]).
+func TestASightingToldBeforeTheReaderArrivesReachesIt(t *testing.T) {
+	previous := OnLaneNews(nil)
+	t.Cleanup(func() { OnLaneNews(previous) })
+	laneNewsMu.Lock()
+	laneNewsHeld = nil
+	laneNewsMu.Unlock()
+
+	TellLane(LaneNews{Model: "deepseek/deepseek-v4.1-flash", Lane: "gmicloud", Session: "one"})
+	TellLane(LaneNews{Model: "deepseek/deepseek-v4.1-flash", Lane: "baidu", Session: "one"})
+	TellLane(LaneNews{Model: "deepseek/deepseek-v4.1-flash", Alt: "coreweave", Trying: true, Session: "one"})
+
+	heard := make(chan LaneNews, 4)
+	OnLaneNews(func(news LaneNews) { heard <- news })
+	select {
+	case news := <-heard:
+		if news.Lane != "baidu" || news.Trying {
+			t.Fatalf("the reader was handed %+v, want the last landed sighting", news)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the sighting told before the reader arrived never reached it")
+	}
+	// ONCE: a reader registering later starts with nothing.
+	OnLaneNews(nil)
+	again := make(chan LaneNews, 1)
+	OnLaneNews(func(news LaneNews) { again <- news })
+	select {
+	case news := <-again:
+		t.Fatalf("a second reader was handed %+v, want nothing", news)
+	case <-time.After(200 * time.Millisecond):
+	}
+}

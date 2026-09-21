@@ -593,6 +593,9 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	// raised either banner above raised it because there is a question in there or
 	// a turn landed in it, and [app.keptQuiet] refuses both.
 	a.sweepKept()
+	if a.homeAnimating() {
+		return tea.Batch(next, banner, a.wake())
+	}
 	return tea.Batch(next, banner)
 }
 
@@ -681,6 +684,9 @@ func (a *app) rememberOpen(key string) {
 	if a.tabShut[key] {
 		delete(a.tabShut, key)
 		a.chatTabBar = tabBar{}
+	}
+	if a.at(pageHome) && a.home.tabs != nil {
+		a.home.build()
 	}
 }
 

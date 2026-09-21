@@ -2532,3 +2532,17 @@ plus at most two 400-byte neighbours on each side. They do not read whole
 transcripts or invoke an embedding model. Search tokenization accepts at most
 32 Unicode word/number tokens, quoted as FTS data. History access inherited by
 tasks grants reads only and introduces no background memory calls or writes.
+
+## Home conversation list budget
+
+Home's conversation list is bounded by `tui3.tabsCap` (32 open tabs) plus
+`tui3.homeClosedLimit` (3 closed conversations). It replaces the ten-row saved-history
+budget. A short frame folds what cannot fit; metadata comes from Home's cached world
+reading. Tab membership changes rebuild the list without rereading the filesystem.
+
+### One conversation name (2026-09-20)
+
+Conversation naming requests one 5–8 word phrase. The former two-word/32-byte
+short-label cap is removed; `titleLimit` remains 80 bytes for the only stored title.
+`titleClip`, the 20-second ask window and the two-minute naming window are unchanged.
+Home and tab widths truncate that same title with three dots at render time.

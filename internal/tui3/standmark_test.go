@@ -313,7 +313,7 @@ func TestTheStandingCountIsNotOnTheStatusRow(t *testing.T) {
 	if got := a.keepingSegment(); got == "" {
 		t.Fatal("the fixture has nothing standing over it")
 	}
-	if line := plain(a.status(200)); strings.Contains(line, "standing order") {
+	if line := plain(a.legend(200)); strings.Contains(line, "standing order") {
 		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 }

@@ -177,6 +177,10 @@ var salienceTable = []salienceCase{
 	// sentence about why the machine they named stopped answering.
 	{name: "EventRowNews", ev: session.Event{Kind: session.EventRowNews,
 		Text: "deepseek cannot serve this model; routing on auto for this model until you pin again"}},
+	{name: "EventQuestionDiscussion", chatOnly: "a clarification belongs to the person's pending decision and arrives on the conversation's question subscription",
+		ev: session.Event{Kind: session.EventQuestionDiscussion, Discussion: &session.QuestionDiscussion{
+			ID: "clarify-1", Seq: 1, Event: &session.Event{Kind: session.EventTextDelta, Text: "the command only reads the report"},
+		}}},
 }
 
 // errSalience is the engine failing, in the one shape both pumps read.

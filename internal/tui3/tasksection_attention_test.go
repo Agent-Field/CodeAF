@@ -28,7 +28,7 @@ import (
 // stopped on a question that has nothing to do with any of them.
 func tasksAskingWorld(now time.Time, asking bool) (session.World, session.UsageWindow) {
 	row := session.SessionRow{
-		ID: "room-a", Title: "shipping the gate", Project: "codeaf",
+		ID: "room-a", Title: "Shipping the Gate", Project: "codeaf",
 		Open: true, Live: true,
 	}
 	// The presence file is what says a row is HAPPENING ([session.SessionRow]'s
@@ -202,7 +202,7 @@ func TestTheGroupingIsTheSameWhetherOrNotTheConversationIsAsking(t *testing.T) {
 // finding.
 func TestWorkNobodyCouldCheckStillNeedsYourLook(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 11, 0, 0, time.UTC)
-	quiet := session.SessionRow{ID: "room-b", Title: "thor clips", Project: "media"}
+	quiet := session.SessionRow{ID: "room-b", Title: "Thor Clips", Project: "media"}
 	quiet.Tasks.Rows = []session.TaskIndexEntry{
 		{SessionID: "room-b", ID: "1", Label: "verify the pro model's pricing",
 			Status: string(session.TaskUnverified), EndedAt: now.Add(-time.Hour)},

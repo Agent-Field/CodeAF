@@ -2,18 +2,19 @@
 
 ## What was that tip above the message box — the one-line hint in the border
 
-The dim line at the right end of the rule above your message box is the hint slot. Most of
-the time it names the keys that work right now — `esc interrupt` while an answer is coming,
+The dim row under your message box — the last row of the frame — is the hint slot (until
+2026-09-17 it was the right end of the rule above the box; the numbers have that end now).
+Most of the time it names the keys that work right now — `ctrl+c interrupt` while an answer is coming,
 `y allow · n deny · a always` while codeaf is asking you something, `/ commands` when nothing
 is happening. Once you have used codeaf a little, that idle line sometimes carries a tip
 instead: one sentence naming a key or a command you have not used yet, and what it does.
-For example `ctrl+. sees every task this project has run`, or `esc esc takes back the last
+For example `ctrl+. sees every task this project has run`, or `/rewind takes back an earlier
 message`.
 
 A tip only appears over an empty box while nothing else is happening. The moment you type,
 open a list, or an answer starts, the slot goes back to the keys for that state; the tip
 returns when things are quiet again. A tip never takes a row of its own and never blocks a
-keystroke — it is one line in a border that is on the screen anyway.
+keystroke — it is the keys row, which is on the screen anyway.
 
 ## Why did the hint disappear — each tip retires once you use what it teaches
 
@@ -40,8 +41,8 @@ that retires it.
   list by typing `/`.
 - `ctrl+. sees every task this project has run` — after the first task starts. Retired when
   you open the task page, by `ctrl+.` or `/history`.
-- `esc esc takes back the last message` — after an answer of about 1,500 characters or more.
-  Retired the first time a rewind lands, from `esc esc` or from `/rewind`.
+- `/rewind takes back an earlier message` — after an answer of about 1,500 characters or more.
+  Retired the first time a rewind lands, from `/rewind`.
 - `/compact summarizes the conversation now` — when the conversation passes half its
   context window. Retired when a `/compact` finishes.
 - `/files finds everything made for you` — after the first `/export` writes a file. Retired
@@ -62,7 +63,7 @@ the cost tip over the task page tip — and the other waits its turn.
 Open the settings panel with `/settings` (or `ctrl+,`), go to the **Display** tab, and flip
 the **hints** row off. Enter or space toggles it. The change lands at the end of the next
 turn. Off silences the tips and the what's-new lines together; it does not touch the keys
-the slot names for a live state — `esc interrupt` and the rest are not hints and cannot be
+the slot names for a live state — `ctrl+c interrupt` and the rest are not hints and cannot be
 turned off.
 
 Turning the row back on shows whatever is due. Tips you had already retired stay retired.

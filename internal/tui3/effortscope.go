@@ -7,14 +7,14 @@ package tui3
 // internal/effort holds the ladder and internal/session, internal/config and
 // internal/standing hold the three scopes a person can set a rung at. This file
 // is the surface's half of all three, and the whole of what it decides is that
-// `ctrl+v` means the SAME VERB everywhere and a DIFFERENT SCOPE everywhere:
+// `alt+e` means the SAME VERB everywhere and a DIFFERENT SCOPE everywhere:
 //
 //	the cursor on a task        the task's own rung   (session's SetTaskEffort)
 //	a standing item's card      that item's rung      (standing's SetStandingEffort)
 //
 // A THIRD SCOPE USED TO BE HERE AND ITS SURFACE IS GONE. Home had a resting
 // state — the cursor on no row at all, the column a card about the machine — and
-// `ctrl+v` moved the INSTALL'S default from it. `↑` off the top row reaches the
+// `alt+e` moved the INSTALL'S default from it. `↑` off the top row reaches the
 // tab bar now (pages.go's [barCursor]), so there is no such card; the install's
 // rung is moved from the `thinking` row of the settings panel, which is the
 // writer that road went through anyway (config's WriteDefaultEffort).
@@ -80,7 +80,7 @@ const effortClauseWord = "thinking "
 // key DOES; four presses out of five climb, and the fifth wraps back to the
 // bottom, which is the honest shape of a wheel and is said in full in the
 // manual rather than in five cells of a card.
-const effortKeyClause = "ctrl+v think harder"
+const effortKeyClause = effortKey + " think harder"
 
 // effortNext is one step of the wheel. See the header for why absence is a
 // starting point and never a stop.

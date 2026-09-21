@@ -53,7 +53,8 @@ type command struct {
 	alias []string
 }
 
-// commands is the list, in the order a person meets them.
+// commands is the shared catalogue. Its declaration order is retained by /help;
+// the interactive menu sorts it by name regardless of the older placement notes.
 var commands = []command{
 	// The picker's OTHER door is named here rather than on a line of its own,
 	// because it is the same door: press the model's name in the status line
@@ -149,7 +150,7 @@ var commands = []command{
 	// pick a point out of (rewindsheet.go) — and then the gesture that takes the
 	// last message back without opening anything (rewind.go). Two tiers, one row,
 	// in the order a person meets them.
-	{name: "rewind", desc: "go back to an earlier point · esc esc takes back the last", alias: []string{"undo", "back"}},
+	{name: "rewind", desc: "go back to an earlier point", alias: []string{"undo", "back"}},
 	// WHAT HAS ALREADY BEEN ANSWERED, and the way to take one back
 	// (permissions.go). It BELONGS beside /settings and /connect — those two are
 	// "what may this thing do" and "what may it reach", and this is "what has it
@@ -268,13 +269,14 @@ var commands = []command{
 	// something into the draft instead of running it.
 	//
 	// It is the LADDER'S door and not its only one. The rung is on the seam
-	// beside the model, `ctrl+v` walks it and so does a press on it
+	// beside the model, `alt+e` walks it and so does a press on it
 	// (effortchip.go) — this is the row for the person who wants to read the
 	// five before choosing, and the word people reach for is `thinking`, which
 	// is what the settings row calls the same ladder.
 	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
 		alias: []string{"think", "thinking"}},
-	{name: "effort", args: "<rung>", desc: "…set it outright · ctrl+v walks it, or press it on the seam"},
+	{name: "effort", args: "<rung>", desc: "…set it outright · " + effortKey + " walks it, or press it on the seam"},
+	{name: "ask", args: "<question>", desc: "ask here on home", door: sendDoorAsk},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
@@ -558,7 +560,7 @@ func canonicalCommand(word string) string {
 // aliasRung is the wall between a name match and an alias match, far above any
 // offset a name a dozen characters long can reach. A row found by its own name
 // always outranks a row found by a word it merely also answers to, so typing
-// "res" puts /resume above the /new that carries "reset".
+// "res" selects /resume rather than the /new that carries "reset".
 const aliasRung = 1_000
 
 // bareFor says whether this row is the argless form of exactly the word that
@@ -613,29 +615,13 @@ func (c command) typed() string {
 	return "/" + c.name + " " + c.args
 }
 
-// menuRows is THE FLOOR: the least this list ever shows, whatever the frame.
-//
-// ── IT WAS A CEILING AND THAT WAS THE DEFECT ────────────────────────────────
-//
-// Eight was a bare constant and the only number the list knew, so a fifty-row
-// terminal drew eight commands of fifty-two under thirty-six blank rows, said
-// nothing about the other forty-four, and put both /help and /manual below the
-// fold. `/` is the one door the greeting advertises — `/ shows commands` — and
-// what it showed a person on a cold start was /model through /compact and a
-// stop. The stated reason for the ceiling, that eight rows over the conversation
-// is already half a short terminal, is true at twenty-four rows and simply false
-// at fifty.
-//
-// So the number is the FLOOR now and the frame is the ceiling: the list takes
-// what the room the frame hands it will hold, and never fewer than these eight
-// even on a short terminal, where [app.overlayHeight]'s own clamp is what keeps
-// the status line and a row of conversation alive. WHERE ROWS ARE STILL HIDDEN
-// THE LIST SAYS HOW MANY, in the `▸ 44 more` line every other list on this
-// surface draws (searchplace.go, the spend place's fold).
-//
-// The ALIASES cost nothing here, because an alias is a word on a row and never a
-// row of its own.
+// menuRows is the preferred minimum viewport, further limited by the actual
+// terminal space. Taller frames use the available room above the seam. Hidden
+// commands remain reachable by scrolling, and the conversation list counts
+// the rows remaining below its viewport.
 const menuRows = 8
+
+const commandNoMatchWord = "no commands match"
 
 // menu is the command list's whole state. The zero value is closed.
 type menu struct {
@@ -644,8 +630,9 @@ type menu struct {
 	// be implicit — the list only ever opened on a draft whose first character
 	// was a slash, so the answer was always zero — and it is written down now
 	// that a slash anywhere in a sentence opens it (see [menu.sync]).
-	at int
-	// hits are indexes into commands, in rank order.
+	at    int
+	query string
+	// hits are indexes into commands, in alphabetical order.
 	hits   []int
 	score  []int
 	cursor int
@@ -664,35 +651,23 @@ type menu struct {
 	sealAt int
 }
 
-// sync opens, narrows or closes the list from the draft and the caret. It is
-// called after every edit, and it is the ONLY thing that opens this overlay:
-// there is no key for it, because the key is "/".
-//
-// ── A SLASH ANYWHERE, NOT ONLY AT THE HEAD OF THE LINE ──
-//
-// This used to ask one question of the whole line — does it start with "/" and
-// hold no space — which meant the list could only ever be reached by starting a
-// message with it. A person half a sentence in who wanted to know what commands
-// exist had to throw the sentence away to find out.
-//
-// So it asks the same question the "@" list asks instead ([slashToken]): the
-// caret is standing in a word, and that word begins with a slash. The dampers
-// that keep a PATH from dragging this open on every keystroke are three, and all
-// three are here rather than spread around the surface:
-//
-//   - A '/' with a non-space in front of it opens nothing. That is the token
-//     rule, and it is what makes "/Users/example" one candidate rather than two.
-//   - A filter that matches NOTHING closes the list. The word being matched is
-//     the whole run to the next space — "Users/example", "tmp/codeaf" — so a
-//     path drops out within a couple of keystrokes and stays out; a backspace
-//     back into a word that does match brings it straight back.
-//   - A space closes it, because the word the caret is in stops being the slash
-//     word — which is the rule that has always closed this list, restated.
-//
-// And esc seals the token outright ([menu.dismiss]), for the person who meant
-// the word and does not want to be asked again about it.
+// sync follows the slash token under the caret after edits and caret movement.
+// The entire token must be a command word, so moving within a path cannot open
+// the list. Unknown command words keep an empty list rather than revealing
+// unrelated search results on home. A space or path punctuation leaves command
+// mode, and Esc seals a literal token until the caret leaves it.
 func (m *menu) sync(e *editor) {
 	at, query, ok := slashToken(e.value, e.cursor)
+	if ok {
+		// Inspect the whole token, including text after the caret, so moving
+		// within an absolute path cannot reopen the command list.
+		for _, r := range e.value[at+1 : tokenEnd(e.value, at)] {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '?') {
+				ok = false
+				break
+			}
+		}
+	}
 	if !ok {
 		m.close()
 		return
@@ -703,20 +678,11 @@ func (m *menu) sync(e *editor) {
 		m.open = false
 		return
 	}
-	was := m.open && m.at == at
-	m.open, m.at = true, at
+	was := m.open && m.at == at && m.query == query
+	m.open, m.at, m.query = true, at, query
 	m.rank(strings.ToLower(query))
-	if len(m.hits) == 0 {
-		// NOTHING MATCHED, so there is nothing to be offered. It drew no rows in
-		// this state before ([menu.height] returns none), and being closed as
-		// well is what stops a path from holding an invisible overlay open
-		// underneath a sentence — and what lets esc, ↑ and ↓ mean what they
-		// ordinarily mean again.
-		m.open = false
-		return
-	}
 	if !was {
-		m.cursor, m.top = 0, 0
+		m.cursor, m.top = m.best(), 0
 	}
 }
 
@@ -732,13 +698,9 @@ func (m *menu) dismiss(at int) {
 	m.sealed, m.sealAt = true, at
 }
 
-// rank filters by SUBSTRING over the command's name, prefix first — the same
-// rule the model picker uses, for the same reason: the score is the offset the
-// match was found at, so "od" finds /model and "m" puts it first.
-//
-// AN ALIAS MATCHES AND THE CANONICAL ROW IS WHAT APPEARS. Typing "clea" narrows
-// the list to /new, not to a /clear row that does not exist: there is one row
-// per command, and the alias is a way of reaching it (see [command.matchAt]).
+// rank filters names and aliases by substring, then orders canonical rows
+// alphabetically. Scores choose the initial selection without rearranging the
+// list. Argument variants keep their table order beside their command.
 func (m *menu) rank(needle string) {
 	if cap(m.score) < len(commands) {
 		m.score = make([]int, len(commands))
@@ -752,25 +714,29 @@ func (m *menu) rank(needle string) {
 		m.score[i] = at
 		m.hits = append(m.hits, i)
 	}
-	if needle != "" {
-		sort.SliceStable(m.hits, func(a, b int) bool {
-			ra, rb := m.hits[a], m.hits[b]
-			if m.score[ra] != m.score[rb] {
-				return m.score[ra] < m.score[rb]
-			}
-			// THE TYPED LINE OUTRANKS THE TABLE once it spells a whole name.
-			// Enter is about to answer that line, and the honest answer is the
-			// argless form — the form the line already IS — never a row that
-			// would swallow a deliberately typed command into a draft still
-			// waiting for words. Short of the full name the table's own order
-			// stands, which is where a pair like /standing puts its words form
-			// first on purpose: a person still typing is offered the act, a
-			// person who finished the word gets what the word does bare.
-			return commands[ra].bareFor(needle) && !commands[rb].bareFor(needle)
-		})
-	}
+	sort.SliceStable(m.hits, func(a, b int) bool {
+		left, right := commands[m.hits[a]], commands[m.hits[b]]
+		if left.name != right.name {
+			return left.name < right.name
+		}
+		// A fully typed command still chooses its bare form. Argument variants
+		// otherwise retain their order within that command's alphabetic group.
+		return left.bareFor(needle) && !right.bareFor(needle)
+	})
 	m.cursor = moveCursor(m.cursor, 0, len(m.hits))
 	m.follow(menuRows)
+}
+
+// best selects a name or prefix match without moving it out of alphabetic order.
+// An alias remains discoverable without stealing Enter from a matching name.
+func (m *menu) best() int {
+	best := 0
+	for i, hit := range m.hits {
+		if m.score[hit] < m.score[m.hits[best]] {
+			best = i
+		}
+	}
+	return best
 }
 
 func (m *menu) move(delta int) {
@@ -802,6 +768,9 @@ func (m *menu) choice() (command, bool) {
 func (m *menu) height(width, room int, chords chordSpelling) int {
 	if !m.open {
 		return 0
+	}
+	if len(m.hits) == 0 {
+		return 1
 	}
 	// The ceiling is in LINES, so at [tierPhone] the list holds four commands
 	// with what they do written under them instead of eight rows that all say
@@ -839,8 +808,11 @@ func (m *menu) fit(width, ceiling int, chords chordSpelling) (rows, lines int) {
 }
 
 func (m *menu) rows(width, n int, pal palette, hover int, chords chordSpelling) []string {
-	if n <= 0 || len(m.hits) == 0 {
+	if n <= 0 {
 		return nil
+	}
+	if len(m.hits) == 0 {
+		return []string{pal.dim(fit("  "+commandNoMatchWord, width))}
 	}
 	m.follow(overlayItems(n, width))
 	// The fold's line is taken off the room BEFORE the rows are laid into it, so
@@ -1005,7 +977,7 @@ func helpText(file string, chords chordSpelling) string {
 		// THE DOOR IS NAMED HERE BECAUSE ONE KEY CARRIES TWO MEANINGS
 		// (leaving.go): at rest it leaves, mid-turn it stops the model, and a
 		// person whose ctrl+c "only interrupted" looks here before anywhere else.
-		"ctrl+c         quits everything · mid-turn it interrupts instead, like esc",
+		"ctrl+c         quits everything · mid-turn it interrupts instead",
 		// tab is the seventeenth rung of the key router (input.go) and does
 		// nothing at all when this terminal holds one conversation — which is
 		// why the line says what it needs rather than promising it always works.
@@ -1109,7 +1081,7 @@ func helpText(file string, chords chordSpelling) string {
 		// the machine, and one word meaning two places on the same list is a
 		// person pressing ← ← to find out where they end up.
 		"← ←            out of a task room · the conversation, at the live edge",
-		"space space    over an empty box: home · /home · esc back",
+		"esc            back one layer · home when no layer remains · /home",
 		// THE WORD KILL IS NAMED BY THE KEYS THAT STILL REACH THE BOX. ctrl+w was
 		// on this row until it became the close-tab chord above, and a sheet that
 		// went on offering it would be teaching a keystroke that shuts the window

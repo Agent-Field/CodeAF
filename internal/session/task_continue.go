@@ -51,6 +51,15 @@ func (a *Agent) ContinueTask(id uint64, words string) error {
 	return a.tasker().reopen(node, words)
 }
 
+// RetryTask restarts incomplete work without changing its identity or assignment.
+func (a *Agent) RetryTask(id uint64) error {
+	node := a.taskNode(id)
+	if node == nil {
+		return fmt.Errorf("no task %d in this session", id)
+	}
+	return a.tasker().reopenAttempt(node, "", true)
+}
+
 // reopen puts a settled node back on the frontier as queued work of ITS OWN
 // id. It is the transformation [interrupt] already performs for a process
 // death, reached here by a person for any ending.
@@ -63,6 +72,11 @@ func (a *Agent) ContinueTask(id uint64, words string) error {
 // stopped, the first-cause ending — because those are facts about the
 // attempt that just ended.
 func (g *TaskGraph) reopen(node *TaskNode, words string) error {
+	return g.reopenAttempt(node, words, false)
+}
+
+// The retry key checks the ending under the same lock that admits the attempt.
+func (g *TaskGraph) reopenAttempt(node *TaskNode, words string, failedOnly bool) error {
 	if g == nil || node == nil {
 		return errors.New("no task to continue")
 	}
@@ -71,30 +85,9 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 		g.mu.Unlock()
 		return fmt.Errorf("no task %d in this session", node.id)
 	}
-	// ONLY WORK THAT IS HANDED A FINDING CAN BE CONTINUED, and three kinds are
-	// not. A design and a saved shape's run have no worker that reads one, and a
-	// quick task has no brief a finding could join ([quickBrief] is its line and
-	// its list) and no copy for the next attempt to stand in — so a quick node
-	// re-queued here would run its line again from nothing, in the folder the
-	// first attempt already wrote in. Asking for it again is the honest door, and
-	// the refusal says which kind it is in the same words for all three.
-	switch node.kind {
-	case TaskKindHarness, TaskKindSubharness, TaskKindQuick:
-		kind := TaskKindWord(node.kind)
+	if err := node.reopenErrorLocked(failedOnly); err != nil {
 		g.mu.Unlock()
-		return fmt.Errorf("task %d is %s, not a run that can be continued", node.id, kind)
-	}
-	switch node.state {
-	case TaskRunning:
-		g.mu.Unlock()
-		return fmt.Errorf("task %d is still running", node.id)
-	case TaskQueued:
-		g.mu.Unlock()
-		return fmt.Errorf("task %d has not started yet", node.id)
-	case TaskDone, TaskFailed, TaskUnverified:
-	default:
-		g.mu.Unlock()
-		return fmt.Errorf("task %d is %s, not a task that has ended", node.id, node.state)
+		return err
 	}
 	if g.quitting {
 		g.mu.Unlock()
@@ -136,8 +129,19 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 		node.spec.effort = restoredRung(*node.nextEffort)
 		node.nextEffort = nil
 	}
+	// The last finding was captured above; current telemetry belongs to this attempt.
+	// Each attempt owns its stream; the old done channel may still be closing it.
+	node.room = nil
+	node.ended = time.Time{}
+	node.report = ""
+	node.stopReason = ""
 	node.publishing = false
-	node.continuing = true
+	node.continuing = node.spec.design == nil && node.spec.run == nil
+	if node.spec.design != nil {
+		node.spec.design.resume = nil
+		node.offer = nil
+		node.revise = nil
+	}
 	node.state = TaskQueued
 	node.claimed = false
 	node.stopped = false
@@ -434,7 +438,12 @@ func (g *TaskGraph) runAgainFromItsBranch(node *TaskNode) bool {
 		node.nextEffort = nil
 	}
 	node.publishing = false
-	node.continuing = true
+	node.continuing = node.spec.design == nil && node.spec.run == nil
+	if node.spec.design != nil {
+		node.spec.design.resume = nil
+		node.offer = nil
+		node.revise = nil
+	}
 	node.state = TaskQueued
 	node.claimed = false
 	node.stopped = false

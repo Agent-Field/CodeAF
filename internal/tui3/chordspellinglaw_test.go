@@ -20,7 +20,7 @@ import (
 //
 //   - home's rule, which said `alt+w folder · alt+o model` on a machine whose
 //     memory place said `opt+s` and whose map said `opt+1…opt+7` (homedraft.go);
-//   - the question chip on the status line, `alt+a` (question.go);
+//   - the question chip on the status line, `alt+y` (question.go);
 //   - the switcher's own door on the legend, the day it moved onto this
 //     modifier (render.go's [hopDoorWord]).
 //

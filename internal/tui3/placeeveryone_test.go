@@ -359,12 +359,9 @@ func TestTheWheelNeverReachesTheConversationFromAPlace(t *testing.T) {
 	}
 }
 
-// THE POINTER PREVIEWS ON EVERY PROMOTED PLACE, and moves nothing. It is home's
-// own law ([homeView.previewLine], homehover_test.go) owed to the four lists the
-// router promoted out of the conversation's chrome — the standing place's hover
-// map answered -1 by declaration and the other three had none at all, so a
-// pointer crossing any of them lit nothing.
-func TestThePointerPreviewsOnEveryPromotedPlace(t *testing.T) {
+// THE POINTER SELECTS ON EVERY PROMOTED PLACE. Every list uses its one cursor
+// for the highlight and for the row that keyboard actions operate on.
+func TestThePointerSelectsOnEveryPromotedPlace(t *testing.T) {
 	promoted := map[page]bool{pageStanding: true, pageMemory: true, pageSpend: true, pageSearch: true}
 	for _, place := range everyPlaceTable() {
 		if !promoted[place.id] {
@@ -379,15 +376,19 @@ func TestThePointerPreviewsOnEveryPromotedPlace(t *testing.T) {
 			// what the short frames in this file are for.
 			a.height = 40
 			cursor := place.cursor(a)
+			selectable := make(map[int]bool)
+			for _, at := range a.showing().stops(a) {
+				selectable[at] = true
+			}
 			lit := false
 			for y, at := range place.hits(a) {
-				if at < 0 || at == cursor {
+				if !selectable[at] || at == cursor {
 					continue
 				}
 				before := placeFrameLines(a, place)
 				drive(t, a, tea.MouseMotionMsg{X: 4, Y: y})
-				if got := place.cursor(a); got != cursor {
-					t.Fatalf("the pointer over row %d moved the cursor from %d to %d", y, cursor, got)
+				if got := place.cursor(a); got != at {
+					t.Fatalf("the pointer over row %d selected %d, want %d", y, got, at)
 				}
 				after := placeFrameLines(a, place)
 				if y < len(before) && y < len(after) && before[y] != after[y] {

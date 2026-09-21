@@ -559,7 +559,7 @@ func (a *app) droppedLineInto(box *editor, chips *[]chip, line string) bool {
 	held := len(*chips)
 	if !a.pasteFilesInto(box, chips, line) {
 		// The path DID resolve, so a false answer here is the attachment door's
-		// own refusal — an oversize picture or hosted file — and never evidence
+		// own refusal — a folder, oversize picture or hosted file — and never evidence
 		// that this was an unknown slash command. Keep the path in the box so the
 		// refusal does not also take away the thing the person can edit or retry.
 		box.setText(line)

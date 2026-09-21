@@ -279,7 +279,7 @@ func TestTheCommandListOpensAtAWordBoundaryAndNotInsideAWord(t *testing.T) {
 func TestAnAbsolutePathDoesNotHoldTheCommandListOpen(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 
-	typeInto(t, a, "/Users")
+	typeInto(t, a, "/Users/person")
 	if a.menu.open {
 		t.Fatalf("typing a path left the list up over %q", a.input.String())
 	}
@@ -297,14 +297,14 @@ func TestAnAbsolutePathDoesNotHoldTheCommandListOpen(t *testing.T) {
 	}
 }
 
-func TestTheListClosesOnNoMatchOnSpaceAndOnEsc(t *testing.T) {
+func TestTheListStaysInCommandModeUntilSpaceOrEsc(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 
 	// Nothing matched is nothing to offer, and a backspace back into a word that
 	// does match brings it straight back.
 	typeInto(t, a, "/zzz")
-	if a.menu.open {
-		t.Fatal("a filter that matched nothing held the list open")
+	if !a.menu.open || len(a.menu.hits) != 0 {
+		t.Fatal("an unmatched slash word left command mode")
 	}
 	drive(t, a, key("backspace"))
 	drive(t, a, key("backspace"))

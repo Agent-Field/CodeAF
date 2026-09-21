@@ -21,7 +21,7 @@ import (
 func conversationApp(t *testing.T) *app {
 	t.Helper()
 	a := placeApp(t)
-	drive(t, a, key("esc"))
+	a.closeHome()
 	if a.pageShowing() {
 		t.Fatalf("esc left the %s place standing over the conversation", a.page.word())
 	}

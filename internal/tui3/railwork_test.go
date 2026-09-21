@@ -120,23 +120,18 @@ func TestTheLiveTreeAddsNoRowOfItsOwn(t *testing.T) {
 	if after := len(a.railEntries()); after != before {
 		t.Fatalf("the live tree grew the column from %d rows to %d", before, after)
 	}
-	// The head is the one place the new hand is allowed to show, and it shows as
-	// a NUMBER: the count is what this column takes from that door.
+	// A live-work count does not replace the blank spacer.
 	drawn := strings.Join(railText(a, a.viewHeight()), "\n")
 	if strings.Contains(drawn, "a hand with no row") {
 		t.Fatalf("the live tree drew a row of its own:\n%s", drawn)
 	}
-	if !strings.Contains(drawn, marginTasksWord+" · 2 working") {
-		t.Fatalf("the head never counted the second hand:\n%s", drawn)
+	if strings.Contains(drawn, marginTasksWord+" · 2 working") {
+		t.Fatalf("the task heading returned:\n%s", drawn)
 	}
 }
 
-// AND THE ONE THING THE COLUMN DOES TAKE FROM THE DOOR IS THE COUNT, which is
-// the fact no single row can carry: how many hands are moving at once. It is
-// counted over the whole tree, root included, and at zero or one there is no
-// tail at all — the emptiness law, applied to a number that would be telling
-// somebody about a crowd of one.
-func TestTheTasksHeadCountsOnlyTwoOrMoreWorking(t *testing.T) {
+// The spacer stays blank regardless of the number of working tasks.
+func TestTheTasksSpacerStaysBlankWhileWorkRuns(t *testing.T) {
 	a, agent := workRailApp(t)
 	for n := 0; n <= 3; n++ {
 		kids := make([]session.WorkNode, n)
@@ -147,13 +142,8 @@ func TestTheTasksHeadCountsOnlyTwoOrMoreWorking(t *testing.T) {
 		}
 		agent.work[0].Children = kids
 		head := plain(a.marginHead(28, true)[0].text)
-		total := n + 1
-		if total <= 1 && head != marginTasksWord {
-			t.Fatalf("%d working drew a payload: %q", total, head)
-		}
-		if total > 1 && head != marginTasksWord+" · "+itoa(total)+" working" {
-			// The root is itself a running worker, and CountWorking counts every depth.
-			t.Fatalf("%d working drew the wrong head count: %q", total, head)
+		if head != "" {
+			t.Fatalf("%d working filled the spacer: %q", n+1, head)
 		}
 	}
 }

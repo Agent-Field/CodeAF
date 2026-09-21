@@ -32,7 +32,7 @@ import (
 // questionReceiptKey is `c` or `u` on the newest receipt that still takes one.
 func (a *app) questionReceiptKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
-	if key != questionCommentKey && key != questionUndoKey {
+	if key != questionNoteKey && key != questionUndoKey {
 		return nil, false
 	}
 	if !a.input.empty() {

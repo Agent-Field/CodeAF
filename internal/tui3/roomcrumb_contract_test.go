@@ -454,6 +454,7 @@ func TestARunsPageKeepsItsOwnHeaderAndRecordsNoCrumbs(t *testing.T) {
 // said twice, and the emptiness law is exactly that.
 func TestTheConversationDrawsNoTrailRowOfItsOwn(t *testing.T) {
 	a, _, _ := roomApp(t)
+	a.openingPrompt = "work on the parser"
 	a.width, a.height = 120, 40
 	a.touch()
 	if got := strings.Join(a.roomHeadRows(a.width), "\n"); got != "" {

@@ -218,12 +218,14 @@ func TestGoingHomeLeavesEveryConversationRunning(t *testing.T) {
 // decide, and a question with one useful answer is friction.
 func TestClosingAnIdleTabAsksNothing(t *testing.T) {
 	a, _, _ := asyncApp(t)
+	a.openingPrompt = "the first conversation"
 	cmd, _ := a.startBeside("/tmp/lab")
 	drain(t, a, cmd)
 	// The strip has to have been laid out for the row to know where a closed
 	// tab hands the surface on to (chattabs.go's [app.lastVisibleTab]).
 	_ = a.tabsRow(a.width)
 
+	a.input.setText("an unsent draft")
 	before := a.file
 	drain(t, a, a.tabDismiss(a.frontChatTab()))
 	if a.closingTab() {
@@ -292,6 +294,7 @@ func TestClosingAWorkingTabAsksBeforeAnythingMoves(t *testing.T) {
 func TestCancellingTheCloseLeavesTheTabAndTheWorkAlone(t *testing.T) {
 	a, _, first := asyncApp(t)
 	turning(a, first)
+	a.input.setText("an unsent draft")
 	before := a.file
 	drain(t, a, a.tabDismiss(a.frontChatTab()))
 

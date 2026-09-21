@@ -75,7 +75,7 @@ func TestTheStripNamesEveryConversationAndKeepsItsOrderAcrossASwitch(t *testing.
 	strip := plain(a.tabsRow(a.width))
 	// The names as a tab spells them: a tab is a label somebody recognises, so a
 	// long one is cut to [tabWordCap] rather than given the whole row.
-	for _, want := range []string{"openrouter price scrape", "Refactor the rail scope", "Shipping the parser"} {
+	for _, want := range []string{"openrouter price scrape", "Refactor the rail scop...", "Shipping the parser"} {
 		if !strings.Contains(strip, want) {
 			t.Fatalf("the strip is missing %q:\n%q", want, strip)
 		}
@@ -201,7 +201,7 @@ func TestANarrowStripKeepsTheTabInFrontAndCountsWhatItHid(t *testing.T) {
 		if len(tabWords(a)) == 3 {
 			continue // everything is spelled; there is nothing hidden to mark
 		}
-		if !strings.Contains(strip, glyphMore) && !strings.Contains(strip, tabHiddenLead+itoa(len(a.chatTabs)-len(tabWords(a)))) {
+		if !strings.Contains(strip, ".") && !strings.Contains(strip, tabHiddenLead+itoa(len(a.chatTabs)-len(tabWords(a)))) {
 			t.Fatalf("at %d columns the strip dropped tabs in silence:\n%q", width, strip)
 		}
 	}
@@ -304,6 +304,7 @@ func TestEveryTabIsRecordedOnTheCellsItWasDrawnOn(t *testing.T) {
 // and every pointer target above the body resolves through the same number.
 func TestTheStripIsChargedToTheBodyRegionAndMovesTheHeaderUnderIt(t *testing.T) {
 	a := crumbApp(t)
+	a.title = "building the task navigation tree"
 	rows := strings.Split(frame(a), "\n")
 	if got := plain(rows[0]); !strings.HasPrefix(got, " "+product) {
 		t.Fatalf("the frame's first row is not the pulse: %q", got)

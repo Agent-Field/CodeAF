@@ -76,21 +76,21 @@ func TestTheNameArrivesOnItsEventAndReplacesThePlaceholder(t *testing.T) {
 	}
 }
 
-func TestTabsUseTheCompactNameWhileConversationSurfacesKeepTheFullTitle(t *testing.T) {
+func TestTabsIgnoreLegacyShortLabelsAndUseTheFullTitle(t *testing.T) {
 	agent := &twoTitleAgent{fakeAgent: &fakeAgent{}, full: "agentfield repository star growth analysis", short: "star growth"}
 	a := newTestApp(agent)
 	a.width, a.height = 120, 40
 	strip := plain(a.tabsRow(a.width))
-	if !strings.Contains(strip, "star growth") || strings.Contains(strip, "repository star growth analysis") {
-		t.Fatalf("tab strip did not use the compact title: %q", strip)
+	if !strings.Contains(strip, agent.full) {
+		t.Fatalf("tab strip did not use the full title: %q", strip)
 	}
 	if got := a.sessionName(); got != "agentfield repository star growth analysis" {
 		t.Fatalf("conversation title = %q", got)
 	}
 
 	a.applyEvent(session.Event{Kind: session.EventTitleChanged, Text: "github organization star history and notable followers", ShortTitle: "star history"}, false)
-	if strip = plain(a.tabsRow(a.width)); !strings.Contains(strip, "star history") || strings.Contains(strip, "notable followers") {
-		t.Fatalf("updated tab strip did not use the compact title: %q", strip)
+	if strip = plain(a.tabsRow(a.width)); !strings.Contains(strip, a.title) {
+		t.Fatalf("updated tab strip did not use the full title: %q", strip)
 	}
 	if got := a.sessionName(); got != "github organization star history and notable followers" {
 		t.Fatalf("updated conversation title = %q", got)
@@ -125,11 +125,7 @@ func TestANamedConversationIsNeverRedrawnAsUnnamed(t *testing.T) {
 	}
 }
 
-// AND THE NEW-CHAT PAGE KEEPS ITS OWN WORD. `+` opens a page and makes nothing —
-// no agent, no session file, nothing to name — so its tab says what the page IS
-// and must not borrow the placeholder for a conversation that does not exist
-// (chatstart.go's first law). The conversation standing behind it keeps its own
-// name and its own draft.
+// An empty start page adds no tab, and the conversation behind it keeps its name.
 func TestTheStartPageTabIsNotTheUnnamedConversation(t *testing.T) {
 	a := newStartLab(t).a
 	a.applyEvent(session.Event{Kind: session.EventTitleChanged, Text: "porting the parser"}, false)
@@ -140,8 +136,8 @@ func TestTheStartPageTabIsNotTheUnnamedConversation(t *testing.T) {
 		t.Fatalf("the start page did not open")
 	}
 	strip := plain(tabsRowOf(a))
-	if !strings.Contains(strip, "New chat") {
-		t.Fatalf("the start page's tab does not say what the page is:\n%q", strip)
+	if strings.Contains(strip, "New chat") {
+		t.Fatalf("the empty start page added a tab:\n%q", strip)
 	}
 	if strings.Contains(strip, unnamedConversationWord) {
 		t.Fatalf("the start page borrowed the placeholder for a conversation that does not exist:\n%q", strip)
@@ -156,11 +152,11 @@ func TestTheStartPageTabIsNotTheUnnamedConversation(t *testing.T) {
 func TestTitleArrivalUpdatesTheTabAndTaskBreadcrumbTogether(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	a.width, a.height = 120, 40
-	if got := plain(tabsRowOf(a)); !strings.Contains(got, unnamedConversationWord) {
-		t.Fatalf("missing unnamed tab: %q", got)
+	if got := plain(tabsRowOf(a)); strings.Contains(got, unnamedConversationWord) {
+		t.Fatalf("empty conversation added a tab: %q", got)
 	}
 	if a.chatCrumbWord() != unnamedConversationWord {
-		t.Fatal("breadcrumb disagrees with unnamed tab")
+		t.Fatal("empty breadcrumb lost its descriptive placeholder")
 	}
 	a.applyEvent(session.Event{Kind: session.EventTitleChanged, Text: "porting the parser"}, false)
 	got := plain(tabsRowOf(a))

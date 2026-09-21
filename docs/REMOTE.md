@@ -548,3 +548,12 @@ fast enough for prose to fill visibly and is independent of the 30Hz painter.
 | `internal/remote/loopback.go` | the transport's test double: a real client, a real server, an in-memory pipe |
 | `cmd/codeaf/chatv3_host.go` | the `--host` door: parse the target, start ssh, hand the connection to the surface |
 | `cmd/codeaf/engine.go` | the far half ssh starts — machinery, not a command |
+
+## Version 17: question discussion and headless callers
+
+Version 17 gives `Answer{Clarify: true}` a separate discussion without answering
+the pending question, adds `ReplaceQuestion` to withdraw the pending request and
+submit its replacement, and carries `Hello.Headless`. A headless caller cannot
+answer approval cards and does not inherit the interactive YOLO default.
+Version 16 peers are refused at the handshake in either direction. Upgrade both
+ends before reconnecting; question answers must never cross different semantics.

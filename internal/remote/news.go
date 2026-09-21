@@ -302,8 +302,39 @@ func fanLaneNews(news session.LaneNews) {
 	}
 	frame := Frame{Kind: "lane", Payload: payload}
 	for _, sess := range filed {
+		sess.rememberLane(news)
 		sess.offerNews(frame)
 	}
+}
+
+// rememberLane keeps one landed answer's sighting for the windows that have
+// not arrived yet ([Session.lastLane]). A rescue in flight, a withdrawal and
+// a node's sighting are not kept: the first two are about a moment, and the
+// third is a room's to ask for.
+func (sess *Session) rememberLane(news session.LaneNews) {
+	if news.Trying || news.Failed || news.Subject != "" || (news.Lane == "" && news.Winner == "") {
+		return
+	}
+	kept := news
+	sess.mu.Lock()
+	sess.lastLane = &kept
+	sess.mu.Unlock()
+}
+
+// lastLaneFrame is that sighting as a frame for a window arriving now, and
+// false when this conversation has not had an answer yet.
+func (sess *Session) lastLaneFrame() (Frame, bool) {
+	sess.mu.Lock()
+	last := sess.lastLane
+	sess.mu.Unlock()
+	if last == nil {
+		return Frame{}, false
+	}
+	payload, err := json.Marshal(laneWireOf(*last))
+	if err != nil {
+		return Frame{}, false
+	}
+	return Frame{Kind: "lane", Payload: payload}, true
 }
 
 // offerNews hands one frame to every surface in this conversation's room,
@@ -342,6 +373,15 @@ func (sess *Session) watchNews(s *server) {
 	sess.newsfeeds[s] = feed
 	sess.mu.Unlock()
 	previous.leave()
+	// THE LAST ANSWER'S MACHINE IS THE FIRST THING ON A NEW OUTBOX, so a window
+	// that attaches an hour after the answer names the machine that wrote it
+	// rather than nothing until the next one ([Session.lastLane]). It carries
+	// its age ([LaneWire.AgeMS]), so the surface files it as the old sighting
+	// it is: the seam names the machine regardless, and the sheet's `served`
+	// row keeps its window.
+	if frame, ok := sess.lastLaneFrame(); ok {
+		feed.offer(frame)
+	}
 	go sess.pumpNews(s, feed)
 }
 
@@ -443,9 +483,19 @@ func phaseNewsOf(wire PhaseWire, at time.Time) session.PhaseNews {
 	return news
 }
 
-// laneWireOf is one finished answer's sighting as it crosses.
+// laneWireOf is one finished answer's sighting as it crosses. Its age is the
+// one moment on it, and only a replayed sighting has one worth sending
+// ([LaneWire.AgeMS]).
 func laneWireOf(news session.LaneNews) LaneWire {
+	age := int64(0)
+	if !news.At.IsZero() {
+		age = time.Since(news.At).Milliseconds()
+		if age < 0 {
+			age = 0
+		}
+	}
 	return LaneWire{
+		AgeMS:  age,
 		Model:  news.Model,
 		Lane:   news.Lane,
 		Alt:    news.Alt,
@@ -484,7 +534,7 @@ func laneNewsOf(wire LaneWire, at time.Time) session.LaneNews {
 		Role:    lane.Role(wire.Role),
 		Subject: wire.Subject,
 		Session: wire.Session,
-		At:      at,
+		At:      at.Add(-time.Duration(wire.AgeMS) * time.Millisecond),
 		Relayed: true,
 	}
 }

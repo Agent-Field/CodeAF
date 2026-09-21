@@ -211,7 +211,7 @@ func TestAConversationWithWorkInItIsStillKeptAndItsEmptyBoxChangesNothing(t *tes
 // ── A COMMAND TYPED ON THE PAGE ─────────────────────────────────────────────
 
 // A SLASH COMMAND RUN OFF THE START PAGE MAY NOT ACT ON THE CONVERSATION BEHIND
-// IT. The command list hangs under the page's own box, and the conversation it
+// IT. The command list hangs above the page's own box, and the conversation it
 // is drawn over is hidden — so a command that reached it would close, clear or
 // retarget work the person cannot see, at a page whose entire promise is that it
 // touches nothing.

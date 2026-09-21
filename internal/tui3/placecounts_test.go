@@ -90,7 +90,7 @@ func TestTheUncountablePlacesAreNeverGivenANumber(t *testing.T) {
 	a, brain := countingApp(t)
 	brain.learned = 5
 	for _, id := range []page{pageSpend, pageSearch, pageSettings} {
-		session.NoteLookAt(a.placesRoot(), id.word(), time.Now().Add(-time.Hour))
+		session.NoteLookAt(a.placesRoot(), id.lookKey(), time.Now().Add(-time.Hour))
 	}
 	a.refreshPlaceCounts(time.Now())
 	for _, id := range []page{pageSpend, pageSearch, pageSettings} {

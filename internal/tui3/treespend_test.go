@@ -71,7 +71,7 @@ func TestTheMoneySegmentCarriesWhatTheRunningWorkIsSpending(t *testing.T) {
 	a.width = 200
 	a.readTreeSpend()
 
-	line := plain(a.status(a.width))
+	line := plain(a.legend(a.width))
 	if !strings.Contains(line, dollars(53.58)) {
 		t.Fatalf("the status line does not carry the tree's own total:\n%s", line)
 	}
@@ -173,7 +173,7 @@ func TestTheEmptinessLawSurvivesTheTreeReading(t *testing.T) {
 	a.width = 200
 	a.readTreeSpend()
 
-	if line := plain(a.status(a.width)); !strings.Contains(line, "$0.00") {
+	if line := plain(a.legend(a.width)); !strings.Contains(line, "$0.00") {
 		t.Fatalf("the live row lost its $0.00 and its segments will jump:\n%s", line)
 	}
 	if text := a.statusText(); strings.Contains(text, "$0.00") {

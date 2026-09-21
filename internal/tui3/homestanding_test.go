@@ -146,7 +146,7 @@ func TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone(t *testing.T) {
 	// are pinned with the positions exactly as they were.
 	ask := homeRowAt(lines, homeAskGlyph+" keep main green")
 	run := homeRowAt(lines, homeLiveGlyph+" check the deploy")
-	chat := homeRowAt(lines, homeIdleGlyph+" Pricing Research")
+	chat := homeRowAt(lines, "Pricing Research")
 	wait := homeRowAt(lines, standWaitGlyph+" tell me when the cert expires")
 	fold := homeRowAt(lines, homeItemsFoldWord)
 	for name, at := range map[string]int{"needs-you": ask, "running": run, "session": chat, "waiting": wait, "fold": fold} {
@@ -154,7 +154,7 @@ func TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone(t *testing.T) {
 			t.Fatalf("the phone never drew the %s row:\n%s", name, joined)
 		}
 	}
-	if !(ask < run && run < chat && chat < wait && wait < fold) {
+	if !(chat < ask && ask < run && run < wait && wait < fold) {
 		t.Fatalf("the band is not in triage order (ask %d, run %d, chat %d, wait %d, fold %d):\n%s",
 			ask, run, chat, wait, fold, joined)
 	}
@@ -378,7 +378,7 @@ func TestTheStandingOrdersSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 		t.Fatalf("a surface with the ambient side off grew a segment: %q", got)
 	}
 	// AND IT IS NOT ON THE STATUS ROW AT ANY WIDTH ANY MORE (foot.go's [groupOff]).
-	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+	if line := plain(a.legend(200)); strings.Contains(line, homeKeepingWord) {
 		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
@@ -395,7 +395,7 @@ func TestTheStandingOrdersSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	if got := a.keepingSegment(); got != want {
 		t.Fatalf("the count reads %q, want %q", got, want)
 	}
-	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+	if line := plain(a.legend(200)); strings.Contains(line, homeKeepingWord) {
 		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
@@ -582,7 +582,7 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 // A WATCH ASKED FOR IN ANOTHER PROJECT STILL OPENS FROM HERE. It used to refuse
 // any origin outside the window's own bucket — `elsewhere · <path>` on the foot
 // — which meant a watch answered nothing at all from every window not launched
-// inside the folder that made it. A `where you were` row in another project has
+// inside the folder that made it. A `threads` row in another project has
 // opened from here for as long as the grid has existed; this path was the last
 // one holding the repealed rule (owner, 2026-09-15).
 func TestAWatchAskedForInAnotherProjectStillOpensFromHere(t *testing.T) {

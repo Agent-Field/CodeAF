@@ -1605,3 +1605,30 @@ func TestRunSummaryServerRoundTripAndEngineDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestVersionSixteenCannotSendQuestionAnswersToThisEngine(t *testing.T) {
+	agent := &fakeAgent{}
+	l := dialAgent(t, engineOn(agent))
+	frame := l.hello(Hello{Version: 16})
+	if frame.Kind != "fatal" {
+		t.Fatalf("old question semantics accepted: %+v", frame)
+	}
+	if err := l.end(); err == nil {
+		t.Fatal("old wire was not refused")
+	}
+	if agent.closes != 0 {
+		t.Fatal("a refused hello opened an agent")
+	}
+}
+
+func TestHeadlessCannotReuseAnInteractiveConversationGate(t *testing.T) {
+	agent := &fakeAgent{}
+	l := dialAgent(t, engineOn(agent))
+	frame := l.hello(Hello{Version: Version, Headless: true})
+	if frame.Kind != "fatal" || !strings.Contains(frame.Error, "headless") {
+		t.Fatalf("headless reused interactive gate: %+v", frame)
+	}
+	if err := l.end(); err == nil {
+		t.Fatal("mode mismatch was not refused")
+	}
+}

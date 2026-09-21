@@ -30,9 +30,9 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 			clauses = []string{homeGoneWord, "ctrl+y copy path", "→ more"}
 			break
 		}
-		aside := "ctrl+e put away"
+		aside := "ctrl+e close"
 		if ctx.subject.row.Archived {
-			aside = "ctrl+e bring back"
+			aside = "ctrl+e reopen"
 		}
 		clauses = []string{"enter open", "ctrl+t new chat here", "ctrl+o open folder", "ctrl+y copy path", aside, "→ more"}
 	case bandKindItem:
@@ -53,7 +53,7 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 		// window keeps every key that asks nothing of the disk and loses the ones
 		// that do (homestanding.go's [app.homeItemWrite] refuses in words).
 		if a.stands.SetEffort != nil {
-			clauses = append(clauses, effortKeyClause)
+			clauses = append(clauses, a.chords.say(effortKeyClause))
 		}
 		clauses = append(clauses, "→ more")
 	default:

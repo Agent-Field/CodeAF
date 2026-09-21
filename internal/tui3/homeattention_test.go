@@ -67,7 +67,7 @@ func switchNames(a *app) []string {
 // pins is the sort itself: the thing that has been stopped longest has cost the
 // most already, so it is row one, and a watch that is asking counts as the same
 // kind of blocked as a conversation that is asking.
-func TestTheThingThatWaitedLongestIsTheFirstRowOfTheList(t *testing.T) {
+func TestSessionsStayChronologicalWhenAConversationNeedsAnAnswer(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	alpha, beta := lab.workspace("alpha"), lab.workspace("beta")
@@ -91,13 +91,12 @@ func TestTheThingThatWaitedLongestIsTheFirstRowOfTheList(t *testing.T) {
 	a.openHome()
 
 	names := switchNames(a)
-	if len(names) < 2 || names[0] != "Pricing Research" || names[1] != "keep main green" {
-		t.Fatalf("the list reads %v, want the three-hour wait over the one-hour wait:\n%s", names, homeText(a))
+	if len(names) < 2 || names[0] != "The Newest Chat" || names[1] != "Pricing Research" {
+		t.Fatalf("the list reads %v, want conversations in newest-first order:\n%s", names, homeText(a))
 	}
-	// AND THE TWO BLOCKED ROWS STAND OVER EVERYTHING ELSE, whatever their kind.
-	// This is the whole of what the two strips were gathering.
-	if at := switchNameAt(names, "The Newest Chat"); at >= 0 && at < 2 {
-		t.Fatalf("a quiet conversation sorted above something that is waiting: %v", names)
+	// A question changes its bullet, not the conversation's recency order.
+	if at := switchNameAt(names, "The Newest Chat"); at != 0 {
+		t.Fatalf("the newest conversation did not stay first: %v", names)
 	}
 	// AND A STAMP NOBODY RECORDED GOES LAST rather than to the top of a list
 	// ordered by how long something has been standing still ([attentionOlder] is
@@ -138,7 +137,7 @@ func TestOneConversationHasOneRowAndARescanLeavesTheCursorOnIt(t *testing.T) {
 	}
 	rows := 0
 	for _, line := range a.home.lines {
-		if line.kind == homeSession && line.row.Transcript == row && line.cellKey() == "" {
+		if line.kind == homeSession && line.row.Transcript == row {
 			rows++
 		}
 	}
@@ -406,7 +405,7 @@ func TestTheLedgerLineAboutLandedWorkOpensTheTasksPlace(t *testing.T) {
 
 	at := homeNoLine
 	for i, line := range a.home.lines {
-		if line.kind == homeLedger && line.project == "tasks" {
+		if line.kind == homeLedger && line.project == pageTasks.word() {
 			at = i
 		}
 	}
@@ -513,7 +512,7 @@ func TestTypingTakesTheSwitcherAway(t *testing.T) {
 	a := lab.open(120, 40)
 	a.home.seen = lab.now.Add(-30 * time.Minute)
 	a.home.build()
-	if !strings.Contains(homeText(a), "where you were") {
+	if !strings.Contains(homeText(a), sessionsWord) {
 		t.Fatalf("the panels were not there to begin with:\n%s", homeText(a))
 	}
 	typeHome(a, "quiet")
@@ -521,7 +520,7 @@ func TestTypingTakesTheSwitcherAway(t *testing.T) {
 		t.Fatal("typing into the box did not put home into a search")
 	}
 	text := homeText(a)
-	for _, gone := range []string{"where you were", "since you left", " " + homeFoldMoreWord} {
+	for _, gone := range []string{"since you left", " " + homeFoldMoreWord} {
 		if strings.Contains(text, gone) {
 			t.Fatalf("a search kept the switcher's %q:\n%s", gone, text)
 		}

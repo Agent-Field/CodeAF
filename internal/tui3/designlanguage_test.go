@@ -805,7 +805,7 @@ func TestEveryPlaceHoldsAtThePlainFloor(t *testing.T) {
 				t.Fatalf("at %d the %s place does not say its own name with no colour to "+
 					"say it with:\n%s", width, id.word(), frame)
 			}
-			if !strings.Contains(frame, "tab next place") && !strings.Contains(frame, "enter") {
+			if !strings.Contains(frame, "tab next place") && !strings.Contains(frame, "enter") && !strings.Contains(frame, "options") {
 				t.Fatalf("at %d the %s place names no key at the plain floor:\n%s",
 					width, id.word(), frame)
 			}

@@ -40,12 +40,12 @@ func TestAZeroRateDrawsNothingOnTheLiveStatusLine(t *testing.T) {
 	if got := a.burnSegment(); got != "" {
 		t.Fatalf("the burn segment drew %q, want nothing: a zero rate is a zero", got)
 	}
-	if line := plain(a.status(200)); strings.Contains(line, "tok/s") {
+	if line := plain(a.legend(200)); strings.Contains(line, "tok/s") {
 		t.Fatalf("the live line quotes a rate over one token in a minute:\n%q", line)
 	}
 	// AND THE LINE'S ONE SANCTIONED ZERO IS UNTOUCHED. The money segment holds
 	// its width on purpose, and this fix must not take that with it.
-	if line := plain(a.status(200)); !strings.Contains(line, "$0.00") {
+	if line := plain(a.legend(200)); !strings.Contains(line, "$0.00") {
 		t.Fatalf("the live line lost its held money zero:\n%q", line)
 	}
 }
@@ -81,7 +81,7 @@ func TestTheRateIsSilentWhileThePulseSaysNothingHasComeBack(t *testing.T) {
 		t.Fatalf("the line quotes %q while the pulse says %q — one moment, two answers",
 			got, a.waitingWords())
 	}
-	if line := plain(a.status(200)); strings.Contains(line, "tok/s") {
+	if line := plain(a.legend(200)); strings.Contains(line, "tok/s") {
 		t.Fatalf("a rate rides the status line through a wait:\n%q", line)
 	}
 	// AND THE SERVED RIDER'S OWN FIGURE GOES WITH IT, because it is the same
@@ -123,17 +123,20 @@ func TestTheRightEdgeSaysWhatTheStreamIsProducingRightNow(t *testing.T) {
 	if got := a.liveRiderAt(-1); got != "38 tok/s" {
 		t.Fatalf("the right edge reads %q, want the stream's own rate alone", got)
 	}
-	line := plain(a.status(200))
+	line := plain(a.legend(200))
 	if !strings.Contains(line, "38 tok/s") {
 		t.Fatalf("the row is missing the live rate:\n%q", line)
 	}
 	// NOT THE SIGHTING'S FIGURE, and not the phase's own words either: the state
 	// word two runs to the right already says `working · 4s`, and who is serving
-	// is on the seam.
-	for _, gone := range []string{"92 tok/s", "writing", "friendli"} {
+	// is on the seam's LEFT, beside the model, and nowhere else on the line.
+	for _, gone := range []string{"92 tok/s", "writing"} {
 		if strings.Contains(line, gone) {
 			t.Fatalf("the right edge still says %q:\n%q", gone, line)
 		}
+	}
+	if !strings.Contains(line, "kimi-k3 (friendli)") || strings.Count(line, "friendli") != 1 {
+		t.Fatalf("the machine is not said once, beside the model:\n%q", line)
 	}
 
 	// A THINKING PASS IS THE SAME SEGMENT, because it is the same claim: the
@@ -172,7 +175,7 @@ func TestTheLiveRateIsDrawnOnlyWhileItIsBeingMeasured(t *testing.T) {
 	if got := a.liveRiderAt(-1); got != "" {
 		t.Fatalf("an idle right edge reads %q", got)
 	}
-	if line := plain(a.status(200)); strings.Contains(line, "tok/s") {
+	if line := plain(a.legend(200)); strings.Contains(line, "tok/s") {
 		t.Fatalf("a rate rides a row with no live phase:\n%q", line)
 	}
 
@@ -224,8 +227,8 @@ func TestTheLiveRateGoesBeforeTheBillOnTheStatusLine(t *testing.T) {
 	a.live = len(a.entries) - 1
 
 	// Wide enough for everything: the ledger whole and the right edge whole.
-	wide := plain(a.status(200))
-	for _, want := range []string{"via coreweave", "$1.12", "⟲ 62% cached", "100k/200k · 50%"} {
+	wide := plain(a.legend(200))
+	for _, want := range []string{"kimi-k3 (coreweave)", "$1.12", "⟲ 62% cached", "100k/200k · 50%"} {
 		if !strings.Contains(wide, want) {
 			t.Fatalf("the wide row is missing %q:\n%q", want, wide)
 		}
@@ -237,19 +240,21 @@ func TestTheLiveRateGoesBeforeTheBillOnTheStatusLine(t *testing.T) {
 	}
 
 	// The row is still whole where both ends fit, and the rider is untouched.
-	if line := plain(a.status(110)); !strings.Contains(line, "via coreweave") ||
+	if line := plain(a.legend(110)); !strings.Contains(line, "(coreweave)") ||
 		!strings.Contains(line, "$1.12") {
 		t.Fatalf("a row with room for both ends gave one of them up:\n%q", line)
 	}
 
-	// And then the rate pays, rather than the bill.
-	line := plain(a.status(100))
+	// And then the rate pays, rather than the bill. The `via` rider on the
+	// seam's left is attribution and stays (footswap.go's rider tier keeps
+	// it over the cheap numbers); the rate is what goes.
+	line := plain(a.legend(100))
 	for _, want := range []string{"$1.12", "⟲ 62% cached", "100k/200k · 50%"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the ledger lost %q while the rate kept its place:\n%q", want, line)
 		}
 	}
-	if strings.Contains(line, "via coreweave") {
+	if strings.Contains(line, "tok/s") {
 		t.Fatalf("the rate outlasted the numbers it stands above:\n%q", line)
 	}
 	// AND WHAT SURVIVES IT IS THE STATE WORD AND ITS CLOCK — the reason the line

@@ -263,6 +263,10 @@ func (a *Agent) askClockRanOut(id uint64) {
 // THERE IS NO WAY BACK, for that same reading: a clock that resumed after a few
 // idle seconds would fire exactly when somebody had looked away mid-decision.
 func (a *Agent) HoldQuestion(kind QuestionKind, token string) {
+	if child, answer, ok := a.discussionAnswer(Answer{Kind: kind, Ref: token}); ok {
+		child.HoldQuestion(kind, answerToken(answer))
+		return
+	}
 	switch kind {
 	case QuestionTask:
 		id, err := strconv.ParseUint(strings.TrimSpace(token), 10, 64)

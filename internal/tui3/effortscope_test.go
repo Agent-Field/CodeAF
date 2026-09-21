@@ -64,14 +64,14 @@ func TestAScopeNobodyHasSetStatesNoRung(t *testing.T) {
 // THE THIRD SCOPE IS RETIRED AND THIS IS THE LAW THAT REPLACED IT.
 //
 // What used to be pinned here was "home at rest states the install's rung and
-// ctrl+v moves it": the cursor walked up off the top row onto no row at all, the
+// alt+e moves it": the cursor walked up off the top row onto no row at all, the
 // right-hand column became a card about the machine, and the chord wrote
 // `config.WriteDefaultEffort`. That state is retired — `↑` off the top row
 // reaches the TAB BAR now (pages.go's [barCursor]) — so the law it protected is
 // restated as the thing that is still true: THE INSTALL'S RUNG HAS ONE WRITER ON
 // THIS SURFACE, and home is not it.
 //
-// The invariant: home's cursor is on a row of its list at every moment, `ctrl+v`
+// The invariant: home's cursor is on a row of its list at every moment, `alt+e`
 // on a conversation row writes nothing to the profile, and the profile is left
 // exactly where the settings panel put it.
 func TestHomeNeverMovesTheInstallsRungBecauseTheMachineCardIsGone(t *testing.T) {
@@ -82,15 +82,14 @@ func TestHomeNeverMovesTheInstallsRungBecauseTheMachineCardIsGone(t *testing.T) 
 	a.openHome()
 	a.width, a.height = 200, 30
 
-	// THE CURSOR IS ON A ROW, AND WALKING UP OFF THE TOP DOES NOT TAKE IT OFF
-	// ONE. It reaches the bar, which is a row of the FRAME rather than of the
-	// list, and home's own cursor stays exactly where it was.
+	// THE CURSOR IS ON A ROW, AND RAISING THE BAR DOES NOT TAKE IT OFF ONE. The
+	// bar is a row of the FRAME rather than of the list (raised here as a press
+	// on it would — `↑` on home stays in the field), and home's own cursor stays
+	// exactly where it was.
 	a.frame()
-	for i := 0; i < len(a.home.lines)+2; i++ {
-		drive(t, a, key("up"))
-	}
+	a.barRaise()
 	if !a.bar.on {
-		t.Fatal("walking up off the top row did not reach the tab bar")
+		t.Fatal("the bar did not rise")
 	}
 	if _, ok := a.home.focusedLine(); !ok {
 		t.Fatal("home's own cursor came off its list, which is the state this wave retired")
@@ -102,9 +101,9 @@ func TestHomeNeverMovesTheInstallsRungBecauseTheMachineCardIsGone(t *testing.T) 
 	// AND THE CHORD WRITES NOTHING. The profile is untouched — no rung row is
 	// created at all — because there is no machine card for the key to act on.
 	before := config.DefaultEffortAt(a.profileDir)
-	drive(t, a, key("esc"), key("ctrl+v"))
+	drive(t, a, key("esc"), key("alt+e"))
 	if got := config.DefaultEffortAt(a.profileDir); got != before {
-		t.Fatalf("ctrl+v on home moved the install's rung from %q to %q", before, got)
+		t.Fatalf("alt+e on home moved the install's rung from %q to %q", before, got)
 	}
 }
 
@@ -162,10 +161,10 @@ func itemHome(t *testing.T) (*app, *effortBand) {
 	return a, band
 }
 
-// AN ITEM'S CARD STATES ITS RUNG AND CTRL+V MOVES IT THROUGH THE STORE'S OWN
+// AN ITEM'S CARD STATES ITS RUNG AND ALT+E MOVES IT THROUGH THE STORE'S OWN
 // DOOR — never through the whole-document write the pause and stop keys use,
 // which would undo whatever the ticker has moved since the card was drawn.
-func TestAStandingItemsCardStatesItsRungAndCtrlVMovesIt(t *testing.T) {
+func TestAStandingItemsCardStatesItsRungAndAltEMovesIt(t *testing.T) {
 	a, band := itemHome(t)
 
 	// A SENTINEL SAYS NOTHING UNTIL SOMEBODY RAISES IT. Its firings ask for no
@@ -180,7 +179,7 @@ func TestAStandingItemsCardStatesItsRungAndCtrlVMovesIt(t *testing.T) {
 		t.Fatalf("an item nobody has dialled drew a rung:\n%s", before)
 	}
 
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if len(band.rungs) != 1 || band.rungs[0] != effort.Low {
 		t.Fatalf("the store was asked for %v, want one call with the cheapest rung", band.rungs)
 	}
@@ -200,7 +199,7 @@ func TestAStandingItemsCardStatesItsRungAndCtrlVMovesIt(t *testing.T) {
 	// AND THE ENGINE'S OWN SENTENCE IS KEPT on a refusal, so a person is not
 	// left pressing the same key at a store that will not take it.
 	band.refusal = errors.New("that item is gone")
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if a.home.msg != "that item is gone" {
 		t.Fatalf("a refused write said %q", a.home.msg)
 	}
@@ -211,7 +210,7 @@ func TestAStandingItemsCardStatesItsRungAndCtrlVMovesIt(t *testing.T) {
 func TestAnItemCardWithNoDoorRefusesInTheWordsItAlreadyHas(t *testing.T) {
 	a, band := itemHome(t)
 	a.stands.SetEffort = nil
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if len(band.rungs) != 0 {
 		t.Fatalf("a window with no door still wrote %v", band.rungs)
 	}
@@ -271,9 +270,9 @@ func effortTaskApp(t *testing.T) (*app, *effortFake) {
 	return base, agent
 }
 
-// THE ROSTER'S CURSOR IS A TASK YOU ARE STANDING ON, and ctrl+v moves that
+// THE ROSTER'S CURSOR IS A TASK YOU ARE STANDING ON, and alt+e moves that
 // node's rung, writes the decision down, and says honestly when it lands.
-func TestCtrlVOnTheFocusedTaskMovesThatTasksRung(t *testing.T) {
+func TestAltEOnTheFocusedTaskMovesThatTasksRung(t *testing.T) {
 	a, agent := effortTaskApp(t)
 
 	// The legend names the key while the row under the cursor can take it.
@@ -281,7 +280,7 @@ func TestCtrlVOnTheFocusedTaskMovesThatTasksRung(t *testing.T) {
 		t.Fatalf("the roster's legend does not name the chord: %q", hint)
 	}
 
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if len(agent.asked) != 1 || agent.asked[0] != "task 7:low" {
 		t.Fatalf("the engine was asked %v, want one call setting task 7 to the cheapest rung", agent.asked)
 	}
@@ -307,9 +306,9 @@ func TestCtrlVOnTheFocusedTaskMovesThatTasksRung(t *testing.T) {
 	}
 	// And the chord means the same thing from inside the page it opened.
 	a.railTake(false)
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if len(agent.asked) != 2 || agent.asked[1] != "task 7:medium" {
-		t.Fatalf("the room's ctrl+v asked %v", agent.asked)
+		t.Fatalf("the room's alt+e asked %v", agent.asked)
 	}
 }
 
@@ -318,7 +317,7 @@ func TestCtrlVOnTheFocusedTaskMovesThatTasksRung(t *testing.T) {
 func TestARefusedTaskRungSaysWhatTheEngineSaid(t *testing.T) {
 	a, agent := effortTaskApp(t)
 	agent.refusal = errors.New("task 7 is done, not running")
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if !strings.Contains(taskText(a), "task 7 is done, not running") {
 		t.Fatalf("the engine's refusal never reached the conversation:\n%s", taskText(a))
 	}
@@ -329,10 +328,10 @@ func TestATaskSurfaceWithNoDoorNamesNoKeyAndSaysSo(t *testing.T) {
 	a, _, _ := roomApp(t)
 	a.railTake(true)
 	a.railWhere = railSpot{id: 7}
-	if hint := a.railHoldHintWord(); strings.Contains(hint, "ctrl+v") {
+	if hint := a.railHoldHintWord(); strings.Contains(hint, "alt+e") {
 		t.Fatalf("a roster with no door still named the chord: %q", hint)
 	}
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if !strings.Contains(taskText(a), taskEffortUnavailableWord) {
 		t.Fatalf("the surface did not say the door is missing:\n%s", taskText(a))
 	}
@@ -342,7 +341,7 @@ func TestATaskSurfaceWithNoDoorNamesNoKeyAndSaysSo(t *testing.T) {
 
 // A CONVERSATION'S ROW ON HOME IS NOT ONE OF THE THREE SCOPES. Its rung belongs
 // to the window that session is open in, and a list must not reach into it.
-func TestCtrlVOnAConversationRowChangesNothing(t *testing.T) {
+func TestAltEOnAConversationRowChangesNothing(t *testing.T) {
 	lab := newHomeLab(t)
 	transcript := lab.session("alpha", "aaaa000000000001", "one", lab.workspace("alpha"), time.Now())
 	a := lab.app(transcript)
@@ -355,7 +354,7 @@ func TestCtrlVOnAConversationRowChangesNothing(t *testing.T) {
 	if !ok || line.kind != homeSession {
 		t.Fatalf("the cursor is not on a conversation row: %+v", line)
 	}
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if got := config.DefaultEffortAt(dir); got != effort.Ship {
 		t.Fatalf("a press on a conversation row moved the install's rung to %q", got)
 	}
@@ -375,17 +374,17 @@ func TestCtrlVOnAConversationRowChangesNothing(t *testing.T) {
 	if strings.Contains(card, effortClauseWord) {
 		t.Fatalf("auto invented a thinking level on the card:\n%s", card)
 	}
-	if strings.Contains(card, effortKeyClause) || strings.Contains(card, "ctrl+v") {
+	if strings.Contains(card, effortKeyClause) || strings.Contains(card, "alt+e") {
 		t.Fatalf("a conversation's card named a key for a rung it cannot move:\n%s", card)
 	}
 }
 
 // AND THE CONVERSATION ITSELF IS NOT, EITHER — not from this lane. With no
 // roster hold and no room, the chord reaches nothing that would write.
-func TestCtrlVWithNoTaskUnderTheCursorAsksTheEngineNothing(t *testing.T) {
+func TestAltEWithNoTaskUnderTheCursorAsksTheEngineNothing(t *testing.T) {
 	a, agent := effortTaskApp(t)
 	a.railTake(false)
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if len(agent.asked) != 0 {
 		t.Fatalf("a press with nothing under the cursor asked the engine %v", agent.asked)
 	}
@@ -406,7 +405,7 @@ func TestAnOverlayAboveTheSurfaceKeepsTheChord(t *testing.T) {
 		a.profileDir = dir
 		a.openHome()
 		a.raisePlace(pageSettings)
-		drive(t, a, key("ctrl+v"))
+		drive(t, a, key("alt+e"))
 		if got := config.DefaultEffortAt(dir); got != effort.Ship {
 			t.Fatalf("a chord under an open settings panel moved the install's rung to %q", got)
 		}
@@ -415,7 +414,7 @@ func TestAnOverlayAboveTheSurfaceKeepsTheChord(t *testing.T) {
 	t.Run("home over the roster", func(t *testing.T) {
 		a, agent := effortTaskApp(t)
 		a.openHome()
-		drive(t, a, key("ctrl+v"))
+		drive(t, a, key("alt+e"))
 		if len(agent.asked) != 0 {
 			t.Fatalf("a chord under home reached the roster behind it: %v", agent.asked)
 		}
@@ -428,7 +427,7 @@ func TestAnOverlayAboveTheSurfaceKeepsTheChord(t *testing.T) {
 		a.railTake(true)
 		a.railWhere = railSpot{id: 7}
 		a.raisePlace(pageTasks)
-		drive(t, a, key("ctrl+v"))
+		drive(t, a, key("alt+e"))
 		if len(agent.asked) != 0 {
 			t.Fatalf("a chord under the task page reached the work behind it: %v", agent.asked)
 		}
@@ -442,7 +441,7 @@ func TestAnOverlayAboveTheSurfaceKeepsTheChord(t *testing.T) {
 		if !a.asking() {
 			t.Fatal("the question is not up, so this proves nothing")
 		}
-		drive(t, a, key("ctrl+v"))
+		drive(t, a, key("alt+e"))
 		if len(agent.asked) != 0 {
 			t.Fatalf("a chord under an approval question reached the work behind it: %v", agent.asked)
 		}
@@ -454,7 +453,7 @@ func TestAnOverlayAboveTheSurfaceKeepsTheChord(t *testing.T) {
 // THE OVERLAY ON TOP IS THE SURFACE YOU ARE STANDING ON. The chord means "move
 // the rung of the thing you are standing on", and the conversation's own ladder
 // drawn over the message box (effortchip.go) is nearer than the roster behind
-// it — so with that list up, ctrl+v walks the LIST and no task's rung moves.
+// it — so with that list up, alt+e walks the LIST and no task's rung moves.
 //
 // It is pinned because the two surfaces bind one chord in two routers read one
 // after the other (app.go: railKey, then roomKey, then input.go's plain switch),
@@ -465,7 +464,7 @@ func TestTheOpenThinkingLadderKeepsTheChordFromTheRosterBehindIt(t *testing.T) {
 	a, agent := effortTaskApp(t)
 	a.effPick.start(effort.Low)
 
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if len(agent.asked) != 0 {
 		t.Fatalf("the chord reached a task while the conversation's ladder was open: %v", agent.asked)
 	}
@@ -489,7 +488,7 @@ func TestTheOpenThinkingLadderKeepsTheChordFromTheRosterBehindIt(t *testing.T) {
 		t.Fatal("esc did not close the ladder it was aimed at")
 	}
 	// And with the list away the roster has the chord back, unchanged.
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if len(agent.asked) != 1 || agent.asked[0] != "task 7:low" {
 		t.Fatalf("the roster did not get the chord back: %v", agent.asked)
 	}
@@ -506,7 +505,7 @@ func TestTheOpenThinkingLadderKeepsTheChordFromTheRoomBehindIt(t *testing.T) {
 	a.railTake(false)
 	a.effPick.start(effort.Low)
 
-	drive(t, a, key("ctrl+v"))
+	drive(t, a, key("alt+e"))
 	if len(agent.asked) != 0 {
 		t.Fatalf("the chord reached the room's node while the ladder was open: %v", agent.asked)
 	}

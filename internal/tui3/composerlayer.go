@@ -23,7 +23,7 @@ import (
 //
 //	› cut the opus spend in half without losing the sweep
 //	 it will run on its own and tell you when it lands            a task
-//	 · in ~/codeaf, on master                        alt+w to move it
+//	 · in ~/codeaf, on master                        alt+p to move it
 //	 · execution runs on opus 4.1                          alt+o to change
 //	 · it may spend up to $10.00 before it asks              type a number
 //	 alt+enter send it off · enter talk about it first · esc back to spend
@@ -50,7 +50,7 @@ import (
 //
 // ── AND A KEY IS DRAWN ONLY WHERE IT DOES SOMETHING ─────────────────────────
 //
-// SCREEN 3a's clause is in force here as everywhere: `alt+w to move it` is
+// SCREEN 3a's clause is in force here as everywhere: `alt+p to move it` is
 // absent on a machine with one project, because there is nowhere to move it to,
 // and the model line is absent when nothing anywhere can say what execution runs
 // on. A layer that named three keys and bound two would be the exact defect this
@@ -84,7 +84,7 @@ type composerLayer struct {
 	// the layer is up — it holds the keyboard — and holding the id anyway is what
 	// lets the foot name the place by its own word.
 	at page
-	// where is the destination `alt+w` last cycled to, and "" is "wherever the
+	// where is the destination `alt+p` last cycled to, and "" is "wherever the
 	// plain door would have sent it" ([app.errandPlace]). It is a PATH and not an
 	// index into the list, because the list is read again on every frame and a
 	// project that appeared between two keystrokes would otherwise shift the
@@ -103,7 +103,7 @@ type composerLayer struct {
 	// places is everywhere this task can be sent, READ ONCE ON THE WAY IN and
 	// held. The list is a walk of the projects root ([app.readWorld]) and a walk
 	// is a thing a keystroke may do and a draw may not (ARCHITECTURE.md's fourth
-	// law) — and holding it is also what makes `alt+w` a cycle rather than a
+	// law) — and holding it is also what makes `alt+p` a cycle rather than a
 	// lottery, because a project that appeared between two presses cannot shift
 	// what the next one means.
 	places []string
@@ -127,7 +127,7 @@ const composerSlot = "work"
 //
 // THE ONE READING OF THE DISK IS ASKED FOR HERE. The layer states which branch
 // the destination is on, and that is a `git status` — so it is asked for on this
-// keystroke and on `alt+w`'s, never on a draw (ARCHITECTURE.md's fourth law).
+// keystroke and on `alt+p`'s, never on a draw (ARCHITECTURE.md's fourth law).
 // It is ASKED FOR and not waited on: the command runs off the update loop and
 // the line says where the task will run with no branch on it until the answer
 // lands, which is the emptiness law (homeband_repo.go's [app.refreshRepoOf]).
@@ -156,7 +156,7 @@ func (a *app) composerShowing() bool { return a.composer.open }
 
 // ── the three facts, read ───────────────────────────────────────────────────
 
-// composerWhere is the workspace this task will run in: the destination `alt+w`
+// composerWhere is the workspace this task will run in: the destination `alt+p`
 // cycled to, and otherwise where it opened.
 func (a *app) composerWhere() string {
 	if chosen := strings.TrimSpace(a.composer.where); chosen != "" {
@@ -175,7 +175,11 @@ func (a *app) composerWhere() string {
 // different places, and it is the reading a person acts on — the whole promise
 // of the chip is that a verb always in reach always says where it goes.
 func (a *app) composerOpensAt() string {
-	if where := a.scopeWorkspace(); where != "" {
+	// THE DRAFT'S FOLDER, PIN AND ALL. The rule over the box says where the next
+	// conversation opens, and a task sent from the same box with `alt+enter`
+	// opening somewhere else would be one frame with two answers to "where"
+	// (boxseam.go).
+	if where := a.targetWhere(); where != "" {
 		return where
 	}
 	workspace, _ := a.errandPlace()
@@ -270,7 +274,7 @@ func (a *app) composerDestinations() []string {
 	return out
 }
 
-// composerMove is `alt+w`: the next destination on the list, round again from
+// composerMove is `alt+p`: the next destination on the list, round again from
 // the last. It answers false where there is only one — a machine with one
 // project has nowhere to move a task to, and the clause naming this key is then
 // absent from the line ([app.composerRows]).
@@ -304,7 +308,7 @@ const (
 	composerKindWord = "a task"
 	// composerMoveWord, composerModelWord and composerCapEditWord are the right
 	// of the three fact lines: how each one is edited, said where it is shown.
-	composerMoveWord     = "alt+w to move it"
+	composerMoveWord     = projectKey + " to move it"
 	composerModelWord    = "alt+o to change"
 	composerCapEditWord  = "type a number"
 	composerCapSaysWord  = "it may spend up to "
@@ -463,7 +467,7 @@ func (a *app) composerLayerKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.closeComposerLayer()
 		return a.placeTalk(), true
 
-	case "alt+w":
+	case projectKey:
 		asked, moved := a.composerMove()
 		if moved {
 			a.touch()

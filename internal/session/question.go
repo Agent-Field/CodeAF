@@ -711,6 +711,9 @@ const (
 // forms are internal/tui3's, and two of them drawing the same value differently
 // is a surface question rather than a contract one.
 type Question struct {
+	// ClarificationDepth orders prerequisites ahead of the question they explain.
+	ClarificationDepth int `json:"clarificationDepth,omitempty"`
+
 	// ID is the token an answer names, and it is THE SAME NUMBER the lane's own
 	// resolver already takes — [Event.ID] for a consent request, the node's id
 	// for a proposal, [StandingNotice.ID] for a standing card. A question does
@@ -1596,6 +1599,9 @@ func (a *Agent) questionSaid(kind QuestionKind, token string) (Question, bool) {
 // is the whole content of that ordering law.
 func (a *Agent) emitQuestion(kind EventKind, q Question, answer *Answer) {
 	event := Event{Kind: kind, ID: q.ID, Question: &q, Answer: answer}
+	if a.questionParent != nil {
+		a.questionParent(event)
+	}
 	a.mu.Lock()
 	watchers := make([]*eventStream, len(a.questionWatchers))
 	copy(watchers, a.questionWatchers)
@@ -1631,6 +1637,9 @@ func (a *Agent) WatchQuestions() (<-chan Event, func()) {
 		return stream.out, func() {}
 	}
 	a.questionWatchers = append(a.questionWatchers, stream)
+	for _, event := range a.discussionEvents {
+		stream.send(event)
+	}
 	a.mu.Unlock()
 	// AND WHAT IS ALREADY OPEN GOES OUT FIRST, to every new lane. A surface
 	// opens this with no questions on screen — a conversation resumed from its
@@ -1912,6 +1921,15 @@ var (
 // on a question no surface in this program could draw, let alone answer. They
 // are on this door now, so a surface has one thing to call.
 func (a *Agent) ResolveQuestion(answer Answer) error {
+	if child, original, ok := a.discussionAnswer(answer); ok {
+		return child.ResolveQuestion(original)
+	}
+	if answer.Clarify {
+		return a.clarifyQuestion(answer)
+	}
+	if len(a.discussionQuestions()) > 0 {
+		return errors.New("answer the clarification's question first")
+	}
 	if answer.At.IsZero() {
 		answer.At = time.Now()
 	}
@@ -2111,6 +2129,9 @@ func resolvesQuestion(answer Answer) bool { return AnswerResolves(answer) }
 //   - `change it` on a finished design hands the page back to the designer, which
 //     rewrites it and puts it in front of you again ([HarnessChangeKey]).
 func AnswerResolves(answer Answer) bool {
+	if answer.Clarify {
+		return false
+	}
 	switch answer.Kind {
 	case QuestionAsk:
 		// AND ASKING BACK IS NOT ANSWERING. The third answer to the model's own
@@ -2398,7 +2419,7 @@ func fuelAnswer(key, words string) string {
 // Holding a.mu across another lock is holding the lock Interrupt has to be able
 // to take.
 func (a *Agent) OpenQuestions() []Question {
-	var open []Question
+	open := a.discussionQuestions()
 
 	a.mu.Lock()
 	modelAsks := a.asked.openLocked()

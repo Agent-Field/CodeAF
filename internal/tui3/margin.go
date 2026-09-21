@@ -6,7 +6,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -183,23 +182,13 @@ func (a *app) marginStandingShows() bool {
 
 // ── the rows ────────────────────────────────────────────────────────────────
 
-// marginHead is the label the TASKS section opens with when work exists — the
-// door below is enough geography for an empty section (the emptiness law: a
-// label over nothing is an announcement of absence) — and it is one line
-// whatever is under it ([app.marginRows] says why a label is not news).
+// marginHead leaves one quiet row between the pinned hide control and tasks.
+// An empty sidebar keeps its task action directly below the control.
 func (a *app) marginHead(width int, hasTasks bool) []railLine {
 	if !hasTasks {
 		return nil
 	}
-	if agent, ok := a.agent.(workingNowAgent); ok {
-		if count := session.CountWorking(agent.WorkingNow()); count > 1 {
-			plainTail := " · " + itoa(count) + " working"
-			room := max(0, width-ansi.StringWidth(plainTail))
-			head := a.pal.dim(fit(marginTasksWord, room)+" · ") + a.pal.data(itoa(count)) + a.pal.dim(" working")
-			return []railLine{{text: head, entry: -1}}
-		}
-	}
-	return []railLine{{text: a.pal.dim(fit(marginTasksWord, width)), entry: -1}}
+	return []railLine{{entry: -1}}
 }
 
 // marginRows is everything the column draws UNDER this conversation's work: the

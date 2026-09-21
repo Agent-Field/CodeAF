@@ -30,7 +30,7 @@ import (
 //	↑        with an empty box, pull the parked message back in to edit it.
 //	click    the same, on the block itself.
 //
-// AND THE FIRST TWO OF THOSE AS ONE ACT: `shift+enter` parks the draft and
+// AND THE FIRST TWO OF THOSE AS ONE ACT: `ctrl+shift+enter` parks the draft and
 // stops the answer in one gesture, which is the way somebody actually
 // interrupts — by speaking (bargein.go). It is built ON this queue rather than
 // beside it, so everything below is what happens to the message afterwards.
@@ -223,7 +223,7 @@ func (a *app) recallParkedAt(i int) bool {
 // same question the stop is, because a turn that is winding down has no
 // boundary left to steer into either.
 var parkedHint = []string{
-	"waits for this answer", "esc stops and drops", steerArrowWord, "↑ or click to edit",
+	"waits for this answer", "ctrl+c stops and drops", steerArrowWord, "↑ or click to edit",
 }
 
 // parkedHeight is how many rows the block takes: the messages, then the one dim
