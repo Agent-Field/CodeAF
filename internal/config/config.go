@@ -5,10 +5,14 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
@@ -220,6 +224,8 @@ const (
 type Config struct {
 	APIKey  string
 	BaseURL string
+	// UnreadProfileKeys is the sorted result of the profile reader registry check.
+	UnreadProfileKeys []string
 	// Sources is the resolved service set. Empty preserves every scalar
 	// construction that predates services through [modelsource.Set.OrDefault].
 	Sources modelsource.Set
@@ -352,17 +358,86 @@ func Load() (Config, error) { return load(true) }
 // instead of at the door, where the sentence can be read.
 func LoadKeyless() (Config, error) { return load(false) }
 
+// nonSettingProfileFields are the top-level config.json keys the loader and
+// first run write that are not settings-registry rows. They are consumed even
+// though NewSettings(...).Rows() does not list them.
+var nonSettingProfileFields = []string{
+	KeySetupSeen,
+	KeySplitPct,
+	KeyStandingBackground,
+	KeyResponseAttempts,
+	KeyResponseLiftAfter,
+	KeyResponseLiftCap,
+	keyModelSources,
+}
+
+// retiredProfileKeys are top-level config.json keys that a shipped version once
+// wrote as a real settings-registry row but that nothing reads at head. The
+// unread check skips them silently so a person on an older profile is not told
+// about an ignored key they never typed. Each was confirmed by a static history
+// sweep (a shipped registry row at introduction, no reader at head), dated by
+// the commit that removed its last reader. A key earns a place here only on
+// that evidence; TestProfileKeyLedgerLaw keeps the set honest against the
+// writer ledger.
+var retiredProfileKeys = map[string]bool{
+	"linear_mode":          true, // reader removed by 74e16993c
+	"nerd_font":            true, // reader removed by 74e16993c
+	"rail_state":           true, // reader removed by 74e16993c
+	"work.workers":         true, // reader removed by 05b995376
+	"memory.consolidation": true, // reader removed by 10dcdfdd4
+	"practice_demand_pct":  true, // reader removed by 84ba8503e
+	"propose_new_skills":   true, // reader removed by 84ba8503e
+}
+
+// consumedProfileKeys is every top-level config.json key a reader consumes at
+// head: every settings-registry row plus the non-setting loader and first run
+// fields. It is the one definition the unread check and the ledger law both
+// read, so the two cannot drift.
+func consumedProfileKeys(profileDir string) map[string]bool {
+	consumed := make(map[string]bool)
+	for _, key := range nonSettingProfileFields {
+		consumed[key] = true
+	}
+	for _, row := range NewSettings(SettingsOptions{ProfileDir: profileDir}).Rows() {
+		consumed[row.Key] = true
+	}
+	return consumed
+}
+
+var warnedProfileConfigs sync.Map
+
+func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage) []string {
+	path := BudgetConfigPath(profileDir)
+	consumed := consumedProfileKeys(profileDir)
+	var unread []string
+	for key := range values {
+		if consumed[key] || retiredProfileKeys[key] {
+			continue
+		}
+		unread = append(unread, key)
+	}
+	sort.Strings(unread)
+	if len(unread) > 0 {
+		if _, warned := warnedProfileConfigs.LoadOrStore(path, struct{}{}); !warned {
+			log.Printf("codeaf: %s has unread top-level config key(s): %s", path, strings.Join(unread, ", "))
+		}
+	}
+	return unread
+}
+
 func load(requireKey bool) (Config, error) {
 	profileDir := ProfileDir()
 	// The default key and model_sources live in the same object. Read that
 	// object once here, then resolve both facts from the snapshot so adding an
 	// empty model_sources field does not add a launch-path read.
 	profileValues, _ := readProfileConfig(profileDir)
+	unreadProfileKeys := warnUnreadProfileKeys(profileDir, profileValues)
 	apiKey := apiKeyFrom(profileValues)
 	baseURL := firstNonEmpty(env.Get("CODEAF_BASE_URL"), DefaultBaseURL)
 	config := Config{
 		APIKey:            apiKey,
 		BaseURL:           baseURL,
+		UnreadProfileKeys: unreadProfileKeys,
 		Model:             firstNonEmpty(env.Get(ModelEnv), DefaultModel),
 		PlanModel:         strings.TrimSpace(env.Get(PlanModelEnv)),
 		Timeout:           DefaultTimeout,

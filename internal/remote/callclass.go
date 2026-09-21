@@ -137,7 +137,8 @@ func classify(method string) callClass {
 	switch method {
 	case MethodPing,
 		MethodModel, MethodTitle, MethodUsage, MethodContextTokens,
-		MethodTranscript, MethodEarlier, MethodRewindPoints,
+		MethodTranscript, MethodEarlier, MethodRewindPoints, MethodPlanSpend,
+		MethodPlanTasks, MethodPlanTaskPage, MethodPlanRunSummary, MethodRefreshRunSummary,
 		MethodReasoningFor, MethodEffort, MethodResolvedEffort,
 		MethodSessionsRecent, MethodHeldQuestions,
 		MethodStandingItems, MethodStandingWatch,
@@ -151,6 +152,7 @@ func classify(method string) callClass {
 		MethodStandingResolve, MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
 		MethodTake, MethodAnswerLaneOffer, MethodInterrupt,
+		MethodPlanNote, MethodPlanPause, MethodPlanResume, MethodPlanCancel, MethodPlanAmend, MethodPlanPriority,
 		MethodTyping:
 		return classAct
 	default:

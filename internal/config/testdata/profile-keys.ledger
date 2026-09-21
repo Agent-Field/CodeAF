@@ -1,0 +1,105 @@
+# profile-keys.ledger
+# Every top-level config.json key the product has EVER written: today's
+# settings-registry rows, the non-setting loader and first-run fields, and
+# the retired keys (once written, read by nothing at head). One key per line;
+# lines starting with # and blank lines are ignored.
+#
+# TestProfileKeyLedgerLaw enforces two halves:
+#   (a) every key a current writer can produce is listed here;
+#   (b) every listed key is either consumed at head or in retiredProfileKeys.
+# Adding a settings row forces a line here; removing one leaves its line
+# behind and turns the law red until the key is retired on purpose.
+api_key
+approval.guardian
+approval.timeout_seconds
+attribution
+bash.background_after_seconds
+brief_after
+completion_reserve
+context_fill_pct
+context_reuse_pct
+daily_budget_usd
+document_engine
+draft.persist
+effort
+google_oauth_client
+google_oauth_secret
+history.enabled
+lane.guard
+lane.talk
+linear_mode
+memory.consolidation
+memory.enabled
+model.image
+model.music
+model.plan
+model.scribe
+model.speech
+model.talk
+model.verify
+model.video
+model.voice
+model.work
+model_pool
+model_sources
+models.crew
+models.crew.pick
+models.crew.source
+models.fallbacks
+models.pool.public_key
+models.roles
+models.tiers.high
+models.tiers.low
+models.tiers.mastermind
+models.tiers.reflex
+models.tiers.worker
+nerd_font
+plan_consent_usd
+practice_budget_usd
+practice_demand_pct
+practice_idle
+prompt.profile
+propose_new_skills
+rail_state
+reply.guard
+response.attempts
+response.lift_after
+response.lift_cap_usd
+routing
+search.exaKey
+search.firecrawlKey
+search.jinaKey
+search.provider
+session.spendRailUSD
+setup_seen_at
+slack_oauth_client
+split_pct
+ssh.control_persist_seconds
+ssh.ip_qos
+ssh.server_alive_misses
+ssh.server_alive_seconds
+standing.background
+task.audit
+task.autoapprove_seconds
+task.max_load
+task.min_free_mb
+task.model
+task.parallel
+task.repair_rounds
+task.settle
+task.start
+telemetry
+tenure_after
+tools.approval
+tools.approvalMode
+tools.bashPatterns
+ui.hints
+ui.icons
+ui.mouse
+ui.quick_switch
+ui.task_column
+ui.timestamps
+ui.work
+vision_model
+work.workers
+working_set_tokens

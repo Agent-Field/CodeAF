@@ -106,6 +106,26 @@ func TestTheSwitcherRanksEveryKindOfThingByWhatWantsThePerson(t *testing.T) {
 	}
 }
 
+// A WATCH STOPPED FOR PERMISSION IS SAID, NOT ASKED. The line a refusal leaves
+// on an item is already a whole sentence about it, and the ask word used to put
+// `asks: stopped` on a row where nobody asked anything. Both spellings of a
+// refusal go through standing.IsPermissionLine, the one predicate for which of
+// the two things NeedsPerson carries a line is.
+func TestAWatchStoppedForPermissionIsSaidNotAsked(t *testing.T) {
+	for _, line := range []string{
+		standing.NeedsPermissionLead + "bash",
+		"needs approval but no resolver is attached: default",
+	} {
+		view := StandingItemView{Item: standing.Item{
+			ID: "w-stop", Words: "watch the lockfile", Status: standing.StatusActive,
+			NeedsPerson: line,
+		}}
+		if got := switcherStandingNote(view); got != line {
+			t.Fatalf("the row puts the ask word over a line nobody asked: got %q, want the line bare %q", got, line)
+		}
+	}
+}
+
 // FILES ARE NEWS ONLY AFTER THEIR ROW LANDS. A run started after the last look
 // but still carrying no ending is not counted as change since that look; the
 // same row becomes news once its closing row dates the landing.

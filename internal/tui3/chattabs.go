@@ -153,6 +153,7 @@ type chatTab struct {
 	held   bool
 	start  bool
 	signal tabSignal
+	work   bool
 }
 
 // tabKind is what one drawn piece of the strip IS, which is what decides whether
@@ -356,6 +357,9 @@ func (a *app) tabList() []chatTab {
 	// told what this window is holding is worth most.
 	if !tabsHold(tabs, front) {
 		tabs = append(tabs, a.tabAs(chatTab{key: front, file: a.file}, nil, front))
+	}
+	if work, ok := a.workTab(); ok {
+		tabs = append(tabs, work)
 	}
 	return tabsCapped(tabs, a.prev)
 }
@@ -993,6 +997,10 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 // refusals said in the same words, because one gesture with two spellings of
 // "that folder is gone" is two features to keep in step.
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
+	if tab.work {
+		return a.openWorkTab()
+	}
+	a.workTabOn = false
 	a.tabReveal()
 	if tab.start {
 		return a.openChatStart()

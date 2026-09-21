@@ -257,6 +257,10 @@ type Options struct {
 type Catalog struct {
 	ready   *rows
 	resolve func() *rows
+	// cancel and warmDone give a lazy catalog ownership of its background
+	// discovery. Close cancels the fetch and joins the goroutine before returning.
+	cancel   context.CancelFunc
+	warmDone chan struct{}
 	// warm is the resolved value published the instant resolution finishes, so
 	// a question that must not wait can still be answered once the answer
 	// exists. [Catalog.rows] blocks on the future; [Catalog.rowsNow] reads this
@@ -366,9 +370,14 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows, err e
 // the surface is up, so the goroutine warms the value while the caller carries
 // on, and only a question that genuinely arrives first ever blocks.
 func LoadLazy(ctx context.Context, options Options) *Catalog {
-	resolved := &Catalog{warmed: make(chan struct{})}
+	warmCtx, cancel := context.WithCancel(ctx)
+	resolved := &Catalog{
+		warmed:   make(chan struct{}),
+		cancel:   cancel,
+		warmDone: make(chan struct{}),
+	}
 	resolve := sync.OnceValue(func() *rows {
-		loaded, _ := loadOrFallback(ctx, options)
+		loaded, _ := loadOrFallback(warmCtx, options)
 		resolved.warm.Store(loaded)
 		// The wait door ([Catalog.Warmed]) reads the close, not the value, and
 		// the two land together so a caller that arrived between them would
@@ -377,8 +386,21 @@ func LoadLazy(ctx context.Context, options Options) *Catalog {
 		return loaded
 	})
 	resolved.resolve = resolve
-	guard.Go("catalog/warm", func() { resolve() })
+	guard.Go("catalog/warm", func() {
+		defer close(resolved.warmDone)
+		resolve()
+	})
 	return resolved
+}
+
+// Close cancels and joins a lazy catalog warm. It is safe to call more than
+// once. Eager and zero catalogs have no background work and return immediately.
+func (c *Catalog) Close() {
+	if c == nil || c.cancel == nil {
+		return
+	}
+	c.cancel()
+	<-c.warmDone
 }
 
 // load resolves one catalog, and reports why the fetch failed when it spent the
@@ -399,6 +421,11 @@ func load(ctx context.Context, options Options) (*rows, error) {
 
 	// fetch refuses an empty listing itself, so a nil error here is always rows.
 	models, err := fetch(ctx, options)
+	if err == nil {
+		// A transport may report success after cancellation. Closing the owner
+		// must still prevent that late response from changing persistent state.
+		err = ctx.Err()
+	}
 	if err == nil {
 		fetchedAt := now().UTC()
 		if path != "" {

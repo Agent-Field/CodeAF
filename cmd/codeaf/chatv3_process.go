@@ -54,11 +54,16 @@ type v3Process struct {
 	// the same one: with CODEAF_PROFILE_DIR set, a panel writing ~/.codeaf while
 	// the session read the named profile is a gate turned off in the sheet that
 	// stays on with nothing on screen saying why.
-	Settings   config.Config
-	ProfileDir string
+	Settings          config.Config
+	ProfileDir        string
+	UnreadProfileKeys []string
 	// Models is ONE lazy warm and one cache on disk. N catalogs would be N
 	// network round trips for one answer.
 	Models *catalog.Catalog
+	// processCtx is the lifetime shared by background work owned by this process.
+	// processStop closes that lifetime before closeAll joins each owned worker.
+	processCtx  context.Context
+	processStop context.CancelFunc
 	// Shelf holds Models until somebody asks /model for today's list, and the
 	// refreshed catalog after (chatv3_modelshelf.go). The picker and the two
 	// session readers that answer about a model somebody may have just picked
@@ -100,10 +105,15 @@ type v3Process struct {
 	// mu guards everything below: the lazily opened history file and the list of
 	// agents this process has built. Both are touched from the surface's
 	// goroutine and from the door's defer, which are not the same one.
-	mu     sync.Mutex
-	recall *history.Store
-	agents []*session.Agent
-	closed bool
+	mu              sync.Mutex
+	recall          *history.Store
+	agents          []*session.Agent
+	standingStarted bool
+	standingStop    chan struct{}
+	standingDone    chan struct{}
+	sweepCancel     context.CancelFunc
+	sweepDone       chan struct{}
+	closed          bool
 }
 
 // openV3Process builds the once-only half of a v3 launch.
@@ -126,10 +136,6 @@ func openV3Process(door string) (*v3Process, error) { return openV3ProcessWith(d
 // there to finish the browser trip, and a process that opened keyless would fail
 // on its first request instead of at the door where the sentence can be read.
 func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
-	// Housekeeping, in the background, once per process (chatv3_sweep.go). It
-	// was already a sync.Once and needs nothing from this move; it is here
-	// because this is now the one function every v3 door passes through.
-	startPlaceSweep()
 	settings, err := config.Load()
 	if err != nil && askKey && errors.Is(err, config.ErrNoAPIKey) {
 		// A keyless process is useful only when the surface can answer it. The
@@ -176,24 +182,30 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	discovery := catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	}
-	models := catalog.LoadLazy(context.Background(), discovery)
+	processCtx, processStop := context.WithCancel(context.Background())
+	models := catalog.LoadLazy(processCtx, discovery)
 	// A tier row that says auto is answered from this catalog (config.AutoModels):
 	// the same non-blocking read, never a fetch, and set once at start-up.
 	config.AutoModels = models.ModelsNow
 	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
-	return &v3Process{
-		Settings:   settings,
-		ProfileDir: settings.ProfileDir,
-		Models:     models,
-		Shelf:      shelf,
-		Harnesses:  subharness.Default(),
-		Memory:     v3Memory(settings.ProfileDir),
-		Artifacts:  artifactsIndexPath(),
-		Conns:      v3Connect(settings.ProfileDir),
-		LaunchDir:  launchDir,
-	}, nil
+	process := &v3Process{
+		Settings:          settings,
+		ProfileDir:        settings.ProfileDir,
+		UnreadProfileKeys: append([]string(nil), settings.UnreadProfileKeys...),
+		Models:            models,
+		processCtx:        processCtx,
+		processStop:       processStop,
+		Shelf:             shelf,
+		Harnesses:         subharness.Default(),
+		Memory:            v3Memory(settings.ProfileDir),
+		Artifacts:         artifactsIndexPath(),
+		Conns:             v3Connect(settings.ProfileDir),
+		LaunchDir:         launchDir,
+	}
+	process.startPlaceSweep()
+	return process, nil
 }
 
 // v3UsesDefaultOpenRouter identifies the one endpoint the browser flow can
@@ -407,6 +419,21 @@ func (p *v3Process) closeAll() {
 		return
 	}
 
+	// Cancel the process lifetime first, then join the catalog warm. Catalog.Close
+	// also cancels its derived context, and its join is what makes the promise
+	// that no cache write can happen after closeAll returns airtight.
+	if p.processStop != nil {
+		p.processStop()
+	}
+	if p.Models != nil {
+		p.Models.Close()
+	}
+
+	// Cancellation is checked between entries and before destructive operations.
+	// Joining therefore waits only for the current bounded filesystem operation,
+	// and guarantees the sweep cannot rename or remove after close returns.
+	p.stopPlaceSweep()
+
 	// The start-up errands this process seated on its profile — the pool index
 	// refresh and the outbox push — were started fire-and-forget.
 	// [stopPoolErrands] cancels them and waits, so nothing this process started
@@ -414,6 +441,11 @@ func (p *v3Process) closeAll() {
 	// the seam). It runs first, before the conversations and the stores, because
 	// it is the process's own errand and not a conversation's.
 	stopPoolErrands(p.ProfileDir)
+
+	// Stop the standing clock before closing anything it may borrow. Waiting
+	// for its loop also waits for a pass already in flight, so no standing
+	// writer can outlive this process close.
+	p.stopStandingTicks()
 
 	var waiting sync.WaitGroup
 	for _, agent := range agents {
@@ -441,7 +473,7 @@ func (p *v3Process) closeAll() {
 	// It is the same bargain the recall store's Close makes one line below: a
 	// queue written on the way out, so the last thing a person did is on disk
 	// before the terminal comes back.
-	session.FlushUsage()
+	session.CloseUsage()
 
 	if recall != nil {
 		_ = recall.Close()

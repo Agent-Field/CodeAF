@@ -355,7 +355,7 @@ func TestTheSpeedFilterKeepsWhatStartsInTime(t *testing.T) {
 
 // AND EVERYTHING ELSE RANKS EXACTLY AS IT ALWAYS DID. This is the promise the
 // grammar is built on: a word it does not recognise is a word to search for,
-// with the same three tiers and the same order, whether or not a single lane
+// with the same scoring and the same order, whether or not a single lane
 // has ever been measured.
 func TestAnUnparsedTokenRanksTheWayItAlwaysHas(t *testing.T) {
 	want := []string{"gpt-5-classic", "openai/gpt-4.1-mini", "anthropic/claude-gpt-echo"}

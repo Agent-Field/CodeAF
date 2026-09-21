@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -32,13 +33,12 @@ func TestAOneStageSampleLosesTheVoteWhenTheMaterialExceedsOneWorker(t *testing.T
 		`]}`
 	whole := `{"stages":[{"title":"Do the lanes","summary":"all three lanes over the file","needs":[]}]}`
 	client := func() *stubClient {
-		var calls int
+		var calls atomic.Int64
 		return &stubClient{reply: func(system, user string) string {
 			if !strings.Contains(system, "You break a goal into its ordered stages") {
 				return ""
 			}
-			calls++
-			if calls == 1 {
+			if calls.Add(1) == 1 {
 				return staged
 			}
 			return whole

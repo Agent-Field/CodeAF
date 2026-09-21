@@ -1,13 +1,17 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -503,5 +507,168 @@ func TestDocumentClientIsDirectLikeTheVisionProxy(t *testing.T) {
 	client, err := configured.DocumentClient()
 	if err != nil || client == nil {
 		t.Fatalf("document client = %v err=%v", client, err)
+	}
+}
+
+func TestLoadWarnsOnceForEveryUnreadTopLevelProfileKey(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(ProfileDirEnv, dir)
+	if err := os.WriteFile(BudgetConfigPath(dir), []byte(`{"models":{"tiers":{"reflex":"nested/model"}},"typo.key":true,"model.talk":"flat/model","response.attempts":3,"response.lift_after":2,"response.lift_cap_usd":0.5}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	warnedProfileConfigs = sync.Map{}
+	var output bytes.Buffer
+	oldWriter := log.Writer()
+	oldFlags := log.Flags()
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+
+	first, err := LoadKeyless()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Model != DefaultModel {
+		t.Fatalf("nested model changed resolution: got %q, want %q", first.Model, DefaultModel)
+	}
+	if got, want := first.UnreadProfileKeys, []string{"models", "typo.key"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unread profile keys = %v, want %v", got, want)
+	}
+	if got, ok := persistedString(dir, KeyChatModel); !ok || got != "flat/model" {
+		t.Fatalf("consumed flat key resolved as %q, %v", got, ok)
+	}
+	second, err := LoadKeyless()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(second.UnreadProfileKeys, first.UnreadProfileKeys) {
+		t.Fatalf("second unread profile keys = %v, want %v", second.UnreadProfileKeys, first.UnreadProfileKeys)
+	}
+	got := output.String()
+	if strings.Count(got, "unread top-level config key(s)") != 1 {
+		t.Fatalf("load diagnostic count = %d, want 1: %q", strings.Count(got, "unread top-level config key(s)"), got)
+	}
+	for _, key := range []string{"models", "typo.key"} {
+		if !strings.Contains(got, key) {
+			t.Errorf("diagnostic does not name %q: %q", key, got)
+		}
+	}
+	for _, key := range []string{KeyChatModel, KeyResponseAttempts, KeyResponseLiftAfter, KeyResponseLiftCap} {
+		if strings.Contains(got, key) {
+			t.Errorf("diagnostic called consumed flat key %q unread: %q", key, got)
+		}
+	}
+	if value := ResponseAttemptsAt(dir); value != 3 {
+		t.Errorf("response attempts = %v, want 3", value)
+	}
+	if value := ResponseLiftAfterAt(dir); value != 2 {
+		t.Errorf("response lift after = %v, want 2", value)
+	}
+	if value := ResponseLiftCapAt(dir); value != 0.5 {
+		t.Errorf("response lift cap = %v, want 0.5", value)
+	}
+}
+
+// TestNoShippedWriterKeyIsReportedUnread guards the property that a key the
+// product itself writes is never named as unread: the notice must not tell a
+// person their config carries an ignored key they never typed. Every settings
+// registry row and every non-setting field the loader writes is a shipped
+// writer; a profile made of all of them yields an empty unread list.
+func TestNoShippedWriterKeyIsReportedUnread(t *testing.T) {
+	dir := t.TempDir()
+	values := map[string]json.RawMessage{}
+	for _, row := range NewSettings(SettingsOptions{ProfileDir: dir}).Rows() {
+		if row.Key == "" {
+			continue
+		}
+		values[row.Key] = json.RawMessage(`"x"`)
+	}
+	for _, key := range []string{
+		KeySetupSeen, KeySplitPct, KeyStandingBackground,
+		KeyResponseAttempts, KeyResponseLiftAfter, KeyResponseLiftCap,
+		keyModelSources,
+	} {
+		values[key] = json.RawMessage(`"x"`)
+	}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("shipped-writer keys reported unread: %v", unread)
+	}
+}
+
+// loadProfileKeyLedger reads testdata/profile-keys.ledger into a set, skipping
+// comment (#) and blank lines.
+func loadProfileKeyLedger(t *testing.T) map[string]bool {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "profile-keys.ledger"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := map[string]bool{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		set[line] = true
+	}
+	return set
+}
+
+// TestProfileKeyLedgerLaw makes it impossible to add or remove a profile writer
+// without accounting for it. Half (a): every key a current writer can produce is
+// in the ledger. Half (b): every ledger key is either consumed at head or in
+// retiredProfileKeys. Adding a settings row forces a ledger line; removing one
+// leaves its line behind and turns this red until the key is retired on purpose.
+func TestProfileKeyLedgerLaw(t *testing.T) {
+	ledger := loadProfileKeyLedger(t)
+	consumed := consumedProfileKeys(t.TempDir())
+
+	for key := range consumed {
+		if key == "" {
+			continue
+		}
+		if !ledger[key] {
+			t.Errorf("writer key %q is not in testdata/profile-keys.ledger; add it", key)
+		}
+	}
+	for key := range ledger {
+		if !consumed[key] && !retiredProfileKeys[key] {
+			t.Errorf("ledger key %q is neither consumed at head nor in retiredProfileKeys; if its writer was removed, retire the key on purpose", key)
+		}
+	}
+	for key := range retiredProfileKeys {
+		if consumed[key] {
+			t.Errorf("retired key %q is still consumed at head; remove it from retiredProfileKeys", key)
+		}
+		if !ledger[key] {
+			t.Errorf("retired key %q is not in the ledger", key)
+		}
+	}
+}
+
+// TestRetiredProfileKeysAreNotReportedUnread pins that a profile carrying a
+// retired key is silent, and that a genuinely unknown key is still named.
+func TestRetiredProfileKeysAreNotReportedUnread(t *testing.T) {
+	dir := t.TempDir()
+	for key := range retiredProfileKeys {
+		key := key
+		t.Run(key, func(t *testing.T) {
+			values := map[string]json.RawMessage{key: json.RawMessage(`"x"`)}
+			if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+				t.Fatalf("retired key %q reported unread: %v", key, unread)
+			}
+		})
+	}
+	values := map[string]json.RawMessage{}
+	for key := range retiredProfileKeys {
+		values[key] = json.RawMessage(`"x"`)
+	}
+	values["totally_unknown_key"] = json.RawMessage(`"x"`)
+	unread := warnUnreadProfileKeys(dir, values)
+	if len(unread) != 1 || unread[0] != "totally_unknown_key" {
+		t.Fatalf("with retired keys plus one unknown, expected only totally_unknown_key unread, got %v", unread)
 	}
 }

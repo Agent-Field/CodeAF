@@ -357,6 +357,18 @@ func switcherConversationNote(row session.SessionRow, seen time.Time) string {
 
 func switcherStandingNote(view StandingItemView) string {
 	if need := switcherFirstLine(view.Item.NeedsPerson); need != "" {
+		// WHICH OF THE TWO THINGS NeedsPerson CARRIES HAS ONE ANSWER, and
+		// [standing.IsPermissionLine] is it, because the spellings of a refusal
+		// live in standing, in that one predicate, and no surface keeps its own
+		// list of them. The refusal is said bare because it is already a whole
+		// sentence about the item, `stopped: it needed your ok to run bash`, so
+		// the ask word would put `asks: stopped` on a row where nobody asked
+		// anything, the same reading switcherConversationNote takes above for
+		// the consent gate's own sentence. The word is for the other tenant, a
+		// QUESTION the firing put to the person in its own words.
+		if standing.IsPermissionLine(need) {
+			return need
+		}
 		return switcherAsksWord + need
 	}
 	if view.Running && strings.TrimSpace(view.Mark.What) != "" {

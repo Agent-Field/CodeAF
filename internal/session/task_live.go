@@ -166,6 +166,32 @@ func (l *taskLive) finished() {
 	l.call, l.began = "", time.Time{}
 }
 
+// awaitSteps answers the finished-call count once it has reached n, or the
+// count it saw when the window ran out. THE FUNNEL RUNS ON THE RUNNER'S
+// GOROUTINE, NOT THE WORKER'S: a worker sends its tool-end event and moves on
+// to compose its next request while the runner is still folding that event in
+// here ([taskRoom.publish]), so a worker that reads the count the instant after
+// its own send can read one step behind. The worker knows how many calls it has
+// sent; this lets it wait for the count to say so before drawing it, and the
+// wait is nothing at all when the funnel is already level. The window is a
+// bound, not a clock: a recorder that never catches up (a room closed under the
+// worker) answers what it has rather than holding the turn.
+func (l *taskLive) awaitSteps(n int, window time.Duration) int {
+	if l == nil {
+		return 0
+	}
+	deadline := time.Now().Add(window)
+	for {
+		l.mu.Lock()
+		steps := l.steps
+		l.mu.Unlock()
+		if steps >= n || !time.Now().Before(deadline) {
+			return steps
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // write folds a streamed chunk of the node's own words in, one line per
 // newline. Text is kept because it is the node THINKING OUT LOUD — "the guard
 // is missing; I will add it and a test" — which is the one thing in the stream

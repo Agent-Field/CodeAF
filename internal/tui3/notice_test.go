@@ -688,3 +688,37 @@ func TestABoardWithNoPathKeepsNoticesForTheSession(t *testing.T) {
 		t.Fatalf("a pathless ledger refused to be written away: %v", err)
 	}
 }
+
+func TestUnreadProfileKeysNoticeTracksTheSet(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, noticeLedgerName)
+	boot := func(keys []string) *app {
+		a := newTestApp(&fakeAgent{model: "m"})
+		a.notices = newNoticeBoard(path, "", true)
+		a.showUnreadProfileKeys(keys)
+		return a
+	}
+	said := func(a *app, text string) bool {
+		for _, entry := range a.entries {
+			if entry.kind == entryNote && strings.Contains(entry.text, text) {
+				return true
+			}
+		}
+		return false
+	}
+	if said(boot(nil), "config.json") {
+		t.Fatal("flat config showed a notice")
+	}
+	if !said(boot([]string{"models"}), "models") {
+		t.Fatal("nested models key was not named")
+	}
+	if said(boot([]string{"models"}), "models") {
+		t.Fatal("unchanged unread set repeated")
+	}
+	if !said(boot([]string{"models", "tiers"}), "models, tiers") {
+		t.Fatal("changed unread set did not show")
+	}
+	if said(boot([]string{"models"}), "models") {
+		t.Fatal("previous unread set showed again")
+	}
+}

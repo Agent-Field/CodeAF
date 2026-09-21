@@ -1,7 +1,10 @@
 package session
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,7 +32,33 @@ import (
 // told.
 func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	// NO TEST WRITES THE REAL HOME: the lane registry's store lives under it.
-	t.Setenv(home.EnvVar, t.TempDir())
+	state := t.TempDir()
+	t.Setenv(home.EnvVar, state)
+	ledger := filepath.Join(state, "v3", "usage.jsonl")
+	writerEntered := make(chan struct{})
+	releaseWriter := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseWriter) }) }
+	var enteredOnce sync.Once
+	writer := &usageWriter{queue: make(chan usageWrite, usageQueueDepth), stopped: make(chan struct{}), beforeWrite: func() {
+		// beforeWrite runs on EVERY write, so the entered signal is closed once;
+		// a second row through this writer must not close a closed channel.
+		enteredOnce.Do(func() { close(writerEntered) })
+		<-releaseWriter
+	}}
+	usageWritersMu.Lock()
+	usageWriters[ledger] = writer
+	usageWritersMu.Unlock()
+	go writer.run(ledger)
+	t.Cleanup(func() {
+		release()
+		FlushUsage()
+		usageWritersMu.Lock()
+		delete(usageWriters, ledger)
+		close(writer.queue)
+		usageWritersMu.Unlock()
+		<-writer.stopped
+	})
 	const model = "stub/talk"
 	// THE PINNED MACHINE IS ONE THE ROUTER DOES NOT SERVE FOR THIS MODEL, which
 	// is the measured shape: the router publishes its serving set, the machine a
@@ -79,6 +108,16 @@ func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	}
 	if served := server.Served(); len(served) == 0 {
 		t.Fatal("nothing answered the turn, so the widened retry never landed")
+	}
+
+	<-writerEntered
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	FlushUsage()
+	if _, err := os.Stat(ledger); err != nil {
+		t.Fatalf("usage flush returned before its product-owned writer created %s: %v", ledger, err)
 	}
 }
 

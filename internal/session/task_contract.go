@@ -296,6 +296,17 @@ const (
 	// died on an API 404 read as a gap in the ask and held an unattended run open
 	// over a tree that was finished (#513).
 	TaskEndingUpstream TaskEnding = "upstream"
+	// TaskEndingTimeLimit says the bound a run was handed on its own time ended
+	// it: the elapsed limit a person set on the session, of which a run is given
+	// what is left. It is a fact about the bound and never about the work, so it
+	// is drawn without a fault and its reason names the limit
+	// ([taskReasonTimeLimit]).
+	TaskEndingTimeLimit TaskEnding = "time-limit"
+	// TaskEndingCostLimit is [TaskEndingTimeLimit] for the run's other bound:
+	// the spend ceiling a person set, counted while the work is still going.
+	// Its reason names the dollar limit ([taskReasonCostLimit]), and the two
+	// endings exist apart so a person who set both is told which one fired.
+	TaskEndingCostLimit TaskEnding = "cost-limit"
 	// TaskEndingError is everything else: a working copy that could not be
 	// made, a worker that would not start, an error nobody classified.
 	TaskEndingError TaskEnding = "error"
@@ -330,6 +341,18 @@ const (
 	// person — [Agent.ResolveUnverified], reachable from the `tasks` tool — accepting
 	// the work as done, asking for another audit, or refuting it themselves.
 	TaskUnverified TaskState = "unverified"
+	// TaskInterrupted says NOTHING IS DRIVING THE NODE and every step it took is
+	// kept. The window closed, the machine slept, the engine died. It is settled
+	// in the scheduler's sense — no worker holds it, the slot is back — and it is
+	// deliberately NOT TaskFailed, because nothing was found out about the work.
+	//
+	// "The work did not finish" and "nobody was there to carry it on" are
+	// different news with different consequences, and collapsing the second into
+	// the first is how a run whose window was closed came back reading as though
+	// it had gone wrong. A person's answer is the only thing that moves it, and
+	// the answer is to continue it or to leave it ([TaskAskContinue]); continuing
+	// spends money, so nothing here moves on its own.
+	TaskInterrupted TaskState = "interrupted"
 )
 
 // TaskResolution is what a person decides about a node no auditor could judge.
@@ -573,6 +596,12 @@ type TaskNotice struct {
 	// Branch is the task's branch ("task/fix-nil-map"), kept after a protected
 	// landing, a conflict or a kill so the work is never silently thrown away.
 	Branch string
+	// Copy is WHERE THE WORK HAPPENED, written down so a later process can find
+	// it again rather than make it again (task_run_copy.go). It is set on a
+	// RUN's row and nowhere else: a node of the session's own graph already
+	// carries these facts in its own record. Nil is a row whose copy was never
+	// recorded, which is a run that cannot be carried on.
+	Copy *TaskCopyRecord
 	// Merge is how the branch came home: "merged", "kept" (finished but left
 	// on its branch), "conflicted" (branch kept), "inplace" (a non-git
 	// workspace ran in the person's tree), or "" while running.

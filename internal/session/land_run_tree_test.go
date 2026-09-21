@@ -1,0 +1,82 @@
+package session
+
+// LandRunTree is the run engine's landing stated where the commit road lives:
+// the working copy's own git status committed on its branch, answering the
+// branch, the paths and the refusal. The tests here are the door's own — the
+// same repository in a temp directory the landing tests use — and the run
+// side's [`internal/run`] tests cover the door reached through `Land`.
+
+import (
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+// A RUN'S WORK IS THE TREE'S OWN. Two files the tree says are changed land in
+// one commit on the branch the copy stands on, and the commit is the paths the
+// index built, not any list handed in.
+func TestLandRunTreeCommitsTheTreesOwnWorkOntoItsBranch(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "second.txt"), "two\n")
+	writeFile(t, filepath.Join(repo, "shared.txt"), "the changed line\n")
+
+	branch, changed, refusal, err := LandRunTree(repo, "do the thing", false)
+	if err != nil {
+		t.Fatalf("LandRunTree: %v", err)
+	}
+	if branch != "work" {
+		t.Fatalf("branch = %q, want the branch the copy stands on", branch)
+	}
+	if want := []string{"second.txt", "shared.txt"}; !reflect.DeepEqual(changed, want) {
+		t.Fatalf("changed = %v, want %v", changed, want)
+	}
+	if refusal != "" {
+		t.Fatalf("refusal = %q, want none on a landing", refusal)
+	}
+	landed := gitOut(t, repo, "show", "--name-only", "--format=", "HEAD")
+	for _, want := range []string{"second.txt", "shared.txt"} {
+		if !strings.Contains(landed, want) {
+			t.Fatalf("the commit does not carry %s:\n%s", want, landed)
+		}
+	}
+}
+
+// A TREE WITH NOTHING TO LAND IS A REFUSAL, NOT A FAULT: the branch would
+// carry what it always carried, so the door names no branch and says nothing
+// happened.
+func TestLandRunTreeRefusesATreeWithNothingToLand(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := newTestRepo(t)
+
+	branch, changed, refusal, err := LandRunTree(repo, "only read", false)
+	if err != nil {
+		t.Fatalf("LandRunTree: %v", err)
+	}
+	if branch != "" || len(changed) != 0 {
+		t.Fatalf("branch = %q changed = %v, want no landing", branch, changed)
+	}
+	if refusal == "" {
+		t.Fatal("refusal is empty, want the sentence that says there was nothing to land")
+	}
+}
+
+// THE SWITCH IS THE BELT'S. With CODEAF_TASK_BELT off the door refuses and not
+// one byte of the tree moves: no commit, no index, the work still on the floor.
+func TestLandRunTreeLeavesTheTreeAloneWithTheFlagOff(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "")
+	repo := newTestRepo(t)
+	before := gitOut(t, repo, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(repo, "second.txt"), "two\n")
+
+	if _, _, _, err := LandRunTree(repo, "do the thing", false); err == nil {
+		t.Fatal("LandRunTree with the belt off returned no error, want a refusal")
+	}
+	if after := gitOut(t, repo, "rev-parse", "HEAD"); after != before {
+		t.Fatalf("HEAD moved with the belt off: %s -> %s", before, after)
+	}
+	if out := gitOut(t, repo, "status", "--porcelain"); !strings.Contains(out, "second.txt") {
+		t.Fatalf("the tree's own work is not still uncommitted:\n%s", out)
+	}
+}

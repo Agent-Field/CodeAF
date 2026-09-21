@@ -1,10 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -17,8 +17,8 @@ import (
 // IT IS A FILE AND NEVER THE SCREEN. The pass runs while a surface is taking
 // over the terminal, so a line on stderr is either scrolled past before anybody
 // reads it or painted through a frame the surface has already drawn. Nothing
-// here is a person's problem either — a log that could not be expired is a log
-// that will be expired next week — so the honest destination is a file an
+// here is a person's problem either, a log that could not be expired is a log
+// that will be expired next week, so the honest destination is a file an
 // operator can read afterwards and nobody else ever has to.
 const sweepLogName = "sweep.log"
 
@@ -28,30 +28,46 @@ const sweepLogName = "sweep.log"
 // A person opening a conversation is waiting for a prompt, not for housekeeping:
 // the pass walks every session folder on the machine and stats every dropping in
 // them, which is milliseconds on a laptop that has held ten conversations and a
-// visible pause on one that has held a thousand. So it is a goroutine, it is
-// started and forgotten, and a launch that exits before it finishes has simply
-// swept nothing this time.
+// visible pause on one that has held a thousand. So it is a goroutine and does
+// not block launch. Each v3Process owns one pass. Its close cancels the contextual
+// walk and joins the goroutine, whose cancellation checks bound the join to the
+// filesystem operation already in flight.
 //
-// The once is for the doors, not for a schedule: `codeaf chat` and `codeaf
-// resume` are two entrances to one launch, and a process that came through both
-// should still sweep once.
-//
-// The call sits inside openV3Launch, beside the rest of what a v3 launch
-// resolves, so every door — chat, resume, engine — sweeps without naming it.
+// The call sits after successful openV3Process construction, so failed doors do
+// not start housekeeping and every later process in the same binary gets a pass.
 //
 // THE STANDING ROOT IS HANDED OVER RATHER THAN FOUND. The same pass reaps the
-// ambient side's own litter — an errand that came to nothing, a run that
-// delivered nothing — and internal/session is given the directory to walk so
+// ambient side's own litter, an errand that came to nothing, a run that
+// delivered nothing, and internal/session is given the directory to walk so
 // that the rule can be pointed at a temp directory and proved. [v3StandingRoot]
 // is the one answer to where that is.
-func startPlaceSweep() {
-	sweepOnce.Do(func() { guard.Go("chatv3/sweep-home", func() { session.SweepHome(v3StandingRoot(), noteSweep) }) })
+var sweepHome func(context.Context, string, func(string)) = session.SweepHomeContext
+
+func (p *v3Process) startPlaceSweep() {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	p.sweepCancel = cancel
+	p.sweepDone = done
+	guard.Go("chatv3/sweep-home", func() {
+		defer close(done)
+		sweepHome(ctx, v3StandingRoot(), func(line string) {
+			if ctx.Err() == nil {
+				noteSweep(line)
+			}
+		})
+	})
 }
 
-var sweepOnce sync.Once
+func (p *v3Process) stopPlaceSweep() {
+	if p.sweepCancel == nil {
+		return
+	}
+	p.sweepCancel()
+	<-p.sweepDone
+}
 
 // noteSweep writes one line, and opens the file only when there is a line to
-// write: a clean sweep — which is every sweep on a machine that is behaving —
+// write: a clean sweep, which is every sweep on a machine that is behaving,
 // leaves nothing behind at all.
 func noteSweep(line string) {
 	path := home.Join("v3", sweepLogName)

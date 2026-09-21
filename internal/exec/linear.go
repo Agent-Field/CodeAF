@@ -226,17 +226,31 @@ the file holds the evidence, the detail and the reasoning behind them.`
 // reword one.
 
 // AttributionTrailer is the commit trailer, and the only place codeaf may sign
-// a commit it wrote for the user.
-const AttributionTrailer = "Co-Authored-By: codeaf <agentfield-bot@users.noreply.github.com>"
+// a commit it wrote for the user. The address is ID-prefixed —
+// `267109073+agentfield-bot` is the account's numeric id — because that is the
+// form GitHub links to the CodeAF account and renders the co-author with its
+// avatar.
+const AttributionTrailer = "Co-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>"
+
+// AttributionAssistedBy is the trailer line above the co-author that names the
+// model which wrote the commit, so `git interpret-trailers` can answer who
+// typed it beyond the account. The %s is that model's id, and it is filled in
+// by the one surface that knows the model — the chat's belt fact formats it
+// with the session's configured model (internal/session's beltfacts.go) —
+// while the co-author stays last, the order GitHub reads. The leaf loop's
+// standing contract carries the co-author alone, because exec is handed
+// facts about the model and never its name: the line that needs the name is
+// delivered where the name is.
+const AttributionAssistedBy = "Assisted-by: CodeAF (%s)"
 
 // AttributionSeparator is the em-dash line that opens the body footer.
 const AttributionSeparator = "—"
 
 // AttributionPullFooter is the one footer line on a pull request codeaf opens.
-const AttributionPullFooter = "Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author"
+const AttributionPullFooter = "Drafted with [CodeAF](https://agentfield.ai/github/codeaf?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author"
 
 // AttributionIssueFooter is the same line for an issue; only the medium differs.
-const AttributionIssueFooter = "Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author"
+const AttributionIssueFooter = "Drafted with [CodeAF](https://agentfield.ai/github/codeaf?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author"
 
 // AttributionCommentFooter is the mark on a COMMENT — an issue comment, a pull
 // request comment, a review comment — and it is the quietest of the three on
@@ -261,7 +275,7 @@ const AttributionIssueFooter = "Drafted with [CodeAF](https://agentfield.ai/gith
 // the three cases it is never right for at all — a one-line reply, anything
 // inside a code or suggestion block, and words the person dictated, which are
 // theirs and not codeaf's to sign.
-const AttributionCommentFooter = "<sub>drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>"
+const AttributionCommentFooter = "<sub>drafted with [CodeAF](https://agentfield.ai/github/codeaf?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>"
 
 // AttributionLaw IS THE ONE WORDING, AND IT IS ONE BECAUSE TWO SURFACES SAY IT.
 // The resident's leaf loop appends it to its standing contract
@@ -287,7 +301,7 @@ const AttributionCommentFooter = "<sub>drafted with [CodeAF](https://agentfield.
 // It is ONE PARAGRAPH so that the chat can carry it as a single belt bullet
 // beside the tools it names, which is the register that section is written in.
 // Three of its sentences are the three places, one each, and the fourth is the
-// whole of where it may never go. THREE HUNDRED AND THIRTY-THREE OF ITS BYTES
+// whole of where it may never go. THREE HUNDRED AND FIFTY-FOUR OF ITS BYTES
 // ARE THE THREE CONSTANTS THEMSELVES, which is the floor: a footer the model
 // half-remembers is a footer that attributes nobody and counts as nothing, so
 // this is the one law on the belt that cannot be paraphrased down.

@@ -142,10 +142,10 @@ func TestTypingInsideAnOpenFoldFiltersTheMachines(t *testing.T) {
 	if a.pick.unfold != flash {
 		t.Fatalf("typing inside the fold closed it (fold %q)", a.pick.unfold)
 	}
-	// THE RUNGS ARE THE MODEL LIST'S OWN, so the machine that CARRIES the word
-	// sorts above the one whose letters merely appear in order — `core` is a
-	// subsequence of `cloudflare` — and deepinfra, which carries no `c` at all,
-	// is not here.
+	// THE SCORING IS THE MODEL LIST'S OWN, so the machine that CARRIES the word
+	// sorts above the one whose letters merely appear in order — `core` scores
+	// higher inside `coreweave`, where it begins the name, than inside
+	// `cloudflare` — and deepinfra, which carries no `c` at all, is not here.
 	if names := laneNames(a.pick.lanes); len(names) != 2 || names[0] != "coreweave" || names[1] != "cloudflare" {
 		t.Fatalf("the fold holds %v, want coreweave then cloudflare", names)
 	}

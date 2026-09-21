@@ -59,6 +59,17 @@ const (
 	// threshold, a loop guard and a rule the worker would not follow also end
 	// runs, and none of them is this.
 	TaskPresenceStopped TaskPresence = "stopped"
+	// TaskPresenceInterrupted is work NOTHING IS DRIVING, whose every step is
+	// kept. The window closed, the machine slept, the engine died: none of those
+	// is a finding about the work and none of them is a person's decision, so
+	// none of them may read as stopped or incomplete.
+	//
+	// IT IS NOT A SETTLED READING. The work is not over — it is waiting to be
+	// picked up — which is the whole of what this rung says that the two beside
+	// it cannot. `stopped` stays a person ending the work, `incomplete` stays
+	// work that ran and came up short, and reading either over work whose only
+	// misfortune was a closed window is what this rung exists to stop.
+	TaskPresenceInterrupted TaskPresence = "interrupted"
 )
 
 // TaskWaitOn is what a waiting task is waiting on. "Waiting" alone leaves the
@@ -210,6 +221,16 @@ type TaskFacts struct {
 	// said nothing: work whose owner nobody recorded is work waiting on whoever is
 	// looking at it.
 	Decider TaskAskOwner
+
+	// CannotContinue is WHY work nothing is driving cannot be picked up again,
+	// in the words a person reads, and empty when it can be. It is the sentence
+	// and not a flag, because the row has to say it and a flag would make some
+	// surface write those words a second time ([runCannotContinue] holds the
+	// one spelling).
+	//
+	// IT IS ONLY EVER SET ON AN INTERRUPTED ROW. Every other state is either
+	// over or moving, and neither has anything to carry on.
+	CannotContinue string
 }
 
 // ── the three tiers ─────────────────────────────────────────────────────────
@@ -252,6 +273,11 @@ const (
 	TaskAskCheck TaskAskKind = "check"
 	// TaskAskHeld is work the check did not pass, whose answer is being held.
 	TaskAskHeld TaskAskKind = "held"
+	// TaskAskContinue is work nothing is driving, waiting to be picked up. It is
+	// the one ask on this table that is not about a judgement of the work: the
+	// other five are the machine having reached the end of what it can decide,
+	// and this one is the machine not having been there at all.
+	TaskAskContinue TaskAskKind = "continue"
 	// TaskAskCap is a run standing at its fuel gate.
 	TaskAskCap TaskAskKind = "cap"
 )
@@ -404,7 +430,7 @@ func ProjectTask(facts TaskFacts) TaskStatus {
 	default:
 		status = taskLifecycleStatus(status, facts)
 	}
-	return taskStatusWords(taskStatusDemand(status), facts)
+	return taskStatusWords(taskStatusDemand(status, facts), facts)
 }
 
 // taskConsentStatus reads a piece of work nobody has agreed to yet. The clock is
@@ -449,6 +475,11 @@ func taskLifecycleStatus(status TaskStatus, facts TaskFacts) TaskStatus {
 		status.Fault = taskEndingIsFault(facts.Ending)
 	case TaskDone:
 		status.Presence = TaskPresenceDone
+	case TaskInterrupted:
+		// Nothing was found out about the work and nobody decided anything about
+		// it; there was simply nobody there. It reads as itself and as nothing
+		// else ([TaskInterrupted]).
+		status.Presence, status.On = TaskPresenceInterrupted, TaskWaitPerson
 	}
 	return status
 }
@@ -521,7 +552,7 @@ func taskEndingIsFault(ending TaskEnding) bool {
 	switch ending {
 	case TaskEndingStopped, TaskEndingWire, TaskEndingUpstream, TaskEndingCircling,
 		TaskEndingBlocked, TaskEndingSteps, TaskEndingNotes, TaskEndingRefused, TaskEndingStale,
-		TaskEndingInterrupted:
+		TaskEndingInterrupted, TaskEndingTimeLimit, TaskEndingCostLimit:
 		return false
 	}
 	return true
@@ -530,13 +561,50 @@ func taskEndingIsFault(ending TaskEnding) bool {
 // taskStatusDemand adds what the reading asks of a person, which is the one
 // question both axes can answer. It does not overwrite the presence: where the
 // work is and where its edits went stay separate answers.
-func taskStatusDemand(status TaskStatus) TaskStatus {
+func taskStatusDemand(status TaskStatus, facts TaskFacts) TaskStatus {
 	// Keeping a branch is a valid delivery workflow, not a request to merge.
 	// A conflict or an unresolved review is the actionable condition.
-	if (status.Changes == TaskChangesConflicted && status.ChangesUnlanded()) || status.Presence == TaskPresenceNeedsLook {
+	// AND WORK NOTHING IS DRIVING WILL NOT MOVE WITHOUT THEM EITHER. Continuing
+	// always asks first, so an interrupted row sits exactly where a your-call row
+	// sits until somebody answers it.
+	if (status.Changes == TaskChangesConflicted && status.ChangesUnlanded()) ||
+		status.Presence == TaskPresenceNeedsLook || status.Presence == TaskPresenceInterrupted {
 		status.Attention = true
 	}
+	if taskHeldLandingOffer(facts) {
+		status.Attention = false
+	}
 	return status
+}
+
+// taskHeldLandingOffer reports the one reading that OFFERS without DEMANDING: a
+// landing that turned the work back, with what it produced still on the record.
+//
+// NOTHING IS WAITING ON THE ANSWER, AND THE ENGINE SAYS SO ITSELF. A landing
+// question is raised for [TaskUnverified] and retired for every other state
+// (task_landing_question.go), so a failed node has no question object and never
+// had one: no turn is parked on it and no conversation is holding it. The
+// owner road agrees in the same words: [Agent.handToModelOnAuto] writes a
+// decider only for [TaskUnverified], "because a node that landed done,
+// incomplete or stopped is not waiting on anybody's word, and writing an owner
+// onto it would invent a question nobody is asking". This reading was inventing
+// exactly that question, out of the ending's shape and nothing else, so a row
+// nobody was waiting on stood in `needs you` for the rest of the session.
+//
+// THE CARD IS UNTOUCHED AND THAT IS THE POINT. The tier, the word, the reason
+// and the take-it-anyway answers all stay: the branch is on disk, taking it is
+// a real thing to do, and a person who goes looking is owed the offer. What
+// goes is only [TaskStatus.Attention], which is what files a row under `needs
+// you`. The same separation, for the same reason, as a question somebody else
+// is holding (internal/tui3's taskstatus.go).
+//
+// AND IT DOES NOT DELETE THE DEMAND, it moves it back to whoever has one. If
+// something in a conversation ever does need this answer to carry on, it ASKS,
+// and an ask raises the mark through its own lane ([Agent.waitingOnPerson]'s
+// ask book) with no help from this row. What stops here is the row asserting a
+// waiter that does not exist.
+func taskHeldLandingOffer(facts TaskFacts) bool {
+	return facts.State == TaskFailed && facts.Held && !taskStoppedByPerson(facts)
 }
 
 // taskStoppedByPerson answers the stopped reading from either record of one act:
@@ -603,6 +671,12 @@ func (n TaskNotice) StatusFacts() TaskFacts {
 		Shifted:    n.Shifted,
 		GroundHeld: n.GroundHeld,
 		Decider:    n.Decider,
+		// AND WHETHER THIS RUN CAN BE CARRIED ON AT ALL. It is the sentence
+		// rather than a flag, because the row has to SAY it and a flag would
+		// make some surface write those words a second time
+		// ([runCannotContinue]). It reads no disk, which is what keeps this
+		// method the pure function every drawing road relies on.
+		CannotContinue: runCannotContinue(n.Copy),
 	}
 }
 
@@ -656,6 +730,11 @@ const (
 	taskWordStopped    = "stopped"
 	taskWordIncomplete = "incomplete"
 	taskWordYourCall   = "your call"
+	// taskWordInterrupted is the word for work nothing is driving. It is the one
+	// word on this list a person ASKED for by name, and it joins the others
+	// rather than replacing one: work is running, finishing, done, incomplete,
+	// your call, stopped, or interrupted.
+	taskWordInterrupted = "interrupted"
 )
 
 // The reason sentences for an incomplete landing, one per ending, in the
@@ -675,6 +754,14 @@ const (
 	// is the whole of the distinction the ending draws from
 	// [TaskEndingStopped]'s `stopped`.
 	taskReasonInterrupted = "was cut short from outside the work"
+	// taskReasonTimeLimit and taskReasonCostLimit are the two bounds a run's
+	// own person set on it, and they are drawn from the ending alone: the run
+	// answers one outcome sentence for every limit, and this line is where the
+	// two are told apart. Neither is a fault: a limit set by hand stopped the
+	// work rather than breaking it, and each names its own limit so a person
+	// who set both is told which one fired.
+	taskReasonTimeLimit = "a time limit you set stopped it"
+	taskReasonCostLimit = "a dollar limit you set stopped it"
 	// taskReasonGaps and taskReasonFault are the two the ending alone cannot
 	// answer: what the check found, and what broke. Both read the landing's own
 	// report, which is the only place either sentence exists.
@@ -733,10 +820,18 @@ const (
 	// after this sentence (taskCheckReason reads it back).
 	taskAskSettleReason = "it was not settled within its bound"
 
-	taskAskStartYes    = "start"
-	taskAskStartNo     = "don't"
-	taskAskApproveYes  = "approve"
-	taskAskApproveNo   = "decline"
+	taskAskStartYes   = "start"
+	taskAskStartNo    = "don't"
+	taskAskApproveYes = "approve"
+	taskAskApproveNo  = "decline"
+	// The three sentences an interrupted row asks with. The reason states the
+	// two facts a person needs before they answer — that nothing is driving it,
+	// and that what it did is not lost — because without the second one the
+	// only safe answer looks like starting over.
+	taskAskContinueReason = "nothing is driving it; everything it did is kept"
+	taskAskContinueYes    = "continue it"
+	taskAskContinueNo     = "leave it"
+
 	taskAskConflictYes = "resolve it"
 	taskAskConflictNo  = "drop it"
 	taskAskCheckYes    = "accept"
@@ -773,6 +868,8 @@ func TaskReasonOf(ending TaskEnding, report string) string {
 		return taskReasonNotes
 	case TaskEndingStale:
 		return taskReasonStale
+	case TaskEndingTimeLimit, TaskEndingCostLimit:
+		return taskLimitReason(ending)
 	case TaskEndingRefused:
 		// THE CHECK'S OWN FINDING OUTRANKS THE WORD FOR IT. "Refused" is the
 		// engine's name for both a check that named gaps and a worker that would
@@ -794,6 +891,16 @@ func TaskReasonOf(ending TaskEnding, report string) string {
 		return taskReasonFault + ": " + line
 	}
 	return taskReasonFault
+}
+
+// taskLimitReason names the limit a person set that ended the run. The two are
+// ONE ARM of [TaskReasonOf] because they are one kind of ending, a bound the
+// person chose, and which bound it was is the only thing that differs.
+func taskLimitReason(ending TaskEnding) string {
+	if ending == TaskEndingCostLimit {
+		return taskReasonCostLimit
+	}
+	return taskReasonTimeLimit
 }
 
 // taskGapsOf is what the check said was missing, out of the landing's own report
@@ -858,8 +965,46 @@ func taskStatusWords(status TaskStatus, facts TaskFacts) TaskStatus {
 		status.Tier, status.Word = TaskTierYourCall, taskWordYourCall
 		status.Ask = taskAskOf(facts)
 		status.Reason = status.Ask.Reason
+	case TaskPresenceInterrupted:
+		// THE WORD IS THE PERSON'S OWN AND NOT `your call`, though the tier is
+		// theirs. Every other row in this tier is the machine having reached the
+		// end of what it can decide; this one is the machine not having been
+		// there, and a person scanning a list wants those told apart at a glance.
+		status.Tier, status.Word = TaskTierYourCall, taskWordInterrupted
+		status.Ask = taskAskContinuing(facts)
+		status.Reason = status.Ask.Reason
 	}
 	return status
+}
+
+// taskAskContinuing is what a row nothing is driving asks, and it is a reader of
+// its own beside [taskAskOf] rather than an arm inside it: that one walks the
+// facts of a LANDING to work out which judgement is owed, and there is no
+// judgement here. The answer follows from the presence alone.
+//
+// THE OWNER IS ALWAYS THE PERSON. Continuing spends money, so no settle policy
+// hands this one to the model, which is the same reasoning that keeps a conflict
+// out of the model's hands.
+//
+// AND A RUN THAT CANNOT BE CARRIED ON SAYS WHY, WHERE THE OFFER WOULD HAVE BEEN.
+// It does not quietly lose the key, which is the shape of every defect this
+// design has been removing: a surface that knew something and did not say it. A
+// row that simply lacked the offer would teach a person that carrying on is
+// unreliable, when the truth is that this one run predates the record of where
+// its work is. The NO survives, because leaving it alone is still a real answer
+// and the only one left.
+func taskAskContinuing(facts TaskFacts) TaskAsk {
+	ask := TaskAsk{
+		Kind:   TaskAskContinue,
+		Reason: taskAskContinueReason,
+		Yes:    taskAskContinueYes,
+		No:     taskAskContinueNo,
+		Owner:  TaskAskOwnerPerson,
+	}
+	if why := strings.TrimSpace(facts.CannotContinue); why != "" {
+		ask.Reason, ask.Yes = why, ""
+	}
+	return ask
 }
 
 // taskAskOf is the closed set of your-call questions, in the order the most

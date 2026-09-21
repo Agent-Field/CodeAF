@@ -555,9 +555,41 @@ func newBashTool(cwd string, caps Caps) Tool {
 					return answer, isError, nil
 				}
 			case <-ctx.Done():
+				// THE ARM THAT ENDS THE WAIT ENDS THE COMMAND. This arm used to
+				// say [watchCancel] had already SIGKILLed the group by the time it
+				// could be taken, and nothing ordered that. Returning from here
+				// closes `over`, and a watcher that had not reached its select
+				// yet then finds both of its cases ready, is handed one at random,
+				// and on `over` sends no kill. That is every cancel that arrives
+				// as the command starts: a run's dollar limit reached on the very
+				// call that issued the command, a wall that fires in the same
+				// instant, a context already done. The command is a detached
+				// session leader, so it lived on under no parent, in a folder
+				// that was then removed. So the kill is sent HERE, by the one
+				// goroutine that is certain to see the cancellation, and the
+				// watcher stays for the stretch before this select is reached. A
+				// second SIGKILL to a group that is gone is answered ESRCH and
+				// changes nothing.
+				//
+				// AN ADOPTED CALL IS NOT KILLED, and answers with its adoption:
+				// the process is the adopter's, and which of two ready cases this
+				// select was handed does not change whose it is.
+				if answer, isError, adopted := call.close(); adopted {
+					if timer != nil {
+						timer.Stop()
+					}
+					return answer, isError, nil
+				}
+				// A PROCESS ALREADY REAPED IS NOT SIGNALLED. When the exit and the
+				// cancellation were both ready its pid is free to be somebody
+				// else's, so the kill goes only to a command still running.
+				select {
+				case waitErr = <-waitCh:
+				default:
+					killProcessGroup(cmd)
+				}
 				// THE CANCELLATION ENDS THE WAIT, AND THE REAPER FINISHES BEHIND
-				// US. [watchCancel] has already SIGKILLed the whole group by the
-				// time this arm can be taken, so the process is gone; what was
+				// US. The group has been SIGKILLed above; what was
 				// still being waited for is `cmd.Wait`, and Wait does not return
 				// while ANY holder of the output pipe is alive — a grandchild
 				// that escaped the group (its own setsid, a daemon that

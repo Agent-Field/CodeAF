@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -41,7 +42,8 @@ import (
 //     command list's own arrangement (commands.go), because this is the same
 //     gesture continued rather than a second thing that opened over it.
 //   - IT IS THE OVERLAY GRAMMAR (palette.go): a short list under the draft, ↑↓,
-//     enter, esc, and the scoring is the model picker's own [tokenScore].
+//     enter, esc, and the scoring is the fuzzy matcher every picker on this
+//     surface shares (internal/fuzzy).
 //   - THE CHOICE IS A CHIP IN THE TRAY (attach.go), not text in the draft. A
 //     harness name written into the sentence would be a word the harness then
 //     has to read past — the request is what the run is asked to do, and the
@@ -134,6 +136,10 @@ type harnessPick struct {
 	// It is resolved on the keystroke and not held from boot, for the panel's
 	// reason: another window may have saved a harness a minute ago.
 	rows []harnessPickRow
+	// fields are each row's own words for the matcher — the name and the
+	// sentence under it, raw, once at open — so a keystroke scores without
+	// folding or joining anything per row.
+	fields [][]string
 	// score is per-row scratch, reused across keystrokes.
 	score []int
 	// hits are indexes into rows, in rank order. The browse row is not in here
@@ -176,16 +182,20 @@ func (p *harnessPick) choice() (harnessPickRow, bool) { return p.at(p.cursor) }
 // start opens the list over rows already in recency order.
 func (p *harnessPick) start(rows []harnessPickRow, query string) {
 	*p = harnessPick{open: true, rows: rows}
+	p.fields = make([][]string, len(rows))
+	for i, row := range rows {
+		p.fields[i] = []string{row.name, row.desc}
+	}
 	p.score = make([]int, len(rows))
 	p.rank(query)
 }
 
-// rank narrows the list to the query: case-insensitive, EVERY TOKEN MUST MATCH,
-// and each token matches in one of the model picker's three tiers — prefix,
-// then substring, then subsequence ([tokenScore]). It is that scoring and not a
-// second one, because "which of these names did I mean" is the same question in
-// both lists and two answers to it would be two lists that behave alike until
-// the day they do not.
+// rank narrows the list to the query: case-insensitive, EVERY TERM MUST
+// MATCH, scored by the fzf alignment every picker on this surface shares
+// (internal/fuzzy, by way of palette.go's [fuzzyTerms]). It is that scoring
+// and not a second one, because "which of these names did I mean" is the
+// same question in every list and two answers to it would be two lists that
+// behave alike until the day they do not.
 //
 // WHAT IS SCORED IS THE NAME AND THE SENTENCE UNDER IT. The cue list a designer
 // wrote would be the third thing worth matching, and it is not on the page: a
@@ -197,22 +207,14 @@ func (p *harnessPick) start(rows []harnessPickRow, query string) {
 func (p *harnessPick) rank(query string) {
 	p.query = query
 	tokens := strings.Fields(strings.ToLower(query))
+	ft := fuzzyTerms(tokens)
 	p.hits = p.hits[:0]
-	for i, row := range p.rows {
+	for i := range p.rows {
 		if len(tokens) == 0 {
 			p.hits = append(p.hits, i)
 			continue
 		}
-		hay := strings.ToLower(row.name + " " + row.desc)
-		total, matched := 0, true
-		for _, token := range tokens {
-			score, hit := tokenScore(hay, token)
-			if !hit {
-				matched = false
-				break
-			}
-			total += score
-		}
+		total, matched := fuzzy.ScoreFields(p.fields[i], ft)
 		if !matched {
 			continue
 		}
@@ -220,7 +222,7 @@ func (p *harnessPick) rank(query string) {
 		p.hits = append(p.hits, i)
 	}
 	if len(tokens) > 0 {
-		sort.SliceStable(p.hits, func(a, b int) bool { return p.score[p.hits[a]] < p.score[p.hits[b]] })
+		sort.SliceStable(p.hits, func(a, b int) bool { return p.score[p.hits[a]] > p.score[p.hits[b]] })
 	}
 	// A changed query is a changed list, and a cursor left at row nine of the
 	// old one points at nothing anybody chose (palette.go says it first).

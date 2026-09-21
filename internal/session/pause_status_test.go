@@ -293,7 +293,7 @@ func TestARunThatEmptiesItsTankHoldsItsRowUntilItIsAnswered(t *testing.T) {
 	// The machine ledger writes on its process-wide background queue. Register
 	// this cleanup before the agent is made so cleanup closes its run first, then
 	// drains the last usage rows before TempDir removes their temporary home.
-	t.Cleanup(FlushUsage)
+	t.Cleanup(func() { FlushUsage() })
 	// The planner's own call is priced, which is the honest shape: a run's tank
 	// pays for the judgement as well as the work, and one call at sixty cents
 	// empties a fifty-cent tank on the opening plan.

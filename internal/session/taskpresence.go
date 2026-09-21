@@ -931,10 +931,13 @@ type personAsk struct {
 // presence file another window believes ([Agent.presenceSnapshot]) and this
 // process's own surface ([Agent.NeedsPerson]).
 //
-// It is one function because it is one question. Two spellings of it would be
-// two answers, and the way that goes wrong is not a disagreement anybody sees
-// at once — it is a window somewhere saying `working` about a session that has
-// been stopped on a question for ten minutes.
+// There is ONE ANSWER to it, and this is where it is given. Two spellings of it
+// would be two answers, and the way that goes wrong is not a disagreement
+// anybody sees at once. It is a window somewhere saying `working` about a
+// session that has been stopped on a question for ten minutes. Reading the
+// lanes is a job of its own and sits in [Agent.personAskLanes]; which answer a
+// person should read first is this one, and neither half is an answer without
+// the other.
 //
 // EVERY LANE A PERSON CAN BE ASKED ON COUNTS, not only the approval gate: a
 // session stopped on a connect question, a sub-harness offer, a task proposal,
@@ -963,41 +966,7 @@ type personAsk struct {
 // with a lock of its own (see [Agent.presenceSnapshot]) — holding a.mu across
 // another lock is holding the lock Interrupt has to be able to take.
 func (a *Agent) waitingOnPerson() personAsk {
-	a.mu.Lock()
-	// THE MODEL'S OWN DOOR IS ONE OF THESE LANES, and leaving it out was a
-	// session stopped on a question telling every other window it was `working`.
-	// [Agent.asked] is the lane's book of what the model has asked (askwait.go),
-	// and the half of it that BLOCKS is what belongs here
-	// ([askedOfThePerson.anyLocked]): a question the asker said its turn would
-	// not wait for is a conversation that is working, not one waiting on you;
-	// the desk already carries the whole question beside it
-	// ([Agent.presenceAskingQuestion]), so the words below are there — it was
-	// only this predicate that did not know to look. Measured in two terminals
-	// on one machine: a question raised in the first, and home in the second
-	// drawing that conversation as `working` with nothing to answer.
-	asked := len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
-		len(a.standingAnswers) > 0 || a.asked.anyLocked()
-	for _, proposal := range a.taskAnswers {
-		if proposal != nil && proposal.notice.Deadline.IsZero() {
-			asked = true
-			break
-		}
-	}
-	// THE SUBHARNESS PROPOSAL IS READ SEPARATELY BECAUSE IT BRINGS ITS OWN
-	// WORDS. It banks no card at the desk — no other window can answer it, so
-	// offering it there would be a chip that does nothing — and a lane counted
-	// among the others above would leave home saying `waiting on you` with
-	// nothing after it, which is the exact defect the fuel gate below was fixed
-	// for. Oldest first, because that is the one being answered next.
-	offered := ""
-	if cards := a.standingSubharnessCardsLocked(); len(cards) > 0 {
-		offered = cards[0].Text
-	}
-	runs := make([]*orchestration, 0, len(a.orchestrations))
-	for _, live := range a.orchestrations {
-		runs = append(runs, live)
-	}
-	a.mu.Unlock()
+	asked, offered, runs := a.personAskLanes()
 
 	if asked {
 		return personAsk{waiting: true, reason: a.presenceAsk().Text}
@@ -1032,10 +1001,94 @@ func (a *Agent) waitingOnPerson() personAsk {
 	// AND UNDER THE GRAPH'S OWN LOCK, never the agent's — this file's standing
 	// rule about anything with a lock of its own, kept by calling
 	// [Agent.PendingDecisions] with a.mu already released.
-	if pending := a.PendingDecisions(); len(pending) > 0 {
-		return personAsk{waiting: true, reason: yourCallLine + strings.TrimSpace(pending[0].Notice.Title)}
+	if ask := a.personAskLanding(); ask.waiting {
+		return ask
 	}
 	return personAsk{}
+}
+
+// personAskLanding reads the landed-task lane out of the pending list, and it
+// is the arm of [Agent.waitingOnPerson] that answers it. The list itself is
+// state-in, state-out (pending.go) and other readers depend on that, so the
+// settling question is skipped HERE rather than filtered there.
+//
+// AN ANSWER IN FLIGHT IS NOT A QUESTION. The record card already knows this
+// (question.go checks the decision record before it says `accepted · still
+// working on it`), but the arm read only the list and took its first entry, so
+// after a person accepted a landing and while the merge was still running, the
+// card said they had answered and home still asked them to. The fact is already
+// in the list: PendingDecisions builds each entry from noticeLocked, and the
+// notice carries Settling for as long as a settle or a merge round holds the
+// node (task_run.go). Skip any entry whose Settling is not empty and take the
+// first one that is not.
+//
+// AND WHEN EVERY OPEN LANDING IS SETTLING, this arm contributes NO mark and NO
+// sentence: every question on it has been answered and the merge is doing the
+// rest, so a person must not be prodded for a question there is not one.
+func (a *Agent) personAskLanding() personAsk {
+	for _, pending := range a.PendingDecisions() {
+		if strings.TrimSpace(pending.Notice.Settling) != "" {
+			continue
+		}
+		return personAsk{waiting: true, reason: yourCallLine + strings.TrimSpace(pending.Notice.Title)}
+	}
+	return personAsk{}
+}
+
+// personAskLanes reads every lane a question can be standing on, under the
+// agent's own lock and in one pass: whether any of them holds one, the oldest
+// intake card's words if a subharness offer is waiting, and the live runs whose
+// own lock must be taken after this one is let go.
+//
+// IT IS SPLIT OUT FROM [Agent.waitingOnPerson] BECAUSE THE TWO ARE DIFFERENT
+// JOBS: this one knows which lanes exist, and its caller knows which answer a
+// person should read first. The repository's own ceiling on endings per road
+// (complexity_test.go) is what made the seam, and the seam was already drawn in
+// that function's comments.
+func (a *Agent) personAskLanes() (asked bool, offered string, runs []*orchestration) {
+	a.mu.Lock()
+	// THE MODEL'S OWN DOOR IS ONE OF THESE LANES, and leaving it out was a
+	// session stopped on a question telling every other window it was `working`.
+	// [Agent.asked] is the lane's book of what the model has asked (askwait.go),
+	// and the half of it that BLOCKS is what belongs here
+	// ([askedOfThePerson.anyLocked]): a question the asker said its turn would
+	// not wait for is a conversation that is working, not one waiting on you;
+	// the desk already carries the whole question beside it
+	// ([Agent.presenceAskingQuestion]), so the words below are there — it was
+	// only this predicate that did not know to look. Measured in two terminals
+	// on one machine: a question raised in the first, and home in the second
+	// drawing that conversation as `working` with nothing to answer.
+	//
+	// A RUNNING SUB-HARNESS'S OWN QUESTION IS ONE OF THESE LANES TOO, and
+	// leaving it out was the worst of the set: that run is BLOCKED inside
+	// [subharnessEnv.Ask] until somebody answers, so a session holding one said
+	// `working` while nothing it was doing could move. The question was
+	// registered and readable through [Agent.OpenQuestions] the whole time; it
+	// was this predicate that did not look, and the lane's own comment already
+	// claimed the row said so.
+	asked = len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
+		len(a.standingAnswers) > 0 || len(a.subharnessAsks) > 0 || a.asked.anyLocked()
+	for _, proposal := range a.taskAnswers {
+		if proposal != nil && proposal.notice.Deadline.IsZero() {
+			asked = true
+			break
+		}
+	}
+	// THE SUBHARNESS PROPOSAL IS READ SEPARATELY BECAUSE IT BRINGS ITS OWN
+	// WORDS. It banks no card at the desk — no other window can answer it, so
+	// offering it there would be a chip that does nothing — and a lane counted
+	// among the others above would leave home saying `waiting on you` with
+	// nothing after it, which is the exact defect the fuel gate below was fixed
+	// for. Oldest first, because that is the one being answered next.
+	if cards := a.standingSubharnessCardsLocked(); len(cards) > 0 {
+		offered = cards[0].Text
+	}
+	runs = make([]*orchestration, 0, len(a.orchestrations))
+	for _, live := range a.orchestrations {
+		runs = append(runs, live)
+	}
+	a.mu.Unlock()
+	return asked, offered, runs
 }
 
 // yourCallLine opens the sentence a session says while a landed task waits on

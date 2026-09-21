@@ -40,6 +40,21 @@ var (
 // [exitStatus] and the switch in [execute]).
 const exitHelped exitStatus = 0
 
+// wrongCall is a door refusing a command line that did not name what it needs:
+// ONE SENTENCE on stderr saying what was missing, and exit 2 — the same shape
+// `codeaf update` gives a call it cannot carry out. The sentence comes from the
+// door that knows its own grammar; nothing else is printed, so a person who
+// typed too little reads one line rather than Go's flag dump or the whole usage
+// table.
+//
+// IT IS exitStatus(2) AND NOT A PLAIN error: a plain error reaches the dispatch
+// and leaves with 1 after an `error:` line, which is the rung for a machine that
+// never started, not for a command line that was typed a word short.
+func wrongCall(sentence string) error {
+	fmt.Fprintln(usageErr, sentence)
+	return exitStatus(2)
+}
+
 // commandFlags builds a subcommand's flag set.
 //
 // The flag package's own output is discarded HERE, once, rather than at eight
@@ -472,7 +487,9 @@ func nearestCommand(typed string) string {
 // reason they are absent from the usage text: nothing types them.
 var knownCommands = []string{
 	"chat", "resume", "serve", "devices", "do", "plan", "revise", "run", "exec",
-	"show", "models", "pool", "notebook", "collections", "competence", "services", "wake", "doctor",
+	"show", "models", "pool", "notebook", "collections", "competence", "services", "wake", "patch",
+	"doc", "web", "image",
+	"doctor",
 	"logs", "cache", "rebuild", "why", "manual", "version", "help",
 }
 

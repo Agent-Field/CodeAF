@@ -14,6 +14,7 @@ package session
 // spelling typed into this package.
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +31,12 @@ func TestTheAttributionRowIsOnTheBeltOnlyWhenTheRowIsOn(t *testing.T) {
 	on := promptWithBeltFacts(Config{Workspace: t.TempDir(), Model: "test/model", Attribution: true})
 	if !strings.Contains(on, exec.AttributionTrailer) {
 		t.Fatalf("attribution is on and the page never spells the trailer %q", exec.AttributionTrailer)
+	}
+	// AND THE ASSISTED-BY LINE NAMES THE MODEL THIS SESSION RUNS, filled by the
+	// render out of Config.Model rather than left for the model to guess its
+	// own name.
+	if assisted := fmt.Sprintf(exec.AttributionAssistedBy, "test/model"); !strings.Contains(on, assisted) {
+		t.Fatalf("attribution is on and the page never spells the assisted-by line %q", assisted)
 	}
 	if !strings.Contains(on, exec.AttributionPullFooter) {
 		t.Fatalf("attribution is on and the page never spells the pull-request footer")
@@ -56,7 +63,7 @@ func TestTheAttributionRowIsOnTheBeltOnlyWhenTheRowIsOn(t *testing.T) {
 
 	off := promptWithBeltFacts(Config{Workspace: t.TempDir(), Model: "test/model"})
 	for _, unwanted := range []string{exec.AttributionTrailer, exec.AttributionPullFooter,
-		exec.AttributionCommentFooter, "agentfield-bot", "Co-Authored-By", "drafted with"} {
+		exec.AttributionCommentFooter, "agentfield-bot", "Co-Authored-By", "drafted with", "Assisted-by"} {
 		if strings.Contains(off, unwanted) {
 			t.Fatalf("attribution is off and the page still says %q", unwanted)
 		}
@@ -74,7 +81,7 @@ func TestALandedCommitCarriesTheTrailer(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
 
-	if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, true); problem != "" {
+	if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, true, false); problem != "" {
 		t.Fatalf("the landing could not commit: %s", problem)
 	}
 	body := gitOut(t, tree.dir, "log", "-1", "--format=%B")
@@ -108,7 +115,7 @@ func TestALandedCommitIsUnsignedWhenTheRowIsOff(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
 
-	if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, false); problem != "" {
+	if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, false, false); problem != "" {
 		t.Fatalf("the landing could not commit: %s", problem)
 	}
 	if body := gitOut(t, tree.dir, "log", "-1", "--format=%B"); strings.Contains(body, "agentfield-bot") {

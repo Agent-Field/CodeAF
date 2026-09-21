@@ -60,6 +60,13 @@ const usageEvery = 10
 // one, and a dot that blinks in between every chunk is noise.
 const quietBeforeEllipsis = 700 * time.Millisecond
 
+// streamFreshFor is how long after the last delta a reply still counts as
+// arriving, and so keeps the paint clock at its full cadence. Deltas land a
+// few hundred milliseconds apart in a working stream; past this the only
+// thing moving is the spinner, which changes glyph every spinnerStep-th
+// paint, and the wait steps at that cadence instead.
+const streamFreshFor = 250 * time.Millisecond
+
 // runState is the word in the status line.
 type runState int
 
@@ -1737,8 +1744,12 @@ type app struct {
 	chatTabWho tabIdentity
 	// chatTabBar is the strip as it was last laid out, kept from frame to frame
 	// (chattabs.go's [tabBar] states the whole of why).
-	chatTabBar tabBar
-	tabView    tabViewport
+	chatTabBar      tabBar
+	workTabOn       bool
+	railTaskPlanOn  bool
+	railPlanPending railPlanPending
+	workTabSettled  string
+	tabView         tabViewport
 	// tabShut is the conversations whose TAB has been dismissed — the whole of
 	// the new state the ✕ on a tab costs (chattabs.go's [app.tabDismiss]). The
 	// conversation itself is untouched: still held, still running, still on the
@@ -2549,6 +2560,28 @@ type app struct {
 	// be a render tuned to a test.
 	clock func() time.Time
 
+	// Run-summary work is commanded from Update, never from the frame. The
+	// attempt stamp provides the named once-a-minute ceiling even on refusal.
+	runSummaryRefreshing  bool
+	runSummaryRefreshedAt time.Time
+	runSummaryShape       string
+	runSummaryNow         string
+
+	// THE RUN'S ROWS ARE HELD HERE AND ASKED FOR FROM UPDATE, never from the
+	// frame ([app.refreshPlanRows]). The frame draws what is held. planRowsFront
+	// is the conversation the rows belong to, so rows read for one conversation
+	// are never drawn over another; planRowsGen moves whenever a read is folded
+	// in, and it is what [tasksPlace.regroup] hangs a re-file on; planRowsStamp
+	// is this window's own stamp as it stood when the last read was ASKED, so a
+	// verb that lands while a read is out is answered by one more read.
+	planRows        []session.PlanTaskRow
+	planRowsRead    bool
+	planRowsFront   int
+	planRowsGen     uint64
+	planRowsStamp   uint64
+	planRowsAt      time.Time
+	planRowsReading bool
+
 	// setup is the first-run screen, which precedes the box below on the one
 	// launch that gets it (firstrun.go). Its zero value is every other launch.
 	setup setupFlow
@@ -2903,6 +2936,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// replay and above the door's own notice, and the hints that wait on this
 	// directory having an earlier conversation can see the welcome's list.
 	a.noticeEvent(eventBoot)
+	a.showUnreadProfileKeys(opts.UnreadProfileKeys)
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
 	}
@@ -3210,6 +3244,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if say := a.retitle(); say != nil {
 		cmd = tea.Batch(cmd, say)
 	}
+	// THE RUN'S ROWS ARE ASKED FOR BEFORE ITS SUMMARY, because the summary decides
+	// from the rows the surface holds.
+	if rows := a.refreshPlanRows(); rows != nil {
+		cmd = tea.Batch(cmd, rows)
+	}
+	if summary := a.refreshRunSummary(); summary != nil {
+		cmd = tea.Batch(cmd, summary)
+	}
 	return model, cmd
 }
 
@@ -3451,6 +3493,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tasksLoadedMsg:
 		return a, a.tasksLoaded(msg.rows, msg.known)
+
+	case runSummaryRefreshedMsg:
+		a.runSummaryRefreshing = false
+		if msg.ok {
+			a.runSummaryNow = strings.TrimSpace(msg.summary.Now)
+			a.taskSheet.mine.now = a.runSummaryNow
+			a.taskSheet.reading.summaryNow = a.runSummaryNow
+			a.touch()
+		}
+		return a, nil
 
 	case taskTailMsg:
 		// One node's journal, read off the loop for the record card and for the
@@ -4712,6 +4764,11 @@ func (a *app) paint() tea.Cmd {
 	if a.room != nil {
 		a.room.dirty = true
 	}
+	// AND THE PLAN PAGE'S OWN READING IS TAKEN ON THE SAME CLOCK, for the same
+	// reason: a page left open on a running task follows its newest step
+	// ([app.taskPlanFollow]), and a page on a settled task is not read at all —
+	// the clock stops with the task, one row down.
+	kick = tea.Batch(kick, a.taskPlanFollow())
 	// A TOOL THAT HAS JUST ENDED IS ASKED ABOUT ON THIS FRAME, not at the next
 	// tenth ([app.usageOwed]) — the ask alone, because nothing else on this
 	// beat has moved with it. ONLY WHILE THE WORK IS STILL RUNNING: the ask is
@@ -4801,7 +4858,12 @@ func (a *app) paint() tea.Cmd {
 	// A RUNNING COUNTDOWN IS THE FIFTH, and it is named separately from the turn
 	// even though a question can only be up mid-turn: the clock that draws it
 	// must not depend on a second fact staying true.
-	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
+	// ONLY stateWorking. a.waiting() is a disjunct of otherLive below, so including it
+	// here would be dead: w implies otherLive, so `waitLive && !otherLive` reduces to the
+	// same expression without it, and so does `waitLive || otherLive`. The forming-task
+	// wait therefore keeps the full cadence, which is what it does today.
+	waitLive := a.state == stateWorking
+	otherLive := a.welcome.animating() || a.tasksAnimating() ||
 		// The question block's own clocks, on the same terms: a policy line
 		// counting down and a reading clock running out are the two things on
 		// that block that change without a key being pressed (question.go).
@@ -4889,8 +4951,26 @@ func (a *app) paint() tea.Cmd {
 		// with a lump still walking onto the page, and without this the last
 		// paragraph would freeze mid-word until something unrelated asked
 		// for a frame (reveal.go).
-		a.liveRevealing() {
-		return tea.Batch(kick, a.frameTick())
+		a.liveRevealing() ||
+		// AND A PLAN PAGE ON A RUNNING TASK IS THE SEVENTEENTH, and it is the
+		// fourth that can be the whole of what is happening: the page follows a
+		// live edge the store writes from another process, and no turn of ours
+		// runs while it moves (taskplan.go's [app.taskPlanFollow]).
+		a.taskPlanRunning()
+	// THE WAIT ON THE MODEL is the only term that can hold this clock while
+	// the screen shows nothing but the spinner and the ellipsis, and a spinner
+	// glyph only changes every spinnerStep-th paint (styles.go). A wait whose
+	// stream has stopped arriving does not need thirty frames a second: the
+	// clock steps at the spinner's own cadence, and the animations that count
+	// in paints (spinnerStep, pulseStep) land exactly where they would have at
+	// full cadence, one stride at a time. Any OTHER liveness term, or a stream
+	// still arriving ([app.streamFresh]), keeps the full cadence.
+	if waitLive || otherLive {
+		every := a.frameEvery()
+		if waitLive && !otherLive && !a.streamFresh() {
+			every *= spinnerStep
+		}
+		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
 	a.painting = false
 	return kick
@@ -6143,6 +6223,13 @@ func (a *app) running() bool {
 // quiet reports whether the stream has been silent long enough to say so.
 func (a *app) quiet() bool {
 	return !a.lastDelta.IsZero() && time.Since(a.lastDelta) >= quietBeforeEllipsis
+}
+
+// streamFresh reports whether the reply's text is still arriving: a delta has
+// landed within [streamFreshFor]. A fresh stream wants every frame slot the
+// link gives it; a quiet one only wants the spinner's cadence (paint's tail).
+func (a *app) streamFresh() bool {
+	return !a.lastDelta.IsZero() && time.Since(a.lastDelta) < streamFreshFor
 }
 
 // waitEvent takes the next event off the stream — and, while more of the same

@@ -73,6 +73,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
@@ -778,6 +779,22 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	cfg.WorktreeRoot = place.Trees()
 	cfg.AskConsent = false
 	cfg.InTask = true
+	// A FIRING GETS THE GATE A TASK NODE GETS, for the same reason and in the
+	// same words (task_run.go): allow everything except the floor. Without this
+	// line a firing inherited the conversation's policy, which on a fresh
+	// install is prompt-a-human, while also being told it is inside a task where
+	// no human exists, so consent.go answered every decision with "refused in a
+	// task: default, nobody to ask". What survived was the read-only lift and
+	// nothing else, so a watch could not run one shell command, not even one the
+	// person had explicitly allowed. That is not a safer watch, it is a watch
+	// that burns a model call every morning to write a refusal.
+	//
+	// It is not wider than a node. approval's critical table still turns an
+	// allow into a prompt for the handful of shapes that destroy a disk or drop
+	// the machine, and a prompt with nobody to ask is a refusal the firing can
+	// read; the calls that act in the person's name outside this machine stay
+	// refused; a bash call whose arguments cannot be read stays refused.
+	cfg.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
 	cfg.Standing = nil
 	cfg.standingItems = nil
 	// WHOSE MONEY THIS IS. A firing runs in a folder of its own with a session id
@@ -961,23 +978,88 @@ func standingEvidence(text, evidence string) string {
 	return text + "\n\nWHAT THE CHECK FOUND:\n" + evidence
 }
 
+// standingRefusalLead opens the one line a person reads about a firing that
+// stopped on something only they can allow.
+//
+// IT IS THE SENTENCE THE SURFACE ALREADY SAYS, in the past tense. A conversation
+// waiting on consent writes `needs your ok to run bash` (internal/tui3's
+// switcher and home both draw it, and the manual quotes it), so a firing that
+// stopped on the same gate says the same words rather than a second sentence
+// about the same fact.
+//
+// IT IS THE STORE'S CONSTANT and not a copy of it, because the item's own
+// document reads the line back to tell a permission it could not get apart from
+// a QUESTION a firing asked the person ([standing.Item.ClearNeedsPerson]). Two
+// spellings of this sentence would be two answers to that.
+const standingRefusalLead = standing.NeedsPermissionLead
+
+// standingRefusalSomething is what the line names when the call's arguments
+// cannot be read. It is deliberately vague, because the honest answer to "what
+// did it want" is that this build could not tell, and a tool name offered in
+// place of the truth is a fact a person would act on.
+const standingRefusalSomething = "something"
+
 // standingRefusal reads a failed tool row and answers the one line the person
 // is owed when the failure was "somebody would have had to allow this".
 //
-// The two sentences it matches are the two this build writes for a call that
-// needed a person and had none (consent.go): the node's own words, and the
-// headless one. Anything else is an ordinary tool failure, which is the run's
-// business and not the person's.
+// The sentences it matches are the ones this build writes for a call that
+// needed a person and had none: the node's own words and the headless one
+// (consent.go), and the one the door that runs this program underneath another
+// one writes. They do not share a spelling, so the predicate matches what each
+// one SAYS rather than how it says it. Anything else is an ordinary tool
+// failure, which is the run's business and not the person's.
+//
+// WHAT IT ANSWERS IS NOT THAT LINE. The engine's own refusal is written for the
+// worker that must act on it, and it reads `refused in a task: default — nobody
+// to ask`: four machinery words in a row that ends up on a person's home screen
+// under a mark that says they are needed. So the match is on the engine's
+// sentence and the ANSWER is the person's, built from what the call actually
+// wanted ([standingRefusalWant]). The engine's line is untouched and still
+// reaches the model exactly as it did.
+//
+// IT NEVER SAYS HOW MUCH WAS REFUSED. This fires on the FIRST failure that
+// matches and knows nothing about the calls that succeeded before it, so a
+// firing that read ten files and was refused once must not print a sentence
+// claiming nothing was allowed.
 func standingRefusal(event Event) string {
 	line := strings.TrimSpace(event.Hint)
 	if line == "" {
 		line = strings.TrimSpace(firstLine(event.Output))
 	}
-	lower := strings.ToLower(line)
-	if strings.Contains(lower, "nobody to ask") || strings.Contains(lower, "no resolver is attached") {
-		return line
+	// THE ONE PREDICATE ANSWERS IT, the same one the store asks when a person
+	// changes an item and the surface asks when it picks a row's door
+	// ([standing.IsPermissionLine]). A second list of these sentences here is a
+	// second answer to "was this a permission stop".
+	if !standing.IsPermissionLine(line) {
+		return ""
 	}
-	return ""
+	want := standingRefusalWant(event)
+	if want == "" {
+		want = standingRefusalSomething
+	}
+	return standingRefusalLead + want
+}
+
+// standingRefusalWant is WHAT THE FIRING WANTED, in the words a person would
+// use for it: the command a shell call was refused for, or the name of the tool
+// for every other hand.
+//
+// A shell call is the one that names its argument, because `bash` says nothing
+// a person can act on and the command says the whole of it. The argument is
+// read through [glossField], this package's one table of which argument says
+// what a call is doing, so this line and the row the same call would have drawn
+// in a conversation name the same thing. The length is [hintLimit]'s, for the
+// same reason.
+func standingRefusalWant(event Event) string {
+	tool := strings.TrimSpace(event.Tool)
+	if tool != approval.ToolBash {
+		return tool
+	}
+	var args map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(event.Args), &args); err != nil {
+		return ""
+	}
+	return clip(glossValue(args, glossField[tool]), hintLimit)
 }
 
 // standingTail keeps the LAST n bytes, on a line boundary where it can find
