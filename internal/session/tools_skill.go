@@ -28,9 +28,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -42,7 +44,7 @@ const skillShelfLimit = store.SkillShelfLimit
 // useSkillDescription says what the two modes are for in the model's own terms.
 // It is bought on every request of every turn on a belt that carries it, so it
 // names the gesture and nothing about the store behind it.
-const useSkillDescription = "Reach the shelf of active skills — execution-verified procedures this project has saved. `list` shows every skill as a name and a one-line doc; `get` resolves one name to its shelf path and doc, which you then open with `read`."
+const useSkillDescription = "Reach the shelf of active skills — procedures this project has saved after watching them run. `list` shows every skill as a name and a one-line doc; `get` resolves one name to its shelf path and doc, which you then open with `read`."
 
 // useSkillSchemaJSON is the two modes. `name` is required for `get` alone, which
 // the mode enum cannot express, so the handler refuses a nameless get in words
@@ -114,8 +116,16 @@ func (a *Agent) listSkills() (string, bool, error) {
 	if len(skills) == 0 {
 		return "No active skills on the shelf.", false, nil
 	}
-	lines := make([]string, 0, len(skills))
-	for _, skill := range skills {
+	// Sorted by name rather than in shelf order (which is newest first): a
+	// listing that holds steady across two calls is what a model comparing one
+	// against the other needs, and a reordered list reads as a shelf that moved.
+	sorted := make([]store.Fact, len(skills))
+	copy(sorted, skills)
+	sort.Slice(sorted, func(i, j int) bool {
+		return filepath.Base(sorted[i].Artifact) < filepath.Base(sorted[j].Artifact)
+	})
+	lines := make([]string, 0, len(sorted))
+	for _, skill := range sorted {
 		lines = append(lines, "- "+filepath.Base(skill.Artifact)+": "+skill.Body)
 	}
 	return strings.Join(lines, "\n"), false, nil
@@ -127,14 +137,17 @@ func (a *Agent) listSkills() (string, bool, error) {
 // THE NAME IS MATCHED BY THE DIRECTORY ON THE SHELF, not by the fact's scope or
 // id: what a worker has is the name `list` printed, which is filepath.Base of
 // the artifact, and matching anything else would answer a name the model cannot
-// see.
+// see. The match is case-folded — a folder called `Release-Notes` is not a
+// different skill from `release-notes` — and the hit is answered with the
+// shelf's own spelling, so the name a worker reads back is the one that works
+// next time.
 func (a *Agent) getSkill(name string) (string, bool, error) {
 	skills, err := a.config.Memory.SkillFacts(store.FactActive, skillShelfLimit)
 	if err != nil {
 		return "Could not read the skill shelf: " + err.Error(), true, nil
 	}
 	for _, skill := range skills {
-		if filepath.Base(skill.Artifact) != name {
+		if !strings.EqualFold(filepath.Base(skill.Artifact), name) {
 			continue
 		}
 		artifact, doc, _, _, err := a.config.Memory.SkillFactAccessors(skill.Seq)
@@ -150,7 +163,42 @@ func (a *Agent) getSkill(name string) (string, bool, error) {
 		if body, ok := store.SkillBodyFile(artifact); ok {
 			path = body
 		}
-		return fmt.Sprintf("%s: %s\nPath: %s", name, doc, path), false, nil
+		return fmt.Sprintf("%s: %s\nPath: %s", filepath.Base(skill.Artifact), doc, path), false, nil
 	}
-	return "Skill '" + name + "' not found.", false, nil
+	// A MISS IS NOT A DEAD END. The model guessed a name, so the answer tells
+	// it what the shelf holds (how many are active) and how close it got: the
+	// nearest handful, scored with internal/fuzzy against the name and the doc
+	// line, at most five. An empty shelf says so in one plain line.
+	if len(skills) == 0 {
+		return "No active skills on the shelf.", false, nil
+	}
+	terms := fuzzy.Terms(name)
+	type scored struct {
+		score int
+		name  string
+	}
+	near := make([]scored, 0, 5)
+	for _, skill := range skills {
+		shelfName := filepath.Base(skill.Artifact)
+		score, ok := fuzzy.ScoreFields([]string{shelfName, skill.Body}, terms)
+		if !ok {
+			continue
+		}
+		if len(near) == 5 && score <= near[4].score {
+			continue
+		}
+		near = append(near, scored{score, shelfName})
+		sort.SliceStable(near, func(i, j int) bool { return near[i].score > near[j].score })
+		if len(near) > 5 {
+			near = near[:5]
+		}
+	}
+	if len(near) == 0 {
+		return fmt.Sprintf("Skill %q not found. %d active skills on the shelf; none of them resembles that name.", name, len(skills)), false, nil
+	}
+	names := make([]string, 0, len(near))
+	for _, s := range near {
+		names = append(names, s.name)
+	}
+	return fmt.Sprintf("Skill %q not found. %d active skills on the shelf; nearest: %s.", name, len(skills), strings.Join(names, ", ")), false, nil
 }
