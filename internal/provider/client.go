@@ -1298,13 +1298,19 @@ func outputTokens(response *ai.Response, text string) int {
 // "eleven hundred tokens in eighteen minutes" is comparable with the call rows
 // beside it — and on a guarded stream it is the stream wall's own count
 // ([stallWatch.tokens]), so the row and the decision it records are one figure.
-func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, tokens int) {
+func (c *Client) stampCut(ctx context.Context, cut *StreamCut, served string, began time.Time, tokens int) {
 	if cut == nil {
 		return
 	}
 	cut.Provider = strings.TrimSpace(served)
 	cut.Ran = c.clock().Sub(began)
 	cut.Tokens = tokens
+	// AND WHETHER THERE WAS ANYWHERE ELSE TO GO, which is this layer's fact and
+	// nobody else's: a request that named no machine and was served by none has
+	// no endpoint diversity to try ([askedFor] returns empty exactly when the
+	// request expressed no preference at all). The layer that decides how many
+	// times to ask again cannot see it ([StreamCut.OneMachine]).
+	cut.OneMachine = cut.Provider == "" && strings.TrimSpace(askedFor(ctx)) == ""
 }
 
 // machineryCut reads a COMPLETE answer for the fourth failure plane — the
@@ -1325,7 +1331,7 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 		return nil
 	}
 	cut := &StreamCut{Reason: CutMachinery}
-	c.stampCut(cut, served, began, tokens)
+	c.stampCut(ctx, cut, served, began, tokens)
 	cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 	// AND THE BELIEF LEARNS THAT THIS LANE SERVED SOMETHING UNUSABLE, which is
 	// the claim the strike above cannot make: a strike expires in five minutes
@@ -1356,7 +1362,7 @@ func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, resp
 	if !ok {
 		cut = &StreamCut{Reason: CutBabble}
 	}
-	c.stampCut(cut, served, began, tokens)
+	c.stampCut(ctx, cut, served, began, tokens)
 	cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 	c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
 	c.releaseEndpoint(ctx, c.modelFor(request))
@@ -1675,7 +1681,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// and none of it reaches the transcript.
 	soup := func() (*ai.Response, bool, error) {
 		cut := &StreamCut{Reason: CutBabble}
-		c.stampCut(cut, served, began, stall.tokens())
+		c.stampCut(ctx, cut, served, began, stall.tokens())
 		cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 		// Soup is the plainest possible statement that this lane's answers
 		// cannot be used, so it is the plainest thing the quality belief can
@@ -1704,7 +1710,7 @@ func (c *Client) completeWithMessagesStreaming(
 				// that cannot say who was serving or how much answer had
 				// arrived is the row that made this whole bound guesswork the
 				// first time ([StreamCut.Provider]).
-				c.stampCut(cut, served, began, stall.tokens())
+				c.stampCut(ctx, cut, served, began, stall.tokens())
 				// Whether the ledger took the lane away travels ON the cut: the
 				// turn loop decides how many more times to ask this model from
 				// it, and it has no other way to know ([StreamCut.Rerouted]).

@@ -47,10 +47,10 @@ import (
 // the ordinary plan-spend path, so this is the one writer of a run task's row,
 // and the model it names is the model every call the worker made went out on.
 //
-// THE FLAG IS THE DOOR'S. The bash belt is what makes a run wire this worker at
-// all; the seat's constructor reads the switch once and refuses when
-// CODEAF_TASK_BELT names the older belt, so on that road not one byte of any
-// prompt, belt or landing changes — nothing constructs this worker.
+// THE FLAG IS THE DOOR'S. CODEAF_TASK_BELT=bash is what makes a run wire this
+// worker at all; the seat's constructor reads the switch once and refuses
+// without it, so with the flag unset not one byte of any prompt, belt or
+// landing changes — nothing constructs this worker.
 type BashWorker struct {
 	store     *plandb.Store
 	workspace string
