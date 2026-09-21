@@ -449,15 +449,17 @@ process with it — but you no longer have to reach for that just to get your pr
 
 ## Quitting codeaf — how do I exit codeaf, how do I close codeaf, or why did ctrl+c not quit
 
+To exit codeaf, press `ctrl+c` once. That is the whole gesture: there is no second
+press to make, no window to beat, and nothing asking you to confirm it.
+
 **`ctrl+c`, once.** With nothing running, the press that lands is the way out: codeaf
-writes your draft to disk and exits. There is no second press to make, no window to
-beat, and nothing asking you to confirm it.
+writes your draft to disk and exits.
 
 **If `ctrl+c` did not quit, a turn was running.** Mid-turn that key is the interrupt —
 the press is spent on the model. Escape only navigates back. Press it again once the
-answer has stopped and codeaf leaves.
+answer has stopped and codeaf exits.
 
-**Nothing you typed is lost by leaving.** The unsent sentence in the box goes to disk,
+**Nothing you typed is lost when you exit.** The unsent sentence in the box goes to disk,
 with any message that was still waiting for an answer folded in underneath it, and the
 next launch puts them back in the box. See "What quitting saves and closes" below.
 

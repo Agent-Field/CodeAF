@@ -2580,6 +2580,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
 		{"how do I update codeaf to the latest version", "running-from-the-terminal"},
+		{"how do I install the latest dev build beside my codeaf", "running-from-the-terminal"},
+		{"what is devaf", "running-from-the-terminal"},
+		{"devaf", "running-from-the-terminal"},
+		{"can I run two versions of codeaf side by side", "running-from-the-terminal"},
+		{"how do I keep my dev build up to date", "running-from-the-terminal"},
+		{"install codeaf with a different file name", "running-from-the-terminal"},
 		// C13: These are the words a person brings to the update section.
 		{"is there a newer version", "running-from-the-terminal"},
 		{"how do I update codeaf", "running-from-the-terminal"},
@@ -2717,6 +2723,29 @@ func TestC13UpdateQuestionsReachTheNewManualSection(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%q does not reach the update section", asked)
+		}
+	}
+}
+
+// V9: The devaf, side-by-side, and dev-update questions reach the terminal
+// manual page that documents those installation and update contracts.
+func TestV9DevafQuestionsReachTheTerminalManual(t *testing.T) {
+	for _, asked := range []string{
+		"how do I install the latest dev build beside my codeaf",
+		"what is devaf",
+		"devaf",
+		"can I run two versions of codeaf side by side",
+		"how do I keep my dev build up to date",
+	} {
+		var reached bool
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach running-from-the-terminal", asked)
 		}
 	}
 }

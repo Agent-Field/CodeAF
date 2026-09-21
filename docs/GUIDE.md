@@ -101,6 +101,7 @@ Recognizing a channel does not mean a matching release exists.
 
 ```bash
 curl -fsSL https://agentfield.ai/get/codeaf/dev | bash
+curl -fsSL https://agentfield.ai/get/devaf | bash
 curl -fsSL https://agentfield.ai/get/codeaf/staging | bash
 curl -fsSL https://agentfield.ai/get/codeaf/rc | bash
 curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
@@ -112,6 +113,7 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 | `--dev` | Select the latest `dev-*` release. |
 | `--rc`, `--staging` | Select a matching channel build or stop if none has been published. |
 | `--version TAG` or `VERSION=<tag>` | Pin one release tag. |
+| `--name WORD` or `CODEAF_INSTALL_NAME=WORD` | Choose the installed binary's file name. |
 | `--dir PATH` | Install somewhere other than `~/.codeaf/bin`. |
 | `--no-modify-path` | Print the PATH line without editing a shell file. |
 | `--verbose` | Print each GET. |
@@ -120,8 +122,9 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
 `checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it
 appends one `export PATH=… # codeaf installer` line to the applicable shell file. Its
-last action is `codeaf version`. Release builds cover darwin, linux, and windows on
-amd64 and arm64.
+last action runs the installed file's `version`. The `/get/devaf` line selects the
+dev channel and names the file `devaf`, installing it beside codeaf. Release builds
+cover darwin, linux, and windows on amd64 and arm64.
 
 </details>
 

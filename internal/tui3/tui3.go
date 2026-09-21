@@ -417,7 +417,8 @@ type Options struct {
 	// machines, where this process's own build would be the wrong answer.
 	Build string
 
-	// UpdateCheck is the silent launch look at the newest stable release. It is
+	// UpdateCheck is the silent launch look at the newest release in this
+	// build's channel. It is
 	// a command rather than an opening read so the first frame never waits for
 	// the network. Nil leaves the capability absent.
 	UpdateCheck func(context.Context) (codeupdate.Available, bool)
@@ -430,6 +431,7 @@ type Options struct {
 	// decoration. UpdateArgs are its original arguments. Restart is the slot the
 	// surface fills before quitting and the door reads after the terminal is back.
 	UpdateRunning string
+	UpdateCurl    string
 	UpdateArgs    []string
 	Restart       *codeupdate.Plan
 

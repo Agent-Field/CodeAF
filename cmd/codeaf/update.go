@@ -44,8 +44,11 @@ func runUpdate(args []string) error {
 	if chosen > 1 {
 		return fmt.Errorf("choose one of --stable, --rc, --dev, --staging, or --version")
 	}
-	channel := "stable"
+	running := updateRevision()
+	channel := codeupdate.FollowedChannel(running)
 	switch {
+	case *stable:
+		channel = "stable"
 	case *rc:
 		channel = "rc"
 	case *dev:
@@ -53,14 +56,18 @@ func runUpdate(args []string) error {
 	case *staging:
 		channel = "staging"
 	}
-	choice := codeupdate.Choice{Channel: channel, Version: strings.TrimSpace(*version)}
-	running := updateRevision()
+	choice := codeupdate.Choice{Channel: channel, Version: strings.TrimSpace(*version), Running: running}
 	var target string
+	curl := codeupdate.CurlCommand
 	if !*check {
-		var err error
-		target, err = codeupdate.ExecutableTarget(updateExecutable)
+		executable, err := updateExecutable()
 		if err != nil {
-			return updateFailure(err)
+			return updateFailure(fmt.Errorf("find the running codeaf: %w", err), curl)
+		}
+		curl = codeupdate.CurlLine(executable, codeupdate.FollowedChannel(running))
+		target, err = codeupdate.ExecutableTarget(func() (string, error) { return executable, nil })
+		if err != nil {
+			return updateFailure(err, curl)
 		}
 		if codeupdate.Kind(running) == "other" {
 			shown := strings.TrimSpace(running)
@@ -84,32 +91,37 @@ func runUpdate(args []string) error {
 			fmt.Fprintln(updateErr, "codeaf: could not check for an update:", err)
 			return exitStatus(1)
 		}
-		return updateFailure(fmt.Errorf("could not select a release: %w", err))
+		return updateFailure(fmt.Errorf("could not select a release: %w", err), curl)
 	}
 	if *check {
-		return sayUpdateCheck(running, release.Tag, choice)
+		return sayUpdateCheck(running, release, choice)
 	}
 	if choice.Version == "" {
-		if comparison, comparable := codeupdate.CompareSemverTags(running, release.Tag); comparable && comparison > 0 {
+		available := codeupdate.Available{
+			Latest: release.Tag, Running: running,
+			LatestPublished: release.PublishedAt, RunningPublished: release.RunningPublishedAt,
+		}
+		if available.Ahead() {
 			fmt.Fprintf(updateErr, "this codeaf is %s, ahead of the newest %s %s — pass --version %s to install it anyway\n", running, choice.Channel, release.Tag, release.Tag)
 			return exitStatus(2)
 		}
 	}
 
 	result, err := codeupdate.Install(context.Background(), codeupdate.InstallOptions{
-		Client: client, Release: release, Target: target,
+		Client: client, Release: release, Target: target, Curl: curl,
 	})
 	if err != nil {
-		return updateFailure(err)
+		return updateFailure(err, curl)
 	}
 	fmt.Fprintf(updateOut, "codeaf: installed %s at %s\n", result.Release.Tag, result.Path)
 	if err := updateVersionLine(result.Path, updateOut, updateErr); err != nil {
-		return updateFailure(fmt.Errorf("run the installed codeaf: %w", err))
+		return updateFailure(fmt.Errorf("run the installed codeaf: %w", err), curl)
 	}
 	return nil
 }
 
-func sayUpdateCheck(running, selected string, choice codeupdate.Choice) error {
+func sayUpdateCheck(running string, release codeupdate.Release, choice codeupdate.Choice) error {
+	selected := release.Tag
 	shown := strings.TrimSpace(running)
 	if shown == "" {
 		shown = "an unstamped source build"
@@ -126,6 +138,14 @@ func sayUpdateCheck(running, selected string, choice codeupdate.Choice) error {
 	if channel == "dev" || channel == "staging" {
 		if running == selected {
 			fmt.Fprintf(updateOut, "you are on the newest %s codeaf, %s\n", channel, selected)
+			return nil
+		}
+		available := codeupdate.Available{
+			Latest: selected, Running: running,
+			LatestPublished: release.PublishedAt, RunningPublished: release.RunningPublishedAt,
+		}
+		if codeupdate.Kind(running) == channel && available.Ahead() {
+			fmt.Fprintf(updateOut, "the newest %s codeaf is %s · this codeaf is %s\n", channel, selected, shown)
 			return nil
 		}
 		fmt.Fprintf(updateOut, "codeaf %s is available · you have %s\n", selected, shown)
@@ -148,11 +168,14 @@ func sayUpdateCheck(running, selected string, choice codeupdate.Choice) error {
 	return nil
 }
 
-func updateFailure(err error) error {
-	if strings.Contains(err.Error(), codeupdate.CurlCommand) {
+func updateFailure(err error, curl string) error {
+	if strings.TrimSpace(curl) == "" {
+		curl = codeupdate.CurlCommand
+	}
+	if strings.Contains(err.Error(), curl) {
 		return err
 	}
-	return fmt.Errorf("%w; install a release with: %s", err, codeupdate.CurlCommand)
+	return fmt.Errorf("%w; install a release with: %s", err, curl)
 }
 
 func runInstalledVersion(path string, stdout, stderr io.Writer) error {
