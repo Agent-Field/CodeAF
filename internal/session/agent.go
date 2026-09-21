@@ -972,6 +972,13 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		a.mu.Unlock()
 		return nil, err
 	}
+	// AND THE SKILLS THE MESSAGE CARRIES ARE CHOSEN NOW, from the words of the
+	// message itself rather than the workspace the catalog scores against
+	// (skillturn.go). It happens before the steering branch on purpose: a
+	// message that arrives mid-turn is journaled like any other, and what the
+	// journal keeps is what the person said — the block rides the message the
+	// model reads and nothing else.
+	a.attachTurnSkillsLocked(&user)
 	if a.running {
 		// Steering. The message is queued rather than appended here because
 		// the transcript's tail is mid-tool-batch: a user message spliced
@@ -1171,6 +1178,13 @@ type userMessage struct {
 	// harness's own line in the harness's own lane (sessionfile.go's
 	// [sessionEntry.Note]).
 	authored bool
+
+	// skills is the ordered shelf names this message's block carried
+	// (skillturn.go), set by [Agent.attachTurnSkillsLocked] and read by
+	// [Agent.startTurnLocked] to report them as one notice. Empty on every
+	// message that carries no block, which is every message before that door
+	// and every message a shelf-less shape sends.
+	skills []string
 
 	// resumed marks THE PERSON'S OWN WORDS, ALREADY IN THE RECORD: a question
 	// this session is asking again because the turn that was answering it ended
@@ -1734,6 +1748,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	}
 	for _, stream := range extra {
 		hub.adopt(stream)
+	}
+	// AND THE TURN SAYS WHICH SKILLS IT CARRIED, as one dim notice — the shape
+	// the rest of this package reports its own machinery through — so a surface
+	// can draw the block beside the message it was chosen for (skillturn.go).
+	// The names, not the block: the model reads the block, the person reads
+	// the line.
+	if len(user.skills) > 0 {
+		hub.send(Event{Kind: EventNotice, Text: turnSkillsNote(user.skills)})
 	}
 
 	go func() {
