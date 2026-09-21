@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
@@ -105,6 +106,12 @@ func SourceKeyAt(profileDir string, row PersistedSource, src modelsource.Source)
 	if strings.EqualFold(strings.TrimSpace(src.ID), modelsource.DefaultID) {
 		return APIKeyAt(profileDir)
 	}
+	if strings.EqualFold(strings.TrimSpace(src.ID), "codex") {
+		if codexauth.Connected(profileDir) {
+			return codexauth.Sentinel
+		}
+		return ""
+	}
 	return sourceKeyFromRow(row, src)
 }
 
@@ -115,9 +122,22 @@ func sourceKeyFromRow(row PersistedSource, src modelsource.Source) string {
 // ResolveSources builds the whole registry: the synthesised default service
 // first, then every persisted row this build still knows.
 func ResolveSources(profileDir, defaultKey, defaultBase string) modelsource.Set {
-	return resolveSources(defaultKey, defaultBase, PersistedSources(profileDir), func(row PersistedSource, source modelsource.Source) string {
+	set := resolveSources(defaultKey, defaultBase, PersistedSources(profileDir), func(row PersistedSource, source modelsource.Source) string {
 		return SourceKeyAt(profileDir, row, source)
 	})
+	return sourceHomes(set, profileDir)
+}
+
+func sourceHomes(set modelsource.Set, profileDir string) modelsource.Set {
+	services := set.All()
+	for index := range services {
+		services[index].Home = profileDir
+		if strings.EqualFold(services[index].Source.ID, "codex") {
+			services[index].Address = codexauth.Backend()
+			services[index].Source.Address = services[index].Address
+		}
+	}
+	return modelsource.NewSet(services...)
 }
 
 // resolveSources is the file-free half of ResolveSources. Load hands it the
@@ -178,6 +198,9 @@ func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyA
 }
 
 func resolvedSourceAddress(row PersistedSource, source modelsource.Source) string {
+	if strings.EqualFold(strings.TrimSpace(source.ID), "codex") {
+		return codexauth.Backend()
+	}
 	if modelsource.IsCustomID(source.ID) {
 		return strings.TrimRight(strings.TrimSpace(row.Address), "/")
 	}
@@ -185,6 +208,33 @@ func resolvedSourceAddress(row PersistedSource, source modelsource.Source) strin
 		return resolvedDoorAddress(row, source, door)
 	}
 	return resolvedRegionAddress(row, source)
+}
+
+// ConnectCodex keeps a completed browser sign-in, persists its service row and
+// seeds the picker from the account's own visible model list.
+func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Tokens) (modelsource.Outcome, error) {
+	if err := codexauth.Save(profileDir, tokens); err != nil {
+		return modelsource.Outcome{}, err
+	}
+	listed := true
+	row := PersistedSource{ID: "codex", Written: "codex", Key: codexauth.Sentinel, Listed: &listed}
+	if err := persistConnectedSource(profileDir, row); err != nil {
+		_ = codexauth.Remove(profileDir)
+		return modelsource.Outcome{}, err
+	}
+	models, listErr := codexauth.List(ctx, profileDir, codexauth.Options{})
+	refreshed := listErr == nil
+	if !refreshed {
+		models = append([]codexauth.Model(nil), codexauth.FallbackModels...)
+	}
+	outcome := modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Refreshed: refreshed}
+	for _, model := range models {
+		if id := strings.TrimSpace(model.ID); id != "" {
+			outcome.ModelIDs = append(outcome.ModelIDs, id)
+		}
+	}
+	outcome.Models = len(outcome.ModelIDs)
+	return outcome, nil
 }
 
 func resolvedRegionAddress(row PersistedSource, source modelsource.Source) string {
@@ -555,7 +605,8 @@ func persistConnectedSource(profileDir string, row PersistedSource) error {
 	return WriteSources(profileDir, rows)
 }
 
-// DisconnectService removes one service row and its stored key atomically.
+// DisconnectService removes one service row and its stored credential. Codex's
+// rotating tokens live in their owner-only sibling file and leave with it.
 func DisconnectService(profileDir, id string) error {
 	rows := PersistedSources(profileDir)
 	kept := rows[:0]
@@ -564,5 +615,11 @@ func DisconnectService(profileDir, id string) error {
 			kept = append(kept, row)
 		}
 	}
-	return WriteSources(profileDir, kept)
+	if err := WriteSources(profileDir, kept); err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(id), "codex") {
+		return codexauth.Remove(profileDir)
+	}
+	return nil
 }
