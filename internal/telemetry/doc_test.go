@@ -25,8 +25,16 @@ func docBody(t *testing.T) string {
 // every-event props and the extras per event. Anything else on the page is
 // prose and not held to anything.
 func docProps(t *testing.T, body string) (common []string, perEvent map[string][]string) {
+	common, perEvent, _ = docPropsWithDocs(t, body)
+	return common, perEvent
+}
+
+// docPropsWithDocs is docProps with the third column kept, keyed
+// "<event>\t<prop>", for the test that holds the doc's words to PropDoc.
+func docPropsWithDocs(t *testing.T, body string) (common []string, perEvent map[string][]string, docs map[string]string) {
 	t.Helper()
 	perEvent = map[string][]string{}
+	docs = map[string]string{}
 	inSection := false
 	for _, line := range strings.Split(body, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -49,13 +57,59 @@ func docProps(t *testing.T, body string) (common []string, perEvent map[string][
 		}
 		if cells[0] == "every event" {
 			common = append(common, cells[1])
+			docs[cells[0]+"\t"+cells[1]] = cells[2]
 			continue
 		}
 		if cells[0] != "" {
 			perEvent[cells[0]] = append(perEvent[cells[0]], cells[1])
+			docs[cells[0]+"\t"+cells[1]] = cells[2]
 		}
 	}
-	return common, perEvent
+	return common, perEvent, docs
+}
+
+// TestDocPropertyWordsMatchPropDoc holds the doc's third column to the table
+// `codeaf telemetry show` prints from, word for word, and holds that table to
+// the allowlist: every allowlisted prop has a description, and every
+// description is of an allowlisted prop.
+func TestDocPropertyWordsMatchPropDoc(t *testing.T) {
+	_, _, docs := docPropsWithDocs(t, docBody(t))
+	for key, words := range docs {
+		event, prop, _ := strings.Cut(key, "\t")
+		if got := PropDoc(event, prop); got != words {
+			t.Errorf("%s %s: the doc says %q, PropDoc says %q", event, prop, words, got)
+		}
+	}
+	for _, name := range CommonPropNames() {
+		if PropDoc(EveryEvent, name) == "" {
+			t.Errorf("every-event prop %q has no PropDoc", name)
+		}
+		if _, ok := docs[EveryEvent+"\t"+name]; !ok {
+			t.Errorf("every-event prop %q has no row in the doc", name)
+		}
+	}
+	for _, event := range AllowlistedEvents() {
+		names := EventPropNames(event)
+		want := map[string]bool{}
+		for _, name := range AllowlistedProps(event) {
+			if PropDoc(EveryEvent, name) == "" {
+				want[name] = true
+			}
+		}
+		got := map[string]bool{}
+		for _, name := range names {
+			got[name] = true
+			if PropDoc(event, name) == "" {
+				t.Errorf("%s: %q has no PropDoc", event, name)
+			}
+			if _, ok := docs[event+"\t"+name]; !ok {
+				t.Errorf("%s: %q has no row in the doc", event, name)
+			}
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: EventPropNames %v drift from the allowlist's own props %v", event, names, AllowlistedProps(event))
+		}
+	}
 }
 
 func TestDocPropertyTableMatchesTheAllowlist(t *testing.T) {
@@ -108,7 +162,7 @@ func TestDocCarriesTheNoticeAndTheSwitches(t *testing.T) {
 	if !strings.Contains(body, Notice) {
 		t.Error("docs/TELEMETRY.md must quote the notice byte for byte")
 	}
-	for _, wanted := range []string{"CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "telemetry show"} {
+	for _, wanted := range []string{"CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "telemetry info", "telemetry show"} {
 		if !strings.Contains(body, wanted) {
 			t.Errorf("docs/TELEMETRY.md must mention %q", wanted)
 		}

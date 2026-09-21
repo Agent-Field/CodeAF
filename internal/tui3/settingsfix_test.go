@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -39,9 +40,20 @@ var mixedModels = []Model{
 	{ID: "openai/gpt-5-image-mini", ContextLength: 400_000},
 }
 
-// chatOnly is what mixedModels should come back as, in source order.
-var chatOnly = []string{
+// chatFiltered is what mixedModels comes back as from [app.modelList], IN SOURCE
+// ORDER: that door filters and nothing else.
+var chatFiltered = []string{
 	"anthropic/claude-sonnet-4.5", "openai/gpt-4.1-mini", "moonshotai/kimi-k3",
+}
+
+// chatOnly is the same models as a PICKER offers them — alphabetically, which is
+// the order every table on this surface opens in (pickersort.go).
+//
+// THE TWO ARE HELD APART BECAUSE THEY ARE TWO CLAIMS. One is about which models
+// pass the chat question and one is about what order a list puts them in, and a
+// single slice standing for both made a sort look like a filter regression.
+var chatOnly = []string{
+	"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3", "openai/gpt-4.1-mini",
 }
 
 func modelIDs(models []Model) []string {
@@ -72,7 +84,8 @@ func TestASettingsSlotOpensTheModelPickerAndWritesTheRow(t *testing.T) {
 	// It is the picker and not a list of ids: every row says what the /model
 	// overlay says about the same model.
 	screen := plain(frame(a))
-	if !strings.Contains(screen, "$3/$15 per M · 200k · elo 1300") {
+	if !strings.Contains(screen, "in/M  out/M  window   elo") ||
+		!pickerRowSays(screen, "anthropic/claude-sonnet-4.5", "$3", "$15", "200k", "1300") {
 		t.Fatalf("the slot's rows are not the picker's informative rows:\n%s", screen)
 	}
 	// And it opens on the model in use, so enter confirms rather than changes.
@@ -94,9 +107,11 @@ func TestASettingsSlotOpensTheModelPickerAndWritesTheRow(t *testing.T) {
 	// Enter writes the row through the registry, which for the conversation's
 	// own slot is the running session — one door, the same one /model takes.
 	drive(t, a, key("enter"))
-	if a.sheet.sel != nil {
-		t.Fatal("enter did not close the picker")
+	// ENTER WRITES AND LEAVES THE LIST UP ([app.pickerKey] argues it).
+	if a.sheet.sel == nil {
+		t.Fatal("enter closed the picker; esc is the way out now")
 	}
+	drive(t, a, key("esc"))
 	if a.model != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("the slot wrote %q", a.model)
 	}
@@ -242,9 +257,13 @@ func TestOnlyModelsThatAnswerInTextReachThePicker(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
 
+	// THE DOOR'S LIST IS THE CATALOG'S ORDER, not the picker's: [app.modelList]
+	// filters and nothing more, and it is the PICKER that sorts what it is handed
+	// (pickersort.go). So this rung is asked for the same models in the order they
+	// were mixed in.
 	a.models = func() []Model { return mixedModels }
-	if got := modelIDs(a.modelList()); strings.Join(got, ",") != strings.Join(chatOnly, ",") {
-		t.Fatalf("the door's list came through as %v, want %v", got, chatOnly)
+	if got := modelIDs(a.modelList()); strings.Join(got, ",") != strings.Join(chatFiltered, ",") {
+		t.Fatalf("the door's list came through as %v, want %v", got, chatFiltered)
 	}
 
 	// The cache rung, written with the same mixture. THE SURFACE IS TOLD, because
@@ -255,8 +274,8 @@ func TestOnlyModelsThatAnswerInTextReachThePicker(t *testing.T) {
 	}
 	a.refreshLearning()
 	a.models = nil
-	if got := modelIDs(a.modelList()); strings.Join(got, ",") != strings.Join(chatOnly, ",") {
-		t.Fatalf("the cache let %v through, want %v", got, chatOnly)
+	if got := modelIDs(a.modelList()); strings.Join(got, ",") != strings.Join(chatFiltered, ",") {
+		t.Fatalf("the cache let %v through, want %v", got, chatFiltered)
 	}
 	// A cache written with no modality field at all — every row silent — is the
 	// live shape of ~/.codeaf/v3/models.json, and the id rung is what catches
@@ -420,8 +439,12 @@ func TestTheFilterMatchesEveryTokenOfAQuery(t *testing.T) {
 	if got := ranked("deepseek zzz"); len(got) != 0 {
 		t.Fatalf("'deepseek zzz' matched %v, want nothing", got)
 	}
-	// An empty box is the whole list, in the order it was handed over.
-	if got := ranked("   "); strings.Join(got, ",") != strings.Join(modelIDs(rankCatalog), ",") {
-		t.Fatalf("an empty query filtered to %v", got)
+	// An empty box is the WHOLE list, and the order it is in is the list's own
+	// sort — the name column, ascending (pickersort.go) — rather than the order the
+	// catalog was handed over in. What this asserts is that nothing was dropped.
+	whole := append([]string{}, modelIDs(rankCatalog)...)
+	sort.Strings(whole)
+	if got := ranked("   "); strings.Join(got, ",") != strings.Join(whole, ",") {
+		t.Fatalf("an empty query filtered to %v, want the whole list %v", got, whole)
 	}
 }

@@ -92,9 +92,27 @@ type modelsFetchedMsg struct {
 func (p *picker) offersRefresh() bool { return p.refresh && !p.fetching }
 
 // headLines is how many lines stand above the rows: one while a fetch is out,
-// for [modelsFetching], and none otherwise.
-func (p *picker) headLines() int {
+// for [modelsFetching], and one for the table's own head where there is a table
+// ([modelTableFit.header]).
+//
+// IT TAKES A WIDTH BECAUSE ONE OF THE TWO DEPENDS ON ONE. The header is drawn
+// only where the columns are, so a narrow frame that falls back to the ranked
+// tail spends nothing on a heading for columns it is not drawing — and the
+// count here and the lines actually drawn must agree, or the list is laid into
+// a block of the wrong size ([overlayItemLines] says the same about a row).
+func (p *picker) headLines(width int) int {
+	lines := p.tableHead(width)
 	if p.fetching {
+		lines++
+	}
+	return lines
+}
+
+// tableHead is the one line the columns' heads take, and none where this frame
+// draws no columns. It is separate from [picker.headLines] because the two are
+// counted against different ceilings ([picker.height] says why).
+func (p *picker) tableHead(width int) int {
+	if p.tableFit(width).drawn() {
 		return 1
 	}
 	return 0
