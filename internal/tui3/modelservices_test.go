@@ -503,7 +503,6 @@ func TestARenameCarriesTheModelIdsAlreadyPicked(t *testing.T) {
 	if err := image.Apply("mybox/glm-5.3"); err != nil {
 		t.Fatal(err)
 	}
-<<<<<<< HEAD
 	// THE CREW'S TIER ROWS are stored ids under the old name too, and the one
 	// the rename has to carry or the planner and the worker keep answering on
 	// a service that no longer exists. The level suffix is the row's own
@@ -899,46 +898,6 @@ func TestARenameDuringAWorkingTurnLeavesAPendingSwitchAlone(t *testing.T) {
 	}
 	if a.deferredModelServiceModel != "" {
 		t.Fatalf("the pending move was not spent: %q", a.deferredModelServiceModel)
-||||||| a38492026
-=======
-
-	// THE RENAME: an edit draft whose Written moved, exactly what the name
-	// step builds on an answer that differs from the stored one.
-	persisted := config.PersistedSources(dir)
-	if len(persisted) != 1 {
-		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
-	}
-	renamed := persisted[0]
-	renamed.Written = "renamed-box"
-	renamedDraft := modelConnectDraft{
-		source:      modelsource.Source{ID: "custom", Written: "renamed-box", Listing: modelsource.ListingNone},
-		row:         renamed,
-		renamedFrom: "mybox",
-		entryID:     modelConnectionID("custom"),
-		editing:     true,
-	}
-	msg = a.beginModelConnect(renamedDraft)().(modelConnectResultMsg)
-	a.adoptModelConnectResult(msg)
-
-	if a.model != "renamed-box/glm-5.3" {
-		t.Fatalf("the rename left the conversation on %q", a.model)
-	}
-	if got := config.ChatModelAt(dir); got != "renamed-box/glm-5.3" {
-		t.Fatalf("the persisted slot did not follow the rename: %q", got)
-	}
-	if roles, _ := registry.Row(config.KeyModelRoles); roles.Value() != "planner:renamed-box/glm-5.3" {
-		t.Fatalf("the role pin did not follow the rename: %q", roles.Value())
-	}
-	if fallbacks, _ := registry.Row(config.KeyModelFallbacks); fallbacks.Value() != "renamed-box/glm-5.3-flash, openai/gpt-4.1-mini" {
-		t.Fatalf("the fallback chain did not follow the rename: %q", fallbacks.Value())
-	}
-	if image, _ := registry.Row(config.ModelSettingKey("image")); image.Value() != "renamed-box/glm-5.3" {
-		t.Fatalf("the capability slot did not follow the rename: %q", image.Value())
-	}
-	// A NAME THAT WAS NEVER THE OLD ONE COMES BACK UNTOUCHED.
-	if fallbacks, _ := registry.Row(config.KeyModelFallbacks); strings.Contains(fallbacks.Value(), "mybox/") {
-		t.Fatalf("the old prefix survived the rename: %q", fallbacks.Value())
->>>>>>> feat/1089-custom-connections
 	}
 }
 

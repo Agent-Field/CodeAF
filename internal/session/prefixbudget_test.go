@@ -468,16 +468,8 @@ const fixedPrefixTarget = 48_000
 // waiver rises by 162. The lean shape's page never renders the attribution row
 // and lean is 47,055 still, exactly on its measurement.
 const (
-<<<<<<< HEAD
-	fixedPrefixWaiver = 7_442
-	leanPrefixWaiver  = 15_555
-||||||| a38492026
-	fixedPrefixWaiver = 7_280
-	leanPrefixWaiver  = 15_555
-=======
-	fixedPrefixWaiver = 8_021
+	fixedPrefixWaiver = 8_183
 	leanPrefixWaiver  = 16_310
->>>>>>> feat/1089-custom-connections
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

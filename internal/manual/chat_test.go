@@ -2722,14 +2722,7 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 		"the disconnected sentence first and then says",
 		"A direct-service row and status line draw no `via` at all and open no provider\nsheet",
 		"That name is the connection everywhere",
-<<<<<<< HEAD
 		"a **Custom OpenAI-compatible API** service must provide the compatible chat path",
-||||||| a38492026
-		"That written host name is the row's name everywhere",
-		"a **Something else** service must provide the compatible chat path",
-=======
-		"a **Something else** service must provide the compatible chat path",
->>>>>>> feat/1089-custom-connections
 		"tries `GET <base>/models` first",
 		"When that address is absent, codeaf connects the service without inventing rows",
 		"z-ai-direct is connected · coding plan · 4 models",
