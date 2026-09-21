@@ -109,9 +109,13 @@ func Discover(opts Options) ([]Skill, error) {
 	if projectDir == "" && homeDir == "" {
 		return nil, fmt.Errorf("discover skills: neither a project nor a home directory was given")
 	}
-	bases := make([]string, 0, 2)
+	type scanBase struct {
+		dir   string
+		scope string
+	}
+	bases := make([]scanBase, 0, 2)
 	if projectDir != "" {
-		bases = append(bases, absolute(projectDir))
+		bases = append(bases, scanBase{dir: absolute(projectDir), scope: ScopeProject})
 	}
 	// The project bases come first, so collection order is precedence order:
 	// anything found under the project shadows the same name under the home,
@@ -120,18 +124,19 @@ func Discover(opts Options) ([]Skill, error) {
 	// The two bases are deduplicated, because codeaf opened in the home
 	// directory itself would otherwise report every user skill twice — once as
 	// a project skill and once as its own shadow. The winner is the same
-	// either way, so the duplicate is pure noise.
+	// either way, so the duplicate is pure noise. Keeping scope beside its
+	// base also matters to callers that scan only HomeDir: it remains user
+	// scope rather than becoming project scope merely by being first.
 	if homeDir != "" && absolute(homeDir) != absolute(projectDir) {
-		bases = append(bases, absolute(homeDir))
+		bases = append(bases, scanBase{dir: absolute(homeDir), scope: ScopeUser})
 	}
 
 	result := make([]Skill, 0)
-	scopes := []string{ScopeProject, ScopeUser}
 	owner := make(map[string]int)
-	for index, base := range bases {
-		scope := scopes[index]
+	for _, base := range bases {
+		scope := base.scope
 		for _, root := range skillRoots {
-			entries, err := os.ReadDir(filepath.Join(base, root))
+			entries, err := os.ReadDir(filepath.Join(base.dir, root))
 			if err != nil {
 				// A missing folder is skipped without a word.
 				continue
@@ -140,7 +145,7 @@ func Discover(opts Options) ([]Skill, error) {
 				if !entry.IsDir() {
 					continue
 				}
-				dir := filepath.Join(base, root, entry.Name())
+				dir := filepath.Join(base.dir, root, entry.Name())
 				skill, state := readSkill(dir, root, scope)
 				switch state {
 				case stateNotASkill:
