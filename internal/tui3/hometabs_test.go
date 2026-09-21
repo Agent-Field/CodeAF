@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func homeTabsFixture(t *testing.T) (*app, []string) {
 
 func homeConversationLines(a *app) (open, closed []homeLine) {
 	for _, line := range a.home.lines {
-		if line.kind != homeSession || line.cell == nil || line.cell.panel != panelRecent {
+		if line.kind != homeSession || line.cell == nil || line.cell.panel != panelSessions {
 			continue
 		}
 		if line.cell.closed {
@@ -49,7 +50,9 @@ func assertHomeTabParity(t *testing.T, a *app) {
 	open, _ := homeConversationLines(a)
 	var home, tabs, chats []string
 	for _, line := range open {
-		home = append(home, line.row.Transcript)
+		if line.cell.chatKey != "" {
+			home = append(home, line.row.Transcript)
+		}
 	}
 	for _, tab := range a.tabList() {
 		tabs = append(tabs, tab.file)
@@ -58,16 +61,21 @@ func assertHomeTabParity(t *testing.T, a *app) {
 	for _, row := range rows {
 		chats = append(chats, row.file)
 	}
-	if !reflect.DeepEqual(home, tabs) || !reflect.DeepEqual(home, chats) {
+	if !reflect.DeepEqual(tabs, chats) {
+		t.Fatalf("tabs %v differ from chats %v", tabs, chats)
+	}
+	sort.Strings(home)
+	sort.Strings(tabs)
+	if !reflect.DeepEqual(home, tabs) {
 		t.Fatalf("Home %v, tabs %v, chats %v", home, tabs, chats)
 	}
 }
 
-func TestHomeConversationsMirrorTabsWithBulletsAndNoHeading(t *testing.T) {
+func TestHomeConversationsShareOneSessionsListWithBullets(t *testing.T) {
 	a, files := homeTabsFixture(t)
 	assertHomeTabParity(t, a)
 	open, closed := homeConversationLines(a)
-	if len(open) != 4 || len(closed) != 0 {
+	if len(open) != len(files) || len(closed) != 0 {
 		t.Fatalf("open=%d closed=%d", len(open), len(closed))
 	}
 	frame := homeText(a)
@@ -124,11 +132,11 @@ func TestHomeClosedConversationsAreBoundedAndNewestFirst(t *testing.T) {
 	}
 	assertHomeTabParity(t, a)
 	open, closed := homeConversationLines(a)
-	if len(open) != 0 || len(closed) != homeClosedLimit {
+	if len(open) != 3 || len(closed) != 4 {
 		t.Fatalf("open=%d closed=%d", len(open), len(closed))
 	}
 	for i, line := range closed {
-		if line.row.Transcript != files[3-i] {
+		if line.row.Transcript != files[i] {
 			t.Fatalf("closed order %d = %q", i, line.row.Transcript)
 		}
 	}

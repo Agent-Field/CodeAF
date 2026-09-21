@@ -186,7 +186,7 @@ func TestNeedsBlockingRowsSortFirst(t *testing.T) {
 		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-40 * time.Hour)})
 	a := l.open()
 	rows := homeAttentionRows(a)
-	if len(rows) != 2 || rows[1].title != "Pricing Site" || rows[0].title != "fix the flaky sieve" {
+	if len(rows) != 2 || rows[0].title != "Pricing Site" || rows[1].title != "fix the flaky sieve" {
 		t.Fatalf("the week-old landing did not sort under the fresh question: %+v", rows)
 	}
 	if rows[0].mark != cellMarkNeeds || rows[1].mark != cellMarkNeeds {
@@ -384,7 +384,7 @@ func TestAFreshLaunchHasNoHomeRowUntilItsFirstMessage(t *testing.T) {
 		return a
 	}
 	a := openOn()
-	for _, own := range panelRows(a, panelRecent) {
+	for _, own := range panelRows(a, panelSessions) {
 		if own.title == unnamedConversationWord {
 			t.Fatalf("empty launch has a saved row: %+v", own)
 		}

@@ -75,7 +75,7 @@ height is the same on every machine on every day. A blank row separates that pai
 panels below them, which are in the rail only because they are quiet today.
 
 **The rank never moves, only the side.** Within the field and within the rail the order is
-always the unheaded conversation list, `needs you`, `projects`, `sessions`, `since you left`, `spend`,
+always `sessions`, question rows, `projects`, `since you left`, `spend`,
 `scheduled` — so two panels that both fill never swap places.
 
 One column under 110 cells, where every panel is in that one order and there is no rail;
@@ -88,7 +88,6 @@ from home stands there as a card. Nothing else stands in it.
 
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
-| Unheaded conversation list | an open tab, then up to three dimmed closed conversations | opens or reopens it | nothing |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
 | `sessions` | one of the fifteen most recent conversations | opens the conversation | `your recent conversations appear here` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
@@ -280,9 +279,11 @@ conversation trees under running and completed. The running section shows work i
 flight across projects. Short frames show fewer rows with a
 fold for the remainder of these fifteen. The heading leads to the full history.
 
-The separate unheaded list above it still follows this window's open tabs and recent
-closures. The sessions section is recent history, so it can include conversations
-already shown in that tab-linked list. Both copies refer to the same conversation.
+There is exactly one conversation list on Home, under **sessions**. Open tabs,
+recently closed conversations and saved history are combined by conversation identity
+before choosing the fifteen most recent, so each conversation appears once.
+The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
+updates the tab and the row in Sessions together.
 
 ## Close or put away a task from home — task row options, new in project, open folder, copy project
 
@@ -347,18 +348,16 @@ nothing.
 
 ## Threads, open conversations and recently closed chats — the Home list
 
-Home starts with **bulleted conversation lines and no heading**. The bullets show
-answering and unread replies. Open
-conversations have exactly the same membership and order as this window's tabs and
-`alt+k chats` (`opt+k` on macOS), including remembered tabs whose agents are elsewhere.
-The current conversation is bold; on a wide frame its description says `here` and
-shows the last thing you wrote. A narrower frame keeps each conversation to one line.
+Home has **one bulleted conversation list under sessions**. It combines this window's
+open tabs and saved history, deduplicates them, and shows the fifteen most recent
+conversations, newest first. Bullets show answering and unread replies. The current
+conversation is bold; its description can say `here` and show the last thing you wrote.
+Closed conversations keep their place in this same chronological list, dimmed.
 
-**Up to three recently closed conversations follow, dimmed.** This window's most
-recently closed tabs come first; saved archived conversations fill remaining places,
-ordered by their last activity. Enter reopens one and restores its tab. Older history
-is still searchable by typing into the box. An empty conversation list has no heading
-or placeholder. A short terminal folds the rows that do not fit behind `N more`.
+Enter opens or reopens a conversation and restores its tab. A short terminal folds
+rows that do not fit behind `N more`. The Sessions heading opens the full Sessions tab;
+typing into the box searches older history. The `alt+k chats` menu (`opt+k` on macOS)
+continues to list open tabs only.
 
 Closing with `→`, then `x close`, or `ctrl+e`, removes the same conversation from
 Home's open rows, the tab strip and the default chats menu immediately. It keeps
@@ -459,8 +458,7 @@ every conversation in it, and `ctrl+t` on one of them starts a new one there.
 
 **You cannot any more, and `alt+q` does nothing.** The panels already keep the quiet
 ones out of the way: `needs you` and `sessions` hold what wants you or is moving, and
-the conversation list shows this window's open tabs followed by up to three dimmed
-closed conversations. A short frame folds what does not fit behind `N more`. Typing finds any conversation on the machine.
+the conversation list shows the fifteen most recent conversations, with closed ones dimmed. A short frame folds what does not fit behind `N more`. Typing finds any conversation on the machine.
 
 ## Which column am I in — move between the columns on home: ↑↓ walk a panel, ←→ cross columns
 
@@ -557,7 +555,7 @@ as the window; a relaunch starts folded. The fold wears no mark: home spends its
 on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
-additional question rows, `since you left` and `projects` to eight rows; `sessions` keeps at most fifteen recent conversations; the conversation list up to the tab limit plus three closed rows, `scheduled` from three to five. `spend` never grows. What is left over is air
+additional question rows, `since you left` and `projects` to eight rows; `sessions` keeps at most fifteen recent conversations; `scheduled` from three to five. `spend` never grows. What is left over is air
 under the shorter column.
 
 **A short terminal squeezes them in a fixed order**: `scheduled` gives way first, then `spend`,
@@ -573,7 +571,7 @@ machine, including the ones no panel is drawing.
 
 ## How do I see the collapsed sessions — 13 more
 
-**Open the fold, or type.** The conversation list shows open tabs and then
+**Open the fold, or type.** The conversation list shows as many of its fifteen recent rows as fit and then
 `13 more`; `enter` on that line opens the panel and shows them all, squeezing the other
 panels, and `enter` again folds it. The box at the foot still searches every conversation on
 the machine as you type — a project's name, a folder's name or a word from what a task came
@@ -685,8 +683,8 @@ machine with one conversation and on one with none (see *Why is the home screen 
 ## Close or archive a conversation — put junk away and clean up home
 
 Select a conversation, press `→`, then **`x close`**. `ctrl+e` does the same.
-Its tab closes and it leaves the default `alt+k chats` list immediately. Home keeps
-up to three recently closed conversations as dimmed lines below its open tabs. The
+Its tab closes and it leaves the default `alt+k chats` list immediately. Home keeps closed conversations dimmed in the same Sessions list while they are
+among the fifteen most recent. The
 foot says `closed · type its name to find it again`.
 
 Nothing is deleted: its transcript, tasks, running work and draft remain. Closing
@@ -932,7 +930,7 @@ others finishing, is what collects a quiet one.
 
 Each conversation that is still held is fully alive whether or not you are looking at it.
 `/quit` closes the one in front. `alt+k` shows the first twelve as rows; home's
-the conversation list shows open tabs; typing searches every saved conversation. `/status` carries the count as `2 open · 1 waiting`.
+the conversation list shows the fifteen most recent conversations; typing searches every saved conversation. `/status` carries the count as `2 open · 1 waiting`.
 
 ## let go · quiet a while — a conversation this window let go of, too many open
 
@@ -2094,10 +2092,10 @@ phone-width frame is walked one row at a time rather than scanned.
 
 Top to bottom:
 
-1. The unheaded conversation list: open tabs, then up to three dimmed closed rows.
+1. `sessions`: the fifteen most recent conversations, combining open tabs and saved history without duplicates.
 2. Additional question rows, without a heading — conversations not already listed above,
    standing items that need a look, and `/ask` panes holding a card, from **any** project.
-3. `sessions` — the fifteen most recent conversations, newest first.
+3. Home ask exchanges retain their own answer rows.
 4. `since you left` — what landed while you were not in the room.
 5. **The projects.** This window's own project is drawn open with its remaining rows; every
    other project is one folded line — `▸ wisp   6 · 2d` — that `enter` or a tap opens in
@@ -2108,8 +2106,8 @@ that line opens it in place. A section with nothing in it is not drawn at all. *
 appears once**: a conversation carrying a question is not repeated in the additional
 question rows or under its project.
 
-Conversation tabs are single lines with status bullets, followed by up to three dimmed closed
-conversations. Other inbox rows are **two lines** — the label, and its dim tail
+Sessions uses single conversation lines with status bullets; closed history is dimmed
+in the same chronological list. Other inbox rows are **two lines** — the label, and its dim tail
 indented under it. A tab with a pending question carries an amber `?` on its existing row,
 including when the question belongs to a task inside that conversation.
 

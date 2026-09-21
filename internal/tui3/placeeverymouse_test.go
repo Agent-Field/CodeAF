@@ -606,7 +606,7 @@ func TestAClickOnAHomeFoldIsEnterOnIt(t *testing.T) {
 			lab.presence("-beta", "cccc00000000000"+string(rune('1'+i)), session.PresenceWaiting,
 				"question "+itoa(i), lab.now)
 		}
-		return lab.open(120, 24)
+		return lab.open(120, 18)
 	}
 	clicked, keyed := open(), open()
 	homeClickAt(t, clicked, homeFoldDoor(t, clicked, panelSessions))
@@ -654,7 +654,7 @@ func TestHomesHeadingsWearThePlacesHeadingInk(t *testing.T) {
 	}
 	marked, _ := a.home.cursorPanel()
 	for _, slot := range homePanelOrder {
-		if slot.panel.id() == marked {
+		if slot.panel.id() == marked || slot.word == "" {
 			continue
 		}
 		if placeFor(slot.head) == nil {

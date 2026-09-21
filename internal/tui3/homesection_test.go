@@ -94,7 +94,7 @@ func sectionLab(t *testing.T) *app {
 // on the grid.
 func TestACursorMarksTheHeadingOfThePanelItIsIn(t *testing.T) {
 	a := sectionLab(t)
-	for _, panel := range []homePanelID{panelNeeds, panelRecent, panelLeft} {
+	for _, panel := range []homePanelID{panelNeeds, panelSessions, panelLeft} {
 		standInPanel(t, a, panel)
 		want := homeSlotOf(panel).word
 		if got := markedHeadings(a); len(got) != 1 || !strings.HasPrefix(got[0], want) {
@@ -140,7 +140,7 @@ func TestMouseSelectionMovesTheMarkedHeading(t *testing.T) {
 	a := sectionLab(t)
 	hovered := standInPanel(t, a, panelNeeds)
 	want := strings.Join(markedHeadings(a), "|")
-	standInPanel(t, a, panelRecent)
+	standInPanel(t, a, panelSessions)
 	a.selectPlaceRow(&a.home.cursor, hovered)
 	if got := strings.Join(markedHeadings(a), "|"); got != want {
 		t.Fatalf("mouse selection marked %q, want %q", got, want)
@@ -168,7 +168,7 @@ func TestEveryCursorStopMarksExactlyOneHeadingOrNone(t *testing.T) {
 // BUDGET forbids it (docs/DESIGN-LANGUAGE.md).
 func TestTheMarkedHeadingWearsTheGroundAndKeepsItsWords(t *testing.T) {
 	a := sectionLab(t)
-	standInPanel(t, a, panelRecent)
+	standInPanel(t, a, panelSessions)
 	head := homeNoLine
 	for at := range a.home.lines {
 		if a.home.marksPanel(at) {

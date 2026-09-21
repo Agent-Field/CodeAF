@@ -45,7 +45,7 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 	a := newSwitchLab(t).open(80, 24)
 	frame := homeText(a)
 	last := -1
-	for _, word := range []string{"Porting the Resume Picker", "projects", sessionsWord} {
+	for _, word := range []string{sessionsWord, "Porting the Resume Picker", "projects"} {
 		row, col := homeRowOf(frame, word)
 		if row < 0 {
 			t.Fatalf("%q is not on an eighty-cell home:\n%s", word, frame)
@@ -84,7 +84,7 @@ func TestAtOneTwentyWhatHasRowsTakesTheFieldAndTheQuietGatherInTheRail(t *testin
 	frame := homeText(a)
 	needs, needsCol := homeRowOf(frame, "Porting the Resume Picker")
 	projects, railCol := homeRowOf(frame, "projects")
-	if needs < 0 || needs != projects || railCol <= needsCol {
+	if needs < 0 || needs != projects+1 || railCol <= needsCol {
 		t.Fatalf("needs you (row %d) and projects (row %d) are not the heads of the field and the rail:\n%s", needs, projects, frame)
 	}
 	// WHERE YOU WERE HAS ROWS, SO IT IS IN THE FIELD under the panel that
@@ -144,7 +144,7 @@ func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	needs, needsCol := homeRowOf(frame, "Porting the Resume Picker")
 	recent, recentCol := homeRowOf(frame, "Porting the Resume Picker")
 	projects, railCol := homeRowOf(frame, "projects")
-	if needs != projects || needsCol >= railCol {
+	if needs != projects+1 || needsCol >= railCol {
 		t.Fatalf("needs you and projects do not head the field and the rail:\n%s", frame)
 	}
 	if recent != needs || recentCol != homeGridMargin+homeGridLead {
@@ -242,7 +242,7 @@ func TestTheNeedsYouQuestionIsInTheColumnOnlyWhileItsRowIsRead(t *testing.T) {
 	// WITH THE CURSOR SOMEWHERE ELSE THE QUESTION IS NOT ON THE FRAME, and the
 	// mark still is.
 	a.home.cursor = a.home.placesTop()
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelRecent })
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelSessions })
 	frame := homeText(a)
 	if row, _ := homeRowOf(frame, firstWordsOf(said)); row >= 0 {
 		t.Fatalf("the question is on the frame with the cursor off its row:\n%s", frame)
@@ -472,12 +472,12 @@ func TestATallColumnGrowsWhatAPersonCameForFirst(t *testing.T) {
 		return homePanelRows{lines: lines, more: 20}
 	}
 	needs := &homeGridPanel{slot: homeSlotOf(panelNeeds), read: rows(8), shown: 4}
-	recent := &homeGridPanel{slot: homeSlotOf(panelRecent), read: rows(10), shown: 5}
+	recent := &homeGridPanel{slot: homeSlotOf(panelSessions), read: rows(10), shown: 5}
 	column := []*homeGridPanel{needs, recent}
 	// A heading, the rows and a fold each, and a blank between: 6 + 1 + 7 = 14.
 	// Three rows to spare go needs, recent, needs.
 	fitColumn(column, 16)
-	if needs.shown != 6 || recent.shown != 7 {
+	if needs.shown != 6 || recent.shown != 6 {
 		t.Fatalf("three spare rows grew needs to %d and recent to %d, want 6 and 7", needs.shown, recent.shown)
 	}
 	fitColumn(column, 200)
@@ -500,15 +500,15 @@ func TestATallFrameShowsOpenTabsAndAShortFrameFoldsThem(t *testing.T) {
 	openHomeFixtureTabs(a)
 	a.openHome()
 	homeText(a)
-	if got := len(panelRows(a, panelRecent)); got != tabsCap {
+	if got := len(panelRows(a, panelSessions)); got != min(tabsCap, homeSessionsLimit) {
 		t.Fatalf("tall Home has %d rows, want %d tabs", got, tabsCap)
 	}
-	a.height = 24
+	a.height = 20
 	frame := homeText(a)
-	if len(strings.Split(frame, "\n")) != 24 || len(panelRows(a, panelRecent)) >= tabsCap {
+	if len(strings.Split(frame, "\n")) != 20 || len(panelRows(a, panelSessions)) >= min(tabsCap, homeSessionsLimit) {
 		t.Fatalf("short frame did not fold its tabs:\n%s", frame)
 	}
-	homeFoldDoor(t, a, panelRecent)
+	homeFoldDoor(t, a, panelSessions)
 }
 
 // AND A REAL FRAME THAT SHORT STILL DRAWS EVERY HEADING IT KEPT, with the
@@ -727,7 +727,7 @@ func TestEveryFieldRowRestsOnTheOneFootAndOpensItsFolder(t *testing.T) {
 	a.home.build()
 	want := restingFoot(a)
 
-	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeSession && l.cell != nil && l.cell.panel == panelRecent })
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeSession && l.cell != nil && l.cell.panel == panelSessions })
 	if hint := a.homeHint(); hint != want {
 		t.Fatalf("a conversation's foot is %q, want %q", hint, want)
 	}
@@ -776,7 +776,7 @@ func TestTheArrowsWalkTheFieldAndNeverLeaveIt(t *testing.T) {
 		t.Fatalf("home opened on %q", got)
 	}
 	a.placeKeyPress(key("down"))
-	if got := focusedTitle(a); got != "Bounty Reward Companies" {
+	if got := focusedTitle(a); got != "Swarm Task Splitting" {
 		t.Fatalf("↓ went to %q, want the next row of threads", got)
 	}
 	here := a.home.cursor
@@ -821,7 +821,7 @@ func TestAClickResolvesTheColumnItLandedIn(t *testing.T) {
 func TestALongTitleIsCutBeforeItsAge(t *testing.T) {
 	const width = 58
 	title := strings.Repeat("Generate and Display First 200 Primes ", 2)[:70]
-	cell := &homeCell{panel: panelRecent, title: title, right: "1h"}
+	cell := &homeCell{panel: panelSessions, title: title, right: "1h"}
 	row := plain(homeCellBody(cell, width-homeGridLead, newTestPalette(), false))
 	if !strings.HasSuffix(row, " 1h") || strings.Contains(row, title) || !strings.Contains(row, "...") {
 		t.Fatalf("the title was not cut to keep its age: %q", row)
@@ -838,14 +838,14 @@ func TestALongTitleIsCutBeforeItsAge(t *testing.T) {
 // `66 more · type to find one`, which could not be stood on at all.
 func TestEnterOnAFoldOpensThePanelAndAgainShutsIt(t *testing.T) {
 	a, _ := homeTabsFixture(t)
-	a.height = 11
+	a.height = 14
 	homeText(a)
-	a.home.cursor = homeFoldDoor(t, a, panelRecent)
+	a.home.cursor = homeFoldDoor(t, a, panelSessions)
 	drive(t, a, key("enter"))
-	if !a.at(pageHome) || !a.home.openedOn || a.home.opened != panelRecent {
+	if !a.at(pageHome) || !a.home.openedOn || a.home.opened != panelSessions {
 		t.Fatal("Enter did not open the conversation fold")
 	}
-	a.home.cursor = homeFoldDoor(t, a, panelRecent)
+	a.home.cursor = homeFoldDoor(t, a, panelSessions)
 	drive(t, a, key("enter"))
 	if a.home.openedOn {
 		t.Fatal("Enter did not close the fold")
@@ -856,10 +856,14 @@ func TestEnterOnAFoldOpensThePanelAndAgainShutsIt(t *testing.T) {
 // fold says `more` again. Ten questions fold `needs you` and twelve running
 // tasks fold `tasks`, on one frame.
 func TestOpeningASecondFoldShutsTheFirst(t *testing.T) {
-	a := newSwitchLab(t).open(120, 20)
-	a.home.cursor = homeFoldDoor(t, a, panelRecent)
+	lab := newSwitchLab(t)
+	for i := 0; i < 9; i++ {
+		lab.task("-beta", session.TaskIndexEntry{ID: itoa(i + 1), SessionID: "bbbb000000000001", Label: "question " + itoa(i), Title: "question " + itoa(i), Status: string(session.TaskUnverified), EndedAt: lab.now.Add(-time.Minute)})
+	}
+	a := lab.open(120, 24)
+	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
 	drive(t, a, key("enter"))
-	if !a.home.openedOn || a.home.opened != panelRecent {
+	if !a.home.openedOn || a.home.opened != panelNeeds {
 		t.Fatal("first fold did not open")
 	}
 	a.home.cursor = homeFoldDoor(t, a, panelSessions)

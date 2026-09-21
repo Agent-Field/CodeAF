@@ -119,7 +119,7 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 		t.Fatalf("conversations do not start with bullets and no heading:\n%s", frame)
 	}
 	lines := strings.Split(frame, "\n")
-	if mine := panelRows(a, panelRecent)[0]; !mine.bold || mine.sub != "" {
+	if mine := panelRows(a, panelSessions)[0]; !mine.bold || mine.sub != "" {
 		t.Fatalf("the narrow own row is not one bare bold line: %+v", mine)
 	}
 	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does

@@ -182,7 +182,7 @@ func (h *homeView) buildPhone() {
 	h.liftedItems = lifted.items
 	in := h.gridInput()
 	in.errands = nil // The phone inbox places exchanges in its own triage sections.
-	conversations := (recentPanel{homePanelBase{panelRecent}}).rows(&in)
+	conversations := (sessionsPanel{homePanelBase{panelSessions}}).rows(&in)
 	// The compact inbox represents live task questions through their conversation.
 	// Decorate that row before dropping the duplicate from the waiting rows.
 	questions := make(map[string]homeLine)
@@ -195,7 +195,10 @@ func (h *homeView) buildPhone() {
 			homeDecorateQuestion(line, question)
 		}
 	}
-	h.lines = append(h.lines, conversations.lines...)
+	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, conversations.lines)
+	for _, line := range conversations.lines {
+		lifted.rows[line.row.Transcript] = true
+	}
 	for _, ex := range h.exchanges {
 		if ex.working && !lifted.errands[ex] {
 			lifted.errands[ex] = true
@@ -214,15 +217,6 @@ func (h *homeView) buildPhone() {
 		}
 	}
 	h.phoneSection(homePhoneWaitingWord, homePhoneWaitingKey, remaining)
-	sessions := (sessionsPanel{homePanelBase{panelSessions}}).rows(&in)
-	for i := range sessions.lines {
-		line := &sessions.lines[i]
-		if question, ok := questions[homeQuestionRowKey(*line)]; ok {
-			homeDecorateQuestion(line, question)
-		}
-		lifted.rows[line.row.Transcript] = true
-	}
-	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, sessions.lines)
 	h.phoneSection(homePhoneNewsWord, homePhoneNewsKey, h.phoneNews())
 	h.phoneProjects(lifted)
 }

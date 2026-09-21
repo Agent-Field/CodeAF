@@ -520,6 +520,7 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	lab.presence("-tmp-alpha", "aaaa000000000003", session.PresenceWaiting, "can I run: rm -rf build/", now)
 
 	a := lab.app(mine)
+	a.height = 45
 	a.openHome()
 
 	world := a.home.world
@@ -562,7 +563,7 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 			order = append(order, homeName(line.row))
 		}
 	}
-	if len(order) != 4 || order[0] != "The Newest Chat" || order[1] != "The Newest Chat" || order[2] != "Middle of the Road" || order[3] != "Pricing Research" {
+	if len(order) != 3 || order[0] != "The Newest Chat" || order[1] != "Middle of the Road" || order[2] != "Pricing Research" {
 		t.Fatalf("the column reads %v, want the open tab followed by the waiting conversation", order)
 	}
 }
@@ -1190,7 +1191,7 @@ func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 	// grid rather than from the text: the words alone would also match the
 	// `→ more` a legend can carry. It used to read `N more · type to find one`,
 	// and waiting for that clause waits for a line the grid no longer draws.
-	if fold := a.home.lines[homeFoldDoor(t, a, panelRecent)]; !strings.HasSuffix(fold.cell.title, " "+homeFoldMoreWord) {
+	if fold := a.home.lines[homeFoldDoor(t, a, panelSessions)]; !strings.HasSuffix(fold.cell.title, " "+homeFoldMoreWord) {
 		t.Fatalf("the collapse did not come back on an empty query:\n%s", homeText(a))
 	}
 	if strings.Contains(homeText(a), "Buried Treasure") {
@@ -2193,7 +2194,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 			t.Fatalf("a one-conversation home is missing %q:\n%s", want, text)
 		}
 	}
-	if homeWhisper[panelRecent] != "" && strings.Contains(text, homeWhisper[panelRecent]) {
+	if homeWhisper[panelSessions] != "" && strings.Contains(text, homeWhisper[panelSessions]) {
 		t.Fatalf("a home holding this conversation whispers that one will arrive:\n%s", text)
 	}
 }
@@ -2311,7 +2312,7 @@ func TestAFreshConversationTheWalkCannotSeeStillHasARow(t *testing.T) {
 			t.Fatalf("home opened from a fresh conversation does not list it (%q):\n%s", want, text)
 		}
 	}
-	if homeWhisper[panelRecent] != "" && strings.Contains(text, homeWhisper[panelRecent]) {
+	if homeWhisper[panelSessions] != "" && strings.Contains(text, homeWhisper[panelSessions]) {
 		t.Fatalf("home whispers that a conversation will arrive while this one is here:\n%s", text)
 	}
 	a.home.point(mine)

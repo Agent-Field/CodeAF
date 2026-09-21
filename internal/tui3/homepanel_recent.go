@@ -6,35 +6,12 @@ import (
 	"strings"
 )
 
-// recentPanel mirrors this window's tabs, followed by a bounded list of closed
-// conversations. The tab strip owns membership and order on every surface.
+// recentPanel keeps Home's ask exchanges separate from conversation history.
+// Conversations have exactly one resting list, under Sessions.
 type recentPanel struct{ homePanelBase }
 
 func (recentPanel) rows(in *homeGridInput) homePanelRows {
-	var lines []homeLine
-	for _, row := range in.openChats {
-		cell := recentCell(row, in)
-		if row.here {
-			cell = recentOwnCell(row, in)
-		}
-		if !in.desc {
-			cell.sub, cell.grows = "", false
-		}
-		cell.chatKey = row.chatKey
-		lines = append(lines, switcherRowLine(row, cell))
-	}
-	for _, row := range in.closedChats {
-		cell := recentCell(row, in)
-		cell.closed = true
-		if !in.desc {
-			cell.sub, cell.grows = "", false
-		}
-		cell.chatKey = row.chatKey
-		lines = append(lines, switcherRowLine(row, cell))
-	}
-	lines = append(lines, in.errands...)
-	homeDecorateQuestions(in, lines)
-	return homePanelCut(in, panelRecent, lines)
+	return homePanelCut(in, panelRecent, in.errands)
 }
 
 // recentOwnCell is this window's own row: bold, `here` at the margin, and the
@@ -65,7 +42,7 @@ func recentOwnCell(row switcherRow, in *homeGridInput) *homeCell {
 	if in.desc {
 		said = rowClauses(homeHereWord, said)
 	}
-	return &homeCell{panel: panelRecent, title: row.title, right: row.age, bold: true, sub: said}
+	return &homeCell{panel: panelSessions, title: row.title, right: row.age, bold: true, sub: said}
 }
 
 // recentCell is any other row: its age at the margin — or the one fact that
@@ -88,7 +65,7 @@ func recentCell(row switcherRow, in *homeGridInput) *homeCell {
 	// empty until the journal's tail has come back ([app.askHomeLeftOff] asks for
 	// the row being read, off the draw), and a row with nothing to say draws
 	// nothing rather than a gap.
-	cell := &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row)}
+	cell := &homeCell{panel: panelSessions, title: row.title, right: switcherMarginWord(row)}
 	project := ""
 	if homeBucketOf(row.session.Transcript) != in.bucket {
 		project = chatProjectTag(row, in.tilde)

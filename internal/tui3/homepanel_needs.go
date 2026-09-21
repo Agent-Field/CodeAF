@@ -41,7 +41,7 @@ type needsItem struct {
 func (needsPanel) rows(in *homeGridInput) homePanelRows {
 	// Questions already carried by a conversation or task do not get a second row.
 	shown := make(map[string]bool)
-	for _, panel := range []homePanel{recentPanel{homePanelBase{panelRecent}}, sessionsPanel{homePanelBase{panelSessions}}} {
+	for _, panel := range []homePanel{sessionsPanel{homePanelBase{panelSessions}}} {
 		for _, line := range panel.rows(in).lines {
 			shown[homeQuestionRowKey(line)] = true
 		}

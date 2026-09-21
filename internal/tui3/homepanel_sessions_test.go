@@ -62,9 +62,7 @@ func TestHomeSessionsKeepsClosedHistoryAndFreshTabTitles(t *testing.T) {
 	if !found {
 		t.Fatal("closed history is absent or not dimmed")
 	}
-	if got.lines[0].sameRow((recentPanel{homePanelBase{panelRecent}}).rows(&in).lines[0]) {
-		t.Fatal("separate panel rows share selection identity")
-	}
+
 }
 
 func TestHomeSessionsNeverRendersIndividualTasks(t *testing.T) {
@@ -96,4 +94,28 @@ func TestHomeSessionsHeadingOpensOnCompactScreens(t *testing.T) {
 		}
 	}
 	t.Fatal("no compact sessions heading")
+}
+
+func TestHomeConversationsAppearOnlyOnceUnderSessions(t *testing.T) {
+	for _, width := range []int{48, 80, 120, 180} {
+		a, files := homeTabsFixture(t)
+		a.width, a.height = width, 70
+		homeText(a)
+		seen := map[string]bool{}
+		for _, line := range a.home.lines {
+			if line.kind != homeSession {
+				continue
+			}
+			if line.cell == nil || line.cell.panel != panelSessions {
+				t.Fatalf("width %d: conversation outside Sessions", width)
+			}
+			if seen[line.row.Transcript] {
+				t.Fatalf("width %d: duplicate conversation %s", width, line.row.Transcript)
+			}
+			seen[line.row.Transcript] = true
+		}
+		if len(seen) != len(files) {
+			t.Fatalf("width %d: got %d conversations, want %d", width, len(seen), len(files))
+		}
+	}
 }

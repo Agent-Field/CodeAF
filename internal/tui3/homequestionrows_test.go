@@ -69,7 +69,7 @@ func TestHomeQuestionDecoratesConversationWithoutDuplicate(t *testing.T) {
 	setWaiting(true)
 	count, found := 0, homeNoLine
 	for i, line := range a.home.lines {
-		if line.kind == homeSession && line.row.Transcript == files[1] && line.cell.panel == panelRecent {
+		if line.kind == homeSession && line.row.Transcript == files[1] && line.cell.panel == panelSessions {
 			count++
 			found = i
 		}
@@ -78,7 +78,7 @@ func TestHomeQuestionDecoratesConversationWithoutDuplicate(t *testing.T) {
 		t.Fatalf("waiting conversation appears %d times", count)
 	}
 	line := a.home.lines[found]
-	if line.cell.panel != panelRecent || line.cell.mark != cellMarkNeeds {
+	if line.cell.panel != panelSessions || line.cell.mark != cellMarkNeeds {
 		t.Fatalf("question did not stay on its conversation row: %+v", line.cell)
 	}
 	if got := plain(a.homeConversationBullet(line.cell, a.pal)); got != a.pal.glyph(tokens.GNeedsHuman) {
@@ -139,9 +139,9 @@ func TestHomeTaskDecisionDoesNotStealAnotherTasksQuestion(t *testing.T) {
 	in := homeGridInput{now: now, rows: []switcherRow{chat}, openChats: []switcherRow{chat},
 		world: session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}}
 	in.calls = needsCalls(in.world, now)
-	conversations := (recentPanel{homePanelBase{panelRecent}}).rows(&in)
-	if conversations.lines[0].cell.mark == cellMarkNeeds {
-		t.Fatal("task decision was put on the conversation instead")
+	conversations := (sessionsPanel{homePanelBase{panelSessions}}).rows(&in)
+	if conversations.lines[0].cell.answers != "" {
+		t.Fatal("task answer actions were put on the conversation instead")
 	}
 	tasks := (needsPanel{homePanelBase{panelNeeds}}).rows(&in)
 	if len(tasks.lines) != 2 {
@@ -182,7 +182,7 @@ func TestPhoneTaskQuestionMarksItsConversation(t *testing.T) {
 			t.Fatalf("compact conversation lost its task question: %+v", line.cell)
 		}
 	}
-	if count != 2 {
+	if count != 1 {
 		t.Fatalf("compact task question appears %d times", count)
 	}
 }

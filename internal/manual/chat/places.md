@@ -447,9 +447,9 @@ being held down — it only reports what arrived.
 ## home — conversations, tasks and project panels
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
-project, in one, two or three columns — an unheaded list of open tabs and up to
-three dimmed closed conversations, then
-`projects`, `sessions`, `since you left`, `spend`, `scheduled`, always in that order. Which
+project, in one, two or three columns — one `sessions` list of the fifteen most recent
+conversations, then question rows, `projects`, `since you left`, `spend`, and `scheduled`.
+Open tabs and saved history share that list, with closed conversations dimmed. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
 them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
