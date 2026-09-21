@@ -229,6 +229,21 @@ jobs:
             dirs="$(printf '%s\n' "$changed" | { grep '\.go$' || true; } | xargs -r -n1 dirname | sort -u)"
             pkgs=""
             for dir in $dirs; do
+              # A DIRECTORY UNDER ITS OWN go.mod IS ANOTHER MODULE, not a package
+              # of this one, and `go test ./that/dir` from the root answers
+              # "main module does not contain package" and fails the job as a
+              # setup error. The bench fixtures under bench/bashloop/fixtures
+              # are exactly that: small programs the task door edits, each with
+              # a go.mod of its own. Walking up from the directory to the first
+              # go.mod is what tells the two apart. This walk is the same one
+              # the Makefile's test-touched target does, and the two must keep
+              # deriving the same set or `make pr-ready` stops predicting CI.
+              nested=0; walk="$dir"
+              while [ "$walk" != "." ] && [ "$walk" != "/" ]; do
+                if [ -f "$walk/go.mod" ]; then nested=1; break; fi
+                walk="$(dirname "$walk")"
+              done
+              if [ "$nested" = 1 ]; then continue; fi
               # A directory the change emptied has no package left to test.
               if ls "$dir"/*.go >/dev/null 2>&1; then pkgs="$pkgs ./$dir"; fi
             done
