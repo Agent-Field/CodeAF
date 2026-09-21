@@ -163,6 +163,13 @@ func TestV4ChannelOrdering(t *testing.T) {
 		{"selected later date with one moment unknown", oldDay, newDay, early, time.Time{}, -1},
 		{"running later date with one moment unknown", newDay, oldDay, time.Time{}, early, 1},
 		{"same day unknown moment selects API release", sameDayA, sameDayB, time.Time{}, late, -1},
+		{"no moment at all falls to the tag dates", newDay, oldDay, time.Time{}, time.Time{}, 1},
+		// TWO RELEASES PUBLISHED IN THE SAME SECOND ARE NOT ORDERED BY THEIR
+		// MOMENTS. D4's second rule names a later publication, and neither is
+		// later, so the remaining rules answer: the tag date first, then the
+		// release the API named.
+		{"one moment, twice, falls to the tag dates", newDay, oldDay, early, early, 1},
+		{"one moment, twice, on one day gives the API release", sameDayA, sameDayB, early, early, -1},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			got, ok := CompareChannelBuilds(row.running, row.runningAt, row.selected, row.selectedAt)
@@ -180,6 +187,56 @@ func TestV4ChannelOrdering(t *testing.T) {
 				t.Fatalf("ahead build drew notice %q", available.Notice())
 			}
 		})
+	}
+}
+
+// V4: A pair the channel law cannot rank — two different channels, a channel
+// tag beside a version number, or a tag that names no release at all — is
+// neither newer nor ahead, and draws no launch line.
+func TestV4UnrankablePairsAreNeitherNewerNorAhead(t *testing.T) {
+	for _, row := range []struct{ running, selected string }{
+		{"dev-20260921-aaaaaaaaaaaa", "staging-20260921-bbbbbbbbbbbb"},
+		{"dev-20260921-aaaaaaaaaaaa", "v0.3.0"},
+		{"dev-20260921-aaaaaaaaaaaa", "not-a-tag"},
+		{"staging-20260921-aaaaaaaaaaaa", "dev-20260921-bbbbbbbbbbbb"},
+	} {
+		if _, ok := CompareChannelBuilds(row.running, time.Time{}, row.selected, time.Time{}); ok {
+			t.Errorf("CompareChannelBuilds(%q, %q) claimed an order", row.running, row.selected)
+		}
+		available := Available{Latest: row.selected, Running: row.running}
+		if available.Newer() || available.Ahead() || available.Notice() != "" {
+			t.Errorf("%q against %q: newer = %t, ahead = %t, notice = %q",
+				row.running, row.selected, available.Newer(), available.Ahead(), available.Notice())
+		}
+	}
+}
+
+// V8: An install that cannot replace the running file offers the road back to
+// THAT file. A devaf told to reinstall from /get/codeaf would come back as a
+// stable codeaf, which is the surprise this whole change exists to remove.
+func TestV8InstallFailureCarriesTheCallersCurlLine(t *testing.T) {
+	asset := []byte("new codeaf")
+	digest := sha256.Sum256(asset)
+	server, _ := servedRelease(t, asset, hex.EncodeToString(digest[:]))
+	defer server.Close()
+	devafCurl := CurlLine("/home/x/.codeaf/bin/devaf", "dev")
+	unreachable := filepath.Join(t.TempDir(), "gone", "devaf")
+	_, err := Install(context.Background(), InstallOptions{
+		Client:  releaseClient(server, "dev-20260918-aaaaaaaaaaaa"),
+		Release: Release{Tag: "dev-20260921-bbbbbbbbbbbb", Repository: primaryRepository},
+		Target:  unreachable, Curl: devafCurl,
+	})
+	if err == nil || !strings.Contains(err.Error(), "cannot replace "+unreachable) ||
+		!strings.Contains(err.Error(), devafCurl) || strings.Contains(err.Error(), "get/codeaf") {
+		t.Fatalf("error = %v, want the devaf road", err)
+	}
+	// With no road supplied the stable constant is still the answer.
+	if _, bare := Install(context.Background(), InstallOptions{
+		Client:  releaseClient(server, "v0.1.1"),
+		Release: Release{Tag: "v0.2.0", Repository: primaryRepository},
+		Target:  unreachable,
+	}); bare == nil || !strings.Contains(bare.Error(), CurlCommand) {
+		t.Fatalf("bare error = %v", bare)
 	}
 }
 

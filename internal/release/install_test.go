@@ -926,6 +926,25 @@ func TestV1InstallerName(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("invalid from the environment", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "install")
+		run := runInstaller(t, github, []string{"--dev"},
+			"CODEAF_INSTALL_DIR="+dir, "CODEAF_INSTALL_NAME=../x", "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 2 || !strings.Contains(run.output, "must match ^[A-Za-z0-9][A-Za-z0-9._-]*$") {
+			t.Fatalf("exit %d:\n%s", run.code, run.output)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("invalid environment name wrote install directory: %v", err)
+		}
+	})
+
+	t.Run("no word after the flag", func(t *testing.T) {
+		run := runInstaller(t, github, []string{"--name"}, "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 2 || !strings.Contains(run.output, "--name needs a word") {
+			t.Fatalf("exit %d:\n%s", run.code, run.output)
+		}
+	})
 }
 
 // V2: The website name seam is the one exact line beneath CHANNEL, and the

@@ -28,11 +28,16 @@ hours. A cached newer release is still shown. The curl line reinstalls this file
 staging on a `staging-*` build, and stable on stable or rc. `--stable`, `--rc`,
 `--dev`, `--staging`, or `--version <tag>` overrides that choice.
 
-`--check` exits 3 when the selected release is newer and 0 when it is equal or
-this build is ahead; it exits 1 when it could not check. `--version <tag>` exits
-0 only on that tag and 3 otherwise. Every answer names the selected tag. An
-ahead channel build says `the newest dev codeaf is <newest> · this codeaf is
-<running>`. Installing without `--check` refuses an implicit downgrade with
+`--check` exits 3 when the selected release is newer, and also whenever a dev or
+staging tag is selected from a build of another channel, because a channel tag
+and a version number cannot be ordered against each other. It exits 0 when the
+selection is the tag already running, when this build is ahead of its own
+channel, and when the two cannot be ordered at all — which is what a dev build
+asking `--stable` gets. It exits 1 when it could not check. `--version <tag>`
+exits 0 only on that tag and 3 otherwise. Every answer names the selected tag.
+A build ahead of its own channel says `the newest dev codeaf is <newest> · this
+codeaf is <running>`, with `staging` in place of `dev` on that channel.
+Installing without `--check` refuses an implicit downgrade the same way:
 `this codeaf is <running>, ahead of the newest dev <newest> — pass --version
 <newest> to install it anyway`; naming that tag installs it.
 

@@ -433,6 +433,94 @@ func TestV6TerminalUpdateDefaultsToTheRunningDevChannel(t *testing.T) {
 	}
 }
 
+// V6: An explicit channel still wins on a dev build, and a check across two
+// channels says only what it can: a channel tag and a version number cannot be
+// ordered, so the difference itself is the answer.
+func TestV6CrossChannelChecksSayOnlyWhatTheyCanOrder(t *testing.T) {
+	const devTag = "dev-20260921-bbbbbbbbbbbb"
+	for _, row := range []struct {
+		name, running, path, want string
+		arguments                 []string
+		exit                      int
+	}{
+		{
+			name: "a dev build asking for stable", running: "dev-20260918-aaaaaaaaaaaa",
+			arguments: []string{"--check", "--stable"}, path: "/releases/latest",
+			want: "the newest stable codeaf is v0.3.0 · this codeaf is dev-20260918-aaaaaaaaaaaa\n",
+		},
+		{
+			name: "a stable build asking for dev", running: "v0.3.0",
+			arguments: []string{"--check", "--dev"}, path: "/releases", exit: 3,
+			want: "codeaf " + devTag + " is available · you have v0.3.0\n",
+		},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			var paths []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				paths = append(paths, request.URL.Path)
+				if strings.HasSuffix(request.URL.Path, "/releases/latest") {
+					fmt.Fprint(w, `{"tag_name":"v0.3.0"}`)
+					return
+				}
+				fmt.Fprint(w, `[{"tag_name":"`+devTag+`","published_at":"2026-09-21T12:00:00Z"}]`)
+			}))
+			defer server.Close()
+			client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+			stdout, stderr := withUpdateDoor(t, row.running, client, filepath.Join(t.TempDir(), "devaf"))
+			if got := updateExit(runUpdate(row.arguments)); got != row.exit {
+				t.Fatalf("exit = %d, want %d; stderr %q", got, row.exit, stderr.String())
+			}
+			if stdout.String() != row.want {
+				t.Fatalf("stdout = %q, want %q", stdout.String(), row.want)
+			}
+			if len(paths) != 1 || !strings.HasSuffix(paths[0], row.path) {
+				t.Fatalf("requests = %q, want one ending in %q", paths, row.path)
+			}
+		})
+	}
+}
+
+// V7 and D4: a publish moment outranks the date written into the tag. A build
+// whose tag carries the later day but which was published FIRST is behind, so
+// the terminal door installs rather than calling it a downgrade — which it can
+// only get right by carrying both moments out of the release list.
+func TestV7APublishMomentOutranksTheDateInTheTag(t *testing.T) {
+	const (
+		running  = "dev-20260921-aaaaaaaaaaaa"
+		selected = "dev-20260918-bbbbbbbbbbbb"
+	)
+	asset := []byte("the later dev build")
+	digest := sha256.Sum256(asset)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/releases"):
+			fmt.Fprint(w, `[
+				{"tag_name":"`+running+`","published_at":"2026-09-18T10:00:00Z"},
+				{"tag_name":"`+selected+`","published_at":"2026-09-18T12:00:00Z"}
+			]`)
+		case strings.HasSuffix(request.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+		case strings.Contains(request.URL.Path, "/releases/download/"+selected+"/"):
+			_, _ = w.Write(asset)
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+	target := filepath.Join(t.TempDir(), "devaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr := withUpdateDoor(t, running, client, target)
+	if err := runUpdate(nil); err != nil {
+		t.Fatalf("update: %v; stdout %q stderr %q", err, stdout.String(), stderr.String())
+	}
+	if got, err := os.ReadFile(target); err != nil || string(got) != string(asset) {
+		t.Fatalf("installed = %q, %v", got, err)
+	}
+}
+
 // V7: A terminal dev update refuses an implicit downgrade, --check calls it
 // equal-or-ahead with exit 0, and --version still installs the named release.
 func TestV7TerminalUpdateRefusesAnAheadDevUnlessTheTagIsNamed(t *testing.T) {
