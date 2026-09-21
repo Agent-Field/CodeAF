@@ -283,7 +283,10 @@ func TestAReRaisedLandingCarriesItsAnswerFate(t *testing.T) {
 	if again.Kind != EventQuestion || again.Question == nil {
 		t.Fatalf("the re-raise did not go out: %+v", again)
 	}
-	if !strings.HasPrefix(again.Question.Reason, "accepted 18:20") {
+	// THE ANSWER IS PINNED TO A DAY THAT IS ALWAYS PAST by the time this runs,
+	// so the stamp leads with its day (landingAnsweredStamp): a bare `18:20`
+	// on a card drawn later reads as an hour ago.
+	if !strings.HasPrefix(again.Question.Reason, "accepted Sep 16 18:20") {
 		t.Fatalf("the re-raised card does not lead with the answer's fate: %q", again.Question.Reason)
 	}
 }
@@ -390,7 +393,9 @@ func TestTheTerminalNoticeRetiresTheFlightStamp(t *testing.T) {
 	if strings.Contains(terminal.Question.Reason, "still working on it") {
 		t.Fatalf("the flight stamp outlived the flight: %q", terminal.Question.Reason)
 	}
-	if !strings.HasPrefix(terminal.Question.Reason, "handed it to codeaf 18:20") {
+	// AND THE STAMP SAYS ITS DAY, because the pinned answer is always a past
+	// day by the time this runs (landingAnsweredStamp's own law).
+	if !strings.HasPrefix(terminal.Question.Reason, "handed it to codeaf Sep 16 18:20") {
 		t.Fatalf("the terminal card does not lead with the answer's fate: %q", terminal.Question.Reason)
 	}
 }
