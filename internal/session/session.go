@@ -669,6 +669,14 @@ type Event struct {
 	Err           error
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
+	// Skills is the ordered list of skill names this turn carried, on the
+	// notice that announces them (skillturn.go). IT IS THE FIELD AND NOT THE
+	// SENTENCE a surface reads: [Event.Text] says the same thing in words for
+	// a reader who draws notices as prose, and a surface that took the names
+	// back out of that sentence would break the first time somebody improved
+	// the wording or a skill name held a comma, and would break silently,
+	// because a test written against the same sentence agrees with it.
+	Skills []string `json:"Skills,omitempty"`
 
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every

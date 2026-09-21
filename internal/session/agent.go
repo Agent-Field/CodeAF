@@ -1755,7 +1755,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// The names, not the block: the model reads the block, the person reads
 	// the line.
 	if len(user.skills) > 0 {
-		hub.send(Event{Kind: EventNotice, Text: turnSkillsNote(user.skills)})
+		hub.send(turnSkillsNotice(user.skills))
 	}
 
 	go func() {

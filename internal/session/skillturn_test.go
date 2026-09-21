@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -206,4 +207,27 @@ func drainSkillsNotice(t *testing.T, events <-chan Event) string {
 		}
 	}
 	return notice
+}
+
+// THE NAMES ARE A FIELD AND NOT A SENTENCE. A surface that wanted to draw which
+// skills a turn carried could take them back out of the notice's words, and that
+// reading would break the first time somebody improved the wording or a skill
+// name held a comma — silently, because a test written against the same sentence
+// agrees with it. So the notice carries both and one function builds it.
+func TestTheSkillsNoticeCarriesItsNamesAsAField(t *testing.T) {
+	names := []string{"release-notes", "lint, with a comma"}
+	notice := turnSkillsNotice(names)
+	if notice.Kind != EventNotice {
+		t.Fatalf("the notice is not a notice: %v", notice.Kind)
+	}
+	if !reflect.DeepEqual(notice.Skills, names) {
+		t.Fatalf("the field lost the names: %v", notice.Skills)
+	}
+	notice.Skills[0] = "rewritten"
+	if names[0] != "release-notes" {
+		t.Fatal("the notice shares the caller's slice")
+	}
+	if !strings.Contains(turnSkillsNotice(names).Text, "release-notes") {
+		t.Fatal("the sentence stopped naming the skills it carried")
+	}
 }
