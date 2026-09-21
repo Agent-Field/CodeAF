@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	account "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -123,18 +124,20 @@ func TestCodexExpiredOrRemovedSignInEndsARealTurnWithTheRecoverySentence(t *test
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			var issuerCalls atomic.Int32
-			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-				if request.URL.Path == "/oauth/token" {
-					issuerCalls.Add(1)
-					writer.WriteHeader(http.StatusUnauthorized)
-					_, _ = fmt.Fprintln(writer, `{"error":"invalid_grant"}`)
-					return
-				}
-				t.Fatalf("expired sign-in reached backend path %q", request.URL.Path)
+			issuer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				issuerCalls.Add(1)
+				writer.WriteHeader(http.StatusUnauthorized)
+				_, _ = fmt.Fprintln(writer, `{"error":"invalid_grant"}`)
 			}))
-			defer server.Close()
-			t.Setenv("CODEAF_CODEX_ISSUER", server.URL)
-			t.Setenv("CODEAF_CODEX_BACKEND", server.URL)
+			defer issuer.Close()
+			var backendCalls atomic.Int32
+			backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				backendCalls.Add(1)
+				http.Error(writer, "an expired sign-in must not reach the backend", http.StatusInternalServerError)
+			}))
+			defer backend.Close()
+			t.Setenv("CODEAF_CODEX_ISSUER", issuer.URL)
+			t.Setenv("CODEAF_CODEX_BACKEND", backend.URL)
 			profile := t.TempDir()
 			expires := time.Now().Add(-time.Minute)
 			if testCase.remove {
@@ -152,14 +155,20 @@ func TestCodexExpiredOrRemovedSignInEndsARealTurnWithTheRecoverySentence(t *test
 			}}); err != nil {
 				t.Fatal(err)
 			}
+			journal := filepath.Join(t.TempDir(), "session.jsonl")
+			tally := &taxonomy.Tally{}
 			agent, err := New(Config{
 				Workspace: t.TempDir(), Model: "codex/gpt-5.5",
-				Sources: account.ResolveSources(profile, "", account.DefaultBaseURL),
+				Sources: account.ResolveSources(profile, "", account.DefaultBaseURL), SessionFile: journal,
+				failures: tally,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = agent.Close() })
+			if !agent.setTitleIfUnnamed("expiry accounting test") {
+				t.Fatal("fresh session already had a title")
+			}
 			if testCase.remove {
 				if err := os.Remove(codexauth.Path(profile)); err != nil {
 					t.Fatal(err)
@@ -175,6 +184,20 @@ func TestCodexExpiredOrRemovedSignInEndsARealTurnWithTheRecoverySentence(t *test
 			}
 			if issuerCalls.Load() != wantIssuerCalls {
 				t.Fatalf("issuer calls = %d, want %d", issuerCalls.Load(), wantIssuerCalls)
+			}
+			if backendCalls.Load() != 0 {
+				t.Fatalf("expired sign-in reached the backend %d times, want none", backendCalls.Load())
+			}
+			if rows := journaledEntries(t, journal, "error"); len(rows) != 1 {
+				t.Fatalf("provider attempts in the journal = %d, want one", len(rows))
+			}
+			rows := journaledFailures(t, journal)
+			if len(rows) != 1 || rows[0].Class != string(taxonomy.Transport) || rows[0].Action != string(taxonomy.ActionReport) {
+				t.Fatalf("expiry taxonomy rows = %+v, want one terminal transport report", rows)
+			}
+			wire, semantic, tainted := tally.Counts()
+			if wire != 1 || semantic != 0 || tainted != 0 {
+				t.Fatalf("expiry failure tally = wire %d semantic %d tainted %d, want 1/0/0", wire, semantic, tainted)
 			}
 		})
 	}
@@ -256,6 +279,117 @@ func TestCodexEchoedBearerNeverReachesAnyObservableFailureSink(t *testing.T) {
 			if bytes.Contains(contents, []byte(secret)) {
 				t.Errorf("%s contains token bytes %q:\n%s", name, secret, contents)
 			}
+		}
+	}
+}
+
+func TestCodexAccessTokenSplitAcrossTextDeltasNeverReachesAnyCompletedSink(t *testing.T) {
+	// G6: per-event redaction cannot see this token. The completed transcript,
+	// EventError, call log, and debug record each scrub the text they actually
+	// write after the provider has assembled it.
+	const access = "codex-split-sink-access-secret"
+	var backendCalls atomic.Int32
+	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer "+access {
+			t.Errorf("backend bearer = %q", request.Header.Get("Authorization"))
+		}
+		writer.Header().Set("Content-Type", "text/event-stream")
+		if backendCalls.Add(1) > 1 {
+			failed, _ := json.Marshal(map[string]any{
+				"type": "response.failed",
+				"response": map[string]any{"error": map[string]any{
+					"message": "usage_limit_reached after Bearer " + access, "type": "server_error", "code": "rate_limit_exceeded",
+				}},
+			})
+			fmt.Fprintf(writer, "data: %s\n\n", failed)
+			return
+		}
+		fmt.Fprintln(writer, `data: {"type":"response.created","response":{"id":"split-1","model":"gpt-5.5","created_at":1800000000}}`)
+		fmt.Fprintln(writer)
+		for _, part := range []string{access[:7], access[7:19], access[19:]} {
+			encoded, _ := json.Marshal(map[string]any{"type": "response.output_text.delta", "delta": part})
+			fmt.Fprintf(writer, "data: %s\n\n", encoded)
+		}
+		fmt.Fprintln(writer, `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"manual-1","name":"manual"}}`)
+		fmt.Fprintln(writer)
+		fmt.Fprintln(writer, `data: {"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"query\":\"what does connect do\"}"}`)
+		fmt.Fprintln(writer)
+		fmt.Fprintln(writer, `data: {"type":"response.completed","response":{"id":"split-1","model":"gpt-5.5","usage":{"input_tokens":5,"output_tokens":3}}}`)
+		fmt.Fprintln(writer)
+	}))
+	defer backend.Close()
+	t.Setenv("CODEAF_CODEX_BACKEND", backend.URL)
+	profile := t.TempDir()
+	if err := codexauth.Save(profile, codexauth.Tokens{
+		AccessToken: access, RefreshToken: "codex-split-refresh-secret",
+		IDToken: "codex-split-identity-secret", AccountID: "split-account", ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	listed := true
+	if err := account.WriteSources(profile, []account.PersistedSource{{
+		ID: "codex", Written: "codex", Key: codexauth.Sentinel, Listed: &listed,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	logPath := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv(calllog.EnvVar, logPath)
+	t.Setenv(calllog.BodiesEnvVar, "1")
+	calllog.Open("")
+	t.Cleanup(func() {
+		calllog.Close()
+		_ = os.Setenv(calllog.EnvVar, calllog.OffValue)
+		calllog.Open("")
+	})
+	ctx := trace.Begin(context.Background())
+	if trace.EnableRun(ctx) == "" {
+		t.Fatal("debug record did not turn on")
+	}
+	agent, err := New(Config{
+		Workspace: t.TempDir(), Model: "codex/gpt-5.5", SessionFile: journal,
+		Sources: account.ResolveSources(profile, "", account.DefaultBaseURL),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	if !agent.setTitleIfUnnamed("split token sink test") {
+		t.Fatal("fresh session already had a title")
+	}
+	events, err := agent.Submit(ctx, "stream the hostile answer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := collect(t, events)
+	var streamed strings.Builder
+	for _, event := range collected {
+		if event.Kind == EventTextDelta {
+			streamed.WriteString(event.Text)
+		}
+	}
+	if streamed.String() != access {
+		t.Fatalf("fake backend did not split the access token across text deltas: %q", streamed.String())
+	}
+	if backendCalls.Load() != 2 {
+		t.Fatalf("backend calls = %d, want the completed tool call and terminal follow-up", backendCalls.Load())
+	}
+	failure, ok := firstOfKind(collected, EventError)
+	if !ok || failure.Err == nil {
+		t.Fatalf("turn ended without EventError: %v", kinds(collected))
+	}
+	agent.SettleWrites()
+	calllog.Close()
+
+	sinks := map[string][]byte{
+		"EventError":   []byte(failure.Err.Error()),
+		"transcript":   readSinkBytes(t, journal),
+		"call log":     readSinkBytes(t, logPath),
+		"debug record": readSinkBytes(t, trace.Dir(trace.RunFrom(ctx))),
+	}
+	for name, contents := range sinks {
+		if bytes.Contains(contents, []byte(access)) {
+			t.Errorf("%s contains the access token assembled from three deltas:\n%s", name, contents)
 		}
 	}
 }

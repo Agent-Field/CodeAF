@@ -2652,6 +2652,11 @@ type errorBody struct {
 // of any real provider error and is bounded enough to sit on every failed call.
 const maxRawClip = 2 << 10
 
+// maxAPIErrorScrubBody bounds exact-secret work at semantic ingress. The Codex
+// transport's error bodies are small; larger bodies belong to media roads and
+// are scrubbed by each output sink if somebody elects to write them.
+const maxAPIErrorScrubBody = 8 << 20
+
 // maxSentenceClip bounds the ONE SENTENCE a person is shown. It is a line in a
 // terminal beside a status code, not a report.
 const maxSentenceClip = 160
@@ -2662,11 +2667,13 @@ const maxSentenceClip = 160
 // nothing until it says which provider and what they said, and both are in the
 // metadata OpenRouter already sends (see [APIError]).
 func apiError(status int, payload []byte) error {
-	// A PROVIDER'S ERROR BODY IS AN OBSERVABLE SINK. Connected transports
-	// register every credential they hold, and an upstream is free to echo a
-	// bearer inside this payload; scrub it before Body, Message or Raw can reach
-	// the journal, the call log, diagnostics, or a surface.
-	payload = trace.Scrub(payload)
+	// SEMANTIC INGRESS REMOVES ONLY CREDENTIALS THIS PROCESS KNOWS. A diagnostic
+	// that happens to resemble an sk-key or a bearer remains byte-for-byte what
+	// the provider said; the call log, debug record and other output sinks keep
+	// the broader shape scrub that protects files a person may share.
+	if len(payload) <= maxAPIErrorScrubBody {
+		payload = trace.ScrubRegistered(payload)
+	}
 	failure := &APIError{Status: status, Body: string(payload)}
 	var decoded errorBody
 	if err := json.Unmarshal(payload, &decoded); err == nil {

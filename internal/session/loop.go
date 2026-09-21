@@ -2072,13 +2072,6 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// turn that stopped. It is journaled per ATTEMPT, so a ladder of three
 		// reads as a ladder.
 		a.journalFailedCall(ctx, model, "", err, attempt+1, a.requestEstimate())
-		// A REFUSED OR REMOVED SIGN-IN CANNOT IMPROVE ON ANOTHER ATTEMPT. The
-		// transport has already tried the one allowed 401 refresh; asking the
-		// same dead credential again would turn an actionable sentence into a
-		// retry storm before arriving at the same answer.
-		if errors.Is(err, codexauth.ErrSignInExpired) {
-			return nil, model, endingWords(err, taxonomy.Verdict{}, a.failureServiceWord(model))
-		}
 		// A GUARD'S CUT IS A DIFFERENT KIND OF SPENDING, and it is counted apart
 		// from the outright failures rather than answered apart from them. The
 		// request was served and the REPLY came apart, so the loop's own attempt
