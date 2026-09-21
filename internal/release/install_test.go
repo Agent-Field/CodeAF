@@ -850,7 +850,98 @@ func TestInstallerKeepsTheWebsiteChannelSeam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "\nCHANNEL=\"${CHANNEL:-stable}\"\n") {
-		t.Fatal("the website-rewritten CHANNEL line is missing")
+	const seams = "CHANNEL=\"${CHANNEL:-stable}\"\nINSTALL_NAME=\"${CODEAF_INSTALL_NAME:-codeaf}\""
+	if strings.Count(string(raw), seams) != 1 || strings.Count(string(raw), "INSTALL_NAME=\"${CODEAF_INSTALL_NAME:-codeaf}\"") != 1 {
+		t.Fatal("the website-rewritten CHANNEL and INSTALL_NAME lines are not adjacent and unique")
+	}
+}
+
+// V1: --name and CODEAF_INSTALL_NAME install the selected dev build under the
+// requested file, leave codeaf untouched, and reject every invalid name before writing.
+func TestV1InstallerName(t *testing.T) {
+	const tag = "dev-20260921-bbbbbbbbbbbb"
+	github := newInstallGitHub(t, tag)
+
+	t.Run("flag", func(t *testing.T) {
+		dir := t.TempDir()
+		codeaf := filepath.Join(dir, "codeaf")
+		original := []byte("stable stays here")
+		if err := os.WriteFile(codeaf, original, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		run := runInstaller(t, github, []string{"--name", "devaf", "--dev"},
+			"CODEAF_INSTALL_DIR="+dir, "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 0 {
+			t.Fatalf("exit %d:\n%s", run.code, run.output)
+		}
+		devaf := filepath.Join(dir, "devaf")
+		if _, err := os.Stat(devaf); err != nil {
+			t.Fatal(err)
+		}
+		kept, err := os.ReadFile(codeaf)
+		if err != nil || string(kept) != string(original) {
+			t.Fatalf("codeaf = %q, %v", kept, err)
+		}
+		if !strings.Contains(run.output, "codeaf: installed "+devaf) {
+			t.Fatalf("output does not name %s:\n%s", devaf, run.output)
+		}
+		if got := strings.Split(strings.TrimSpace(run.output), "\n"); got[len(got)-1] != "codeaf "+tag+" · fake" {
+			t.Fatalf("last line = %q:\n%s", got[len(got)-1], run.output)
+		}
+	})
+
+	t.Run("environment and flag precedence", func(t *testing.T) {
+		dir := t.TempDir()
+		fromEnv := runInstaller(t, github, []string{"--dev"},
+			"CODEAF_INSTALL_DIR="+dir, "CODEAF_INSTALL_NAME=devaf", "CODEAF_NO_MODIFY_PATH=1")
+		if fromEnv.code != 0 {
+			t.Fatalf("environment exit %d:\n%s", fromEnv.code, fromEnv.output)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "devaf")); err != nil {
+			t.Fatal(err)
+		}
+		flag := runInstaller(t, github, []string{"--name", "mine", "--dev"},
+			"CODEAF_INSTALL_DIR="+dir, "CODEAF_INSTALL_NAME=ignored", "CODEAF_NO_MODIFY_PATH=1")
+		if flag.code != 0 {
+			t.Fatalf("flag exit %d:\n%s", flag.code, flag.output)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "mine")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "ignored")); !os.IsNotExist(err) {
+			t.Fatalf("environment overrode flag: %v", err)
+		}
+	})
+
+	for _, invalid := range []string{"../x", "-x", ""} {
+		t.Run("invalid "+invalid, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "install")
+			run := runInstaller(t, github, []string{"--name", invalid, "--dev"},
+				"CODEAF_INSTALL_DIR="+dir, "CODEAF_NO_MODIFY_PATH=1")
+			if run.code != 2 || !strings.Contains(run.output, "must match ^[A-Za-z0-9][A-Za-z0-9._-]*$") {
+				t.Fatalf("exit %d:\n%s", run.code, run.output)
+			}
+			if _, err := os.Stat(dir); !os.IsNotExist(err) {
+				t.Fatalf("invalid name wrote install directory: %v", err)
+			}
+		})
+	}
+}
+
+// V2: The website name seam is the one exact line beneath CHANNEL, and the
+// installer's help names both ways to choose it.
+func TestV2InstallerNameSeamAndHelp(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const nameLine = "INSTALL_NAME=\"${CODEAF_INSTALL_NAME:-codeaf}\""
+	if strings.Count(string(raw), nameLine) != 1 || !strings.Contains(string(raw), "CHANNEL=\"${CHANNEL:-stable}\"\n"+nameLine+"\n") {
+		t.Fatal("the installer name seam is not unique and directly below CHANNEL")
+	}
+	github := newInstallGitHub(t, "v1.2.3")
+	help := runInstaller(t, github, []string{"--help"})
+	if help.code != 0 || !strings.Contains(help.output, "--name WORD") || !strings.Contains(help.output, "CODEAF_INSTALL_NAME") {
+		t.Fatalf("help exit %d:\n%s", help.code, help.output)
 	}
 }
