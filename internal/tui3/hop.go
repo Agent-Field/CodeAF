@@ -506,6 +506,10 @@ func (a *app) hopReading(all bool) (rows []hopRow, tabs, rest int) {
 func (a *app) openTabRows(now time.Time) []hopRow {
 	var rows []hopRow
 	for _, tab := range a.tabList() {
+		// A run tab is a view of its conversation, not another conversation.
+		if tab.work {
+			continue
+		}
 		row := hopRow{file: tab.file, title: tab.word, where: tab.where, open: true}
 		if tab.here {
 			row = a.hopFront(now)

@@ -2218,3 +2218,7 @@ Sessions keeps priority over auxiliary panels when the window is short. Running 
 keeps its status bullet, with the most recently active running conversation animated.
 A task awaiting your decision has its own question indicator; its parent conversation
 does not repeat that indicator unless it has a separate question.
+
+## Does a run create another conversation in Sessions or the chats menu
+
+A run’s tab is a view inside its parent conversation. Home’s Sessions list and the chats menu keep one row for that conversation, using its conversation title. The run’s own tab remains available beside it.

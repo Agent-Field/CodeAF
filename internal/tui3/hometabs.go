@@ -47,6 +47,10 @@ func (h *homeView) conversationRows() (open, closed []switcherRow) {
 		return row
 	}
 	for _, tab := range h.tabs() {
+		// A run tab is a view of its conversation, not another conversation.
+		if tab.work {
+			continue
+		}
 		seen[filepath.Clean(tab.file)] = true
 		open = append(open, fromTab(tab, true))
 	}
