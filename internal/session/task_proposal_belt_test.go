@@ -118,7 +118,7 @@ func TestApprovedProposalBashBeltJoinsLiveRunWithPlanDependencies(t *testing.T) 
 }
 
 func TestApprovedProposalWithoutBeltKeepsSessionTreeRoad(t *testing.T) {
-	t.Setenv("CODEAF_TASK_BELT", "node")
+	t.Setenv("CODEAF_TASK_BELT", "")
 	double := newBeltRunDouble("must not run")
 	registerBeltRunEngine(t, double)
 	dir := t.TempDir()

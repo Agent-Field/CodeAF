@@ -5568,7 +5568,8 @@ and breadcrumbs remain available.
 ## will the chat do it itself or start a task?
 
 One read, one edit or one command the chat does itself. Anything with parts goes
-out as tasks. There is **one way** the chat puts work out, a task:
+out as tasks. With `CODEAF_TASK_BELT=bash` set there is **one way** the chat puts
+work out, a task:
 
 - **hand off:** the chat proposes a task; approving the card, or letting its
   countdown run out, starts it as a run in the conversation's plan.
@@ -5580,17 +5581,17 @@ out as tasks. There is **one way** the chat puts work out, a task:
 - **ask about:** the chat reads the run's rows and the task's own steps and
   answers from them. It never redoes the work.
 
-## is there a quick task? can the chat still start quick tasks?
+## is there a quick task with the bash belt on? can the chat still start quick tasks?
 
-**No. The conversation has no quick task.** The
+**No. With `CODEAF_TASK_BELT=bash` set the conversation has no quick task.** The
 chat's only verb for putting work out is a task, and every task it starts is part
 of the conversation's plan, where the tree shows it and a check reads it. A quick
 task ran outside the plan, in the folder you stand in, with no check, so it was
 left off rather than kept as a second road. Asked to parallelize, the chat proposes
 several tasks at once. Small work it simply does itself.
 
-With `CODEAF_TASK_BELT` set to `node`, `legacy` or `off` the older engine returns
-and quick tasks work as *What a quick task is* describes.
+With the variable unset nothing changes: quick tasks work as *What a quick task is*
+describes.
 
 ## what are the what, since, now and next lines?
 
