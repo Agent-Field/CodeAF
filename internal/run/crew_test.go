@@ -194,6 +194,34 @@ func TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier(t *testing.T) {
 	}
 }
 
+// runWorkTask adds one ordinary part to the run's plan and answers it.
+//
+// A TEST ABOUT THE WORKER ROW ASKS FOR A WORK TASK. Reaching for the root was
+// convenient rather than meant: the root is a planning task from the moment the
+// store opens (plandb's loadOrCreate seeds RolePlan on it, so that the pass
+// which decides the split is seated on the thinking tier), and a fixture that
+// picks it up gets the thinking seat while asserting the worker row. The three
+// tests below are about the crew's worker row and the profile memo, and neither
+// has anything to do with which seat a root takes.
+func runWorkTask(t *testing.T, store *plandb.Store) plandb.Task {
+	t.Helper()
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "work-one", Title: "One", Description: "one ordinary part"}}); err != nil {
+		t.Fatalf("add a work task: %v", err)
+	}
+	// CLAIMED BY THE NAME THE FINISH WILL USE. `plandb done <id> --agent <id>`
+	// is how these tests report work, and the store only accepts a finish from
+	// the agent holding the claim — the root had a special case for that and a
+	// leaf does not.
+	if _, err := store.Claim("work-one", "work-one"); err != nil {
+		t.Fatalf("claim the work task: %v", err)
+	}
+	task := store.Task("work-one")
+	if task == nil {
+		t.Fatal("the store lost the work task it just added")
+	}
+	return *task
+}
+
 // TestCrewFactoryRefusesATaskTheCrewCannotSeat: a tier row and a worker row both
 // empty is a task no model can run, and the refusal names the tier so a person
 // knows which row has to be filled.
@@ -202,8 +230,9 @@ func TestCrewFactoryRefusesATaskTheCrewCannotSeat(t *testing.T) {
 	dir := crewProfile(t, map[string]string{config.KeyTierWorkerModel: ""})
 	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, (&recordingCompleter{}).forModel)
 
-	worker := factory(*store.Task(store.RootID()))
-	_, err := worker.Run(runContext(t), *store.Task(store.RootID()))
+	task := runWorkTask(t, store)
+	worker := factory(task)
+	_, err := worker.Run(runContext(t), task)
 
 	if err == nil {
 		t.Fatal("a task the crew cannot seat ran")
@@ -223,9 +252,10 @@ func TestCrewFactoryReadsTheCrewAgainAtEachLaunch(t *testing.T) {
 	recorder := &recordingCompleter{}
 	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, recorder.forModel)
 
-	factory(*store.Task(store.RootID()))
+	task := runWorkTask(t, store)
+	factory(task)
 	writeCrew(t, dir, map[string]string{config.KeyTierWorkerModel: "vendor/second-longer"})
-	factory(*store.Task(store.RootID()))
+	factory(task)
 
 	want := []string{"vendor/first", "vendor/second-longer"}
 	if len(recorder.models) != 2 || recorder.models[0] != want[0] || recorder.models[1] != want[1] {
@@ -280,16 +310,17 @@ func TestBashWorkerChargesTheSeatModelToTheTaskSpendRow(t *testing.T) {
 	dir := crewProfile(t, map[string]string{config.KeyTierWorkerModel: "vendor/seat-model"})
 	recorder := &recordingCompleter{script: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(finishCommand("root", "the work is done")), nil
+			return toolReply(finishCommand("work-one", "the work is done")), nil
 		},
 	}}
 	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, recorder.forModel)
 
-	worker := factory(*store.Task(store.RootID()))
+	task := runWorkTask(t, store)
+	worker := factory(task)
 	if len(recorder.models) != 1 || recorder.models[0] != "vendor/seat-model" {
 		t.Fatalf("the seat was built on %v, want the crew's worker row", recorder.models)
 	}
-	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 5), *store.Task(store.RootID())); err != nil {
+	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 5), task); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
 	}
 
