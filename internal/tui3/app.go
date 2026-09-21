@@ -866,6 +866,7 @@ type app struct {
 	resolveUpdate func(context.Context, codeupdate.Choice) (codeupdate.Release, error)
 	installUpdate func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error)
 	updateRunning string
+	updateCurl    string
 	updateArgs    []string
 	updateActive  bool
 	restart       *codeupdate.Plan
@@ -2686,6 +2687,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		resolveUpdate:       opts.ResolveUpdate,
 		installUpdate:       opts.InstallUpdate,
 		updateRunning:       strings.TrimSpace(opts.UpdateRunning),
+		updateCurl:          strings.TrimSpace(opts.UpdateCurl),
 		updateArgs:          append([]string(nil), opts.UpdateArgs...),
 		restart:             opts.Restart,
 		models:              opts.Models,

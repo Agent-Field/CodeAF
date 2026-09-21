@@ -372,6 +372,150 @@ func TestTerminalDownloadFailureEndsWithTheCurlFallback(t *testing.T) {
 	}
 }
 
+// V6: codeaf update and --check default to a dev build's own channel; --check
+// reports newer and equal dev builds with the documented exit codes.
+func TestV6TerminalUpdateDefaultsToTheRunningDevChannel(t *testing.T) {
+	const (
+		oldDev = "dev-20260918-aaaaaaaaaaaa"
+		newDev = "dev-20260921-bbbbbbbbbbbb"
+	)
+	asset := []byte("new dev executable")
+	digest := sha256.Sum256(asset)
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		paths = append(paths, request.URL.RequestURI())
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/releases"):
+			fmt.Fprint(w, `[
+				{"tag_name":"`+oldDev+`","published_at":"2026-09-18T12:00:00Z"},
+				{"tag_name":"`+newDev+`","published_at":"2026-09-21T12:00:00Z"}
+			]`)
+		case strings.HasSuffix(request.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+		case strings.Contains(request.URL.Path, "/releases/download/"+newDev+"/"):
+			_, _ = w.Write(asset)
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+
+	t.Run("check newer", func(t *testing.T) {
+		stdout, stderr := withUpdateDoor(t, oldDev, client, filepath.Join(t.TempDir(), "devaf"))
+		if got := updateExit(runUpdate([]string{"--check"})); got != 3 {
+			t.Fatalf("exit = %d; stdout %q stderr %q", got, stdout.String(), stderr.String())
+		}
+	})
+	t.Run("check equal", func(t *testing.T) {
+		stdout, stderr := withUpdateDoor(t, newDev, client, filepath.Join(t.TempDir(), "devaf"))
+		if got := updateExit(runUpdate([]string{"--check"})); got != 0 {
+			t.Fatalf("exit = %d; stdout %q stderr %q", got, stdout.String(), stderr.String())
+		}
+	})
+	t.Run("install", func(t *testing.T) {
+		target := filepath.Join(t.TempDir(), "devaf")
+		if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr := withUpdateDoor(t, oldDev, client, target)
+		if err := runUpdate(nil); err != nil {
+			t.Fatalf("update: %v; stdout %q stderr %q", err, stdout.String(), stderr.String())
+		}
+		if got, err := os.ReadFile(target); err != nil || string(got) != string(asset) {
+			t.Fatalf("installed = %q, %v", got, err)
+		}
+	})
+	for _, path := range paths {
+		if strings.Contains(path, "/releases/latest") {
+			t.Fatalf("dev default asked for stable: %s", path)
+		}
+	}
+}
+
+// V7: A terminal dev update refuses an implicit downgrade, --check calls it
+// equal-or-ahead with exit 0, and --version still installs the named release.
+func TestV7TerminalUpdateRefusesAnAheadDevUnlessTheTagIsNamed(t *testing.T) {
+	const (
+		running = "dev-20260921-bbbbbbbbbbbb"
+		newest  = "dev-20260918-aaaaaaaaaaaa"
+	)
+	asset := []byte("named older dev")
+	digest := sha256.Sum256(asset)
+	downloads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/releases"):
+			fmt.Fprint(w, `[{"tag_name":"`+newest+`","published_at":"2026-09-18T12:00:00Z"}]`)
+		case strings.HasSuffix(request.URL.Path, "/checksums.txt"):
+			downloads++
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+		case strings.Contains(request.URL.Path, "/releases/download/"+newest+"/"):
+			downloads++
+			_, _ = w.Write(asset)
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+
+	target := filepath.Join(t.TempDir(), "devaf")
+	if err := os.WriteFile(target, []byte("ahead"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr := withUpdateDoor(t, running, client, target)
+	if got := updateExit(runUpdate(nil)); got != 2 {
+		t.Fatalf("implicit exit = %d, stderr %q", got, stderr.String())
+	}
+	want := "this codeaf is " + running + ", ahead of the newest dev " + newest + " — pass --version " + newest + " to install it anyway\n"
+	if stderr.String() != want || downloads != 0 {
+		t.Fatalf("stderr = %q, downloads = %d", stderr.String(), downloads)
+	}
+
+	stdout, stderr := withUpdateDoor(t, running, client, target)
+	if got := updateExit(runUpdate([]string{"--check"})); got != 0 {
+		t.Fatalf("check exit = %d, stderr %q", got, stderr.String())
+	}
+	checkLine := "the newest dev codeaf is " + newest + " · this codeaf is " + running + "\n"
+	if stdout.String() != checkLine {
+		t.Fatalf("check = %q, want %q", stdout.String(), checkLine)
+	}
+
+	stdout, stderr = withUpdateDoor(t, running, client, target)
+	if err := runUpdate([]string{"--version", newest}); err != nil {
+		t.Fatalf("named update: %v; stderr %q", err, stderr.String())
+	}
+	if got, err := os.ReadFile(target); err != nil || string(got) != string(asset) {
+		t.Fatalf("named install = %q, %v", got, err)
+	}
+}
+
+// V8: Terminal update failures use the curl road for the running executable
+// and channel instead of silently handing a devaf user the stable codeaf line.
+func TestV8TerminalFailureUsesTheRunningFilesCurlLine(t *testing.T) {
+	const running = "dev-20260918-aaaaaaaaaaaa"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/releases") {
+			fmt.Fprint(w, `[{"tag_name":"dev-20260921-bbbbbbbbbbbb","published_at":"2026-09-21T12:00:00Z"}]`)
+			return
+		}
+		http.NotFound(w, request)
+	}))
+	defer server.Close()
+	target := filepath.Join(t.TempDir(), "devaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+	_, _ = withUpdateDoor(t, running, client, target)
+	err := runUpdate(nil)
+	const want = "install a release with: curl -fsSL https://agentfield.ai/get/devaf | bash"
+	if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "/get/codeaf/dev") {
+		t.Fatalf("failure = %v", err)
+	}
+}
+
 // TestC14RestartArgumentsPassTheRealChatFlagParser proves C14.
 func TestC14RestartArgumentsPassTheRealChatFlagParser(t *testing.T) {
 	for _, original := range [][]string{nil, {"chat", "--model", "x"}, {"resume", "--session", "/tmp/this.jsonl"}} {

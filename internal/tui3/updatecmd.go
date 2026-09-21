@@ -73,14 +73,14 @@ func (a *app) runUpdateCommand(argument string) tea.Cmd {
 		return nil
 	}
 	if a.resolveUpdate == nil || a.installUpdate == nil || a.restart == nil {
-		a.note("this window cannot update codeaf here · install a release with: " + codeupdate.CurlCommand)
+		a.note("this window cannot update codeaf here · install a release with: " + a.updateCurlLine())
 		return nil
 	}
 	if codeupdate.Kind(a.updateRunning) == "other" {
 		a.note("this codeaf was built from source · rebuild with make build, or install a release: " + codeupdate.CurlCommand)
 		return nil
 	}
-	choice := updateChoice(argument)
+	choice := updateChoice(argument, a.updateRunning)
 	resolve := a.resolveUpdate
 	// The mark is set before the command leaves the loop. A second /update or a
 	// new turn can therefore never enter while release selection is off-frame.
@@ -91,15 +91,21 @@ func (a *app) runUpdateCommand(argument string) tea.Cmd {
 	}
 }
 
-func updateChoice(argument string) codeupdate.Choice {
+func updateChoice(argument, running string) codeupdate.Choice {
 	argument = strings.TrimSpace(argument)
 	switch argument {
-	case "", "stable":
-		return codeupdate.Choice{Channel: "stable"}
+	case "":
+		channel := codeupdate.Kind(running)
+		if channel != "dev" && channel != "staging" {
+			channel = "stable"
+		}
+		return codeupdate.Choice{Channel: channel, Running: running}
+	case "stable":
+		return codeupdate.Choice{Channel: "stable", Running: running}
 	case "rc", "dev", "staging":
-		return codeupdate.Choice{Channel: argument}
+		return codeupdate.Choice{Channel: argument, Running: running}
 	default:
-		return codeupdate.Choice{Version: argument}
+		return codeupdate.Choice{Version: argument, Running: running}
 	}
 }
 
@@ -114,7 +120,11 @@ func (a *app) tookUpdateResolve(message updateResolveMsg) tea.Cmd {
 		return nil
 	}
 	if message.choice.Version == "" {
-		if comparison, comparable := codeupdate.CompareSemverTags(a.updateRunning, message.release.Tag); comparable && comparison > 0 {
+		available := codeupdate.Available{
+			Latest: message.release.Tag, Running: a.updateRunning,
+			LatestPublished: message.release.PublishedAt, RunningPublished: message.release.RunningPublishedAt,
+		}
+		if available.Ahead() {
 			channel := message.choice.Channel
 			if channel == "" {
 				channel = "stable"
@@ -156,5 +166,12 @@ func (a *app) tookUpdateInstall(message updateInstallMsg) tea.Cmd {
 func (a *app) updateFailed(err error) {
 	a.updateActive = false
 	a.note("could not update codeaf: " + err.Error())
-	a.note("install a release with: " + codeupdate.CurlCommand)
+	a.note("install a release with: " + a.updateCurlLine())
+}
+
+func (a *app) updateCurlLine() string {
+	if strings.TrimSpace(a.updateCurl) == "" {
+		return codeupdate.CurlCommand
+	}
+	return a.updateCurl
 }
