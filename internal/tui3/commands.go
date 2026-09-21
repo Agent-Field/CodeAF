@@ -224,6 +224,13 @@ var commands = []command{
 	{name: "subharness", desc: "the programs you can run · type to filter · enter opens its card",
 		alias: []string{"sub"}},
 	{name: "subharness", args: "<name>", desc: "…straight to that one's card"},
+	// THE SKILLS THIS CONVERSATION CAN BE HANDED (skillpick.go). It sits
+	// directly under the subharness rows because it is the neighbouring
+	// question — those are the programs this conversation can run, and this is
+	// what it can be told to know — and on the picker's own terms: a space
+	// after it opens the shelf, enter on a row toggles that skill on or off,
+	// and a query that looks like a path offers the skill in that folder.
+	{name: "skill", desc: "put a skill in front of this conversation · a space opens the shelf to pick from", alias: []string{"skills"}},
 	// WHAT IT KNOWS ABOUT YOU, and the two ways to change it. They sit beside
 	// /harness because they answer the neighbouring question — one is what this
 	// conversation has learned to DO, these are what it has been told about YOU
