@@ -46,12 +46,6 @@ func TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo(t *testing.T) {
 		t.Fatalf("only %d verbs were read out of the dispatch; the reader has stopped working", len(verbs))
 	}
 	for _, verb := range verbs {
-		// The Codex sign-in work lands in two explicit parts. Part A owns these
-		// terminal doors and is forbidden to edit the corpus; Part B owns their
-		// manual pages and removes this narrow bridge when it writes them.
-		if verb == "connect" || verb == "disconnect" {
-			continue
-		}
 		if !chatManualNamesTheCommand(t, verb) {
 			t.Errorf("no chat manual page mentions `codeaf %s` — add it to internal/manual/chat/", verb)
 		}
