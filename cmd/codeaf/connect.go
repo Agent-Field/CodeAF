@@ -89,17 +89,7 @@ func connectCodex(ctx context.Context, profileDir string, noBrowser bool) error 
 	if err != nil {
 		return connectFailed("codex", err)
 	}
-	line := "codex connected"
-	if strings.TrimSpace(tokens.Email) != "" {
-		line += " · " + strings.TrimSpace(tokens.Email)
-	}
-	if strings.TrimSpace(tokens.Plan) != "" {
-		line += " · " + strings.TrimSpace(tokens.Plan) + " plan"
-	}
-	if !outcome.Refreshed {
-		line += " · model list was not refreshed"
-	}
-	fmt.Fprintln(usageOut, line)
+	fmt.Fprintln(usageOut, config.CodexConnectionWord(tokens.Email, tokens.Plan, outcome))
 	return nil
 }
 
@@ -265,38 +255,9 @@ func readConnectionKey() (string, error) {
 }
 
 func connectionOutcome(service string, outcome modelsource.Outcome) string {
-	switch outcome.Kind {
-	case modelsource.OutcomeConnected:
-		line := service + " is connected"
-		if door := strings.TrimSpace(outcome.Door.Name); door != "" {
-			line += " · " + door
-		}
-		if outcome.Listed && outcome.Models > 0 {
-			word := "models"
-			if outcome.Models == 1 {
-				word = "model"
-			}
-			line += fmt.Sprintf(" · %d %s", outcome.Models, word)
-		}
-		return line
-	case modelsource.OutcomeRefused:
-		line := service + " refused that key"
-		if said := strings.TrimSpace(outcome.VendorSaid); said != "" {
-			line += " — " + said
-		}
-		return line
-	case modelsource.OutcomeAccountCannotPay:
-		line := service + " accepted the key but the account cannot pay"
-		if said := strings.TrimSpace(outcome.VendorSaid); said != "" {
-			line += " — " + said
-		}
-		return line
-	case modelsource.OutcomeUnanswered:
-		return service + " did not answer · nothing was saved"
-	case modelsource.OutcomeWrongShape:
-		return "that is not the shape of a " + service + " key — they start with sk-"
-	}
-	return service + " did not connect"
+	// The panel and terminal are two doors onto one connection check. Config
+	// owns the sentence so adding a field to an outcome cannot respell one alone.
+	return config.ConnectionOutcomeWord(service, outcome)
 }
 
 func runDisconnect(args []string) error {

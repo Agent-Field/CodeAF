@@ -73,6 +73,7 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 	translatedBody := originalBody
 	wantsStream := true
 	isTurn := request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/chat/completions")
+	isCatalogList := request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/models") && request.URL.Query().Get("client_version") == ""
 	if isTurn {
 		translatedBody, wantsStream, err = translateRequest(t.profileDir, originalBody)
 		if err != nil {
@@ -91,10 +92,10 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 		out.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
 		out.Header.Set("chatgpt-account-id", tokens.AccountID)
 		out.Header.Set("originator", Originator)
-		out.Header.Set("OpenAI-Beta", "responses=experimental")
-		out.Header.Set("Accept", "text/event-stream")
 		out.Header.Set("User-Agent", provider.DirectUserAgent)
 		if isTurn {
+			out.Header.Set("OpenAI-Beta", "responses=experimental")
+			out.Header.Set("Accept", "text/event-stream")
 			out.URL = cloneURL(request.URL)
 			backend, parseErr := url.Parse(t.options.backend() + "/responses")
 			if parseErr != nil {
@@ -103,6 +104,15 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 			out.URL = backend
 			out.Host = backend.Host
 			out.Header.Set("session_id", sessionIDFor(translatedBody, request.Header, t.sessionID))
+		} else if isCatalogList {
+			out.Header.Set("Accept", "application/json")
+			out.URL = cloneURL(request.URL)
+			backend, parseErr := url.Parse(t.options.backend() + "/models?client_version=" + clientVersion)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			out.URL = backend
+			out.Host = backend.Host
 		}
 		out.Body = io.NopCloser(bytes.NewReader(translatedBody))
 		out.ContentLength = int64(len(translatedBody))
@@ -126,10 +136,70 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if isTurn && response.StatusCode >= 400 && codexQuotaStatus(response.StatusCode) {
 		response = quotaResponse(response)
 	}
+	if isCatalogList && response.StatusCode >= 200 && response.StatusCode < 300 {
+		return t.translateCatalogResponse(response)
+	}
 	if !isTurn || response.StatusCode < 200 || response.StatusCode >= 300 {
 		return response, nil
 	}
 	return translateResponse(response, wantsStream)
+}
+
+// translateCatalogResponse turns the account backend's model list into the
+// OpenAI-shaped data array the shared catalog reads. The same pass refreshes
+// the reasoning-level cache used by later Responses requests.
+func (t *transport) translateCatalogResponse(response *http.Response) (*http.Response, error) {
+	raw, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
+	_ = response.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	var answer struct {
+		Models []struct {
+			Slug          string `json:"slug"`
+			DisplayName   string `json:"display_name"`
+			Visibility    string `json:"visibility"`
+			ContextWindow int    `json:"context_window"`
+			Levels        []struct {
+				Effort string `json:"effort"`
+			} `json:"supported_reasoning_levels"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &answer); err != nil {
+		return nil, err
+	}
+	data := make([]map[string]any, 0, len(answer.Models))
+	remembered := make([]Model, 0, len(answer.Models))
+	for _, row := range answer.Models {
+		id := strings.TrimSpace(row.Slug)
+		if row.Visibility != "list" || id == "" {
+			continue
+		}
+		data = append(data, map[string]any{
+			"id": id, "name": strings.TrimSpace(row.DisplayName), "context_length": row.ContextWindow,
+		})
+		model := Model{ID: id}
+		for _, level := range row.Levels {
+			if effort := strings.TrimSpace(level.Effort); effort != "" {
+				model.ReasoningLevels = append(model.ReasoningLevels, effort)
+			}
+		}
+		remembered = append(remembered, model)
+	}
+	if len(data) == 0 {
+		return nil, errors.New("codex model list carried no visible models")
+	}
+	if err := saveModels(t.profileDir, remembered); err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(map[string]any{"data": data})
+	if err != nil {
+		return nil, err
+	}
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	response.ContentLength = int64(len(body))
+	response.Header.Set("Content-Type", "application/json")
+	return response, nil
 }
 
 func codexQuotaStatus(status int) bool {

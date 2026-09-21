@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
@@ -94,6 +95,10 @@ func TestC12ConnectCodexFallsBackAndResolvedModelsRemainQualified(t *testing.T) 
 	if !ok || service.Qualify(outcome.ModelIDs[0]) != "codex/gpt-5.5" {
 		t.Fatalf("qualified fallback = %+v, %v", service, outcome.ModelIDs)
 	}
+	remembered := catalog.Recall(catalog.Options{Source: "codex", BaseURL: service.Address, Dir: dir})
+	if rows := remembered.ModelsNow(); len(rows) != 4 || rows[0].ID != "gpt-5.5" || !rows[0].PriceUnknown {
+		t.Fatalf("remembered fallback = %+v", rows)
+	}
 }
 
 func TestC18CodexSentinelIsNeverAUsableBearerOutsideItsTransport(t *testing.T) {
@@ -109,5 +114,56 @@ func TestC18CodexSentinelIsNeverAUsableBearerOutsideItsTransport(t *testing.T) {
 	configured := ClientConfigFor(ResolveSources(dir, "", DefaultBaseURL), "codex/gpt-5.5")
 	if configured.APIKey != codexauth.Sentinel || strings.Contains(fmt.Sprintf("%v", configured), "private-access") {
 		t.Fatalf("credential escaped config: %+v", configured)
+	}
+}
+
+func TestC12C18RealCatalogUsesTheCodexListingRoadWithoutTheSentinelBearer(t *testing.T) {
+	// C12: the real shared catalog receives the account's visible Codex models.
+	// C18: even its generic /models request is translated before the sentinel can leave the process.
+	now := time.Now()
+	var requests int
+	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		if request.URL.Path != "/models" || request.URL.Query().Get("client_version") == "" || request.URL.Query().Get("output_modalities") != "" {
+			t.Fatalf("catalog request = %s", request.URL.String())
+		}
+		if got := request.Header.Get("Authorization"); got != "Bearer catalog-access" || got == "Bearer "+codexauth.Sentinel {
+			t.Fatalf("catalog authorization = %q", got)
+		}
+		if request.Header.Get("chatgpt-account-id") != "acct-catalog" || request.Header.Get("originator") != codexauth.Originator {
+			t.Fatalf("catalog account headers = %v", request.Header)
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{"models": []any{
+			map[string]any{"slug": "gpt-5.5", "display_name": "GPT-5.5", "visibility": "list", "context_window": 128000},
+			map[string]any{"slug": "hidden", "visibility": "hide"},
+		}})
+	}))
+	defer backend.Close()
+	t.Setenv("CODEAF_CODEX_BACKEND", backend.URL)
+	dir := t.TempDir()
+	if err := codexauth.Save(dir, codexauth.Tokens{
+		AccessToken: "catalog-access", RefreshToken: "catalog-refresh", IDToken: "catalog-identity",
+		AccountID: "acct-catalog", ExpiresAt: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	listed := true
+	if err := WriteSources(dir, []PersistedSource{{ID: "codex", Written: "codex", Key: codexauth.Sentinel, Listed: &listed}}); err != nil {
+		t.Fatal(err)
+	}
+	service, ok := ResolveSources(dir, "", DefaultBaseURL).ByID("codex")
+	if !ok {
+		t.Fatal("resolved profile lost codex")
+	}
+	models, err := catalog.Refresh(context.Background(), catalog.Options{
+		Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key, Dir: dir,
+		HTTPClient: CatalogHTTPClient(service),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := models.ModelsNow()
+	if requests != 1 || len(rows) != 1 || rows[0].ID != "gpt-5.5" || rows[0].ContextLength != 128000 || !rows[0].PriceUnknown {
+		t.Fatalf("catalog rows/requests = %+v/%d", rows, requests)
 	}
 }

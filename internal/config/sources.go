@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -113,6 +114,16 @@ func SourceKeyAt(profileDir string, row PersistedSource, src modelsource.Source)
 		return ""
 	}
 	return sourceKeyFromRow(row, src)
+}
+
+// CatalogHTTPClient is the one door onto a model service's listing transport.
+// Codex needs the profile's rotating bearer and account headers; every ordinary
+// OpenAI-compatible service keeps the catalog's default client by answering nil.
+func CatalogHTTPClient(service modelsource.Connected) *http.Client {
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
+		return codexauth.Client(service.Home)
+	}
+	return nil
 }
 
 func sourceKeyFromRow(row PersistedSource, src modelsource.Source) string {
@@ -234,6 +245,16 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 		}
 	}
 	outcome.Models = len(outcome.ModelIDs)
+	remembered := make([]catalog.Model, 0, len(outcome.ModelIDs))
+	for _, id := range outcome.ModelIDs {
+		remembered = append(remembered, catalog.Model{ID: id, PriceUnknown: true})
+	}
+	if err := catalog.Remember(catalog.Options{
+		Source: "codex", BaseURL: codexauth.Backend(), Dir: profileDir,
+	}, remembered); err != nil {
+		_ = DisconnectService(profileDir, "codex")
+		return modelsource.Outcome{}, err
+	}
 	return outcome, nil
 }
 

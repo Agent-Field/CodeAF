@@ -745,7 +745,10 @@ type connectCard struct {
 	// a person on the far end of an ssh connection can still get there.
 	link    string
 	account string
-	state   connectState
+	// result is a browser-connected model service's exact outcome sentence.
+	// Empty keeps the connected-account grammar below.
+	result string
+	state  connectState
 	// byKey says this attempt was a key somebody pasted rather than a browser
 	// trip. It changes two sentences and nothing else: what the card is waiting
 	// FOR while it waits, and what it says when it did not work — "the key
@@ -903,6 +906,34 @@ func (a *app) settleConnect(service, name, account string, failed bool) {
 	a.touch()
 }
 
+// settleConnectWord closes a browser card with a sentence owned by the model
+// service. Codex carries plan and listing facts that the account-card grammar
+// cannot express without inventing a second outcome line.
+func (a *app) settleConnectWord(service, line string, failed bool) {
+	state := connectConnected
+	if failed {
+		state = connectFailed
+	}
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.kind != entryConnect || e.conn == nil || e.conn.state != connectWaiting || e.conn.service != service {
+			continue
+		}
+		e.conn.state, e.conn.result = state, strings.TrimSpace(line)
+		e.stale = true
+		a.follow()
+		a.touch()
+		return
+	}
+	a.closeLive()
+	a.entries = append(a.entries, entry{
+		kind: entryConnect, turn: a.turn,
+		conn: &connectCard{service: service, name: service, result: strings.TrimSpace(line), state: state},
+	})
+	a.follow()
+	a.touch()
+}
+
 // settleTurnConnects closes every connect report that belonged to the turn now
 // ending. Its listener has ended with that turn, so a waiting row would be a
 // live-looking link to a dead port; moving it to the existing failed state also
@@ -1030,8 +1061,11 @@ func (a *app) connectRows(e *entry, width int) []string {
 		// person can ask again — none of which is worth the failure glyph, which
 		// on this surface means a call that broke.
 		mark := a.linearMark(glyphIdle, glyphIdleASCII)
-		said := card.name + " connection didn't complete"
-		if card.byKey {
+		said := card.result
+		if said == "" {
+			said = card.name + " connection didn't complete"
+		}
+		if card.byKey && card.result == "" {
 			// The key path's honest sentence. Nothing about the far end is
 			// claimed — it may have refused the key, it may not have answered at
 			// all — and either way the person's next move is the same one.
@@ -1044,9 +1078,12 @@ func (a *app) connectRows(e *entry, width int) []string {
 	if a.linear {
 		mark = glyphConnectedASCII
 	}
-	line := card.name + " connected"
-	if card.account != "" {
-		line += " as " + card.account
+	line := card.result
+	if line == "" {
+		line = card.name + " connected"
+		if card.account != "" {
+			line += " as " + card.account
+		}
 	}
 	return []string{a.pal.add(mark) + a.pal.dim(fit(" "+line, width-1))}
 }

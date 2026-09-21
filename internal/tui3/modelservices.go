@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"sort"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
-	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // Model-service rows share the connection panel's row grammar without sharing
@@ -205,6 +205,8 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 	switch {
 	case source.ID == "ollama":
 		need = ""
+	case source.ID == "codex":
+		need = "browser"
 	case modelsource.IsCustomID(source.ID):
 		need = "address · key"
 	case len(source.Regions) > 0:
@@ -229,6 +231,8 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 	}
 	if source.ID == "ollama" {
 		service.Auth = "none"
+	} else if source.ID == "codex" {
+		service.Auth = connect.AuthBrowser
 	}
 	return connect.Status{Service: service, Connected: held, Account: source.Written, KeyEnv: source.KeyEnv}
 }
@@ -241,6 +245,8 @@ func modelServiceTag(row connect.Status) string {
 	switch {
 	case id == "ollama":
 		return ""
+	case id == "codex":
+		return "browser"
 	case id == connectionSwitchRowID:
 		// The switch row's sentence is its own Blurb, drawn as the row's
 		// value; a tag would say it twice.
@@ -299,11 +305,89 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 		return nil
 	case source.ID == "ollama":
 		return a.beginModelConnect(*draft)
+	case source.ID == "codex":
+		a.modelDraft = nil
+		if !fromSheet {
+			a.connPanel.close()
+		}
+		return a.beginCodexConnect(*draft)
 	default:
 		draft.step = modelConnectKey
 		a.showModelEntry(newModelEntry(row.ID, source.Name, "key", nil, true), fromSheet)
 		return nil
 	}
+}
+
+func (a *app) beginCodexConnect(draft modelConnectDraft) tea.Cmd {
+	connect, ctx := a.codexConnect, a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return func() tea.Msg {
+		if connect == nil {
+			return codexFlowMsg{draft: draft, err: errors.New("codex browser sign-in is unavailable here")}
+		}
+		flow, err := connect(ctx)
+		return codexFlowMsg{draft: draft, flow: flow, err: err}
+	}
+}
+
+// adoptCodexFlow puts the sign-in address on the same waiting block every
+// browser connection uses before it waits. The result then rejoins the ordinary
+// model-service adoption path, so the picker, live sources and preferred-model
+// move have one implementation.
+func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
+	if msg.err != nil || msg.flow == nil {
+		reason := "the browser sign-in did not start"
+		if msg.err != nil {
+			reason = codexFailureReason(msg.err)
+		}
+		a.modelServiceMessage("codex did not connect · " + reason)
+		return nil
+	}
+	if a.codexFlow != nil {
+		a.codexFlow.Cancel()
+	}
+	a.codexFlow = msg.flow
+	a.openConnectFlow("codex", "codex", msg.flow.URL())
+	flow, ctx, dir := msg.flow, a.ctx, a.profileDir
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return func() tea.Msg {
+		defer flow.Cancel()
+		tokens, err := flow.Wait(ctx)
+		if err != nil {
+			return modelConnectResultMsg{
+				service: "codex", name: "Codex", written: "codex", browser: true,
+				word: "codex did not connect · " + codexFailureReason(err), err: err,
+			}
+		}
+		outcome, err := config.ConnectCodex(ctx, dir, tokens)
+		models := modelsFromListedIDs(outcome.ModelIDs)
+		word := config.CodexConnectionWord(tokens.Email, tokens.Plan, outcome)
+		if err != nil {
+			word = "codex did not connect · " + codexFailureReason(err)
+		}
+		return modelConnectResultMsg{
+			service: "codex", name: "Codex", written: "codex", outcome: outcome,
+			models: models, err: err, browser: true, word: word,
+		}
+	}
+}
+
+func codexFailureReason(err error) string {
+	if err == nil {
+		return "the browser sign-in did not finish"
+	}
+	reason := strings.TrimSpace(err.Error())
+	if _, tail, found := strings.Cut(reason, ": "); found {
+		reason = strings.TrimSpace(tail)
+	}
+	if reason == "" {
+		return "the browser sign-in did not finish"
+	}
+	return reason
 }
 
 func newModelEntry(id, name, blank string, answers []string, secret bool) *keyEntry {
@@ -540,6 +624,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 					}, seed)
 					catalog, refreshErr := modelcatalog.Refresh(ctx, modelcatalog.Options{
 						Source: instance, BaseURL: connected.Address, APIKey: connected.Key, Dir: dir,
+						HTTPClient: config.CatalogHTTPClient(connected),
 					})
 					if refreshed := surfaceModels(catalog.ModelsNow()); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
@@ -614,6 +699,14 @@ func (a *app) defaultServiceModels() []Model {
 
 func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	if msg.err != nil {
+		if msg.browser {
+			a.codexFlow = nil
+			a.settleConnectWord("codex", msg.word, true)
+			if a.at(pageSettings) {
+				a.modelServiceMessage(msg.word)
+			}
+			return
+		}
 		a.modelServiceMessage(msg.err.Error())
 		return
 	}
@@ -683,7 +776,18 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	default:
 		line = serviceOutcomeWord(service, msg.outcome)
 	}
-	a.modelServiceMessage(line)
+	if msg.browser {
+		a.codexFlow = nil
+		if strings.TrimSpace(msg.word) != "" {
+			line = msg.word
+		}
+		a.settleConnectWord("codex", line, false)
+		if a.at(pageSettings) {
+			a.modelServiceMessage(line)
+		}
+	} else {
+		a.modelServiceMessage(line)
+	}
 	if nextModel != "" {
 		a.moveConversationToConnectedModel(nextModel)
 	} else if renamedNext != "" {
@@ -880,62 +984,28 @@ func (a *app) moveConversationOrDefer(id, written string) {
 }
 
 func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
-	switch outcome.Kind {
-	case modelsource.OutcomeConnected:
-		return serviceConnectedWord(service, outcome)
-	case modelsource.OutcomeRefused:
-		line := service + " refused that key"
-		if said := truncateVendorWords(outcome.VendorSaid, 120); said != "" {
-			line += " — " + said
-		}
-		return line
-	case modelsource.OutcomeAccountCannotPay:
-		return serviceCannotPayWord(service, outcome.VendorSaid)
-	case modelsource.OutcomeUnanswered:
-		return service + " did not answer · nothing was saved"
-	case modelsource.OutcomeWrongShape:
-		return "that is not the shape of a " + service + " key — they start with sk-"
-	}
-	return ""
+	// The terminal command and panel report the same check. Config owns the
+	// sentence so neither surface can acquire a private spelling of the outcome.
+	return config.ConnectionOutcomeWord(service, outcome)
 }
 
 func serviceConnectedWord(service string, outcome modelsource.Outcome) string {
-	line := service + " is connected"
-	if door := strings.TrimSpace(outcome.Door.Name); door != "" {
-		line += " · " + door
-	}
-	if outcome.Listed && outcome.Models > 0 {
-		line += " · " + itoa(outcome.Models) + " " + plural("model", outcome.Models)
-	}
-	if outcome.PlanPaused {
-		overflow := ""
-		if outcome.Overflow != nil {
-			overflow = outcome.Overflow.Name
-		}
-		line += " · " + provider.PlanPauseSentence(outcome.PlanReset, overflow)
-	}
-	return line
+	// Older panel call sites ask only for success. They still go through the
+	// shared formatter rather than keeping a second successful-case sentence.
+	outcome.Kind = modelsource.OutcomeConnected
+	return config.ConnectionOutcomeWord(service, outcome)
 }
 
 func engineVariableWord(name string) string {
 	return "the engine process reads $" + strings.TrimSpace(name) + " from its own environment"
 }
 
-// serviceCannotPayWord is the ONE sentence for an authenticated account with no
-// funds, and it is shared by the two moments a person meets it: the connect
-// row, and a turn that a vendor refused for the same reason.
-//
-// IT NAMES THE SERVICE AND NEVER THE STATUS. `error: API error (429): …` is
-// what the turn drew before this existed — three pieces of machinery vocabulary
-// on a line a person reads, and a number that tells them nothing they can act
-// on. The vendor's own words are the only part that says what to do, and they
-// go through verbatim.
+// serviceCannotPayWord sends a turn-time payment refusal through the same
+// formatter as the connection result that first proved the account.
 func serviceCannotPayWord(service, vendorSaid string) string {
-	line := strings.TrimSpace(service) + " accepted the key but the account cannot pay"
-	if said := truncateVendorWords(vendorSaid, 120); said != "" {
-		line += " — " + said
-	}
-	return line
+	return config.ConnectionOutcomeWord(service, modelsource.Outcome{
+		Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: vendorSaid,
+	})
 }
 
 // serviceWordFor is the name a person calls the service that serves model —
@@ -971,22 +1041,6 @@ func deferredMoveWord(written string) string {
 
 func serviceStrandedWord(was string) string {
 	return "this conversation was on " + was + " and nothing else here can take it · connect a service or pick a model"
-}
-
-func truncateVendorWords(words string, limit int) string {
-	words = strings.TrimSpace(words)
-	runes := []rune(words)
-	if limit <= 0 || len(runes) <= limit {
-		return words
-	}
-	cut := limit
-	for cut > 0 && !unicode.IsSpace(runes[cut]) {
-		cut--
-	}
-	if cut == 0 {
-		cut = limit
-	}
-	return strings.TrimSpace(string(runes[:cut]))
 }
 
 func (a *app) modelServiceMessage(line string) {
