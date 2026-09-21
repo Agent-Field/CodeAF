@@ -430,7 +430,7 @@ func ProjectTask(facts TaskFacts) TaskStatus {
 	default:
 		status = taskLifecycleStatus(status, facts)
 	}
-	return taskStatusWords(taskStatusDemand(status), facts)
+	return taskStatusWords(taskStatusDemand(status, facts), facts)
 }
 
 // taskConsentStatus reads a piece of work nobody has agreed to yet. The clock is
@@ -561,7 +561,7 @@ func taskEndingIsFault(ending TaskEnding) bool {
 // taskStatusDemand adds what the reading asks of a person, which is the one
 // question both axes can answer. It does not overwrite the presence: where the
 // work is and where its edits went stay separate answers.
-func taskStatusDemand(status TaskStatus) TaskStatus {
+func taskStatusDemand(status TaskStatus, facts TaskFacts) TaskStatus {
 	// Keeping a branch is a valid delivery workflow, not a request to merge.
 	// A conflict or an unresolved review is the actionable condition.
 	// AND WORK NOTHING IS DRIVING WILL NOT MOVE WITHOUT THEM EITHER. Continuing
@@ -571,7 +571,40 @@ func taskStatusDemand(status TaskStatus) TaskStatus {
 		status.Presence == TaskPresenceNeedsLook || status.Presence == TaskPresenceInterrupted {
 		status.Attention = true
 	}
+	if taskHeldLandingOffer(facts) {
+		status.Attention = false
+	}
 	return status
+}
+
+// taskHeldLandingOffer reports the one reading that OFFERS without DEMANDING: a
+// landing that turned the work back, with what it produced still on the record.
+//
+// NOTHING IS WAITING ON THE ANSWER, AND THE ENGINE SAYS SO ITSELF. A landing
+// question is raised for [TaskUnverified] and retired for every other state
+// (task_landing_question.go), so a failed node has no question object and never
+// had one: no turn is parked on it and no conversation is holding it. The
+// owner road agrees in the same words: [Agent.handToModelOnAuto] writes a
+// decider only for [TaskUnverified], "because a node that landed done,
+// incomplete or stopped is not waiting on anybody's word, and writing an owner
+// onto it would invent a question nobody is asking". This reading was inventing
+// exactly that question, out of the ending's shape and nothing else, so a row
+// nobody was waiting on stood in `needs you` for the rest of the session.
+//
+// THE CARD IS UNTOUCHED AND THAT IS THE POINT. The tier, the word, the reason
+// and the take-it-anyway answers all stay: the branch is on disk, taking it is
+// a real thing to do, and a person who goes looking is owed the offer. What
+// goes is only [TaskStatus.Attention], which is what files a row under `needs
+// you`. The same separation, for the same reason, as a question somebody else
+// is holding (internal/tui3's taskstatus.go).
+//
+// AND IT DOES NOT DELETE THE DEMAND, it moves it back to whoever has one. If
+// something in a conversation ever does need this answer to carry on, it ASKS,
+// and an ask raises the mark through its own lane ([Agent.waitingOnPerson]'s
+// ask book) with no help from this row. What stops here is the row asserting a
+// waiter that does not exist.
+func taskHeldLandingOffer(facts TaskFacts) bool {
+	return facts.State == TaskFailed && facts.Held && !taskStoppedByPerson(facts)
 }
 
 // taskStoppedByPerson answers the stopped reading from either record of one act:
