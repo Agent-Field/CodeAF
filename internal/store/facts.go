@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -774,6 +775,34 @@ func (f Fact) SkillName() string {
 		}
 	}
 	return strings.TrimSpace(f.Scope)
+}
+
+// SkillBodyFile reports the readable body of one skill's artifact: its
+// top-level SKILL.md, present when the skill arrived from Claude Code, Codex
+// or any other agentskills.io harness rather than the forge. There is nothing
+// to run in such a folder — the content is the markdown — so the doors that
+// hand a worker a path hand out this FILE where the forge's own skills hand
+// out the directory holding the executable.
+//
+// The convention keys on the folder and never on the fact's trust tier, so
+// it cannot drift from how the skill was recorded. ok is false for every
+// other artifact: the forge's executable skill directories, a path that does
+// not resolve, an artifact that is itself a plain file, an empty one. A
+// false answer leaves the caller rendering the artifact exactly as it
+// always has, which is the compatibility law this sits under. SKILL.md must
+// be a REGULAR file — a directory of that name is not a body, and neither
+// is a dangling symlink.
+func SkillBodyFile(artifact string) (string, bool) {
+	dir := strings.TrimSpace(artifact)
+	if dir == "" {
+		return "", false
+	}
+	body := filepath.Join(dir, "SKILL.md")
+	info, err := os.Stat(body)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	return body, true
 }
 
 // SkillFacts lists skills in one status, newest first. Empty status includes

@@ -1806,7 +1806,10 @@ const skillResolveLimit = store.SkillShelfLimit
 // shelf, keeping the order the plan composed — that order is the precedence
 // the rendered block states. A name the shelf does not hold is dropped rather
 // than rendered as an empty bullet, and a loop with no store has no shelf to
-// resolve against, so it renders nothing and changes no prompt byte.
+// resolve against, so it renders nothing and changes no prompt byte. Each
+// entry is built by plan.SkillEntryFromFact, the one construction path, so an
+// agentskills folder's SKILL.md reaches the worker where an executable
+// directory still does.
 func (l *Linear) skillEntries(names []string) []plan.SkillEntry {
 	if len(names) == 0 || l.history == nil {
 		return nil
@@ -1828,7 +1831,7 @@ func (l *Linear) skillEntries(names []string) []plan.SkillEntry {
 	entries := make([]plan.SkillEntry, 0, len(names))
 	for _, name := range names {
 		if fact, held := byName[name]; held {
-			entries = append(entries, plan.SkillEntry{Name: name, Doc: fact.Body, ShelfPath: fact.Artifact})
+			entries = append(entries, plan.SkillEntryFromFact(fact))
 		}
 	}
 	return entries

@@ -141,7 +141,16 @@ func (a *Agent) getSkill(name string) (string, bool, error) {
 		if err != nil {
 			return "Could not read skill: " + err.Error(), true, nil
 		}
-		return fmt.Sprintf("%s: %s\nPath: %s", name, doc, artifact), false, nil
+		// An agentskills folder's content is its SKILL.md and the directory
+		// around it is what `read` refuses, so the path handed out is the body
+		// file when there is one (store.SkillBodyFile, the one convention every
+		// door keys on) and the directory otherwise — which for a forged skill is
+		// the thing the worker runs. The result's shape does not change.
+		path := artifact
+		if body, ok := store.SkillBodyFile(artifact); ok {
+			path = body
+		}
+		return fmt.Sprintf("%s: %s\nPath: %s", name, doc, path), false, nil
 	}
 	return "Skill '" + name + "' not found.", false, nil
 }

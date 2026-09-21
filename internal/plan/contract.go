@@ -409,18 +409,49 @@ func ComposeSkills(pinned, candidates []string) []string {
 
 // SkillEntry is one attached skill rendered in a worker's instruction block.
 // Name is the skill's shelf name; Doc is the one-line description from its
-// fact; ShelfPath is the path to the skill's directory on disk.
+// fact; ShelfPath is the path the worker reaches the skill through — the
+// skill's directory for the forge's own executable skills, and the SKILL.md
+// body file itself for an agentskills folder. SkillEntryFromFact is the one
+// construction path that decides which, so the convention is applied there
+// and nowhere else in the render.
 type SkillEntry struct {
 	Name      string
 	Doc       string
 	ShelfPath string
+
+	// BodyInPath says ShelfPath is the skill's readable body — the SKILL.md of
+	// an agentskills folder — rather than a directory holding something to
+	// run. The render says so in the line itself, because a worker handed a
+	// bare path cannot tell a file it should read from a directory it should
+	// run things out of, and `read` refuses a directory outright.
+	BodyInPath bool
+}
+
+// SkillEntryFromFact builds the one entry the brief pass attaches for a shelf
+// fact — the single construction path, so the agentskills convention is
+// applied here or nowhere. A fact whose artifact directory holds a top-level
+// SKILL.md is an agentskills folder: its content is that FILE, and the
+// directory itself is what `read` refuses, so the entry carries the SKILL.md
+// path and the render marks it as the body. Every other fact keeps the exact
+// entry this pass has always built — the artifact directory itself, whatever
+// the fact's trust tier says, because the convention keys on the folder and
+// never on how the skill arrived.
+func SkillEntryFromFact(fact store.Fact) SkillEntry {
+	entry := SkillEntry{Name: fact.SkillName(), Doc: fact.Body, ShelfPath: fact.Artifact}
+	if body, ok := store.SkillBodyFile(fact.Artifact); ok {
+		entry.ShelfPath = body
+		entry.BodyInPath = true
+	}
+	return entry
 }
 
 // RenderSkillsBlock renders attached skills as doc lines and shelf paths.
 // Each skill produces one line: "- <doc> [<path>]" when both exist, or a
-// shorter form when only one is available. Zero entries returns zero bytes —
-// no header, no placeholder, no blank line. The final line states that
-// earlier-listed skills take precedence in case of conflict.
+// shorter form when only one is available; an agentskills folder's line adds
+// "— body in this file" inside the brackets so a worker told to read the
+// path knows it is holding the skill itself. Zero entries returns zero
+// bytes — no header, no placeholder, no blank line. The final line states
+// that earlier-listed skills take precedence in case of conflict.
 //
 // This renders beside the composition above because the two are one path: the
 // brief pass composes the attachment and the executor renders it into the
@@ -439,6 +470,12 @@ func RenderSkillsBlock(skills []SkillEntry) string {
 			if s.ShelfPath != "" {
 				buf.WriteString(" [")
 				buf.WriteString(s.ShelfPath)
+				// Only an agentskills folder's entry carries this, and its path
+				// IS the skill's body — the one line a worker reads instead of a
+				// directory it runs things out of.
+				if s.BodyInPath {
+					buf.WriteString(" — body in this file")
+				}
 				buf.WriteString("]")
 			}
 		} else if s.ShelfPath != "" {

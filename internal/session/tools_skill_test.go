@@ -11,6 +11,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,6 +35,57 @@ func shelfSkill(t *testing.T, brain *store.Store, name, doc string) string {
 		t.Fatalf("activate skill %s: %v", name, err)
 	}
 	return artifact
+}
+
+// agentskillsShelfSkill puts one imported skill on the shelf: a real directory
+// holding a top-level SKILL.md (the shape a skill written for Claude Code,
+// Codex or any agentskills.io harness arrives in), recorded and activated the
+// way the store builds the shelf, with the ORIGINAL directory as the artifact.
+func agentskillsShelfSkill(t *testing.T, brain *store.Store, name, doc string) string {
+	t.Helper()
+	folder := filepath.Join(t.TempDir(), name)
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatalf("make skill folder %s: %v", folder, err)
+	}
+	body := "---\nname: " + name + "\ndescription: " + doc + "\n---\n# " + name + "\n"
+	if err := os.WriteFile(filepath.Join(folder, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(folder, "references"), 0o755); err != nil {
+		t.Fatalf("make references: %v", err)
+	}
+	candidate, err := brain.RecordSkillCandidate("", "repo:audit", doc, folder)
+	if err != nil {
+		t.Fatalf("record skill %s: %v", name, err)
+	}
+	if err := brain.ActivateSkill(candidate.Seq, folder, ""); err != nil {
+		t.Fatalf("activate skill %s: %v", name, err)
+	}
+	return folder
+}
+
+// executableShelfSkill puts one forged skill on disk — run.sh and check.sh,
+// executable, no SKILL.md — and on the shelf, which is the shape the shelf has
+// always held.
+func executableShelfSkill(t *testing.T, brain *store.Store, name, doc string) string {
+	t.Helper()
+	folder := filepath.Join(t.TempDir(), name)
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatalf("make skill folder %s: %v", folder, err)
+	}
+	for _, script := range []string{"run.sh", "check.sh"} {
+		if err := os.WriteFile(filepath.Join(folder, script), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("write %s: %v", script, err)
+		}
+	}
+	candidate, err := brain.RecordSkillCandidate("", "repo:audit", doc, folder)
+	if err != nil {
+		t.Fatalf("record skill %s: %v", name, err)
+	}
+	if err := brain.ActivateSkill(candidate.Seq, folder, ""); err != nil {
+		t.Fatalf("activate skill %s: %v", name, err)
+	}
+	return folder
 }
 
 // useSkill calls the tool the way the wire does.
@@ -86,6 +138,50 @@ func TestUseSkillGet(t *testing.T) {
 	}
 	if !strings.Contains(out, "Path: "+auditPath) {
 		t.Errorf("the answer does not point at the shelf path %q:\n%s", auditPath, out)
+	}
+}
+
+// GET ON AN AGENTSKILLS FOLDER points at the SKILL.md, not the directory: the
+// directory is what `read` refuses, and the tool's own description promises a
+// path the worker then opens with `read`. The answer's shape does not change —
+// name, doc, path — only which path.
+func TestUseSkillGetPointsAnAgentskillsFolderAtItsBodyFile(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	folder := agentskillsShelfSkill(t, brain, "pdf-extract", "Extract pages from PDFs.")
+
+	out := useSkill(t, agent, `{"mode":"get","name":"pdf-extract"}`)
+	want := "pdf-extract: Extract pages from PDFs.\nPath: " + filepath.Join(folder, "SKILL.md")
+	if out != want {
+		t.Fatalf("get on an agentskills folder:\ngot:  %q\nwant: %q", out, want)
+	}
+}
+
+// GET ON A FORGED SKILL keeps its directory, byte for byte — the compatibility
+// law: a skill whose artifact holds no top-level SKILL.md is answered exactly
+// as it always was, because the directory is the thing the worker runs.
+func TestUseSkillGetKeepsExecutableSkillsOnTheirDirectory(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	folder := executableShelfSkill(t, brain, "imgshrink", "Optimize images without losing quality.")
+
+	out := useSkill(t, agent, `{"mode":"get","name":"imgshrink"}`)
+	want := "imgshrink: Optimize images without losing quality.\nPath: " + folder
+	if out != want {
+		t.Fatalf("get on an executable skill:\ngot:  %q\nwant: %q", out, want)
+	}
+}
+
+// A PATH THAT DOES NOT RESOLVE answers with the artifact as it stands — no
+// error, no refusal — because the shelf has always held facts whose
+// directories come and go.
+func TestUseSkillGetToleratesAMissingArtifact(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	// shelfSkill's artifact is a directory nothing ever created.
+	missing := shelfSkill(t, brain, "gone", "A skill whose directory left.")
+
+	out := useSkill(t, agent, `{"mode":"get","name":"gone"}`)
+	want := "gone: A skill whose directory left.\nPath: " + missing
+	if out != want {
+		t.Fatalf("get on a missing artifact:\ngot:  %q\nwant: %q", out, want)
 	}
 }
 
