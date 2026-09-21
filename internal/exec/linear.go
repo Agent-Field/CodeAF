@@ -1798,10 +1798,9 @@ func (l *Linear) brief(task Task) string {
 	return block.String()
 }
 
-// skillResolveLimit bounds the shelf read one brief's resolution makes. It
-// mirrors the shelf tool's own bound (internal/session's skillShelfLimit): the
-// shelf is a curated few, and reading further would only slow dispatch.
-const skillResolveLimit = 100
+// skillResolveLimit bounds the shelf read one brief's resolution makes, from
+// the one source of truth in internal/store.
+const skillResolveLimit = store.SkillShelfLimit
 
 // skillEntries resolves the leaf's attached skill names against the active
 // shelf, keeping the order the plan composed — that order is the precedence

@@ -5512,9 +5512,9 @@ func shelfSkills(history *store.Store) []store.Fact {
 	return facts
 }
 
-// shelfScanLimit is the whole shelf for attachment purposes — the store's own
-// default limit, and the same bound the shelf tool reads with.
-const shelfScanLimit = 100
+// shelfScanLimit is the whole shelf for attachment purposes, from the one
+// source of truth in internal/store.
+const shelfScanLimit = store.SkillShelfLimit
 
 // leafSkills carries a plan node's shelf attachment onto the task that runs
 // it. A store node with no plan node behind it — a spliced edge, a reflex —

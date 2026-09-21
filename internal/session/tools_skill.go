@@ -36,10 +36,8 @@ import (
 
 const useSkillToolName = "use_skill"
 
-// skillShelfLimit bounds one listing. The shelf is a curated few, not a corpus,
-// so a hundred is every skill any machine has ever held; a larger number would
-// only change how much of a runaway shelf rides in one answer.
-const skillShelfLimit = 100
+// skillShelfLimit bounds one listing, from the one source of truth.
+const skillShelfLimit = store.SkillShelfLimit
 
 // useSkillDescription says what the two modes are for in the model's own terms.
 // It is bought on every request of every turn on a belt that carries it, so it
@@ -139,8 +137,11 @@ func (a *Agent) getSkill(name string) (string, bool, error) {
 		if filepath.Base(skill.Artifact) != name {
 			continue
 		}
-		// TODO: call store.SkillServe when it exists to mark consumption for consolidation weighting
-		return fmt.Sprintf("%s: %s\nPath: %s", name, skill.Body, skill.Artifact), false, nil
+		artifact, doc, _, _, err := a.config.Memory.SkillFactAccessors(skill.Seq)
+		if err != nil {
+			return "Could not read skill: " + err.Error(), true, nil
+		}
+		return fmt.Sprintf("%s: %s\nPath: %s", name, doc, artifact), false, nil
 	}
 	return "Skill '" + name + "' not found.", false, nil
 }

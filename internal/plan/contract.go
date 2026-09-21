@@ -480,9 +480,19 @@ func PinnedSkills(text string, skills []store.Fact) []string {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
+	// Tokenize the goal into whole words so a skill named "lint" is never
+	// pinned by "splinter" or "test" by "latest".
+	words := make(map[string]bool)
+	for _, word := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+	}) {
+		if word != "" {
+			words[word] = true
+		}
+	}
 	pinned := make([]string, 0, len(skills))
 	for _, fact := range skills {
-		if name := fact.SkillName(); name != "" && strings.Contains(text, name) {
+		if name := fact.SkillName(); name != "" && words[strings.ToLower(name)] {
 			pinned = append(pinned, name)
 		}
 	}

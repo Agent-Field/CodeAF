@@ -733,7 +733,7 @@ func shelfOnDisk(t *testing.T, name, body string) *store.Store {
 	if err != nil {
 		t.Fatalf("record skill candidate %q: %v", body, err)
 	}
-	if err := db.ActivateSkill(candidate.Seq, "/shelf/"+name); err != nil {
+	if err := db.ActivateSkill(candidate.Seq, "/shelf/"+name, ""); err != nil {
 		t.Fatalf("activate skill %q: %v", name, err)
 	}
 	return db
@@ -750,7 +750,7 @@ func TestABriefRendersAttachedSkillsInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.ActivateSkill(candidate.Seq, "/shelf/lint"); err != nil {
+	if err := db.ActivateSkill(candidate.Seq, "/shelf/lint", ""); err != nil {
 		t.Fatal(err)
 	}
 	linear := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute).WithStore(db)
