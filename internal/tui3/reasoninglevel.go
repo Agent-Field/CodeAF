@@ -184,6 +184,31 @@ func (a *app) learnLevel(id string) {
 	a.keepLevel(id, a.agent.ReasoningFor(id))
 }
 
+// setLevel DIALS one model's rung: it tells the agent and writes the answer down,
+// in that order, and it is the ONE place in the surface that asks
+// [Agent.SetReasoningFor].
+//
+// IT IS ONE FUNCTION BECAUSE IT IS ONE ACT. The two things it does are not
+// independent — an agent told without the table written leaves the row under the
+// cursor a frame stale, and a table written without the agent told is a surface
+// lying about what the next turn will send — so a caller that had to remember to
+// do both is a caller that would eventually do one. ctrl+t in the model picker
+// ([app.cycleReasoning]) and home spending what its draft dialled
+// ([app.applyTargetLevels]) are the two callers, and they were that pair written
+// out twice.
+//
+// AND ONE SITE IS WHAT THE OFF-LOOP LAW COUNTS (offlooplaw_test.go): this door is
+// named debt there, asked from the loop because a keystroke may wait, and the
+// budget is a ratchet — so a second spelling of the same act would have cost a
+// number that is only allowed to go down.
+func (a *app) setLevel(id, level string) {
+	if a.agent == nil {
+		return
+	}
+	a.agent.SetReasoningFor(id, level)
+	a.keepLevel(id, level)
+}
+
 // keepLevel writes one level down, keeping the table bounded and taking the id
 // out of the queue it may have been sitting in.
 func (a *app) keepLevel(id, level string) {

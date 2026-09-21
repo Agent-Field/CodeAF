@@ -315,7 +315,12 @@ const (
 	composerFootSendWord = "alt+enter send it off · enter talk about it first · esc back to "
 	// composerPickWord is the foot while the model list is open, in the hint
 	// grammar every other legend on this surface is written in.
-	composerPickWord = "↑↓ pick · enter use it · esc back"
+	//
+	// AND IT NAMES THE SORT, because the key works here ([app.composerPickKey]
+	// reads the list's own map) and a key that works and is never named is a
+	// key nobody presses. It is spelled from [sortKeyWord] and not written out,
+	// so the four doors cannot come to name the same chord two ways.
+	composerPickWord = "↑↓ pick · " + sortKeyWord + " · enter use it · esc back"
 )
 
 // composerRows is the layer's own rows, drawn under the composer's box and above
@@ -539,21 +544,31 @@ func (a *app) openComposerPicker() {
 	a.touch()
 }
 
-// composerPickKey is every key while that list is open: the walk and the filter
-// are the picker's own ([picker.navigate]), and the two decisions are this
-// layer's — which is exactly the split /model and the settings panel already
-// keep.
+// composerPickKey is every key while that list is open: the walk, the filter and
+// the fold's own map — its arrows, `tab` and the sort chord — are the picker's
+// ([picker.navigate], [picker.foldKey]), and the two decisions are this layer's,
+// which is exactly the split /model and the settings panel already keep.
 func (a *app) composerPickKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		a.composer.pick.close()
+	// ENTER CHOOSES AND LEAVES THE LIST UP ([app.pickerKey] argues it), and esc
+	// is the way out.
 	case "enter":
 		if chosen, ok := a.composer.pick.choice(); ok {
 			a.composer.model = chosen.ID
+			a.restatePicker(&a.composer.pick, chosen.ID)
 		}
-		a.composer.pick.close()
 	default:
-		a.composer.pick.navigate(msg)
+		// THE FOLD AND THE SORT ARE THE LIST'S OWN KEY MAP and not this door's
+		// ([picker.foldKey]), exactly as /model, home's target list and the
+		// settings panel read them. This door handed every key to the walk, so
+		// it drew the headed table with an arrow on `model` and then swallowed
+		// the chord that moves it — a list you can see is sorted and cannot
+		// sort, which is the four-lists-again the fold's own comment warns of.
+		if !a.composer.pick.foldKey(msg.String()) {
+			a.composer.pick.navigate(msg)
+		}
 	}
 	a.touch()
 	return nil

@@ -24,12 +24,49 @@ var richCatalog = []Model{
 
 // pickerLines is the picker's own rows, plain — the status line below them
 // names a model too, and a frame-wide search would read its price as a row's.
+//
+// The lines the list draws above its rows are asked for on top of the hits
+// ([picker.headLines]), so a test that wants every model gets every model
+// whether or not this frame is wide enough for the table's heading.
 func pickerLines(a *app) []string {
-	out := make([]string, 0, len(a.pick.hits))
-	for _, line := range a.pick.rows(a.width, len(a.pick.hits), a.pal, -1, a.reasoningFor) {
+	room := len(a.pick.hits) + a.pick.headLines(a.width)
+	out := make([]string, 0, room)
+	for _, line := range a.pick.rows(a.width, room, a.pal, -1, a.reasoningFor) {
 		out = append(out, plain(line))
 	}
 	return out
+}
+
+// pickerRowLines is [pickerLines] with the heading lines dropped, for a test
+// that indexes the models by position.
+func pickerRowLines(a *app) []string {
+	return pickerLines(a)[a.pick.headLines(a.width):]
+}
+
+// pickerRowSays reports whether the screen has one line naming this model with
+// every one of these cells on it, left to right.
+//
+// IT DOES NOT PIN THE BLANK BETWEEN TWO CELLS, because that blank is the
+// frame's business: a column is as wide as the widest row on the list it is
+// drawn for, so a test that spelled the gap would be asserting the width of its
+// own fixture rather than what the row says. Where the gap IS the subject —
+// the alignment itself — rowfit_test.go pins the row whole.
+func pickerRowSays(screen, id string, cells ...string) bool {
+	for _, line := range strings.Split(screen, "\n") {
+		_, rest, found := strings.Cut(line, id)
+		if !found {
+			continue
+		}
+		said := true
+		for _, cell := range cells {
+			_, rest, found = strings.Cut(rest, cell)
+			said = said && found
+		}
+		if said {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAPickerRowCarriesTheWindowThePriceAndTheScore(t *testing.T) {
@@ -39,10 +76,14 @@ func TestAPickerRowCarriesTheWindowThePriceAndTheScore(t *testing.T) {
 
 	got := strings.Join(pickerLines(a), "\n")
 	for _, want := range []string{
+		// The heads are what let the cells under them be bare figures at all
+		// (modeltable.go), so they are as much a part of what the row says as
+		// the figures are.
+		"in/M  out/M  window   elo",
 		"anthropic/claude-sonnet-4.5",
-		"$3/$15 per M · 1M · elo 1243",
+		"$3    $15      1M  1243",
 		"openai/gpt-4.1-mini",
-		"$0.08/$0.15 per M · 128k",
+		"$0.08  $0.15    128k",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the picker has to say %q:\n%s", want, got)
@@ -80,17 +121,22 @@ func TestANarrowRowKeepsTheNameAndTheLevelAndSpendsTheTail(t *testing.T) {
 	// (reasoninglevel.go).
 	settleLevels(a, "anthropic/claude-sonnet-4.5")
 
-	line := pickerLines(a)[0]
+	line := pickerRowLines(a)[0]
 	if !strings.Contains(line, "anthropic/claude-sonnet-4.5:high") {
 		t.Fatalf("a narrow row cut the name or the level off it: %q", line)
 	}
 	if strings.Contains(line, glyphMore) {
 		t.Fatalf("a narrow row cut something in half instead of dropping it: %q", line)
 	}
-	// Sixty columns hold the name, the level and the two facts a person chooses
-	// on; the arena score is under the fold of the row and simply is not drawn.
-	if !strings.Contains(line, "$3/$15 per M · 1M") || strings.Contains(line, "elo") {
-		t.Fatalf("the narrow row spent its tail in the wrong order: %q", line)
+	// Sixty columns hold the name, the level and the three facts a person
+	// chooses on; the arena score is the column this width gives up, and it is
+	// given up whole — the head goes with it, so nothing on screen is labelled
+	// and blank.
+	if !strings.Contains(line, "$3    $15      1M") || strings.Contains(line, "1243") {
+		t.Fatalf("the narrow row spent its columns in the wrong order: %q", line)
+	}
+	if head := pickerLines(a)[0]; strings.Contains(head, "elo") {
+		t.Fatalf("a column that is not drawn must not keep its head: %q", head)
 	}
 }
 
@@ -99,10 +145,12 @@ func TestTheRowsTailIsDimAndTheIDIsNot(t *testing.T) {
 	typeLine(t, a, "/model")
 	typeInto(t, a, "sonnet")
 
-	rows := a.pick.rows(a.width, 1, a.pal, -1, a.reasoningFor)
-	if len(rows) != 1 {
-		t.Fatalf("filtered to %d rows, want the one", len(rows))
+	head := a.pick.headLines(a.width)
+	rows := a.pick.rows(a.width, 1+head, a.pal, -1, a.reasoningFor)
+	if len(rows) != 1+head {
+		t.Fatalf("filtered to %d rows, want the one under %d heading lines", len(rows), head)
 	}
+	rows = rows[head:]
 	// The tail is painted separately from the label: the row's ink is the id,
 	// and everything after it is the note. Colour is asserted here because
 	// colour is the subject.
@@ -112,7 +160,7 @@ func TestTheRowsTailIsDimAndTheIDIsNot(t *testing.T) {
 	// band from lead to note, and a dim tail inside it would be grey on grey —
 	// the three facts a person is comparing, greyed out on the one row they are
 	// comparing them on. Off the cursor the tail is dim, which is asserted below.
-	id, note := "anthropic/claude-sonnet-4.5", "$3/$15 per M · 1M · elo 1243"
+	id, note := "anthropic/claude-sonnet-4.5", "   $3    $15      1M  "
 	if !strings.Contains(rows[0], a.pal.ink(note)) {
 		t.Fatalf("the selected row's tail is not inside the band:\n%q", rows[0])
 	}
@@ -123,9 +171,20 @@ func TestTheRowsTailIsDimAndTheIDIsNot(t *testing.T) {
 	// A row the cursor is not on keeps the dim tail: that contrast is what makes
 	// the band read as a selection rather than as the list's ordinary paint.
 	drive(t, a, key("ctrl+u"))
-	rows = a.pick.rows(a.width, len(a.pick.hits), a.pal, -1, a.reasoningFor)
-	if !strings.Contains(rows[1], a.pal.dim("$0.08/$0.15 per M · 128k")) {
-		t.Fatalf("an unselected row's tail has to be dim:\n%q", rows[1])
+	rows = a.pick.rows(a.width, len(a.pick.hits)+head, a.pal, -1, a.reasoningFor)[head:]
+	// THE ROW IS FOUND BY NAME AND NOT BY INDEX, because what order the list is in
+	// is the sort's business (pickersort.go) and this assertion is about the paint.
+	tail := ""
+	for at, id := range pickerIDs(a) {
+		if id == "openai/gpt-4.1-mini" && at < len(rows) {
+			tail = rows[at]
+		}
+	}
+	if tail == "" {
+		t.Fatal("openai/gpt-4.1-mini is not drawn, so this test cannot read its tail")
+	}
+	if !strings.Contains(tail, a.pal.dim("$0.08  $0.15    128k  ")) {
+		t.Fatalf("an unselected row's tail has to be dim:\n%q", tail)
 	}
 }
 
@@ -179,7 +238,9 @@ func TestTheLevelIsPerModelAndSurvivesASwitchAwayAndBack(t *testing.T) {
 	typeInto(t, a, "sonnet")
 	drive(t, a, ctrlT()) // low
 	drive(t, a, ctrlT()) // medium
-	drive(t, a, key("enter"))
+	// Enter chooses and leaves the list up ([app.pickerKey]); the frame is read
+	// below for what the SEAM says, so the list is closed first.
+	drive(t, a, key("enter"), key("esc"))
 	if agent.model != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("model is %q, want the sonnet row", agent.model)
 	}

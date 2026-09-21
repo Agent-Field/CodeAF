@@ -1605,8 +1605,11 @@ func (a *app) inputBlockUnfloored(width int) ([]string, int, int) {
 		// what [draftBlockWithTags] will compute for it — the width less the
 		// prompt, since the picker's box takes no lead — so the keys go whole,
 		// from the right, on a frame too narrow for all of them (rowfit.go).
-		return draftBlock(&a.pick.filter, a.pal, width, 1,
-			a.pick.hintAt(width-ansi.StringWidth(prompt)), "")
+		// THE COMMAND THAT OPENED THIS STAYS ON THE LINE ([draftBlockTacked] argues
+		// it), and the placeholder is fitted in what it leaves.
+		tack := slashPickerTack
+		return draftBlockTacked(&a.pick.filter, a.pal, width, 1,
+			a.pick.hintAt(width-ansi.StringWidth(prompt)-ansi.StringWidth(tack)-1), "", tack)
 	}
 	if a.at(pageMemory) {
 		if a.mem.edit != nil {
@@ -1766,7 +1769,26 @@ func (a *app) inputHeight() int {
 // because a lead the layout drew and the caret arithmetic did not know about
 // would put the terminal's cursor several cells left of the letter it is on.
 func draftBlock(e *editor, pal palette, width, maxRows int, hint, lead string) ([]string, int, int) {
-	return draftBlockWithTags(e, pal, width, maxRows, hint, lead, nil, pal.ink)
+	return draftBlockTacked(e, pal, width, maxRows, hint, lead, "")
+}
+
+// draftBlockTacked is that box with a TACK: a chip standing after the prompt and
+// before whatever is typed, which does not belong to the text and cannot be
+// edited.
+//
+// IT IS THE COMMAND THAT OPENED AN OVERLAY, LEFT WHERE IT WAS TYPED. `/model`
+// opens a list and the box under it becomes a filter — a different editor, empty
+// — so the words a person typed to get there vanished from the one line they were
+// looking at, and what was left was a `›` and a grey placeholder that could have
+// belonged to anything on this surface. The chip is the answer to "what am I
+// filtering?" without a sentence saying it.
+//
+// ITS WIDTH IS PAID BY THE HEAD, which is what makes everything else follow: the
+// room the text wraps in, the column the caret is reported at, and the indent of
+// every continuation row are all derived from head, so a tack costs the text its
+// cells once and nothing downstream has to know about it.
+func draftBlockTacked(e *editor, pal palette, width, maxRows int, hint, lead, tack string) ([]string, int, int) {
+	return draftBlockFull(e, pal, width, maxRows, hint, lead, tack, nil, pal.ink)
 }
 
 // ink is the paint the words get: pal.ink everywhere but the main draft while
@@ -1774,7 +1796,17 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint, lead string) (
 // [app.draftInk]) — a dim box is how the walk says these words were never
 // sent.
 func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead string, demoted []segment, ink func(string) string) ([]string, int, int) {
-	head := ansi.StringWidth(lead) + ansi.StringWidth(prompt)
+	return draftBlockFull(e, pal, width, maxRows, hint, lead, "", demoted, ink)
+}
+
+// draftBlockFull is the whole of it, and the only one of these four that takes
+// every knob. The three above are the shapes that are actually asked for.
+func draftBlockFull(e *editor, pal palette, width, maxRows int, hint, lead, tack string, demoted []segment, ink func(string) string) ([]string, int, int) {
+	chip := ""
+	if tack != "" {
+		chip = pal.chip(tack) + " "
+	}
+	head := ansi.StringWidth(lead) + ansi.StringWidth(prompt) + ansi.StringWidth(ansi.Strip(chip))
 	room := width - head
 	if room < 4 {
 		room = 4
@@ -1791,7 +1823,7 @@ func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead s
 		// out and keeps the way out itself, which is the same ladder the foot of
 		// every place is fitted by; on a hint with nothing to drop it is exactly
 		// [fit], so the boxes whose placeholder is a plain phrase lose nothing.
-		return []string{lead + pal.dim(prompt) + pal.dim(hintFit(hint, room))}, head, 0
+		return []string{lead + pal.dim(prompt) + chip + pal.dim(hintFit(hint, room))}, head, 0
 	}
 
 	// THE BLOCK IS ANCHORED AT THE TOP AND TEXT FLOWS DOWN. The first row of the
@@ -1825,7 +1857,7 @@ func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead s
 		row0 := under
 		switch {
 		case i == 0 && opening:
-			row0 = lead + pal.dim(prompt)
+			row0 = lead + pal.dim(prompt) + chip
 		case i == top:
 			// The block is scrolled: say so where the prompt would be, in the
 			// same two cells, so the rows do not shift under the caret.
