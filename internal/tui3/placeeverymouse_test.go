@@ -314,6 +314,12 @@ func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
 				frame.shape(t, clicked)
 				y, target := placeClickTarget(t, clicked, place)
 				keyed := place.open(t)
+				// Both fixtures compare the same draft destination. Their temporary
+				// project roots differ, and short Linux paths expose that difference
+				// on the seam where longer macOS paths happened to truncate it.
+				if place.id == pageHome {
+					keyed.target.where = clicked.targetWhere()
+				}
 				frame.shape(t, keyed)
 				for i := 0; i < 400 && place.cursor(keyed) != target; i++ {
 					if place.cursor(keyed) < target {
