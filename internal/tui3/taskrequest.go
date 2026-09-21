@@ -16,9 +16,29 @@ func canonicalTaskRequest(text string) bool {
 // payload for identity and refresh; the model's input never changes.
 // Put this task's own work first so a child doesn't open on its parent's whole
 // project. All section bodies and context rules remain available on expansion.
+//
+// THE SHARED HALF LIVES OVER A PLAIN STRING ([requestDisplayFor]) because the
+// reader is no longer the transcript's alone: a run's plan page holds the same
+// generated work order as its task's brief, and a person who opens that page
+// must not read the machinery the transcript already reshapes for them. The
+// transcript's own caller is untouched below — same entry, same gate, same
+// drawing as before the half was lifted out.
 func requestDisplayText(e *entry) string {
-	if !e.brief || !canonicalTaskRequest(e.text) {
+	if !e.brief {
 		return e.text
+	}
+	return requestDisplayFor(e.text)
+}
+
+// requestDisplayFor is the reader over the text itself: the recognition, the
+// plain headings, and this task's own work first, for every surface that holds
+// a stored work order. A text that is not the generated document is returned
+// unchanged — a person's own brief, typed after `/task` or written by hand, is
+// drawn exactly as it was given, and no caller needs to know the difference
+// before it calls.
+func requestDisplayFor(text string) string {
+	if !canonicalTaskRequest(text) {
+		return text
 	}
 	type section struct{ name, body string }
 	labels := map[string]string{
@@ -40,7 +60,7 @@ func requestDisplayText(e *entry) string {
 			sections = append(sections, current)
 		}
 	}
-	lines := strings.Split(e.text, "\n")
+	lines := strings.Split(text, "\n")
 	for i, line := range lines {
 		name, known := labels[line]
 		if known && (i == 0 || lines[i-1] == "") {

@@ -12,16 +12,16 @@ import (
 // footer that lost a utm parameter cannot be counted — either would pass a test
 // that only looked for the word "attribution".
 var attributionStrings = []string{
-	"Co-Authored-By: codeaf <agentfield-bot@users.noreply.github.com>",
-	"Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author",
-	"Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author",
+	"Co-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>",
+	"Drafted with [CodeAF](https://agentfield.ai/github/codeaf?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author",
+	"Drafted with [CodeAF](https://agentfield.ai/github/codeaf?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author",
 	// THE COMMENT LINE IS PINNED THE HARDEST OF THE FOUR, because every part of
 	// it is doing a job that is easy to edit away: `<sub>` is what makes it muted
 	// rather than a shout in somebody's thread, the lowercase `drafted` is what
 	// keeps it a remark rather than a heading, `utm_medium=comment` is what makes
 	// a comment countable apart from a body, and there is deliberately no
 	// "reviewed and owned by the author" tail.
-	"<sub>drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>",
+	"<sub>drafted with [CodeAF](https://agentfield.ai/github/codeaf?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>",
 }
 
 func TestAttributionConstantsAreTheExactStrings(t *testing.T) {
@@ -33,6 +33,15 @@ func TestAttributionConstantsAreTheExactStrings(t *testing.T) {
 	}
 	if AttributionSeparator != "—" {
 		t.Fatalf("separator = %q, want an em dash", AttributionSeparator)
+	}
+	// THE ASSISTED-BY LINE IS PINNED AS A SHAPE, not as bytes this contract
+	// carries: its %s is the model id, and the one surface that knows the model
+	// fills it — the chat's belt fact formats it with the session's configured
+	// model (internal/session's beltfacts.go). The leaf loop's standing
+	// contract carries the co-author alone, because exec is handed facts about
+	// the model, never its name.
+	if AttributionAssistedBy != "Assisted-by: CodeAF (%s)" {
+		t.Fatalf("assisted-by = %q, want %q", AttributionAssistedBy, "Assisted-by: CodeAF (%s)")
 	}
 }
 

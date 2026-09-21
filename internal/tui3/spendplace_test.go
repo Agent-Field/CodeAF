@@ -812,6 +812,14 @@ func plainSpendRows(rows []string) []string {
 // spendLab is an app standing in the spend place over a ledger this test wrote.
 func spendLab(t *testing.T, lines []session.UsageLine) *app {
 	t.Helper()
+	return spendLabOn(t, placeApp(t), writeSpendLedger(t, lines))
+}
+
+// writeSpendLedger writes a usage ledger of the lines given and answers its
+// path, so a lab that must furnish the app BEFORE the place is opened can still
+// stand it through [spendLabOn].
+func writeSpendLedger(t *testing.T, lines []session.UsageLine) string {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "usage.jsonl")
 	var file strings.Builder
 	for _, line := range lines {
@@ -825,7 +833,7 @@ func spendLab(t *testing.T, lines []session.UsageLine) *app {
 	if err := os.WriteFile(path, []byte(file.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return spendLabOn(t, placeApp(t), path)
+	return path
 }
 
 // spendLabOn stands an app a test has already furnished in the spend place over

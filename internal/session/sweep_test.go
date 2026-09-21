@@ -5,6 +5,7 @@ package session
 // the reason the other two are allowed to exist at all.
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -556,6 +557,78 @@ func newSweptUniverseSession(t *testing.T, root, id, repo string, now time.Time)
 func saidSomethingAbout(said []string, name string) bool {
 	for _, line := range said {
 		if strings.Contains(line, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// Cancellation is a stop signal, not merely a hint. A pass cancelled before it
+// starts does not resolve into destructive work in either half of SweepHome.
+func TestSweepHomeContextCancelledBeforeStartTouchesNothing(t *testing.T) {
+	homeRoot := t.TempDir()
+	t.Setenv("CODEAF_HOME", homeRoot)
+	now := time.Now()
+	place := newSweptSession(t, filepath.Join(homeRoot, "v3", placesDirName), "-tmp-cancelled", "eeee1111eeee1111", Meta{
+		ID:         "eeee1111eeee1111",
+		Workspace:  filepath.Join(os.TempDir(), "cancelled"),
+		LastUserAt: now.Add(-30 * 24 * time.Hour),
+	})
+	staleLog := filepath.Join(place, placeLogs, "old.log")
+	writeFile(t, staleLog, "old\n")
+	old := now.Add(-30 * 24 * time.Hour)
+	if err := os.Chtimes(staleLog, old, old); err != nil {
+		t.Fatal(err)
+	}
+	standingRoot := filepath.Join(homeRoot, "standing")
+	exchange := newSweptExchange(t, standingRoot, "eeee2222eeee2222", old)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	SweepHomeContext(ctx, standingRoot, func(line string) { t.Fatalf("cancelled sweep said %q", line) })
+
+	for _, kept := range []string{place, staleLog, exchange} {
+		if _, err := os.Stat(kept); err != nil {
+			t.Fatalf("cancelled sweep touched %s: %v", kept, err)
+		}
+	}
+}
+
+// Cancelling after one destructive fork drop prevents the session removal and
+// every later entry. The note is emitted synchronously after dropUniverse, so
+// this fixes the cancellation point without clocks or scheduler races.
+func TestSweepPlacesContextCancellationStopsLaterDestructiveOperations(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "projects")
+	now := time.Now()
+	repo := dirtyRepo(t)
+	installFakeFurrow(t)
+
+	first, firstTree := newSweptUniverseSession(t, root, "1111111111111111", repo, now)
+	second, secondTree := newSweptUniverseSession(t, root, "2222222222222222", repo, now)
+	ctx, cancel := context.WithCancel(context.Background())
+	SweepPlacesContext(ctx, root, now, func(line string) {
+		if strings.Contains(line, firstTree.universe) {
+			cancel()
+		}
+	})
+
+	for _, kept := range []string{first, second} {
+		if _, err := os.Stat(kept); err != nil {
+			t.Fatalf("cancellation did not stop removal of %s: %v", kept, err)
+		}
+	}
+	names := forkNames(t, repo)
+	if sweepContainsString(names, firstTree.universe) {
+		t.Fatalf("first fork %q was not dropped before cancellation: %v", firstTree.universe, names)
+	}
+	if !sweepContainsString(names, secondTree.universe) {
+		t.Fatalf("later fork %q was dropped after cancellation: %v", secondTree.universe, names)
+	}
+}
+
+func sweepContainsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
 			return true
 		}
 	}

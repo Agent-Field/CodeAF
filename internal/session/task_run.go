@@ -1011,6 +1011,13 @@ type TaskNode struct {
 type TaskGraph struct {
 	mu    sync.Mutex
 	nodes map[uint64]*TaskNode
+	// plan is the bash belt's plan store side (plandb_plan.go), nil on every
+	// session outside the experiment and until the first ordinary task seeds
+	// it. planMu is ITS gate, and the lock order is written at the top of
+	// plandb_plan.go: the plan's gate may be held while mu is taken, never the
+	// other way round.
+	plan   *planState
+	planMu sync.Mutex
 	// order is admission order, and it is what makes the frontier
 	// DETERMINISTIC: with a cap in play, which of two ready nodes starts first
 	// must not be Go's map iteration.
@@ -1195,6 +1202,16 @@ func (g *TaskGraph) keepRunRows(root uint64, rows []TaskNotice) {
 	g.checkpoint()
 }
 
+// runRows answers the rows kept for one run, as they were last published.
+func (g *TaskGraph) runRows(root uint64) []TaskNotice {
+	if g == nil {
+		return nil
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]TaskNotice(nil), g.runs[root]...)
+}
+
 // runRowsLocked is every run's rows in one flat walk, runs in arrival order and
 // each run's own row ahead of its workers — which is the order they were first
 // published in, and the order a tree wants to hang them in.
@@ -1304,6 +1321,12 @@ func (g *TaskGraph) reserve() uint64 {
 // state it reports is what the node is doing by the time the tool answers:
 // running, or queued behind its dependencies or the cap.
 func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
+	// THE PLAN SEED, before anything else: under the experiment's switch the
+	// first ordinary task seeds the plan store and every ordinary task's work
+	// order is composed from the store read (plandb_plan.go). It takes the
+	// plan gate and no other lock, which is what keeps the lock order stated
+	// there true.
+	g.planSeed(&spec)
 	// WHETHER THIS WORK MAY DISCOVER THAT IT IS WIDE, decided here because this
 	// is the one door every task in this package comes through whoever opened
 	// it — a proposal the chat model groomed, a person's own `/task`, the route
@@ -1426,10 +1449,25 @@ func (g *TaskGraph) claimChild(parent uint64) string {
 // releaseChild hands a slot back for a proposal that never became a node — the
 // person declined it, the turn ended under the question, the model named a
 // model this install does not have.
+//
+// AND A SLOT GOING BACK IS A PASS. The fan cap is the one refusal the plan's
+// dispatch answers with "left in the store for the next pass"
+// (plandb_plan.go), and a landing does not free a slot — an admitted child
+// counts against its parent's fan for as long as the graph holds it — so this
+// is the road the cap's refusal is undone by. Taken here, the pass hands the
+// refused task to the worker that owns it while that worker is still running;
+// left to whatever bash call happens next, the task waits on a pass that may
+// never come and the run's ending cancels it first. The pass runs OUTSIDE the
+// lock: it takes the plan gate before the graph's mu, and nothing may hold
+// that mu while asking for the gate.
 func (g *TaskGraph) releaseChild(parent uint64) {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	freed := g.claims[parent] > 0
 	g.releaseChildLocked(parent)
+	g.mu.Unlock()
+	if freed {
+		g.planPulse()
+	}
 }
 
 func (g *TaskGraph) releaseChildLocked(parent uint64) {
@@ -2478,7 +2516,12 @@ func (n *TaskNode) instructionLocked(tree taskTree, contract taskContract) strin
 	// request and every repair round — so a piece reads the same scope rule
 	// however its turn came to start: admitted, restored from a checkpoint,
 	// continued (task_continue.go) or re-entered after a revision.
-	return composeBrief(n.briefRoleLocked(), n.spec.request, now.brief, now.deliverable,
+	//
+	// AND WHETHER IT IS BORN FROM THE PLAN, which reorders the document: a
+	// bash-belt plan-born node opens on the task it owns and reads the run's
+	// objective as background rather than as its assignment
+	// ([TaskNode.briefScopeLocked]).
+	return composeBriefScoped(n.briefScopeLocked(), n.briefRoleLocked(), n.spec.request, now.brief, now.deliverable,
 		withFamilyChecks(now.acceptance, n.Family),
 		expectsSection(n.spec.expects), n.spec.admission.restored(),
 		n.spec.origin, taskCopyFor(tree))
@@ -3740,6 +3783,16 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		NextModel: n.nextModel,
 		CostUSD:   cost,
 	}
+}
+
+// endingSet is the ending [TaskNode.end] has already recorded, before the node
+// settles. [endingNow] deliberately answers only a node that has landed failed;
+// the gate asks this one EARLIER, to tell a run that finished from one that gave
+// up, because a stopped run must not land as done.
+func (n *TaskNode) endingSet() TaskEnding {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.ending
 }
 
 // endingNow is [TaskNode.endingLocked] for a caller that does not hold the
@@ -5131,7 +5184,7 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// [runTaskChild]), and [Agent.workTaskNode] has already cut them on every
 	// road where it did not — and this is what answers the two bodies that are
 	// not a worker in a worktree.
-	node.graph.stopChildren(node.id)
+	node.graph.planStopLandedChildren(node.id)
 	node.graph.complete(node, state)
 	// AND WHATEVER IS LEFT WAITING ON A DECIDER WHO HAS GONE HOME.
 	// [TaskGraph.stopChildren] deliberately leaves settled children alone, and a
@@ -5139,6 +5192,17 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// there, its one landing note delivered to a parent agent that has now
 	// finished reading anything.
 	a.bubbleUnverifiedChildren(node)
+	// THE PLAN'S LANDING PULSE, HERE AND NOT IN THE WORKER: the node's state is
+	// settled only after [TaskGraph.complete] writes it, so a pulse taken at the
+	// worker's own return reads a task that is still running and — worse — a
+	// dispatch taken mid-landing is admitted after stopChildren has already cut
+	// the subtree and is stopped as an orphan. From here the landing is whole:
+	// the writeback completes the task, the promotion dispatches what it
+	// unblocked, and the last landing's pass is the one that ends the run's root
+	// (plandb_plan.go).
+	if g := a.graph(); g != nil {
+		g.planPulse()
+	}
 }
 
 // bubbleUnverifiedChildren hands a settled parent's still-undecided sub-tasks
@@ -5502,6 +5566,45 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 	return "", false
 }
 
+// auditOn says whether a node's work meets an auditor: the person left the
+// audit row on, and the node's belt is not the experiment's bash belt, which
+// keeps no auditor at all (docs/design/bash-task-loop/INVESTIGATION.md). It is
+// one predicate rather than a conjunction spelled at each gate, so the gates
+// gain no decisions of their own while the belt is being tried.
+func (a *Agent) auditOn() bool { return a.config.TaskAudit && !bashBeltAsked() }
+
+// auditOff is [Agent.auditOn]'s other half, read where the landing asks.
+func (a *Agent) auditOff() bool { return !a.auditOn() }
+
+// landBashBeltUnaudited lands a node on the bash belt — or a node whose audit
+// row is simply off, which is the same road reached for a different reason.
+//
+// THE BELT KEEPS NO AUDITOR. CodeAF's auditor verifies a STAGED diff and a
+// shell worker's writes are never staged, so on this belt it read "no diff, no
+// staged change" against a tree that already carried the fix and refuted
+// correct work on every row of the first grid
+// (docs/design/bash-task-loop/INVESTIGATION.md).
+//
+// THE RUNNER KEEPS THE ONE ANSWER THE AUDITOR WAS ALSO GIVING: whether the run
+// finished at all. A node whose worker gave up — the circling road, a rule it
+// would not follow — has no finished work to land, so its ending stands and
+// the branch is kept, exactly as a refused audit left it ([TaskNode.end]'s
+// first-cause law). A node that did finish has its own account merge, marked
+// unaudited, because 'done' should never wear 'verified's clothes.
+//
+// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS ALLOWED
+// TO SEE, and only because it is an ADDRESS: they turned this row off, this is
+// the row's name, and a sentence that translated it would leave them holding a
+// word their settings sheet does not answer to (task_audit.go's vocabulary
+// law). Everything either side of it is plain.
+func (a *Agent) landBashBeltUnaudited(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report, stopped string, log io.Writer) TaskState {
+	if node.endingSet() != "" {
+		return a.landStopped(ctx, node, tree, changed, report, stopped, log)
+	}
+	return a.landFinished(ctx, node, tree, changed,
+		"nothing checked this work: the task.audit setting is off", report, " (unaudited)", log)
+}
+
 // workTaskNode does the work and reports the state the node ended in. Every
 // failure is a state and a report rather than an error: a node that could not
 // get a working copy has to be able to say so to the person who asked for it.
@@ -5571,7 +5674,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// IT IS NOT PART OF retire, which also runs mid-loop when a provider fault
 	// sends this node round again on another model — and that node is the SAME node
 	// with the SAME parts still working for it (see `handedOut` below).
-	defer node.graph.stopChildren(node.id)
+	// THE PLAN'S SECOND PULSE POINT lives in the runner's landing road
+	// (task_run.go, after [TaskGraph.complete] settles the node's state), not
+	// here: a landing's work — writeback, promotion, dispatch, root completion
+	// — must read a settled node, and a pulse taken at this function's return
+	// fires before the runner has written it. The stop itself leaves the
+	// plan-born children to the plan, because that pulse is what ends them.
+	defer node.graph.planStopLandedChildren(node.id)
 
 	var (
 		// A RESUMED NODE STARTS WITH WHAT IT ALREADY WROTE. The landing stages by
@@ -5648,6 +5757,12 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			return TaskFailed
 		}
 		child = worker
+		// AND THE TREE LEARNS WHICH BELT ITS WORKER IS ON, at the one moment the
+		// fact exists. The landing roads carry the tree and not the worker — the
+		// worker is retired before its node lands — so the tree is what carries
+		// the belt fact to [stageTaskWork], and a node whose worker was never
+		// built carries a tree that says nothing and lands as it always did.
+		tree.bashBelt = worker.config.mayBashBelt()
 		// THE ROOM OPENS HERE, because this is the first moment there is anybody
 		// in it: from now until the node lands, its events reach whoever is
 		// watching and the person's words reach this child's steering lane
@@ -5808,18 +5923,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// because "not proven" is not "throw it away". With the audit row off the
 	// gate stands open and the node's own account merges — marked unaudited,
 	// because 'done' should never wear 'verified's clothes.
-	if !a.config.TaskAudit {
-		// THE SENTENCE SAYING NOTHING CHECKED THIS LEADS, and the node's own
-		// account stands under it — which is the one place this road differs from
-		// the ordinary finishing line it otherwise shares ([Agent.landFinished]).
-		//
-		// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS
-		// ALLOWED TO SEE, and only because it is an ADDRESS: they turned this row
-		// off, this is the row's name, and a sentence that translated it would
-		// leave them holding a word their settings sheet does not answer to
-		// (task_audit.go's vocabulary law). Everything either side of it is plain.
-		return a.landFinished(ctx, node, tree, changed,
-			"nothing checked this work: the task.audit setting is off", report, " (unaudited)", log)
+	// AND THE BASH BELT KEEPS NO AUDITOR: the experiment is the planner's loop
+	// and nothing else (docs/design/bash-task-loop/INVESTIGATION.md), so the
+	// landing is the one combination of roads [Agent.landBashBeltUnaudited]
+	// names — kept in a function of its own so this gate stays as short as it
+	// was.
+	if a.auditOff() {
+		return a.landBashBeltUnaudited(ctx, node, tree, changed, report, stopped, log)
 	}
 	// THE GATE MAY SEND THE WORK BACK BEFORE IT ANSWERS. What returns from here
 	// is the end of the whole loop — the last verdict, the gaps of every round,
@@ -5959,7 +6069,7 @@ func (a *Agent) landUnchecked(ctx context.Context, node *TaskNode, tree taskTree
 // did not hold AND the run was cut short — and a person who is being offered a
 // branch rather than a merge needs to know why in the first line.
 func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report, stopped string, log io.Writer) TaskState {
-	if a.config.TaskAudit && ctx.Err() == nil && strings.TrimSpace(node.acceptance()) != "" {
+	if a.auditOn() && ctx.Err() == nil && strings.TrimSpace(node.acceptance()) != "" {
 		verdict := a.auditNode(ctx, node, tree, changed, report, log)
 		if verdict.verified && ctx.Err() == nil {
 			// THE SAME ROAD HOME A NODE THAT FINISHED ON ITS OWN TAKES, and it is
@@ -6245,7 +6355,7 @@ func keptWork(tree taskTree, title string, changed []string, sign bool) (string,
 	case problem != "":
 		return mergeAborted, changed
 	}
-	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign)
+	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -7425,38 +7535,14 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// than the node's: what is being inherited is the person's depth, and their
 	// dial is a fact about the conversation they turned it in.
 	inherited := a.effortLocked(a.model)
-	// A TASK WITHOUT TOOLS CANNOT START. The catalog's supported-parameter row
-	// is the same capability fact the picker filters on. Swap once to the
-	// worker tier; if that is the same incapable model, refuse here rather than
-	// spending a request to discover it mid-run.
-	if parent.SupportsParameter != nil {
-		if supported, known := parent.SupportsParameter(model, "tools"); known && !supported {
-			fallback, resolveErr := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleWorker, a.model)
-			if resolveErr != nil || strings.EqualFold(strings.TrimSpace(fallback), strings.TrimSpace(model)) {
-				a.mu.Unlock()
-				return nil, fmt.Errorf("model %s does not support tool use, and the worker tier resolves to the same model", model)
-			}
-			if ok, fallbackKnown := parent.SupportsParameter(fallback, "tools"); fallbackKnown && !ok {
-				a.mu.Unlock()
-				return nil, fmt.Errorf("model %s and worker-tier fallback %s do not support tool use", model, fallback)
-			}
-			// THE ROW IS ONLY MOVED FOR THE NODE'S OWN WORKER. A named model
-			// belongs to one round and not to the node (see [Agent.newTaskAgentOn]),
-			// so a rescue inside a repair round swaps the model it is about to call
-			// and says nothing on the card: the sentence would be about a worker the
-			// person was never told existed, and it would overwrite the one line the
-			// repair loop legitimately owns there — the gap being closed.
-			if on == "" {
-				node.graph.mu.Lock()
-				node.mend = taskModelRescueNote(model, fallback)
-				// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
-				// on: the sentence above and [TaskNode.notice]'s model are two halves of
-				// one card, and until this line they named different models.
-				node.ran = fallback
-				node.graph.mu.Unlock()
-			}
-			model = fallback
-		}
+	// A TASK THAT CANNOT CALL A TOOL CANNOT START, and [Agent.seatTaskModelLocked]
+	// is the whole of that question: it answers the model this worker may run on,
+	// and a model the catalog says cannot use tools is refused here rather than
+	// spending a request to discover the same thing mid-run.
+	model, err := a.seatTaskModelLocked(node, parent, model, on)
+	if err != nil {
+		a.mu.Unlock()
+		return nil, err
 	}
 	// A WINDOW MEASURED FOR ANOTHER MODEL IS NOT A FACT ABOUT THIS ONE, so a node
 	// running elsewhere is not handed the conversation's figure. It is handed the
@@ -7512,6 +7598,23 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// of a job, with the ninety unreachable.
 	if suffix == "" {
 		node.setJournal(journal)
+	}
+
+	// THE EXPERIMENT'S SWITCH, through the one reader this package has
+	// ([bashBeltAsked]): whether this worker runs the bash belt (bashbelt.go).
+	// The belt and the landing that judges it must be the same fact, so the
+	// gate reads it the same way rather than a second time from the env.
+	bashExperiment := bashBeltAsked()
+
+	// AND THE SEAT IT THINKS FROM, the effort half of the same switch. On the
+	// bash belt the worker's one action per response turns the person's depth
+	// into a run of reasoning rounds, so the seat is work (effort.RoleWork),
+	// which answers low when nothing above it spoke; elsewhere the role is
+	// worker, which has no floor of its own and answers whatever was
+	// configured. A rung set on the task outranks both (effort.Resolve).
+	workerSeat := effort.RoleWorker
+	if bashExperiment {
+		workerSeat = effort.RoleWork
 	}
 
 	child, err := a.newChildAgent(Config{
@@ -7575,9 +7678,12 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// piece of work, not the conversation it came from.
 		//
 		// The role is worker, which has no floor of its own — a task is not
-		// machinery running while nobody watches, it is the job.
+		// machinery running while nobody watches, it is the job. On the bash
+		// belt it is the work seat instead, whose floor of low is the belt's
+		// own answer (the switch above carries the why); the task's rung is set
+		// beside it and outranks the seat either way.
 		Effort:        node.effortRung(),
-		EffortRole:    effort.RoleWorker,
+		EffortRole:    workerSeat,
 		DefaultEffort: inherited,
 		// ALLOW EVERYTHING EXCEPT THE FLOOR. approval's critical table still
 		// turns an allow into a "prompt" for the handful of shapes that destroy
@@ -7616,6 +7722,16 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// reading it — so a line steered at it has to START one or it is a
 		// question nothing ever answers (agent.go's wakeLocked, harness_task.go).
 		roomThread: node.kind == TaskKindHarness,
+		// THE EXPERIMENT'S ONE DOOR (docs/design/bash-task-loop/DESIGN.md):
+		// CODEAF_TASK_BELT=bash builds this worker on the bash belt — the one
+		// `bash` tool plus the hands that cannot be a shell command. Unset,
+		// every byte of this worker is where it was, which is what lets both
+		// arms of the comparison run from one binary. Read through
+		// [bashBeltAsked], the one reader in this package, like every owned
+		// name; asked only through [Config.mayBashBelt], so a conversation can
+		// never be handed the belt, and at the landing's gate, which keeps the
+		// experiment's work unaudited (workTaskNode).
+		bashBelt: bashExperiment,
 		// ── THE TWO THINGS A QUICK WORKER HAS THAT NOTHING ELSE DOES ─────────
 		//
 		// THE CLAIM IT MADE ABOUT FILES, armed as the ordinary write bound: this
@@ -7746,6 +7862,47 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// opens with exactly the prompt it always did.
 	nodeMemoryOn(ctx, node).handTo(child)
 	return child, nil
+}
+
+// seatTaskModelLocked answers the model a task worker may actually start on,
+// given the model it was admitted with: A TASK WITHOUT TOOLS CANNOT START. The
+// catalog's supported-parameter row is the same capability fact the picker
+// filters on, so a model the row says cannot call a tool is swapped once to the
+// worker tier, and where that tier resolves to the same incapable model the work
+// is refused rather than a request being spent to discover it mid-run.
+//
+// THE ROW IS ONLY MOVED FOR THE NODE'S OWN WORKER. A named model belongs to one
+// round and not to the node (see [Agent.newTaskAgentOn]), so a rescue inside a
+// repair round swaps the model it is about to call and says nothing on the card:
+// the sentence would be about a worker the person was never told existed, and it
+// would overwrite the one line the repair loop legitimately owns there — the gap
+// being closed. The caller holds a.mu, so the tier fallback and the session's
+// own model are read as one fact.
+func (a *Agent) seatTaskModelLocked(node *TaskNode, parent Config, model, on string) (string, error) {
+	if parent.SupportsParameter == nil {
+		return model, nil
+	}
+	supported, known := parent.SupportsParameter(model, "tools")
+	if !known || supported {
+		return model, nil
+	}
+	fallback, resolveErr := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleWorker, a.model)
+	if resolveErr != nil || strings.EqualFold(strings.TrimSpace(fallback), strings.TrimSpace(model)) {
+		return "", fmt.Errorf("model %s does not support tool use, and the worker tier resolves to the same model", model)
+	}
+	if ok, fallbackKnown := parent.SupportsParameter(fallback, "tools"); fallbackKnown && !ok {
+		return "", fmt.Errorf("model %s and worker-tier fallback %s do not support tool use", model, fallback)
+	}
+	if on == "" {
+		node.graph.mu.Lock()
+		node.mend = taskModelRescueNote(model, fallback)
+		// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
+		// on: the sentence above and [TaskNode.notice]'s model are two halves of
+		// one card, and until this line they named different models.
+		node.ran = fallback
+		node.graph.mu.Unlock()
+	}
+	return fallback, nil
 }
 
 // sessionID names the conversation a node's journal belongs under. A session
@@ -8000,6 +8157,14 @@ type taskTree struct {
 	// be told so while it can still act on it (task_tree_mirror.go). The job log
 	// prints it and the worker's own brief carries it.
 	note string
+	// bashBelt is whether THIS node's worker was built on the experiment's bash
+	// belt, stamped from the worker's own config the moment the worker exists.
+	// It decides how the landing reads the tree: a belt worker spells its work
+	// in shell commands and fills no ledger, so the tree's own git status is
+	// the only account of what it wrote, and the landing stages from that
+	// ([stageTaskWork]). Every other worker's ledger is complete by
+	// construction, and its landing reads the ledger alone, exactly as before.
+	bashBelt bool
 }
 
 // gitRoot is the in-process half of the root repository's lock, and the file
@@ -8506,7 +8671,7 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 	// they are — what is on that disk is the only copy of the work there is
 	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
 	// then remove the directory the work was in.
-	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign); problem != "" {
+	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt); problem != "" {
 		return mergeAborted, unsavedSentence(t.dir, problem), nil, why
 	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
@@ -8782,22 +8947,7 @@ func leftBehind(dir string) []string {
 	if err != nil {
 		return nil
 	}
-	var paths []string
-	for _, line := range nonEmptyLines(out) {
-		if len(line) < 4 {
-			continue
-		}
-		// The porcelain line is two status letters, a space, then the path; a
-		// rename carries both names and the one that exists now is the second.
-		path := strings.TrimSpace(line[3:])
-		if _, renamed, found := strings.Cut(path, " -> "); found {
-			path = renamed
-		}
-		if path = strings.Trim(path, `"`); path != "" {
-			paths = append(paths, path)
-		}
-	}
-	return paths
+	return porcelainPaths(out)
 }
 
 const leftBehindRecord = "left-behind.json"
@@ -8896,8 +9046,8 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string, sign bool) ([]string, string, landingRefusal) {
-	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign)
+func commitTaskWork(dir, title string, wrote []string, sign bool, bashBelt bool) ([]string, string, landingRefusal) {
+	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt)
 	if err != nil {
 		return nil, firstLine(err.Error()), why
 	}
@@ -8929,8 +9079,8 @@ func commitTaskWork(dir, title string, wrote []string, sign bool) ([]string, str
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string, sign bool) ([]string, string, landingRefusal, error) {
-	if problem, why := stageTaskWork(dir, wrote); problem != "" {
+func commitTaskWorkAs(dir, message string, wrote []string, sign bool, bashBelt bool) ([]string, string, landingRefusal, error) {
+	if problem, why := stageTaskWork(dir, wrote, bashBelt); problem != "" {
 		return nil, "", why, errors.New(problem)
 	}
 	saved, problem := stagedPaths(dir)
@@ -9101,7 +9251,7 @@ func stagedDiffStat(dir string) string {
 // when there is nothing to report. A directory that is not a worktree, an add
 // nothing survived and a refused reset were all silent, and a landing that
 // cannot see them merges an empty branch over the work (task_land_unsaved.go).
-func stageTaskWork(dir string, wrote []string) (string, landingRefusal) {
+func stageTaskWork(dir string, wrote []string, bashBelt bool) (string, landingRefusal) {
 	if out, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil {
 		// AND THIS IS THE SEAM THAT KNOWS THE PLACE IS NOT A REPOSITORY. It is a
 		// question asked and answered here, so the refusal it produces is typed
@@ -9110,6 +9260,15 @@ func stageTaskWork(dir string, wrote []string) (string, landingRefusal) {
 		return firstLine(out), refusedByTheTree
 	}
 	paths := stageableWork(dir, wrote)
+	if bashBelt {
+		// A BELT WORKER'S WORK IS WHAT THE TREE SAYS, not what the ledger names:
+		// the shell worker fills no ledger, and every edit it made through bash
+		// is visible only to git. The tree's own status is staged beside the
+		// ledger's paths — the same index, the same commit — minus the paths the
+		// harness itself writes ([beltTreeWork]), which are machinery and never
+		// the work.
+		paths = mergePaths(paths, beltTreeWork(dir))
+	}
 	if len(paths) == 0 {
 		return "", refusedNothing
 	}
@@ -9162,6 +9321,62 @@ func stageableWork(dir string, wrote []string) []string {
 		}
 		seen[clean] = true
 		paths = append(paths, literalPathspec+clean)
+	}
+	return paths
+}
+
+// beltTreeWork reads every change git sees in the working copy that the
+// ledger did not name — modified, added and untracked alike, one path per
+// line — and takes out the paths the harness itself writes, which are
+// machinery and never the work. A belt worker's landing stages this whole
+// answer ([stageTaskWork]), so what a person gets on the branch is what the
+// shell did, and nothing else.
+//
+// THE NODE'S OWN LOG DIRECTORY NEEDS NO EXCLUSION HERE, and that is a fact
+// about the layout rather than a pathspec: a node's journal lives beside the
+// session ([taskJournalDir]), which makes it a SIBLING of this tree's own
+// folder or an ancestor of it — never a path inside the working copy git
+// could name.
+func beltTreeWork(dir string) []string {
+	out, err := git(dir, "status", "--porcelain", "--untracked-files=all", "--", ".")
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, path := range porcelainPaths(out) {
+		switch {
+		case isTaskDropping(path):
+		case path == "bench-results" || strings.HasPrefix(path, "bench-results/"):
+		case path == planStoreFilename || strings.HasPrefix(path, planStoreFilename+"."):
+		case path == "bin/plandb":
+		case strings.HasSuffix(path, ".lock"):
+		default:
+			paths = append(paths, literalPathspec+path)
+		}
+	}
+	return paths
+}
+
+// porcelainPaths reads the paths out of one `git status --porcelain` answer,
+// taken from the fixed columns rather than trimmed off the front: a porcelain
+// line is two status letters, a space, then the path, and a line that was
+// trimmed first has lost the status columns' own padding — the staged ' M
+// a/b.go' reads as 'M a/b.go', and the slice past the third column then cuts
+// the first character of the path. A rename carries both names and the one
+// that exists now is the second.
+func porcelainPaths(out string) []string {
+	var paths []string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" || len(line) < 4 {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if _, renamed, found := strings.Cut(path, " -> "); found {
+			path = renamed
+		}
+		if path = strings.Trim(path, `"`); path != "" {
+			paths = append(paths, path)
+		}
 	}
 	return paths
 }

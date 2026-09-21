@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/codeaf
 
-.PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check build-cross debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -91,6 +91,7 @@ furrow:
 # then to PATH — which is what it does here.
 build: furrow embed
 	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf
+	go build -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o bin/plandb ./cmd/plandb
 
 debug: furrow embed
 	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf
@@ -348,7 +349,24 @@ size: build
 
 # The end-of-change ritual in one word: prove it, then ship the binary, then
 # weigh it.
-check: vet fmt-check test test-packed-manual size
+# Read the release workflow so this gate follows the shipped platform list.
+# The six builds share the normal GOCACHE, so a warm box pays far less than a
+# cold one; the printed duration is the whole step, cold or warm.
+build-cross:
+	@set -eu; started=$$(date +%s%N); \
+	targets="$$(awk '/^[[:space:]]*targets=\($$/ { in_targets=1; next } in_targets && /^[[:space:]]*\)/ { exit } in_targets { gsub(/"/, ""); if (NF == 2) print $$1 "/" $$2 }' .github/workflows/release.yml)"; \
+	test -n "$$targets"; \
+	for target in $$targets; do \
+		goos=$${target%/*}; goarch=$${target#*/}; \
+		printf 'build-cross: %s/%s\n' "$$goos" "$$goarch"; \
+		if ! CGO_ENABLED=0 GOOS="$$goos" GOARCH="$$goarch" go build ./...; then \
+			printf 'build-cross: FAILED building %s/%s\n' "$$goos" "$$goarch" >&2; exit 1; \
+		fi; \
+	done; \
+	finished=$$(date +%s%N); \
+	printf 'build-cross: total duration %ss (rounded up, an upper bound on the added time)\n' "$$(( (finished - started + 999999999) / 1000000000))"
+
+check: vet fmt-check test test-packed-manual size build-cross
 
 # ── the changelog ───────────────────────────────────────────────────────────
 #

@@ -110,13 +110,13 @@ func TestOnlyCommandShapedTextBecomesADeclaredCheck(t *testing.T) {
 			t.Fatalf("%q was accepted as a declared check: %q", refused, got)
 		}
 	}
-	// AND WHAT IS ACCEPTED IS THE COMMAND, WHITESPACE AND ALL NORMALISED, so the
-	// door and the contract cannot disagree about what was declared.
+	// AND WHAT IS ACCEPTED KEEPS THE DECLARATION BYTES, so the checker receives
+	// exactly the contract that was declared.
 	got, problem := declaredCheckList([]string{"make  check", "  ", "curl example.com"})
 	if problem != "" {
 		t.Fatalf("an ordinary pair of checks was refused: %s", problem)
 	}
-	if len(got) != 2 || got[0] != "make check" || got[1] != "curl example.com" {
+	if len(got) != 2 || got[0] != "make  check" || got[1] != "curl example.com" {
 		t.Fatalf("the declared checks came back as %q", got)
 	}
 	door := auditDoorFor(declaringNode(got...), standingOn(""))

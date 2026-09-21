@@ -90,6 +90,12 @@ type fakeAgent struct {
 	panicking   bool
 	taskJournal string
 	cancelled   []string
+
+	spendLines      []session.PlanSpendLine
+	spendSince      time.Time
+	planSteers      []string
+	runSummary      session.RunPlanSummary
+	refreshCanceled bool
 }
 
 func (f *fakeAgent) TaskJournal(uint64) string { return f.taskJournal }
@@ -399,6 +405,50 @@ func (f *fakeAgent) RewindAt(int) ([]session.DisplayEntry, error) {
 		return nil, f.rewindBy
 	}
 	return f.dropped, nil
+}
+
+func (f *fakeAgent) PlanNote(id, text string) error {
+	f.planSteers = append(f.planSteers, "note:"+id+":"+text)
+	return f.failing
+}
+func (f *fakeAgent) PlanPause(id string) error {
+	f.planSteers = append(f.planSteers, "pause:"+id)
+	return f.failing
+}
+func (f *fakeAgent) PlanResume(id string) error {
+	f.planSteers = append(f.planSteers, "resume:"+id)
+	return f.failing
+}
+func (f *fakeAgent) PlanCancel(id string) error {
+	f.planSteers = append(f.planSteers, "cancel:"+id)
+	return f.failing
+}
+func (f *fakeAgent) PlanAmend(id, text string) error {
+	f.planSteers = append(f.planSteers, "amend:"+id+":"+text)
+	return f.failing
+}
+func (f *fakeAgent) PlanPriority(id string, n int) error {
+	f.planSteers = append(f.planSteers, fmt.Sprintf("priority:%s:%d", id, n))
+	return f.failing
+}
+
+func (f *fakeAgent) PlanRunSummary(string) (session.RunPlanSummary, bool) {
+	return f.runSummary, true
+}
+
+func (f *fakeAgent) RefreshRunSummary(ctx context.Context, _ string, _ time.Time) (session.RunPlanSummary, bool) {
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		<-ctx.Done()
+		f.refreshCanceled = errors.Is(ctx.Err(), context.DeadlineExceeded)
+	}
+	return f.runSummary, true
+}
+
+func (f *fakeAgent) PlanSpend(since time.Time) []session.PlanSpendLine {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.spendSince = since
+	return f.spendLines
 }
 
 func note(kind string, id uint64, yes bool, extra string) string {
@@ -863,6 +913,99 @@ func TestServeAnswersEveryMethod(t *testing.T) {
 	}
 	if len(agent.connected) != 1 || agent.connected[0] != "google:somebody@example.com" {
 		t.Errorf("connected notes %q", agent.connected)
+	}
+}
+
+func TestServeDispatchesPlanSteeringAndPreservesRefusal(t *testing.T) {
+	agent := &fakeAgent{}
+	l := dialAgent(t, engineOn(agent))
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatal(frame.Error)
+	}
+	for i, call := range []struct {
+		method string
+		args   any
+	}{
+		{MethodPlanNote, PlanTextArgs{ID: "t-a", Text: "hello"}},
+		{MethodPlanPause, PlanTaskArgs{ID: "t-b"}},
+		{MethodPlanResume, PlanTaskArgs{ID: "t-c"}},
+		{MethodPlanAmend, PlanTextArgs{ID: "t-d", Text: "constraint"}},
+		{MethodPlanPriority, PlanPriorityArgs{ID: "t-e", Priority: 8}},
+	} {
+		if frame := l.call(uint64(i+1), call.method, call.args); frame.Error != "" {
+			t.Fatalf("%s: %s", call.method, frame.Error)
+		}
+	}
+	const refusal = `task "done-one" is already terminal`
+	agent.failing = errors.New(refusal)
+	if frame := l.call(6, MethodPlanCancel, PlanTaskArgs{ID: "t-done-one"}); frame.Error != refusal {
+		t.Fatalf("server refusal = %q, want byte-for-byte %q", frame.Error, refusal)
+	}
+	if len(agent.planSteers) != 6 || agent.planSteers[5] != "cancel:t-done-one" {
+		t.Fatalf("steering dispatch = %q", agent.planSteers)
+	}
+	if err := l.end(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestServeCarriesTheRunSpendBySeat is the wire's half of the spend page's
+// seat block: the run's rolled-up spend answers [MethodPlanSpend] exactly as
+// [session.Agent.PlanSpend] answers it, and the `since` window travels with the
+// call rather than being dropped at the door.
+func TestServeCarriesTheRunSpendBySeat(t *testing.T) {
+	since := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	lines := []session.PlanSpendLine{
+		{Seat: "worker", Model: "openai/gpt-5", USD: 1.25, Calls: 4},
+		{Seat: "planner", Model: "anthropic/claude", USD: 0.5, Calls: 1},
+	}
+	agent := &fakeAgent{spendLines: lines}
+	l := dialAgent(t, engineOn(agent))
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatalf("handshake: %s", frame.Error)
+	}
+
+	got := decode[[]session.PlanSpendLine](t, l.ok(1, MethodPlanSpend, PlanSpendArgs{Since: since}).Payload)
+	if len(got) != 2 || got[0].Seat != "worker" || got[1].USD != 0.5 {
+		t.Fatalf("PlanSpend answered %+v", got)
+	}
+	agent.mu.Lock()
+	asked := agent.spendSince
+	agent.mu.Unlock()
+	if !asked.Equal(since) {
+		t.Errorf("the since window reached the engine as %v, want %v", asked, since)
+	}
+	if err := l.end(); err != nil {
+		t.Fatalf("serve: %v", err)
+	}
+}
+
+// planlessAgent is a [WrappedAgent] with no PlanSpend behind it — the engine
+// that was built before this door existed. It embeds the INTERFACE rather than
+// the concrete fake, so the promoted method set is exactly WrappedAgent's and
+// the door is genuinely absent.
+type planlessAgent struct{ WrappedAgent }
+
+// TestServeAnswersNoRunSpendWithoutTheDoor is the emptiness law on the engine's
+// side: an engine whose agent cannot answer [MethodPlanSpend] hands back an
+// empty rollup, never an error. An error here would reach the surface as a
+// failure to report; an empty slice is the page saying nothing, which is what
+// it must draw for a conversation that seeded no plan.
+func TestServeAnswersNoRunSpendWithoutTheDoor(t *testing.T) {
+	eng := engineOn(&fakeAgent{})
+	eng.Agent = planlessAgent{eng.Agent}
+	l := dialAgent(t, eng)
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatalf("handshake: %s", frame.Error)
+	}
+
+	result := l.ok(1, MethodPlanSpend, PlanSpendArgs{})
+	got := decode[[]session.PlanSpendLine](t, result.Payload)
+	if len(got) != 0 {
+		t.Fatalf("a planless engine answered %+v, want nothing", got)
+	}
+	if err := l.end(); err != nil {
+		t.Fatalf("serve: %v", err)
 	}
 }
 
@@ -1439,4 +1582,26 @@ func (f *fakeAgent) door() session.StopDoor {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.stopDoor
+}
+
+func TestRunSummaryServerRoundTripAndEngineDeadline(t *testing.T) {
+	want := session.RunPlanSummary{What: "working", Now: "wire", WrittenAt: time.Now().UTC()}
+	agent := &fakeAgent{runSummary: want}
+	l := dialAgent(t, engineOn(agent))
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatal(frame.Error)
+	}
+	read := decode[PlanRunSummaryResult](t, l.ok(1, MethodPlanRunSummary, PlanRunSummaryArgs{RootID: "t-root"}).Payload)
+	if !read.OK || !reflect.DeepEqual(read.Summary, want) {
+		t.Fatalf("PlanRunSummary = %+v", read)
+	}
+	refreshed := decode[PlanRunSummaryResult](t, l.ok(2, MethodRefreshRunSummary, RefreshRunSummaryArgs{
+		RootID: "t-root", LastLook: want.WrittenAt, Budget: 20 * time.Millisecond,
+	}).Payload)
+	if !refreshed.OK || !reflect.DeepEqual(refreshed.Summary, want) || !agent.refreshCanceled {
+		t.Fatalf("RefreshRunSummary = %+v, engine canceled = %v", refreshed, agent.refreshCanceled)
+	}
+	if err := l.end(); err != nil {
+		t.Fatal(err)
+	}
 }

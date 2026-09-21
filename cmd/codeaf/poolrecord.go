@@ -133,6 +133,10 @@ func poolSeatID(seat string) string {
 // appended, the sheet is saved once, and the picker's own-cells seam is
 // repointed at the new cells so the very next pick in this process reads them.
 func poolJudgeLanding(settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string, landing session.TaskLanding) {
+	poolJudgeLandingContext(context.Background(), settings, profileDir, models, ask, now, door, landing)
+}
+
+func poolJudgeLandingContext(ctx context.Context, settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string, landing session.TaskLanding) {
 	pool := config.ModelPoolAt(profileDir)
 	poolDir := config.ProfilePath(profileDir, "pool")
 	// A seat's id enters the pool spelled bare (poolSeatID): the sheet, the
@@ -184,7 +188,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 	var err error
 	for _, candidate := range candidates {
 		rec.Judge = candidate
-		ctx, cancel := context.WithTimeout(context.Background(), judgeTimeout*time.Duration(len(seats)+1))
+		ctx, cancel := context.WithTimeout(ctx, judgeTimeout*time.Duration(len(seats)+1))
 		one := ask(candidate)
 		perSeat := func(ctx context.Context, system, user string) (string, error) {
 			qctx, cancel := context.WithTimeout(ctx, judgeTimeout)
@@ -210,6 +214,14 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 	// one line; a success names the judge that answered and the seats it
 	// scored, with no reason to say.
 	if len(scores) == 0 {
+		// A close cancelled the sweep mid-judge: every candidate failed on the
+		// parent context, not on the run, so this is not a verdict. Leave the
+		// landing unjudged and unrecorded so the next start judges it, rather than
+		// burning it with a permanent marker. ctx here is the parent, the
+		// per-candidate context inside the loop above is out of scope.
+		if ctx.Err() != nil {
+			return
+		}
 		reason := "no judge answered"
 		if err != nil {
 			reason = oneLine(err.Error())
@@ -493,6 +505,12 @@ func writeSweepLast(poolDir string, last sweepLast) {
 // and it leaves one record of itself at the end — what it judged, what the
 // budget left — for `pool status` to read.
 func poolJudgeSweep(settings config.Config, profileDir, tasksPath string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) {
+	poolJudgeSweepContext(context.Background(), settings, profileDir, tasksPath, models, ask, now)
+}
+
+var poolJudgeSweepRun = poolJudgeSweepContext
+
+func poolJudgeSweepContext(ctx context.Context, settings config.Config, profileDir, tasksPath string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) {
 	defer guard.Recover("pool/judge-sweep")
 	if !config.ModelPoolAt(profileDir).CanRead() {
 		return
@@ -503,7 +521,7 @@ func poolJudgeSweep(settings config.Config, profileDir, tasksPath string, models
 	poolDir := config.ProfilePath(profileDir, "pool")
 	deadline := now().Add(poolSweepBudget)
 	started := now()
-	judged, left := sweepPending(settings, profileDir, poolDir, models, ask, now, deadline)
+	judged, left := sweepPendingContext(ctx, settings, profileDir, poolDir, models, ask, now, deadline)
 	if strings.TrimSpace(tasksPath) != "" {
 		landed, err := session.LoadLandedForJudge(tasksPath)
 		if err != nil {
@@ -512,6 +530,9 @@ func poolJudgeSweep(settings config.Config, profileDir, tasksPath string, models
 			}
 		} else {
 			for i, landing := range landed {
+				if ctx.Err() != nil {
+					return
+				}
 				if !now().Before(deadline) {
 					left += unjudgedLandings(poolDir, landed[i:])
 					break
@@ -519,7 +540,7 @@ func poolJudgeSweep(settings config.Config, profileDir, tasksPath string, models
 				if alreadyJudged(poolDir, landing.ID, landing.Attempt) {
 					continue
 				}
-				poolJudgeLanding(settings, profileDir, models, ask, now, "task", landing)
+				poolJudgeLandingContext(ctx, settings, profileDir, models, ask, now, "task", landing)
 				judged++
 			}
 		}
@@ -555,12 +576,16 @@ func unjudgedLandings(poolDir string, landed []session.TaskLanding) int {
 // first. It answers what the claims held: the landings judged and the rows the
 // deadline left waiting.
 func sweepPending(settings config.Config, profileDir, poolDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, deadline time.Time) (judged, left int) {
+	return sweepPendingContext(context.Background(), settings, profileDir, poolDir, models, ask, now, deadline)
+}
+
+func sweepPendingContext(ctx context.Context, settings config.Config, profileDir, poolDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, deadline time.Time) (judged, left int) {
 	claim := pendingPath(poolDir) + ".sweeping"
-	judged, left = sweepClaim(settings, profileDir, poolDir, claim, models, ask, now, deadline)
+	judged, left = sweepClaimContext(ctx, settings, profileDir, poolDir, claim, models, ask, now, deadline)
 	if err := os.Rename(pendingPath(poolDir), claim); err != nil {
 		return judged, left
 	}
-	moreJudged, moreLeft := sweepClaim(settings, profileDir, poolDir, claim, models, ask, now, deadline)
+	moreJudged, moreLeft := sweepClaimContext(ctx, settings, profileDir, poolDir, claim, models, ask, now, deadline)
 	return judged + moreJudged, left + moreLeft
 }
 
@@ -572,6 +597,10 @@ func sweepPending(settings config.Config, profileDir, poolDir string, models fun
 // It answers what it judged and how many unjudged rows the deadline left behind
 // it — the sweep's record needs both.
 func sweepClaim(settings config.Config, profileDir, poolDir, claim string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, deadline time.Time) (judged, left int) {
+	return sweepClaimContext(context.Background(), settings, profileDir, poolDir, claim, models, ask, now, deadline)
+}
+
+func sweepClaimContext(ctx context.Context, settings config.Config, profileDir, poolDir, claim string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, deadline time.Time) (judged, left int) {
 	data, err := os.ReadFile(claim)
 	if err != nil {
 		return 0, 0
@@ -579,6 +608,11 @@ func sweepClaim(settings config.Config, profileDir, poolDir, claim string, model
 	lines := strings.Split(string(data), "\n")
 	completed := true
 	for i, line := range lines {
+		if ctx.Err() != nil {
+			completed = false
+			left = countUnjudged(poolDir, lines[i:])
+			break
+		}
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -599,7 +633,15 @@ func sweepClaim(settings config.Config, profileDir, poolDir, claim string, model
 		if alreadyJudged(poolDir, row.Landing.ID, row.Landing.Attempt) {
 			continue
 		}
-		poolJudgeLanding(settings, profileDir, models, ask, now, door, row.Landing)
+		poolJudgeLandingContext(ctx, settings, profileDir, models, ask, now, door, row.Landing)
+		if ctx.Err() != nil {
+			// Cancelled mid-judge: poolJudgeLandingContext left this landing
+			// unjudged, so do not count it and stop, leaving the claim for the next
+			// start rather than removing it as a completed sweep would.
+			completed = false
+			left = countUnjudged(poolDir, lines[i:])
+			break
+		}
 		judged++
 	}
 	if completed {

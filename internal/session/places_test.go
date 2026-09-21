@@ -9,6 +9,7 @@ package session
 // did, and what they are not asked next.
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -218,6 +219,69 @@ func TestTwoReferredPlacesAreStillAQuestion(t *testing.T) {
 // project a while ago and has spent every call since in another; it is about the
 // other one now, and a cache that outranked what the person is visibly doing
 // would be this design's own chore wearing the opposite face.
+func TestBriefPlainlyNamesGroundBeforeConversationPlaces(t *testing.T) {
+	ground := newTestRepo(t)
+	first := newTestRepo(t)
+	second := newTestRepo(t)
+	artifactDir := filepath.Join(ground, "artifacts")
+	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+
+	for i, brief := range []string{
+		"Work in " + ground + "; leave the report at " + filepath.Join(artifactDir, "one.txt"),
+		"The project folder is " + ground + "; update " + filepath.Join(ground, "shared.txt"),
+		"Make the change under " + ground + "; evidence belongs in " + filepath.Join(artifactDir, "three.txt"),
+	} {
+		stand := agent.resolveTaskGround(taskSpec{brief: brief, deliverable: "the named artifact", acceptance: "the artifact exists"})
+		if stand.ask != "" || stand.refusal != "" || stand.dir != canonicalPath(ground) || stand.rung != taskGroundBrief {
+			t.Fatalf("proposal %d stand = %+v, want plainly named brief ground", i+1, stand)
+		}
+	}
+}
+
+func TestBriefGroundRequiresOneContainmentAnswer(t *testing.T) {
+	ground := newTestRepo(t)
+	passing := newTestRepo(t)
+	first := newTestRepo(t)
+	second := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+	stand := agent.resolveTaskGround(taskSpec{
+		brief:       "Work in " + ground + "; compare in passing with " + passing,
+		deliverable: "the fix", acceptance: "the tests pass",
+	})
+	if stand.rung == taskGroundBrief || stand.ask == "" {
+		t.Fatalf("unrelated passing path decided the brief ground: %+v", stand)
+	}
+}
+
+func TestAnExplicitThirdGroundIsAcceptedAndVisibleAsSaid(t *testing.T) {
+	first := newTestRepo(t)
+	second := newTestRepo(t)
+	third := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+	stand := agent.resolveTaskGround(taskSpec{ground: third, brief: "the fix", deliverable: "shared.txt", acceptance: "it changed"})
+	if stand.ask != "" || stand.refusal != "" || stand.dir != canonicalPath(third) || stand.rung != taskGroundSaid {
+		t.Fatalf("explicit third ground = %+v, want accepted with said provenance", stand)
+	}
+}
+
 func TestAStaleKeptPlaceDoesNotOutrankFreshTouchedEvidence(t *testing.T) {
 	stale := newTestRepo(t)
 	busy := newTestRepo(t)
@@ -308,6 +372,124 @@ func TestTheWorldCarriesTheFoldersAConversationIsAbout(t *testing.T) {
 		for _, row := range project.Sessions {
 			if row.ID == "bbbb000000000001" && row.Places != nil {
 				t.Fatalf("a conversation with no folders answered %+v", row.Places)
+			}
+		}
+	}
+}
+
+// A FOLDER OUTSIDE EVERY REPOSITORY IS WHERE OUTPUT GOES, AND IT DOES NOT VOTE
+// when the brief also names a folder inside one. The owner's proposals worked in
+// one repository and wrote their reports to a scratch folder beside it: while
+// that folder did not exist the brief had one answer, and once the first round
+// of tasks had made it, the two read as rivals and the person was asked a
+// question every brief had already answered. With no repository named at all,
+// a plain folder still decides.
+func TestAnOutputFolderOutsideEveryRepositoryDoesNotRivalTheRepositoryTheBriefNames(t *testing.T) {
+	ground, first, second := newTestRepo(t), newTestRepo(t), newTestRepo(t)
+	scratch := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+	brief := "Work in " + ground + " and write the report to " + filepath.Join(scratch, "report.md")
+	stand := agent.resolveTaskGround(taskSpec{brief: brief, deliverable: filepath.Join(scratch, "report.md"), acceptance: "the report exists"})
+	if stand.ask != "" || stand.refusal != "" || stand.dir != canonicalPath(ground) || stand.rung != taskGroundBrief {
+		t.Fatalf("stand = %+v, want the repository the brief names, on the brief's rung", stand)
+	}
+
+	alone := agent.resolveTaskGround(taskSpec{brief: "Collect the notes under " + scratch, deliverable: "the notes", acceptance: "they exist"})
+	if alone.dir != canonicalPath(scratch) || alone.rung != taskGroundBrief {
+		t.Fatalf("stand = %+v, want the one plain folder the brief names", alone)
+	}
+}
+
+// A FOLDER INSIDE A REPOSITORY IS THAT REPOSITORY, on this rung as on the said
+// one. A brief that names a repository's subfolder and only files under it has
+// two folders holding everything it wrote down, the subfolder and the
+// repository around it, and they are ONE ground: the rung answers the
+// repository and never the deeper of two nested rivals.
+func TestABriefThatNamesOnlyASubfolderStandsOnTheRepositoryAroundIt(t *testing.T) {
+	ground := newTestRepo(t)
+	first := newTestRepo(t)
+	second := newTestRepo(t)
+	inner := filepath.Join(ground, "inner", "deep")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+	stand := agent.resolveTaskGround(taskSpec{
+		brief:       "Everything is under " + inner + "; change " + filepath.Join(inner, "one.txt") + " and " + filepath.Join(inner, "two.txt"),
+		deliverable: "the two files, changed", acceptance: "both read differently",
+	})
+	if stand.ask != "" || stand.refusal != "" || stand.rung != taskGroundBrief || stand.dir != canonicalPath(ground) {
+		t.Fatalf("stand = %+v, want the repository %s on the brief rung", stand, canonicalPath(ground))
+	}
+}
+
+// EXACTLY ONE, OTHERWISE NOT THIS RUNG. Two holding candidates that are still
+// two grounds once each is read as the ground it would become are two answers,
+// and the rung never picks between them: it reports nothing and the ladder
+// climbs on to the evidence and the question below.
+func TestTwoGroundsThatBothHoldTheBriefsPlacesAreNoAnswer(t *testing.T) {
+	outer := canonicalPath(newTestRepo(t))
+	inner := filepath.Join(outer, "inner")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, inner, "init", "-q")
+	inner = canonicalPath(inner)
+	refs := []string{filepath.Join(inner, "a")}
+	if err := os.MkdirAll(refs[0], 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if dir, ok := theOneGroundHolding(refs, []string{outer, inner}); ok {
+		t.Fatalf("two grounds hold the brief's places and the rung answered %q; it must answer nothing", dir)
+	}
+	if dir, ok := theOneGroundHolding(refs, []string{inner, filepath.Join(inner, "a")}); !ok || dir != inner {
+		t.Fatalf("nested candidates inside one repository = %q, %v; want the repository %q", dir, ok, inner)
+	}
+	if dir, ok := theOneGroundHolding(refs, nil); ok {
+		t.Fatalf("no candidate answered %q", dir)
+	}
+}
+
+// THE RECEIPT SAYS THE FOLDER, IN A PERSON'S WORDS. Which rung of the ladder
+// answered is a log's word; what the receipt owes is where the work went and
+// whose word put it there, so a ground nobody offered is seen at once.
+func TestTheReceiptSaysWhereATaskWorksInWordsAndNeverTheRungsName(t *testing.T) {
+	spec := taskSpec{title: "the fix"}
+	for _, c := range []struct {
+		stand taskStand
+		want  string
+	}{
+		{taskStand{dir: "/work/one", rung: taskGroundBrief}, "It works in /work/one, the one folder its brief names the work in."},
+		{taskStand{dir: "/work/two", rung: taskGroundSaid}, "It works in /work/two, the folder this proposal gave as its ground."},
+		{taskStand{dir: "/work/three", rung: taskGroundSaid, kept: true}, ""},
+		{taskStand{dir: "/work/four", rung: taskGroundTouched}, ""},
+		{taskStand{dir: "/work/five", rung: taskGroundStandingIn}, ""},
+	} {
+		for _, state := range []TaskState{TaskRunning, TaskQueued} {
+			receipt := taskReceipt(7, spec, state, c.stand, "")
+			if c.want == "" {
+				if strings.Contains(receipt, "It works in /") {
+					t.Fatalf("rung %q: the receipt names a folder nobody's proposal chose:\n%s", c.stand.rung, receipt)
+				}
+				continue
+			}
+			if !strings.Contains(receipt, c.want) {
+				t.Fatalf("rung %q: the receipt does not say %q:\n%s", c.stand.rung, c.want, receipt)
+			}
+			for _, word := range []string{"rung", "provenance", "`brief`", "`said`"} {
+				if strings.Contains(receipt, word) {
+					t.Fatalf("the receipt spells the ladder's own word %q:\n%s", word, receipt)
+				}
 			}
 		}
 	}
