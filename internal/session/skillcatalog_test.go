@@ -19,7 +19,7 @@ func activeSkill(t *testing.T, brain *store.Store, scope, body, artifact string)
 	if err != nil {
 		t.Fatalf("record skill candidate %q: %v", body, err)
 	}
-	if err := brain.ActivateSkill(candidate.Seq, artifact); err != nil {
+	if err := brain.ActivateSkill(candidate.Seq, artifact, ""); err != nil {
 		t.Fatalf("activate skill %q: %v", body, err)
 	}
 	return candidate
