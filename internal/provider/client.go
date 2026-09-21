@@ -2662,6 +2662,11 @@ const maxSentenceClip = 160
 // nothing until it says which provider and what they said, and both are in the
 // metadata OpenRouter already sends (see [APIError]).
 func apiError(status int, payload []byte) error {
+	// A PROVIDER'S ERROR BODY IS AN OBSERVABLE SINK. Connected transports
+	// register every credential they hold, and an upstream is free to echo a
+	// bearer inside this payload; scrub it before Body, Message or Raw can reach
+	// the journal, the call log, diagnostics, or a surface.
+	payload = trace.Scrub(payload)
 	failure := &APIError{Status: status, Body: string(payload)}
 	var decoded errorBody
 	if err := json.Unmarshal(payload, &decoded); err == nil {

@@ -10,14 +10,18 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 var refreshLocks struct {
@@ -120,7 +124,7 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 	}
 	response, err := send(tokens)
 	if err != nil {
-		return nil, err
+		return nil, scrubTransportError(err)
 	}
 	if response.StatusCode == http.StatusUnauthorized {
 		_ = response.Body.Close()
@@ -130,7 +134,14 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 		}
 		response, err = send(refreshed)
 		if err != nil {
-			return nil, err
+			return nil, scrubTransportError(err)
+		}
+	}
+	response.Status = string(trace.Scrub([]byte(response.Status)))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		response, err = scrubHTTPResponse(response)
+		if err != nil {
+			return nil, scrubTransportError(err)
 		}
 	}
 	if isTurn && response.StatusCode >= 400 && codexQuotaStatus(response.StatusCode) {
@@ -140,6 +151,9 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 		return t.translateCatalogResponse(response)
 	}
 	if !isTurn || response.StatusCode < 200 || response.StatusCode >= 300 {
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			return scrubHTTPResponse(response)
+		}
 		return response, nil
 	}
 	return translateResponse(response, wantsStream)
@@ -154,6 +168,7 @@ func (t *transport) translateCatalogResponse(response *http.Response) (*http.Res
 	if err != nil {
 		return nil, err
 	}
+	raw = trace.Scrub(raw)
 	var answer struct {
 		Models []struct {
 			Slug          string `json:"slug"`
@@ -213,12 +228,7 @@ func quotaResponse(response *http.Response) *http.Response {
 		response.Body = io.NopCloser(bytes.NewReader(raw))
 		return response
 	}
-	lower := strings.ToLower(string(raw))
-	matched := false
-	for _, phrase := range []string{"usage_limit_reached", "usage_not_included", "rate_limit_exceeded", "usage limit"} {
-		matched = matched || strings.Contains(lower, phrase)
-	}
-	if !matched {
+	if !quotaPayload(raw) {
 		response.Body = io.NopCloser(bytes.NewReader(raw))
 		response.ContentLength = int64(len(raw))
 		return response
@@ -236,6 +246,55 @@ func quotaResponse(response *http.Response) *http.Response {
 	response.ContentLength = int64(len(body))
 	response.Header.Set("Content-Type", "application/json")
 	return response
+}
+
+func quotaPayload(raw []byte) bool {
+	lower := strings.ToLower(string(raw))
+	for _, phrase := range []string{"usage_limit_reached", "usage_not_included", "rate_limit_exceeded", "usage limit"} {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// scrubHTTPResponse removes every credential already registered by Load before
+// a response can reach the provider client, its call log, or a session journal.
+// It is used on bounded control and error bodies; successful turn streams are
+// scrubbed event by event in [mapResponseEvents].
+func scrubHTTPResponse(response *http.Response) (*http.Response, error) {
+	if response == nil || response.Body == nil {
+		return response, nil
+	}
+	raw, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
+	_ = response.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	raw = trace.Scrub(raw)
+	response.Body = io.NopCloser(bytes.NewReader(raw))
+	response.ContentLength = int64(len(raw))
+	response.Status = string(trace.Scrub([]byte(response.Status)))
+	return response, nil
+}
+
+type scrubbedTransportError struct {
+	err  error
+	said string
+}
+
+func (e *scrubbedTransportError) Error() string { return e.said }
+func (e *scrubbedTransportError) Unwrap() error { return e.err }
+
+func scrubTransportError(err error) error {
+	if err == nil {
+		return nil
+	}
+	said := string(trace.Scrub([]byte(err.Error())))
+	if said == err.Error() {
+		return err
+	}
+	return &scrubbedTransportError{err: err, said: said}
 }
 
 func readRequestBody(request *http.Request) ([]byte, error) {
@@ -285,8 +344,19 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 	mutex := lockFor(Path(t.profileDir))
 	mutex.Lock()
 	defer mutex.Unlock()
+	lock, err := lockTokenFile(t.profileDir)
+	if err != nil {
+		return Tokens{}, err
+	}
+	defer func() {
+		_ = filelock.Unlock(lock)
+		_ = lock.Close()
+	}()
 	tokens, err := Load(t.profileDir)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return Tokens{}, ErrSignInExpired
+		}
 		return Tokens{}, err
 	}
 	if strings.TrimSpace(tokens.AccessToken) == "" {
@@ -312,7 +382,7 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 	request.Header.Set("Accept", "application/json")
 	response, err := t.base.RoundTrip(request)
 	if err != nil {
-		return Tokens{}, err
+		return Tokens{}, scrubTransportError(err)
 	}
 	defer response.Body.Close()
 	raw, readErr := io.ReadAll(io.LimitReader(response.Body, maxExchangeBody))
@@ -320,10 +390,16 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 		return Tokens{}, readErr
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		tokens.AccessToken = ""
-		tokens.ExpiresAt = time.Time{}
-		_ = Save(t.profileDir, tokens)
-		return Tokens{}, ErrSignInExpired
+		if response.StatusCode == http.StatusBadRequest || response.StatusCode == http.StatusUnauthorized {
+			tokens.AccessToken = ""
+			tokens.ExpiresAt = time.Time{}
+			if err := Save(t.profileDir, tokens); err != nil {
+				return Tokens{}, err
+			}
+			return Tokens{}, ErrSignInExpired
+		}
+		status := strings.TrimSpace(string(trace.Scrub([]byte(response.Status))))
+		return Tokens{}, fmt.Errorf("refresh codex sign-in: issuer answered %s", status)
 	}
 	var answer struct {
 		AccessToken  string `json:"access_token"`
@@ -331,7 +407,7 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 		IDToken      string `json:"id_token"`
 	}
 	if json.Unmarshal(raw, &answer) != nil || strings.TrimSpace(answer.AccessToken) == "" {
-		return Tokens{}, ErrSignInExpired
+		return Tokens{}, errors.New("refresh codex sign-in: issuer returned an unreadable answer")
 	}
 	tokens.AccessToken = answer.AccessToken
 	if strings.TrimSpace(answer.RefreshToken) != "" {
@@ -343,6 +419,7 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 			tokens.AccountID, tokens.Email, tokens.Plan = claims.Auth.AccountID, claims.Email, claims.Auth.Plan
 		}
 	}
+	tokens.ExpiresAt = time.Time{}
 	if claims, claimErr := claimsFrom(answer.AccessToken); claimErr == nil && claims.Exp != 0 {
 		tokens.ExpiresAt = time.Unix(claims.Exp, 0)
 	}
@@ -351,6 +428,26 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 		return Tokens{}, err
 	}
 	return Load(t.profileDir)
+}
+
+// lockTokenFile extends the in-process refresh mutex across codeaf processes.
+// The sidecar is never removed: the operating system owns the live lock, and a
+// process exit releases it without a stale-file protocol. The token file is
+// re-read only after this returns, so a waiter sees whichever refresh won.
+func lockTokenFile(profileDir string) (*os.File, error) {
+	path := Path(profileDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("refresh codex sign-in: make profile directory: %w", err)
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("refresh codex sign-in: open token lock: %w", err)
+	}
+	if err := filelock.Lock(lock, true, false); err != nil {
+		_ = lock.Close()
+		return nil, fmt.Errorf("refresh codex sign-in: lock tokens: %w", err)
+	}
+	return lock, nil
 }
 
 func translateRequest(profileDir string, raw []byte) ([]byte, bool, error) {
@@ -514,6 +611,13 @@ type mappedStream struct {
 	usage     map[string]any
 	finish    string
 	sawTool   bool
+	terminal  bool
+	failure   *mappedFailure
+}
+
+type mappedFailure struct {
+	status int
+	value  map[string]any
 }
 
 func translateResponse(response *http.Response, wantsStream bool) (*http.Response, error) {
@@ -531,7 +635,7 @@ func translateResponse(response *http.Response, wantsStream bool) (*http.Respons
 				_, writeErr := fmt.Fprintf(writer, "data: %s\n\n", encoded)
 				return writeErr
 			})
-			if err == nil {
+			if err == nil && state.failure == nil {
 				_, err = io.WriteString(writer, "data: [DONE]\n\n")
 			}
 			_ = writer.CloseWithError(err)
@@ -547,6 +651,15 @@ func translateResponse(response *http.Response, wantsStream bool) (*http.Respons
 	if err := mapResponseEvents(bytes.NewReader(raw), state, nil); err != nil {
 		return nil, err
 	}
+	if state.failure != nil {
+		body, _ := json.Marshal(map[string]any{"error": state.failure.value})
+		response.StatusCode = state.failure.status
+		response.Status = fmt.Sprintf("%d %s", state.failure.status, http.StatusText(state.failure.status))
+		response.Body = io.NopCloser(bytes.NewReader(body))
+		response.ContentLength = int64(len(body))
+		response.Header.Set("Content-Type", "application/json")
+		return response, nil
+	}
 	message := map[string]any{"role": "assistant", "content": state.content.String()}
 	if len(state.tools) > 0 {
 		message["tool_calls"] = state.tools
@@ -557,10 +670,14 @@ func translateResponse(response *http.Response, wantsStream bool) (*http.Respons
 	if len(state.details) > 0 {
 		message["reasoning_details"] = state.details
 	}
-	body, _ := json.Marshal(map[string]any{
+	completion := map[string]any{
 		"id": state.id, "object": "chat.completion", "created": state.created, "model": state.model,
-		"choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": state.finish}}, "usage": state.usage,
-	})
+		"choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": state.finish}},
+	}
+	if state.usage != nil {
+		completion["usage"] = state.usage
+	}
+	body, _ := json.Marshal(completion)
 	response.Body = io.NopCloser(bytes.NewReader(body))
 	response.ContentLength = int64(len(body))
 	response.Header.Set("Content-Type", "application/json")
@@ -579,6 +696,7 @@ func mapResponseEvents(reader io.Reader, state *mappedStream, emit func(map[stri
 		if data == "" || data == "[DONE]" {
 			continue
 		}
+		data = string(trace.Scrub([]byte(data)))
 		var event map[string]any
 		if json.Unmarshal([]byte(data), &event) != nil {
 			continue
@@ -590,6 +708,9 @@ func mapResponseEvents(reader io.Reader, state *mappedStream, emit func(map[stri
 				}
 			}
 		}
+		if state.terminal {
+			return nil
+		}
 	}
 	return scanner.Err()
 }
@@ -597,10 +718,14 @@ func mapResponseEvents(reader io.Reader, state *mappedStream, emit func(map[stri
 func mapEvent(event map[string]any, state *mappedStream) []map[string]any {
 	kind, _ := event["type"].(string)
 	chunk := func(delta map[string]any, finish any, usage map[string]any) map[string]any {
-		return map[string]any{
+		value := map[string]any{
 			"id": state.id, "object": "chat.completion.chunk", "created": state.created, "model": state.model,
-			"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}}, "usage": usage,
+			"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}},
 		}
+		if usage != nil {
+			value["usage"] = usage
+		}
+		return value
 	}
 	switch kind {
 	case "response.created":
@@ -654,14 +779,31 @@ func mapEvent(event map[string]any, state *mappedStream) []map[string]any {
 		state.details = append(state.details, detail)
 		return []map[string]any{chunk(map[string]any{"reasoning_details": []any{detail}}, nil, nil)}
 	case "response.incomplete":
-		state.finish = "length"
-		return nil
+		response, _ := event["response"].(map[string]any)
+		state.setIdentity(response)
+		details, _ := response["incomplete_details"].(map[string]any)
+		if details == nil {
+			details, _ = event["incomplete_details"].(map[string]any)
+		}
+		reason, _ := details["reason"].(string)
+		if strings.TrimSpace(reason) == "max_output_tokens" {
+			state.finish = "length"
+			state.usage = mappedUsage(response["usage"])
+			state.terminal = true
+			return []map[string]any{chunk(map[string]any{}, state.finish, state.usage)}
+		}
+		message := "codex did not finish the response"
+		if reason = strings.TrimSpace(reason); reason != "" {
+			message += " · " + reason
+		}
+		state.failure = classifyMappedFailure(map[string]any{
+			"message": message, "type": "upstream_error", "code": http.StatusBadGateway,
+		})
+		state.terminal = true
+		return []map[string]any{{"error": state.failure.value}}
 	case "response.completed":
 		response, _ := event["response"].(map[string]any)
-		if state.id == "" {
-			state.id, _ = response["id"].(string)
-			state.model, _ = response["model"].(string)
-		}
+		state.setIdentity(response)
 		if state.finish == "" {
 			if state.sawTool {
 				state.finish = "tool_calls"
@@ -670,6 +812,7 @@ func mapEvent(event map[string]any, state *mappedStream) []map[string]any {
 			}
 		}
 		state.usage = mappedUsage(response["usage"])
+		state.terminal = true
 		return []map[string]any{chunk(map[string]any{}, state.finish, state.usage)}
 	case "response.failed", "error":
 		errorValue, _ := event["error"].(map[string]any)
@@ -678,14 +821,50 @@ func mapEvent(event map[string]any, state *mappedStream) []map[string]any {
 			errorValue, _ = response["error"].(map[string]any)
 		}
 		if errorValue == nil {
-			errorValue = map[string]any{"message": "codex did not finish the response", "type": "upstream_error", "code": 502}
+			errorValue = make(map[string]any)
+			if message, _ := event["message"].(string); strings.TrimSpace(message) != "" {
+				errorValue["message"] = message
+			}
+			if code, ok := event["code"]; ok {
+				errorValue["code"] = code
+			}
 		}
-		if _, ok := errorValue["code"].(float64); !ok {
-			errorValue["code"] = 502
-		}
-		return []map[string]any{{"error": errorValue}}
+		state.failure = classifyMappedFailure(errorValue)
+		state.terminal = true
+		return []map[string]any{{"error": state.failure.value}}
 	}
 	return nil
+}
+
+func (s *mappedStream) setIdentity(response map[string]any) {
+	if s == nil || response == nil || s.id != "" {
+		return
+	}
+	s.id, _ = response["id"].(string)
+	s.model, _ = response["model"].(string)
+	if created := integer(response["created_at"]); created != 0 {
+		s.created = created
+	}
+}
+
+func classifyMappedFailure(value map[string]any) *mappedFailure {
+	encoded, _ := json.Marshal(value)
+	if quotaPayload(encoded) {
+		return &mappedFailure{status: http.StatusPaymentRequired, value: map[string]any{
+			"message": QuotaWords, "type": "upstream_error", "code": http.StatusPaymentRequired,
+		}}
+	}
+	message, _ := value["message"].(string)
+	if message = strings.TrimSpace(message); message == "" {
+		message = "codex did not finish the response"
+	}
+	kind, _ := value["type"].(string)
+	if kind = strings.TrimSpace(kind); kind == "" || kind == "error" {
+		kind = "upstream_error"
+	}
+	return &mappedFailure{status: http.StatusBadGateway, value: map[string]any{
+		"message": message, "type": kind, "code": http.StatusBadGateway,
+	}}
 }
 
 func integer(value any) int64 {
@@ -701,7 +880,10 @@ func integer(value any) int64 {
 }
 
 func mappedUsage(value any) map[string]any {
-	usage, _ := value.(map[string]any)
+	usage, ok := value.(map[string]any)
+	if !ok || usage == nil {
+		return nil
+	}
 	input := integer(usage["input_tokens"])
 	output := integer(usage["output_tokens"])
 	inputDetails, _ := usage["input_tokens_details"].(map[string]any)

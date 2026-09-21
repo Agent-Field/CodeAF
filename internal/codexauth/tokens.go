@@ -24,9 +24,22 @@ const (
 	clientVersion  = "0.144.1"
 )
 
+// signInExpiredError is terminal before the provider's ordinary transport
+// recovery. The issuer has already made the one decision another send cannot
+// improve, and the session owns the actionable sentence this value carries.
+type signInExpiredError struct{}
+
+func (*signInExpiredError) Error() string {
+	return "codex sign-in has expired · /connect or codeaf connect codex signs in again"
+}
+
+// TerminalTransportFailure tells the shared provider dispatcher not to spend
+// its retry window asking the same expired sign-in again.
+func (*signInExpiredError) TerminalTransportFailure() bool { return true }
+
 // ErrSignInExpired is the one actionable sentence returned when the issuer no
 // longer accepts a profile's rotating refresh token.
-var ErrSignInExpired = errors.New("codex sign-in has expired · /connect or codeaf connect codex signs in again")
+var ErrSignInExpired error = &signInExpiredError{}
 
 // Tokens is the complete durable answer from one browser sign-in.
 type Tokens struct {
