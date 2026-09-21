@@ -559,7 +559,7 @@ labelled **"ask before running"**.
 | value | what it means |
 |---|---|
 | `prompt` | ask you |
-| `allow` | run it. **This is the default, shown as YOLO.** |
+| `allow` | run it. **This is the interactive default, shown as YOLO.** |
 | `deny` | refuse it |
 
 The row's own hint reads: "what happens when the model asks to run a tool:
@@ -591,9 +591,24 @@ its gate — the same answer `/permissions` gives when it drops a rule.
 `--no-host` lands the change at once; over `--host` the gate is the far
 machine's.
 
-New conversations without a saved approval choice start in **YOLO**. Existing
-profile, project and conversation choices still win. This default does not make
-a session unattended; `--yolo` retains its launch behavior.
+## Default YOLO in interactive conversations and headless runs
+
+Interactive conversations without a saved approval choice start in **YOLO**,
+including conversations over `--host` and `--at`. Saved profile, project and
+conversation choices still win. YOLO permits ordinary destructive work without
+asking, including file overwrites, `rm -rf build`, `git reset --hard` and
+`git clean -fdx`. Critical machine-damaging commands still ask; this is not a
+blanket safeguard for your project files.
+
+Headless `--once` runs default to asking, which refuses a call needing consent
+because no person can answer. Explicit approval settings, including saved
+conversation choices, still apply. Local `--yolo` explicitly opens the ordinary
+gate; over `--host` or `--at`, configure approvals on the engine machine.
+Tool-specific rules and critical-command checks remain in force in every mode.
+The `--yolo` launch flag also controls unattended execution and its limits;
+the interactive default only changes approvals. A headless connection cannot
+reuse an already-open interactive conversation (or vice versa); close that
+conversation before retrying in the other mode.
 
 A persisted value codeaf does not recognise still reads as `prompt`. A garbled
 setting must never be the one that opens the gate.

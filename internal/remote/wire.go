@@ -340,7 +340,11 @@ import (
 // half a minute while this surface had stopped waiting at ten seconds: the
 // person would be told their work did not start while it did. NEVER TO A
 // SENTENCE THAT IS FALSE.
-const Version = 16
+// VERSION 17 separates clarification from answering a pending question and adds
+// ReplaceQuestion. It also carries whether a caller has no approval resolver.
+// Older peers must refuse before a question or an unwatched tool can run under
+// semantics the other side does not understand.
+const Version = 17
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -774,6 +778,9 @@ type StandingWatchResult struct {
 // after the colon — empty means the engine's own home — and the engine answers
 // with the path it resolved.
 type Hello struct {
+	// Headless says this caller cannot answer approval questions. The engine
+	// requires explicit approval settings instead of the interactive default.
+	Headless  bool   `json:"headless,omitempty"`
 	Version   int    `json:"version"`
 	Workspace string `json:"workspace,omitempty"`
 	// Session is an explicit session file to open, empty for the workspace's

@@ -778,3 +778,19 @@ func TestCloseCancelsTheForegroundAndItsBlockedNamer(t *testing.T) {
 		t.Fatal("closing started another naming attempt")
 	}
 }
+
+func TestModelControlTokensNeverBecomeConversationTitles(t *testing.T) {
+	for _, raw := range []string{"<｜DSML｜notice>", "full: <｜DSML｜notice>", "<|im_start|>assistant", "A useful title <|im_end|>"} {
+		if got := cleanConversationTitle(raw).full; got != "" {
+			t.Errorf("generated %q became %q", raw, got)
+		}
+		if got := healedTitle(raw); got != "" {
+			t.Errorf("saved %q became %q", raw, got)
+		}
+	}
+	for _, raw := range []string{"Understanding DeepSeek Control Token Leaks", "Comparing <div> and <span> Elements"} {
+		if cleanTitle(raw) != raw || healedTitle(raw) != raw {
+			t.Errorf("ordinary title rejected: %q", raw)
+		}
+	}
+}

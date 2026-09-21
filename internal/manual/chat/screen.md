@@ -4116,3 +4116,10 @@ its partial response dim even if a confirmation was already in flight.
 
 If private work falls below a queued message, its finished work stays behind a
 separate closed `worked` chip. Expanding that chip still reveals its details.
+
+## Strange control tokens in a conversation title
+
+A generated title containing model control tokens is rejected. The initial
+prompt remains the provisional name until a usable title is generated. Old
+saved titles containing these tokens are also ignored when read; the conversation
+and its messages remain intact.

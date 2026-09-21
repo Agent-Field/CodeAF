@@ -15,7 +15,7 @@ import (
 )
 
 var helloFields = map[string]bool{
-	"Version": true, "Workspace": true, "Session": true, "Model": true,
+	"Headless": true, "Version": true, "Workspace": true, "Session": true, "Model": true,
 	"Level": true, "Launch": true, "Encodings": true, "Resume": true,
 	"Surface": true, "Back": true, "Join": true, "New": true, "Watch": true,
 }

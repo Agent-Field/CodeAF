@@ -590,7 +590,16 @@ func cleanConversationTitle(raw string) conversationTitle {
 // — a session with no name of its own is drawn under the person's opening
 // words, which meta.json has carried since their first message (placemeta.go's
 // [Agent.stampUserLocked]).
+func titleHasControlTokens(raw string) bool {
+	return strings.Contains(raw, "<｜") || strings.Contains(raw, "<|") || strings.Contains(raw, "[im_start]") || strings.Contains(raw, "[im_end]")
+}
+
 func cleanTitle(raw string) string {
+	// Model control tokens are not titles, including when emitted before prose.
+	// Refusing the candidate retains the prompt-derived name and permits retry.
+	if titleHasControlTokens(raw) {
+		return ""
+	}
 	title := stripMarkup(strings.TrimSpace(firstLine(raw)))
 	title = strings.Trim(title, `"'“”`)
 	title = stripOpener(title)
@@ -961,7 +970,7 @@ func uniqueWords(words []string) []string {
 // completed turn and the next good name is appended as every name always is.
 func healedTitle(stored string) string {
 	stored = strings.TrimSpace(stored)
-	if stored == "" || namesTheInstruction(stored) || unusableName(stored) {
+	if stored == "" || titleHasControlTokens(stored) || namesTheInstruction(stored) || unusableName(stored) {
 		return ""
 	}
 	// Old paired replies sometimes kept their formatting label as part of the name.

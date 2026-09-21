@@ -35,7 +35,8 @@ func (h *homeView) conversationRows() (open, closed []switcherRow) {
 		row.kind, row.title, row.here = switcherConversation, tab.word, isOpen && tab.here
 		row.chatKey = tab.key
 		row.session.Transcript = tab.file
-		row.held = row.session.Open && !tab.held && !tab.here
+		owned := tab.held || tab.here || h.holding != nil && h.holding(tab.file)
+		row.held = (row.session.Open || row.session.Live) && !owned
 		row.door = row.held && !h.far && row.session.Dir != ""
 		if row.session.Workspace == "" {
 			row.session.Workspace = tab.where

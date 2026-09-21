@@ -58,6 +58,7 @@ func v3Rebuilt(agent v3Gate) (bool, error) {
 // conversation runs at and what `auto` hands back to.
 type v3ApprovalGate struct {
 	workspace, profileDir string
+	headless              bool
 }
 
 func (g v3ApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
@@ -73,6 +74,13 @@ func (g v3ApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
 	case session.PostureDeny:
 		mode, guardian = string(approval.ActionDeny), false
 	}
+	if mode == "" && g.headless {
+		var err error
+		mode, err = config.HeadlessToolApprovalModeAt(g.workspace, g.profileDir)
+		if err != nil {
+			return nil, false, err
+		}
+	}
 	policy, err := v3PolicyMode(g.workspace, g.profileDir, mode)
 	if err != nil {
 		return nil, false, err
@@ -85,6 +93,9 @@ func (g v3ApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
 // own law for that row and the one direction a garbled setting may be wrong in.
 func (g v3ApprovalGate) Standing() string {
 	mode, err := config.ProjectStringAt(g.workspace, g.profileDir, config.KeyToolApprovalMode)
+	if g.headless {
+		mode, err = config.HeadlessToolApprovalModeAt(g.workspace, g.profileDir)
+	}
 	if err != nil {
 		mode = string(approval.ActionPrompt)
 	}

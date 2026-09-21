@@ -1514,3 +1514,20 @@ func TestToolApprovalDefaultIsYoloWithoutReplacingSavedChoices(t *testing.T) {
 		})
 	}
 }
+
+func TestHeadlessApprovalHonorsExplicitSettingsAndRejectsMalformedValues(t *testing.T) {
+	for _, value := range []any{"allow", "deny", "prompt", "nonsense", true, 42} {
+		profile := profileWith(t, map[string]any{KeyToolApprovalMode: value})
+		want := "prompt"
+		if value == "allow" || value == "deny" {
+			want = value.(string)
+		}
+		got, err := HeadlessToolApprovalModeAt(t.TempDir(), profile)
+		if err != nil || got != want {
+			t.Fatalf("saved %v: %s %v, want %s", value, got, err, want)
+		}
+		if ToolApprovalModeAt(profile) != want {
+			t.Fatalf("interactive malformed fallback changed for %v", value)
+		}
+	}
+}

@@ -246,3 +246,28 @@ func TestHomeConversationListsStayInSyncAcrossWidths(t *testing.T) {
 		})
 	}
 }
+
+func TestARowThisTerminalHoldsNeverClaimsAnotherWindowAfterClose(t *testing.T) {
+	a, files := homeTabsFixture(t)
+	// The disk scan sees our own journal lock; closing its tab retains the agent.
+	for pi := range a.home.world.Projects {
+		for ri := range a.home.world.Projects[pi].Sessions {
+			row := &a.home.world.Projects[pi].Sessions[ri]
+			if row.Transcript == files[0] {
+				row.Open = true
+			}
+		}
+	}
+	a.home.build()
+	for _, closeIt := range []bool{false, true} {
+		if closeIt {
+			a.home.point(files[0])
+			drive(t, a, key("right"), key("x"))
+		}
+		a.home.point(files[0])
+		frame := homeText(a)
+		if strings.Contains(frame, "another window") || strings.Contains(frame, "enter brings it here") {
+			t.Fatalf("close=%t: our own conversation claimed another window:\n%s", closeIt, frame)
+		}
+	}
+}

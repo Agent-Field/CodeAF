@@ -397,23 +397,6 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// only model it can be about: --reasoning names a strength, not a model, and
 	// the level is kept per model from here on (internal/session's agent.go).
 	agent.SetReasoning(level)
-	// AND THE RUNG THIS CONVERSATION WAS LEFT ON. It is the meta.json half of
-	// the same law the model row keeps (internal/session's Meta): a person who
-	// dialled a conversation deeper, worked in it and came back found it at the
-	// install's default as though they had chosen nothing. Absence sets nothing
-	// and stamps nothing, so a conversation nobody has dialled is unchanged.
-	if saved := strings.TrimSpace(v3SavedEffort(cfg.Place)); saved != "" {
-		agent.SetConversationEffort(saved)
-	}
-	// AND THE POSTURE THIS CONVERSATION LEFT ITS GATE AT, for the same reason
-	// (internal/session's approvalposture.go). THE FLAG OUTRANKS THE FOLDER:
-	// `codeaf resume --yolo` is a person saying so again, on this launch, and
-	// the word written down last week is not louder than that. A rebuild that
-	// fails leaves the launch's gate standing and says nothing, on the rung's
-	// own terms — the word is a convenience and the session is the record.
-	if saved := strings.TrimSpace(v3SavedApproval(cfg.Place)); saved != "" && !*yolo {
-		_ = agent.SetApprovalPosture(saved)
-	}
 	proc.track(agent)
 	// EVERY CONVERSATION THIS PROCESS OPENED, CLOSED HOWEVER THE SURFACE RETURNS.
 	// Close is the surface's to call — /quit and ctrl+c both go through it — but
@@ -1074,6 +1057,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// never a second policy.
 	cfg.Unattended = opts.Yolo
 	cfg.Interactive = opts.Interactive
+	if !opts.Interactive {
+		gate := v3ApprovalGate{workspace: cfg.Workspace, profileDir: settings.ProfileDir, headless: true}
+		cfg.ApprovalGate = gate
+		cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(cfg.ApprovalPosture)
+		if err != nil {
+			return nil, err
+		}
+	}
 	cfg.Budget = opts.Budget
 	// AND THE ACCOUNTS MANAGER IS THE PROCESS'S, not this launch's. Governance
 	// leaves the field empty for exactly this reason: an account connected on
@@ -1262,8 +1253,46 @@ func v3Connections(manager *connect.Manager) tui3.Connections {
 // cannot be shown a fuel gate (engine.go) — and a door deciding that for itself
 // would be this file guessing who is watching.
 func openV3Agent(cfg session.Config, workspace string, open func(session.Config) (*session.Agent, error)) (*session.Agent, session.Config, string, error) {
-	agent, err := open(cfg)
+	// Restore the gate before construction, so restored work cannot start behind
+	// the profile default. Return the launch config unchanged: a subsequent new
+	// conversation must not inherit this one's saved override.
+	restored := cfg
+	savedEffort := strings.TrimSpace(v3SavedEffort(cfg.Place))
+	restoredPosture := ""
+	if saved := strings.TrimSpace(v3SavedApproval(cfg.Place)); saved != "" && cfg.ApprovalPosture == "" && cfg.ApprovalGate != nil {
+		valid := false
+		for _, posture := range session.ApprovalPostures {
+			if saved == posture {
+				valid = true
+			}
+		}
+		if !valid {
+			saved = session.PostureAsk
+		}
+		build := saved
+		if saved == session.PostureAuto {
+			build = ""
+		}
+		policy, guardian, err := cfg.ApprovalGate.Build(build)
+		if err != nil {
+			return nil, cfg, "", fmt.Errorf("restore conversation approvals: %w", err)
+		}
+		if policy == nil {
+			return nil, cfg, "", errors.New("restore conversation approvals: rules unavailable")
+		}
+		restored.ApprovalPolicy, restored.Guardian, restoredPosture = policy, guardian, saved
+	}
+	agent, err := open(restored)
 	if err == nil {
+		if restoredPosture != "" {
+			if err := agent.SetApprovalPosture(restoredPosture); err != nil {
+				_ = agent.Close()
+				return nil, cfg, "", fmt.Errorf("restore conversation approvals: %w", err)
+			}
+		}
+		if savedEffort != "" {
+			agent.SetConversationEffort(savedEffort)
+		}
 		return agent, cfg, "", nil
 	}
 	if !errors.Is(err, session.ErrSessionLocked) {

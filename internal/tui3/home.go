@@ -536,6 +536,7 @@ type homeView struct {
 	// Conversation membership comes from the tab strip, never the disk census.
 	tabs       func() []chatTab
 	closedTabs func() []chatTab
+	holding    func(string) bool
 
 	// why is the one line drawn where the rows would be when there CANNOT be any.
 	// It is EMPTY EVERYWHERE TODAY: the one state that filled it was --host,
@@ -1215,6 +1216,7 @@ func (a *app) dropHome() {
 func (a *app) newHomeView(world session.World, known bool) homeView {
 	return homeView{
 		tabs:       a.tabList,
+		holding:    a.holding,
 		closedTabs: func() []chatTab { return a.closedTabs },
 		why:        a.homeWhyEmpty(),
 		world:      world,

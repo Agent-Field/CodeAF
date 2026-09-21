@@ -2222,3 +2222,11 @@ does not repeat that indicator unless it has a separate question.
 ## Does a run create another conversation in Sessions or the chats menu
 
 A run’s tab is a view inside its parent conversation. Home’s Sessions list and the chats menu keep one row for that conversation, using its conversation title. The run’s own tab remains available beside it.
+
+## Why does a closed conversation say another window
+
+Closing a tab hides that conversation from tabs and the chats menu. It does not
+stop its work or release an agent still held by this window. Such a conversation
+remains in Home history and can reopen here; it must not claim another window
+holds it. The other-window label is reserved for a conversation actually held
+elsewhere.

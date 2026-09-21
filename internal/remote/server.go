@@ -132,6 +132,9 @@ type WrappedAgent interface {
 // and the locked-file fallback; this package owns nothing about how an agent is
 // made and everything about how one is spoken to.
 type Engine struct {
+	// Headless records the approval context the agent was built for. Reusing an
+	// interactive agent must not silently give a headless caller its default gate.
+	Headless bool
 	// Agent is the conversation the surface starts on. Required.
 	Agent WrappedAgent
 	// RefreshModelSources updates the engine's own agents from its own profile
@@ -1003,8 +1006,14 @@ func (r *ring) after(seq uint64) (uint64, []json.RawMessage) {
 // refusal at the door: nothing is numbered, nothing is added to the room, and
 // the keyboard is not touched, because a connection that is about to be told
 // "no" must not first take the keys off the window that owns the work.
+var errExecutionMode = errors.New("this conversation is already open in a different interactive or headless mode; close it before retrying")
+
 func (sess *Session) attach(s *server, hello Hello) error {
 	sess.mu.Lock()
+	if hello.Headless != sess.engine.Headless {
+		sess.mu.Unlock()
+		return errExecutionMode
+	}
 	if hello.Join && !sameTranscript(hello.Session, sess.engine.SessionFile) {
 		sess.mu.Unlock()
 		return joinRefusal(hello.Session)
@@ -1825,7 +1834,7 @@ func (s *server) handshake(line []byte) error {
 		// connection's writer held — and the session is let go of first, because
 		// this connection never entered the room and [server.leave] must not take
 		// it out of one.
-		if errors.Is(arrived, ErrJoinedGone) {
+		if errors.Is(arrived, ErrJoinedGone) || errors.Is(arrived, errExecutionMode) {
 			s.session = nil
 			return s.refuse(arrived.Error())
 		}

@@ -352,7 +352,7 @@ func (a *app) setApprovalPosture(dial approvalDialer, posture string) tea.Cmd {
 var approvalLines = map[string]string{
 	session.PostureAsk:      "every call the rules say to ask about is asked about",
 	session.PostureGuardian: "a small model answers the plainly safe ones, you get the rest",
-	session.PostureAllow:    "every tool runs without asking · dangerous commands still ask",
+	session.PostureAllow:    "tools run without asking, including overwrites · critical commands still ask",
 	session.PostureDeny:     "every call the rules do not name is refused",
 }
 

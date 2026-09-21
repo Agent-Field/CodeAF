@@ -3628,7 +3628,31 @@ func ToolApprovalModeAt(profileDir string) string {
 		}
 		return "prompt"
 	}
+	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
+		return "prompt"
+	}
 	return DefaultToolApprovalMode
+}
+
+// HeadlessToolApprovalModeAt requires an explicit setting to open an unwatched gate.
+// Invalid saved values retain the ordinary reader's conservative fallback.
+func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
+	project, err := LoadProjectConfig(workspace)
+	if err != nil {
+		return "", err
+	}
+	if _, found, err := project.String(KeyToolApprovalMode); err != nil {
+		return "", err
+	} else if found {
+		return project.ResolveString(profileDir, KeyToolApprovalMode)
+	}
+	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
+		if _, text := persistedString(profileDir, KeyToolApprovalMode); !text {
+			return "prompt", nil
+		}
+		return ToolApprovalModeAt(profileDir), nil
+	}
+	return "prompt", nil
 }
 
 // GuardianAt resolves whether a small model answers a tool prompt before the
