@@ -92,9 +92,11 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf`; its last action runs that file's
-`version`. `/update` in the chat or `codeaf update` in a terminal replaces it in
-place; running the install line again works too.
+The installer writes `~/.codeaf/bin/codeaf` and prints three things: one line
+naming the installed file's `version`, the three-line telemetry notice, and last,
+when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste.
+`/update` in the chat or `codeaf update` in a terminal replaces it in place;
+running the install line again works too.
 
 ## What is devaf — dev build beside codeaf — side by side — two versions — install under a different file name — --name
 
@@ -639,7 +641,10 @@ setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
 does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
 from the shell, and on a CI machine with neither set codeaf reads but does
-not send.
+not send. **The telemetry off switch stops the pool sending too**:
+`CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1` or `codeaf telemetry off` caps the
+pool at `read` — it wins over an explicit `on` — and `codeaf pool status`
+then says `mode read · telemetry`.
 
 ```
 codeaf pool [show|status|verify] [--json] [--key key]
@@ -647,7 +652,8 @@ codeaf pool [show|status|verify] [--json] [--key key]
 
 `show` — also what bare `codeaf pool` prints — is the reading form: the mode
 and the addresses in force with the word saying where each came from
-(`default`, `setting`, `env` or `ci`), then what index is cached, how old
+(`default`, `setting`, `env`, `ci`, or `telemetry` when the telemetry off switch capped
+sending), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
 seed of <date>`. The binary carries a seed index of our own scored runs,
 read until a fresher signed one is cached. `--cells` lists the held
@@ -656,8 +662,9 @@ spells, the measurement and the installs behind it — and `--json
 --cells` carries them as an array. Your install also keeps
 the scores its judge gave in `own.json`
 under the pool directory — `show` and `status` say what that sheet holds — and
-the crew reads them beside the index. `status` adds what is waiting to be sent
-and whether the mode allows sending and reading. `codeaf pool status` also
+the crew reads them beside the index. `status` adds how many rows are waiting to be sent
+and whether the mode allows sending and reading; `codeaf telemetry show` prints the
+rows themselves, as JSON. `codeaf pool status` also
 says whether the relay answered, and whether the mirror did, and what the
 last judge did — which model, which seats it scored, or why it failed. `--json` prints
 the same answer as one object; `show` reads nothing off the network.
@@ -834,8 +841,19 @@ retracted belief restores, a stopped service starts again, a revoked device pair
 ## What does it count about a run — the anonymous usage counts, and `codeaf telemetry`
 
 `codeaf telemetry` is the door onto the anonymous usage counts: `status` says whether
-they are on and why not when they are off, `show` prints exactly what is waiting to
-leave the machine, and `off` and `on` write the answer to your profile. It reads and
+they are on and why not when they are off; `info` opens on `codeaf does NOT collect or
+share your chat` and then says what is collected, shaped like the data — for each stream, under a line naming where it goes or why it is not sent, every
+every-event field with the value this machine would send now and one example row per
+event (`session_ended  mode=chat  duration=5-30m  turns=6-20 …`) with the stop reasons a
+row can carry, and for the Model Pool one example row in the relay's own bytes; `show`
+prints what is waiting to leave right now as one JSON object, a key per destination
+(`usage`, `model_pool`) with its `destination`, an `off` reason when nothing is sent
+there, and `waiting`, the rows themselves, `[]` on the day you install; and `off` and
+`on` write the answer to your profile. `info` lists only what is sent, never a disclaimer.
+`CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
+usage counts go quiet and the Model Pool is capped at `read`, so it still picks models
+from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or
+`CODEAF_MODEL_POOL`, adds `off`, which asks no judge at all. It reads and
 sends nothing of its own — it is a command about the counts, not a session. The
 notice the first session prints names the bargain before the first byte leaves, and
 `CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See

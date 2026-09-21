@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
@@ -324,5 +326,34 @@ func TestCellsAnswerSortedAndCarryTheMeanAndCount(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("cell %d is %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// TestExampleRowJSONIsARow holds the example `codeaf telemetry show` prints
+// to the row itself: it parses back into a Row, carries every key the row
+// spells and no other, and names the day it was asked for.
+func TestExampleRowJSONIsARow(t *testing.T) {
+	day := time.Date(2026, 9, 19, 23, 59, 0, 0, time.UTC)
+	text := ExampleRowJSON(day)
+	var row Row
+	if err := json.Unmarshal([]byte(text), &row); err != nil {
+		t.Fatalf("example does not parse as a row: %v\n%s", err, text)
+	}
+	if row.Schema != rowSchema || row.Metric != Metric || row.Day != "2026-09-19" {
+		t.Errorf("example row = %+v", row)
+	}
+	var keys map[string]any
+	if err := json.Unmarshal([]byte(text), &keys); err != nil {
+		t.Fatal(err)
+	}
+	rt := reflect.TypeOf(Row{})
+	for i := 0; i < rt.NumField(); i++ {
+		name, _, _ := strings.Cut(rt.Field(i).Tag.Get("json"), ",")
+		if _, ok := keys[name]; !ok {
+			t.Errorf("example row lacks %q", name)
+		}
+	}
+	if len(keys) != rt.NumField() {
+		t.Errorf("example row has %d keys, the row has %d", len(keys), rt.NumField())
 	}
 }

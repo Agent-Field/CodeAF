@@ -335,3 +335,31 @@ func TestNothingSentinelEverReachesTheWire(t *testing.T) {
 		}
 	}
 }
+
+// TestExamplePropsCoverTheAllowlistExactly holds the example table `codeaf
+// telemetry show` prints to the allowlist: every prop an event adds has an
+// example, no example names a prop the event cannot carry, and every example
+// is a value the contract admits where the contract enumerates one.
+func TestExamplePropsCoverTheAllowlistExactly(t *testing.T) {
+	common := set(CommonPropNames())
+	for _, event := range AllowlistedEvents() {
+		added := EventPropNames(event)
+		for _, name := range added {
+			if ExampleProp(event, name) == "" {
+				t.Errorf("%s %s has no example value", event, name)
+			}
+		}
+		for name := range exampleProps[event] {
+			if common[name] || !allowedProps[event][name] {
+				t.Errorf("%s has an example for %q, which it does not add", event, name)
+			}
+		}
+		if len(added) == 0 && len(exampleProps[event]) != 0 {
+			t.Errorf("%s adds nothing but has examples", event)
+		}
+	}
+	if !ValidStopReason(ExampleProp("session_ended", "stop_reason")) {
+		t.Errorf("the example stop_reason is not one of the contract's")
+	}
+
+}

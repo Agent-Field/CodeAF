@@ -308,6 +308,122 @@ var allowedProps = map[string]map[string]bool{
 	"fault": merge(set(commonPropNames), set([]string{"mode", "scope", "fingerprint"})),
 }
 
+// EveryEvent is the key under which [PropDoc] answers for the six props every
+// event carries, and the exact words the doc's table spells in its first
+// column for them.
+const EveryEvent = "every event"
+
+// propDocs is what each allowlisted prop IS, in a person's words: the third
+// column of docs/TELEMETRY.md's table, held here so that `codeaf telemetry
+// show` and the doc read from one table and the doc test can fail the build
+// when the two drift. Every allowlisted prop has a line, and the test holds
+// that too.
+var propDocs = map[string]map[string]string{
+	EveryEvent: {
+		"codeaf_version": "the release tag this binary was built from, at most 64 characters",
+		"channel":        "stable, rc, staging, dev, or unknown",
+		"os":             "darwin, linux, windows, or other",
+		"arch":           "amd64, arm64, or other",
+		"usage_context":  "local (a person's machine), ci, or container",
+		"install_method": "script, source, or unknown",
+	},
+	"session_started": {
+		"mode":    "chat or task",
+		"resumed": "whether the session continued an earlier one",
+	},
+	"session_ended": {
+		"mode":               "chat or task",
+		"duration":           "a band: under 1m, 1-5m, 5-30m, 30m-2h, 2h or more",
+		"turns":              "a count band",
+		"model_calls":        "a count band",
+		"model_calls_failed": "a count band",
+		"tool_calls":         "a count band",
+		"tool_calls_failed":  "a count band",
+		"cost_usd":           "a dollar band",
+		"stop_reason":        "done, error, incomplete, budget, turn-cap, deadline, price, question, interrupted, or unknown",
+		"exit_code":          "0 to 5",
+	},
+	"fault": {
+		"mode":        "chat, task, or other",
+		"scope":       "main, goroutine, or surface",
+		"fingerprint": "16 hex characters hashed from codeaf function names in the stack",
+	},
+}
+
+// PropDoc answers what one prop is, for the event named — [EveryEvent] for
+// the six every event carries — or "" for a prop the table does not hold.
+func PropDoc(event, prop string) string { return propDocs[event][prop] }
+
+// EventPropNames answers the props an event adds beyond the every-event six,
+// in the doc's order, so a listing reads the way the doc reads.
+func EventPropNames(event string) []string {
+	switch event {
+	case "session_started":
+		return []string{"mode", "resumed"}
+	case "session_ended":
+		return []string{"mode", "duration", "turns", "model_calls", "model_calls_failed",
+			"tool_calls", "tool_calls_failed", "cost_usd", "stop_reason", "exit_code"}
+	case "fault":
+		return []string{"mode", "scope", "fingerprint"}
+	}
+	return nil
+}
+
+// The identity and envelope fields every event carries beside its props, and
+// what each is, for a listing that shows a person the whole row.
+const (
+	InstallHashDoc = "sha256 of a random id kept on this machine; the id itself never leaves"
+	SessionHashDoc = "sha256 of the run id, one per session; absent on first_run"
+	EventIDDoc     = "16 random bytes as hex, one per event"
+	EventTimeDoc   = "when the event happened, UTC, to the second"
+)
+
+// CountBandsDoc and CostBandsDoc spell the bands, as the doc spells them.
+const (
+	CountBandsDoc = "count bands are 0, 1, 2-5, 6-20, 21-100 and 100+"
+	CostBandsDoc  = "dollar bands are 0, under 0.01, 0.01-0.1, 0.1-1, 1-10 and 10+"
+)
+
+// StopReasons lists every stop reason, in the contract's order.
+func StopReasons() []string {
+	return []string{StopDone, StopError, StopIncomplete, StopBudget, StopTurnCap,
+		StopDeadline, StopPrice, StopQuestion, StopInterrupted, StopUnknown}
+}
+
+// exampleProps is one plausible value per event prop, spelled from the
+// contract's own constants wherever the contract has one, so an example row
+// can never show a value a real row could not carry. `codeaf telemetry show`
+// prints one row per event from this table so a person sees the shape of
+// what leaves before anything has. The fingerprint is the one invented value:
+// sixteen hex characters, which is all a real one is.
+var exampleProps = map[string]map[string]string{
+	"session_started": {
+		"mode":    string(ModeChat),
+		"resumed": "false",
+	},
+	"session_ended": {
+		"mode":               string(ModeChat),
+		"duration":           Duration5To30m,
+		"turns":              BucketSix,
+		"model_calls":        BucketTwo1,
+		"model_calls_failed": BucketZero,
+		"tool_calls":         BucketSix,
+		"tool_calls_failed":  BucketZero,
+		"cost_usd":           Cost10cTo1,
+		"stop_reason":        StopDone,
+		"exit_code":          "0",
+	},
+	"fault": {
+		"mode":        string(ModeChat),
+		"scope":       ScopeMain,
+		"fingerprint": "3fa9c1e2b7d04e85",
+	},
+}
+
+// ExampleProp answers the example value for one event prop, or "" for a prop
+// the table does not hold; a test holds the table to the allowlist.
+func ExampleProp(event, prop string) string { return exampleProps[event][prop] }
+
 // AllowlistedProps answers which key an event name accepts. It backs the doc
 // drift test and the privacy law: the table above is the allowlist, this is
 // its only reader outside this file's own tests.

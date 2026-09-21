@@ -123,7 +123,7 @@ func runPool(args []string) error {
 // emptiness is the state root's own profile, never a directory called "pool"
 // beside wherever the command happened to run.
 func runPoolWith(args []string, output io.Writer, profileDir string, now func() time.Time, lookup func(string) (string, bool)) error {
-	cfg := poolcfg.Resolve(config.ModelPoolSettingAt(profileDir), config.ModelPoolPublicKeySettingAt(profileDir), lookup)
+	cfg := config.ModelPoolResolved(profileDir, lookup)
 	poolDir := config.ProfilePath(profileDir, "pool")
 	if len(args) == 0 {
 		args = []string{"show"}
@@ -180,8 +180,8 @@ func statusPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Con
 }
 
 // printPool is the reading form's whole answer. The config first — every value
-// beside the word saying where it came from, one of default, setting, env or
-// ci — then the cached index with its age, its cells under --cells, then the
+// beside the word saying where it came from, one of default, setting, env, ci
+// or telemetry — then the cached index with its age, its cells under --cells, then the
 // install's own sheet, then, for status, the outbox and the two doors the
 // mode opens.
 func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Time, asJSON, withCells, withStatus bool, keys []ed25519.PublicKey) error {

@@ -17,11 +17,14 @@
 package record
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
@@ -111,6 +114,32 @@ type Row struct {
 	Door   string  `json:"door"`
 	Size   string  `json:"size"`
 	Day    string  `json:"day"`
+}
+
+// ExampleRowJSON is one row as the relay would receive it, on the day given,
+// with placeholder slugs where a real row carries the model that held the
+// seat and the model that judged it. `codeaf telemetry show` prints it so a
+// person sees the bytes before any row exists. It is marshalled from [Row],
+// so it cannot spell a key a real row would not.
+func ExampleRowJSON(now time.Time) string {
+	row := Row{
+		Schema: rowSchema,
+		Metric: Metric,
+		Role:   "worker",
+		Model:  "<the seat's model slug>",
+		Score:  81,
+		Judge:  "<the judge's model slug>",
+		Door:   "task",
+		Size:   "M",
+		Day:    now.UTC().Format("2006-01-02"),
+	}
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(row); err != nil {
+		return ""
+	}
+	return strings.TrimRight(out.String(), "\n")
 }
 
 // RowsOf reads judge scores into rows, one per score. Every row carries

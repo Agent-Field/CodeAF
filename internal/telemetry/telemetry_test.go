@@ -360,7 +360,7 @@ const contractNotice = `codeaf sends anonymous usage counts to AgentField.
   Sent:  version, OS, mode (chat or task), how many sessions, how many errors.
   Never: anything about you or your work. No prompts, code, file names,
          paths, repo names, keys, email, IP, or machine name.
-  See exactly what leaves:  codeaf telemetry show
+  What is collected:        codeaf telemetry info
   Turn off:                 CODEAF_TELEMETRY=off`
 
 func TestNoticeIsTheContractText(t *testing.T) {
