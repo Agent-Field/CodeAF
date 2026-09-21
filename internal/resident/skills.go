@@ -584,24 +584,33 @@ func (r *Reconciler) importForeignSkills() {
 	r.reconcileImportedSkills(projectDir, homeDir)
 }
 
-// reconcileImportedSkills makes the fact shelf agree with the foreign roots:
+// reconcileImportedSkills is the reconciler's own door into the import pass:
+// the gate and the working directory are the resident's, and the store-bound
+// work is shared with the v3 chat door, which runs the same pass on every
+// launch because it claims no residency of its own.
+func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
+	ReconcileImportedSkills(r.store, projectDir, homeDir)
+}
+
+// ReconcileImportedSkills makes the fact shelf agree with the foreign roots:
 // every discovered skill that is not shadowed gets one active fact whose
 // artifact is the ORIGINAL directory, and every previously imported fact
 // whose folder went away or stopped being readable is superseded with the
-// reason why. It is the testable half of the pass — both directories come in
-// as arguments — and it is idempotent: a second run over an unchanged disk
-// journals nothing.
+// reason why. Both directories come in as arguments and the store is the
+// caller's, so the same pass serves the resident reconciler's gated tick and
+// a chat door that runs it once per launch — and it is idempotent: a second
+// run over an unchanged disk journals nothing.
 //
 // The pass never fails loudly. A folder that cannot be digested, a fact that
 // cannot be recorded: each is skipped and picked up by the next pass, because
 // half-imported is a state the next pass repairs and a failed pass is one
 // nothing repairs.
-func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
+func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
 	discovered, err := skills.Discover(skills.Options{ProjectDir: projectDir, HomeDir: homeDir})
 	if err != nil {
 		return
 	}
-	active, err := r.store.SkillFacts(store.FactActive, skillCandidateScanLimit)
+	active, err := st.SkillFacts(store.FactActive, skillCandidateScanLimit)
 	if err != nil {
 		return
 	}
@@ -623,7 +632,7 @@ func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
 			continue
 		}
 		if existing, seen := imported[dir]; seen {
-			_ = r.store.SupersedeFactWithReason(fact.Seq, existing.Seq, "duplicate import record")
+			_ = st.SupersedeFactWithReason(fact.Seq, existing.Seq, "duplicate import record")
 			continue
 		}
 		imported[dir] = fact
@@ -653,16 +662,16 @@ func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
 		if existing, ok := imported[dir]; ok && existing.Digest == digest {
 			continue
 		}
-		candidate, err := r.store.RecordSkillCandidateFrom(store.FactWriterOther, store.RootID,
+		candidate, err := st.RecordSkillCandidateFrom(store.FactWriterOther, store.RootID,
 			importedSkillScope(skill, projectDir), clipFactBody(skill.Description), dir, importedSkillTrust)
 		if err != nil {
 			continue
 		}
-		if err := r.store.ActivateSkill(candidate.Seq, dir, digest); err != nil {
+		if err := st.ActivateSkill(candidate.Seq, dir, digest); err != nil {
 			continue
 		}
 		if existing, ok := imported[dir]; ok {
-			_ = r.store.SupersedeFactWithReason(existing.Seq, candidate.Seq,
+			_ = st.SupersedeFactWithReason(existing.Seq, candidate.Seq,
 				"imported skill changed on disk")
 		}
 	}
@@ -679,7 +688,7 @@ func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
 	}
 	sort.Strings(gone)
 	for _, dir := range gone {
-		_ = r.store.SupersedeFactWithReason(imported[dir].Seq, 0,
+		_ = st.SupersedeFactWithReason(imported[dir].Seq, 0,
 			"skill folder no longer holds a readable SKILL.md")
 	}
 }
