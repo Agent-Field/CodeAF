@@ -504,3 +504,83 @@ func TestOneMachineChangesNothingForACutThatHadAPool(t *testing.T) {
 		t.Errorf("a rerouted cut waits %s, want no wait", verdict.Backoff)
 	}
 }
+
+// A PERSON WAITING ON THEIR OWN MACHINE IS NOT GIVEN UP ON. Every other bound
+// in this policy exists because the time could be spent on something else —
+// another endpoint, another model, an ending that frees the person to go and
+// fix it. A watched conversation against one machine with no chain has none of
+// those, so it keeps asking and the person ends it when they choose.
+func TestAWatchedWaitOnOneMachineIsNeverGivenUpOn(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	waiting := Evidence{Cut: true, OneMachine: true, Watched: true}
+	for _, spent := range []int{1, 2, 5, 40, 4000} {
+		evidence := waiting
+		evidence.Cuts = spent
+		verdict := Classify(evidence, limits)
+		if !verdict.Retries() {
+			t.Fatalf("ask %d did %q, want a retry for ever", spent, verdict.Action)
+		}
+		// NO DENOMINATOR, because there is no count to reach. The surface reads
+		// this to know it must say the waiting some other way.
+		if verdict.Attempts != 0 {
+			t.Errorf("ask %d carries an allowance of %d, want none", spent, verdict.Attempts)
+		}
+	}
+	// AND THE DEADLINE DOES NOT END IT EITHER, which is the one place in this
+	// policy where running out of time is not the last word.
+	outOfTime := waiting
+	outOfTime.Cuts, outOfTime.OutOfTime = 9, true
+	if verdict := Classify(outOfTime, limits); !verdict.Retries() {
+		t.Errorf("the give-up ended a watched wait: %q", verdict.Action)
+	}
+}
+
+// AND THE THREE THINGS THAT END IT ARE EACH ENOUGH ON THEIR OWN. A chain the
+// person configured is the move they asked for; nobody watching makes the same
+// loop a hang; and a pool means the next ask is somewhere else already.
+func TestEachMissingPieceEndsTheUnboundedWait(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	for _, shape := range []struct {
+		name   string
+		remove func(*Evidence)
+	}{
+		{"a chain to hop to", func(e *Evidence) { e.FallbackAvailable = true }},
+		{"nobody watching", func(e *Evidence) { e.Watched = false }},
+		{"a pool behind it", func(e *Evidence) { e.OneMachine, e.Rerouted = false, true }},
+	} {
+		evidence := Evidence{Cut: true, OneMachine: true, Watched: true, Cuts: 40}
+		shape.remove(&evidence)
+		verdict := Classify(evidence, limits)
+		if verdict.Retries() && verdict.Attempts == 0 {
+			t.Errorf("%s: still waiting for ever after 40 asks", shape.name)
+		}
+	}
+}
+
+// THE WAIT CLIMBS AND THEN HOLDS. Doubling away is a manner towards a shared
+// service under strain; the machine here belongs to the person waiting on it,
+// asking costs nothing, and a schedule that reached four minutes would turn a
+// server that came back in ninety seconds into four more minutes of spinner.
+func TestTheWaitOnOneMachineClimbsToACeilingAndStaysThere(t *testing.T) {
+	cut := Evidence{Cut: true, OneMachine: true, Watched: true}
+	base := time.Second
+	var last time.Duration
+	for ask := 1; ask <= 20; ask++ {
+		wait := waitFor(cut, ask, base)
+		if wait > OneMachineCutCeiling {
+			t.Fatalf("ask %d waits %s, past the %s ceiling", ask, wait, OneMachineCutCeiling)
+		}
+		if ask > 1 && wait < last {
+			t.Fatalf("ask %d waits %s, less than the %s before it", ask, wait, last)
+		}
+		last = wait
+	}
+	if last != OneMachineCutCeiling {
+		t.Errorf("the schedule settled at %s, want the %s ceiling", last, OneMachineCutCeiling)
+	}
+	// AND A CUT WITH A POOL STILL WAITS NOT AT ALL, because what mends that one
+	// is a different endpoint and it costs no time.
+	if wait := waitFor(Evidence{Cut: true, Rerouted: true}, 4, base); wait != 0 {
+		t.Errorf("a pooled cut waits %s, want none", wait)
+	}
+}

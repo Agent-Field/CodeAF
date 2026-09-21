@@ -371,6 +371,19 @@ type Evidence struct {
 	// so the extra asks buy nothing and the allowance narrows.
 	Rerouted bool
 
+	// Watched says A PERSON IS SITTING IN FRONT OF THIS TURN and can see what
+	// it is doing — a conversation, rather than a task worker or a standing
+	// check that nobody is looking at.
+	//
+	// IT IS WHAT MAKES WAITING FOR EVER SAFE. A harness that keeps asking a
+	// machine that answers nothing, and says so on the screen, is being patient:
+	// the person reads the line and stops it whenever they like. The same loop
+	// where nobody is watching is a hang — it spends a worker's whole wall clock
+	// on a server that may never answer, and there is no one to notice. So the
+	// unbounded wait below is offered to the first and withheld from the second,
+	// and the second keeps a count ([transportBudget]).
+	Watched bool
+
 	// OneMachine says the cut request had NO ENDPOINT DIVERSITY AT ALL — it
 	// named no machine and none served it, which is a build with no router
 	// behind it and a set of one.
