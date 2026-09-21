@@ -53,10 +53,11 @@ func openerCommand() (string, []string) {
 // the first-run sign-in, /files — and every one of them chooses its sentence from
 // the error on the frame that needs it. exec.Command looks the opener up on PATH
 // and records a miss in command.Err WITHOUT STARTING ANYTHING, and that miss is
-// the answer those doors act on: no `xdg-open` on a headless box. The fork itself
-// is handed to a goroutine, so the loop never starts a process of its own
-// (framedisk_law_test.go). A fork that then fails is a link that did not open,
-// which is the case the link written under every handoff exists for.
+// the answer those doors act on: no `xdg-open` on a headless box. Start forks
+// synchronously so a browser that would not start is reported on that frame,
+// then waits for the child off the loop. A child that later fails is a link that
+// did not open, which is the case the link written under every handoff exists
+// for.
 func startOpener(target string) error {
 	return opener.Start(target)
 }
