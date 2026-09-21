@@ -208,8 +208,55 @@ func TestUseSkillNotFound(t *testing.T) {
 	shelfSkill(t, brain, "repo-audit", "Walk a repo for dead code and unused exports.")
 
 	out := useSkill(t, agent, `{"mode":"get","name":"no-such-skill"}`)
-	if !strings.Contains(out, "Skill 'no-such-skill' not found.") {
+	if !strings.Contains(out, "Skill \"no-such-skill\" not found.") {
 		t.Fatalf("an unknown name did not answer with the not-found sentence:\n%s", out)
+	}
+	if !strings.Contains(out, "1 active skills on the shelf") {
+		t.Fatalf("a miss on a populated shelf did not say how many skills are active:\n%s", out)
+	}
+}
+
+// A MISS IS NOT A DEAD END: the answer names the nearest skills, scored against
+// the name and the doc line, so a model that guessed a name learns what the
+// shelf actually holds and how close it got.
+func TestUseSkillNotFoundNamesTheNearestSkills(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	shelfSkill(t, brain, "repo-audit", "Walk a repository for dead code and unused exports.")
+	shelfSkill(t, brain, "flaky-test", "Re-run a failing test in isolation to separate flake from breakage.")
+
+	out := useSkill(t, agent, `{"mode":"get","name":"repo-audit-report"}`)
+	if !strings.Contains(out, "repo-audit") {
+		t.Fatalf("a miss did not name the nearest skill on the shelf:\n%s", out)
+	}
+	if strings.Contains(out, "flaky-test") {
+		t.Fatalf("the miss named a skill that scored nowhere near the asked name:\n%s", out)
+	}
+}
+
+// A GET THAT DIFFERS ONLY IN CASE resolves: a folder called Release-Notes is
+// not a different skill from release-notes, and the hit is answered with the
+// shelf's own spelling so the name a worker reads back is the one that works
+// next time.
+func TestUseSkillGetResolvesCaseInsensitively(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	shelfSkill(t, brain, "repo-audit", "Walk a repo for dead code and unused exports.")
+
+	out := useSkill(t, agent, `{"mode":"get","name":"Repo-Audit"}`)
+	if !strings.HasPrefix(out, "repo-audit: Walk a repo for dead code and unused exports.\nPath: ") {
+		t.Fatalf("a case-folded name did not resolve to the shelf's own spelling:\n%s", out)
+	}
+}
+
+// THE LISTING IS SORTED BY NAME, whatever order the shelf returns: two calls
+// minutes apart must read as the same shelf unless a skill actually moved.
+func TestUseSkillListIsSortedByName(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	shelfSkill(t, brain, "zeta", "Later.")
+	shelfSkill(t, brain, "alpha", "Earlier.")
+
+	out := useSkill(t, agent, `{"mode":"list"}`)
+	if strings.Index(out, "alpha") > strings.Index(out, "zeta") {
+		t.Fatalf("the listing is not sorted by name:\n%s", out)
 	}
 }
 

@@ -328,7 +328,7 @@ var beltFacts = []beltFact{{
 	// rather than reaching for a verb that is not on its belt.
 	tools:   []string{useSkillToolName},
 	holds:   func(c Config) bool { return c.mayProposeTask() && c.Memory != nil },
-	present: "- `use_skill` lists active skills (names + one-line docs) or resolves one by name to its shelf path.",
+	present: "- `use_skill` lists active skills (name + one-line doc) or resolves one by name to its shelf path.",
 	absent:  "- Skills on the shelf are not reachable from here.",
 }, {
 	tools:  []string{"watch"},
