@@ -61,8 +61,8 @@ func TestTasksConnectTreesAndSeparateProjectFromTitle(t *testing.T) {
 			if strings.Contains(painted, "Home · example") {
 				t.Fatal("project still attached to title")
 			}
-			if !strings.HasSuffix(strings.TrimSpace(painted), pal.glyph(tokens.GExpanded)) {
-				t.Fatalf("fold is not on right: %q", painted)
+			if !strings.Contains(painted, line.chat.title+" "+pal.glyph(tokens.GExpanded)) {
+				t.Fatalf("fold is not beside title: %q", painted)
 			}
 			_, _, projectAt := tasksColumns(120, tasksByAge)
 			if !strings.HasPrefix(ansi.Cut(painted, projectAt, projectAt+tasksProjectCells(120)), "example") {
@@ -81,27 +81,49 @@ func TestTasksConnectTreesAndSeparateProjectFromTitle(t *testing.T) {
 	}
 }
 
-func TestTasksRightHandFoldReceivesItsClick(t *testing.T) {
-	a := tasksTableApp(t)
-	_, hits, _, _ := a.taskSheetFrame(a.width, a.height)
-	for y, hit := range hits {
-		if hit.kind != taskSheetHitRow {
-			continue
+func TestTasksTitleFoldReceivesItsClick(t *testing.T) {
+	for _, width := range []int{48, 80, 122, 200} {
+		for _, title := range []string{"Short title", strings.Repeat("界 wide title ", 16)} {
+			t.Run(itoa(width)+"/"+title[:5], func(t *testing.T) {
+				a := tasksTableApp(t)
+				a.width = width
+				world, win, now := tasksTableFixture()
+				for pi := range world.Projects {
+					for si := range world.Projects[pi].Sessions {
+						world.Projects[pi].Sessions[si].Title = title
+					}
+				}
+				a.taskSheet.world = world
+				a.taskSheet.reading = readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+				painted, hits, _, _ := a.taskSheetFrame(a.width, a.height)
+				for y, hit := range hits {
+					if hit.kind != taskSheetHitRow {
+						continue
+					}
+					lines := a.tasksFiltered().lay(a.taskSheetListWidth())
+					if hit.index < 0 || hit.index >= len(lines) || lines[hit.index].kind != tasksLineChat || !lines[hit.index].folds {
+						continue
+					}
+					family := lines[hit.index].family
+					row := ansi.Strip(painted[y])
+					mark := a.pal.glyph(tokens.GExpanded)
+					at := strings.LastIndex(row, mark)
+					if at < 0 {
+						t.Fatal("no visible fold arrow")
+					}
+					x := ansi.StringWidth(row[:at])
+					a.taskSheetPress(x, y)
+					if a.tasksFiltered().opens(family) {
+						t.Fatal("click did not collapse root")
+					}
+					a.taskSheetPress(x, y)
+					if !a.tasksFiltered().opens(family) {
+						t.Fatal("click did not reopen root")
+					}
+					return
+				}
+				t.Fatal("no foldable conversation")
+			})
 		}
-		lines := a.tasksFiltered().lay(a.taskSheetListWidth())
-		if hit.index < 0 || hit.index >= len(lines) || lines[hit.index].kind != tasksLineChat || !lines[hit.index].folds {
-			continue
-		}
-		family := lines[hit.index].family
-		a.taskSheetPress(a.taskSheetListWidth()-tasksColumnAir-1, y)
-		if a.tasksFiltered().opens(family) {
-			t.Fatal("click did not collapse root")
-		}
-		a.taskSheetPress(a.taskSheetListWidth()-tasksColumnAir-1, y)
-		if !a.tasksFiltered().opens(family) {
-			t.Fatal("click did not reopen root")
-		}
-		return
 	}
-	t.Fatal("no foldable conversation")
 }

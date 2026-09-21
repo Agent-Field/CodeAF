@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -1164,12 +1163,22 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	lines := r.lay(taskPaneList(width))
 	if at := a.taskSheet.cursor; at >= 0 && at < len(lines) && lines[at].folds {
 		line := lines[at]
-		foldX := a.taskSheetListWidth() - tasksColumnAir - 1
-		if x == foldX && y < len(painted) {
-			mark := ansi.Cut(ansi.Strip(painted[y]), x, x+1)
-			if mark == a.pal.glyph(tokens.GExpanded) || mark == a.pal.glyph(tokens.GCollapsed) {
-				a.taskSheetFold(!line.open)
-				return nil
+		if y < len(painted) {
+			// Read the last fold mark in the name cell so truncation and wide
+			// title characters cannot move the click target away from its glyph.
+			listWidth := a.taskSheetListWidth()
+			_, _, nameCells := tasksColumns(listWidth, r.order.key)
+			if line.kind == tasksLineTask && layoutTier(listWidth) == tierPhone {
+				nameCells = listWidth
+			}
+			name := ansi.Cut(ansi.Strip(painted[y]), 0, nameCells)
+			mark := tasksFoldMark(line, a.pal)
+			if at := strings.LastIndex(name, mark); at >= 0 {
+				foldX := ansi.StringWidth(name[:at])
+				if x >= foldX && x < foldX+ansi.StringWidth(mark) {
+					a.taskSheetFold(!line.open)
+					return nil
+				}
 			}
 		}
 	}

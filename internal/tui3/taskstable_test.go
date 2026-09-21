@@ -94,7 +94,7 @@ func TestTheTasksTableHoldsItsColumnsToTheCellAtEveryWidth(t *testing.T) {
 			t.Fatalf("at %d cells the columns came out state=%d key=%d, want %d and %d",
 				width, state, second, tasksStateCells, tasksKeyCells)
 		}
-		if want := width - state - second - tasksColumnAir - tasksFoldCells - tasksProjectCells(width); name != want {
+		if want := width - state - second - tasksColumnAir - tasksProjectCells(width); name != want {
 			t.Fatalf("at %d cells the name took %d and the columns left %d", width, name, want)
 		}
 		// AND THE PAGE REALLY DRAWS THEM: every row of work says its state word.
@@ -117,8 +117,8 @@ func TestTheTasksTableHoldsItsColumnsToTheCellAtEveryWidth(t *testing.T) {
 		if second != tasksKeyCells {
 			t.Fatalf("at %d cells the sort key's column came out %d cells", width, second)
 		}
-		if name != width-second-tasksColumnAir-tasksFoldCells-tasksProjectCells(width) {
-			t.Fatalf("at %d cells the name took %d of the %d left to it", width, name, width-second-tasksColumnAir-tasksFoldCells-tasksProjectCells(width))
+		if name != width-second-tasksColumnAir-tasksProjectCells(width) {
+			t.Fatalf("at %d cells the name took %d of the %d left to it", width, name, width-second-tasksColumnAir-tasksProjectCells(width))
 		}
 	}
 }

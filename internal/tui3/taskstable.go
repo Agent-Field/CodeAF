@@ -9,7 +9,8 @@ import (
 )
 
 // The Tasks table shares column measurements between rows, headings and clicks.
-// Identity flexes around project, state and age; the fold control ends the row.
+// Identity flexes around project, state and age; fold controls follow their
+// titles in the name column.
 
 // The table's own measurements, and THE ONE PLACE THEY ARE WRITTEN DOWN. The
 // manual quotes them and the tests interpolate them; a number restated anywhere
@@ -42,7 +43,7 @@ func tasksColumns(width int, key tasksSortKey) (state, second, name int) {
 	if width >= tasksStateFloor {
 		state = tasksStateCells
 	}
-	if name = width - state - second - tasksColumnAir - tasksFoldCells - tasksProjectCells(width); name >= tasksNameFloor {
+	if name = width - state - second - tasksColumnAir - tasksProjectCells(width); name >= tasksNameFloor {
 		return state, second, name
 	}
 	// A FRAME WITH NO ROOM FOR A NAME DROPS THE COLUMNS AND KEEPS THE NAME, in
@@ -50,11 +51,11 @@ func tasksColumns(width int, key tasksSortKey) (state, second, name int) {
 	// it has not named has said nothing at all (rowfit.go, law 1).
 	if state > 0 {
 		state = 0
-		if name = width - second - tasksColumnAir - tasksFoldCells - tasksProjectCells(width); name >= tasksNameFloor {
+		if name = width - second - tasksColumnAir - tasksProjectCells(width); name >= tasksNameFloor {
 			return state, second, name
 		}
 	}
-	if name = width - tasksColumnAir - tasksFoldCells - tasksProjectCells(width); name < 1 {
+	if name = width - tasksColumnAir - tasksProjectCells(width); name < 1 {
 		name = 1
 	}
 	return 0, 0, name
@@ -70,7 +71,7 @@ func tasksProjectCells(width int) int {
 
 func tasksAgeHeaderHit(x, width int) bool {
 	_, cells, _ := tasksColumns(width, tasksByAge)
-	right := width - tasksColumnAir - tasksFoldCells
+	right := width - tasksColumnAir
 	return cells > 0 && x >= right-cells && x < right
 }
 
@@ -156,7 +157,7 @@ func tasksChatStateField(chat tasksChat) rowField {
 
 // tasksTableRow lays one row of the table out: the row's lead — its family
 // connectors and its mark — then the name in what the columns leave, then the
-// project, state and age columns, the fold control, and one cell of air.
+// inline fold control, project, state and age columns, and one cell of air.
 //
 // EVERY ROW OF ONE FRAME ANSWERS THE SAME TWO QUESTIONS IN THE SAME CELLS. That
 // is the whole difference from the tail it replaces — the eye reads DOWN a
@@ -174,8 +175,16 @@ func tasksTableRow(lead string, leadCells int, name string, state, second rowFie
 	secondInk func(string) string, width int, key tasksSortKey, pal palette, lit bool, project, fold string) string {
 	stateCells, secondCells, nameCells := tasksColumns(width, key)
 	nameCells = max(nameCells-leadCells, 1)
-	said := fit(name, nameCells)
-	out := lead + placeSubject(said, lit, pal) + pad(nameCells-ansi.StringWidth(said))
+	foldCells := 0
+	if fold != "" {
+		foldCells = 1 + ansi.StringWidth(fold)
+	}
+	said := fit(name, max(nameCells-foldCells-tasksColumnAir, 1))
+	out := lead + placeSubject(said, lit, pal)
+	if fold != "" {
+		out += " " + pal.dim(fold)
+	}
+	out += pad(nameCells - ansi.StringWidth(said) - foldCells)
 	if cells := tasksProjectCells(width); cells > 0 {
 		word := fit(project, cells-1)
 		out += placeFactInk(lit, pal)(word) + pad(cells-ansi.StringWidth(word))
@@ -191,7 +200,7 @@ func tasksTableRow(lead string, leadCells int, name string, state, second rowFie
 		figure := rowTail([]rowField{second}, secondCells)
 		out += pad(secondCells-ansi.StringWidth(figure)) + secondInk(figure)
 	}
-	return out + " " + pal.dim(fold) + pad(tasksFoldCells-1-ansi.StringWidth(fold)) + pad(tasksColumnAir)
+	return out + pad(tasksColumnAir)
 }
 
 // pad is n spaces, and none for a negative count.
@@ -276,7 +285,7 @@ func tasksControlRow(query string, by tasksSort, width int, pal palette) string 
 		label := fit(secondLabel, secondCells)
 		out += pad(secondCells-ansi.StringWidth(label)) + pal.dim(label)
 	}
-	return out + pad(tasksFoldCells+tasksColumnAir)
+	return out + pad(tasksColumnAir)
 }
 
 // ── the reason, off the row and under the cursor ────────────────────────────

@@ -1432,7 +1432,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		}
 		name := tasksCardHead(line.item, card, pal, lit)
 		fold := tasksFoldMark(line, pal)
-		return lead + pal.dim(kin) + name + pad(card-ansi.StringWidth(name)) + " " + pal.dim(fold) + pad(1-ansi.StringWidth(fold)) + pad(tasksColumnAir)
+		return lead + pal.dim(kin) + name + " " + pal.dim(fold) + pad(card-ansi.StringWidth(name)) + pad(1-ansi.StringWidth(fold)) + pad(tasksColumnAir)
 	}
 	return tasksRow(line, width, r.now, r.order, pal, lit)
 }

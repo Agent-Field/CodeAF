@@ -5054,10 +5054,10 @@ nested sibling lists default to newest activity first, and every level starts ex
 
 **The connecting lines show ancestry.** A continuing vertical line links siblings;
 branches and elbows connect each task to its parent. The collapse/expand arrow sits at
-the right edge of the row, separate from the conversation's Home-style activity bullet.
+the end of the title in the left/name column, separate from the conversation's Home-style activity bullet.
 Click that arrow, or use `←` and `→`, to fold and expand without changing the task.
 
-The columns are **name**, **project**, **state**, and **age**, followed by the fold arrow.
+The columns are **name**, **project**, **state**, and **age**; fold arrows stay beside their titles.
 Project has its own column; it is not appended to the conversation title. The project
 column appears from 60 list cells, including the current project and `~` where recorded.
 Under 90 list cells, state moves to the detail view; age and project remain. Under 60,
