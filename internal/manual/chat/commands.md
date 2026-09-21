@@ -1515,7 +1515,14 @@ The third means the catalog came back empty.
 The settings panel has a `Connections` tab over the same accounts. It is a different
 surface from `/connect`, not a second copy of it.
 
-## Which machine's settings are these — /settings, /set, /config over --host
+## Which machine's settings are these
+
+The settings panel shows this machine's profile. Over `--host`, the conversation
+runs with the other machine's profile and project rules. Changing local settings
+does not silently change the remote conversation's approvals. The panel explains
+this split when it opens; configure the remote profile on that machine.
+
+## /settings, /set, /config — opening and navigating settings
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
 codeaf settings, plus a tab of connected accounts. It was the first of the three fullscreen
