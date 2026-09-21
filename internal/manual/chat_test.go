@@ -2575,6 +2575,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"devaf", "running-from-the-terminal"},
 		{"can I run two versions of codeaf side by side", "running-from-the-terminal"},
 		{"how do I keep my dev build up to date", "running-from-the-terminal"},
+		{"install codeaf with a different file name", "running-from-the-terminal"},
 		// C13: These are the words a person brings to the update section.
 		{"is there a newer version", "running-from-the-terminal"},
 		{"how do I update codeaf", "running-from-the-terminal"},

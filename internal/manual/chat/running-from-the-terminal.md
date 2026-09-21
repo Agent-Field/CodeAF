@@ -1,12 +1,14 @@
 # Commands you type in a terminal
 
-## Is there a newer version — update a dev build — latest dev — /update — why does it say this every time I start
+## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
 At launch, a stable, dev or staging build behind the newest release of its own
 channel gets one dim line: `codeaf <newest> is out · you have <running> · /update
 installs it and restarts · or: <curl line>`. A release candidate gets that line
 when its stable line is published. An equal or ahead build gets no line. Source
-and unstamped builds make no launch request.
+and unstamped builds make no launch request, and their `/update` answers `this
+codeaf was built from source · rebuild with make build, or install a release:
+curl -fsSL https://agentfield.ai/get/codeaf | bash`.
 
 `/update` downloads the release, checks its sha256, replaces this executable and
 restarts the same conversation; `/upgrade` is its alias. With no channel word,
@@ -22,8 +24,9 @@ hours. A cached newer release is still shown. The curl line reinstalls this file
 from the channel the build follows — dev and staging follow themselves, and a
 stable, rc or source build follows stable. So `devaf` gets `curl -fsSL
 https://agentfield.ai/get/devaf | bash`, a dev build named `codeaf` gets
-`/get/codeaf/dev`, and a release candidate gets the plain `/get/codeaf`, the
-same stable release its launch line just named.
+`/get/codeaf/dev`, a release candidate gets the plain `/get/codeaf`, the same
+stable release its launch line just named, and a file under any other name gets
+`| CODEAF_INSTALL_NAME=<name> bash` on the end of its channel's line.
 
 ## codeaf update from a shell — --check — default channel — ahead of newest
 
@@ -33,7 +36,8 @@ staging on a `staging-*` build, and stable on stable or rc. `--stable`, `--rc`,
 
 `--check` exits 3 when the selected release is newer, and also whenever a dev or
 staging tag is selected from a build of another channel, because a channel tag
-and a version number cannot be ordered against each other. It exits 0 when the
+cannot be ordered against a build from another channel; that answer reads
+`codeaf <tag> is available · you have <running>`. It exits 0 when the
 selection is the tag already running, when this build is ahead of its own
 channel, and when the two cannot be ordered at all — which is what a dev build
 asking `--stable` gets. It exits 1 when it could not check. `--version <tag>`
@@ -92,7 +96,7 @@ The installer writes `~/.codeaf/bin/codeaf`; its last action runs that file's
 `version`. `/update` in the chat or `codeaf update` in a terminal replaces it in
 place; running the install line again works too.
 
-## What is devaf — dev build beside codeaf — side by side — two versions
+## What is devaf — dev build beside codeaf — side by side — two versions — install under a different file name — --name
 
 `devaf` is the file name for a codeaf dev-channel build, not another product.
 Install the newest dev build beside codeaf with:
