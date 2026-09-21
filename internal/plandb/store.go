@@ -146,10 +146,31 @@ func (s *Store) loadOrCreate(project, rootID, rootTitle, rootDescription, chat s
 		return state{}, errors.New("a new plan store needs a project and a valid root id")
 	}
 	now := s.now().UTC()
+	// THE ROOT IS A PLANNING TASK FROM THE MOMENT IT EXISTS, AND SAYS SO.
+	//
+	// [roleOf] answers RolePlan for a composite task, and a task becomes
+	// composite in [Store.AddMany] — that is, only once it already has
+	// children. So a root that had not been split yet fell through to RoleWork,
+	// and [run.SeatFor] seated the pass that DECIDES THE SPLIT on the worker
+	// tier: the single most consequential judgement in a run, taken by the
+	// cheapest model in the crew, and the thinking tier only ever reached the
+	// same root later, to integrate a split it had had no part in choosing.
+	// Nobody chose that seating; it fell out of the order in which Composite is
+	// set.
+	//
+	// The role is seeded rather than inferred because the inference cannot be
+	// made to work: whether a task will be split is not knowable from the task,
+	// which is the very question the pass is being asked. A root is the one
+	// task whose job is always to plan, so it is the one task that can say so
+	// up front.
+	//
+	// Nothing else moves. [roleOf] prefers Composite over the field, so the
+	// answer for a root that HAS been split is what it always was; the only
+	// pass whose seat changes is the first one.
 	root := &Task{
 		TaskSpec: TaskSpec{
 			ID: rootID, Title: strings.TrimSpace(rootTitle), Description: rootDescription,
-			Kind: "generic", Parallel: "safe", Isolation: "shared",
+			Kind: "generic", Parallel: "safe", Isolation: "shared", Role: RolePlan,
 		},
 		Status: StatusRunning, ClaimedBy: "runtime", CreatedAt: now, UpdatedAt: now,
 		Project: project, Chat: chat,
@@ -1711,6 +1732,20 @@ func referencedFromOutside(value state, set map[string]bool) bool {
 // recomputeComposite restores the one invariant the archive can break: a
 // task's composite flag is exactly whether it still has a child in the plan.
 // A parent whose last child left the plan stops being composite.
+//
+// AND THE ROOT'S SEEDED PLAN ROLE RETIRES WITH ITS LAST CHILD, which is the
+// whole of what keeps this change to the pass it was aimed at. The root is
+// seeded RolePlan so that the FIRST pass — the one that decides the split, made
+// before any child exists — is seated on the thinking tier. A root whose
+// children have been done and archived away is a different task in the same
+// slot: it has planned, its plan was carried out, and the shape rule says it
+// works again. Leaving the seeded word in place would have carried the thinking
+// tier across that boundary forever, on nothing but the fact that the field was
+// once written — which is not a reason, and is the mirror of the inversion this
+// change exists to fix.
+//
+// Only a seeded plan role retires. A role a person or the CLI set by hand is
+// theirs and is left exactly where they put it.
 func recomputeComposite(value *state) {
 	hasChild := map[string]bool{}
 	for _, id := range value.Order {
@@ -1719,7 +1754,11 @@ func recomputeComposite(value *state) {
 		}
 	}
 	for _, id := range value.Order {
-		value.Tasks[id].Composite = hasChild[id]
+		task := value.Tasks[id]
+		if task.Composite && !hasChild[id] && id == value.RootID && task.Role == RolePlan {
+			task.Role = RoleWork
+		}
+		task.Composite = hasChild[id]
 	}
 }
 
