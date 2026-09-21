@@ -1817,7 +1817,8 @@ copied path says `copied <path>`.
 
 ## How do I answer without opening the chat — the verb strip on a row
 
-**Press `→` on the selected row.** On a wide home, its options appear at the bottom of
+**Press `→` on the selected row.** With an empty message box, the bottom row starts
+with `→ options` to show this shortcut. The hint disappears when you type. On a wide home, its options appear at the bottom of
 its description in the middle column, wrapping as needed. On a narrower home without
 that column, they appear directly under the selected row. **While the options are drawn,
 those letters are the verbs and the box is asleep**:

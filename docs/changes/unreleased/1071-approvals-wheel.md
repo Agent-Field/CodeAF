@@ -4,6 +4,7 @@ title: UX changes — clearer home panels and consistent message-box controls
 pr: 1071
 surface: [chat]
 invalidates:
+  - "Home now starts its resting footer with → options while the message box is empty, making the selected session’s action menu discoverable. Typing removes this hint; modal pickers retain their own navigation hints."
   - "Home now has one conversation list under sessions. The former unheaded tab-linked list is removed; open tabs and saved history are deduplicated before selecting the fifteen most recent conversations. Closing and reopening still updates tab membership, and compact Home uses the same single list."
   - "Home replaces the flattened tasks panel with sessions: up to fifteen recent conversations across projects, newest first, including dimmed closed history. The heading opens the former tasks tab, now named sessions. The tab-linked conversation list remains separate, and individual task execution and /task are unchanged."
   - "Tasks now draws connecting tree lines and places fold controls immediately after titles in the left/name column, including truncated titles. Project has a separate column rather than a title suffix. Clicking age reverses chronological order, with newest first by default and selection preserved. Explicit retry now supports quick tasks, designs and saved-workflow tasks as well as ordinary tasks after unsuccessful endings. New design/workflow records retain restart inputs; old records without inputs and separate job/run summary rows cannot be replayed as task workers."

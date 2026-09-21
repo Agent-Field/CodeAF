@@ -867,12 +867,12 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	//
 	// The resting row adds the available draft controls without navigation hints.
 	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
-	want := hintFit(a.targetChordWords(), a.width-2)
+	want := hintFit(dotted(homeOptionsWord, a.targetChordWords()), a.width-2)
 	if rest != want || strings.Contains(rest, "↑↓ pick") || strings.Contains(rest, "enter open") {
 		t.Fatalf("the resting hint reads %q, want %q", rest, want)
 	}
-	if !strings.HasPrefix(rest, a.chords.say(targetFolderKeyWord)) {
-		t.Fatalf("the resting hint does not start with the project control: %q", rest)
+	if !strings.HasPrefix(rest, homeOptionsWord) {
+		t.Fatalf("the resting hint does not start with the options hint: %q", rest)
 	}
 	if strings.Contains(rest, "type to search") {
 		t.Fatalf("the foot repeats the box's promise: %q", rest)
@@ -891,6 +891,15 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 		if strings.Contains(row, "esc") {
 			t.Fatalf("the resting foot names esc: %q", row)
 		}
+	}
+
+	a.home.box.insert("hello")
+	if strings.Contains(a.homeHint(), homeOptionsWord) {
+		t.Fatal("typing left the resting options hint visible")
+	}
+	a.home.box.setText("")
+	if !strings.HasPrefix(a.homeHint(), homeOptionsWord) {
+		t.Fatal("clearing the box did not restore the options hint")
 	}
 
 	// ESC STILL WORKS, which is why losing the clause is a wording change and

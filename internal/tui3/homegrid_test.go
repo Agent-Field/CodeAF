@@ -900,5 +900,5 @@ func TestAnOpenFoldOnAShortFrameCountsTheRestAndNamesNoPlace(t *testing.T) {
 
 // restingFoot is the list's two keys followed by the available draft controls.
 func restingFoot(a *app) string {
-	return a.targetChordWords()
+	return dotted(homeOptionsWord, a.targetChordWords())
 }

@@ -5133,8 +5133,7 @@ func homeFilesTouched(row session.SessionRow) int {
 	return total
 }
 
-// homeHint is the whole line under home's box. At rest it names only the
-// available draft controls; ordinary list navigation needs no reminder.
+// homeHint names row options before the draft controls while the box is empty.
 func (a *app) homeHint() string {
 	// AND THE MODEL LIST OVER THE TARGET NAMES ITS OWN THREE KEYS AND NOTHING
 	// ELSE. It has the whole keyboard while it is up (homedraft.go), so the
@@ -5148,7 +5147,11 @@ func (a *app) homeHint() string {
 	// cheapest clauses on it — [hintFit] gives up the clause nearest the tail
 	// first — because the rule above says what they change, and a person who
 	// has found the rule has found the cells to press.
-	return a.chords.say(withChords(a.homeHintWords(), a.targetChordWords()))
+	hint := withChords(a.homeHintWords(), a.targetChordWords())
+	if a.home.box.empty() && !a.home.cmd.open && a.paneExchange() == nil {
+		hint = dotted(homeOptionsWord, hint)
+	}
+	return a.chords.say(hint)
 }
 
 // withChords puts the draft's chords on a foot sentence BEFORE ITS WAY OUT:
@@ -5172,6 +5175,9 @@ func withChords(hint, chords string) string {
 // is SCREEN 3a's whole clause. The foot does not say it: `alt+.` draws the map
 // that does ([placeMapWords]); the resting foot keeps the list and draft keys.
 const homeVerbsWord = "→ verbs"
+
+// homeOptionsWord makes the selected row's action menu discoverable at rest.
+const homeOptionsWord = "→ options"
 
 // homeHintWords is that line before the tier's own key is put on it.
 func (a *app) homeHintWords() string {
