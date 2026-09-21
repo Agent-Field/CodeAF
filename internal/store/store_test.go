@@ -695,6 +695,73 @@ func TestSkillFactAccessorsRecordsUseOnce(t *testing.T) {
 	}
 }
 
+// RewriteActiveSkillFrom propagates Trust from the source active skill.
+func TestRewriteActiveSkillFromPreservesTrust(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "rewrite-trust.db"))
+	candidate, err := graph.RecordSkillCandidate("", "tool:scan",
+		"repo-audit scans the repo", "/workspace/repo-audit", "imported-provisional")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.ActivateSkill(candidate.Seq, "/installed/repo-audit", ""); err != nil {
+		t.Fatal(err)
+	}
+	active, err := graph.SkillFacts(FactActive, 10)
+	if err != nil || len(active) != 1 {
+		t.Fatalf("active skills = %+v err=%v", active, err)
+	}
+	if active[0].Trust != "imported-provisional" {
+		t.Fatalf("active trust before rewrite = %q, want 'imported-provisional'", active[0].Trust)
+	}
+	// Rewrite the doc.
+	rewritten, err := graph.RewriteActiveSkillFrom(FactWriterDistiller, "", active[0].Scope,
+		"repo-audit scans the repo (updated)", active[0].Seq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rewritten.Trust != "imported-provisional" {
+		t.Fatalf("rewritten trust = %q, want 'imported-provisional'", rewritten.Trust)
+	}
+	// Verify via SkillFacts as well (after rewrite the old row is superseded).
+	all, err := graph.SkillFacts("", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Find the rewritten row (it is the only one whose scope matches).
+	var found bool
+	for _, f := range all {
+		if f.Status == FactActive && f.Scope == active[0].Scope && f.Body == "repo-audit scans the repo (updated)" {
+			if f.Trust != "imported-provisional" {
+				t.Fatalf("rewritten active trust via SkillFacts = %q, want 'imported-provisional'", f.Trust)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("rewritten active skill not found via SkillFacts")
+	}
+	// Survive rebuild.
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := graph.SkillFacts(FactActive, 10)
+	if err != nil {
+		t.Fatalf("after rebuild: err=%v", err)
+	}
+	var foundAfter bool
+	for _, f := range after {
+		if f.Body == "repo-audit scans the repo (updated)" {
+			if f.Trust != "imported-provisional" {
+				t.Fatalf("after rebuild: rewritten trust = %q, want 'imported-provisional'", f.Trust)
+			}
+			foundAfter = true
+		}
+	}
+	if !foundAfter {
+		t.Fatal("rewritten active skill not found after rebuild")
+	}
+}
+
 // Trust defaults to "authored" when the stored value is empty.
 func TestTrustDefaultsToAuthored(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "trust-default.db"))

@@ -487,6 +487,28 @@ func TestPinnedSkillsMatchesNothingWhenNothingIsNamed(t *testing.T) {
 	}
 }
 
+func TestPinnedSkillsMatchesHyphenatedName(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/home/.codeaf/skills/repo-audit", Body: "audit repo structure and dependencies"},
+	}
+	got := PinnedSkills("use repo-audit on this repo", skills)
+	if want := []string{"repo-audit"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PinnedSkills = %q, want %q", got, want)
+	}
+}
+
+func TestPinnedSkillsHyphenatedNoSpuriousSplit(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/home/.codeaf/skills/flaky-test", Body: "find flaky tests in the suite"},
+	}
+	// "flaky" and "test" both appear in the text, but not contiguously as
+	// "flaky-test" — the hyphenated name must NOT match.
+	got := PinnedSkills("the flaky integration test flaked again", skills)
+	if len(got) != 0 {
+		t.Fatalf("PinnedSkills = %q, want nothing (discontiguous tokens)", got)
+	}
+}
+
 func TestRetrieveSkillsScoresScopeAndSharedDocWords(t *testing.T) {
 	skills := []store.Fact{
 		{Artifact: "/skills/parser", Scope: "repo:/work/parser", Body: "validate and format parser fixtures"},

@@ -482,21 +482,65 @@ func PinnedSkills(text string, skills []store.Fact) []string {
 	}
 	// Tokenize the goal into whole words so a skill named "lint" is never
 	// pinned by "splinter" or "test" by "latest".
-	words := make(map[string]bool)
-	for _, word := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+	tokens := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
 		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
-	}) {
+	})
+	words := make(map[string]bool, len(tokens))
+	for _, word := range tokens {
 		if word != "" {
 			words[word] = true
 		}
 	}
 	pinned := make([]string, 0, len(skills))
 	for _, fact := range skills {
-		if name := fact.SkillName(); name != "" && words[strings.ToLower(name)] {
+		name := fact.SkillName()
+		if name == "" {
+			continue
+		}
+		lower := strings.ToLower(name)
+		if words[lower] {
 			pinned = append(pinned, name)
+			continue
+		}
+		// Hyphenated skill names (e.g. "repo-audit") are broken into separate
+		// tokens by the alnum splitter. Check whether the name's own alnum
+		// token sequence appears as a contiguous subsequence of the goal's
+		// tokens, so a literal name pins without matching its fragments
+		// individually.
+		if strings.ContainsAny(lower, "-_.") {
+			parts := alnumParts(lower)
+			if len(parts) >= 2 && containsContiguous(tokens, parts) {
+				pinned = append(pinned, name)
+			}
 		}
 	}
 	return pinned
+}
+
+// alnumParts splits s into runs of alphanumeric characters.
+func alnumParts(s string) []string {
+	return strings.FieldsFunc(s, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+	})
+}
+
+// containsContiguous reports whether sub appears as a contiguous subsequence
+// of all. Both slices are from the same splitter, so elements compare by value.
+func containsContiguous(all, sub []string) bool {
+	if len(sub) > len(all) {
+		return false
+	}
+	limit := len(all) - len(sub)
+outer:
+	for i := 0; i <= limit; i++ {
+		for j, p := range sub {
+			if all[i+j] != p {
+				continue outer
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // RetrieveSkills returns the skills retrieval would attach to one leaf: those
