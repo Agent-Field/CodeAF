@@ -1280,7 +1280,7 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 
 | The words on the row | What you type | What happens |
 | --- | --- | --- |
-| **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; enter says `model · glm-5.3 · for the next conversation you start here`. Nothing behind home is touched. |
+| **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; the pinned model appears on the rule above the box. Nothing behind home is touched. |
 | **`next conversation's folder`** | `/folder` `/place` `/dir` · `/folder <path>` | Opens the folder browser, **aimed at the next conversation**. Picking a folder pins it — home says `next conversation opens in ~/src/parser` and the rule above the box says it too. |
 | **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
@@ -1328,12 +1328,23 @@ that is this window's own model. Two doors change it, and they are the same door
 - **`alt+o`**, or **pressing the model's name on that rule**, opens the model list in home's
   own body — the same filterable list `/model` opens in a conversation. Type to narrow it,
   `↑↓` to walk it, `enter` to take the row, `esc` to leave it alone. The foot while it is up
-  reads `↑↓ pick · enter use it · esc back`.
+  follows the cursor and reads `↑↓ pick · → providers · alt+s sort · enter choose · ctrl+t
+  effort · esc back` on a model, and `↑↓ pick · ← back · alt+s sort · enter choose · esc back`
+  inside an open provider fold. `← back` stands beside `↑↓ pick` because both move the cursor.
 - **`/model <slug>`** typed into the box pins it straight away, with no list.
 
-Either way home says, on the line under the box:
-`model · glm-5.3 · for the next conversation you start here`. A pinned model that differs
-from this window's own is drawn in the accent on the rule.
+**`→` and `ctrl+t` work here, exactly as they do under `/model`.** `→` or `tab` opens the
+providers behind the model under the cursor and `enter` on one pins it — a provider pin
+belongs to your home rather than to one conversation, so it is as writable from this draft
+as from a live chat. `ctrl+t` walks how hard that model thinks, and what it dials is held on
+the DRAFT: it is spent on the next conversation you start here and touches nothing behind
+home. Both keys named themselves in the filter box for a while and neither answered; they
+are on the foot now, and they answer.
+
+**Home says nothing on the line under the box.** It used to read `model · glm-5.3 · for the
+next conversation you start here`, and the rule above the box already carries the pinned
+model — for as long as the pin lasts, rather than until the next note replaces it. A pinned
+model that differs from this window's own is drawn there in the accent.
 
 **It changes the draft and nothing else.** The conversation this window is holding behind
 home keeps the model it had, and nothing is written down until a conversation actually opens
