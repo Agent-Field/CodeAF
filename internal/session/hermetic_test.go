@@ -96,6 +96,30 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "session tests: could not pin furrow away: %v\n", err)
 		return 1
 	}
+	// AND THIS PACKAGE'S SUITE IS THE OLDER BELT'S SUITE, SAID ONCE HERE.
+	//
+	// The bash belt is the product's default. Most of the tests in this package
+	// were written against the node belt and describe its behaviour — its
+	// landings, its auditor, its own task tree — and they said so by saying
+	// nothing, because the default used to agree with them. When the default
+	// moved they did not become wrong, they became silent about which road they
+	// meant, and a hundred and forty of them changed what they were testing
+	// without one line of them changing.
+	//
+	// So the road they were written for is named here rather than a hundred and
+	// forty times, and a test that means the harness says so with
+	// t.Setenv(..., "bash"), which outranks this for that test and is restored
+	// on the way out. Every harness test in this package already does.
+	//
+	// THIS IS NOT A PIN THAT MAKES THE DEFAULT UNTESTED. The harness road has
+	// its own suites and they run on the real default: internal/run,
+	// internal/plandb, and this package's own bashbelt, plandb and land_run
+	// files. What is pinned here is the older engine's suite, which is the only
+	// thing it ever tested.
+	if err := os.Setenv("CODEAF_TASK_BELT", "node"); err != nil {
+		fmt.Fprintf(os.Stderr, "session tests: could not pin the belt: %v\n", err)
+		return 1
+	}
 
 	code := m.Run()
 
