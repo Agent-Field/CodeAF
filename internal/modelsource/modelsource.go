@@ -36,6 +36,7 @@ func IsCustomID(id string) bool {
 	return id == CustomID || strings.HasPrefix(id, CustomID+"-")
 }
 
+<<<<<<< HEAD
 // IDWord turns a written connection name into the plain word a minted custom
 // id carries: lowercase, every run of characters outside a-z and 0-9 one
 // dash, edge dashes trimmed, and connection when nothing remains. Routing
@@ -58,6 +59,9 @@ func IDWord(written string) string {
 	return word
 }
 
+||||||| a38492026
+=======
+>>>>>>> feat/1089-custom-connections
 // ProbeTimeout is the watching-person ceiling shared by every vendored probe.
 const ProbeTimeout = 10 * time.Second
 
@@ -257,6 +261,7 @@ func DefaultSource(address string) Source {
 	}
 }
 
+<<<<<<< HEAD
 // AddressHost is the host a base URL is at, and the one step every caller
 // takes before [SourceSlug]: the name a connection defaults to is the slug of
 // its address's host. It lives beside SourceSlug because the two halves of
@@ -316,6 +321,27 @@ func SourceSlug(host string) string {
 		return word
 	}
 	host = raw
+||||||| a38492026
+=======
+// SourceSlug turns a base URL's host into the short word a person reads for
+// the connection: api.deepseek.com answers deepseek, mybox.local answers
+// mybox. It moved here from the chat surface so config and both surfaces
+// derive one name from one host. AN ADDRESS THAT IS AN IP LITERAL IS TAKEN
+// WHOLE: 127.0.0.1 answers 127-0-0-1, not the 0 the old derivation read off
+// its last dot-separated label. A host that yields nothing answers CustomID,
+// which is what the surface it moved from answered and keeps that path
+// byte-identical.
+func SourceSlug(host string) string {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if ipLiteral(host) {
+		return strings.Trim(strings.Map(func(r rune) rune {
+			if r == '.' || r == ':' {
+				return '-'
+			}
+			return r
+		}, host), "-")
+	}
+>>>>>>> feat/1089-custom-connections
 	parts := strings.Split(host, ".")
 	if len(parts) > 2 {
 		parts = parts[:len(parts)-1]
@@ -484,7 +510,13 @@ func Vendored() []Source {
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 		{
+<<<<<<< HEAD
 			ID: CustomID, Written: CustomID, Name: "Custom OpenAI-compatible API",
+||||||| a38492026
+			ID: "custom", Written: "custom", Name: "Something else",
+=======
+			ID: CustomID, Written: CustomID, Name: "Something else",
+>>>>>>> feat/1089-custom-connections
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 	}

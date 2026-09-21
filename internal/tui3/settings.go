@@ -988,6 +988,7 @@ type sheet struct {
 	// every row, and a fresh slice per row is the one allocation it does not
 	// need.
 	matchFields []string
+<<<<<<< HEAD
 	// hitTerms and hitSpan are the search's scratch over one row — the terms'
 	// answers, rewritten per row — and itemSpan is the span a whole search is
 	// drawn from: every kept row's label hits appended back to back, with the
@@ -996,6 +997,9 @@ type sheet struct {
 	hitTerms []fuzzy.TermHit
 	hitSpan  []int
 	itemSpan []int
+||||||| a38492026
+=======
+>>>>>>> feat/1089-custom-connections
 	// defaults is every row's reading on a profile nobody has touched, so a row
 	// that differs from it can be marked. See [settingDefaults].
 	defaults map[string]string
@@ -1378,11 +1382,16 @@ func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) !=
 // them there instead of back where they started.
 func (s *sheet) build() {
 	s.items = s.items[:0]
+<<<<<<< HEAD
 	// THE SEARCH'S SPAN STARTS EMPTY WITH THE LIST: every kept row's label
 	// hits are appended here as the build walks its rows, and the offsets the
 	// items carry are offsets into THIS build's span — one buffer, one
 	// keystroke, no per-row allocation.
 	s.itemSpan = s.itemSpan[:0]
+||||||| a38492026
+	query := strings.ToLower(strings.TrimSpace(s.query.String()))
+=======
+>>>>>>> feat/1089-custom-connections
 	// THE QUERY IS READ AS TYPED, and the matcher's smart case is the case law
 	// here: a word with no uppercase in it matches anywhere, a word with any
 	// uppercase in it has to be found as typed. The old search folded the
@@ -1412,12 +1421,19 @@ func (s *sheet) build() {
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
 			if row.Key == config.KeyAPIKey && !s.sources.Empty() {
+<<<<<<< HEAD
 				// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no services
 				// head, no connection row, no switcher (the emptiness test pins the
 				// absence of the section), because a row that could do nothing is
 				// decoration. The add row is an action, not decoration — a profile with
 				// no custom connection yet is the one that needs the door — so it stands
 				// alone when no service row stands beside it (customAddRow).
+||||||| a38492026
+			if row.Key == config.KeyAPIKey {
+=======
+				// The services section stands only with services: an empty profile draws
+				// nothing (the emptiness test pins it). The add row lives inside it; the /connect panel carries the first door.
+>>>>>>> feat/1089-custom-connections
 				services := modelServiceRows(s.profileDir, s.sources)
 				if len(services) > 0 {
 					s.items = append(s.items, sheetItem{head: "services"})
@@ -1428,8 +1444,12 @@ func (s *sheet) build() {
 					if switcher := s.connectionSwitcherRow(); switcher != nil {
 						s.items = append(s.items, sheetItem{service: switcher})
 					}
+<<<<<<< HEAD
 				} else {
 					s.items = append(s.items, sheetItem{service: customAddRow()})
+||||||| a38492026
+=======
+>>>>>>> feat/1089-custom-connections
 				}
 			}
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
@@ -1466,18 +1486,33 @@ func (s *sheet) build() {
 			if !ok || meta.tab != title {
 				continue
 			}
+<<<<<<< HEAD
 			score, hit, at, n := s.settingMatch(row, meta, title, terms)
 			if !hit {
 				continue
 			}
 			matched = append(matched, settingHit{row: row, meta: meta, score: score, hitAt: at, hitLen: n})
+||||||| a38492026
+=======
+			score, hit := s.settingScore(row, meta, title, terms)
+			if !hit {
+				continue
+			}
+			matched = append(matched, settingHit{row: row, meta: meta, score: score})
+>>>>>>> feat/1089-custom-connections
 		}
 		sort.SliceStable(matched, func(a, b int) bool { return matched[a].score > matched[b].score })
 		for _, one := range matched {
 			if len(s.items) == start {
 				s.items = append(s.items, sheetItem{head: title})
 			}
+<<<<<<< HEAD
 			s.items = append(s.items, sheetItem{row: one.row, meta: one.meta, hitAt: one.hitAt, hitLen: one.hitLen})
+||||||| a38492026
+			s.items = append(s.items, sheetItem{row: row, meta: meta})
+=======
+			s.items = append(s.items, sheetItem{row: one.row, meta: one.meta})
+>>>>>>> feat/1089-custom-connections
 		}
 		// A ROLE IS FOUND BY ITS OWN NAME, or by the line that says what it does.
 		// Somebody searching for "planner" is not searching for a registry key —
@@ -1582,6 +1617,7 @@ type settingHit struct {
 	row   config.Setting
 	meta  settingMeta
 	score int
+<<<<<<< HEAD
 	// hitAt and hitLen are where the search landed on the row's label: an
 	// offset and a length into the sheet's item span, carried to the item the
 	// row becomes so the row draws its own matched bytes in bold
@@ -1602,7 +1638,43 @@ func (s *sheet) matchHits(fields []string, terms []fuzzy.Term) (score int, match
 	score, matched = fuzzy.ScoreFieldsHits(fields, terms, &s.hitTerms, &s.hitSpan)
 	if !matched {
 		return score, false, 0, 0
+||||||| a38492026
+// settingMatches is the search: the label, the key and the one-line description,
+// case-folded, substring. The KEY is in it deliberately — a person who knows
+// the registry knows "spendRail" and should not have to guess what it is called
+// in the product's words.
+func settingMatches(row config.Setting, meta settingMeta, query string) bool {
+	for _, field := range []string{meta.label, row.Key, meta.about, row.Label} {
+		if strings.Contains(strings.ToLower(field), query) {
+			return true
+		}
+=======
+}
+
+// settingScore is the search: the fuzzy matcher (internal/fuzzy) over the
+// five fields a settings row answers in — the label as shown, the registry
+// key, the one-line description, the VALUE the row currently holds, and the
+// tab's name.
+//
+// THE KEY IS IN IT DELIBERATELY — a person who knows the registry knows
+// "spendRail" and should not have to guess what it is called in the product's
+// words. THE VALUE IS IN IT FOR THE OTHER PERSON — the one who knows what the
+// panel does and not what it is called: "yolo" finds the row it names, "on"
+// and "auto" find every row carrying them, and a search reads the panel the
+// way a person who uses it does. THE TAB NAME IS IN IT because "safety" is
+// the word half this sheet's rows answer to and no row carries it.
+//
+// The fields are scored per term, the best field winning each term, so a
+// word that lands in the key and a word that lands in the value both count
+// toward the row. The slice is the sheet's own reusable buffer: a rebuild
+// scores every row, and a fresh slice per row is the one allocation it does
+// not need.
+func (s *sheet) settingScore(row config.Setting, meta settingMeta, tab string, terms []fuzzy.Term) (int, bool) {
+	if len(terms) == 0 {
+		return 0, true
+>>>>>>> feat/1089-custom-connections
 	}
+<<<<<<< HEAD
 	at := len(s.itemSpan)
 	s.itemSpan = hitUnion(s.hitTerms, 0, s.itemSpan)
 	return score, true, at, len(s.itemSpan) - at
@@ -1651,6 +1723,20 @@ func (s *sheet) itemHit(item sheetItem) []int {
 		return nil
 	}
 	return s.itemSpan[item.hitAt : item.hitAt+item.hitLen]
+||||||| a38492026
+	return false
+=======
+	if len(s.matchFields) < 5 {
+		s.matchFields = make([]string, 5)
+	}
+	fields := s.matchFields[:5]
+	fields[0] = meta.label
+	fields[1] = row.Key
+	fields[2] = meta.about
+	fields[3] = rowText(row)
+	fields[4] = tab
+	return fuzzy.ScoreFields(fields, terms)
+>>>>>>> feat/1089-custom-connections
 }
 
 // clampCursor keeps the cursor on a row and never on a heading.
@@ -1820,11 +1906,20 @@ func (s *sheet) roleItems(terms []fuzzy.Term) []sheetItem {
 				row.model = call.String()
 			}
 			if len(terms) > 0 {
+<<<<<<< HEAD
 				_, ok, at, n := s.roleMatch(row, terms)
 				if !ok {
 					continue
 				}
 				hitAt, hitLen = at, n
+||||||| a38492026
+			if query != "" && !roleMatches(row, query) {
+				continue
+=======
+				if _, ok := s.roleMatches(row, terms); !ok {
+					continue
+				}
+>>>>>>> feat/1089-custom-connections
 			}
 			if !started {
 				items = append(items, sheetItem{head: rolesHead + " · " + row.tierLabel})
@@ -1841,19 +1936,42 @@ func (s *sheet) roleItems(terms []fuzzy.Term) []sheetItem {
 	return items
 }
 
+<<<<<<< HEAD
 // roleMatch is the search over a role row: its name, the line that says what
 // it does, and the model answering it — the fuzzy matcher (internal/fuzzy)
 // over the fields a role row actually has, scored per term by whichever
 // field carries the word best — and where the terms landed on the name the
 // row is drawn with. A role found by its description or its model carries
 // nothing on its name: the emphasis goes where the word landed.
+||||||| a38492026
+// roleMatches is the search over a role row: its name, the line that says what
+// it does, and the model answering it — case-folded, substring, [settingMatches]
+// over the fields a role row actually has.
+=======
+// roleMatches is the search over a role row: its name, the line that says what
+// it does, and the model answering it — the fuzzy matcher (internal/fuzzy) over
+// the fields a role row actually has, scored per term by whichever field
+// carries the word best.
+>>>>>>> feat/1089-custom-connections
 //
 // THE DESCRIPTION IS IN IT DELIBERATELY. Nobody looking for the model that reads
 // their images searches for "vision"; they search for "image", and the sentence
 // under the row is where that word is written.
+<<<<<<< HEAD
 func (s *sheet) roleMatch(row *roleRow, terms []fuzzy.Term) (int, bool, int, int) {
 	if len(terms) == 0 {
 		return 0, true, 0, 0
+||||||| a38492026
+func roleMatches(row *roleRow, query string) bool {
+	for _, field := range []string{string(row.role), roles.Describe(row.role), row.model} {
+		if strings.Contains(strings.ToLower(field), query) {
+			return true
+		}
+=======
+func (s *sheet) roleMatches(row *roleRow, terms []fuzzy.Term) (int, bool) {
+	if len(terms) == 0 {
+		return 0, true
+>>>>>>> feat/1089-custom-connections
 	}
 	if len(s.matchFields) < 3 {
 		s.matchFields = make([]string, 5)
@@ -1862,7 +1980,13 @@ func (s *sheet) roleMatch(row *roleRow, terms []fuzzy.Term) (int, bool, int, int
 	fields[0] = string(row.role)
 	fields[1] = roles.Describe(row.role)
 	fields[2] = row.model
+<<<<<<< HEAD
 	return s.matchHits(fields, terms)
+||||||| a38492026
+	return false
+=======
+	return fuzzy.ScoreFields(fields, terms)
+>>>>>>> feat/1089-custom-connections
 }
 
 // rolesSource is [roles.Source] over THE PANEL'S OWN READING of the registry —
@@ -2237,7 +2361,12 @@ func (a *app) activate() tea.Cmd {
 			return a.startCustomAdd(true)
 		}
 		if item.service.switcher {
+<<<<<<< HEAD
 			a.switchActiveConnection()
+||||||| a38492026
+=======
+			a.switchActiveCustomConnection()
+>>>>>>> feat/1089-custom-connections
 			return nil
 		}
 		// ENTER ON A CONNECTED SERVICE IS ITS EDIT: the id is kept, the

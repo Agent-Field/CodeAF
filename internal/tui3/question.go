@@ -3289,10 +3289,15 @@ func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 	case "ctrl+u", "super+backspace":
 		box.killToStart()
 	case "ctrl+k":
+<<<<<<< HEAD
 		// AND KILL TO THE END OF IT, the other half of readline's pair and the same
 		// key the message box and home's box bind (input.go, home.go). A box that
 		// answered `ctrl+u` alone is the half-gesture killpairlaw_test.go holds
 		// shut.
+||||||| a38492026
+=======
+		// THE OTHER HALF OF THE SAME GESTURE, to the line's end ([editor.killToEnd]; killpairlaw_test.go wants both halves in one box).
+>>>>>>> feat/1089-custom-connections
 		box.killToEnd()
 	case "backspace":
 		box.deleteBackward()

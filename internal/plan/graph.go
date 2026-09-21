@@ -155,6 +155,14 @@ type Node struct {
 	// harness itself changing.
 	Contract string `json:"contract,omitempty"`
 
+	// Skills is the ordered list of skill names the brief pass attached to this
+	// leaf from the shelf the caller handed the build: skills the goal names
+	// outright first, retrieval candidates behind them. Order is precedence —
+	// earlier-listed skills win conflicts — and the same order is journaled on
+	// the node brief and rendered into the worker's instruction. Empty attaches
+	// nothing and renders nothing.
+	Skills []string `json:"skills,omitempty"`
+
 	// Spec is the same two facts as an object, plus the one nothing carried
 	// before: the criterion this node's work is judged finished against.
 	//
