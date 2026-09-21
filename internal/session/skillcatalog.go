@@ -47,7 +47,7 @@ const (
 	// is the unit the lean profile drops (promptprofile.go's [leanPageSections]),
 	// and the shelf is not a law to be traded against window size.
 	skillCatalogHeader = "## Available skills\n\n" +
-		"Skills are prepended to task work — use them through task nodes or by name with `use_skill`.\n"
+		"The shelf this project holds. Skills suited to a message are attached to it, and `use_skill` reaches any of them by name.\n"
 )
 
 // renderSkillCatalog composes the skill catalog for one config, or the empty
