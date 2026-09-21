@@ -207,6 +207,11 @@ func (a *Agent) belt() []bare.Tool {
 	// (task_quick.go). The judge that decides between the two is written once, in
 	// its description.
 	tools = append(tools, a.quickTools()...)
+	// use_skill rides on the same predicate as propose_task, plus a store to read
+	// the shelf from: a worker that may hand work out may also look up what this
+	// project already knows how to do (tools_skill.go). A floor node is handed no
+	// store and no verb either way, so the two gates agree by construction.
+	tools = append(tools, a.useSkillTool()...)
 	// items is the verb a QUICK WORKER carries and nothing else does: a node with
 	// no list has no door behind the tool, so it is absent rather than present
 	// and refusing — the law every conditional family on this belt is built on.

@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
+	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -1108,6 +1109,17 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// needs is the line above.
 	subharnesses.UsePages(harnesses, cfg.RunHarness)
 
+	// THE SHELF IS IMPORTED BEFORE THE FIRST MESSAGE. A person's skills for
+	// other harnesses — Claude Code, Codex, any agentskills.io reader — reach
+	// the shelf when the graph opens, not when some later tick finds the time:
+	// this door claims no residency (runChatV3's header), so the pass the
+	// resident reconciler runs on its own clock is run here, synchronously,
+	// after [v3Memory]'s graph is open and before the first prompt is built.
+	// The pass is idempotent — an unchanged disk journals nothing — so an open
+	// costs one scan and no writes, and a skill edited since the last open is
+	// re-read before the model ever sees the shelf.
+	importForeignSkillsBeforeFirstMessage(proc.Memory, workspace)
+
 	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
 	// lock and runs the pass; the OS timer is the backup for "no terminal open"
 	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
@@ -1141,6 +1153,30 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 // answers everything else about a folder: the rung is a convenience, and a
 // launch that refused to open because it could not read one would be the
 // convenience costing the thing it was meant to serve.
+// importForeignSkillsBeforeFirstMessage runs the foreign-skill import pass
+// against the conversation's own store, in place: every SKILL.md folder a
+// person already has for another harness becomes one active skill fact whose
+// artifact is the ORIGINAL directory, before the first message is built. The
+// resident reconciler keeps the same pass behind its gate for the processes
+// that tick; a launch runs it on the open itself, because a shelf that
+// arrives after the first message is a shelf the first conversation cannot
+// use.
+//
+// A launch with no store has no shelf and runs no pass — the same nil answer
+// the catalog already gives when memory is off — and a home that cannot be
+// resolved is skipped, never fatal: a scan that finds nothing must not be the
+// reason a conversation does not open.
+func importForeignSkillsBeforeFirstMessage(memory *store.Store, workspace string) {
+	if memory == nil {
+		return
+	}
+	homeDir, err := home.Login()
+	if err != nil {
+		return
+	}
+	resident.ReconcileImportedSkills(memory, workspace, homeDir)
+}
+
 func v3SavedEffort(place session.Place) string {
 	dir := strings.TrimSpace(place.Dir)
 	if dir == "" {

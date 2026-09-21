@@ -439,6 +439,17 @@ const fixedPrefixTarget = 48_000
 // second round, and cutting other laws in the first would be that round done
 // early and unreviewed.
 //
+// 2026-09-20, the use_skill wave. A worker gained one verb it did not have:
+// `use_skill`, which lists the active skill shelf and resolves one name to its
+// shelf path (tools_skill.go), and the page gained the one belt-fact bullet that
+// says the shelf is reachable (beltfacts.go). It is a NEW CAPABILITY rather than
+// a second copy of a law — nothing on this belt already let a worker reach a
+// saved procedure — so there was no sentence to take the bytes out of. It paid
+// 741 bytes on the fixed arm (55,280 to 56,021) and 755 on the lean arm (47,055
+// to 47,810), and both waivers rise by that figure here, in this diff, on
+// purpose: the rule says a raise is a decision with a name on it, and the
+// alternative was cutting the verb the wave exists to add.
+//
 // 2026-09-16, #1067 review. The provenance list had to grow because compaction
 // also writes user-role tags into the conversation: `[folded …]` and `[context
 // compacted]`. It also stopped calling the tool-only `[held]` a user message or
@@ -457,8 +468,16 @@ const fixedPrefixTarget = 48_000
 // waiver rises by 162. The lean shape's page never renders the attribution row
 // and lean is 47,055 still, exactly on its measurement.
 const (
+<<<<<<< HEAD
 	fixedPrefixWaiver = 7_442
 	leanPrefixWaiver  = 15_555
+||||||| a38492026
+	fixedPrefixWaiver = 7_280
+	leanPrefixWaiver  = 15_555
+=======
+	fixedPrefixWaiver = 8_021
+	leanPrefixWaiver  = 16_310
+>>>>>>> feat/1089-custom-connections
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

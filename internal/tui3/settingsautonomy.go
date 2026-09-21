@@ -101,11 +101,20 @@ func (s *sheet) autonomyItems(terms []fuzzy.Term) []sheetItem {
 			row.word, row.fixed = autonomyAskWord+" · "+autonomyNoClockWord, true
 		}
 		if len(terms) > 0 {
+<<<<<<< HEAD
 			_, ok, at, n := s.autonomyMatch(row, terms)
 			if !ok {
 				continue
 			}
 			hitAt, hitLen = at, n
+||||||| a38492026
+		if query != "" && !autonomyRowMatches(row, query) {
+			continue
+=======
+			if _, ok := s.autonomyRowMatches(row, terms); !ok {
+				continue
+			}
+>>>>>>> feat/1089-custom-connections
 		}
 		items = append(items, sheetItem{
 			autonomy: row,
@@ -120,6 +129,7 @@ func (s *sheet) autonomyItems(terms []fuzzy.Term) []sheetItem {
 	return append([]sheetItem{{head: autonomyRowsHead}}, items...)
 }
 
+<<<<<<< HEAD
 // autonomyMatch is the search over one of these rows: the kind's own name,
 // the answer it carries, the heading and the section's about line — the fuzzy
 // matcher every picker on this surface shares (internal/fuzzy), scored per
@@ -136,8 +146,34 @@ func (s *sheet) autonomyItems(terms []fuzzy.Term) []sheetItem {
 func (s *sheet) autonomyMatch(row *autonomyRow, terms []fuzzy.Term) (int, bool, int, int) {
 	if len(terms) == 0 {
 		return 0, true, 0, 0
+||||||| a38492026
+// autonomyRowMatches is the search over one of these rows: the kind's own name,
+// the answer it carries, and the heading — because somebody looking for this
+// section searches for "away" or "decide", which is the heading and the value
+// rather than the row's name.
+func autonomyRowMatches(row *autonomyRow, query string) bool {
+	for _, field := range []string{string(row.kind), row.word, autonomyRowsHead, autonomyRowAbout} {
+		if strings.Contains(strings.ToLower(field), strings.ToLower(query)) {
+			return true
+		}
+=======
+// autonomyRowMatches is the search over one of these rows: the kind's own name,
+// the answer it carries, the heading and the section's about line — the fuzzy
+// matcher every picker on this surface shares (internal/fuzzy), scored per
+// term by whichever field carries the word best.
+//
+// THE HEADING AND THE ABOUT LINE ARE IN IT DELIBERATELY, because somebody
+// looking for this section searches for "away" or "decide" or "autonomy" —
+// words that live on the heading and in the value rather than in a registry
+// key — and the about line names `/autonomy` as the second door to the same
+// rules, which is the one word this page exists so a person can find.
+func (s *sheet) autonomyRowMatches(row *autonomyRow, terms []fuzzy.Term) (int, bool) {
+	if len(terms) == 0 {
+		return 0, true
+>>>>>>> feat/1089-custom-connections
 	}
 	// The sheet's own reusable field buffer, for the same per-keystroke reason
+<<<<<<< HEAD
 	// [sheet.settingMatch] gives: a rebuild scores every row.
 	if len(s.matchFields) < 4 {
 		s.matchFields = make([]string, 5)
@@ -148,6 +184,20 @@ func (s *sheet) autonomyMatch(row *autonomyRow, terms []fuzzy.Term) (int, bool, 
 	fields[2] = autonomyRowsHead
 	fields[3] = autonomyRowAbout
 	return s.matchHits(fields, terms)
+||||||| a38492026
+	return false
+=======
+	// [sheet.settingScore] gives: a rebuild scores every row.
+	if len(s.matchFields) < 4 {
+		s.matchFields = make([]string, 5)
+	}
+	fields := s.matchFields[:4]
+	fields[0] = string(row.kind)
+	fields[1] = row.word
+	fields[2] = autonomyRowsHead
+	fields[3] = autonomyRowAbout
+	return fuzzy.ScoreFields(fields, terms)
+>>>>>>> feat/1089-custom-connections
 }
 
 // autonomyPersonWord is one rule in a person's words. It is the sheet's own

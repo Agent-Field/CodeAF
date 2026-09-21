@@ -3,8 +3,16 @@
 ## Add a key — connect a service, add an api key for another provider, use a different model service
 
 An api key for another provider is added here. Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
+<<<<<<< HEAD
 MiniMax, Alibaba Qwen, Ollama and **Custom OpenAI-compatible API**, followed by any service already
 connected and an `add custom connection` row.
+||||||| a38492026
+MiniMax, Alibaba Qwen, Ollama and **Something else**, followed by any service already
+connected. Pick a row and answer its fields. A successful listed service says
+=======
+MiniMax, Alibaba Qwen, Ollama and **Something else**, followed by any service already
+connected and, once a custom connection is connected, an `add custom connection` row.
+>>>>>>> feat/1089-custom-connections
 Pick a row and answer its fields. A successful listed service says
 `deepseek-direct is connected · 6 models`; one without a list says only
 `deepseek-direct is connected`. A service with more than one billing door names the one it
@@ -249,6 +257,36 @@ Providers tab, the heading its models sit under in `/model`, and the first segme
 every model id it serves, so a model on a connection named `homelab` reads
 `homelab/glm-5.3` and `/model homelab/glm-5.3` moves onto it. A refusal or a success
 names the connection by the name it was given; neither switches back to `custom`.
+<<<<<<< HEAD
+||||||| a38492026
+That written host name is the row's name everywhere. A refusal from a localhost row says
+`localhost refused that key — …`, and a success says `localhost is connected · 2 models`;
+neither switches back to `custom`.
+=======
+
+Several custom connections coexist, each under the name you gave it, each with its own
+key, its own rows and its own picker group. Once one is connected, the **Something
+else** row becomes that first connection's edit door and an `add custom connection` row
+connects a new one; with none connected yet, **Something else** is the door onto the
+first.
+
+On the Providers tab in `/settings` each custom connection is a row of its own. `enter`
+opens it for editing with the address and name pre-filled, and an empty key box keeps
+the saved key. A changed name is a rename: every model id already picked under the old
+name is re-spelled with the new one, the conversation's own pick first (a turn still
+answering is waited out), and with it the stored ones: reasoning levels, role
+pins, the fallback chain and the capability slots. A rename changes a label and nothing
+else; it does not move the conversation onto a different model. `ctrl+r` on the row
+reconnects with the saved details. The `add custom connection` row runs the same three
+questions for a new connection, so the tab never sends you to `/connect` to add one.
+The `active connection` row reads
+`answering on localhost · enter moves it to homelab` and enter does that, wrapping past
+the last connection back to the first; which one is active is read from the model the
+conversation is on, so there is nothing else to store. The row is absent while no
+custom connection is connected, and when the next one has no model list yet the move
+says so instead: `no model list for homelab yet · reconnect it (ctrl+r on its row) or
+type a model id in /model`.
+>>>>>>> feat/1089-custom-connections
 
 Several custom connections coexist, each under the name you gave it, each with its own
 key, its own rows and its own picker group. On /connect the **Custom OpenAI-compatible API** row
