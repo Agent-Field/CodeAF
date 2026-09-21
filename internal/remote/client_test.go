@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
@@ -334,6 +335,7 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 	e.answers[MethodTranscript] = []session.DisplayEntry{{Role: "user", Text: "hello"}}
 	e.answers[MethodRewindPoints] = []session.RewindPoint{{Index: 2, Turn: true, Said: "hello"}}
 	e.answers[MethodRewindAt] = []session.DisplayEntry{{Role: "user", Text: "hello"}}
+	e.answers[MethodPlanSpend] = []session.PlanSpendLine{{Seat: "worker", Model: "a/b", USD: 1.5, Calls: 3}}
 
 	agent := client.Agent()
 	if got := agent.Transcript(); len(got) != 1 || got[0].Text != "hello" {
@@ -345,6 +347,12 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 	entries, err := agent.RewindAt(0)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("RewindAt = %+v, %v", entries, err)
+	}
+	if got := agent.PlanSpend(time.Time{}); len(got) != 1 || got[0].Seat != "worker" || got[0].USD != 1.5 {
+		t.Fatalf("PlanSpend = %+v", got)
+	}
+	if len(e.calls(MethodPlanSpend)) != 1 {
+		t.Fatal("PlanSpend did not travel exactly once")
 	}
 
 	// The setters and the answers, which return nothing and must still travel.
@@ -384,6 +392,73 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 	}
 	if consent.ID != 8 || !consent.Allow || consent.Scope != session.ConsentToolSession {
 		t.Fatalf("consent args = %+v", consent)
+	}
+}
+
+// TestPlanSpendIsEmptyForAnEngineWithoutTheDoor is the emptiness law on the
+// surface's side: an engine older than this door answers `no such method`, and
+// the seat block reads that as nothing drawn rather than as a failure. The
+// block is DRAWN FROM the lines, so nil is the whole of what a person meets —
+// the page simply has no seat rows, exactly as it had none before the door
+// crossed.
+// TestPlanSteeringCrossesTheWire proves every verb and its typed arguments travel,
+// and that the protocol does not decorate the store sentence a person reads.
+func TestPlanSteeringCrossesTheWire(t *testing.T) {
+	client, e := newEngine(t)
+	agent := client.Agent()
+
+	if err := agent.PlanNote("t-note", "look here"); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.PlanPause("t-pause"); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.PlanResume("t-resume"); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.PlanAmend("t-amend", "new constraint"); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.PlanPriority("t-priority", 7); err != nil {
+		t.Fatal(err)
+	}
+	const refusal = `task "done-one" is already terminal`
+	e.fails[MethodPlanCancel] = refusal
+	if err := agent.PlanCancel("t-done-one"); err == nil || err.Error() != refusal {
+		t.Fatalf("PlanCancel refusal = %v, want byte-for-byte %q", err, refusal)
+	}
+
+	checks := []struct {
+		method string
+		want   any
+	}{
+		{MethodPlanNote, PlanTextArgs{ID: "t-note", Text: "look here"}},
+		{MethodPlanPause, PlanTaskArgs{ID: "t-pause"}},
+		{MethodPlanResume, PlanTaskArgs{ID: "t-resume"}},
+		{MethodPlanCancel, PlanTaskArgs{ID: "t-done-one"}},
+		{MethodPlanAmend, PlanTextArgs{ID: "t-amend", Text: "new constraint"}},
+		{MethodPlanPriority, PlanPriorityArgs{ID: "t-priority", Priority: 7}},
+	}
+	for _, check := range checks {
+		calls := e.calls(check.method)
+		if len(calls) != 1 {
+			t.Fatalf("%s travelled %d times, want 1", check.method, len(calls))
+		}
+		got := reflect.New(reflect.TypeOf(check.want))
+		if err := json.Unmarshal(calls[0].Payload, got.Interface()); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got.Elem().Interface(), check.want) {
+			t.Fatalf("%s args = %+v, want %+v", check.method, got.Elem().Interface(), check.want)
+		}
+	}
+}
+
+func TestPlanSpendIsEmptyForAnEngineWithoutTheDoor(t *testing.T) {
+	client, e := newEngine(t)
+	e.fails[MethodPlanSpend] = `engine: no such method "PlanSpend"`
+	if got := client.Agent().PlanSpend(time.Time{}); got != nil {
+		t.Fatalf("PlanSpend answered %+v for an engine that does not know it, want nil", got)
 	}
 }
 
@@ -886,4 +961,86 @@ func TestAStandingCallThatFailsSaysSoRatherThanAnsweringNothing(t *testing.T) {
 	if err := client.SaveStanding(standing.Item{ID: "01HQ"}); err == nil || err.Error() != "an item needs a per-run budget" {
 		t.Fatalf("SaveStanding = %v, want the store's own refusal", err)
 	}
+}
+
+func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
+	client, e := newEngine(t)
+	started := time.Date(2026, 9, 18, 1, 2, 3, 4, time.UTC)
+	ended := started.Add(time.Minute)
+	row := session.PlanTaskRow{
+		Done: 1, Running: 2, Queued: 3, Failed: 4, Total: 10,
+		ID: "t-whole", Title: "whole row", Status: "running", Seat: "work", Parent: "t-root",
+		Depth: 2, Waits: []string{"t-a", "t-b"}, Steps: 7, USD: 1.25,
+		Started: started, Ended: ended, Note: "last note",
+		Live:           plandb.LiveStep{Step: 8, Command: "go test ./internal/remote", Since: started},
+		TrajectoryPath: "/tmp/trajectory.jsonl",
+	}
+	page := session.PlanTaskPage{
+		Row: row, Description: "the complete work order",
+		Notes:    []session.PlanTaskNote{{Author: "worker", Person: true, Body: "note body", At: started}},
+		Steps:    []session.PlanStep{{Kind: "bash", Step: 7, Command: "go test", Observation: "PASS", FullOutput: "/tmp/out", Writes: []string{"wire.go"}, Children: []string{"t-child"}}},
+		Live:     row.Live,
+		Children: []session.PlanTaskRow{row},
+		WaitRows: []session.PlanTaskRow{row},
+	}
+	e.answers[MethodPlanTasks] = []session.PlanTaskRow{row}
+	e.answers[MethodPlanTaskPage] = PlanTaskPageResult{Page: page, OK: true}
+
+	if got := client.Agent().PlanTasks(); !reflect.DeepEqual(got, []session.PlanTaskRow{row}) {
+		t.Fatalf("PlanTasks = %#v, want %#v", got, []session.PlanTaskRow{row})
+	}
+	got, ok := client.Agent().PlanTaskPage(row.ID)
+	if !ok || !reflect.DeepEqual(got, page) {
+		t.Fatalf("PlanTaskPage = (%#v, %v), want (%#v, true)", got, ok, page)
+	}
+	if len(e.calls(MethodPlanTasks)) != 1 || len(e.calls(MethodPlanTaskPage)) != 1 {
+		t.Fatalf("calls: PlanTasks=%d PlanTaskPage=%d", len(e.calls(MethodPlanTasks)), len(e.calls(MethodPlanTaskPage)))
+	}
+	var args PlanTaskPageArgs
+	if err := json.Unmarshal(e.calls(MethodPlanTaskPage)[0].Payload, &args); err != nil || args.ID != row.ID {
+		t.Fatalf("PlanTaskPage args = %+v, %v", args, err)
+	}
+}
+
+func TestRunSummariesCrossWholeAndDroppedRefreshKeepsNothing(t *testing.T) {
+	client, e := newEngine(t)
+	want := session.RunPlanSummary{
+		What: "building the wire", Since: "tests failed", Now: "implementing", Next: "verify",
+		WrittenAt: time.Date(2026, 9, 19, 1, 2, 3, 4, time.UTC),
+	}
+	e.answers[MethodPlanRunSummary] = PlanRunSummaryResult{Summary: want, OK: true}
+	e.answers[MethodRefreshRunSummary] = PlanRunSummaryResult{Summary: want, OK: true}
+
+	agent := client.Agent()
+	if got, ok := agent.PlanRunSummary("t-root"); !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("PlanRunSummary = (%+v, %v), want (%+v, true)", got, ok, want)
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Minute))
+	defer cancel()
+	if got, ok := agent.RefreshRunSummary(ctx, "t-root", want.WrittenAt); !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("RefreshRunSummary = (%+v, %v), want (%+v, true)", got, ok, want)
+	}
+	calls := e.calls(MethodRefreshRunSummary)
+	if len(calls) != 1 {
+		t.Fatalf("RefreshRunSummary calls = %d, want 1", len(calls))
+	}
+	var args RefreshRunSummaryArgs
+	if err := json.Unmarshal(calls[0].Payload, &args); err != nil {
+		t.Fatal(err)
+	}
+	if args.RootID != "t-root" || !args.LastLook.Equal(want.WrittenAt) || args.Budget <= 0 || args.Budget > time.Minute {
+		t.Fatalf("RefreshRunSummary args = %+v", args)
+	}
+
+	e.silent[MethodRefreshRunSummary] = true
+	dropped := make(chan struct{})
+	go func() {
+		defer close(dropped)
+		time.Sleep(10 * time.Millisecond)
+		_ = e.conn.Close()
+	}()
+	if got, ok := agent.RefreshRunSummary(context.Background(), "t-root", time.Time{}); got != (session.RunPlanSummary{}) || ok {
+		t.Fatalf("dropped RefreshRunSummary = (%+v, %v), want nothing kept", got, ok)
+	}
+	<-dropped
 }

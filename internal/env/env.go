@@ -46,6 +46,18 @@ func LookupValue(name string) (string, bool) {
 
 // EnvironWithout returns the process environment without the named variables.
 // Owned names remove both spellings; foreign names remove only themselves.
+//
+// WHAT IT IS FOR: a child that is not part of some arrangement must not inherit
+// the arrangement's NAMES. A descriptor handed to a child at least shows up in
+// lsof; an inherited variable is invisible, and it travels to every grandchild
+// for the life of the tree.
+//
+// The worked case is the heavy-suite lock (cmd/codeaf-suite-lock's
+// suiteEnviron). Exporting the lock's path so the wrapper could read it handed
+// it to the SUITE as well, so every process the suite started tried to take a
+// lock the suite itself was already holding, and refused itself. It made the
+// package untestable from inside a locked box, which is a locking scheme
+// nobody can gate.
 func EnvironWithout(names ...string) []string {
 	removed := make(map[string]bool, len(names)*2)
 	for _, name := range names {

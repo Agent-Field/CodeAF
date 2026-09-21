@@ -565,3 +565,24 @@ func TestAWorkerStoppedForItsNotesIsGradedStoppedRatherThanUnfinished(t *testing
 		t.Errorf("a finished node graded %q, want landed", got)
 	}
 }
+
+// THE FIT RECORD KEEPS HOW THE VERDICT WAS EARNED. A later grid must be able
+// to count accepted work by its persisted basis without reopening a task log.
+func TestTheFitRecordReadsThePersistedVerdictBasis(t *testing.T) {
+	const recorded = `{"class":"task.node","model":"plain/model","verdict":"verified","verdictBasis":{"kind":"reading"}}`
+	var row router.Event
+	if err := json.Unmarshal([]byte(recorded), &row); err != nil {
+		t.Fatalf("reading the fit record: %v", err)
+	}
+	data, err := json.Marshal(row)
+	if err != nil {
+		t.Fatalf("writing the fit record: %v", err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatalf("reading the written fit record: %v", err)
+	}
+	if _, ok := fields["verdictBasis"]; !ok {
+		t.Fatalf("the fit record dropped the persisted verdict basis: %s", data)
+	}
+}

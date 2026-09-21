@@ -423,8 +423,8 @@ func TestTheOrderingWordsNoLongerOrderAnything(t *testing.T) {
 	}
 }
 
-// AND EVERYTHING ELSE RANKS EXACTLY AS IT ALWAYS DID — the three tiers, in the
-// same order, whether or not a single provider has ever been measured. This was
+// AND EVERYTHING ELSE RANKS EXACTLY AS IT ALWAYS DID — the same order out of the
+// shared matcher, whether or not a single provider has ever been measured. This was
 // the promise the old grammar was built on ("a word it does not recognise is a
 // word to search for"), and it outlives the grammar: now every word is one.
 func TestAWordRanksTheWayItAlwaysHas(t *testing.T) {

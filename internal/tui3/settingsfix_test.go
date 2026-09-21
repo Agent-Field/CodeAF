@@ -370,8 +370,12 @@ func ranked(query string) []string {
 	return out
 }
 
-// PREFIX, THEN SUBSTRING, THEN SUBSEQUENCE — a ladder, so the fuzzy hits land
-// under the real ones instead of mixed through them.
+// PREFIX, THEN SUBSTRING, THEN SUBSEQUENCE — the order the bonus model
+// produces on its own, with no tiers left to hold it apart: a word that
+// begins the id collects the doubled boundary on its first character, a word
+// that lands after a `/` collects the delimiter boundary, and the letters
+// merely sitting in order score by their alignment alone — so the loose hits
+// land under the real ones instead of mixed through them.
 func TestTheFilterRanksPrefixThenSubstringThenSubsequence(t *testing.T) {
 	want := []string{
 		"gpt-5-classic",             // the id starts with it
@@ -384,8 +388,39 @@ func TestTheFilterRanksPrefixThenSubstringThenSubsequence(t *testing.T) {
 	}
 }
 
-// A QUERY OF SEVERAL WORDS IS AN AND, not a phrase: every token has to match,
-// each in whichever tier it can, and the tokens need not be adjacent in the id.
+// THE GROUP LEADS AND THE SCORE ONLY RANKS INSIDE IT. When more than one
+// service is connected the catalog arrives grouped, and one group's models
+// are not competing with another group's — they are different answers to the
+// same question, offered in the order the services were handed over
+// ([picker.rank], GroupOrder first). So a query the SECOND group answers
+// better still leaves the first group's rows above it, and inside a group the
+// alignment decides — a boundary hit before a mid-word one.
+func TestGroupOrderLeadsAndTheScoreRanksInsideIt(t *testing.T) {
+	grouped := []Model{
+		{ID: "second-service/gpt-5", Group: "second", GroupOrder: 1},
+		{ID: "first-service/xagpt", Group: "first", GroupOrder: 0},
+		{ID: "second-service/echo-gpt", Group: "second", GroupOrder: 1},
+	}
+	p := picker{}
+	p.start(grouped, "")
+	p.filter.setText("gpt")
+	p.rank()
+	got := make([]string, 0, len(p.hits))
+	for _, at := range p.hits {
+		got = append(got, p.all[at].ID)
+	}
+	// xagpt answers `gpt` worse than either second-service row and still
+	// leads, because its group was handed over first; the two second-service
+	// rows then fall to the score, the `/` boundary ahead of the `-` one.
+	want := []string{"first-service/xagpt", "second-service/gpt-5", "second-service/echo-gpt"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("filtered to %v, want %v", got, want)
+	}
+}
+
+// A QUERY OF SEVERAL WORDS IS AN AND, not a phrase: every word has to match,
+// each scored wherever in the id it lands, and the words need not be adjacent
+// in it.
 func TestTheFilterMatchesEveryTokenOfAQuery(t *testing.T) {
 	// The reported case: "ds" is a subsequence of deepseek, "v4" a substring.
 	if got := ranked("ds v4"); len(got) != 1 || got[0] != "deepseek/deepseek-v4-flash" {

@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,36 +30,46 @@ func TestJobShellEnvCannotReachTheHostTmux(t *testing.T) {
 	// The nil-Env path: no shelf and no rtk, so runShell would otherwise leave
 	// cmd.Env unset and inherit the parent's whole environment verbatim.
 	toolbox := NewToolbox(workspace(t), "1", nil)
-	run := toolbox.runShell(t.Context(), "env", 10, "")
+	run := toolbox.runShell(t.Context(), jobTmuxMarker, 10, "")
 	if run.err != nil {
-		t.Fatalf("runShell env: %v\n%s", run.err, run.body)
+		t.Fatalf("runShell marker: %v\n%s", run.err, run.body)
 	}
-
-	got := shellEnvMap(run.body)
-	if value, present := got["TMUX"]; present {
-		t.Errorf("TMUX reached the job's shell: %q", value)
-	}
-	if value, present := got["TMUX_PANE"]; present {
-		t.Errorf("TMUX_PANE reached the job's shell: %q", value)
-	}
-	want := filepath.Join(profile, "tmux")
-	if got["TMUX_TMPDIR"] != want {
-		t.Errorf("TMUX_TMPDIR = %q, want %q (a directory codeaf owns)", got["TMUX_TMPDIR"], want)
-	}
-	if info, err := os.Stat(want); err != nil || !info.IsDir() {
-		t.Errorf("the tmux directory %q was not created: %v", want, err)
-	}
+	assertJobTmuxFloor(t, run.body, profile)
 }
 
-// shellEnvMap reads `env` output into name -> value.
-func shellEnvMap(body string) map[string]string {
-	got := make(map[string]string)
-	for _, line := range strings.Split(body, "\n") {
-		if name, value, ok := strings.Cut(line, "="); ok {
-			got[name] = value
+// jobTmuxMarker asks the job shell to print the three tmux variables on one
+// short line, with an explicit "unset" for any that is absent. One line always
+// fits the captured preview; a full env dump does not, and the output collector
+// truncates it on a machine with a large ambient environment, cutting the
+// TMUX_TMPDIR line so the test reads it absent even though the job shell had it.
+// The JOBTMUX word lets the test insist the line was actually captured, so a
+// truncated dump can never read as a vacuous pass on any of the three.
+const jobTmuxMarker = `printf 'JOBTMUX TMUX=[%s] TMUX_PANE=[%s] TMUX_TMPDIR=[%s]\n' "${TMUX-unset}" "${TMUX_PANE-unset}" "${TMUX_TMPDIR-unset}"`
+
+// assertJobTmuxFloor fails unless the captured output carries the marker line
+// and it shows TMUX and TMUX_PANE unset and TMUX_TMPDIR at the profile's own
+// tmux directory: the floor a job shell must land on, no reach to the host tmux
+// server and a private socket namespace it owns.
+func assertJobTmuxFloor(t *testing.T, output, profile string) {
+	t.Helper()
+	var line string
+	for _, candidate := range strings.Split(output, "\n") {
+		if strings.HasPrefix(candidate, "JOBTMUX ") {
+			line = candidate
+			break
 		}
 	}
-	return got
+	if line == "" {
+		t.Fatalf("the marker line never reached the captured output, so nothing here proves the floor:\n%s", output)
+	}
+	tmuxDir := filepath.Join(profile, "tmux")
+	want := "JOBTMUX TMUX=[unset] TMUX_PANE=[unset] TMUX_TMPDIR=[" + tmuxDir + "]"
+	if line != want {
+		t.Errorf("job shell tmux floor = %q, want %q", line, want)
+	}
+	if info, err := os.Stat(tmuxDir); err != nil || !info.IsDir() {
+		t.Errorf("the tmux directory %q was not created: %v", tmuxDir, err)
+	}
 }
 
 // The background-job registry builds its own environment (jobs.go) and used to
@@ -71,7 +82,7 @@ func TestBackgroundJobShellCannotReachTheHostTmux(t *testing.T) {
 	t.Setenv("TMUX_PANE", "%2")
 
 	tools, space := backgroundToolbox(t)
-	if result := tools.Execute(t.Context(), "sh", `{"cmd":"env","bg":true}`); result.IsError {
+	if result := tools.Execute(t.Context(), "sh", fmt.Sprintf(`{"cmd":%q,"bg":true}`, jobTmuxMarker)); result.IsError {
 		t.Fatalf("background start failed: %s", result.Content)
 	}
 	waitForJobDone(t, tools, 1, slack(5*time.Second))
@@ -80,15 +91,5 @@ func TestBackgroundJobShellCannotReachTheHostTmux(t *testing.T) {
 		t.Fatalf("read job log: %v", err)
 	}
 
-	got := shellEnvMap(string(body))
-	if value, present := got["TMUX"]; present {
-		t.Errorf("TMUX reached the job's shell: %q", value)
-	}
-	if value, present := got["TMUX_PANE"]; present {
-		t.Errorf("TMUX_PANE reached the job's shell: %q", value)
-	}
-	want := filepath.Join(profile, "tmux")
-	if got["TMUX_TMPDIR"] != want {
-		t.Errorf("TMUX_TMPDIR = %q, want %q", got["TMUX_TMPDIR"], want)
-	}
+	assertJobTmuxFloor(t, string(body), profile)
 }

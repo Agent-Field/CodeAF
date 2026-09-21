@@ -159,7 +159,8 @@ type Engine struct {
 	// carried in Welcome so a linked-local surface writes every local row back
 	// to the profile the running conversation actually reads. A remote surface
 	// does not use the path for local writes.
-	ProfileDir string
+	ProfileDir        string
+	UnreadProfileKeys []string
 	// Workspace is the directory the engine resolved and works in — the answer
 	// to the path the hello asked for, which the welcome carries back.
 	Workspace string
@@ -1159,6 +1160,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		ApprovalMode:               sess.engine.ApprovalMode,
 		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,
 		ProfileDir:                 sess.engine.ProfileDir,
+		UnreadProfileKeys:          append([]string(nil), sess.engine.UnreadProfileKeys...),
 		PlacesRoot:                 sess.engine.PlacesRoot,
 		Live:                       sess.liveLocked(),
 		Held:                       sess.heldWaitingLocked(s.arrived),
@@ -2625,6 +2627,152 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		return json.Marshal(dropped)
+
+	case MethodPlanTasks:
+		door, ok := agent.(interface{ PlanTasks() []session.PlanTaskRow })
+		if !ok {
+			return json.Marshal([]session.PlanTaskRow(nil))
+		}
+		return json.Marshal(door.PlanTasks())
+
+	case MethodPlanTaskPage:
+		args, err := arg[PlanTaskPageArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			PlanTaskPage(string) (session.PlanTaskPage, bool)
+		})
+		if !ok {
+			return json.Marshal(PlanTaskPageResult{})
+		}
+		page, found := door.PlanTaskPage(args.ID)
+		return json.Marshal(PlanTaskPageResult{Page: page, OK: found})
+
+	case MethodPlanNote:
+		args, err := arg[PlanTextArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanNote(string, string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot note its plan")
+		}
+		return nil, door.PlanNote(args.ID, args.Text)
+
+	case MethodPlanPause:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanPause(string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot pause its plan")
+		}
+		return nil, door.PlanPause(args.ID)
+
+	case MethodPlanResume:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanResume(string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot resume its plan")
+		}
+		return nil, door.PlanResume(args.ID)
+
+	case MethodPlanCancel:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanCancel(string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot cancel its plan")
+		}
+		return nil, door.PlanCancel(args.ID)
+
+	case MethodPlanAmend:
+		args, err := arg[PlanTextArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanAmend(string, string) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot amend its plan")
+		}
+		return nil, door.PlanAmend(args.ID, args.Text)
+
+	case MethodPlanPriority:
+		args, err := arg[PlanPriorityArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ PlanPriority(string, int) error })
+		if !ok {
+			return nil, errors.New("engine: this engine cannot prioritize its plan")
+		}
+		return nil, door.PlanPriority(args.ID, args.Priority)
+
+	case MethodPlanRunSummary:
+		args, err := arg[PlanRunSummaryArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			PlanRunSummary(string) (session.RunPlanSummary, bool)
+		})
+		if !ok {
+			return json.Marshal(PlanRunSummaryResult{})
+		}
+		summary, found := door.PlanRunSummary(args.RootID)
+		return json.Marshal(PlanRunSummaryResult{Summary: summary, OK: found})
+
+	case MethodRefreshRunSummary:
+		args, err := arg[RefreshRunSummaryArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool)
+		})
+		if !ok {
+			return json.Marshal(PlanRunSummaryResult{})
+		}
+		ctx := context.Background()
+		cancel := func() {}
+		if args.Budget > 0 {
+			ctx, cancel = context.WithTimeout(ctx, args.Budget)
+		}
+		defer cancel()
+		summary, found := door.RefreshRunSummary(ctx, args.RootID, args.LastLook)
+		return json.Marshal(PlanRunSummaryResult{Summary: summary, OK: found})
+
+	case MethodPlanSpend:
+		// THE READ SIDE OF THE RUN'S SPEND-BY-SEAT, carried across the way
+		// [MethodRewindPoints] is. It is ASSERTED rather than called on the
+		// concrete agent for the reason every other optional door here is: this
+		// server fronts more than one kind of engine, and a scripted one may have
+		// no plan store.
+		//
+		// AND AN ENGINE WITH NO DOOR ANSWERS AN EMPTY ROLLUP, NOT AN ERROR. A
+		// conversation that seeded no plan has no workers and no seats, and the
+		// spend page draws its seat block from the lines it is handed — an empty
+		// slice is the page saying nothing, which is the honest reading and the
+		// one the emptiness law draws (the same answer a nil store gives
+		// [session.Agent.PlanSpend] itself).
+		args, err := arg[PlanSpendArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			PlanSpend(time.Time) []session.PlanSpendLine
+		})
+		if !ok {
+			return json.Marshal([]session.PlanSpendLine(nil))
+		}
+		return json.Marshal(door.PlanSpend(args.Since))
 
 	case MethodSessionsRecent:
 		sess.mu.Lock()

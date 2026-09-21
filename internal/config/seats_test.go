@@ -994,3 +994,49 @@ func TestAnAutoRowUnderLearnReadsTheLearnRung(t *testing.T) {
 		}
 	}
 }
+
+// THE CHECK SEAT IS RESOLVED AT THE DOOR, rung by rung: its flag, its
+// environment, a plan seat pinned by flag or environment, then empty for the
+// crew factory's careful row. A plan filled by the crew does not answer.
+func TestCheckSeatClimbsItsOwnLadder(t *testing.T) {
+	planFlag := Seat{Role: SeatPlan, Model: "vendor/named-plan-flag", Source: SeatFlag}
+	planEnv := Seat{Role: SeatPlan, Model: "vendor/named-plan-env", Source: SeatEnv}
+	planCrew := Seat{Role: SeatPlan, Model: "vendor/crew-plan", Source: SeatCrew}
+
+	t.Run("check flag", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "vendor/named-check-env")
+		seat := CheckSeat("vendor/named-check-flag", planFlag)
+		if seat.Model != "vendor/named-check-flag" || seat.Source != SeatFlag {
+			t.Fatalf("check seat = %q (%s), want the check flag", seat.Model, seat.Rung())
+		}
+	})
+	t.Run("check environment", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "vendor/named-check-env")
+		seat := CheckSeat("", planFlag)
+		if seat.Model != "vendor/named-check-env" || seat.Source != SeatEnv {
+			t.Fatalf("check seat = %q (%s), want the check environment", seat.Model, seat.Rung())
+		}
+	})
+	t.Run("plan flag", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "")
+		seat := CheckSeat("", planFlag)
+		if seat.Model != planFlag.Model || seat.Source != SeatFlag {
+			t.Fatalf("check seat = %q (%s), want the flagged plan", seat.Model, seat.Rung())
+		}
+	})
+	t.Run("plan environment", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "")
+		seat := CheckSeat("", planEnv)
+		if seat.Model != planEnv.Model || seat.Source != SeatEnv {
+			t.Fatalf("check seat = %q (%s), want the environment plan", seat.Model, seat.Rung())
+		}
+	})
+	t.Run("crew careful", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "")
+		for _, plan := range []Seat{{Role: SeatPlan}, planCrew} {
+			if seat := CheckSeat("", plan); seat.Model != "" {
+				t.Fatalf("check seat = %q, want empty for the crew's careful row", seat.Model)
+			}
+		}
+	})
+}

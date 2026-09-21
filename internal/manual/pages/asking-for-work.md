@@ -87,11 +87,12 @@ deleted your own copy. Your file is read once and never written to.
 
 ## Attribution: how codeaf signs git work
 
-When a worker makes git commits for you, it adds one trailer at the end of the
-commit message — `Co-Authored-By: codeaf` — and nothing in the subject or the
-body. When it opens a pull request or an issue, it ends the body with an
+When a worker makes git commits for you, it ends the message with two
+trailer lines — `Assisted-by: CodeAF` naming the model, then
+`Co-Authored-By: CodeAF` — and nothing in the subject or the body. When it
+opens a pull request or an issue, it ends the body with an
 em-dash line and one sentence: *Drafted with CodeAF · reviewed and owned
-by the author*, linking to `agentfield.ai/github`.
+by the author*, linking to `agentfield.ai/github/codeaf`.
 
 That is the whole of it. It is provenance, not a byline: never inside a code
 file, never in a commit subject, never in your README, and never in a

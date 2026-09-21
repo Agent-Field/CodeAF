@@ -179,8 +179,9 @@ type pickerRank struct {
 	// ([Model.GroupOrder]), and it is the OUTER key of every sort — see the
 	// comparator in [picker.sortHits] for why a column may not reorder services.
 	group int
-	// score is how well this row matched what was typed ([queryScore], lower is
-	// better) and is meaningless with an empty box, where every row scores zero.
+	// score is how well this row matched what was typed ([fuzzy.Score], HIGHER
+	// is better — the one convention the whole repo's matcher keeps) and is
+	// meaningless with an empty box, where every row scores zero.
 	score  int
 	via    string
 	first  float64
@@ -322,17 +323,18 @@ func (p *picker) sortHits(ranked bool) {
 			// The name column's order and the search's order are both orders of
 			// the same column, and with a query in the box the search's is what
 			// was asked for: `gpt` has to put `gpt-5-classic` above
-			// `anthropic/claude-gpt-echo`, which the three tiers do
-			// ([tokenScore]: a prefix beats a substring beats loose letters) and
-			// plain alphabetical does not. Sorting by name alone put the fuzzy
-			// hit first, which is the search itself going wrong.
+			// `anthropic/claude-gpt-echo`, which the shared matcher does (a word
+			// found whole, early, on a boundary beats letters scattered through a
+			// name) and plain alphabetical does not. Sorting by name alone put the
+			// fuzzy hit first, which is the search itself going wrong.
 			//
-			// SO RELEVANCE LEADS AND THE ARROW DECIDES THE TIE. Inside one tier
-			// the rows are alphabetical, forwards or back — and with an empty box
-			// every score is zero, so the whole column is plainly alphabetical
-			// and the arrow means all of it.
+			// SO RELEVANCE LEADS AND THE ARROW DECIDES THE TIE — the BIGGER score
+			// first, which is [fuzzy.Score]'s direction and the repo's. Inside one
+			// band the rows are alphabetical, forwards or back, and with an empty
+			// box every row scores zero, so the whole column is plainly
+			// alphabetical and the arrow means all of it.
 			if first.score != second.score {
-				return first.score < second.score
+				return first.score > second.score
 			}
 			return tableAheadName(order.back, first.name, second.name)
 		}

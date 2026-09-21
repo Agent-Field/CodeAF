@@ -334,10 +334,13 @@ func TestEveryRungIsReachable(t *testing.T) {
 }
 
 func TestARankerFoldsOnceAndKeepsItsOwnScratch(t *testing.T) {
-	// A KEYSTROKE IS ONE PASS AND NO ALLOCATION. The list is re-ranked on every
-	// character typed into the filter box, so a scorer that folded or split a
-	// few hundred paths per keystroke would be doing all of its work again for
-	// each one.
+	// A KEYSTROKE IS ONE PASS AND NO ALLOCATION PER CANDIDATE. The list is
+	// re-ranked on every character typed into the filter box, so a scorer that
+	// folded or split a few hundred paths per keystroke would be doing all of
+	// its work again for each one. What a keystroke MAY cost is the query
+	// itself: its words become matcher terms once, on top of the sort's own
+	// closure and swapper. Anything past three is per-candidate work — a
+	// single allocation inside the loop would show up four hundred strong.
 	cands := make([]folderRankee, 0, 400)
 	for at := 0; at < 400; at++ {
 		cands = append(cands, folderRankee{Show: "~/code/project-" + string(rune('a'+at%26)) + "/internal/tui3", Rank: at})
@@ -346,8 +349,7 @@ func TestARankerFoldsOnceAndKeepsItsOwnScratch(t *testing.T) {
 	ranker.load(cands)
 	ranker.rank("tui")
 	got := testing.AllocsPerRun(20, func() { ranker.rank("tui") })
-	// The sort's own closure is the one allocation this path is allowed.
-	if got > 2 {
+	if got > 3 {
 		t.Fatalf("a keystroke over 400 folders allocated %.0f times", got)
 	}
 }

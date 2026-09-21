@@ -106,6 +106,33 @@ func TestTheFilterRanksAPrefixAboveASubstring(t *testing.T) {
 	}
 }
 
+// THE MATCHED LETTERS CARRY THE EMPHASIS, AND NOTHING ELSE ON THE ROW DOES.
+// A filter that answered should say WHICH letters answered: the bytes the
+// query matched draw in bold over the row's own ink — the one emphasis this
+// surface already owns — while the rest of the name keeps the ink it had.
+// No new colour, no ground: it is a reading aid for the scan, which is what
+// "subtle" asked for, and not a louder row.
+func TestTheFilterCarriesTheMatchedLettersInBold(t *testing.T) {
+	a := pickerApp(t, &fakeAgent{model: "moonshotai/kimi-k3"}, pickerCatalog)
+	typeLine(t, a, "/model")
+	typeInto(t, a, "gpt")
+	// THE ROW THAT MATCHED MID-NAME, unselected — the prefix row above it took
+	// the cursor, and this test is about the resting rows a person scans:
+	// exactly "gpt" after the author's slash is bold, and not a letter more —
+	// the whole name is in the one string, so a bold run that bled past the
+	// match, or one that skipped a matched byte, does not contain it.
+	want := a.pal.dim("openai/") + a.pal.bold(a.pal.dim("gpt")) + a.pal.dim("-4.1-mini")
+	if !strings.Contains(frame(a), want) {
+		t.Fatalf("the openai row did not draw its matched letters in bold; want %q among:\n%s", want, plain(frame(a)))
+	}
+	// THE ROW THE CURSOR IS ON IS BOLD WHOLE ALREADY, and the span rides that
+	// bold quietly: the label paints as it always has, one wrap, no bold
+	// opened inside a bold that a close could cut short.
+	if !strings.Contains(frame(a), a.pal.bold(a.pal.ink("gpt-5-classic"))) {
+		t.Fatalf("the selected prefix row is no longer painted as itself:\n%s", plain(frame(a)))
+	}
+}
+
 // ENTER APPLIES AND THE LIST STAYS UP. It used to close on the press, which
 // made every choice final and every comparison a round trip; the list is a
 // table now, and esc is the way out ([app.pickerKey]).

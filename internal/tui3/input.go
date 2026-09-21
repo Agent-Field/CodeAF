@@ -339,6 +339,29 @@ func (e *editor) down() {
 // two typed overlays are read before the editor, because while a list is up the
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	// LEAVING IS NEVER MODAL, and these two rungs are read above the door, so
+	// each of them lets the door's key past: a page that is on its way and a
+	// page that is up both took it, and on an engine that never answered the
+	// only key that did anything was one nothing on screen named.
+	door := msg.String() == "ctrl+c"
+	if a.railPlanPending.id != "" && !door {
+		if msg.String() == "esc" {
+			a.railPlanPending = railPlanPending{}
+			return nil
+		}
+		a.railPlanPending.keys = append(a.railPlanPending.keys, msg)
+		return nil
+	}
+	if a.railTaskPlanOn && !door {
+		cmd := a.taskPlanKey(msg)
+		if !a.taskSheet.planOn {
+			a.railTaskPlanOn = false
+		}
+		return cmd
+	}
+	if a.workTabOn {
+		return a.workTabKey(msg)
+	}
 	if cmd, taken := a.pasteChipKey(msg); taken {
 		return cmd
 	}

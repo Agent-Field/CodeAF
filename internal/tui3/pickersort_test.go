@@ -270,14 +270,15 @@ func TestTheNameColumnPutsTheBestMatchFirst(t *testing.T) {
 	}
 
 	// AND WITH `gpt` TYPED the prefix match leads, then the substring, then the
-	// loose letters — the three tiers, not the alphabet.
+	// loose letters — what the search scored, not the alphabet.
 	typeInto(t, a, "gpt")
 	want := []string{"gpt-5-classic", "openai/gpt-4.1-mini", "anthropic/claude-gpt-echo"}
 	if got := pickerIDs(a); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("typing gpt gave %v, want %v", got, want)
 	}
 
-	// AND THE ARROW STILL MEANS SOMETHING: it decides the order INSIDE a tier, so
+	// AND THE ARROW STILL MEANS SOMETHING: it decides the order INSIDE a band of
+	// equal matches, so
 	// turning it round cannot promote a worse match over a better one.
 	drive(t, a, key(tasksSortKeyChord))
 	if got := pickerIDs(a); got[0] != "gpt-5-classic" {

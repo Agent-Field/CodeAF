@@ -364,8 +364,9 @@ func TestJobListShowsEveryStateAndLastLogLine(t *testing.T) {
 }
 
 type backgroundThenFinalCompleter struct {
-	space *Workspace
-	calls atomic.Int32
+	space           *Workspace
+	calls           atomic.Int32
+	survivorStarted time.Time
 }
 
 func (c *backgroundThenFinalCompleter) CompleteWithMessages(ctx context.Context, _ []ai.Message, _ ...ai.Option) (*ai.Response, error) {
@@ -376,10 +377,14 @@ func (c *backgroundThenFinalCompleter) CompleteWithMessages(ctx context.Context,
 	}
 	path := filepath.Join(c.space.Root(), "survivor.pid")
 	for {
-		if _, err := os.Stat(path); err == nil {
-			return &ai.Response{Choices: []ai.Choice{{Message: ai.Message{
-				Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "done"}},
-			}}}, Usage: &ai.Usage{}}, nil
+		if pidBody, err := os.ReadFile(path); err == nil {
+			pid, _ := strconv.Atoi(strings.TrimSpace(string(pidBody)))
+			if started, identityErr := ProcessStartTime(pid); identityErr == nil {
+				c.survivorStarted = started
+				return &ai.Response{Choices: []ai.Choice{{Message: ai.Message{
+					Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "done"}},
+				}}}, Usage: &ai.Usage{}}, nil
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -390,6 +395,7 @@ func (c *backgroundThenFinalCompleter) CompleteWithMessages(ctx context.Context,
 }
 
 func TestLeafEndTerminatesSurvivorsAndNotesCount(t *testing.T) {
+
 	space := workspace(t)
 	client := &backgroundThenFinalCompleter{space: space}
 	linear := NewLinear(client, space, nil, 5, 1_000_000, time.Minute)
@@ -406,7 +412,7 @@ func TestLeafEndTerminatesSurvivorsAndNotesCount(t *testing.T) {
 		t.Fatalf("survivor did not start: %v; log=%q artifacts=%v", err, logBody, outcome.Artifacts)
 	}
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(pidBody)))
-	if err := syscall.Kill(pid, 0); err == nil {
+	if started, err := ProcessStartTime(pid); err == nil && started.Equal(client.survivorStarted) {
 		t.Fatalf("process %d survived leaf end", pid)
 	}
 	if _, ok := space.Locate(filepath.Join(jobsDir, jobLogName("1", 1))); !ok {
