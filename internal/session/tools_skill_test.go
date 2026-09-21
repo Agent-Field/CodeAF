@@ -30,7 +30,7 @@ func shelfSkill(t *testing.T, brain *store.Store, name, doc string) string {
 	if err != nil {
 		t.Fatalf("record skill %s: %v", name, err)
 	}
-	if err := brain.ActivateSkill(candidate.Seq, artifact); err != nil {
+	if err := brain.ActivateSkill(candidate.Seq, artifact, ""); err != nil {
 		t.Fatalf("activate skill %s: %v", name, err)
 	}
 	return artifact
