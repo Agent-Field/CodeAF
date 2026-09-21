@@ -1129,6 +1129,14 @@ var OperatorEnvPins = []string{
 	"CODEAF_NO_UPDATE_CHECK",
 	"CODEAF_GITHUB_API",
 	"CODEAF_GITHUB_DOWNLOAD",
+	// CODEAF_INSTALL_NAME belongs to the shell installer and not to this
+	// program: it chooses the file name an install writes, and codeaf never
+	// reads it. It is spelled in Go at all only because the curl line codeaf
+	// offers after a failed update has to be the command that reinstalls THIS
+	// file, and a file installed under another name needs that word in the
+	// line. Plumbing rather than a row for the plainest reason there is: a row
+	// would persist a preference this binary cannot act on.
+	"CODEAF_INSTALL_NAME",
 	// The two pins on the model-call log (internal/calllog). CODEAF_CALL_LOG
 	// switches it off or moves the file; CODEAF_CALL_LOG_BODIES adds the whole
 	// request and response to every line. Plumbing rather than settings rows,
