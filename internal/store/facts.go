@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -755,6 +756,20 @@ func (s *Store) SupersedeFactWithReason(factSeq, bySeq int64, reason string) err
 		return fmt.Errorf("supersede fact: %w", err)
 	}
 	return tx.Commit()
+}
+
+// SkillName is the shelf name of a skill fact — the one spelling every reader
+// of the shelf matches on. It is the directory the artifact points at, or the
+// scope when the fact predates installation. use_skill answers names spelled
+// this way (tools_skill.go's get), so a reader matching anything else answers
+// a name the worker was never shown.
+func (f Fact) SkillName() string {
+	if artifact := strings.TrimSpace(f.Artifact); artifact != "" {
+		if base := filepath.Base(artifact); base != "." && base != "/" {
+			return base
+		}
+	}
+	return strings.TrimSpace(f.Scope)
 }
 
 // SkillFacts lists skills in one status, newest first. Empty status includes
