@@ -268,7 +268,7 @@ on a remote path — expect to see the full path.
 
 Yes, and they show **the far machine's**.
 
-`space` `space` opens the home of the machine your session runs on: its projects, its
+`esc` opens the home of the machine your session runs on: its projects, its
 conversations, what each of them ran, and what keeps an eye on it. `enter` on a row opens
 that conversation beside the one you are in — the engine gives it a connection of its own
 and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can

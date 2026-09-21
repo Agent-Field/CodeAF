@@ -496,7 +496,7 @@ and says `here`.
 
 ## Where the cursor starts on home — on my previous chat — and where the first down arrow goes
 
-**Opening home with `space` `space`, `/home` or `alt+1` puts the cursor on the conversation
+**Opening home with `esc`, `/home` or `alt+1` puts the cursor on the conversation
 this window was in before the one in front** — the most recent other one on this window's
 own tab stack — so going back is `enter`. A window that has held only one conversation has no
 "before", and the cursor is on its own row in the conversation list, which says `here`.
@@ -670,7 +670,7 @@ Four ways, and each of them is you saying which conversation you mean:
 | `codeaf chat --session <path>` | that conversation, no home |
 | `codeaf resume` | the session picker, no home |
 | `codeaf chat --once "text"` | replies printed with no surface; one reply normally, or every landing-woken reply when `--yolo` has a budget |
-| `codeaf --host <machine>` | the far machine's session, no greeting — `space` `space` opens that machine's home |
+| `codeaf --host <machine>` | the far machine's session, no greeting — `esc` opens that machine's home |
 
 And on a machine with only one conversation — a first run — home does not greet you.
 There is no setting for this and no flag to turn it off: whether home greets you follows
@@ -1054,7 +1054,7 @@ All of the following holds over the ordinary engine socket, `--host`, `--at` and
 
 ## How do I switch to my other chat — and is it still running
 
-**`tab` with an empty message box**, or `space` `space` and then `enter` — home opens with
+**`tab` with an empty message box**, or `esc` and then `enter` — home opens with
 the cursor already on the chat you were in before this one. Either goes straight to it;
 nothing is reopened and nothing is replayed from cold that does not have to be.
 

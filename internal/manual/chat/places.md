@@ -796,14 +796,16 @@ afternoon.
 place segment and the legend under the box already carry. On a local session it is not there
 at all: a machine name is worth a word only when there is more than one machine in play.
 
-## Why is home empty over ssh when I connect to another machine — Escape over --host
+## Why is home empty over ssh when I connect to another machine — Escape, once space space, over --host
 
 **It is not empty any more, and this is the answer if you have seen it be.**
 
-`space` `space` over `--host` opens the home of the machine your session runs on: its
+`esc` over `--host` opens the home of the machine your session runs on: its
 projects, its conversations, and what each of those ran. `enter` on a row opens that
 conversation beside the one you are in — the engine gives it a connection of its own and
-the chat you came from keeps running, the same door `codeaf resume` uses locally.
+the chat you came from keeps running, the same door `codeaf resume` uses locally. Two
+spaces over an empty box used to be this door as well; since 2026-09-17 `space` `space`
+types two spaces and nothing more, here and locally, and `esc` is the key.
 
 It used to draw **one dim line** where the rows would be —
 `home shows this machine's projects, and this session is on another` — because the projects
