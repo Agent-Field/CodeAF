@@ -2,45 +2,42 @@ package session
 
 import "testing"
 
-// THIS FILE IS THE ONLY THING IN THE PACKAGE THAT TESTS THE DEFAULT.
+// THE DEFAULT IS A FACT WORTH PINNING WHICHEVER WAY IT POINTS.
 //
-// hermetic_test.go's TestMain pins CODEAF_TASK_BELT to the older belt for the
-// whole suite, because this package's tests were written against that engine
-// and named it by saying nothing. That pin is correct and it has a cost: with
-// it in place, nothing in the package would notice if the default went back to
-// the older belt, because every test would keep passing and the suite's green
-// would be computed over a road no person runs.
+// The bash belt was made the default in #1335 and the default was moved back
+// here, on a measured comparison rather than on anybody's reading. What that
+// episode showed is that the default had never been asserted anywhere: it was
+// carried only by the absence of a value in other tests, so it could move, and
+// did, without one test in the tree saying a word about it.
 //
-// So the truth table is asserted here, by name, with the variable set for each
-// row through t.Setenv — which outranks the package pin and is restored on the
-// way out. An empty value is a row, and a deliberate one: an exported but blank
-// variable must read as an unset one, which is the default, which is bash.
-func TestTheBeltIsBashUnlessOneOfThreeWordsSaysOtherwise(t *testing.T) {
+// So the switch's whole answer is written out. An unset or blank variable is
+// the older node belt; the exact word `bash` is the harness; nothing else
+// reaches the harness, because the predicate is an equality and not a list.
+func TestTheBeltIsTheNodeBeltUnlessTheWordIsExactlyBash(t *testing.T) {
 	for _, row := range []struct {
 		value string
 		want  bool
 		why   string
 	}{
-		{"", true, "unset or blank is the default, and the default is the harness"},
-		{"bash", true, "the word that used to be the way in still names the harness"},
-		{"node", false, "the older belt, named"},
-		{"legacy", false, "the older belt, under its other name"},
-		{"off", false, "the older belt, for a person who reads the switch as a switch"},
-		{"NODE", false, "the words are matched without case, as a person types them"},
-		{" node ", false, "surrounding space is a person's typing, not a different word"},
-		{"nodes", true, "an unrecognised word leaves a person on the belt they were promised"},
-		{"true", true, "a word that means nothing here does not move anybody"},
-		{"no", true, "and neither does one that looks like it should"},
+		{"", false, "unset or blank is the default, and the default is the node belt"},
+		{"bash", true, "the one word that asks for the harness"},
+		{"node", false, "a word naming the older belt is not the word for the harness"},
+		{"legacy", false, "and neither is this one"},
+		{"off", false, "nor this"},
+		{"BASH", false, "the match is exact: an upper-case spelling does not reach the harness"},
+		{"bashx", false, "and neither does a longer word that starts the same way"},
+		{"true", false, "a word that means nothing here moves nobody"},
 	} {
 		t.Run(row.value, func(t *testing.T) {
 			t.Setenv("CODEAF_TASK_BELT", row.value)
 			if got := bashBeltAsked(); got != row.want {
-				t.Fatalf("CODEAF_TASK_BELT=%q: belt on = %v, want %v — %s", row.value, got, row.want, row.why)
+				t.Fatalf("CODEAF_TASK_BELT=%q: harness on = %v, want %v — %s", row.value, got, row.want, row.why)
 			}
 			// The exported door and the package's own reader are two halves of
-			// one fact, and the whole point of the door is that they cannot
-			// disagree. A change that flipped one and not the other would leave
-			// a run and the landing that judges it on different belts.
+			// one fact. A change that flipped one and not the other would leave
+			// a run and the landing that judges it on different belts, which is
+			// the exact thing the single-reader rule above bashBeltAsked exists
+			// to prevent.
 			if BashBeltAsked() != bashBeltAsked() {
 				t.Fatalf("CODEAF_TASK_BELT=%q: the exported door and the package reader disagree", row.value)
 			}
@@ -48,12 +45,13 @@ func TestTheBeltIsBashUnlessOneOfThreeWordsSaysOtherwise(t *testing.T) {
 	}
 }
 
-// The suite's own pin is a fact worth asserting, because it is what makes every
-// other test in this package a test of the older engine. If it is ever dropped,
-// a hundred and forty tests change what they are testing without one line of
-// them changing, which is exactly what happened when the default moved.
-func TestThePackageSuiteRunsOnTheOlderBelt(t *testing.T) {
-	if bashBeltAsked() {
-		t.Fatal("this package's TestMain no longer pins the older belt: every test here is now testing the harness road it was not written for")
+// SURROUNDING SPACE IS A PERSON'S TYPING. The predicate trims, so a value a
+// shell carried a space into still asks for the harness; this is separate from
+// the table above because it is a property of the reader rather than a row of
+// the switch.
+func TestSpaceAroundTheWordStillAsksForTheHarness(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "  bash  ")
+	if !bashBeltAsked() {
+		t.Fatal("a value with surrounding space did not reach the harness, but the predicate trims")
 	}
 }
