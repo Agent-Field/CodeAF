@@ -47,7 +47,7 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	executable, executableErr := surfaceRunningExecutable()
 	curl := codeupdate.CurlCommand
 	if executableErr == nil {
-		curl = codeupdate.CurlLine(executable, codeupdate.Kind(revision))
+		curl = codeupdate.CurlLine(executable, codeupdate.FollowedChannel(revision))
 	}
 	client := surfaceUpdateClient(revision, codeupdate.CheckTimeout)
 	restart := options.Restart

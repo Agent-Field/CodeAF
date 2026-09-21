@@ -45,10 +45,7 @@ func runUpdate(args []string) error {
 		return fmt.Errorf("choose one of --stable, --rc, --dev, --staging, or --version")
 	}
 	running := updateRevision()
-	channel := "stable"
-	if kind := codeupdate.Kind(running); kind == "dev" || kind == "staging" {
-		channel = kind
-	}
+	channel := codeupdate.FollowedChannel(running)
 	switch {
 	case *stable:
 		channel = "stable"
@@ -67,7 +64,7 @@ func runUpdate(args []string) error {
 		if err != nil {
 			return updateFailure(fmt.Errorf("find the running codeaf: %w", err), curl)
 		}
-		curl = codeupdate.CurlLine(executable, codeupdate.Kind(running))
+		curl = codeupdate.CurlLine(executable, codeupdate.FollowedChannel(running))
 		target, err = codeupdate.ExecutableTarget(func() (string, error) { return executable, nil })
 		if err != nil {
 			return updateFailure(err, curl)

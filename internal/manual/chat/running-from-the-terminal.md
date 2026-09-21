@@ -18,9 +18,12 @@ build refuses with `this codeaf is <running>, ahead of the newest dev <newest> �
 Set `CODEAF_NO_UPDATE_CHECK=1` to skip only the launch check. Dev and staging
 answers are cached beside `config.json` for one hour in `update-check.dev.json`
 and `update-check.staging.json`; stable and rc use `update-check.json` for 24
-hours. A cached newer release is still shown. The curl line reinstalls this file:
-`devaf` gets `curl -fsSL https://agentfield.ai/get/devaf | bash`; a file named
-`codeaf` gets its running build's channel under `/get/codeaf`.
+hours. A cached newer release is still shown. The curl line reinstalls this file
+from the channel the build follows — dev and staging follow themselves, and a
+stable, rc or source build follows stable. So `devaf` gets `curl -fsSL
+https://agentfield.ai/get/devaf | bash`, a dev build named `codeaf` gets
+`/get/codeaf/dev`, and a release candidate gets the plain `/get/codeaf`, the
+same stable release its launch line just named.
 
 ## codeaf update from a shell — --check — default channel — ahead of newest
 

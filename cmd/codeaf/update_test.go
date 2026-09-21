@@ -480,6 +480,33 @@ func TestV6CrossChannelChecksSayOnlyWhatTheyCanOrder(t *testing.T) {
 	}
 }
 
+// D6: a release candidate updates from stable, so a failure on one offers the
+// stable road. Handing an rc user the /get/codeaf/rc line would reinstall a
+// channel their own /update never selects.
+func TestAFailedReleaseCandidateUpdateOffersTheStableRoad(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/releases/latest") {
+			fmt.Fprint(w, `{"tag_name":"v0.3.0"}`)
+			return
+		}
+		http.NotFound(w, request)
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = withUpdateDoor(t, "v0.3.0-rc.1", client, target)
+	err := runUpdate(nil)
+	if err == nil || !strings.Contains(err.Error(), "install a release with: "+codeupdate.CurlCommand) {
+		t.Fatalf("failure = %v, want the stable road", err)
+	}
+	if strings.Contains(err.Error(), "/get/codeaf/rc") {
+		t.Fatalf("failure offered an rc road: %v", err)
+	}
+}
+
 // V7 and D4: a publish moment outranks the date written into the tag. A build
 // whose tag carries the later day but which was published FIRST is behind, so
 // the terminal door installs rather than calling it a downgrade — which it can

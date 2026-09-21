@@ -167,6 +167,23 @@ func Kind(tag string) string {
 	}
 }
 
+// FollowedChannel names the release channel a build takes its updates from.
+// IT IS NOT ALWAYS THE CHANNEL THE TAG WAS CUT ON: a release candidate follows
+// STABLE, because its launch line, its bare /update and its bare `codeaf
+// update` all speak about the stable release its line is heading for. A build
+// from source follows stable too, so the road it is offered is the ordinary
+// one. Only dev and staging follow themselves. Every place that has to answer
+// "which channel is this build on" asks here, so the launch notice and the
+// curl line under it can never name two different roads.
+func FollowedChannel(running string) string {
+	switch Kind(running) {
+	case "dev", "staging":
+		return Kind(running)
+	default:
+		return "stable"
+	}
+}
+
 // ParseChannel returns the channel and calendar date carried by a dev or
 // staging tag. The date is kept as YYYYMMDD because that spelling sorts in the
 // same order as the days it names.

@@ -95,11 +95,7 @@ func updateChoice(argument, running string) codeupdate.Choice {
 	argument = strings.TrimSpace(argument)
 	switch argument {
 	case "":
-		channel := codeupdate.Kind(running)
-		if channel != "dev" && channel != "staging" {
-			channel = "stable"
-		}
-		return codeupdate.Choice{Channel: channel, Running: running}
+		return codeupdate.Choice{Channel: codeupdate.FollowedChannel(running), Running: running}
 	case "stable":
 		return codeupdate.Choice{Channel: "stable", Running: running}
 	case "rc", "dev", "staging":

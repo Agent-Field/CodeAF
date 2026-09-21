@@ -93,20 +93,17 @@ func CheckLaunch(ctx context.Context, options CheckOptions) (Available, bool) {
 	if options.Disabled || internalenv.Get(NoUpdateCheckEnv) == "1" || kind == "other" {
 		return Available{}, false
 	}
-	channel := "stable"
-	if kind == "dev" || kind == "staging" {
-		channel = kind
-	}
-	curlChannel := kind
-	if curlChannel == "other" {
-		curlChannel = "stable"
-	}
+	// THE LINE UNDER THE NOTICE REINSTALLS WHAT THE NOTICE IS ABOUT. Both the
+	// release this asks for and the road it offers come from the one channel
+	// this build follows, so a release candidate — which is told about the
+	// stable release ahead of it — is handed the stable line, not an rc one.
+	channel := FollowedChannel(running)
 	cacheName, lifetime := "update-check.json", cacheLifetime
 	if channel == "dev" || channel == "staging" {
 		cacheName = "update-check." + channel + ".json"
 		lifetime = channelCacheLifetime
 	}
-	curl := CurlLine(options.Executable, curlChannel)
+	curl := CurlLine(options.Executable, channel)
 	now := time.Now
 	if options.Now != nil {
 		now = options.Now

@@ -190,6 +190,54 @@ func TestV4ChannelOrdering(t *testing.T) {
 	}
 }
 
+// D3 and D6: the channel a build FOLLOWS, which is the one its launch line
+// speaks about and the one the road under that line must reinstall. A release
+// candidate follows stable; only dev and staging follow themselves.
+func TestTheChannelABuildFollowsIsStableUnlessItIsDevOrStaging(t *testing.T) {
+	for _, row := range []struct{ running, want string }{
+		{"v0.3.0", "stable"},
+		{"v0.3.0-rc.1", "stable"},
+		{"dev-20260921-aaaaaaaaaaaa", "dev"},
+		{"staging-20260921-aaaaaaaaaaaa", "staging"},
+		{"deadbeefdead", "stable"},
+		{"", "stable"},
+	} {
+		if got := FollowedChannel(row.running); got != row.want {
+			t.Errorf("FollowedChannel(%q) = %q, want %q", row.running, got, row.want)
+		}
+	}
+}
+
+// D6: a release candidate is told about the stable release ahead of it, so the
+// road under that notice installs STABLE — an rc road would install something
+// the notice never named. The file's own name still chooses the address.
+func TestAReleaseCandidateNoticeOffersTheStableRoad(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"tag_name":"v0.3.0"}`)
+	}))
+	defer server.Close()
+	for _, row := range []struct{ name, executable, want string }{
+		{"as codeaf", "/opt/codeaf/codeaf", CurlCommand},
+		{"as devaf", "/opt/codeaf/devaf", "curl -fsSL https://agentfield.ai/get/devaf | bash"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			answer, show := CheckLaunch(context.Background(), CheckOptions{
+				Running: "v0.3.0-rc.1", Executable: row.executable,
+				ProfileDir: t.TempDir(), Client: releaseClient(server, "v0.3.0-rc.1"),
+			})
+			if !show {
+				t.Fatalf("an rc behind its stable line drew no notice: %+v", answer)
+			}
+			if got := answer.Notice(); !strings.HasSuffix(got, "or: "+row.want) {
+				t.Fatalf("notice = %q, want it to end in %q", got, row.want)
+			}
+			if strings.Contains(answer.Notice(), "/get/codeaf/rc") {
+				t.Fatalf("the rc notice offered an rc road: %q", answer.Notice())
+			}
+		})
+	}
+}
+
 // V4: A pair the channel law cannot rank — two different channels, a channel
 // tag beside a version number, or a tag that names no release at all — is
 // neither newer nor ahead, and draws no launch line.
