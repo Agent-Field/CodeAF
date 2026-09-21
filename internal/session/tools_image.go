@@ -184,6 +184,15 @@ func (a *Agent) recordImageArtifact(path, prompt string) {
 // a bad minute are all things a caller can act on, and none of them is a
 // reason to crash anything.
 func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) (string, bool) {
+	// An empty prompt is refused before anything is paid for, the way the
+	// video and music doors refuse theirs: a provider asked to draw nothing
+	// still bills the call, and the answer it sends back reads as its own
+	// fault rather than the caller's. The guard lives here, not on the belt,
+	// so the command line's image door refuses the same call the same way.
+	prompt := strings.TrimSpace(parsed.Prompt)
+	if prompt == "" {
+		return "Invalid arguments: prompt is required", true
+	}
 	// The call's own choice, resolved before anything is paid for, so a word
 	// that matches nothing costs nothing. From here down `model` is the model
 	// that actually draws, wherever it is named — the request, the failure
@@ -202,7 +211,7 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	}
 
 	response, err := gen.Client.GenerateImage(ctx, provider.ImageRequest{
-		Model: model, Prompt: strings.TrimSpace(parsed.Prompt), N: 1, OutputFormat: "png",
+		Model: model, Prompt: prompt, N: 1, OutputFormat: "png",
 		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
 		Size:            strings.TrimSpace(parsed.Size),
 		InputReferences: references,
