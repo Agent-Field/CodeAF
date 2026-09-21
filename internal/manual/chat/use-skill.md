@@ -14,7 +14,16 @@ use_skill mode=list
 use_skill mode=get name=linter
 ```
 
-The name is the directory name on the shelf, exactly as `list` printed it.
+The name is the directory name on the shelf, as `list` printed it. A name that
+differs only in case still resolves — `release-notes` and `Release-Notes` are
+the same skill — and the answer spells the name the shelf holds, so the name you
+read back is the one that works next time.
+
+## When a name misses
+
+A name that matches nothing does not dead-end. The answer says how many skills
+are active on the shelf and names the nearest handful, so you can re-ask with a
+name the shelf actually holds. An empty shelf says so in one plain line.
 
 ## Why it exists
 
