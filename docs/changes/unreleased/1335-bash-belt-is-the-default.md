@@ -2,7 +2,7 @@
 kind: changed
 title: the worker harness is the belt a task runs on, and the switch is now the way out
 pr: 1335
-surface: [engine, chat, cli]
+surface: [engine, chat]
 invalidates:
   - "`CODEAF_TASK_BELT=bash` turned the worker harness on and every machine without it ran the older node belt. The harness is the default now: a `/task` and a `codeaf do` take the run road with nothing set, and the variable only turns it off."
   - "An empty `CODEAF_TASK_BELT` was the same as an unset one and both meant the older belt. An empty value is still the same as unset, and both now mean the harness; the only words that reach the older belt are `node`, `legacy` and `off`."
