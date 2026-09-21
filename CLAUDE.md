@@ -396,6 +396,7 @@ recipe for driving the surface and killing the link on purpose.
 
 ## Learned User Preferences
 
+- For every requested change to the home-screen message box, assess whether it also applies to the conversation message box. When it does, implement the natural analogue in the same change without asking separately. Maintain parity in shared behavior and presentation while preserving context-specific differences; the two message boxes need not be literally identical.
 - Keep designs and local verification robust without wasting laptop time or CPU: prefer deterministic clocks and focused/`pr-ready` paths over real sleeps or unconstrained full `internal/tui3` / `internal/session` suites on a shared box.
 
 ## Learned Workspace Facts
