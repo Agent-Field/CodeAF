@@ -483,6 +483,15 @@ type Verdict struct {
 	// underneath can arrange it. It is true for exactly the failures where the
 	// endpoint is the suspect.
 	Rotate bool
+
+	// Unbounded says this retry has NO LIMIT OF ANY KIND — not a count, and not
+	// the caller's deadline either. It is the one verdict a caller may not
+	// convert into an ending by running out of time ([waitsForEver]), and it is
+	// a field rather than an inference from [Verdict.Attempts] being zero
+	// because zero already means something else and older: an ordinary failure
+	// keeps no count HERE and is bounded by the deadline instead. Reading the
+	// two as one ended the deadline for every ordinary failure in the build.
+	Unbounded bool
 }
 
 // Escalates reports whether this verdict is one that buys a stronger tier. It

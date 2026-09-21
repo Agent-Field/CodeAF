@@ -150,10 +150,11 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 	// where nobody is watching ([Evidence.Watched]).
 	if waitsForEver(e) {
 		return Verdict{
-			Action:   ActionRetry,
-			Reason:   transportReason(e),
-			Attempts: 0,
-			Backoff:  waitFor(e, spent, l.TransportBackoff),
+			Action:    ActionRetry,
+			Reason:    transportReason(e),
+			Attempts:  0,
+			Backoff:   waitFor(e, spent, l.TransportBackoff),
+			Unbounded: true,
 		}
 	}
 	// AND A CALLER WITH NO TIME LEFT HAS NOTHING TO SPEND EITHER. It is the

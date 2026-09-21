@@ -525,6 +525,13 @@ func TestAWatchedWaitOnOneMachineIsNeverGivenUpOn(t *testing.T) {
 		if verdict.Attempts != 0 {
 			t.Errorf("ask %d carries an allowance of %d, want none", spent, verdict.Attempts)
 		}
+		// AND IT SAYS SO IN A FIELD OF ITS OWN. Zero attempts already means
+		// something older and different — an ordinary failure bounded by the
+		// caller's deadline rather than by a count — so a caller reading the
+		// two as one ending would end the deadline for every failure there is.
+		if !verdict.Unbounded {
+			t.Errorf("ask %d does not declare itself unbounded", spent)
+		}
 	}
 	// AND THE DEADLINE DOES NOT END IT EITHER, which is the one place in this
 	// policy where running out of time is not the last word.
@@ -551,7 +558,7 @@ func TestEachMissingPieceEndsTheUnboundedWait(t *testing.T) {
 		evidence := Evidence{Cut: true, OneMachine: true, Watched: true, Cuts: 40}
 		shape.remove(&evidence)
 		verdict := Classify(evidence, limits)
-		if verdict.Retries() && verdict.Attempts == 0 {
+		if verdict.Unbounded {
 			t.Errorf("%s: still waiting for ever after 40 asks", shape.name)
 		}
 	}
@@ -582,5 +589,24 @@ func TestTheWaitOnOneMachineClimbsToACeilingAndStaysThere(t *testing.T) {
 	// is a different endpoint and it costs no time.
 	if wait := waitFor(Evidence{Cut: true, Rerouted: true}, 4, base); wait != 0 {
 		t.Errorf("a pooled cut waits %s, want none", wait)
+	}
+}
+
+// AN ORDINARY FAILURE IS BOUNDED BY THE CALLER'S DEADLINE AND NOT BY A COUNT,
+// which is what [Verdict.Attempts] of zero has meant since the count was
+// removed. It is the reason the unbounded wait needs a field of its own: a
+// caller that read zero attempts as "nothing may end this" would stop the
+// deadline ending any failing request at all.
+func TestZeroAttemptsIsNotTheSameClaimAsUnbounded(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	ordinary := Classify(Evidence{Status: 429, Attempt: 2}, limits)
+	if !ordinary.Retries() {
+		t.Fatalf("an ordinary refusal did %q, want a retry", ordinary.Action)
+	}
+	if ordinary.Attempts != 0 {
+		t.Errorf("an ordinary refusal carries an allowance of %d, want none", ordinary.Attempts)
+	}
+	if ordinary.Unbounded {
+		t.Error("an ordinary refusal declares itself unbounded, so no deadline could end it")
 	}
 }

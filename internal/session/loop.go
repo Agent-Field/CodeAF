@@ -2231,7 +2231,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// AND AN UNBOUNDED WAIT IS NOT CONVERTED BY THE DEADLINE. It is the
 			// one verdict the give-up does not end (taxonomy's [waitsForEver]),
 			// because the person who can see it waiting is the bound.
-			if verdict.Attempts != 0 && !spentAt().Add(wait).Before(deadline) {
+			if !verdict.Unbounded && !spentAt().Add(wait).Before(deadline) {
 				ladder.outOfTime = true
 				verdict, evidence = a.weighLadder(err, ladder)
 			}
@@ -2316,7 +2316,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// phase that says only `retrying` for ten minutes is a hang as far
 			// as the person can tell ([waitingOnOneMachine]).
 			detail := retryOrdinal(attempt+2, verdict.Attempts)
-			if verdict.Attempts == 0 && cuts > 0 {
+			if verdict.Unbounded && cuts > 0 {
 				detail = waitingOnOneMachine(cuts, turnNow().Sub(waitingSince))
 			}
 			a.tellPhase(provider.PhaseRetrying, detail, time.Now())
