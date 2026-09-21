@@ -513,7 +513,7 @@ func TestSkillFactStatusTransitionsSurviveRebuild(t *testing.T) {
 	}
 
 	installed := "/home/test/.codeaf/skills/git-audit"
-	if err := graph.ActivateSkill(first.Seq, installed); err != nil {
+	if err := graph.ActivateSkill(first.Seq, installed, ""); err != nil {
 		t.Fatal(err)
 	}
 	const failure = "check.sh exited 7: fixture rejected"
@@ -594,6 +594,127 @@ func TestPlaybookFactsAndSupersessionSurviveRebuild(t *testing.T) {
 	}
 	if !reflect.DeepEqual(eventsAfter, eventsBefore) {
 		t.Fatal("rebuilding playbooks changed the event journal")
+	}
+}
+
+// Trust/CostCard/Digest persist through candidate creation and activation.
+func TestSkillThreeNewFieldsPersistAndQuery(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "skill-fields.db"))
+	candidate, err := graph.RecordSkillCandidate("", "tool:git",
+		"git-scan checks for secrets", "/workspace/git-scan", "imported-provisional")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Trust != "imported-provisional" {
+		t.Fatalf("candidate trust = %q, want 'imported-provisional'", candidate.Trust)
+	}
+	if err := graph.ActivateSkill(candidate.Seq, "/installed/git-scan", "abc123digest"); err != nil {
+		t.Fatal(err)
+	}
+	active, err := graph.SkillFacts(FactActive, 10)
+	if err != nil || len(active) != 1 {
+		t.Fatalf("active skills = %+v err=%v", active, err)
+	}
+	if active[0].Trust != "imported-provisional" {
+		t.Fatalf("active trust = %q, want 'imported-provisional'", active[0].Trust)
+	}
+	if active[0].Digest != "abc123digest" {
+		t.Fatalf("active digest = %q, want 'abc123digest'", active[0].Digest)
+	}
+	if active[0].CostCard.RunTokens != 0 || active[0].CostCard.ReadTokens != 0 || active[0].CostCard.DelegateTokens != 0 {
+		t.Fatalf("active cost_card should be zero-valued: %+v", active[0].CostCard)
+	}
+	// Survive rebuild.
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := graph.SkillFacts(FactActive, 10)
+	if err != nil || len(after) != 1 {
+		t.Fatalf("after rebuild: skills = %+v err=%v", after, err)
+	}
+	if after[0].Trust != "imported-provisional" || after[0].Digest != "abc123digest" {
+		t.Fatalf("after rebuild: trust=%q digest=%q", after[0].Trust, after[0].Digest)
+	}
+}
+
+// Serving a skill (SkillFactAccessors) increments Uses exactly once and sets LastUsed.
+func TestSkillFactAccessorsRecordsUseOnce(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "skill-serve.db"))
+	candidate, err := graph.RecordSkillCandidate("", "tool:format",
+		"go-format formats Go code", "/workspace/go-format")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.ActivateSkill(candidate.Seq, "/installed/go-format", ""); err != nil {
+		t.Fatal(err)
+	}
+	fact, found, err := graph.FactBySeq(candidate.Seq)
+	if err != nil || !found {
+		t.Fatalf("fact by seq: found=%v err=%v", found, err)
+	}
+	before := fact.Uses
+
+	artifact, doc, digest, trust, err := graph.SkillFactAccessors(candidate.Seq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact != "/installed/go-format" {
+		t.Fatalf("artifact = %q", artifact)
+	}
+	if doc != "go-format formats Go code" {
+		t.Fatalf("doc = %q", doc)
+	}
+	if trust != "authored" {
+		t.Fatalf("trust = %q, want 'authored'", trust)
+	}
+	if digest != "" {
+		t.Fatalf("digest = %q, want empty", digest)
+	}
+	// Uses should be exactly before+1.
+	fact, found, err = graph.FactBySeq(candidate.Seq)
+	if err != nil || !found {
+		t.Fatalf("fact by seq after serve: found=%v err=%v", found, err)
+	}
+	if fact.Uses != before+1 {
+		t.Fatalf("Uses: before=%d after=%d, want %d", before, fact.Uses, before+1)
+	}
+	if fact.LastUsed.IsZero() {
+		t.Fatal("LastUsed should be set after serving")
+	}
+	// Second call increments again.
+	_, _, _, _, err = graph.SkillFactAccessors(candidate.Seq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact, found, err = graph.FactBySeq(candidate.Seq)
+	if err != nil || !found {
+		t.Fatalf("fact by seq: found=%v err=%v", found, err)
+	}
+	if fact.Uses != before+2 {
+		t.Fatalf("Uses after second serve: got %d, want %d", fact.Uses, before+2)
+	}
+}
+
+// Trust defaults to "authored" when the stored value is empty.
+func TestTrustDefaultsToAuthored(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "trust-default.db"))
+	candidate, err := graph.RecordSkillCandidate("", "tool:lint",
+		"go-lint lints Go code", "/workspace/go-lint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Trust != "" {
+		t.Fatalf("empty trust should store as empty string, got %q", candidate.Trust)
+	}
+	if err := graph.ActivateSkill(candidate.Seq, "/installed/go-lint", ""); err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, trust, err := graph.SkillFactAccessors(candidate.Seq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trust != "authored" {
+		t.Fatalf("SkillFactAccessors trust = %q, want 'authored'", trust)
 	}
 }
 

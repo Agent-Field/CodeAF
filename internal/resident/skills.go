@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -97,7 +98,7 @@ func (r *Reconciler) promoteRecurringSkills(ctx context.Context) {
 		}
 		sort.Strings(jobs)
 
-		installed, err := installSkillTrial(ctx, root, selected, jobs)
+		installed, digest, err := installSkillTrial(ctx, root, selected, jobs)
 		if ctx.Err() != nil {
 			return
 		}
@@ -108,7 +109,7 @@ func (r *Reconciler) promoteRecurringSkills(ctx context.Context) {
 			}
 			continue
 		}
-		if err := r.store.ActivateSkill(selected.Seq, installed); err != nil {
+		if err := r.store.ActivateSkill(selected.Seq, installed, digest); err != nil {
 			continue
 		}
 		r.queueLearningMoment(selected.NodeID, forgedSkillMoment(filepath.Base(installed)))
@@ -147,61 +148,117 @@ func skillMatchKey(fact store.Fact) string {
 	return scope + "\x00" + doc
 }
 
-func installSkillTrial(ctx context.Context, root string, candidate store.Fact, jobs []string) (string, error) {
+func installSkillTrial(ctx context.Context, root string, candidate store.Fact, jobs []string) (string, string, error) {
 	rawSource := strings.TrimSpace(candidate.Artifact)
 	if !filepath.IsAbs(rawSource) {
-		return "", fmt.Errorf("candidate artifact %q is not absolute", rawSource)
+		return "", "", fmt.Errorf("candidate artifact %q is not absolute", rawSource)
 	}
 	source, err := filepath.Abs(rawSource)
 	if err != nil {
-		return "", fmt.Errorf("resolve candidate artifact: %w", err)
+		return "", "", fmt.Errorf("resolve candidate artifact: %w", err)
 	}
 	if pathsOverlap(source, root) {
-		return "", fmt.Errorf("candidate artifact %q overlaps the skill shelf", source)
+		return "", "", fmt.Errorf("candidate artifact %q overlaps the skill shelf", source)
 	}
 	staging, err := os.MkdirTemp(root, ".candidate-")
 	if err != nil {
-		return "", fmt.Errorf("create skill staging directory: %w", err)
+		return "", "", fmt.Errorf("create skill staging directory: %w", err)
 	}
 	defer os.RemoveAll(staging)
 
 	if err := copySkillDirectory(source, staging); err != nil {
-		return "", fmt.Errorf("prepare skill trial: %w", err)
+		return "", "", fmt.Errorf("prepare skill trial: %w", err)
 	}
 	provenance := strings.Join(jobs, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(staging, "PROVENANCE"), []byte(provenance), 0o644); err != nil {
-		return "", fmt.Errorf("write skill provenance: %w", err)
+		return "", "", fmt.Errorf("write skill provenance: %w", err)
 	}
 	if err := runSkillCheck(ctx, staging); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if _, err := skillExecutable(staging); err != nil {
-		return "", fmt.Errorf("check.sh removed the skill executable: %w", err)
+		return "", "", fmt.Errorf("check.sh removed the skill executable: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(staging, "PROVENANCE"), []byte(provenance), 0o644); err != nil {
-		return "", fmt.Errorf("rewrite skill provenance: %w", err)
+		return "", "", fmt.Errorf("rewrite skill provenance: %w", err)
 	}
 
 	slug := skillSlug(filepath.Base(source))
 	target := filepath.Join(root, slug)
 	if _, err := os.Lstat(target); err == nil {
-		// The artifact's own name is the command workers were taught. Preserve
-		// it normally; only a real shelf collision earns a durable sequence
-		// suffix, so installation never overwrites another learned capability.
 		slug += "-" + strconv.FormatInt(candidate.Seq, 10)
 		target = filepath.Join(root, slug)
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("install skill: inspect target: %w", err)
+		return "", "", fmt.Errorf("install skill: inspect target: %w", err)
 	}
 	if _, err := os.Lstat(target); err == nil {
-		return "", fmt.Errorf("install skill: target %q already exists", target)
+		return "", "", fmt.Errorf("install skill: target %q already exists", target)
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("install skill: inspect target: %w", err)
+		return "", "", fmt.Errorf("install skill: inspect target: %w", err)
 	}
 	if err := os.Rename(staging, target); err != nil {
-		return "", fmt.Errorf("install skill: %w", err)
+		return "", "", fmt.Errorf("install skill: %w", err)
 	}
-	return target, nil
+
+	digest, err := contentDigest(target)
+	if err != nil {
+		return "", "", fmt.Errorf("install skill: compute digest: %w", err)
+	}
+	return target, digest, nil
+}
+
+// contentDigest returns a sha256 digest of all regular files under dir,
+// sorted by relative path. Symlinks are refused — installSkillTrial rejects
+// them earlier, and this read ensures the digest covers only what the trial
+// copied.
+func contentDigest(dir string) (string, error) {
+	entries := make([]string, 0)
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		relative, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, relative)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(entries)
+
+	h := sha256.New()
+	for _, relative := range entries {
+		path := filepath.Join(dir, relative)
+		// Write the relative path as a prefix so two directories with
+		// different file structures but the same content after concatenation
+		// produce different digests.
+		if _, err := io.WriteString(h, relative+"\x00"); err != nil {
+			return "", err
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return "", err
+		}
+		if _, err := io.Copy(h, f); err != nil {
+			f.Close()
+			return "", err
+		}
+		f.Close()
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 func copySkillDirectory(source, target string) error {

@@ -17,7 +17,7 @@ func TestCraftAndSkillCommandsJournalAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record skill: %v", err)
 	}
-	if err := s.ActivateSkill(skill.Seq, skill.Artifact); err != nil {
+	if err := s.ActivateSkill(skill.Seq, skill.Artifact, ""); err != nil {
 		t.Fatalf("activate skill: %v", err)
 	}
 
@@ -102,7 +102,7 @@ func TestSkillRetireIsCheckedAtTheFunnel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record skill: %v", err)
 	}
-	if err := s.ActivateSkill(skill.Seq, skill.Artifact); err != nil {
+	if err := s.ActivateSkill(skill.Seq, skill.Artifact, ""); err != nil {
 		t.Fatalf("activate skill: %v", err)
 	}
 	if _, err := s.RequestCommand(Command{
