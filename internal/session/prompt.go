@@ -359,6 +359,14 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(quickPrompt, "\n"))
 	}
+	// AND THE SHELF THIS CONVERSATION ALREADY OWNS, when it has one. The skill
+	// catalog is dynamic CONTENT rather than a fact about the shape, so it is
+	// composed here from the store and not from beltfacts.go, and it renders
+	// nothing at all on an empty shelf (skillcatalog.go).
+	if catalog := renderSkillCatalog(config); catalog != "" {
+		out.WriteString("\n\n")
+		out.WriteString(catalog)
+	}
 
 	out.WriteString(workerFooter(config, now))
 	return out.String()

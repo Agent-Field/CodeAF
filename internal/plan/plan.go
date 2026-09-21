@@ -339,6 +339,15 @@ type Options struct {
 	// execute them.
 	Briefs bool
 
+	// Skills is the active shelf, read once by the caller from the store it
+	// already holds ([store.SkillFacts] with the active status) and handed in
+	// frozen, the way the terrain and the invoice are: the brief pass composes
+	// each leaf's attachment from it — skills the goal names outright first,
+	// retrieval candidates behind them — and journals the same order on the
+	// node brief. Nil is the whole of the compatibility story: a caller with
+	// no shelf attaches nothing and changes no prompt byte anywhere.
+	Skills []store.Fact
+
 	// FileShaped carries the delivery-law bit onto the graph, for the case where
 	// briefs are written inside the build and the caller never sees the graph
 	// before they are. See Graph.FileShaped and DeliveryLaw.
@@ -731,6 +740,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// they are also the nodes most likely to have no dependencies, which makes
 	// them exactly the ones something could start on immediately.
 	briefs := newBriefWriter(ctx, client, options.Briefs, progress, options.Journal)
+	briefs.skills = options.Skills
 	settled := map[int]bool{}
 	pending := map[int]bool{}
 	for _, id := range selectForExpansion(graph, options) {
