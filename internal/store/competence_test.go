@@ -117,7 +117,7 @@ func TestCompetenceMapAggregatesTerritoryEvidenceAndInstalledSkills(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.ActivateSkill(skill.Seq, "/installed/go-parser-skill"); err != nil {
+	if err := graph.ActivateSkill(skill.Seq, "/installed/go-parser-skill", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := graph.Fold("go-job", "Go parser work stayed reliable.", nil); err != nil {
