@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/opener"
 )
 
 type fakeCodexConnect struct {
@@ -134,6 +135,59 @@ func TestC7ConnectOpenRouterReusesBrowserRoadAndProfileKey(t *testing.T) {
 	}
 }
 
+func TestConnectCommandsReportABrowserStartFailureAndKeepWaiting(t *testing.T) {
+	// C1: the link remains usable when its automatic handoff fails. Both
+	// browser services print the first-run recovery line, then accept the flow's
+	// successful return rather than abandoning a sign-in already in progress.
+	t.Run("codex", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv(config.ProfileDirEnv, dir)
+		backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			_, _ = writer.Write([]byte(`{"models":[{"slug":"gpt-5.5","visibility":"list"}]}`))
+		}))
+		defer backend.Close()
+		t.Setenv("CODEAF_CODEX_BACKEND", backend.URL)
+		flow := &fakeCodexConnect{
+			address: "https://auth.example/sign-in",
+			tokens: codexauth.Tokens{
+				AccessToken: "browser-failure-access", RefreshToken: "browser-failure-refresh",
+				IDToken: "browser-failure-identity", ExpiresAt: time.Now().Add(time.Hour),
+			},
+		}
+		oldFlow, oldOpen := connectCodexFlow, connectOpen
+		connectCodexFlow = func(context.Context) (codexConnectFlow, error) { return flow, nil }
+		connectOpen = func(string) error { return errors.New("exec: xdg-open not found") }
+		t.Cleanup(func() { connectCodexFlow, connectOpen = oldFlow, oldOpen })
+		output, restore := captureConnect(t)
+		defer restore()
+		if err := runConnect([]string{"codex"}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(output.String(), opener.BrowserFailureWord) || !strings.Contains(output.String(), "codex connected") {
+			t.Fatalf("connect output = %q", output.String())
+		}
+	})
+
+	t.Run("openrouter", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv(config.ProfileDirEnv, dir)
+		oldFlow, oldOpen := connectOpenRouterFlow, connectOpen
+		connectOpenRouterFlow = func(context.Context) (openRouterConnectFlow, error) {
+			return &fakeOpenRouterConnect{address: "https://openrouter.example/sign-in", key: "sk-or-v1-browser-failure-value"}, nil
+		}
+		connectOpen = func(string) error { return errors.New("exec: xdg-open not found") }
+		t.Cleanup(func() { connectOpenRouterFlow, connectOpen = oldFlow, oldOpen })
+		output, restore := captureConnect(t)
+		defer restore()
+		if err := runConnect([]string{modelsource.DefaultID}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(output.String(), opener.BrowserFailureWord) || !strings.Contains(output.String(), "openrouter connected") {
+			t.Fatalf("connect output = %q", output.String())
+		}
+	})
+}
+
 func TestC8ConnectWithoutAServiceListsMethodsAndNeverDrawsNothing(t *testing.T) {
 	// C8: the no-argument door lists each known service and says explicitly when none is connected.
 	dir := t.TempDir()
@@ -223,8 +277,9 @@ func TestC11ConnectHelpIsLiftedFromTheEightyColumnTable(t *testing.T) {
 	}
 }
 
-func TestC19FirstRunStillExposesOnlyItsOpenRouterBrowserRoad(t *testing.T) {
-	// C19: Part A adds no Codex first-run seam; the existing constructor remains the only browser offer.
+func TestFirstRunStillBuildsItsOpenRouterBrowserRoad(t *testing.T) {
+	// The rendered C19 contract lives with the surface in internal/tui3. This
+	// pins the production command seam that hands that surface its browser flow.
 	settings := config.Config{BaseURL: config.DefaultBaseURL}
 	if v3OpenRouterConnection(settings, true) == nil {
 		t.Fatal("first-run OpenRouter browser connection disappeared")

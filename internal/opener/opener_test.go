@@ -31,3 +31,15 @@ func TestWSLFallsToTheDesktopBridgeOnlyWithoutXdgOpen(t *testing.T) {
 		t.Fatalf("plain Linux opener = %q, want xdg-open", name)
 	}
 }
+
+func TestStartReportsWhenTheBrowserProcessCannotStart(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the test controls the Linux opener through PATH")
+	}
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("WSL_DISTRO_NAME", "")
+	err := Start("https://example.test/sign-in")
+	if err == nil || err.Error() != "the browser did not open" {
+		t.Fatalf("Start error = %v, want a synchronous browser start failure", err)
+	}
+}

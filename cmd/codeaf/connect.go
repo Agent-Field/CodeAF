@@ -79,7 +79,9 @@ func connectCodex(ctx context.Context, profileDir string, noBrowser bool) error 
 		port := callbackPort(flow.URL())
 		fmt.Fprintf(usageOut, "on a machine without a browser: ssh -L %s:localhost:%s <that machine> and open the link here\n", port, port)
 	} else {
-		_ = connectOpen(flow.URL())
+		if err := connectOpen(flow.URL()); err != nil {
+			fmt.Fprintln(usageOut, opener.BrowserFailureWord)
+		}
 	}
 	tokens, err := flow.Wait(ctx)
 	if err != nil {
@@ -113,7 +115,9 @@ func connectOpenRouter(ctx context.Context, profileDir string, noBrowser bool) e
 	defer flow.Cancel()
 	fmt.Fprintln(usageOut, flow.URL())
 	if !noBrowser {
-		_ = connectOpen(flow.URL())
+		if err := connectOpen(flow.URL()); err != nil {
+			fmt.Fprintln(usageOut, opener.BrowserFailureWord)
+		}
 	}
 	key, err := flow.Wait(ctx)
 	if err != nil {

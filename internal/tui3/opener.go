@@ -34,6 +34,10 @@ import (
 // internal/tui's.
 var processOpener = opener.Start
 
+// setupBrowserWord shares the terminal connection command's recovery line, so
+// a browser start failure has one spelling wherever the visible link lives.
+const setupBrowserWord = opener.BrowserFailureWord
+
 // openerCommand is what this platform calls "open this". An empty name is a
 // platform with no answer, which is a fact the caller reports rather than
 // papers over.

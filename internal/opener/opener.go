@@ -12,6 +12,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
+// BrowserFailureWord is the recovery line shared by first run and terminal
+// connection commands. The link is already visible immediately above it.
+const BrowserFailureWord = "could not open your browser · open the link above"
+
 // Command reports the platform program that opens a target. Linux answers
 // xdg-open exactly as the chat surface always has, so a machine where that
 // works keeps working; a WSL box that has no xdg-open at all falls to wslview,
@@ -43,13 +47,11 @@ func Start(target string) error {
 		return errors.New("the browser did not open")
 	}
 	command := exec.Command(name, append(append([]string(nil), args...), target)...)
-	if command.Err != nil {
+	if err := command.Start(); err != nil {
 		return errors.New("the browser did not open")
 	}
 	guard.Go("opener/start", func() {
-		if command.Start() == nil {
-			_ = command.Wait()
-		}
+		_ = command.Wait()
 	})
 	return nil
 }
