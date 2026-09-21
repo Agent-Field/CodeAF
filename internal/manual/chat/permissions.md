@@ -298,7 +298,7 @@ chip for as long as anything is open:
 ```
 
 `alt+y` raises the newest open question from **any page** — home, a room, the
-tasks place — and takes you back to the conversation it belongs to. The count
+sessions place — and takes you back to the conversation it belongs to. The count
 includes the ones you folded: `esc` is later and not cancelled, so a question you
 put off is still a question the work is waiting on.
 

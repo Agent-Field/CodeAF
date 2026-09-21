@@ -442,6 +442,14 @@ func (p page) word() string {
 	return ""
 }
 
+// lookKey preserves the saved visit stamp when a tab's displayed name changes.
+func (p page) lookKey() string {
+	if p == pageTasks {
+		return "tasks"
+	}
+	return p.word()
+}
+
 // counted answers whether a number in front of a place would mean anything.
 //
 // A COLLECTION CAN BE COUNTED AND A STATE CANNOT. Home, tasks, standing and
@@ -653,7 +661,8 @@ func (a *app) barWordsAt(width int, numbered bool) (map[page]bool, int) {
 			spent += cost(id)
 		}
 	}
-	reserve := tabPadCols + ansi.StringWidth("+"+itoa(len(shown)))
+	folds := foldSpellings(len(shown), "")
+	reserve := tabPadCols + ansi.StringWidth(folds[len(folds)-1])
 	for _, id := range shown {
 		if keep[id] {
 			continue

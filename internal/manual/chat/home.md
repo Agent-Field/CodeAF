@@ -75,7 +75,7 @@ height is the same on every machine on every day. A blank row separates that pai
 panels below them, which are in the rail only because they are quiet today.
 
 **The rank never moves, only the side.** Within the field and within the rail the order is
-always the unheaded conversation list, `needs you`, `projects`, `tasks`, `since you left`, `spend`,
+always the unheaded conversation list, `needs you`, `projects`, `sessions`, `since you left`, `spend`,
 `scheduled` — so two panels that both fill never swap places.
 
 One column under 110 cells, where every panel is in that one order and there is no rail;
@@ -90,7 +90,7 @@ from home stands there as a card. Nothing else stands in it.
 | --- | --- | --- | --- |
 | Unheaded conversation list | an open tab, then up to three dimmed closed conversations | opens or reopens it | nothing |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
-| `tasks` | a task or adaptive run from the last day, running or landed | opens the task itself | `the last day's tasks land here · /task starts one` |
+| `sessions` | one of the fifteen most recent conversations | opens the conversation | `your recent conversations appear here` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
 | `spend` | today, the fortnight, who it went to | nothing — its lines are read, never stood on or pressed; the heading opens the spend place | `every chat and task is priced here` |
 | `scheduled` | a standing order — reminder, routine, watch or rule — soonest first | opens the standing place | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
@@ -186,7 +186,7 @@ watch that needs somebody, never age off home.
 as an ordinary line once it has been answered or has aged out of the group.
 
 **On a short frame the whole group folds to one line before any question gives way** —
-`8 unread`. `enter` expands that group; the `tasks` heading opens the tasks place.
+`8 unread`. `enter` expands that group; the `sessions` heading opens the sessions place.
 
 ## Answer from home — a digit answers the question that is drawing its answers
 
@@ -243,7 +243,7 @@ A conversation another terminal is holding is not refused: `enter` brings it her
 Work that landed as `your call` **waits until you decide about it**, however many days that
 is: nothing more happens to that work until somebody answers it. Only its row on home ages —
 two days after it landed it leaves `needs you` for the count on the panel's last line,
-`3 more`, and the tasks place still lists it; `enter` on that line opens the panel and shows
+`3 more`, and the sessions place still lists it; `enter` on that line opens the panel and shows
 it again.
 
 Three ways to settle it, and they are the same door:
@@ -267,48 +267,22 @@ Accepting merges the task's branch and unblocks everything queued behind it. The
 has the whole of it under *Why is the task waiting for me*. **Home is where you find it,
 not where it is settled.**
 
-## What is running — the tasks panel: what is running on this machine right now, and the last day's tasks, running or landed
+## Sessions — the fifteen most recent conversations on Home and what is running on this machine right now
 
-**The `tasks` panel is the last twenty-four hours of work, flattened**, in the field with
-the other panels that hold something — below the conversation list
-— and in the rail on the right when there is none. It is the tasks place in miniature:
-every task and adaptive run that started or landed inside the last day, from every
-conversation and every project, plus anything still running however old, newest first.
-A row is a piece of work and not a conversation: a chat with three tasks out is three rows.
-Background jobs and firing watches are not tasks and are not here — a firing watch keeps
-its row on `scheduled`.
+The **sessions** section replaces the old list of individual tasks. It shows up to
+fifteen conversations across projects, newest conversation activity first, regardless
+of whether they have tasks. Closed conversations remain in history with dim titles.
+Each row uses the full conversation title, truncated to fit, and its age. Selecting a
+row opens that conversation; `→` offers the usual conversation actions.
 
-```
- tasks
- ⠋ Generate and Display First 200 Primes                                     4m
-   Benchmark the Sieve                                                       1h
-   Spark Fleet Ssh Audit                                                     9h
-```
+Click **sessions** to open the **sessions** tab (formerly tasks), which holds the full
+conversation trees under running and completed. The running section shows work in
+flight across projects. Short frames show fewer rows with a
+fold for the remainder of these fifteen. The heading leads to the full history.
 
-**A row is a title and a time, like a row of the conversation list**: how long a running task has
-been going, or how long ago a landed one landed. Its description is under the cursor —
-for a running task what its worker is doing, else the life it is in (`checking what it
-left`), else `working` or `queued`, with `2 of 5` for how far a run has got; for a landed
-task its project's word and the state it is in, in the tasks place's own words. A row
-another terminal holds says `another window` at its right.
-
-**`enter` or a click on a row opens the task itself**, exactly as pressing that row on the
-tasks place would: a task this window is running opens its live page, and any other opens
-its record inside the tasks place, parked on its row, so `esc` comes back to the list.
-
-**Ten rows show, then `N more`**, which opens the panel and shows the rest; on a short
-terminal fewer fit and the fold counts what did not. The heading is the bare word `tasks`,
-with no count and no clause after it, like the conversation list. A task older than a day is the tasks
-place's to show — the `tasks` heading opens it.
-
-**`s` stops only what this window is running.** `→` on a task this window's own
-conversation holds offers `s stop it`, which asks you first, and **`ctrl+x`** asks the same
-from any column with no strip. `→` on the row opens its options; the foot under
-every row of the field is the one resting sentence and does not name the stop, which is on
-the `alt+.` map. **A task another window runs cannot be stopped from here** — the row
-offers no stop at all; `enter` opens the task, and its own window can stop it.
-
-The pulse inside a chat counts the same work: `1 moving` is these rows.
+The separate unheaded list above it still follows this window's open tabs and recent
+closures. The sessions section is recent history, so it can include conversations
+already shown in that tab-linked list. Both copies refer to the same conversation.
 
 ## Close or put away a task from home — task row options, new in project, open folder, copy project
 
@@ -316,14 +290,13 @@ The pulse inside a chat counts the same work: `1 moving` is these rows.
 `n new in project`, `o open folder`, and `p copy project` when the corresponding local
 folder and action are available. On a wide home these appear beneath the description
 in the middle column. Putting a task away hides that task from home and the unfiltered
-Tasks list; it does not stop it, delete its record, or put away its conversation.
-Find it again by typing its name in Tasks, then use `→` and `x reopen`.
+Sessions list; it does not stop it, delete its record, or put away its conversation.
+Find it again by typing its name in Sessions, then use `→` and `x reopen`.
 The choice survives closing the app. Folder actions use the task's conversation project.
 
 ## Why does only one row spin — the one spinner on home
 
-**The first row of `tasks` wears the one turning cell, and nothing else on the resting
-screen moves.** However much is happening, exactly one cell on the frame turns: the other
+**The first answering conversation wears the one turning cell.** However much is happening, exactly one cell on the frame turns: the other
 running rows wear no mark at all, and the page stays a still page redrawn every three
 seconds. An `ask here` errand's row takes the spinner while its answer is coming, and so does
 a row on its way here from another window.
@@ -340,7 +313,7 @@ spinner. In screen-reader (linear) mode nothing turns at all.
 
 ## What did it do while I was away — the since you left panel, what happened while the terminal was shut
 
-**What happened on its own while you were not looking**, under `tasks` — in the field
+**What happened on its own while you were not looking**, under `sessions` — in the field
 when it holds anything and in the rail when it does not — headed with how long you were
 away:
 
@@ -439,7 +412,7 @@ no right side at all on the resting screen.
 Where to go for the whole figure instead:
 
 - **`→` then `its chats`** on the row lists every conversation in the project as a search;
-- **the tasks place** for the work a project has run, which is the record rather than a
+- **the sessions place** for the work a project has run, which is the record rather than a
   count;
 - **the spend place** for what it has cost.
 
@@ -468,7 +441,7 @@ each of those is a panel of its own now.
 | It used to be | It is now |
 | --- | --- |
 | `?` beside a conversation or task | an unanswered question on that row |
-| `◐` rows under them | the `tasks` panel |
+| `◐` rows under them | the `sessions` panel |
 | the quiet rows and `▸ 15 more, quiet since 6d` | the conversation list, then `N more` |
 | project headings, `alt+g` | the `projects` panel |
 | the `since you left` ledger above the list | the `since you left` panel |
@@ -485,7 +458,7 @@ every conversation in it, and `ctrl+t` on one of them starts a new one there.
 ## How do I hide the quiet chats — alt+q hide the quiet ones
 
 **You cannot any more, and `alt+q` does nothing.** The panels already keep the quiet
-ones out of the way: `needs you` and `tasks` hold what wants you or is moving, and
+ones out of the way: `needs you` and `sessions` hold what wants you or is moving, and
 the conversation list shows this window's open tabs followed by up to three dimmed
 closed conversations. A short frame folds what does not fit behind `N more`. Typing finds any conversation on the machine.
 
@@ -498,7 +471,7 @@ Nothing on the rail — `projects`, `spend`, or a panel with nothing in it — c
 onto or pressed.
 
 **The panel the cursor is in marks its heading** with the cursor's ground; the words stay
-where they were. A headed panel such as `tasks` lights its heading when the cursor is
+where they were. A headed panel such as `sessions` lights its heading when the cursor is
 inside it. The conversation and question rows have no heading. The row you are on
 wears the same ground and its title goes bold; the row under your mouse pointer wears it too
 while the pointer is on it.
@@ -516,7 +489,7 @@ the row under the cursor. `alt+.` draws the map.
 
 **Because the cursor is in that panel.** The heading of the panel holding the cursor wears
 the cursor's ground — one heading per frame, following the keyboard, and never the mouse.
-Walk into `tasks` and `tasks` is the heading that is marked.
+Walk into `sessions` and `sessions` is the heading that is marked.
 
 No project is ever drawn darker than another on its own. If one row looks different, it is
 one of two things: the **row under the cursor or the pointer**, which wears the ground and a
@@ -549,7 +522,7 @@ put would move you onto something else between two glances.
 **It is not empty; the panels are waiting for their first rows.** On a machine that has
 done nothing yet, every panel but one keeps its heading and one dim line naming what
 arrives there — `questions from any chat or task land here · a digit answers them` under
-`needs you`, `work you send off with /task runs here on its own` under `tasks`, and so on
+`needs you`, `work you send off with /task runs here on its own` under `sessions`, and so on
 (*See everything at once*). `projects` always has the folder this window opened in, and
 the conversation list has this conversation from its first minute.
 
@@ -557,7 +530,7 @@ the conversation list has this conversation from its first minute.
 says what would put something there. It goes the moment the first row arrives.
 
 A quiet morning on a busy machine is the same screen with fewer rows: `needs you` whispering,
-`tasks` whispering, the conversation list full, `since you left` holding what fired overnight.
+`sessions` whispering, the conversation list full, `since you left` holding what fired overnight.
 There is no accent anywhere when nothing is waiting on you.
 
 Typing works exactly as it does anywhere: Enter starts a conversation and `/ask` asks
@@ -576,7 +549,7 @@ squeezed to their floors in the order below — and the line reads `N fewer`. `e
 folds it. One panel is open at a time; opening a second folds the first. An open panel
 taller than the window shows what fits and its line still counts the rest — `3 fewer · 40
 more` — and names no place, because `enter` on it folds rather than opens. The way to
-those rows is the panel's **heading**: `tasks` opens tasks, `since you left` opens memory,
+those rows is the panel's **heading**: `sessions` opens sessions, `since you left` opens memory,
 and `scheduled` opens standing. Conversations and extra question rows have no heading;
 `projects` opens nothing. The foot under a fold says
 which way it will go: `enter shows the rest`, then `enter folds them`. Opening lasts as long
@@ -584,11 +557,11 @@ as the window; a relaunch starts folded. The fold wears no mark: home spends its
 on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
-additional question rows, `tasks`, `since you left` and `projects` to eight rows, the conversation list up to the tab limit plus three closed rows, `scheduled` from three to five. `spend` never grows. What is left over is air
+additional question rows, `since you left` and `projects` to eight rows; `sessions` keeps at most fifteen recent conversations; the conversation list up to the tab limit plus three closed rows, `scheduled` from three to five. `spend` never grows. What is left over is air
 under the shorter column.
 
 **A short terminal squeezes them in a fixed order**: `scheduled` gives way first, then `spend`,
-then `since you left`, then `tasks`, then `projects`; the conversation list and additional question rows
+then `since you left`, then `sessions`, then `projects`; the conversation list and additional question rows
 shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
 only when every panel is down to that is a panel dropped — and the panels that are only
 whispering go before any panel with rows, whatever their rank, so a very short window
@@ -606,7 +579,7 @@ panels, and `enter` again folds it. The box at the foot still searches every con
 the machine as you type — a project's name, a folder's name or a word from what a task came
 to all find them — whether or not a panel is drawing the row.
 
-Every panel's fold works the same way: `N more` under `tasks`, `since you left`, `scheduled`
+Every panel's fold works the same way: `N more` under `sessions`, `since you left`, `scheduled`
 and `projects` opens that panel. The places themselves — tasks, standing, spend — are on the
 tab bar and their slash commands, not behind the folds.
 
@@ -628,7 +601,7 @@ place but home it reads:
 
 **On home it drops the two counts** and keeps the budget and the clock —
 ` codeaf                              $0.55 / $500 · tue 1:11pm` — because the `needs you`
-and `tasks` panels are those counts, row by row.
+and `sessions` panels are those counts, row by row.
 
 - `2 want you` — how many things have **stopped on you**: a conversation waiting for an
   answer, a standing order that will not fire until you say so, an errand holding a
@@ -663,7 +636,7 @@ memory and search open exactly as they did:
 
 While you stand in one of the three, its word is drawn after the four so you can see where
 you are; `tab` from there goes to home. `alt+.` draws the map of all seven with their
-numbers. Home's own panels already summarise the three on the bar: `tasks` is a glimpse of
+numbers. Home's own panels already summarise the three on the bar: `sessions` is a glimpse of
 tasks, `spend` of spend, `scheduled` of standing.
 
 ## Why did a dashboard open when I started codeaf — home greets you
@@ -750,7 +723,7 @@ stays empty until you select a result.
 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A click on a panel's **heading** opens the place the heading names:
-`tasks` opens tasks, `since you left` opens memory, `spend` opens spend, and
+`sessions` opens sessions, `since you left` opens memory, `spend` opens spend, and
 `scheduled` opens standing. There is no `needs you` heading. The conversation list has no heading. The `projects` heading opens nothing
 and stays dim. **A heading that opens somewhere underlines on mouse-over.** The
 pointer on a heading moves neither the cursor nor the marked heading.
@@ -1089,7 +1062,7 @@ nothing is reopened and nothing is replayed from cold that does not have to be.
 
 **Yes, it is still running.** A conversation you are not looking at is **not paused**: its
 turn finishes into its own transcript, its tasks run, its background jobs run, its lock is
-held and it keeps writing itself to disk. Its tasks and jobs are rows of home's `tasks`
+held and it keeps writing itself to disk. Its conversation remains available in home's `sessions`
 panel while they run. A desktop notification tells you when it finishes a turn or stops on
 a question — even while the terminal is focused, because a focused terminal is no longer
 evidence that anybody is looking at *that* conversation.
@@ -1502,10 +1475,9 @@ another when it lands. So a machine that lost power, or a codeaf that was killed
 rows on disk that say `running` forever.
 
 Home never repeats that claim. **It asks the session itself.** A live session says out
-loud, every few seconds, which task nodes it currently has out; a task is a row of
-`tasks` only when the session that ran it is still alive and still names that node.
+loud, every few seconds, which task nodes it currently has out; the task details show it as running only while the session still names that node.
 Every other live-looking row is **work that was under way when the window went**, and it is
-on no panel: the tasks place and the card beside a search say `incomplete` against it.
+on no panel: the sessions place and the card beside a search say `incomplete` against it.
 
 A session too old to keep that file, but whose journal a window is holding, falls back to
 the older answer: the lock is asked, and its rows are believed. That is the same rule with
@@ -1539,7 +1511,7 @@ show up without you doing anything. There is no file watcher: home reads, and cl
 screen stops the reading. (Standing items — reminders, watches, rules — are a different
 mechanism and do keep going; see the keeping-an-eye page.)
 
-The resting screen does not animate, except the one spinner on the first `tasks` row
+The resting screen does not animate, except the one spinner on the first answering conversation row
 (*Why does only one row spin*); the ages simply change on the next reading. In screen-reader
 (linear) mode nothing ever animates.
 
@@ -1555,13 +1527,13 @@ three ways:**
 - **while it is asking you something**, it is a row of `needs you`, with the amber `?` and
   what it is asking under it;
 - **while it is firing**, it is a row of `scheduled` like any other order — it is not a
-  task and has no row on `tasks`. It is still the item — `ctrl+e` pauses it, `ctrl+x` stops
+  task and has no row on `sessions`. It is still the item — `ctrl+e` pauses it, `ctrl+x` stops
   it, and `alt+e` raises how hard it thinks;
 - **while it is simply waiting for its time**, it is a row of `scheduled`, soonest first, with
   when it goes off at the right — `in 20h`, `mon 8:30`.
 
-`enter` on a `needs you` row opens the conversation that asked for it; on a `tasks` row it
-opens the task itself; on a `scheduled` row it opens the standing place.
+`enter` on a question row opens the conversation that asked for it; on a `sessions` row it
+opens the conversation; on a `scheduled` row it opens the standing place.
 
 The `◦` mark itself belongs to the standing place and to a conversation's own lines —
 `◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
@@ -1578,7 +1550,7 @@ place is where every one of them is.
 ## How do I pause a reminder from home — the → strip, and ctrl+e / ctrl+x
 
 Put the cursor on the item's row (or point at it). **`ctrl+e` pauses it** and **`ctrl+x`
-stops it for good**, from any column, with no strip (on a `tasks` row this window holds,
+stops it for good**, from any column, with no strip (on a `sessions` row this window holds,
 `ctrl+x` asks to stop that task instead). **`→`** shows the row's options, including
 `p pause it` or `r resume it` for a paused item. They appear below its description in the
 middle column on a wide home, or under the row on a narrower layout. While they are
@@ -1775,7 +1747,7 @@ into an ordinary conversation — is on its own page: *Asking from home*.
 
 **The resting home has no card and no right-hand preview at any width.** The columns are
 panels now, and every fact the card carried has a row of its own: what a conversation is
-stopped on is its `needs you` row, what is in flight is its `tasks` rows, what it made is
+stopped on is its `needs you` row, what is in flight is its `sessions` rows, what it made is
 a `made <file>` line in `since you left`, and where you left off is the line under the
 `here` row. The facts line is gone — a number is on the row where it is not zero.
 
@@ -1895,18 +1867,18 @@ Fix the nil-map                          3h
 `■ stopped · <what it came to>`, and `✕ incomplete · a fault: <what broke>` — only that
 last one coloured bad. **The word `failed` is nowhere on home.**
 
-On the resting panels the same work is a row of `tasks` for a day, running or landed, and
-a line of `since you left` once it lands.
+On the resting panels, `sessions` names the conversation that owns the work.
+Completed work can also appear under `since you left`.
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
 
-**On the card beside a search, `▸ N more tasks` names the tasks place** out at the right
+**On the card beside a search, `▸ N more tasks` names the sessions place** out at the right
 margin rather than unfolding, because a card is not the place that holds them; `ctrl+.`, or
-`tab` onto `tasks`, is the way there. A band of files or folders with more behind it says
+`tab` onto `sessions`, is the way there. A band of files or folders with more behind it says
 `▸ …3 more files`, and a click on that line — or `→` with the strip closed — opens it, and
 `▾ …3 fewer` folds it back. The fold always cuts between tasks, never through one.
 
-**On the resting panels, `tasks` folds as `N more`**, and `enter` on that line opens the
+**On the resting panels, `sessions` folds as `N more`**, and `enter` on that line opens the
 panel. The phone sheet folds its work band by family and counts all the
 tasks hidden behind its fold.
 
@@ -1917,10 +1889,9 @@ the task's **record** opens: what it was asked to do, what it came to, the files
 and the tail of its own output. It is the same card `enter` opens on a row of the tasks
 place, so `esc` comes back one layer at a time.
 
-On the resting panels, a task is a door wherever it is a row: `enter` on a `tasks` row
-opens the task itself, `enter` on a `your call` row in `needs you` opens the
-conversation on the task's record, and `enter` on a landed line of `since you left` opens the
-record itself.
+On the resting panels, `enter` on a `sessions` row opens its conversation.
+A pending task decision keeps its answer controls, and a landed line under
+`since you left` opens the task record.
 
 **Move the mouse over the card and the doors show themselves**: the line under the pointer
 lights, and lines that do nothing stay plain.
@@ -2126,7 +2097,7 @@ Top to bottom:
 1. The unheaded conversation list: open tabs, then up to three dimmed closed rows.
 2. Additional question rows, without a heading — conversations not already listed above,
    standing items that need a look, and `/ask` panes holding a card, from **any** project.
-3. `tasks` — everything with work in flight, wherever it is.
+3. `sessions` — the fifteen most recent conversations, newest first.
 4. `since you left` — what landed while you were not in the room.
 5. **The projects.** This window's own project is drawn open with its remaining rows; every
    other project is one folded line — `▸ wisp   6 · 2d` — that `enter` or a tap opens in
@@ -2198,19 +2169,19 @@ Tap one, or press the key it names. Below width **24** the plain hint line is dr
 ## Main chat versus subtasks — why is the work nested on Home?
 
 A row of the conversation list is the **main conversation**; opening it returns to its chat. The
-work it sent out is on `tasks` for a day — one row per task, never nested, running or
-landed — and on `since you left` once it lands, one line per piece of work you asked for,
-not one per part.
+conversation also appears in `sessions` while it is among the fifteen most recent.
+Its tasks are nested under it in the Sessions tab, and completed work can appear under
+`since you left`.
 
 On the card beside a search and on the phone sheet, a conversation's tasks form a tree under
 their actual parents. Clicking a task opens that task's record. A child needing a person
 brings its family forward; work still moving comes before settled work. The compact preview
 keeps three task names in parent-first order, so it never shows a child without its visible
-ancestry, and `N more tasks` names the tasks place, which holds the full conversation tree.
+ancestry, and `N more tasks` names the sessions place, which holds the full conversation tree.
 
 ## What home cannot do yet — stop another window's task, and a something is wrong panel
 
-**Stop a task another window is running.** A `tasks` row held by another terminal says
+**Stop a task another window is running.** A `sessions` row held by another terminal says
 `another window` and offers no stop at all — the stop is a door into this window's own
 engine, and a verb that would end the wrong work or fail is left off rather than drawn.
 `enter` brings the conversation here, where `s stop` on its row, or `/stop`, ends it.

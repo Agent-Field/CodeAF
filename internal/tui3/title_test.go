@@ -70,7 +70,7 @@ func TestTheTerminalTitleSaysWhereYouAre(t *testing.T) {
 // here is a row this test names rather than one it silently skips.
 func TestEveryPlaceTitlesTheTabWithItsWord(t *testing.T) {
 	want := map[page]string{
-		pageTasks:    "tasks · codeaf",
+		pageTasks:    "sessions · codeaf",
 		pageStanding: "standing · codeaf",
 		pageMemory:   "memory · codeaf",
 		pageSpend:    "spend · codeaf",

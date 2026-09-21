@@ -68,29 +68,6 @@ func TestADigitAnswersTheTopQuestionWithTheCursorElsewhere(t *testing.T) {
 	}
 }
 
-// RUNNING DRAWS ITS ROWS WITH ONE MOVING CELL, on the first, and the line under
-// each row says what it is doing. A presence row with no title of its own is
-// named from the project's record.
-func TestRunningDrawsTheWorkAndWhatItIsDoing(t *testing.T) {
-	a := newSwitchLab(t).open(120, 45)
-	frame := homeText(a)
-	if !strings.Contains(frame, "read 40 filings") || headingOf(a, panelRunning) != "tasks" {
-		t.Fatalf("tasks does not draw the work that is out under its bare heading:\n%s", frame)
-	}
-	// THE DOING IS UNDER THE CURSOR, like every description on the field: a
-	// row is a title and a time at rest (owner, 2026-09-17).
-	if under := homeLineAfter(frame, "read 40 filings"); strings.Contains(under, tabSignalWord(tabWorking)) {
-		t.Fatalf("a task row says what it is doing with the cursor elsewhere:\n%s", frame)
-	}
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "read 40 filings" })
-	if under := homeLineAfter(homeText(a), "read 40 filings"); !strings.Contains(under, tabSignalWord(tabWorking)) {
-		t.Fatalf("the task row under the cursor does not say what it is doing:\n%s", homeText(a))
-	}
-	if spin := a.home.spinAt(); spin < 0 || a.home.lines[spin].cell.panel != panelRunning {
-		t.Fatalf("the one moving cell is not on the running panel's first row")
-	}
-}
-
 // NO ROW WEARS A MARK BUT THE TWO (law 8): the question mark on a waiting row and
 // the one moving cell. The quiet rows' circles are gone.
 func TestNothingOnTheGridWearsAGlyphButTheTwoMarks(t *testing.T) {

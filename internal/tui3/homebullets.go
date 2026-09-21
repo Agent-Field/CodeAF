@@ -21,7 +21,7 @@ func (a *app) homeChatState(cell *homeCell) (answering, unread bool) {
 // The first answering conversation takes the spinner only if another panel has none.
 func (a *app) homeAnsweringLine() int {
 	for i, line := range a.home.lines {
-		if line.kind == homeSession && line.cell != nil && line.cell.panel == panelRecent {
+		if line.kind == homeSession && line.cell != nil && (line.cell.panel == panelRecent || line.cell.panel == panelSessions) {
 			if working, _ := a.homeChatState(line.cell); working {
 				return i
 			}

@@ -434,7 +434,7 @@ func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
 	// THE RUNNING PANEL CARRIES THE WORK, one row per node the session says it
 	// has out (homepanel_running.go) — the one fact a person reading home
 	// without pointing at anything needs.
-	if !strings.Contains(text, "Port the thing") {
+	if !strings.Contains(text, "The Long One") {
 		t.Fatalf("the row does not say what is running:\n%s", text)
 	}
 	// AND THE CARD SAYS WHAT IT IS AND WHOSE WINDOW HAS IT. The work band puts
@@ -562,7 +562,7 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 			order = append(order, homeName(line.row))
 		}
 	}
-	if len(order) != 2 || order[0] != "The Newest Chat" || order[1] != "Pricing Research" {
+	if len(order) != 4 || order[0] != "The Newest Chat" || order[1] != "The Newest Chat" || order[2] != "Middle of the Road" || order[3] != "Pricing Research" {
 		t.Fatalf("the column reads %v, want the open tab followed by the waiting conversation", order)
 	}
 }
@@ -1661,8 +1661,8 @@ func TestHomeRescanPicksUpAConversationFromAnotherWindow(t *testing.T) {
 	}
 	lab.session("-tmp-alpha", "aaaa000000000002", "arrived later", "/tmp/alpha", now.Add(-time.Minute))
 	a.refreshHome()
-	if strings.Contains(homeText(a), "Arrived Later") {
-		t.Fatal("the rescan added an unopened conversation as a tab")
+	if !strings.Contains(homeText(a), "Arrived Later") {
+		t.Fatal("the rescan did not add the saved conversation to sessions")
 	}
 	if a.home.focused().Transcript != mine {
 		t.Fatal("the rescan moved the cursor")

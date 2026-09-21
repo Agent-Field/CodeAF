@@ -606,13 +606,13 @@ func TestAClickOnAHomeFoldIsEnterOnIt(t *testing.T) {
 			lab.presence("-beta", "cccc00000000000"+string(rune('1'+i)), session.PresenceWaiting,
 				"question "+itoa(i), lab.now)
 		}
-		return lab.open(120, 45)
+		return lab.open(120, 24)
 	}
 	clicked, keyed := open(), open()
-	homeClickAt(t, clicked, homeFoldDoor(t, clicked, panelNeeds))
-	keyed.home.cursor = homeFoldDoor(t, keyed, panelNeeds)
+	homeClickAt(t, clicked, homeFoldDoor(t, clicked, panelSessions))
+	keyed.home.cursor = homeFoldDoor(t, keyed, panelSessions)
 	drive(t, keyed, key("enter"))
-	if !keyed.at(pageHome) || !keyed.home.openedOn || keyed.home.opened != panelNeeds {
+	if !keyed.at(pageHome) || !keyed.home.openedOn || keyed.home.opened != panelSessions {
 		t.Fatalf("enter on the fold of `needs you` did not open the panel (page %q, opened %v)", keyed.page.word(), keyed.home.openedOn)
 	}
 	if !clicked.at(pageHome) || clicked.home.openedOn != keyed.home.openedOn || clicked.home.opened != keyed.home.opened {

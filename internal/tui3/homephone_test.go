@@ -159,8 +159,8 @@ func TestAPhoneKeepsWaitingDetailsAlongsideItsOpenTab(t *testing.T) {
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", "/tmp/alpha", now)
 	lab.presence("-tmp-alpha", "aaaa000000000001", session.PresenceWaiting, "a question", now)
 	a := phoneHome(t, lab, mine)
-	if n := strings.Count(phoneText(a), "Port the Picker"); n != 2 {
-		t.Fatalf("the row was drawn %d times, want a tab plus its waiting row:\n%s", n, phoneText(a))
+	if n := strings.Count(phoneText(a), "Port the Picker"); n != 3 {
+		t.Fatalf("the row was drawn %d times, want the tab-linked row, recent session, and question description:\n%s", n, phoneText(a))
 	}
 }
 

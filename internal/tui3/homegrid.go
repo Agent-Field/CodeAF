@@ -78,7 +78,7 @@ const (
 	panelNeeds homePanelID = iota
 	panelRecent
 	panelProjects
-	panelRunning
+	panelSessions
 	panelLeft
 	panelSpend
 	panelNext
@@ -175,7 +175,7 @@ var homePanelOrder = []homePanelSlot{
 	{panel: recentPanel{homePanelBase{panelRecent}}, keep: 5, least: 3, rest: tabsCap + homeClosedLimit, most: tabsCap + homeClosedLimit},
 	{panel: needsPanel{homePanelBase{panelNeeds}}, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
-	{panel: runningPanel{homePanelBase{panelRunning}}, word: "tasks", keep: 3, least: 4, rest: 10, most: 10, place: pageTasks, head: pageTasks},
+	{panel: sessionsPanel{homePanelBase{panelSessions}}, word: sessionsWord, keep: 3, least: 4, rest: homeSessionsLimit, most: homeSessionsLimit, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageMemory},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
 	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
@@ -199,10 +199,10 @@ const homeNeedsTaskFresh = 48 * time.Hour
 // than being cut ([homeWhisperLines]), so a `…` on one of these lines could only
 // be read as the screen having run out of room.
 var homeWhisper = map[homePanelID]string{
-	panelRunning: "the last day's tasks land here · /task starts one",
-	panelLeft:    "what watches and tasks did while the terminal was shut",
-	panelSpend:   "every chat and task is priced here",
-	panelNext:    `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"`,
+	panelSessions: "your recent conversations appear here",
+	panelLeft:     "what watches and tasks did while the terminal was shut",
+	panelSpend:    "every chat and task is priced here",
+	panelNext:     `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"`,
 }
 
 // homePanelCut is a panel's rows cut at its cap, with the count of what the
@@ -926,6 +926,9 @@ func homeDescOn(cols int) bool { return cols >= 3 }
 func orderRail(rail []*homeGridPanel) []*homeGridPanel {
 	out := make([]*homeGridPanel, 0, len(rail))
 	for _, p := range rail {
+		if p.height() == 0 {
+			continue
+		}
 		if p.slot.pinned {
 			out = append(out, p)
 		}
@@ -946,6 +949,9 @@ func orderRail(rail []*homeGridPanel) []*homeGridPanel {
 func markRailGap(rail []*homeGridPanel) {
 	seen := false
 	for _, p := range rail {
+		if p.height() == 0 {
+			continue
+		}
 		if p.slot.pinned {
 			seen = true
 			continue

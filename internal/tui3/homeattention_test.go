@@ -406,7 +406,7 @@ func TestTheLedgerLineAboutLandedWorkOpensTheTasksPlace(t *testing.T) {
 
 	at := homeNoLine
 	for i, line := range a.home.lines {
-		if line.kind == homeLedger && line.project == "tasks" {
+		if line.kind == homeLedger && line.project == pageTasks.word() {
 			at = i
 		}
 	}

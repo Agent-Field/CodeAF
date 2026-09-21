@@ -717,7 +717,7 @@ With more than one waiting it counts them instead — `? 3 questions · alt+y`. 
 ratify line is never counted: nothing is waiting on it.
 
 The chip never takes the keys off the page you are standing on. A task that
-raised a question while you were on the tasks place says so at the right of the
+raised a question while you were on the sessions place says so at the right of the
 foot, and the row's own `enter open its room` stays where it was.
 
 **`alt+y` brings the newest one back** and takes you to the conversation it
@@ -833,7 +833,7 @@ minute has passed — that line is news, and coming back later is later. The
 decision itself is in the transcript and in `decisions.jsonl` for good.
 
 **A question you have NOT answered is still there when you come back**, wherever
-you went — another tab, home, the tasks place. That is the point of leaving it:
+you went — another tab, home, the sessions place. That is the point of leaving it:
 nothing about the work moves while it waits, and the chip in the status line
 counts it from every page.
 
@@ -1361,7 +1361,7 @@ a session in which questions would silently never appear.
 
 ## Why can I not answer the question on this task page
 
-Pressing a row of work on the **tasks** place opens that task's own page even
+Pressing a row of work on the **sessions** place opens that task's own page even
 when the work belongs to a chat you are not sitting in — it reads that chat over
 the same link, and it says so at the top.
 

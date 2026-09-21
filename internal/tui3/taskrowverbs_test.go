@@ -13,11 +13,11 @@ import (
 
 func selectHomeTask(t *testing.T, a *app, id string) session.SessionRow {
 	t.Helper()
-	homeText(a)
-	for at, line := range a.home.lines {
-		if line.cell != nil && line.cell.row != nil && line.cell.row.task != nil && line.cell.row.task.ID == id {
-			a.home.cursor = at
-			return line.cell.row.session
+	a.showPage(pageTasks)
+	for _, at := range a.taskSheet.stops(a) {
+		a.taskSheet.cursor = at
+		if item, ok := a.taskSheetCurrent(); ok && item.entry.ID == id {
+			return item.row
 		}
 	}
 	t.Fatalf("home has no task %s", id)
@@ -29,7 +29,7 @@ func TestTaskClosePersistsAndCanBeRestoredFromTheTasksFilter(t *testing.T) {
 	a := lab.open(180, 40)
 	owner := selectHomeTask(t, a, "t1")
 	drive(t, a, key("right"))
-	frame := homeText(a)
+	frame := taskSheetText(a)
 	for _, word := range []string{"x close", "n new in project", "o open folder", "p copy project"} {
 		if !strings.Contains(frame, word) {
 			t.Fatalf("task options are missing %q:\n%s", word, frame)

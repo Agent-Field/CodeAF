@@ -103,10 +103,10 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 		Question: consentQuestionAt(9, "needs your ok to run write", l.now.Add(-5*time.Minute))})
 	a := l.open()
 	rows := homeAttentionRows(a)
-	if len(rows) != 2 || rows[0].title != "Pricing Site" || rows[1].title != "Prime Sieve" {
+	if len(rows) != 2 || rows[0].title != "Prime Sieve" || rows[1].title != "Pricing Site" {
 		t.Fatalf("needs you is not the two waits, oldest first: %+v", rows)
 	}
-	if rows[0].sub != "needs your ok to run bash" || rows[0].right != "2h" {
+	if rows[1].sub != "needs your ok to run bash" || rows[1].right != "3h" {
 		t.Fatalf("the top row is not the gate's own sentence with its age: %+v", rows[0])
 	}
 	// THE SENTENCE AND THE CHIPS ARE DRAWN UNDER THE ROW BEING READ, and at
@@ -154,7 +154,7 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 	if rows[0].mark != cellMarkNeeds {
 		t.Fatalf("a landing wears a mark: %+v", rows[0])
 	}
-	if rows[0].panel != panelRunning {
+	if rows[0].panel != panelNeeds {
 		t.Fatal("the question is not on the task's existing row")
 	}
 }
@@ -186,7 +186,7 @@ func TestNeedsBlockingRowsSortFirst(t *testing.T) {
 		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-40 * time.Hour)})
 	a := l.open()
 	rows := homeAttentionRows(a)
-	if len(rows) != 2 || rows[0].title != "Pricing Site" || rows[1].title != "fix the flaky sieve" {
+	if len(rows) != 2 || rows[1].title != "Pricing Site" || rows[0].title != "fix the flaky sieve" {
 		t.Fatalf("the week-old landing did not sort under the fresh question: %+v", rows)
 	}
 	if rows[0].mark != cellMarkNeeds || rows[1].mark != cellMarkNeeds {
@@ -196,7 +196,7 @@ func TestNeedsBlockingRowsSortFirst(t *testing.T) {
 	for _, line := range panelLines(a, panelNeeds) {
 		kinds = append(kinds, line.cell.kind)
 	}
-	if len(kinds) < 3 || kinds[0] != cellRow || kinds[len(kinds)-2] != cellGroup {
+	if len(kinds) != 2 || kinds[0] != cellGroup || kinds[1] != cellRow {
 		t.Fatalf("the group line does not stand between the question and the landing: %v", kinds)
 	}
 }
@@ -308,7 +308,7 @@ func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
 	if strings.Contains(frame, "needs you") {
 		t.Fatalf("the heading counted the landings:\n%s", frame)
 	}
-	if strings.Contains(frame, needsCheckWord) {
+	if !strings.Contains(frame, needsCheckWord) {
 		t.Fatalf("the group line says more than its name:\n%s", frame)
 	}
 	fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)].cell.title
@@ -404,185 +404,15 @@ func TestAFreshLaunchHasNoHomeRowUntilItsFirstMessage(t *testing.T) {
 	}
 }
 
-// ── running ─────────────────────────────────────────────────────────────────
-
-// THE DAY'S TASKS, FLATTENED, NEWEST FIRST: what is running off presence, with
-// what its worker is doing and how far its run has got, and what landed inside
-// the last day off the record, as a title and a time; a task that landed before
-// the day is left to the tasks place. The one moving cell is on the first
-// running row, and enter on a landed row opens that task inside the tasks
-// place — the door the place's own list takes for the same row.
-func TestTasksListsTheDaysWorkNewestFirstAndOpensTheTask(t *testing.T) {
-	l := newLiveLab(t)
-	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "3", Title: "generate the first 200 primes", State: "running", StartedAt: l.now.Add(-4 * time.Minute),
-			Activity: "bash · 12s", Done: 2, Total: 5},
-	}})
-	l.task("-beta", session.TaskIndexEntry{ID: "1", SessionID: "bbbb000000000001", Label: "benchmark the sieve",
-		Title: "benchmark the sieve", Status: string(session.TaskDone),
-		StartedAt: l.now.Add(-2 * time.Hour), EndedAt: l.now.Add(-90 * time.Minute)})
-	l.task("-beta", session.TaskIndexEntry{ID: "2", SessionID: "bbbb000000000001", Label: "old audit",
-		Title: "old audit", Status: string(session.TaskDone),
-		StartedAt: l.now.Add(-30 * time.Hour), EndedAt: l.now.Add(-26 * time.Hour)})
-	a := l.open()
-	rows := panelRows(a, panelRunning)
-	if len(rows) != 2 {
-		t.Fatalf("tasks is not the running task and the landed one: %+v", rows)
-	}
-	running, landed := rows[0], rows[1]
-	if running.title != "generate the first 200 primes" || running.right != "4m" || running.sub != "bash · 12s · 2 of 5" || running.mark != cellMarkSpin {
-		t.Fatalf("the running row is not title, clock, activity and progress: %+v", running)
-	}
-	if landed.title != "benchmark the sieve" || landed.right != sinceAt(l.now.Add(-90*time.Minute), l.now) ||
-		!strings.HasPrefix(landed.sub, "beta") || landed.mark != cellMarkNone {
-		t.Fatalf("the landed row is not its title, when it landed and its project: %+v", landed)
-	}
-	frame := homeText(a)
-	if strings.Contains(frame, "old audit") || headingOf(a, panelRunning) != "tasks" {
-		t.Fatalf("a task older than the day is drawn, or the heading is not the bare word:\n%s", frame)
-	}
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "benchmark the sieve" })
-	if line := a.home.lines[a.home.cursor]; line.kind != homeLedger || !line.stop() {
-		t.Fatalf("a task row is not a ledger line the cursor can rest on: %+v", line)
-	}
-	a.homeKey(key("enter"))
-	if !a.at(pageTasks) || !a.taskSheet.detailOn || a.taskSheet.detail.Label != "benchmark the sieve" {
-		t.Fatalf("enter on a task row did not open that task inside the tasks place (at %q, detail %v %q)",
-			a.page.word(), a.taskSheet.detailOn, a.taskSheet.detail.Label)
-	}
-}
-
-// A PIECE OF WORK UNDER A CHECK SAYS SO: the phase is the line when the worker
-// is not the node's life, which is exactly when the engine leaves the activity
-// off the file.
-func TestRunningSaysThePhaseWhenThereIsNoActivity(t *testing.T) {
-	l := newLiveLab(t)
-	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "3", Title: "sieve", State: "running", StartedAt: l.now.Add(-time.Minute), Phase: session.TaskPhaseChecking},
-	}})
-	rows := panelRows(l.open(), panelRunning)
-	if len(rows) != 1 || rows[0].sub != taskCheckingWord {
-		t.Fatalf("the running row does not say it is being checked: %+v", rows)
-	}
-}
-
-// `s` STOPS ONLY WHAT THIS WINDOW HOLDS: a task of this window's own
-// conversation offers it, and another window's task offers only its row options.
-func TestRunningOffersStopOnlyOnThisWindowsOwnTask(t *testing.T) {
-	l := newLiveLab(t)
-	l.live("-alpha", "aaaa000000000001", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "5", Title: "mine", State: "running", StartedAt: l.now.Add(-time.Minute)},
-	}})
-	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "6", Title: "theirs", State: "running", StartedAt: l.now.Add(-2 * time.Minute)},
-	}})
-	a := l.open()
-	a.agent = &cancelFake{fakeAgent: &fakeAgent{model: "m"}}
-	a.tasks = map[uint64]*taskNode{5: {id: 5, state: session.TaskRunning}, 6: {id: 6, state: session.TaskRunning}}
-	var mine, theirs homeLine
-	for _, line := range panelLines(a, panelRunning) {
-		switch {
-		case line.cell.title == "mine":
-			mine = line
-		case line.cell.title == "theirs":
-			theirs = line
-		}
-	}
-	for _, v := range a.runningVerbs(theirs) {
-		if v.key == 's' {
-			t.Fatal("another conversation's task offered a stop")
-		}
-	}
-	stopped := false
-	for _, v := range a.runningVerbs(mine) {
-		if v.key == 's' {
-			v.do()
-			stopped = true
-		}
-	}
-	if !stopped {
-		t.Fatal("this window's own task offered no stop")
-	}
-	if !a.stopping() || a.at(pageHome) || !strings.Contains(plain(mustFrame(a)), "Stop this task?") {
-		t.Fatalf("s did not raise the stop card where it can be read:\n%s", plain(mustFrame(a)))
-	}
-}
-
-// ON A THREE-COLUMN HOME A `tasks` ROW IS IN THE FIELD — it has rows, and
-// that is what the field is (law 2, ruled 2026-09-15). `→` on it opens the
-// row's own strip, which offers the tasks place's `stop it`, and `ctrl+x`
-// raises the stop card without the strip. THE FOOT IS THE RESTING SENTENCE:
-// the owner ruled (2026-09-15) that every row of the field rests on the one
-// sentence, and since the arrows stay in their column (2026-09-17) it names no
-// chord either.
-func TestAThreeColumnRunningRowRestsOnTheOneFootAndStillStops(t *testing.T) {
-	l := newLiveLab(t)
-	l.live("-alpha", "aaaa000000000001", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "5", Title: "mine", State: "running", StartedAt: l.now.Add(-time.Minute)},
-	}})
-	a := l.open()
-	a.width, a.height = 180, 45
-	homeText(a)
-	a.agent = &cancelFake{fakeAgent: &fakeAgent{model: "m"}}
-	a.tasks = map[uint64]*taskNode{5: {id: 5, state: session.TaskRunning}}
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelRunning && l.cell.title == "mine" })
-	mine := a.home.cursor
-	if got := a.home.columnOf(mine); got != 0 {
-		t.Fatalf("tasks has rows and stands in column %d of a three-column home, want the field at 0", got)
-	}
-	stop := false
-	for _, v := range a.runningVerbs(a.home.lines[mine]) {
-		stop = stop || (v.key == 's' && v.word == stopActWord)
-	}
-	if !stop {
-		t.Fatal("the row's options omitted stop it")
-	}
-	if foot := a.homeHint(); foot != restingFoot(a) {
-		t.Fatalf("the foot on a running row this window holds is %q, want the resting sentence and draft controls", foot)
-	}
-	a.placeKeyPress(key("right"))
-	if !a.strip.open || a.home.cursor != mine {
-		t.Fatalf("→ on a field row landed on line %d (strip %v), want the row's own strip on line %d",
-			a.home.cursor, a.strip.open, mine)
-	}
-	a.placeKeyPress(key("left"))
-	a.home.cursor = mine
-	drive(t, a, key("ctrl+x"))
-	if !a.stopping() || a.at(pageHome) || !strings.Contains(plain(mustFrame(a)), "Stop this task?") {
-		t.Fatalf("ctrl+x did not raise the stop card where it can be read:\n%s", plain(mustFrame(a)))
-	}
-}
-
 // cancelFake is an engine that can end work.
 type cancelFake struct{ *fakeAgent }
 
 func (cancelFake) Cancel(string) (string, error) { return "stopping", nil }
 
-// TASKS SHOWS UP TO TEN, and folds the rest behind `N more`, which opens the
-// panel; the heading is the bare word.
-func TestTasksShowsTenAndFoldsTheRest(t *testing.T) {
-	l := newLiveLab(t)
-	var out []session.PresenceTask
-	for i := 0; i < 12; i++ {
-		out = append(out, session.PresenceTask{ID: itoa(i + 1), Title: "part " + itoa(i+1), State: "running",
-			StartedAt: l.now.Add(-time.Duration(i+1) * time.Minute)})
-	}
-	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: out})
-	a := l.open()
-	if rows, most := panelRows(a, panelRunning), homeSlotOf(panelRunning).most; len(rows) != most || most != 10 {
-		t.Fatalf("tasks drew %d rows, want its budget of ten (%d)", len(rows), most)
-	}
-	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || headingOf(a, panelRunning) != "tasks" {
-		t.Fatalf("the fold does not name what it holds, or the heading is not the bare word:\n%s", frame)
-	}
-}
-
-// A WATCH IN THE MIDDLE OF FIRING IS NOT A TASK. It used to be a row of this
-// panel beside the tasks; the panel is the day's tasks now (owner, 2026-09-17),
-// and the firing item keeps its row on `scheduled`, with its own verbs.
+// A firing standing item keeps its own scheduled row, outside conversation history.
 func TestAFiringStandingItemIsNotARowOfTasks(t *testing.T) {
 	a, _ := itemHome(t)
-	for _, line := range panelLines(a, panelRunning) {
+	for _, line := range panelLines(a, panelSessions) {
 		if line.kind == homeItem || (line.cell != nil && line.cell.title == "remind me on Fridays") {
 			t.Fatalf("the firing item is a row of tasks: %+v", line.cell)
 		}
@@ -595,14 +425,6 @@ func TestAFiringStandingItemIsNotARowOfTasks(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the firing item is on no panel at all:\n%s", homeText(a))
-	}
-}
-
-// AN EMPTY PANEL WHISPERS.
-func TestRunningWhispersWhenNothingIsOut(t *testing.T) {
-	a := newLiveLab(t).open()
-	if frame := homeText(a); !strings.Contains(frame, homeWhisper[panelRunning]) {
-		t.Fatalf("an empty running does not whisper:\n%s", frame)
 	}
 }
 

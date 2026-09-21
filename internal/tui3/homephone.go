@@ -104,7 +104,7 @@ const (
 // and each is quoted in the manual exactly as it is spelled here.
 const (
 	homePhoneWaitingWord = "waiting on you"
-	homePhoneRunningWord = "tasks"
+	homePhoneRunningWord = sessionsWord
 	homePhoneNewsWord    = "since you left"
 )
 
@@ -196,6 +196,12 @@ func (h *homeView) buildPhone() {
 		}
 	}
 	h.lines = append(h.lines, conversations.lines...)
+	for _, ex := range h.exchanges {
+		if ex.working && !lifted.errands[ex] {
+			lifted.errands[ex] = true
+			h.lines = append(h.lines, homeLine{kind: homeExchangeRow, project: h.projectNameOf(ex.bucket), dir: ex.bucket, ex: ex})
+		}
+	}
 	waiting := h.phoneWaiting(lifted)
 	seen := make(map[string]bool)
 	for _, line := range conversations.lines {
@@ -208,7 +214,15 @@ func (h *homeView) buildPhone() {
 		}
 	}
 	h.phoneSection(homePhoneWaitingWord, homePhoneWaitingKey, remaining)
-	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, h.phoneRunning(lifted))
+	sessions := (sessionsPanel{homePanelBase{panelSessions}}).rows(&in)
+	for i := range sessions.lines {
+		line := &sessions.lines[i]
+		if question, ok := questions[homeQuestionRowKey(*line)]; ok {
+			homeDecorateQuestion(line, question)
+		}
+		lifted.rows[line.row.Transcript] = true
+	}
+	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, sessions.lines)
 	h.phoneSection(homePhoneNewsWord, homePhoneNewsKey, h.phoneNews())
 	h.phoneProjects(lifted)
 }
@@ -224,15 +238,19 @@ func (h *homeView) phoneSection(word, key string, rows []homeLine) {
 	if word != "" && key != homePhoneWaitingKey {
 		h.lines = append(h.lines, homeLine{kind: homePhoneSection, project: word, dir: key})
 	}
+	limit := homePhoneShown
+	if key == homePhoneRunningKey {
+		limit = homeSessionsLimit
+	}
 	shown, hidden := rows, 0
-	if !h.sections[key] && len(rows) > homePhoneShown {
-		shown, hidden = rows[:homePhoneShown], len(rows)-homePhoneShown
+	if !h.sections[key] && len(rows) > limit {
+		shown, hidden = rows[:limit], len(rows)-limit
 	}
 	h.lines = append(h.lines, shown...)
-	if hidden > 0 || h.sections[key] && len(rows) > homePhoneShown {
+	if hidden > 0 || h.sections[key] && len(rows) > limit {
 		h.lines = append(h.lines, homeLine{
 			kind: homePhoneMore, project: word, dir: key,
-			quiet: len(rows) - homePhoneShown, folded: !h.sections[key],
+			quiet: len(rows) - limit, folded: !h.sections[key],
 		})
 	}
 }
@@ -298,37 +316,6 @@ func (h *homeView) everyProject() []session.Project {
 	out = append(out, h.world.Projects...)
 	for _, bare := range h.bare {
 		out = append(out, bare.project)
-	}
-	return out
-}
-
-// phoneRunning is everything with work in flight. It is the second section for
-// the reason it is the second glyph: something moving is something you check
-// on, and something stopped is something you unblock.
-func (h *homeView) phoneRunning(lifted phoneLifted) []homeLine {
-	var out []homeLine
-	for _, ex := range h.exchanges {
-		if ex.working && !lifted.errands[ex] {
-			lifted.errands[ex] = true
-			out = append(out, homeLine{kind: homeExchangeRow, project: h.projectNameOf(ex.bucket), dir: ex.bucket, ex: ex})
-		}
-	}
-	for _, project := range h.everyProject() {
-		for _, view := range h.items[project.Dir] {
-			if view.Running && strings.TrimSpace(view.Item.NeedsPerson) == "" {
-				lifted.items[phoneItemKey(project, view)] = true
-				out = append(out, h.itemLine(project, view))
-			}
-		}
-		for _, row := range project.Sessions {
-			if row.NeedsPerson() || row.Tasks.Running == 0 {
-				continue
-			}
-			lifted.rows[row.Transcript] = true
-			out = append(out, homeLine{
-				kind: homeSession, project: project.Name, dir: project.Dir, row: row,
-			})
-		}
 	}
 	return out
 }
@@ -642,7 +629,7 @@ func headingKind(kind homeRowKind) bool {
 // band across both, and the pointer's lead are decided in one place for every
 // list on this surface (palette.go).
 func (a *app) homePhoneRow(line homeLine, at, width int, pal palette) []string {
-	if line.kind == homeSession && line.cell != nil && line.cell.panel == panelRecent {
+	if line.kind == homeSession && line.cell != nil && (line.cell.panel == panelRecent || line.cell.panel == panelSessions) {
 		return a.homeCellRow(line, at, width, pal, at == a.home.cursor)
 	}
 	h := &a.home
@@ -909,6 +896,9 @@ func (a *app) homePhonePress(x, y int) tea.Cmd {
 	if line.kind == homePhoneSection {
 		if line.dir == homePhoneNewsKey {
 			return a.showPage(pageMemory)
+		}
+		if line.dir == homePhoneRunningKey {
+			return a.showPage(pageTasks)
 		}
 		a.home.foldSection(line.dir)
 		a.touch()

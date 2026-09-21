@@ -588,7 +588,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+,` | Open the settings panel |
 | `alt+e` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam |
 | `alt+a` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home and every other place it walks the gate of the **next** conversation — the `◇` cell on the rule above that box — and that pin is spent by the conversation that uses it |
-| `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
+| `ctrl+.` | Open the sessions place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, the same door as `enter` on a `projects` row |
@@ -2339,7 +2339,7 @@ it is on the job's page. `→` on anything else does nothing.
 **The walk stops at this conversation's last job, after its last task.** The roster holds
 this conversation's work, then the jobs section under it, so `↓` walks both and clamps at
 the bottom rather than carrying on into the project's record. Old tasks from earlier
-sessions are on the tasks place, reached from the column's own `ctrl+. earlier` line, from
+sessions are on the sessions place, reached from the column's own `ctrl+. earlier` line, from
 `ctrl+.` or from `/history`; `enter` on an `earlier` row there goes inside that task's
 card. In a directory whose earlier sessions ran tasks but where **this** conversation has
 run none and started no jobs, `alt+t` falls through — there is nothing on the column to

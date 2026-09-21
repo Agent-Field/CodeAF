@@ -406,7 +406,7 @@ func TestAConversationWaitingOnItsOwnLandingIsOnlyTheLandingsRow(t *testing.T) {
 func rowsOffTasks(a *app, title string) int {
 	n := 0
 	for _, line := range a.home.lines {
-		if line.cell != nil && line.cell.kind == cellRow && line.cell.panel != panelRunning && strings.Contains(line.cell.title, title) {
+		if line.cell != nil && line.cell.kind == cellRow && line.cell.panel != panelSessions && strings.Contains(line.cell.title, title) {
 			n++
 		}
 	}

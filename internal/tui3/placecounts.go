@@ -63,7 +63,7 @@ func (a *app) refreshPlaceCounts(now time.Time) {
 			// about nothing (pages.go's [page.counted]).
 			continue
 		}
-		seen := session.LastLookAt(root, id.word())
+		seen := session.LastLookAt(root, id.lookKey())
 		if seen.IsZero() {
 			continue
 		}
@@ -182,5 +182,5 @@ func (a *app) leavePage(id page) {
 	}
 	// A LOOK AT ANOTHER MACHINE'S PLACE IS NOT A LOOK AT THIS ONE'S
 	// ([app.looksRoot]).
-	session.NoteLookAt(a.looksRoot(), id.word(), a.now())
+	session.NoteLookAt(a.looksRoot(), id.lookKey(), a.now())
 }

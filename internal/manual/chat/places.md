@@ -6,7 +6,7 @@ A **place** is a full-screen room in codeaf that is not this conversation. There
 and they are always in the same order — the four on the tab bar, then the three reached by
 their command:
 
-`home` · `tasks` · `spend` · `settings` · `standing` · `memory` · `search`
+`home` · `sessions` · `spend` · `settings` · `standing` · `memory` · `search`
 
 **The tab bar draws four:** `home  tasks  spend  settings`. Standing, memory and search are
 places all the same — `/standing`, `/memory`, `/search`, their digit, the map and the typed
@@ -77,7 +77,7 @@ empty room actually wants — see **Every place opens, always** further down thi
 
 That is true of every door onto a place and not only of the walk: a number, a click on the
 word, and the command that names it all open the same room on the same machine. `/history`
-and a bare `/task` on a machine that has run nothing open the tasks place, headed `tasks`
+and a bare `/task` on a machine that has run nothing open the sessions place, headed `sessions`
 over one line: `work you send off with /task lands here, and its record stays`.
 
 ## How do I move between the tabs with the arrow keys — the tab bar is a row the cursor can stand on
@@ -182,7 +182,7 @@ six of the seven places that box was a lie in a slot: `enter` opened rows, typin
 went to the filter at the top of the list, and on spend the words went nowhere at all. It
 is gone (2026-09-17).
 
-**Typing still filters where a list is worth filtering.** On **tasks** every printable key
+**Typing still filters where a list is worth filtering.** On **sessions** every printable key
 narrows the list, and the letters draw on the control row at the top of it beside the `⌕`
 mark. On **search** the words you type are the query, drawn on the first row of the body the
 same way, and `esc` clears them. On **memory** the head row echoes the filter in place of
@@ -329,7 +329,7 @@ The last two classes are bound where there is something to bind. `alt+<letter>` 
 `alt+s` on the memory place, which changes which shelf it is showing; home's panels have no
 second shape, so `alt+g` and `alt+q` do nothing there. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
-three places have one: **tasks** (when it ran), **standing** (when it fired) and **spend**
+three places have one: **sessions** (when it ran), **standing** (when it fired) and **spend**
 (which days). All three draw the same control on their own head row, at the right of the
 line: `shift+← aug 12 – aug 25 →`, with `shift+↑ coarser` beside it where the line has room.
 The label between the arrows is the control and the reading at once, so the span is on the
@@ -449,7 +449,7 @@ being held down — it only reports what arrived.
 The first place, and the one codeaf opens on. Everything on this machine, from every
 project, in one, two or three columns — an unheaded list of open tabs and up to
 three dimmed closed conversations, then
-`projects`, `tasks`, `since you left`, `spend`, `scheduled`, always in that order. Which
+`projects`, `sessions`, `since you left`, `spend`, `scheduled`, always in that order. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
 them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
@@ -492,8 +492,8 @@ page — and the foot names only what is true of the row you are on: `enter open
 
 ## Close or put away a task, find an archived task, or reopen it
 
-On home or the Tasks list, select the task, press `→`, then `x close`.
-This hides only that task from home's panels and the unfiltered Tasks list. Its work
+On home or the Sessions list, select the task, press `→`, then `x close`.
+This hides only that task from home's panels and the unfiltered Sessions list. Its work
 continues if it is running; its record, conversation, and other tasks are unchanged.
 The choice is saved with the conversation and survives reopening the app.
 
@@ -702,7 +702,7 @@ do. It never says the place is empty.
 or any of the seven digits, is a key that does nothing. On a machine codeaf was installed on
 an hour ago, `alt+2`, `alt+5` and `alt+6` all open:
 
-- **tasks**, headed `tasks`:
+- **sessions**, headed `sessions`:
   `work you send off with /task lands here, and its record stays`
 - **standing**, headed `standing orders`:
   `reminders, watches and routines · "remind me at 6" or "every morning at 9"`
@@ -778,7 +778,7 @@ their readings have not crossed:
 | Place | Over `--host` |
 |---|---|
 | **home** | the far machine's projects and conversations |
-| **tasks** | the far machine's work, out of the same reading |
+| **sessions** | the far machine's work, out of the same reading |
 | **standing** | the far machine's orders — both what stands on this conversation and what stands anywhere else on that machine |
 | **settings** | this computer's rows; the sheet says the far conversation reads its profile on the other machine |
 | **spend** | the far machine's priced model calls |
@@ -821,7 +821,7 @@ something true to say.
 
 **Yes — the far machine's work, and none of this one's.**
 
-The tasks place reads its rows out of the same reading home lists, so the door that carried
+The sessions place reads its rows out of the same reading home lists, so the door that carried
 home carried this too. `/history`, `ctrl+.` and the tabs all open the same page.
 
 This was the worst of the seven before it crossed. The page walked *this* computer's
@@ -853,7 +853,7 @@ what is in there now, which belongs to the machine the place describes, and when
 looked, which belongs to the terminal you are sitting at. Those are two different machines
 over a connection, so **the look stamps for a remote session are kept on this computer in a
 folder of their own** — `~/.codeaf/v3/looks/<machine>` — beside the local ones rather than in
-them. Glancing at the server's tasks does not clear the number over your laptop's tasks tab,
+them. Glancing at the server's tasks does not clear the number over your laptop's sessions tab,
 and your laptop's own windows do not overwrite the origin a remote one measures from.
 
 ## Why doesn't home say folder gone over --host

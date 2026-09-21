@@ -170,8 +170,8 @@ var tuiWords = map[string]tuiWord{
 		why:    "the panel of folders, never empty, read and never stood on since 2026-09-17 — the view by project alt+g used to be",
 	},
 	"homePanelRunning": {
-		screen: "tasks",
-		why: "the top of the right column: the last day's tasks, running or landed, newest first. It was " +
+		screen: "sessions",
+		why: "the recent conversation section, newest first. It was " +
 			"`running` until 2026-09-17, and now shares its word with the bar's second tab, which it folds into",
 	},
 	"switcherSinceLeft": {
@@ -187,8 +187,8 @@ var tuiWords = map[string]tuiWord{
 		why:    "every standing order this machine will act on — reminders, routines, watches, rules — soonest first",
 	},
 	"homeRunningWhisper": {
-		screen: "the last day's tasks land here · /task starts one",
-		why: "what `tasks` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
+		screen: "your recent conversations appear here",
+		why: "what `sessions` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
 			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
 			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",
 	},
@@ -198,8 +198,8 @@ var tuiWords = map[string]tuiWord{
 		why:    "the first of the four words on the tab bar",
 	},
 	"barTasksWord": {
-		screen: "tasks",
-		why:    "the second word on the bar, and the place `tasks` and `needs you` fold into",
+		screen: "sessions",
+		why:    "the second word on the bar, and the place the sessions heading opens",
 	},
 	"barSettingsWord": {
 		screen: "settings",

@@ -1944,7 +1944,7 @@ land between chips a few cells apart, so the phone tier trades the tab row for o
 ## The roster: the column of all the work
 
 The roster is the **top section of the column on the right**, separated from the pinned
-hide hint by one blank row. There is no `tasks` heading. Under it the same column carries a second section labelled `standing` —
+hide hint by one blank row. There is no `sessions` heading. Under it the same column carries a second section labelled `standing` —
 the orders standing over this conversation — and, when this conversation has started any,
 a third labelled `jobs`. The standing orders page has that half; *Background jobs on the
 column* below has the jobs section.
@@ -2331,7 +2331,7 @@ The reason is the `+ /task` row at the foot of the task column: that row puts `/
 your box before you have said what the work is, so a `/task` sent as it stands is asking
 the only question the word can answer with no brief behind it — *what work is there.*
 
-**On a project that has never run a task it opens the page anyway**, headed `tasks` over one
+**On a project that has never run a task it opens the page anyway**, headed `sessions` over one
 line — `work you send off with /task lands here, and its record stays` — which is exactly
 what `/history` and `ctrl+.` do there too.
 
@@ -2339,7 +2339,7 @@ what `/history` and `ctrl+.` do there too.
 still size, shape and start the work directly, with no proposal card in between and no
 extra question. There is no third form: `/task adaptive` is retired.
 
-**There is still no `/tasks` command**, though `tasks` is the name of the PLACE `/history`
+**There is still no `/tasks` command**, though `sessions` is the name of the PLACE `/history`
 opens — `alt+2` and `tab` get there without typing anything. As a slash word the plural is not one this surface answers to;
 the two things a bare `/task` and a `/task <brief>` do are the pair of errands a person has
 about tasks — go and look at the work, or give codeaf some.
@@ -2355,7 +2355,7 @@ ctrl+. earlier
 ```
 
 - **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
-  tasks place opens with every task this machine has run on it, grouped by what you do next
+  sessions place opens with every task this machine has run on it, grouped by what you do next
   — `running` and `completed`. `/history` is the same page.
 - **It says what is behind it.** With a record behind it the line reads `ctrl+. earlier`;
   with no record, on a column that has merely folded a family away, the same line reads
@@ -2564,14 +2564,14 @@ reading position. Press `esc` or the back control to return to the conversation.
 This is where **task history** lives — every **old and past task**, and **work from other
 sessions**, on one page.
 
-`/history`, or `ctrl+.`, opens the machine-wide **tasks** place holding work from every project
+`/history`, or `ctrl+.`, opens the machine-wide **sessions** place holding work from every project
 run** — this conversation's and every conversation's before it. It is the answer the roster
 cannot give: the column beside the conversation is built from *this session's* work and
 nothing else, so a task you ran last week, in a session you have closed, is nowhere on the
 screen until you open this.
 
-**There is no `/tasks` command** — though `tasks` is what the PLACE this opens is called on
-the tab bar, reached with `alt+2` or `tab`. `/task <brief>` starts work; `/history` opens the same tasks place
+**There is no `/tasks` command** — though `sessions` is what the PLACE this opens is called on
+the tab bar, reached with `alt+2` or `tab`. `/task <brief>` starts work; `/history` opens the same sessions place
 started — and so does a **bare `/task`**, which opens this very page rather than printing a
 usage line. The page is also reached from the one dim door line at the bottom of the task
 column — `ctrl+. earlier`, or `ctrl+. view more` where the column has merely folded a
@@ -4485,7 +4485,7 @@ With a pointer, the `Stop` at the right end of a room's facts row — the second
 header, under the breadcrumbs — raises the same card.
 Strip chips do not carry a stop button.
 
-**There is one other way to stop a task, and it asks no card.** On the **tasks** place
+**There is one other way to stop a task, and it asks no card.** On the **sessions** place
 (`ctrl+.`, `/history`), `→` on a task this conversation is holding opens the row's verbs and
 draws `s stop it`; `s` then ends it. That is two deliberate presses with the word on screen
 for the second of them, which is what the card protects `x` from being without — and the
@@ -5046,9 +5046,9 @@ stop, one word, wherever you reach it from.
 
 Pressing `x` on a run that has already finished does nothing but say so.
 
-## The tasks place — tree lines, project column, folds, and the time-window keys
+## The sessions place — tree lines, project column, folds, and the time-window keys
 
-The **tasks** place lists conversations and their nested work across projects, under
+The **sessions** place lists conversations and their nested work across projects, under
 **running** or **completed**. The whole conversation moves together. Both sections and
 nested sibling lists default to newest activity first, and every level starts expanded.
 
@@ -5116,7 +5116,7 @@ empty headings, and says no count beside that prose.
 
 ## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
 
-On a terminal **110 columns or wider** the tasks place splits: the list keeps the left, a dim
+On a terminal **110 columns or wider** the sessions place splits: the list keeps the left, a dim
 rule divides it, and the right is the record of whatever row the cursor is on. Nothing is
 opened and nothing is lost — walking down with `↑` and `↓` changes what the pane shows, and the
 list stays exactly where it was.
@@ -5196,7 +5196,7 @@ is also what happens on a frame too narrow for the pane: nothing on screen names
 nothing takes them.
 ## sort the tasks list — chronological order, most recent activity first
 
-The Tasks tab defaults to sorting **running** and **completed** by the newest recorded activity
+The Sessions tab defaults to sorting **running** and **completed** by the newest recorded activity
 in each conversation, including task starts and completions. A conversation with no tasks
 uses its own activity time. Unknown times sort after known times; refreshing the screen
 does not replace an unknown timestamp with the current time.
@@ -5227,9 +5227,9 @@ come back exactly as you left them.
 **`esc` clears the filter first and closes the place second**, which is why the foot says
 `esc clear the filter` while one is on.
 
-## The foot of the tasks place, and the one verb on its row strip
+## The foot of the sessions place, and the one verb on its row strip
 
-The last line of the tasks place is assembled from the clauses that are **true of the row
+The last line of the sessions place is assembled from the clauses that are **true of the row
 under the cursor**, and never from a fixed sentence. Over a task this window is running it
 reads
 
@@ -5266,7 +5266,7 @@ The final clauses describe the **page** rather than the row:
   says `esc clear the filter` instead — the one fact the box itself cannot show is that esc
   now means the filter and not the page.
 
-**`→` opens the row's verbs, and the tasks place has exactly one: `s stop it`.** It is
+**`→` opens the row's verbs, and the sessions place has exactly one: `s stop it`.** It is
 offered over a task **this conversation is holding** that is still `queued` or `running` —
 the same work the roster's own `x` can end, through the same door in the engine, and it
 answers with the engine's own sentence (`stopping task 7 — its branch is kept`). A settled

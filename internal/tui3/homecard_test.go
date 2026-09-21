@@ -155,7 +155,7 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 	// the tasks panel's row for the task, whose description (drawn under the
 	// cursor, like a row of `threads`) is what its worker is doing
 	// (homepanel_running.go).
-	rows := panelRows(a, panelRunning)
+	rows := panelRows(a, panelSessions)
 	if len(rows) == 0 || rows[0].title != "Port the picker" || rows[0].sub != tabSignalWord(tabWorking) {
 		t.Fatalf("the row does not say what the conversation is doing: %+v\n%s", rows, homeText(a))
 	}

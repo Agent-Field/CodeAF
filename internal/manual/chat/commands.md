@@ -187,7 +187,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
-| `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
+| `/history` | — | — | opens the full-screen sessions place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |

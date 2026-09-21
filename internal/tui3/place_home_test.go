@@ -153,7 +153,7 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 		// them pressed into the wrong keyboard.
 		a.showPage(pageHome)
 	}
-	if !doors["standing"] || !doors["tasks"] {
+	if !doors["standing"] || !doors["sessions"] {
 		t.Fatalf("the ledger drew %v, and both the watch and the landed work happened", doors)
 	}
 }

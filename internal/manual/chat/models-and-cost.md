@@ -2244,7 +2244,7 @@ name on the row. A thing neither of them knows keeps its id.
 **`enter` on any row under "by topic" or "by standing order" opens the thing itself**, and
 the foot says so on every row that is a door — `enter opens what spent it`. The headings
 said it too for a while; the heading over the cut is the control that swaps cuts now, and
-a control with an unrelated instruction after it is two objects on one line. A task opens **its own record card** in the tasks place, with the list
+a control with an unrelated instruction after it is two objects on one line. A task opens **its own record card** in the sessions place, with the list
 behind it parked on that row; a standing promise opens the standing place **on that
 order**; and a conversation **opens** — brought forward if this terminal already has it,
 otherwise opened beside the one you are in, with all of that door's refusals (a folder that
@@ -2291,7 +2291,7 @@ Time is two questions, so it gets two arrow axes and no letters:
 The cut of the ledger is its own control and has nothing to do with time: walk onto the
 heading and `←`/`→` swap `by topic` for `by model`. The window opens on **the last 14 days,
 by the day**. The label between the arrows is the
-reading and the control at once, and the same head row is drawn on the tasks place and the
+reading and the control at once, and the same head row is drawn on the sessions place and the
 standing place. A terminal too narrow to draw the control has no window there at all — the
 keys do nothing rather than moving something nothing on screen reports — and the zoom keys
 are bound only where `shift+↑ coarser` fits beside the arrows. A week buckets from Monday; there is no year rung, because a

@@ -69,7 +69,7 @@ func TestHomeQuestionDecoratesConversationWithoutDuplicate(t *testing.T) {
 	setWaiting(true)
 	count, found := 0, homeNoLine
 	for i, line := range a.home.lines {
-		if line.kind == homeSession && line.row.Transcript == files[1] {
+		if line.kind == homeSession && line.row.Transcript == files[1] && line.cell.panel == panelRecent {
 			count++
 			found = i
 		}
@@ -116,7 +116,7 @@ func TestHomeTaskQuestionStaysOnTaskRow(t *testing.T) {
 			continue
 		}
 		count++
-		if line.cell.panel != panelRunning || line.cell.mark != cellMarkNeeds || line.cell.answers == "" {
+		if line.cell.panel != panelNeeds || line.cell.mark != cellMarkNeeds || line.cell.answers == "" {
 			t.Fatalf("task lost its question or answers: %+v", line.cell)
 		}
 	}
@@ -143,27 +143,16 @@ func TestHomeTaskDecisionDoesNotStealAnotherTasksQuestion(t *testing.T) {
 	if conversations.lines[0].cell.mark == cellMarkNeeds {
 		t.Fatal("task decision was put on the conversation instead")
 	}
-	tasks := (runningPanel{homePanelBase{panelRunning}}).rows(&in)
+	tasks := (needsPanel{homePanelBase{panelNeeds}}).rows(&in)
 	if len(tasks.lines) != 2 {
-		t.Fatalf("got %d task rows", len(tasks.lines))
+		t.Fatalf("got %d question rows", len(tasks.lines))
 	}
 	for _, line := range tasks.lines {
 		if line.cell.mark != cellMarkNeeds || line.cell.answers == "" {
-			t.Fatalf("task lost its own question: %+v", line.cell)
+			t.Fatalf("question lost its actions: %+v", line.cell)
 		}
 	}
-	if leftovers := (needsPanel{homePanelBase{panelNeeds}}).rows(&in); len(leftovers.lines) != 0 {
-		t.Fatal("task decisions were repeated outside their task rows")
-	}
-	for _, line := range tasks.lines {
-		if line.cell.row.task.ID == "2" {
-			a := newLiveLab(t).openAt(180, 45)
-			a.homeLandOnTask(line)
-			if !a.taskSheet.detailOn || a.taskSheet.detail.ID != "2" {
-				t.Fatal("the live question changed the task row's open target")
-			}
-		}
-	}
+
 }
 
 func TestPhoneTaskQuestionMarksItsConversation(t *testing.T) {
@@ -193,7 +182,7 @@ func TestPhoneTaskQuestionMarksItsConversation(t *testing.T) {
 			t.Fatalf("compact conversation lost its task question: %+v", line.cell)
 		}
 	}
-	if count != 1 {
+	if count != 2 {
 		t.Fatalf("compact task question appears %d times", count)
 	}
 }

@@ -218,7 +218,7 @@ func TestThePulseOverAChatIsThePulseOverAPlace(t *testing.T) {
 	if place[0] != chat {
 		t.Fatalf("the pulse over the tasks place is not the pulse over the chat:\n%q\n%q", place[0], chat)
 	}
-	if !strings.Contains(place[placeTabRow], "home") || !strings.Contains(place[placeTabRow], "tasks") {
+	if !strings.Contains(place[placeTabRow], "home") || !strings.Contains(place[placeTabRow], "sessions") {
 		t.Fatalf("the bar is not on the strip's row: %q", place[placeTabRow])
 	}
 }

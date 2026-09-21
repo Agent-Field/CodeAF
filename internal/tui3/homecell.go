@@ -498,7 +498,7 @@ func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) [
 	cell := line.cell
 	lead := a.homeCellLead(cell, at, pal)
 	leadWidth := homeGridLead
-	if cell.panel == panelRecent && line.kind == homeSession {
+	if (cell.panel == panelRecent || cell.panel == panelSessions) && line.kind == homeSession {
 		lead = a.homeConversationBullet(cell, pal) + " "
 	}
 	body := homeCellBody(a.homeCellDoor(cell, at, width-leadWidth), width-leadWidth, pal, lit)
@@ -585,7 +585,7 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	}
 	if over := homeCellWidth(title, pad, note, tag, right) - width; over > 0 {
 		keep := max(1, ansi.StringWidth(title)-over)
-		if cell.panel == panelRecent {
+		if cell.panel == panelRecent || cell.panel == panelSessions {
 			title = fitConversationTitle(title, keep)
 		} else {
 			title = fit(title, keep)
