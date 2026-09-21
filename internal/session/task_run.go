@@ -5952,6 +5952,15 @@ func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
 	n.graph.mu.Unlock()
 	if interrupted && strings.TrimSpace(dir) != "" {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			// AND THE CHECKPOINT'S SPELLING IS BROUGHT UP TO GIT'S. Git resolves
+			// symlinks before it registers a worktree, and taskOwnFolder records
+			// that same spelling so checkpoint, cleanup and git name one directory;
+			// a checkpoint written before that law can carry the raw path it was
+			// handed — /var/… where git says /private/var/… — and a tree resumed
+			// under the other spelling is one directory known to cleanup by two
+			// names. Stat runs first, so a copy that no longer exists still takes
+			// its not-resumed road.
+			dir = canonicalPath(dir)
 			ground, mode := n.groundNow()
 			if merge == mergeInPlace {
 				// AND A RESUMED FAMILY REVALIDATES ITS TREE THROUGH THE ONE CALL THAT
