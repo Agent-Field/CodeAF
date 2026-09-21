@@ -109,7 +109,8 @@ type Config struct {
 	// reason to wait on the one path where somebody is already watching a failure.
 	NearestModels func(model string) []string
 
-	// HTTPClient is optional and exists for deterministic tests.
+	// HTTPClient is optional. Connected services may use it to adapt their wire
+	// protocol, and tests use the same seam to keep requests deterministic.
 	HTTPClient *http.Client
 }
 
