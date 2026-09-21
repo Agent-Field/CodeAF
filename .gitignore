@@ -9,9 +9,11 @@ internal/furrowbin/cache/furrow-*.gz
 # macOS Finder leaves this litter behind, and one copy was committed once.
 .DS_Store
 .claude/
+!internal/skills/testdata/**/.claude/
 /codeaf
 bench-results/
 .codeaf/
+!internal/skills/testdata/**/.codeaf/
 __pycache__/
 *.pyc
 *.aux
