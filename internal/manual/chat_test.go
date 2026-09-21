@@ -577,6 +577,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// wanting the machine's own default moved, wanting one reminder raised
 		// off the standing floor, and asking what the word on a card means.
 		{"what does ctrl+v do", "keys"},
+		{"what does opt+e do", "keys"},
+		{"what does alt+e do", "keys"},
 		{"is ctrl+v paste", "keys"},
 		{"make this one task think harder", "keys"},
 		{"change how hard everything on this machine thinks", "keys"},
@@ -1093,6 +1095,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does git status need approval", "permissions"},
 		{"what is yolo mode", "permissions"},
 		{"does --yolo show on the status line", "screen"},
+		{"turn on yolo mode without restarting", "permissions"},
+		{"run without asking for this conversation", "permissions"},
+		{"what does alt+y do", "keys"},
+		{"what is the approvals chip above the message box", "keys"},
+		{"is there a command to change the approval posture", "commands"},
 		{"how do I make it stop asking every time", "permissions"},
 		{"what model is it using right now", "models-and-cost"},
 		{"how do I give it a longer context", "models-and-cost"},
@@ -2065,6 +2072,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// press somebody tried because the model beside it is pressable.
 		{"what is the chip above the message box", "keys"},
 		{"what does ctrl+v do", "keys"},
+		{"what does opt+e do", "keys"},
+		{"what does alt+e do", "keys"},
 		{"how do I make this one chat think harder", "keys"},
 		{"set effort to max", "keys"},
 		{"can I click the thinking level", "keys"},

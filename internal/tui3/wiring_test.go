@@ -364,7 +364,7 @@ func TestTheApprovalCountdownPausesAtExpiryAndNeverDenies(t *testing.T) {
 	typeLine(t, a, "edit it")
 	settleAsk(a)
 	drive(t, a, key("esc"))
-	drive(t, a, tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt})
+	drive(t, a, key(questionChipKey))
 	if !strings.Contains(plain(frame(a)), "· paused") {
 		t.Fatalf("the clock did not say it is paused:\n%s", plain(frame(a)))
 	}
@@ -402,7 +402,7 @@ func TestEscapeIsLaterOnAnApprovalQuestionAndAnswersNothing(t *testing.T) {
 		t.Fatalf("the folded question is not counted on the chip:\n%s", got)
 	}
 	// And the chip brings it back.
-	drive(t, a, tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt})
+	drive(t, a, key(questionChipKey))
 	if got := plain(frame(a)); !strings.Contains(got, "1  allow once") {
 		t.Fatalf("the chip did not raise the folded question:\n%s", got)
 	}
@@ -500,24 +500,24 @@ func TestQuestionsQueueOldestFirstAndSayHowManyAreBehind(t *testing.T) {
 // The name reaches the SEAM — the rule above the box — where identity has lived
 // since 2026-09-09 (foot.go's [app.seamIdentity]). It was the status row's left
 // until then.
-func TestTheTitleReachesTheSeamLiveAndOnResume(t *testing.T) {
+func TestTheTitleReachesTheTabsLiveAndOnResume(t *testing.T) {
 	_, a := wired([]session.Event{{Kind: session.EventTitleChanged, Text: "porting the parser"}})
 	typeLine(t, a, "port it")
 	settleAsk(a)
 
-	seam := plain(a.legend(a.width))
+	seam := plain(a.tabsRow(a.width))
 	if !strings.Contains(seam, "porting the parser") {
 		t.Fatalf("the seam is missing the title:\n%s", seam)
 	}
-	if strings.Index(seam, "porting the parser") > strings.Index(seam, a.model) {
-		t.Fatalf("the title has to sit left of the model:\n%s", seam)
+	if strings.Contains(plain(a.legend(a.width)), "porting the parser") {
+		t.Fatal("the seam repeated the tab title")
 	}
 
 	// A resumed session is already named, and opens saying so.
 	named := &wiredAgent{fakeAgent: &fakeAgent{model: "m"}, name: "the tasker wave"}
 	resumed := newTestApp(named)
-	if !strings.Contains(plain(resumed.legend(resumed.width)), "the tasker wave") {
-		t.Fatalf("a resumed session opened without its name:\n%s", plain(resumed.legend(resumed.width)))
+	if !strings.Contains(plain(resumed.tabsRow(resumed.width)), "the tasker wave") {
+		t.Fatalf("a resumed session opened without its name:\n%s", plain(resumed.tabsRow(resumed.width)))
 	}
 }
 
@@ -594,7 +594,7 @@ func TestAnInterruptDropsWhatWasQueued(t *testing.T) {
 	}
 	_ = agent
 
-	drive(t, a, key("esc"))
+	drive(t, a, key("ctrl+c"))
 	if len(a.follows) != 0 {
 		t.Fatal("the interrupt kept the queue the session just dropped")
 	}
@@ -661,7 +661,7 @@ func TestFollowUpsDrainInOrderBeforeTheParkedMessage(t *testing.T) {
 
 // M10: Esc drops both session-owned queues, closes every follow-up stream, and
 // drops the surface-owned parked queue before the stopped stream ends.
-func TestEscClosesQueuedStreamsAndDropsTheParkedTurn(t *testing.T) {
+func TestCtrlCClosesQueuedStreamsAndDropsTheParkedTurn(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
 	typeLine(t, a, "the first turn")
 	settleAsk(a)
@@ -672,17 +672,17 @@ func TestEscClosesQueuedStreamsAndDropsTheParkedTurn(t *testing.T) {
 	parkLine(t, a, "the parked message")
 	firstTurn := a.turn
 
-	drive(t, a, key("esc"))
+	drive(t, a, key("ctrl+c"))
 	if len(a.follows) != 0 {
-		t.Fatalf("Esc left %d follow-ups on the surface", len(a.follows))
+		t.Fatalf("Ctrl+C left %d follow-ups on the surface", len(a.follows))
 	}
 	for index, stream := range agent.followStreams {
 		if _, open := <-stream; open {
-			t.Fatalf("follow-up stream %d remained open after Esc", index)
+			t.Fatalf("follow-up stream %d remained open after Ctrl+C", index)
 		}
 	}
 	if len(agent.sent) != 1 || len(a.parks) != 0 {
-		t.Fatalf("Esc did not drop the parked message: sent=%q parks=%+v", agent.sent, a.parks)
+		t.Fatalf("Ctrl+C did not drop the parked message: sent=%q parks=%+v", agent.sent, a.parks)
 	}
 
 	agent.finish()

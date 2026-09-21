@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -28,6 +29,7 @@ import (
 type standFake struct {
 	*fakeAgent
 	answered []standReply
+	replaced []session.Answer
 }
 
 type standReply struct {
@@ -37,6 +39,13 @@ type standReply struct {
 
 func (f *standFake) ResolveStanding(id uint64, answer session.StandingAnswer) {
 	f.answered = append(f.answered, standReply{id: id, answer: answer})
+}
+
+func (f *standFake) ReplaceQuestion(_ context.Context, answer session.Answer) (<-chan session.Event, error) {
+	f.replaced = append(f.replaced, answer)
+	events := make(chan session.Event)
+	close(events)
+	return events, nil
 }
 
 // ResolveQuestion is the engine's ONE DOOR in miniature: it reads the lane off
@@ -255,11 +264,11 @@ func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 		t.Fatalf("`c` was typed into the box instead of taken: %q", typed)
 	}
 	typeLine(t, a, "make it 8")
-	if len(agent.answered) != 1 || agent.answered[0].answer.Change != "make it 8" {
-		t.Fatalf("the correction did not travel: %+v", agent.answered)
+	if len(agent.replaced) != 1 || agent.replaced[0].Change != "make it 8" {
+		t.Fatalf("updated request did not travel: %+v", agent.replaced)
 	}
-	if agent.answered[0].answer.Approved {
-		t.Fatalf("a correction approved the item: %+v", agent.answered[0].answer)
+	if len(agent.answered) != 0 {
+		t.Fatalf("other approved or answered the old item: %+v", agent.answered)
 	}
 }
 

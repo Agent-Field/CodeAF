@@ -33,12 +33,12 @@ func TestModelSegmentNamesWhoServedAndHowFast(t *testing.T) {
 	// The rate is a claim about NOW, so it rides only while a turn runs; at
 	// rest the attribution stands alone and the figure is cleared.
 	a.state = stateWorking
-	want := "porting the parser · deepseek-v4-flash · via quicksilver · 92 tok/s"
+	want := "porting the parser · deepseek/deepseek-v4-flash · via quicksilver · 92 tok/s"
 	if got := a.identity(); got != want {
 		t.Fatalf("identity() = %q, want %q", got, want)
 	}
 	a.state = stateIdle
-	want = "porting the parser · deepseek-v4-flash · via quicksilver"
+	want = "porting the parser · deepseek/deepseek-v4-flash · via quicksilver"
 	if got := a.identity(); got != want {
 		t.Fatalf("an idle identity() = %q, want the rate cleared: %q", got, want)
 	}
@@ -81,7 +81,7 @@ func TestModelSegmentStaysQuietWithoutAServedFact(t *testing.T) {
 			a.model = "deepseek/deepseek-v4-flash"
 			a.title = "porting the parser"
 			pinSighting(t, test.sighting, test.known)
-			want := "porting the parser · deepseek-v4-flash"
+			want := "porting the parser · deepseek/deepseek-v4-flash"
 			if got := a.identity(); got != want {
 				t.Fatalf("identity() = %q, want %q — %s", got, want, test.why)
 			}

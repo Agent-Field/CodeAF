@@ -73,7 +73,7 @@ func TestAnItemStoppedOnAPermissionOpensTheItem(t *testing.T) {
 // It is read off the row's own cell rather than off the frame, because the word
 // at a row's right is drawn under the CURSOR and this asserts what the row
 // says, not where the cursor happens to be standing.
-func TestTheRowSaysTheDoorItTakes(t *testing.T) {
+func TestTheStandingRowLeavesTheImplicitEnterHintOut(t *testing.T) {
 	lab := newHomeLab(t)
 	a, _, _ := needsDoorItem(t, lab, standing.NeedsPermissionLead+needsDoorCommand)
 
@@ -88,8 +88,8 @@ func TestTheRowSaysTheDoorItTakes(t *testing.T) {
 	if !found {
 		t.Fatalf("the item did not reach the needs panel at all:\n%s", strings.Join(homeLines(a), "\n"))
 	}
-	if said != needsStandingWord {
-		t.Fatalf("the row says %q, want %q, which is the door it takes", said, needsStandingWord)
+	if said != "" {
+		t.Fatalf("the row repeats the implicit Enter hint: %q", said)
 	}
 }
 

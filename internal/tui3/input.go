@@ -26,7 +26,7 @@ const draftRows = 6
 // typed a sentence at a time. That is true of what people TYPE and false of
 // what they PASTE — a stack trace, a diff, a paragraph out of a file — and a
 // box that silently flattened a paste into one run-on line was answering the
-// commonest input on this surface by destroying it. So: alt+enter and ctrl+j
+// commonest input on this surface by destroying it. So: shift+enter, alt+enter and ctrl+j
 // open a line, a bracketed paste arrives whole, and enter still submits. The
 // value is a rune slice with '\n' in it and nothing else is special about it.
 type editor struct {
@@ -584,17 +584,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// frees every printable key for the filter box and, on the card, for the
 	// value somebody is typing into a field.
 	//
-	// WITH ONE CARD THAT IS NOT OPENED BY A COMMAND: the intake chat itself
-	// raised. It comes through this same door because it is the same overlay,
-	// and the only thing that differs is what esc means on it — a NO, answered
-	// back to the turn that is waiting on it, rather than a way out of a page
-	// somebody opened to read ([app.answerSubharnessOffer]).
+	// An agent-raised card can be deferred with Escape and resumed with
+	// /subharness; only an explicit answer resolves the offer.
 	if a.subPage.open && msg.String() != "ctrl+c" {
 		return a.subPageKey(msg)
 	}
 
 	if msg.String() == "ctrl+c" {
-		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
+		// INTERRUPT FIRST. While a turn runs ctrl+c stops it —
 		// a person hitting it mid-turn is reaching for the model, not for the
 		// door, and every terminal habit in the world says that keystroke stops
 		// the RUNNING thing.
@@ -822,17 +819,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.recallCancel()
 			return nil
 		}
-		// THE DOUBLE ESC IS THE REWIND'S DOOR, and it is read here rather than
-		// above the interrupt because the interrupt is not for sale (rewind.go):
-		// the first esc means exactly what it always meant and ARMS the mode on its
-		// way past, and only a second one inside the window is taken. A stray esc
-		// after the window has lapsed changes nothing.
-		cmd, taken := a.escRewind()
-		if taken {
-			return cmd
-		}
-		a.interrupt()
-		return cmd
+		return a.openHome()
 
 	case "enter":
 		if a.steerAvailable() {
@@ -885,10 +872,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// stop an answer.
 		return a.bargeIn()
 
-	case "alt+enter", "ctrl+j":
-		// Open a line. Two spellings because terminals disagree about which one
-		// they can even send: alt+enter is the one people reach for, ctrl+j is
-		// the one that survives every terminal that swallows it.
+	case "shift+enter", "alt+enter", "ctrl+j":
+		// Shift+enter opens a line on every message box. The older spellings
+		// remain available for terminals that cannot distinguish that chord.
+		a.dropDraftPick()
 		at := a.input.cursor
 		a.input.insert("\n")
 		a.editTags(at, at, 1)
@@ -969,7 +956,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 
 	case effortKey:
 		// WALK THE THINKING LADDER (effortchip.go). It is bound here, in the plain
-		// switch, so it survives a draft: a chord is not a character, ctrl+v
+		// switch, so it survives a draft: a chord is not a character, alt+e
 		// carries no text of its own, and everything above this line has already
 		// had its say — so a person mid-sentence can dial the conversation up and
 		// keep typing into the same words. It sits beside ctrl+, because the two
@@ -982,6 +969,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// design law about a capability with nothing behind it rather than a
 		// guard: there is no rung on that frame either.
 		return a.cycleEffort()
+
+	case approvalKey:
+		// WALK THE GATE'S WHEEL (approvalchip.go), bound here for the reason the
+		// chord above is: it survives a draft, and the chip on the seam is its
+		// visible door. On a session with no dial — a `--host` connection, whose
+		// gate is the far machine's — it says so rather than doing nothing.
+		return a.cycleApproval()
 
 	case "pgup":
 		return a.scroll(-a.scrollPage())
@@ -1006,7 +1000,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.onFirstLine() {
 			a.input.up()
 			a.touch()
-			return nil
+			return a.syncLists()
 		}
 		// A MESSAGE WAITING FOR THE ANSWER IS READ BEFORE THE HISTORY, and it has
 		// to be: enter remembers everything it parks, so the newest history line
@@ -1030,7 +1024,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.onLastLine() {
 			a.input.down()
 			a.touch()
-			return nil
+			return a.syncLists()
 		}
 		if a.recallForward() {
 			return nil
@@ -1206,6 +1200,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.empty() {
 			a.input.wordLeft()
 			a.touch()
+			return a.syncLists()
 		}
 		return nil
 	case "alt+right", "alt+f", "ctrl+right":
@@ -1213,6 +1208,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.empty() {
 			a.input.wordRight()
 			a.touch()
+			return a.syncLists()
 		}
 		return nil
 	case "super+left", "super+right", "meta+left", "meta+right":
@@ -1236,7 +1232,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.input.end()
 		}
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "left":
 		// ← ON AN EMPTY BOX IS NAVIGATION. There is no caret to move in an empty
 		// draft, which is the same argument the proposal's row makes for taking
@@ -1249,7 +1245,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		a.input.left()
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "right":
 		// → is the other half of it: forward, into the work (room.go).
 		if a.input.empty() {
@@ -1267,18 +1263,18 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		a.input.right()
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "ctrl+f":
 		// The emacs forward-char keeps its plain meaning at both ends. It is the
 		// caret key and nothing else, so nothing about the navigation above can
 		// be reached by a chord somebody pressed to move one character.
 		a.input.right()
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "home", "ctrl+a":
 		a.input.home()
 		a.touch()
-		return nil
+		return a.syncLists()
 	case "end", "ctrl+e":
 		// ctrl+e has two meanings and they are read the way ↑'s four are: with
 		// nothing typed it opens the running turn's compact steps first
@@ -1293,19 +1289,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		a.input.end()
 		a.touch()
-		return nil
+		return a.syncLists()
 	}
 
-	// TWO SPACES IN AN EMPTY BOX ARE THE DOOR HOME (home.go). It is read here,
-	// at the very bottom of the router, because it must lose to every other
-	// meaning a space could have on this surface — inside a paste bracket, in a
-	// filter box, in copy mode, in any overlay — and because the first of the
-	// two spaces has already typed itself perfectly ordinarily one keystroke
-	// ago, through the line below.
-	if a.homeGesture(msg) {
-		a.input.reset()
-		return tea.Batch(a.edited(), a.openHome())
-	}
 	if text := msg.Key().Text; text != "" {
 		// The ordinary case: a key that carries text types it.
 		//
@@ -1493,6 +1479,8 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 			return a.openStanding()
 		}
 		return a.standingSayShown(tagWords, tagShown)
+	case sendDoorAsk:
+		return a.runAskCommand(tagWords)
 	case sendDoorTask:
 		return a.runTaskCommand(tagWords)
 	}

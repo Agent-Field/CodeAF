@@ -24,7 +24,7 @@ func TestTheSurfaceNamesNoMachineTheTransportIsNotAskingFor(t *testing.T) {
 	a := laneApp(t)
 	a.width, a.height = 120, 24
 	a.pinLane(flash, "cloudflare")
-	if a.modelWord() != "deepseek-v4-flash@cloudflare" {
+	if a.modelWord() != flash+"@cloudflare" {
 		t.Fatalf("the pin did not reach the model word: %q", a.modelWord())
 	}
 

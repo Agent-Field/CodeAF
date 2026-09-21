@@ -51,6 +51,7 @@ func tabsRowOf(a *app) string {
 // the page, it wears the accent, and it names the way out.
 func TestARoomPinsAFocusHeader(t *testing.T) {
 	a, _, advance := roomApp(t)
+	a.openingPrompt = "work on the parser"
 	clickRail(t, a, 0)
 	advance(2*time.Minute + 12*time.Second)
 	a.touch()

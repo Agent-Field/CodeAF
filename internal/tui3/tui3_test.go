@@ -945,6 +945,8 @@ func key(s string) tea.KeyPressMsg {
 		// fall-through below only builds single-rune chords, and a chord that
 		// silently became the zero key would be a test pressing nothing.
 		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}
+	case "shift+enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
 	case bargeKey:
 		// The barge-in (bargein.go), spelled out for the same reason as the chord
 		// directly above it — and carrying NO Text, which is how a real terminal
@@ -952,7 +954,7 @@ func key(s string) tea.KeyPressMsg {
 		// printable, so its decoder leaves the text empty however the shift
 		// modifier is set. A helper that invented text here would hide the one
 		// thing that makes falling through this chord safe.
-		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl | tea.ModShift}
 	case "alt+backspace":
 		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}
 	case "ctrl+backspace":
@@ -1830,14 +1832,14 @@ func TestTheSameNoteTwiceRunningIsOneNote(t *testing.T) {
 	}
 }
 
-func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
+func TestCtrlCInterruptsThenCloses(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "thinking about it"),
 	}}}
 	a := newTestApp(agent)
 	typeLine(t, a, "long one")
 
-	drive(t, a, key("esc"))
+	drive(t, a, key("ctrl+c"))
 	if agent.stops != 1 {
 		t.Fatalf("esc did not interrupt (%d)", agent.stops)
 	}
@@ -1845,7 +1847,7 @@ func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
 	// (render.go's [stoppingWord]); `interrupted` arrives behind it at the close.
 	// Asked of the status line rather than of the frame, because the note the
 	// stop writes into the transcript is on the same frame.
-	if !strings.Contains(plain(a.status(a.width)), stoppingWord) {
+	if !strings.Contains(plain(a.legend(a.width)), stoppingWord) {
 		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
@@ -2004,8 +2006,13 @@ func TestNewOnAUsedConversationAddsOneAndClearsTheTranscript(t *testing.T) {
 		t.Fatalf("this terminal holds %d conversations", a.openCount())
 	}
 	got := plain(frame(a))
-	if strings.Contains(got, "something old") {
-		t.Fatalf("the old conversation survived /new:\n%s", got)
+	for _, e := range a.entries {
+		if e.kind == entryUser && e.text == "something old" {
+			t.Fatal("the old transcript survived /new")
+		}
+	}
+	if tabs := a.tabList(); len(tabs) != 1 || tabs[0].word != "something old" {
+		t.Fatalf("/new should retain only the used conversation's tab: %+v", tabs)
 	}
 	if !strings.Contains(got, "new conversation · lab") {
 		t.Fatalf("/new has to say which of the two happened:\n%s", got)

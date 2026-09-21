@@ -247,9 +247,9 @@ would type it into `scp`:
 - `devbox:app` in the status line's place segment
 - `devbox:/srv/code/app` in full in `/status`
 
-The legend under the input box says the machine too, but as a segment of its own rather
-than as a path prefix, because that line carries the conversation's name and not the
-folder: `devbox · porting the parser`.
+The legend above the input box says the machine too, but as a segment of its own rather
+than as a path prefix, because that line carries the model and not the folder:
+`devbox · glm-5.3-flash`.
 
 `/status` also names the session file with its machine in front of it, because that is a
 path you may want to copy. Once a measurement exists it also says `the round trip to
@@ -378,13 +378,13 @@ emptying out — which is the truth, because the conversation is not moving eith
 `connection` segment says what is happening, and everything comes back up to date the
 moment the link does.
 
-## Make a hosted conversation think harder — ctrl+v, /effort and the thinking rung over --host
+## Make a hosted conversation think harder — alt+e, /effort and the thinking rung over --host
 
 **It works, and the rung is set on the machine the conversation is running on.** The line
-above your message box names it beside the model — `glm-5.3-flash · ⠿ high` — and all
-three doors reach across: `ctrl+v` walks it a step, pressing it walks it a step, and
+above your message box names it beside the model — `glm-5.3-flash:high` — and all
+three doors reach across: `alt+e` walks it a step, pressing it walks it a step, and
 `/effort` opens the six rows or takes one outright (`/effort max`). A hosted conversation
-nobody has dialled reads `⠿ auto`, exactly as a local one does; the wheel comes back to
+nobody has dialled reads `auto`, exactly as a local one does; the wheel comes back to
 `auto` off the top over there too, and `/effort auto` clears it back there in one move.
 
 The word you see is the rung **that machine** resolved, not the one this one would have
@@ -503,10 +503,12 @@ registry yet. They name that machine and refuse; they do not report its registry
    `always · saved — /permissions to change`. That is the truth: the answer holds for this
    session, on the far machine, and is written down nowhere.
 
-7. **The YOLO badge is drawn from the far machine's posture.** It is carried once when the
-   connection opens, read from that machine's own profile rather than off this laptop: a
-   badge read off the wrong machine would be a safety claim about a machine nobody
-   consulted.
+7. **The approvals cell is the far machine's posture, and moving it moves the far gate.**
+   The posture is read from that machine's own rows rather than off this laptop — a cell
+   read off the wrong machine would be a safety claim about a machine nobody consulted —
+   and `alt+a` or a press on it sets it there. An engine too old to have
+   the door says so when the connection opens; the cell is then a reading of the posture
+   carried once at the welcome, and every door says the far machine's rules decide.
 
 8. **`/harness` is unavailable.** The registry is the far machine's and this build has no
    door onto it over the wire, so the command says `<machine> owns harnesses ·
@@ -699,9 +701,11 @@ Two consequences you can see:
   `always · saved — /permissions to change`. That is the truth: the answer holds for this
   session, on the far machine, and is written down nowhere. To make an approval stick, set
   it with `/permissions` on the far machine.
-- **The YOLO badge is drawn from the far machine's posture.** It is carried once when the
-  connection opens, read from the far machine's own profile — not off this laptop. A badge
-  read off the wrong machine would be a safety claim about a machine nobody consulted.
+- **The approvals cell is the far machine's posture, and moving it moves the far gate.**
+  It is read from the far machine's own rows — not off this laptop; a cell read off the
+  wrong machine would be a safety claim about a machine nobody consulted — and `alt+a` or a
+  press sets it there. An engine too old to have the door leaves the cell
+  a reading of the posture carried once at the welcome, and every door says so.
 
 ## Harnesses over --host
 

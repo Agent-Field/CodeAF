@@ -15,7 +15,7 @@ before each further try. A response proves endpoint reachability, not that every
 internet service is healthy. No separate public ping service is involved.
 
 Connection recovery waits up to two minutes, or less if that call already had
-a shorter deadline. Esc or Stop work cancels your call immediately; other calls
+a shorter deadline. Ctrl+C or Stop work cancels your call immediately; other calls
 still waiting keep their shared check. If the connection does not return, codeaf
 says `connection is still unavailable; try again when connected`.
 
@@ -45,9 +45,9 @@ the conversation identity stays the same.
 
 ## How do I pick a different model — which model am I talking to, which model is it using right now, and how do I switch or change it
 
-The model in use is written on the legend line directly above the message box, after the
-conversation's name (`porting the parser · glm-5.3-flash`). There are two doors to the
-picker:
+The model in use is the first thing written on the legend line directly above the message
+box, with the endpoint answering for it in brackets (`glm-5.3-flash (deepinfra):high ·
+◇ asks`; on a `--host` session the machine leads it). There are two doors to the picker:
 
 - type `/model` with nothing after it, or
 - press the model's name on that line above the box.
@@ -1186,7 +1186,7 @@ use, and all five rungs are reachable here.
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
 `high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — codeaf asks
 for nothing and the model thinks however it thinks. Auto is the **shipped** setting, and
-`⠿ auto` is what the line above the message box reads until something is dialled; no rung
+`auto` is what the line above the message box reads until something is dialled; no rung
 is the shipped one.
 
 **The default is `auto`.** It is the **thinking** row in `/settings`, among the model rows
@@ -1211,9 +1211,9 @@ Several things can name a rung, and the most specific one wins:
    anybody set. Your own turn, and the task workers you hand work out to, take the default.
 5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
-**`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
+**`alt+e` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which is named on the line above the box, beside the model:
-`glm-5.3-flash · ⠿ high`. On a task — the roster row under the cursor, or the page you are
+`glm-5.3-flash:high`. On a task — the roster row under the cursor, or the page you are
 inside — it moves that task's rung. On a standing item's card it moves that item's. A
 conversation's rung, a task's rung, and the level `ctrl+t` dials onto one model in
 `/model` all climb one step each press and come back to `auto` off the top — that is how
@@ -1223,14 +1223,14 @@ and wrapped from `max` to `low`.) `/effort auto` and the top row of `/effort` st
 this conversation in one move from any rung. A standing item's rung is the one that never
 walks back to "nobody said": it is cleared in the item's own document. The **thinking**
 row in `/settings` stays what it is: the answer for every conversation that has not been
-dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
+dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *alt+e — how hard the
 thing you are looking at thinks*.
 
-**Three doors, one rung.** `ctrl+v`, a press on the rung itself, and `/effort`:
+**Three doors, one rung.** `alt+e`, a press on the rung itself, and `/effort`:
 
 | What you do | What happens |
 |---|---|
-| `ctrl+v` | one step up the ladder, and back to `auto` off the top |
+| `alt+e` | one step up the ladder, and back to `auto` off the top |
 | press the rung on the line above the box | the same one step, the same six stops, and it lights under the pointer first |
 | `/effort` (or `/thinking`, `/think`) | six rows — `auto` and the five rungs — with what each one buys and the one in force marked |
 | `/effort max` | that rung, outright |
@@ -1241,7 +1241,7 @@ A word that is none of the six changes nothing and prints them all. This is
 conversation hands out: a task worker starts at it.
 
 **It works over `--host` too.** The rung is set on the machine the conversation is running
-on and the word on your line is the one that machine resolved — `⠿ auto` included, on a
+on and the word on your line is the one that machine resolved — `auto` included, on a
 hosted conversation nobody has dialled. Against an engine too old to know the ladder there
 is no rung on the line and neither the chord nor `/effort` offers one — a capability that
 cannot work is absent rather than broken.
@@ -2366,7 +2366,7 @@ name on the row. A thing neither of them knows keeps its id.
 **`enter` on any row under "by topic" or "by standing order" opens the thing itself**, and
 the foot says so on every row that is a door — `enter opens what spent it`. The headings
 said it too for a while; the heading over the cut is the control that swaps cuts now, and
-a control with an unrelated instruction after it is two objects on one line. A task opens **its own record card** in the tasks place, with the list
+a control with an unrelated instruction after it is two objects on one line. A task opens **its own record card** in the sessions place, with the list
 behind it parked on that row; a standing promise opens the standing place **on that
 order**; and a conversation **opens** — brought forward if this terminal already has it,
 otherwise opened beside the one you are in, with all of that door's refusals (a folder that
@@ -2413,7 +2413,7 @@ Time is two questions, so it gets two arrow axes and no letters:
 The cut of the ledger is its own control and has nothing to do with time: walk onto the
 heading and `←`/`→` swap `by topic` for `by model`. The window opens on **the last 14 days,
 by the day**. The label between the arrows is the
-reading and the control at once, and the same head row is drawn on the tasks place and the
+reading and the control at once, and the same head row is drawn on the sessions place and the
 standing place. A terminal too narrow to draw the control has no window there at all — the
 keys do nothing rather than moving something nothing on screen reports — and the zoom keys
 are bound only where `shift+↑ coarser` fits beside the arrows. A week buckets from Monday; there is no year rung, because a
@@ -3274,8 +3274,9 @@ It goes quiet only when nothing is being written and no answer has come back in 
 ten minutes.
 
 **It is drawn whoever served, the vendor's own providers included.** `glm-5.3-flash · via
-z-ai` is not a line saying the same thing twice: the model is spelled there as its
-basename, so the vendor half of its address (`z-ai/`) is not on the screen at all. Until
+z-ai` identifies the machine that served the answer. The model now keeps its full
+address, including the organization prefix, on both home and conversation seams;
+the serving machine is a separate fact. Until
 2026-09-09 the rider was hidden in exactly that case, and what it produced was a name
 that came and went as the router moved between a vendor's own providers and everybody
 else's — which reads as codeaf having lost track of who is answering. The `served` row on

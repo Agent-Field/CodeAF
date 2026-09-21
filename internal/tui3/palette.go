@@ -960,10 +960,10 @@ func (p *picker) foldKey(name string) bool {
 	// `s` stays the commonest first letter a person types into this box
 	// (taskstable.go argues it for the tasks page's filter, and the argument is
 	// the same one here).
-	case tasksSortKeyChord:
+	case pickerSortKeyChord:
 		p.sortNext(false)
 		return true
-	case tasksSortBackChord:
+	case pickerSortBackChord:
 		// AND SHIFT WALKS THE CYCLE BACKWARDS. Every column is two rungs now — its
 		// own direction and the other one ([tableSort.step]) — so "the previous
 		// rung" is what this chord can mean, and it retraces exactly what the
@@ -2515,7 +2515,7 @@ func (p *picker) hintAt(room int) string { return pickerHintAt(room, p.offersRef
 // sortKeyWord is how the foot names the sort, and it is one constant because the
 // spelled-out rows above and the cursor-shaped foot below have to say it the same
 // way (the one-source-of-truth rule; [pickerHint]'s own test compares the two).
-const sortKeyWord = tasksSortKeyChord + " sort"
+const sortKeyWord = pickerSortKeyChord + " sort"
 
 // effortKeyWord is the chord that walks the rung of the model under the cursor,
 // named in the foot since [pickerHint] stopped naming it in the box.
@@ -3050,6 +3050,21 @@ func (p *picker) navigate(msg tea.KeyPressMsg) {
 // own two, because the scoring is about what is being listed. page is how far
 // pgup and pgdn jump, which is that list's own window.
 func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func(), page int) {
+	// A LIST WITH NO BOX UNDER IT STILL WALKS, and takes no text: the spend
+	// place has nothing to type into (pages.go's [place.box]).
+	if filter == nil {
+		switch msg.String() {
+		case "up", "ctrl+p":
+			move(-1)
+		case "down", "ctrl+n":
+			move(1)
+		case "pgup":
+			move(-page)
+		case "pgdown":
+			move(page)
+		}
+		return
+	}
 	// THE WORD AND LINE JUMPS ARE THE SURFACE'S, NOT THIS LIST'S (editkeys.go).
 	// They are read before the switch because they belong to every box on the
 	// program and this one is only the busiest door onto them — twelve overlays
@@ -3181,6 +3196,7 @@ func (a *app) overlayHeight() int {
 	room := height - 2 - a.inputHeight() - a.questionHeight() -
 		a.followHeight() - a.landHeight() - a.parkedHeight()
 	if commands {
+		room = height - a.topHeight() - a.chromeBaseHeight() - 1
 		want = a.menu.height(width, room, a.chords)
 	}
 	if want > room {

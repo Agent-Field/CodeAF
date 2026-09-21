@@ -987,7 +987,7 @@ being drawn is the bug above, and it is worth reporting.
 provider is demanded on your own turn, on a task room you are sitting in front
 of, and on a headless `codeaf exec` you typed — all three are you, waiting. The
 errands that run beside a turn send no provider name at all: a conversation's
-two-word title, the memory reflex, the question that routes your message, a
+conversation title, the memory reflex, the question that routes your message, a
 hand asking a model about a document, a subharness node. The row is spelled
 `lane.talk` and the slot is its whole scope.
 

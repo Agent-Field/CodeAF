@@ -9,11 +9,11 @@ import (
 )
 
 // THE COMMAND LIST IS THE ONE THING HOME'S COMPOSER DID NOT HAVE. Chat's box
-// answers a "/" with a ranked menu and enter runs the row; home's box used to
+// answers a "/" with an alphabetical menu and enter runs the row; home's box used to
 // answer the same characters by starting a conversation with them, which is
 // the one screen where a command typed in full did nothing it promised. This
 // file is home's half of that parity: the offers in the drop-up, and the enter
-// that runs them. The ranking, the token-finding, the sealing AND the choosing
+// that runs them. The ordering, the token-finding, the sealing AND the choosing
 // are not reimplemented — they are the chat composer's own [menu] and its own
 // [chooseCommand], run over home's box, so the two surfaces cannot grow two
 // answers to what "/mo" offers or to what enter does with the row.
@@ -34,32 +34,17 @@ import (
 // over a line that says nothing.
 const homeCommand homeRowKind = 250
 
-// commandLines is the command half of the drop-up: the ranked rows for the
-// /-word under the caret, or nothing when the caret is not in one.
-//
-// THE CHAT COMPOSER'S OWN SYNC RANKS THEM. [menu.sync] finds the token, keeps
-// the seal a chosen row left, and ranks the matches with the one ranker
-// (commands.go's [menu.rank]) — aliases surface the canonical row there, so
-// they do here too, and a second ranker on this screen would be two answers to
-// what "/conf" offers.
-//
-// THE ROWS RISE BEST-FIRST OUT OF THE BOX, which is the drop-up's law
-// ([homeView.placeLines] states it): the last line appended is the row against
-// the box, and the best match is the one a person should read first. The cap
-// is [menuRows] — chat's list shows eight rows at once, and a drop-up that
-// offered forty would bury the conversation matches the same characters also
-// found.
+// commandLines reuses the conversation menu's token detection and alphabetical
+// results. Home's viewport scrolls the complete list, with no search results
+// mixed in while a command token is active.
 func (h *homeView) commandLines() []homeLine {
 	h.cmd.sync(&h.box)
 	if !h.cmd.open {
 		return nil
 	}
 	hits := h.cmd.hits
-	if len(hits) > menuRows {
-		hits = hits[:menuRows]
-	}
 	lines := make([]homeLine, 0, len(hits))
-	for i := len(hits) - 1; i >= 0; i-- {
+	for i := 0; i < len(hits); i++ {
 		// A POINTER INTO THE ONE COMMAND TABLE, which is built once at init and
 		// never rewritten, so a row can hold it the way it holds a place's word
 		// rather than the way it must not hold a world index ([homeLine.row]
@@ -91,7 +76,7 @@ func (a *app) homeCommandRow(line homeLine, at, width int, pal palette) string {
 	h := &a.home
 	label := line.cmd.typed()
 	return overlayRow(label, commandMargin(label, *line.cmd, width, a.chords),
-		at == h.cursor, false, at == h.hover, width, pal)
+		at == h.cursor, false, at == h.hover && at == h.cursor, width, pal)
 }
 
 // commandMargin is that margin: the fate, and the note if there is room for a
@@ -197,6 +182,8 @@ const (
 func homeFate(word, rest string) string {
 	rest = strings.TrimSpace(rest)
 	switch canonicalCommand(strings.ToLower(strings.TrimPrefix(word, "/"))) {
+	case "ask":
+		return fateAnswers
 	case "model":
 		return fateTargetModel
 	case "folder":
@@ -243,7 +230,7 @@ func homeFate(word, rest string) string {
 		// /crew and /model. The crew is the machine's, the model has a target
 		// rule home can pin — and a thinking rung is the CONVERSATION's own scope
 		// (effortchip.go), so there is nothing here for it to be set on. Home's
-		// own rung is not this one either: `ctrl+v` on a standing item's card
+		// own rung is not this one either: `alt+e` on a standing item's card
 		// moves that item's, and the install's default is the `thinking` row of
 		// /settings (effortscope.go).
 		return fateNeedsChat
@@ -293,6 +280,9 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	rest = strings.TrimSpace(rest)
 	word := canonicalCommand(strings.ToLower(name))
+	if word == "ask" {
+		return a.runAskCommand(rest)
+	}
 	h.box.reset()
 	h.build()
 	switch homeFate(word, rest) {
@@ -392,7 +382,6 @@ func (a *app) homeTrayCommand(word, rest string) tea.Cmd {
 		if path := a.resolvePath(rest); path != "" {
 			if info, err := os.Stat(path); err == nil && info.IsDir() {
 				a.target.where = path
-				a.home.say(targetMovedWord+a.hostedPath(shortPath(path, a.tilde, 0)), "")
 				a.touch()
 				return nil
 			}

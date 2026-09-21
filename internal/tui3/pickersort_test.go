@@ -78,7 +78,7 @@ func TestTheSortKeyWalksEachColumnBothWaysRound(t *testing.T) {
 	}
 	got := []string{sortWord(a.pick.sort)}
 	for range len(want) - 1 {
-		drive(t, a, key(tasksSortKeyChord))
+		drive(t, a, key(pickerSortKeyChord))
 		got = append(got, sortWord(a.pick.sort))
 	}
 	if strings.Join(got, " · ") != strings.Join(want, " · ") {
@@ -93,13 +93,13 @@ func TestTheBackChordRetracesTheCycle(t *testing.T) {
 	a := sortApp(t)
 	forward := []string{}
 	for range 6 {
-		drive(t, a, key(tasksSortKeyChord))
+		drive(t, a, key(pickerSortKeyChord))
 		forward = append(forward, sortWord(a.pick.sort))
 	}
 	back := []string{}
 	for range 6 {
 		back = append(back, sortWord(a.pick.sort))
-		drive(t, a, key(tasksSortBackChord))
+		drive(t, a, key(pickerSortBackChord))
 	}
 	for at := range forward {
 		if got, want := back[at], forward[len(forward)-1-at]; got != want {
@@ -185,7 +185,7 @@ func TestTheSortCycleSkipsAColumnNobodyPublished(t *testing.T) {
 	lane.Default().Reset()
 	a := sortApp(t)
 	for range len(modelColumns) * 3 {
-		drive(t, a, key(tasksSortKeyChord))
+		drive(t, a, key(pickerSortKeyChord))
 		if at := a.pick.sort.column(); at != tableSortName {
 			switch modelColumns[at].head {
 			case "via", "first", "t/s":
@@ -245,7 +245,7 @@ func TestTheSortKeyPutsTheCursorOnTheAnswerAndOpeningDoesNot(t *testing.T) {
 		t.Fatalf("the list did not open on the model in use: %q", chosen.ID)
 	}
 	for sortWord(a.pick.sort) != "in/M ↓" {
-		drive(t, a, key(tasksSortKeyChord))
+		drive(t, a, key(pickerSortKeyChord))
 	}
 	chosen, ok := a.pick.choice()
 	if !ok || chosen.ID != "b/cheap" {
@@ -280,7 +280,7 @@ func TestTheNameColumnPutsTheBestMatchFirst(t *testing.T) {
 	// AND THE ARROW STILL MEANS SOMETHING: it decides the order INSIDE a band of
 	// equal matches, so
 	// turning it round cannot promote a worse match over a better one.
-	drive(t, a, key(tasksSortKeyChord))
+	drive(t, a, key(pickerSortKeyChord))
 	if got := pickerIDs(a); got[0] != "gpt-5-classic" {
 		t.Fatalf("turned round, the best match is no longer first: %v", got)
 	}
@@ -331,7 +331,7 @@ func TestTheSortKeyOrdersTheProvidersWhenTheCursorIsInThem(t *testing.T) {
 
 	// ONE press turns the NAME column round, because the name is two rungs like
 	// every other column.
-	drive(t, a, key(tasksSortKeyChord))
+	drive(t, a, key(pickerSortKeyChord))
 	if a.pick.sort != modelBefore {
 		t.Fatalf("the key moved the MODEL list's sort to %+v while the cursor was in the providers", a.pick.sort)
 	}
@@ -340,7 +340,7 @@ func TestTheSortKeyOrdersTheProvidersWhenTheCursorIsInThem(t *testing.T) {
 	}
 	// AND THE SECOND press moves on to `first`, ascending: coreweave 0.4s,
 	// cloudflare 0.8s, deepinfra 1.2s.
-	drive(t, a, key(tasksSortKeyChord))
+	drive(t, a, key(pickerSortKeyChord))
 	if got := laneNames(a.pick.lanes); strings.Join(got, ",") != "coreweave,cloudflare,deepinfra" {
 		t.Fatalf("sorted by first the fold holds %v", got)
 	}
@@ -350,7 +350,7 @@ func TestTheSortKeyOrdersTheProvidersWhenTheCursorIsInThem(t *testing.T) {
 	}
 
 	// Turned round: deepinfra slowest first.
-	drive(t, a, key(tasksSortKeyChord))
+	drive(t, a, key(pickerSortKeyChord))
 	if got := laneNames(a.pick.lanes); strings.Join(got, ",") != "deepinfra,cloudflare,coreweave" {
 		t.Fatalf("reversed by first the fold holds %v", got)
 	}
@@ -366,13 +366,13 @@ func TestTheTwoSortsAreHeldApart(t *testing.T) {
 	a := laneApp(t)
 	a.width, a.height = 130, 40
 	typeLine(t, a, "/model")
-	drive(t, a, key(tasksSortKeyChord)) // the model list, off the name column
+	drive(t, a, key(pickerSortKeyChord)) // the model list, off the name column
 	models := a.pick.sort
 	if models == (tableSort{}) {
 		t.Fatal("the key did not move the model list's sort")
 	}
 
-	drive(t, a, key("right"), key("down"), key("right"), key(tasksSortKeyChord))
+	drive(t, a, key("right"), key("down"), key("right"), key(pickerSortKeyChord))
 	if a.pick.sort != models {
 		t.Fatalf("the model list's sort moved to %+v while the fold was being sorted", a.pick.sort)
 	}
@@ -651,7 +651,7 @@ func TestASparseColumnLeavesItsBlanksInNameOrder(t *testing.T) {
 	straight := blanksUnder()
 	// ...and reached having walked through other rungs first.
 	for range len(modelColumns) * 2 {
-		drive(t, a, key(tasksSortKeyChord))
+		drive(t, a, key(pickerSortKeyChord))
 		if at := a.pick.sort.column(); at != tableSortName &&
 			modelColumns[at].head == "first" && !a.pick.sort.back {
 			break
@@ -690,8 +690,8 @@ func TestASortOrdersRowsInsideAServiceAndNeverTheServices(t *testing.T) {
 	typeLine(t, a, "/model")
 	// Two presses off the name column is `in/M` ascending: this list measures no
 	// provider, so the cycle steps over `via`, `first` and `t/s`.
-	drive(t, a, key(tasksSortKeyChord))
-	drive(t, a, key(tasksSortKeyChord))
+	drive(t, a, key(pickerSortKeyChord))
+	drive(t, a, key(pickerSortKeyChord))
 	if got := sortWord(a.pick.sort); got != "in/M "+tasksSortDown {
 		t.Fatalf("two presses landed on %q, want in/M ascending", got)
 	}
@@ -751,7 +751,7 @@ func TestAPriceWithOneHalfMissingSortsWithTheBlanks(t *testing.T) {
 // moves it: a list you can see is sorted and cannot sort. The fold's key map is
 // the LIST's ([picker.foldKey]) and all four doors read it.
 func TestEveryDoorOntoTheModelListAnswersTheSortChord(t *testing.T) {
-	a := layerApp(t, pageSpend, 120)
+	a := layerApp(t, pageHome, 120)
 	a.placeKeyPress(key("alt+o"))
 	if !a.composer.pick.open {
 		t.Fatal("alt+o opened no model list")
@@ -759,13 +759,13 @@ func TestEveryDoorOntoTheModelListAnswersTheSortChord(t *testing.T) {
 	if got := a.composer.pick.sort; got != (tableSort{}) {
 		t.Fatalf("the composer's list opened on sort %+v, want the zero value", got)
 	}
-	a.placeKeyPress(key(tasksSortKeyChord))
+	a.placeKeyPress(key(pickerSortKeyChord))
 	first := a.composer.pick.sort
 	if first == (tableSort{}) {
 		t.Fatal("alt+o's list swallowed the sort chord; the arrow on its heading cannot be moved")
 	}
 	// AND THE BACK CHORD RETRACES IT, which is the other half of the same map.
-	a.placeKeyPress(key(tasksSortBackChord))
+	a.placeKeyPress(key(pickerSortBackChord))
 	if got := a.composer.pick.sort; got != (tableSort{}) {
 		t.Fatalf("the back chord left the sort at %+v, want the rung it started on", got)
 	}

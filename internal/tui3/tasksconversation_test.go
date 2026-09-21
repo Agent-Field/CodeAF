@@ -38,7 +38,7 @@ func tasksChatFixture() (session.World, session.UsageWindow, time.Time) {
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
 
 	gate := session.SessionRow{
-		ID: "room-a", Title: "shipping the gate", Project: "codeaf",
+		ID: "room-a", Title: "Shipping the Gate", Project: "codeaf",
 		Transcript: "/journals/room-a/session.jsonl", ProjectDir: "/work/codeaf",
 	}
 	// Every row carries its title as well as its label, because that is what a
@@ -56,7 +56,7 @@ func tasksChatFixture() (session.World, session.UsageWindow, time.Time) {
 		work("4", "3", "port the token table", session.TaskDone, ago(100*time.Minute)),
 	}
 	clips := session.SessionRow{
-		ID: "room-b", Title: "thor clips", Project: "media",
+		ID: "room-b", Title: "Thor Clips", Project: "media",
 		Transcript: "/journals/room-b/session.jsonl", ProjectDir: "/work/media",
 	}
 	clips.Tasks.Rows = []session.TaskIndexEntry{
@@ -155,13 +155,13 @@ func TestEveryPieceOfWorkIsDrawnUnderItsOwnConversation(t *testing.T) {
 	r := tasksChatReading()
 	// EVERY CONVERSATION OPENS SHUT (the owner's ruling, 2026-09-11) and what this
 	// test is about is the SHAPE behind that fold, so it reads the page after `→`.
-	if shut := tasksLineOf(t, r.lay(120), "shipping the gate"); !shut.folds || shut.open {
-		t.Fatalf("a conversation came out folds=%v open=%v, and every fold on this page opens shut",
+	if shut := tasksLineOf(t, r.lay(120), "Shipping the Gate"); !shut.folds || !shut.open {
+		t.Fatalf("a conversation came out folds=%v open=%v, and every fold on this page opens open",
 			shut.folds, shut.open)
 	}
 	lines := tasksOpen(r).lay(120)
 
-	chat := tasksLineOf(t, lines, "shipping the gate")
+	chat := tasksLineOf(t, lines, "Shipping the Gate")
 	if chat.kind != tasksLineChat {
 		t.Fatalf("the conversation came out as a line of kind %v", chat.kind)
 	}
@@ -192,7 +192,7 @@ func TestEveryPieceOfWorkIsDrawnUnderItsOwnConversation(t *testing.T) {
 	// THE CONVERSATION IS NAMED ONCE. It used to be repeated on every row of work
 	// it ran, twenty-odd cells a row, on the rows whose names were being cut.
 	page := tasksPage(r, 120)
-	if got := strings.Count(page, "shipping the gate"); got != 1 {
+	if got := strings.Count(page, "Shipping the Gate"); got != 1 {
 		t.Fatalf("the conversation is named %d times on\n%s", got, page)
 	}
 }
@@ -205,7 +205,7 @@ func TestEveryPieceOfWorkIsDrawnUnderItsOwnConversation(t *testing.T) {
 // at all four wearing an id nothing in the record ever wrote.
 func TestAConversationRowIsNeitherRunnableNorCancellable(t *testing.T) {
 	a := tasksChatApp(t)
-	tasksPointAt(t, a, "shipping the gate")
+	tasksPointAt(t, a, "Shipping the Gate")
 
 	chat, ok := a.taskSheetChat()
 	if !ok {
@@ -231,7 +231,7 @@ func TestAConversationRowIsNeitherRunnableNorCancellable(t *testing.T) {
 		t.Fatalf("a piece of work and its conversation are both called %q", id)
 	}
 	// AND THE FOOT SAYS WHAT THE KEY REALLY DOES over the conversation.
-	tasksPointAt(t, a, "shipping the gate")
+	tasksPointAt(t, a, "Shipping the Gate")
 	if got := a.taskSheet.hint(a); !strings.Contains(got, tasksEnterOpenWord) {
 		t.Fatalf("the foot over a conversation reads\n  %s\nand enter goes to that conversation", got)
 	}
@@ -260,10 +260,10 @@ func TestAConversationStandsUnderItsMostUrgentWorkWithoutRefilingIt(t *testing.T
 			seen[line.chat.title] = head
 		}
 	}
-	if got := seen["shipping the gate"]; !strings.HasPrefix(got, tasksSectionWord(tasksNeeds)) {
+	if got := seen["Shipping the Gate"]; !strings.HasPrefix(got, tasksSectionWord(tasksRunning)) {
 		t.Fatalf("the conversation with unchecked work in it stands under %q", got)
 	}
-	if got := seen["thor clips"]; !strings.HasPrefix(got, tasksSectionWord(tasksEarlier)) {
+	if got := seen["Thor Clips"]; !strings.HasPrefix(got, tasksSectionWord(tasksCompleted)) {
 		t.Fatalf("the conversation that finished yesterday stands under %q", got)
 	}
 	// AND ITS FINISHED WORK CAME WITH IT rather than being left behind under a
@@ -288,7 +288,7 @@ func TestAConversationStandsUnderItsMostUrgentWorkWithoutRefilingIt(t *testing.T
 		if !strings.Contains(line, tokens.GlyphNeedsHuman) {
 			continue
 		}
-		if !strings.Contains(line, "rotate the certificate") {
+		if !strings.Contains(line, "rotate the certificate") && !strings.Contains(line, "Shipping the Gate") {
 			t.Fatalf("a row that needs nobody wears the steer mark:\n\t%s", line)
 		}
 	}
@@ -329,7 +329,7 @@ func TestWorkNestsToWhateverDepthTheRecordCarries(t *testing.T) {
 		t.Fatalf("a worker with workers of its own wears %q rather than its fold", lexer.kin)
 	}
 	// SHUT AGAIN, WHAT IS BEHIND THE FOLD IS BEHIND IT — at every depth.
-	r.open = map[tasksKey]bool{tasksChatKey("room-a"): true, {session: "room-a", id: "2"}: true}
+	r.open = map[tasksKey]bool{tasksChatKey("room-a"): true, {session: "room-a", id: "2"}: true, {session: "room-a", id: "3"}: false}
 	page := tasksPageFolded(r, 120)
 	if !strings.Contains(page, "port the lexer") || strings.Contains(page, "port the token table") {
 		t.Fatalf("a shut worker did not take its own workers with it:\n%s", page)
@@ -349,7 +349,7 @@ func TestAConversationFoldRemembersBeingShut(t *testing.T) {
 	// The conversation opens shut, so this starts from the page after `→` — the
 	// claim is that `←` is remembered, and a fold already shut cannot say it.
 	openTaskFolds(a)
-	tasksPointAt(t, a, "shipping the gate")
+	tasksPointAt(t, a, "Shipping the Gate")
 
 	if !a.taskSheetFold(false) {
 		t.Fatal("`←` did nothing over an open conversation")
@@ -357,7 +357,7 @@ func TestAConversationFoldRemembersBeingShut(t *testing.T) {
 	r := a.tasksFiltered()
 	width, _ := a.size()
 	page := tasksPageFolded(r, width)
-	if !strings.Contains(page, "shipping the gate") {
+	if !strings.Contains(page, "Shipping the Gate") {
 		t.Fatalf("shutting a conversation took its own row off the page:\n%s", page)
 	}
 	if strings.Contains(page, "rotate the certificate") {
@@ -365,8 +365,8 @@ func TestAConversationFoldRemembersBeingShut(t *testing.T) {
 	}
 	// THE COUNT UNDER IT IS UNTOUCHED AND THE HEADING RECONCILES THE TWO. The
 	// foot is what the place is holding; the rows are what is on the page.
-	held := len(r.section(tasksNeeds))
-	if got := r.shown(r.section(tasksNeeds)); got != 0 || held == 0 {
+	held := len(r.section(tasksRunning))
+	if got := r.shown(r.section(tasksRunning)); got != 0 || held == 0 {
 		t.Fatalf("a shut conversation shows %d rows of %d held", got, held)
 	}
 	// AND IT IS STILL SHUT AFTER THE PAGE REBUILDS UNDER IT.
@@ -389,7 +389,7 @@ func TestAConversationFoldRemembersBeingShut(t *testing.T) {
 // enter.
 func TestTheCursorKeepsAConversationAcrossARebuild(t *testing.T) {
 	a := tasksChatApp(t)
-	at := tasksPointAt(t, a, "thor clips")
+	at := tasksPointAt(t, a, "Thor Clips")
 
 	was, held := a.taskSheet.rowAt(a, at)
 	if !held || !was.chat() {
@@ -411,7 +411,7 @@ func TestTheCursorKeepsAConversationAcrossARebuild(t *testing.T) {
 	}
 	a.taskSheet.cursor = line
 	chat, ok := a.taskSheetChat()
-	if !ok || chat.title != "thor clips" {
+	if !ok || chat.title != "Thor Clips" {
 		t.Fatalf("the cursor came back on %+v, want the conversation it was on", chat)
 	}
 }
@@ -428,19 +428,19 @@ func TestAQueryKeepsTheAncestorsOfWhatItFoundAndOpensThePath(t *testing.T) {
 	r := a.tasksFiltered()
 	width, _ := a.size()
 	page := tasksPage(r, width)
-	for _, want := range []string{"shipping the gate", "port the parser", "port the lexer", "port the token table"} {
+	for _, want := range []string{"Shipping the Gate", "port the parser", "port the lexer", "port the token table"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the query lost %q from\n%s", want, page)
 		}
 	}
 	// AND NOTHING ELSE CAME WITH THEM.
-	for _, gone := range []string{"rotate the certificate", "thor clips", "render the fight clip"} {
+	for _, gone := range []string{"rotate the certificate", "Thor Clips", "render the fight clip"} {
 		if strings.Contains(page, gone) {
 			t.Fatalf("the query kept %q, which matches nothing:\n%s", gone, page)
 		}
 	}
 	// THE HEAD STILL COUNTS THE PLACE AND NOT THE QUERY.
-	if got := r.head(width, false); !strings.Contains(got, "5 pieces of work") {
+	if got := r.head(width, false); !strings.Contains(got, "5 subtasks") {
 		t.Fatalf("a filtered page says the machine has run\n  %s", got)
 	}
 }
@@ -485,7 +485,7 @@ func TestACircularRecordStillDrawsEveryRowOnce(t *testing.T) {
 // vanishing behind a row that is not there.
 func TestAnOrphanedChildIsStillDrawn(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 0, 0, 0, time.UTC)
-	row := session.SessionRow{ID: "room-a", Title: "the split", Project: "codeaf"}
+	row := session.SessionRow{ID: "room-a", Title: "The Split", Project: "codeaf"}
 	row.Tasks.Rows = []session.TaskIndexEntry{
 		{SessionID: "room-a", ID: "8", Parent: "7", Label: "the worker whose run is gone",
 			Status: string(session.TaskDone), EndedAt: now.Add(-time.Hour)},
@@ -520,7 +520,7 @@ func TestTwoConversationsWearingTheSameIdKeepTheirOwnFolds(t *testing.T) {
 	if strings.Contains(page, "render the fight clip") {
 		t.Fatalf("the shut conversation still drew its work:\n%s", page)
 	}
-	if !strings.Contains(page, "thor clips") || !strings.Contains(page, "shipping the gate") {
+	if !strings.Contains(page, "Thor Clips") || !strings.Contains(page, "Shipping the Gate") {
 		t.Fatalf("a conversation went missing:\n%s", page)
 	}
 }
@@ -528,7 +528,7 @@ func TestTwoConversationsWearingTheSameIdKeepTheirOwnFolds(t *testing.T) {
 // A CONVERSATION NOTHING NAMED IS NOT A ROW. Nothing is invented for it: the
 // work keeps the place it has always had, at the top of its section, and no fold
 // is drawn over a blank.
-func TestWorkOutOfAnUnnamedConversationIsDrawnWithNoRowOverIt(t *testing.T) {
+func TestWorkWithMissingConversationMetadataStillHasAParentRow(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 0, 0, 0, time.UTC)
 	row := session.SessionRow{ID: "room-a", Project: "codeaf"}
 	row.Tasks.Rows = []session.TaskIndexEntry{
@@ -542,16 +542,16 @@ func TestWorkOutOfAnUnnamedConversationIsDrawnWithNoRowOverIt(t *testing.T) {
 
 	lines := r.lay(120)
 	for _, line := range lines {
-		if line.kind == tasksLineChat {
-			t.Fatalf("a conversation nothing named drew the row %q", line.chat.title)
+		if line.kind == tasksLineChat && line.chat.row.ID != "room-a" {
+			t.Fatalf("task attributed to wrong conversation: %q", line.chat.row.ID)
 		}
 	}
 	work := tasksLineOf(t, lines, "port the parser")
-	if work.kin != "" {
+	if work.kin == "" {
 		t.Fatalf("a page with no shape on it drew the column: %q", work.kin)
 	}
-	if work.under {
-		t.Fatal("the row believes a conversation is named above it")
+	if !work.under {
+		t.Fatal("the row has no conversation above it")
 	}
 }
 

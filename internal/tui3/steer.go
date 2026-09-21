@@ -15,7 +15,7 @@ import (
 // Plain enter is the expected chat gesture and therefore the primary door. It
 // cuts the generation that is currently streaming, preserves its arrived text,
 // and sends the draft into the same turn. `cmd+enter` keeps the older choice to
-// park the draft for the next turn, and `shift+enter` still stops the whole turn
+// park the draft for the next turn, and `ctrl+shift+enter` still stops the whole turn
 // before sending (bargein.go).
 //
 // A STEER INTERRUPTS ONE GENERATION, NOT THE TURN. The person's own line is
@@ -81,7 +81,7 @@ import (
 // WHY THIS ONE — WHAT THE AUDIT LEFT. The gesture has to read as a SEND rather
 // than as a letter, which means a modifier on enter, and the other three are
 // spent: `alt+enter` (with `ctrl+j`) opens a line, `ctrl+enter` marks the
-// sentence as something to keep true (standmark.go), and `shift+enter` stops the
+// sentence as something to keep true (standmark.go), and `ctrl+shift+enter` stops the
 // answer and sends (bargein.go). cmd+enter is what is left, and it is the right
 // one on its own merits — it is the "send it now, properly" chord in every chat
 // application a person has ever used. Here it is deliberately secondary: plain
@@ -174,7 +174,7 @@ func (a *app) nextSteerable() int {
 // right now — every condition except the one about the terminal.
 //
 // THE TERMINAL IS NOT ASKED HERE, and that is the one place this parts company
-// with [app.bargeOffered]. `shift+enter` on a terminal that cannot disambiguate
+// with [app.bargeOffered]. `ctrl+shift+enter` on a terminal that cannot disambiguate
 // arrives as a plain `enter` and must be guarded against, because the name it
 // answers to is a name that terminal also sends for something else. `cmd+enter`
 // has no such twin: a keystroke that arrives spelled `super+enter` or
@@ -190,7 +190,7 @@ func (a *app) steerAvailable() bool {
 		// meaning the same thing would be a key that teaches a person a gesture
 		// they do not need — and one that meant something ELSE at rest would be a
 		// chord with two readings a hand cannot tell apart. So it does nothing at
-		// all, which is exactly what `shift+enter` does at rest and for the same
+		// all, which is exactly what `ctrl+shift+enter` does at rest and for the same
 		// reason (bargein.go).
 		return false
 	}
@@ -424,7 +424,7 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 // terminal says it can distinguish it. `cmd+enter waits` remains on the keys
 // page, but this live slot spends its cells on the actions that move now.
 //
-//	enter steers it in · shift+enter stops and sends
+//	enter steers it in · ctrl+shift+enter stops and sends
 var steerShortHint = "enter " + steerSendWord
 
 // enterWaitHint is the plain-enter half of the running-turn hint. The tray and
@@ -462,7 +462,7 @@ func (a *app) runSendOffered() bool {
 func (a *app) runHint() string {
 	if a.questionWriting() {
 		// WHILE THE BOX IS A QUESTION'S, THE QUESTION'S ROW IS THE HINT.
-		// `enter steers it in · esc interrupt` over a box whose enter answers
+		// `enter steers it in · ctrl+c interrupt` over a box whose enter answers
 		// a card and whose esc gives the box back would be two keys named
 		// wrong on one screen ([app.questionWritingRow] says them right).
 		return ""
@@ -474,7 +474,7 @@ func (a *app) runHint() string {
 	if a.promotableRow() >= 0 {
 		parts = append(parts, "ctrl+g backgrounds")
 	}
-	stop := "esc interrupt"
+	stop := "ctrl+c interrupt"
 	if len(a.parks) > 0 && a.parking() {
 		stop = parkedHint[1]
 	}
@@ -482,13 +482,21 @@ func (a *app) runHint() string {
 	return strings.Join(parts, hintSegment)
 }
 
-// hintShorter is the running slot said in fewer cells, or "" where there is no
-// shorter true form — which is every other state and its one-clause floor.
-//
-// THE LADDER DROPS FROM THE RIGHT. That preserves the fixed priority of the
-// full sentence and guarantees forward progress: one clause is the floor and
-// returns nothing, so [app.legend] can never loop on an unshortenable rung.
+// hintShorter gives up whole clauses so a narrow frame keeps a useful door.
+// Idle controls yield from the left to commands and home; running hints keep
+// their existing priority from the left. Every step removes at least one clause.
 func (a *app) hintShorter(slot string) string {
+	idle := a.idleHint()
+	if slot != "" && (slot == idle || strings.HasSuffix(idle, hintSegment+slot)) {
+		parts := strings.Split(slot, hintSegment)
+		if len(parts) <= 1 {
+			return ""
+		}
+		if parts[0] == microcopy {
+			return microcopy
+		}
+		return strings.Join(parts[1:], hintSegment)
+	}
 	full := a.runHint()
 	if slot == "" || slot != full && !strings.HasPrefix(full, slot+hintSegment) {
 		return ""

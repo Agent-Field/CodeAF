@@ -189,7 +189,7 @@ func TestAPinnedLaneIsWrittenOnTheModelsName(t *testing.T) {
 
 	// A hosted window cannot see the far machine's pin, so it says none.
 	a.host = "devbox"
-	if a.modelWord() != "deepseek-v4-flash" {
+	if a.modelWord() != flash {
 		t.Fatalf("a hosted window wrote %q", a.modelWord())
 	}
 	a.host = ""
@@ -217,7 +217,7 @@ func TestRoutingOffOpensNoFoldAndWritesNoPin(t *testing.T) {
 	a.width, a.height = 120, 24
 	a.pinLane(flash, "cloudflare")
 
-	if a.modelWord() != "deepseek-v4-flash" {
+	if a.modelWord() != flash {
 		t.Fatalf("under routing off the name reads %q", a.modelWord())
 	}
 	typeLine(t, a, "/model")

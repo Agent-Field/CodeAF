@@ -1269,7 +1269,7 @@ type StandingSeam struct {
 	Runs func(since time.Time) map[string]standing.Spend
 
 	// SetEffort moves the rung one item's firings and its checks think at
-	// (internal/standing's [Store.SetStandingEffort]) — `ctrl+v` on that item's
+	// (internal/standing's [Store.SetStandingEffort]) — `alt+e` on that item's
 	// card, and nothing else on this surface.
 	//
 	// IT IS ITS OWN FUNCTION AND NOT A FIELD ON THE ITEM [StandingSeam.Save]

@@ -37,16 +37,17 @@ import (
 // cursor is a line of that walk rather than a count of items the frame would
 // have to re-derive.
 type tasksPlace struct {
-	cursor int
-	top    int
+	// actionNote reports the last explicit row action, including write failures.
+	actionNote string
+	cursor     int
+	top        int
 	// opened is what a person has SET about this page's folds, keyed by the row's
 	// own identity — a piece of work's (SessionID, ID) pair, or a conversation's
 	// ([tasksChatKey], which cannot collide with the other).
 	//
 	// A KEY THAT IS NOT HERE IS THE ROW'S OWN DEFAULT AND NOT `SHUT`
-	// ([tasksReading.opens] holds the two defaults and says why they differ). So
-	// nil is the page as it opens — every conversation showing its work, every
-	// family folded — and shutting a conversation is REMEMBERED here as false
+	// ([tasksReading.opens]). Nil opens every conversation and nested family.
+	// Shutting a conversation is REMEMBERED here as false
 	// rather than deleted, which is the whole reason this map is read as
 	// presence-and-value instead of as a set.
 	opened map[tasksKey]bool
@@ -248,7 +249,7 @@ func (a *app) takeTaskReading() tasksPlace {
 		mineAt:  a.railStamp,
 		planGen: a.planRowsGen,
 		reading: readTasks(world, mine, session.LastDays(now, taskSheetDays), tasksSort{},
-			session.LastLookAt(a.looksRoot(), pageTasks.word()), now),
+			session.LastLookAt(a.looksRoot(), pageTasks.lookKey()), now),
 	}
 }
 
@@ -313,7 +314,7 @@ func (p *tasksPlace) regroup(a *app) {
 	//
 	// [tasksPlace.cursor] is a LINE of a layout this replaces whole, and the
 	// layout moves for reasons that have nothing to do with the person: a task
-	// finishing leaves the `running` section and joins `finished today`, and every
+	// finishing can move its whole conversation into `completed`, and every
 	// row below where it was shifts by one. The cursor stayed on the number and so
 	// changed which piece of work it was on — silently, on a three-second beat,
 	// between somebody reading a row and pressing enter on it. That is the
@@ -366,19 +367,42 @@ func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 // place is holding at this instant.
 func (p *tasksPlace) filtered(a *app) tasksReading {
 	r := p.reading
+	r.chatViews = make(map[string]tasksChatView)
+	for _, tab := range a.tabList() {
+		if tab.work {
+			continue
+		}
+		working, unread := a.homeChatState(&homeCell{chatKey: tab.key})
+		r.chatViews[tab.file] = tasksChatView{title: tab.word, working: working, unread: unread}
+	}
 	r.open = p.opened
-	// THE ORDER IS THE PLACE'S TOO, and it is joined here for the same reason the
-	// folds are: this is the one door onto the reading, so a key pressed between
-	// two frames reaches every one of its readers at once ([tasksReading.tree]
-	// rebuilds the shape when the order it was built in is not the one being
-	// asked for).
-	r.order = p.order
+	// Age stays the sort key; the header chooses its direction.
+	r.order = tasksSort{back: p.order.back}
 	needle := a.taskSheetFilter()
 	// AND SO IS WHAT IS IN THE BOX, because the box is a ROW of the list now
 	// ([tasksControlRow]) and a row cannot ask the surface anything. It is the
 	// untrimmed text, so a person who has typed a space sees the caret move.
 	r.query = p.query.String()
 	if needle == "" {
+		var kept []tasksItem
+		for i, item := range r.items {
+			if item.row.ArchivedTasks[item.entry.ID] {
+				if kept == nil {
+					kept = make([]tasksItem, 0, len(r.items))
+					kept = append(kept, r.items[:i]...)
+				}
+				continue
+			}
+			if kept != nil {
+				kept = append(kept, item)
+			}
+		}
+		if kept != nil {
+			r.items = kept
+			tree := tasksTreeOf(kept, r.now, r.order, r.chats...)
+			tree.keepConversationStates(p.reading.tree())
+			r.shape = &tree
+		}
 		return r
 	}
 	// A QUERY OPENS EVERY FOLD ON THE PAGE. A row that matched and is sitting
@@ -394,7 +418,7 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	hit := make(map[tasksKey]bool, len(r.items))
 	found := make([]tasksKey, 0, len(r.items))
 	for _, item := range r.items {
-		if tasksMatches(item, needle) {
+		if tasksMatches(item, needle) || session.TaskWordsMatch(r.chatViews[item.row.Transcript].title, needle) {
 			key := tasksKeyOf(item.entry)
 			hit[key] = true
 			found = append(found, key)
@@ -425,12 +449,13 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 		owners[tasksChatOf(item)] = true
 	}
 	for _, row := range r.chats {
-		if owners[row.ID] || session.TaskWordsMatch(row.Title+" "+row.Project, needle) {
+		if owners[row.ID] || session.TaskWordsMatch(row.Title+" "+row.Project+" "+r.chatViews[row.Transcript].title, needle) {
 			chats = append(chats, row)
 		}
 	}
 	r.chats = chats
 	tree = tasksTreeOf(kept, r.now, r.order, chats...)
+	tree.keepConversationStates(p.reading.tree())
 	r.shape = &tree
 	return r
 }
@@ -494,7 +519,7 @@ func (a *app) taskSheetSelfRow() session.SessionRow {
 	if file := row.Transcript; file != "" {
 		row.ID = filepath.Base(filepath.Dir(file))
 	}
-	row.At, row.Open, row.Live = a.now(), true, true
+	row.Open, row.Live = true, true
 	row.Presence.State = a.taskSheetSelfState()
 	return row
 }
@@ -547,7 +572,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 		if self == "" && a.taskNodeAnswersTo(&a.comp.tasks[i]) {
 			continue
 		}
-		entry := a.comp.tasks[i]
+		entry := a.currentTaskEntry(a.comp.tasks[i])
 		if node := a.taskSheetNodeFor(&entry); node != nil && node.parent != "" {
 			entry.Parent = node.parent
 		}
@@ -573,6 +598,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			Cost:      node.cost,
 			Model:     node.model,
 			SessionID: self,
+			StartedAt: node.started,
 			EndedAt:   taskNodeEnded(node),
 		})
 	}
@@ -827,27 +853,16 @@ func (a *app) taskSheetFold(open bool) bool {
 	return true
 }
 
-// taskSheetSortBy re-orders the page by one column, and it is THE ONE DOOR ONTO
-// THAT — the chord and the click both come here, so a label pressed twice and a
-// key cycled round to itself behave identically ([tasksSort.on] holds the rule).
-//
-// THE CURSOR STAYS ON THE ROW IT IS ON. Re-ordering moves rows under a person
-// who is reading one of them, and the cursor is a LINE; it is remembered by the
-// pair that identifies the work, exactly as it is across a rebuild
-// ([tasksPlace.regroup] states the law and the failure it exists to stop).
-func (a *app) taskSheetSortBy(key tasksSortKey) {
+// Reversing age preserves the selected row even when its line number changes.
+func (a *app) taskSheetReverseAge() {
 	was, held := a.taskSheet.rowAt(a, a.taskSheet.cursor)
-	a.taskSheet.order = a.taskSheet.order.on(key)
-	a.taskSheet.top = 0
+	a.taskSheet.order = tasksSort{back: !a.taskSheet.order.back}
 	if held {
 		if line, found := a.taskSheet.lineOf(a, was); found {
 			a.taskSheet.cursor = a.tasksSettle(line)
-			a.taskSheet.top = 0
-			a.touch()
-			return
 		}
 	}
-	a.taskSheet.cursor = a.tasksSettle(0)
+	a.taskSheet.top = 0
 	a.touch()
 }
 
@@ -946,8 +961,7 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			a.taskSheetTyped()
 			return nil, true
 		}
-		a.leavePlace()
-		return nil, true
+		return a.openHome(), true
 	case taskSheetKey:
 		// The chord that opened this is the chord that closes it — the roster's own
 		// bargain with alt+t — and it closes it from inside a filter as well,
@@ -968,10 +982,6 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.taskSheetMove(len(a.taskSheet.stops(a)))
 	case "enter":
 		return a.taskSheetEnter(), true
-	case tasksSortBackChord:
-		// THE SAME KEY AGAIN REVERSES ([tasksSort.on]), which is what a person
-		// means by this chord: not "the previous key" but "the other way round".
-		a.taskSheetSortBy(a.taskSheet.order.key)
 
 	// ── the filter's own edits, in the settings panel's spelling ──────────────
 	case "backspace":
@@ -1230,19 +1240,15 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	if y < 0 || y >= len(hits) {
 		return nil
 	}
-	// phone lane: the foot is a `‹ back` band rather than a key legend, so a press
+	// On a compact frame the foot is an `esc home` band, so a press
 	// on it is the way out (taskphone.go).
 	if hits[y].kind == taskSheetHitBar {
-		a.taskSheetBarPress(x)
-		return nil
+		return a.taskSheetBarPress(x)
 	}
-	// A COLUMN LABEL IS PRESSED WHERE IT IS DRAWN. The control row resolves its
-	// own press against the SAME arithmetic the paint used ([tasksColumns], asked
-	// through [tasksControlHit]) — a pointer with its own idea of where a column
-	// sits is exactly how a click comes to sort by the wrong thing.
+	// The age header toggles direction using the same cells as the painter.
 	if hits[y].kind == taskSheetHitControl {
-		if key, ok := tasksControlHit(x, a.taskSheetListWidth(), a.taskSheet.order); ok {
-			a.taskSheetSortBy(key)
+		if tasksAgeHeaderHit(x, a.taskSheetListWidth()) {
+			a.taskSheetReverseAge()
 		}
 		return nil
 	}
@@ -1262,12 +1268,22 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	lines := r.lay(taskPaneList(width))
 	if at := a.taskSheet.cursor; at >= 0 && at < len(lines) && lines[at].folds {
 		line := lines[at]
-		foldX := ansi.StringWidth(tasksBareLead) + ansi.StringWidth(line.kin) - 2
-		if x == foldX && y < len(painted) {
-			mark := ansi.Cut(ansi.Strip(painted[y]), x, x+1)
-			if mark == strings.TrimSpace(tasksFoldOpen) || mark == strings.TrimSpace(tasksFoldShut) {
-				a.taskSheetFold(!line.open)
-				return nil
+		if y < len(painted) {
+			// Read the last fold mark in the name cell so truncation and wide
+			// title characters cannot move the click target away from its glyph.
+			listWidth := a.taskSheetListWidth()
+			_, _, nameCells := tasksColumns(listWidth, r.order.key)
+			if line.kind == tasksLineTask && layoutTier(listWidth) == tierPhone {
+				nameCells = listWidth
+			}
+			name := ansi.Cut(ansi.Strip(painted[y]), 0, nameCells)
+			mark := tasksFoldMark(line, a.pal)
+			if at := strings.LastIndex(name, mark); at >= 0 {
+				foldX := ansi.StringWidth(name[:at])
+				if x >= foldX && x < foldX+ansi.StringWidth(mark) {
+					a.taskSheetFold(!line.open)
+					return nil
+				}
 			}
 		}
 	}
@@ -1279,7 +1295,7 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 
 // taskSheetHover records which row the pointer is over, repainting only when the
 // answer changed (hover.go's rule, applied to this place).
-func (a *app) taskSheetHover(y int) {
+func (a *app) taskSheetHover(y int) tea.Cmd {
 	if a.taskSheet.detailOn {
 		// THE CARD LIGHTS ITS EDGES AND NOTHING ELSE. They are the way back and its
 		// body is read, so a hover step over a paragraph would be the surface
@@ -1294,7 +1310,7 @@ func (a *app) taskSheetHover(y int) {
 			a.hot = next
 			a.touch()
 		}
-		return
+		return nil
 	}
 	width, height := a.size()
 	// phone lane: no hover on glass, the rule home keeps at this tier
@@ -1305,18 +1321,23 @@ func (a *app) taskSheetHover(y int) {
 			a.hot = hoverAt{}
 			a.touch()
 		}
-		return
+		return nil
 	}
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	next := hoverAt{}
 	if y >= 0 && y < len(hits) && hits[y].kind == taskSheetHitRow {
 		next = hoverAt{kind: hoverTaskSheet, index: hits[y].index}
 	}
-	if next == a.hot {
-		return
+	moved := next.kind == hoverTaskSheet && a.selectPlaceRow(&a.taskSheet.cursor, next.index)
+	if next == a.hot && !moved {
+		return nil
 	}
 	a.hot = next
 	a.touch()
+	if moved {
+		return a.taskPaneFollow()
+	}
+	return nil
 }
 
 // taskSheetScroll is the wheel: it walks the cursor rather than an offset of its
@@ -1345,7 +1366,7 @@ func (a *app) taskSheetScroll(delta int) {
 // The caret is handed back from the frame the place was drawn in, and while
 // this place is up it belongs to THE FILTER'S CONTROL ROW rather than the
 // foot's composer ([placeTasks.caretRow] — the box moved into the list when
-// [placeTasks.boxOnBody] did, and the caret moved with it).
+// [placeTasks.body] did, and the caret moved with it).
 func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, int) {
 	// THE CARD IS DRAWN INSTEAD OF THE LIST, not over the top of it. It is a mode
 	// of this place and it takes the whole of the frame, so the rows below are not
@@ -1448,7 +1469,7 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 				// the subject bold inside it — no accent mark in the lead, which was
 				// a second accent on a screen whose one accent is the live thing
 				// (placeprose.go's THE FIVE-LEVEL SCALE).
-				lit = owner == p.cursor || (a.hot.kind == hoverTaskSheet && a.hot.index == owner)
+				lit = owner == p.cursor
 			}
 		}
 		text := r.paint(lines, at, width, a.pal, lit)
@@ -1517,32 +1538,33 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 	return top
 }
 
-// note is the one line the place says about what it is HOLDING, drawn under the
-// rule and above the composer (pages.go's [placeFrame] states the law).
+// note is the one line the place says on its rule, and it says ONE THING: that
+// the query has emptied the page.
 //
-// THE EMPTINESS LAW DECIDES WHETHER IT IS THERE AT ALL. A place with nothing in
-// it says NOTHING — the body is spending the frame teaching what this place is,
-// and a count beside that prose would be the surface saying both "there is
-// nothing here" and "here is how much of it there is" on one screen.
+// THE COUNT IS OFF THE RULE. It used to read `9 finished today · 191 earlier`
+// there, and the body already says every one of those numbers on its section
+// headings — the same partition, a few rows up, on a page a person is looking
+// at (the owner's ruling, 2026-09-17). A figure said twice on one frame is the
+// defect the model's colon suffix made once (effortchip.go).
+//
+// THE FILTER IS NOT SAID BACK HERE EITHER. This line used to carry `filter ·
+// zzz` because the box a person was typing into was invisible, so the only
+// place their own words could appear was UNDER the rows those words had just
+// removed. The words are on the control row at the top of the list now
+// ([tasksControlRow]). What survives is the half the row cannot say: that
+// the query matched nothing, over a body that is blank rather than teaching.
 func (p *tasksPlace) note(a *app, width int) []string {
+	if p.actionNote != "" {
+		return []string{" " + a.pal.dim(fit(p.actionNote, width-2))}
+	}
 	if p.detailOn || p.reading.held == 0 {
 		return nil
 	}
 	r := a.tasksFiltered()
-	var note []string
-	if tally := r.tally(); tally != "" {
-		note = append(note, " "+a.pal.dim(fit(tally, width-2)))
-	}
-	// THE FILTER IS NO LONGER SAID BACK HERE. This line used to carry `filter ·
-	// zzz` because the box a person was typing into was invisible, so the only
-	// place their own words could appear was UNDER the rows those words had just
-	// removed — a correction printed below the thing it was correcting. The box is
-	// the first row of the list now ([tasksControlRow]). What survives is the half
-	// the box cannot say: that the query has emptied the place.
 	if a.taskSheetFiltering() && len(r.items)+len(r.chats) == 0 {
-		note = append(note, " "+a.pal.dim(fit(taskSheetFilterNone, width-2)))
+		return []string{" " + a.pal.dim(fit(taskSheetFilterNone, width-2))}
 	}
-	return note
+	return nil
 }
 
 // hint is SCREEN 1e's foot, assembled from the clauses that are TRUE of the row
@@ -1560,7 +1582,7 @@ func (p *tasksPlace) hint(a *app) string {
 	// press. What is true there is the way out, and [placeTailed] puts `tab next
 	// place` in front of it.
 	if !p.detailOn && a.tasksFiltered().held == 0 {
-		return "esc"
+		return homeDoorWord
 	}
 	var parts []string
 	// THE CONVERSATION'S OWN CLAUSE, and it is the word this surface already uses
@@ -1621,33 +1643,12 @@ func (p *tasksPlace) hint(a *app) string {
 	return strings.Join(a.tasksPageKeys(parts), railSep)
 }
 
-// tasksPageKeys puts THE TWO THINGS THE KEYBOARD DOES TO THE WHOLE PAGE on the
-// end of the foot's row clauses. They are last because every clause before them
-// is about the row under the cursor and these two are about the page.
-//
-// IT IS ONE FUNCTION BECAUSE THE FOOT HAS TWO ROADS THROUGH IT. A conversation's
-// row returns early — its clauses are its own — and with every fold now opening
-// shut the cursor's FIRST resting place is a conversation, so a page key named
-// only on the other road would be named on no frame a person meets first. The
-// tmux drive is what found that: the page as it opens said neither key.
-//
-// THE FILTER OWNS EVERY PRINTABLE KEY ON THIS PAGE, so sorting cannot be `s` — a
-// bare `s` would cost `sweep`, `stop` and `site` — and it is `alt+s` (the ruling
-// of 2026-09-11). A chord nobody can find is a chord that does not exist, so the
-// foot names it. And the other half has to be named beside it: the control row
-// draws the box, but nothing else on the frame says that a letter goes INTO that
-// box rather than to the page's own keys.
-//
-// WHILE A FILTER IS ON, THE SECOND CLAUSE IS THE ONE THAT MOVED — that esc now
-// means the filter and not the page, which is the one fact the box itself cannot
-// show — and inviting somebody to type a filter they have already typed would be
-// the frame naming one thing twice on one screen.
+// tasksPageKeys names the filter and the way back after the selected row's actions.
 func (a *app) tasksPageKeys(parts []string) []string {
-	parts = append(parts, tasksSortHint(a.taskSheet.order))
 	if a.taskSheetFiltering() {
 		return append(parts, tasksClearFilterWord)
 	}
-	return append(parts, tasksFilterHint)
+	return append(parts, tasksFilterHint, homeDoorWord)
 }
 
 func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }
@@ -1675,23 +1676,24 @@ func (p *tasksPlace) verbs(a *app) []verb {
 	if !ok {
 		return nil
 	}
+	verbs := a.taskRowVerbs(item.row, item.entry)
 	entry := item.entry
 	node := a.taskSheetNodeFor(&entry)
 	if node == nil {
-		return nil
+		return verbs
 	}
 	target := a.stopTaskTarget(node)
 	if target.empty() {
-		return nil
+		return verbs
 	}
 	// THE BUILD GUARD, ASKED BEFORE THE VERB IS NAMED. A surface driven by an
 	// agent with no door onto cancelling says so when `x` is pressed
 	// ([stopUnavailableWord]); a NAMED verb that could only ever answer with that
 	// sentence would be this place advertising a key it has not got.
 	if _, ok := a.stopDoors(); !ok {
-		return nil
+		return verbs
 	}
-	return []verb{{key: 's', word: stopActWord, do: func() tea.Cmd { return a.tasksStop(target) }}}
+	return append(verbs, verb{key: 's', word: stopActWord, do: func() tea.Cmd { return a.tasksStop(target) }})
 }
 
 // tasksStop ends one piece of work from the strip, and says what the engine
@@ -1745,7 +1747,7 @@ func (p *tasksPlace) changed(a *app, since time.Time) int {
 	for _, project := range world.Projects {
 		for _, row := range project.Sessions {
 			for _, entry := range row.Tasks.Rows {
-				if !entry.EndedAt.IsZero() && entry.EndedAt.After(since) {
+				if !row.ArchivedTasks[entry.ID] && !entry.EndedAt.IsZero() && entry.EndedAt.After(since) {
 					count++
 				}
 			}
@@ -1767,7 +1769,7 @@ type placeTasks struct{ placeBase }
 func init() { registerPlace(placeTasks{}) }
 
 func (placeTasks) id() page      { return pageTasks }
-func (placeTasks) word() string  { return "tasks" }
+func (placeTasks) word() string  { return sessionsWord }
 func (placeTasks) counted() bool { return true }
 
 // open takes the reading and arms the beat. The reading is this place's own
@@ -1856,24 +1858,16 @@ func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint
 func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.changed(a, since) }
 
 // box is the filter, exactly as it has always been: every printable key on this
-// place goes into it and the list narrows as it fills.
-//
-// WHAT MOVED IS WHERE IT IS DRAWN ([placeTasks.boxOnBody]). The router used to
-// put this editor's letters two rows UNDER the list they were narrowing; they
-// are on the first row of the list now, over the rows they changed
-// ([tasksControlRow]). The editor itself stays the place's box because a box is
-// more than a row of letters — the two-space door home is armed from it
-// ([app.placeHomeGesture]), a press in the foot puts the caret in it, and a
-// place that answered `nil` here would silently lose all of that.
+// place goes into it and the list narrows as it fills. Its letters are drawn on
+// the first row of the list, over the rows they changed ([tasksControlRow]);
+// the foot draws no box here ([place.box]). The editor stays the place's box
+// so shared editing and filtering controls can act on the same value.
 func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 
-// boxOnBody says THIS PLACE DRAWS WHAT IS TYPED INTO ITS BOX ITSELF, in a row of
-// its own body, so the foot must not draw it a second time. The foot keeps the
-// invitation ([placeTasks.resting]) and loses the echo; one person's letters on
-// screen twice is the defect this page's own title row was removed for.
-func (placeTasks) boxOnBody() bool { return true }
+// Age direction changes through the header; no alternate sort keys are bound.
+func (placeTasks) alt(a *app, letter rune) bool { return false }
 
-// caretRow is the filter: [placeTasks.boxOnBody] moved the box into the list's
+// caretRow is the filter: [placeTasks.body] moved the box into the list's
 // control row, and the caret that was parked in the foot's silhouette stayed
 // behind — blinking under a dim invitation at the bottom of the frame while
 // the letters land rows above it. The control row is painted by the reading's
@@ -1901,34 +1895,6 @@ func (placeTasks) caretRow(a *app, width int, rows []placeRow) (int, int, bool) 
 	// sentence, which is not the box the person is typing into.
 	return -1, 0, true
 }
-
-// resting is what that box says when nothing is typed in it, and it is THIS
-// PLACE'S sentence rather than the router's (pages.go's [place.resting]).
-//
-// `say what you want done` stood here for as long as the place has existed, two
-// rows under a list the same keystrokes filter — an invitation to give an
-// instruction, over a box that cannot take one. The words are the FOOT's, moved
-// into the slot they are about: one sentence, in the place a person is looking
-// when they wonder what typing here will do.
-// alt is `alt+s`: WHICH COLUMN THIS LIST IS ORDERED BY, one key at a time.
-//
-// IT IS HERE AND NOT IN [app.taskSheetKeyPress] BECAUSE THE ROUTER OWNS THE
-// CLASS. `alt+<letter>` means "change how THIS place is shown" on every place
-// (placekeys.go), and it SWALLOWS an undeclared letter rather than passing it
-// down — so an arm written in this place's own key switch would never be
-// reached. Which is also the argument for the binding: a sort IS a view, the
-// memory place already walks its shelves with the same chord, and the ruling of
-// 2026-09-11 settled that it cannot be a bare `s` because the filter here owns
-// every printable key.
-func (placeTasks) alt(a *app, letter rune) bool {
-	if letter != 's' {
-		return false
-	}
-	a.taskSheetSortBy(a.taskSheet.order.key.next())
-	return true
-}
-
-func (placeTasks) resting(a *app) string { return tasksTypeWord }
 
 // tasksFilterHint is the short spelling of that invitation. It is the control
 // row's own placeholder ([tasksControlRow]) and it is repeated on the FOOT'S KEY
@@ -2032,6 +1998,7 @@ func (placeTasks) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // key is this place's own reading of a key the router did not take
 // (pages.go's [place] states the split).
 func (placeTasks) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
+	a.taskSheet.actionNote = ""
 	cmd, _ := a.taskSheetKeyPress(msg)
 	// AND THE PANE FOLLOWS THE CURSOR WHATEVER MOVED IT. This is the one door
 	// every key to this place comes through, which is the only place the arming

@@ -217,6 +217,13 @@ func TestC9SourceBuildRefusesBeforeTheNetwork(t *testing.T) {
 	if err := os.WriteFile(target, []byte("source"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The updater resolves symlinks, including macOS's temporary-directory alias.
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target = resolved
+
 	client := &codeupdate.Client{HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		t.Fatal("source install reached the network")
 		return nil, nil
@@ -299,6 +306,13 @@ func TestC9AnInstallEndsWithTheNewBinarysVersionLine(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The updater resolves symlinks, including macOS's temporary-directory alias.
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target = resolved
+
 	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
 	stdout, _ := withUpdateDoor(t, "v0.1.0", client, target)
 	updateVersionLine = func(path string, output, _ io.Writer) error {

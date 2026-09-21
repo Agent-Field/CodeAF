@@ -1410,17 +1410,12 @@ const (
 	// is the surface throwing away the only thing on screen it did not write.
 	DefaultDraftPersist = true
 
-	// DefaultToolApprovalMode asks. It is the only defensible default for a
-	// gate: a fresh install that ran every tool the model asked for would be
-	// deciding, on the person's behalf, that nothing needs deciding. Widening
-	// it is one row; narrowing it after something ran is not possible.
-	DefaultToolApprovalMode = "prompt"
+	// DefaultToolApprovalMode opens new conversations in YOLO unless a saved
+	// profile, project or conversation choice supplies another posture.
+	DefaultToolApprovalMode = "allow"
 
-	// DefaultGuardian is off, and it is the only defensible default for the same
-	// reason the row above asks: this one hands the answer to a model. A gate
-	// that answers on your behalf must be something you turned on, not something
-	// you failed to notice — so a fresh install makes no guardian call at all,
-	// and the person who wants fewer questions opts into one.
+	// DefaultGuardian is off because choosing YOLO does not appoint a model
+	// to answer approval questions. The guardian remains an explicit choice.
 	DefaultGuardian = GuardianOff
 
 	// DefaultSpendRailUSD is 0 — no per-session ceiling. The rail that is on by
@@ -3668,15 +3663,40 @@ func knownDocumentEngine(engine string) bool {
 // answer is written down and can be read back.
 
 // ToolApprovalModeAt resolves the blanket answer the tool gate starts from. An
-// unrecognised persisted value reads as the default, which is the strictest of
-// the three — a garbled setting must never be the one that opens the gate.
+// absent setting uses YOLO; an unrecognised persisted value still asks, so a
+// garbled setting does not widen a previously selected posture.
 func ToolApprovalModeAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyToolApprovalMode); ok {
 		if mode := strings.ToLower(strings.TrimSpace(value)); knownToolApprovalMode(mode) {
 			return mode
 		}
+		return "prompt"
+	}
+	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
+		return "prompt"
 	}
 	return DefaultToolApprovalMode
+}
+
+// HeadlessToolApprovalModeAt requires an explicit setting to open an unwatched gate.
+// Invalid saved values retain the ordinary reader's conservative fallback.
+func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
+	project, err := LoadProjectConfig(workspace)
+	if err != nil {
+		return "", err
+	}
+	if _, found, err := project.String(KeyToolApprovalMode); err != nil {
+		return "", err
+	} else if found {
+		return project.ResolveString(profileDir, KeyToolApprovalMode)
+	}
+	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
+		if _, text := persistedString(profileDir, KeyToolApprovalMode); !text {
+			return "prompt", nil
+		}
+		return ToolApprovalModeAt(profileDir), nil
+	}
+	return "prompt", nil
 }
 
 // GuardianAt resolves whether a small model answers a tool prompt before the

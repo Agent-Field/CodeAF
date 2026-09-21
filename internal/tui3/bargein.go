@@ -57,22 +57,10 @@ import (
 // router and the manual's own sentence are all this constant or a quotation of
 // it (spellout.go states the same rule about its own).
 //
-// WHY THIS ONE — WHAT THE AUDIT LEFT. The gesture has to read as a SEND rather
-// than as a letter, which means a modifier on enter, and both of the other two
-// are spent on this surface:
-//
-//	alt+enter    opens a line in the draft, with ctrl+j as its second spelling
-//	             (input.go). It is the key people write multi-line messages
-//	             with, and it is home's `ask here` besides (home.go).
-//	ctrl+enter   marks the sentence as something to keep true (standmark.go),
-//	             and is home's `ask here` under its own name.
-//
-// shift+enter is what is left, and until this wave the manual said in two
-// places that it was bound to nothing at all. It is also the RIGHT one on its
-// own merits: on a terminal that cannot spell it the keystroke arrives as a
-// plain `enter`, which parks — the safe default, reached by accident, doing the
-// harmless thing. A chord whose misdelivery is a no-op would be acceptable; one
-// whose misdelivery is the conservative half of its own meaning is better.
+// Shift+enter opens a line in every message box. Adding ctrl preserves a
+// distinct stop-and-send gesture without taking the ordinary newline chord.
+// Ctrl+enter keeps its standing-order meaning, and alt+enter remains the
+// conversation's alternate newline key and home's task composer key.
 //
 // ── THE CAPABILITY LAW, AND HOW THIS BUILD CAN ACTUALLY ANSWER IT ───────────
 //
@@ -81,7 +69,7 @@ import (
 // deliver is worse than silence, because the person presses it, nothing
 // happens, and they learn the surface lies.
 //
-// shift+enter reaches a program only where the terminal disambiguates it from a
+// ctrl+shift+enter reaches a program only where the terminal disambiguates it from a
 // bare enter — the kitty keyboard protocol, or xterm's modifyOtherKeys, or
 // win32-input. Bubble Tea v2 asks for the first of those on every frame
 // (its cursed_renderer.go writes ansi.KittyKeyboard with the disambiguation
@@ -95,10 +83,10 @@ import (
 // chord WORKS there and is never advertised — a feature quietly present rather
 // than a hint that lies. The reverse cannot happen: a terminal that answered
 // the query can spell the chord.
-const bargeKey = "shift+enter"
+const bargeKey = "ctrl+shift+enter"
 
 // bargeSendWord is what this gesture does in the running-turn hint. It belongs
-// to shift+enter alone: esc stops and clears waiting queues, while this chord
+// to ctrl+shift+enter alone: ctrl+c stops and clears waiting queues, while this chord
 // deliberately preserves the draft it just parked so the stream close sends it.
 const bargeSendWord = "stops and sends"
 
@@ -157,7 +145,7 @@ func (a *app) bargeIn() tea.Cmd {
 		// THE KEY IS ABSENT WHEREVER IT CANNOT WORK, and absent means it does
 		// nothing at all rather than saying it cannot (spellout.go's [app.spellKey]
 		// states it). It is safe to swallow rather than fall through because
-		// `shift+enter` carries no text — ultraviolet's key table gives KeyEnter
+		// `ctrl+shift+enter` carries no text — ultraviolet's key table gives KeyEnter
 		// the CR rune, which is not printable, so its Text is empty and the
 		// bottom of input.go's router would have done nothing with it anyway.
 		return nil

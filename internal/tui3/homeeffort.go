@@ -1,6 +1,6 @@
 package tui3
 
-// ── `ctrl+v` ON HOME: ONE SCOPE, ON THE CARD THAT HAS A RUNG ────────────────
+// ── `alt+e` ON HOME: ONE SCOPE, ON THE CARD THAT HAS A RUNG ────────────────
 //
 // Home draws one card at a time and the card is always about a row under the
 // cursor. So the chord needs no state of its own to know what it means: it asks

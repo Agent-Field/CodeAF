@@ -259,7 +259,7 @@ type sessionEntry struct {
 	// answered. A line is also how a name can be rewritten later without any
 	// reader having to rewrite the file: the replay takes the LAST title line.
 	Title      string `json:"title,omitempty"`
-	ShortTitle string `json:"shortTitle,omitempty"`
+	ShortTitle string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 
 	// Usage is what one COMPLETED turn — or one auxiliary call beside it — cost,
 	// and it is on its own line rather than on the assistant message that ended
@@ -2169,7 +2169,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// written down under one.
 			if named := healedTitle(entry.Title); named != "" {
 				title = named
-				shortTitle = compactTitle(healedTitle(entry.ShortTitle))
+				shortTitle = ""
 			}
 		}
 	}
@@ -2860,15 +2860,15 @@ func (s *sessionFile) appendRewind(dropped int) {
 // appendTitle journals the session's name. It is one line, appended like any
 // other: a later name simply lands after this one, and the replay takes the
 // last. Nothing rewrites the file.
-func (s *sessionFile) appendTitle(title, short string) {
+func (s *sessionFile) appendTitle(title, _ string) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return
 	}
 	s.mu.Lock()
-	s.title, s.shortTitle = title, strings.TrimSpace(short)
+	s.title, s.shortTitle = title, ""
 	s.mu.Unlock()
-	s.writeLine(sessionEntry{Type: "title", Title: title, ShortTitle: strings.TrimSpace(short), Timestamp: stamp()})
+	s.writeLine(sessionEntry{Type: "title", Title: title, Timestamp: stamp()})
 }
 
 // appendUsage journals what one seal cost: the turn's own figures, or one

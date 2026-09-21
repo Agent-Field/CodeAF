@@ -201,9 +201,9 @@ func TestTheLegendsChordReadsAboveItsExplanation(t *testing.T) {
 	a.width = 80
 	a.state = stateWorking
 
-	line := a.legend(a.width)
-	if !lifted(a.pal, line, "esc") {
-		t.Fatalf("the legend draws its chord at the weight of the rule it sits in:\n%q", line)
+	line := a.hintRow(a.width)
+	if !lifted(a.pal, line, "ctrl+c") {
+		t.Fatalf("the keys row draws its chord at the weight of its prose:\n%q", line)
 	}
 	if !dimmed(a.pal, line, " interrupt") {
 		t.Fatalf("the verb beside the chord was lifted with it:\n%q", line)
@@ -243,7 +243,7 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 	}
 	cases := []hintGrammarCase{
 		{"drag to select · any key ends it", nil},
-		{"esc interrupt", []string{"esc"}},
+		{"ctrl+c interrupt", []string{"ctrl+c"}},
 		{pickerKeysSwitch, []string{"enter", "esc"}},
 		// The picker's slot follows its cursor (palette.go's [picker.keysHint]).
 		{pickerKeysModel, []string{"→", "alt+s", "enter", "ctrl+t", "esc"}},
@@ -273,8 +273,8 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		// chip the card is actually drawing.
 		{"a accept · n not right · s tell it · esc", []string{"a", "n", "s", "esc"}},
 		{"esc stops and sends", []string{"esc"}},
-		{"space space home · tab last · / commands",
-			[]string{"space", "space", "tab", "/"}},
+		{"opt+e effort · opt+a approvals · opt+k chats · / commands · esc back",
+			[]string{"opt+e", "opt+a", "opt+k", "/", "esc"}},
 		{"enter open where it was asked · p pause · s stop · n not here · esc",
 			[]string{"enter", "p", "s", "n", "esc"}},
 		{"enter open · ctrl+r reveal · ctrl+y copy · esc",
@@ -297,7 +297,7 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 	}
 	for _, prefix := range runPrefixes {
 		for _, background := range []bool{false, true} {
-			for _, stop := range []string{"esc interrupt", parkedHint[1]} {
+			for _, stop := range []string{"ctrl+c interrupt", parkedHint[1]} {
 				parts := []string{}
 				want := append([]string(nil), prefix.want...)
 				if prefix.hint != "" {
@@ -308,7 +308,7 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 					want = append(want, "ctrl+g")
 				}
 				parts = append(parts, stop)
-				want = append(want, "esc")
+				want = append(want, "ctrl+c")
 				cases = append(cases, hintGrammarCase{hint: strings.Join(parts, hintSegment), want: want})
 			}
 		}

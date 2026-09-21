@@ -397,14 +397,6 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// only model it can be about: --reasoning names a strength, not a model, and
 	// the level is kept per model from here on (internal/session's agent.go).
 	agent.SetReasoning(level)
-	// AND THE RUNG THIS CONVERSATION WAS LEFT ON. It is the meta.json half of
-	// the same law the model row keeps (internal/session's Meta): a person who
-	// dialled a conversation deeper, worked in it and came back found it at the
-	// install's default as though they had chosen nothing. Absence sets nothing
-	// and stamps nothing, so a conversation nobody has dialled is unchanged.
-	if saved := strings.TrimSpace(v3SavedEffort(cfg.Place)); saved != "" {
-		agent.SetConversationEffort(saved)
-	}
 	proc.track(agent)
 	// EVERY CONVERSATION THIS PROCESS OPENED, CLOSED HOWEVER THE SURFACE RETURNS.
 	// Close is the surface's to call — /quit and ctrl+c both go through it — but
@@ -1065,6 +1057,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// never a second policy.
 	cfg.Unattended = opts.Yolo
 	cfg.Interactive = opts.Interactive
+	if !opts.Interactive {
+		gate := v3ApprovalGate{workspace: cfg.Workspace, profileDir: settings.ProfileDir, headless: true}
+		cfg.ApprovalGate = gate
+		cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(cfg.ApprovalPosture)
+		if err != nil {
+			return nil, err
+		}
+	}
 	cfg.Budget = opts.Budget
 	// AND THE ACCOUNTS MANAGER IS THE PROCESS'S, not this launch's. Governance
 	// leaves the field empty for exactly this reason: an account connected on
@@ -1153,6 +1153,21 @@ func v3SavedEffort(place session.Place) string {
 	return meta.Effort
 }
 
+// v3SavedApproval is the posture this conversation last set on its own gate,
+// read back off its folder on [v3SavedEffort]'s terms: "" for a fresh
+// conversation, a build before the field existed, or a file that does not read.
+func v3SavedApproval(place session.Place) string {
+	dir := strings.TrimSpace(place.Dir)
+	if dir == "" {
+		return ""
+	}
+	meta, err := session.LoadMeta(dir)
+	if err != nil {
+		return ""
+	}
+	return meta.Approval
+}
+
 // v3TalkModel is which model this conversation opens on, and the order is the
 // whole content: what the person named on the command line, then what they
 // last chose and it was written down (internal/config's chatmodel.go), then
@@ -1238,8 +1253,46 @@ func v3Connections(manager *connect.Manager) tui3.Connections {
 // cannot be shown a fuel gate (engine.go) — and a door deciding that for itself
 // would be this file guessing who is watching.
 func openV3Agent(cfg session.Config, workspace string, open func(session.Config) (*session.Agent, error)) (*session.Agent, session.Config, string, error) {
-	agent, err := open(cfg)
+	// Restore the gate before construction, so restored work cannot start behind
+	// the profile default. Return the launch config unchanged: a subsequent new
+	// conversation must not inherit this one's saved override.
+	restored := cfg
+	savedEffort := strings.TrimSpace(v3SavedEffort(cfg.Place))
+	restoredPosture := ""
+	if saved := strings.TrimSpace(v3SavedApproval(cfg.Place)); saved != "" && cfg.ApprovalPosture == "" && cfg.ApprovalGate != nil {
+		valid := false
+		for _, posture := range session.ApprovalPostures {
+			if saved == posture {
+				valid = true
+			}
+		}
+		if !valid {
+			saved = session.PostureAsk
+		}
+		build := saved
+		if saved == session.PostureAuto {
+			build = ""
+		}
+		policy, guardian, err := cfg.ApprovalGate.Build(build)
+		if err != nil {
+			return nil, cfg, "", fmt.Errorf("restore conversation approvals: %w", err)
+		}
+		if policy == nil {
+			return nil, cfg, "", errors.New("restore conversation approvals: rules unavailable")
+		}
+		restored.ApprovalPolicy, restored.Guardian, restoredPosture = policy, guardian, saved
+	}
+	agent, err := open(restored)
 	if err == nil {
+		if restoredPosture != "" {
+			if err := agent.SetApprovalPosture(restoredPosture); err != nil {
+				_ = agent.Close()
+				return nil, cfg, "", fmt.Errorf("restore conversation approvals: %w", err)
+			}
+		}
+		if savedEffort != "" {
+			agent.SetConversationEffort(savedEffort)
+		}
 		return agent, cfg, "", nil
 	}
 	if !errors.Is(err, session.ErrSessionLocked) {
@@ -1439,6 +1492,15 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// a repository may state are still the rules — it can say what to ask about;
 	// it cannot say who answers.
 	cfg.Guardian = config.GuardianEnabledAt(profileDir)
+	// AND THE DOOR THE CONVERSATION MOVES ITS OWN GATE THROUGH, over the same
+	// rows (chatv3_approval.go's [v3ApprovalGate]). --yolo is handed down as the
+	// posture an untouched conversation starts at rather than only as the
+	// policy it starts on, so the seam can say what it is and the wheel can
+	// walk away from it (internal/session's approvalposture.go).
+	cfg.ApprovalGate = v3ApprovalGate{workspace: workspace, profileDir: profileDir}
+	if yolo {
+		cfg.ApprovalPosture = session.PostureAllow
+	}
 	cfg.TaskAutoApproveSeconds = config.TaskAutoApproveAt(profileDir)
 	cfg.BashBackgroundAfterSeconds = config.BashBackgroundAfterAt(profileDir)
 	// Which model the work that leaves this conversation runs on, PROFILE-ONLY
@@ -1658,12 +1720,25 @@ func v3SurfacePosture(yolo bool) string {
 // `bash:prompt` still gets asked about bash: the flag is "stop asking me about
 // the ordinary things", not "forget what I wrote down".
 func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error) {
-	mode, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovalMode)
-	if err != nil {
-		return nil, err
-	}
 	if yolo {
-		mode = string(approval.ActionAllow)
+		return v3PolicyMode(workspace, profileDir, string(approval.ActionAllow))
+	}
+	return v3PolicyMode(workspace, profileDir, "")
+}
+
+// v3PolicyMode is [v3Policy] with the blanket answer named outright: mode
+// replaces the `tools.approvalMode` row for this build and "" reads the row.
+// It is the one function every posture goes through — the flag's forced allow,
+// a conversation's own wheel (chatv3_approval.go's [v3ApprovalGate]) and the
+// ordinary launch — so the exceptions, the shell rules and the floor cannot
+// differ between them.
+func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) {
+	if mode == "" {
+		row, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovalMode)
+		if err != nil {
+			return nil, err
+		}
+		mode = row
 	}
 	raw := map[string]any{"default": mode}
 	text, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovals)

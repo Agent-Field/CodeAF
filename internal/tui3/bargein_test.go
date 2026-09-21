@@ -183,7 +183,7 @@ func TestTheChordIsAbsentOnATerminalThatCannotSpellIt(t *testing.T) {
 	if a.bargeOffered() {
 		t.Fatal("the chord is offered on a terminal that never said it could send it")
 	}
-	if got := a.hintWord(); got != steerShortHint+" · esc interrupt" {
+	if got := a.hintWord(); got != steerShortHint+" · ctrl+c interrupt" {
 		t.Fatalf("hint = %q, want the plain-enter steer where the chord cannot work", got)
 	}
 	if strings.Contains(plain(frame(a)), bargeKey) {
@@ -213,7 +213,7 @@ func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T)
 
 	// A running turn with an EMPTY box: nothing to send, so the slot keeps the
 	// plain interrupt. This is the emptiness law on the line itself.
-	if got := a.hintWord(); got != "esc interrupt" {
+	if got := a.hintWord(); got != "ctrl+c interrupt" {
 		t.Fatalf("an empty box while working = %q, want the plain interrupt", got)
 	}
 
@@ -245,7 +245,7 @@ func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T)
 	}
 }
 
-// THE TWO STOP GESTURES NAME THEIR DIFFERENT QUEUE DECISIONS. shift+enter
+// THE TWO STOP GESTURES NAME THEIR DIFFERENT QUEUE DECISIONS. ctrl+shift+enter
 // preserves the sentence it just parked; esc clears everything waiting.
 func TestTheChordSendsWhileEscDrops(t *testing.T) {
 	if strings.HasSuffix(parkedHint[1], bargeSendWord) {
