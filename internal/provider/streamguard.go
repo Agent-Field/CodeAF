@@ -616,6 +616,22 @@ type StreamCut struct {
 	// itself is not this package's — internal/session's loop.go states the rule —
 	// and this is the one fact it cannot see.
 	Rerouted bool
+
+	// OneMachine says this request had NO ENDPOINT DIVERSITY TO TRY: it named no
+	// machine and none named itself, which is a build with no router behind it
+	// and a set of one — a person's own base url, a local server, a single
+	// connected service.
+	//
+	// IT IS THE THIRD CAUSE OF [StreamCut.Rerouted] BEING FALSE, and it wants
+	// the opposite answer to the other two. Routing switched off, and a stream
+	// that died before naming its server, both leave a POOL that the next
+	// attempt draws from by the same rules, so asking again buys little and the
+	// allowance above narrows. Here there is no pool: nothing moved because
+	// there is nothing to move to, the next attempt is the only move there is,
+	// and the only thing that mends a machine which answered nothing is time.
+	// A layer above spends a different allowance on it and waits in front of it
+	// (internal/taxonomy's transportBudget and waitFor).
+	OneMachine bool
 }
 
 func (c *StreamCut) Error() string {

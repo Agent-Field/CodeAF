@@ -232,6 +232,8 @@ func transportBudget(e Evidence, l Limits) (spent, allowed int) {
 	switch {
 	case e.Degenerate:
 		return spent, DegenerateCutAttempts
+	case e.OneMachine:
+		return spent, OneMachineCutAttempts
 	case !e.Rerouted:
 		return spent, BlindCutAttempts
 	}
@@ -249,6 +251,7 @@ const (
 	SilentCutAttempts     = 3
 	DegenerateCutAttempts = 2
 	BlindCutAttempts      = 2
+	OneMachineCutAttempts = 4
 )
 
 // waitFor is how long to wait before asking again, and it is TWO answers
@@ -268,10 +271,19 @@ func waitFor(e Evidence, attempt int, base time.Duration) time.Duration {
 	if e.Empty || e.Malformed {
 		return 0
 	}
-	// AND NEITHER IS A CUT STREAM. The request was served and the reply came
-	// apart; there is no failing endpoint here to give a moment to, and the
-	// caller that walks this shape has never waited between two of them.
-	if e.Cut {
+	// AND NEITHER IS A CUT STREAM, WHEN THERE IS SOMEWHERE ELSE TO SEND IT. The
+	// request was served and the reply came apart; what mends that is a
+	// different endpoint, which costs no time at all.
+	//
+	// ONE MACHINE IS THE EXCEPTION AND IT IS THE WHOLE POINT OF THE FIELD. A
+	// person on their own base url has no other endpoint, so the move that
+	// makes waiting pointless does not exist for them: the identical request
+	// goes back to the identical server, and sending it again the same instant
+	// asks a machine that has just answered nothing to answer now. Time is the
+	// only mend left, so the cut takes the same doubling schedule a refusal
+	// does. Two immediate asks ten seconds apart, which is what this returned
+	// before, is not patience.
+	if e.Cut && !e.OneMachine {
 		return 0
 	}
 	if base <= 0 || attempt < 1 {

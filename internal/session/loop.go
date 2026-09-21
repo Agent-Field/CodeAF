@@ -1788,6 +1788,11 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// ledger, so the attempts since then were genuinely served by somebody else.
 	// It is what [cutBudget] narrows on; the law is stated there.
 	rerouted := false
+	// oneMachine says every cut this step took came back from a request with no
+	// endpoint diversity at all. It is ANDed rather than ORed: one cut that did
+	// have a pool to draw from means the step had one, and the narrower
+	// allowance is the honest one (provider's [provider.StreamCut.OneMachine]).
+	oneMachine := true
 	// hopped is the models this step has already moved to, in order, and its
 	// length is where the chain is read from next. It is what the failure
 	// sentence names when even the fallbacks could not answer. `origin` is kept
@@ -1845,7 +1850,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// against the session's own model (steer.go's [Agent.rideModel]).
 		a.rideModel(next)
 		rung = a.effortFor(model)
-		cuts, rerouted = 0, false
+		cuts, rerouted, oneMachine = 0, false, true
 		deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
 	}
 	// takeTheModel is THE ONE PLACE THIS STEP CHANGES MODEL, and `root` is the
@@ -2084,6 +2089,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			if cut.Rerouted {
 				rerouted = true
 			}
+			if !cut.OneMachine {
+				oneMachine = false
+			}
 			cuts++
 		}
 		// AND THE BOUNDARY READS IT. The row above says WHAT the provider said;
@@ -2177,6 +2185,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			cuts:       cuts,
 			degenerate: isCut && degenerateCut(cut),
 			rerouted:   rerouted,
+			oneMachine: cuts > 0 && oneMachine,
 			fallback:   haveFallback,
 			outOfTime:  !spentAt().Before(deadline),
 		}
