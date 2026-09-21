@@ -44,7 +44,7 @@ const skillShelfLimit = store.SkillShelfLimit
 // useSkillDescription says what the two modes are for in the model's own terms.
 // It is bought on every request of every turn on a belt that carries it, so it
 // names the gesture and nothing about the store behind it.
-const useSkillDescription = "Reach the shelf of active skills — procedures this project has saved after watching them run. `list` shows every skill as a name and a one-line doc; `get` resolves one name to its shelf path and doc, which you then open with `read`."
+const useSkillDescription = "Reach the shelf of active skills — procedures this project saved after watching them run. `list` shows each as a name and one-line doc; `get` resolves one to its shelf path and doc to `read`."
 
 // useSkillSchemaJSON is the two modes. `name` is required for `get` alone, which
 // the mode enum cannot express, so the handler refuses a nameless get in words
@@ -52,8 +52,8 @@ const useSkillDescription = "Reach the shelf of active skills — procedures thi
 const useSkillSchemaJSON = `{
   "type": "object",
   "properties": {
-    "mode": {"type": "string", "enum": ["list", "get"], "description": "list: show doc lines for all active skills. get: show shelf path and doc for one skill."},
-    "name": {"type": "string", "description": "Required for get mode. The skill name (directory name on the shelf)."}
+    "mode": {"type": "string", "enum": ["list", "get"], "description": "list: every skill's name and doc line. get: one skill's shelf path and doc."},
+    "name": {"type": "string", "description": "Required for get mode. The skill's directory name on the shelf."}
   },
   "required": ["mode"],
   "additionalProperties": false

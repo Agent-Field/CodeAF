@@ -89,6 +89,10 @@ MUST use the specialized tool over a shell one:
 ## Exploration
 NEVER open files hoping; avoid unneeded files and sections.
 
+# Skills
+A skill is a procedure this project already worked out, saved on a shelf.
+WHEN A SKILL COVERS THE WORK, OPEN IT BEFORE INVENTING A METHOD.
+
 # Workflow
 ## 1. Research Before Editing
 - Read sections, not snippets. MUST reuse existing patterns; a second convention beside an existing one is PROHIBITED.

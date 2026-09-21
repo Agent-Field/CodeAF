@@ -122,3 +122,10 @@ A `does not hold:` finding is WORK, not a remark. The checked task keeps its don
 ending and the sentence is left as its note, and the run adds a `fix:` task under
 that task's parent which must land before the run is over. One round only: a
 finding on a `fix:` task is a note and no second fix task, so a run cannot loop.
+
+## The skill shelf
+
+Before inventing a method, check whether this project already worked one out:
+the shelf holds skills — procedures saved here after watching them run, listed
+and fetched where the belt carries `use_skill`. WHEN A SKILL COVERS THE WORK,
+OPEN IT BEFORE INVENTING A METHOD.

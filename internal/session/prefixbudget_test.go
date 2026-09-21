@@ -467,9 +467,18 @@ const fixedPrefixTarget = 48_000
 // the widest page pays for it: fixed is 55,442, over its 55,280 by 162, so that
 // waiver rises by 162. The lean shape's page never renders the attribution row
 // and lean is 47,055 still, exactly on its measurement.
+//
+// 2026-09-21, the shelf-on-the-page wave. The page gained the three lines that
+// say what a skill IS and when opening one beats improvising — nothing on the
+// page had ever said that; the tool description said it only where the verb
+// was on the belt. It is a NEW LAW rather than a second copy of one, so there
+// was nothing to take the bytes out of; the use_skill description, its schema
+// lines and the belt-fact row were tightened in the same commit and paid part
+// of the bill. Fixed is 56,277, over by 94, and lean is 47,891, over by 81;
+// both waivers rise by that figure here, in this diff, on purpose.
 const (
-	fixedPrefixWaiver = 8_183
-	leanPrefixWaiver  = 16_310
+	fixedPrefixWaiver = 8_277
+	leanPrefixWaiver  = 16_391
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
