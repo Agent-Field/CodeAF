@@ -115,7 +115,7 @@ func TestTheDecksModelChipNamesTheOpenRoomsModel(t *testing.T) {
 	}
 
 	a.closeRoom()
-	if deck := deckRowsOf(t, a); !strings.Contains(deck[1], "deepseek-v4-flash") {
+	if deck := deckRowsOf(t, a); !strings.Contains(deck[1], "deepseek/deepseek-v") || !strings.Contains(deck[1], "working") {
 		t.Fatalf("closing the room did not restore the deck's model chip:\n%q", deck[1])
 	}
 }

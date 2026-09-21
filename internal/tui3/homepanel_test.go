@@ -115,8 +115,8 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	a.home.build()
 	frame := homeText(a)
 	own, col := homeRowOf(frame, "Porting the Resume Picker")
-	if own != placeHeadRows || col != homeGridMargin+homeGridLead || strings.Contains(frame, "threads") {
-		t.Fatalf("conversations do not start with bullets and no heading:\n%s", frame)
+	if own != placeHeadRows+1 || col != homeGridMargin+homeGridLead || strings.Contains(frame, "threads") {
+		t.Fatalf("conversations do not start with bullets under Sessions:\n%s", frame)
 	}
 	lines := strings.Split(frame, "\n")
 	if mine := panelRows(a, panelSessions)[0]; !mine.bold || mine.sub != "" {
@@ -125,14 +125,14 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does
 	// not. The conversation mid-turn is here too: `running` lists the work a
 	// conversation sent out and never the conversation, so this is its panel.
-	if moving := lines[own+1]; !strings.Contains(moving, "Bounty Reward Companies") || strings.Contains(moving, "beta") {
+	if moving := lines[own+2]; !strings.Contains(moving, "Bounty Reward Companies") || strings.Contains(moving, "beta") {
 		t.Fatalf("a row from another folder wears its project on its own line:\n%s", frame)
 	}
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Bounty Reward Companies" })
 	if bounty := a.home.lines[a.home.cursor]; bounty.cell.sub != "" || bounty.cell.grows {
 		t.Fatalf("a row from another folder does not carry its project as its description: %+v", bounty.cell)
 	}
-	if quiet := lines[own+2]; !strings.Contains(quiet, "Quiet Chat a") {
+	if quiet := lines[own+3]; !strings.Contains(quiet, "Quiet Chat a") {
 		t.Fatalf("the quiet rows do not follow in recency order:\n%s", frame)
 	}
 	// AND THE TWO ROWS THAT ARE ON OTHER PANELS ARE NOT HERE A SECOND TIME.
@@ -151,7 +151,7 @@ func TestTheHereRowIsOneLineUntilItsSnippetArrives(t *testing.T) {
 	a.home.build()
 	frame := homeText(a)
 	own, _ := homeRowOf(frame, "Porting the Resume Picker")
-	if next := homeLineAfter(frame, "Porting the Resume Picker"); own < 0 || !strings.Contains(next, "Bounty Reward Companies") {
+	if next := homeLineAfter(frame, "Porting the Resume Picker"); own < 0 || !strings.Contains(next, "Swarm Task Splitting") {
 		t.Fatalf("the here row carries a line under it with nothing said:\n%s", frame)
 	}
 }

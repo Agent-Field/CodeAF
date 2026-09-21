@@ -63,6 +63,10 @@ func (a *app) conversationName() string {
 			return promptName(e.text)
 		}
 	}
+	// An answer to a question is not an opening prompt, and may be a credential.
+	if _, answering := a.questionHead(); answering {
+		return ""
+	}
 	main := a.mainComposer()
 	return promptName(main.box.String())
 }

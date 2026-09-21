@@ -833,9 +833,15 @@ func phoneBar(width int, words []string, pal palette) (string, []hudSpan) {
 
 // homeInboxBar opens the selected result. Submission modes belong to the box.
 func (a *app) homeInboxBar() []homeBarTarget {
-	return []homeBarTarget{
-		{word: "open", do: func(a *app) tea.Cmd { return a.homeEnter() }},
+	var targets []homeBarTarget
+	if a.home.box.empty() {
+		targets = append(targets, homeBarTarget{word: homeOptionsWord, do: func(a *app) tea.Cmd {
+			return a.homeKey(tea.KeyPressMsg{Code: tea.KeyRight})
+		}})
 	}
+	return append(targets, []homeBarTarget{
+		{word: "open", do: func(a *app) tea.Cmd { return a.homeEnter() }},
+	}...)
 }
 
 // homeBarPress resolves a press on the bar, and reports whether it took it.

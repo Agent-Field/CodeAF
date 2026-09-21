@@ -567,7 +567,7 @@ func TestTheIdentityClusterShortensItsRiderRatherThanBeingClipped(t *testing.T) 
 
 	// Unbounded, the cluster is everything it has always been plus the ladder's
 	// widest rung.
-	want := "porting the parser · kimi-k3 · via coreweave · first word 3.1s → parasail at 4.4s"
+	want := "porting the parser · moonshot/kimi-k3 · via coreweave · first word 3.1s → parasail at 4.4s"
 	if got, _ := a.identityParts(0); got != want {
 		t.Fatalf("the unbounded cluster reads %q, want %q", got, want)
 	}
@@ -580,12 +580,12 @@ func TestTheIdentityClusterShortensItsRiderRatherThanBeingClipped(t *testing.T) 
 		width int
 		want  string
 	}{
-		{width: 81, want: "porting the parser · kimi-k3 · via coreweave · first word 3.1s → parasail at 4.4s"},
-		{width: 77, want: "porting the parser · kimi-k3 · coreweave · first word 3.1s → parasail at 4.4s"},
-		{width: 63, want: "porting the parser · kimi-k3 · coreweave · 3.1s → parasail 4.4s"},
-		{width: 47, want: "porting the parser · kimi-k3 · coreweave · 3.1s"},
-		{width: 40, want: "porting the parser · kimi-k3 · coreweave"},
-		{width: 28, want: "porting the parser · kimi-k3"},
+		{width: 90, want: "porting the parser · moonshot/kimi-k3 · via coreweave · first word 3.1s → parasail at 4.4s"},
+		{width: 86, want: "porting the parser · moonshot/kimi-k3 · coreweave · first word 3.1s → parasail at 4.4s"},
+		{width: 72, want: "porting the parser · moonshot/kimi-k3 · coreweave · 3.1s → parasail 4.4s"},
+		{width: 56, want: "porting the parser · moonshot/kimi-k3 · coreweave · 3.1s"},
+		{width: 49, want: "porting the parser · moonshot/kimi-k3 · coreweave"},
+		{width: 37, want: "porting the parser · moonshot/kimi-k3"},
 	} {
 		got, _ := a.identityParts(c.width)
 		if got != c.want {

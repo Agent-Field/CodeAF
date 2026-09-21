@@ -407,13 +407,13 @@ func TestThePhoneInboxBarDoesNotOfferSubmissionModes(t *testing.T) {
 	a := phoneHome(t, lab, mine)
 	rows := phoneRows(a)
 	bar := rows[len(rows)-1]
-	for _, want := range []string{"open"} {
+	for _, want := range []string{homeOptionsWord, "open"} {
 		if !strings.Contains(bar, want) {
 			t.Fatalf("the bar does not offer %q: %q", want, bar)
 		}
 	}
-	if len(a.home.bar) != 1 {
-		t.Fatalf("the bar recorded %d targets, want 1", len(a.home.bar))
+	if len(a.home.bar) != 2 {
+		t.Fatalf("the bar recorded %d targets, want 2", len(a.home.bar))
 	}
 	// THE SHEET'S BAR IS ITS OWN THREE.
 	a.home.point(mine)

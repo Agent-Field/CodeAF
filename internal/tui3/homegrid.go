@@ -172,7 +172,7 @@ type homePanelSlot struct {
 // has no heading; projects is read-only. The explainer is the dim clause a
 // heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
-	{panel: sessionsPanel{homePanelBase{panelSessions}}, word: sessionsWord, keep: 5, least: 4, rest: homeSessionsLimit, most: homeSessionsLimit, place: pageTasks, head: pageTasks},
+	{panel: sessionsPanel{homePanelBase{panelSessions}}, word: sessionsWord, keep: 7, least: 4, rest: homeSessionsLimit, most: homeSessionsLimit, place: pageTasks, head: pageTasks},
 	{panel: recentPanel{homePanelBase{panelRecent}}, keep: 5, least: 3, rest: tabsCap + homeClosedLimit, most: tabsCap + homeClosedLimit},
 	{panel: needsPanel{homePanelBase{panelNeeds}}, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", pinned: true, keep: 4, least: 3, rest: 5, most: 8},

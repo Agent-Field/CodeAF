@@ -27,6 +27,9 @@ func keepThree(t *testing.T, a *app) (older, newer *fakeAgent) {
 	// so a card asserted against the developer's own conversations would pass on
 	// one machine and fail on the next (hop.go's [app.hopRest]).
 	emptyMachine(a)
+	if a.conversationName() == "" {
+		a.openingPrompt = "the current conversation"
+	}
 	older, newer = &fakeAgent{model: "m"}, &fakeAgent{model: "m"}
 	a.stow(Conversation{
 		Agent: older, SessionFile: "/tmp/lab/price-scrape.jsonl",
@@ -219,6 +222,7 @@ func TestTheSurfaceUnderTheSwitcherIsDimmed(t *testing.T) {
 func TestASingleConversationHasNoSwitcherAndIsNeverToldAboutOne(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	emptyMachine(a)
 	// The legend slot is dropped whole under [hudTight], where the cells are
 	// worth more to the conversation's name than to a reminder (render.go).
@@ -339,6 +343,7 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = filepath.Join(dir, "this-one.jsonl")
+	a.openingPrompt = "this one"
 	a.workspace = dir
 
 	// A machine with two conversations on it, one of them the one on screen.
@@ -411,6 +416,7 @@ func TestTheFoldKeepsTheCardAboutWhatIsOpen(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	a.openingPrompt = "this one"
 	rows := []session.SessionRow{{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir}}
 	for i := 0; i < 4; i++ {
 		rows = append(rows, session.SessionRow{
@@ -455,6 +461,7 @@ func TestTheFoldKeepsTheCardAboutWhatIsOpen(t *testing.T) {
 func TestCtrlWDismissesATabAndKeepsItsConversation(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	older, _ := keepThree(t, a)
 
 	drive(t, a, key(hopOpenKey))
@@ -490,6 +497,7 @@ func TestCtrlWDismissesATabAndKeepsItsConversation(t *testing.T) {
 func TestDismissingARunningTabNeverStopsItsWork(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	emptyMachine(a)
 	busy := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.stow(Conversation{Agent: busy, SessionFile: "/tmp/lab/busy.jsonl", Place: "lab"},
@@ -576,6 +584,7 @@ func TestTheReverseChordArrivesEverywhereAndItsAliasStillDoesNot(t *testing.T) {
 func TestQuickSwitchingSwitchesOnThePressAndTheCardFades(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	a.hopQuick = true
 	a.keysDisambiguated = true
 	keepThree(t, a)
@@ -631,6 +640,7 @@ func TestQuickSwitchingSwitchesOnThePressAndTheCardFades(t *testing.T) {
 func TestQuickSwitchingEscTakesTheWholeBurstBack(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	a.hopQuick = true
 	a.keysDisambiguated = true
 	keepThree(t, a)
@@ -654,6 +664,7 @@ func TestQuickSwitchingEscTakesTheWholeBurstBack(t *testing.T) {
 func TestTouchingAnythingButTheChordConvertsTheReceiptToTheBrowsingCard(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	a.hopQuick = true
 	a.keysDisambiguated = true
 	keepThree(t, a)
@@ -686,6 +697,7 @@ func TestTouchingAnythingButTheChordConvertsTheReceiptToTheBrowsingCard(t *testi
 func TestTypingRidesStraightThroughALiveCard(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	a.hopQuick = true
 	a.keysDisambiguated = true
 	keepThree(t, a)
@@ -705,6 +717,7 @@ func TestTypingRidesStraightThroughALiveCard(t *testing.T) {
 func TestTheReverseChordEntersTheRingAtTheFarEnd(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	a.hopQuick = true
 	a.keysDisambiguated = true
 	keepThree(t, a)
@@ -723,6 +736,7 @@ func TestTheReverseChordEntersTheRingAtTheFarEnd(t *testing.T) {
 func TestQuickSwitchingOffIsTheBrowsingCardAlone(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	a.hopQuick = false
 	a.keysDisambiguated = true
 	keepThree(t, a)
@@ -741,6 +755,7 @@ func TestQuickSwitchingOffIsTheBrowsingCardAlone(t *testing.T) {
 func TestCtrlKPreviewsUntilAnExplicitChoiceEvenWithQuickSwitch(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	a.hopQuick = true
 	keepThree(t, a)
 	drive(t, a, key(hopOpenKey), key(hopOpenKey))
@@ -934,6 +949,7 @@ func TestARefusedRowLeavesHomeStandingAndSaysSoThere(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	a.openingPrompt = "this one"
 	other := filepath.Join(dir, "other.jsonl")
 	a.world = func() (session.World, bool) {
 		return session.World{Projects: []session.Project{{
@@ -970,6 +986,7 @@ func TestTakingAClosedRowFromHomeLandsInItToo(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	a.openingPrompt = "this one"
 	other := filepath.Join(dir, "other.jsonl")
 	a.world = func() (session.World, bool) {
 		return session.World{Projects: []session.Project{{
@@ -1001,6 +1018,7 @@ func TestTakingAClosedRowFromHomeLandsInItToo(t *testing.T) {
 func TestQuickSwitchingFromHomeLandsToo(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
+	a.openingPrompt = "this one"
 	a.hopQuick, a.keysDisambiguated = true, true
 	keepThree(t, a)
 	drain(t, a, a.showPage(pageHome))
@@ -1300,6 +1318,7 @@ func TestEveryRowThatRefusesSaysWhy(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	a.openingPrompt = "this one"
 	gone := filepath.Join(dir, "vanished")
 	a.world = func() (session.World, bool) {
 		return session.World{Projects: []session.Project{{
@@ -1358,6 +1377,7 @@ func TestCtrlWOnAConversationThisWindowNeverOpenedClosesNothing(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	a.openingPrompt = "this one"
 	never := filepath.Join(dir, "never.jsonl")
 	a.world = func() (session.World, bool) {
 		return session.World{Projects: []session.Project{{

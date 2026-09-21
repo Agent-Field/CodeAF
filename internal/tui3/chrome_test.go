@@ -1443,7 +1443,7 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 		t.Fatal("the task page refused to open over home")
 	}
 	page, _, _ := a.frame()
-	if strings.Contains(plain(page), "Somewhere Else") {
+	if strings.Contains(plain(page), placeRestWord) {
 		t.Fatalf("home is still being drawn under the task page:\n%s", page)
 	}
 	if !strings.Contains(plain(page), "Port the parser") {

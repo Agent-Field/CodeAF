@@ -475,10 +475,10 @@ func TestATallColumnGrowsWhatAPersonCameForFirst(t *testing.T) {
 	recent := &homeGridPanel{slot: homeSlotOf(panelSessions), read: rows(10), shown: 5}
 	column := []*homeGridPanel{needs, recent}
 	// A heading, the rows and a fold each, and a blank between: 6 + 1 + 7 = 14.
-	// Three rows to spare go needs, recent, needs.
+	// Sessions gets two spare rows and the auxiliary questions get one.
 	fitColumn(column, 16)
-	if needs.shown != 6 || recent.shown != 6 {
-		t.Fatalf("three spare rows grew needs to %d and recent to %d, want 6 and 7", needs.shown, recent.shown)
+	if needs.shown != 5 || recent.shown != 7 {
+		t.Fatalf("three spare rows grew needs to %d and recent to %d, want 5 and 7", needs.shown, recent.shown)
 	}
 	fitColumn(column, 200)
 	if needs.shown != 8 || recent.shown != 10 {

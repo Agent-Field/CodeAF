@@ -58,13 +58,12 @@ func TestThePhoneStatusIsATwoRowDeck(t *testing.T) {
 	if !strings.Contains(top, deckMore) {
 		t.Fatalf("row 1 carries no affordance for the sheet:\n%q", top)
 	}
-	// The model is its BASENAME on the deck — the routing address is the sheet's,
-	// where the whole id is recorded.
+	// The model retains its provider prefix on the compact deck too.
 	if !strings.Contains(model, "deepseek-v4-flash") {
 		t.Fatalf("row 2 is missing the model chip:\n%q", model)
 	}
-	if strings.Contains(model, "deepseek/deepseek") {
-		t.Fatalf("row 2 spent nine cells on a vendor prefix:\n%q", model)
+	if !strings.Contains(model, "deepseek/deepseek") {
+		t.Fatalf("row 2 dropped the provider prefix:\n%q", model)
 	}
 	if !strings.Contains(model, "idle") {
 		t.Fatalf("row 2 dropped the state word, which is the last thing to go:\n%q", model)
@@ -299,7 +298,7 @@ func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 //
 // 2026-09-09 IS WHEN THE ROW CHANGED SHAPE, and 2026-09-17 is when it moved.
 // Until the first date the status row was identity left — `Fix the nil-map
-// crash · deepseek-v4-flash` — with every figure in one dotted run flushed
+// crash · deepseek/deepseek-v4-flash` — with every figure in one dotted run flushed
 // against the right edge, the crew word at the head of it (#315). Then the
 // name and the model went up onto the seam and the row became a LEDGER laid
 // from the left. Since the second date the ledger is on the seam too, after
@@ -317,8 +316,8 @@ func TestTheWideStatusRowIsByteForByteWhatItIs(t *testing.T) {
 	a.width = 120
 	a.touch()
 
-	head := "─ deepseek-v4-flash "
-	tail := "    $0.31   24k/200k · 12%   idle   project: ~/src/codeaf ─"
+	head := "─ deepseek/deepseek-v4-flash "
+	tail := "    $0.31   24k/200k · 12%   YOLO   idle   project: ~/src/codeaf ─"
 	want := head + strings.Repeat("─", 120-ansi.StringWidth(head)-ansi.StringWidth(tail)) + tail
 	if got := plain(a.legend(120)); got != want {
 		t.Fatalf("the wide seam changed:\n got %q\nwant %q", got, want)

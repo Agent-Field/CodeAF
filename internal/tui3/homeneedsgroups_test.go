@@ -147,7 +147,7 @@ func TestNoQuestionSaysEnter(t *testing.T) {
 	var questions []int
 	landing := -1
 	for at, line := range a.home.lines {
-		if line.kind == homeSession && line.cell != nil && line.cell.panel == panelNeeds && line.cell.mark == cellMarkNeeds {
+		if line.kind == homeSession && line.task == nil && line.cell != nil && line.cell.mark == cellMarkNeeds {
 			if line.cell.subRight != "" {
 				t.Fatalf("the question %q says %q at the right of its sentence", line.cell.title, line.cell.subRight)
 			}

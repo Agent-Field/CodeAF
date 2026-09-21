@@ -692,7 +692,7 @@ func TestATabWearsTheCountTheSeamGivesIt(t *testing.T) {
 		pageStanding.word(): 0,
 	}
 	bar := plain(a.placeTabBar(160, false, a.pal))
-	if !strings.Contains(bar, "tasks 2") {
+	if !strings.Contains(bar, "sessions 2") {
 		t.Fatalf("the tasks tab does not wear its count: %q", bar)
 	}
 	if strings.Contains(bar, "spend 9") {
@@ -802,7 +802,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		if !strings.Contains(bar, "home   tasks   spend   settings") {
+		if !strings.Contains(bar, "home   sessions   spend   settings") {
 			t.Fatalf("at %d columns the bar is not the four places in order: %q", width, bar)
 		}
 		for _, id := range []page{pageStanding, pageMemory, pageSearch} {

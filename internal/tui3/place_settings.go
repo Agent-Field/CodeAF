@@ -65,6 +65,11 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 		room = 1
 	}
 	if s.sel != nil {
+		filter, _, _ := draftBlock(&s.sel.pick.filter, pal, width-2, 1, "type to filter", "")
+		for _, line := range filter {
+			rows = append(rows, placeRow{text: " " + line})
+		}
+		room = max(1, room-len(filter))
 		body, at := s.selectLines(width, room, pal, a.reasoningFor)
 		for i, line := range body {
 			hit := sheetHit{}

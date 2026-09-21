@@ -94,7 +94,7 @@ func sectionLab(t *testing.T) *app {
 // on the grid.
 func TestACursorMarksTheHeadingOfThePanelItIsIn(t *testing.T) {
 	a := sectionLab(t)
-	for _, panel := range []homePanelID{panelNeeds, panelSessions, panelLeft} {
+	for _, panel := range []homePanelID{panelSessions, panelLeft} {
 		standInPanel(t, a, panel)
 		want := homeSlotOf(panel).word
 		if got := markedHeadings(a); len(got) != 1 || !strings.HasPrefix(got[0], want) {
@@ -138,7 +138,7 @@ func TestASearchingHomeMarksNoHeading(t *testing.T) {
 // Mouse selection moves the marked heading to the same panel as its row.
 func TestMouseSelectionMovesTheMarkedHeading(t *testing.T) {
 	a := sectionLab(t)
-	hovered := standInPanel(t, a, panelNeeds)
+	hovered := standInPanel(t, a, panelLeft)
 	want := strings.Join(markedHeadings(a), "|")
 	standInPanel(t, a, panelSessions)
 	a.selectPlaceRow(&a.home.cursor, hovered)

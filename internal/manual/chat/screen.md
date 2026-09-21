@@ -218,6 +218,8 @@ Empty answers, instruction echoes and placeholders are rejected, and the next co
 naming model can answer within the same budget. If those attempts fail, the tab keeps
 your opening prompt; an unnamed saved conversation can try again on its next message after reopening.
 
+## How do I rename this conversation
+
 **An existing name wins.** Naming runs once per session lifetime, and a chat that already
 has a name is not named again. Older saved names with a leaked `Full:` label are cleaned
 when read — including one written behind a `-` or `1.` list marker. Older short tab labels
@@ -229,6 +231,10 @@ saved as a tab or an `alt+k` row. As soon as there are draft or submitted words,
 words supply the name until the generated title arrives. The project is a separate fact.
 `main` means the conversation as a place — the destination of `esc/← main` and
 `say it to main` from a task page — rather than its title.
+
+## Can a credential or question answer become my tab title
+
+Answers to questions, including credential prompts, never supply a draft tab title.
 
 ## Closing a tab — the × on a tab, Ctrl+W, where do I go next
 

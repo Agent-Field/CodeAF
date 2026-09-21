@@ -146,7 +146,7 @@ func TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone(t *testing.T) {
 	// are pinned with the positions exactly as they were.
 	ask := homeRowAt(lines, homeAskGlyph+" keep main green")
 	run := homeRowAt(lines, homeLiveGlyph+" check the deploy")
-	chat := homeRowAt(lines, homeIdleGlyph+" Pricing Research")
+	chat := homeRowAt(lines, "Pricing Research")
 	wait := homeRowAt(lines, standWaitGlyph+" tell me when the cert expires")
 	fold := homeRowAt(lines, homeItemsFoldWord)
 	for name, at := range map[string]int{"needs-you": ask, "running": run, "session": chat, "waiting": wait, "fold": fold} {
@@ -154,7 +154,7 @@ func TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone(t *testing.T) {
 			t.Fatalf("the phone never drew the %s row:\n%s", name, joined)
 		}
 	}
-	if !(ask < run && run < chat && chat < wait && wait < fold) {
+	if !(chat < ask && ask < run && run < wait && wait < fold) {
 		t.Fatalf("the band is not in triage order (ask %d, run %d, chat %d, wait %d, fold %d):\n%s",
 			ask, run, chat, wait, fold, joined)
 	}

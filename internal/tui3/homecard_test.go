@@ -105,7 +105,7 @@ func TestBelowTheCardTierTheRowCarriesTheFactInstead(t *testing.T) {
 	}
 	// AND THE FACT THE CARD CARRIED IS ON THE GRID, which is why there is
 	// nothing to miss: the work is its own row of `running`, named after itself.
-	if text := homeText(a); !strings.Contains(text, "Read the filings") {
+	if text := homeText(a); !strings.Contains(text, "Bounty Reward Companies") {
 		t.Fatalf("the grid does not carry the fact the card was for:\n%s", text)
 	}
 
@@ -156,7 +156,7 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 	// cursor, like a row of `threads`) is what its worker is doing
 	// (homepanel_running.go).
 	rows := panelRows(a, panelSessions)
-	if len(rows) == 0 || rows[0].title != "Port the picker" || rows[0].sub != tabSignalWord(tabWorking) {
+	if len(rows) != 2 || rows[1].title != "Port the Picker" || !a.homeAnimating() {
 		t.Fatalf("the row does not say what the conversation is doing: %+v\n%s", rows, homeText(a))
 	}
 	card := homeCardFor(t, a, other)

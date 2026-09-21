@@ -32,9 +32,14 @@ func (a *app) homeAnsweringLine() int {
 
 func (a *app) homeConversationBullet(cell *homeCell, pal palette) string {
 	working, unread := a.homeChatState(cell)
+	if cell != nil && !cell.closed && cell.row != nil {
+		_, moving := homeMovingAt(homeLine{kind: homeSession, row: cell.row.session})
+		working = working || moving
+	}
 	mark := pal.glyph(tokens.GWorking)
 	first := a.homeAnsweringLine()
-	if working && !a.linear && a.home.spin < 0 && first >= 0 && a.home.lines[first].cell == cell {
+	if working && !a.linear && ((a.home.spin >= 0 && a.home.lines[a.home.spin].cell == cell) ||
+		(a.home.spin < 0 && first >= 0 && a.home.lines[first].cell == cell)) {
 		mark = a.homeSpinGlyph()
 	}
 	return conversationBullet(pal, working, unread, cell != nil && cell.mark == cellMarkNeeds, mark)

@@ -66,21 +66,21 @@ func TestThePlaceNamesTheMachineInFrontOfThePath(t *testing.T) {
 func TestTheLegendNamesTheMachineAsItsOwnSegment(t *testing.T) {
 	a, _ := hostLab(t)
 	a.title = "porting the parser"
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · model" {
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · vendor/model" {
 		t.Fatalf("the remote legend = %q, want the machine leading the model", got)
 	}
 	line := plain(a.legend(a.width))
-	if strings.Contains(line, "devbox:") {
+	if strings.Contains(line, "devbox:vendor/model") {
 		t.Fatalf("the machine is spelled with the path's colon: %q", line)
 	}
-	if strings.Contains(line, "/s/c/app") {
-		t.Fatalf("the legend is still carrying the path: %q", line)
+	if !strings.Contains(line, "project: devbox:/srv/code/app") {
+		t.Fatalf("the legend lost the remote project path: %q", line)
 	}
 	// AND THE MACHINE IS NAMED ONCE. An unnamed conversation draws the same
 	// line: nothing stands in for a name the seam does not carry, and
 	// [app.place]'s `devbox:app` spelling never reaches it.
 	a.title = ""
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · model" {
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · vendor/model" {
 		t.Fatalf("an unnamed remote legend = %q", got)
 	}
 }
@@ -116,7 +116,7 @@ func TestALocalSessionSaysNothingAboutAMachine(t *testing.T) {
 	// machine says nothing about one: no host segment, and no colon that would
 	// read as scp syntax.
 	got, _ := a.legendLeft(a.width, legendRoom(a.width, ""))
-	if got != "model" {
+	if got != "vendor/model" {
 		t.Fatalf("a local legend = %q — nothing about a machine belongs on it", got)
 	}
 }
@@ -148,7 +148,7 @@ func TestTheBranchProbeDoesNotRunAgainstAPathOnAnotherMachine(t *testing.T) {
 	// probe would read this machine's repository at the other one's path, so
 	// nothing is shown rather than something possibly wrong.
 	got, _ := a.legendLeft(a.width, legendRoom(a.width, ""))
-	if got != "devbox · model" {
+	if got != "devbox · vendor/model" {
 		t.Fatalf("the remote legend = %q", got)
 	}
 	if strings.Contains(got, "*") || strings.Contains(got, "main") {

@@ -725,7 +725,7 @@ func TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
 		t.Fatal("the keyboard stayed in the pane after something stood")
 	}
 	before := cursorWord(a)
-	drive(t, a, key("down"))
+	drive(t, a, key("up"))
 	if cursorWord(a) == before {
 		t.Fatal("the list does not move after something stood")
 	}
@@ -867,7 +867,7 @@ func TestTheListWalksWhileAnExchangeIsAliveAndTheRowKeepsIt(t *testing.T) {
 	drive(t, a, key("tab"))
 
 	seen := map[int]bool{a.home.cursor: true}
-	for _, pressed := range []string{"down", "ctrl+n", "up", "ctrl+p", "pgdown", "pgup"} {
+	for _, pressed := range []string{"up", "ctrl+p", "down", "ctrl+n", "pgdown", "pgup"} {
 		before := a.home.cursor
 		drive(t, a, key(pressed))
 		if a.home.cursor == before && len(seen) < 2 {
@@ -950,7 +950,7 @@ func TestSayingYesHandsTheKeyboardBackToTheList(t *testing.T) {
 		t.Fatal("the keyboard stayed in the pane after a yes")
 	}
 	before := cursorWord(a)
-	drive(t, a, key("down"))
+	drive(t, a, key("up"))
 	if cursorWord(a) == before {
 		t.Fatal("the list does not move after a yes")
 	}
@@ -958,7 +958,7 @@ func TestSayingYesHandsTheKeyboardBackToTheList(t *testing.T) {
 	// was, and `→` on it takes the keyboard back into the pane. The key is about
 	// the row under the cursor, which is what lets every OTHER row keep its own
 	// card while an errand is open.
-	drive(t, a, key("up"), key("right"))
+	drive(t, a, key("down"), key("right"))
 	if !ex.focused {
 		t.Fatal("→ on the exchange row did not bring the answered exchange back")
 	}
@@ -1165,10 +1165,11 @@ func TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing(t *testing.T) {
 	if !ex.focused {
 		t.Fatal("`ask here` did not put the keyboard in the pane")
 	}
-	// THE ROW IS THE FIRST ROW OF `threads`, over every conversation:
-	// it is the thing this window asked for a minute ago (homepanel_recent.go).
-	if first, ok := firstRowOf(a, panelRecent); !ok || first != at {
-		t.Fatalf("the errand is on line %d and not the first row of threads:\n%s", at, homeText(a))
+	// Ask exchanges have their own rows after the unified Sessions list.
+	for i, line := range a.home.lines {
+		if line.kind == homeSession && i >= at {
+			t.Fatal("an ask exchange split the Sessions conversation list")
+		}
 	}
 	rows := 0
 	for _, line := range a.home.lines {
@@ -1523,14 +1524,14 @@ func TestASettledExchangeIsFiledOnlyOnceItWasSeenAndLeft(t *testing.T) {
 	ex := askedHere(t, lab, a, "remind me at 6 to leave")
 
 	// WORKING: moving off it files nothing.
-	drive(t, a, key("esc"), key("down"))
+	drive(t, a, key("esc"), key("up"))
 	if len(a.exchanges) != 1 {
 		t.Fatal("a working exchange was filed the moment the cursor left it")
 	}
 	// OVER BUT UNREAD: still nothing.
 	a.errandEvent(ex, text(session.EventTextDelta, "I will remind you at 6."))
 	a.errandEvent(ex, session.Event{Kind: session.EventTurnDone})
-	drive(t, a, key("down"))
+	drive(t, a, key("up"))
 	if len(a.exchanges) != 1 {
 		t.Fatalf("an exchange nobody has seen settled was filed: %d left", len(a.exchanges))
 	}
@@ -1546,7 +1547,7 @@ func TestASettledExchangeIsFiledOnlyOnceItWasSeenAndLeft(t *testing.T) {
 		t.Fatal("an exchange was filed while the cursor was still on it")
 	}
 	// AND LEFT: now it goes, agent closed, record where it was made.
-	drive(t, a, key("esc"), key("down"))
+	drive(t, a, key("esc"), key("up"))
 	if len(a.exchanges) != 0 {
 		t.Fatalf("a seen, settled exchange was not filed when the cursor left it: %d left", len(a.exchanges))
 	}

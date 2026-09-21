@@ -72,8 +72,8 @@ func TestANotelessFootKeepsTheDoorHintAsToday(t *testing.T) {
 	a, _ := tasksFootApp(t)
 	a.width, a.height = 100, 30
 	line := msgFootLine(a)
-	if line != placeTailed(a.taskSheetKeysLine()) {
-		t.Fatalf("a foot with nothing to say changed anyway:\n  %q\nwant\n  %q", line, placeTailed(a.taskSheetKeysLine()))
+	if line != "enter open its room · tab next place · esc home" {
+		t.Fatalf("a foot with nothing to say changed anyway:\n  %q\nwant\n  %q", line, "enter open its room · tab next place · esc home")
 	}
 	if strings.Contains(line, "waiting in this conversation") {
 		t.Fatalf("a task that raised nothing drew a waiting note: %q", line)

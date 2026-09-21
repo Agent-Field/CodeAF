@@ -55,7 +55,7 @@ func (sessionsPanel) rows(in *homeGridInput) homePanelRows {
 		}
 		cell.panel, cell.chatKey, cell.closed = panelSessions, row.chatKey, row.session.Archived
 		cell.key = "sessions:" + row.session.Transcript
-		if row.needs {
+		if row.needs && !needsLandingsSpeakFor(row.session, needsCallTitlesOn(in, row.session.ID)) {
 			cell.mark = cellMarkNeeds
 		}
 		if !in.desc {

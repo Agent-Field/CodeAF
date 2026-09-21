@@ -122,7 +122,7 @@ func placeWalkToTop(t *testing.T, a *app) {
 // nothing previewed under the pointer, and a motion message swallowed on its
 // way through [app.Update] would look exactly like that with every hover test
 // in this package still green.
-func TestAMotionMessageMovesHomesCardWithoutMovingTheCursor(t *testing.T) {
+func TestAMotionMessageMovesHomesCardAndSelection(t *testing.T) {
 	a, _, _ := hoverLab(t)
 	if a.width < homeCardMin {
 		t.Fatalf("the hover lab opens on %d columns and there is no card under %d", a.width, homeCardMin)
@@ -134,7 +134,7 @@ func TestAMotionMessageMovesHomesCardWithoutMovingTheCursor(t *testing.T) {
 	if title := homeCardTitle(t, a); title == before {
 		t.Fatalf("a motion message over another row left the card on %q", title)
 	}
-	if a.home.cursor != cursor {
+	if a.home.cursor != at {
 		t.Fatalf("the pointer moved the cursor from %d to %d", cursor, a.home.cursor)
 	}
 }
@@ -160,7 +160,7 @@ func TestHoveringARowOfTheTasksPlaceLightsIt(t *testing.T) {
 		}
 		cursor := a.taskSheet.cursor
 		drive(t, a, tea.MouseMotionMsg{X: 4, Y: y})
-		if a.taskSheet.cursor != cursor {
+		if a.taskSheet.cursor != hit.index {
 			t.Fatalf("the pointer over row %d moved the cursor from %d to %d", y, cursor, a.taskSheet.cursor)
 		}
 		painted, _, _ := a.frame()

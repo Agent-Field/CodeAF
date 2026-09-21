@@ -873,3 +873,13 @@ walking the conversation's task roster it still widens that roster. Project sele
 on home and in the task composer now uses `alt+p` (`opt+p`), and clicking home's
 project path takes the same step through the same list. The selected project remains
 set when you start a conversation and return home.
+
+## Where is the model filter in Settings
+
+When choosing a model for a setting, type to filter. The filter text appears above
+the model list, and Enter applies the selected model.
+
+## Where is the model filter in Settings
+
+When choosing a model for a setting, type to filter. The filter text appears above
+the model list, and Enter applies the selected model.

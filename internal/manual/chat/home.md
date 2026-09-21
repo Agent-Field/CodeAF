@@ -1818,7 +1818,7 @@ copied path says `copied <path>`.
 ## How do I answer without opening the chat — the verb strip on a row
 
 **Press `→` on the selected row.** With an empty message box, the bottom row starts
-with `→ options` to show this shortcut. The hint disappears when you type. On a wide home, its options appear at the bottom of
+with `→ options` to show this shortcut. The hint disappears when you type. Compact Home offers the same options shortcut as a tappable footer item. On a wide home, its options appear at the bottom of
 its description in the middle column, wrapping as needed. On a narrower home without
 that column, they appear directly under the selected row. **While the options are drawn,
 those letters are the verbs and the box is asleep**:
@@ -2211,3 +2211,10 @@ windows or persist read status across restarts.
 
 In `/ask`, the thinking, writing and running indicator starts animating as soon as
 you submit, including follow-up messages. Linear mode keeps a still mark.
+
+## How does Sessions behave on a short Home screen
+
+Sessions keeps priority over auxiliary panels when the window is short. Running work
+keeps its status bullet, with the most recently active running conversation animated.
+A task awaiting your decision has its own question indicator; its parent conversation
+does not repeat that indicator unless it has a separate question.

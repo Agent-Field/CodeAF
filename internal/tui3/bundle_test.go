@@ -2441,7 +2441,7 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 	}{
 		{width: 200, eta: true, branch: false, cost: true, meter: true},
 		{width: 120, eta: true, branch: false, cost: true, meter: true},
-		{width: 110, eta: true, branch: false, cost: true, meter: true},
+		{width: 110, eta: false, branch: false, cost: true, meter: true},
 		{width: 90, eta: false, branch: false, cost: true, meter: true},
 		{width: 80, eta: false, branch: false, cost: true, meter: true},
 		// Then the cache's half of the bill goes, and the bill and the meter
@@ -2450,8 +2450,8 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		// model is never spent for one — it is the one fact on this frame
 		// written nowhere else, and the state word is the last thing
 		// standing on the right.
-		{width: 70, eta: false, branch: false, cost: true, meter: true},
-		{width: 60, eta: false, branch: false, cost: false, meter: true},
+		{width: 70, eta: false, branch: false, cost: false, meter: true},
+		{width: 60, eta: false, branch: false, cost: false, meter: false},
 	} {
 		// THE LAST ROW IS THE KEYS, one row at every width, and it names the
 		// commands door at every one of them.

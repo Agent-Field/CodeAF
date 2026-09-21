@@ -170,8 +170,8 @@ func TestC6AnUnnamedConversationHasOneNameEverywhere(t *testing.T) {
 		}
 	}
 	row := plain(tabsRowOf(a))
-	if !strings.Contains(row, unnamedConversationWord) || strings.Contains(row, "Untitled") {
-		t.Fatalf("the unnamed tab has another name: %q", row)
+	if strings.Contains(row, unnamedConversationWord) || strings.Contains(row, "Untitled") {
+		t.Fatalf("an empty conversation left a placeholder tab: %q", row)
 	}
 }
 
