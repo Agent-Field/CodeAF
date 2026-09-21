@@ -606,9 +606,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 					for _, model := range models {
 						seed = append(seed, modelcatalog.Model{ID: model.ID})
 					}
-					_ = modelcatalog.Remember(modelcatalog.Options{
-						Source: instance, BaseURL: connected.Address, Dir: dir,
-					}, seed)
+					_ = modelcatalog.Remember(config.CatalogOptionsFor(connected, dir), seed)
 					_ = WriteModelCacheFor(instance, connected.Address, models)
 				} else if refresh != nil {
 					if refreshed, refreshErr := refresh(ctx, connected, models); refreshErr == nil && len(refreshed) > 0 {
@@ -619,13 +617,9 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 					for _, model := range models {
 						seed = append(seed, modelcatalog.Model{ID: model.ID})
 					}
-					_ = modelcatalog.Remember(modelcatalog.Options{
-						Source: instance, BaseURL: connected.Address, Dir: dir,
-					}, seed)
-					catalog, refreshErr := modelcatalog.Refresh(ctx, modelcatalog.Options{
-						Source: instance, BaseURL: connected.Address, APIKey: connected.Key, Dir: dir,
-						HTTPClient: config.CatalogHTTPClient(connected),
-					})
+					options := config.CatalogOptionsFor(connected, dir)
+					_ = modelcatalog.Remember(options, seed)
+					catalog, refreshErr := modelcatalog.Refresh(ctx, options)
 					if refreshed := surfaceModels(catalog.ModelsNow()); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
 					}

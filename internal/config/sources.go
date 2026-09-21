@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"sort"
@@ -124,6 +125,17 @@ func CatalogHTTPClient(service modelsource.Connected) *http.Client {
 		return codexauth.Client(service.Home)
 	}
 	return nil
+}
+
+// CatalogOptionsFor is the one construction door for a connected service's
+// catalog compartment. Keeping the source identity, address, key, profile and
+// account-aware client together makes it impossible for a new listing road to
+// send Codex's persisted sentinel through the generic HTTP client.
+func CatalogOptionsFor(service modelsource.Connected, profileDir string) catalog.Options {
+	return catalog.Options{
+		Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key,
+		Dir: profileDir, HTTPClient: CatalogHTTPClient(service),
+	}
 }
 
 func sourceKeyFromRow(row PersistedSource, src modelsource.Source) string {
@@ -249,9 +261,12 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 	for _, id := range outcome.ModelIDs {
 		remembered = append(remembered, catalog.Model{ID: id, PriceUnknown: true})
 	}
-	if err := catalog.Remember(catalog.Options{
-		Source: "codex", BaseURL: codexauth.Backend(), Dir: profileDir,
-	}, remembered); err != nil {
+	service, found := ResolveSources(profileDir, "", DefaultBaseURL).ByID("codex")
+	if !found {
+		_ = DisconnectService(profileDir, "codex")
+		return modelsource.Outcome{}, errors.New("codex connection was not saved")
+	}
+	if err := catalog.Remember(CatalogOptionsFor(service, profileDir), remembered); err != nil {
 		_ = DisconnectService(profileDir, "codex")
 		return modelsource.Outcome{}, err
 	}
