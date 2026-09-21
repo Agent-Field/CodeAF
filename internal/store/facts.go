@@ -22,6 +22,10 @@ import (
 // MaxFactBytes bounds one fact. A fact is one standalone line, not a report.
 const MaxFactBytes = 512
 
+// SkillShelfLimit is the one bound every shelf reader uses — the shelf is
+// a curated few, and reading past it would only slow dispatch or the prompt.
+const SkillShelfLimit = 100
+
 // FactKind classifies what a notebook entry teaches.
 // AgeLabel renders how old a fact is, for retrieval surfaces: every reader
 // of a memory sees when it was written, because a claim's age is part of its
