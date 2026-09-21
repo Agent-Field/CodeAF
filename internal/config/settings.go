@@ -3419,7 +3419,43 @@ func ModelPoolPublicKeySettingAt(profileDir string) string {
 // and [ModelPoolPublicKeySettingAt] against its own lookup rather than
 // calling this.
 func ModelPoolAt(profileDir string) poolcfg.Config {
-	return poolcfg.Resolve(ModelPoolSettingAt(profileDir), ModelPoolPublicKeySettingAt(profileDir), os.LookupEnv)
+	return ModelPoolResolved(profileDir, os.LookupEnv)
+}
+
+// ModelPoolResolved is [ModelPoolAt] with the environment injected, for the
+// verbs whose tests hand one in. It is where the telemetry off switch reaches
+// the pool: the environment rungs (CODEAF_TELEMETRY, DO_NOT_TRACK) are read by
+// the resolver through lookup, and the two rungs that live on disk — the
+// project file and the profile row that `codeaf telemetry off` writes — are
+// read here and applied with [poolcfg.Config.Quieted]. The rows, not the
+// pin: a caller that injected an environment must get the answer for THAT
+// environment's CODEAF_TELEMETRY, not the one the harness happens to export
+// (the fall-through [telemetryRowsOff] describes is the one exception).
+func ModelPoolResolved(profileDir string, lookup func(string) (string, bool)) poolcfg.Config {
+	cfg := poolcfg.Resolve(ModelPoolSettingAt(profileDir), ModelPoolPublicKeySettingAt(profileDir), lookup)
+	cwd, _ := os.Getwd()
+	if telemetryRowsOff(cwd, profileDir) {
+		cfg = cfg.Quieted()
+	}
+	return cfg
+}
+
+// telemetryRowsOff is the disk half of [TelemetryOffReason]: the project file
+// and the profile row. It does not read CODEAF_TELEMETRY itself — the caller
+// has read that through its own lookup — but it is not blind to the process
+// environment either: [ProjectBoolAt] falls through to [TelemetryAt] when the
+// project file says nothing, and TelemetryAt reads the pin through
+// internal/env, which honours the former AFORGE_TELEMETRY spelling. // legacy-name
+// THAT FALL-THROUGH IS WHY THE FORMER SPELLING CAPS THE POOL; a rewrite that
+// read the two rows directly would drop it.
+func telemetryRowsOff(cwd, profileDir string) bool {
+	if cwd != "" {
+		if value, err := ProjectBoolAt(cwd, profileDir, KeyTelemetry); err == nil && !value {
+			return true
+		}
+	}
+	value, ok := persistedBool(profileDir, KeyTelemetry)
+	return ok && !value
 }
 
 // ExaKeyAt resolves the Exa credential: the environment first, then the sheet,

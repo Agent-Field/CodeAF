@@ -399,3 +399,18 @@ func TestEffortHintsUseThePlatformModifier(t *testing.T) {
 		})
 	}
 }
+
+// The model picker's draft level must be visible on the seam before a new
+// conversation exists, while the message-box effort pin keeps precedence.
+func TestHomeEffortSeamReflectsDraftPickerReasoning(t *testing.T) {
+	_, a := drafting(t)
+	a.target.model = "org/model"
+	a.target.levels = map[string]string{session.ReasoningKey("org/model"): "low"}
+	if got, ok := a.targetEffort(); !ok || got != "low" {
+		t.Fatalf("picker effort reached the seam as %q, supported=%v; want low", got, ok)
+	}
+	a.target.effort = "medium"
+	if got, ok := a.targetEffort(); !ok || got != "medium" {
+		t.Fatalf("explicit draft effort reached the seam as %q, supported=%v; want medium", got, ok)
+	}
+}

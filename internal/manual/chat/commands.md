@@ -875,8 +875,15 @@ thinking control takes. enter switches.
 provider or `auto`; enter pins, ← or tab walks back out. *Providers → Pinning one provider yourself*
 has the rest.
 
-esc leaves and changes **nothing** — your half-typed draft, the model in use and the
-frame all come back as they were. The filter is forgotten when the picker closes.
+**Enter chooses and the list stays up; esc is the way out.** Pressing enter on a row
+switches to it there and then and leaves the list on screen, so you can compare two models
+by their prices, switch, and switch back without reopening anything — and the mark moves to
+whatever you just chose. The same is true of a provider inside a fold: enter pins it, the
+list stays.
+
+esc itself changes **nothing** — it closes the list and gives your half-typed draft and the
+frame back as they were. What enter already did is already done; esc does not undo it. The
+filter is forgotten when the picker closes.
 
 The cursor opens on the model in use, which is also the marked row, so enter with nothing
 typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
@@ -884,12 +891,26 @@ typed confirms rather than changes. Emptying the filter with ctrl+u puts it back
 The placeholder in the empty filter box reads:
 
 ```
-filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc
+filter by name · ctrl+r refresh
 ```
 
-and the keys row under the box follows the cursor: `→ providers · enter switch · esc` on a
-model, `enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc`
-on the provider you are already pinned to, where the same key takes the pin off again.
+It says **by name** because that is the whole of what the box does: there is no way to type
+a question about speed, price or capability into it (the *models and cost* page, "You cannot
+filter the picker by speed, price or capability"). On a frame too narrow for the words it
+falls back to `filter`.
+
+**The keys are named on the foot and not in the box**, because a placeholder disappears the
+moment you type — which is exactly when you have found your model and want its providers.
+The foot follows the cursor and always reads in one order — the keys that move the **cursor**,
+then the ones that change the **list**, then `enter`, then the one key that is about neither:
+`→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model,
+`← back · alt+s sort · enter choose · esc` inside its providers — and `← back · alt+s sort ·
+enter unpin · esc` on the provider you are already pinned to, where the same key takes the pin
+off again. While you are
+mid-typing and the arrow would step over a character, those read `tab providers` and `tab
+back` — the foot names whichever key actually works at that moment. What is left in
+the box is the name of the box and the one key that is about the LIST rather than about the
+row under the cursor.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
@@ -908,19 +929,34 @@ each rung used only when the one above it came back empty after filtering:
 3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
    `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
 
-Filtering splits your text on whitespace and every word must match, each scored by
-the fuzzy alignment every picker on this surface shares: a word that starts an id,
-or lands right after a `/` or a hyphen, outranks the same letters sitting loose inside
+Filtering is over the model's **name** and nothing else — no word in the box means
+anything but itself. It splits your text on whitespace and every word must match, each
+scored by the fuzzy alignment every picker on this surface shares: a word that starts an
+id, or lands right after a `/` or a hyphen, outranks the same letters sitting loose inside
 it. So `ds v4` finds `deepseek/deepseek-v4-flash` and `claude 4.5` finds
-`anthropic/claude-sonnet-4.5`, and a tight prefix sits above a scattered match
-without needing tiers to hold it there.
+`anthropic/claude-sonnet-4.5`, and a tight prefix sits above a scattered match.
 
-Twelve rows show at a time. A row reads `<id>:<level>` on the left and, dimly on the
-right, what the catalog published: window, price per million prompt and completion, arena
-elo, and what the model can do besides write — `sees`, `hears`, `watches`, `draws`,
-`speaks`, `films`. Each part is hidden when nobody published it. A price shows only when
-both halves are known — a zero means "nobody said", never "free". A plain text chat model
-shows no capability words at all.
+**`alt+s` walks the sort and `alt+shift+s` walks it back.** The list is always sorted — it
+opens on the name, A to Z — and every column is two presses, its own direction then reversed.
+Columns this list published nothing in are skipped, the sorted one wears the arrow, and inside
+an open provider fold the same key sorts the providers instead (the *models and cost* page,
+"Sorting the model list by a column").
+
+Twelve rows show at a time, under a dim heading line. The list is a **table**: `<id>:<level>`
+on the left under `model`, and dim columns to the right of it for what the catalog
+published — `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, `inputs` and
+`outputs`. The last two carry everything the model takes in and gives back, in the
+catalog's own words: `text`, `image`, `audio`, `video`, `file`, `speech`, `music`. The heading names the unit, so the figure
+under it does not: `$0.18` under `out/M`, `1290` under `elo`. An empty cell means nobody
+published that fact; a column no row published is not drawn at all. A price shows only when
+both halves are known — a zero means "nobody said", never "free". `text` is never drawn on either
+side — every model on this list reads and writes it, so the cell is for what a model can do
+**beyond** holding a conversation, and an empty `inputs` cell means text in and nothing
+else. `outputs` is not drawn in `/model` at all: a model that answers with anything but
+text cannot hold a conversation and is not on that list, so the column every row agrees on
+is dropped. A narrow window gives up columns from the right, and under sixty
+columns the table gives way to the older `·` tail on a line of its own (the *models and
+cost* page, "What each row in the model picker tells you").
 
 Only models you can hold a conversation with are listed: text in and text out. A model
 that publishes `["image","text"]` out — a drawing model that also captions — is left out,
@@ -929,7 +965,7 @@ and so is a transcription model. A model that publishes nothing is judged by its
 Limits:
 
 - `/model <slug>` refuses a slug the catalog carries that **cannot hold a conversation**,
-  in one line — `openai/gpt-4o-mini-tts cannot hold a conversation — it speaks. Still on
+  in one line — `openai/gpt-4o-mini-tts cannot hold a conversation — it answers with speech. Still on
   <model>.` — and does not switch. A slug the catalog has never carried is taken as typed.
 
 - **ctrl+t does nothing at all, silently**, on a model whose catalog row does not accept a

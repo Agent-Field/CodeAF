@@ -125,7 +125,7 @@ func (a *app) targetEffortStanding() (string, bool) {
 	if host, hosted := a.agent.(interface{ EffortSupported() bool }); hosted && !host.EffortSupported() {
 		return "", false
 	}
-	turn, _ := effort.Parse(a.reasoningFor(a.targetModel()))
+	turn, _ := effort.Parse(a.targetReasoningFor(a.targetModel()))
 	install, _ := effort.Parse(dial.DefaultEffort())
 	return effort.Resolve(effort.Scope{Turn: turn, Default: install}).String(), true
 }
@@ -240,11 +240,9 @@ func (a *app) cycleTargetApproval() tea.Cmd {
 	return surfaceTick(approvalFlashFor, func(time.Time) tea.Msg { return approvalFlashMsg{} })
 }
 
-// targetPinnedTail is the scope clause every pin's note ends with, so a person
-// reading "thinking · high" on home is told it is about the NEXT conversation
-// and not the one behind the screen — the question the model pin's own note
-// was written to answer ([targetPinnedModelWord]).
-const targetPinnedTail = targetPinnedModelWord
+// targetPinnedTail tells a person changing Home's effort or approvals that the
+// choice applies to the next conversation, rather than the one behind Home.
+const targetPinnedTail = " · for the next conversation you start here"
 
 // ── the pins, carried ───────────────────────────────────────────────────────
 

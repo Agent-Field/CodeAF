@@ -1252,7 +1252,7 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 
 | The words on the row | What you type | What happens |
 | --- | --- | --- |
-| **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; enter says `model · glm-5.3 · for the next conversation you start here`. Nothing behind home is touched. |
+| **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; the pinned model appears on the rule above the box. Nothing behind home is touched. |
 | **`next conversation's folder`** | `/folder` `/place` `/dir` · `/folder <path>` | Opens the folder browser, **aimed at the next conversation**. Picking a folder pins it — `project: ~/src/parser` on the seam above the box shows the selection, with no duplicate footer message. |
 | **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
@@ -1282,8 +1282,8 @@ drop the file here`. If what you want is to *browse* for something, `/folder` op
 browser — see *Change the model before starting* for what that sheet does on home.
 
 **A folder after `/attach` is not a file.** `/attach ~/src/parser` on home pins the next
-conversation's folder — the same decision `/folder` makes — and says
-`next conversation opens in ~/src/parser`.
+conversation's folder — the same decision `/folder` makes — and updates the project
+path on the seam.
 
 **The tray belongs to you, not to a conversation.** It survives walking into a conversation
 and back out to home, and the chips you put on it here are the chips the next conversation
@@ -1305,12 +1305,24 @@ same door:
 - **`/model`**, or **pressing the model's name on that rule**, opens the model list in home's
   own body — the same filterable list `/model` opens in a conversation. Type to narrow it,
   `↑↓` to walk it, `enter` to take the row, `esc` to leave it alone. The foot while it is up
-  reads `↑↓ pick · enter use it · esc back`.
+  follows the cursor and reads `↑↓ pick · → providers · alt+s sort · enter choose · ctrl+t
+  effort · esc back` on a model, and `↑↓ pick · ← back · alt+s sort · enter choose · esc back`
+  inside an open provider fold. `← back` stands beside `↑↓ pick` because both move the cursor.
 - **`/model <slug>`** typed into the box pins it straight away, with no list.
 
-Either way home says, on the line under the box:
-`model · glm-5.3 · for the next conversation you start here`. The current model is always bold and bright cyan on the rule, whether pinned or not.
-`alt+o` (`opt+o` on a Mac) no longer opens the model list on home.
+**`→` and `ctrl+t` work here, exactly as they do under `/model`.** `→` or `tab` opens the
+providers behind the model under the cursor and `enter` on one pins it — a provider pin
+belongs to your home rather than to one conversation, so it is as writable from this draft
+as from a live chat. `ctrl+t` walks how hard that model thinks, and what it dials is held on
+the DRAFT: it is spent on the next conversation you start here and touches nothing behind
+home. Both keys named themselves in the filter box for a while and neither answered; they
+are on the foot now, and they answer.
+
+**Home says nothing on the line under the box.** It used to read `model · glm-5.3 · for the
+next conversation you start here`, and the rule above the box already carries the pinned
+model — for as long as the pin lasts, rather than until the next note replaces it. The current
+model is always bold and bright on the seam, whether pinned or not.
+`alt+o` (`opt+o` on a Mac) does not open the model list on Home.
 
 **It changes the draft and nothing else.** The conversation this window is holding behind
 home keeps the model it had, and nothing is written down until a conversation actually opens
@@ -1333,17 +1345,17 @@ is how hard the next conversation will think — with nothing pinned, the `think
 walks it one rung: home says `thinking · high · for the next conversation you start here`.
 `◇ asks` is what it will run without asking — with nothing pinned, the `ask before running`
 row, or `YOLO` under `--yolo` — and `alt+a`, or a press, walks asks → guardian → YOLO →
-asks, never onto `refuses`: home says `approvals · YOLO · every tool runs without asking ·
-dangerous commands still ask · for the next conversation you start here`, and the cell
+asks, never onto `refuses`: home says `approvals · YOLO · tools run without asking, including overwrites ·
+critical commands still ask · for the next conversation you start here`, and the cell
 wears the warning hue while the gate is open. Both are carried onto the conversation
 `enter` opens. **The rung lasts as long as this window does, like the model; the gate is
-spent**, like the folder — after the conversation opens, home's rule says the rows' word
-again. Neither cell is drawn on a window whose session has no dial for it, and over
+spent** — after the conversation opens, Home's approvals cell returns to the
+standing choice. The selected project remains pinned. Neither cell is drawn on a window whose session has no dial for it, and over
 `--host` the far machine's rows decide.
 
-**The same rule, with the same four cells and chords, is over the box on every other place
-too** — tasks, standing, memory, spend and search — because the box there starts the same
-conversation. The Places page has it under *The rule above the box on every place*.
+**Home and conversations share the model, effort and approvals controls.**
+Other full-screen places have no general conversation message box; return Home
+with Escape to start a conversation.
 
 **`/folder` is the third door onto the same pin, and it is the one that shows you the disk.**
 Typed on home — bare, or with a path after it — it opens the folder browser with the title

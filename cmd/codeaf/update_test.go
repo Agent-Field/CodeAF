@@ -19,6 +19,32 @@ import (
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
 
+// updateTarget is a path for the binary a test pretends to be running, in a
+// temporary directory THAT HAS ALREADY BEEN RESOLVED.
+//
+// IT IS RESOLVED BECAUSE THE DOOR RESOLVES. [codeupdate.ExecutableTarget] runs
+// the path from `os.Executable` through [filepath.EvalSymlinks] on purpose: an
+// installer has to replace the real file, and writing through a symlink replaces
+// the link or lands somewhere nobody asked for. So a test that hands the door an
+// unresolved path and then expects its own spelling back is asserting the
+// opposite of the law it is testing.
+//
+// ON MACOS THAT IS EVERY TEST: `t.TempDir` answers under /var/folders/…, and
+// /var is a symlink to /private/var — so the door correctly returned
+// /private/var/… while two tests demanded /var/… and failed on every developer's
+// laptop while passing in CI on Linux, where the two spellings are one.
+//
+// The directory is resolved rather than the file, because the file usually does
+// not exist yet and [filepath.EvalSymlinks] needs what it is given to exist.
+func updateTarget(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolving the temporary directory: %v", err)
+	}
+	return filepath.Join(dir, "codeaf")
+}
+
 func withUpdateDoor(t *testing.T, revision string, client *codeupdate.Client, target string) (*bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -69,7 +95,7 @@ func TestC9UpdateCheckUsesTheRealDoorAndItsThreeExitCodes(t *testing.T) {
 			}))
 			defer server.Close()
 			client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
-			stdout, stderr := withUpdateDoor(t, row.revision, client, filepath.Join(t.TempDir(), "codeaf"))
+			stdout, stderr := withUpdateDoor(t, row.revision, client, updateTarget(t))
 			if got := updateExit(runUpdate([]string{"--check"})); got != row.want {
 				t.Fatalf("exit = %d, want %d; stdout %q stderr %q", got, row.want, stdout.String(), stderr.String())
 			}
@@ -85,7 +111,7 @@ func TestTimeoutContractC2HangingTerminalCheckExitsInsideItsBudget(t *testing.T)
 	}))
 	defer server.Close()
 	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
-	stdout, stderr := withUpdateDoor(t, "v0.1.0", client, filepath.Join(t.TempDir(), "codeaf"))
+	stdout, stderr := withUpdateDoor(t, "v0.1.0", client, updateTarget(t))
 	started := time.Now()
 	if got := updateExit(runUpdate([]string{"--check"})); got != 1 {
 		t.Fatalf("exit = %d, want 1; stdout %q stderr %q", got, stdout.String(), stderr.String())
@@ -108,8 +134,8 @@ func TestTimeoutContractC4HangingInstallSelectionNamesTheAPI(t *testing.T) {
 		<-request.Context().Done()
 	}))
 	defer server.Close()
-	dir := t.TempDir()
-	target := filepath.Join(dir, "codeaf")
+	target := updateTarget(t)
+	dir := filepath.Dir(target)
 	original := []byte("original codeaf")
 	if err := os.WriteFile(target, original, 0o700); err != nil {
 		t.Fatal(err)
@@ -174,7 +200,7 @@ func TestC9bUpdateCheckNamesTheSelectedTagAndUsesItsChannelRules(t *testing.T) {
 		{"version equal", []string{"--check", "--version", "v0.2.0"}, "v0.2.0", "v0.2.0", 0},
 	} {
 		t.Run(row.name, func(t *testing.T) {
-			stdout, stderr := withUpdateDoor(t, row.running, client, filepath.Join(t.TempDir(), "codeaf"))
+			stdout, stderr := withUpdateDoor(t, row.running, client, updateTarget(t))
 			if got := updateExit(runUpdate(row.args)); got != row.want {
 				t.Fatalf("exit = %d, want %d; stdout %q stderr %q", got, row.want, stdout.String(), stderr.String())
 			}
@@ -187,7 +213,7 @@ func TestC9bUpdateCheckNamesTheSelectedTagAndUsesItsChannelRules(t *testing.T) {
 
 // TestC9SourceBuildRefusesBeforeTheNetwork proves C9.
 func TestC9SourceBuildRefusesBeforeTheNetwork(t *testing.T) {
-	target := filepath.Join(t.TempDir(), "codeaf")
+	target := updateTarget(t)
 	if err := os.WriteFile(target, []byte("source"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +269,7 @@ func TestC9ExactVersionAndNewestDevSelectionInstallTheChosenTag(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			target := filepath.Join(t.TempDir(), "codeaf")
+			target := updateTarget(t)
 			if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -276,7 +302,7 @@ func TestC9AnInstallEndsWithTheNewBinarysVersionLine(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	target := filepath.Join(t.TempDir(), "codeaf")
+	target := updateTarget(t)
 	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +351,7 @@ func TestC15TerminalUpdateRefusesAnImplicitDowngradeAndAnExactTagInstalls(t *tes
 	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
 
 	t.Run("implicit stable", func(t *testing.T) {
-		target := filepath.Join(t.TempDir(), "codeaf")
+		target := updateTarget(t)
 		if err := os.WriteFile(target, []byte("ahead release"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -343,7 +369,7 @@ func TestC15TerminalUpdateRefusesAnImplicitDowngradeAndAnExactTagInstalls(t *tes
 	})
 
 	t.Run("exact tag", func(t *testing.T) {
-		target := filepath.Join(t.TempDir(), "codeaf")
+		target := updateTarget(t)
 		if err := os.WriteFile(target, []byte("ahead release"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -370,7 +396,7 @@ func TestTerminalDownloadFailureEndsWithTheCurlFallback(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	defer server.Close()
-	target := filepath.Join(t.TempDir(), "codeaf")
+	target := updateTarget(t)
 	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}

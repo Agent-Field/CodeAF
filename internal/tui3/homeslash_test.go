@@ -198,8 +198,18 @@ func TestHomeSlashSmokeWalks(t *testing.T) {
 	if !a.target.pick.open {
 		t.Fatal("typing /model on home did not open the model list over the target")
 	}
-	if text := homeText(a); !strings.Contains(text, targetPickWord) {
+	// THE FOOT NAMES THE KEYS THE ROW UNDER THE CURSOR ANSWERS TO, which on a
+	// model row is the fold and the rung as well as the walk and the two ways
+	// out ([app.targetPickFoot]). It used to be one fixed sentence while the
+	// keys lived in the filter box's placeholder — where two of them named
+	// gestures this door did not answer at all.
+	if text := homeText(a); !strings.Contains(text, a.targetPickFoot()) {
 		t.Fatalf("the foot does not name the list's own keys:\n%s", text)
+	}
+	for _, want := range []string{targetPickWalkWord, "→ providers", sortKeyWord, "enter choose", effortKeyWord, targetPickLeaveWord} {
+		if !strings.Contains(a.targetPickFoot(), want) {
+			t.Fatalf("the foot on a model row does not name %q: %q", want, a.targetPickFoot())
+		}
 	}
 	runCmd(a.key(key("esc")))
 	if a.target.pick.open {
@@ -367,11 +377,15 @@ func TestModelAtHomePinsTheDraftAndSaysSo(t *testing.T) {
 	if a.model != "zhipu/glm-5.3-flash" {
 		t.Fatalf("/model at home re-modelled the conversation behind the screen: %q", a.model)
 	}
-	want := "model · " + modelBase("zhipu/glm-5.3") + targetPinnedModelWord
-	if a.home.msg != want {
-		t.Fatalf("home's line reads %q, want %q", a.home.msg, want)
+	// AND IT SAYS NOTHING ON THE LINE UNDER THE BOX. That line used to read `model
+	// · glm-5.3 · for the next conversation you start here`, and the question it
+	// was answering is answered by the RULE below instead — which carries the
+	// pinned model for as long as the pin lasts rather than until the next note
+	// replaces it (the owner's ruling).
+	if a.home.msg != "" {
+		t.Fatalf("home's line reads %q, want nothing — the rule says it instead", a.home.msg)
 	}
-	// AND THE RULE WEARS IT, so the pin is visible after the line has gone.
+	// AND THE RULE WEARS IT, which is the whole of how the pin announces itself.
 	if text := homeText(a); !strings.Contains(text, modelBase("zhipu/glm-5.3")) {
 		t.Fatalf("the rule does not say the pinned model:\n%s", text)
 	}

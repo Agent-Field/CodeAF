@@ -231,6 +231,54 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// just pressed a model while something was running and wants to know
 		// whether they have to wait; they ask about "now", about "in the middle",
 		// and about the room's own two sentences.
+		// THE COLUMNS ON THE MODEL LIST, asked in the words somebody uses with
+		// the list open in front of them. The two modality columns are asked as
+		// the words on the row, because that is how they are met: a person
+		// reads `image, audio` off a row and wants to know which side of the
+		// model it is talking about.
+		{"what does inputs mean on the model list", "models-and-cost"},
+		{"what do image audio and video mean on a model row", "models-and-cost"},
+		{"what does file mean under inputs", "models-and-cost"},
+		{"why does every model say text under inputs", "models-and-cost"},
+		{"why is there no outputs column in the model picker", "models-and-cost"},
+		// AND THE VOCABULARY THAT WENT AWAY, asked by somebody whose memory of
+		// the row is older than the change — which is most people, for a while.
+		{"what happened to sees and draws on the model rows", "models-and-cost"},
+		{"the model row used to say sees hears watches", "models-and-cost"},
+		{"the model row used to say reads and makes", "models-and-cost"},
+		{"what are the columns in the model picker", "models-and-cost"},
+		{"what does in/M and out/M mean on the model list", "models-and-cost"},
+		// AND WHAT THE FILTER BOX WILL NOT DO. These are asked by two different
+		// people: one who never knew the box took a query language and is simply
+		// hoping it does, and one who used the old terms and is looking for the
+		// keystrokes that stopped working. Both have to land on the section that
+		// says no and names the columns to read instead — a person who types
+		// `$<0.3`, gets an empty list and finds nothing on the subject concludes
+		// the catalog has no cheap models in it.
+		{"can I filter the model list by price", "models-and-cost"},
+		{"how do I find the cheapest model", "models-and-cost"},
+		{"how do I search models by speed", "models-and-cost"},
+		{"filter models that support tools", "models-and-cost"},
+		{"why does typing $<0.3 in the model picker find nothing", "models-and-cost"},
+		{"typing cheap in the model list stopped sorting it", "models-and-cost"},
+		{"what happened to the model picker filter grammar", "models-and-cost"},
+		{"can I type fast in the model filter to sort by speed", "models-and-cost"},
+		// AND THE ARROW KEYS' TWO JOBS, asked by somebody whose press went to the
+		// wrong one. They do not know there is a timer; they know the left arrow
+		// moved their cursor when they wanted to leave the providers, or closed
+		// the providers when they wanted to fix a typo. Both askings have to land
+		// on the page that says what breaks the tie.
+		{"why does the left arrow move my cursor instead of closing the providers", "models-and-cost"},
+		{"left and right arrows do the wrong thing in the model picker", "models-and-cost"},
+		{"how do I get back to editing the filter after the arrows started navigating", "models-and-cost"},
+		// AND THE SORT, asked by somebody who wants the thing the old filter words
+		// used to do and by somebody who pressed the key and wants to know what the
+		// arrow in the heading means.
+		{"how do I sort the model list by price", "models-and-cost"},
+		{"sort models by context window", "models-and-cost"},
+		{"what does the arrow in the model picker heading mean", "models-and-cost"},
+		{"can I order the model list cheapest first", "models-and-cost"},
+		{"alt+s in the model picker", "models-and-cost"},
 		{"can I change the model while it is replying", "models-and-cost"},
 		{"does switching the model take effect now or later", "models-and-cost"},
 		{"I changed the model in the middle of an answer", "models-and-cost"},
@@ -2511,6 +2559,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does latest mean in the model name", "lanes"},
 		{"why does via say 0731 when I picked latest", "lanes"},
 		{"the model name has a tilde in it", "lanes"},
+		{"why are some model names prefixed with a squiggle", "lanes"},
+		// AND ENTER ON THE CONTAINER ROW, asked by somebody who pressed it and
+		// watched a list appear where they expected the menu to close.
+		{"why did pressing enter on openrouter open a list", "lanes"},
+		{"what does enter on the openrouter row do", "lanes"},
+		{"why does this model start with ~", "lanes"},
 		// AUTO, asked from a terminal rather than from a conversation. The
 		// first two are somebody deciding whether the headless doors get any of
 		// this at all, and the third is the one people ask on day one, before

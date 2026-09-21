@@ -8196,8 +8196,7 @@ func (a *app) paste(text string) tea.Cmd {
 	// The model overlay is modal for the keyboard, so it is modal for the
 	// clipboard: a paste while it is up is a filter somebody copied.
 	if a.pick.open {
-		a.pick.filter.insert(strings.ReplaceAll(text, "\n", " "))
-		a.pick.rank()
+		a.pick.pasteFilter(strings.ReplaceAll(text, "\n", " "))
 		a.touch()
 		return nil
 	}
@@ -8223,8 +8222,7 @@ func (a *app) paste(text string) tea.Cmd {
 		case a.sheet.edit != nil:
 			a.sheet.edit.box.insert(flat)
 		case a.sheet.sel != nil:
-			a.sheet.sel.pick.filter.insert(flat)
-			a.sheet.sel.pick.rank()
+			a.sheet.sel.pick.pasteFilter(flat)
 		default:
 			a.sheet.query.insert(flat)
 		}
