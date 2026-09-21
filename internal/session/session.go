@@ -3292,6 +3292,14 @@ type Agent struct {
 	// without a lock and still be right.
 	approvalPolicy *approval.Policy
 
+	// attachedSkills is the ordered set of skill names a person has put in front
+	// of THIS conversation by hand, newest attachment last, guarded by mu
+	// (skillattach.go). It is names and not facts on purpose: the shelf is read
+	// at render time, so a skill attached before it was installed starts being
+	// carried the moment it exists, and a skill deleted from the shelf stops
+	// being carried without anybody having to tidy this list.
+	attachedSkills []string
+
 	// phase is the one stage this agent is holding open and the beat that keeps
 	// saying it while it lasts (phasenews.go). It has a lock of its own rather
 	// than riding mu because it is written from the beat's goroutine and read
