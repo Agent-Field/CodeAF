@@ -908,10 +908,12 @@ each rung used only when the one above it came back empty after filtering:
 3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
    `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
 
-Filtering splits your text on whitespace and every token must match, each in one of three
-tiers: prefix, then substring, then subsequence. So `ds v4` finds
-`deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, with
-fuzzy hits sitting at the bottom rather than mixed through.
+Filtering splits your text on whitespace and every word must match, each scored by
+the fuzzy alignment every picker on this surface shares: a word that starts an id,
+or lands right after a `/` or a hyphen, outranks the same letters sitting loose inside
+it. So `ds v4` finds `deepseek/deepseek-v4-flash` and `claude 4.5` finds
+`anthropic/claude-sonnet-4.5`, and a tight prefix sits above a scattered match
+without needing tiers to hold it there.
 
 Twelve rows show at a time. A row reads `<id>:<level>` on the left and, dimly on the
 right, what the catalog published: window, price per million prompt and completion, arena
@@ -1270,6 +1272,11 @@ of you. Two readings then run **beside that worker**, never before it:
 The row is called by the first words you typed for a second or two, and then by a short
 name a small model gives it.
 
+When a `/task` runs on the run engine (*The worker harness* page), the row it writes to the
+tasks place carries the step its worker is on **right now** — the running glyph `◐`, the shell
+lead `$` and the command — with the task's `N steps · $0.11` under it. The line is there only
+while a step is in flight, and goes the moment the command ends.
+
 `/task` is also a live tag in the middle or at the end: `investigate the flaky test /task`
 strips the tag and takes the remaining words through this same road. Backspace
 immediately after the tag makes it plain prose.
@@ -1369,9 +1376,10 @@ bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a 
 command.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's
-current call, clock, tokens and spend under its name. `earlier` is a flat list, newest
-first, of everything the project has finished — one line each, the same rows the `@` list
-offers.
+current call, clock, tokens and spend under its name — and a row a run writes there carries
+the step its worker is on right now: the running glyph `◐`, the shell lead `$` and the command,
+with the task's `N steps · $0.11` beneath it. `earlier` is a flat list, newest first, of
+everything the project has finished — one line each, the same rows the `@` list offers.
 
 **Type to filter.** Any printable key, spaces included, narrows both sections at once
 against the titles, the ids and the outcomes; the bottom of the page shows what was typed
@@ -1524,10 +1532,11 @@ Moving in it:
   bar is the second one, under the places' bar.
 - **Any printable key types into a search box** that filters across all tabs at once,
   grouping matches under faint tab headings and moving the tab bar to the first match's
-  tab, so backing out leaves you where the thing lives. backspace, ctrl+w and ctrl+u edit
-  the query. The search matches the label, the settings key, the one-line description and
-  the registry's own label — so `spendRail` finds a row as well as "ceiling" does.
-- enter and space open or change the row under the cursor.
+  tab, so backing out leaves you where the thing lives. backspace,
+  ctrl+w and ctrl+u edit the query. The search matches the label, the settings
+  key, the description, the value and the tab's name — `spendRail`, `ceiling`
+  and `prompt` all find rows.
+- enter and space open or change the row; while a search is on, space types.
 - A click on a tab word switches tabs. A click on a row **selects** it, and a second click
   on the already-selected row **acts** on it. One press never does both.
 

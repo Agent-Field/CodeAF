@@ -523,6 +523,30 @@ const (
 	MethodEarlier       = "EarlierHistory"    // nothing → session.EarlierHistory
 	MethodRewindPoints  = "RewindPoints"      // nothing → []session.RewindPoint
 	MethodRewindAt      = "RewindAt"          // int → []session.DisplayEntry
+	// MethodPlanSpend CARRIES THE RUN'S SPEND-BY-SEAT ACROSS THE WIRE, and it
+	// is the spend page's other reading beside the machine's own ledger above.
+	// A conversation that seeded a plan writes its workers' calls into the plan
+	// store's spend ledger, and the page draws those rolled up by SEAT
+	// ([session.PlanSpendLine]); over a connection that store lives on the
+	// engine's disk, so a surface that could not ask the engine drew no block
+	// at all ([session.Agent.PlanSpend]).
+	//
+	// IT RIDES [Version] RATHER THAN MOVING IT, under the rule stated there: an
+	// engine that does not know it answers "no such method", the surface reads
+	// that as the block being absent HERE — which is exactly what it drew before
+	// this door existed — and the emptiness law is kept. Nothing that was drawn
+	// goes dark, so nothing is refused at the door.
+	MethodPlanSpend         = "PlanSpend"         // PlanSpendArgs → []session.PlanSpendLine
+	MethodPlanTasks         = "PlanTasks"         // nothing → []session.PlanTaskRow
+	MethodPlanTaskPage      = "PlanTaskPage"      // PlanTaskPageArgs → PlanTaskPageResult
+	MethodPlanNote          = "PlanNote"          // PlanTextArgs → nothing
+	MethodPlanPause         = "PlanPause"         // PlanTaskArgs → nothing
+	MethodPlanResume        = "PlanResume"        // PlanTaskArgs → nothing
+	MethodPlanCancel        = "PlanCancel"        // PlanTaskArgs → nothing
+	MethodPlanAmend         = "PlanAmend"         // PlanTextArgs → nothing
+	MethodPlanPriority      = "PlanPriority"      // PlanPriorityArgs → nothing
+	MethodPlanRunSummary    = "PlanRunSummary"    // PlanRunSummaryArgs → PlanRunSummaryResult
+	MethodRefreshRunSummary = "RefreshRunSummary" // RefreshRunSummaryArgs → PlanRunSummaryResult
 	// The conversation's own place on the thinking ladder (internal/session's
 	// effort.go). Three doors and not one, because the stored rung and the
 	// resolved rung are two different answers: the dial DRAWS the resolved one
@@ -922,7 +946,8 @@ type Welcome struct {
 	// surface falls back to its own resolved directory; linked-local launches
 	// retire a daemon whose build differs, so that compatibility reading is
 	// theoretical on the road that consumes it. No protocol version moves.
-	ProfileDir string `json:"profileDir,omitempty"`
+	ProfileDir        string   `json:"profileDir,omitempty"`
+	UnreadProfileKeys []string `json:"unreadProfileKeys,omitempty"`
 	// Encoding is the one frame payload encoding selected from Hello.Encodings,
 	// or empty when this connection stays on ordinary JSON payloads.
 	Encoding string `json:"encoding,omitempty"`
@@ -1678,6 +1703,17 @@ type ConnectedArgs struct {
 	Account string `json:"account"`
 }
 
+// PlanSpendArgs is how far back the spend page's seat rollup is looking.
+//
+// SINCE IS THE SAME FLOOR [LedgerArgs.Since] IS, and it is a plain time.Time
+// for the same reason: it is a moment the wire already knows how to encode, cut
+// in Go on the far side against the ledger's own RFC3339Nano stamps
+// ([session.Agent.PlanSpend]). A zero Since is the whole rollup, which is what
+// a caller with no window yet means and what a test means.
+type PlanSpendArgs struct {
+	Since time.Time `json:"since,omitempty"`
+}
+
 // EventWire is a session.Event that survives JSON. Err is an interface and
 // marshals to nothing, so the string rides beside it and shadows it on the
 // wire; [EventWire.Event] restores the one field that needs restoring.
@@ -1703,4 +1739,54 @@ func (w EventWire) Unwire() session.Event {
 		ev.Err = errors.New(w.Err)
 	}
 	return ev
+}
+
+// PlanTaskArgs names one task for a steering verb.
+type PlanTaskArgs struct {
+	ID string `json:"id"`
+}
+
+// PlanTextArgs carries the task and prose for note and amend.
+type PlanTextArgs struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+// PlanPriorityArgs carries the task and its new scheduling priority.
+type PlanPriorityArgs struct {
+	ID       string `json:"id"`
+	Priority int    `json:"priority"`
+}
+
+// PlanTaskPageArgs names the task whose complete page is requested.
+type PlanTaskPageArgs struct {
+	ID string
+}
+
+// PlanTaskPageResult preserves both the page and whether the task belongs to the plan.
+type PlanTaskPageResult struct {
+	Page session.PlanTaskPage
+	OK   bool
+}
+
+// PlanRunSummaryArgs names the run whose stored summary is read.
+type PlanRunSummaryArgs struct {
+	RootID string `json:"root_id"`
+}
+
+// RefreshRunSummaryArgs carries the refresh window and caller deadline to the engine.
+type RefreshRunSummaryArgs struct {
+	RootID   string    `json:"root_id"`
+	LastLook time.Time `json:"last_look,omitempty"`
+	// Budget is HOW LONG the caller will wait, never the instant it stops
+	// waiting: the engine may be on another machine whose clock is not this
+	// one's, and an instant read against a clock a minute ahead is a refresh
+	// that is cut before it starts. Zero is a caller with no deadline.
+	Budget time.Duration `json:"budget,omitempty"`
+}
+
+// PlanRunSummaryResult preserves both the summary and whether one exists.
+type PlanRunSummaryResult struct {
+	Summary session.RunPlanSummary `json:"summary"`
+	OK      bool                   `json:"ok"`
 }

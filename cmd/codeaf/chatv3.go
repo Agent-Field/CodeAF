@@ -479,8 +479,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// than to this door, and [runSurface] (chatv3_surface.go) is where every
 	// door gets them.
 	err = runSurface(ctx, tui3.Options{
-		Agent: agent,
-		Build: buildinfo.String(),
+		Agent:             agent,
+		Build:             buildinfo.String(),
+		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
 		// The memory place and the search place read the SAME database the
 		// conversation remembers into, through two seams that fail apart: memory
 		// turned off in the settings opens no store at all and both are then
@@ -917,9 +918,10 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// The runs a live process would have judged but a process death left unjudged,
 	// and the headless doors that never had this hook: at start, on a goroutine
 	// nobody waits on, judge the resumed session's own final-state nodes and the
-	// pending file's rows, each exactly once, bounded so it never holds the prompt.
-	guard.Go("pool/judge-sweep", func() {
-		poolJudgeSweep(settings, settings.ProfileDir, found.Place.Tasks(),
+	// pending file's rows, each exactly once, bounded so it never holds the prompt. The
+	// process tracker cancels and joins it at close.
+	poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
+		poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
 			config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
 	})
 
@@ -1121,7 +1123,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// v3 door assembles through this function — and the first pass is a whole
 	// interval away, so a launch that exits immediately has ticked nothing.
 	if cfg.Standing != nil && !opts.NoStandingTicks {
-		startStandingTicks(cfg.Standing.Store)
+		proc.startStandingTicks(cfg.Standing.Store)
 	}
 
 	return &v3Launch{
@@ -2421,6 +2423,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		return reported(err)
 	}
 	agent.SetReasoning(level)
+	defer session.CloseUsage()
 	if notice != "" {
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -132,7 +133,7 @@ func TestAnAuditDoesNotSpendTheAuditorOnNamingOrASelfRefusedCommand(t *testing.T
 			if isError || strings.HasPrefix(text, "refused:") {
 				t.Fatalf("%q was refused, which is the self-refusal this test exists to stop:\n%s", typed, text)
 			}
-			if strings.ContainsAny(ran, shellComposition) {
+			if strings.ContainsAny(ran, approval.ShellComposition) {
 				t.Fatalf("%q ran a composed command %q", typed, ran)
 			}
 			if !strings.HasPrefix(ran, "python3 -m pytest") && !strings.HasPrefix(ran, "go test") {
@@ -178,6 +179,13 @@ func TestAnAuditDoesNotSpendTheAuditorOnNamingOrASelfRefusedCommand(t *testing.T
 }
 
 func TestPreparedAuditCommandKeepsAChainAndDropsARedirect(t *testing.T) {
+	const escapedBar = `grep -n "dialTimeout\|waitFor\"Host\|func Dial" notes/a-folder-with-a-long-name/and-another-one-under-it/and-a-third-beneath-that/the-fourth-and-the-last/walls-and-the-notes-kept-beside-them-and-the-n.md`
+	if got := preparedAuditCommand(escapedBar); got != escapedBar {
+		t.Fatalf("quoted backslash-bar command was rewritten to %q", got)
+	}
+	if got, ok := firstStage(escapedBar); !ok || got != escapedBar {
+		t.Fatalf("firstStage(quoted backslash-bar command) = %q, %v", got, ok)
+	}
 	if got := preparedAuditCommand("python3 -m pytest tests 2>&1"); got != "python3 -m pytest tests" {
 		t.Fatalf("redirected pytest = %q", got)
 	}

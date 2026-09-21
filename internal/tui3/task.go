@@ -3156,6 +3156,9 @@ type railLine struct {
 	roomSection int
 
 	text string
+	// plan is the stored task this line is a row of, when it is one of a run's
+	// own rows: a press on it opens that task's page ([app.openRailPlan]).
+	plan string
 	// entry indexes [app.railEntries], or -1 for the padding and the footer.
 	entry int
 	// head says this is the entry's FIRST line, which is the one a marker goes
@@ -3393,6 +3396,166 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 	return out, focus
 }
 
+// railMovingHead is how many lines at the top of the list belong to work that is
+// MOVING — running right now, or standing still waiting on a person.
+//
+// IT IS THOSE TWO GROUPS AND NOT EVERY LIVE ONE, which is the difference between
+// a head that stays small and a head that eats the column. What is running at
+// once is bounded by the slots the executor has, and what is waiting on a person
+// is bounded by the person; what is QUEUED is bounded by nothing at all — one
+// plan can admit a hundred nodes in a breath — so a head that pinned the idle
+// group would pin the whole window the first time somebody started an adaptive
+// run. Queued work is a promise and promises can wait their turn in a scroll.
+//
+// It is the count through the LAST such line rather than the length of an
+// unbroken run, because a family is drawn whole: a settled child sitting between
+// two running siblings is part of the live shape, and a head that stopped at it
+// would pin half a tree. Families with nothing live in them sort below every
+// family that has ([app.railForest]), so what this measures is the moving region
+// and not the whole column.
+//
+// A FOLDED ROOT COUNTS FOR WHAT IT IS HIDING. One row standing for a subtree
+// with something running in it is that running work as far as this column is
+// concerned, which is the same fact its glyph already carries ([app.railWorst]).
+func (a *app) railMovingHead(lines []railLine, entries []railEntry) int {
+	head := 0
+	for i, line := range lines {
+		if line.entry < 0 || line.entry >= len(entries) {
+			continue
+		}
+		if a.railEntryMoving(entries[line.entry]) {
+			head = i + 1
+		}
+	}
+	return head
+}
+
+// railEntryMoving reports whether one drawn row is work that is running or
+// waiting on a person, its hidden descendants included.
+func (a *app) railEntryMoving(e railEntry) bool {
+	if e.node == nil {
+		return false
+	}
+	nodes := []*taskNode{e.node}
+	if e.folded && e.worst != nil {
+		nodes = append(nodes, e.worst)
+	}
+	for _, node := range nodes {
+		switch a.railGroupOf(node) {
+		case railAttention, railRunning:
+			return true
+		}
+		if node.Paused() {
+			return true
+		}
+	}
+	return false
+}
+
+// railDrawnView is the column AS IT IS DRAWN: [app.railView] with a run's own
+// rows put in their place. IT IS THE ONE ANSWER TO "WHAT IS ON THIS SCREEN ROW",
+// for the frame and for the pointer alike. The rows used to be spliced in by the
+// frame alone, so a press was answered out of the view from before the splice:
+// with a run on the rail every row below its first was somebody else's, and a
+// press on a task opened nothing or opened its neighbour.
+func (a *app) railDrawnView(height int) ([]railLine, int) {
+	view, focus := a.railView(height)
+	if len(view) == 0 {
+		return nil, focus
+	}
+	// A RUN PLAN IS THE TASKS PLACE'S TREE, not a second rail renderer. The
+	// reading paints every plan row; this column only gives those fitted rows
+	// their place in its existing tasks section.
+	if plan := a.tasksFiltered().planRailRows(a.railRoom(), a.pal); len(plan) > 0 {
+		// THE TITLES COME OUT OF THE READING THE PLACE ALREADY HOLDS, never out
+		// of the store: this is a frame, and a frame never reads the disk. The
+		// reading is refreshed on the paint clock ([tasksPlace.regroup]).
+		//
+		// A NODE ROW GIVES WAY ONLY TO A PLAN ROW THAT IS DRAWN. The reading
+		// leaves the run's own row to the node that carries it (one piece of
+		// work, one row: [planRowShown]), and this column used to drop that node
+		// row as well because the STORE held its title, so a run was drawn as its
+		// parts with nothing over them. The node row stays, and the run's rows
+		// hang under it, which is where a tree's rows go.
+		// EACH RUN HANGS UNDER ITS OWN ROW. A conversation may hold several runs,
+		// an ended one beside the live one, and every drawn row is filed under the
+		// run it belongs to by walking the store's own parents.
+		drawn := make(map[string]bool)
+		for _, row := range plan {
+			drawn[row.title] = true
+		}
+		parent, rootTitle := make(map[string]string), make(map[string]string)
+		for _, row := range a.taskSheet.mine.plan {
+			parent[row.ID] = strings.TrimSpace(row.Parent)
+			if parent[row.ID] == "" {
+				rootTitle[row.ID] = planTitleFor(row.Title)
+			}
+		}
+		rootOf := func(id string) string {
+			for hops := 0; parent[id] != "" && hops < len(parent); hops++ {
+				id = parent[id]
+			}
+			return id
+		}
+		entries := a.railEntries()
+		nodeOf := func(line railLine) *taskNode {
+			if line.entry < 0 || line.entry >= len(entries) {
+				return nil
+			}
+			return entries[line.entry].node
+		}
+		// under is, for each run, the last line of the node row that carries it.
+		// A run no row on the column carries keeps the place the rows always
+		// had, ahead of the first entry.
+		under := make(map[string]int)
+		for i, line := range view {
+			node := nodeOf(line)
+			if node == nil || drawn[strings.TrimSpace(node.label)] {
+				continue
+			}
+			for root, title := range rootTitle {
+				if title == planTitleFor(node.label) {
+					under[root] = i
+				}
+			}
+		}
+		after := make(map[int][]railLine)
+		var ahead []railLine
+		for _, row := range plan {
+			line := railLine{text: row.text, entry: -1, plan: row.id}
+			if at, ok := under[rootOf(row.id)]; ok {
+				after[at] = append(after[at], line)
+			} else {
+				ahead = append(ahead, line)
+			}
+		}
+		next := make([]railLine, 0, len(view)+len(plan))
+		placed := len(ahead) == 0
+		for i, line := range view {
+			if !placed && line.entry >= 0 {
+				next = append(next, ahead...)
+				placed = true
+			}
+			if node := nodeOf(line); node != nil && drawn[strings.TrimSpace(node.label)] {
+				continue
+			}
+			next = append(next, line)
+			next = append(next, after[i]...)
+		}
+		if !placed {
+			next = append(append([]railLine{}, ahead...), next...)
+		}
+		if len(next) > height {
+			next = next[:height]
+		}
+		for len(next) < height {
+			next = append(next, railLine{entry: -1})
+		}
+		view = next
+	}
+	return view, focus
+}
+
 // railRows draws the roster to exactly height rows, or nil when there is none.
 //
 // The rows sit at the TOP of the column: the conversation grows upward from the
@@ -3411,7 +3574,7 @@ func (a *app) railRows(height int) []string {
 	if a.railStowed() {
 		return a.railGripRows(height)
 	}
-	view, focus := a.railView(height)
+	view, focus := a.railDrawnView(height)
 	if len(view) == 0 {
 		return nil
 	}
@@ -3560,7 +3723,7 @@ func (a *app) railEntryAt(y int) (railEntry, bool) {
 // where those landed is a fact only the layout has.
 func (a *app) railLineAt(y int) (railLine, bool) {
 	y -= a.topHeight()
-	view, _ := a.railView(a.viewHeight())
+	view, _ := a.railDrawnView(a.viewHeight())
 	if y < 0 || y >= len(view) {
 		return railLine{}, false
 	}
@@ -4053,8 +4216,7 @@ func (a *app) railEnter() tea.Cmd {
 	if at < 0 || entries[at].node == nil {
 		return nil
 	}
-	a.openRailRoom(entries[at].node)
-	return a.takeRoomPump()
+	return a.openRailRoom(entries[at].node)
 }
 
 // ── the footer ──────────────────────────────────────────────────────────────
@@ -5109,6 +5271,59 @@ func (a *app) railWorking(node *taskNode, width int) []string {
 		line += a.pal.dim(railSep) + tint(clock)
 	}
 	return []string{line}
+}
+
+// planUnderRows is the block a plan row spends under its own title: the step it is
+// running right now, and under that the task's own figures — how many steps its
+// worker has taken and what it has cost ([planFigures]).
+//
+//	◐ $ git grep -n RateLimit internal/api     a step in flight, and
+//	  12 steps · $0.11                          what it has come to
+//
+// IT IS THE RAIL'S OWN UNDER-BLOCK REACHED FROM THE OTHER SIDE. A plan row is a
+// store row rather than a node of this conversation's graph, so it is drawn by
+// the tasks place and not on the column ([tasksplace.go]) — but it wears the
+// same two-row cap ([railUnderRows]), the same give-up-the-tail fitting
+// ([app.railWorking] spends the command's tail to keep the column whole), and
+// the same one door for its marks ([palette.glyph]).
+//
+// IT DRAWS NOTHING FOR A ROW BETWEEN STEPS. The engine publishes the in-flight
+// step on the row (PlanTaskRow.Live) and clears it the moment the step's end line
+// is written, so a row that has not started, one that is held behind named work
+// and one that has landed all have no block at all. What a held row waits on is
+// on the row's own reading ([planWaits]) and is not repeated here; the telemetry
+// stands only where it has a figure behind it — the emptiness law, on a row's own
+// numbers.
+func planUnderRows(item tasksItem, width int, pal palette) []string {
+	if item.plan == nil || width < 1 || item.plan.Live.Step <= 0 {
+		return nil
+	}
+	rows := make([]string, 0, railUnderRows)
+	if line := planLiveRow(item.plan.Live.Command, item.plan.LiveParts, width, pal); line != "" {
+		rows = append(rows, line)
+	}
+	if figures := planFigures(item.plan); figures != "" {
+		rows = append(rows, pal.dim(fit(figures, width)))
+	}
+	if len(rows) > railUnderRows {
+		rows = rows[:railUnderRows]
+	}
+	return rows
+}
+
+// planLiveRow is the live step's own line: the running step's glyph, the shell
+// lead, and the command the step is running. The glyph and the lead are drawn
+// OUTSIDE the fitting — they are two whole cells and a command never gets to
+// spend them — so a narrow column drops the command's tail and never a half
+// glyph (the mark comes off the vocabulary's own door, [palette.glyph], so this
+// line gets this terminal's repertoire).
+func planLiveRow(command string, parts []session.PlanCommandPart, width int, pal palette) string {
+	command = planDisplayCommand(command, parts)
+	lead := pal.glyph(tokens.GStepRunning) + " " + tokens.GlyphShell + " "
+	if width < ansi.StringWidth(lead) {
+		return ""
+	}
+	return lead + pal.dim(fit(strings.TrimSpace(command), width-ansi.StringWidth(lead)))
 }
 
 // railDoing is the row a node wears while it is in a phase of its own kind's

@@ -895,6 +895,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I leave a headless run going with a budget", "starting-codeaf"},
 		{"my --once yolo run never started a task", "starting-codeaf"},
 		{"does a run with no screen carry its own work on", "starting-codeaf"},
+		{"does a time limit stop a running task", "starting-codeaf"},
 		{"it says needs your look but I ran it with yolo", "tasks"},
 		{"what does taken as it stands mean", "tasks"},
 		{"it says it could not be brought home", "tasks"},
@@ -2647,6 +2648,34 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does the stop card need enter as well as the number", "keys"},
 		{"where did my chat go after I closed its tab", "screen"},
 		{"how do I stop just this chat without touching the others", "screen"},
+
+		// The worker harness (internal/manual/chat/worker-harness.md,
+		// internal/session's task_run_belt.go, internal/tui3's taskplan.go): a
+		// second road for a task and the plan pane a run draws, each asked the
+		// way somebody meets it rather than in the machinery's own words.
+		{"how do I pause a task", "worker-harness"},
+		{"how do I open one part of a run from the side list", "worker-harness"},
+		{"can I add a note to a running task", "worker-harness"},
+		{"why did the task refuse my cancel", "worker-harness"},
+		{"how do I stop a run", "worker-harness"},
+		{"stop it did nothing and the task kept running", "worker-harness"},
+		{"what happens to a run's branch after I stop it", "worker-harness"},
+		{"what can the task worker actually run", "worker-harness"},
+		{"how much will a task cost me", "worker-harness"},
+		{"what does codeaf do exit with", "worker-harness"},
+		{"does a subtask see my original request", "worker-harness"},
+		{"who checks a task's work", "worker-harness"},
+		{"why do the step numbers skip", "worker-harness"},
+		{"a step is missing and the cd at the front of the command is gone", "worker-harness"},
+		{"a line under steps says refused with no number in front", "worker-harness"},
+		{"why is there no output under a step on the run's page", "worker-harness"},
+		{"why did my task stop on its own", "worker-harness"},
+		{"my task stopped and I did not stop it", "worker-harness"},
+		{"the task says the same command came back with the same answer", "worker-harness"},
+		// The same law's note, asked from the waiting side: a worker
+		// watching something the plan does not name is the shape the note was
+		// written for, and these are the words of a person holding it.
+		{"my task is waiting on a build outside the plan", "worker-harness"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

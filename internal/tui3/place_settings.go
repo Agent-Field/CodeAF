@@ -44,7 +44,7 @@ func (placeSettings) open(a *app) tea.Cmd {
 }
 
 // tick re-reads nothing and keeps the beat: see the note over [placeSettings.open].
-func (placeSettings) tick(a *app, now time.Time) bool { return true }
+func (placeSettings) tick(a *app, now time.Time) (bool, tea.Cmd) { return true, nil }
 
 func (placeSettings) close(a *app) { a.dropSettings() }
 
@@ -60,6 +60,12 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 	// whole of what separates the bar from the rows.
 	rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
 	rows = append(rows, placeRow{})
+	if s.sel == nil && s.edit == nil && s.conn.entry == nil {
+		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "type to search", "")
+		for _, line := range filter {
+			rows = append(rows, placeRow{text: " " + line})
+		}
+	}
 	room -= len(rows)
 	if room < 1 {
 		room = 1
@@ -212,4 +218,64 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	a.touch()
 	return nil, true
+}
+
+// caretRow is the connections key entry: a box this sheet draws INSIDE the row
+// it was opened from (connectcaps.go's keyEntryRowLines), which owns every key
+// from the moment it opens ([placeSettings.owns]). The frame's composer is the
+// search box at rest while it is open, and a caret parked there — blinking in a
+// dim sentence at the foot of a sheet whose live box is rows up inside the list
+// — is a cursor in a box that is not the one the words are landing in.
+//
+// THE BOX IS ASKED FOR ITS OWN ANSWER, not a second arithmetic kept here:
+// connect.go's keyBoxLines drew the block the row holds and returns the column
+// and the line within it, so the hook re-asks it with the same width, indent
+// and list window the body's own draw passed ([placeSettings.body] paints the
+// list at the frame's width with [connBoxRows] of the list's room) and finds
+// the line it answers among the rows the frame just built — the same painted
+// string, because both came from the same call.
+func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	entry := a.sheet.conn.entry
+	if entry == nil {
+		if a.sheet.edit != nil {
+			return 0, 0, false
+		}
+		box, placeholder := &a.sheet.query, "type to search"
+		if a.sheet.sel != nil {
+			box, placeholder = &a.sheet.sel.pick.filter, "type to filter"
+		}
+		block, column, at := draftBlock(box, a.pal, width-2, 1, placeholder, "")
+		if at >= 0 && at < len(block) {
+			for j, row := range rows {
+				if row.text == " "+block[at] {
+					return j, column + 1, true
+				}
+			}
+		}
+		return -1, 0, true
+	}
+	// THE LIST'S ROOM IS THE ROWS LESS THE SHEET'S OWN TWO — the tab bar and
+	// the blank under it ([placeSettings.body]) — so the window the box was
+	// drawn in can be read back off the rows themselves.
+	room := len(rows) - 2
+	if room < 1 {
+		return 0, 0, false
+	}
+	block, column, at := keyBoxLines(entry, a.pal, width, overlayIndent, connBoxRows(room))
+	if at < 0 || at >= len(block) {
+		// A CHOICE HAS NO BOX — the entry is showing its variable list — so
+		// there is nowhere for the caret to live and it is hidden rather than
+		// parked on the first name, the same law the /connect panel follows
+		// (input.go's keyBox case).
+		return -1, 0, true
+	}
+	for j, row := range rows {
+		if strings.HasPrefix(row.text, block[at]) {
+			return j, column, true
+		}
+	}
+	// The list window scrolled the box off this frame. The caret is hidden
+	// rather than parked in the resting search box, which is not the box the
+	// person is typing into.
+	return -1, 0, true
 }

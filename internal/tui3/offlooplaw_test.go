@@ -284,7 +284,7 @@ func agentNames(file *ast.File) map[string]bool {
 		case *ast.CallExpr:
 			if fn, ok := rhs.Fun.(*ast.SelectorExpr); ok {
 				switch fn.Sel.Name {
-				case "questionDoors", "stander", "Agent":
+				case "questionDoors", "stander", "Agent", "planReader":
 					return true
 				}
 			}
@@ -304,8 +304,9 @@ func agentNames(file *ast.File) map[string]bool {
 	return names
 }
 
-// offLoopSpans is every function literal handed to [app.offLoop] in one file —
-// the only place a door may be asked — and beside it every literal nested
+// offLoopSpans is every function literal handed to [app.offLoop] or to
+// [app.besideLine] in one file — the only places a door may be asked, both off
+// the update loop — and beside it every literal nested
 // inside one of those, which is where a door may NOT be asked: the fold runs on
 // the update loop.
 func offLoopSpans(file *ast.File) (allowed, folds []*ast.FuncLit) {
@@ -315,7 +316,7 @@ func offLoopSpans(file *ast.File) (allowed, folds []*ast.FuncLit) {
 			return true
 		}
 		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "offLoop" || len(call.Args) != 1 {
+		if !ok || (sel.Sel.Name != "offLoop" && sel.Sel.Name != "besideLine") || len(call.Args) != 1 {
 			return true
 		}
 		lit, ok := call.Args[0].(*ast.FuncLit)
@@ -419,5 +420,64 @@ func TestClosingTheLineStillAsksWhatIsInIt(t *testing.T) {
 	}
 	if len(asked) != 4 {
 		t.Fatalf("closing the line dropped %d asks that were already in it", 4-len(asked))
+	}
+}
+
+// ── AND THE DOOR BESIDE THE LINE IS NOT A WAY AROUND IT ─────────────────────
+//
+// [app.besideLine] gives up the order, so what may be asked through it is
+// decided by property and written down here with the reason: the ask is not a
+// gesture, and nothing a person does next depends on the engine having seen it
+// first. A gesture moved there because its door felt slow would be a gesture
+// the engine can see out of order, which is the fault the line was built to
+// end (#919).
+var doorsBesideTheLine = map[string]string{
+	"PlanRunSummary":    "reads the run's stored summary for a refresh nobody pressed for",
+	"PlanTasks":         "reads the run's rows for the side list after a message; nobody pressed for it, and a verb's own read is asked only once the verb has landed",
+	"RefreshRunSummary": "asks a model for the run's summary under a budget of seconds; nobody pressed for it and no gesture depends on it",
+}
+
+func TestOnlyReadsNobodyPressedForAreAskedBesideTheLine(t *testing.T) {
+	doors := engineDoors(t)
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(f os.FileInfo) bool {
+		return !strings.HasSuffix(f.Name(), "_test.go")
+	}, 0)
+	if err != nil {
+		t.Fatalf("reading the surface's source: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, pkg := range pkgs {
+		for path, file := range pkg.Files {
+			agents := agentNames(file)
+			ast.Inspect(file, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "besideLine" || len(call.Args) != 1 {
+					return true
+				}
+				ast.Inspect(call.Args[0], func(in ast.Node) bool {
+					door, ok := in.(*ast.SelectorExpr)
+					if !ok || !doors[door.Sel.Name] || !onTheAgent(door, agents) {
+						return true
+					}
+					seen[door.Sel.Name] = true
+					if doorsBesideTheLine[door.Sel.Name] == "" {
+						t.Errorf("%s:%d asks %s beside the ordered line — a gesture keeps its place in a.offLoop; only a read nobody pressed for may be named in doorsBesideTheLine, with its reason",
+							filepath.Base(path), fset.Position(door.Pos()).Line, door.Sel.Name)
+					}
+					return true
+				})
+				return true
+			})
+		}
+	}
+	for door := range doorsBesideTheLine {
+		if !seen[door] {
+			t.Errorf("%s is named in doorsBesideTheLine and nothing asks it there any more — delete its line", door)
+		}
 	}
 }

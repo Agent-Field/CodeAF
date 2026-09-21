@@ -203,9 +203,9 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// helper they share (placeprose.go's [placeHeadRow]). A place with no
 		// window, and a frame too narrow to draw the control, both answer false,
 		// so the keys do nothing rather than doing something undrawn.
-		if a.placeWindow(key) {
+		if cmd, moved := a.placeWindow(key); moved {
 			a.touch()
-			return nil, true
+			return cmd, true
 		}
 		return nil, true
 
@@ -370,9 +370,13 @@ func (a *app) placeAlt(letter rune) bool {
 // are — and the label between the arrows is both the control and the reading. A
 // place that has no window answers false, and the key then does nothing rather
 // than doing something undrawn.
-func (a *app) placeWindow(key string) bool {
+func (a *app) placeWindow(key string) (tea.Cmd, bool) {
 	pl := a.showing()
-	return pl != nil && pl.window(a, key)
+	if pl == nil {
+		return nil, false
+	}
+	moved, more := pl.window(a, key)
+	return more, moved
 }
 
 // placeBox is the composer: the one box this place types into.

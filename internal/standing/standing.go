@@ -386,6 +386,18 @@ type Item struct {
 	SpentUSD    float64   `json:"spentUsd"`
 	// NeedsPerson is set while the latest run is stopped waiting on the person,
 	// with the one line it is stopped on. Home sorts on it.
+	//
+	// IT CARRIES TWO DIFFERENT THINGS, and a reader has to know which. One is a
+	// QUESTION the firing put to the person, in its own words. The other is the
+	// line written when a call was refused for want of somebody to allow it,
+	// which opens with [NeedsPermissionLead].
+	//
+	// The pass writes this field whole on the next firing. The PERSON can put
+	// down the permission line by changing the item ([Item.ClearNeedsPerson]),
+	// and can never lose a question that way. With only the pass, an item that
+	// could not fire again — one that had spent its allowance for the day — kept
+	// a row on home saying it needed somebody for as long as that stayed true,
+	// with no act of theirs able to put it down.
 	NeedsPerson string `json:"needsPerson,omitempty"`
 	// CleanRuns is HOW MANY FIRINGS IN A ROW CAME BACK CLEAN — fired with
 	// nothing waiting for the person and no failure. It is the count the rope
@@ -567,6 +579,102 @@ func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 		}
 	}
 	return false
+}
+
+// NeedsPermissionLead opens the one line a firing leaves when it stopped
+// because a call needed permission and nobody was there to give it. It is
+// declared here, beside the field, because two packages must agree on it: the
+// session writes it and [IsPermissionLine] recognises it.
+const NeedsPermissionLead = "stopped: it needed your ok to run "
+
+// permissionRefusals are the sentences this program writes for a call that
+// needed a person and had none, matched by the PROPERTY each one states rather
+// than by its exact words. Three doors write such a sentence and they do not
+// share a spelling: the turn inside a task says `— nobody to ask`, the turn
+// with no resolver says `no resolver is attached`, and the door that runs this
+// program underneath another one says `nobody is here to ask`. Holding the
+// three literals would mean a fourth door, or a reworded third, silently
+// stopped counting as a permission stop — which is exactly how the spelling on
+// disk today came to be unrecognised.
+// THE ABSENCE ALONE IS NOT ENOUGH, and the refusal word is what makes the
+// first shape safe. This field's other tenant is a QUESTION the firing put to
+// the person in its own words, which is model prose and can say anything: "there
+// is nobody on call, who do you want me to ask" carries the absence and is a
+// question. Reading it as a permission stop would put it down the moment the
+// person paused the item, losing the one thing the field exists to carry. Both
+// doors that state the absence also say they refused, so requiring that costs
+// nothing.
+var permissionRefusals = [][]string{
+	{"nobody", "to ask", "refus"},
+	{"no resolver is attached"},
+}
+
+// IsPermissionLine reports whether a line on an item is about a permission the
+// firing could not get, rather than a QUESTION it put to the person. It is the
+// ONE predicate for that, asked by the store when a person changes an item and
+// by the surface when it decides which door a row takes, so a line cannot be a
+// permission in one place and a question in another.
+//
+// IT KNOWS THE OLD SPELLING AS WELL AS THE NEW ONE, and that is not tidiness.
+// Builds before this one put the engine's own refusal on the item verbatim, and
+// those items are on disk now: a watch stuck for days carries `refused in a
+// task: default — nobody to ask` and will carry it until it fires again, which
+// an item that has spent its allowance for the day cannot do. A predicate that
+// knew only the new lead would leave every row that provoked this exactly as it
+// was, which is the one outcome that would make the change pointless.
+func IsPermissionLine(line string) bool {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return false
+	}
+	if strings.HasPrefix(line, NeedsPermissionLead) {
+		return true
+	}
+	lower := strings.ToLower(line)
+	for _, said := range permissionRefusals {
+		if saysAllOf(lower, said) {
+			return true
+		}
+	}
+	return false
+}
+
+// saysAllOf reports whether the line carries every part of one of the shapes in
+// [permissionRefusals]. The parts are looked for anywhere and in any order,
+// which is what lets one shape cover both `nobody to ask` and `nobody is here
+// to ask` without either spelling being written down twice.
+func saysAllOf(lower string, parts []string) bool {
+	for _, part := range parts {
+		if !strings.Contains(lower, part) {
+			return false
+		}
+	}
+	return true
+}
+
+// ClearNeedsPerson puts down the line about a permission a firing could not
+// get, on the person's own act of changing the item. The acts are the ones this
+// build has: pausing it, stopping it, and letting it go again. What a run before
+// that could not be allowed to do is no longer news about what this item will
+// do next.
+//
+// IT LEAVES A QUESTION ALONE, and that is the whole of why it reads the line
+// before clearing it. This field carries two different things. One is a
+// QUESTION the firing actually put to the person, in its own words, which is
+// theirs to answer and which nothing may throw away behind their back — pausing
+// a watch is not answering it. The other is the line this build writes when a
+// call was refused for want of somebody to allow it, which goes stale the
+// moment the item changes. Only the second is put down.
+//
+// IT IS A CHANGE AND NOT A LOOK. Opening an item and closing it again leaves
+// the row exactly as it was, because nothing about the item moved and the
+// reason it stopped is still true.
+func (it Item) ClearNeedsPerson() Item {
+	if !IsPermissionLine(it.NeedsPerson) {
+		return it
+	}
+	it.NeedsPerson = ""
+	return it
 }
 
 // Glyph is the one character a row leads with, decided here so every surface

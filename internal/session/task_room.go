@@ -1290,5 +1290,9 @@ func closedEventStream() <-chan Event {
 // graph, not about the room — and a resolution reaches the node through
 // [TaskGraph.resettle], never through a door in here.
 func (s TaskState) settled() bool {
-	return s == TaskDone || s == TaskFailed || s == TaskUnverified
+	// AND INTERRUPTED IS SETTLED IN THIS SENSE, which is the scheduler's and not
+	// the person's: no worker holds the node and its slot is back. Whether the
+	// WORK is over is a different question and the answer there is no — it is
+	// waiting to be picked up ([TaskInterrupted]).
+	return s == TaskDone || s == TaskFailed || s == TaskUnverified || s == TaskInterrupted
 }

@@ -206,7 +206,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			if strings.TrimSpace(parsed.Command) == "" {
 				return "Invalid arguments: command is required", true, nil
 			}
-			started, err := a.jobs.start(parsed.Command)
+			started, err := a.jobs.start(a.planCommand(parsed.Command))
 			if err != nil {
 				return "Could not start the background job: " + err.Error(), true, nil
 			}

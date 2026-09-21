@@ -184,8 +184,14 @@ type taskRecord struct {
 	// the builder leaves it out on purpose (task_quick.go's [Agent.newQuickSpec]).
 	// [acceptanceHolds] is that rule, asked of the KIND rather than of this
 	// field alone; it stays a refusal for ordinary work.
-	Acceptance string   `json:"acceptance"`
-	DependsOn  []uint64 `json:"depends_on,omitempty"`
+	Acceptance string `json:"acceptance"`
+	// PlanID is the task's id in the plan store (internal/session, planID on
+	// [taskSpec]), carried so a resumed node still knows which plan task it is:
+	// the pulse's writeback and the store-side dispatch both key on it. Absent
+	// in every checkpoint written before the plandb loop existed, which resumes
+	// as it always did: no plan task, no plan lines, nothing dispatched.
+	PlanID    string   `json:"plan_id,omitempty"`
+	DependsOn []uint64 `json:"depends_on,omitempty"`
 
 	// Ground is the repository or folder the work IS ABOUT and Mode is how the
 	// node stands on it ([TaskMode]). Where says which directory the worker typed
@@ -727,6 +733,20 @@ type runRecord struct {
 	Report  string    `json:"report,omitempty"`
 	Model   string    `json:"model,omitempty"`
 	CostUSD float64   `json:"costUsd,omitempty"`
+	// StartedAt and EndedAt are when the row's work began and ended. A row that
+	// came back without them drew a finished run with no age, and the places
+	// that order work by activity had nothing to order it by.
+	StartedAt time.Time `json:"startedAt,omitzero"`
+	EndedAt   time.Time `json:"endedAt,omitzero"`
+
+	// Copy is WHERE THE RUN'S WORK HAPPENED (task_run_copy.go). It is the one
+	// fact about a run that nothing else can recover: the directory is derived
+	// from the run's own number and could be worked out again, but the branch is
+	// minted at random when the copy is cut and is written nowhere else. A row
+	// saved before this field existed decodes with nil, and a run with no copy
+	// recorded is one that cannot be carried on — which [runCopyTree] says out
+	// loud rather than repairing.
+	Copy *TaskCopyRecord `json:"copy,omitempty"`
 
 	// ElapsedMS is whatever age the row was last published with, frozen. A run's
 	// rows do not carry one today — the family publishes no Elapsed — so it is
@@ -1044,24 +1064,29 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Model:     notice.Model,
 		CostUSD:   notice.CostUSD,
 		ElapsedMS: notice.Elapsed.Milliseconds(),
+		StartedAt: notice.StartedAt,
+		EndedAt:   notice.EndedAt,
+		Copy:      notice.Copy,
 	}
 }
 
-// runRowNotice is one record as the row a column draws again, SETTLED.
+// runRowNotice is one record as the row a column draws again.
 //
-// Done stays done and failed stays failed, verbatim: those rows said their last
-// word before the process ended and nothing has happened to them since. A row
-// that was still QUEUED OR MOVING is the only one this changes, and it changes
-// because the truth about it changed while nobody was watching — the work behind
-// it stopped existing the moment the process did. It settles the way a run's own
-// nodes settle when they are called off (orchestrate.go's
-// [orchestrateFamily.retire]): failed, with Stopped beside it, because nothing
-// went wrong with the work and nobody made a finding about it.
+// A row that said its last word before the process ended comes back verbatim:
+// done stays done, failed stays failed, and nothing has happened to either
+// since. A row that was still QUEUED OR MOVING is the only one this changes,
+// and it changes because the truth about it changed while nobody was watching —
+// nothing has been driving it since the process went away.
 //
-// A RESTORED ROW IS NEVER MOVING, which is why Doing is not restored and why
+// IT COMES BACK INTERRUPTED AND NOT FAILED. `failed` says something went wrong
+// with the work and `stopped` says a person ended it, and neither happened:
+// nothing was found out and nobody decided anything ([TaskInterrupted]).
+//
+// A RESTORED ROW IS NOT MOVING, which is why Doing is not restored and why
 // Elapsed is whatever was frozen onto it. Nothing here re-enters the frontier:
 // these rows are not in the graph's `nodes` and never were, so there is nothing
 // for a scheduler to find (task_run.go's [TaskGraph.runs] says it at length).
+// That is a fact about this reader and not a statement that the work is over.
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
 		ID:      record.ID,
@@ -1076,8 +1101,26 @@ func runRowNotice(record runRecord) TaskNotice {
 		Model:   record.Model,
 		CostUSD: record.CostUSD,
 		Elapsed: time.Duration(record.ElapsedMS) * time.Millisecond,
+
+		StartedAt: record.StartedAt,
+		EndedAt:   record.EndedAt,
+		Copy:      record.Copy,
 	}
 	if !notice.State.settled() {
+		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live
+		// when the process that held it went away, and that is a fact about the
+		// window rather than about the work: nothing was found out, nobody
+		// decided anything, and every step it took is in its store. Stamping it
+		// failed and stopped told a person their work had gone wrong and had been
+		// ended by somebody, and neither was true ([TaskInterrupted]).
+		//
+		// A JOB IS THE ONE THING THAT REALLY DID END. A forked process cannot
+		// outlive the program that forked it, so there is nothing to continue and
+		// `stopped` is the honest word for it.
+		if record.Kind != TaskKindJob {
+			notice.State = TaskInterrupted
+			return notice
+		}
 		notice.State, notice.Stopped = TaskFailed, true
 		// A JOB'S ROW KEEPS ITS OWN SENTENCE, because for a job that sentence is
 		// not prose — it is where the log IS ([jobRowLead] mints
@@ -1095,9 +1138,6 @@ func runRowNotice(record runRecord) TaskNotice {
 		// comes back stopped, which is what the column and the page both show, and
 		// "it ended when codeaf closed" is what stopped MEANS for a process that
 		// cannot outlive the program that forked it.
-		if record.Kind != TaskKindJob {
-			notice.Report = orchestrateEndedReport
-		}
 	}
 	return notice
 }
@@ -1109,18 +1149,13 @@ func runRowNotice(record runRecord) TaskNotice {
 // carrying the log's path — so the sentence had stopped being read and had
 // started deleting the path instead ([runRowNotice] says the rest).
 //
-// orchestrateEndedReport is what a row of an adaptive run says for itself when
-// it was still moving as codeaf closed.
-//
-// IT IS THE SENTENCE AND NOT A STATE WORD, because the state word is already
-// "stopped" and it would be answering the wrong question: a person looking at
-// this row wants to know why it stopped, and the answer is that the program it
-// was running inside went away. The second clause is the useful half — what the
-// run got through is on disk, in the same journal the run's page reads
-// (orchestrate.go's orchestrateJournalPath) — and it is the same promise the
-// sibling sentence for a subharness makes (subharness_run.go's
-// subharnessInterruptedReport).
-const orchestrateEndedReport = "it ended when codeaf closed; its journal is kept"
+// AND THE RUN'S OWN VERSION OF IT IS GONE TOO, for a different reason: it was
+// not true. `it ended when codeaf closed; its journal is kept` said the work was
+// over, and the work is not over — nothing is driving it and every step it took
+// is in its store. What the sentence was carrying is now carried by the reading:
+// the state is [TaskInterrupted] and the row asks whether to continue it
+// ([TaskAskContinue]), whose own words say that nothing is driving it and that
+// everything it did is kept.
 
 // recordLocked copies one node out, with the graph held.
 func (n *TaskNode) recordLocked() taskRecord {
@@ -1166,6 +1201,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		ChecksRevision: n.checksRevision,
 		FamilyWas:      n.FamilyWas,
 		Acceptance:     n.spec.acceptance,
+		PlanID:         n.spec.planID,
 		DependsOn:      dependsOn,
 		Parent:         n.parent,
 		Depth:          n.depth,
@@ -1242,6 +1278,26 @@ func loadTaskCheckpoint(path string) (taskDocument, bool) {
 	return document, true
 }
 
+// recordOwesAcceptance reports whether a node record is one this file should
+// have been given an acceptance for, and was not. A kind that declares it
+// carries none owes nothing ([acceptanceHolds]).
+//
+// A PLAN-BORN NODE OWES THIS FILE NO ACCEPTANCE EITHER: it is a task out of the
+// plan store, admitted with the store's id and nothing else, and what it is held
+// to lives there. THE READER MAY NOT REFUSE WHAT THE WRITER WRITES. It did
+// (2026-09-18): the first part a run handed to the tree made the whole file
+// unreadable, the conversation reopened with no tasks, and its next save
+// replaced twenty of them with nothing.
+//
+// The question has a name of its own because [decodeTasks] is a road already
+// longer than its ledger row allows to grow (complexityDebt).
+func recordOwesAcceptance(record taskRecord) bool {
+	if strings.TrimSpace(record.PlanID) != "" {
+		return false
+	}
+	return !acceptanceHolds(record.Kind, record.Acceptance)
+}
+
 // decodeTasks parses and VALIDATES one checkpoint. Every rule below is a rule
 // this store enforces on the way out, so a file that breaks one was not written
 // by this code — and a half-loaded graph is a graph nobody scheduled, which is
@@ -1284,7 +1340,7 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			return taskDocument{}, fmt.Errorf("node %d has no title", record.ID)
 		case strings.TrimSpace(record.Brief) == "":
 			return taskDocument{}, fmt.Errorf("node %d has no brief", record.ID)
-		case !acceptanceHolds(record.Kind, record.Acceptance):
+		case recordOwesAcceptance(record):
 			return taskDocument{}, fmt.Errorf("node %d has no acceptance", record.ID)
 		case !validTaskState(record.State):
 			return taskDocument{}, fmt.Errorf("node %d is in state %q", record.ID, record.State)
@@ -1606,7 +1662,11 @@ func (a *Agent) recoverTasks() {
 		return
 	}
 	document, found := loadTaskCheckpoint(a.config.checkpointFile())
-	if !found || (len(document.Nodes) == 0 && len(document.Runs) == 0) {
+	if !found {
+		a.setAsideRefusedCheckpoint()
+		return
+	}
+	if len(document.Nodes) == 0 && len(document.Runs) == 0 {
 		return
 	}
 	// THE RUN NAMES ARE CLAIMED BEFORE ANY RUN CAN BE STARTED. A run's name is a
@@ -1671,6 +1731,73 @@ func (a *Agent) recoverTasks() {
 // of resume — and so would counting a run or a quick task there, under a clause
 // that says `no branch kept` about work that never had a branch and is not
 // coming back.
+// refusedCheckpointSuffix names a checkpoint this build could not read, beside
+// the path it was read from, with the second it was set aside.
+const refusedCheckpointSuffix = ".refused-"
+
+// setAsideRefusedCheckpoint is what a conversation does with a checkpoint that
+// is THERE and that it cannot read. A REFUSED CHECKPOINT IS NEVER OVERWRITTEN:
+// the graph opens empty, and its first save used to land on the same path, so
+// one record a newer or an older build spelled differently cost the person
+// every task the conversation had run, with nothing left to recover them from.
+// The file is moved beside itself instead. AND AN ID IS NEVER REUSED: the
+// counter lived only in that file, so it is raised past every task that left a
+// journal or a working copy on disk, or the next task would answer to a number
+// the transcript already uses for another.
+func (a *Agent) setAsideRefusedCheckpoint() {
+	path := a.config.checkpointFile()
+	if strings.TrimSpace(path) == "" {
+		return
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return
+	}
+	aside := path + refusedCheckpointSuffix + strconv.FormatInt(time.Now().Unix(), 10)
+	if err := os.Rename(path, aside); err != nil {
+		log.Printf("session: could not set the refused task checkpoint aside: %v", err)
+	} else {
+		log.Printf("session: the refused task checkpoint is kept at %s", aside)
+	}
+	highest := highestTaskOnDisk(a.config.Place.NodeJournals(), a.config.Place.Trees())
+	graph := a.graph()
+	if graph == nil {
+		return
+	}
+	graph.mu.Lock()
+	if highest > graph.seq {
+		graph.seq = highest
+	}
+	graph.mu.Unlock()
+}
+
+// highestTaskOnDisk is the largest task number that left a folder or a journal
+// behind in the places a conversation keeps them, read from the names alone.
+func highestTaskOnDisk(dirs ...string) uint64 {
+	var highest uint64
+	for _, dir := range dirs {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			// A working copy is named by its number alone; a journal is
+			// `<when>_<number>.jsonl`. The number is what follows the last
+			// underscore once the extension is gone.
+			name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+			if cut := strings.LastIndexByte(name, '_'); cut >= 0 {
+				name = name[cut+1:]
+			}
+			if id, err := strconv.ParseUint(name, 10, 64); err == nil && id > highest {
+				highest = id
+			}
+		}
+	}
+	return highest
+}
+
 func (r *taskRecovery) reconcile(record taskRecord, workspace string) taskRecord {
 	if !nothingIsComingBackForIt(record) {
 		r.countSettled(&record)
@@ -1929,6 +2056,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			deliverable: record.Deliverable,
 			where:       record.Where,
 			acceptance:  record.Acceptance,
+			planID:      record.PlanID,
 			dependsOn:   record.DependsOn,
 			model:       record.Model,
 			effort:      restoredRung(record.Effort),

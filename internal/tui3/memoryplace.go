@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -100,6 +100,12 @@ type rankedMemoryShelf struct {
 // redraw must not silently turn into a clock read.
 func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string, now time.Time) memoryReading {
 	query := strings.ToLower(strings.TrimSpace(filter))
+	// The filter is the fuzzy matcher's own words (internal/fuzzy), built once
+	// here and scored against every shelf and line below: every word typed has
+	// to match, and a word landing on the start of a title or a tag outranks the
+	// same letters scattered through a line — the same matcher the model picker
+	// and the settings search rank with.
+	terms := fuzzy.Terms(query)
 	r := memoryReading{
 		held: shelves.Held, letGo: shelves.LetGo, replaced: shelves.Superseded,
 		total: shelves.Total, shelves: len(shelves.Shelves), filter: query,
@@ -119,10 +125,10 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 	for _, shelf := range shelves.Shelves {
 		candidate := rankedMemoryShelf{shelf: shelf, count: shelf.Held + shelf.LetGo + shelf.Superseded}
 		shelfText := strings.ToLower(memoryShelfName(shelf))
-		shelfScore, shelfMatch := memoryWordsMatch(shelfText, query)
+		shelfScore, shelfMatch := fuzzy.Score(shelfText, terms)
 		for _, memory := range shelf.Memories {
 			text := strings.ToLower(strings.Join([]string{memory.Title, memory.Text, memory.Type, memory.Status, strings.Join(memory.Tags, " ")}, " "))
-			score, match := memoryWordsMatch(text, query)
+			score, match := fuzzy.Score(text, terms)
 			if query == "" || shelfMatch || match {
 				candidate.lines = append(candidate.lines, memory)
 				candidate.score = max(candidate.score, max(shelfScore, score))
@@ -250,21 +256,6 @@ func (r memoryReading) wrapped(width int) memoryReading {
 	}
 	r.lines = out
 	return r
-}
-
-func memoryWordsMatch(text, query string) (int, bool) {
-	if query == "" {
-		return 0, true
-	}
-	total := 0
-	for _, word := range strings.Fields(query) {
-		score, ok := session.MatchQuality(text, word)
-		if !ok {
-			return 0, false
-		}
-		total += score
-	}
-	return total, true
 }
 
 func memoryShelfName(shelf store.MemoryShelf) string {

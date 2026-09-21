@@ -130,6 +130,13 @@ func tasksStateField(line tasksLine) rowField {
 	if !line.folds || line.open || line.kids <= 0 {
 		return rowSay(word)
 	}
+	if item.plan != nil {
+		ending := "done"
+		if item.plan.Status == "failed" || item.plan.Status == "cancelled" {
+			ending = "failed"
+		}
+		return rowSay(word+railSep+itoa(line.kids)+" "+ending, word)
+	}
 	return rowSay(word+rowSep+tasksUnderWord(line.kids), word+rowSep+tasksHoldsShort(line.kids), word)
 }
 
@@ -252,7 +259,16 @@ func tasksControlLabels(by tasksSort) (state, second string) {
 
 // tasksControlRow is that line: the mark, then what has been typed or the dim
 // invitation to type it, and at the right the two labels.
-func tasksControlRow(query string, by tasksSort, width int, pal palette) string {
+//
+// IT ALSO ANSWERS THE COLUMN THE CARET SITS IN, on the same terms the key box
+// does (connect.go's keyLine): the first cell of the box when nothing is typed,
+// the cell after the last shown character when something is — and what is
+// shown is what FIT, because a caret past the box's edge would be a cursor
+// sitting on the sort labels. The answer is returned rather than re-derived
+// anywhere else because this is the one place the box's own layout is decided
+// ([placeTasks.caretRow] re-asks the same function to find the line and its
+// column; a hand-rolled twin would drift the moment this layout moved).
+func tasksControlRow(query string, by tasksSort, width int, pal palette) (string, int) {
 	stateLabel, secondLabel := tasksControlLabels(by)
 	mark := pal.glyph(tokens.GFilter)
 	// THE BOX IS LAID OUT WHERE THE NAMES ARE AND THE LABELS OVER THEIR OWN
@@ -268,9 +284,11 @@ func tasksControlRow(query string, by tasksSort, width int, pal palette) string 
 	// The invitation is [tasksFilterHint] and not the foot's longer sentence
 	// because the box is narrow at every width and a placeholder with its end cut
 	// off reads as a bug in the box rather than as words the box came with.
+	column := ansi.StringWidth(tasksBareLead) + ansi.StringWidth(mark) + 1
 	said, ink := fit(tasksFilterHint, boxCells), pal.dim
 	if query != "" {
 		said, ink = fit(query, boxCells), pal.ink
+		column += ansi.StringWidth(said)
 	}
 	out := tasksBareLead + pal.dim(mark) + " " + ink(said) + pad(boxCells-ansi.StringWidth(said))
 	if cells := tasksProjectCells(width); cells > 0 {
@@ -285,7 +303,7 @@ func tasksControlRow(query string, by tasksSort, width int, pal palette) string 
 		label := fit(secondLabel, secondCells)
 		out += pad(secondCells-ansi.StringWidth(label)) + pal.dim(label)
 	}
-	return out + pad(tasksColumnAir)
+	return out + pad(tasksColumnAir), column
 }
 
 // ── the reason, off the row and under the cursor ────────────────────────────

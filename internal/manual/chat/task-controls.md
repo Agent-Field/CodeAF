@@ -145,6 +145,26 @@ The task request keeps its existing three-line preview and clickable disclosure;
 that request. Completed work keeps its existing `ctrl+e` disclosure. The sidebar
 does not repeat the request or change the transcript's presentation.
 
+## Reading a note on a run task's page — and the page following the newest step
+
+A run's task page — the one `enter` opens on a run's row in the tasks place — keeps up with
+its newest step, reading the task again every three seconds while it is queued or running,
+and follows it until you scroll up; scrolling back to the bottom resumes the follow, and a
+page on a settled task is a still page. Its foot is a **note box**, under the
+placeholder `a note for this task`: type in it and press `enter`, and the words go to the
+task's store rather than to a model. The page says when they are read:
+
+```
+the worker reads a note at its next step
+```
+
+A worker is a separate loop, so a note waits until the worker asks for its next step, and that
+is when it reads what you wrote. A task that has ended, `done` or `incomplete`, takes no next
+step, so its page leaves that sentence out. `x stop it` and `p pause` are read only over an empty box: the
+moment there is a note to type, a letter is a letter. Under a run's own task `x stop it` raises
+the `Stop this task?` card before anything ends, and `p pause` is not offered, because a run
+cannot be paused as a whole.
+
 ## Task setup through the session host
 
 Model and thinking controls work through the normal local session host and remote

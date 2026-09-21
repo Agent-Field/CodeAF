@@ -99,7 +99,14 @@ type place interface {
 	// re-reads on the keystroke that walks in. A clock left running on a place
 	// that never asked for one is a second reader of the same disk, and walking
 	// out of memory onto home used to be exactly that (placecounts.go).
-	tick(a *app, now time.Time) bool
+	//
+	// IT MAY ALSO HAND BACK A COMMAND. That is where a place asks an engine door
+	// off the update loop — the spend place's run-of-seats read is the one that
+	// does — because the beat is the moment a place re-reads what it draws and a
+	// door asked from Update would freeze the window while the engine answered
+	// (offloop.go). The bool says whether the beat goes on; the command, nil where
+	// the place has none, runs beside the re-armed clock.
+	tick(a *app, now time.Time) (bool, tea.Cmd)
 	// body is the rows and the hit map, painted into exactly the room the frame
 	// reserved. It reads caches and never a seam.
 	body(a *app, width, room int) []placeRow
@@ -195,7 +202,31 @@ type place interface {
 	// window is `shift+←→↑↓`, the stretch of time this place is showing and how
 	// coarse. False is "this place has no window", and the key then does nothing
 	// rather than something undrawn (SCREEN 3d).
-	window(a *app, key string) bool
+	//
+	// The bool says whether the window moved; the command, nil where the place
+	// has none, carries a door the move makes necessary — the spend place re-asks
+	// its seat rollup over the new window, off the update loop ([place.tick]).
+	window(a *app, key string) (bool, tea.Cmd)
+	// caretRow is where a place parks the terminal's caret when the box a person
+	// is typing into is ONE OF THE ROWS IT JUST BUILT, rather than the composer
+	// the frame draws at the foot: the row within `rows`, the column within that
+	// row, and whether the place's own box owns the caret on this frame at all.
+	// It is asked with the slice the frame is about to draw, so the place answers
+	// from the same rows the pointer will be resolving against.
+	//
+	// THE SETTINGS SHEET AND THE TASKS PLACE ARE THE TWO WHO ANSWER. The sheet's
+	// connections key entry is a box inside a row (connectcaps.go), and the tasks
+	// filter lives in the list's control row ([placeTasks.body]) — and a
+	// caret parked in the foot's resting silhouette while somebody types into
+	// either is a cursor blinking in a box that is not the one the words are
+	// landing in, which is the wrongness this hook exists to end.
+	//
+	// A TRUE ANSWER OF row < 0 SAYS THE BOX OWNS THE CARET AND HAS NO LINE ON
+	// THE FRAME — a key entry showing its choice list, a control row the window
+	// cut off — and the caret is HIDDEN rather than parked on some other row's
+	// first cell (input.go states the same law for the /connect panel's box).
+	// False hands the caret back to the frame's composer untouched.
+	caretRow(a *app, width int, rows []placeRow) (row, column int, drawn bool)
 	// box is the editor this place types into, and nil where it has none.
 	//
 	// ONLY HOME HAS A BOX THAT SENDS ANYTHING (the owner's ruling, 2026-09-17).
@@ -259,11 +290,11 @@ type place interface {
 // silently displace home.
 type placeBase struct{}
 
-func (placeBase) counted() bool                           { return false }
-func (placeBase) open(a *app) tea.Cmd                     { return nil }
-func (placeBase) close(a *app)                            {}
-func (placeBase) tick(a *app, now time.Time) bool         { return false }
-func (placeBase) body(a *app, width, room int) []placeRow { return nil }
+func (placeBase) counted() bool                              { return false }
+func (placeBase) open(a *app) tea.Cmd                        { return nil }
+func (placeBase) close(a *app)                               {}
+func (placeBase) tick(a *app, now time.Time) (bool, tea.Cmd) { return false, nil }
+func (placeBase) body(a *app, width, room int) []placeRow    { return nil }
 
 // remote is NOTHING TO SAY, which is the right default in both directions: a
 // place on a local session has no other machine to name, and a place whose
@@ -277,20 +308,20 @@ func (placeBase) bar(a *app, width int) (string, placeHit, bool) {
 func (placeBase) ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool) {
 	return nil, nil, 0, 0, false
 }
-func (placeBase) stops(a *app) []int                      { return nil }
-func (placeBase) cursorRow(a *app, rows []placeRow) int   { return -1 }
-func (placeBase) rowID(a *app) string                     { return "" }
-func (placeBase) enter(a *app) tea.Cmd                    { return nil }
-func (placeBase) verbs(a *app) []verb                     { return nil }
-func (placeBase) alt(a *app, letter rune) bool            { return false }
-func (placeBase) window(a *app, key string) bool          { return false }
-func (placeBase) note(a *app, width int) []string         { return nil }
-func (placeBase) changed(a *app, since time.Time) int     { return 0 }
-func (placeBase) summary(a *app) string                   { return "" }
-func (placeBase) press(a *app, y int) (tea.Cmd, bool)     { return nil, false }
-func (placeBase) hover(a *app, y int) bool                { return false }
-func (placeBase) wheel(a *app, delta int) (tea.Cmd, bool) { return nil, false }
-func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return nil }
+func (placeBase) stops(a *app) []int                        { return nil }
+func (placeBase) cursorRow(a *app, rows []placeRow) int     { return -1 }
+func (placeBase) rowID(a *app) string                       { return "" }
+func (placeBase) enter(a *app) tea.Cmd                      { return nil }
+func (placeBase) verbs(a *app) []verb                       { return nil }
+func (placeBase) alt(a *app, letter rune) bool              { return false }
+func (placeBase) window(a *app, key string) (bool, tea.Cmd) { return false, nil }
+func (placeBase) note(a *app, width int) []string           { return nil }
+func (placeBase) changed(a *app, since time.Time) int       { return 0 }
+func (placeBase) summary(a *app) string                     { return "" }
+func (placeBase) press(a *app, y int) (tea.Cmd, bool)       { return nil, false }
+func (placeBase) hover(a *app, y int) bool                  { return false }
+func (placeBase) wheel(a *app, delta int) (tea.Cmd, bool)   { return nil, false }
+func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd   { return nil }
 func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
@@ -300,6 +331,14 @@ func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // which is what makes a permanent bottom line a composer rather than seven boxes
 // that each forget ([app.compose]).
 func (placeBase) box(a *app) *editor { return nil }
+
+// caretRow defaults to NO: a box drawn in the composer at the foot is parked
+// by the frame itself, and a place with no row-box of its own has nothing to
+// say here. The two places whose live box is a row of their own body answer in
+// their own file.
+func (placeBase) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	return 0, 0, false
+}
 
 // ── THERE IS NO DEFAULT hint, AND THAT IS THE WHOLE POINT ───────────────────
 //
@@ -1341,7 +1380,24 @@ func placeFrameWithBar(a *app, width, height int,
 			}
 		}
 	}
-	for _, row := range placeStripInline(a, drawn, inline) {
+	// AND THE PLACE'S OWN BOX MAY BE ONE OF THESE ROWS, asked before they are
+	// added: the settings sheet's key entry and the tasks filter are boxes
+	// drawn inside the body ([place.caretRow]), and a caret that stays parked in
+	// the foot's rest silhouette while somebody types into either is a cursor
+	// blinking in a box that is not the one the words are landing in. The
+	// overlays that take the whole keyboard — the composer layer, the
+	// switcher, home's model list — are excluded here because their boxes are
+	// their own and drawn elsewhere, and the place's row-box has the keyboard's
+	// backwards under every one of them.
+	rows := placeStripInline(a, drawn, inline)
+	ownRow, ownColumn, ownDrawn := -1, 0, false
+	if !a.composer.open && !a.hopShowing() && !a.targetPickShowing() {
+		if pl := a.showing(); pl != nil {
+			ownRow, ownColumn, ownDrawn = pl.caretRow(a, width, rows)
+		}
+	}
+	ownBase := len(lines)
+	for _, row := range rows {
 		add(row.text, row.hit)
 	}
 	add("", nil)
@@ -1430,6 +1486,21 @@ func placeFrameWithBar(a *app, width, height int,
 	}
 	if caretX > width-1 {
 		caretX = width - 1
+	}
+	// AND THE PLACE'S OWN ROW-BOX TAKES THE CARET FROM THE COMPOSER when its
+	// hook answered: the park above is the foot's box, and the hook's is a row
+	// of the body — the one box on this frame that the person's keys are
+	// actually landing in. A row below zero is the hook saying the box owns the
+	// caret and has no line to park it on, and the caret is hidden rather than
+	// left blinking in a box that is not the one being typed into. The clamp
+	// below adjusts this park by the same law it adjusts the composer's own.
+	if ownDrawn {
+		if ownRow >= 0 {
+			caretX, caretY = min(ownColumn, width-1), ownBase+ownRow
+			a.caret = true
+		} else {
+			a.caret = false
+		}
 	}
 	for _, row := range layer {
 		add(row, nil)

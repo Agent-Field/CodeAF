@@ -553,6 +553,89 @@ var tuiWords = map[string]tuiWord{
 			"runs at — so the way out is not on it at all",
 	},
 
+	// ── the run engine's plan, on the tasks place ────────────────────────────
+	//
+	// A `/task` under CODEAF_TASK_BELT=bash starts a RUN rather than a node of
+	// this session's own tree: the conversation seeds a plan store, the engine
+	// drives it, and the store's root lands on the tasks place beside the record
+	// (internal/tui3's taskplan.go). These rows are what the tmux suite reads to
+	// prove the run happened, moved, and left a page of its own.
+	"planRunningWord": {
+		screen: "running",
+		why: "the state word a run's plan row wears while a worker holds the task. planStateWord maps " +
+			"the store's `ready` and `claimed` onto it, so the row says what a person does next — work is " +
+			"in flight — and never a machinery word of its own. THE PLACE'S OWN HEADING SPELLS IT TOO " +
+			"(tasksSectionWord files everything working under `running`), so the suite reads the word off " +
+			"the run's row and not off the screen",
+	},
+	"planDoneWord": {
+		screen: "done",
+		why: "the state word the same row wears once the run's root has landed — planStateWord's other " +
+			"mapping, and the one word every surface gives work that finished. Asked of the row for its " +
+			"running neighbour's reason: `done` is an ordinary English word and a screen-wide search for " +
+			"it is satisfied by a sentence that is not the row's",
+	},
+	"planFinishCommand": {
+		screen: "plandb done",
+		source: "plandb done",
+		pkg:    "internal/session",
+		why: "the command a bash-belt worker finishes its store task with, recorded in the task's own " +
+			"trajectory and drawn as a step line on the plan page (taskplan.go's taskPlanBody reads " +
+			"PlanTaskPage.Steps). THE PAGE DOES NOT SPELL IT — the worker runs it — so the gate looks where " +
+			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish",
+	},
+	"planLiveGlyph": {
+		screen: tokens.GlyphStepRunning,
+		pkg:    tokensPkg,
+		why: "the mark the plan page leads the step it is running RIGHT NOW with, where the recorded " +
+			"steps lead with their number (taskplan.go's taskPlanBody, drawn through palette.glyph so the " +
+			"tier picks the rune rather than a literal in the surface). It is tokens.GStepRunning — one " +
+			"shape for one state, the same rune `working` wears — so the gate looks where the rune is " +
+			"spelled, and this suite sees the plain tier its throwaway profile pins",
+	},
+	"planLiveClockWord": {
+		screen: "running ",
+		source: "running ",
+		why: "the call's own clock, said under the live step on the plan page: the same ten-second " +
+			"count the rail keeps (taskplan.go's taskPlanBody reads PlanTaskPage.Live and taskToolFloor " +
+			"gates it, the 10-second clock the rail already keeps). It is the page's word, so the gate " +
+			"looks for it in the surface",
+	},
+
+	// ── the run's plan row, on the live edge (c185, SURFACE.md §2A/§3) ────────
+	//
+	// A plan row's own live step and the corrections the design makes to its
+	// words. The run's engine publishes the in-flight step on the store row
+	// (session.PlanTaskRow.Live); the surface draws it under the row's title. A row
+	// admitted and not started reads `queued` rather than the machinery's
+	// `pending`, and one held behind named work reads the dependency sentence
+	// beside it (internal/tui3's planStateWord and planWaits).
+	"planQueuedWord": {
+		screen: "queued · waits: ",
+		source: "waits: ",
+		why: "the words a run task's row wears while it is admitted and not started: planStateWord " +
+			"maps the store's `pending` onto the surface's own `queued`, and the work it is held behind is " +
+			"named beside it — `queued · waits: Add rate limiting`, one sentence, joined by " +
+			"session.TaskStatus.RowWord so the state cell, the line the cursor's row grows and the phone " +
+			"card all read it the same way. It is there so a person watching a run reads where a task is " +
+			"rather than a machinery word of the store's, and what is holding it rather than an id",
+	},
+	"planLiveLead": {
+		screen: "$ ",
+		source: tokens.GlyphShell,
+		pkg:    tokensPkg,
+		why: "the shell lead a plan row's live step line opens with, ahead of the command the step is " +
+			"running (task.go's planLiveRow). The `$` is the vocabulary's own shell glyph — the same byte " +
+			"a conversation's tool line carries — drawn off the table and never spelled here",
+	},
+	"planStepsSpend": {
+		screen: "steps · $",
+		source: "steps",
+		why: "the figures a plan row's under-block carries under the live command: how many steps its " +
+			"worker has taken and what it has cost, each half omitted when it is nothing (taskplan.go's " +
+			"planFigures). It is the same `N steps` and `$` the row already spends in its two columns",
+	},
+
 	// ── the seat a crew older than it never wrote ────────────────────────────
 	//
 	// The two halves of one line, and it is the ENGINE'S sentence: the surface

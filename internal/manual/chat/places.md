@@ -883,3 +883,7 @@ the model list, and Enter applies the selected model.
 
 When choosing a model for a setting, type to filter. The filter text appears above
 the model list, and Enter applies the selected model.
+
+## Where the Settings search cursor appears
+
+Settings draws its search field above the rows. The cursor follows your query there; model pickers use their own visible filter, and a connection key entry keeps its cursor inside the key field. The bottom row remains the navigation hints.

@@ -166,10 +166,12 @@ unfolds under them and the foot does not offer the key.
 The cursor opens **on the model in use**, which is also the marked row, so enter with
 nothing typed confirms rather than changes.
 
-Filtering splits what you type on whitespace; every token must match, each in one of three
-tiers — prefix, then substring, then subsequence. So `ds v4` finds
-`deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, and fuzzy
-hits sit at the bottom rather than mixed through. Twelve rows show at a time.
+Filtering splits what you type on whitespace; every word must match, each scored by
+the fuzzy alignment every picker on this surface shares — a word that starts an id,
+or lands right after a `/` or a hyphen, outranks the same letters sitting loose inside
+it. So `ds v4` finds `deepseek/deepseek-v4-flash` and `claude 4.5` finds
+`anthropic/claude-sonnet-4.5`, and a tight prefix sits above a scattered match without
+needing tiers to hold it there. Twelve rows show at a time.
 
 The picker **never fetches on its own** — only when you press `ctrl+r` in it, which asks the
 router for the newest list (the *commands* page, "Refreshing the model list"). Otherwise
@@ -629,9 +631,11 @@ whether the work is asked for here or run with nobody watching.
 Those runs seat two models, and each one is resolved the same way. The first of these that
 answers wins:
 
-1. a model named on the command line — `--model` for the work, `--plan-model` for the
-   planning;
-2. `CODEAF_MODEL` / `CODEAF_PLAN_MODEL` in the environment;
+1. a model named on the command line: `--model` for the work, `--plan-model` for the
+   planning, and `--check-model` for the checks;
+2. `CODEAF_MODEL`, `CODEAF_PLAN_MODEL`, or `CODEAF_CHECK_MODEL` in the environment.
+   Without its own pin, a check rides a plan seat pinned by flag or environment,
+   so a third model never arrives from the profile;
 3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
    the **worker** class, the same row a task handed off in conversation rides;
 4. **your crew again, through an older class**, when your profile was set before a class
@@ -2081,8 +2085,8 @@ Five things are worth knowing about it:
   happens the spend place's top line and the Spending tab both grow a reading — `3 spending
   records could not be written` — so a figure that is short says so instead of quietly reading
   as a cheaper day. Nothing is drawn when nothing was lost, which is nearly always.
-- **Work is counted once.** A task's own requests are recorded where they were made. Its total
-  is added to the conversation that started it afterwards, and that addition is deliberately
+- **Work is counted once.** A task's own requests are recorded where they were made. Its spend
+  is added to the conversation that started it as it arrives, and that addition is deliberately
   not written here, or the same money would be counted twice. **That holds for every kind of
   work, not only tasks** — the nodes of an adaptive run record their own requests and are
   added up afterwards the same way. Until this was fixed they were on this file twice, so a
@@ -3023,8 +3027,9 @@ they combine:
 | `fast` | sorts what is left by how soon an answer would start |
 | `cheap` | sorts what is left by price |
 
-**Anything else you type is still the search it has always been** — prefix, then
-substring, then subsequence over the model id — so `ds v4` and `claude 4.5` work exactly
+**Anything else you type is still the search it has always been** — every word has to
+appear in the id, in order, and a word that starts the id or lands right after a `/`
+outranks the same letters scattered through it — so `ds v4` and `claude 4.5` work exactly
 as before, and a word this grammar does not know is simply a word to search for.
 
 ## Why did it say via cloudflare — the provider named beside your model

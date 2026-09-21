@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -1108,15 +1109,47 @@ func (a *app) openRoomFor(id uint64, title string) {
 
 // openRailRoom makes list selection idempotent. Repeated clicks must not close
 // the page or replace its draft, scroll position and live subscription.
-func (a *app) openRailRoom(node *taskNode) {
+//
+// A ROW WHOSE TASK HAS A STORED PAGE OPENS THAT PAGE, and the question is asked
+// of the store at the gesture, off the loop ([app.taskSheetPlanAsk]). What the
+// row opens when the store has no page for it is fixed HERE, from the row as it
+// was pressed: the read may come back after the rail has been redrawn, and an
+// absent page still opens exactly what this gesture chose.
+func (a *app) openRailRoom(node *taskNode) tea.Cmd {
 	if node == nil || a.roomStandingOn(node) {
-		return
+		return nil
 	}
-	if node.run != "" {
-		a.openOrchRoom(node.run, node.node)
-	} else {
-		a.openRoom(node.id, node.title)
+	id, title, run, part := node.id, node.title, node.run, node.node
+	_, hasPlan := a.planReader()
+	room := func() tea.Cmd {
+		if run != "" && !hasPlan {
+			a.openOrchRoom(run, part)
+		} else {
+			a.openRoom(id, title)
+		}
+		return a.takeRoomPump()
 	}
+	return a.openRailPlan(strconv.FormatUint(id, 10), room)
+}
+
+// openRailPlan opens one task's stored page FROM THE CHAT, over the
+// conversation, for a press on a rail row or on one of a run's own rows under
+// it. `missing` is what the gesture does when the store has no such page.
+func (a *app) openRailPlan(id string, missing func() tea.Cmd) tea.Cmd {
+	if a.railPlanPending.id == id {
+		return nil
+	}
+	a.beginRailPlan(id)
+	return a.taskSheetPlanAsk(id, nil, func() tea.Cmd { return a.finishRailPlan(id) }, func() tea.Cmd {
+		if a.railPlanPending.id != id {
+			return nil
+		}
+		a.railPlanPending = railPlanPending{}
+		if missing != nil {
+			return missing()
+		}
+		return nil
+	})
 }
 
 // openRoomAt is the KEYBOARD door: enter on a selected proposal row opens that
@@ -2317,6 +2350,12 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if cmd, took := a.marginPress(line); took {
 		return cmd, true
 	}
+	// A ROW OF A RUN IS A DOOR ONTO THAT TASK'S PAGE, the run's own row and every
+	// part under it alike. It is a line of the store's tree and no node of this
+	// window's graph, so it is asked before the entries below.
+	if line.plan != "" {
+		return a.openRailPlan(line.plan, nil), true
+	}
 	e, ok := a.railEntryAt(y)
 	if !ok || e.node == nil {
 		return nil, true
@@ -2339,7 +2378,7 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	case line.glyph.holds(at):
 		a.railToggle(e.node)
 	default:
-		a.openRailRoom(e.node)
+		return a.openRailRoom(e.node), true
 	}
 	return a.takeRoomPump(), true
 }
