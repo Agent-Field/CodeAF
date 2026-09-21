@@ -1312,15 +1312,18 @@ var OperatorEnvPins = []string{
 	// shape, under `make demo-home`'s terms. A row offering to persist a
 	// fixture would put a demo question in front of a person every morning.
 	"CODEAF_QUESTION_DEMO",
-	// CODEAF_TASK_BELT sends a task worker BACK to the older node belt
-	// (internal/session's bashbelt.go, docs/design/worker-harness/DESIGN.md).
-	// The bash belt is the shipped default, so the variable is an escape
-	// hatch rather than the way in: `node`, `legacy` and `off` are the only
-	// words that turn it off, and one binary still runs both roads. It stays
-	// plumbing rather than a settings row for the reason the exit-code hatch
-	// is — a persisted row would pin a machine to the older engine long after
-	// whoever set it had forgotten, and an escape hatch must be as easy to
-	// stop using as it was to start. It disappears when the older belt does.
+	// CODEAF_TASK_BELT builds a task worker on the bash belt instead of the
+	// shipped belt (internal/session's bashbelt.go,
+	// docs/design/bash-task-loop/DESIGN.md): the one `bash` tool plus the
+	// hands that cannot be a shell command, so both arms of the comparison
+	// run from one binary. It is plumbing for the reason CODEAF_SWARM and
+	// CODEAF_SPLITGATE are — it picks which belt an experiment runs, not
+	// something the product has an opinion about — and it shares their
+	// lifetime: it disappears when the experiment has won or lost, which is
+	// exactly the lifetime a persisted setting must not have. A row would
+	// also be wrong the way the exit-code hatch is: it would put every future
+	// task worker on an experiment's belt on a machine where the variable is
+	// nowhere in sight. Unset, every worker is where it was.
 	"CODEAF_TASK_BELT",
 	// CODEAF_PLANDB_BIN names the binary a bash-belt worker's `plandb` shim
 	// execs (internal/session's plandb_plan.go) when the running program is

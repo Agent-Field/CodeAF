@@ -629,11 +629,11 @@ where it stands.
 
 A task is the same agent you talk to, with the same tools, in a quieter place.
 
-**On the worker harness road its belt is not the conversation's.** That road is the
-default: a worker carries one shell and the plan CLI rather than these tools, and the
-verbs for handing work out come off it; the *worker harness* page names what that belt
-carries. Everything below is the belt the older road composes, which is what a build
-reaches only when `CODEAF_TASK_BELT` is set to `node`, `legacy` or `off`.
+**On the worker harness road its belt is not the conversation's.** With
+`CODEAF_TASK_BELT=bash` set, a worker carries one shell and the plan CLI rather than
+these tools, and the verbs for handing work out come off it; the *worker harness* page
+names what that belt carries. Everything below is the belt the older road composes,
+which is what a build without the switch gives every task.
 
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and

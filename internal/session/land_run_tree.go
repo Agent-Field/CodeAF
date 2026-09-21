@@ -25,11 +25,11 @@ import "errors"
 // THE SWITCH IS THE BELT'S, read here for the reason [NewBeltWorker] reads it:
 // the belt road stages the tree's own status minus what the harness itself
 // writes, which is not what the default landing does, so a landing that ran
-// with CODEAF_TASK_BELT naming the node belt would change a landing for one nobody
+// with CODEAF_TASK_BELT unset would change a landing for a belt nobody
 // composed. With the flag off this refuses and touches nothing.
 func LandRunTree(dir, title string, sign bool) (branch string, changed []string, refusal string, err error) {
 	if !bashBeltAsked() {
-		return "", nil, "", errors.New("the bash belt is off: CODEAF_TASK_BELT names the node belt")
+		return "", nil, "", errors.New("the bash belt is off: CODEAF_TASK_BELT is not bash")
 	}
 	saved, problem, why := commitTaskWork(dir, title, nil, sign, true)
 	if problem != "" {
