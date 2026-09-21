@@ -4750,7 +4750,10 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 		// row on the first and settles it on the second; a pass that announced
 		// itself and then said nothing would leave that row open for the rest of
 		// the session, so a pass that found nothing says exactly that.
-		hub.send(Event{Kind: EventCompacted, Hint: "nothing to compact"})
+		// AND IT SAYS WHICH OF THE TWO THINGS THIS EVENT MEANS. The kind alone
+		// cannot: it is sent on both paths, so a reader that rebased on it
+		// rebased on a replacement that did not happen ([Event.Unchanged]).
+		hub.send(Event{Kind: EventCompacted, Hint: "nothing to compact", Unchanged: true})
 		return false, ErrNothingToCompact
 	}
 
