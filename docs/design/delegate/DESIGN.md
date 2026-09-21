@@ -9,9 +9,10 @@ here is built.*
 A **delegate** is an outside program that can do a whole coding task on its
 own; codeaf hands it a task the way it hands one to its own worker — in a
 working copy of its own, under the conversation's dollar and time limits,
-drawn on the rail while it runs, landed on the branch when it ends — and the
-program is one more **worker kind** behind the run supervisor, not a new
-engine and not a slash command of its own.
+drawn on the rail while it runs, landed on the branch when it ends. A person
+starts one with the program's own name as a command, `/swe-pro <brief>`, and
+what that starts is a task; the program is one more **worker kind** behind
+the run supervisor, never a second engine.
 
 `swe-pro` is the first delegate. `codeaf do` on another machine is the second,
 and it costs nothing extra, which is the test that the mechanism is general.
@@ -31,37 +32,60 @@ word in the manual, and the manual is what the chat answers from.
 So: **delegate**. A person "delegates the auth rewrite to swe-pro". The manual
 page is *Delegates — programs codeaf can hand a task to*.
 
-## Why not `/swe-pro <prompt>`
+## The command: one word per delegate, and it starts a task
 
-Three reasons, each already a law somewhere in this repository.
-
-1. **The turn must not wait.** A swe-pro run is thirty to ninety minutes. A
-   turn that blocks on it holds the conversation, the status line and the
-   person hostage, and the engine's own thirty-minute idle retirement (#1291)
-   is written on the assumption that long work is *work in the tree*, not a
-   turn. codeaf already has the right shape: work leaves the conversation as a
-   task, the turn ends, and the landing **wakes** a turn that reads the result.
-   A delegate ends the same way — the model never watches the stream; it
-   reads the terminal record and the landing note when it is woken.
-2. **One door for work you walk away from.** `/task` is that door, and the
-   tasks page, the rail, `stop`, the working copy, the landing card and the
-   spend folding all hang off it. A `/swe-pro` command would have to rebuild
-   every one of those or ship without them. The delegate rides `/task`.
-3. **The model should be able to choose it.** A person who types
-   `/swe-pro` has decided; the more useful case is the model proposing "this
-   one is big enough for swe-pro" from inside an ordinary turn, which means
-   the choice has to be a field on the task proposal, not a command.
-
-What a person types, then, is one of:
+A person types the delegate's name as a command and the words after it are
+the brief:
 
 ```
-/task via swe-pro rewrite the auth middleware to use the new session store
-/task rewrite the auth middleware …        ← the model may propose a delegate itself
+/swe-pro rewrite the auth middleware to use the new session store
 ```
 
-and `/delegate` (bare) lists the delegates this machine has, the way
-`/subharness` lists programs. `/delegate <name> <words>` is an alias for the
-first form, kept because a one-word command is what a hand reaches for.
+That row is `/task` with the worker chosen. It goes through the same door
+(`startTaskRun`), on the same card the person answers before money moves,
+and what it starts is the same object — a run in the tasks store, in a working
+copy of its own, on the rail with a live step, stoppable, landed when it ends.
+The turn ends when the card is answered; the person is not held for the hour.
+The only difference from `/task` is the worker seated on the root task, and
+that is the one word the row carries.
+
+**The command table is generated from the delegates this launch has.** A
+manifest at `~/.codeaf/delegates/<name>.json` whose binary resolves on PATH
+puts one row `/<name> <brief>` in `internal/tui3`'s command list, described
+with the manifest's own sentence, so `/help` and the command picker list it
+beside `/task` — and a machine with no swe-pro has no `/swe-pro`, rather than
+one that says no. A delegate's name may not collide with a built-in command;
+the loader refuses the manifest and says which row it collided with.
+
+Two things this deliberately is not:
+
+- **Not a turn that waits.** A swe-pro run is thirty to ninety minutes. A
+  turn that blocked on it would hold the conversation and the status line
+  hostage, and the engine's thirty-minute idle retirement (#1291) is written
+  on the assumption that long work is *work in the tree*, not a turn. The
+  model never watches the stream. When the run ends, the landing wakes a turn
+  — as it does for every task today — and that woken turn reads the terminal
+  record and the landing note, and answers.
+- **Not only a command.** `propose_task` grows an optional `via` naming a
+  delegate, so the model can propose "this one is big enough for swe-pro"
+  from an ordinary turn. The person still answers the card. The system prompt
+  names the delegates this launch has, conditionally, the way it names
+  everything else (`HANDOFF_FACTS` in `beltfacts.go`).
+
+`/delegate` (bare) lists the delegates this machine has, with the binary each
+resolved to and the last run's two words, the way `/subharness` lists
+programs. It is the answer to "which of these do I have here".
+
+### Beside the two commands that already exist
+
+The manual gate will make the chat explain all three, so the line between
+them is drawn here once:
+
+| command | what it starts | who wrote the program | where it runs |
+| --- | --- | --- | --- |
+| `/harness` | a **saved shape of work**: a small program of this binary's own node kinds (`agent.loop`, `tool.call`, `verify`, `human.gate`…) that a designer model built in a conversation and saved to `~/.codeaf/harnesses/<name>/vN.json` | codeaf, at a person's request | inside this process, on this conversation's own belt |
+| `/subharness` | the same list plus the bundles on disk and the built-ins, opened through an **intake card** with typed fields | codeaf, or a bundle author | inside this process |
+| `/swe-pro` (a delegate) | an **outside binary** doing a whole task on its own | someone else, and codeaf cannot see inside it | a child process in a working copy, under the run supervisor |
 
 ## What already exists, and where this plugs in
 
@@ -130,7 +154,7 @@ Two things codeaf does **not** ask, and says so on the page:
 ```jsonc
 // ~/.codeaf/delegates/swe-pro.json — read at launch; absent binary = absent delegate
 {
-  "name": "swe-pro",
+  "name": "swe-pro",                                 // also the command: /swe-pro <brief>
   "description": "an autonomous coding agent for one large, well-specified change",
   "bin": "swe-pro",                                  // resolved on PATH; a path is allowed
   "argv": ["run", "--dir", "{{workspace}}",
@@ -233,36 +257,37 @@ same conditional way it names everything else (`beltfacts.go`): a build with
 no manifest and no binary says nothing about delegates at all. The fact says
 when to choose one — *a change big enough to want its own agent for an hour,
 specified well enough that nobody will be asked anything* — and the model
-proposes it on the same card `/task` shows, with `via swe-pro` on the card,
+proposes it on the same card `/task` shows, with `swe-pro` named on the card,
 so the person still answers before money moves.
 
 ## What has to change in swe-pro
 
 These are on the swe-pro side, and none of them is codeaf's to work around.
 
-1. **A standalone mode.** `swe-pro run` refuses to start without an AgentField
-   control plane answering `/health`; the message says "cannot be used
-   standalone". A codeaf user has no plane. The seam already exists — the
-   `injected` backend path tolerates a failed probe and continues with the
-   plane disabled — so this is `SWE_PRO_CP_URL=off` (or `--no-control-plane`)
-   taking that same branch, and a `run-contract` record that says the plane
-   is off.
+1. **The control plane becomes optional.** `swe-pro run` refuses to start
+   without an AgentField control plane answering `/health`; the message says
+   "cannot be used standalone". A codeaf user has no plane. The owner's
+   direction (2026-09-21): mirror onto a plane when one answers, run without
+   one when none does, one stderr note either way. The seam already exists —
+   the `injected` backend path tolerates a failed probe and continues with the
+   plane disabled. Asked of the `swe-pro finalize` session on 2026-09-21.
 2. **Cost as a compact record.** Live cost is today only recoverable by summing
    `message.updated` assistant `cost` fields. A `{"type":"spend","cost_usd":…}`
    compact record after each model request, cumulative, would make every
-   consumer's live limit exact and free the reader from the bus schema.
-3. **A question road, later.** `question.replied` is defined "for embedders
-   that answer". If codeaf ever answers a delegate's question from the rail
-   (the way it answers a worker's note), swe-pro needs a stdin or socket road
-   to deliver it and to stop auto-rejecting when one is attached. Not v1.
+   consumer's live limit exact and free the reader from the bus schema. Put
+   to the `swe-pro finalize` session as a question; the reader is written
+   against whichever answer comes back.
+3. **No question road.** Decided 2026-09-21: a delegate does not ask. swe-pro
+   keeps auto-rejecting `question`, and the manual page says the brief has to
+   be self-sufficient. `question.replied` stays a seam nobody uses.
 
 ## What has to change in codeaf
 
 | # | lands | proof |
 | --- | --- | --- |
 | **1** | `internal/delegate`: the manifest and its loader; `Worker` (spawn under `processgroup`, stream to reader, SIGTERM-then-kill, `Report`); the `swe-pro` reader; the `codeaf` reader | unit tests against a fake binary that emits scripted NDJSON and honours SIGTERM; the outcome table pinned |
-| **2** | the door: `plandb` task row carries `via`; `CrewFactory` branches on it; `/task via <name>`, `/delegate`, `propose_task.via`; `HANDOFF_FACTS`; the cancel kind and its ledger line; the landing note's two sentences; the spend row's `via` | focused `internal/session` and `internal/tui3` tests; the manual gates |
-| **3** | the manual: *Delegates* page (what one is, how to ask, what it cannot do — no questions, no step cap — what it costs, where the work lands, the refusals verbatim); the `commands.md` rows | `internal/manual/chat_test.go` probes in a person's words: "can you hand this to swe-pro", "delegate this", "why can't the delegate ask me" |
+| **2** | the door: `plandb` task row carries `via`; `CrewFactory` branches on it; the generated `/<name> <brief>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the cancel kind and its ledger line; the landing note's two sentences; the spend row's `via` | focused `internal/session` and `internal/tui3` tests; the manual gates, which must learn that a generated row is spelled in the manual by its family (`/<delegate>`) rather than by name |
+| **3** | the manual: *Delegates* page (what one is, how to ask, what it cannot do — no questions, no step cap — what it costs, where the work lands, the refusals verbatim); the `commands.md` rows | `internal/manual/chat_test.go` probes in a person's words: "can you hand this to swe-pro", "what does /swe-pro do", "delegate this", "why can't the delegate ask me", "what is the difference between /harness and /swe-pro" |
 | **4** | hosted: the row crosses `internal/remote` (`PlanTaskRow` already carries `Live` and `TrajectoryPath`, so this is mostly the `via` word); until then a `--host` session refuses with one sentence, the way `/subharness` does | `internal/remote` wire tests |
 | later | the model chooses a delegate by seat (`worker` seat → swe-pro for `work` leaves, a crew row); a delegate on another machine; answering a delegate's question | — |
 
@@ -281,7 +306,15 @@ stub. Wave 2 is the first thing a person can type.
    one process that owns the whole tree for the hour. First cut: a delegated
    task is a run of one task, and the supervisor never splits it. Splitting
    a run between bash workers and a delegate is a later question.
-4. **Trajectory from a foreign stream.** The task page assumes a step is a
+4. **A generated command and the manual law.** `manual_test.go` demands every
+   row in the command table be spelled in the corpus. A row that exists only
+   on machines with a manifest cannot be spelled by name in a page compiled
+   into every binary. Either the gate learns a family row (`/<delegate>`), or
+   the built-in delegates (swe-pro, codeaf) are also built-in rows that are
+   *shelved* when their binary is absent, and only those may be commands.
+   The second is simpler and keeps the table static; a manifest with an
+   unknown name would then be reachable by `/delegate <name> <brief>` only.
+5. **Trajectory from a foreign stream.** The task page assumes a step is a
    command and an observation. swe-pro's tool parts fit; its `stage` records
    do not. Either the page learns a "stage" row or the reader folds stages
    into the live step only and never into the trajectory.
