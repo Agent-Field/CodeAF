@@ -130,6 +130,11 @@ type Task struct {
 	// re-decide it. Empty is the generalist, which is nearly every leaf.
 	Subharness string
 
+	// Skills is the ordered list of skill names attached to this leaf's brief:
+	// the plan composed them from the shelf (pinned first), and the brief
+	// renders them beside the working method. Empty renders nothing.
+	Skills []string
+
 	// Steer, when set, is polled between turns for mid-flight guidance from
 	// the user. Each returned line lands in the transcript as a user message
 	// before the next model call, so a running worker can be redirected

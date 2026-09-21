@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/orientation"
+	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -1714,6 +1715,13 @@ func (l *Linear) brief(task Task) string {
 	if contract := strings.TrimSpace(task.Contract); contract != "" {
 		fmt.Fprintf(&block, "How this particular kind of job is done well:\n%s\n\n", contract)
 	}
+	// The shelf's own recipes for this leaf, attached by the plan, rendered
+	// beside the method they refine. Zero attached skills renders zero bytes —
+	// no header, no placeholder — so a leaf with nothing attached reads byte
+	// for byte what it read before attachment existed.
+	if entries := l.skillEntries(task.Skills); len(entries) > 0 {
+		fmt.Fprintf(&block, "Skills attached to this work:\n%s\n\n", plan.RenderSkillsBlock(entries))
+	}
 	if task.Goal != "" {
 		fmt.Fprintf(&block, "This work is part of a larger goal:\n%s\n\n", task.Goal)
 	}
@@ -1788,6 +1796,43 @@ func (l *Linear) brief(task Task) string {
 	}
 	block.WriteString(outputClause(task))
 	return block.String()
+}
+
+// skillResolveLimit bounds the shelf read one brief's resolution makes. It
+// mirrors the shelf tool's own bound (internal/session's skillShelfLimit): the
+// shelf is a curated few, and reading further would only slow dispatch.
+const skillResolveLimit = 100
+
+// skillEntries resolves the leaf's attached skill names against the active
+// shelf, keeping the order the plan composed — that order is the precedence
+// the rendered block states. A name the shelf does not hold is dropped rather
+// than rendered as an empty bullet, and a loop with no store has no shelf to
+// resolve against, so it renders nothing and changes no prompt byte.
+func (l *Linear) skillEntries(names []string) []plan.SkillEntry {
+	if len(names) == 0 || l.history == nil {
+		return nil
+	}
+	facts, err := l.history.SkillFacts(store.FactActive, skillResolveLimit)
+	if err != nil {
+		return nil
+	}
+	byName := make(map[string]store.Fact, len(facts))
+	for _, fact := range facts {
+		if name := fact.SkillName(); name != "" {
+			if _, held := byName[name]; !held {
+				// SkillFacts returns newest first; the first fact under a name
+				// is the one every other reader of that name serves.
+				byName[name] = fact
+			}
+		}
+	}
+	entries := make([]plan.SkillEntry, 0, len(names))
+	for _, name := range names {
+		if fact, held := byName[name]; held {
+			entries = append(entries, plan.SkillEntry{Name: name, Doc: fact.Body, ShelfPath: fact.Artifact})
+		}
+	}
+	return entries
 }
 
 // briefIsWhole reports that the brief this leaf is about to read is the whole of
