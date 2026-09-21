@@ -582,7 +582,7 @@ func (s *Store) RewriteActiveSkillFrom(writer FactWriter, nodeID, scope, body st
 	if len(sources) != 1 || strings.TrimSpace(sources[0].Artifact) == "" {
 		return Fact{}, fmt.Errorf("rewrite active skill: %w: source %d is not active", ErrInvalid, sourceSeq)
 	}
-	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactActive, sources[0].Artifact, "", true)
+	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactActive, sources[0].Artifact, sources[0].Trust, true)
 }
 
 func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKind, body string, unsettled *UnsettledPair, replaces int64, status, artifact, trust string, deduplicate bool) (Fact, error) {
