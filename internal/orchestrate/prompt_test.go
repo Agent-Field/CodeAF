@@ -11,6 +11,49 @@ import (
 // planner shown the field would pick one. The run decides that, not the model.
 var untaught = map[string]bool{"kind": true}
 
+func TestRenderSkillsBlockRendersDocAndPath(t *testing.T) {
+	skills := []SkillEntry{
+		{Name: "imgshrink", Doc: "optimize images without losing quality", ShelfPath: "~/.codeaf/skills/imgshrink"},
+		{Name: "parser", Doc: "validate and format parser fixtures", ShelfPath: "~/.codeaf/skills/parser"},
+	}
+	got := RenderSkillsBlock(skills)
+	want := "- optimize images without losing quality [~/.codeaf/skills/imgshrink]\n- validate and format parser fixtures [~/.codeaf/skills/parser]\nEarlier-listed skills win when two skills conflict."
+	if got != want {
+		t.Fatalf("RenderSkillsBlock:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestRenderSkillsBlockEmpty(t *testing.T) {
+	if got := RenderSkillsBlock(nil); got != "" {
+		t.Fatalf("RenderSkillsBlock(nil) = %q, want \"\"", got)
+	}
+	if got := RenderSkillsBlock([]SkillEntry{}); got != "" {
+		t.Fatalf("RenderSkillsBlock([]) = %q, want \"\"", got)
+	}
+}
+
+func TestRenderSkillsBlockPreservesPrecedenceOrder(t *testing.T) {
+	skills := []SkillEntry{
+		{Name: "lint", Doc: "run linters", ShelfPath: "~/.codeaf/skills/lint"},
+		{Name: "test", Doc: "run tests", ShelfPath: "~/.codeaf/skills/test"},
+		{Name: "build", Doc: "build the project", ShelfPath: "~/.codeaf/skills/build"},
+	}
+	got := RenderSkillsBlock(skills)
+	lines := strings.Split(got, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines (3 skills + 1 precedence), got %d", len(lines))
+	}
+	if !strings.HasPrefix(lines[0], "- run linters") {
+		t.Errorf("first skill should be 'lint', got: %s", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "- run tests") {
+		t.Errorf("second skill should be 'test', got: %s", lines[1])
+	}
+	if !strings.HasPrefix(lines[2], "- build the project") {
+		t.Errorf("third skill should be 'build', got: %s", lines[2])
+	}
+}
+
 // The law quotes the Amendment schema verbatim, which means the schema is in two
 // places: here as struct tags, there as a JSON block a model is held to. Drift
 // either way is a run that refuses a well-formed amendment or a planner taught a

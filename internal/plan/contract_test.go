@@ -406,3 +406,44 @@ func TestTheMethodWriterMayNotEscalateAConfirmationIntoATranscript(t *testing.T)
 		}
 	}
 }
+func TestComposeSkillsOrdersPinnedFirstThenCandidates(t *testing.T) {
+	pinned := []string{"imgshrink", "lint"}
+	candidates := []string{"test", "build", "imgshrink"}
+	got := ComposeSkills(pinned, candidates)
+	want := []string{"imgshrink", "lint", "test", "build"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ComposeSkills(%q, %q) = %q, want %q", pinned, candidates, got, want)
+	}
+}
+
+func TestComposeSkillsEmptyInputs(t *testing.T) {
+	if got := ComposeSkills(nil, nil); len(got) != 0 {
+		t.Fatalf("ComposeSkills(nil, nil) = %q, want empty", got)
+	}
+	if got := ComposeSkills([]string{}, nil); len(got) != 0 {
+		t.Fatalf("ComposeSkills([], nil) = %q, want empty", got)
+	}
+	if got := ComposeSkills(nil, []string{"a", "b"}); !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Fatalf("ComposeSkills(nil, [a,b]) = %q, want [a b]", got)
+	}
+}
+
+func TestComposeSkillsDeduplicates(t *testing.T) {
+	pinned := []string{"a", "b"}
+	candidates := []string{"b", "c", "a"}
+	got := ComposeSkills(pinned, candidates)
+	want := []string{"a", "b", "c"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ComposeSkills(%q, %q) = %q, want %q", pinned, candidates, got, want)
+	}
+}
+
+func TestComposeSkillsSkipsEmptyNames(t *testing.T) {
+	pinned := []string{"a", "", "b"}
+	candidates := []string{"", "c"}
+	got := ComposeSkills(pinned, candidates)
+	want := []string{"a", "b", "c"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ComposeSkills(%q, %q) = %q, want %q", pinned, candidates, got, want)
+	}
+}

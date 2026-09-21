@@ -381,3 +381,26 @@ func writeContract(ctx context.Context, client Completer, shared string, node No
 	provider.Report(ctx, provider.ReadingUnverifiedSuccess)
 	return contract, usageOf(response), nil
 }
+
+// ComposeSkills builds an ordered list of skill names from pinned names and
+// retrieval candidates, preserving input order. Pinned names come first (in
+// the order given); non-pinned candidates follow in theirs. Duplicates are
+// collapsed to the first occurrence, so a pinned entry always wins over a
+// retrieved one of the same name.
+func ComposeSkills(pinned, candidates []string) []string {
+	seen := make(map[string]bool, len(pinned)+len(candidates))
+	result := make([]string, 0, len(pinned)+len(candidates))
+	for _, name := range pinned {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			result = append(result, name)
+		}
+	}
+	for _, name := range candidates {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			result = append(result, name)
+		}
+	}
+	return result
+}
