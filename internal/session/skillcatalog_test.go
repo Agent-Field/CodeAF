@@ -122,7 +122,7 @@ func TestSkillCatalogSurfacesRelevantSkills(t *testing.T) {
 
 // TestSkillCatalogAlwaysCarriesItsHeader: whenever there is anything to show,
 // the section heading and the routing sentence are present — the model is told
-// these are skills reached through task nodes, not verbs to run inline.
+// these are skills reached through task nodes or by name with use_skill.
 func TestSkillCatalogAlwaysCarriesItsHeader(t *testing.T) {
 	brain := openTestBrain(t)
 	activeSkill(t, brain, "domain:alpha", "one skill on the shelf", "/shelf/only-skill")
@@ -131,7 +131,7 @@ func TestSkillCatalogAlwaysCarriesItsHeader(t *testing.T) {
 	if !strings.HasPrefix(catalog, "## Available skills\n") {
 		t.Fatalf("catalog does not open on its heading:\n%s", catalog)
 	}
-	if !strings.Contains(catalog, "use them through task nodes, never inline") {
+	if !strings.Contains(catalog, "use them through task nodes or by name with `use_skill`") {
 		t.Fatalf("catalog does not carry the routing sentence:\n%s", catalog)
 	}
 	if !strings.Contains(catalog, "- only-skill: one skill on the shelf") {
