@@ -518,23 +518,13 @@ func awaitLanding(agent *session.Agent, place session.Place, iv invocation) (*se
 	}
 }
 
-// applyBeltEnv sets the arm's belt switch and answers the restore. Arm A
-// unsets it: the belt as shipped. The save and the restore are writes, which
-// os owns; the read is env's static door — the one door every owned name
-// reads through.
+// applyBeltEnv sets the arm's belt switch and answers the restore. BOTH ARMS
+// SET IT: the bash belt is the default, so an arm that unset the variable would
+// ride the same belt as the other one and the run would be a comparison of a
+// thing with itself. The save and the restore are writes, which os owns; the
+// read is env's static door — the one door every owned name reads through.
 func applyBeltEnv(arm Arm) (func(), error) {
 	value := beltEnvFor(arm)
-	if value == "" {
-		oldValue, had := env.Lookup(beltEnvVar)
-		if err := os.Unsetenv(beltEnvVar); err != nil {
-			return nil, err
-		}
-		return func() {
-			if had {
-				_ = os.Setenv(beltEnvVar, oldValue)
-			}
-		}, nil
-	}
 	oldValue, had := env.Lookup(beltEnvVar)
 	if err := os.Setenv(beltEnvVar, value); err != nil {
 		return nil, err

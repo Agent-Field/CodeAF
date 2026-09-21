@@ -1022,7 +1022,7 @@ func TestPlandbCliTheBeltAndPageFollowTheSwitch(t *testing.T) {
 	// WITHOUT THE SWITCH: the plain worker the door builds when the
 	// experiment is off — same shape, no bash belt — carries the graph verbs,
 	// and its page is the one it always read.
-	t.Setenv("CODEAF_TASK_BELT", "")
+	t.Setenv("CODEAF_TASK_BELT", "node")
 	plain, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.InTask = true
 		config.tasker = graphForShape(t)
