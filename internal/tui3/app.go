@@ -5453,7 +5453,17 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// blocks the next time a person scrolled off the top. [app.rebase] carries
 		// the place over into the region the pass just created, so the history
 		// stays reachable and stays in order.
-		a.rebase()
+		//
+		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. The event is sent on both
+		// paths, so this used to hand the bookkeeping over on a pass that found
+		// nothing to stub and nothing to fold: replayFrom was dropped to a floor
+		// the reader was nowhere near, the seam was marked drawn without being
+		// drawn, and the conversation between the two went quiet. The surface
+		// then said there was nothing above it. Nothing had moved, so there is
+		// nothing to carry over ([session.Event.Unchanged]).
+		if !ev.Unchanged {
+			a.rebase()
+		}
 		// AND RE-READ THE METER HERE. The pass just changed what the
 		// conversation weighs by an order of magnitude, and the status line's
 		// only other reader is the end of the turn — which is a long way off
