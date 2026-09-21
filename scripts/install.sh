@@ -5,6 +5,7 @@ set -euo pipefail
 REPOSITORY="Agent-Field/codeaf"
 LEGACY_REPOSITORY="Agent-Field/aforge-v2" # Remove after the one-release repository fallback. # legacy-name
 CHANNEL="${CHANNEL:-stable}"
+INSTALL_NAME="${CODEAF_INSTALL_NAME:-codeaf}"
 VERSION="${VERSION:-}"
 # The telemetry notice, verbatim from docs/TELEMETRY.md.
 # The installer only writes a local install marker and prints this text; it
@@ -31,7 +32,7 @@ Install codeaf from a GitHub release.
 
 Usage:
   install.sh [--stable|--rc|--dev|--staging] [--version TAG]
-             [--dir PATH] [--no-modify-path] [--verbose]
+             [--name WORD] [--dir PATH] [--no-modify-path] [--verbose]
 
 Channels:
   --stable   Latest stable release (default).
@@ -41,13 +42,15 @@ Channels:
 
 Flags:
   --version TAG       Install one named release tag.
+  --name WORD         Install the binary with this file name.
   --dir PATH          Install somewhere other than ~/.codeaf/bin.
   --no-modify-path    Print the PATH line without editing a shell file.
   --verbose           Print download details.
   --help              Show this help.
 
 Environment:
-  CHANNEL, VERSION, CODEAF_INSTALL_DIR, CODEAF_NO_MODIFY_PATH, VERBOSE
+  CHANNEL, VERSION, CODEAF_INSTALL_NAME, CODEAF_INSTALL_DIR
+  CODEAF_NO_MODIFY_PATH, VERBOSE
   GITHUB_TOKEN or GH_TOKEN: GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
   CODEAF_GITHUB_API and CODEAF_GITHUB_DOWNLOAD for mirrors and tests
   CODEAF_TELEMETRY=off, or DO_NOT_TRACK=1, turns the anonymous usage counts off
@@ -126,6 +129,11 @@ while [[ $# -gt 0 ]]; do
       VERSION="$2"
       shift 2
       ;;
+    --name)
+      [[ $# -ge 2 ]] || usage_error "--name needs a word"
+      INSTALL_NAME="$2"
+      shift 2
+      ;;
     --dir)
       [[ $# -ge 2 ]] || usage_error "--dir needs a path"
       INSTALL_DIR="$2"
@@ -142,6 +150,10 @@ case "$CHANNEL" in
   stable|rc|dev|staging) ;;
   *) usage_error "CHANNEL must be stable, rc, dev, or staging" ;;
 esac
+
+if [[ ! "$INSTALL_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  usage_error "--name / CODEAF_INSTALL_NAME must match ^[A-Za-z0-9][A-Za-z0-9._-]*$"
+fi
 
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
   fail "curl or wget is required"
@@ -444,12 +456,12 @@ case "$INSTALL_DIR/" in
 esac
 
 mkdir -p "$INSTALL_DIR"
-INSTALL_TEMP="$INSTALL_DIR/.codeaf.tmp.$$"
+INSTALL_TEMP="$INSTALL_DIR/.$INSTALL_NAME.tmp.$$"
 cp "$TMP_ROOT/$ASSET" "$INSTALL_TEMP"
 chmod 0755 "$INSTALL_TEMP"
-mv -f "$INSTALL_TEMP" "$INSTALL_DIR/codeaf${extension}"
+mv -f "$INSTALL_TEMP" "$INSTALL_DIR/$INSTALL_NAME${extension}"
 INSTALL_TEMP=""
-printf 'codeaf: installed %s\n' "$INSTALL_DIR/codeaf${extension}"
+printf 'codeaf: installed %s\n' "$INSTALL_DIR/$INSTALL_NAME${extension}"
 
 path_has_dir() {
   case ":${PATH}:" in
@@ -498,12 +510,6 @@ if [[ "$OS" != "windows" ]] && ! path_has_dir; then
   fi
 fi
 
-if [[ "$RUN_BOOT_ADOPTION" == "1" ]]; then
-  "$INSTALL_DIR/codeaf${extension}" version
-else
-  CODEAF_HOME="$STATE_ROOT" "$INSTALL_DIR/codeaf${extension}" version
-fi
-
 # The install marker lives under the state root, and a custom install outside
 # it must not create the login's state folders: the marker is written when the
 # install is inside the state root or the root already exists, and skipped
@@ -512,3 +518,9 @@ if [[ "$RUN_BOOT_ADOPTION" == "1" || -d "$STATE_ROOT" ]]; then
   write_install_marker "$STATE_ROOT"
 fi
 print_telemetry_notice
+
+if [[ "$RUN_BOOT_ADOPTION" == "1" ]]; then
+  "$INSTALL_DIR/$INSTALL_NAME${extension}" version
+else
+  CODEAF_HOME="$STATE_ROOT" "$INSTALL_DIR/$INSTALL_NAME${extension}" version
+fi

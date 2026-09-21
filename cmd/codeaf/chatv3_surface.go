@@ -15,10 +15,11 @@ var (
 	runSurfaceProgram = func(ctx context.Context, options tui3.Options) error {
 		return tui3.Run(ctx, options)
 	}
-	surfaceUpdateClient = codeupdate.NewClient
-	surfaceExecutable   = codeupdate.ExecutableTarget
-	surfaceRevision     = buildinfo.Revision
-	surfaceArguments    = func() []string { return append([]string(nil), os.Args[1:]...) }
+	surfaceUpdateClient      = codeupdate.NewClient
+	surfaceExecutable        = codeupdate.ExecutableTarget
+	surfaceRunningExecutable = os.Executable
+	surfaceRevision          = buildinfo.Revision
+	surfaceArguments         = func() []string { return append([]string(nil), os.Args[1:]...) }
 )
 
 // ── THE ONE WAY THE v3 SURFACE IS RUN ───────────────────────────────────────
@@ -43,6 +44,11 @@ var (
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
 	revision := surfaceRevision()
+	executable, executableErr := surfaceRunningExecutable()
+	curl := codeupdate.CurlCommand
+	if executableErr == nil {
+		curl = codeupdate.CurlLine(executable, codeupdate.FollowedChannel(revision))
+	}
 	client := surfaceUpdateClient(revision, codeupdate.CheckTimeout)
 	restart := options.Restart
 	if restart == nil {
@@ -50,11 +56,13 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		options.Restart = restart
 	}
 	options.UpdateRunning = revision
+	options.UpdateCurl = curl
 	options.UpdateArgs = surfaceArguments()
 	options.UpdateCheck = func(check context.Context) (codeupdate.Available, bool) {
 		return codeupdate.CheckLaunch(check, codeupdate.CheckOptions{
 			Running: revision, ProfileDir: options.ProfileDir, Client: client,
-			Disabled: internalenv.Get(codeupdate.NoUpdateCheckEnv) == "1",
+			Disabled:   internalenv.Get(codeupdate.NoUpdateCheckEnv) == "1",
+			Executable: executable,
 		})
 	}
 	options.ResolveUpdate = client.Select
@@ -62,11 +70,11 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		// Resolution belongs to the off-frame installation command. A launch may
 		// live on a slow mount, but its first frame never has to wait for that
 		// mount merely because /update exists.
-		target, err := surfaceExecutable(os.Executable)
+		target, err := surfaceExecutable(func() (string, error) { return executable, executableErr })
 		if err != nil {
 			return codeupdate.InstallResult{}, err
 		}
-		return codeupdate.Install(install, codeupdate.InstallOptions{Client: client, Release: release, Target: target})
+		return codeupdate.Install(install, codeupdate.InstallOptions{Client: client, Release: release, Target: target, Curl: curl})
 	}
 	// The byte meter, off unless a developer named a log file (wire.go). It
 	// measures what this surface DRAWS and is therefore as local as the terminal

@@ -9,11 +9,15 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 )
+
+var installNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 const (
 	// CurlCommand is the independent installation road shown at launch beside
@@ -28,6 +32,37 @@ const (
 	GitHubAPIEnv      = "CODEAF_GITHUB_API"
 	GitHubDownloadEnv = "CODEAF_GITHUB_DOWNLOAD"
 )
+
+// CurlLine returns the independent installation road for the running file and
+// release channel. The product remains codeaf; only the destination file name
+// changes when a differently named executable asks for its own road back.
+func CurlLine(executable, channel string) string {
+	channel = strings.TrimSpace(channel)
+	switch channel {
+	case "dev", "staging", "rc", "stable":
+	default:
+		channel = "stable"
+	}
+	name := filepath.Base(strings.TrimSpace(executable))
+	if len(name) >= 4 && strings.EqualFold(name[len(name)-4:], ".exe") {
+		name = name[:len(name)-4]
+	}
+	if !installNamePattern.MatchString(name) {
+		name = "codeaf"
+	}
+	if name == "devaf" {
+		return "curl -fsSL https://agentfield.ai/get/devaf | bash"
+	}
+	address := "https://agentfield.ai/get/codeaf"
+	if channel != "stable" {
+		address += "/" + channel
+	}
+	line := "curl -fsSL " + address + " | "
+	if name != "codeaf" {
+		line += "CODEAF_INSTALL_NAME=" + name + " "
+	}
+	return line + "bash"
+}
 
 const (
 	// CheckTimeout is the whole-exchange budget for a launch check and for
@@ -265,12 +300,15 @@ func spellDuration(duration time.Duration) string {
 type Choice struct {
 	Channel string
 	Version string
+	Running string
 }
 
 // Release is one selected GitHub release and the repository that answered.
 type Release struct {
-	Tag        string
-	Repository string
+	Tag                string
+	Repository         string
+	PublishedAt        time.Time
+	RunningPublishedAt time.Time
 }
 
 type apiRelease struct {
@@ -302,7 +340,7 @@ func (c *Client) Select(ctx context.Context, choice Choice) (Release, error) {
 		return Release{}, fmt.Errorf("channel must be stable, rc, dev, or staging")
 	}
 	for index, repository := range []string{primaryRepository, legacyRepository} { // legacy-name
-		release, err := c.selectRepository(ctx, repository, channel)
+		release, err := c.selectRepository(ctx, repository, channel, strings.TrimSpace(choice.Running))
 		if err == nil {
 			return release, nil
 		}
@@ -313,7 +351,7 @@ func (c *Client) Select(ctx context.Context, choice Choice) (Release, error) {
 	return Release{}, errors.New("no release repository answered")
 }
 
-func (c *Client) selectRepository(ctx context.Context, repository, channel string) (Release, error) {
+func (c *Client) selectRepository(ctx context.Context, repository, channel, running string) (Release, error) {
 	suffix := "releases/latest"
 	if channel != "stable" {
 		suffix = "releases?per_page=100"
@@ -331,16 +369,20 @@ func (c *Client) selectRepository(ctx context.Context, repository, channel strin
 		if Kind(row.TagName) != "stable" {
 			return Release{}, fmt.Errorf("the latest release did not name a stable codeaf tag")
 		}
-		return Release{Tag: row.TagName, Repository: repository}, nil
+		return Release{Tag: row.TagName, Repository: repository, PublishedAt: row.stamp()}, nil
 	}
 	var rows []apiRelease
 	if err := json.Unmarshal(body, &rows); err != nil {
 		return Release{}, fmt.Errorf("read the release list: %w", err)
 	}
 	var newest apiRelease
+	var runningPublished time.Time
 	for _, row := range rows {
 		if Kind(row.TagName) != channel {
 			continue
+		}
+		if row.TagName == running {
+			runningPublished = row.stamp()
 		}
 		if newest.TagName == "" || row.stamp().After(newest.stamp()) {
 			newest = row
@@ -349,7 +391,10 @@ func (c *Client) selectRepository(ctx context.Context, repository, channel strin
 	if newest.TagName == "" {
 		return Release{}, fmt.Errorf("no %s build has been published yet", channel)
 	}
-	return Release{Tag: newest.TagName, Repository: repository}, nil
+	return Release{
+		Tag: newest.TagName, Repository: repository, PublishedAt: newest.stamp(),
+		RunningPublishedAt: runningPublished,
+	}, nil
 }
 
 func (c *Client) assetURL(release Release, name string) string {
