@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -61,6 +62,37 @@ func TestC2AuthorizeAddressCarriesOnlyTheCodexCLIContract(t *testing.T) {
 		if got := parsed.Query().Get(key); got != value {
 			t.Errorf("%s = %q, want %q", key, got, value)
 		}
+	}
+}
+
+func TestC2ListenerRequestsTheRegisteredPortsInOrder(t *testing.T) {
+	// C2: the listener seam receives the actual registered addresses. It may
+	// supply an ephemeral loopback socket for the callback drive, but it cannot
+	// hide a production change from 1455 followed by 1457.
+	var requested []string
+	listen := func(network, address string) (net.Listener, error) {
+		if network != "tcp" {
+			t.Fatalf("listener network = %q", network)
+		}
+		requested = append(requested, address)
+		if len(requested) == 1 {
+			return nil, errors.New("primary port busy")
+		}
+		return net.Listen("tcp", "127.0.0.1:0")
+	}
+	flow, err := Begin(context.Background(), Options{
+		Issuer: "https://issuer.example", Random: strings.NewReader(strings.Repeat("p", 64)), Listen: listen,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer flow.Cancel()
+	if strings.Join(requested, ",") != "127.0.0.1:1455,127.0.0.1:1457" {
+		t.Fatalf("requested listener addresses = %v", requested)
+	}
+	parsed, _ := url.Parse(flow.URL())
+	if got := parsed.Query().Get("redirect_uri"); got != "http://localhost:1457/auth/callback" {
+		t.Fatalf("fallback redirect = %q", got)
 	}
 }
 
