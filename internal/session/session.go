@@ -96,7 +96,9 @@ const (
 	// and not a model call.
 	EventCompacting
 	// EventCompacted marks a compaction pass; Hint summarizes
-	// ("compacted from ~84k tokens, kept last ~20k").
+	// ("compacted from ~84k tokens, kept last ~20k"), and [Event.Unchanged]
+	// separates the pass that edited the transcript from the one that found
+	// nothing to do.
 	EventCompacted
 	// EventReasoning carries one streamed chunk of the model's REASONING in
 	// Text, for the models that put their working on the wire (OpenRouter's
@@ -686,6 +688,25 @@ type Event struct {
 	// struct whole), and a caption saved by an older build replays with an empty
 	// one and derives the same mark it always drew.
 	Category ActionCategory `json:"Category,omitempty"`
+
+	// Unchanged says an [EventCompacted] pass left the transcript exactly as it
+	// found it: nothing was old enough to stub and nothing was foldable, so the
+	// region above the conversation did not move and neither did the floor
+	// beneath it. It is false on every other kind and on every pass that really
+	// edited something.
+	//
+	// THE ZERO VALUE IS "A PASS HAPPENED", and that polarity is the whole reason
+	// this is a field rather than a reading of Hint. EventCompacted is sent on
+	// BOTH paths by promise, because a surface opens a row on EventCompacting
+	// and has to be able to settle it whatever the pass found. So one value
+	// carried two meanings and the failing one was silent: a surface handed its
+	// scrollback over to a replacement that had not happened, and declared the
+	// conversation finished with a good part of it undrawn and unreachable.
+	//
+	// It rides the wire behind a json tag of its own, so a peer built before it
+	// existed does not send it, reads false, and behaves exactly as it always
+	// did (internal/remote embeds this struct whole).
+	Unchanged bool `json:"Unchanged,omitempty"`
 
 	// Args is the tool call's arguments rendered for display: the JSON the
 	// model sent, compacted to one line and capped. It is set on
