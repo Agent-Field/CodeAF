@@ -488,7 +488,7 @@ Look at what happened — read-only, no key, nothing spent
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
   codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
-      check for or install a release; stable is the default
+      check or install a release; this build's own channel is the default
   codeaf cache
       what the shared build cache holds, and how big it is
   codeaf cache clean [--yes]
