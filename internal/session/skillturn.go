@@ -150,3 +150,14 @@ func fillSkillRoom(retrieved []string, room int) []string {
 func turnSkillsNote(names []string) string {
 	return "skills carried: " + strings.Join(names, ", ")
 }
+
+// turnSkillsNotice is the whole event, and it is one function so the sentence
+// and the field can never drift apart. A surface reads [Event.Skills]; the
+// sentence is for a reader that draws notices as prose and nothing else.
+func turnSkillsNotice(names []string) Event {
+	return Event{
+		Kind:   EventNotice,
+		Text:   turnSkillsNote(names),
+		Skills: append([]string(nil), names...),
+	}
+}
