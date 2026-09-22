@@ -262,10 +262,12 @@ rather than quietly choosing.
 The person's door onto a run's plan is six verbs, each resolving an id **inside
 this conversation's plan**, so a task another chat spawned is never reachable:
 
-- **note** — a note in your own voice on one task, which the worker reads in its
-  next frame. On a plan task's page it is what the composer sends: type in it and
-  press `enter`, under the placeholder `a note for this task`. It is not a chat
-  turn — the words go to the store and never to the model.
+- **note** — a note in your own voice on one task, which that task's worker is
+  handed between its own steps. On a plan task's page it is what the composer
+  sends: type in it and press `enter`, under the placeholder `a note for this
+  task`. It is not a chat turn — the words go to the store and never to the
+  conversation's model. "Does a note actually reach the worker" has its own
+  section below.
 - **pause** / **resume** — hold a task and everything under it out of the ready
   frontier without changing its rung, so running steps finish and nothing new in
   the subtree is launched; or release the hold. The key is `p`: a running row
@@ -294,6 +296,51 @@ store is the one that knows its own laws — a task that has ended cannot be
 cancelled, and a revision is only for work that has not started. A hold asked of
 the run's own task answers `a run is not held as a whole: hold one of its parts, or
 stop it`.
+
+## Does a note actually reach the worker, when does it read it, does it have to ask for it
+
+Yes, and it does not have to ask. A note left on a task is handed to that task's
+worker between its steps, in the gap after one command has finished and before
+it chooses the next. It is not something the worker has to think to look for.
+
+- **When.** At the next step boundary. A worker mid-command finishes that
+  command first; if the task's turn ends in the same moment, the note opens its
+  next round instead, so nothing is lost either way.
+- **Once.** Each worker is handed each note one time. Reading a note on the
+  task's page does not use it up — you and the worker read the same notes, and
+  what you opened is never a note the worker then missed.
+- **Notes left before the task started** are handed over too, on its first step
+  boundary. So a finding written onto a task that has not begun is waiting for
+  its worker when it does.
+- **Several at once** arrive together, up to five in one handover; any beyond
+  that come at the next boundary.
+
+**A note is not an order, and the worker is told so.** What it reads says the
+note is something somebody knows, not a direction, and that its work order has
+not changed. If you want the task to be asked for something *different*, that is
+a revised assignment, not a note — a note can never move what a task is judged
+by. This is deliberate: a worker that treated a passing remark as a new contract
+would quietly build something nobody asked for.
+
+Three hands write notes: you, from the task's page; another worker in the run,
+which is how a task that finds a sibling's premise wrong says so; and the
+conversation itself, which notes a row when it learns something the plan does
+not hold. Each is named where the note is drawn — `the person`, `task t-…`, or
+`you` when it was the conversation.
+
+## Where do I see the notes on a run, why didn't the chat know about the note
+
+Every note is on the task's page, under `notes`, oldest first.
+
+The conversation reads them too, and you can ask it: the run's listing puts the
+newest note on each row after the row's state, as `note: …`, and asking about one
+task prints that task's notes in full under `notes`, up to the last three. So
+"what has anyone said about these tasks" is a question the chat can answer without
+you opening a page.
+
+Before this, a note was drawn on the task's page and nowhere else. A worker could
+write down that another task's premise was wrong, and the conversation holding
+what you actually asked for would list every row of the run and never learn it.
 
 ## How do I stop a run? Stop it did nothing and the task kept running, cancel the whole run
 
