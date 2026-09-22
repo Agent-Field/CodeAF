@@ -1131,6 +1131,7 @@ type app struct {
 	// writing. Both are cleared when the turn settles — a rate quoted over a
 	// finished turn is a rate nobody is watching.
 	turnBegan    time.Time
+	workActivity tokens.WorkActivity
 	turnOutStart int
 	// turnCostAt is what the session had spent when the turn now running
 	// started, and it is the other end of the subtraction a turn footer's price
@@ -5008,7 +5009,7 @@ func (a *app) paint() tea.Cmd {
 	// still arriving ([app.streamFresh]), keeps the full cadence.
 	if waitLive || otherLive {
 		every := a.frameEvery()
-		if waitLive && !otherLive && !a.streamFresh() {
+		if waitLive && !otherLive && !a.streamFresh() && !a.workLogoVisible() {
 			every *= spinnerStep
 		}
 		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
@@ -6170,6 +6171,7 @@ func (a *app) startClock() {
 		return
 	}
 	a.turnBegan, a.turnOutStart, a.turnCostAt = a.now(), a.outputTokens, a.cost
+	a.workActivity.Start(a.turnBegan, tokens.WorkLogoRandom)
 	// AND THE COLUMN OPENS AT NOTHING, because the figures it chases are this
 	// turn's rather than the session's (tokencol.go's [tokenCol.open]).
 	a.col.open()

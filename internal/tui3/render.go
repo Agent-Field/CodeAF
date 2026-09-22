@@ -279,13 +279,19 @@ func (a *app) layout(width int) []row {
 		closed = true
 	}
 	line, ok := a.harnessStepRow(inner)
+	logoLabel := line
 	if !ok && !hasCompactActivity(out) {
 		line, ok = a.ellipsis()
 		if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
 			line = a.activityLine("  " + a.shimmer("Working"))
 		}
 	}
-	if ok {
+	if a.workLogoVisible() {
+		if len(out) > 0 {
+			out = append(out, row{entry: -1})
+		}
+		out = append(out, a.workLogoRows(inner, logoLabel)...)
+	} else if ok {
 		if closed && len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}

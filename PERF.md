@@ -2546,3 +2546,19 @@ Conversation naming requests one 5–8 word phrase. The former two-word/32-byte
 short-label cap is removed; `titleLimit` remains 80 bytes for the only stored title.
 `titleClip`, the 20-second ask window and the two-minute naming window are unchanged.
 Home and tab widths truncate that same title with three dots at render time.
+
+## Shared working-logo motion
+
+Chat turns and open task/run pages use `tokens.WorkActivity`, a bounded 10 by 4
+cell raster with ten 2.8-second loops. An operation chooses its study once at
+start, and samples it from the surface's existing clock. No renderer schedules
+work, reads files or draws randomness. The raster makes eighteen geometry
+samples per terminal cell; geometry is constructed once per frame. It returns
+coverage in a fixed-size array so themes and terminal capabilities remain the
+surface palette's responsibility.
+
+A visible logo keeps the existing 33 ms local paint cadence during a provider
+wait, rather than the four-frame spinner stride. Remote sessions retain their
+99 ms ceiling. Views without the logo keep the prior waiting cadence. Neither
+frame interval nor the size budget changes. Screen-reader, ASCII, monochrome,
+copy and small-window views do not spend four rows or animate this component.
