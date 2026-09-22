@@ -18,6 +18,43 @@ rule.
 
 <!-- codeaf-changes inserts new versions directly below this line -->
 
+## v0.4.1 — 2026-09-22
+
+### Fixed
+
+- **a waiting message stays waiting when you leave the chat, and still goes when its answer ends** — [#1385](https://github.com/Agent-Field/codeaf/pull/1385) · `chat`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A conversation switch used to fold every message parked above the box into the draft and drop the pictures parked with it, so a follow-up parked before esc, enter came back as unsent text without its picture and was never sent. The parked queue now travels with the conversation as itself — words, pictures, pasted documents, standing mark, order — and comes back as the same waiting block.
+  - A parked message used to go only when its conversation was in front at the turn's close. It now also goes when the turn ends while the conversation is held behind the screen: the keeper sends the oldest one through that conversation's own agent, one per finished turn, after any ctrl+q follow-up the session already holds.
+  - /new no longer drops the messages waiting in the conversation it leaves; they stay with that conversation and go when its answer ends. Opening a session from the welcome box still drops them and says so.
+  - On a connection that holds one conversation at a time the waiting words still fold back into the box, and their pictures and pasted documents now come back onto the tray with them instead of being lost.
+
+  Since #1071 esc opens Home, and Home stands the cursor on the conversation before
+  this one, so the natural esc, enter is a switch. Santosh met it as "esc when a
+  message is waiting does not seem to send it, it seems to just cancel the running
+  one". The switch is what lost the message, and a switch is not a quit: the turn
+  keeps running, so the message can keep waiting and go when it ends.
+
+  </details>
+
+
+### Internal
+
+- **v0.4.0 is rolled up into CHANGELOG.md** — [#1381](https://github.com/Agent-Field/codeaf/pull/1381) · `build` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Ninety entries sat loose under docs/changes/unreleased/ and CHANGELOG.md ended at v0.3.0. They are the `## v0.4.0` section now, and the stable release reads its notes from it.
+
+  The roll-up is a pull request of its own, as docs/rules/changelog.md asks, so
+  the section lands on `dev` and is promoted like anything else; this entry is
+  the one that rides in the release after v0.4.0.
+
+  </details>
+
+
 ## v0.4.0 — 2026-09-22
 
 ### Added
