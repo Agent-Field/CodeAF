@@ -551,6 +551,27 @@ var tuiWords = map[string]tuiWord{
 			"(questiondelivery.go's questionWaitingLine). It stands in the roster's foot where the " +
 			"enter-door would be, so a task that landed `your call` and asked something is read here",
 	},
+	// ── the tasks place's own fold ───────────────────────────────────────────
+	//
+	// The place groups its rows by conversation and draws every group SHUT, so a
+	// scenario that reads a piece of work inside one has to open it — and has to
+	// know the press landed. These two words are the two answers the foot gives,
+	// and they are the suite's only honest way to tell a page with nothing in it
+	// from a page whose fold has not opened yet.
+	"tasksFoldShutWord": {
+		screen: "→ what ran under it",
+		why: "the tasks place's foot over a SHUT conversation group (place_tasks.go's tasksOpenWord). " +
+			"It is waited for before the `→` is pressed, because a key that reached the program before " +
+			"the place was up is a key nothing answered — and the page then held no row for the work, " +
+			"which a screen-wide wait for a state word read straight past",
+	},
+	"tasksFoldOpenWord": {
+		screen: "← fold it back up",
+		why: "the same foot once the group is OPEN (place_tasks.go's tasksShutWord), which is what says " +
+			"the `→` landed and the rows inside are drawn. Waiting on it rather than sleeping is what " +
+			"made the run-engine scenarios repeatable: two runs of one binary split on whether the fold " +
+			"had opened by the time the assertion read a row",
+	},
 	"tasksEnterInsideWord": {
 		screen: "enter go inside it",
 		why: "the roster's other door, over work no window is holding any more — it is the one that opens the " +

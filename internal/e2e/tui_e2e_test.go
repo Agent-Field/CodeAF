@@ -2168,9 +2168,8 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// store saying a task is deliverable and a worker has it — both read as work
 	// in flight, and a task whose root has landed reads done.
 	openTasksPlace(t, r)
-	running := r.waitFor(40*time.Second, say(t, "planRunningWord"))
+	running := planRowWaitsToWear(t, r, 40*time.Second, runRowWord, say(t, "planRunningWord"))
 	t.Logf("the run on the tasks place, while a worker holds its task:\n%s", running)
-	planRowWearing(t, running, runRowWord, say(t, "planRunningWord"))
 
 	// ── the page mid-run: the live step at the live edge ────────────────────
 	//
@@ -2201,9 +2200,8 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	t.Logf("the plan page mid-run, carrying the live step:\n%s", live)
 	r.keys("Escape")
 
-	done := r.waitFor(runPatience, say(t, "planDoneWord"))
+	done := planRowWaitsToWear(t, r, runPatience, runRowWord, say(t, "planDoneWord"))
 	t.Logf("the run on the tasks place once its root landed:\n%s", done)
-	planRowWearing(t, done, runRowWord, say(t, "planDoneWord"))
 
 	// ── the landing, in the thread ──────────────────────────────────────────
 	//
@@ -2260,10 +2258,45 @@ func openTasksPlace(t *testing.T, r *rig) {
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
 	time.Sleep(700 * time.Millisecond)
-	// THE FOLD IS OPENED UNDER THE CURSOR. The place groups its rows by
-	// conversation and opens every group shut, so the run's row is not drawn until
-	// its conversation is unfolded.
+	// THE FOLD IS OPENED UNDER THE CURSOR, AND THE PRESS IS WAITED OUT. The place
+	// groups its rows by conversation and opens every group shut, so the run's row
+	// is not drawn until its conversation is unfolded — and a `→` that reached the
+	// program before the place was up is a key nothing answered, which left the
+	// page holding no row for the work at all. The foot says which way the fold
+	// is, so both halves of the gesture are read off the screen rather than slept
+	// through: measured on two runs of one binary, one opened and one did not.
+	r.waitFor(30*time.Second, say(t, "tasksFoldShutWord"))
 	r.keys("Right")
+	r.waitFor(30*time.Second, say(t, "tasksFoldOpenWord"))
+}
+
+// planRowWaitsToWear polls until the run's OWN ROW on the tasks place wears this
+// state word, and answers the screen it was read on.
+//
+// IT IS A WAIT ON THE ROW AND NOT ON THE SCREEN, which is this scenario's own law
+// ([planRowWearing]) spelled as a wait rather than only as an assertion. The
+// place files its rows under headings that are state words themselves, so a
+// screen-wide wait returns the instant a HEADING says `running` — which on a real
+// screen can be before the store's own read has landed and before the fold has
+// opened, and the assertion then reads whichever line happens to carry the title.
+// Two runs of one binary split on exactly that: one read the row and passed, the
+// next read the side list's line and failed.
+func planRowWaitsToWear(t *testing.T, r *rig, within time.Duration, words, state string) string {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		screen := r.capture()
+		if row := tasksRowOf(screen, words); strings.Contains(row, state) {
+			return screen
+		}
+		if time.Now().After(deadline) {
+			// THE RED IS THE ASSERTION'S OWN, so a row wearing the wrong word reads
+			// as what that means and not as a timeout.
+			planRowWearing(t, screen, words, state)
+			return screen
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 
 // tasksPlaceRunRow steps the cursor off the conversation group and onto the
