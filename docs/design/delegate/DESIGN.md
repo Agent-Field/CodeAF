@@ -15,8 +15,10 @@ starts one with the program's own name as a command, `/swe-pro <brief>`, and
 what that starts is a task; the program is one more **worker kind** behind
 the run supervisor, never a second engine.
 
-`swe-pro` is the first delegate. `codeaf do` on another machine is the second,
-and it costs nothing extra, which is the test that the mechanism is general.
+`swe-pro` is the first delegate and the one this design ships. The
+mechanism is meant to hold any number of them, added one manifest at a time
+at a person's discretion; `codeaf do` itself would be one later, which is a
+useful test that nothing here is swe-pro-shaped.
 
 ## Why not the name "sub-harness"
 
@@ -179,7 +181,7 @@ the binary it looked for.
 A reader turns the program's stream into the three things the supervisor
 wants while the program runs — a rising dollar figure, a live step sentence,
 a trajectory line — and, at the end, a `Report` and an outcome word. Readers
-are Go, in the binary, one per stream shape; a manifest names one. Two ship:
+are Go, in the binary, one per stream shape; a manifest names one. One ships:
 
 **`swe-pro`** reads EVENTS-CONTRACT.md:
 
@@ -205,10 +207,9 @@ swe-pro's record and they stay separate in the landing note: *swe-pro says it
 submitted; its verification failed 2 of 5 commands* is two sentences, never
 one.
 
-**`codeaf`** reads the `--json` envelope on exit and the stderr quiet line
-while it runs. It exists so that `codeaf do` on a second machine, over the
-ssh road `--host` already has, is a delegate with no new machinery — and so
-the contract is proven against a program whose stream discipline we control.
+**`codeaf`** (later, not this wave) would read the `--json` envelope on exit
+and the stderr quiet line while it runs, so that `codeaf do` on a second
+machine is a delegate with no new machinery.
 
 ### Money
 
@@ -285,15 +286,52 @@ and `--` before the goal parses. The model's claim (`submission_reason`,
 (`status`, `verification_failing`, `patch_bytes`) are separate fields and are
 never reconciled; "did it actually work" is the latter.
 
+## Generated commands and the manual law
+
+Delegates are added at a person's discretion, one manifest each, and the
+command row exists only while its delegate does. So the command table cannot
+be a closed list the binary knows at build time, and the manual law — every
+command the chat offers is explained in the corpus the chat answers from —
+cannot be met by a page compiled into every binary. The law stays; where it
+is enforced moves.
+
+- **The static table keeps its static gate.** `internal/tui3`'s `commands`
+  is unchanged and `TestTheManualMentionsEveryCommandTheTableOffers` still
+  walks it. Delegate rows are not in it: the surface reads them off the
+  delegate registry at launch and appends them to the live list (`/help`,
+  the picker, the fuzzy matcher), so nothing generated is ever tested by a
+  law that reads a Go literal.
+- **The manifest carries its own page.** A delegate ships `manual.md` beside
+  its manifest: what it does, how to ask it, what it cannot do, what a run
+  costs, where the work lands — the same rules every page in
+  `internal/manual/chat/` follows, `## ` headings and all. At launch the
+  chat's corpus is the packed corpus **plus an overlay** of the installed
+  delegates' pages (`manual.Corpus` gains one constructor that layers pages
+  over another corpus; search, `Mentions` and `Page` read both). The
+  `manual` tool then answers "what does /swe-pro do" from swe-pro's own page.
+- **The law is checked at load.** A manifest whose page does not mention
+  `/<name>` is refused, and the refusal is drawn where `/delegate` lists the
+  rest: `swe-pro: its manual page does not say /swe-pro — not added`. That is
+  the compile-time gate, moved to the moment the command comes into
+  existence, with the same sentence shape the gate prints.
+- **One built-in page explains the family.** *Delegates — programs codeaf
+  can hand a task to* is in the packed corpus, mentions `/delegate`, and is
+  where "what is a delegate", "how do I add one", "why is there no /swe-pro
+  on this machine" are answered. It never names a delegate the build cannot
+  promise exists.
+
+A delegate's name may not collide with a built-in row or an alias; the loader
+refuses it and names the row.
+
 ## What has to change in codeaf
 
 | # | lands | proof |
 | --- | --- | --- |
-| **1** | `internal/delegate`: the manifest and its loader; `Worker` (spawn under `processgroup`, stream to reader, SIGTERM-then-kill, `Report`); the `swe-pro` reader; the `codeaf` reader | unit tests against a fake binary that emits scripted NDJSON and honours SIGTERM; the outcome table pinned |
-| **2** | the door: `plandb` task row carries `via`; `CrewFactory` branches on it; the generated `/<name> <brief>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the cancel kind and its ledger line; the landing note's two sentences; the spend row's `via` | focused `internal/session` and `internal/tui3` tests; the manual gates, which must learn that a generated row is spelled in the manual by its family (`/<delegate>`) rather than by name |
-| **3** | the manual: *Delegates* page (what one is, how to ask, what it cannot do — no questions, no step cap — what it costs, where the work lands, the refusals verbatim); the `commands.md` rows | `internal/manual/chat_test.go` probes in a person's words: "can you hand this to swe-pro", "what does /swe-pro do", "delegate this", "why can't the delegate ask me", "what is the difference between /harness and /swe-pro" |
+| **1** | `internal/delegate`: the manifest and its loader; `Worker` (spawn under `processgroup`, stream to reader, SIGTERM-then-kill, `Report`); the `swe-pro` reader | unit tests against a fake binary that emits scripted NDJSON and honours SIGTERM; the outcome table pinned |
+| **2** | the door: `plandb` task row carries `via`; `CrewFactory` branches on it; the generated `/<name> <brief>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the cancel kind and its ledger line; the landing note's two sentences; the spend row's `via` | focused `internal/session` and `internal/tui3` tests; the static manual gates untouched |
+| **3** | the manual: the built-in *Delegates* page (what one is, how to add one, what it cannot do — no questions, no step cap — the refusals verbatim); the corpus overlay and the load-time page check; swe-pro's own `manual.md` shipped beside its manifest | `internal/manual/chat_test.go` probes in a person's words: "can you hand this to swe-pro", "what does /swe-pro do", "delegate this", "why can't the delegate ask me", "what is the difference between /harness and /swe-pro" |
 | **4** | hosted: the row crosses `internal/remote` (`PlanTaskRow` already carries `Live` and `TrajectoryPath`, so this is mostly the `via` word); until then a `--host` session refuses with one sentence, the way `/subharness` does | `internal/remote` wire tests |
-| later | the model chooses a delegate by seat (`worker` seat → swe-pro for `work` leaves, a crew row); a delegate on another machine; answering a delegate's question | — |
+| later | a `codeaf` reader so `codeaf do` on another machine is itself a delegate; the model chooses a delegate by seat (`worker` seat → swe-pro for `work` leaves, a crew row); answering a delegate's question | — |
 
 Wave 1 has no door and spends no money; it is the contract, proven against a
 stub. Wave 2 is the first thing a person can type.
@@ -310,15 +348,7 @@ stub. Wave 2 is the first thing a person can type.
    one process that owns the whole tree for the hour. First cut: a delegated
    task is a run of one task, and the supervisor never splits it. Splitting
    a run between bash workers and a delegate is a later question.
-4. **A generated command and the manual law.** `manual_test.go` demands every
-   row in the command table be spelled in the corpus. A row that exists only
-   on machines with a manifest cannot be spelled by name in a page compiled
-   into every binary. Either the gate learns a family row (`/<delegate>`), or
-   the built-in delegates (swe-pro, codeaf) are also built-in rows that are
-   *shelved* when their binary is absent, and only those may be commands.
-   The second is simpler and keeps the table static; a manifest with an
-   unknown name would then be reachable by `/delegate <name> <brief>` only.
-5. **Trajectory from a foreign stream.** The task page assumes a step is a
+4. **Trajectory from a foreign stream.** The task page assumes a step is a
    command and an observation. swe-pro's tool parts fit; its `stage` records
    do not. Either the page learns a "stage" row or the reader folds stages
    into the live step only and never into the trajectory.
