@@ -755,12 +755,18 @@ func planTitleFor(title string) string { return strings.ToLower(strings.TrimSpac
 // back over it. So the store row and the node row are one piece of work read
 // from two ends, and the place draws it ONCE.
 //
-// THIS SURFACE CANNOT SEE THE STORE ID, and it does not need to: it can see
-// this conversation's own node rows, and a plan-born node wears the store task's
-// own title — the store is seeded with the node's title and every later task is
-// added under it. So the two are matched on the title the pair cannot disagree
-// about, restricted to this conversation's rows so another chat's work wearing
-// the same words cannot hide a plan row.
+// A PLAN-BORN NODE DOES NOT SAY WHICH STORE TASK IT IS, and it does not need
+// to: this surface can see this conversation's own node rows, and a plan-born
+// node wears the store task's own title — the store is seeded with the node's
+// title and every later task is added under it. So the two are matched on the
+// title the pair cannot disagree about, restricted to this conversation's rows
+// so another chat's work wearing the same words cannot hide a plan row.
+//
+// A ROW THAT DOES NAME ITS STORE TASK IS NOT MATCHED HERE AT ALL. The run's
+// door publishes a row for work the graph holds no node for, and it says which
+// task of the store that row is ([session.TaskNotice.PlanTask]) — so those rows
+// are taken out by identity before this runs ([planStoreDraws]), and the title
+// guess is left to the road that has nothing better.
 func planRowShown(names map[string]bool, title string) bool {
 	if len(names) == 0 {
 		return false
@@ -785,6 +791,52 @@ func planNamesOf(rows []tasksMineRow, chat string) map[string]bool {
 		}
 	}
 	return out
+}
+
+// planStoreDraws is this conversation's own rows with the ones THE STORE IS THE
+// AUTHORITY FOR taken out, and it is the first thing the tasks place's reading
+// does with them.
+//
+// A ROW THE RUN'S DOOR PUBLISHED IS NOT A NODE. The door that takes the run
+// road never admits a node into the graph — it seeds a plan store, names the
+// store's task with the number the person was answered with, and publishes a
+// row under that number ([session.Agent.startKnownTaskRun]). So the store and
+// that row are one piece of work read from two ends, and unlike the node road
+// the surface is TOLD which two ([session.TaskNotice.PlanTask], carried onto
+// the row by place_tasks.go).
+//
+// AND THE HALF THAT IS DRAWN IS THE STORE'S, for two reasons that are the same
+// reason. The store's status is what the run actually moves — the published row
+// wears the engine's own word for a node nobody is driving, so the pair could
+// not even agree on the state — and Enter over a plan row opens the page with
+// the worker's trajectory on it ([app.taskSheetPlan]), where Enter over the
+// published row opens a room the engine holds no node for and so draws nothing.
+// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN: the row that opens an
+// empty room is not drawn.
+//
+// A ROW WHOSE TASK THE PLAN READ DOES NOT HOLD STAYS. The read may not have
+// landed yet, and the run's store is archived the moment a finished plan is
+// replaced ([session.Agent.openBeltRunStore]) — dropping a row on the strength
+// of an identity nothing answers for would take the run off the page
+// altogether, which is worse than the row it replaces.
+func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) []tasksMineRow {
+	if len(rows) == 0 || len(plan) == 0 {
+		return rows
+	}
+	held := make(map[string]bool, len(plan))
+	for _, task := range plan {
+		if id := strings.TrimSpace(task.ID); id != "" {
+			held[id] = true
+		}
+	}
+	kept := make([]tasksMineRow, 0, len(rows))
+	for _, row := range rows {
+		if held[strings.TrimSpace(row.planTask)] {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	return kept
 }
 
 // ── THE PAGE ONE PLAN ROW OPENS ─────────────────────────────────────────────

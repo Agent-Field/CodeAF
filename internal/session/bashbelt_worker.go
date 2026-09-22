@@ -50,7 +50,7 @@ import (
 // real client itself.
 func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storePath string) (*Agent, error) {
 	if !bashBeltAsked() {
-		return nil, errors.New("the bash belt is off: CODEAF_TASK_BELT is not bash")
+		return nil, errors.New("the bash belt is off: CODEAF_TASK_BELT names the node belt")
 	}
 	if task == nil {
 		return nil, errors.New("no store task for the worker seat")

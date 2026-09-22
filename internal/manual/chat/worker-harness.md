@@ -618,19 +618,25 @@ which must land before the run is over. The fix is checked in turn, but only
 once: a finding on a `fix:` task is a note and no second fix task, so a run
 cannot loop.
 
-## How to turn it on
+## How to turn it off
 
-**This page describes machinery that is not the shipped default.** The harness runs
-when the environment variable `CODEAF_TASK_BELT=bash` is set. With it unset, the
-build is unchanged and the older engine serves every road:
+**This page describes the shipped default.** The harness is what a `/task` and a
+`codeaf do` run on, on every machine, with nothing set. The environment variable
+`CODEAF_TASK_BELT` is now the way *out* of it rather than the way in: set it to
+`node`, `legacy` or `off` and the older engine serves every road again:
 
 - a `/task` is a node of this session's own tree, not a run on the plan store;
 - a task worker carries the conversation's own tools, not one shell;
 - `codeaf do` is dispatched by the resident's reconciler, not the run engine.
 
+Those three words are the only ones that turn it off. Any other value, including
+an empty one, leaves you on the harness, so a typo cannot quietly move you to a
+different engine.
+
 The switch is read where the belt is composed, where a person's `/task` is
-admitted, and where `codeaf do` chooses its road — and **with it unset, not one
-byte of any prompt, belt or landing moves**.
+admitted, and where `codeaf do` chooses its road — and **with one of those three
+words set, not one byte of any prompt, belt or landing moves from the older
+road**.
 
 Everything behind the switch is a seam. A build with no run engine linked answers
 the older road, and every refusal on the run road falls back to it rather than

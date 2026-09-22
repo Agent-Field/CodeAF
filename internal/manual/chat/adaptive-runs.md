@@ -157,6 +157,7 @@ keyboard decides for itself and says on the record that it decided.
 | `--timeout` | a hard wall on the whole run |
 | `--json` | print one machine-readable object instead of the deliverable |
 | `--yes-spend` | approve a plan whose price crosses the consent threshold |
+| `--slots <n>` | how many workers may run at once for this run; `0` is no limit. Unset, it is your `task.parallel` setting, which is no limit out of the box |
 | `--model <slug>` | the work model for this run |
 | `--plan-model <slug>` | the model that plans, when it should differ from the work model |
 | `--check-model <slug>` | the model that checks finished work; then `CODEAF_CHECK_MODEL`, then a plan seat pinned by flag or environment, then the crew's careful row |
