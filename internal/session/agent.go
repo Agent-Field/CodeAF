@@ -951,6 +951,15 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
+	// A PERSON'S TURN OPENS ON WHAT IS RUNNING, while anything is (plandigest.go
+	// states why it is pushed rather than asked for). The digest is read here,
+	// on the person's own door, and nowhere else: a wake note, a job's ending
+	// and a steer are not sentences that can change what a task should do, and
+	// the block is the empty string whenever no run is live, which is every turn
+	// of most conversations.
+	if digest := a.planDigest(); digest != "" {
+		return a.submitUser(ctx, planDigested(digest, text))
+	}
 	return a.submitUser(ctx, userText(text))
 }
 

@@ -297,6 +297,33 @@ cancelled, and a revision is only for work that has not started. A hold asked of
 the run's own task answers `a run is not held as a whole: hold one of its parts, or
 stop it`.
 
+## I changed my mind while a task was running — does it know, will it stop the task
+
+It knows. While a run is live, everything you type arrives with the run's rows
+in front of it: one line per task, the number you see on the side list, its
+title, whether it is running or queued or done, and the newest note left on it.
+You never see that block — the conversation reads it, and your own sentence is
+what stays on the screen and in the transcript.
+
+So "actually, skip the migration" is heard by something that can already see a
+task doing the migration. It is told to steer or stop THAT task before it
+answers you, and to leave the others alone.
+
+- **What it does about it is its judgement, not a rule.** It may stop the task,
+  revise what the task was asked for, or tell you the work is already done and
+  ask what you want. What it must not do is answer you and let the task carry
+  on as if you had said nothing.
+- **It sees rows, never results.** The block carries no result, no steps and no
+  output — those cost context and it can ask for them with `tasks` when it has
+  a reason to. A run wider than eight rows shows eight and says how many more
+  there are.
+- **Only while something is open.** A conversation that has handed nothing out,
+  or whose run has finished every row, gets none of this and pays nothing for
+  it.
+
+If it steered the wrong task, say so; the rows it read are the same ones you can
+see on the side list, so you and it are looking at the same picture.
+
 ## Does a note actually reach the worker, when does it read it, does it have to ask for it
 
 Yes, and it does not have to ask. A note left on a task is handed to that task's
