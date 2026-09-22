@@ -243,11 +243,18 @@ The working copy is the run's, cut as it is today. swe-pro is given it as
 `landBeltRun` merges it home exactly as for a bash worker. Two swe-pro
 particulars the landing has to know:
 
-- swe-pro's eager `wip(edit): path` commits are history in the copy. Landing
-  keeps them (one merge, honest history) rather than squashing — a person
-  who wants one commit has the branch. This is a decision to take, not a
-  fact; the other answer is one squash commit whose message is the terminal
-  record's reason.
+- **swe-pro's commits are squashed at landing.** swe-pro commits every
+  `edit` and `write` as it happens (`wip(edit): <path>`, hooks bypassed), so
+  an hour's run leaves dozens of bookkeeping commits in the copy. Decided
+  2026-09-21: the delegate landing folds everything the copy's branch holds
+  past the cut point into **one commit**, then merges that home the way every
+  task lands. The commit's subject is the task's title; its body is swe-pro's
+  terminal record in two sentences — what the model claimed
+  (`submission_reason`) and what swe-pro observed (`status`,
+  `verification_failing`). The eager commits are not turned off
+  (`SWE_PRO_EAGER_COMMIT=0`), because swe-pro's own crash recovery and its
+  restore-after-ship read those file-level checkpoints; they are swe-pro's
+  business inside the copy and nobody's outside it.
 - `.swe-pro/` is in `.git/info/exclude` of the copy, so it never lands, and
   `refs/swe-pro/start` and `refs/swe-pro/submitted` die with the copy.
 
@@ -328,7 +335,7 @@ refuses it and names the row.
 | # | lands | proof |
 | --- | --- | --- |
 | **1** | `internal/delegate`: the manifest and its loader; `Worker` (spawn under `processgroup`, stream to reader, SIGTERM-then-kill, `Report`); the `swe-pro` reader | unit tests against a fake binary that emits scripted NDJSON and honours SIGTERM; the outcome table pinned |
-| **2** | the door: `plandb` task row carries `via`; `CrewFactory` branches on it; the generated `/<name> <brief>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the cancel kind and its ledger line; the landing note's two sentences; the spend row's `via` | focused `internal/session` and `internal/tui3` tests; the static manual gates untouched |
+| **2** | the door: `plandb` task row carries `via`; `CrewFactory` branches on it; the generated `/<name> <brief>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the cancel kind and its ledger line; the squash-then-merge landing and its two-sentence note; the spend row's `via` | focused `internal/session` and `internal/tui3` tests; the static manual gates untouched |
 | **3** | the manual: the built-in *Delegates* page (what one is, how to add one, what it cannot do — no questions, no step cap — the refusals verbatim); the corpus overlay and the load-time page check; swe-pro's own `manual.md` shipped beside its manifest | `internal/manual/chat_test.go` probes in a person's words: "can you hand this to swe-pro", "what does /swe-pro do", "delegate this", "why can't the delegate ask me", "what is the difference between /harness and /swe-pro" |
 | **4** | hosted: the row crosses `internal/remote` (`PlanTaskRow` already carries `Live` and `TrajectoryPath`, so this is mostly the `via` word); until then a `--host` session refuses with one sentence, the way `/subharness` does | `internal/remote` wire tests |
 | later | a `codeaf` reader so `codeaf do` on another machine is itself a delegate; the model chooses a delegate by seat (`worker` seat → swe-pro for `work` leaves, a crew row); answering a delegate's question | — |
@@ -338,17 +345,16 @@ stub. Wave 2 is the first thing a person can type.
 
 ## Open questions
 
-1. **Squash or keep** swe-pro's eager commits at landing (above).
-2. **Who picks the delegate's models.** swe-pro's `--high` pool is its own
+1. **Who picks the delegate's models.** swe-pro's `--high` pool is its own
    default today. The manifest could pass the conversation's work seat
    (`{{model:work}}`) so `/crew` governs the delegate too — but swe-pro speaks
    OpenRouter slugs and codeaf's seat may be on another lane. First cut: the
    manifest's own argv, no seat.
-3. **Is `via` on the task or on the run?** A run is one store; a delegate is
+2. **Is `via` on the task or on the run?** A run is one store; a delegate is
    one process that owns the whole tree for the hour. First cut: a delegated
    task is a run of one task, and the supervisor never splits it. Splitting
    a run between bash workers and a delegate is a later question.
-4. **Trajectory from a foreign stream.** The task page assumes a step is a
+3. **Trajectory from a foreign stream.** The task page assumes a step is a
    command and an observation. swe-pro's tool parts fit; its `stage` records
    do not. Either the page learns a "stage" row or the reader folds stages
    into the live step only and never into the trajectory.
