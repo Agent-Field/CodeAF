@@ -580,8 +580,9 @@ var tuiWords = map[string]tuiWord{
 
 	// ── the run engine's plan, on the tasks place ────────────────────────────
 	//
-	// A `/task` under CODEAF_TASK_BELT=bash starts a RUN rather than a node of
-	// this session's own tree: the conversation seeds a plan store, the engine
+	// A `/task` on the worker harness — the default, and what CODEAF_TASK_BELT=bash
+	// names outright — starts a RUN rather than a node of this session's own
+	// tree: the conversation seeds a plan store, the engine
 	// drives it, and the store's root lands on the tasks place beside the record
 	// (internal/tui3's taskplan.go). These rows are what the tmux suite reads to
 	// prove the run happened, moved, and left a page of its own.

@@ -33,6 +33,15 @@ row now and a 0 is no bound; `codeaf do --slots <n>` names a figure for one
 run, where `0` is no limit and blank is the setting. The manual says so under
 *How many tasks run at once* and in the `codeaf do` flag table.
 
+**The tmux suite names its belt now.** Every scenario `start` launches says
+`CODEAF_TASK_BELT=node`, the road it was written for, and the launcher drops the
+runner's own value of the variable before the child starts, so a word exported
+in a developer's shell cannot choose what the suite tests. Before this the suite
+relied on the absence of a word, which is exactly the instrument fault that
+would have had a benchmark comparing the harness to itself. One new subtest,
+`TaskOnTheDefaultBelt`, launches with the variable absent and reads the run
+road off the screen, which is the only test of the default there has ever been.
+
 The one piece of machinery that had to move for this: the supervisor's drain
 reads every outstanding return before it waits for the worker goroutines. With
 no bound there can be more workers out than the return channel is deep, and a

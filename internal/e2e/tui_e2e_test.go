@@ -114,6 +114,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("a_refused_task_proposal_draws_no_schema_sentence", testRefusedTaskProposal)
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
 	t.Run("TaskOnTheRunEngine", testTaskOnTheRunEngine)
+	t.Run("TaskOnTheDefaultBelt", testTaskOnTheDefaultBelt)
 }
 
 // testPlainLaunchConnectionsAndHarnesses is the engine-road regression: the
@@ -2104,15 +2105,17 @@ func waitForRecord(t *testing.T, home string, within time.Duration) string {
 // place that moves with the store's own state, and the page that row opens,
 // whose trajectory is the worker's record of every command it ran.
 //
-// THE BELT IS ASKED FOR IN THE BINARY'S OWN ENVIRONMENT. CODEAF_TASK_BELT=bash
-// is the one switch that makes the door take the run road at all (internal/run's
-// engine is linked and registered for it, cmd/codeaf/runwire.go); with the
-// variable unset the same `/task` starts an ordinary node of this session's
-// tree, which the roster subtests already read. [startWithEnv] is how this suite
-// hands a variable to the launched process.
+// THE BELT IS NAMED IN THE BINARY'S OWN ENVIRONMENT. The harness is the
+// default, and this subtest still says CODEAF_TASK_BELT=bash outright, for the
+// reason [start] says `node`: a scenario that names its road keeps testing that
+// road when the default moves. The default itself — that a `/task` with the
+// variable absent takes this same road — is what [testTaskOnTheDefaultBelt]
+// proves, on the same screens, with no word given. `node`, `legacy` and `off`
+// are the words that send the same `/task` to an ordinary node of this
+// session's tree instead, which the roster subtests read.
 //
 // IT COSTS A FEW CENTS AND LANDS IN ABOUT THIRTY SECONDS, the shape and the
-// price [testStatesDone] pays for the same brief on the shipped belt.
+// price [testStatesDone] pays for the same brief on the node belt.
 //
 // THE STATE WORD IS READ OFF THE ROW AND NOT OFF THE SCREEN. The place files its
 // rows under headings that are state words themselves — everything working stands
@@ -2121,11 +2124,29 @@ func waitForRecord(t *testing.T, home string, within time.Duration) string {
 // care [statesHeadLine] takes on a landing card, spent on a row of the list
 // ([planRowWearing]).
 func testTaskOnTheRunEngine(t *testing.T) {
+	taskOnTheRunEngine(t, "afe2e_task_run", "CODEAF_TASK_BELT=bash")
+}
+
+// testTaskOnTheDefaultBelt is the one scenario in this suite that launches the
+// binary with NO belt word and asserts the road it takes. It is the only thing
+// here that tests the default: every other scenario names its road, so the
+// default could move without one of them noticing, and it did, twice, in
+// #1335 and #1340. [startWithEnv] drops the runner's own variable before the
+// child starts, so absent here means absent in the process and not merely
+// unmentioned by the test.
+func testTaskOnTheDefaultBelt(t *testing.T) {
+	taskOnTheRunEngine(t, "afe2e_task_default")
+}
+
+// taskOnTheRunEngine is the body the two subtests above share: launch with the
+// key and whatever belt words the caller names, put one `/task` on the run
+// engine, and read the run off the tasks place, the plan page and the thread.
+func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	home := newHome(t, nil)
 	ws := newWorkspace(t, "runws", false)
 	r := startWithEnv(t,
-		[]string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_TASK_BELT=bash"},
-		"afe2e_task_run", home, ws, tuiWide, 45, "chat", "--one-model")
+		append([]string{config.APIKeyEnv + "=" + liveKey(t)}, beltWords...),
+		rigName, home, ws, tuiWide, 45, "chat", "--one-model")
 	r.skipSetup(t)
 
 	// runRowWord is the run's own words on the tasks place, and one word of the
