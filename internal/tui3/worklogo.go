@@ -8,13 +8,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// workLogoVisible spends four rows only on a real running conversation. The
+// workLogoVisible uses one line only on a real running conversation. The
 // accessible, monochrome and small-window tiers retain their existing text,
 // and an approval never wears movement that implies work can continue unaided.
 func (a *app) workLogoVisible() bool {
 	return a.workActivity.Started() && !a.turnBegan.IsZero() && a.state == stateWorking &&
 		a.showing() == nil && len(a.questionOpen()) == 0 && !a.asking() && !a.copy.on && a.room == nil && !a.linear && !a.pal.linear &&
-		!a.pal.ascii && a.pal.profile >= tokens.ANSI256 && a.width >= 48 && gutterInner(a.bodyWidth()) >= 32 && a.height >= 20
+		!a.pal.ascii && a.pal.profile >= tokens.ANSI256 && a.width >= 48 && gutterInner(a.bodyWidth()) >= 40 && a.height >= 20
 }
 
 // workLogoRows is the transient left-aligned foot of the live reply, never a
@@ -38,24 +38,28 @@ func (a *app) workLogoRows(width int, override string) []row {
 	return a.activityRows(a.workActivity, label, width)
 }
 
-// activityRows is the shared layout door for chat, task and run pages. A caller
-// supplies only the operation's own activity, its truthful label and the width.
+// activityRows is one shared, single-line layout for every activity owner.
 func (a *app) activityRows(activity tokens.WorkActivity, label string, width int) []row {
-	frame := activity.Frame(a.now())
-	out := make([]row, 0, tokens.WorkLogoHeight)
-	for i, cells := range frame {
-		var line strings.Builder
-		line.WriteString("  ")
-		for _, cell := range cells {
-			line.WriteString(a.pal.workLogoCell(cell))
-		}
-		if i == 1 {
-			line.WriteString("  ")
-			line.WriteString(label)
-		}
-		out = append(out, row{text: fit(line.String(), width), entry: -1, activity: true})
+	return []row{{text: fit("  "+a.activityMark(activity)+" "+label, width), entry: -1, activity: true}}
+}
+
+func (a *app) activityMark(activity tokens.WorkActivity) string {
+	var line strings.Builder
+	for _, cell := range activity.Frame(a.now()) {
+		line.WriteString(a.pal.workLogoCell(cell))
 	}
-	return out
+	return line.String()
+}
+
+// deckActivity selects the clock belonging to the surface being rendered.
+func (a *app) deckActivity(d deck) (tokens.WorkActivity, bool) {
+	if d.lens.clock && a.workLogoVisible() {
+		return a.workActivity, true
+	}
+	if !d.lens.clock && a.roomWorkLogoVisible() {
+		return a.room.workActivity, true
+	}
+	return tokens.WorkActivity{}, false
 }
 
 // roomWorkLogoVisible reads the task being viewed, never its parent chat's turn.
@@ -63,7 +67,7 @@ func (a *app) activityRows(activity tokens.WorkActivity, label string, width int
 func (a *app) roomWorkLogoVisible() bool {
 	if a.room == nil || !a.room.running() || !a.room.workActivity.Started() || a.showing() != nil || len(a.questionOpen()) > 0 ||
 		a.copy.on || a.linear || a.pal.linear || a.pal.ascii || a.pal.profile < tokens.ANSI256 ||
-		a.width < 48 || gutterInner(a.bodyWidth()) < 32 || a.height < 20 {
+		a.width < 48 || gutterInner(a.bodyWidth()) < 40 || a.height < 20 {
 		return false
 	}
 	if _, waiting := a.roomGuest().waiting(); waiting {
@@ -84,8 +88,8 @@ func (a *app) roomWorkLogoRows(width int) []row {
 	if node == nil {
 		return nil
 	}
-	label := a.roomStateWord(node)
-	if live := a.roomOpenCallWord(node); live != "" {
+	label := "Working"
+	if live := a.roomOpenCallWord(node); live != "" && len(a.room.entries) == 0 {
 		label += " · " + live
 	}
 	return a.activityRows(a.room.workActivity, a.pal.narr(label), width)

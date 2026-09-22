@@ -1,37 +1,28 @@
 # A shared sign of work
 
-The owner's ten approved chevron-and-dot studies replace the plain working foot
-on chat and task/run pages. This is an explicit exception to keeping aliveness
-inside a single text row: the 10-column, four-row mark is one transient object
-beside truthful state words, aligned with the transcript's existing two-cell
-machinery lead. It is not a second transcript entry or a progress percentage.
-The gold is on the logo's dot, not the label or background.
+The ten chevron-and-dot motions occupy a fixed nine-column field on ONE line.
+Native font glyphs keep the chevron recognizable at reading size. The dot bounces,
+passes between paddles, compresses at contact or travels around the chevron. No
+pixel raster, background rectangles, graphics protocol or patched font is needed.
 
-`tokens.WorkActivity` owns an operation's selection and origin. It has no timer,
-I/O, application state or palette. Every caller can choose randomly or by name:
+`tokens.WorkActivity` owns an operation's selection and origin, with no timer,
+I/O, application state or palette:
 
 ```go
 var activity tokens.WorkActivity
 activity.Start(now, tokens.WorkLogoRandom) // Or tokens.WorkLogoRally, etc.
-frame := activity.Frame(now)              // Read-only, fixed-size coverage.
+frame := activity.Frame(now)              // Read-only, fixed-width glyphs.
 ```
 
-The surface's `activityRows` is the shared layout/painting door. Chat owns one
-instance per turn; a task/run page owns another per opened page. Their state
-predicates decide visibility independently. All named studies live in the token
-vocabulary, including their raster material, so surfaces do not copy glyphs or
-motion code. An additional surface supplies an instance, truthful label and
-available width rather than a new spinner implementation.
+The surface shares `activityMark` and `activityRows`. Chat owns one instance per
+turn; a task/run page owns another per opened page. Their visibility predicates
+read their own operation. The compact work block uses the mark IN its existing
+activity line, preserving the disclosure action and status words. It does not add
+a second Working row. A surface without a compact work block uses a single-line
+transient foot. Harness step tables retain their full width.
 
-The running transcript's captions and inline waiting dots stop shimmering when
-the logo is visible. Tool-state icons and the status bar retain their existing
-compact vocabulary. Details, retries, provider phases and task state words are
-preserved. Completed text never bounces or changes character.
-
-The existing frame clock samples the 2.8-second loops at its local or remote
-cadence. Both halves of a character cell are sampled nine times. On measured
-truecolour grounds partial coverage softens the contours. Unmeasured grounds
-and 256-colour terminals use crisp half-block silhouettes, leaving blank cells
-transparent. ASCII, monochrome, linear and small-window surfaces keep their
-existing compact text treatment. No terminal graphics protocol or patched font
-is required.
+Motion is sampled on the existing clock. Twelve deliberately held poses form a
+2.8-second loop; holding contact gives the ball weight, while all text to its right
+stays still. All frames are nine columns wide. The ball's brand gold is distinct
+from the question hue. Completed text never moves. ASCII, monochrome, linear,
+copy and small-window views retain the existing compact text treatment.

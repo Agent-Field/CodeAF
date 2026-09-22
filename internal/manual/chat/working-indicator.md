@@ -2,7 +2,7 @@
 
 ## Why is a little logo moving on the left while I wait for an answer?
 
-The chevron and gold dot beside the live reply mean the conversation is still
+The single-line chevron and gold dot beside the activity words mean the conversation is still
 working. The same indicator appears inside a running task's page and an adaptive
 run's page. It remains visible while an answer streams or the work is waiting on
 a model. The words beside it describe the known state; the motion is not a
@@ -21,7 +21,7 @@ answer. A task that is paused, finished, failed, or no longer being read through
 a working connection does not animate. It also steps aside in copy mode.
 
 Screen-reader mode, monochrome or ASCII terminals, and windows too small for the
-four-row mark keep the existing text and compact status indicators. The mark
+single-line mark keep the existing text and compact status indicators. The mark
 uses ordinary terminal characters; it needs no special font or image support.
 
 There is no new keyboard command to choose an animation. The choice is automatic;

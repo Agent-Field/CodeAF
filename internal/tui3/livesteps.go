@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -363,6 +364,11 @@ func (a *app) collapseLiveWork(turn int) {
 // somebody has to be able to read; an ellipsis in the middle of one would be the
 // surface saving a row at the cost of the only thing the row was for.
 func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
+	activity, showActivity := a.deckActivity(d)
+	showActivity = showActivity && w.pending
+	if showActivity {
+		width -= tokens.WorkLogoWidth
+	}
 	room := width - workIndentCols(width) - actionGutter
 	if room < 1 {
 		room = 1
@@ -390,6 +396,9 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 				}
 			}
 			drawn := a.pal.dim(lead) + painted
+			if showActivity && i == 0 {
+				drawn = a.activityMark(activity) + " " + painted
+			}
 			// THIS ROW STANDS FOR THE WHOLE TURN, so it carries the turn's pair
 			// (tokencol.go). It is the row a person stares at for the first
 			// seconds of a turn — before there is a caption, and while a slow
@@ -477,6 +486,9 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 				lead = a.pal.fade(lead, stop)
 			}
 			drawn := lead + painted
+			if showActivity && at == 0 && i == 0 {
+				drawn = a.activityMark(activity) + " " + painted
+			}
 			// THE COMPACT BLOCK IS THE RUNNING TURN'S CHIP, and its newest row is
 			// the row that stands for the turn — so the pair rides the top line of
 			// it, flush right, where the finished chip carries its receipt
