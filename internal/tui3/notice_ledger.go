@@ -61,7 +61,8 @@ type noticeLedger struct {
 
 // noticeMark is the ledger's word on one notice.
 type noticeMark struct {
-	// Shown counts the SESSIONS the notice was shown in, not the frames.
+	// Shown counts the SHOWINGS — turns of a row's rotation, on either box —
+	// and never the frames. Until 2026-09-22 a conversation counted sessions.
 	Shown int `json:"shown,omitempty"`
 	// Retired is when it was retired, RFC 3339, or "" while it is still live.
 	Retired string `json:"retired,omitempty"`

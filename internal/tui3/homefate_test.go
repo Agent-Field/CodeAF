@@ -77,7 +77,7 @@ func TestTheFateReadsTheArgumentWhereItChangesTheAnswer(t *testing.T) {
 		{"folder", "", fateTargetFolder},
 		{"folder", "~/src", fateTargetFolder},
 		{"attach", "", fateTray},
-		{"image", "shot.png", fateTray},
+		{"attach", "shot.png", fateTray},
 		{"pricing", "", ""},
 	} {
 		if got := homeFate(want.word, want.rest); got != want.fate {

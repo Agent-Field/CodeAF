@@ -338,9 +338,11 @@ func TestASearchThatFindsNothingSaysWhatToDoAndAMissingIndexSaysSo(t *testing.T)
 	if cmd := a.searchTick(searchTickMsg{gen: a.search.ask.gen}); cmd != nil {
 		t.Fatal("a surface with no index sent a read anyway")
 	}
+	// With no index the place matches by name instead (since 2026-09-22,
+	// chattip_test.go), and a miss says so without claiming nothing was said.
 	page := plain(placeFrameText(a))
-	if !strings.Contains(page, "no index of this machine's conversations") {
-		t.Fatalf("a window with no index behind it does not say so:\n%s", page)
+	if !strings.Contains(page, `no conversation on this machine is named "report"`) {
+		t.Fatalf("a window with no index behind it does not say what it matched by:\n%s", page)
 	}
 	if strings.Contains(page, `nothing on this machine says "report"`) {
 		t.Fatalf("a search that never happened reported a result:\n%s", page)

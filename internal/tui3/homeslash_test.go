@@ -510,7 +510,7 @@ func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 			runCmd(a.key(key("alt+p")))
 		} else {
 			homeText(a)
-			if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.targetRow); !took {
+			if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.footRow); !took {
 				t.Fatal("the seam project did not accept the click")
 			}
 		}

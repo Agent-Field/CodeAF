@@ -1280,13 +1280,15 @@ message. `/attach ~/shots/shot.png` is the same road for a picture.
 **A drop does the same thing without a command.** Drag a file onto the window while home is
 up and it lands on the same tray. So does a paste.
 
-**A bare `/attach` asks for the path where you typed it**: `type the path after /attach · or
-drop the file here`. If what you want is to *browse* for something, `/folder` opens the
-browser — see *Change the model before starting* for what that sheet does on home.
+**A bare `/attach` opens the browser** (since 2026-09-22) — the same sheet a bare `/folder`
+opens, aimed at the folder the next conversation opens in; a file chosen there lands on
+home's tray. Choosing `/attach` on the `/` list with `enter` opens it at once; the
+`/attach <path>` row under it is for a typed path. (It used to answer `type the path after
+/attach · or drop the file here`.)
 
 **A folder after `/attach` is not a file.** `/attach ~/src/parser` on home pins the next
 conversation's folder — the same decision `/folder` makes — and updates the project
-path on the seam.
+path at the right end of the keys row.
 
 **The tray belongs to you, not to a conversation.** It survives walking into a conversation
 and back out to home, and the chips you put on it here are the chips the next conversation
@@ -1388,9 +1390,11 @@ opening a conversation`, `alt+1 to alt+7 jump straight to a place`. It is drawn 
 the box is empty and nothing else is up, it moves on to the next tip every time you come to
 home and every two minutes at rest, and each tip goes away for good the first time you do
 what it names. It sits at the right, led by a bulb and closed by a small cross a click puts
-it away with until your next visit. The keys row at the very foot is not a tip and never
-changes. The whole list, what makes each one appear and disappear, and the **disable hints**
-row on the Workspace tab that turns them off, are on the *hints and tips* page.
+it away with until your next visit. A conversation has the same row over its own box, from
+the same one list of tips, drawn once you have been quiet there for a minute. The keys row
+at the very foot is not a tip and never changes. The whole list, what makes each one appear
+and disappear, and the **disable hints** row on the Workspace tab that turns them off, are on
+the *hints and tips* page.
 
 ## Typing @ on home — does the @ file list work on home, complete a path into home's box
 

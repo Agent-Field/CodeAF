@@ -2913,8 +2913,10 @@ func TestTheListIsPaddedOffTheFoot(t *testing.T) {
 			// padding, and it is empty whatever the list did. How tall the box is
 			// depends on the height ([boxFloor]), so the foot is asked rather than
 			// counted out here.
+			// THE PADDING IS THE TIP ROW SINCE 2026-09-22 (hometip.go): the same
+			// row, blank whenever there is no tip, and never a row of the list.
 			pad := len(lines) - placeFootRowsAt(h)
-			if got := strings.TrimSpace(ansi.Strip(lines[pad])); got != "" {
+			if got := strings.TrimSpace(ansi.Strip(lines[pad])); got != "" && pad != a.tipRow {
 				t.Fatalf("at height %d (typed %v) the list touches the foot: row %d is %q\n%s",
 					height, typed, pad, got, strings.Join(lines, "\n"))
 			}

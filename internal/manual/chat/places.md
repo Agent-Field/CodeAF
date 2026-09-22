@@ -206,12 +206,13 @@ alt+p project · alt+e effort · alt+a approvals · / commands        project: ~
 At the left it says **what model** answers, then a colon and **how hard it thinks**
 (the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
 approvals chip uses inside a conversation). The model is always bold and bright cyan,
-on home and in conversations. In a conversation the seam's far right names that
-conversation's workspace; on home, `project: <path>` is at the right end of the **keys row
-under the box** instead, naming where the next conversation opens (it left the rule on
-2026-09-22). The keys keep their room: a long path truncates on the right, and the field
-disappears if there is less than a word of room. The dim line above the rule, when there is
-one, is a tip (see *hints and tips*). The bottom row names the available project, effort
+on home and in conversations. On both boxes `project: <path>` is at the right end of the
+**keys row under the box** (it left the rule on 2026-09-22): home's names where the next
+conversation opens, a conversation's names its own workspace. The keys keep their room: a
+long path truncates on the right, and the field disappears if there is less than a word
+of room. The dim line above the rule, when there is one, is a tip (see *hints and tips*)
+— on home from the first minute, in a conversation once you have been quiet for a
+minute. The bottom row names the available project, effort
 and approval controls; the cells can also be pressed:
 
 | cell | chord | or |
@@ -606,7 +607,7 @@ On a machine that has spent nothing the place is its heading `spend` over one li
 `every chat and task is priced here as it runs`. A window paged onto a quiet fortnight is a
 different thing — its head row stays, with the arrows that page it back.
 
-## search — finding anything said or run
+## search — finding anything said or run, and what it matches when memory is off
 
 Everything that has been said on this machine. `alt+7` opens it — it is not on the tab
 bar — and typing searches: the
@@ -636,12 +637,20 @@ With nothing typed the place is its heading `search` over one line saying what t
 **A search that finds nothing says what to do about it**:
 `nothing on this machine says "amber rail" · try fewer words, or a name`.
 
-**And a window with no index behind it says so** rather than reporting an empty result:
-`there is no index of this machine's conversations behind this window, so nothing can be
-searched from here.` — which is a different sentence from "nobody has said that", and the
-difference matters. Over `--host` the sentence names the machine instead: the index is the
-one this machine's conversations were written into, and the conversation you are in was
-written on the other one.
+**With memory off, the place searches by name instead of refusing** (since 2026-09-22).
+What was said is indexed only while the **memory** row is on — memory off opens no store
+at all — so on such a machine the search place matches conversations the way home's box
+does: every word you type has to appear in the conversation's name, its project's name or
+its folder's name, and the matches come newest first with the project and the age but no
+quoted turn. The empty place says so under its whisper: `what was said is not indexed while
+memory is off · conversations match by their name and project`. A miss says
+`no conversation on this machine is named "amber rail" · what was said is not indexed while
+memory is off` — a different sentence from "nobody has said that", and the difference
+matters. (Until 2026-09-22 this window said `there is no index of this machine's
+conversations behind this window, so nothing can be searched from here.` and searched
+nothing.) Over `--host` a sentence at the top names the machine: the index is the one this
+machine's conversations were written into, and the conversation you are in was written on
+the other one.
 
 Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers
 the standing place beside the chats that match) — the same offer made twice, one `tab` apart,

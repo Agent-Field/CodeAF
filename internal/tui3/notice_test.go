@@ -133,10 +133,14 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 	// The task tip is the one a first exchange arms highest (notice.go's
 	// table); `/ shows every command` stood here until both feet said it.
 	const hint = "task-in-chat"
+	// A SHOWING IS A VISIBLE ONE: the row draws after a quiet minute, so each
+	// launch is a turn ending and then a minute of nothing (chattip_test.go
+	// proves the clock; here it is turned by hand).
 	launch := func() *app {
 		a := noticeApp(t, "")
 		a.turn = 1
 		a.noticeEvent(eventTurnEnded)
+		quietMinute(a)
 		return a
 	}
 	for session := 1; session <= noticeShownDefault; session++ {
@@ -159,6 +163,17 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 // hintSlotForTest names the slot these tests read, spelled once so the
 // assertions above read as sentences.
 const hintSlotForTest = slotHint
+
+// quietMinute turns the conversation's clock by hand until the row's tip is
+// due (notice.go's [app.noticeIdleBeat]).
+func quietMinute(a *app) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+	a.noticeTouched()
+	a.noticeArmIdle()
+	now = now.Add(chatHintIdle)
+	a.noticeIdleBeat(a.notices.idleGen)
+}
 
 // AND THE NEWS CHANNEL HAS AN OLDER BUILD TO COMPARE AGAINST. It opens on the
 // second build a profile meets, which on an ordinary launch it never did: the
@@ -261,86 +276,98 @@ func TestTheNoticeLedgerWriteLeavesNoPartialFile(t *testing.T) {
 
 func freshBoard() noticeBoard { return newNoticeBoard("", "", true) }
 
-// ONE PER SLOT, AND THE HIGHER PRIORITY WINS. Two armed notices for one slot
-// yield one id, and it is the more urgent of the two.
-func TestOnePerSlotAndTheHigherPriorityWins(t *testing.T) {
+// A ROTATION, NOT A RANKING: the first eligible tip stands, an event without
+// an advance keeps it, an advance moves to the next eligible in the table's
+// order, and the ring comes round.
+func TestASlotRotatesThroughTheEligibleTipsInTableOrder(t *testing.T) {
 	b := freshBoard()
 	cands := []noticeCandidate{
-		{id: "low", priority: 10, armed: true},
-		{id: "high", priority: 90, armed: true},
-		{id: "highest-but-idle", priority: 100, armed: false},
+		{id: "first", armed: true},
+		{id: "idle", armed: false},
+		{id: "second", armed: true},
+		{id: "third", armed: true},
 	}
-	if got := b.pick(slotHint, cands, 1); got != "high" {
-		t.Fatalf("the slot picked %q, want high", got)
+	if got := b.pick(slotHint, cands); got != "first" {
+		t.Fatalf("the slot picked %q, want the first eligible", got)
 	}
-	b.take(slotHint, "high", 3, 1)
-	// The one standing keeps standing against an equal, so the slot does not
-	// flicker between two hints of the same weight.
-	cands = append(cands, noticeCandidate{id: "equal", priority: 90, armed: true})
-	if got := b.pick(slotHint, cands, 5); got != "high" {
-		t.Fatalf("an equal took the slot from the one standing: %q", got)
+	b.take(slotHint, "first", 6, true)
+	if got := b.pick(slotHint, cands); got != "first" {
+		t.Fatalf("an event without an advance moved the slot to %q", got)
 	}
-}
-
-// THE QUIET GAP. A different hint may not take the slot until [noticeGap]
-// turns have passed since it last changed hands — but the slot's first
-// occupant waits on nothing, and a slot going empty never waits.
-func TestTheHintSlotChangesHandsSlowly(t *testing.T) {
-	b := freshBoard()
-	first := []noticeCandidate{{id: "first", priority: 10, armed: true}}
-	if got := b.pick(slotHint, first, 1); got != "first" {
-		t.Fatalf("the first hint of the session waited: %q", got)
+	for _, want := range []string{"second", "third", "first"} {
+		b.advance[slotHint] = true
+		got := b.pick(slotHint, cands)
+		if got != want {
+			t.Fatalf("the ring went to %q, want %q", got, want)
+		}
+		b.take(slotHint, got, 6, true)
 	}
-	b.take(slotHint, "first", 3, 1)
-
-	both := append(first, noticeCandidate{id: "second", priority: 50, armed: true})
-	if got := b.pick(slotHint, both, 1+noticeGap-1); got != "first" {
-		t.Fatalf("the slot changed hands inside the gap: %q", got)
-	}
-	if got := b.pick(slotHint, both, 1+noticeGap); got != "second" {
-		t.Fatalf("the slot did not change hands after the gap: %q", got)
-	}
-
-	// Inside the gap, a standing hint that stopped being armed stands down at
-	// once and the slot goes quiet rather than jumping to the next one.
-	b = freshBoard()
-	b.take(slotHint, "first", 3, 1)
-	gone := []noticeCandidate{{id: "first", priority: 10, armed: false}, {id: "second", priority: 50, armed: true}}
-	if got := b.pick(slotHint, gone, 1); got != "" {
-		t.Fatalf("a disarmed hint was replaced inside the gap: %q", got)
-	}
-
-	// The note slot has no gap: news is said when it is due.
-	b = freshBoard()
-	b.take(slotHint, "first", 3, 1)
-	if got := b.pick(slotNote, []noticeCandidate{{id: "news", priority: 1, armed: true}}, 1); got != "news" {
-		t.Fatalf("the note slot waited on the hint slot's gap: %q", got)
+	// The note slot rotates on the same terms; with one candidate it is that one.
+	if got := b.pick(slotNote, []noticeCandidate{{id: "news", armed: true}}); got != "news" {
+		t.Fatalf("the note slot said %q", got)
 	}
 }
 
-// A notice is counted once per session however many events re-decide the slot,
-// and its last allowed showing retires it for the sessions after while leaving
-// it up for this one.
-func TestAShowingIsCountedOncePerSessionAndTheLastOneRetires(t *testing.T) {
+// A TIP THAT HAS JUST BECOME TRUE JUMPS THE RING, once, whether or not the slot
+// was asked to move — and then takes its turn like every other row.
+func TestAFreshTipJumpsTheRing(t *testing.T) {
 	b := freshBoard()
-	b.take(slotHint, "tip", 2, 1)
-	b.take(slotHint, "", 2, 2)
-	b.take(slotHint, "tip", 2, 3)
+	cands := []noticeCandidate{
+		{id: "compact", armed: false},
+		{id: "first", armed: true},
+		{id: "second", armed: true},
+	}
+	if got := b.pick(slotHint, cands); got != "first" {
+		t.Fatalf("the slot picked %q", got)
+	}
+	b.take(slotHint, "first", 6, true)
+	cands[0] = noticeCandidate{id: "compact", armed: true, fresh: true}
+	if got := b.pick(slotHint, cands); got != "compact" {
+		t.Fatalf("a fresh tip did not jump the ring: %q", got)
+	}
+	b.take(slotHint, "compact", 6, true)
+	// No longer fresh: an event keeps it, and an advance walks on from it.
+	cands[0].fresh = false
+	if got := b.pick(slotHint, cands); got != "compact" {
+		t.Fatalf("a tip that had jumped was moved by an event: %q", got)
+	}
+	b.advance[slotHint] = true
+	if got := b.pick(slotHint, cands); got != "first" {
+		t.Fatalf("the ring did not walk on from the fresh tip: %q", got)
+	}
+	// A tip disarming stands down at once, for the next eligible.
+	b.take(slotHint, "first", 6, true)
+	cands[1].armed = false
+	if got := b.pick(slotHint, cands); got != "second" {
+		t.Fatalf("a disarmed tip did not yield: %q", got)
+	}
+}
+
+// Every change of hands is a showing, a slot re-decided to the same tip is not,
+// and the last allowed showing retires the notice while leaving it up.
+func TestEveryChangeOfHandsIsAShowingAndTheLastOneRetires(t *testing.T) {
+	b := freshBoard()
+	b.take(slotHint, "tip", 3, true)
+	b.take(slotHint, "tip", 3, true)
 	if got := b.ledger.shown("tip"); got != 1 {
-		t.Fatalf("one session counted %d showings", got)
+		t.Fatalf("one standing counted %d showings", got)
+	}
+	b.take(slotHint, "", 3, true)
+	b.take(slotHint, "tip", 3, true)
+	if got := b.ledger.shown("tip"); got != 2 {
+		t.Fatalf("a tip coming back counted %d showings, want 2", got)
 	}
 	if b.retired("tip") {
-		t.Fatal("a first showing retired the notice")
+		t.Fatal("a second showing retired the notice")
 	}
-
-	// The next session: the second showing is the last allowed.
+	// The next surface over the same ledger: the third showing is the last.
 	next := newNoticeBoard("", "", true)
 	next.ledger = b.ledger
-	next.take(slotHint, "tip", 2, 1)
+	next.take(slotHome, "tip", 3, true)
 	if !next.retired("tip") {
 		t.Fatal("the last allowed showing did not retire the notice")
 	}
-	if next.current[slotHint] != "tip" {
+	if next.current[slotHome] != "tip" {
 		t.Fatal("the last allowed showing was not shown")
 	}
 }
@@ -349,13 +376,13 @@ func TestAShowingIsCountedOncePerSessionAndTheLastOneRetires(t *testing.T) {
 // arming rule is still true.
 func TestARetiredNoticeNeverReturnsThisSession(t *testing.T) {
 	b := freshBoard()
-	cands := []noticeCandidate{{id: "tip", priority: 10, armed: true}}
-	b.take(slotHint, "tip", 3, 1)
+	cands := []noticeCandidate{{id: "tip", armed: true}}
+	b.take(slotHint, "tip", 3, true)
 	b.retire("tip")
 	if b.current[slotHint] != "" {
 		t.Fatal("retiring did not clear the slot")
 	}
-	if got := b.pick(slotHint, cands, 9); got != "" {
+	if got := b.pick(slotHint, cands); got != "" {
 		t.Fatalf("a retired notice came back: %q", got)
 	}
 }
@@ -408,26 +435,36 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	if got := a.notices.current[slotHint]; got != "task-page-after-first-task" {
 		t.Fatalf("a task starting armed %q", got)
 	}
-	if got := a.footHint(a.width); got != taskPageTip {
-		t.Fatalf("the hint slot reads %q, want the tip", got)
+	// THE ROW WAITS FOR A QUIET MINUTE (notice.go's THE CONVERSATION'S CLOCK);
+	// the clock itself is proved in chattip_test.go, and here the minute is
+	// taken as passed.
+	if got := a.noticeHint(); got != "" {
+		t.Fatalf("the tip drew before the person had been quiet: %q", got)
+	}
+	a.notices.due = true
+	if got := a.noticeHint(); got != taskPageTip {
+		t.Fatalf("the tip row reads %q, want the tip", got)
+	}
+	if got := a.footHint(a.width); strings.Contains(got, taskPageTip) {
+		t.Fatalf("the keys row still carries the tip: %q", got)
 	}
 	if !strings.Contains(plain(frame(a)), taskPageTip) {
 		t.Fatalf("the tip is not on the frame:\n%s", plain(frame(a)))
 	}
 
-	// LOWEST RUNG. A running turn's own key outranks it, and so does a box with
-	// words in it.
+	// OVER NOTHING THAT IS HAPPENING. A running turn outranks it, and so does a
+	// box with words in it.
 	a.state = stateWorking
-	if got := a.footHint(a.width); got != "ctrl+c interrupt" {
-		t.Fatalf("a tip outranked a running turn's key: %q", got)
+	if got := a.noticeHint(); got != "" {
+		t.Fatalf("a tip drew over a running turn: %q", got)
 	}
 	a.state = stateIdle
 	a.input.setText("half a sentence")
-	if got := a.footHint(a.width); strings.Contains(got, taskPageTip) {
+	if got := a.noticeHint(); got != "" {
 		t.Fatalf("a tip drew over a box with words in it: %q", got)
 	}
 	a.input.reset()
-	if got := a.footHint(a.width); got != taskPageTip {
+	if got := a.noticeHint(); got != taskPageTip {
 		t.Fatalf("the tip did not come back over an empty box: %q", got)
 	}
 
@@ -462,6 +499,7 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	if got := again.notices.current[slotHint]; got == "task-page-after-first-task" {
 		t.Fatal("a retired hint came back after a restart")
 	}
+	again.notices.due = true
 	if strings.Contains(plain(frame(again)), taskPageTip) {
 		t.Fatal("the tip is drawn after a restart")
 	}
@@ -541,12 +579,6 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventSearchOpened:     func(t *testing.T, a *app) { a.slash("/search") },
 		eventSubharnessOpened: func(t *testing.T, a *app) { a.slash("/subharness") },
 		eventConnectOpened:    func(t *testing.T, a *app) { a.slash("/connect") },
-		eventMediaAsked: func(t *testing.T, a *app) {
-			a.state = stateWorking
-			drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
-				Kind: session.EventToolBegin, CallID: "g1", Tool: "generate_image", Hint: "generate_image",
-			}})
-		},
 	}
 	for _, name := range noticeEvents {
 		if name == eventBoot {
@@ -595,20 +627,20 @@ func TestTheCompactHintFollowsTheContextReading(t *testing.T) {
 		t.Fatalf("at 60%% the slot holds %q", got)
 	}
 	agent.weight = 100
-	a.turn += noticeGap
 	a.settle()
 	if got := a.notices.current[slotHint]; got == "compact-at-half" {
 		t.Fatal("the compact hint stayed up after the reading fell")
 	}
 }
 
-// The Display tab's "hints" row silences the slot, and the change lands at the
-// next turn end, the way the mouse row's does.
+// The Workspace tab's "disable hints" row silences the slot, and the change
+// lands at the next turn end, the way the mouse row's does.
 func TestTheHintsRowSilencesTheSlot(t *testing.T) {
 	a, dir := sheetApp(t)
 	startTask(t, a)
-	if got := a.footHint(a.width); got != taskPageTip {
-		t.Fatalf("the hint slot reads %q before the toggle", got)
+	a.notices.due = true
+	if got := a.noticeHint(); got != taskPageTip {
+		t.Fatalf("the tip row reads %q before the toggle", got)
 	}
 
 	a.openSettings()
@@ -630,7 +662,7 @@ func TestTheHintsRowSilencesTheSlot(t *testing.T) {
 	if a.notices.enabled {
 		t.Fatal("the turn end did not re-read the row")
 	}
-	if got := a.footHint(a.width); got == taskPageTip {
+	if got := a.noticeHint(); got == taskPageTip {
 		t.Fatal("a silenced slot still draws the tip")
 	}
 	// The next surface over this profile is quiet from the start.
@@ -648,7 +680,7 @@ func TestTheHintsRowSilencesTheSlot(t *testing.T) {
 func TestNewsIsSaidOnceAfterABuildChange(t *testing.T) {
 	saved := notices
 	notices = append([]notice{{
-		id: "test-news", slot: slotNote, priority: 1, news: true, maxShown: 1,
+		id: "test-news", slot: slotNote, news: true, maxShown: 1,
 		armed: func(*app) bool { return true },
 		text:  "new · the test channel is open",
 	}}, saved...)

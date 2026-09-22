@@ -13,7 +13,7 @@ import (
 // The conversation's foot has carried earned hints since notice.go was written;
 // home, the other box a person types into, said nothing. These pin the row
 // above home's rule: it says a tip over an idle box, says nothing while the box
-// is being typed into, moves on every visit and every [homeHintEvery] at rest,
+// is being typed into, moves on every visit and every [hintEvery] at rest,
 // and a tip spent on either box is spent on both.
 
 // The frame's row directly above the rule is the tip, and only over an empty
@@ -33,7 +33,7 @@ func TestHomeRowSaysATipOverAnEmptyBox(t *testing.T) {
 		t.Fatalf("the tip is not on the frame:\n%s", homeText(a))
 	}
 	if !strings.HasPrefix(tip, "/") && !strings.HasPrefix(tip, "ctrl+") && !strings.HasPrefix(tip, "alt+") &&
-		!strings.HasPrefix(tip, "opt+") && !strings.HasPrefix(tip, "@") && !strings.HasPrefix(tip, "ask ") {
+		!strings.HasPrefix(tip, "opt+") && !strings.HasPrefix(tip, "@") && !strings.HasPrefix(tip, "enter ") {
 		t.Fatalf("the tip does not open with the key or the command: %q", tip)
 	}
 
@@ -58,7 +58,7 @@ func TestHomeRowSaysATipOverAnEmptyBox(t *testing.T) {
 	}
 	a.key(key("backspace"))
 
-	// OFF IS OFF. The Display tab's row silences this slot with the other.
+	// OFF IS OFF. The Workspace tab's row silences this slot with the other.
 	a.notices.enabled = false
 	if got := a.noticeHomeHint(); got != "" {
 		t.Fatalf("a silenced profile still says %q on home", got)
@@ -69,7 +69,7 @@ func TestHomeRowSaysATipOverAnEmptyBox(t *testing.T) {
 }
 
 // Every road home moves the row on; so does the beat once a tip has stood
-// [homeHintEvery] at rest — and neither moves it while the box is being typed
+// [hintEvery] at rest — and neither moves it while the box is being typed
 // into, because a tip nobody could read has not been shown.
 func TestHomeRowMovesOnEveryVisitAndAtRest(t *testing.T) {
 	lab := newHomeLab(t)
@@ -89,7 +89,7 @@ func TestHomeRowMovesOnEveryVisitAndAtRest(t *testing.T) {
 	}
 
 	// AT REST THE BEAT MOVES IT, but not before its time.
-	now = now.Add(homeHintEvery - time.Second)
+	now = now.Add(hintEvery - time.Second)
 	a.noticeHomeBeat()
 	if got := a.notices.current[slotHome]; got != second {
 		t.Fatalf("the beat moved the row early, to %q", got)
@@ -103,7 +103,7 @@ func TestHomeRowMovesOnEveryVisitAndAtRest(t *testing.T) {
 
 	// A BOX BEING TYPED INTO DOES NOT AGE THE ROW.
 	a.key(key("x"))
-	now = now.Add(2 * homeHintEvery)
+	now = now.Add(2 * hintEvery)
 	a.noticeHomeBeat()
 	if got := a.notices.current[slotHome]; got != third {
 		t.Fatalf("the beat moved the row under a typed box, to %q", got)
@@ -133,7 +133,7 @@ func TestHomeRowMovesOnEveryVisitAndAtRest(t *testing.T) {
 	}
 }
 
-// A tip retired from home is retired from the conversation's foot as well, and
+// A tip retired from home is retired from the conversation's row as well, and
 // the row moves on at once rather than standing empty.
 func TestATipSpentOnHomeIsSpentEverywhere(t *testing.T) {
 	lab := newHomeLab(t)
@@ -170,58 +170,60 @@ func TestATipSpentOnHomeIsSpentEverywhere(t *testing.T) {
 	}
 }
 
-// Home counts every turn of its rotation as a showing, and a tip that has come
-// round [homeShownDefault] times is taken as read.
-func TestHomeCountsEveryTurnOfItsRotation(t *testing.T) {
-	b := bareNoticeBoard()
-	cands := []noticeCandidate{{id: "a", armed: true}, {id: "b", armed: true}}
-	turns := map[string]int{}
-	for i := 0; i < 2*homeShownDefault; i++ {
-		b.homeAdvance = true
-		id := b.pick(slotHome, cands, 0)
-		if id == "" {
-			t.Fatalf("turn %d put nothing on the row", i)
+// Every turn of a row's rotation is a showing, on either box, and a tip that
+// has come round [noticeShownDefault] times is taken as read.
+func TestEveryTurnOfTheRotationIsAShowing(t *testing.T) {
+	for _, slot := range []noticeSlot{slotHome, slotHint} {
+		b := bareNoticeBoard()
+		cands := []noticeCandidate{{id: "a", armed: true}, {id: "b", armed: true}}
+		turns := map[string]int{}
+		for i := 0; i < 2*noticeShownDefault; i++ {
+			b.advance[slot] = true
+			id := b.pick(slot, cands)
+			if id == "" {
+				t.Fatalf("turn %d put nothing on the row", i)
+			}
+			b.take(slot, id, noticeShownDefault, true)
+			turns[id]++
 		}
-		b.take(slotHome, id, homeShownDefault, 0)
-		turns[id]++
-	}
-	if turns["a"] != homeShownDefault || turns["b"] != homeShownDefault {
-		t.Fatalf("the ring did not share the turns evenly: %v", turns)
-	}
-	if !b.retired("a") || !b.retired("b") {
-		t.Fatalf("after %d turns each the tips are not retired: %+v", homeShownDefault, b.ledger)
-	}
-	b.homeAdvance = true
-	if got := b.pick(slotHome, cands, 0); got != "" {
-		t.Fatalf("a retired tip came back: %q", got)
+		if turns["a"] != noticeShownDefault || turns["b"] != noticeShownDefault {
+			t.Fatalf("the ring did not share the turns evenly: %v", turns)
+		}
+		if !b.retired("a") || !b.retired("b") {
+			t.Fatalf("after %d turns each the tips are not retired: %+v", noticeShownDefault, b.ledger)
+		}
+		b.advance[slot] = true
+		if got := b.pick(slot, cands); got != "" {
+			t.Fatalf("a retired tip came back: %q", got)
+		}
 	}
 }
 
 // A tip that stops being eligible stands down at once and the next takes over,
 // without waiting for a visit — and an event between visits otherwise leaves
 // the row alone.
-func TestHomeRowHoldsBetweenVisitsAndYieldsWhenSpent(t *testing.T) {
+func TestARowHoldsBetweenVisitsAndYieldsWhenSpent(t *testing.T) {
 	b := bareNoticeBoard()
 	cands := []noticeCandidate{{id: "a", armed: true}, {id: "b", armed: true}, {id: "c", armed: true}}
-	b.homeAdvance = true
-	if got := b.pick(slotHome, cands, 0); got != "a" {
+	b.advance[slotHome] = true
+	if got := b.pick(slotHome, cands); got != "a" {
 		t.Fatalf("the ring did not start at the top: %q", got)
 	}
-	b.take(slotHome, "a", homeShownDefault, 0)
+	b.take(slotHome, "a", noticeShownDefault, true)
 	// An event with nothing advancing keeps the one standing.
-	if got := b.pick(slotHome, cands, 0); got != "a" {
+	if got := b.pick(slotHome, cands); got != "a" {
 		t.Fatalf("an event moved the row without a visit, to %q", got)
 	}
 	// The one standing retiring hands the row to the next in the ring.
 	b.retire("a")
-	if got := b.pick(slotHome, cands, 0); got != "b" {
+	if got := b.pick(slotHome, cands); got != "b" {
 		t.Fatalf("a spent tip did not yield to the next: %q", got)
 	}
 	// And with nothing eligible the row is empty rather than stale.
 	for _, c := range cands {
 		b.retire(c.id)
 	}
-	if got := b.pick(slotHome, cands, 0); got != "" {
+	if got := b.pick(slotHome, cands); got != "" {
 		t.Fatalf("an empty ring still says %q", got)
 	}
 }
@@ -240,37 +242,28 @@ func TestEveryTipIsOnTheManualPage(t *testing.T) {
 	}
 }
 
-// The cut was thirty, and the row above home's rule draws only rows that name
-// it: a note row that names a box, or a row filed under home's slot, does not
-// build.
-func TestTheTableIsThirtyHintsAndEachNamesItsBoxes(t *testing.T) {
-	hints, home, chat := 0, 0, 0
+// The cut was thirty, and there is ONE set: every hint draws on both boxes,
+// a news row on neither, and a row filed under home's slot does not build.
+func TestTheTableIsThirtyHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
+	hints := 0
 	for _, n := range notices {
 		if n.slot != slotHint {
 			continue
 		}
 		hints++
-		if n.draws(slotHome) {
-			home++
+		if !n.draws(slotHome) || !n.draws(slotHint) {
+			t.Errorf("hint %q does not draw on both boxes", n.id)
 		}
-		if n.draws(slotHint) {
-			chat++
+		if n.draws(slotNote) {
+			t.Errorf("hint %q draws in the transcript", n.id)
 		}
 	}
 	if hints != 30 {
 		t.Fatalf("the table holds %d hints, want 30 — the cut is deliberate, and the manual page counts them", hints)
 	}
-	if home == 0 || chat == 0 {
-		t.Fatalf("%d hints draw on home and %d in a conversation; both boxes need some", home, chat)
-	}
-	// A hint that names no box is the conversation's, which is what every row
-	// meant before home had a row.
-	plain := notice{id: "boxless", slot: slotHint, armed: ready, text: "x"}
-	if !plain.draws(slotHint) || plain.draws(slotHome) {
-		t.Fatal("a hint naming no box is not the conversation's alone")
-	}
-	if err := checkNotices([]notice{{id: "noted", slot: slotNote, place: onHome, armed: ready, text: "x"}}); err == nil {
-		t.Fatal("a note naming a box was accepted")
+	news := notice{id: "noted", slot: slotNote, armed: ready, text: "x"}
+	if news.draws(slotHint) || news.draws(slotHome) || !news.draws(slotNote) {
+		t.Fatal("a news row draws beside a box")
 	}
 	if err := checkNotices([]notice{{id: "filed", slot: slotHome, armed: ready, text: "x"}}); err == nil {
 		t.Fatal("a row filed under home's slot was accepted")

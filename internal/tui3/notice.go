@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
 
@@ -17,17 +19,32 @@ import (
 // A surface learns you by what you have already done, and this file is where it
 // keeps what it has told you. Two kinds of thing live here at launch:
 //
-//   - EARNED HINTS. One line in the legend's hint slot — `ctrl+. sees every task
-//     this project has run` — that fires the first time it is relevant (a task
-//     just started) and RETIRES FOR GOOD the first time the gesture it teaches is
-//     used (the task page opened), or after it has been shown in a few separate
-//     sessions without being acted on. A hint that stays up after you have
-//     learned the key is a cheatsheet, and a cheatsheet is read once and never
-//     again (render.go's [app.hintWord] says the same about static keys).
+//   - EARNED HINTS. One dim line over the box — `ctrl+. sees every task this
+//     project has run` — drawn on the row directly above the rule over home's
+//     box, and on the same row above a conversation's box once the person has
+//     been idle there for a minute. A tip RETIRES FOR GOOD the first time the
+//     gesture it teaches is used (the task page opened), or after it has been
+//     shown [noticeShownDefault] times without being acted on. A hint that stays
+//     up after you have learned the key is a cheatsheet, and a cheatsheet is
+//     read once and never again (render.go's [app.hintWord] says the same about
+//     static keys).
 //   - NEWS. One dim transcript line, said once, the first time this binary runs
 //     after its build changed — the place a shipped feature announces itself.
 //     The channel exists and is empty; a wave that ships something registers a
 //     row with [notice.news] set and writes nothing else.
+//
+// ONE TABLE, TWO BOXES. Until 2026-09-22 a hint row named which box it could
+// draw beside and the conversation's foot ranked its rows by a priority number
+// while home's row took turns. The owner ruled that there is ONE set of tips
+// and that both boxes say them the same way: in the table's order, round and
+// round, every tip that is true getting its turn — with one exception, that a
+// tip which has JUST become true jumps the ring, so `/compact summarizes the
+// conversation now` is said when the window crosses half and not forty minutes
+// later ([noticeBoard.pick]). The two boxes keep two clocks, because home has
+// no turns and a conversation has no visits: home's row moves on every visit
+// and every [hintEvery] at rest; a conversation's row appears only once the
+// person has been idle for [chatHintIdle], and then moves on every [hintEvery]
+// while they stay idle ([app.noticeIdleBeat]).
 //
 // THE TABLE BELOW IS THE ONE PLACE A NOTICE IS WRITTEN DOWN, the way commands.go
 // is the one place a command is. [checkNotices] runs over it at init and fails
@@ -45,50 +62,35 @@ import (
 // need no frame.
 //
 // WHAT IS REMEMBERED IS PER PROFILE, in one small file beside config.json
-// (notice_ledger.go): how many sessions each notice has been shown in, when it
+// (notice_ledger.go): how many times each notice has been shown, when it
 // retired, and which build the news channel last saw. A missing or unreadable
 // ledger is an empty one — a person is never told their hints file is corrupt,
 // because the worst case is a tip they have seen before.
 
-// noticeSlot is where a notice may draw. Exactly two exist; the type is an enum
-// rather than a bool so a later wave can add one without touching the rows that
-// exist — a new slot lands as one constant above [noticeSlots] and one case in
+// noticeSlot is where a notice may draw. The type is an enum rather than a bool
+// so a later wave can add one without touching the rows that exist — a new
+// slot lands as one constant above [noticeSlots] and one case in
 // [app.noticeShow].
 type noticeSlot uint8
 
 const (
-	// slotHint is the legend's hint slot (render.go's [app.legendRight]), and a
-	// notice standing in it is the LOWEST RUNG THERE IS: every state key and every
-	// existing hint outranks it, so a tip is only ever drawn over an idle box.
+	// slotHint is the row directly above the rule over a conversation's box
+	// (view.go's [app.chrome] draws it on the foot's clearance), drawn only
+	// once the person has been idle for [chatHintIdle] and the frame is quiet
+	// enough for a tip to be read over an idle box ([app.noticeHint]).
 	slotHint noticeSlot = iota
 	// slotNote is one calm transcript line through [feed.note]. It is reserved
 	// for news: a hint belongs beside the box it is about, and a line in the
 	// conversation is for something that is true once.
 	slotNote
-	// slotHome is the dim row directly above the rule over home's box
-	// (pages.go's [placeFrameWithBar]), and it is the hint slot's twin on the
-	// other box a person types into: the same table, the same ledger, the same
-	// retirement — and a different clock, because home has no turns. The rows
-	// that may stand in it are the hint rows whose [notice.place] says so, so a
-	// tip retired by its gesture is retired on both boxes at once.
+	// slotHome is the same row over home's box (pages.go's [placeFrameWithBar]),
+	// and it is the hint slot's twin on the other box a person types into: the
+	// same table, the same ledger, the same retirement — and a different clock,
+	// because home has no turns. Every hint row draws in both, so a tip retired
+	// by its gesture is retired on both boxes at once.
 	slotHome
 	// noticeSlots is how many there are. A new slot goes above this line.
 	noticeSlots
-)
-
-// hintPlace is WHERE a hint row may draw: the conversation's foot, home's row,
-// or both. It is a set rather than a second slot on the row because one tip is
-// one promise — `/model lists every model` is as true on home as it is in a
-// conversation, and a person who opened the picker from either has learned it.
-type hintPlace uint8
-
-const (
-	// inChat is the conversation's foot ([slotHint]).
-	inChat hintPlace = 1 << iota
-	// onHome is the row above home's rule ([slotHome]).
-	onHome
-	// everywhere is both.
-	everywhere = inChat | onHome
 )
 
 // The events that prove a gesture happened. They are named constants beside the
@@ -183,9 +185,6 @@ const (
 	eventSubharnessOpened = "subharness-opened"
 	// eventConnectOpened is the connect panel reached for (connectpanel.go).
 	eventConnectOpened = "connect-opened"
-	// eventMediaAsked is the session beginning a picture, sound, music or video
-	// call — proof the person knows to ask (app.go's event seam).
-	eventMediaAsked = "media-asked"
 )
 
 // noticeEvents is every event there is, in one list, so the table check can
@@ -199,14 +198,7 @@ var noticeEvents = []string{
 	eventFolderPicked, eventModelListOpened, eventCrewShown, eventBudgetShown,
 	eventSpendOpened, eventSteered, eventQueued, eventChatStarted,
 	eventPlaceJumped, eventRemembered, eventSearchOpened, eventSubharnessOpened,
-	eventConnectOpened, eventMediaAsked,
-}
-
-// mediaTools is every tool whose call proves a person asked for a picture, a
-// voice, music or film; the belt's own names (internal/session).
-var mediaTools = map[string]bool{
-	"generate_image": true, "generate_video": true, "generate_music": true,
-	"speak": true, "edit_video": true,
+	eventConnectOpened,
 }
 
 // notice is one thing the surface may tell a person, and the whole of the rule
@@ -217,16 +209,6 @@ type notice struct {
 	// a person has already been told this and does not want to be again.
 	id   string
 	slot noticeSlot
-	// place is where a [slotHint] row may draw — the conversation's foot, home's
-	// row, or both. The zero value is the conversation's foot, which is what
-	// every row meant before home had a row; a news row leaves it zero. Home's
-	// row takes the rows that name it in the table's order, round and round
-	// ([noticeBoard.pick]).
-	place hintPlace
-	// priority decides between two notices eligible for the conversation's
-	// slot at once; higher wins, and the table's order breaks a tie. Home's row
-	// ignores it: there, every eligible tip has its turn.
-	priority int
 	// armed says whether the notice is relevant right now. It is asked at every
 	// event and never between them, so it must be cheap and must read only what
 	// the surface already holds — a hint whose arming fact would need a counter
@@ -242,39 +224,35 @@ type notice struct {
 	// ages out.
 	retire string
 	// maxShown is how many showings the notice gets before it retires by
-	// itself, whether or not the gesture was ever used; zero means the default
-	// for where it draws — [noticeShownDefault] in a conversation, where a
-	// showing is a session, and [homeShownDefault] for a row home takes, where
-	// a showing is one turn of home's rotation. A hint standing in a slot for
-	// an hour is one showing either way.
+	// itself, whether or not the gesture was ever used; zero means
+	// [noticeShownDefault]. A showing is one turn of a row's rotation, on
+	// either box: a tip standing on home for an hour is one showing.
 	maxShown int
 	// news marks the what's-new channel: a row that is armed only on the first
 	// launch after the binary's build changed, and shown once.
 	news bool
 }
 
-// noticeShownDefault is how many sessions a hint may be shown in before it is
-// taken as read. Three is one more than a coincidence: a tip seen in two
-// separate sessions and never acted on is a tip about something the person
-// does not want, and the fourth showing would be the surface nagging.
-const noticeShownDefault = 3
+// noticeShownDefault is how many showings a hint gets before it is taken as
+// read. Six turns of a rotation, on either box, is one afternoon of a tip
+// coming round: a tip seen that often and never acted on is a tip about
+// something the person does not want, and the seventh showing would be the
+// surface nagging.
+const noticeShownDefault = 6
 
-// homeShownDefault is how many turns of home's rotation a tip may take before
-// it is taken as read. It is twice the conversation's figure because home's
-// showings are shorter and more frequent: the row changes on every visit and
-// every couple of minutes at rest, so six showings is still one afternoon.
-const homeShownDefault = 6
+// hintEvery is how long a tip stands on a row before the next one takes it,
+// while the row is left at rest: home at rest, or a conversation the person
+// has gone quiet in. Two minutes is long enough to be read and short enough
+// that a window left open over lunch has said a few things.
+const hintEvery = 2 * time.Minute
 
-// homeHintEvery is how long a tip stands on home's row before the next one
-// takes it, while home is left at rest. Two minutes is long enough to be read
-// and short enough that a home left open over lunch has said a few things.
-const homeHintEvery = 2 * time.Minute
-
-// noticeGap is the fewest turns between one hint standing down and a different
-// one taking the slot. It is what keeps a busy first session from reading as a
-// slideshow: three hints arming in three consecutive turns are shown one at a
-// time, each with room to be read.
-const noticeGap = 2
+// chatHintIdle is how long a conversation has to have been left alone —
+// no key pressed, no turn ending — before its row says a tip at all. A
+// conversation is where the work is, and a sentence appearing over the box
+// while somebody is typing or reading an answer that has just landed is the
+// surface talking over them; a minute of nothing is the moment they are
+// looking around.
+const chatHintIdle = time.Minute
 
 // The arming thresholds, each named once so the manual page and the table
 // cannot drift apart about when a hint appears.
@@ -305,15 +283,16 @@ var (
 	// steering or queueing over an answer means nothing before one has arrived.
 	spoken = func(a *app) bool { return a.turn >= 1 }
 	// askable is home's own door standing — the errand builder a launch may or
-	// may not hand the surface (homeexchange.go's [app.askHereWith]).
-	askable = func(a *app) bool { return a.errand != nil }
+	// may not hand the surface (homeexchange.go's [app.askHereWith]) — and the
+	// person standing on home, where the sentence it arms is true.
+	askable = func(a *app) bool { return a.errand != nil && a.at(pageHome) }
 )
 
-// notices is the table, in priority order for reading. Text is chosen to agree
-// with the manual page that answers each hint (internal/manual/chat's
-// hints-and-tips.md), so the tip and the page say the same words — and
-// notice_test.go holds the page to every line here, so the table cannot say a
-// thing the manual does not.
+// notices is the table, and ITS ORDER IS THE ORDER THE ROWS COME ROUND IN on
+// both boxes ([noticeBoard.pick]). Text is chosen to agree with the manual page
+// that answers each hint (internal/manual/chat's hints-and-tips.md), so the tip
+// and the page say the same words — and notice_test.go holds the page to every
+// line here, so the table cannot say a thing the manual does not.
 //
 // THIRTY ROWS, AND THE CUT WAS DELIBERATE. A survey of the surface on
 // 2026-09-21 turned up forty-eight lines worth saying; these are the thirty
@@ -324,7 +303,7 @@ var (
 var notices = []notice{
 	// ── the seven that were here first ──────────────────────────────────────
 	{
-		id: "compact-at-half", slot: slotHint, place: everywhere, priority: 90,
+		id: "compact-at-half", slot: slotHint,
 		armed: func(a *app) bool {
 			pct, ok := a.ctxPercent()
 			return ok && pct >= contextHintPct
@@ -333,25 +312,25 @@ var notices = []notice{
 		retire: eventCompacted,
 	},
 	{
-		id: "cost-after-spend", slot: slotHint, place: everywhere, priority: 85,
+		id: "cost-after-spend", slot: slotHint,
 		armed:  func(a *app) bool { return a.cost >= costHintUSD },
 		text:   "/cost says what this conversation has spent",
 		retire: eventCostShown,
 	},
 	{
-		id: "task-page-after-first-task", slot: slotHint, place: everywhere, priority: 80,
+		id: "task-page-after-first-task", slot: slotHint,
 		armed:  func(a *app) bool { return a.notices.seen[eventTaskStarted] },
 		text:   "ctrl+. sees every task this project has run",
 		retire: eventTaskPageOpened,
 	},
 	{
-		id: "rewind-after-long-answer", slot: slotHint, place: everywhere, priority: 70,
+		id: "rewind-after-long-answer", slot: slotHint,
 		armed:  func(a *app) bool { return a.lastAnswerRunes() >= longAnswerRunes },
 		text:   "/rewind takes back an earlier message",
 		retire: eventRewound,
 	},
 	{
-		id: "files-after-first-deliverable", slot: slotHint, place: everywhere, priority: 60,
+		id: "files-after-first-deliverable", slot: slotHint,
 		armed:  func(a *app) bool { return a.notices.seen[eventDeliverableMade] },
 		text:   "/files finds everything made for you",
 		retire: eventFilesOpened,
@@ -360,160 +339,164 @@ var notices = []notice{
 		// The welcome box already walked this directory for its recent column
 		// (welcome.go), so the fact is at hand for nothing; a fresh directory
 		// with no earlier conversation has an empty list and the hint stays down.
-		id: "resume-when-earlier-exists", slot: slotHint, place: everywhere, priority: 40,
+		id: "resume-when-earlier-exists", slot: slotHint,
 		armed:  func(a *app) bool { return len(a.welcome.recent) > 0 },
 		text:   "/resume opens an earlier conversation",
 		retire: eventResumeOpened,
 	},
 	{
-		id: "standing-after-several-sessions", slot: slotHint, place: everywhere, priority: 10,
+		id: "standing-after-several-sessions", slot: slotHint,
 		armed:  func(a *app) bool { return len(a.welcome.recent) >= 3 },
 		text:   "/standing keeps something always true",
 		retire: eventStandingOpened,
 	},
 	// ── starting work ───────────────────────────────────────────────────────
 	{
-		id: "ask-on-home", slot: slotHint, place: onHome,
+		id: "ask-on-home", slot: slotHint,
 		armed:  askable,
 		text:   "/ask answers right here without opening a conversation",
 		retire: eventAsked,
 	},
 	{
-		id: "task-in-chat", slot: slotHint, place: inChat, priority: 55,
+		id: "task-in-chat", slot: slotHint,
 		armed:  spoken,
 		text:   "/task starts work you can walk away from",
 		retire: eventTaskTyped,
 	},
 	{
-		id: "standing-by-chord", slot: slotHint, place: everywhere, priority: 20,
+		id: "standing-by-chord", slot: slotHint,
 		armed:  ready,
 		text:   "ctrl+enter sends your message as something to keep true",
 		retire: eventStandingOpened,
 	},
 	{
-		id: "manual-answers", slot: slotHint, place: everywhere, priority: 26,
+		id: "manual-answers", slot: slotHint,
 		armed:  ready,
 		text:   "/manual answers any question about codeaf from its own manual",
 		retire: eventManualAsked,
 	},
 	{
-		id: "reopen-tab", slot: slotHint, place: everywhere, priority: 17,
+		id: "reopen-tab", slot: slotHint,
 		armed:  ready,
 		text:   "ctrl+shift+t reopens the tab you just closed",
 		retire: eventTabReopened,
 	},
 	// ── files and context ───────────────────────────────────────────────────
 	{
-		id: "at-completion", slot: slotHint, place: everywhere, priority: 28,
+		id: "at-completion", slot: slotHint,
 		armed:  ready,
 		text:   "@ completes a file, a folder or a task into your message",
 		retire: eventAtOpened,
 	},
 	{
-		id: "attach-a-file", slot: slotHint, place: everywhere, priority: 24,
+		id: "attach-a-file", slot: slotHint,
 		armed:  ready,
 		text:   "/attach sends a file along with your message",
 		retire: eventAttached,
 	},
 	{
-		id: "pick-a-folder", slot: slotHint, place: everywhere, priority: 22,
+		id: "pick-a-folder", slot: slotHint,
 		armed:  ready,
 		text:   "/folder picks the folder codeaf works in",
 		retire: eventFolderPicked,
 	},
 	{
-		id: "attach-a-picture", slot: slotHint, place: everywhere, priority: 6,
+		id: "attach-a-picture", slot: slotHint,
 		armed:  ready,
 		text:   "/attach takes a picture too, or paste a screenshot in",
 		retire: eventAttached,
 	},
 	{
-		id: "export-the-conversation", slot: slotHint, place: inChat, priority: 30,
+		id: "export-the-conversation", slot: slotHint,
 		armed:  func(a *app) bool { return a.turn >= 2 },
 		text:   "/export writes this whole conversation to a file",
 		retire: eventDeliverableMade,
 	},
 	// ── models, thinking and cost ───────────────────────────────────────────
 	{
-		id: "model-list", slot: slotHint, place: everywhere, priority: 25,
+		id: "model-list", slot: slotHint,
 		armed:  ready,
 		text:   "/model lists every model, /model <slug> switches at once",
 		retire: eventModelListOpened,
 	},
 	{
-		id: "crew-presets", slot: slotHint, place: everywhere, priority: 13,
+		id: "crew-presets", slot: slotHint,
 		armed:  ready,
 		text:   "/crew sets the models codeaf uses on its own behalf",
 		retire: eventCrewShown,
 	},
 	{
-		id: "budget-cap", slot: slotHint, place: everywhere, priority: 14,
+		id: "budget-cap", slot: slotHint,
 		armed:  ready,
 		text:   "/budget caps what today may cost",
 		retire: eventBudgetShown,
 	},
 	{
-		id: "spend-place", slot: slotHint, place: everywhere, priority: 15,
+		id: "spend-place", slot: slotHint,
 		armed:  ready,
 		text:   "alt+3 shows what this machine has spent, by the day",
 		retire: eventSpendOpened,
 	},
 	// ── steering a running answer ───────────────────────────────────────────
 	{
-		id: "steer-with-enter", slot: slotHint, place: inChat, priority: 45,
+		id: "steer-with-enter", slot: slotHint,
 		armed:  spoken,
 		text:   "enter while an answer is coming stops it and steers",
 		retire: eventSteered,
 	},
 	{
-		id: "queue-with-ctrl-q", slot: slotHint, place: inChat, priority: 35,
+		id: "queue-with-ctrl-q", slot: slotHint,
 		armed:  spoken,
 		text:   "ctrl+q queues this message for after the current turn",
 		retire: eventQueued,
 	},
 	// ── moving around ───────────────────────────────────────────────────────
 	{
-		id: "new-chat", slot: slotHint, place: everywhere, priority: 18,
+		id: "new-chat", slot: slotHint,
 		armed:  ready,
 		text:   "ctrl+t starts a fresh chat in this folder",
 		retire: eventChatStarted,
 	},
 	{
-		id: "place-chords", slot: slotHint, place: everywhere, priority: 16,
+		id: "place-chords", slot: slotHint,
 		armed:  ready,
 		text:   "alt+1 to alt+7 jump straight to a place",
 		retire: eventPlaceJumped,
 	},
 	// ── memory, accounts and the rest ───────────────────────────────────────
 	{
-		id: "remember-one-thing", slot: slotHint, place: everywhere, priority: 12,
+		id: "remember-one-thing", slot: slotHint,
 		armed:  ready,
 		text:   "/remember keeps one thing across conversations",
 		retire: eventRemembered,
 	},
 	{
-		id: "search-place", slot: slotHint, place: everywhere, priority: 11,
+		id: "search-place", slot: slotHint,
 		armed:  ready,
 		text:   "/search finds anything ever said on this machine",
 		retire: eventSearchOpened,
 	},
 	{
-		id: "subharness-list", slot: slotHint, place: everywhere, priority: 9,
+		id: "subharness-list", slot: slotHint,
 		armed:  ready,
 		text:   "/subharness lists the programs you can run",
 		retire: eventSubharnessOpened,
 	},
 	{
-		id: "connect-accounts", slot: slotHint, place: everywhere, priority: 8,
+		id: "connect-accounts", slot: slotHint,
 		armed:  ready,
 		text:   "/connect links Google, Slack or another model service",
 		retire: eventConnectOpened,
 	},
 	{
-		id: "ask-for-media", slot: slotHint, place: everywhere, priority: 7,
-		armed:  ready,
-		text:   "ask for a picture, a voiceover, music or a video",
-		retire: eventMediaAsked,
+		// It took the seat `ask for a picture, a voiceover, music or a video`
+		// held until 2026-09-22 (the owner's call): copy mode is the one door
+		// on this surface with nothing on screen pointing at it, because the
+		// alt screen takes the terminal's own selection away (copymode.go).
+		id: "copy-mode", slot: slotHint,
+		armed:  spoken,
+		text:   "ctrl+b freezes the screen so you can read and copy from it",
+		retire: eventCopyEntered,
 	},
 }
 
@@ -549,10 +532,8 @@ func checkNotices(list []notice) error {
 			return fmt.Errorf("notice %q retires on %q, which nothing fires", n.id, n.retire)
 		case n.maxShown < 0:
 			return fmt.Errorf("notice %q has a negative showing limit", n.id)
-		case n.slot != slotHint && n.place != 0:
-			return fmt.Errorf("notice %q names a box to draw beside but is not a hint", n.id)
 		case n.slot == slotHome:
-			return fmt.Errorf("notice %q is filed under home's slot; a hint names home through its place instead", n.id)
+			return fmt.Errorf("notice %q is filed under home's slot; a hint draws on home by being a hint", n.id)
 		}
 		seen[n.id] = true
 		for _, word := range noticeBanned {
@@ -573,25 +554,19 @@ func init() {
 	}
 }
 
-// limit is the showing limit with the default applied: the row's own figure,
-// else home's default for a row home takes, else the conversation's.
+// limit is the showing limit with the default applied.
 func (n notice) limit() int {
 	if n.maxShown > 0 {
 		return n.maxShown
 	}
-	if n.place&onHome != 0 {
-		return homeShownDefault
-	}
 	return noticeShownDefault
 }
 
-// draws reports whether the row may stand in a slot.
+// draws reports whether the row may stand in a slot: a hint row stands in
+// both hint slots, and a news row in the note slot.
 func (n notice) draws(slot noticeSlot) bool {
-	switch slot {
-	case slotHint:
-		return n.slot == slotHint && (n.place == 0 || n.place&inChat != 0)
-	case slotHome:
-		return n.slot == slotHint && n.place&onHome != 0
+	if n.slot == slotHint {
+		return slot == slotHint || slot == slotHome
 	}
 	return n.slot == slot
 }
@@ -617,7 +592,8 @@ type noticeBoard struct {
 	// recorded nothing; news is whether the ledger last saw a different one.
 	build string
 	news  bool
-	// enabled is the Display tab's "hints" row. Off silences both slots.
+	// enabled is the Workspace tab's "disable hints" row, read the other way
+	// up. Off silences every slot.
 	enabled bool
 	// current is the id standing in each slot, "" for none.
 	current [noticeSlots]string
@@ -628,25 +604,33 @@ type noticeBoard struct {
 	// the surface not having noticed.
 	seen map[string]bool
 	done map[string]bool
-	// shown is every notice counted as shown this session, so an hour in the
-	// slot is one showing and not one per event.
-	shown map[string]bool
-	// lastHintTurn is the turn the hint slot last changed hands on, or -1 when
-	// it never has; [noticeGap] is measured from it.
-	lastHintTurn int
-	// homeAdvance asks the next decision about home's row to move on to the
-	// next eligible tip rather than keep the one standing. It is raised by
-	// [app.noticeHomeRotate] — a visit, or the beat at rest — and spent by the
-	// pick that honours it, so an event between two rotations leaves the row
-	// alone unless the tip on it has just retired.
-	homeAdvance bool
-	// homeAt is when home's row last changed hands, or zero when it never
-	// has; [homeHintEvery] is measured from it by the beat.
-	homeAt time.Time
-	// homeHidden is the cross on the row having been pressed: the tip standing
-	// is not drawn until the next rotation, which clears it. It is this
+	// armed is, per slot, whether each row was armed at that slot's last
+	// decision — what makes a row FRESH at the next one ([noticeCandidate.fresh]).
+	armed [noticeSlots]map[string]bool
+	// advance asks the next decision about a slot to move on to the next
+	// eligible tip rather than keep the one standing. It is raised by
+	// [app.noticeRotate] — a visit to home, a beat at rest — and spent by the
+	// pick that honours it, so an event between two rotations leaves a row
+	// alone unless the tip on it has just retired or a fresh one has arrived.
+	advance [noticeSlots]bool
+	// at is when each slot last changed hands, or zero when it never has;
+	// [hintEvery] is measured from it by the beats.
+	at [noticeSlots]time.Time
+	// hidden is the cross on a row having been pressed: the tip standing is
+	// not drawn until the slot next changes hands, which clears it. It is this
 	// session's and never the ledger's — putting a tip away is not using it.
-	homeHidden bool
+	hidden [noticeSlots]bool
+	// touched is the last proof the person was doing something in a
+	// conversation — a key pressed, a turn ending — and due is whether they
+	// have since been quiet for [chatHintIdle], which is what lets the
+	// conversation's row draw at all ([app.noticeHint]).
+	touched time.Time
+	due     bool
+	// idleArmed and idleGen are the conversation's one clock: whether a beat is
+	// pending, and which arming it belongs to, so a beat from a clock that has
+	// since been re-armed is dropped ([app.noticeIdleBeat]).
+	idleArmed bool
+	idleGen   int
 }
 
 // bareNoticeBoard is a board with nothing behind it: no ledger on disk, no
@@ -655,25 +639,21 @@ type noticeBoard struct {
 // nothing — which is why it is reachable from a frame and the loader is not.
 func bareNoticeBoard() noticeBoard {
 	return noticeBoard{
-		enabled:      true,
-		seen:         map[string]bool{},
-		done:         map[string]bool{},
-		shown:        map[string]bool{},
-		lastHintTurn: -1,
+		enabled: true,
+		seen:    map[string]bool{},
+		done:    map[string]bool{},
 	}
 }
 
 // newNoticeBoard loads the ledger and decides whether there is news.
 func newNoticeBoard(path, build string, enabled bool) noticeBoard {
 	b := noticeBoard{
-		ledger:       loadNoticeLedger(path),
-		path:         path,
-		build:        build,
-		enabled:      enabled,
-		seen:         map[string]bool{},
-		done:         map[string]bool{},
-		shown:        map[string]bool{},
-		lastHintTurn: -1,
+		ledger:  loadNoticeLedger(path),
+		path:    path,
+		build:   build,
+		enabled: enabled,
+		seen:    map[string]bool{},
+		done:    map[string]bool{},
 	}
 	// A FIRST LAUNCH HAS NO NEWS. Nothing is new to somebody who has never
 	// seen the older build; the channel opens on the second build a profile
@@ -714,72 +694,47 @@ func (b *noticeBoard) retire(id string) {
 // noticeCandidate is one row as the board sees it at an event: evaluated, so
 // that [noticeBoard.pick] needs no frame to be tested against.
 type noticeCandidate struct {
-	id       string
-	priority int
-	armed    bool
-	limit    int
+	id    string
+	armed bool
+	// fresh is a row that is armed now and was not at this slot's last
+	// decision — the one thing that jumps the ring.
+	fresh bool
 }
 
-// pick decides what a slot should hold, given the candidates for it and the
-// turn the surface is on. It returns "" for nothing, and it changes nothing on
-// the board — [noticeBoard.take] records the decision.
+// pick decides what a slot should hold, given the candidates for it. It
+// returns "" for nothing, and it changes nothing on the board but the
+// [noticeBoard.advance] it spends — [noticeBoard.take] records the decision.
 //
-// The rules, in the order they are applied:
+// IT IS A ROTATION AND NOT A RANKING: EVERY ELIGIBLE TIP HAS ITS TURN, in the
+// table's order, round and round. The one standing keeps standing until the
+// slot is asked to advance — or until it stops being eligible, when the next
+// takes over at once so the row is never blank while there is something true
+// to say. With one eligible tip the rotation is that tip; with none the row
+// is empty. A retired notice, or one retired this session, is never a
+// candidate.
 //
-//   - A retired notice, or one retired this session, is never a candidate.
-//   - Among the armed ones the highest priority wins, table order breaking a
-//     tie. The one already standing is preferred over an equal.
-//   - THE HINT SLOT CHANGES HANDS SLOWLY. A different id may take it only once
-//     [noticeGap] turns have passed since it last changed, so three hints arming
-//     in three turns are read one at a time. The slot's first occupant of the
-//     session waits on nothing. A slot going EMPTY never waits: a hint whose
-//     arming fact stopped being true stands down at once.
-func (b *noticeBoard) pick(slot noticeSlot, cands []noticeCandidate, turn int) string {
+// THE ONE EXCEPTION IS A TIP THAT HAS JUST BECOME TRUE. It jumps the ring
+// whether or not the slot was asked to move: `/compact summarizes the
+// conversation now` is worth saying when the window crosses half, and a ring
+// of twenty tips would otherwise bring it round the best part of an hour
+// later. It jumps once — at the decision that first sees it armed — and then
+// takes its turn like every other row.
+func (b *noticeBoard) pick(slot noticeSlot, cands []noticeCandidate) string {
 	held := b.current[slot]
-	if slot == slotHome {
-		return b.pickHome(cands, held)
-	}
-	best, found := noticeCandidate{}, false
+	eligible := func(c noticeCandidate) bool { return c.armed && !b.done[c.id] && !b.retired(c.id) }
+	advance := b.advance[slot]
+	b.advance[slot] = false
 	for _, c := range cands {
-		if !c.armed || b.done[c.id] || b.retired(c.id) {
-			continue
-		}
-		if !found || c.priority > best.priority || (c.priority == best.priority && c.id == held) {
-			best, found = c, true
+		if c.fresh && c.id != held && eligible(c) {
+			return c.id
 		}
 	}
-	if !found {
-		return ""
-	}
-	if slot == slotHint && best.id != held && b.lastHintTurn >= 0 && turn-b.lastHintTurn < noticeGap {
-		// Too soon for a different line. The one standing keeps standing if it
-		// is still eligible, and the slot goes quiet otherwise.
-		for _, c := range cands {
-			if c.id == held && c.armed && !b.done[c.id] && !b.retired(c.id) {
-				return held
-			}
-		}
-		return ""
-	}
-	return best.id
-}
-
-// pickHome is [noticeBoard.pick] for home's row, and it is a rotation rather
-// than a ranking: EVERY ELIGIBLE TIP HAS ITS TURN, in the table's order, round
-// and round. The one standing keeps standing until [homeAdvance] asks for the
-// next — or until it stops being eligible, when the next takes over at once
-// so the row is never blank while there is something true to say. With one
-// eligible tip the rotation is that tip; with none the row is empty.
-func (b *noticeBoard) pickHome(cands []noticeCandidate, held string) string {
-	eligible := func(c noticeCandidate) bool { return c.armed && !b.done[c.id] && b.retired(c.id) == false }
 	at := -1
 	for i, c := range cands {
 		if c.id == held {
 			at = i
 		}
 	}
-	advance := b.homeAdvance
-	b.homeAdvance = false
 	if at >= 0 && !advance && eligible(cands[at]) {
 		return held
 	}
@@ -793,36 +748,38 @@ func (b *noticeBoard) pickHome(cands []noticeCandidate, held string) string {
 	return ""
 }
 
-// take records that a slot now holds id — counting the showing once per
-// session, retiring the notice when this showing was its last allowed, and
-// noting the turn so the gap can be measured. It reports whether the slot's
-// occupant changed, and whether the ledger did.
+// take records that a slot now holds id — counting the showing when the row
+// is live, and retiring the notice when this showing was its last allowed. It
+// reports whether the slot's occupant changed, and whether the ledger did.
 //
-// HOME COUNTS EVERY TURN OF ITS ROTATION AS A SHOWING, where the conversation's
-// slot counts a session: a tip that has come round six times on home has been
-// read six times, however many launches that took ([homeShownDefault]).
-func (b *noticeBoard) take(slot noticeSlot, id string, limit int, turn int) (changed, wrote bool) {
+// EVERY VISIBLE CHANGE OF HANDS IS A SHOWING, on either box: a tip that has
+// come round six times has been read six times, however many launches or
+// visits that took ([noticeShownDefault]). A slot re-decided to the same tip
+// is not a showing, which is what keeps an hour of events on one tip at one;
+// and a slot deciding while its row cannot be seen — home's while a
+// conversation is in front, the conversation's before its quiet minute — is
+// not one either, because what has not been read has not been shown
+// ([app.noticeLive]).
+func (b *noticeBoard) take(slot noticeSlot, id string, limit int, live bool) (changed, wrote bool) {
 	if b.current[slot] == id {
 		return false, false
 	}
 	b.current[slot] = id
-	if id == "" {
+	if id == "" || !live {
 		return true, false
 	}
-	if slot == slotHint {
-		b.lastHintTurn = turn
-	}
-	if slot != slotHome && b.shown[id] {
-		return true, false
-	}
-	b.shown[id] = true
-	count := b.ledger.show(id)
-	if count >= limit {
+	return true, b.count(id, limit)
+}
+
+// count records one showing of id, retiring it when that was its last
+// allowed, and reports that the ledger changed.
+func (b *noticeBoard) count(id string, limit int) bool {
+	if b.ledger.show(id) >= limit {
 		// The last allowed showing is still a showing: the line stays up for
-		// this session and the ledger closes the book on it for the next.
+		// now and the ledger closes the book on it for the next time.
 		b.ledger.retire(id)
 	}
-	return true, true
+	return true
 }
 
 // ── THE SURFACE'S SIDE ──────────────────────────────────────────────────────
@@ -865,10 +822,13 @@ func (a *app) noticeEvent(name string) {
 func (a *app) noticeFill(slot noticeSlot) bool {
 	b := &a.notices
 	if !b.enabled {
-		// Off is off for both slots: a person who silenced hints did not ask to
+		// Off is off for every slot: a person who silenced hints did not ask to
 		// be told about features either. The rows are left exactly as they are,
 		// so turning the toggle back on shows what was due.
 		return false
+	}
+	if b.armed[slot] == nil {
+		b.armed[slot] = make(map[string]bool, len(notices))
 	}
 	cands := make([]noticeCandidate, 0, len(notices))
 	limits := make(map[string]int, len(notices))
@@ -879,13 +839,18 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 		if n.news && !b.news {
 			continue
 		}
-		cands = append(cands, noticeCandidate{id: n.id, priority: n.priority, armed: n.armed(a)})
+		armed := n.armed(a)
+		cands = append(cands, noticeCandidate{id: n.id, armed: armed, fresh: armed && !b.armed[slot][n.id]})
+		b.armed[slot][n.id] = armed
 		limits[n.id] = n.limit()
 	}
-	id := b.pick(slot, cands, a.turn)
-	changed, wrote := b.take(slot, id, limits[id], a.turn)
-	if changed && slot == slotHome {
-		b.homeAt = a.now()
+	id := b.pick(slot, cands)
+	changed, wrote := b.take(slot, id, limits[id], a.noticeLive(slot))
+	if changed {
+		// A new tip is a new thing to read: the clock starts again and a cross
+		// pressed over the old one is spent.
+		b.at[slot] = a.now()
+		b.hidden[slot] = false
 	}
 	if changed && id != "" {
 		a.noticeShow(slot, id)
@@ -893,26 +858,53 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 	return wrote
 }
 
-// noticeHomeRotate moves home's row on to the next tip: on every visit to home
-// ([app.showPage]) and on the beat once a tip has stood [homeHintEvery] at
-// rest ([app.noticeHomeBeat]). Rotating is the one thing an event does not do
-// to this slot, so it is its own seam.
-func (a *app) noticeHomeRotate() {
+// noticeLive is whether a slot's row can be seen at all right now — which is
+// what makes a change of hands a showing ([noticeBoard.take]): home's row
+// while home is in front, the conversation's once its quiet minute has passed.
+func (a *app) noticeLive(slot noticeSlot) bool {
+	switch slot {
+	case slotHome:
+		return a.at(pageHome)
+	case slotHint:
+		return a.showing() == nil && a.notices.due
+	}
+	return true
+}
+
+// noticeLimit is the showing limit of the notice with this id.
+func (a *app) noticeLimit(id string) int {
+	for _, n := range notices {
+		if n.id == id {
+			return n.limit()
+		}
+	}
+	return noticeShownDefault
+}
+
+// noticeRotate moves a row on to the next tip. It is asked on every visit to
+// home ([app.showPage]), on home's beat once a tip has stood [hintEvery] at
+// rest ([app.noticeHomeBeat]), and on the conversation's beat while the person
+// stays quiet ([app.noticeIdleBeat]). Rotating is the one thing an event does
+// not do to a slot, so it is its own seam.
+func (a *app) noticeRotate(slot noticeSlot) {
 	b := &a.notices
 	if b.seen == nil {
 		*b = bareNoticeBoard()
 	}
-	b.homeAdvance = true
-	b.homeHidden = false
-	if a.noticeFill(slotHome) {
+	b.advance[slot] = true
+	b.hidden[slot] = false
+	if a.noticeFill(slot) {
 		b.save()
 	}
 	a.touch()
 }
 
+// noticeHomeRotate is [app.noticeRotate] for home's row: every road home.
+func (a *app) noticeHomeRotate() { a.noticeRotate(slotHome) }
+
 // noticeHomeBeat is home's clock asking whether the row is due to move
 // (app.go's [homeTickMsg]): it is, once the tip standing has been up for
-// [homeHintEvery] while home was quiet enough for it to be read. A row nobody
+// [hintEvery] while home was quiet enough for it to be read. A row nobody
 // could see — the box being typed into, a list up — does not age, because
 // what has not been read has not been shown.
 func (a *app) noticeHomeBeat() {
@@ -920,7 +912,7 @@ func (a *app) noticeHomeBeat() {
 	if b.current[slotHome] == "" || !a.noticeHomeQuiet() {
 		return
 	}
-	if a.now().Sub(b.homeAt) >= homeHintEvery {
+	if a.now().Sub(b.at[slotHome]) >= hintEvery {
 		a.noticeHomeRotate()
 	}
 }
@@ -931,12 +923,18 @@ func (a *app) noticeHomeBeat() {
 func (a *app) noticeHomeHint() string {
 	b := &a.notices
 	id := b.current[slotHome]
-	if id == "" || !b.enabled || b.homeHidden || !a.noticeHomeQuiet() {
+	if id == "" || !b.enabled || b.hidden[slotHome] || !a.noticeHomeQuiet() {
 		return ""
 	}
+	return a.chords.say(a.noticeLine(id))
+}
+
+// noticeLine is what the notice with this id says right now, or "" for an id
+// the table does not hold.
+func (a *app) noticeLine(id string) string {
 	for _, n := range notices {
 		if n.id == id {
-			return a.chords.say(n.line(a))
+			return n.line(a)
 		}
 	}
 	return ""
@@ -949,49 +947,139 @@ func (a *app) noticeHomeQuiet() bool {
 		a.paneExchange() == nil && !a.targetPickShowing() && !a.composer.open && !a.hopShowing()
 }
 
-// noticeShow puts a newly chosen notice where its slot draws. The hint slot is
-// read at render time ([app.noticeHint]) and needs nothing done here; the note
-// slot is a line in the transcript, said once, now.
+// noticeDismiss is the cross on a tip row: the tip goes away until the row
+// next changes hands — the next visit to home, the next turn of its clock —
+// and nothing is written down, because a tip put away is not a tip learned.
+func (a *app) noticeDismiss(slot noticeSlot) {
+	a.notices.hidden[slot] = true
+	a.touch()
+}
+
+// noticeShow puts a newly chosen notice where its slot draws. The hint slots
+// are read at render time ([app.noticeHint], [app.noticeHomeHint]) and need
+// nothing done here; the note slot is a line in the transcript, said once, now.
 func (a *app) noticeShow(slot noticeSlot, id string) {
 	if slot != slotNote {
 		return
 	}
-	for _, n := range notices {
-		if n.id == id {
-			a.note(n.line(a))
-			return
-		}
+	if line := a.noticeLine(id); line != "" {
+		a.note(line)
 	}
 }
 
-// noticeHint is the hint slot's lowest rung: the line standing in [slotHint],
-// while the frame is quiet enough for a tip to be read over an idle box.
+// noticeHint is the line standing on the conversation's row: drawn only once
+// the person has been quiet for [chatHintIdle] ([noticeBoard.due]), while the
+// frame is quiet enough for a tip to be read over an idle box, and not while
+// its cross has been pressed.
 //
-// IT DRAWS OVER NOTHING THAT IS HAPPENING. Every state with keys of its own has
-// already answered in [app.hintWord] by the time this is asked, and the list
-// here is the handful of states that answer "" there on purpose — the rewind
-// bar prints its own keys, a fullscreen page has no legend — plus the one this
-// slot adds: a box with words in it belongs to the sentence being written.
+// IT DRAWS OVER NOTHING THAT IS HAPPENING. A running turn, a list, a layer, a
+// box with words in it — each of those belongs to the thing being done, and
+// the list here is [app.noticeQuiet].
 func (a *app) noticeHint() string {
 	b := &a.notices
 	id := b.current[slotHint]
-	if id == "" || !b.enabled || !a.noticeQuiet() {
+	if id == "" || !b.enabled || !b.due || b.hidden[slotHint] || !a.noticeQuiet() {
 		return ""
 	}
-	for _, n := range notices {
-		if n.id == id {
-			return a.chords.say(n.line(a))
-		}
-	}
-	return ""
+	return a.chords.say(a.noticeLine(id))
 }
 
 // noticeQuiet is whether nothing on the frame outranks a tip.
 func (a *app) noticeQuiet() bool {
-	return a.input.empty() && a.state != stateWorking &&
-		!a.rew.on && !a.rewSheet.open && !a.at(pageSettings) && !a.at(pageTasks) && !a.at(pageHome) &&
-		!a.copy.on && !a.menu.open && !a.comp.open && !a.pick.open && !a.roster.open &&
-		!a.asking() && !a.roomOpen()
+	return a.input.empty() && a.state != stateWorking && a.showing() == nil &&
+		!a.rew.on && !a.rewSheet.open && !a.copy.on && !a.menu.open && !a.comp.open &&
+		!a.pick.open && !a.roster.open && !a.asking() && !a.roomOpen()
+}
+
+// ── THE CONVERSATION'S CLOCK ────────────────────────────────────────────────
+//
+// A conversation's row is on a clock rather than on events, because what it
+// waits for is an absence: nothing pressed and nothing landing for
+// [chatHintIdle]. ONE TIMER IS PENDING AT A TIME, AND IT KEEPS ITSELF GOING.
+// A key does not arm a clock of its own — a thousand keystrokes would be a
+// thousand sleeping goroutines — it stamps [noticeBoard.touched], and the one
+// clock, when it lands, measures from the stamp and goes back to sleep for
+// what is left ([app.noticeIdleBeat]). It is started once, when the surface
+// comes up (app.go's [app.Init]), and every beat arms the next: over a place,
+// with hints off, or with nothing to say it simply sleeps the minute again.
+// That is one goroutine parked a minute at a time, which is what makes a
+// conversation opened from home and then simply read find its tip a minute
+// later, without any road into a conversation having to remember to wind it.
+
+// hintTickMsg is the conversation's clock landing, carrying the arming it
+// belongs to.
+type hintTickMsg struct{ gen int }
+
+// hintTick schedules the conversation's clock.
+func hintTick(gen int, after time.Duration) tea.Cmd {
+	return surfaceTick(after, func(time.Time) tea.Msg { return hintTickMsg{gen: gen} })
+}
+
+// noticeTouched is the person doing something in front of the surface — a key
+// pressed anywhere, a turn ending. The tip stands down and the idle clock
+// starts again from now.
+func (a *app) noticeTouched() {
+	b := &a.notices
+	if b.seen == nil {
+		*b = bareNoticeBoard()
+	}
+	b.touched = a.now()
+	if b.due {
+		b.due = false
+		a.touch()
+	}
+}
+
+// noticeArmIdle starts the conversation's clock, once: a second call while a
+// beat is pending answers nil.
+func (a *app) noticeArmIdle() tea.Cmd {
+	b := &a.notices
+	if b.seen == nil {
+		*b = bareNoticeBoard()
+	}
+	if b.idleArmed {
+		return nil
+	}
+	if b.touched.IsZero() {
+		b.touched = a.now()
+	}
+	b.idleArmed = true
+	b.idleGen++
+	return hintTick(b.idleGen, chatHintIdle)
+}
+
+// noticeIdleBeat is the clock landing, and every beat arms the next. A beat
+// from an older arming is dropped. One that finds a place in front, or hints
+// off, sleeps the minute again; one that finds the person active goes back to
+// sleep for what is left of the minute; one that finds them quiet shows the
+// row's tip — and, on every beat after that, moves the row on ([hintEvery]),
+// until a key or a turn stamps the board again.
+func (a *app) noticeIdleBeat(gen int) tea.Cmd {
+	b := &a.notices
+	if gen != b.idleGen {
+		return nil
+	}
+	if !b.enabled || a.showing() != nil {
+		return hintTick(gen, chatHintIdle)
+	}
+	if since := a.now().Sub(b.touched); since < chatHintIdle {
+		return hintTick(gen, chatHintIdle-since)
+	}
+	if b.due {
+		a.noticeRotate(slotHint)
+	} else {
+		// THE TIP STANDING BECOMES VISIBLE NOW, so now is its showing.
+		b.due = true
+		b.hidden[slotHint] = false
+		if id := b.current[slotHint]; id != "" && b.count(id, a.noticeLimit(id)) {
+			b.save()
+		}
+		a.touch()
+	}
+	if b.current[slotHint] == "" {
+		return hintTick(gen, chatHintIdle)
+	}
+	return hintTick(gen, hintEvery)
 }
 
 // lastAnswerRunes is how long the newest finished answer is — the fact the

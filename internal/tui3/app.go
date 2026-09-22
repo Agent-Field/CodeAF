@@ -3206,6 +3206,12 @@ func (a *app) Init() tea.Cmd {
 			standing = append(standing, a.wake())
 		}
 	}
+	// THE CONVERSATION'S TIP CLOCK IS STARTED HERE, once, and keeps itself
+	// going (notice.go's THE CONVERSATION'S CLOCK). It is the one long-period
+	// clock this surface runs — a minute at a time, never a frame — and it
+	// stands in the same flat batch as the rest, because a test reads that
+	// batch one level deep for the terminal's colour question (adaptive_test.go).
+	standing = append(standing, a.noticeArmIdle())
 	return tea.Batch(standing...)
 }
 
@@ -3342,6 +3348,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		a.sawAPerson()
+		// AND THE CONVERSATION'S TIP CLOCK IS STAMPED HERE TOO, on the same
+		// argument: a key is the proof somebody is doing something, and a tip
+		// over a conversation waits for a minute of nobody doing anything
+		// (notice.go's [app.noticeTouched]).
+		a.noticeTouched()
 		// AND THE HAND IS STAMPED HERE, for the same reason the line above is:
 		// this is the only line every keypress passes through, and what the
 		// question block needs to know is whether somebody is at the keyboard
@@ -3994,6 +4005,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.jumpPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			// AND THE CROSS ON THE TIP ROW RIDES THE SAME GAP, when the chip does
+			// not: a press on it puts the tip away (projectseam.go's
+			// [app.tipClosePress]).
+			if a.tipClosePress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			// AND THE DOOR HOME IS THE THIRD, in the hint slot at the right end
 			// of the legend. Column-aware for the same reason again: the rest of
 			// that rule is a rule, and pressing a rule means nothing (home.go).
@@ -4015,6 +4032,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// AND THE APPROVALS CHIP AFTER IT IS THE SIXTH, on its own columns:
 			// pressing it walks the gate's wheel one stop (approvalchip.go).
 			if cmd, took := a.legendApprovalPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND THE PROJECT AT THE RIGHT END OF THE KEYS ROW IS THE SEVENTH:
+			// pressing it opens the folder chooser, the door `/folder` is
+			// (projectseam.go's [app.seamProjectPress]).
+			if cmd, took := a.seamProjectPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
@@ -4503,6 +4526,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// over" into "the order you actually use them", and it lands mid-list
 		// without touching the filter somebody is typing (folderplace.go).
 		return a, a.tookFolderStore(msg)
+
+	case hintTickMsg:
+		// THE CONVERSATION'S TIP CLOCK, landing: a minute of nobody doing
+		// anything shows the row's tip, and every two minutes after moves it on
+		// (notice.go's THE CONVERSATION'S CLOCK).
+		return a, a.noticeIdleBeat(msg.gen)
 
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
@@ -5271,11 +5300,6 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	default:
 		a.collapseThought()
 	}
-	// A PICTURE, A VOICE, MUSIC OR FILM BEGINNING is the proof the person knows
-	// to ask for one (notice.go's [mediaTools]).
-	if ev.Kind == session.EventToolBegin && mediaTools[ev.Tool] {
-		a.noticeEvent(eventMediaAsked)
-	}
 	// THE WAIT CLOCK IS ANCHORED HERE, on both edges, before anything else reads
 	// it. The two lists below are the whole of what the surface knows about a
 	// model request's life, and they are kept together so the pair cannot drift.
@@ -5736,6 +5760,10 @@ func (a *app) settle() tea.Cmd {
 	// A turn ending is the moment most hints become true — the answer was long,
 	// the window is half full, the money is real — so it is the event they are
 	// decided on (notice.go).
+	// AND A TURN ENDING IS THE OTHER THING THAT STAMPS THE TIP CLOCK: the
+	// answer that just landed is what the person is reading now, and the
+	// row over the box waits its minute from here ([app.noticeTouched]).
+	a.noticeTouched()
 	a.noticeEvent(eventTurnEnded)
 	a.follow()
 	a.touch()

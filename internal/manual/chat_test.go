@@ -2378,6 +2378,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the tip on home changed by itself", "hints-and-tips"},
 		{"every hint codeaf can show", "hints-and-tips"},
 		{"is a retired tip gone for good", "hints-and-tips"},
+		{"a tip appeared in my conversation after a while", "hints-and-tips"},
+		{"why does the hint only show up when I stop typing", "hints-and-tips"},
+		{"can I search my conversations with memory off", "places"},
+		{"search says what was said is not indexed", "places"},
 
 		// The wave that made the places follow the session's machine. These are
 		// the owner's own sentences, from the report that started it: they

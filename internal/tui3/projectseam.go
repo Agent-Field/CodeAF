@@ -1,11 +1,25 @@
 package tui3
 
-import "github.com/charmbracelet/x/ansi"
+import (
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+)
 
-// seamProjectRight adds the project at the right edge after any telemetry.
-// The controls and telemetry keep their space; paths truncate at the right,
-// and a field without room for its root and ellipsis disappears altogether.
-// The span covers the displayed path alone, relative to the right label.
+// seamProjectWord is the conversation's project as every row that names it
+// spells it: the workspace under `~`, with the machine in front over a
+// connection. One function, because the seam at phone width and the keys
+// row everywhere else must agree on the word.
+func (a *app) seamProjectWord() string {
+	return a.hostedPath(a.placeWord(tildePath(a.workspace, a.tilde)))
+}
+
+// seamProjectRight adds the project at the right edge after any telemetry —
+// AT THE PHONE TIER ONLY, since 2026-09-22, where the seam is the keys row;
+// everywhere else the project is on the keys row under the box (footswap.go's
+// [app.hintRow]). The controls and telemetry keep their space; paths truncate
+// at the right, and a field without room for its root and ellipsis
+// disappears altogether. The span covers the displayed path alone, relative
+// to the right label.
 func seamProjectRight(left, right, path string, width int) (string, hudSpan) {
 	if path == "" {
 		return right, hudSpan{}
@@ -29,6 +43,34 @@ func (a *app) paintSeamProject(text string, span hudSpan, hovered bool) string {
 	return paintSpan(text, span, a.pal.dim, func(path string) string {
 		return a.pal.underline(a.pal.dim(path))
 	}, hovered)
+}
+
+// seamProjectPress is a press on the conversation's project, wherever this
+// frame drew it — the keys row, or the seam at phone width
+// ([app.hintRowKind]) — and it opens the folder chooser, which is what the
+// word is a door onto: the same sheet `/folder` opens.
+func (a *app) seamProjectPress(x, y int) (tea.Cmd, bool) {
+	if a.copy.on || a.pick.open || a.roomOpen() || !a.seamProjectSpan.holds(x) {
+		return nil, false
+	}
+	mark, ok := a.chromeAt(y)
+	if !ok || mark.kind != a.hintRowKind() {
+		return nil, false
+	}
+	return a.openFolderPick(""), true
+}
+
+// tipClosePress is a press on the cross at the end of the conversation's tip
+// row (view.go's [chromeTip]): the tip goes away until the row next changes
+// hands (notice.go's [app.noticeDismiss]). It reports whether it took the
+// press; the rest of that row is blank, and blank is not a gesture.
+func (a *app) tipClosePress(x, y int) bool {
+	mark, ok := a.chromeAt(y)
+	if !ok || mark.kind != chromeTip || !a.tipCloseSpan.holds(x) {
+		return false
+	}
+	a.noticeDismiss(slotHint)
+	return true
 }
 
 // seamModelPaint keeps the current model bold and bright even while underlined.

@@ -3316,10 +3316,12 @@ func (a *app) legend(width int) string {
 			ledger, alive = a.seamRungParts(parts, rung.steps)
 			painted, right = a.seamTelemetryLabel(ledger, alive)
 		}
-		// The project is the final right-hand field, after the numbers. Its
-		// extra columns never move the ledger's doors relative to that label.
+		// THE PROJECT IS THE KEYS ROW'S NOW (footswap.go's [app.hintRow]), and
+		// it stays on the seam only at the phone tier, where the seam IS the
+		// keys row and the last row is the deck. Its extra columns never move
+		// the ledger's doors relative to that label.
 		projectSpan := hudSpan{}
-		if !a.roomOpen() {
+		if !a.roomOpen() && !telemetry {
 			original := right
 			right, projectSpan = seamProjectRight(left, right, pieces.project, width)
 			if projectSpan.pressable() {
@@ -3688,14 +3690,10 @@ func (a *app) footHint(width int) string {
 	if a.chordLost && a.chords.meta == chordMetaWord {
 		return a.chords.chordShortWords()
 	}
-	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED HINT (notice.go). It is the
-	// lowest rung there is — a tip about a gesture the person has not used yet,
-	// drawn only over an idle box — and it takes the slot from the rest state
-	// below because that is what the rest state is for: the one line a newcomer
-	// reads when nothing is happening.
-	if tip := a.noticeHint(); tip != "" {
-		return tip
-	}
+	// THE EARNED TIP IS NOT ON THIS ROW ANY MORE. Until 2026-09-22 it was the
+	// rung under the rest state here; it has a row of its own now, over the
+	// rule, once the person has been quiet for a minute (notice.go's
+	// [app.noticeHint]), so the keys row is the keys and nothing else.
 	return a.idleHint()
 }
 

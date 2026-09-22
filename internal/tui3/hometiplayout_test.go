@@ -85,11 +85,11 @@ func TestHomeTipRowSaysNothingOnAFrameTooNarrowForIt(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.door("")
 	a.showPage(pageHome)
-	line, span := a.homeTipLine("/ask answers right here", 12, a.pal)
+	line, span := a.tipLine("/ask answers right here", 12, a.pal)
 	if line != "" || span.pressable() {
 		t.Fatalf("a 12-cell frame drew a tip row: %q", line)
 	}
-	line, span = a.homeTipLine("/ask answers right here without opening a conversation", 40, a.pal)
+	line, span = a.tipLine("/ask answers right here without opening a conversation", 40, a.pal)
 	if line == "" || !span.pressable() {
 		t.Fatal("a 40-cell frame drew no tip row")
 	}

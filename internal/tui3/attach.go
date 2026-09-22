@@ -386,6 +386,14 @@ func (a *app) resolvePath(path string) string {
 // that word, and anything else is left exactly as typed.
 func unquotePath(path string) string {
 	path = strings.TrimSpace(path)
+	// ONLY A PATH THAT IS SPELLED THE SHELL'S WAY IS READ THE SHELL'S WAY: one
+	// that opens with a quote, or carries a backslash escape. `owner's
+	// report.log` typed plainly has an apostrophe in its NAME, and reading that
+	// as an open quote swallowed it (the drop road had already unquoted the
+	// terminal's spelling before this was asked, dropkeys_test.go).
+	if !strings.HasPrefix(path, "'") && !strings.HasPrefix(path, "\"") && !strings.Contains(path, "\\") {
+		return path
+	}
 	if words := pastedWords(path); len(words) == 1 && words[0] != "" {
 		return words[0]
 	}

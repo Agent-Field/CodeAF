@@ -164,7 +164,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
 | `/folder` | `/place`, `/dir` | — | locally opens the add context sheet; over `--host` says the folder chooser is unavailable |
 | `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
-| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
+| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host`; enter on this row of the `/` list opens it at once |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
@@ -725,7 +725,8 @@ and the note's leading `· `; strip those before feeding it to a parser.
 `/search` opens the **search place** — everything that has been said on this machine,
 found by the words you remember of it. It is the same place `alt+7` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
-searches.
+searches. With the **memory** row off nothing said is indexed, and the place matches
+conversations by their name and project instead, saying so (see the *places* page).
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
 and by what it was for. It is the same place `alt+3` opens.

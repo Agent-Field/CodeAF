@@ -1407,12 +1407,12 @@ func placeFrameWithBar(a *app, width, height int,
 	// the command, then what it does.
 	//
 	// IT IS RIGHT-ALIGNED, led by a bulb and closed by a cross (hometip.go's
-	// [app.homeTipLine]), and the cross's columns are recorded as the line is
+	// [app.tipLine]), and the cross's columns are recorded as the line is
 	// laid out, published below the clamp with the rule's own row.
 	tipTop := -1
 	a.tipCloseSpan = hudSpan{}
 	if tip := a.noticeHomeHint(); hasBox && tip != "" {
-		if line, span := a.homeTipLine(tip, width, pal); line != "" {
+		if line, span := a.tipLine(tip, width, pal); line != "" {
 			a.tipCloseSpan, tipTop = span, len(lines)
 			add(line, nil)
 		} else {

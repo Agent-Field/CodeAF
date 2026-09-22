@@ -1,47 +1,42 @@
 # Hints and tips
 
-## What was that tip above the message box — the one-line hint in the border
+## What was that tip above the message box — the one-line hint over the rule, the sentence with a bulb
 
-The dim row under your message box — the last row of the frame — is the hint slot (until
-2026-09-17 it was the right end of the rule above the box; the numbers have that end now).
-Most of the time it names the keys that work right now — `ctrl+c interrupt` while an answer is coming,
-`y allow · n deny · a always` while codeaf is asking you something, `/ commands` when nothing
-is happening. Once you have used codeaf a little, that idle line sometimes carries a tip
-instead: one sentence naming a key or a command you have not used yet, and what it does.
-For example `ctrl+. sees every task this project has run`, or `/rewind takes back an earlier
-message`.
+The dim sentence directly above the rule over your message box, led by a bulb and closed
+by a small cross — `💡 ctrl+. sees every task this project has run ✕` — is a **tip**: one
+line naming a key or a command you have not used yet, and what it does. It reads the way
+every hint on this surface does: the key or the command first, then what it does. Home has
+the same row over its own box, and the two rows draw from **one list** of thirty tips (below).
 
-A tip only appears over an empty box while nothing else is happening. The moment you type,
-open a list, or an answer starts, the slot goes back to the keys for that state; the tip
-returns when things are quiet again. A tip never takes a row of its own and never blocks a
-keystroke — it is the keys row, which is on the screen anyway.
+**In a conversation the row appears only once you have been quiet for a minute** — no key
+pressed and no answer landing for sixty seconds — so it never talks over you while you type
+or read what just arrived. The moment you press a key it goes away, and the minute starts
+again. Left alone, the row moves on to the next tip every two minutes. On home the row is
+there from the first minute, moves on every time you come to home and every two minutes at
+rest, and goes blank while the box is being typed into or a list is up.
 
-Home has a row of its own for the same tips, directly above the rule over its box — see
-*The dim sentence above the rule on home*.
+**The small cross after the tip puts it away**: click it and the row is blank until it
+next changes hands — the next visit to home, the row's next two-minute turn, a quiet minute
+in a conversation. Putting a tip away does not retire it. A tip never takes a row of its
+own: it stands on the blank row that separates the conversation (or home's list) from the
+rule, and never blocks a keystroke. The keys row at the very foot — `alt+e effort · alt+a
+approvals · / commands` — is not a tip and never changes; until 2026-09-22 the tip stood
+there in a conversation, and it moved up to the row over the rule so both boxes say their
+tips the same way.
+
+On a Mac the row says `opt` where the table below says `alt`, exactly as the keys row does.
 
 ## The dim sentence above the rule on home — the tip on home, what is that line over the box
 
 On home the tip is the dim row **directly above the rule** over the message box — the blank
 that separates the list from the rule, with one sentence written into its right end, led
-by a bulb: `💡 /ask answers right here without opening a conversation ✕`. It reads the way
-every tip does: the key or the command first, then what it does. **The small cross after it
-puts the tip away** — click it and the row is blank until your next visit to home or the
-row's own two-minute turn brings the next tip; putting a tip away does not retire it. The
-keys row at the very foot of home is not a tip and never changes: it names the row's options
-and the draft's chords (`→ options · alt+p project · alt+e effort · alt+a approvals · /
-commands`) and ends with `project: <path>`, where the next conversation opens.
-
-It is there only while home is at rest: the box empty, no command list or model list up, no
-task or question open in the right pane. Type a letter and the row is blank again; clear
-the box and the tip is back. The row is the same row whether or not a tip is on it, so the
-list above never moves.
-
-**It changes on every visit and every two minutes.** Each time you come to home — `esc`
-from a conversation, `/home`, `alt+1`, `tab` — the row moves on to the next tip that is
-true for you, in a fixed order, round and round. Left at rest, it moves on by itself after
-two minutes; a home nobody is looking at (the box being typed into, a list up) does not
-age, because what has not been read has not been shown. On a Mac the row says `opt` where
-the table below says `alt`, exactly as the keys row does.
+by a bulb: `💡 /ask answers right here without opening a conversation ✕`. It is drawn only
+while the box is empty and nothing else is up — a letter in the box, the `/` list, the `@`
+list or a reply being read all take the row back — and it moves on to the next tip that is
+true for you on every road home (`esc` from a conversation, `/home`, `alt+1`, `tab`), in a
+fixed order, round and round. Left at rest, it moves on by itself after two minutes; a home
+nobody is looking at (the box being typed into, a list up) does not age, because what has
+not been read has not been shown. The cross at its end puts it away until the next visit.
 
 ## Why did the hint disappear — each tip retires once you use what it teaches
 
@@ -53,119 +48,126 @@ project has run` never comes back; run `/compact` once and the compact tip is re
 retired from either box is retired from both: opening the model list on home retires
 `/model lists every model` in every conversation as well.
 
-A tip you never act on is not shown forever either. In a conversation, once it has been
-shown in three separate sessions it is taken as read and retires by itself; on home, where
-the row turns over faster, a tip retires after six turns of the rotation. Between tips in a
-conversation there is always a gap of a couple of turns, so a busy first session does not
-turn the border into a slideshow.
+A tip you never act on is not shown forever either. Every time a row moves on to a tip
+counts as one showing — a turn of home's rotation, a quiet minute in a conversation, the
+two-minute turn after it — and once a tip has been shown six times it is taken as read and
+retires by itself. A tip nobody could see does not count: home's row deciding while you are
+in a conversation, or a conversation's before its quiet minute, is not a showing.
 
 This is remembered per profile, in a small file called `notices.json` beside `config.json`
 in your codeaf profile directory. Retiring is permanent: turning hints off and on does not
 bring a retired tip back. Deleting that file brings every tip back once; nothing else is in
 it.
 
+## The tip on home changed by itself — the order the tips come round in, and the tip that jumps the queue
+
+Both rows take turns through the one list, in the order below, round and round: every tip
+that is true for you gets its turn before any repeats, and a tip that stops being true
+stands down at once for the next. Nothing outranks anything — with one exception. **A tip
+that has just become true jumps the queue**: when a conversation crosses half its context
+window, `/compact summarizes the conversation now` is said next rather than forty minutes
+later when the ring comes round. It jumps once and then takes its turn like the rest.
+
 ## Every hint codeaf can show, and what makes each one go away
 
-There are thirty. Each one says where it can appear — in a conversation's keys row, on
-home's row above the rule, or both — the moment it first appears, and the gesture that
-retires it. The list is the program's own table (the surface refuses to build if the two
-disagree), so a tip you saw is on it word for word.
+There are thirty, one list for both boxes. Each one says the moment it first appears and
+the gesture that retires it. The list is the program's own table (the surface refuses to
+build if the two disagree), so a tip you saw is on it word for word.
 
 **Starting work**
 
-- `/ask answers right here without opening a conversation` — home only, whenever home's
-  ask door is there. Retired the first time `/ask` or `alt+enter` sends something from home.
-- `/task starts work you can walk away from` — conversation only, after the first exchange.
-  Retired when `/task` is typed, bare or with a brief.
-- `ctrl+enter sends your message as something to keep true` — both. Retired when a standing
+- `/compact summarizes the conversation now` — when the conversation passes half its
+  context window. Retired when a `/compact` finishes.
+- `/cost says what this conversation has spent` — once the conversation has spent about
+  ten cents. Retired when you run `/cost`.
+- `ctrl+. sees every task this project has run` — after the first task starts. Retired
+  when you open the task page, by `ctrl+.` or `/history`.
+- `/rewind takes back an earlier message` — after an answer of about 1,500 characters or
+  more. Retired the first time a rewind lands.
+- `/files finds everything made for you` — after the first export writes a file. Retired
+  when you run `/files`.
+- `/resume opens an earlier conversation` — when you start in a directory that already has
+  a conversation. Retired when you run `/resume`.
+- `/standing keeps something always true` — once this directory has three or more earlier
+  conversations. Retired when a standing order is made or the standing page opened.
+- `/ask answers right here without opening a conversation` — on home, whenever home's ask
+  door is there (it is the one tip that is only true on home). Retired the first time
+  `/ask` or `alt+enter` sends something from home.
+- `/task starts work you can walk away from` — after the first exchange. Retired when
+  `/task` is typed, bare or with a brief.
+- `ctrl+enter sends your message as something to keep true` — retired when a standing
   order is made or the standing page opened.
-- `/standing keeps something always true` — both, once this directory has three or more
-  earlier conversations. Retired by the same gesture; it is the quietest and yields to every
-  other in a conversation.
-- `/manual answers any question about codeaf from its own manual` — both. Retired when
+- `/manual answers any question about codeaf from its own manual` — retired when
   `/manual` is typed, bare, with a page or with a question.
+- `ctrl+shift+t reopens the tab you just closed` — retired the first time the chord is
+  pressed, on a terminal that can send it.
 
 **Files and context**
 
-- `@ completes a file, a folder or a task into your message` — both. Retired when the `@`
-  list opens.
-- `/attach sends a file along with your message` — both. Retired when a file goes on the
-  tray by path or the file browser opens.
-- `/attach takes a picture too, or paste a screenshot in` — both. Retired by the same gesture.
-- `/folder picks the folder codeaf works in` — both. Retired when the folder chooser opens,
-  from a conversation or aimed at home's target.
-- `/export writes this whole conversation to a file` — conversation only, after two
-  exchanges. Retired when an export lands.
-- `/files finds everything made for you` — both, after the first export writes a file.
-  Retired when you run `/files`.
+- `@ completes a file, a folder or a task into your message` — retired when the `@` list
+  opens.
+- `/attach sends a file along with your message` — retired when a file goes on the tray by
+  path or the file browser opens.
+- `/folder picks the folder codeaf works in` — retired when the folder chooser opens, from
+  a conversation or aimed at home's target.
+- `/attach takes a picture too, or paste a screenshot in` — retired by the same gesture as
+  the other `/attach` tip.
+- `/export writes this whole conversation to a file` — after two exchanges. Retired when
+  an export lands.
 
 **Models, thinking and cost**
 
-- `/model lists every model, /model <slug> switches at once` — both. Retired when the model
-  list opens, over a conversation or over home's draft.
-- `/crew sets the models codeaf uses on its own behalf` — both. Retired when `/crew`
-  answers, bare or with a preset.
-- `/budget caps what today may cost` — both. Retired when `/budget` answers.
-- `alt+3 shows what this machine has spent, by the day` — both. Retired when the spend
-  place opens by any door.
-- `/cost says what this conversation has spent` — both, once the conversation has spent
-  about ten cents. Retired when you run `/cost`.
-- `/compact summarizes the conversation now` — both, when the conversation passes half its
-  context window. Retired when a `/compact` finishes.
+- `/model lists every model, /model <slug> switches at once` — retired when the model list
+  opens, over a conversation or over home's draft.
+- `/crew sets the models codeaf uses on its own behalf` — retired when `/crew` answers,
+  bare or with a preset.
+- `/budget caps what today may cost` — retired when `/budget` answers.
+- `alt+3 shows what this machine has spent, by the day` — retired when the spend place
+  opens by any door.
 
 **Steering a running answer**
 
-- `enter while an answer is coming stops it and steers` — conversation only, after the
-  first exchange. Retired the first time you steer.
-- `ctrl+q queues this message for after the current turn` — conversation only, after the
-  first exchange. Retired the first time you queue one.
-- `/rewind takes back an earlier message` — both, after an answer of about 1,500 characters
-  or more. Retired the first time a rewind lands.
+- `enter while an answer is coming stops it and steers` — after the first exchange.
+  Retired the first time you steer.
+- `ctrl+q queues this message for after the current turn` — after the first exchange.
+  Retired the first time you queue one.
 
 **Moving around**
 
-- `ctrl+t starts a fresh chat in this folder` — both. Retired when the new-chat page opens.
-- `alt+1 to alt+7 jump straight to a place` — both. Retired the first time a place chord
-  reaches one.
-- `ctrl+shift+t reopens the tab you just closed` — both. Retired the first time the chord
-  is pressed, on a terminal that can send it.
-- `ctrl+. sees every task this project has run` — both, after the first task starts.
-  Retired when you open the task page, by `ctrl+.` or `/history`.
-- `/resume opens an earlier conversation` — both, when you start in a directory that
-  already has a conversation. Retired when you run `/resume`.
+- `ctrl+t starts a fresh chat in this folder` — retired when the new-chat page opens.
+- `alt+1 to alt+7 jump straight to a place` — retired the first time a place chord reaches
+  one.
 
 **Memory, accounts and the rest**
 
-- `/remember keeps one thing across conversations` — both. Retired when `/remember` is
-  typed.
-- `/search finds anything ever said on this machine` — both. Retired when the search place
-  opens by any door.
-- `/subharness lists the programs you can run` — both. Retired when `/subharness` is typed,
-  bare or with a name.
-- `/connect links Google, Slack or another model service` — both. Retired when the connect
-  panel is reached for.
-- `ask for a picture, a voiceover, music or a video` — both. Retired the first time the
-  session begins making one.
+- `/remember keeps one thing across conversations` — retired when `/remember` is typed.
+- `/search finds anything ever said on this machine` — retired when the search place opens
+  by any door.
+- `/subharness lists the programs you can run` — retired when `/subharness` is typed, bare
+  or with a name.
+- `/connect links Google, Slack or another model service` — retired when the connect panel
+  is reached for.
+- `ctrl+b freezes the screen so you can read and copy from it` — after the first exchange.
+  Retired the first time copy mode opens.
 
-When two are relevant at once in a conversation the more useful one wins — the compact tip
-over the cost tip, the cost tip over the task page tip — and the other waits its turn. On
-home nothing wins: every tip that is true for you has its turn, in the order above.
+Unless a line above says otherwise, a tip is true from the first minute on home and after
+the first exchange in a conversation.
 
 `/ shows every command` used to be one of these. It is gone because both keys rows now say
-`/ commands` outright, so there was nothing left to teach. Two more were cut on 2026-09-22:
-an `alt+enter` tip that promised a task where the chord asks, and a `ctrl+r` tip for a
-chord that works only in a conversation and only over a making-shaped sentence.
+`/ commands` outright, so there was nothing left to teach. Three more were cut on
+2026-09-22: an `alt+enter` tip that promised a task where the chord asks, a `ctrl+r` tip
+for a chord that works only in a conversation and only over a making-shaped sentence, and
+`ask for a picture, a voiceover, music or a video`, whose seat the copy-mode tip took.
 
 ## Turn off hints — stop showing tips, disable the hints, the disable hints row
 
 Open the settings panel with `/settings` (or `ctrl+,`), go to the **Workspace** tab, and flip
 the **disable hints** row on. Enter or space toggles it; it is off by default, which means
 the tips show. (Until 2026-09-22 it was a **hints** row on the Display tab, on by default.)
-The change lands at the end of the next turn. On silences the tips — in the conversation's
-keys row and on home's row alike — and the what's-new lines together; it does not touch the
-keys the slot names for a live state — `ctrl+c interrupt` and the rest are not hints and
-cannot be turned off. From the terminal, `codeaf config` shows the same row under the same
-name.
+The change lands at the end of the next turn. On silences the tips — over a conversation's
+box and over home's alike — and the what's-new lines together; it does not touch the keys
+row's own words for a live state — `ctrl+c interrupt` and the rest are not hints and cannot
+be turned off. From the terminal, `codeaf config` shows the same row under the same name.
 
 Turning the row back off shows whatever is due. Tips you had already retired stay retired.
 
