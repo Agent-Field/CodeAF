@@ -740,6 +740,63 @@ func TestAFiringOffTheStandingLaneIsDrawnInTheConversation(t *testing.T) {
 	}
 }
 
+// firingReplyAgent carries both lanes involved in a live firing: the standing
+// event that draws the news and the turn the session wakes to answer it.
+type firingReplyAgent struct {
+	*taskFake
+	wakes chan (<-chan session.Event)
+}
+
+func (f *firingReplyAgent) Wakes() <-chan (<-chan session.Event) { return f.wakes }
+
+// THE REPLY MAY FOLD ITS OWN WORK AND NEVER THE NEWS THAT WOKE IT. The row is
+// present before the first reply event and remains exactly once after the turn
+// settles, which pins both halves of the ordering contract.
+func TestAStandingFiringStaysDrawnAfterItsReply(t *testing.T) {
+	agent := &firingReplyAgent{
+		taskFake: &taskFake{
+			fakeAgent: &fakeAgent{model: "m"},
+			updates:   make(chan session.Event, 8),
+		},
+		wakes: make(chan (<-chan session.Event), 1),
+	}
+	a := newTestApp(agent)
+	a.width, a.height = 120, 24
+	tasks, wakes := a.watchTasks(), a.watchWakes()
+	if tasks == nil || wakes == nil {
+		t.Fatal("the surface did not open both standing firing lanes")
+	}
+
+	const words = "remind me in 1 minute to drink water"
+	row := standName(words) + " · said: Time to drink water!"
+	agent.updates <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
+		Item: standing.Item{
+			ID:    "water",
+			Words: words,
+		},
+		Update: "fired",
+		Text:   "Time to drink water!",
+	}}
+	drive(t, a, runCmd(tasks)...)
+	if body := standText(a); strings.Count(body, row) != 1 {
+		t.Fatalf("before the reply the firing row occurs %d times, want once:\n%s", strings.Count(body, row), body)
+	}
+
+	agent.wakes <- woken(
+		text(session.EventTextDelta, "Drink some water now."),
+		session.Event{Kind: session.EventTurnDone},
+	)
+	drive(t, a, runCmd(wakes)...)
+	drive(t, a, frameMsg{})
+	body := standText(a)
+	if !strings.Contains(body, "Drink some water now.") {
+		t.Fatalf("the firing's reply was not drawn:\n%s", body)
+	}
+	if got := strings.Count(body, row); got != 1 {
+		t.Fatalf("after the reply the firing row occurs %d times, want once:\n%s", got, body)
+	}
+}
+
 // AND A RUN THAT STOPPED ON SOMEBODY WEARS THE ACCENT, on the same lane and
 // with no turn to carry it either.
 func TestAFiringThatNeedsSomebodyIsDrawnWithTheAskGlyph(t *testing.T) {

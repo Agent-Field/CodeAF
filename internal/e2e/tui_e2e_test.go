@@ -765,10 +765,14 @@ func testFiringReachesThePerson(t *testing.T) {
 
 	// Back into the conversation and wait. The window runs the same pass the
 	// timer runs, every standing.Interval (five minutes), the first one an
-	// interval after launch. Answering the card already handed the keyboard
-	// back to the list; the new-chat chord opens a conversation composer.
-	r.keys("C-t")
-	time.Sleep(2500 * time.Millisecond)
+	// interval after launch. Answering the card hands the keyboard back to its
+	// settled exchange row, immediately below the conversation we opened. Walk
+	// onto that conversation and open it: ctrl+t acts only on a conversation
+	// row, so sending it from the exchange row silently left this test on Home
+	// while it looked there for a conversation-only firing row (#1344).
+	r.keys("Up")
+	r.keys("Enter")
+	r.waitFor(20*time.Second, say(t, "homeDoorWord"))
 
 	// /status, while something stands: the derived `keeping watch` line, and the
 	// `◦ 1 standing order` line at the foot of the task column. That count was a
