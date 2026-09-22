@@ -19,9 +19,12 @@ func TestWorkActivitySelectionAndClock(t *testing.T) {
 			t.Fatal("explicit selection ignored")
 		}
 		first := activity.Frame(at)
-		later := activity.Frame(at.Add(700 * time.Millisecond))
-		if first == later {
-			t.Fatalf("study %d does not move", style)
+		poses := make(map[[WorkLogoWidth]WorkLogoCell]bool)
+		for i := 0; i < 28; i++ {
+			poses[activity.Frame(at.Add(time.Duration(i)*100*time.Millisecond))] = true
+		}
+		if len(poses) < 4 {
+			t.Fatalf("study %d has only %d distinct poses", style, len(poses))
 		}
 		if first != activity.Frame(at) {
 			t.Fatal("rendering changed the selection")

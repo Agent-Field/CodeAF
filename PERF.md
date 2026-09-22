@@ -2552,7 +2552,7 @@ Home and tab widths truncate that same title with three dots at render time.
 Chat and task/run pages use `tokens.WorkActivity`, a bounded nine-column, one-row
 field with ten 2.8-second loops. Each operation chooses once and samples from the
 existing clock. Frame selection is constant-time with no raster sampling, I/O,
-timers or random work during rendering. Twelve native-glyph poses per loop keep
+timers or random work during rendering. Twenty-eight native-glyph poses per loop keep
 terminal writes small and status words still. The existing 33 ms local / 99 ms
 remote frame ceiling is unchanged; unchanged frames need no terminal writes.
 Screen-reader, ASCII, monochrome, copy and small-window modes keep the compact

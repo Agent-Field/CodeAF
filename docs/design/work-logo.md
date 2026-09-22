@@ -21,7 +21,7 @@ activity line, preserving the disclosure action and status words. It does not ad
 a second Working row. A surface without a compact work block uses a single-line
 transient foot. Harness step tables retain their full width.
 
-Motion is sampled on the existing clock. Twelve deliberately held poses form a
+Motion is sampled on the existing clock. Twenty-eight deliberately held poses form a
 2.8-second loop; holding contact gives the ball weight, while all text to its right
 stays still. All frames are nine columns wide. The ball's brand gold is distinct
 from the question hue. Completed text never moves. ASCII, monochrome, linear,

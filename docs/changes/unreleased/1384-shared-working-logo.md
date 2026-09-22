@@ -11,3 +11,6 @@ invalidates:
 A turn picks one motion once and retains it across steering and provider retries.
 The shared component also accepts named selections for other callers. Existing
 linear, ASCII, monochrome and small-window views retain their text treatment.
+
+The top-left header pairs the resting chevron-and-dot mark with `codeaf`.
+All ten activity motions use 28 timed poses in a single fixed-width text row.
