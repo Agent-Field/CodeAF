@@ -128,7 +128,7 @@ func TestAPlanBornNodeIsStillDrawnAsItsNodeRow(t *testing.T) {
 		t.Fatalf("the place draws the plan-born node %d times, want once", drawn)
 	}
 	if item.plan != nil {
-		t.Fatalf("the plan-born node is drawn as its store task, and the node is the half with a room "+
+		t.Fatalf("the plan-born node is drawn as its store task, and the node is the half with a room " +
 			"behind it: the title dedupe (planRowShown) is what keeps the place drawing it once")
 	}
 }
