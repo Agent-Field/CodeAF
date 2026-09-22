@@ -331,13 +331,10 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				// nobody left to tell. The words stay on the store for the person
 				// who opens the page, which is where an undelivered note belongs.
 				if ending.kind == endingNone && !stalled {
-					if fresh := unreadNotes(w.store, task.ID, readNotes); len(fresh) > 0 {
-						if _, steerErr := agent.Steer(planNoteSpoken(fresh)); steerErr == nil {
-							for _, note := range fresh {
-								readNotes[note.ID] = true
-							}
-						}
-					}
+					deliverNotes(w.store, task.ID, readNotes, func(words string) error {
+						_, err := agent.Steer(words)
+						return err
+					})
 				}
 				// THE STORE'S OWN ENDING IS DETECTED AFTER THE COMMAND RUNS. A
 				// `plandb done`, or a `plandb wait`, that the worker itself just
@@ -605,6 +602,30 @@ func unreadNotes(store *plandb.Store, taskID string, read map[string]bool) []pla
 		}
 	}
 	return fresh
+}
+
+// deliverNotes hands a task's unread notes to its working turn and MARKS READ
+// ONLY WHAT THE TURN TOOK. It is one function rather than five lines at the
+// boundary because the branch that matters is the one that is hard to reach: a
+// splice that refuses, which happens when the worker's own turn ends in the gap
+// between the step that brought the note and the steer that would have landed
+// it. Reached through a steer of its own, that branch can be asserted directly
+// instead of waiting for the race to come round.
+func deliverNotes(store *plandb.Store, taskID string, read map[string]bool, steer func(string) error) {
+	fresh := unreadNotes(store, taskID, read)
+	if len(fresh) == 0 {
+		return
+	}
+	if steer(planNoteSpoken(fresh)) != nil {
+		// NOTHING IS MARKED. The words reached nobody, so the notes are still
+		// unread — the next boundary offers them again, and the one after, until
+		// a turn takes them. Marked here they would have been delivered to
+		// nobody and never offered again.
+		return
+	}
+	for _, note := range fresh {
+		read[note.ID] = true
+	}
 }
 
 // planNoteSpoken is how a plan note reads when it reaches a working worker: the
