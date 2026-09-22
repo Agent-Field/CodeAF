@@ -116,6 +116,15 @@ func TestANoteIsHandedToAWorkerOnceAndTheScreenStillReadsIt(t *testing.T) {
 	if saw := seatSawTimes(seat, said); saw != 1 {
 		t.Fatalf("the note was handed to the worker %d times, want exactly once:\n%s", saw, seatTranscript(seat))
 	}
+	// AND ONCE COUNTED THE OTHER WAY, which is the count that can actually
+	// fail. Every request replays the whole transcript, so words delivered a
+	// second time are words that were already there and [seatSawTimes] cannot
+	// see the difference. One delivery is one MESSAGE, so a second delivery is
+	// a second message carrying the same note in the same request — and that is
+	// what the worker's mark exists to prevent.
+	if held := seatHeldTimes(seat, said); held != 1 {
+		t.Fatalf("the worker's last request carries the note in %d messages, want the one it was handed:\n%s", held, seatTranscript(seat))
+	}
 	// THE SCREEN READS WHAT THE WORKER READ. Nothing about delivery touches the
 	// store, so the note the person opens is the note that was delivered.
 	notes := store.Notes(store.RootID(), 0)
@@ -405,4 +414,24 @@ func worksOnAfterItIsToldThen(id, want, result string, more int) step {
 		done++
 		return toolReply(`{"command":` + jsonString(keepsMoving("echo working", done)) + `}`), nil
 	}
+}
+
+// seatHeldTimes counts the MESSAGES of the seat's last request that carry a
+// string. It is the companion to [seatSawTimes] and answers the question that
+// one cannot: a request replays the whole transcript, so a note handed over
+// twice is not a request that newly carries the words but a request that
+// carries them TWICE. This is the count a worker's read-mark is holding down.
+func seatHeldTimes(s *seat, want string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.requests) == 0 {
+		return 0
+	}
+	held := 0
+	for _, message := range s.requests[len(s.requests)-1] {
+		if strings.Contains(messageContent(message), want) {
+			held++
+		}
+	}
+	return held
 }
