@@ -98,8 +98,8 @@ build if the two disagree), so a tip you saw is on it word for word.
 - `ctrl+enter sends your message as something to keep true` — retired when a standing
   order is made or the standing page opened.
 - `/manual answers any question about codeaf from its own manual` — retired when
-  `/manual` is typed, bare, with a page or with a question.
-- `ctrl+shift+t reopens the tab you just closed` — retired the first time the chord is
+  `/manual` is typed, bare or with a question.
+- `ctrl+shift+t reopens the last closed conversation tab` — retired the first time the chord is
   pressed, on a terminal that can send it.
 
 **Files and context**
@@ -148,7 +148,8 @@ build if the two disagree), so a tip you saw is on it word for word.
 - `/connect links Google, Slack or another model service` — retired when the connect panel
   is reached for.
 - `ctrl+b freezes the screen so you can read and copy from it` — after the first exchange.
-  Retired the first time copy mode opens.
+  Retired the first time copy mode opens, in a conversation or on home, where the key
+  freezes home's own screen.
 
 Unless a line above says otherwise, a tip is true from the first minute on home and after
 the first exchange in a conversation.

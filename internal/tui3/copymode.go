@@ -126,6 +126,11 @@ func (a *app) takeMouseBack() bool {
 	return true
 }
 
+// copyKeysWord is the keys row while the viewport is frozen, under either box:
+// the reader's keys are the only keys that work, so they are the only keys the
+// row may name.
+const copyKeysWord = "v select · a block · y yank · esc"
+
 // copyMode is the frozen viewport's whole state. The zero value is off, except
 // for mark, which [newApp] sets to -1 — nothing is marked.
 type copyMode struct {
@@ -177,15 +182,83 @@ func (a *app) enterCopy() {
 	a.touch()
 }
 
+// freezeHome is ctrl+b on home: home's own rows, frozen, the way
+// [app.freezeRoom] freezes a room's.
+//
+// THE TIP THAT NAMES THE KEY DRAWS ON HOME TOO, since the two boxes came to
+// share one list of tips (notice.go), and until 2026-09-22 the key on home was
+// the emacs `left` — so a person who read `ctrl+b freezes the screen so you
+// can read and copy from it` over home's box and pressed it saw nothing
+// happen. What there is to copy off home is real: a conversation's title, a
+// project's path, a card's sentence, none of which the alt screen lets a
+// terminal select.
+//
+// The snapshot is the body as the last frame drew it — the same call the frame
+// makes, painted on the place ladder the frame paints on (home.go's
+// [app.homeFrame]) — and the cursor parks on the row home's own cursor was on,
+// which is where the person's eye already is. Each row remembers the list line
+// it drew, so `a` takes a whole item. The phone tier keeps its own frame and
+// does not freeze; there the key does nothing, which is the law about a
+// capability that cannot work.
+func (a *app) freezeHome() {
+	if a.copy.on || !a.at(pageHome) || a.home.phone {
+		return
+	}
+	width, room := a.width, a.home.room
+	if width <= 0 || room <= 0 {
+		return
+	}
+	was := a.pal
+	a.pal = was.onPlaces()
+	rows := placeHome{}.body(a, width, room)
+	a.pal = was
+	if len(rows) == 0 {
+		return
+	}
+	snapshot := make([]string, 0, len(rows))
+	plain := make([]string, 0, len(rows))
+	owner := make([]int, 0, len(rows))
+	at, parked := len(rows)-1, false
+	for i, r := range rows {
+		snapshot = append(snapshot, r.text)
+		plain = append(plain, ansi.Strip(r.text))
+		line := -1
+		if mark, ok := r.hit.(homeMark); ok {
+			line = mark.line
+		}
+		owner = append(owner, line)
+		if !parked && line >= 0 && line == a.home.cursor {
+			at, parked = i, true
+		}
+	}
+	a.copy = copyMode{on: true, rows: snapshot, text: plain, owner: owner, at: at, top: 0, mark: -1}
+	a.noticeEvent(eventCopyEntered)
+	a.touch()
+}
+
+// copyHeight is how many frozen rows the frame shows at once: home's body
+// room while home is frozen, the conversation's viewport otherwise.
+func (a *app) copyHeight() int {
+	if a.at(pageHome) {
+		return max(a.home.room, 1)
+	}
+	return a.viewHeight()
+}
+
 // exitCopy thaws it and rejoins the live edge, because a reader who has
 // finished reading wants the conversation back.
 //
 // WHICHEVER EDGE WAS FROZEN. A room's rows are what [app.freezeRoom] snapshots,
 // so thawing back onto the transcript's edge would drop the reader out of the
 // page they were reading and lose the conversation's scroll on the way (room.go
-// carried this as a known seam; the room's own stick is what closes it).
+// carried this as a known seam; the room's own stick is what closes it). Home
+// has no edge to rejoin: its list is exactly where it was, box and all.
 func (a *app) exitCopy() {
 	a.copy = copyMode{mark: -1}
+	if a.at(pageHome) {
+		a.touch()
+		return
+	}
 	if a.room != nil {
 		a.room.stick = true
 		a.roomTouched()
@@ -237,7 +310,7 @@ func (a *app) copyKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (a *app) copyScroll(delta int) {
 	c := &a.copy
 	c.at = clampInt(c.at+delta, 0, len(c.rows)-1)
-	height := a.viewHeight()
+	height := a.copyHeight()
 	if height < 1 {
 		height = 1
 	}

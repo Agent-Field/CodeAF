@@ -207,9 +207,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
 | `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
 | `/help` | `/?` | — | prints this list |
-| `/manual` | — | — | every page of codeaf's own manual, one per line |
-| `/manual` | — | `<page>` | prints that page as it is written |
-| `/manual` | — | `<question>` | prints the sections that answer it, labelled with page and heading |
+| `/manual` | — | — | asks the model what codeaf can do, answered from codeaf's own manual |
+| `/manual` | — | `<question>` | puts that question to the model, answered from codeaf's own manual, naming the page |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
 ## /help, /?, /quit, /exit, /q — how do I close just this chat, does closing one conversation quit codeaf
@@ -1930,28 +1929,35 @@ list can do it, that ability is simply absent rather than present and failing.
 
 A change here lands on the **next** picture, sentence or film — not on the next launch.
 
-## /manual — how do I read the manual, is there a help page, show me the page about X
+## /manual — how do I read the manual, is there a help page, show me the page about a command, ask codeaf about itself
 
-`/manual` is codeaf's own manual, printed into the conversation. It is the same writing
-the chat reads to answer questions about itself, and it arrives **as it is written** —
-nothing is retold, summarized or shortened on the way to you.
+`/manual` puts a question about codeaf to the model **with the manual open**. The words
+after it go out as a turn of the conversation, told to answer out of codeaf's own manual —
+the same pages the chat reads whenever you ask what a key or a command does — and to say
+which page the answer came from, so you can go on and read that page yourself.
 
-Three forms, and which one you get is decided by what you type after the word:
-
-| Typed | What comes back |
+| Typed | What happens |
 |---|---|
-| `/manual` | every page, one per line: the name you type to open it, then what that page is about |
-| `/manual permissions` | that page, whole, exactly as written |
-| `/manual who can see my files` | the sections that answer it, each one labelled with the page and the heading it came from |
+| `/manual` | asks what codeaf can do, and which pages are worth reading first |
+| `/manual how do I change the effort level` | puts that question; the answer names the page it came from |
 
-A single word is read as a page **name**. More than one word is read as a **question**, and
-the question is answered out of every page at once, so you do not have to know which page
-a thing is written on before you can ask about it. The label over each answer — like
-`[permissions · What runs without asking]` — is the page you can open next with
-`/manual <name>`.
+Your line in the transcript is what you typed — `/manual how do I change the effort level`
+— and the answer lands under it the way every answer does. **It is a turn**: it goes to the
+model this conversation is on and costs what a turn costs. While an answer is already
+coming it steers that turn, exactly as a plain `enter` does.
 
-Nothing here costs anything. The pages are inside codeaf; reading them makes no model
-call, so `/manual` spends nothing and works with no key set up and with no connection.
+**On home it opens a conversation first.** Home is not a conversation, so `/manual` there
+is one of the commands that *opens a conversation here first* (see the home page): a
+conversation opens at the folder and the model on the rule above the box, home closes,
+and the question is sent there. Until 2026-09-22 `/manual` on home printed its answer into
+the conversation *behind* home, where nothing could be seen of it — typing it looked like
+nothing happening.
+
+**To read a page as it is written, with no model call**, use the terminal: `codeaf manual`
+lists every page and `codeaf manual <page>` prints one whole (next section). Until
+2026-09-22 `/manual` did that in the conversation too — a bare `/manual` listed the pages,
+`/manual <page>` printed one and `/manual <question>` printed the sections that answered
+it, spending nothing — and that reading now lives at the terminal alone.
 
 ## codeaf manual — reading the manual from the terminal, without a key and without spending anything
 
@@ -2006,13 +2012,13 @@ The usage one command prints is **read out of the table** `codeaf --help` prints
 typed out a second time beside the flags, so the two can never disagree about what a
 command takes or what its codes mean.
 
-## What /manual refuses — a page name that does not exist, and a question with no answer
+## What codeaf manual refuses at the terminal — a page name that does not exist, and a question with no answer
 
-A **name** you type is an exact request, so it gets an exact answer or an exact refusal —
-never a near miss quietly shown as though you had asked for it. `/manual no-such-page`
-says there is no page by that name and prints the list of pages there are, and changes
-nothing. From the terminal `codeaf manual no-such-page` does the same and **exits
-non-zero**, so a script can tell a missing page from a page it just read.
+A **name** you type at the terminal is an exact request, so it gets an exact answer or an
+exact refusal — never a near miss quietly shown as though you had asked for it.
+`codeaf manual no-such-page` says there is no page by that name, prints the list of pages
+there are, changes nothing, and **exits non-zero**, so a script can tell a missing page
+from a page it just read.
 
 A **question** the manual has nothing on is a different thing, and it is an answer rather
 than a failure: you are told
@@ -2021,11 +2027,13 @@ than a failure: you are told
 the manual has nothing on that, which usually means codeaf does not do it
 ```
 
-followed by the list of pages. From the terminal that exits **0** — the manual saying "no,
-codeaf does not do that" is a fact about codeaf, not a broken command.
+followed by the list of pages, and the command exits **0** — the manual saying "no, codeaf
+does not do that" is a fact about codeaf, not a broken command.
 
-The manual describes **this** conversation surface. It has no pages about anything else,
-and it will not answer out of what the model remembers about other programs.
+In a conversation `/manual` refuses nothing: the words go to the model, and a question the
+manual has no page for is answered by the model saying so. The manual describes **this**
+conversation surface. It has no pages about anything else, and the model is told to answer
+questions about codeaf out of it rather than out of what it remembers about other programs.
 
 ## codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
 

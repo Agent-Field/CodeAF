@@ -7266,13 +7266,12 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "manual":
 		a.noticeEvent(eventManualAsked)
-		// codeaf's own manual, in the conversation, AS WRITTEN (manualcmd.go).
-		// It is an answer rather than a place for /status' reason — a person who
-		// asked a question about the product wants it where they can scroll back
-		// to it — and it is a lookup rather than a turn, so it makes no model
-		// call and spends nothing.
-		a.runManualCommand(rest)
-		return nil
+		// codeaf's own manual, ASKED OF THE MODEL (manualcmd.go): the words go
+		// out as a turn of this conversation, told to answer from the manual and
+		// to name the page. It has been a turn and not a lookup since
+		// 2026-09-22, so the answer lands where every other answer lands, and
+		// it spends what a turn spends.
+		return a.runManualCommand(rest)
 
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and

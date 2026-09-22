@@ -585,7 +585,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | Chord | What it does |
 |---|---|
 | `ctrl+o` | Selected landed card: open its output. Selected proposal: open its brief. Inside a task's page: open or fold the long instruction at the top. Otherwise: open or fold the live caption's tool rows; before a live caption exists, open or fold the `N earlier tool calls` fallback. It never opens a `▸ worked` chip — that is `ctrl+e` |
-| `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
+| `ctrl+b` | Enter copy mode — freeze the view so you can read and copy. On home it freezes home's own screen the same way |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `alt+e` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam |
@@ -2841,12 +2841,26 @@ and `alt+1`…`alt+7` still go everywhere.
 **A file path is your terminal's click, not codeaf's** — usually **cmd+click**
 (ctrl+click on Linux). If a plain click on a path does nothing, that is why.
 
-## Copy mode: taking text out of the conversation
+## Copy mode: taking text out of the conversation, or off home — ctrl+b, freeze the screen, esc to leave
 
 `ctrl+b` freezes the view and hands the keyboard to a reader, so you can pull text out
 of a surface that runs in the alternate screen where your terminal's own selection is
 gone. The `/copy` command does the same. Inside a room, `ctrl+b` freezes **the room's
 rows** rather than the conversation's.
+
+**On home, `ctrl+b` freezes home's own screen** — the list and the cards exactly as they
+stand — so a conversation's title or a project's path can be read off and copied with
+the same keys. The cursor starts on the row home's cursor was on, `a` takes the whole
+item, and `esc` (or `ctrl+b` again) gives home back exactly as it was, box and all.
+Until 2026-09-22 `ctrl+b` on home moved the caret one cell left and froze nothing, which
+is what a person who read the tip `ctrl+b freezes the screen so you can read and copy
+from it` over home's box and pressed it saw: nothing. On the phone-width screen home
+keeps its own shape and does not freeze.
+
+Freezing looks like nothing when nothing is moving — the rows stay where they are on
+purpose. What tells you the freeze is on is the keys row, which reads exactly
+`v select · a block · y yank · esc`, the highlighted cursor row, and in a conversation
+the status word `COPY`. `esc` always leaves.
 
 | Chord | What it does |
 |---|---|

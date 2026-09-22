@@ -201,7 +201,11 @@ func homeFate(word, rest string) string {
 	case "land", "workspace":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "autonomy",
-		"copy", "select", "rewind", "compact", "export", "drafts":
+		"copy", "select", "rewind", "compact", "export", "drafts", "manual":
+		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
+		// turn of a conversation now (manualcmd.go), and a turn needs one. As
+		// an answer it printed the pages into the conversation BEHIND home,
+		// where the person who typed it could see nothing happen.
 		return fateNeedsChat
 	case "standing":
 		// Bare it is the standing place; with words it is a card raised in a
@@ -240,7 +244,7 @@ func homeFate(word, rest string) string {
 			return fatePlace
 		}
 		return fateAnswers
-	case "help", "manual", "status", "cost", "budget", "cache", "debug", "update",
+	case "help", "status", "cost", "budget", "cache", "debug", "update",
 		"stop", "remember", "forget":
 		return fateAnswers
 	}

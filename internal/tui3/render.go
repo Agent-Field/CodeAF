@@ -3842,7 +3842,7 @@ func (a *app) hintWord() string {
 		// (subharness.go).
 		return a.subVerbs()
 	case a.copy.on:
-		return "v select · a block · y yank · esc"
+		return copyKeysWord
 	case a.rew.on:
 		// The rewind mode prints its own keys in the bar that replaced the draft
 		// box (rewind.go), and a slot repeating them would be the surface saying

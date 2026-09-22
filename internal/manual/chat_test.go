@@ -542,6 +542,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"undo what you did to my folder", "choosing-a-folder"},
 		{"work in that folder directly", "choosing-a-folder"},
 		{"what does ctrl+b do", "keys"},
+		// ctrl+b on home, asked by the person who pressed it there and saw
+		// nothing, and by the one who wants a title off the list.
+		{"ctrl+b on home does nothing", "keys"},
+		{"can I copy text off the home screen", "keys"},
 		// The spell-it-out gesture, asked the three ways people meet it: wanting
 		// it, seeing the hint and not knowing what it is, and being unhappy about
 		// what came back.
@@ -2620,6 +2624,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I read the manual from the terminal", "commands"},
 		{"does reading the manual cost anything", "commands"},
 		{"list every page of the manual", "commands"},
+		// /manual is a question put to the model since 2026-09-22, asked by
+		// somebody who typed it on home and watched a conversation open, and by
+		// somebody who remembers it printing the page.
+		{"why did /manual open a conversation", "commands"},
+		{"does /manual ask the model or just print the page", "commands"},
 		// The wave that gave /status a second form. Each of these is asked by
 		// somebody who wants the session's facts for a PROGRAM rather than for
 		// their own eyes — the plain wish, the flag met in the command list, and

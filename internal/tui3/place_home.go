@@ -358,6 +358,18 @@ func (placeHome) close(a *app)        { a.dropHome() }
 // body is home's own column, and the pane map beside it: two facts per row, so
 // the hit is a [homeMark] rather than a line number.
 func (placeHome) body(a *app, width, room int) []placeRow {
+	// A FROZEN HOME DRAWS ITS SNAPSHOT (copymode.go's [app.freezeHome]): the
+	// rows as they stood when ctrl+b was pressed, with the reader's cursor on
+	// them. Nothing under it is rebuilt, and no row answers the pointer — row
+	// 14 of a snapshot is not row 14 of the list.
+	if a.copy.on {
+		frozen, _ := a.copyRows(width, room)
+		rows := make([]placeRow, 0, len(frozen))
+		for _, r := range frozen {
+			rows = append(rows, placeRow{text: r.text, hit: homeMark{line: -1, pane: -1}})
+		}
+		return rows
+	}
 	// AT REST THE BODY IS THE GRID (homegrid.go), and its shape is settled
 	// before it is drawn: the column count, the width and the room all decide
 	// which rows exist — a whisper wraps at its column's width — so any of them

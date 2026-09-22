@@ -378,7 +378,7 @@ var notices = []notice{
 	{
 		id: "reopen-tab", slot: slotHint,
 		armed:  ready,
-		text:   "ctrl+shift+t reopens the tab you just closed",
+		text:   "ctrl+shift+t reopens the last closed conversation tab",
 		retire: eventTabReopened,
 	},
 	// ── files and context ───────────────────────────────────────────────────
@@ -944,7 +944,7 @@ func (a *app) noticeLine(id string) string {
 // rest, no list or layer has the keyboard, and no exchange is being read.
 func (a *app) noticeHomeQuiet() bool {
 	return a.at(pageHome) && a.home.box.empty() && !a.home.cmd.open && !a.home.comp.open && !a.home.searching() &&
-		a.paneExchange() == nil && !a.targetPickShowing() && !a.composer.open && !a.hopShowing()
+		a.paneExchange() == nil && !a.targetPickShowing() && !a.composer.open && !a.hopShowing() && !a.copy.on
 }
 
 // noticeDismiss is the cross on a tip row: the tip goes away until the row

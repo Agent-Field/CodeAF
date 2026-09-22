@@ -429,14 +429,14 @@ var commands = []command{
 	// has just read a list of commands and still does not know what one of them
 	// means is one row away from the page that says.
 	//
-	// Three rows for one command, /export's reason exactly: the bare form is the
-	// listing nearly everybody wants and is the only one that can be RUN from
-	// this list, since [app.runMenu] puts a row that TAKES something into the
-	// draft instead of running it. The two that take something ride under it
-	// wearing the "…".
-	{name: "manual", desc: "codeaf's own manual · every page, one per line"},
-	{name: "manual", args: "<page>", desc: "…that page, as it is written"},
-	{name: "manual", args: "<question>", desc: "…the sections that answer it, page and heading named"},
+	// Two rows for one command, /export's reason exactly: the bare form is the
+	// only one that can be RUN from this list, since [app.runMenu] puts a row
+	// that TAKES something into the draft instead of running it. The one that
+	// takes something rides under it wearing the "…". Both are turns since
+	// 2026-09-22 — the question goes to the model with the manual open — where
+	// three rows used to print the pages as written.
+	{name: "manual", desc: "asks the model what codeaf can do, from its own manual"},
+	{name: "manual", args: "<question>", desc: "…puts that question to the model, answered from the manual"},
 	// AND THE ROW FOR THE DAY SOMETHING GOES WRONG, directly above /help for the
 	// reason /manual sits there: it is the third thing a person reaches for when
 	// they are stuck, after the list of commands and the page that explains one.

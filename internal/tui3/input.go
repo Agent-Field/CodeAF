@@ -487,6 +487,18 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 
+	// A FROZEN HOME IS A READER BEFORE IT IS A PLACE (copymode.go's
+	// [app.freezeHome]). Copy mode's own rung is below this one, under the
+	// conversation, and a place is modal here — so the frozen rows would never
+	// be reached, and esc would be home's rather than the reader's. It is read
+	// on home alone, the one place that can be frozen, and ctrl+c stays the
+	// door as it does everywhere.
+	if a.copy.on && a.at(pageHome) {
+		if cmd, taken := a.copyKey(msg); taken {
+			return cmd
+		}
+	}
+
 	if a.pageShowing() && msg.String() != "ctrl+c" {
 		return a.placeKeyPress(msg)
 	}

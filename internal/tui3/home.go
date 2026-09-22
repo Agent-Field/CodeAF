@@ -2812,8 +2812,12 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "ctrl+b":
-		h.box.left()
-		h.build()
+		// FREEZE HOME (copymode.go's [app.freezeHome]). It was the emacs `left`
+		// here long after the conversation's box had given the chord up, and
+		// the tip that names it draws over this box too since the lists merged
+		// — a key a tip teaches has to do on home what it does everywhere else.
+		// `←` is untouched.
+		a.freezeHome()
 		return nil
 	case "ctrl+f":
 		h.box.right()
@@ -5203,6 +5207,12 @@ func homeFilesTouched(row session.SessionRow) int {
 
 // homeHint names row options before the draft controls while the box is empty.
 func (a *app) homeHint() string {
+	// A FROZEN HOME NAMES THE READER'S KEYS AND NOTHING ELSE (copymode.go's
+	// [app.freezeHome]): they are the only keys that work while it is up, and
+	// the conversation's foot says the same line for the same reason.
+	if a.copy.on {
+		return copyKeysWord
+	}
 	// AND THE MODEL LIST OVER THE TARGET NAMES ITS OWN THREE KEYS AND NOTHING
 	// ELSE. It has the whole keyboard while it is up (homedraft.go), so the
 	// router's tail would be two keys that do nothing — which is the one state
