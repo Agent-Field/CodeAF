@@ -199,9 +199,9 @@ func TestAttachAtHomeLandsOnHomesTrayAndSaysSo(t *testing.T) {
 	}
 
 	// A picture goes the same way, through the same tray.
-	runCmd(a.homeSlash("/image " + filepath.Join(root, "here", "shot.png")))
+	runCmd(a.homeSlash("/attach " + filepath.Join(root, "here", "shot.png")))
 	if !a.at(pageHome) {
-		t.Fatal("/image <path> at home opened a conversation")
+		t.Fatal("/attach <picture> at home opened a conversation")
 	}
 	if len(a.chips) != 2 || a.chips[1].name() != "shot.png" {
 		t.Fatalf("the picture did not reach home's tray: %+v", a.chips)
@@ -211,22 +211,21 @@ func TestAttachAtHomeLandsOnHomesTrayAndSaysSo(t *testing.T) {
 	}
 }
 
-// A BARE /attach ASKS FOR THE PATH WHERE IT WAS TYPED. It used to open a
-// conversation to hold a browser, which is a conversation started for a
-// question — and the two ways a file reaches home's tray are named instead.
-func TestBareAttachAtHomeAsksForThePath(t *testing.T) {
+// A BARE /attach AT HOME OPENS THE BROWSER, aimed at the next conversation's
+// folder the way a bare /folder is, and a file chosen there lands on home's
+// tray (folderact.go's [app.targetFolderConfirm]). It used to answer `type
+// the path after /attach`, a correction where a person wanted a door.
+func TestBareAttachAtHomeOpensTheBrowserForTheTarget(t *testing.T) {
 	a, _, _ := mixedLab(t)
 	runCmd(a.openHome())
 
 	runCmd(a.homeSlash("/attach"))
-	if !a.at(pageHome) {
-		t.Fatal("a bare /attach at home left the screen")
+	if !a.folder.open || !a.folder.forTarget {
+		t.Fatalf("a bare /attach at home did not open the target's browser: open=%v target=%v",
+			a.folder.open, a.folder.forTarget)
 	}
-	if a.folder.open {
-		t.Fatal("a bare /attach at home opened the browser")
-	}
-	if a.home.msg != homeTypeThePathWord {
-		t.Fatalf("home said %q, want %q", a.home.msg, homeTypeThePathWord)
+	if a.home.msg != "" {
+		t.Fatalf("a bare /attach at home said %q instead of opening the sheet", a.home.msg)
 	}
 }
 

@@ -141,9 +141,12 @@ const (
 	// eventTaskTyped is `/task <brief>` reaching its command (taskcommand.go);
 	// the task it starts fires [eventTaskStarted] on its own later.
 	eventTaskTyped = "task-typed"
-	// eventSpelledOut is `ctrl+r` asking for the draft to be spelled out
-	// (spellout.go's [app.spellAsk]).
-	eventSpelledOut = "spelled-out"
+	// eventManualAsked is /manual reaching its command, bare or with a page or
+	// a question (app.go).
+	eventManualAsked = "manual-asked"
+	// eventTabReopened is ctrl+shift+t bringing a closed tab back
+	// (tabreopen.go).
+	eventTabReopened = "tab-reopened"
 	// eventAtOpened is the `@` completion list coming up under the box
 	// (app.go's [app.syncLists]).
 	eventAtOpened = "at-opened"
@@ -192,7 +195,7 @@ var noticeEvents = []string{
 	eventMenuOpened, eventRewound, eventCopyEntered, eventModelSwitched,
 	eventCompacted, eventFilesOpened, eventResumeOpened, eventCostShown,
 	eventStandingOpened, eventDeliverableMade,
-	eventAsked, eventTaskTyped, eventSpelledOut, eventAtOpened, eventAttached,
+	eventAsked, eventTaskTyped, eventManualAsked, eventTabReopened, eventAtOpened, eventAttached,
 	eventFolderPicked, eventModelListOpened, eventCrewShown, eventBudgetShown,
 	eventSpendOpened, eventSteered, eventQueued, eventChatStarted,
 	eventPlaceJumped, eventRemembered, eventSearchOpened, eventSubharnessOpened,
@@ -376,12 +379,6 @@ var notices = []notice{
 		retire: eventAsked,
 	},
 	{
-		id: "task-from-home", slot: slotHint, place: onHome,
-		armed:  askable,
-		text:   "alt+enter sends what you typed off as a task",
-		retire: eventAsked,
-	},
-	{
 		id: "task-in-chat", slot: slotHint, place: inChat, priority: 55,
 		armed:  spoken,
 		text:   "/task starts work you can walk away from",
@@ -394,10 +391,16 @@ var notices = []notice{
 		retire: eventStandingOpened,
 	},
 	{
-		id: "spell-out", slot: slotHint, place: everywhere, priority: 26,
-		armed:  func(a *app) bool { _, ok := a.spellDoor(); return ok },
-		text:   "ctrl+r spells out what your sentence is taken to mean",
-		retire: eventSpelledOut,
+		id: "manual-answers", slot: slotHint, place: everywhere, priority: 26,
+		armed:  ready,
+		text:   "/manual answers any question about codeaf from its own manual",
+		retire: eventManualAsked,
+	},
+	{
+		id: "reopen-tab", slot: slotHint, place: everywhere, priority: 17,
+		armed:  ready,
+		text:   "ctrl+shift+t reopens the tab you just closed",
+		retire: eventTabReopened,
 	},
 	// ── files and context ───────────────────────────────────────────────────
 	{
@@ -421,7 +424,7 @@ var notices = []notice{
 	{
 		id: "attach-a-picture", slot: slotHint, place: everywhere, priority: 6,
 		armed:  ready,
-		text:   "/image attaches a picture, or paste a screenshot in",
+		text:   "/attach takes a picture too, or paste a screenshot in",
 		retire: eventAttached,
 	},
 	{
@@ -942,7 +945,7 @@ func (a *app) noticeHomeHint() string {
 // noticeHomeQuiet is whether nothing on home outranks a tip: the box is at
 // rest, no list or layer has the keyboard, and no exchange is being read.
 func (a *app) noticeHomeQuiet() bool {
-	return a.at(pageHome) && a.home.box.empty() && !a.home.cmd.open && !a.home.searching() &&
+	return a.at(pageHome) && a.home.box.empty() && !a.home.cmd.open && !a.home.comp.open && !a.home.searching() &&
 		a.paneExchange() == nil && !a.targetPickShowing() && !a.composer.open && !a.hopShowing()
 }
 

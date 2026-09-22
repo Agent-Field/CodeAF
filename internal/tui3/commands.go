@@ -68,7 +68,6 @@ var commands = []command{
 	// not where they learn its grammar; the manual's model page has the four
 	// forms in a table ([modelArg] at the foot of this file).
 	{name: "model", args: "<slug>", desc: "switch the model for the conversation or open task"},
-	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
 	// /set and /config were already answered by the dispatch before aliases
 	// existed, and /connections and /sessions with them. They are written here
 	// now because the table is the one place: a word the surface accepts and the

@@ -3511,6 +3511,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(text)
 
 	case filesLoadedMsg:
+		if msg.home {
+			a.homeFilesLoaded(msg.paths)
+			return a, nil
+		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
 		a.comp.rank()
 		a.touch()
@@ -7007,17 +7011,11 @@ func (a *app) slash(line string) tea.Cmd {
 		// (landcmd.go), and the landing itself runs off the loop.
 		return a.runLandCommand(rest)
 
-	case "image":
-		// The other door onto the tray, for a picture that is not under this
-		// directory or not in the walk: a path, attached (attach.go).
-		a.attachPath(rest)
-		return nil
-
 	case "attach":
-		// The same tray, for everything that is not a picture: a log, a CSV, a
-		// stack trace saved to a file. The model is handed the PATH rather than
-		// the contents, because an attached file is a file and the session
-		// already has a `read` tool (attach.go).
+		// THE tray, for anything: a log, a CSV, a stack trace saved to a file —
+		// and a picture, which the tray tells apart by its name (attach.go). A
+		// file is handed to the model as a PATH rather than its contents, because
+		// the session already has a `read` tool; a picture travels as the picture.
 		//
 		// AND WITH NO PATH AFTER IT, THE BROWSER — the same sheet /folder opens,
 		// with file intent (folderplace.go's [app.openContextPick]). It used to
@@ -7239,6 +7237,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runCacheCommand(rest)
 
 	case "manual":
+		a.noticeEvent(eventManualAsked)
 		// codeaf's own manual, in the conversation, AS WRITTEN (manualcmd.go).
 		// It is an answer rather than a place for /status' reason — a person who
 		// asked a question about the product wants it where they can scroll back

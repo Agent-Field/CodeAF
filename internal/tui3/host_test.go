@@ -311,7 +311,7 @@ func TestAPictureIsFoundOnTheMachineThePersonIsSittingAt(t *testing.T) {
 	if got := a.resolvePath("shot.png"); got != path {
 		t.Fatalf("resolvePath = %q, want the local file — not %q joined onto a path on another machine", got, "shot.png")
 	}
-	a.attachPath("shot.png")
+	a.attachFilePath("shot.png")
 	if len(a.chips) != 1 {
 		t.Fatalf("the picture did not attach: %s", strings.Join(plainRows(a), "\n"))
 	}

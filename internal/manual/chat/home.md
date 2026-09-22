@@ -1259,7 +1259,7 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | **`next conversation's folder`** | `/folder` `/place` `/dir` · `/folder <path>` | Opens the folder browser, **aimed at the next conversation**. Picking a folder pins it — `project: ~/src/parser` on the seam above the box shows the selection, with no duplicate footer message. |
 | **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
-| **`onto home's tray`** | `/attach <path>` · `/image <path>` | The file rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` says `type the path after /attach · or drop the file here`. |
+| **`onto home's tray`** | `/attach <path>` | The file — or picture — rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` opens the browser aimed at the next conversation's folder, and a file chosen there lands on the tray. |
 | **`opens a conversation here first`** | `/files` · `/crew` (bare) · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder and model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. |
 | **`answers here`** | `/help` · `/manual` · `/status` · `/cost` · `/cache` · `/budget` · `/crew <preset>` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
 | **`runs on the conversation behind home`** | `/land` · `/land <folder>` · `/workspace <path>` | Acts on the conversation this window is holding behind the screen — not on the one `enter` would open — and its answer is echoed onto home's line. |
@@ -1275,7 +1275,7 @@ description gives way first, whole, and what `enter` will do stays on the row.
 conversation.** The chip appears on the row above home's box, and the line under it says
 `attached · server.log · rides with the next conversation`. When you then type a sentence and
 press `enter`, the conversation that opens has the file already attached to its first
-message. `/image ~/shots/shot.png` is the same road for a picture.
+message. `/attach ~/shots/shot.png` is the same road for a picture.
 
 **A drop does the same thing without a command.** Drag a file onto the window while home is
 up and it lands on the same tray. So does a paste.
@@ -1391,6 +1391,18 @@ what it names. It sits at the right, led by a bulb and closed by a small cross a
 it away with until your next visit. The keys row at the very foot is not a tip and never
 changes. The whole list, what makes each one appear and disappear, and the **disable hints**
 row on the Workspace tab that turns them off, are on the *hints and tips* page.
+
+## Typing @ on home — does the @ file list work on home, complete a path into home's box
+
+Yes, since 2026-09-22. Type `@` and a letter or two into home's box and the same list a
+conversation's box opens appears in home's column: files and folders under the folder the
+next conversation opens in (the one on the rule), ranked as you type, `folder` and `img`
+tags on the right. `↑`/`↓` pick, `enter` puts the path into your sentence after the `@`,
+and choosing a picture takes the half-typed token out and puts the picture on home's tray
+instead, saying `attached · shot.png · rides with the next conversation`. `esc` closes the
+list and leaves the word alone. Tasks are not on this list — a task pointer is minted
+when a conversation sends, and home has none yet. While the walk is still running the
+column reads `looking…`; with no match it reads `no file matches`.
 
 ## What does pressing space twice do — space space does nothing now
 

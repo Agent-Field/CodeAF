@@ -2373,6 +2373,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop showing tips", "hints-and-tips"},
 		{"what is a news line", "hints-and-tips"},
 		{"what is the dim sentence above the rule on home", "hints-and-tips"},
+		{"does the @ file list work on home", "home"},
+		{"is there an /image command", "attaching-files"},
 		{"the tip on home changed by itself", "hints-and-tips"},
 		{"every hint codeaf can show", "hints-and-tips"},
 		{"is a retired tip gone for good", "hints-and-tips"},

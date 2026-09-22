@@ -1357,9 +1357,11 @@ There are three ways in.
    file in Finder or your file manager and press `cmd+v` / `ctrl+shift+v` — and
    codeaf attaches it. See "Dragging or pasting a screenshot in" below, which is
    the way most people do this.
-2. **`/image <path>`.** `~` becomes your home directory, a relative path is resolved
-   against the conversation's directory — or against **your own machine's** working
-   directory over `--host` — and an absolute path is left alone.
+2. **`/attach <path>`.** A picture handed to it is a picture. `~` becomes your home
+   directory, a relative path is resolved against the conversation's directory — or
+   against **your own machine's** working directory over `--host` — an absolute path is
+   left alone, and a quoted or backslash-escaped path is read as the one path it is.
+   (`/image <path>` was a second word for this until 2026-09-22 and is gone.)
 3. **The `@` completion.** An image row in the list is tagged `img`. Choosing it
    **removes the half-typed `@token` from your sentence** and puts the file in the
    tray, instead of typing a path.
@@ -1404,7 +1406,7 @@ because **the token goes to codeaf inside your message, in the position you left
 and the picture itself travels with it.** codeaf is told that `[image #1]` marks the
 first picture in the message, so the number you read is the picture it is looking at.
 
-**A picture attached by `/image` or the `@` completion gets its token too**, appended
+**A picture attached by `/attach` or the `@` completion gets its token too**, appended
 to the end of your sentence when you press `enter`, so "image 2" means the same thing
 whichever way the picture got there.
 
@@ -1412,20 +1414,20 @@ whichever way the picture got there.
 complete terminal reading of it names real files **on this machine**. A sentence that
 mentions a `.png`, a diff, a stack trace, a log — all of it goes into the message box as
 the text it plainly is, which is what pasting has always done.
-A paste over a line that starts with `/` is left as text too, so `/image ` and
+A paste over a line that starts with `/` is left as text too, so `/attach ` and
 `/export ` still take a path.
 
 **Raw image data on the clipboard is not read.** Copying a picture out of a browser or
 a screenshot tool — as *pixels* rather than as a file — pastes nothing here. Save it to
-a file first, then drag that in, or use `/image <path>`.
+a file first, then drag that in, or use `/attach <path>`.
 
 ## What codeaf says when a picture is refused
 
 | Situation | Exact text |
 |---|---|
-| `/image` with no path | `/image takes a path · try /image shot.png` |
-| Not one of the five types | `<basename> is not a picture · png, jpeg, webp and gif are` |
-| Missing file, or a directory | `no such picture: <path as typed>` |
+| `/attach` with no path | opens the file browser rather than refusing |
+| Not one of the five types | it is attached as a file, not refused |
+| Missing file | `no such file: <path as typed>` |
 | Already in the tray | `<basename> is already attached` |
 | Dragged or pasted in over the ceiling | `<basename> is over the 10MB image limit` |
 | Unreadable when you send | `could not read <basename>` |
@@ -1463,7 +1465,7 @@ can see, the message is refused before anything is sent and your pictures stay o
 tray. Once the message is sent, the transcript keeps the numbered marker and draws a
 compact control for each picture under your line.
 
-A command with a full tray is still a command: `/image` adds a second picture rather
+A command with a full tray is still a command: `/attach` adds a second picture rather
 than sending the first.
 
 ## Do I see my own screenshot in the conversation?
@@ -1503,7 +1505,11 @@ of the message; that run must **begin** with `@`. So an `@` in the middle of a w
 an email address, a Go doc link — never opens the list.
 
 **What it walks:** the conversation's workspace, or **your own machine's** working
-directory over `--host`. Skipped: `.git`, `vendor`, `node_modules`, every
+directory over `--host`. **On home** the same list opens over home's box (since
+2026-09-22) and walks the folder the next conversation opens in — the one on the rule —
+so moving the target with `alt+p` or `/folder` walks again; it offers files and folders
+there and never tasks, because a task pointer is minted when a conversation sends and
+home has none yet. Skipped: `.git`, `vendor`, `node_modules`, every
 dot-directory, every dot-file, and every symlink. Unreadable directories are skipped
 rather than fatal. The walk is capped at **10,000 files**, and paths are stored
 relative to the root with forward slashes.
@@ -1540,10 +1546,10 @@ snapshot already in memory and never touches the disk, so a slug pasted whole an
 sent in the same beat resolves to nothing and stays plain text. The entry remembered
 for `↑` is the sentence as you typed it, before expansion.
 
-**The honest limit: `/image `, `/attach ` (and its `/upload ` alias), and `/export `
-get path completion.** That is the whole list. Any other command that takes a path gets
-no completion at all, and says nothing about it. Over `--host`, completion still walks
-the machine you are sitting at: `/attach` and `/image` send those local bytes across.
+**The honest limit: `/attach ` (and its `/upload ` alias) and `/export ` get path
+completion.** That is the whole list. Any other command that takes a path gets no
+completion at all, and says nothing about it. Over `--host`, completion still walks the
+machine you are sitting at: `/attach` sends those local bytes across.
 
 ## Keys in the command list and the `@` list
 
@@ -1556,7 +1562,7 @@ follows what you type. Only these keys are taken from you:
 | `down` / `ctrl+n` | Move the list cursor down |
 | `esc` | Close the list. For the command list it also **seals that word** — the list does not reopen on the next letter of it. It does **not** interrupt a running turn |
 | `enter` | Command list: take the highlighted command. At the start of an otherwise empty box that **runs** it; anywhere else it replaces just that word with the command's name and runs nothing. If nothing matched, the line is sent as typed. `@` list: insert the highlighted task or file; if nothing is picked, the line is sent |
-| `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/image ` or `/export `. With nothing to complete and an empty box it goes back to the last conversation |
+| `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/attach ` or `/export `. With nothing to complete and an empty box it goes back to the last conversation |
 | `enter`, with an argument completion open | Closes the list and runs the line **as typed**. Your path is never swapped for the top-ranked row |
 
 ## Keys in the model picker and the sessions roster
@@ -1795,7 +1801,7 @@ claim that `tab` is free. In order: a paste bracket makes it a literal tab; the 
 eats it while it holds the keyboard (`esc` gives the keyboard back first); a box that has
 taken the whole keyboard on a place keeps it — the errand pane on home, the value being
 edited in settings; the rewind timeline and the inline rewind lift with it; and path
-completion takes it over `/image ` or `/export `. Then, on a place, it is the next place.
+completion takes it over `/attach ` or `/export `. Then, on a place, it is the next place.
 Only in a conversation, with none of those claiming it and the box empty, is it the way back.
 
 Two claims on `tab` were withdrawn when the places arrived, and both moved to a key that
@@ -3273,7 +3279,7 @@ live-applies on the next render; work stays indented in either mode.
 
 ## Things this page does not cover
 
-- **Slash commands** — what `/image`, `/export`, `/select`, `/copy`, `/model`,
+- **Slash commands** — what `/attach`, `/export`, `/select`, `/copy`, `/model`,
   `/resume`, `/permissions` and the rest do: the commands page.
 - **The status line, the legend under the box, and the layout**: the screen page.
 - **Tasks, rooms, proposals and the roster**: the tasks pages.

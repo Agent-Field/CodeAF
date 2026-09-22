@@ -697,7 +697,7 @@ Choosing a folder inserts its path into your sentence exactly the way choosing a
 the whole thing. It does **not** open the picker and does not add the folder to the ones
 this conversation is about; it is text in your message, and the model resolves it.
 
-The same list opens after `/attach `, `/image ` and `/export ` when you press `tab`, so the
+The same list opens after `/attach ` and `/export ` when you press `tab`, so the
 folders are offered there too.
 
 ## Every refusal /folder can give you

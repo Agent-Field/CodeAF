@@ -239,7 +239,20 @@ func (a *app) openFolderPick(query string) tea.Cmd {
 // [folderRemoteWord]'s argument said about the target: the pin would name a
 // directory the next conversation cannot open.
 func (a *app) openTargetFolderPick(query string) tea.Cmd {
-	a.noticeEvent(eventFolderPicked)
+	return a.openTargetContextPick(query, false)
+}
+
+// openTargetContextPick is the sheet home opens, with either intent: a bare
+// /attach wants a FILE for the tray and a bare /folder wants the next
+// conversation's folder, and both are one sheet whose confirm already does
+// both (folderact.go's [app.targetFolderConfirm]). The intent decides only
+// which tip the gesture retires (notice.go).
+func (a *app) openTargetContextPick(query string, files bool) tea.Cmd {
+	if files {
+		a.noticeEvent(eventAttached)
+	} else {
+		a.noticeEvent(eventFolderPicked)
+	}
 	if a.hosted() {
 		a.home.say(folderRemoteWord, "")
 		return nil

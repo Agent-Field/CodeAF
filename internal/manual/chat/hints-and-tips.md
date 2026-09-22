@@ -75,8 +75,6 @@ disagree), so a tip you saw is on it word for word.
 
 - `/ask answers right here without opening a conversation` — home only, whenever home's
   ask door is there. Retired the first time `/ask` or `alt+enter` sends something from home.
-- `alt+enter sends what you typed off as a task` — home only, on the same terms and retired
-  by the same gesture.
 - `/task starts work you can walk away from` — conversation only, after the first exchange.
   Retired when `/task` is typed, bare or with a brief.
 - `ctrl+enter sends your message as something to keep true` — both. Retired when a standing
@@ -84,8 +82,8 @@ disagree), so a tip you saw is on it word for word.
 - `/standing keeps something always true` — both, once this directory has three or more
   earlier conversations. Retired by the same gesture; it is the quietest and yields to every
   other in a conversation.
-- `ctrl+r spells out what your sentence is taken to mean` — both, where the chord works.
-  Retired the first time you press it.
+- `/manual answers any question about codeaf from its own manual` — both. Retired when
+  `/manual` is typed, bare, with a page or with a question.
 
 **Files and context**
 
@@ -93,7 +91,7 @@ disagree), so a tip you saw is on it word for word.
   list opens.
 - `/attach sends a file along with your message` — both. Retired when a file goes on the
   tray by path or the file browser opens.
-- `/image attaches a picture, or paste a screenshot in` — both. Retired by the same gesture.
+- `/attach takes a picture too, or paste a screenshot in` — both. Retired by the same gesture.
 - `/folder picks the folder codeaf works in` — both. Retired when the folder chooser opens,
   from a conversation or aimed at home's target.
 - `/export writes this whole conversation to a file` — conversation only, after two
@@ -129,6 +127,8 @@ disagree), so a tip you saw is on it word for word.
 - `ctrl+t starts a fresh chat in this folder` — both. Retired when the new-chat page opens.
 - `alt+1 to alt+7 jump straight to a place` — both. Retired the first time a place chord
   reaches one.
+- `ctrl+shift+t reopens the tab you just closed` — both. Retired the first time the chord
+  is pressed, on a terminal that can send it.
 - `ctrl+. sees every task this project has run` — both, after the first task starts.
   Retired when you open the task page, by `ctrl+.` or `/history`.
 - `/resume opens an earlier conversation` — both, when you start in a directory that
@@ -152,7 +152,9 @@ over the cost tip, the cost tip over the task page tip — and the other waits i
 home nothing wins: every tip that is true for you has its turn, in the order above.
 
 `/ shows every command` used to be one of these. It is gone because both keys rows now say
-`/ commands` outright, so there was nothing left to teach.
+`/ commands` outright, so there was nothing left to teach. Two more were cut on 2026-09-22:
+an `alt+enter` tip that promised a task where the chord asks, and a `ctrl+r` tip for a
+chord that works only in a conversation and only over a making-shaped sentence.
 
 ## Turn off hints — stop showing tips, disable the hints, the disable hints row
 

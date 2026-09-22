@@ -272,35 +272,15 @@ func (a *app) removeChip(i int) {
 	a.touch()
 }
 
-// attachPath is the /image command: one path, attached, or one note saying why
-// not. Every refusal names the file, because "not an image" about a path the
-// person typed is a sentence they can act on and "could not attach" is not.
-func (a *app) attachPath(raw string) {
-	a.noticeEvent(eventAttached)
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		a.note("/image takes a path · try /image shot.png")
-		return
-	}
-	path := a.resolvePath(raw)
-	if !isImagePath(path) {
-		a.note(filepath.Base(path) + " is not a picture · png, jpeg, webp and gif are")
-		return
-	}
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		a.note("no such picture: " + raw)
-		return
-	}
-	if !a.attach(path) {
-		a.note(filepath.Base(path) + " is already attached")
-	}
-}
-
-// attachFilePath is the /attach command: one path, put on the tray as a FILE,
-// or one note saying why not. Every refusal names the file, for [app.attachPath]'s
-// reason — "no such file" about a path the person typed is a sentence they can
-// act on and "could not attach" is not.
+// attachFilePath is the /attach command: one path, put on the tray, or one
+// note saying why not. Every refusal names the file — "no such file" about a
+// path the person typed is a sentence they can act on and "could not attach"
+// is not.
+//
+// /image WAS THE OTHER WORD FOR THIS AND IS GONE (2026-09-22). It took only a
+// picture and refused everything else, which made two commands out of one
+// gesture; the owner ruled that one word puts a thing on the tray and the
+// tray tells a picture from a file, which the paragraph below already did.
 //
 // A PICTURE HANDED TO /attach IS STILL A PICTURE. Somebody who has learned one
 // word for putting a thing into a message should not have to learn that this
@@ -383,7 +363,7 @@ func (a *app) attachFilePath(raw string) {
 // far side. Joining "shot.png" onto the far machine's workspace would name a
 // path that exists on neither machine.
 func (a *app) resolvePath(path string) string {
-	path = strings.TrimSpace(path)
+	path = unquotePath(path)
 	if path == "~" || strings.HasPrefix(path, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
 			path = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/"))
@@ -392,6 +372,22 @@ func (a *app) resolvePath(path string) string {
 	path = windowsPathHere(path, a.wsl)
 	if root := a.pathRoot(); !filepath.IsAbs(path) && root != "" {
 		path = filepath.Join(root, path)
+	}
+	return path
+}
+
+// unquotePath is what a person typed after a command, read the way the shell
+// they copied it from would read it: a path wrapped in matching quotes loses
+// them, and a backslash before a space is the space. A macOS Finder copy and
+// a terminal drop both arrive in one of those shapes, and until 2026-09-22
+// `/attach '/Users/me/Screenshot 2026-09-18 at 1.35.20 PM.png'` was answered
+// with `no such file` about a file that was there. The paste reader already
+// knows both shapes ([pastedWords]); a run that reads as ONE word is taken as
+// that word, and anything else is left exactly as typed.
+func unquotePath(path string) string {
+	path = strings.TrimSpace(path)
+	if words := pastedWords(path); len(words) == 1 && words[0] != "" {
+		return words[0]
 	}
 	return path
 }

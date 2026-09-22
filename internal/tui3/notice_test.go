@@ -511,10 +511,8 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventDeliverableMade: func(t *testing.T, a *app) { a.exportDone(exportedMsg{path: "/tmp/lab/talk.md"}) },
 		eventAsked:           func(t *testing.T, a *app) { a.askHere("what is this") },
 		eventTaskTyped:       func(t *testing.T, a *app) { a.slash("/task") },
-		eventSpelledOut: func(t *testing.T, a *app) {
-			a.input.setText("build me a login page")
-			a.spellAsk()
-		},
+		eventManualAsked:     func(t *testing.T, a *app) { a.slash("/manual") },
+		eventTabReopened:     func(t *testing.T, a *app) { drive(t, a, reopenPress()) },
 		eventAtOpened: func(t *testing.T, a *app) {
 			drive(t, a, key("@"), key("s"), key("h"))
 			if !a.comp.open {

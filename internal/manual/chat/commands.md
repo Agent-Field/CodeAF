@@ -39,7 +39,7 @@ The same token rules apply on home and in conversations:
   list; moving the caret back into the command word opens it again.
 - The entire token must contain command-name characters. A further slash, a dot or a
   backslash makes it a path rather than a command token, even with the caret midway
-  through it. `/tmp/project` and `/image.png` therefore leave the list closed.
+  through it. `/tmp/project` and `/shot.png` therefore leave the list closed.
 
 A partial path such as `/tmp` is still indistinguishable from an unknown command word:
 it shows `no commands match` until another slash or path punctuation makes the intent
@@ -156,7 +156,6 @@ Canonical word, the other words it answers to, its argument form, and what it do
 |---|---|---|---|
 | `/model` | — | — | opens the model picker |
 | `/model` | — | `<slug>` | switches the model to that slug |
-| `/image` | — | `<path>` | attaches a picture; tab completes the path |
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
 | `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
@@ -434,30 +433,29 @@ answers out loud, exactly:
 your terminal already has the pointer — drag to select.
 ```
 
-## /image — attach a picture
+## /image — attach a picture, and why there is no /image command any more
 
-`/image <path>` attaches a picture to your next message. Use it for a picture that is not
-under this directory, or one the `@` completion walk does not reach.
+There is no `/image` command. Until 2026-09-22 it was a second word for `/attach` that
+took only a picture and refused everything else; `/attach <path>` does the whole job now.
+A picture handed to it lands on the tray as `▣ #1 name.png` and **its `[image #1]` token
+is appended to your sentence when you press `enter`**, so you can refer to it by number the
+same way you would one you dragged in. Anything else lands as a file. Typing `/image` is
+answered the way every unknown word is: `there is no command called /image · / lists them`.
 
 Path rules: `~` is your home directory, a bare name is under the directory this
-conversation is about, and an absolute path is left alone. Over `--host` the path is
-anchored to **this** machine — the picture is on the laptop you are sitting at, and its
-bytes travel with the message.
+conversation is about, an absolute path is left alone, and **a path in quotes, or with
+its spaces backslashed** — the shape Finder and a terminal drop hand you — is read as the
+one path it is. Over `--host` the path is anchored to **this** machine — the picture is on
+the laptop you are sitting at, and its bytes travel with the message.
 
-A full attachment tray does not stop the command: `/image` adds a second picture rather
-than sending the first.
+A full attachment tray does not stop the command: a second picture is a second chip rather
+than a send. Dragging or pasting a file over a line that already starts with `/` leaves
+the path as text, so `/attach ` still takes the path you dropped on it.
 
-The picture lands on the tray as `▣ #1 name.png` and **its `[image #1]` token is appended
-to your sentence when you press `enter`**, so you can refer to it by number the same way
-you would one you dragged in. Dragging or pasting a file over a line that already starts
-with `/` leaves the path as text, so `/image ` still takes the path you dropped on it.
-
-Refusals, exactly as written:
+Refusals, exactly as written on the attaching-files page:
 
 ```
-/image takes a path · try /image shot.png
-<name> is not a picture · png, jpeg, webp and gif are
-no such picture: <what you typed>
+no such file: <what you typed>
 <name> is already attached
 ```
 
