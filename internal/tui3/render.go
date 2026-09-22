@@ -316,6 +316,7 @@ func (a *app) layout(width int) []row {
 // four rules exist to prevent.
 func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	es := d.entries
+	activity, activityAt, showActivity := a.questionActivity(d)
 	folds := a.deckFolds(d)
 	// THE ANSWER HIERARCHY IS DECIDED BEFORE A SINGLE BLOCK DRAWS (hierarchy.go).
 	// Which prose was narration and which was the answer is a fact about this
@@ -681,6 +682,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			})
 		}
 		out = append(out, a.mediaRows(e, i, width, userLead)...)
+		if showActivity && i == activityAt {
+			gap()
+			out = append(out, a.activityRows(activity, a.pal.narr("Working"), width)...)
+		}
 		wasCluster = false
 		wasNote = e.kind == entryNote
 		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())

@@ -15,17 +15,19 @@ frame := activity.Frame(now)              // Read-only, fixed-width glyphs.
 ```
 
 The surface shares `activityMark` and `activityRows`. Chat owns one instance per
-turn; each task/run page owns another. The indicator is pinned in chrome directly
-above the input, outside transcript layout and all changing tool captions. Its
-label is always `Working`, with no rates, timers or phase words attached.
+turn; each task/run page owns another. The indicator anchors immediately after
+the latest submitted question, including its wrapped text and attachments. Work
+details and the answer grow below it. On adaptive graph pages, it sits below the
+goal header. It scrolls with that question rather than occupying input chrome.
+Its label stays `Working`, with no rates, timers or changing phase words attached.
 
-The chrome reserves one row even when idle. The animation reserves nine terminal
-columns whether its pose is wide or narrow, followed by two columns of whitespace.
-Including the two-column left inset, following content always starts at column
-14 (zero-based `activityLabelColumn` is 13). Future callers must use that fixed
-slot rather than measuring visible glyphs. Completion clears the row without
-moving the input. Questions replace the active indicator, never imply work is
-continuing while user input is required.
+The animation reserves nine terminal columns whether its pose is wide or narrow,
+followed by two columns of whitespace. Including its two-column inset, following
+content starts at column 14 relative to the content area (`activityLabelColumn`
+is 13). Future callers must use that slot rather than measuring visible ink.
+Completion removes the transient row; it is never stored in the transcript.
+Questions requiring input stop the animation. No extra row is reserved above
+the input, and the composer geometry is unchanged.
 
 Motion is sampled on the existing clock. Twenty-eight deliberately held poses form a
 2.8-second loop; holding contact gives the ball weight, while all text to its right

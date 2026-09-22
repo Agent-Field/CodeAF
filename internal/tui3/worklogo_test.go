@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
@@ -48,18 +49,15 @@ func TestWorkingLogoFollowsChatAndKeepsItsChoice(t *testing.T) {
 	if !a.workLogoVisible() {
 		t.Fatal("streaming reply lost the logo")
 	}
-	rows, marks, _, _ := a.chrome(90)
+	rows, _ := a.deckRows(a.conversation(), 90)
 	found := 0
-	for i, r := range rows {
-		if marks[i].kind == chromeActivity && strings.Contains(ansi.Strip(r), "Working") {
+	for _, r := range rows {
+		if r.activity && strings.Contains(ansi.Strip(r.text), "Working") {
 			found++
-		}
-		if ansi.StringWidth(r) > 90 {
-			t.Fatal("dock overflows")
 		}
 	}
 	if found != 1 {
-		t.Fatal("chrome did not emit one activity dock")
+		t.Fatal("question does not have one activity line")
 	}
 	a.state = stateIdle
 	if a.workLogoVisible() {
@@ -149,45 +147,52 @@ func TestWorkingLogoStopsForQuestions(t *testing.T) {
 	}
 }
 
-func TestWorkingLogoDockReservesGeometryAcrossEveryPose(t *testing.T) {
+func TestWorkingLogoQuestionAnchorReservesColumnsAcrossEveryPose(t *testing.T) {
 	a := workLogoApp(t)
+	a.entries[0].text = strings.Repeat("A long question that wraps. ", 6)
 	began := a.now()
-	dockAt, caretAt := -1, -1
+	anchor := -1
+	chromeHeight := a.chromeBaseHeight()
 	for style := 0; style < tokens.WorkLogoCount; style++ {
 		a.workActivity.Start(began, style)
 		for i := 0; i < 28; i++ {
 			a.clock = func() time.Time { return began.Add(time.Duration(i) * 100 * time.Millisecond) }
-			rows, marks, _, caret := a.chrome(100)
+			rows, _ := a.deckRows(a.conversation(), 60)
 			at := -1
-			for j, mark := range marks {
-				if mark.kind == chromeActivity {
+			lastQuestion := -1
+			for j, r := range rows {
+				if r.entry == 0 {
+					lastQuestion = j
+				}
+				if r.activity {
 					at = j
 				}
 			}
-			if at < 0 {
-				t.Fatal("missing pinned slot")
+			if at < 0 || at != lastQuestion+2 {
+				t.Fatal("indicator is not after the complete wrapped question")
 			}
-			if dockAt < 0 {
-				dockAt, caretAt = at, caret
+			if anchor < 0 {
+				anchor = at
 			}
-			if at != dockAt || caret != caretAt {
-				t.Fatal("motion moved the dock or input")
+			if at != anchor || a.chromeBaseHeight() != chromeHeight {
+				t.Fatal("motion moved its anchor or added input chrome")
 			}
-			text := ansi.Strip(rows[at])
+			text := ansi.Strip(rows[at].text)
 			prefix := strings.SplitN(text, "Working", 2)
 			if len(prefix) != 2 || ansi.StringWidth(prefix[0]) != activityLabelColumn || prefix[1] != "" {
 				t.Fatalf("unstable label: %q", text)
 			}
-			if got := ansi.StringWidth(a.activityMark(a.workActivity)); got != tokens.WorkLogoWidth {
-				t.Fatalf("slot is %d columns", got)
-			}
 		}
 	}
-	before := a.chromeBaseHeight()
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: strings.Repeat("The answer grows. ", 50), turn: 1})
+	rows, _ := a.deckRows(a.conversation(), 60)
+	if !rows[anchor].activity {
+		t.Fatal("streaming moved the indicator")
+	}
 	a.state = stateIdle
-	rows, marks, _, caret := a.chrome(100)
-	if a.chromeBaseHeight() != before || caret != caretAt || marks[dockAt].kind != chromeActivity || rows[dockAt] != "" {
-		t.Fatal("finishing changed reserved geometry")
+	_, _, visible := a.questionActivity(a.conversation())
+	if visible {
+		t.Fatal("completed question still animates")
 	}
 }
 
@@ -202,5 +207,29 @@ func TestWorkingLogoHeaderHasStaticBrandMark(t *testing.T) {
 	p.ascii = true
 	if got := ansi.Strip(p.wordmark(80)); got != product {
 		t.Fatalf("ASCII fallback: %q", got)
+	}
+}
+
+func TestWorkingLogoAdaptiveRunUsesItsOwnState(t *testing.T) {
+	a, _ := orchApp(t, orchestrate.Snapshot{})
+	a.width, a.height = 100, 40
+	a.pal = newPalette(tokens.TrueColor, false)
+	run := a.orchOf()
+	run.known = true
+	if !a.roomWorkLogoVisible() {
+		t.Fatal("active run has no indicator")
+	}
+	rows := a.orchRows(90)
+	if len(rows) == 0 || !rows[0].activity {
+		t.Fatal("run indicator is not below the goal header")
+	}
+	run.snap.Paused = true
+	if a.roomWorkLogoVisible() {
+		t.Fatal("paused run animates")
+	}
+	run.snap.Paused = false
+	run.snap.Done = true
+	if a.roomWorkLogoVisible() {
+		t.Fatal("finished run animates")
 	}
 }
