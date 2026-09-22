@@ -2384,6 +2384,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is a retired tip gone for good", "hints-and-tips"},
 		{"a tip appeared in my conversation after a while", "hints-and-tips"},
 		{"why does the hint only show up when I stop typing", "hints-and-tips"},
+		// The showing rule, and the day the row went blank: asked by the
+		// owner, whose afternoon of stepping through home had spent the table.
+		{"how long does a tip have to be on screen to count", "hints-and-tips"},
+		{"no hints at all any more, home's row is blank", "hints-and-tips"},
 		{"can I search my conversations with memory off", "places"},
 		{"search says what was said is not indexed", "places"},
 

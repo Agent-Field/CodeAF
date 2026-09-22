@@ -6856,6 +6856,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runUpdateCommand(rest)
 
 	case "autonomy":
+		a.noticeEvent(eventAutonomyAsked)
 		if rest != "" {
 			return a.changeAutonomy(rest)
 		}

@@ -133,21 +133,24 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 	// The task tip is the one a first exchange arms highest (notice.go's
 	// table); `/ shows every command` stood here until both feet said it.
 	const hint = "task-in-chat"
-	// A SHOWING IS A VISIBLE ONE: the row draws after a quiet minute, so each
-	// launch is a turn ending and then a minute of nothing (chattip_test.go
-	// proves the clock; here it is turned by hand).
-	launch := func() *app {
+	// A SHOWING IS A VISIBLE ONE THAT STOOD: the row draws after a quiet
+	// minute, so each launch is a turn ending, a minute of nothing, the tip
+	// standing [noticeReadTime], and then a key — which puts the row away and
+	// is when the showing is counted (chattip_test.go proves the clock; here
+	// it is turned by hand).
+	launch := func() (*app, func(time.Duration)) {
 		a := noticeApp(t, "")
 		a.turn = 1
 		a.noticeEvent(eventTurnEnded)
-		quietMinute(a)
-		return a
+		return a, quietMinute(a)
 	}
 	for session := 1; session <= noticeShownDefault; session++ {
-		a := launch()
+		a, stand := launch()
 		if got := a.notices.current[hintSlotForTest]; got != hint {
 			t.Fatalf("launch %d holds %q in the hint slot, want %q", session, got, hint)
 		}
+		stand(noticeReadTime)
+		a.noticeTouched()
 		if got := loadNoticeLedger(noticeLedgerPath("")).shown(hint); got != session {
 			t.Fatalf("after launch %d the ledger on disk counts %d showings", session, got)
 		}
@@ -155,7 +158,7 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 	if got := loadNoticeLedger(noticeLedgerPath("")); !got.retired(hint) {
 		t.Fatalf("the hint is not retired after %d launches: %+v", noticeShownDefault, got)
 	}
-	if a := launch(); a.notices.current[hintSlotForTest] == hint {
+	if a, _ := launch(); a.notices.current[hintSlotForTest] == hint {
 		t.Fatalf("a hint shown in %d launches came back in the next one", noticeShownDefault)
 	}
 }
@@ -165,14 +168,16 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 const hintSlotForTest = slotHint
 
 // quietMinute turns the conversation's clock by hand until the row's tip is
-// due (notice.go's [app.noticeIdleBeat]).
-func quietMinute(a *app) {
+// due (notice.go's [app.noticeIdleBeat]), and hands back the hand that moves
+// that clock on, for a test that needs the tip to stand a while.
+func quietMinute(a *app) func(time.Duration) {
 	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 	a.clock = func() time.Time { return now }
 	a.noticeTouched()
 	a.noticeArmIdle()
 	now = now.Add(chatHintIdle)
 	a.noticeIdleBeat(a.notices.idleGen)
+	return func(d time.Duration) { now = now.Add(d) }
 }
 
 // AND THE NEWS CHANNEL HAS AN OLDER BUILD TO COMPARE AGAINST. It opens on the
@@ -276,11 +281,16 @@ func TestTheNoticeLedgerWriteLeavesNoPartialFile(t *testing.T) {
 
 func freshBoard() noticeBoard { return newNoticeBoard("", "", true) }
 
+// fixedLimit is a limit lookup answering n for every notice, for the board
+// tests that need no table.
+func fixedLimit(n int) func(string) int { return func(string) int { return n } }
+
 // A ROTATION, NOT A RANKING: the first eligible tip stands, an event without
 // an advance keeps it, an advance moves to the next eligible in the table's
 // order, and the ring comes round.
 func TestASlotRotatesThroughTheEligibleTipsInTableOrder(t *testing.T) {
 	b := freshBoard()
+	now := time.Date(2026, 9, 22, 9, 0, 0, 0, time.UTC)
 	cands := []noticeCandidate{
 		{id: "first", armed: true},
 		{id: "idle", armed: false},
@@ -290,7 +300,7 @@ func TestASlotRotatesThroughTheEligibleTipsInTableOrder(t *testing.T) {
 	if got := b.pick(slotHint, cands); got != "first" {
 		t.Fatalf("the slot picked %q, want the first eligible", got)
 	}
-	b.take(slotHint, "first", 6, true)
+	b.take(slotHint, "first", true, now, fixedLimit(6))
 	if got := b.pick(slotHint, cands); got != "first" {
 		t.Fatalf("an event without an advance moved the slot to %q", got)
 	}
@@ -300,7 +310,7 @@ func TestASlotRotatesThroughTheEligibleTipsInTableOrder(t *testing.T) {
 		if got != want {
 			t.Fatalf("the ring went to %q, want %q", got, want)
 		}
-		b.take(slotHint, got, 6, true)
+		b.take(slotHint, got, true, now, fixedLimit(6))
 	}
 	// The note slot rotates on the same terms; with one candidate it is that one.
 	if got := b.pick(slotNote, []noticeCandidate{{id: "news", armed: true}}); got != "news" {
@@ -312,6 +322,7 @@ func TestASlotRotatesThroughTheEligibleTipsInTableOrder(t *testing.T) {
 // was asked to move — and then takes its turn like every other row.
 func TestAFreshTipJumpsTheRing(t *testing.T) {
 	b := freshBoard()
+	now := time.Date(2026, 9, 22, 9, 0, 0, 0, time.UTC)
 	cands := []noticeCandidate{
 		{id: "compact", armed: false},
 		{id: "first", armed: true},
@@ -320,12 +331,12 @@ func TestAFreshTipJumpsTheRing(t *testing.T) {
 	if got := b.pick(slotHint, cands); got != "first" {
 		t.Fatalf("the slot picked %q", got)
 	}
-	b.take(slotHint, "first", 6, true)
+	b.take(slotHint, "first", true, now, fixedLimit(6))
 	cands[0] = noticeCandidate{id: "compact", armed: true, fresh: true}
 	if got := b.pick(slotHint, cands); got != "compact" {
 		t.Fatalf("a fresh tip did not jump the ring: %q", got)
 	}
-	b.take(slotHint, "compact", 6, true)
+	b.take(slotHint, "compact", true, now, fixedLimit(6))
 	// No longer fresh: an event keeps it, and an advance walks on from it.
 	cands[0].fresh = false
 	if got := b.pick(slotHint, cands); got != "compact" {
@@ -336,39 +347,65 @@ func TestAFreshTipJumpsTheRing(t *testing.T) {
 		t.Fatalf("the ring did not walk on from the fresh tip: %q", got)
 	}
 	// A tip disarming stands down at once, for the next eligible.
-	b.take(slotHint, "first", 6, true)
+	b.take(slotHint, "first", true, now, fixedLimit(6))
 	cands[1].armed = false
 	if got := b.pick(slotHint, cands); got != "second" {
 		t.Fatalf("a disarmed tip did not yield: %q", got)
 	}
 }
 
-// Every change of hands is a showing, a slot re-decided to the same tip is not,
-// and the last allowed showing retires the notice while leaving it up.
-func TestEveryChangeOfHandsIsAShowingAndTheLastOneRetires(t *testing.T) {
+// A SHOWING IS A TIP THAT STOOD TWENTY SECONDS ON A VISIBLE ROW. A flash on the
+// way through is nothing; a tip that stood is counted when it leaves; a tip
+// decided while the row could not be seen counts nothing until the row comes
+// into view; and the last allowed showing retires the notice.
+func TestAShowingIsATipThatStoodLongEnoughToBeRead(t *testing.T) {
 	b := freshBoard()
-	b.take(slotHint, "tip", 3, true)
-	b.take(slotHint, "tip", 3, true)
-	if got := b.ledger.shown("tip"); got != 1 {
-		t.Fatalf("one standing counted %d showings", got)
+	now := time.Date(2026, 9, 22, 9, 0, 0, 0, time.UTC)
+	limit := fixedLimit(3)
+	// A flash: the tip leaves five seconds after it came.
+	b.take(slotHint, "tip", true, now, limit)
+	now = now.Add(5 * time.Second)
+	b.take(slotHint, "", true, now, limit)
+	if got := b.ledger.shown("tip"); got != 0 {
+		t.Fatalf("a five-second flash counted %d showings", got)
 	}
-	b.take(slotHint, "", 3, true)
-	b.take(slotHint, "tip", 3, true)
+	// Re-deciding the same tip is nothing, and standing twenty seconds is one.
+	b.take(slotHint, "tip", true, now, limit)
+	b.take(slotHint, "tip", true, now, limit)
+	now = now.Add(noticeReadTime)
+	if b.settle(slotHint, now, limit); b.ledger.shown("tip") != 1 {
+		t.Fatalf("a tip that stood %s counted %d showings, want 1", noticeReadTime, b.ledger.shown("tip"))
+	}
+	// A settled tip does not count again until it is seen again.
+	now = now.Add(time.Minute)
+	if b.settle(slotHint, now, limit); b.ledger.shown("tip") != 1 {
+		t.Fatalf("a settled tip counted again: %d", b.ledger.shown("tip"))
+	}
+	// Decided while the row is out of sight: no standing until it is visible.
+	b.take(slotHint, "", false, now, limit)
+	b.take(slotHint, "tip", false, now, limit)
+	now = now.Add(time.Hour)
+	if b.settle(slotHint, now, limit); b.ledger.shown("tip") != 1 {
+		t.Fatalf("a tip nobody could see counted: %d", b.ledger.shown("tip"))
+	}
+	b.visible(slotHint, now)
+	now = now.Add(noticeReadTime)
+	b.take(slotHint, "other", true, now, limit)
 	if got := b.ledger.shown("tip"); got != 2 {
-		t.Fatalf("a tip coming back counted %d showings, want 2", got)
+		t.Fatalf("the tip counted %d showings after coming into view and standing, want 2", got)
 	}
 	if b.retired("tip") {
 		t.Fatal("a second showing retired the notice")
 	}
-	// The next surface over the same ledger: the third showing is the last.
+	// The next surface over the same ledger: the third showing is the last,
+	// and the slot is cleared as the notice retires.
 	next := newNoticeBoard("", "", true)
 	next.ledger = b.ledger
-	next.take(slotHome, "tip", 3, true)
+	next.take(slotHome, "tip", true, now, limit)
+	now = now.Add(noticeReadTime)
+	next.settle(slotHome, now, limit)
 	if !next.retired("tip") {
 		t.Fatal("the last allowed showing did not retire the notice")
-	}
-	if next.current[slotHome] != "tip" {
-		t.Fatal("the last allowed showing was not shown")
 	}
 }
 
@@ -377,13 +414,87 @@ func TestEveryChangeOfHandsIsAShowingAndTheLastOneRetires(t *testing.T) {
 func TestARetiredNoticeNeverReturnsThisSession(t *testing.T) {
 	b := freshBoard()
 	cands := []noticeCandidate{{id: "tip", armed: true}}
-	b.take(slotHint, "tip", 3, true)
+	b.take(slotHint, "tip", true, time.Now(), fixedLimit(3))
 	b.retire("tip")
 	if b.current[slotHint] != "" {
 		t.Fatal("retiring did not clear the slot")
 	}
 	if got := b.pick(slotHint, cands); got != "" {
 		t.Fatalf("a retired notice came back: %q", got)
+	}
+}
+
+// A LEDGER WRITTEN UNDER THE OLD COUNTING RULE IS FORGIVEN ONCE. The tips it
+// spent on flashes come back, the ones a gesture retired stay retired, and the
+// rule is written down so the next launch forgives nothing.
+func TestTheLedgerForgivesWhatTheOldCountingRuleSpent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, noticeLedgerName)
+	old := noticeLedger{Build: "abc", Seen: map[string]noticeMark{
+		"spent-by-count":   {Shown: noticeShownDefault, Retired: "2026-09-22T12:00:00Z"},
+		"used":             {Shown: 2, Retired: "2026-09-22T12:00:00Z"},
+		"still-going":      {Shown: 4},
+		"spent-and-beyond": {Shown: noticeShownDefault + 2, Retired: "2026-09-22T12:00:00Z"},
+	}}
+	if err := old.write(path); err != nil {
+		t.Fatal(err)
+	}
+	b := newNoticeBoard(path, "abc", true)
+	if b.retired("spent-by-count") || b.retired("spent-and-beyond") {
+		t.Fatal("a tip the old rule spent was not forgiven")
+	}
+	if b.ledger.shown("spent-by-count") != 0 {
+		t.Fatalf("a forgiven tip keeps %d showings", b.ledger.shown("spent-by-count"))
+	}
+	if !b.retired("used") {
+		t.Fatal("a tip retired by its gesture was forgiven")
+	}
+	if b.ledger.shown("still-going") != 4 {
+		t.Fatalf("a live tip's count changed to %d", b.ledger.shown("still-going"))
+	}
+	written := loadNoticeLedger(path)
+	if written.Rule != noticeLedgerRule || written.retired("spent-by-count") {
+		t.Fatalf("the forgiveness was not written down: %+v", written)
+	}
+	// And the next launch forgives nothing: a tip spent under the new rule
+	// stays spent.
+	b.ledger.Seen["spent-by-count"] = noticeMark{Shown: noticeShownDefault, Retired: "2026-09-22T13:00:00Z"}
+	b.save()
+	again := newNoticeBoard(path, "abc", true)
+	if !again.retired("spent-by-count") {
+		t.Fatal("a ledger already on the new rule was forgiven again")
+	}
+}
+
+// THROUGH HOME: a tip that stood on home's row for a bounce is not a showing,
+// one that stood twenty seconds is, and the ledger says so when home is left.
+func TestABounceThroughHomeIsNotAShowingAndAStandIs(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.door("")
+	now := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+	a.showPage(pageHome)
+	first := a.notices.current[slotHome]
+	if first == "" {
+		t.Fatal("home opened with nothing on its row")
+	}
+	now = now.Add(3 * time.Second)
+	a.closeHome()
+	if got := a.notices.ledger.shown(first); got != 0 {
+		t.Fatalf("a three-second bounce through home counted %d showings of %q", got, first)
+	}
+	a.showPage(pageHome)
+	second := a.notices.current[slotHome]
+	if second == "" || second == first {
+		t.Fatalf("the second visit holds %q", second)
+	}
+	now = now.Add(noticeReadTime + time.Second)
+	a.closeHome()
+	if got := a.notices.ledger.shown(second); got != 1 {
+		t.Fatalf("a tip that stood %s on home counted %d showings, want 1", noticeReadTime, got)
+	}
+	if got := a.notices.ledger.shown(first); got != 0 {
+		t.Fatalf("the bounced tip was counted later: %d", got)
 	}
 }
 
@@ -579,6 +690,7 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventSearchOpened:     func(t *testing.T, a *app) { a.slash("/search") },
 		eventSubharnessOpened: func(t *testing.T, a *app) { a.slash("/subharness") },
 		eventConnectOpened:    func(t *testing.T, a *app) { a.slash("/connect") },
+		eventAutonomyAsked:    func(t *testing.T, a *app) { a.slash("/autonomy") },
 	}
 	for _, name := range noticeEvents {
 		if name == eventBoot {

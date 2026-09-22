@@ -185,6 +185,9 @@ const (
 	eventSubharnessOpened = "subharness-opened"
 	// eventConnectOpened is the connect panel reached for (connectpanel.go).
 	eventConnectOpened = "connect-opened"
+	// eventAutonomyAsked is /autonomy reaching its command, bare or with a
+	// rule (autonomysheet.go).
+	eventAutonomyAsked = "autonomy-asked"
 )
 
 // noticeEvents is every event there is, in one list, so the table check can
@@ -198,7 +201,7 @@ var noticeEvents = []string{
 	eventFolderPicked, eventModelListOpened, eventCrewShown, eventBudgetShown,
 	eventSpendOpened, eventSteered, eventQueued, eventChatStarted,
 	eventPlaceJumped, eventRemembered, eventSearchOpened, eventSubharnessOpened,
-	eventConnectOpened,
+	eventConnectOpened, eventAutonomyAsked,
 }
 
 // notice is one thing the surface may tell a person, and the whole of the rule
@@ -239,6 +242,16 @@ type notice struct {
 // something the person does not want, and the seventh showing would be the
 // surface nagging.
 const noticeShownDefault = 6
+
+// noticeReadTime is how long a tip has to stand on a row somebody can see
+// before that counts as a showing. Until 2026-09-22 every change of hands
+// counted, and every road home is a change of hands — so an afternoon of
+// stepping through home to check something else spent every tip on the ring
+// in one-second flashes nobody read, and the owner's ledger closed the whole
+// table before evening. Twenty seconds is longer than a bounce through home
+// and shorter than any reading of a line: a tip that stood that long on a
+// visible row was on a screen somebody was looking at.
+const noticeReadTime = 20 * time.Second
 
 // hintEvery is how long a tip stands on a row before the next one takes it,
 // while the row is left at rest: home at rest, or a conversation the person
@@ -489,14 +502,17 @@ var notices = []notice{
 		retire: eventConnectOpened,
 	},
 	{
-		// It took the seat `ask for a picture, a voiceover, music or a video`
-		// held until 2026-09-22 (the owner's call): copy mode is the one door
-		// on this surface with nothing on screen pointing at it, because the
-		// alt screen takes the terminal's own selection away (copymode.go).
-		id: "copy-mode", slot: slotHint,
+		// The seat `ask for a picture, a voiceover, music or a video` held
+		// until 2026-09-22, and `ctrl+b freezes the screen so you can read
+		// and copy from it` for one build the same day, both the owner's
+		// call: copy mode was judged no use, and the rule for what happens
+		// to a question while nobody is at the keyboard is the one setting a
+		// person cannot guess exists until it has already decided something
+		// for them (autonomysheet.go).
+		id: "autonomy-rule", slot: slotHint,
 		armed:  spoken,
-		text:   "ctrl+b freezes the screen so you can read and copy from it",
-		retire: eventCopyEntered,
+		text:   "/autonomy sets how questions are handled while you are away",
+		retire: eventAutonomyAsked,
 	},
 }
 
@@ -616,6 +632,11 @@ type noticeBoard struct {
 	// at is when each slot last changed hands, or zero when it never has;
 	// [hintEvery] is measured from it by the beats.
 	at [noticeSlots]time.Time
+	// since is when the tip standing in each slot became VISIBLE — the row in
+	// front and the tip on it — or zero while it cannot be seen. A showing is
+	// counted from it when the tip leaves or the row goes out of sight
+	// ([noticeBoard.settle]), and only if it stood [noticeReadTime].
+	since [noticeSlots]time.Time
 	// hidden is the cross on a row having been pressed: the tip standing is
 	// not drawn until the slot next changes hands, which clears it. It is this
 	// session's and never the ledger's — putting a tip away is not using it.
@@ -654,6 +675,15 @@ func newNoticeBoard(path, build string, enabled bool) noticeBoard {
 		enabled: enabled,
 		seen:    map[string]bool{},
 		done:    map[string]bool{},
+	}
+	// A LEDGER FROM THE OLD COUNTING RULE IS FORGIVEN ONCE, on the way in
+	// (notice_ledger.go's [noticeLedgerRule]): the tips it spent on flashes
+	// come back, the ones a gesture retired stay retired, and the rule is
+	// written down so this happens exactly once per profile.
+	if b.ledger.Rule < noticeLedgerRule {
+		b.ledger.forgive(noticeShownDefault)
+		b.ledger.Rule = noticeLedgerRule
+		b.save()
 	}
 	// A FIRST LAUNCH HAS NO NEWS. Nothing is new to somebody who has never
 	// seen the older build; the channel opens on the second build a profile
@@ -748,35 +778,67 @@ func (b *noticeBoard) pick(slot noticeSlot, cands []noticeCandidate) string {
 	return ""
 }
 
-// take records that a slot now holds id — counting the showing when the row
-// is live, and retiring the notice when this showing was its last allowed. It
-// reports whether the slot's occupant changed, and whether the ledger did.
+// take records that a slot now holds id. The one standing before is settled
+// first — its showing counted if it stood long enough to be read — and the
+// new one's standing starts now when the row is live. It reports whether the
+// slot's occupant changed, and whether the ledger did.
 //
-// EVERY VISIBLE CHANGE OF HANDS IS A SHOWING, on either box: a tip that has
-// come round six times has been read six times, however many launches or
-// visits that took ([noticeShownDefault]). A slot re-decided to the same tip
-// is not a showing, which is what keeps an hour of events on one tip at one;
-// and a slot deciding while its row cannot be seen — home's while a
-// conversation is in front, the conversation's before its quiet minute — is
-// not one either, because what has not been read has not been shown
-// ([app.noticeLive]).
-func (b *noticeBoard) take(slot noticeSlot, id string, limit int, live bool) (changed, wrote bool) {
+// A SHOWING IS A TIP THAT STOOD [noticeReadTime] ON A ROW SOMEBODY COULD SEE.
+// It is counted when the tip LEAVES — the slot changing hands, the row going
+// out of sight — rather than when it arrives, because only then is it known
+// how long it stood ([noticeBoard.settle]). A slot re-decided to the same tip
+// is nothing at all, which is what keeps an hour of events on one tip at one
+// showing; and a slot deciding while its row cannot be seen — home's while a
+// conversation is in front, the conversation's before its quiet minute —
+// starts no standing, because what has not been read has not been shown
+// ([app.noticeLive]). Until 2026-09-22 every visible change of hands counted,
+// and [noticeReadTime] says what that cost.
+func (b *noticeBoard) take(slot noticeSlot, id string, live bool, now time.Time, limitOf func(string) int) (changed, wrote bool) {
 	if b.current[slot] == id {
 		return false, false
 	}
+	wrote = b.settle(slot, now, limitOf)
 	b.current[slot] = id
 	if id == "" || !live {
-		return true, false
+		return true, wrote
 	}
-	return true, b.count(id, limit)
+	if slot == slotNote {
+		// A NEWS LINE IS SAID, NOT STOOD: the transcript has it the moment it
+		// is decided ([app.noticeShow]), so deciding it is its showing.
+		return true, b.count(id, limitOf(id)) || wrote
+	}
+	b.since[slot] = now
+	return true, wrote
+}
+
+// visible says the tip standing in a slot can be seen from now on — the row
+// came into view with the tip already on it — and starts its standing unless
+// one is already running. It is the other half of [noticeBoard.take], for the
+// tip that was decided before the row was in front.
+func (b *noticeBoard) visible(slot noticeSlot, now time.Time) {
+	if b.current[slot] != "" && b.since[slot].IsZero() {
+		b.since[slot] = now
+	}
+}
+
+// settle ends the standing of the tip in a slot, counting a showing when it
+// stood [noticeReadTime] or more, and retiring the notice when that showing
+// was its last allowed. It reports whether the ledger changed. A slot with no
+// standing running — nothing on it, or a row nobody could see — settles to
+// nothing.
+func (b *noticeBoard) settle(slot noticeSlot, now time.Time, limitOf func(string) int) bool {
+	id, since := b.current[slot], b.since[slot]
+	b.since[slot] = time.Time{}
+	if id == "" || since.IsZero() || now.Sub(since) < noticeReadTime {
+		return false
+	}
+	return b.count(id, limitOf(id))
 }
 
 // count records one showing of id, retiring it when that was its last
 // allowed, and reports that the ledger changed.
 func (b *noticeBoard) count(id string, limit int) bool {
 	if b.ledger.show(id) >= limit {
-		// The last allowed showing is still a showing: the line stays up for
-		// now and the ledger closes the book on it for the next time.
 		b.ledger.retire(id)
 	}
 	return true
@@ -831,7 +893,6 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 		b.armed[slot] = make(map[string]bool, len(notices))
 	}
 	cands := make([]noticeCandidate, 0, len(notices))
-	limits := make(map[string]int, len(notices))
 	for _, n := range notices {
 		if !n.draws(slot) || b.done[n.id] || b.retired(n.id) {
 			continue
@@ -842,10 +903,15 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 		armed := n.armed(a)
 		cands = append(cands, noticeCandidate{id: n.id, armed: armed, fresh: armed && !b.armed[slot][n.id]})
 		b.armed[slot][n.id] = armed
-		limits[n.id] = n.limit()
 	}
 	id := b.pick(slot, cands)
-	changed, wrote := b.take(slot, id, limits[id], a.noticeLive(slot))
+	live, now := a.noticeLive(slot), a.now()
+	changed, wrote := b.take(slot, id, live, now, a.noticeLimit)
+	// A ROW IN FRONT WITH A TIP ON IT IS BEING SHOWN, whether the tip was
+	// decided just now or before the row came into view.
+	if live {
+		b.visible(slot, now)
+	}
 	if changed {
 		// A new tip is a new thing to read: the clock starts again and a cross
 		// pressed over the old one is spent.
@@ -869,6 +935,19 @@ func (a *app) noticeLive(slot noticeSlot) bool {
 		return a.showing() == nil && a.notices.due
 	}
 	return true
+}
+
+// noticeSettle ends the standing of a slot's tip because its row is going out
+// of sight — home being left, a conversation's row hidden by a key — and
+// writes the ledger when that standing was a showing ([noticeBoard.settle]).
+func (a *app) noticeSettle(slot noticeSlot) {
+	b := &a.notices
+	if b.seen == nil {
+		return
+	}
+	if b.settle(slot, a.now(), a.noticeLimit) {
+		b.save()
+	}
 }
 
 // noticeLimit is the showing limit of the notice with this id.
@@ -944,13 +1023,15 @@ func (a *app) noticeLine(id string) string {
 // rest, no list or layer has the keyboard, and no exchange is being read.
 func (a *app) noticeHomeQuiet() bool {
 	return a.at(pageHome) && a.home.box.empty() && !a.home.cmd.open && !a.home.comp.open && !a.home.searching() &&
-		a.paneExchange() == nil && !a.targetPickShowing() && !a.composer.open && !a.hopShowing() && !a.copy.on
+		a.paneExchange() == nil && !a.targetPickShowing() && !a.composer.open && !a.hopShowing()
 }
 
 // noticeDismiss is the cross on a tip row: the tip goes away until the row
 // next changes hands — the next visit to home, the next turn of its clock —
 // and nothing is written down, because a tip put away is not a tip learned.
 func (a *app) noticeDismiss(slot noticeSlot) {
+	// A tip put away has been seen, for as long as it stood.
+	a.noticeSettle(slot)
 	a.notices.hidden[slot] = true
 	a.touch()
 }
@@ -1025,7 +1106,10 @@ func (a *app) noticeTouched() {
 	}
 	b.touched = a.now()
 	if b.due {
+		// The row goes out of sight with the key, so the tip on it has stood
+		// for as long as it is going to.
 		b.due = false
+		a.noticeSettle(slotHint)
 		a.touch()
 	}
 }
@@ -1068,12 +1152,11 @@ func (a *app) noticeIdleBeat(gen int) tea.Cmd {
 	if b.due {
 		a.noticeRotate(slotHint)
 	} else {
-		// THE TIP STANDING BECOMES VISIBLE NOW, so now is its showing.
+		// THE TIP STANDING BECOMES VISIBLE NOW, so its standing starts now;
+		// whether it was a showing is known when it leaves.
 		b.due = true
 		b.hidden[slotHint] = false
-		if id := b.current[slotHint]; id != "" && b.count(id, a.noticeLimit(id)) {
-			b.save()
-		}
+		b.visible(slotHint, a.now())
 		a.touch()
 	}
 	if b.current[slotHint] == "" {

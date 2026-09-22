@@ -170,11 +170,14 @@ func TestATipSpentOnHomeIsSpentEverywhere(t *testing.T) {
 	}
 }
 
-// Every turn of a row's rotation is a showing, on either box, and a tip that
-// has come round [noticeShownDefault] times is taken as read.
-func TestEveryTurnOfTheRotationIsAShowing(t *testing.T) {
+// Every turn of a row's rotation that stood long enough to be read is a
+// showing, on either box, and a tip that has come round [noticeShownDefault]
+// times that way is taken as read.
+func TestEveryTurnOfTheRotationThatStoodIsAShowing(t *testing.T) {
 	for _, slot := range []noticeSlot{slotHome, slotHint} {
 		b := bareNoticeBoard()
+		now := time.Date(2026, 9, 22, 9, 0, 0, 0, time.UTC)
+		limit := func(string) int { return noticeShownDefault }
 		cands := []noticeCandidate{{id: "a", armed: true}, {id: "b", armed: true}}
 		turns := map[string]int{}
 		for i := 0; i < 2*noticeShownDefault; i++ {
@@ -183,9 +186,11 @@ func TestEveryTurnOfTheRotationIsAShowing(t *testing.T) {
 			if id == "" {
 				t.Fatalf("turn %d put nothing on the row", i)
 			}
-			b.take(slot, id, noticeShownDefault, true)
+			b.take(slot, id, true, now, limit)
 			turns[id]++
+			now = now.Add(noticeReadTime)
 		}
+		b.settle(slot, now, limit)
 		if turns["a"] != noticeShownDefault || turns["b"] != noticeShownDefault {
 			t.Fatalf("the ring did not share the turns evenly: %v", turns)
 		}
@@ -209,7 +214,7 @@ func TestARowHoldsBetweenVisitsAndYieldsWhenSpent(t *testing.T) {
 	if got := b.pick(slotHome, cands); got != "a" {
 		t.Fatalf("the ring did not start at the top: %q", got)
 	}
-	b.take(slotHome, "a", noticeShownDefault, true)
+	b.take(slotHome, "a", true, time.Now(), func(string) int { return noticeShownDefault })
 	// An event with nothing advancing keeps the one standing.
 	if got := b.pick(slotHome, cands); got != "a" {
 		t.Fatalf("an event moved the row without a visit, to %q", got)

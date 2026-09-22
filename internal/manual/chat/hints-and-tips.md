@@ -48,16 +48,29 @@ project has run` never comes back; run `/compact` once and the compact tip is re
 retired from either box is retired from both: opening the model list on home retires
 `/model lists every model` in every conversation as well.
 
-A tip you never act on is not shown forever either. Every time a row moves on to a tip
-counts as one showing — a turn of home's rotation, a quiet minute in a conversation, the
-two-minute turn after it — and once a tip has been shown six times it is taken as read and
-retires by itself. A tip nobody could see does not count: home's row deciding while you are
-in a conversation, or a conversation's before its quiet minute, is not a showing.
+A tip you never act on is not shown forever either. **A showing is a tip that stood for
+twenty seconds or more on a row you could see** — home's row while home was in front, a
+conversation's row after its quiet minute — and once a tip has been shown six times it is
+taken as read and retires by itself. Passing through home for a second or two is not a
+showing, however many times you do it, and a row deciding while nobody could see it —
+home's while you are in a conversation, a conversation's before its quiet minute — is not
+one either. Until 2026-09-22 every visible change of hands counted, so an afternoon of
+stepping through home could spend the whole table in flashes nobody read; the first
+launch of a build with the twenty-second rule gives back, once, every tip that rule
+spent, and leaves retired every tip you retired by using it.
 
 This is remembered per profile, in a small file called `notices.json` beside `config.json`
 in your codeaf profile directory. Retiring is permanent: turning hints off and on does not
 bring a retired tip back. Deleting that file brings every tip back once; nothing else is in
 it.
+
+## No hints at all any more, nothing on home's row — every tip has been retired
+
+When neither row says anything and hints are not turned off, every tip in the table has
+retired: you have used what each one teaches, or it stood its six showings. That is the
+design working, not a fault — the row over the box is for what you have not found yet.
+To see the whole set again, delete `notices.json` from your profile directory; the next
+launch starts every tip from nothing.
 
 ## The tip on home changed by itself — the order the tips come round in, and the tip that jumps the queue
 
@@ -147,9 +160,10 @@ build if the two disagree), so a tip you saw is on it word for word.
   or with a name.
 - `/connect links Google, Slack or another model service` — retired when the connect panel
   is reached for.
-- `ctrl+b freezes the screen so you can read and copy from it` — after the first exchange.
-  Retired the first time copy mode opens, in a conversation or on home, where the key
-  freezes home's own screen.
+- `/autonomy sets how questions are handled while you are away` — after the first
+  exchange. Retired when `/autonomy` is typed, bare or with a rule. (It took the seat
+  `ctrl+b freezes the screen so you can read and copy from it` held for one build on
+  2026-09-22, and `ask for a picture, a voiceover, music or a video` before that.)
 
 Unless a line above says otherwise, a tip is true from the first minute on home and after
 the first exchange in a conversation.

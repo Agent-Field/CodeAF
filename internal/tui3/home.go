@@ -1193,6 +1193,9 @@ func (a *app) closeHome() {
 // this home from re-arming itself into the next one ([homeTickMsg]).
 func (a *app) dropHome() {
 	a.homeGen++
+	// THE TIP ON HOME'S ROW GOES OUT OF SIGHT HERE, so here is where its
+	// standing is measured (notice.go's [app.noticeSettle]).
+	a.noticeSettle(slotHome)
 	// CLOSING IS THE LOOK. The stamp the next open measures news against is
 	// written here and only here — see [homeView.seen] for why not on the way
 	// in, and session's look.go for why a window that dies instead loses
@@ -2812,12 +2815,13 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "ctrl+b":
-		// FREEZE HOME (copymode.go's [app.freezeHome]). It was the emacs `left`
-		// here long after the conversation's box had given the chord up, and
-		// the tip that names it draws over this box too since the lists merged
-		// — a key a tip teaches has to do on home what it does everywhere else.
-		// `←` is untouched.
-		a.freezeHome()
+		// THE EMACS LEFT, and not copy mode: for one build on 2026-09-22 the
+		// chord froze home's own rows the way it freezes a conversation's, and
+		// the owner found nothing worth copying off a screen whose every row
+		// is a door — so home keeps the caret key its box has always had, and
+		// the tip that taught the freeze was replaced (notice.go).
+		h.box.left()
+		h.build()
 		return nil
 	case "ctrl+f":
 		h.box.right()
@@ -5207,12 +5211,6 @@ func homeFilesTouched(row session.SessionRow) int {
 
 // homeHint names row options before the draft controls while the box is empty.
 func (a *app) homeHint() string {
-	// A FROZEN HOME NAMES THE READER'S KEYS AND NOTHING ELSE (copymode.go's
-	// [app.freezeHome]): they are the only keys that work while it is up, and
-	// the conversation's foot says the same line for the same reason.
-	if a.copy.on {
-		return copyKeysWord
-	}
 	// AND THE MODEL LIST OVER THE TARGET NAMES ITS OWN THREE KEYS AND NOTHING
 	// ELSE. It has the whole keyboard while it is up (homedraft.go), so the
 	// router's tail would be two keys that do nothing — which is the one state
