@@ -602,6 +602,22 @@ type TaskNotice struct {
 	// carries these facts in its own record. Nil is a row whose copy was never
 	// recorded, which is a run that cannot be carried on.
 	Copy *TaskCopyRecord
+	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS, and it is the one
+	// fact that tells a row the store answers for from a row the graph holds a
+	// node for. It is set on a RUN's row and nowhere else, by the door that
+	// minted both halves in one breath (task_run_belt.go's
+	// [Agent.startKnownTaskRun] names the store task with the number the row
+	// wears), and it is empty on every node of the session's own tree.
+	//
+	// IT IS AN IDENTITY AND NOT A DESCRIPTION. A surface reading it knows this
+	// row and that store task are one piece of work read from two ends, so it
+	// can draw the one of them the store is the authority for — its state word,
+	// and the page carrying its worker's trajectory. Before this field existed
+	// the only link was the TITLE the two halves happened to share, which
+	// cannot tell a run's row from a node that merely wears the same words, and
+	// the place drew the row whose Enter opened a room the engine holds no node
+	// for (internal/tui3's taskplan.go).
+	PlanTask string
 	// Merge is how the branch came home: "merged", "kept" (finished but left
 	// on its branch), "conflicted" (branch kept), "inplace" (a non-git
 	// workspace ran in the person's tree), or "" while running.
