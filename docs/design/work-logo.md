@@ -15,11 +15,17 @@ frame := activity.Frame(now)              // Read-only, fixed-width glyphs.
 ```
 
 The surface shares `activityMark` and `activityRows`. Chat owns one instance per
-turn; a task/run page owns another per opened page. Their visibility predicates
-read their own operation. The compact work block uses the mark IN its existing
-activity line, preserving the disclosure action and status words. It does not add
-a second Working row. A surface without a compact work block uses a single-line
-transient foot. Harness step tables retain their full width.
+turn; each task/run page owns another. The indicator is pinned in chrome directly
+above the input, outside transcript layout and all changing tool captions. Its
+label is always `Working`, with no rates, timers or phase words attached.
+
+The chrome reserves one row even when idle. The animation reserves nine terminal
+columns whether its pose is wide or narrow, followed by two columns of whitespace.
+Including the two-column left inset, following content always starts at column
+14 (zero-based `activityLabelColumn` is 13). Future callers must use that fixed
+slot rather than measuring visible glyphs. Completion clears the row without
+moving the input. Questions replace the active indicator, never imply work is
+continuing while user input is required.
 
 Motion is sampled on the existing clock. Twenty-eight deliberately held poses form a
 2.8-second loop; holding contact gives the ball weight, while all text to its right

@@ -665,9 +665,9 @@ are the ones that survive being re-derived in your own material.
 
 ## A working logo is one line
 
-The running-logo studies use nine columns inside the existing activity row on
-chat and task/run pages. Chevrons and a dot are native text glyphs, never a tiny
-pixel picture. The mark has a fixed width; the label remains still and appears
-once. Its gold dot is distinct from the question hue. When no compact activity
-row exists, one transient status line carries the mark. Linear and small-window
-views retain their text treatment. See `docs/design/work-logo.md` for ownership.
+The running-logo studies use a reserved nine-column slot in one pinned row directly
+above the input. Two columns separate the slot from a steady `Working` label.
+The row stays reserved while idle. Neither the input nor following content moves
+with the animation; changing tool details remain in the transcript. Chevrons and
+a gold dot use native font glyphs. Accessible and small-window views retain text.
+See `docs/design/work-logo.md` for the shared geometry contract.

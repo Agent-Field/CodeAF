@@ -95,6 +95,8 @@ type chromeKind uint8
 
 const (
 	chromeNone chromeKind = iota
+	// chromeActivity is the pinned, fixed-width working indicator above the input.
+	chromeActivity
 	// chromeQuestion is one row of THE QUESTION BLOCK (question.go), the one
 	// renderer for every decision this engine hands a person. Every row of it
 	// carries the kind and its own index, because the block's forms put their
@@ -792,6 +794,9 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// where it drew that half ([app.frameOut]).
 	caretX, caretRow := unitX, unitAt+unitRow
 	if !a.welcomeHolds() {
+		if a.activityDockHeight() > 0 {
+			add(a.activityDock(width), chromeRow{kind: chromeActivity})
+		}
 		if a.roomRecipientHeight() > 0 {
 			add(inputPad+a.pal.accent(fit(a.roomRecipientWord(), width-len(inputPad))), chromeRow{})
 		}
@@ -954,7 +959,7 @@ func (a *app) chromeBaseHeight() int {
 	// are [app.chrome]'s own decisions, read back here so the conversation is
 	// charged exactly what the frame draws.
 	if !a.welcomeHolds() {
-		n += a.inputHeight() + a.roomRecipientHeight()
+		n += a.inputHeight() + a.roomRecipientHeight() + a.activityDockHeight()
 	}
 	if clear := a.footClearance(); clear > 0 && a.welcomeHeight() == 0 {
 		n += clear + 1 // the clearance, and the rule under it
