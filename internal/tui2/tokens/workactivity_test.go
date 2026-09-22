@@ -68,3 +68,43 @@ func BenchmarkWorkActivityFrame(b *testing.B) {
 		_ = a.Frame(time.Unix(0, int64(i)*33000000))
 	}
 }
+
+func TestWorkCaptionsAreShortCompatibleAndDoNotRepeatRecentHistory(t *testing.T) {
+	all := map[string]bool{}
+	for _, r := range workCaptionRecipes {
+		for _, o := range r.objects {
+			phrase := r.action + " " + o
+			words := len(strings.Fields(phrase))
+			if words < 2 || words > 3 || ansi.StringWidth(phrase) > WorkCaptionWidth {
+				t.Fatalf("invalid caption: %q", phrase)
+			}
+			all[phrase] = true
+		}
+	}
+	if len(all) < 60 {
+		t.Fatal("caption vocabulary is too small")
+	}
+	var activity WorkActivity
+	at := time.Unix(1000, 0)
+	recent := []string{}
+	for i := 0; i < 200; i++ {
+		activity.Start(at, WorkLogoRandom)
+		caption := activity.Caption()
+		if !all[caption] {
+			t.Fatalf("ungrammatical combination: %q", caption)
+		}
+		for _, previous := range recent {
+			if caption == previous {
+				t.Fatal("repeated recent caption")
+			}
+		}
+		recent = append(recent, caption)
+		if len(recent) > 8 {
+			recent = recent[1:]
+		}
+		_ = activity.Frame(at.Add(time.Second))
+		if caption != activity.Caption() {
+			t.Fatal("render changed the phrase")
+		}
+	}
+}

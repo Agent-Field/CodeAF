@@ -5,8 +5,8 @@
 The single-line chevron and gold dot below the latest submitted question mean the conversation is still
 working. The same indicator appears inside a running task's page and an adaptive
 run's page. It remains visible while an answer streams or the work is waiting on
-a model. The label stays `Working` through thinking, tools and model waits; details stay
-in the transcript. The motion is not a
+a model. A short developer-flavored phrase stays unchanged through thinking, tools and
+model waits; actual details stay in the transcript. The motion is not a
 percentage, a promise of success, or a claim that a particular tool is running.
 
 Each new conversation turn chooses one of ten animations at random and avoids
@@ -36,3 +36,12 @@ ASCII and monochrome terminals keep the plain product name.
 
 The indicator follows the last line of your question and scrolls with it. Its
 fixed-width slot keeps neighboring text still. It adds no row above the input.
+
+## Why does codeaf say things like Rebasing reality or Consulting rubber ducks?
+
+The activity caption combines a compatible action and object into a two- or
+three-word phrase. It is a playful sign that work is ongoing, not a claim that
+codeaf is literally compiling, debugging, or reading logs. A new operation chooses
+a new combination, avoiding its eight most recent captions. The phrase does not
+change during the operation. A faint four-second shimmer runs across its letters
+on truecolor terminals; the text and its reserved space never move.

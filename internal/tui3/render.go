@@ -684,7 +684,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		out = append(out, a.mediaRows(e, i, width, userLead)...)
 		if showActivity && i == activityAt {
 			gap()
-			out = append(out, a.activityRows(activity, a.pal.narr("Working"), width)...)
+			out = append(out, a.activityRows(activity, "", width)...)
 		}
 		wasCluster = false
 		wasNote = e.kind == entryNote

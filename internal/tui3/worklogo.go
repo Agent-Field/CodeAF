@@ -22,7 +22,7 @@ func (a *app) workLogoVisible() bool {
 // saved transcript entry. All studies occupy the same box, so a moving ball
 // cannot reflow the answer or the status words beside it.
 func (a *app) workLogoRows(width int, _ string) []row {
-	return a.activityRows(a.workActivity, a.pal.narr("Working"), width)
+	return a.activityRows(a.workActivity, "", width)
 }
 
 // questionActivity anchors one indicator to the last submitted question, never
@@ -48,10 +48,16 @@ func (a *app) questionActivity(d deck) (tokens.WorkActivity, int, bool) {
 // activityLabelColumn is a terminal-cell contract, independent of the current
 // pose. Future callers put content here rather than measuring visible ink.
 const activityLabelColumn = 2 + tokens.WorkLogoWidth + 2
+const activityContentColumn = activityLabelColumn + tokens.WorkCaptionWidth + 2
 
 // activityRows is one shared, single-line layout for every activity owner.
-func (a *app) activityRows(activity tokens.WorkActivity, label string, width int) []row {
-	return []row{{text: fit("  "+a.activityMark(activity)+"  "+label, width), entry: -1, activity: true}}
+func (a *app) activityRows(activity tokens.WorkActivity, trailing string, width int) []row {
+	caption := a.shimmerAt(activity.Caption(), activity.Elapsed(a.now()), 2*shimmerPeriod, .25)
+	line := "  " + a.activityMark(activity) + "  " + padTo(caption, tokens.WorkCaptionWidth)
+	if trailing != "" {
+		line += "  " + trailing
+	}
+	return []row{{text: fit(line, width), entry: -1, activity: true}}
 }
 
 func (a *app) activityMark(activity tokens.WorkActivity) string {
@@ -92,17 +98,9 @@ func (a *app) roomWorkLogoVisible() bool {
 		status.Presence != session.TaskPresenceNeedsLook && !a.roomLandingAsking()
 }
 
-// roomWorkLogoRows shares the renderer but only reads this task's state words.
+// roomWorkLogoRows uses the task's own stable phrase and motion.
 func (a *app) roomWorkLogoRows(width int) []row {
-	node := a.roomNode()
-	if node == nil {
-		return nil
-	}
-	label := "Working"
-	if live := a.roomOpenCallWord(node); live != "" && len(a.room.entries) == 0 {
-		label += " · " + live
-	}
-	return a.activityRows(a.room.workActivity, a.pal.narr(label), width)
+	return a.activityRows(a.room.workActivity, "", width)
 }
 
 func (a *app) anyWorkLogoVisible() bool { return a.workLogoVisible() || a.roomWorkLogoVisible() }

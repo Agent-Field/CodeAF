@@ -1286,7 +1286,7 @@ func (a *app) orchRows(width int) []row {
 		return page.rows
 	}
 	if a.roomWorkLogoVisible() {
-		for _, r := range a.activityRows(a.room.workActivity, a.pal.narr("Working"), width) {
+		for _, r := range a.activityRows(a.room.workActivity, "", width) {
 			page.put(r.text)
 			page.rows[len(page.rows)-1].activity = true
 		}

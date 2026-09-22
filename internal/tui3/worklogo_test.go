@@ -52,7 +52,7 @@ func TestWorkingLogoFollowsChatAndKeepsItsChoice(t *testing.T) {
 	rows, _ := a.deckRows(a.conversation(), 90)
 	found := 0
 	for _, r := range rows {
-		if r.activity && strings.Contains(ansi.Strip(r.text), "Working") {
+		if r.activity && strings.Contains(ansi.Strip(r.text), a.workActivity.Caption()) {
 			found++
 		}
 	}
@@ -178,8 +178,8 @@ func TestWorkingLogoQuestionAnchorReservesColumnsAcrossEveryPose(t *testing.T) {
 				t.Fatal("motion moved its anchor or added input chrome")
 			}
 			text := ansi.Strip(rows[at].text)
-			prefix := strings.SplitN(text, "Working", 2)
-			if len(prefix) != 2 || ansi.StringWidth(prefix[0]) != activityLabelColumn || prefix[1] != "" {
+			prefix := strings.SplitN(text, a.workActivity.Caption(), 2)
+			if len(prefix) != 2 || ansi.StringWidth(prefix[0]) != activityLabelColumn || strings.TrimSpace(prefix[1]) != "" {
 				t.Fatalf("unstable label: %q", text)
 			}
 		}
@@ -231,5 +231,33 @@ func TestWorkingLogoAdaptiveRunUsesItsOwnState(t *testing.T) {
 	run.snap.Done = true
 	if a.roomWorkLogoVisible() {
 		t.Fatal("finished run animates")
+	}
+}
+
+func TestWorkingCaptionShimmerKeepsTextAndFollowingContentStill(t *testing.T) {
+	a := workLogoApp(t)
+	start := a.now()
+	caption := a.workActivity.Caption()
+	colors := map[string]bool{}
+	for i := 0; i < 120; i++ {
+		a.clock = func() time.Time { return start.Add(time.Duration(i) * 50 * time.Millisecond) }
+		text := a.activityRows(a.workActivity, "next", 90)[0].text
+		stripped := ansi.Strip(text)
+		if !strings.Contains(stripped, caption) {
+			t.Fatal("shimmer rewrote the caption")
+		}
+		if at := strings.Index(stripped, "next"); at < 0 || ansi.StringWidth(stripped[:at]) != activityContentColumn {
+			t.Fatal("following content moved")
+		}
+		colors[a.shimmerAt(caption, a.workActivity.Elapsed(a.now()), 2*shimmerPeriod, .25)] = true
+	}
+	if len(colors) < 2 {
+		t.Fatal("caption light never moves")
+	}
+	a.pal = newPalette(tokens.ANSI256, false)
+	first := a.shimmerAt(caption, 0, 2*shimmerPeriod, .25)
+	second := a.shimmerAt(caption, time.Second, 2*shimmerPeriod, .25)
+	if first != second || ansi.Strip(first) != caption {
+		t.Fatal("lower-color caption must stay still")
 	}
 }
