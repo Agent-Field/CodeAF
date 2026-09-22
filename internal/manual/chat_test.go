@@ -537,6 +537,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// all until they said so.
 		{"where did my changes go", "choosing-a-folder"},
 		{"merge what you did into my folder", "choosing-a-folder"},
+		// /project split off from /folder on 2026-09-22: the person setting one,
+		// the person who typed /folder on home the old way, and the person who
+		// tried /project in a conversation.
+		{"how do I set the project on home", "choosing-a-folder"},
+		{"which folder will my next conversation open in", "choosing-a-folder"},
+		{"what happened to /folder on the home screen", "choosing-a-folder"},
 		{"put the changes into the folder", "choosing-a-folder"},
 		{"you changed my files?", "choosing-a-folder"},
 		{"undo what you did to my folder", "choosing-a-folder"},
@@ -550,6 +556,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I copy text out of the conversation", "keys"},
 		{"is there a copy mode", "keys"},
 		{"what happened to /copy", "commands"},
+		// The cross on a tip row, asked by somebody who pressed it and watched
+		// the row answer with a different sentence.
+		{"what does the x on the hint row do", "hints-and-tips"},
 		// The spell-it-out gesture, asked the three ways people meet it: wanting
 		// it, seeing the hint and not knowing what it is, and being unhappy about
 		// what came back.

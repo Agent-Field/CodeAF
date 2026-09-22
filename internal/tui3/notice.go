@@ -153,9 +153,13 @@ const (
 	// eventAttached is a file or picture put on the tray by path, or the
 	// browser opened to choose one (attach.go, folderplace.go).
 	eventAttached = "attached"
-	// eventFolderPicked is the folder chooser raised, from a conversation or
-	// aimed at home's target (folderplace.go).
+	// eventFolderPicked is the folder chooser raised from a conversation —
+	// /folder itself, or the project word on the keys row (folderplace.go,
+	// projectseam.go).
 	eventFolderPicked = "folder-picked"
+	// eventProjectSet is /project on home reaching a folder: a path after it
+	// taken, or the browser it opens bare (projectcmd.go).
+	eventProjectSet = "project-set"
 	// eventModelListOpened is the model list raised, over a conversation or
 	// over home's draft (palette.go, homedraft.go).
 	eventModelListOpened = "model-list-opened"
@@ -196,7 +200,7 @@ var noticeEvents = []string{
 	eventCompacted, eventFilesOpened, eventResumeOpened, eventCostShown,
 	eventStandingOpened, eventDeliverableMade,
 	eventAsked, eventTaskTyped, eventManualAsked, eventTabReopened, eventAtOpened, eventAttached,
-	eventFolderPicked, eventModelListOpened, eventCrewShown, eventBudgetShown,
+	eventFolderPicked, eventProjectSet, eventModelListOpened, eventCrewShown, eventBudgetShown,
 	eventSpendOpened, eventSteered, eventQueued, eventChatStarted,
 	eventPlaceJumped, eventRemembered, eventSearchOpened, eventSubharnessOpened,
 	eventConnectOpened, eventAutonomyAsked,
@@ -297,6 +301,10 @@ var (
 	// may not hand the surface (homeexchange.go's [app.askHereWith]) — and the
 	// person standing on home, where the sentence it arms is true.
 	askable = func(a *app) bool { return a.errand != nil && a.at(pageHome) }
+	// onHome is a tip about a command home is the only screen for: it is armed
+	// while home is in front and stands down the moment it is not, so the one
+	// list can hold a sentence that would be a lie over a conversation's box.
+	onHome = func(a *app) bool { return a.at(pageHome) }
 )
 
 // notices is the table, and ITS ORDER IS THE ORDER THE ROWS COME ROUND IN on
@@ -305,9 +313,10 @@ var (
 // and the page say the same words — and notice_test.go holds the page to every
 // line here, so the table cannot say a thing the manual does not.
 //
-// THIRTY ROWS, AND THE CUT WAS DELIBERATE. A survey of the surface on
+// THIRTY-ONE ROWS, AND THE CUT WAS DELIBERATE. A survey of the surface on
 // 2026-09-21 turned up forty-eight lines worth saying; these are the thirty
-// that teach a door a person cannot see from the box. What was left out is
+// that teach a door a person cannot see from the box, and /project made
+// thirty-one when it became a command of its own on 2026-09-22. What was left out is
 // what the foot already names — `alt+p`, `alt+e`, `alt+a`, `alt+k`, `/` — and
 // the second spelling of anything already here. `/ shows every command` was a
 // row until both feet started saying `/ commands` outright (footswap.go).
@@ -410,6 +419,15 @@ var notices = []notice{
 		armed:  ready,
 		text:   "/folder picks the folder codeaf works in",
 		retire: eventFolderPicked,
+	},
+	{
+		// ON HOME ALONE, because /project is home's alone (projectcmd.go). A
+		// conversation's box would be reading it over a command that answers
+		// there by pointing back at home.
+		id: "pick-a-project", slot: slotHint,
+		armed:  onHome,
+		text:   "/project sets the folder the next conversation opens in",
+		retire: eventProjectSet,
 	},
 	{
 		id: "attach-a-picture", slot: slotHint,
@@ -635,8 +653,10 @@ type noticeBoard struct {
 	// counted from it when the tip leaves or the row goes out of sight
 	// ([noticeBoard.settle]), and only if it stood [noticeReadTime].
 	since [noticeSlots]time.Time
-	// hidden is the cross on a row having been pressed: the tip standing is
-	// not drawn until the slot next changes hands, which clears it. It is this
+	// hidden is the cross on a row having been pressed WITH NOTHING ELSE TO
+	// PUT THERE: the tip standing is not drawn until the slot next changes
+	// hands, which clears it. Ordinarily the cross rotates instead
+	// ([app.noticeDismiss]), so this is the one-eligible-tip case. It is this
 	// session's and never the ledger's — putting a tip away is not using it.
 	hidden [noticeSlots]bool
 	// touched is the last proof the person was doing something in a
@@ -903,18 +923,21 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 		b.armed[slot][n.id] = armed
 	}
 	id := b.pick(slot, cands)
-	live, now := a.noticeLive(slot), a.now()
-	changed, wrote := b.take(slot, id, live, now, a.noticeLimit)
-	// A ROW IN FRONT WITH A TIP ON IT IS BEING SHOWN, whether the tip was
-	// decided just now or before the row came into view.
-	if live {
-		b.visible(slot, now)
-	}
+	now := a.now()
+	changed, wrote := b.take(slot, id, a.noticeLive(slot), now, a.noticeLimit)
 	if changed {
 		// A new tip is a new thing to read: the clock starts again and a cross
 		// pressed over the old one is spent.
-		b.at[slot] = a.now()
+		b.at[slot] = now
 		b.hidden[slot] = false
+	}
+	// A ROW IN FRONT WITH A TIP ON IT IS BEING SHOWN, whether the tip was
+	// decided just now or before the row came into view. IT IS ASKED AGAIN
+	// HERE, after the cross above was spent: a tip arriving on a hidden row
+	// starts no standing, and the same decision that un-hides the row is what
+	// starts one.
+	if a.noticeLive(slot) {
+		b.visible(slot, now)
 	}
 	if changed && id != "" {
 		a.noticeShow(slot, id)
@@ -925,7 +948,15 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 // noticeLive is whether a slot's row can be seen at all right now — which is
 // what makes a change of hands a showing ([noticeBoard.take]): home's row
 // while home is in front, the conversation's once its quiet minute has passed.
+//
+// A ROW WHOSE CROSS HAS BEEN PRESSED IS NOT LIVE. It draws nothing until the
+// slot next changes hands ([noticeBoard.hidden]), and a tip standing behind a
+// blank row is a tip nobody is reading — which is the whole of what
+// [noticeReadTime] exists to tell apart.
 func (a *app) noticeLive(slot noticeSlot) bool {
+	if a.notices.hidden[slot] {
+		return false
+	}
 	switch slot {
 	case slotHome:
 		return a.at(pageHome)
@@ -1024,14 +1055,37 @@ func (a *app) noticeHomeQuiet() bool {
 		a.paneExchange() == nil && !a.targetPickShowing() && !a.composer.open && !a.hopShowing()
 }
 
-// noticeDismiss is the cross on a tip row: the tip goes away until the row
-// next changes hands — the next visit to home, the next turn of its clock —
-// and nothing is written down, because a tip put away is not a tip learned.
+// noticeDismiss is the cross on a tip row, and what it means is NOT THIS ONE,
+// SAY SOMETHING ELSE — so the row moves on to the next tip in the rotation on
+// the very next frame rather than going blank.
+//
+// AND THE TIP THAT WAS PUT AWAY KEEPS ITS WHOLE ALLOWANCE. Its standing is
+// thrown away rather than counted: a person who pressed the cross was telling
+// the surface they did not want to read that line now, which is the opposite
+// of having read it, and spending a showing on the gesture would retire a tip
+// six dismissals in. It goes back into the ring and comes round another time.
+//
+// Until 2026-09-22 the cross counted the standing and left the row BLANK until
+// the slot next changed hands, which on home meant the same tip was back on
+// the next visit with one of its six showings gone. The owner met exactly
+// that with the /attach tip.
+//
+// THE ROW ONLY GOES BLANK WHEN THERE IS NOTHING ELSE TO SAY. With one tip left
+// in the ring the rotation is that tip, and drawing it again under the cross
+// somebody just pressed would be the surface arguing — so the row is hidden
+// the way it always was, until the slot next changes hands.
 func (a *app) noticeDismiss(slot noticeSlot) {
-	// A tip put away has been seen, for as long as it stood.
-	a.noticeSettle(slot)
-	a.notices.hidden[slot] = true
-	a.touch()
+	b := &a.notices
+	if b.seen == nil {
+		*b = bareNoticeBoard()
+	}
+	b.since[slot] = time.Time{}
+	held := b.current[slot]
+	a.noticeRotate(slot)
+	if b.current[slot] == held {
+		b.hidden[slot] = true
+		a.touch()
+	}
 }
 
 // noticeShow puts a newly chosen notice where its slot draws. The hint slots

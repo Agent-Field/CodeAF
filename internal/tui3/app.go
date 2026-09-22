@@ -7011,6 +7011,15 @@ func (a *app) slash(line string) tea.Cmd {
 		// where it starts.
 		return a.openFolderPick(rest)
 
+	case "project":
+		// AND THE OTHER HALF OF THE WORD IS HOME'S (projectcmd.go). A pin about
+		// the NEXT conversation means nothing inside one, and the two acts are
+		// one keystroke apart in spelling — so this says which screen it lives
+		// on and which command does the neighbouring job here, rather than
+		// quietly doing the neighbouring job.
+		a.note(projectIsHomesWord)
+		return nil
+
 	case "land":
 		// The other end of choosing a folder: what was written for a folder this
 		// conversation only refers to, put into it. Shown first and done second
@@ -7029,6 +7038,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// answer: somebody who typed the word without the path is somebody who
 		// does not know the path, and a browser is the thing they asked for.
 		if strings.TrimSpace(rest) == "" {
+			a.noticeEvent(eventAttached)
 			return a.openContextPick("", false)
 		}
 		a.attachFilePath(rest)

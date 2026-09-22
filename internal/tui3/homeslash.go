@@ -186,7 +186,9 @@ func homeFate(word, rest string) string {
 		return fateAnswers
 	case "model":
 		return fateTargetModel
-	case "folder":
+	case "project":
+		// /project IS THE PIN AND /folder IS NOT, since 2026-09-22
+		// (projectcmd.go says what the two used to share).
 		return fateTargetFolder
 	case "settings", "search", "spend", "history", "home":
 		return fatePlace
@@ -201,11 +203,16 @@ func homeFate(word, rest string) string {
 	case "land", "workspace":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "autonomy",
-		"select", "rewind", "compact", "export", "drafts", "manual":
+		"select", "rewind", "compact", "export", "drafts", "manual", "folder":
 		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
 		// turn of a conversation now (manualcmd.go), and a turn needs one. As
 		// an answer it printed the pages into the conversation BEHIND home,
 		// where the person who typed it could see nothing happen.
+		//
+		// AND /folder JOINED IT THE SAME DAY. It means one thing everywhere
+		// now — give THIS conversation a folder — so on home it needs one,
+		// exactly like /files. The pin it used to be here is /project
+		// (projectcmd.go).
 		return fateNeedsChat
 	case "standing":
 		// Bare it is the standing place; with words it is a card raised in a
@@ -290,13 +297,12 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		return a.homeModelCommand(rest)
 
 	case fateTargetFolder:
-		// THE BROWSER, AIMED AT THE TARGET (folderplace.go). Bare it opens where
-		// the next conversation would; with a path it opens on that path. Both
-		// forms answer one question — which folder does the next conversation open
-		// in — so both open the one surface that answers it, and picking a row
-		// pins the rule above home's box rather than moving the conversation
-		// behind the screen.
-		return a.openTargetFolderPick(rest)
+		// /project (projectcmd.go). With a path it takes that path; bare it is
+		// the browser, opened where the next conversation would open. Both
+		// forms answer one question — which folder does the next conversation
+		// open in — and either way the rule above home's box changes rather
+		// than the conversation behind the screen.
+		return a.runProjectCommand(rest)
 
 	case fateResume:
 		h.say(homeIsTheResumeWord, "")

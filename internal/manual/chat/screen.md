@@ -72,8 +72,8 @@ the same layout and retain the full model identifier, including the organization
 **The project is not on either seam since 2026-09-22**: `project: <path>` is at the right
 end of the **keys row under the box**, on home and in a conversation alike — home's names
 where the next conversation opens, a conversation's names its own workspace — and both are
-doors onto the folder chooser (a click, or `alt+p` on home and `/folder` in a
-conversation). Model names on the seam and project paths on the keys row underline on
+doors onto changing it: on home a click or `alt+p` walks the projects this machine knows
+and `/project` opens the folder chooser, in a conversation a click or `/folder` opens it. Model names on the seam and project paths on the keys row underline on
 mouse-over; the model stays bold and bright. Paths truncate on the right, and the project
 goes entirely where the keys leave less than a word of room. The model stays bold and
 bright cyan on home and in conversations, and the effort has no badge.

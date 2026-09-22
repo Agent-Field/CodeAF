@@ -162,8 +162,10 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
-| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet; over `--host` says the folder chooser is unavailable |
+| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet for THIS conversation; on home it opens a conversation first; over `--host` says the folder chooser is unavailable |
 | `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
+| `/project` | — | — | on home: the browser, opened where the next conversation would open; in a conversation it says it is home's |
+| `/project` | — | `<path>` | on home: sets the folder the next conversation opens in, with no browser |
 | `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host`; enter on this row of the `/` list opens it at once |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
@@ -398,6 +400,36 @@ opened, read with ↑↓, `v`, `a` and `y` — until 2026-09-22, when copy mode 
 whole. Typing it now answers `there is no command called /copy · / lists them`. To copy
 text out of the conversation, drag across it with the mouse, or press `ctrl+s` and let
 your terminal select (the keys page, *Selecting text with your mouse*).
+
+## /project — set the project on home, which folder will my next conversation open in, change the project
+
+`/project` is **home's** command, and it sets the folder the conversation you start next
+will open in — the `project: ~/src/parser` at the right end of the keys row under home's
+box. Bare, it opens the folder browser where that next conversation would open. With a
+path after it, it takes the path and opens nothing:
+
+```
+/project                 the browser
+/project ~/src/parser    pinned at once · home says `project · ~/src/parser`
+```
+
+A path that is not a directory on this machine is refused by name — `no folder there ·
+~/src/parsr` — and nothing changes. Over `--host` it refuses: the folders this program can
+read are the laptop's and the conversation would be on the other machine.
+
+**In a conversation it does nothing but say where it lives**, exactly:
+
+```
+/project is home's · it sets the folder the next conversation opens in · /folder gives this conversation one
+```
+
+The two commands are one word apart and do different jobs, so the answer names both.
+
+**It was the home half of `/folder` until 2026-09-22.** `/folder` meant "give this
+conversation a folder" in a conversation and "pin the next conversation's folder" on home,
+which is two acts behind one word. The pin is `/project` now, and `/folder` means the one
+thing on every screen — on home it opens a conversation first and browses there. `alt+p`
+is the same pin without a browser, walking the projects this machine knows.
 
 ## /select — drag to select with your mouse
 

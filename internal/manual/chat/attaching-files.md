@@ -449,13 +449,13 @@ it: the chip appears above home's box, home says
 first message of whatever conversation you start next. A picture goes the same way, and a
 drop or a paste onto home does it with no command at all.
 
-**A bare `/attach` there opens the browser**, the same sheet a bare `/folder` opens, aimed at
-the folder the next conversation opens in; a file chosen on it lands on home's tray and a
+**A bare `/attach` there opens the browser**, the same sheet a bare `/project` opens, aimed
+at the folder the next conversation opens in; a file chosen on it lands on home's tray and a
 folder chosen on it becomes that folder. (Until 2026-09-22 it answered `type the path after
-/attach · or drop the file
-here` — rather than opening the browser. `/folder` is the browser on local home, and it is
-aimed at which folder the next conversation opens in (see "Choosing a folder"). Over
-`--host`, `/folder` says why this machine's folder cannot be that far conversation's folder.
+/attach · or drop the file here` — rather than opening the browser.) `/project` is the
+browser on local home, and it is aimed at which folder the next conversation opens in (see
+"Choosing a folder"); `/folder` on home opens a conversation first and browses there. Over
+`--host`, both say why this machine's folder cannot be that far conversation's folder.
 
 **The tray survives the walk.** Attach a file on home, go into a conversation, come back: it
 is still there. Home's tray row cannot be clicked; a chip comes off on a conversation's own

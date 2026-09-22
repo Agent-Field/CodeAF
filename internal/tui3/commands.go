@@ -107,6 +107,13 @@ var commands = []command{
 	// three should have to find out which one this build chose.
 	{name: "folder", desc: "choose a folder to work in · type a path to browse", alias: []string{"place", "dir"}},
 	{name: "folder", args: "<path>", desc: "…open it already pointed at that path"},
+	// AND THE OTHER HALF OF THE WORD, SPLIT OFF ON 2026-09-22. /folder gives
+	// THIS conversation a folder; this sets the one the next conversation
+	// opens in, and home is the only screen that has a next conversation
+	// (projectcmd.go). They sit together because a person who types either
+	// one meant one of the two and reads both rows on the way past.
+	{name: "project", desc: "the folder your next conversation opens in · on home"},
+	{name: "project", args: "<path>", desc: "…that folder, without opening the browser"},
 	// AND ITS OTHER END. Choosing a folder is where work aimed somewhere else
 	// starts; this is where it arrives. It sits directly under /folder because
 	// nobody reaches for it who has not already done the first — and because

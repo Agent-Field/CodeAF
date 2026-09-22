@@ -247,9 +247,10 @@ func TestEveryTipIsOnTheManualPage(t *testing.T) {
 	}
 }
 
-// The cut was thirty, and there is ONE set: every hint draws on both boxes,
-// a news row on neither, and a row filed under home's slot does not build.
-func TestTheTableIsThirtyHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
+// The cut was thirty and /project made it thirty-one, and there is ONE set:
+// every hint draws on both boxes, a news row on neither, and a row filed under
+// home's slot does not build.
+func TestTheTableIsThirtyOneHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
 	hints := 0
 	for _, n := range notices {
 		if n.slot != slotHint {
@@ -263,8 +264,8 @@ func TestTheTableIsThirtyHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
 			t.Errorf("hint %q draws in the transcript", n.id)
 		}
 	}
-	if hints != 30 {
-		t.Fatalf("the table holds %d hints, want 30 — the cut is deliberate, and the manual page counts them", hints)
+	if hints != 31 {
+		t.Fatalf("the table holds %d hints, want 31 — the cut is deliberate, and the manual page counts them", hints)
 	}
 	news := notice{id: "noted", slot: slotNote, armed: ready, text: "x"}
 	if news.draws(slotHint) || news.draws(slotHome) || !news.draws(slotNote) {
@@ -272,5 +273,193 @@ func TestTheTableIsThirtyHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
 	}
 	if err := checkNotices([]notice{{id: "filed", slot: slotHome, armed: ready, text: "x"}}); err == nil {
 		t.Fatal("a row filed under home's slot was accepted")
+	}
+}
+
+// ── the cross ───────────────────────────────────────────────────────────────
+
+// THE CROSS MEANS "NOT THIS ONE, SAY SOMETHING ELSE": the row answers with the
+// next tip in the rotation, and the tip put away is charged NOTHING — however
+// long it had been standing when the cross was pressed. It used to be charged
+// a showing and the row went blank, so six presses retired a tip nobody had
+// read and the next visit to home brought the same sentence straight back.
+func TestTheCrossMovesTheRowOnAndSpendsNothingOfTheTipItPutAway(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.door("")
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+	a.showPage(pageHome)
+
+	was := a.notices.current[slotHome]
+	if was == "" {
+		t.Fatal("home opened with no tip")
+	}
+	// LONG ENOUGH TO HAVE BEEN READ, which is the case that used to cost a
+	// showing: the gesture says the opposite of "I have read this".
+	now = now.Add(noticeReadTime * 3)
+	a.noticeDismiss(slotHome)
+
+	if got := a.notices.current[slotHome]; got == was {
+		t.Fatalf("the cross left %q standing", got)
+	}
+	if a.noticeHomeHint() == "" {
+		t.Fatal("the cross left the row blank with other tips still to say")
+	}
+	if got := a.notices.ledger.shown(was); got != 0 {
+		t.Fatalf("the cross spent %d showings of the tip it put away", got)
+	}
+	if a.notices.retired(was) {
+		t.Fatalf("the cross retired %q", was)
+	}
+
+	// AND IT COMES ROUND AGAIN. The ring is a ring: walk it and the tip that
+	// was put away takes its turn like every other row.
+	seen := false
+	for i := 0; i <= len(notices); i++ {
+		a.noticeHomeRotate()
+		if a.notices.current[slotHome] == was {
+			seen = true
+			break
+		}
+	}
+	if !seen {
+		t.Fatalf("%q never came back round after its cross was pressed", was)
+	}
+}
+
+// AND WITH NOTHING ELSE TRUE TO SAY THE ROW GOES BLANK. Drawing the same
+// sentence again under the cross somebody just pressed would be the surface
+// arguing, so the one-eligible-tip case keeps the old behaviour: hidden until
+// the slot next changes hands.
+func TestTheCrossBlanksTheRowWhenItIsTheLastTipStanding(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.door("")
+	a.showPage(pageHome)
+
+	// Retire every tip but the one standing, so the ring is that one tip.
+	last := a.notices.current[slotHome]
+	if last == "" {
+		t.Fatal("home opened with no tip")
+	}
+	for _, n := range notices {
+		if n.id != last {
+			a.notices.retire(n.id)
+		}
+	}
+	a.noticeHomeRotate()
+	if got := a.notices.current[slotHome]; got != last {
+		t.Fatalf("the last tip standing is %q, want %q", got, last)
+	}
+
+	a.noticeDismiss(slotHome)
+	if got := a.noticeHomeHint(); got != "" {
+		t.Fatalf("the cross redrew the only tip there was: %q", got)
+	}
+	if a.notices.retired(last) {
+		t.Fatal("the cross retired the last tip standing")
+	}
+}
+
+// A TIP ABOUT A COMMAND ONLY HOME HAS IS ONLY ARMED ON HOME. One list feeds
+// both boxes, so `/project sets the folder the next conversation opens in`
+// over a conversation's box would be teaching a command that answers there by
+// pointing back at home.
+func TestTheProjectTipStandsOnHomeAndNowhereElse(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.door("")
+
+	a.showPage(pageHome)
+	if !onHome(a) {
+		t.Fatal("the home-only rule is not armed on home")
+	}
+	seen := false
+	for i := 0; i <= len(notices); i++ {
+		if a.notices.current[slotHome] == "pick-a-project" {
+			seen = true
+			break
+		}
+		a.noticeHomeRotate()
+	}
+	if !seen {
+		t.Fatal("the /project tip never came round on home")
+	}
+
+	// AND IT STANDS DOWN THE MOMENT HOME IS NOT IN FRONT. The conversation's
+	// row is decided again at the next event, and the rule is false there.
+	runCmd(a.showPage(pageNone))
+	if a.at(pageHome) {
+		t.Fatal("the conversation did not come back to the frame")
+	}
+	if onHome(a) {
+		t.Fatal("the home-only rule is armed in a conversation")
+	}
+	a.noticeEvent(eventTurnEnded)
+	for slot, id := range a.notices.current {
+		if id == "pick-a-project" {
+			t.Fatalf("the /project tip is standing in slot %d off home", slot)
+		}
+	}
+}
+
+// AND TAKING A PROJECT RETIRES IT, by either form of the command.
+func TestTakingAProjectRetiresItsTip(t *testing.T) {
+	for _, take := range []struct {
+		name string
+		do   func(*app, string)
+	}{
+		{"a path after it", func(a *app, dir string) { runCmd(a.homeSlash("/project " + dir)) }},
+		{"the browser it opens", func(a *app, _ string) { runCmd(a.homeSlash("/project")) }},
+	} {
+		t.Run(take.name, func(t *testing.T) {
+			lab := newHomeLab(t)
+			a := lab.door("")
+			a.showPage(pageHome)
+			if a.notices.retired("pick-a-project") {
+				t.Fatal("the tip was retired before the command ran")
+			}
+			take.do(a, t.TempDir())
+			if !a.notices.retired("pick-a-project") {
+				t.Fatal("taking a project did not retire its tip")
+			}
+		})
+	}
+}
+
+// A TIP BEHIND A BLANK ROW IS NOT BEING SHOWN. Once the cross has hidden a
+// row — the one-eligible-tip case — the events that go on re-deciding the slot
+// may not start a standing for a sentence nobody can read, or the tip left
+// there would spend its six showings on a row that draws nothing.
+func TestATipBehindAHiddenRowStandsForNothing(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.door("")
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+	a.showPage(pageHome)
+
+	last := a.notices.current[slotHome]
+	if last == "" {
+		t.Fatal("home opened with no tip")
+	}
+	for _, n := range notices {
+		if n.id != last {
+			a.notices.retire(n.id)
+		}
+	}
+	a.noticeHomeRotate()
+	a.noticeDismiss(slotHome)
+	if a.noticeHomeHint() != "" {
+		t.Fatal("the cross did not blank the row")
+	}
+
+	// AN HOUR OF EVENTS OVER A BLANK ROW. Each one re-decides the slot.
+	for i := 0; i < noticeShownDefault*3; i++ {
+		now = now.Add(noticeReadTime * 2)
+		a.noticeEvent(eventTurnEnded)
+	}
+	if got := a.notices.ledger.shown(last); got != 0 {
+		t.Fatalf("a tip behind a blank row was shown %d times", got)
+	}
+	if a.notices.retired(last) {
+		t.Fatal("a tip behind a blank row retired itself")
 	}
 }

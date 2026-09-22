@@ -661,8 +661,15 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 				t.Fatal("typing @ did not open the completion")
 			}
 		},
-		eventAttached:        func(t *testing.T, a *app) { a.slash("/attach") },
-		eventFolderPicked:    func(t *testing.T, a *app) { a.slash("/folder") },
+		eventAttached:     func(t *testing.T, a *app) { a.slash("/attach") },
+		eventFolderPicked: func(t *testing.T, a *app) { a.slash("/folder") },
+		// /project IS HOME'S ALONE (projectcmd.go), so its gesture is made
+		// there — and with a real directory after it, which is the form that
+		// takes a folder without opening anything.
+		eventProjectSet: func(t *testing.T, a *app) {
+			runCmd(a.showPage(pageHome))
+			runCmd(a.homeSlash("/project " + t.TempDir()))
+		},
 		eventModelListOpened: func(t *testing.T, a *app) { a.slash("/model") },
 		eventCrewShown:       func(t *testing.T, a *app) { a.slash("/crew") },
 		eventBudgetShown:     func(t *testing.T, a *app) { a.slash("/budget") },

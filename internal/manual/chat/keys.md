@@ -1504,7 +1504,7 @@ an email address, a Go doc link — never opens the list.
 **What it walks:** the conversation's workspace, or **your own machine's** working
 directory over `--host`. **On home** the same list opens over home's box (since
 2026-09-22) and walks the folder the next conversation opens in — the one on the rule —
-so moving the target with `alt+p` or `/folder` walks again; it offers files and folders
+so moving the target with `alt+p` or `/project` walks again; it offers files and folders
 there and never tasks, because a task pointer is minted when a conversation sends and
 home has none yet. Skipped: `.git`, `vendor`, `node_modules`, every
 dot-directory, every dot-file, and every symlink. Unreadable directories are skipped

@@ -1256,11 +1256,11 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | The words on the row | What you type | What happens |
 | --- | --- | --- |
 | **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; the pinned model appears on the rule above the box. Nothing behind home is touched. |
-| **`next conversation's folder`** | `/folder` `/place` `/dir` · `/folder <path>` | Opens the folder browser, **aimed at the next conversation**. Picking a folder pins it — `project: ~/src/parser` on the seam above the box shows the selection, with no duplicate footer message. |
+| **`next conversation's folder`** | `/project` · `/project <path>` | Bare, opens the folder browser **aimed at the next conversation**; picking a folder pins it, with no duplicate footer message. With a path, pins that folder at once and opens nothing, saying `project · ~/src/parser`. Either way `project: ~/src/parser` at the right of the keys row shows the selection. |
 | **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
 | **`onto home's tray`** | `/attach <path>` | The file — or picture — rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` opens the browser aimed at the next conversation's folder, and a file chosen there lands on the tray. |
-| **`opens a conversation here first`** | `/files` · `/manual` · `/crew` (bare) · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder and model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. `/manual` is on this road since 2026-09-22: it is a question put to the model, so it needs a conversation to be asked in. |
+| **`opens a conversation here first`** | `/files` · `/folder` `/place` `/dir` · `/manual` · `/crew` (bare) · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder and model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. `/manual` is on this road since 2026-09-22: it is a question put to the model, so it needs a conversation to be asked in. `/folder` joined it the same day — it gives THIS conversation a folder, and home has no this; the pin it used to be here is `/project`. |
 | **`answers here`** | `/help` · `/status` · `/cost` · `/cache` · `/budget` · `/crew <preset>` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
 | **`runs on the conversation behind home`** | `/land` · `/land <folder>` · `/workspace <path>` | Acts on the conversation this window is holding behind the screen — not on the one `enter` would open — and its answer is echoed onto home's line. |
 | **`a fresh conversation behind home`** | `/new` `/clear` `/clean` `/reset` | Replaces the conversation behind the screen and says `started a fresh conversation behind home`. It is not the same act as `enter`, which opens a conversation at the target. |
@@ -1280,14 +1280,14 @@ message. `/attach ~/shots/shot.png` is the same road for a picture.
 **A drop does the same thing without a command.** Drag a file onto the window while home is
 up and it lands on the same tray. So does a paste.
 
-**A bare `/attach` opens the browser** (since 2026-09-22) — the same sheet a bare `/folder`
-opens, aimed at the folder the next conversation opens in; a file chosen there lands on
-home's tray. Choosing `/attach` on the `/` list with `enter` opens it at once; the
+**A bare `/attach` opens the browser** (since 2026-09-22) — the same sheet a bare
+`/project` opens, aimed at the folder the next conversation opens in; a file chosen there
+lands on home's tray. Choosing `/attach` on the `/` list with `enter` opens it at once; the
 `/attach <path>` row under it is for a typed path. (It used to answer `type the path after
 /attach · or drop the file here`.)
 
 **A folder after `/attach` is not a file.** `/attach ~/src/parser` on home pins the next
-conversation's folder — the same decision `/folder` makes — and updates the project
+conversation's folder — the same decision `/project` makes — and updates the project
 path at the right end of the keys row.
 
 **The tray belongs to you, not to a conversation.** It survives walking into a conversation
@@ -1341,7 +1341,7 @@ selected project. A new window starts with its own default.
 the keys row, and
 the target walks through the projects in the panel's order, including projects with only
 standing work, and wraps after the last. Both controls share one selection, shown only
-as `project: <path>` at the right of the keys row. If `/folder` selected a destination outside the panel,
+as `project: <path>` at the right of the keys row. If `/project` selected a destination outside the panel,
 the next cycle starts at its first project. With just one destination already selected,
 `alt+p project` is absent.
 
@@ -1363,12 +1363,14 @@ standing choice. The selected project remains pinned. Neither cell is drawn on a
 Other full-screen places have no general conversation message box; return Home
 with Escape to start a conversation.
 
-**`/folder` is the third door onto the same pin, and it is the one that shows you the disk.**
-Typed on home — bare, or with a path after it — it opens the folder browser with the title
-`the next conversation's folder`. Its action row reads `open the next conversation in ·
-~/src/parser`, and `enter` there pins the target and drops you back on home with the rule
-already changed. `/place` and `/dir` are the same command. Nothing on that sheet touches the
-conversation behind home.
+**`/project` is the third door onto the same pin, and it is the one that shows you the disk.**
+Typed bare on home it opens the folder browser with the title `the next conversation's
+folder`. Its action row reads `open the next conversation in · ~/src/parser`, and `enter`
+there pins the target and drops you back on home with the rule already changed. Nothing on
+that sheet touches the conversation behind home. `/project ~/src/parser` skips the browser
+and pins the folder straight away, saying `project · ~/src/parser`; a path that is not a
+folder is refused as `no folder there · <path>` and nothing changes. This was `/folder` on
+home until 2026-09-22, when the pin became a command of its own.
 
 ## How do I get back to the dashboard or the home screen from any page — Escape
 
@@ -1389,8 +1391,9 @@ key or a command you have not used yet, and what it does — `/ask answers right
 opening a conversation`, `alt+1 to alt+7 jump straight to a place`. It is drawn only while
 the box is empty and nothing else is up, it moves on to the next tip every time you come to
 home and every two minutes at rest, and each tip goes away for good the first time you do
-what it names. It sits at the right, led by a bulb and closed by a small cross a click puts
-it away with until your next visit. A conversation has the same row over its own box, from
+what it names. It sits at the right, led by a bulb and closed by a small cross: clicking it
+means NOT THIS ONE, and the row answers with the next tip in the rotation rather than going
+blank. The tip you put away keeps its whole allowance and comes round again. A conversation has the same row over its own box, from
 the same one list of tips, drawn once you have been quiet there for a minute. The keys row
 at the very foot is not a tip and never changes. The whole list, what makes each one appear
 and disappear, and the **disable hints** row on the Workspace tab that turns them off, are on

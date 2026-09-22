@@ -3854,8 +3854,9 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	if a.homePhone() {
 		return a.homePhonePress(x, y)
 	}
-	// THE CROSS ON THE TIP ROW PUTS THE TIP AWAY (hometip.go). It is read
-	// first because its row carries no other door and moves no cursor.
+	// THE CROSS ON THE TIP ROW MOVES THE ROW ON (hometip.go, notice.go's
+	// [app.noticeDismiss]). It is read first because its row carries no other
+	// door and moves no cursor.
 	if a.tipRow >= 0 && y == a.tipRow && a.tipCloseSpan.holds(x) {
 		a.noticeDismiss(slotHome)
 		return nil

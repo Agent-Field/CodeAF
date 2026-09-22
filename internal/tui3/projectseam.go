@@ -61,9 +61,10 @@ func (a *app) seamProjectPress(x, y int) (tea.Cmd, bool) {
 }
 
 // tipClosePress is a press on the cross at the end of the conversation's tip
-// row (view.go's [chromeTip]): the tip goes away until the row next changes
-// hands (notice.go's [app.noticeDismiss]). It reports whether it took the
-// press; the rest of that row is blank, and blank is not a gesture.
+// row (view.go's [chromeTip]): the row moves on to the next tip, and the one
+// put away keeps its whole allowance (notice.go's [app.noticeDismiss]). It
+// reports whether it took the press; the rest of that row is blank, and blank
+// is not a gesture.
 func (a *app) tipClosePress(x, y int) bool {
 	mark, ok := a.chromeAt(y)
 	if !ok || mark.kind != chromeTip || !a.tipCloseSpan.holds(x) {

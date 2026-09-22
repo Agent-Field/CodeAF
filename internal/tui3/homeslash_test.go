@@ -546,14 +546,17 @@ func TestResumeAnswersOnHomesOwnLineAndFolderOpensTheBrowser(t *testing.T) {
 		t.Fatalf("/resume said %q, want %q", a.home.msg, homeIsTheResumeWord)
 	}
 
-	// /folder is the other half of this test's original claim and it moved: it
-	// used to answer in one line — `alt+p moves the next conversation · or type
-	// a path` — which named two gestures and drew neither. It opens the browser
-	// now, aimed at the target (folderplace.go), and the browser takes the frame.
-	typeHome(a, "/folder")
+	// /project is the other half of this test's original claim and it moved
+	// twice: home's answer to "which folder" used to be one line — `alt+p moves
+	// the next conversation · or type a path` — which named two gestures and
+	// drew neither; then it was a bare /folder, which meant one thing here and
+	// another in a conversation. It is /project since 2026-09-22
+	// (projectcmd.go), it opens the browser aimed at the target, and the
+	// browser takes the frame.
+	typeHome(a, "/project")
 	runCmd(a.key(key("enter")))
 	if !a.folder.open {
-		t.Fatal("/folder at home did not open the folder browser")
+		t.Fatal("/project at home did not open the folder browser")
 	}
 	if !a.folder.forTarget {
 		t.Fatal("the browser home opened is not aimed at the target")

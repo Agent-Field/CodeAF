@@ -24,9 +24,9 @@ func homeFrameLines(a *app) []string {
 }
 
 // The tip is right-aligned over the rule, led by the bulb and closed by the
-// cross, ending one cell in from the edge — and the cross puts it away until
-// the next visit.
-func TestHomeTipIsRightAlignedWithABulbAndACrossThatPutsItAway(t *testing.T) {
+// cross, ending one cell in from the edge — and the cross moves the row on to
+// another tip.
+func TestHomeTipIsRightAlignedWithABulbAndACrossThatMovesTheRowOn(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.door("")
 	a.showPage(pageHome)
@@ -54,7 +54,8 @@ func TestHomeTipIsRightAlignedWithABulbAndACrossThatPutsItAway(t *testing.T) {
 	if a.targetRow != a.tipRow+1 {
 		t.Fatalf("the tip is on row %d and the rule on row %d; they should be neighbours", a.tipRow, a.targetRow)
 	}
-	// THE CROSS. A press on it puts the tip away; a press beside it does not.
+	// THE CROSS. A press on it says NOT THIS ONE, and the row answers with
+	// another tip on the very next frame; a press beside it does nothing.
 	if !a.tipCloseSpan.pressable() {
 		t.Fatal("the draw recorded no columns for the cross")
 	}
@@ -62,17 +63,27 @@ func TestHomeTipIsRightAlignedWithABulbAndACrossThatPutsItAway(t *testing.T) {
 	if a.noticeHomeHint() != tip {
 		t.Fatal("a press on the tip's words put it away")
 	}
+	was := a.notices.current[slotHome]
 	a.homePress(a.tipCloseSpan.from, a.tipRow)
-	if got := a.noticeHomeHint(); got != "" {
-		t.Fatalf("the cross did not put the tip away: %q", got)
+	next := a.noticeHomeHint()
+	if next == "" {
+		t.Fatal("the cross left the row blank with other tips still to say")
+	}
+	if next == tip {
+		t.Fatalf("the cross left the same tip standing: %q", next)
 	}
 	if strings.Contains(homeText(a), tip) {
 		t.Fatal("the tip is still drawn after its cross was pressed")
 	}
-	if a.notices.retired(a.notices.current[slotHome]) {
+	// AND THE ONE PUT AWAY KEEPS ITS WHOLE ALLOWANCE: it was not retired, and
+	// no showing was spent on the gesture.
+	if a.notices.retired(was) {
 		t.Fatal("putting a tip away retired it")
 	}
-	// The next visit brings a tip back.
+	if got := a.notices.ledger.shown(was); got != 0 {
+		t.Fatalf("the cross spent %d showings of the tip it put away", got)
+	}
+	// The next visit still has something to say.
 	a.showPage(pageHome)
 	if a.noticeHomeHint() == "" {
 		t.Fatal("the next visit brought no tip back")

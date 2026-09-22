@@ -6,7 +6,8 @@ The dim sentence directly above the rule over your message box, led by a bulb an
 by a small cross — `💡 ctrl+. sees every task this project has run ✕` — is a **tip**: one
 line naming a key or a command you have not used yet, and what it does. It reads the way
 every hint on this surface does: the key or the command first, then what it does. Home has
-the same row over its own box, and the two rows draw from **one list** of thirty tips (below).
+the same row over its own box, and the two rows draw from **one list** of thirty-one tips
+(below).
 
 **In a conversation the row appears only once you have been quiet for a minute** — no key
 pressed and no answer landing for sixty seconds — so it never talks over you while you type
@@ -15,10 +16,13 @@ again. Left alone, the row moves on to the next tip every two minutes. On home t
 there from the first minute, moves on every time you come to home and every two minutes at
 rest, and goes blank while the box is being typed into or a list is up.
 
-**The small cross after the tip puts it away**: click it and the row is blank until it
-next changes hands — the next visit to home, the row's next two-minute turn, a quiet minute
-in a conversation. Putting a tip away does not retire it. A tip never takes a row of its
-own: it stands on the blank row that separates the conversation (or home's list) from the
+**The small cross after the tip means NOT THIS ONE**: click it and the row moves on to the
+next tip in the rotation, on the very next frame. The tip you put away is **not** spent —
+it keeps its whole allowance, nothing is written down, and it comes round again another
+time. Only when there is nothing else true to say does the row go blank instead, until it
+next changes hands. Until 2026-09-22 the cross always blanked the row AND counted the tip
+as shown, so the same tip was back on the next visit with one of its six showings gone.
+A tip never takes a row of its own: it stands on the blank row that separates the conversation (or home's list) from the
 rule, and never blocks a keystroke. The keys row at the very foot — `alt+e effort · alt+a
 approvals · / commands` — is not a tip and never changes; until 2026-09-22 the tip stood
 there in a conversation, and it moved up to the row over the rule so both boxes say their
@@ -36,7 +40,8 @@ list or a reply being read all take the row back — and it moves on to the next
 true for you on every road home (`esc` from a conversation, `/home`, `alt+1`, `tab`), in a
 fixed order, round and round. Left at rest, it moves on by itself after two minutes; a home
 nobody is looking at (the box being typed into, a list up) does not age, because what has
-not been read has not been shown. The cross at its end puts it away until the next visit.
+not been read has not been shown. The cross at its end moves the row on to another tip and
+costs the one you put away nothing.
 
 ## Why did the hint disappear — each tip retires once you use what it teaches
 
@@ -83,8 +88,8 @@ later when the ring comes round. It jumps once and then takes its turn like the 
 
 ## Every hint codeaf can show, and what makes each one go away
 
-There are thirty, one list for both boxes. Each one says the moment it first appears and
-the gesture that retires it. The list is the program's own table (the surface refuses to
+There are thirty-one, one list for both boxes. Each one says the moment it first appears
+and the gesture that retires it. The list is the program's own table (the surface refuses to
 build if the two disagree), so a tip you saw is on it word for word.
 
 **Starting work**
@@ -121,6 +126,9 @@ build if the two disagree), so a tip you saw is on it word for word.
   opens.
 - `/attach sends a file along with your message` — retired when a file goes on the tray by
   path or the file browser opens.
+- `/project sets the folder the next conversation opens in` — on home only, since that is
+  the only screen `/project` works on. Retired when `/project` takes a folder, by a path
+  after it or on the browser it opens.
 - `/folder picks the folder codeaf works in` — retired when the folder chooser opens, from
   a conversation or aimed at home's target.
 - `/attach takes a picture too, or paste a screenshot in` — retired by the same gesture as

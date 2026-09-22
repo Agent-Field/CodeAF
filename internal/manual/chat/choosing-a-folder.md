@@ -80,8 +80,9 @@ directory you started it in is the one the status line shows and the one a bare
 `notes.md` means, for the life of the conversation. `## What choosing a folder
 actually does` below has the whole of that distinction.
 
-To start a new conversation already pointed at a project, `/folder` on the home
-screen picks the folder the next one opens in.
+To start a new conversation already pointed at a project, `/project` on the home
+screen picks the folder the next one opens in — `/project ~/code/parser`, or bare
+for the browser.
 
 ## The add context sheet over --host — another machine, over ssh
 
@@ -103,16 +104,37 @@ can unchoose it or choose a file instead. `/folder`, `/place` and `/dir` say the
 without opening the sheet. A bare `/attach` does open because it is a file door and files
 travel over ssh.
 
-## /folder on the home screen — choosing the folder the next conversation opens in
+## /project — the folder the next conversation opens in, choosing the project on home, what happened to /folder on the home screen
 
-**On local home the same command opens the same sheet, aimed at a conversation that does not
-exist yet.** Home's box is a draft for the conversation `enter` will open, and the right end
-of the keys row under it says where that will be: `project: ~/src/parser`.
-`/folder`, `/place` and `/dir` typed there — bare, or with a path after them — open the
-browser to change that folder. Over `--host`, they do not open it: this machine's directory
-cannot be the far conversation's folder, so they say the refusal in the section above.
+**`/project` is home's command for the folder the conversation you are about to start will
+open in.** Home's box is a draft for the conversation `enter` will open, and the right end
+of the keys row under it says where that will be: `project: ~/src/parser`. It has two
+forms:
 
-Three things are different on that sheet, and they all come from the same fact:
+```
+/project              the browser, opened where the next conversation would open
+/project ~/src/parser sets it to that folder at once, with no browser
+```
+
+A path that is not a folder on this machine is refused by name — `no folder there ·
+~/src/parsr` — and nothing is pinned. A folder that is there is taken at once: home says
+`project · ~/src/parser` and the keys row under the box changes on the very next frame.
+Over `--host` neither form works: this machine's directory cannot be the far
+conversation's folder, so it says the refusal in the section above.
+
+**`/folder` on home is not this command.** Until 2026-09-22 it was — `/folder` on home
+pinned the next conversation's folder while `/folder` in a conversation gave THAT
+conversation a folder, which is two acts behind one word. `/folder` now means one thing
+everywhere: give this conversation a folder. Typed on home it opens a conversation at the
+target first and browses there, like `/files` and `/compact` do. `/place` and `/dir`
+follow it. Typed in a conversation, `/project` answers, exactly:
+
+```
+/project is home's · it sets the folder the next conversation opens in · /folder gives this conversation one
+```
+
+Three things are different on the sheet a bare `/project` opens, and they all come from the
+same fact — the conversation it is choosing for does not exist yet:
 
 - The title reads **`the next conversation's folder`** instead of `add context`.
 - The action row reads **`open the next conversation in · ~/src/parser`** instead of
@@ -128,7 +150,7 @@ onto the tray, which rides into the conversation home opens next.
 
 **`alt+p` is the same pin without the browser** — it walks the target round the projects this
 machine knows, one press at a time. The browser is what you want when the folder is not one
-of those.
+of those, and `/project <path>` is what you want when you already know where it is.
 
 ## Type a word to filter, open a row to browse
 
@@ -709,6 +731,7 @@ choosing a folder is not available over --host yet — the folders here are this
 this conversation cannot be given a folder · it has no way to remember one, so nothing would reach the next request
 no folder matches · type a path to browse
 no such folder · <path>
+no folder there · <path>
 nothing below here
 this folder cannot be read · permission denied
 this folder is no longer here
@@ -739,6 +762,10 @@ putting changes into a folder is not available over --host yet — the conversat
   your own tree instead.
 - The third is a search that matched none of the known folders. The folder may still be
   there; the picker only ranks what it has seen, so type its path.
+- `no folder there · <path>` is `/project <path>` on home handed something that is not a
+  directory on this machine — a typo, a file, or somewhere that has moved. It names the
+  path exactly as you typed it, because the resolved form is not what you can see to
+  correct, and nothing is pinned.
 - The fourth is the add action on a row whose folder has since been moved or deleted. The
   rows come from memory, and one stat at that moment is what catches it.
 - `nothing below here` is a folder that was read and has nothing inside it at all. You can
