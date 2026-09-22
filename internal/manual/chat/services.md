@@ -4,7 +4,7 @@
 
 An api key for another provider is added here. Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
 MiniMax, Alibaba Qwen, Ollama and **Custom OpenAI-compatible API**, followed by any service already
-connected and an `add custom connection` row.
+connected and, once a custom connection is connected, an `add custom connection` row.
 Pick a row and answer its fields. A successful listed service says
 `deepseek-direct is connected · 6 models`; one without a list says only
 `deepseek-direct is connected`. A service with more than one billing door names the one it

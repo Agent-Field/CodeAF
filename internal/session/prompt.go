@@ -359,6 +359,14 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(quickPrompt, "\n"))
 	}
+	// AND THE SHELF THIS CONVERSATION ALREADY OWNS, when it has one. The skill
+	// catalog is dynamic CONTENT rather than a fact about the shape, so it is
+	// composed here from the store and not from beltfacts.go, and it renders
+	// nothing at all on an empty shelf (skillcatalog.go).
+	if catalog := renderSkillCatalog(config); catalog != "" {
+		out.WriteString("\n\n")
+		out.WriteString(catalog)
+	}
 
 	out.WriteString(workerFooter(config, now))
 	return out.String()
@@ -380,6 +388,17 @@ func renderSystemAt(config Config, now time.Time) string {
 // does not have. A page naming a hand the belt lacks is the prompt lying, and
 // every step of every worker pays for the sentences again, so neither page rides
 // this one.
+//
+// AND THE SHELF IS NOT ON THIS PAGE, for the same law read forward. The verb
+// that lists and fetches a skill is gated on [Config.mayProposeTask] and on a
+// store to read the shelf from (tools_skill.go), and this belt has neither: the
+// predicate is false for every bash-belt worker by construction (beltfacts.go),
+// and the seat a run builds carries no store at all, so the catalog section,
+// the per-message block and the verb are all absent here. Nothing above the
+// worker puts a skill in its brief either — the attachment road runs through
+// the plan graph's own executor and not through this seat — so a paragraph
+// telling this worker to reach the shelf would name a hand it has no way to
+// use. A capability that cannot work is absent, not broken.
 //
 // THE ORDER IS THE POINT. A task on this belt is a planner first — it frames,
 // plans, dispatches and integrates — and a page opening on the chat colleague or

@@ -321,6 +321,16 @@ var beltFacts = []beltFact{{
 	present: "- When asked to find a past conversation or report what was said or decided elsewhere, call `search_conversations` BEFORE answering, even if a saved memory suggests the answer. Memories guide the query; source messages establish what was said. Copy a returned ref to read more and check corrections.",
 	absent:  "- What was said in earlier conversations cannot be looked up from here, so answer out of what is in this window rather than reconstructing it.",
 }, {
+	// THE SKILL SHELF, on the same predicate as propose_task plus a store to
+	// read it from (tools_skill.go's [Agent.useSkillTool]): a worker that may
+	// hand work out may also look up what this project already knows how to do,
+	// and a shape with no shelf behind it is told the shelf is not reachable
+	// rather than reaching for a verb that is not on its belt.
+	tools:   []string{useSkillToolName},
+	holds:   func(c Config) bool { return c.mayProposeTask() && c.Memory != nil },
+	present: "- `use_skill` lists active skills (name + one-line doc) or resolves one by name to its shelf path.",
+	absent:  "- Skills on the shelf are not reachable from here.",
+}, {
 	tools:  []string{"watch"},
 	holds:  Config.mayWatch,
 	absent: "- There is no `watch` here: a foreground `bash` call is how you wait for something to finish.",
