@@ -184,6 +184,16 @@ func TestTheSweepLeavesEveryConversationSomethingWouldBeLostFrom(t *testing.T) {
 			held.side.draft = "and then check the migration"
 			return held
 		}()},
+		{name: "a message still waiting for its answer", held: func() *kept {
+			held := coldKept(&switchAgent{fakeAgent: &fakeAgent{model: "m"}}, "a", cold)
+			held.side.parks = []parked{{text: "and then check the migration"}}
+			return held
+		}()},
+		{name: "a waiting message whose submit is crossing", held: func() *kept {
+			held := coldKept(&switchAgent{fakeAgent: &fakeAgent{model: "m"}}, "a", cold)
+			held.side.parkSending = true
+			return held
+		}()},
 		{name: "a picture still on its box", held: func() *kept {
 			held := coldKept(&switchAgent{fakeAgent: &fakeAgent{model: "m"}}, "a", cold)
 			held.side.chips = []chip{{}}

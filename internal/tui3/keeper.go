@@ -78,8 +78,9 @@ type kept struct {
 	// through [app.takeUp] on the way in, which is what stops a keystroke in one
 	// conversation reaching a closure minted around another.
 	conv Conversation
-	// side is what the person left: the box, the pictures on it, where they were
-	// reading, what was left of an approval countdown, the room they had open
+	// side is what the person left: the box, the messages waiting behind its
+	// running turn, their pictures and documents, where they were reading, what
+	// was left of an approval countdown, and the room they had open
 	// (switcher.go's [aside]).
 	side *aside
 	// watch drains this agent's lanes and turns the two interesting edges into
@@ -115,6 +116,28 @@ type behindStirMsg struct {
 	quiet bool
 }
 
+// behindParkedMsg is the answer to sending one held conversation's oldest
+// waiting message off the update loop. The key is the generation law in this
+// lane: if the conversation moved, closed or came forward while the call was
+// crossing, the fold finds that fact by identity rather than touching whatever
+// conversation happens to be in front.
+type behindParkedMsg struct {
+	key   string
+	park  parked
+	shown string
+	ch    <-chan session.Event
+	err   error
+}
+
+// behindTurn is one stream handed to a watcher after that watcher was already
+// running. A session follow-up and a parked message both begin between the
+// original turn's close and the next pass through the watcher's select, so the
+// watcher needs a lane rather than a second goroutine reading beside it.
+type behindTurn struct {
+	events <-chan session.Event
+	stop   func()
+}
+
 // behindWatch is one conversation's stir watcher, and it exists for a reason
 // that must not be deleted by a future lane trying to save memory.
 //
@@ -140,11 +163,12 @@ type behindStirMsg struct {
 // exists to avoid, and it needs the discard to be correct, which is a
 // conversation id on every message type.
 type behindWatch struct {
-	key   string
-	agent Agent
-	out   chan<- behindStirMsg
-	quit  chan struct{}
-	once  sync.Once
+	key    string
+	agent  Agent
+	out    chan<- behindStirMsg
+	quit   chan struct{}
+	adopts chan behindTurn
+	once   sync.Once
 	// armed is the "at most one outstanding" rule. A watcher that sent a stir
 	// nobody has folded in yet sends no more of them: the surface reads the
 	// agent when it wakes, so a second nudge to read the same pointer buys
@@ -330,9 +354,43 @@ func (w *behindWatch) stop() {
 	})
 }
 
+// adopt replaces the turn this watcher is draining. It is the held
+// conversation's [app.adoptTurn]: a follow-up the session started itself and a
+// parked message the keeper just submitted both become the one stream whose
+// close supplies the next landing edge.
+func (w *behindWatch) adopt(events <-chan session.Event, stop func()) {
+	if events == nil {
+		if stop != nil {
+			stop()
+		}
+		return
+	}
+	if w == nil || w.adopts == nil || w.quit == nil {
+		if stop != nil {
+			stop()
+		}
+		return
+	}
+	select {
+	case <-w.quit:
+		if stop != nil {
+			stop()
+		}
+		return
+	default:
+	}
+	select {
+	case w.adopts <- behindTurn{events: events, stop: stop}:
+	case <-w.quit:
+		if stop != nil {
+			stop()
+		}
+	}
+}
+
 // startBehindWatch subscribes to everything this agent has and drains it.
 func startBehindWatch(key string, agent Agent, out chan<- behindStirMsg) *behindWatch {
-	w := &behindWatch{key: key, agent: agent, out: out, quit: make(chan struct{})}
+	w := &behindWatch{key: key, agent: agent, out: out, quit: make(chan struct{}), adopts: make(chan behindTurn, 1)}
 	go w.run()
 	return w
 }
@@ -413,7 +471,24 @@ func (w *behindWatch) run() {
 		if turnStop != nil {
 			turnStop()
 		}
+		// A stop can win the select while an adoption is buffered. Give that
+		// subscription back too; otherwise the held agent retains a reader after
+		// the conversation has already left this watcher.
+		select {
+		case left := <-w.adopts:
+			if left.stop != nil {
+				left.stop()
+			}
+		default:
+		}
 	}()
+	replaceTurn := func(next <-chan session.Event, stop func()) {
+		if turnStop != nil {
+			turnStop()
+		}
+		turn, turnStop = next, stop
+		w.turning.Store(next != nil)
+	}
 
 	waiting := needsPerson(w.agent)
 	w.waits.Store(waiting)
@@ -421,6 +496,12 @@ func (w *behindWatch) run() {
 		select {
 		case <-w.quit:
 			return
+		case next := <-w.adopts:
+			// THIS REPLACES RATHER THAN JOINS THE OLD STREAM. The adoption is
+			// offered only after an Attach says which turn is current or after a
+			// Submit starts the next one, so keeping both readers would count one
+			// turn twice and raise two landing edges.
+			replaceTurn(next.events, next.stop)
 		case ev, ok := <-tasks:
 			if !ok {
 				tasks = nil
@@ -471,12 +552,7 @@ func (w *behindWatch) run() {
 			// and draining it is what keeps its pump from parking. A wake while
 			// another turn is still being drained replaces it, which is the
 			// session's own arrangement: a wake is handed over between turns.
-			if turnStop != nil {
-				turnStop()
-				turnStop = nil
-			}
-			turn = stream
-			w.turning.Store(true)
+			replaceTurn(stream, nil)
 		case _, ok := <-turn:
 			if !ok {
 				turn = nil
@@ -572,6 +648,15 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 		return tea.Batch(next, a.takeOverKept(note.key, held))
 	}
 	landed := held.watch.took()
+	var parked tea.Cmd
+	continued := false
+	if landed && held.side != nil && len(held.side.parks) > 0 {
+		// FOLLOW-UPS GO FIRST. The session may have started one as the turn
+		// ended; Attach is the authoritative answer. The check runs off the
+		// update loop because this agent may be another process or machine.
+		parked = a.checkBehindParked(note.key, held.conv.Agent)
+		continued = parked != nil || held.side.parkSending
+	}
 	// The count on the status line and home's own rows are both read from the
 	// agent on the frame, so waking the frame is the whole of the refresh.
 	a.touch()
@@ -583,9 +668,14 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 		// home; this is what says it to the person sitting here, who is looking
 		// at a different conversation in the same terminal.
 		banner = a.notifyBehind(held, notifyAskWord)
-	case landed:
+	case landed && !continued:
 		banner = a.notifyBehind(held, notifyDoneWord)
 	}
+	// NO FINISHED BANNER FOR AN ANSWER THAT IMMEDIATELY CONTINUES. The finished
+	// counter still advances because the tab truthfully reports how many turns
+	// landed while the person was away, but a banner saying "finished" beside a
+	// conversation already answering their next message would be stale on the
+	// frame it appeared.
 	// A CONVERSATION THAT HAS JUST STOPPED WORKING IS THE OTHER MOMENT THE SWEEP
 	// CAN ACT, and without it a window left holding cold conversations only ever
 	// collects one when somebody opens another (this surface has no idle ticker).
@@ -594,9 +684,162 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	// a turn landed in it, and [app.keptQuiet] refuses both.
 	a.sweepKept()
 	if a.homeAnimating() {
-		return tea.Batch(next, banner, a.wake())
+		return tea.Batch(next, banner, parked, a.wake())
 	}
-	return tea.Batch(next, banner)
+	return tea.Batch(next, banner, parked)
+}
+
+// checkBehindParked asks which turn is current without blocking the update
+// loop, then either adopts the session's own continuation or starts the oldest
+// parked message through the held agent.
+//
+// THE FOLD LOOKS THE CONVERSATION UP AGAIN. A person can bring it forward or
+// close it while Attach is crossing a connection; using the captured sidecar
+// afterwards would send into state this window no longer owns.
+func (a *app) checkBehindParked(key string, agent Agent) tea.Cmd {
+	door, ok := agent.(attachable)
+	if !ok {
+		return nil
+	}
+	return a.offLoop(func() func(bool) tea.Cmd {
+		events, running, stop := door.Attach()
+		return func(bool) tea.Cmd {
+			held := a.behind[key]
+			if held == nil || held.side == nil || len(held.side.parks) == 0 {
+				stop()
+				// An attachable conversation can still have come forward after
+				// its idle reading. If it did, this fold is the only remaining
+				// edge that knows the parked queue is ready to go.
+				if !running && key == a.convKey(a.file) && len(a.parks) > 0 {
+					return a.sendParked()
+				}
+				return nil
+			}
+			if running {
+				held.watch.adopt(events, stop)
+				return nil
+			}
+			stop()
+			return a.sendBehindParked(key, held)
+		}
+	})
+}
+
+// sendBehindParked starts one held message and leaves it at the front of the
+// queue until the call succeeds. That is what lets a read error or a closed
+// agent return the complete message — pictures and paste bodies included —
+// instead of turning a failed send into lost input.
+func (a *app) sendBehindParked(key string, held *kept) tea.Cmd {
+	if held == nil || held.side == nil || held.side.parkSending || len(held.side.parks) == 0 {
+		return nil
+	}
+	held.side.parkSending = true
+	held.side.parks[0].sending = true
+	p := held.side.parks[0]
+	_, shown, start := parkedStart(held.conv.Agent, a.ctx, a.hosted(), p)
+	return func() tea.Msg {
+		ch, err := start()
+		return behindParkedMsg{key: key, park: p, shown: shown, ch: ch, err: err}
+	}
+}
+
+// tookBehindParked folds the off-loop send into whichever place now owns the
+// conversation. Success spends the marked head exactly once and hands its
+// stream to that conversation's watcher; failure clears only the crossing mark
+// and leaves the full message waiting.
+func (a *app) tookBehindParked(msg behindParkedMsg) tea.Cmd {
+	failure := func(err error) string { return "submit failed: " + err.Error() }
+	if held := a.behind[msg.key]; held != nil && held.side != nil {
+		held.side.parkSending = false
+		if len(held.side.parks) > 0 && held.side.parks[0].sending {
+			if msg.err != nil {
+				held.side.parks[0].sending = false
+				held.side.parkNotes = append(held.side.parkNotes, failure(msg.err))
+				a.stowDrafts(held.conv, held.side)
+				return nil
+			}
+			held.side.parks = held.side.parks[1:]
+		}
+		a.stowDrafts(held.conv, held.side)
+		held.watch.adopt(msg.ch, nil)
+		return nil
+	}
+
+	// The conversation may have come forward while Submit was crossing. The
+	// sidecar moved its queue and crossing mark onto the app, so identity still
+	// decides whether this answer belongs here.
+	if msg.key == a.convKey(a.file) {
+		a.parkSending = false
+		if len(a.parks) > 0 && a.parks[0].sending {
+			if msg.err != nil {
+				a.parks[0].sending = false
+			}
+			if msg.err == nil {
+				a.parks = a.parks[1:]
+			}
+		}
+		if msg.err != nil {
+			a.note(failure(msg.err))
+			return tea.Batch(a.edited(), a.settle())
+		}
+		// If Attach already found this turn, its atomic replay supplied the user
+		// line and its stream is the one to keep. Otherwise the send crossed
+		// after that idle reading, so draw the ordinary line here and adopt the
+		// channel Submit returned.
+		if a.stream == nil {
+			a.drawBehindParked(msg.park, msg.shown)
+			return a.takeStream(msg.ch)
+		}
+		if msg.ch != nil {
+			// Attach already owns a separate subscription to this turn. Drain
+			// Submit's original subscription as well: dropping it would leave the
+			// agent's pump parked on a reader that came forward during the call.
+			return func() tea.Msg {
+				for range msg.ch {
+				}
+				return nil
+			}
+		}
+		return nil
+	}
+
+	// The conversation was closed or moved while the call crossed. Nobody owns
+	// this returned stream now, but it still must be drained so the agent's event
+	// pump cannot park on a reader that disappeared.
+	if msg.ch != nil {
+		return func() tea.Msg {
+			for range msg.ch {
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+// drawBehindParked is the front half of an already-started background send. It
+// is reached only when the conversation came forward before Attach could see
+// the new turn; ordinary background completion is drawn later from the journal.
+func (a *app) drawBehindParked(p parked, shown string) {
+	a.turn++
+	a.sel = -1
+	if a.openingPrompt == "" {
+		a.openingPrompt = shown
+	}
+	line := shown
+	pictures := chipPaths(pictureChips(p.chips))
+	if len(p.chips) > 0 {
+		line = userLine(shown, p.chips, a.pal)
+	}
+	a.said(entry{kind: entryUser, text: line, turn: a.turn, began: a.now(), context: a.turnContext(), pictures: pictures, picturesHere: len(pictures) > 0})
+	for _, picture := range pictures {
+		a.learnPicture(picture, true)
+	}
+	a.state = stateWorking
+	a.lastDelta = time.Now()
+	a.awaited = time.Now()
+	a.startClock()
+	a.follow()
+	a.touch()
 }
 
 // ── holding a conversation, and taking one back ─────────────────────────────
@@ -608,10 +851,10 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 // branch where the conversation goes on existing: a machine that loses power
 // with three conversations open should give all three boxes back, and the
 // sidecar is memory (draft.go).
-func (a *app) stow(conv Conversation, side *aside) {
+func (a *app) stow(conv Conversation, side *aside) tea.Cmd {
 	key := a.convKey(conv.SessionFile)
 	if key == "" || conv.Agent == nil {
-		return
+		return nil
 	}
 	// A DOOR WHOSE CONVERSATIONS SHARE ONE HANDLE KEEPS NOTHING HERE, and this is
 	// the one guard rather than a branch at each of the four callers — /new, the
@@ -644,7 +887,7 @@ func (a *app) stow(conv Conversation, side *aside) {
 		a.stowDrafts(conv, side)
 		// Retain the outgoing navigation identity even though its agent ended.
 		a.rememberOpen(key)
-		return
+		return nil
 	}
 	// AND IT IS THE WHOLE COMPOSER, not only the box: every page's own unsent line
 	// goes down under THIS conversation's identity (draftkeep.go's
@@ -654,17 +897,27 @@ func (a *app) stow(conv Conversation, side *aside) {
 	if a.behind == nil {
 		a.behind = map[string]*kept{}
 	}
-	a.behind[key] = &kept{
+	held := &kept{
 		conv:  conv,
 		side:  side,
 		watch: startBehindWatch(key, conv.Agent, a.stirs),
 	}
+	a.behind[key] = held
 	a.rememberOpen(key)
+	var parked tea.Cmd
+	if side != nil && len(side.parks) > 0 {
+		// The turn may have ended between the park and the watcher joining. Ask
+		// once after the watcher exists: an idle answer means there is no future
+		// close edge to wake it, so the oldest message goes now. The helper keeps
+		// this potentially remote door off the update loop.
+		parked = a.checkBehindParked(key, conv.Agent)
+	}
 	// AND THE KEEPER GIVES BACK WHAT IT CAN, on the one keystroke that grew it. The
 	// conversation just stowed is the youngest thing in there and can never be
 	// what the sweep takes ([keptIdleGrace]), so this collects a conversation
 	// somebody stopped thinking about rather than the one they just left.
 	a.sweepKept()
+	return parked
 }
 
 // rememberOpen puts a key on top of the previous-stack, which is the order `tab`
@@ -758,8 +1011,8 @@ func (a *app) bringForward(file string) (cmd tea.Cmd, owned bool) {
 	delete(a.behind, key)
 	held.watch.stop()
 	leaving, side := a.front(), a.detachConversation()
-	a.stow(leaving, side)
-	cmd = a.attachConversation(held.conv, held.side)
+	parked := a.stow(leaving, side)
+	cmd = tea.Batch(parked, a.attachConversation(held.conv, held.side))
 	a.rememberOpen(key)
 	return cmd, true
 }
@@ -829,7 +1082,7 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 		closed = a.place
 	}
 	leaving, side := a.front(), a.detachConversation()
-	a.stow(leaving, side)
+	parked := a.stow(leaving, side)
 	if a.shared {
 		// The legacy wire seam returns only an Agent. The local draft store
 		// belongs to this window, with separate owner-scoped slots inside it.
@@ -840,7 +1093,7 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 			conv.History = leaving.History
 		}
 	}
-	cmd := a.attachConversation(conv, nil)
+	cmd := tea.Batch(parked, a.attachConversation(conv, nil))
 	if a.shared {
 		a.restoreDraft()
 	}
@@ -1299,15 +1552,17 @@ func (a *app) keptQuiet(held *kept, now time.Time) bool {
 	if w.landed.Load() || w.landedSince() > 0 {
 		return false
 	}
-	// AND THE WORDS IN ITS BOX ARE THE PERSON'S OWN. A draft, a picture on it, a
-	// document behind a paste tag, a message that has left the box and not
-	// settled, a line typed at one of its task pages: any of them and this
-	// conversation is somebody's unfinished sentence rather than a cost.
+	// AND ALL OF THE PERSON'S UNSENT WORDS ARE THEIR OWN. A draft, a waiting
+	// message, a picture on either, a document behind a paste tag, a message that
+	// has left the box and not settled, a line typed at one of its task pages:
+	// any of them and this conversation is somebody's unfinished sentence rather
+	// than a cost. Parks used to be folded into draft, so separating them without
+	// naming them here would make the sweep able to discard the new sidecar state.
 	if held.side == nil {
 		return false
 	}
 	side := held.side
-	if strings.TrimSpace(side.draft) != "" || len(side.chips) > 0 || len(side.pastes) > 0 || len(side.sends) > 0 || len(side.composers) > 0 {
+	if strings.TrimSpace(side.draft) != "" || len(side.parks) > 0 || side.parkSending || len(side.chips) > 0 || len(side.pastes) > 0 || len(side.sends) > 0 || len(side.composers) > 0 {
 		return false
 	}
 	// And it has to have been left alone for long enough that letting go of it is

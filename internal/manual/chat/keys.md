@@ -340,8 +340,12 @@ are dropped — press `enter` again to send it.
 Press `esc` to go back one layer: close a picker, leave an editor or room, or put a
 question aside. With no layer left, Escape opens Home. Further presses stay on Home.
 Message drafts, running turns and queued messages are preserved. Filters may clear first.
-Escape never starts rewind or stops a turn. `ctrl+c` interrupts a running turn and quits
-when idle; `/rewind` opens the rewind timeline.
+**A message waiting above the box is preserved too, with its pictures, and still goes when
+that answer ends even while Home or another chat is in front.** The exception is a
+connection that holds one conversation at a time: its waiting words and pictures return
+to the box and tray because the old conversation has ended. Escape never starts rewind or
+stops a turn. `ctrl+c` interrupts a running turn and quits when idle; `/rewind` opens the
+rewind timeline.
 
 The double-space binding has been removed. Spaces type normally in message boxes.
 `/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row or use

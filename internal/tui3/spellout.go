@@ -292,9 +292,9 @@ func (a *app) spellKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		return a.spellAdd(), true
 	case "esc":
-		// THE INTERRUPT IS NOT FOR SALE (input.go says the same about the rewind
-		// arm): while a turn is running esc stops it, whatever else is on the
-		// frame. The block cannot ordinarily be up then — sending empties the box
+		// NAVIGATION IS NOT FOR SALE. While a turn is running, esc keeps its
+		// surface-wide meaning and opens Home rather than being swallowed by this
+		// block. The block cannot ordinarily be up then — sending empties the box
 		// and the block goes with the draft — and where it somehow is, the key
 		// keeps its more important meaning.
 		if !a.spellShowing() || a.state == stateWorking {

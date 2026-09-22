@@ -572,6 +572,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does cmd+enter do", "keys"},
 		{"what does steers it in mean", "keys"},
 		{"my message went in too late", "keys"},
+		// A waiting message survives navigation as structured input, asked both
+		// before somebody trusts the switch and after the old defect returned its
+		// words as a draft without the picture.
+		{"I pressed esc and went home while my message was waiting, will it still be sent", "screen"},
+		{"my waiting message turned into a draft and lost its picture when I switched chats", "screen"},
 		// THE SCOPED THINKING CHORD, asked the five ways people meet it: reaching
 		// for paste and finding it bound, wanting one task to think harder,
 		// wanting the machine's own default moved, wanting one reminder raised

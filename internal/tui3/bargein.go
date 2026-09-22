@@ -7,14 +7,11 @@ import (
 // BARGE-IN: the way a person actually interrupts is by SPEAKING.
 //
 // THE GAP THIS FILE CLOSES. Two gestures already exist for a sentence typed
-// over a running answer and neither is the one a hand reaches for. Plain enter
-// PARKS the message and waits for the turn to end (park.go); esc STOPS the turn
-// and, if something is already parked, sends it (input.go's esc case). So the
-// person who is watching an answer go the wrong way and types "no — the OTHER
-// file" has to press two keys in the right order to be heard now: enter, then
-// esc. Everybody discovers the first one and almost nobody discovers that the
-// second one is a send, because by the time they have pressed enter their
-// sentence is out of the box and the urgency has gone out of the gesture.
+// over a running answer and neither says "stop, then send these words". Plain
+// enter PARKS the message and waits for the turn to end (park.go); ctrl+c STOPS
+// the turn and drops everything waiting. So the person who is watching an
+// answer go the wrong way and types "no — the OTHER file" needs one deliberate
+// gesture that preserves the correction while ending the answer.
 //
 // So this is those two presses as ONE act. The draft is in the box, the answer
 // is streaming, and one chord means: stop this, and here is what I want instead.

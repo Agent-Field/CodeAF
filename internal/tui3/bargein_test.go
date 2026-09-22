@@ -246,10 +246,10 @@ func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T)
 }
 
 // THE TWO STOP GESTURES NAME THEIR DIFFERENT QUEUE DECISIONS. ctrl+shift+enter
-// preserves the sentence it just parked; esc clears everything waiting.
-func TestTheChordSendsWhileEscDrops(t *testing.T) {
+// preserves the sentence it just parked; ctrl+c clears everything waiting.
+func TestTheChordSendsWhileCtrlCDrops(t *testing.T) {
 	if strings.HasSuffix(parkedHint[1], bargeSendWord) {
-		t.Fatalf("the parked block claims esc sends: %q", parkedHint[1])
+		t.Fatalf("the parked block claims ctrl+c sends: %q", parkedHint[1])
 	}
 	a, _ := bargeable(t, "reading the tree. ")
 	typeInto(t, a, "no, the other file")

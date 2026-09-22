@@ -1749,16 +1749,26 @@ exactly one it is not counted at all.
 `→ steers it in` is there only while the message can go into the running answer: a turn
 still running, and a message of words alone. A waiting message that carries pictures, or
 one marked with `ctrl+enter`, cannot be sent in and the clause is absent for it. Pressing
-`esc` removes the waiting block at once; `→ steers it in` is absent while a stopped turn
+`esc` opens Home and leaves the block with this conversation. `ctrl+c` stops the answer
+and removes the waiting block at once; `→ steers it in` is absent while a stopped turn
 is winding down because that turn has no boundary left to take the words.
 
-## What happens to a message waiting above the box
+## What happens to a message waiting above the box when I leave, go Home, switch chats, or lose its picture
 
 What happens to it:
 
 - **When the answer finishes**, it sends itself as an ordinary new turn and appears in
   the conversation as a normal message of yours. Several waiting messages go **one per
   finished turn**, oldest first, in the order you typed them.
+- **If you leave for Home or another conversation**, it stays waiting in this
+  conversation, with its pictures, pasted documents and standing mark. It still sends
+  when this answer finishes even while you are somewhere else. Come back before then and
+  the same waiting block and hint are above the box; the box contains only the separate
+  draft you had not sent.
+- **One-conversation connections are the exception.** If a connection says
+  `a connection holds one conversation at a time`, switching ends the old conversation,
+  so nothing can keep waiting on its answer. The waiting words return to the box and
+  their pictures and pasted documents return to the tray after anything already there.
 - **`ctrl+c`** stops the answer and drops every parked message and queued follow-up. None
   starts a turn when the interrupted stream closes.
 - **`→` over an empty box**, or a **click on the words `→ steers it in`**, sends it
@@ -1768,10 +1778,12 @@ What happens to it:
 - **`↑` over an empty box**, or a **click on the block**, takes it back into the box to
   be edited. `cmd+enter` then holds the edited sentence again.
 - The box is cleared the moment you press `cmd+enter`, so you can keep typing. Attachments
-  in the tray go with the held message and come back on the tray if you take it back.
-- If the conversation is replaced under it — `/new`, opening a session from the welcome
-  box — the waiting messages are dropped and codeaf says so: `1 waiting message dropped`
-  or `N waiting messages dropped`.
+  in the tray go with the held message, stay with it across Home and chat switches, and
+  come back on the tray if you take it back.
+- `/new` keeps the old conversation running behind you, so its waiting messages stay
+  with it and go when its answer ends, exactly as a switch keeps them. Opening a session
+  from the welcome box replaces the conversation instead, and its waiting messages are
+  dropped and codeaf says so: `1 waiting message dropped` or `N waiting messages dropped`.
 
 While something is waiting, the keys row under the box ends with
 `ctrl+c stops and drops` instead of `ctrl+c interrupt`.

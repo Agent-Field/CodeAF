@@ -169,6 +169,11 @@ type fakeAgent struct {
 	// rather than folded into it because which door a message took is the whole
 	// question those tests ask.
 	marked []string
+	// imageText and images are every message that went through the picture
+	// door. They live on the common fake for the keeper tests, where the point is
+	// that a held send reaches this agent rather than the conversation in front.
+	imageText []string
+	images    [][]session.Image
 	// steered is every sentence sent INTO a running turn (steer.go), and it is
 	// kept apart from `sent` for `marked`'s reason exactly: which door a message
 	// took is the whole question those tests ask, and a steer that showed up in
@@ -1841,7 +1846,7 @@ func TestCtrlCInterruptsThenCloses(t *testing.T) {
 
 	drive(t, a, key("ctrl+c"))
 	if agent.stops != 1 {
-		t.Fatalf("esc did not interrupt (%d)", agent.stops)
+		t.Fatalf("ctrl+c did not interrupt (%d)", agent.stops)
 	}
 	// The stream has not closed, so the word is the wind-down's own
 	// (render.go's [stoppingWord]); `interrupted` arrives behind it at the close.
@@ -1852,7 +1857,7 @@ func TestCtrlCInterruptsThenCloses(t *testing.T) {
 	}
 
 	// AND THE DOOR ANSWERS ON THE PRESS THAT LANDS (leaving.go). The turn was
-	// stopped by the esc above, so this key is read at rest and it leaves.
+	// stopped by the ctrl+c above, so this key is read at rest and it leaves.
 	_, cmd := a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("ctrl+c returned no command")
