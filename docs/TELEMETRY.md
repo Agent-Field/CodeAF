@@ -10,7 +10,7 @@ Before the first session's events are sent, codeaf prints this to stderr once:
 
 ```
 codeaf sends anonymous usage counts to AgentField.
-  Sent:  version, OS, mode (chat or task), how many sessions, how many errors.
+  Sent:  version, OS, mode, session counts, errors, and total tokens used.
   Never: anything about you or your work. No prompts, code, file names,
          paths, repo names, keys, email, IP, or machine name.
   What is collected:        codeaf telemetry info
@@ -30,7 +30,7 @@ see what is shared: codeaf telemetry info · turn off: CODEAF_TELEMETRY=off
 ## What is sent
 
 Exactly four events. Each carries the every-event properties; three of them
-add more. Every value is a count, a band, or a word from a fixed list. The
+add more. Values are counts, bands, or words from fixed lists. The
 table's names come from the same allowlist the code is held to and its words
 from the table `codeaf telemetry info` prints, and a test fails the build if
 any of the three drift apart.
@@ -53,6 +53,7 @@ any of the three drift apart.
 | session_ended | tool_calls | a count band |
 | session_ended | tool_calls_failed | a count band |
 | session_ended | cost_usd | a dollar band |
+| session_ended | total_tokens | total provider-reported input and output tokens in this session |
 | session_ended | stop_reason | done, error, incomplete, budget, turn-cap, deadline, price, question, interrupted, or unknown |
 | session_ended | exit_code | 0 to 5 |
 | fault | mode | chat, task, or other |
@@ -61,6 +62,8 @@ any of the three drift apart.
 
 Count bands are 0, 1, 2-5, 6-20, 21-100 and 100+. Dollar bands are 0, under
 0.01, 0.01-0.1, 0.1-1, 1-10 and 10+.
+The numeric `total_tokens` count sums provider-reported input and output across
+the run, including tokens read from cache once. Missing usage contributes zero.
 
 first_run carries only the every-event properties and is sent once per
 install.

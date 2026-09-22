@@ -199,6 +199,7 @@ func TestSessionEndedBucketsAndClamps(t *testing.T) {
 		ToolCalls:        21,
 		ToolCallsFailed:  101,
 		CostUSD:          0.42,
+		TotalTokens:      12500,
 		StopReason:       "blew up",
 		ExitCode:         99,
 	}, "session-clamp", testNow)
@@ -211,6 +212,7 @@ func TestSessionEndedBucketsAndClamps(t *testing.T) {
 		"tool_calls":         BucketTwo1,
 		"tool_calls_failed":  Bucket100,
 		"cost_usd":           Cost10cTo1,
+		"total_tokens":       12500,
 		"stop_reason":        StopUnknown,
 		"exit_code":          5,
 	}
