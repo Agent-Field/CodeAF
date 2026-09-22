@@ -2307,6 +2307,28 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
+	case MethodDelegateList:
+		door, ok := agent.(interface{ Delegates() session.DelegateReport })
+		if !ok {
+			return json.Marshal(session.DelegateReport{})
+		}
+		return json.Marshal(door.Delegates())
+	case MethodDelegateStart:
+		door, ok := agent.(interface {
+			StartDelegate(context.Context, string, string) (uint64, string, string, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no delegate door")
+		}
+		args, err := arg[DelegateStartArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		id, title, note, err := door.StartDelegate(context.Background(), args.Name, args.Brief)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
 	case MethodPlannerStart:
 		door, ok := agent.(interface {
 			StartPlannerRun(context.Context, string, string) (string, string, error)

@@ -138,8 +138,13 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.
 // notes said before the spend and the start message are the same whichever
 // door opens — the conversation's own worker or a delegate (delegate.go) — and
 // two copies of the preflight would be two places for one line to drift.
-func (a *app) startTaskDoorVia(brief string, start func(context.Context) (uint64, string, string, error)) tea.Cmd {
-	ctx := a.ctx
+// taskDoorNotes says the two lines every task door says before the spend — who
+// else is in these files, and what unsaved edits are about to travel — and
+// answers which conversation is speaking, read HERE rather than when the answer
+// lands ([app.adoptTypedBrief] is where that matters). It is one function
+// because the conversation's own door and a delegate's (delegate.go) say the
+// same two lines, and two copies would be two places for one line to drift.
+func (a *app) taskDoorNotes(brief string) string {
 	// WHICH CONVERSATION IS SAYING THIS, read HERE rather than when the answer
 	// lands: the door is opened on a goroutine and the window may have moved on
 	// by the time it answers ([app.adoptTypedBrief] is where that matters).
@@ -174,6 +179,12 @@ func (a *app) startTaskDoorVia(brief string, start func(context.Context) (uint64
 	if line := session.UnsavedEditsNote(a.workspace); line != "" {
 		a.note(line)
 	}
+	return conv
+}
+
+func (a *app) startTaskDoorVia(brief string, start func(context.Context) (uint64, string, string, error)) tea.Cmd {
+	ctx := a.ctx
+	conv := a.taskDoorNotes(brief)
 	return func() tea.Msg {
 		id, title, note, err := start(ctx)
 		return taskStartedMsg{

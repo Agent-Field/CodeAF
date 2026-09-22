@@ -6,6 +6,14 @@ import "time"
 // machine. The surface sends intent; sizing, shaping, admission and spending
 // remain with the session agent that owns the conversation.
 const (
+	// MethodDelegateList and MethodDelegateStart are the delegate door
+	// (internal/session's delegate_door.go): the outside programs installed on
+	// the ENGINE machine, and handing a brief to one. They belong to the engine
+	// side for the reason the task door does — the registry is that machine's
+	// disk and the run spends that machine's money — so a hosted surface lists
+	// the far machine's delegates and its `/<name> <brief>` starts work there.
+	MethodDelegateList  = "Delegate.List"
+	MethodDelegateStart = "Delegate.Start"
 	MethodTaskStart     = "Task.Start"
 	MethodPlannerStart  = "Task.StartPlanner"
 	MethodTaskRoom      = "Task.Room"
@@ -155,6 +163,13 @@ type TaskStopped struct {
 type TaskStartArgs struct {
 	Brief string `json:"brief"`
 	Solo  bool   `json:"solo,omitempty"`
+}
+
+// DelegateStartArgs carries the delegate's name and the person's brief, both
+// as typed: the name is resolved against the engine machine's registry there.
+type DelegateStartArgs struct {
+	Name  string `json:"name"`
+	Brief string `json:"brief"`
 }
 
 // PlannerStartArgs also carries the sizing hint used by the adaptive form.

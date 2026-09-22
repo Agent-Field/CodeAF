@@ -32,6 +32,7 @@ import (
 // node's state, and the graph is the owner `task:N` has always reached.
 var stoppableRowPublishers = map[string]struct{ kind, proof string }{
 	"startKnownTaskRunVia": {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
+	"joinBeltRun":          {CancelTask, "TestAStopOnAJoinedRowEndsThatWorkAndLeavesTheRun"},
 	"ContinueRun":          {CancelTask, "TestAStopReachesARunThatWasCarriedOn"},
 	"newOrchestrateFamily": {CancelRun, "TestCancelStopsAnAdaptiveRun"},
 	"sayForming":           {CancelRun, "TestCancelStopsAnAdaptiveRun"},

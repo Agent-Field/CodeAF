@@ -344,7 +344,16 @@ import (
 // ReplaceQuestion. It also carries whether a caller has no approval resolver.
 // Older peers must refuse before a question or an unwatched tool can run under
 // semantics the other side does not understand.
-const Version = 17
+//
+// VERSION 18 CARRIES THE DELEGATE DOOR — [MethodDelegateList] and
+// [MethodDelegateStart] (wire_task.go). The number moves for [MethodTaskStart]'s
+// reason: `Delegate.Start` COMMISSIONS WORK on the far machine and spends its
+// money, so a version-17 engine answering "no such method" would leave a person
+// told their work was under way while nothing had started. The list rides the
+// same number because a surface generates its command rows from it before its
+// first frame, and a row for a delegate the engine cannot start is a command
+// that lies.
+const Version = 18
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"

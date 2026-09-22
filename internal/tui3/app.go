@@ -3090,9 +3090,6 @@ func newApp(ctx context.Context, opts Options) *app {
 	// and from then on [app.retitle] sends it again only when it moves.
 	a.titleSent = terminalTitle(a)
 	a.refreshCreditWarnings()
-	// THE DELEGATE ROWS GO ON THE TABLE BEFORE THE FIRST FRAME, so the picker
-	// and /help list them from the first keystroke (delegate.go).
-	a.installDelegates()
 	return a
 }
 
@@ -3272,6 +3269,11 @@ func (a *app) Init() tea.Cmd {
 			standing = append(standing, a.wake())
 		}
 	}
+	// THE DELEGATE ROWS ARE ASKED FOR AT THE LAUNCH, off the loop, so the picker
+	// and /help list them from the first answer rather than the first keystroke
+	// (delegate.go). The registry is the conversation's, so a switch asks again
+	// ([app.attachConversation]).
+	standing = append(standing, a.installDelegates())
 	return tea.Batch(standing...)
 }
 
@@ -7509,8 +7511,6 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 		// ANSWERING ABOUT SOMEWHERE ELSE (offloop.go). This is the one place the
 		// agent in front changes, so it is the one place that counter moves.
 		a.frontGen++
-		// The delegate rows are the conversation's, so they follow it (delegate.go).
-		a.installDelegates()
 	}
 	a.file = conv.SessionFile
 	// AND THE SENDS ARE NOT RE-KEYED HERE. They are held under the drafts lane's

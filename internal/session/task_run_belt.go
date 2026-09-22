@@ -309,34 +309,8 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 	a.beltMu.Lock()
 	live := a.beltRun
 	a.beltMu.Unlock()
-
-	// A SECOND TASK JOINS THE LIVE RUN. The store holds one root, so the new
-	// work is a child of it — normalizeSpec's own law for a task that names no
-	// parent — and the supervisor already turning finds it ready on its next
-	// pass. Nothing opens a second store.
 	if live != nil {
-		// A DELEGATE NEVER JOINS A RUN AND NOTHING JOINS A DELEGATE'S. A delegated
-		// run is a run of one task whose worker owns the whole copy for the hour;
-		// a second task beside it would be a bash worker typing in the tree the
-		// program is editing, and a delegate added under a live run would be a
-		// second program in the same tree. Both are refused with what is underway.
-		if via != nil || live.delegate != nil {
-			return errors.New("work is already underway in a copy of " + live.ground +
-				"; a delegate runs alone, so propose it again when that work has ended")
-		}
-		if canonicalPath(stand.dir) != live.ground {
-			return standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
-		}
-		if _, err := live.store.AddMany([]plandb.TaskSpec{{
-			ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies,
-		}}); err != nil {
-			return err
-		}
-		a.beltMu.Lock()
-		live.joined = append(live.joined, id)
-		a.beltMu.Unlock()
-		a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow()})
-		return nil
+		return a.joinBeltRun(g, live, id, title, brief, dependencies, stand, via)
 	}
 
 	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief)
@@ -366,15 +340,7 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
 		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
-		born: born, delegate: via,
-	}
-	if via != nil && via.LandsTree() {
-		// THE SQUASH POINT IS READ NOW, off the copy itself, before the program
-		// has written a byte: whatever the ground ladder put under this copy is
-		// under this commit, and everything the program commits is above it.
-		if head, err := git(tree.dir, "rev-parse", "HEAD"); err == nil {
-			run.startSha = strings.TrimSpace(head)
-		}
+		born: born, delegate: via, startSha: delegateStartSha(tree, via),
 	}
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
@@ -388,6 +354,52 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
 	return nil
+}
+
+// joinBeltRun is the second task of a live run. The store holds one root, so the
+// new work is a child of it — normalizeSpec's own law for a task that names no
+// parent — and the supervisor already turning finds it ready on its next pass.
+// Nothing opens a second store.
+//
+// A DELEGATE NEVER JOINS A RUN AND NOTHING JOINS A DELEGATE'S. A delegated run
+// is a run of one task whose worker owns the whole copy for the hour; a second
+// task beside it would be a bash worker typing in the tree the program is
+// editing, and a delegate added under a live run would be a second program in
+// the same tree. Both are refused with what is underway.
+func (a *Agent) joinBeltRun(g *TaskGraph, live *beltRun, id uint64, title, brief string, dependencies []plandb.Dependency, stand taskStand, via *delegate.Manifest) error {
+	if via != nil || live.delegate != nil {
+		return errors.New("work is already underway in a copy of " + live.ground +
+			"; a delegate runs alone, so propose it again when that work has ended")
+	}
+	if canonicalPath(stand.dir) != live.ground {
+		return standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
+	}
+	if _, err := live.store.AddMany([]plandb.TaskSpec{{
+		ID: strconv.FormatUint(id, 10), ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies,
+	}}); err != nil {
+		return err
+	}
+	a.beltMu.Lock()
+	live.joined = append(live.joined, id)
+	a.beltMu.Unlock()
+	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow()})
+	return nil
+}
+
+// delegateStartSha is the commit a tree delegate's copy stands on before the
+// program has written a byte — the point its commits are squashed back to at
+// landing (delegate_door.go). It is read NOW, off the copy itself: whatever the
+// ground ladder put under this copy is under this commit, and everything the
+// program commits is above it. Empty for every run that is not a tree delegate's.
+func delegateStartSha(tree taskTree, via *delegate.Manifest) string {
+	if via == nil || !via.LandsTree() {
+		return ""
+	}
+	head, err := git(tree.dir, "rev-parse", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(head)
 }
 
 // beltRunSpec is what the engine is handed for a run of this conversation: its

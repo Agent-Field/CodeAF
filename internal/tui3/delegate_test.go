@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -32,7 +34,27 @@ func newDelegateApp(t *testing.T, rows ...session.DelegateRow) (*app, *delegateF
 	fake := &delegateFake{fakeAgent: &fakeAgent{}, report: session.DelegateReport{Rows: rows}}
 	a := newTestApp(fake)
 	t.Cleanup(func() { installDelegateCommands(nil) })
+	settleDoor(t, a, a.installDelegates())
 	return a, fake
+}
+
+// settleDoor runs one off-loop door to its answer and folds it in, the way the
+// update loop would on the doorMsg: the command is run, the fold applied as
+// though the window were still on the same conversation, and any command the
+// fold hands back is run too, its message returned.
+func settleDoor(t *testing.T, a *app, cmd tea.Cmd) tea.Msg {
+	t.Helper()
+	if cmd == nil {
+		return nil
+	}
+	msg, ok := cmd().(doorMsg)
+	if !ok {
+		t.Fatalf("the door did not answer on the door line: %T", cmd())
+	}
+	if next := msg.fold(true); next != nil {
+		return next()
+	}
+	return nil
 }
 
 func TestAnInstalledDelegateIsACommandRowThatOpensTheDoor(t *testing.T) {
@@ -53,8 +75,8 @@ func TestAnInstalledDelegateIsACommandRowThatOpensTheDoor(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("/fake <brief> opened no door")
 	}
-	if msg, ok := cmd().(taskStartedMsg); !ok || msg.id != "7" || msg.title != "the title" || msg.brief != "rewrite the auth middleware" {
-		t.Fatalf("the door answered %+v", cmd())
+	if msg, ok := settleDoor(t, a, cmd).(taskStartedMsg); !ok || msg.id != "7" || msg.title != "the title" || msg.brief != "rewrite the auth middleware" {
+		t.Fatalf("the door answered %+v", msg)
 	}
 	if len(fake.started) != 1 || fake.started[0] != "fake: rewrite the auth middleware" {
 		t.Fatalf("StartDelegate was asked %v", fake.started)
@@ -63,7 +85,7 @@ func TestAnInstalledDelegateIsACommandRowThatOpensTheDoor(t *testing.T) {
 	if cmd := a.slash("/delegate fake do the other thing"); cmd == nil {
 		t.Fatal("/delegate <name> <brief> opened no door")
 	} else {
-		cmd()
+		settleDoor(t, a, cmd)
 	}
 	if len(fake.started) != 2 || fake.started[1] != "fake: do the other thing" {
 		t.Fatalf("StartDelegate was asked %v", fake.started)
@@ -88,9 +110,7 @@ func TestSlashDelegateListsTheRowsAndTheOnesNotHere(t *testing.T) {
 	fake.report.Absent = []string{"swe-pro: swe-pro is not on this machine"}
 	fake.report.Refused = []string{"broken: its manual page does not say /broken — not added"}
 	a.width = 200
-	if cmd := a.slash("/delegate"); cmd != nil {
-		t.Fatal("/delegate started something")
-	}
+	settleDoor(t, a, a.slash("/delegate"))
 	got := plain(frame(a))
 	for _, want := range []string{"/fake <brief>", "a fake delegate", "answers in the conversation", "not here: swe-pro", "not added: broken"} {
 		if !strings.Contains(got, want) {
@@ -102,7 +122,7 @@ func TestSlashDelegateListsTheRowsAndTheOnesNotHere(t *testing.T) {
 func TestSlashDelegateWithNothingInstalledSaysSo(t *testing.T) {
 	a, _ := newDelegateApp(t)
 	a.width = 200
-	a.slash("/delegates")
+	settleDoor(t, a, a.slash("/delegates"))
 	if got := plain(frame(a)); !strings.Contains(got, "no delegates here") {
 		t.Fatalf("no sentence for a machine with none:\n%s", got)
 	}
@@ -124,7 +144,7 @@ func TestADelegateNamedLikeABuiltInCommandIsNotInstalled(t *testing.T) {
 		t.Fatal("a delegate shadowed /task")
 	}
 	a.width = 200
-	a.slash("/delegate")
+	settleDoor(t, a, a.slash("/delegate"))
 	if got := plain(frame(a)); !strings.Contains(got, "not added: task: its name is already a command here") {
 		t.Fatalf("the collision was not said:\n%s", got)
 	}
@@ -135,18 +155,25 @@ func TestADelegateNamedLikeABuiltInCommandIsNotInstalled(t *testing.T) {
 	}
 }
 
-func TestAHostedSurfaceInstallsNoDelegateRowsAndRefusesTheList(t *testing.T) {
+// A HOSTED SURFACE LISTS AND RUNS THE FAR MACHINE'S DELEGATES: the seam crosses
+// the wire (internal/remote's Delegate.List and Delegate.Start), the rows are
+// generated from what the engine machine has, and the door starts the run
+// there. Nothing is refused for being hosted.
+func TestAHostedSurfaceInstallsTheFarMachinesDelegateRows(t *testing.T) {
 	fake := &delegateFake{fakeAgent: &fakeAgent{}, report: session.DelegateReport{Rows: []session.DelegateRow{{Name: "fake", Description: "a fake delegate"}}}}
 	a := newTestApp(fake)
 	t.Cleanup(func() { installDelegateCommands(nil) })
 	a.host = "spark"
-	a.installDelegates()
-	if isDelegateCommand("fake") {
-		t.Fatal("a hosted surface installed a row for the far machine's delegate")
+	settleDoor(t, a, a.installDelegates())
+	if !isDelegateCommand("fake") {
+		t.Fatal("a hosted surface did not install the far machine's delegate row")
 	}
-	a.width = 200
-	a.slash("/delegate")
-	if got := plain(frame(a)); !strings.Contains(got, "spark owns delegates") {
-		t.Fatalf("the hosted refusal is missing:\n%s", got)
+	if cmd := a.slash("/fake do it there"); cmd == nil {
+		t.Fatal("/fake opened no door on a hosted surface")
+	} else {
+		settleDoor(t, a, cmd)
+	}
+	if len(fake.started) != 1 || fake.started[0] != "fake: do it there" {
+		t.Fatalf("StartDelegate was asked %v", fake.started)
 	}
 }

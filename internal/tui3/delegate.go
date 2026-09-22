@@ -13,6 +13,7 @@ package tui3
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -110,29 +111,36 @@ func isDelegateCommand(name string) bool {
 	return delegateRows[name]
 }
 
-// installDelegates reads the conversation's delegates and puts their rows on
-// the table. It runs when the surface is built and again when the conversation
-// in front changes, because the registry is the conversation's. A hosted
-// surface installs nothing: the registry lives on the far machine, and a row
-// that opened a door there would be a command about somewhere else.
-func (a *app) installDelegates() {
-	if a.hosted() {
-		installDelegateCommands(nil)
-		return
-	}
+// installDelegates asks the conversation for its delegates OFF THE LOOP and,
+// when the answer comes back, puts their rows on the table. It is asked at the
+// launch and again when the conversation in front changes, because the registry
+// is the conversation's — and over `--host` it is the far machine's, which is
+// right: the program and the run are there, and the door crosses the wire
+// (internal/remote's Delegate.List). It rides [app.besideLine] because nobody
+// pressed for it: a read that waited in the door line behind a person's gesture
+// would be a row arriving after the keystroke that wanted it.
+func (a *app) installDelegates() tea.Cmd {
 	agent, ok := a.delegateSeam()
 	if !ok {
 		installDelegateCommands(nil)
-		return
+		return nil
 	}
-	// A collision is not said here — the surface is still being built and has
-	// nowhere to draw a line yet — it is said where the person will look for
-	// the missing row, on `/delegate`.
-	installDelegateCommands(agent.Delegates().Rows)
+	return a.besideLine(func() func(here bool) tea.Cmd {
+		report := agent.Delegates()
+		return func(here bool) tea.Cmd {
+			// A collision is not said here — it is said where the person will
+			// look for the missing row, on `/delegate`.
+			if here {
+				installDelegateCommands(report.Rows)
+			}
+			return nil
+		}
+	})
 }
 
 // runDelegateCommand is `/<name> <brief>`: the brief goes to that delegate
-// through the same door `/task` opens, and the answer lands as a task start.
+// through a door of its own — asked off the loop like every door — and the
+// answer lands as a task start, on the message `/task` lands on.
 func (a *app) runDelegateCommand(name, brief string) tea.Cmd {
 	brief = strings.TrimSpace(brief)
 	if brief == "" {
@@ -144,18 +152,25 @@ func (a *app) runDelegateCommand(name, brief string) tea.Cmd {
 		a.note("could not start the task · this session has no delegate door")
 		return nil
 	}
-	return a.startTaskDoorVia(brief, func(ctx context.Context) (uint64, string, string, error) {
-		return agent.StartDelegate(ctx, name, brief)
+	ctx := a.ctx
+	conv := a.taskDoorNotes(brief)
+	return a.offLoop(func() func(here bool) tea.Cmd {
+		id, title, note, err := agent.StartDelegate(ctx, name, brief)
+		return func(bool) tea.Cmd {
+			return func() tea.Msg {
+				return taskStartedMsg{
+					kind: "single", id: strconv.FormatUint(id, 10), title: title,
+					err: err, note: note, brief: brief, conv: conv,
+				}
+			}
+		}
 	})
 }
 
 // openDelegate is `/delegate`: bare, the list; with a name and words, the
-// delegate's own row run on those words.
+// delegate's own row run on those words. The list is a door, so it is asked off
+// the loop and said when it comes back.
 func (a *app) openDelegate(rest string) tea.Cmd {
-	if a.hosted() {
-		a.note(a.remoteProfileWord("delegates"))
-		return nil
-	}
 	if name, brief, _ := strings.Cut(strings.TrimSpace(rest), " "); name != "" {
 		if !isDelegateCommand(name) {
 			a.note(delegateUnknownWord(name))
@@ -168,11 +183,24 @@ func (a *app) openDelegate(rest string) tea.Cmd {
 		a.note(delegateNothingWord)
 		return nil
 	}
-	report := agent.Delegates()
+	return a.offLoop(func() func(here bool) tea.Cmd {
+		report := agent.Delegates()
+		return func(here bool) tea.Cmd {
+			if here {
+				a.note(delegateListNote(report))
+			}
+			return nil
+		}
+	})
+}
+
+// delegateListNote is what `/delegate` says: one line per delegate that can
+// run, then the ones whose program is not there, then the manifests that were
+// not added and why — the loader's and this surface's own collisions alike.
+func delegateListNote(report session.DelegateReport) string {
 	report.Refused = append(report.Refused, delegateCollisionLines()...)
 	if len(report.Rows) == 0 && len(report.Absent) == 0 && len(report.Refused) == 0 {
-		a.note(delegateNothingWord)
-		return nil
+		return delegateNothingWord
 	}
 	lines := make([]string, 0, len(report.Rows)+len(report.Absent)+len(report.Refused))
 	for _, row := range report.Rows {
@@ -188,8 +216,7 @@ func (a *app) openDelegate(rest string) tea.Cmd {
 	for _, refusal := range report.Refused {
 		lines = append(lines, "not added: "+refusal)
 	}
-	a.note(strings.Join(lines, "\n"))
-	return nil
+	return strings.Join(lines, "\n")
 }
 
 // delegateUnknownWord answers `/delegate <name>` for a name no row carries.

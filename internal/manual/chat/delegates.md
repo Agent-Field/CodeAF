@@ -1,6 +1,6 @@
 # Delegates
 
-## What a delegate is — programs codeaf can hand a task to, outside agents, another coding agent, swe-pro
+## What a delegate is — programs codeaf can hand a task to, outside agents, another coding agent
 
 A **delegate** is an outside program on this machine that can do a whole coding task on
 its own. codeaf hands it a task the way it hands one to its own worker: in a working copy
@@ -18,13 +18,16 @@ Each delegate is one manifest and one page under `~/.codeaf/delegates/`: `<name>
 says how to run the program, `<name>.md` says what it does. A delegate is found at launch,
 so one added while codeaf is running appears the next time codeaf starts.
 
-## How do I hand work to a delegate — /swe-pro, /<name> <brief>, /delegate, via, "delegate this to swe-pro"
+## How do I hand work to a delegate — /<name> <brief>, /delegate, via, "delegate this to another agent", the command for a delegate
 
 Type the delegate's name as a command and the brief after it:
 
 ```
-/swe-pro rewrite the auth middleware to use the new session store
+/<name> rewrite the auth middleware to use the new session store
 ```
+
+where `<name>` is the word its manifest gives it — the command is generated from the
+manifest, so it is spelled exactly as the manifest's `name`.
 
 That is `/task` with the worker chosen. A run starts at once in a copy of your folder,
 the turn goes on, and the row appears on the rail with the program's current phase as its
@@ -60,7 +63,7 @@ afterwards; what the program itself checked is reported in its result, kept apar
 what its model claimed.
 
 A name that is no delegate here is refused with the ones that are:
-`no delegate is called <name>; the delegates here are swe-pro, …`. On a machine with none:
+`no delegate is called <name>; the delegates here are …`. On a machine with none:
 `no delegate is called <name>: this machine has no delegates (a manifest under
 ~/.codeaf/delegates adds one)`.
 
@@ -70,7 +73,7 @@ A delegate that lands a **tree** works in a copy cut from your folder. When it e
 commit it made in that copy is squashed into **one commit** whose subject is the task's
 title and whose body is the program's own account of the ending, and that commit is merged
 into your folder the way every task's work comes home. A program that commits after every
-edit, as swe-pro does, leaves no trail of bookkeeping commits on your branch. Nothing to
+edit leaves no trail of bookkeeping commits on your branch. Nothing to
 land is said as `nothing to land: the run's working copy holds no change`.
 
 A delegate that lands **text** works in your folder in place and changes nothing; its
@@ -80,7 +83,7 @@ What it spent is in the conversation's total, in `/cost` and on the status line,
 as the program reports it. The spending page shows it under the delegate's name rather
 than a model's, because the program's own calls did not go through codeaf.
 
-## Why is there no /swe-pro here — the delegate is missing, not on this machine, adding a delegate, the manifest was not added
+## Why is there no command for my delegate — the delegate is missing, not on this machine, adding a delegate, the manifest was not added
 
 A delegate's row exists only where its program does. `/delegate` says which of the
 manifests under `~/.codeaf/delegates/` could not be added and why:
@@ -94,8 +97,10 @@ manifests under `~/.codeaf/delegates/` could not be added and why:
 - `<name>: its name is already a command here — not added` — the name collides with a
   built-in command or alias.
 
-Over `--host`, delegates are the far machine's: `/delegate` answers
-`<host> owns delegates · change it on that machine`.
+Over `--host`, the delegates are the far machine's: `/delegate` lists what is installed
+there, the rows are that machine's, and a delegate you start runs there, in a copy of that
+machine's folder. A delegate installed only on this laptop is not offered in a hosted
+conversation.
 
 The contract a program has to meet to be a delegate is one page, `docs/DELEGATE-PROTOCOL.md`
 in the codeaf repository: four kinds of line on its stdout, one terminal record, a clean stop

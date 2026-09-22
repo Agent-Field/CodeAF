@@ -832,57 +832,74 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// already underway is refused here ([standsElsewhereError]); any other
 	// failure of the run road falls through to the shipped engine, exactly as a
 	// typed /task does, and that engine cuts its own copy from the same stand.
-	if (bashBeltAsked() || spec.via != "") && chatRunEngine != nil && !a.config.InTask {
-		a.mu.Lock()
-		question := questionAtTaskHandoff(a.owedAsks)
-		a.mu.Unlock()
-		var via *delegate.Manifest
-		if spec.via != "" {
-			m, err := a.delegateFor(spec.via)
-			if err != nil {
-				return err.Error(), true, nil
-			}
-			via = &m
-		}
-		description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
-		// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
-		// This context is the turn's, and the turn cancels it on its way out
-		// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped
-		// the moment the model finished its sentence. The values ride along, the
-		// cancellation does not.
-		//
-		// What ends it instead is the conversation: the person's stop
-		// (stoprun.go) or the room closing ([Agent.cutBeltRun]). Dropping the
-		// turn's cancellation here without either of those is what left a run's
-		// life belonging to the PROCESS, and a run whose room had closed went on
-		// spending with nobody able to read it or stop it.
-		joined := a.beltRunStandsOn(p.stand)
-		stand := p.stand
-		if via != nil {
-			stand = delegateStand(stand.dir, *via)
-		}
-		err := a.startKnownTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via)
-		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
-			return refusal.Error(), true, nil
-		}
-		if err == nil {
-			receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
-			if via != nil {
-				receipt = withReport(receipt, "It is "+via.Name+"'s: the program works alone in the copy and lands when it ends.")
-			} else if joined {
-				receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
-			}
-			return receipt, false, nil
-		}
-		if via != nil {
-			// A DELEGATE HAS NO OTHER ROAD. The shipped engine would seat a worker
-			// of its own on this brief, which is not what was asked for.
-			return "the delegate could not start: " + err.Error(), true, nil
-		}
+	if answer, refused, handled := a.commitProposalToRun(ctx, p, spec, elsewhere); handled {
+		return answer, refused, nil
 	}
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
+}
+
+// commitProposalToRun is the run road of an approved proposal: an approved
+// hand-off under the bash belt, and every hand-off that names a delegate, is a
+// RUN and never a session-tree node. It keeps the id the card showed, carries
+// its acceptance in the brief and its depends_on as the store's own
+// dependencies, and takes the person's ask with it when this turn owes one
+// (CHAT-ROLE.md, "A landing speaks only when an answer is owed"). It answers
+// handled=false when this proposal is not the run road's — the shipped engine
+// admits it then — and handled=true with the model's answer otherwise.
+//
+// A task about ANOTHER FOLDER than the work already underway is refused here
+// ([standsElsewhereError]); any other failure of the run road for an ordinary
+// hand-off falls through to the shipped engine, exactly as a typed /task does,
+// and that engine cuts its own copy from the same stand. A DELEGATE HAS NO OTHER
+// ROAD: the shipped engine would seat a worker of its own on the brief, which is
+// not what was asked for, so its failure is answered as a refusal.
+func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec taskSpec, elsewhere string) (string, bool, bool) {
+	if !(bashBeltAsked() || spec.via != "") || chatRunEngine == nil || a.config.InTask {
+		return "", false, false
+	}
+	a.mu.Lock()
+	question := questionAtTaskHandoff(a.owedAsks)
+	a.mu.Unlock()
+	var via *delegate.Manifest
+	if spec.via != "" {
+		m, err := a.delegateFor(spec.via)
+		if err != nil {
+			return err.Error(), true, true
+		}
+		via = &m
+	}
+	description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+	// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
+	// This context is the turn's, and the turn cancels it on its way out
+	// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped
+	// the moment the model finished its sentence. The values ride along, the
+	// cancellation does not. What ends it instead is the conversation: the
+	// person's stop (stoprun.go) or the room closing ([Agent.cutBeltRun]).
+	joined := a.beltRunStandsOn(p.stand)
+	stand := p.stand
+	if via != nil {
+		stand = delegateStand(stand.dir, *via)
+	}
+	err := a.startKnownTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via)
+	if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
+		return refusal.Error(), true, true
+	}
+	if err == nil {
+		receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
+		switch {
+		case via != nil:
+			receipt = withReport(receipt, "It is "+via.Name+"'s: the program works alone in the copy and lands when it ends.")
+		case joined:
+			receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
+		}
+		return receipt, false, true
+	}
+	if via != nil {
+		return "the delegate could not start: " + err.Error(), true, true
+	}
+	return "", false, false
 }
 
 // taskReceipt is what an admitted proposal hands back to the model.
