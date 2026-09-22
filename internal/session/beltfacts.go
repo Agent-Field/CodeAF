@@ -505,7 +505,20 @@ var handoffFacts = []beltFact{{
 		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept, or answer what you\n" +
 		"can, and end your turn when nothing independent of what you handed out remains.\n" +
 		"A landing speaks here only when the person is owed an answer. " +
-		"A finished task is asked about with `tasks` and is never redone or rechecked by hand.",
+		"A finished task is asked about with `tasks` and is never redone or rechecked by hand.\n" +
+		"\n" +
+		// AND THE MANAGER'S JOB, WHICH NOBODY ELSE CAN DO. While a run is live
+		// the person's message arrives with a digest of its rows in front of it
+		// (plandigest.go), so the fact is already in hand; this is what to do
+		// with it. It is one sentence because it is one decision, and it is
+		// here rather than on a page because this is the paragraph every
+		// conversation that can start a run reads.
+		"WHILE WORK IS RUNNING, YOUR MESSAGE FROM THE PERSON OPENS WITH ITS ROWS. If what\n" +
+		"they just said makes one of those tasks wrong — they changed their mind, dropped\n" +
+		"a part, told you a fact it is built on is untrue — act on THAT row before you\n" +
+		"answer them: `tasks` with `stop` ends work that should not go on, and `tasks`\n" +
+		"with `note` tells a worker a fact it is missing. You are the only one holding\n" +
+		"the conversation, so you are the only one who can know. Leave the rest alone.",
 	bashAbsent: "Work goes out through the plan when it has parts that do not need each other:\n" +
 		"`plandb add` and `plandb split` in bash are how, and every ready task they make\n" +
 		"is given a worker of its own. What is yours alone you carry here, in the order\n" +
