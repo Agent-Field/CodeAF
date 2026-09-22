@@ -386,9 +386,20 @@ func testHomeShape(t *testing.T) {
 		t.Errorf("no row says %q about a seeded project whose folder was never made:\n%s",
 			say(t, "homeGoneShort"), screen)
 	}
-	// The whole foot, in one sentence: the three verbs and the key that leaves.
-	if !strings.Contains(screen, say(t, "homeFootWord")+" · "+say(t, "placeHintTail")) {
-		t.Errorf("home's foot is not the resting sentence:\n%s", firstMatch(screen, say(t, "homeFootWord")))
+	// The whole foot, in one sentence: the three verbs, the chord that is true on
+	// every row, and the key that leaves.
+	//
+	// THE CHORD IS IN THE MIDDLE OF IT AND IS NOT OPTIONAL. It used to be drawn
+	// only on a machine whose right column had rows; #1046 made the rail always
+	// hold rows, so `ctrl+o open folder` is now part of the resting sentence on
+	// the quietest home there is. The three needles are joined here rather than
+	// waited for one at a time because ADJACENCY IS THE ASSERTION: the untagged
+	// words gate can only say that each clause is spelled somewhere in
+	// internal/tui3, never that the foot says them in this order and nothing
+	// between them.
+	resting := say(t, "homeFootWord") + " · " + say(t, "homeFootChordWord") + " · " + say(t, "placeHintTail")
+	if !strings.Contains(screen, resting) {
+		t.Errorf("home's foot is not the resting sentence %q:\n%s", resting, firstMatch(screen, say(t, "homeFootWord")))
 	}
 
 	// THE PANELS NEVER TOUCH THE RULE ABOVE THE BOX (internal/tui3's home_test.go
@@ -501,16 +512,27 @@ func testRealConversation(t *testing.T) {
 	// it. The reading of `git status` arrives a beat after the first frame.
 	panels := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homePanelRecent"), want)
 	t.Logf("home at rest, with this conversation on the panels:\n%s", panels)
-	// THE `here` ROW AND THE WORDS UNDER IT. At [tuiWide] the panels are three
-	// columns of a third each, and `where you were` is the left one: its first
-	// row is this window's conversation wearing the word `here`, and the row
-	// under it is what the person last said in it (DESIGN.md §3 G3).
-	recent := strings.Split(strings.TrimRight(panelColumn(panels, say(t, "homePanelRecent"), tuiWide/3), "\n"), "\n")
-	if len(recent) < 3 || !strings.HasSuffix(recent[1], " "+say(t, "homeHereWord")) {
-		t.Errorf("`where you were` does not lead with this window's own `%s` row:\n%s",
-			say(t, "homeHereWord"), strings.Join(recent, "\n"))
-	} else if !strings.Contains(recent[2], "what is 2+2?") {
-		t.Errorf("the line under the `here` row is not the person's own last words:\n%s", strings.Join(recent, "\n"))
+	// THE `here` ROW AND THE WORDS BESIDE IT. `where you were` leads with this
+	// window's own conversation, and what says so is the word `here` at the head
+	// of that row's description, with what the person last said in it as the
+	// clause after (DESIGN.md §3 G3).
+	//
+	// IT WAS TWO LINES AND A MARGIN, AND #1046 MADE IT ONE ROW. `here` stood at
+	// the row's right margin and the last words were a second line under it;
+	// that wave emptied the right margin of every field row for a time and put
+	// everything else in the description column — which at [tuiWide] is a column
+	// of its own, level with the row. So the two facts are read as ONE clause on
+	// ONE row, which is stronger than the pair that came before it: a surface
+	// that drew the description without `here`, or `here` with nobody's words
+	// after it, satisfied neither half of the old assertion and cannot satisfy
+	// this one either.
+	recent := strings.Split(strings.TrimRight(panelBlock(panels, say(t, "homePanelRecent")), "\n"), "\n")
+	said := say(t, "homeHereWord") + " · what is 2+2?"
+	if len(recent) < 2 {
+		t.Errorf("`where you were` has no row under its heading:\n%s", panels)
+	} else if !strings.Contains(recent[1], said) {
+		t.Errorf("`where you were` does not lead with this window's own row described as %q:\n%s",
+			said, strings.Join(recent, "\n"))
 	}
 	if strings.Contains(rightPane(panels), say(t, "homeCardMoreWord")) {
 		t.Errorf("a card is standing beside the panels at rest:\n%s", panels)
@@ -1125,10 +1147,19 @@ func testAnswerFromHome(t *testing.T) {
 
 	// AND THE ROW STANDS UNDER `needs you`, the panel every question on the
 	// machine lands in — window A's conversation, stopped on a consent card, is
-	// exactly such a row. The heading is matched with its count, because the
-	// bare word is also the front of the gate's own `needs your ok …`.
-	if head, line := strings.Index(row, say(t, "homeNeedsHeading")+" · "), strings.Index(row, say(t, "consentRowLine")); head < 0 || line < head {
-		t.Errorf("the asking row is not under %q:\n%s", say(t, "homeNeedsHeading"), row)
+	// exactly such a row.
+	//
+	// IT IS READ AS THE PANEL'S OWN BLOCK AND NOT AS A DISTANCE INTO THE SCREEN.
+	// The heading used to carry its live count (`needs you · 2`), and this
+	// assertion leaned on that punctuation to tell the heading from the front of
+	// the gate's own `needs your ok …`; #1046 struck the count and left the
+	// suite matching a string home stopped drawing. [panelBlock] is the honest
+	// question: the sentence has to stand in the rows of that panel's own
+	// columns, above the first blank row under it — so a question filed on some
+	// other panel, or in the column beside it, still fails.
+	if needs := panelBlock(row, say(t, "homeNeedsHeading")); !strings.Contains(needs, say(t, "consentRowLine")) {
+		t.Errorf("the asking row is not under %q — that panel holds:\n%s\nthe whole screen was:\n%s",
+			say(t, "homeNeedsHeading"), needs, row)
 	}
 
 	// AND THE PULSE INSIDE A CHAT COUNTS IT. On home the top line is the budget
@@ -1349,8 +1380,10 @@ func testNarrow(t *testing.T) {
 //
 // THE PROJECTS PANEL IS THE VIEW BY PROJECT (DESIGN.md §3 G4): every folder with
 // a conversation in it, this window's own first, each row its path, its counts
-// and its repository. It runs at [tuiPlain] because that is two columns, where
-// `projects` stands in the left one and [panelColumn] can read it whole.
+// and its repository. It runs at [tuiPlain], which is two columns, and the panel
+// is in the RIGHT one: #1046 pinned `projects` and `spend` to the top of the
+// rail whatever they hold, so [panelBlock] finds the panel by its heading rather
+// than being told which half of the screen to read.
 func testGrouped(t *testing.T) {
 	home := newHome(t, nil)
 	for i, name := range []string{"alpha", "beta", "gamma"} {
@@ -1361,7 +1394,7 @@ func testGrouped(t *testing.T) {
 	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "homePanelProjects"), "Seed Beta")
 	t.Logf("home with three seeded projects:\n%s", screen)
 
-	projects := panelColumn(screen, say(t, "homePanelProjects"), tuiPlain/2)
+	projects := panelBlock(screen, say(t, "homePanelProjects"))
 	for _, name := range []string{"groupws", "alpha", "beta", "gamma"} {
 		if !strings.Contains(projects, name) {
 			t.Errorf("the `projects` panel has no row for %q:\n%s", name, projects)
@@ -1399,29 +1432,94 @@ func matchRow(screen, title string) string {
 	return ""
 }
 
-// panelColumn is one panel of the LEFT column, from its heading down to the
-// blank row under it, each line cut at the column's right edge — the rows of
-// that panel and nothing from the column beside it.
-func panelColumn(screen, heading string, edge int) string {
+// panelBlock is one home panel wherever the grid put it: from its heading down
+// to the first row that is blank in that panel's own columns, every line cut to
+// those columns — the panel's rows and their descriptions, and nothing from the
+// panel beside it.
+//
+// IT TAKES NO EDGE BECAUSE A PANEL'S COLUMN IS NO LONGER A FACT ABOUT THE PANEL
+// (#1046). A panel with rows in it stands in the field, filled from the top left
+// corner down; an empty one stands in the rail, the last column, flush with the
+// right edge — and `projects` and `spend` are pinned to the top of that rail
+// whatever they hold. So `projects` is on the RIGHT of a two-column home and
+// `running` changes sides as work starts and stops, which is why this reads the
+// heading's own position rather than being told a fraction of the width. The
+// caller that told it `tuiPlain/2` read sixty blank cells and reported an empty
+// panel for four rows that were plainly on the screen.
+//
+// THE BOUNDS COME OFF THE HEADING'S OWN ROW. The left one is the column the
+// heading starts in. The right one is where the NEXT column's heading starts on
+// that same row, because the gutter between two columns is several cells wide
+// while a heading's own explainer is one space from it — `projects · folders
+// you've opened` is one heading and not two. A heading with nothing to its right
+// owns the rest of the row, which is what a rail panel wants.
+func panelBlock(screen, heading string) string {
 	var b strings.Builder
-	in := false
+	left, right, in := 0, 0, false
 	for _, line := range strings.Split(screen, "\n") {
 		runes := []rune(line)
-		if len(runes) > edge {
-			runes = runes[:edge]
-		}
-		left := strings.TrimRight(string(runes), " ")
 		if !in {
-			in = strings.HasPrefix(strings.TrimSpace(left), heading)
-		} else if strings.TrimSpace(left) == "" {
+			at := headingColumn(runes, heading)
+			if at < 0 {
+				continue
+			}
+			in, left, right = true, at, len(runes)
+			if next := nextColumn(runes, at+len([]rune(heading))); next > 0 {
+				right = next
+			}
+		}
+		cut := ""
+		if left < len(runes) {
+			cut = strings.TrimRight(string(runes[left:min(right, len(runes))]), " ")
+		}
+		if cut == "" && b.Len() > 0 {
 			break
 		}
-		if in {
-			b.WriteString(left)
-			b.WriteString("\n")
-		}
+		b.WriteString(cut)
+		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// panelGutter is the narrowest run of spaces that can only be the gap between
+// two columns. One space is what a heading's own words are separated by.
+const panelGutter = 3
+
+// headingColumn is the column a panel heading opens, or -1 where this row does
+// not carry it. A HEADING OPENS ITS COLUMN, so what stands left of it is either
+// the frame's own margin or the gutter — which is how the word `spend` as a
+// panel heading is told from the same word inside a sentence.
+func headingColumn(runes []rune, heading string) int {
+	want := []rune(heading)
+	for i := 0; i+len(want) <= len(runes); i++ {
+		if string(runes[i:i+len(want)]) != heading {
+			continue
+		}
+		if strings.TrimSpace(string(runes[:i])) == "" {
+			return i
+		}
+		if i >= panelGutter && strings.TrimSpace(string(runes[i-panelGutter:i])) == "" {
+			return i
+		}
+	}
+	return -1
+}
+
+// nextColumn is the column the next panel begins in, reading right from `from`,
+// or -1 where nothing more stands on this row.
+func nextColumn(runes []rune, from int) int {
+	spaces := 0
+	for i := from; i < len(runes); i++ {
+		if runes[i] == ' ' {
+			spaces++
+			continue
+		}
+		if spaces >= panelGutter {
+			return i
+		}
+		spaces = 0
+	}
+	return -1
 }
 
 // barWords is the tab bar's words: the first row holding both its first and its

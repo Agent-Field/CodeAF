@@ -143,7 +143,15 @@ var tuiWords = map[string]tuiWord{
 	// ── home at rest ─────────────────────────────────────────────────────────
 	"homeFootWord": {
 		screen: "type to search or start something new · ↑↓ pick · enter open",
-		why:    "home's resting foot: the three verbs this screen offers and stays at three",
+		why:    "the front of home's resting foot: the three verbs this screen offers and stays at three",
+	},
+	"homeFootChordWord": {
+		screen: "ctrl+o open folder",
+		why: "the fourth clause of home's resting foot. It was drawn only on a machine whose right column " +
+			"had rows, because §6.6 refuses to leave a door invisible when `→` crosses columns; #1046 made " +
+			"the rail always hold rows, so the clause is always there. It stands between the three verbs " +
+			"and the key that leaves, which is the whole of why the suite waits for the sentence in three " +
+			"pieces rather than one",
 	},
 	"placeHintTail": {
 		screen: "tab next place",
@@ -175,7 +183,10 @@ var tuiWords = map[string]tuiWord{
 	// panel is there and says nothing about whether anything is in it.
 	"homeNeedsHeading": {
 		screen: "needs you",
-		why:    "the top of the left column: every question on the machine lands in it, and every resting home draws it",
+		why: "every question on the machine lands in it, and every resting home draws it. The two words are " +
+			"the whole heading — it carried its live count (`needs you · 2`) until #1046 struck it — and they " +
+			"are also the front of the gate's own `needs your ok …`, so a test that wants the HEADING has to " +
+			"read the column the heading opens rather than grep for the word",
 	},
 	"homePanelRecent": {
 		screen: "where you were",
@@ -187,7 +198,8 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homePanelRunning": {
 		screen: "running",
-		why:    "the top of the right column: every task, job and firing watch out on the machine",
+		why: "every task, job and firing watch out on the machine. Which column it stands in is no fact about " +
+			"it since #1046 — a panel holding something is in the field, an empty one is in the rail",
 	},
 	"switcherSinceLeft": {
 		screen: "since you left",
@@ -236,7 +248,10 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homeHereWord": {
 		screen: "here",
-		why:    "this window's own row on `where you were`, the row the person's last words sit under",
+		why: "the word that says which row of `where you were` is this window's own. It is the FIRST CLAUSE " +
+			"OF THAT ROW'S DESCRIPTION and the person's last words are the clause after it — #1046 emptied " +
+			"the right margin of every field row for a time, and moved every fact that is not a time into " +
+			"the description",
 	},
 	"homeFactsActive": {
 		screen: "last active ",
