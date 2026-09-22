@@ -3445,7 +3445,7 @@ func (a *app) roomRows(width int) []row {
 	// same questions for both pages, and only what fills them differs.
 	if room.orch != nil {
 		out := a.orchRows(width)
-		if a.roomWorkLogoVisible() {
+		if a.roomWorkLogoVisible() && !hasCompactActivity(out) {
 			out = append(out, row{entry: -1})
 			out = append(out, a.roomWorkLogoRows(width)...)
 		}
@@ -3554,7 +3554,7 @@ func (a *app) roomRows(width int) []row {
 			out = append(out, row{text: a.pal.dim(a.roomDoneRefusal().fit(inner)), entry: -1})
 		}
 	}
-	if a.roomWorkLogoVisible() {
+	if a.roomWorkLogoVisible() && !hasCompactActivity(out) {
 		if len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}

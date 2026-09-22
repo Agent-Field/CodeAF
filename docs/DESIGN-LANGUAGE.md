@@ -663,13 +663,11 @@ file already held, one hue moved five points, and everything else stayed where i
 was. A design language you adopt wholesale is a costume; the parts worth keeping
 are the ones that survive being re-derived in your own material.
 
-## A working logo is one transient object
+## A working logo is one line
 
-The owner's approved running-logo studies use a 10-cell by four-row slot on the
-left of the live reply, in chat and task/run pages. This is animation geometry,
-not a new whitespace rung: the component uses the existing two-cell machinery
-lead, two cells before its state words, and one block gap before the object.
-The dot may carry gold; the words keep the reading palette. Every study occupies
-the same slot, and no transcript words move with it. Linear and small-window
-views retain the compact text treatment. See `docs/design/work-logo.md` for the
-shared component and the places that own its lifetime.
+The running-logo studies use nine columns inside the existing activity row on
+chat and task/run pages. Chevrons and a dot are native text glyphs, never a tiny
+pixel picture. The mark has a fixed width; the label remains still and appears
+once. Its gold dot is distinct from the question hue. When no compact activity
+row exists, one transient status line carries the mark. Linear and small-window
+views retain their text treatment. See `docs/design/work-logo.md` for ownership.

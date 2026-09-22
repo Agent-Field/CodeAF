@@ -2549,16 +2549,11 @@ Home and tab widths truncate that same title with three dots at render time.
 
 ## Shared working-logo motion
 
-Chat turns and open task/run pages use `tokens.WorkActivity`, a bounded 10 by 4
-cell raster with ten 2.8-second loops. An operation chooses its study once at
-start, and samples it from the surface's existing clock. No renderer schedules
-work, reads files or draws randomness. The raster makes eighteen geometry
-samples per terminal cell; geometry is constructed once per frame. It returns
-coverage in a fixed-size array so themes and terminal capabilities remain the
-surface palette's responsibility.
-
-A visible logo keeps the existing 33 ms local paint cadence during a provider
-wait, rather than the four-frame spinner stride. Remote sessions retain their
-99 ms ceiling. Views without the logo keep the prior waiting cadence. Neither
-frame interval nor the size budget changes. Screen-reader, ASCII, monochrome,
-copy and small-window views do not spend four rows or animate this component.
+Chat and task/run pages use `tokens.WorkActivity`, a bounded nine-column, one-row
+field with ten 2.8-second loops. Each operation chooses once and samples from the
+existing clock. Frame selection is constant-time with no raster sampling, I/O,
+timers or random work during rendering. Twelve native-glyph poses per loop keep
+terminal writes small and status words still. The existing 33 ms local / 99 ms
+remote frame ceiling is unchanged; unchanged frames need no terminal writes.
+Screen-reader, ASCII, monochrome, copy and small-window modes keep the compact
+text treatment. No size or frame-interval budget changes.

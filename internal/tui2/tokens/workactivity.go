@@ -54,9 +54,9 @@ func (w WorkActivity) Style() int { return w.style }
 
 // Frame uses the owner's clock and is read-only, including when called twice
 // for layout and paint. Before Start it returns empty cells.
-func (w WorkActivity) Frame(at time.Time) [WorkLogoHeight][WorkLogoWidth]WorkLogoCell {
+func (w WorkActivity) Frame(at time.Time) [WorkLogoWidth]WorkLogoCell {
 	if !w.chosen {
-		return [WorkLogoHeight][WorkLogoWidth]WorkLogoCell{}
+		return [WorkLogoWidth]WorkLogoCell{}
 	}
 	return WorkLogo(w.style, at.Sub(w.began).Seconds())
 }

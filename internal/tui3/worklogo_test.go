@@ -33,7 +33,7 @@ func TestWorkingLogoFollowsChatAndKeepsItsChoice(t *testing.T) {
 	first := a.workLogoRows(90, "")
 	a.clock = func() time.Time { return began.Add(700 * time.Millisecond) }
 	second := a.workLogoRows(90, "")
-	if first[0].text == second[0].text && first[1].text == second[1].text && first[2].text == second[2].text {
+	if first[0].text == second[0].text {
 		t.Fatal("working frame did not advance")
 	}
 	a.startClock()
@@ -144,5 +144,22 @@ func TestWorkingLogoStopsForQuestions(t *testing.T) {
 	r.questions = append(r.questions, questionShown{question: session.Question{ID: 13, Head: "May I continue?"}})
 	if r.roomWorkLogoVisible() {
 		t.Fatal("task question still advertises progress")
+	}
+}
+
+func TestWorkingLogoUsesOneExistingStatusLine(t *testing.T) {
+	a := workLogoApp(t)
+	a.entries = append(a.entries, entry{kind: entryThinking, text: "Considering the request", turn: 1})
+	a.workActivity.Start(a.now(), tokens.WorkLogoRally)
+	rows := a.layout(90)
+	working := 0
+	for _, r := range rows {
+		working += strings.Count(ansi.Strip(r.text), "Working")
+	}
+	if working != 1 {
+		t.Fatalf("want one working label, got %d: %#v", working, rows)
+	}
+	if len(a.workLogoRows(90, "")) != 1 {
+		t.Fatal("indicator is not one line")
 	}
 }

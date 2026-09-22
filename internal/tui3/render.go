@@ -286,7 +286,7 @@ func (a *app) layout(width int) []row {
 			line = a.activityLine("  " + a.shimmer("Working"))
 		}
 	}
-	if a.workLogoVisible() {
+	if a.workLogoVisible() && !hasCompactActivity(out) && logoLabel == "" {
 		if len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}

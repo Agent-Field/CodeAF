@@ -1,7 +1,8 @@
 package tokens
 
 import (
-	"math"
+	"github.com/charmbracelet/x/ansi"
+	"strings"
 	"testing"
 	"time"
 )
@@ -39,23 +40,19 @@ func TestWorkActivitySelectionAndClock(t *testing.T) {
 }
 
 func TestWorkLogoCoverageAndBounds(t *testing.T) {
-	for style := 0; style < WorkLogoCount; style++ {
-		for frame := 0; frame < 84; frame++ {
-			seconds := float64(frame) / 30
-			picture := WorkLogo(style, seconds)
-			for _, line := range picture {
-				for _, cell := range line {
-					for _, half := range []WorkLogoInk{cell.Top, cell.Bottom} {
-						if math.IsNaN(half.Ink) || math.IsNaN(half.Gold) || half.Ink < 0 || half.Gold < 0 || half.Ink+half.Gold > 1.000001 {
-							t.Fatal("invalid raster coverage")
-						}
-					}
-				}
+	for style, frames := range workMotions {
+		for _, frame := range frames {
+			if ansi.StringWidth(frame) > WorkLogoWidth || strings.ContainsAny(frame, "\n\r\x1b") {
+				t.Fatalf("study %d is not a single line: %q", style, frame)
 			}
-			for _, p := range motionScene(seconds, style).items {
-				if p.kind == 0 && p.alpha > .5 && (p.a.x-p.rx < 15 || p.a.x+p.rx > 85 || p.a.y-p.ry < 20 || p.a.y+p.ry > 80) {
-					t.Fatalf("study %d clips its ball", style)
-				}
+		}
+		for i := 0; i < 84; i++ {
+			var text strings.Builder
+			for _, cell := range WorkLogo(style, float64(i)/30) {
+				text.WriteRune(cell.Glyph)
+			}
+			if ansi.StringWidth(text.String()) != WorkLogoWidth {
+				t.Fatal("animation moves its label")
 			}
 		}
 	}
