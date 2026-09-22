@@ -2181,6 +2181,13 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// taskPlanBody). It is read here, before the root lands, because the live step
 	// is gone the moment its command ends — the page after the landing is the
 	// settled page the section below reads.
+	//
+	// AND THE CURSOR IS MOVED ONTO THE ROW FIRST ([tasksPlaceRunRow]). Enter on
+	// the conversation row is the door into the conversation and always was, so
+	// a press made without this one read the chat and said nothing about a plan
+	// page at all — and passed, because the mark it waits for is drawn on the
+	// conversation too.
+	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
 	live, sawLive := r.glimpse(20*time.Second, say(t, "planLiveGlyph"))
 	if !sawLive {
@@ -2221,6 +2228,7 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// command the worker ran, and the run's own finish among them. `esc` backs out
 	// one layer to the list, the card's own bargain.
 	openTasksPlace(t, r)
+	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
 	// glimpse AND NOT waitFor, BECAUSE THE PAGE NOT COMING UP IS NOT A TIMEOUT. A
 	// wait that ran out would report a screen the suite never saw and leave the
@@ -2229,9 +2237,10 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	page, saw := r.glimpse(40*time.Second, say(t, "planFinishCommand"))
 	if !saw {
 		t.Fatalf("Enter over the run's row never opened the store's plan page, so no screen this suite "+
-			"can reach carries the %q line its worker finishes with. The row under the cursor is the "+
-			"run's node row and not its plan row — planRowWearing says why — and a node row opens a "+
-			"room, which the engine holds no node for, so it is empty. The screen after Enter was:\n%s",
+			"can reach carries the %q line its worker finishes with. Either the row under the cursor is "+
+			"not the store's plan row — planRowWearing says what that means — or the store had no page "+
+			"to answer for it, which leaves the list where it was ([app.taskSheetPlanAsk]). The screen "+
+			"after Enter was:\n%s",
 			say(t, "planFinishCommand"), r.capture())
 	}
 	t.Logf("the plan page, carrying the worker's own finish command:\n%s", page)
@@ -2255,6 +2264,20 @@ func openTasksPlace(t *testing.T, r *rig) {
 	// conversation and opens every group shut, so the run's row is not drawn until
 	// its conversation is unfolded.
 	r.keys("Right")
+}
+
+// tasksPlaceRunRow steps the cursor off the conversation group and onto the
+// first row inside it, which is the run's own.
+//
+// THE PLACE SELECTS THE CONVERSATION FIRST and `enter` over that row opens the
+// conversation ([app.openConversationRow]), which is not a mistake in the
+// surface: a group row's door is the group. So a press over a piece of work is
+// a press over the row, and the walk down onto it is part of the gesture —
+// the same `↓` [testStatesDone] takes before it reads a task's own door.
+func tasksPlaceRunRow(t *testing.T, r *rig) {
+	t.Helper()
+	r.keys("Down")
+	time.Sleep(400 * time.Millisecond)
 }
 
 // tasksRowOf is the one line of the tasks place carrying these words, or "" when
@@ -2296,9 +2319,11 @@ func planRowWearing(t *testing.T, screen, words, state string) string {
 	}
 	if !strings.Contains(row, state) {
 		t.Errorf("the run's row does not wear %q, so the row the place drew is not the store's plan "+
-			"row: planRowShown (internal/tui3/taskplan.go) drops a plan row whose title a node row of "+
-			"this conversation already wears, and the run's door publishes its own row with the store "+
-			"root's title on it. The row drawn is the node's, in the engine's own word:\n\t%s", state, row)
+			"row. The run's door publishes a row for work the graph holds no node for and says which "+
+			"store task it is (session's TaskNotice.PlanTask); the place takes those rows out by that "+
+			"identity and draws the store's own (internal/tui3's planStoreDraws). A row wearing the "+
+			"engine's `working` instead is the node half, which means the identity did not join — it is "+
+			"dropped on the way, or the two ends spell the store id differently:\n\t%s", state, row)
 	}
 	return row
 }
