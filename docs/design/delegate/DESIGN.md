@@ -1,8 +1,8 @@
 # Delegates — handing a task to an outside program — DESIGN (draft)
 
 *2026-09-21, revised 2026-09-22. Written against `dev @ 17ae56d34` and
-`swe-pro-go @ 5793499` (branch `zeropoint95/improvements`, PR #30). Nothing is
-built on the codeaf side yet. Every swe-pro change this asked for has landed.*
+`swe-pro-go @ 5793499` (branch `zeropoint95/improvements`, PR #30). Waves 1 to
+4 are built on this branch; every swe-pro change this asked for has landed.*
 
 ## In one paragraph
 
@@ -37,6 +37,10 @@ at the person's discretion.
 | Command rows and the manual law | rows are generated at launch; each delegate ships its own manual page; the law is checked at load | 2026-09-21 |
 | Readers | **one generic reader**, compiled in, over a small stdout protocol. No per-program reader | 2026-09-21 |
 | Delegates that produce no tree | allowed. The manifest says `"lands": "text"` and the terminal record's text is the deliverable | 2026-09-21 |
+| Stage records on the task page | stages feed the live step only; `step` records are the trajectory, so the step count is what the program said it did | 2026-09-22 |
+| Review round on a delegated run | none. A check seat is a bash-belt worker the belt switch may have left off; the program's own checking is in its result | 2026-09-22 |
+| The run road and the belt switch | a delegated run takes the run road whatever `CODEAF_TASK_BELT` says; only the worker kind differs | 2026-09-22 |
+| A delegate runs alone | nothing joins a delegated run and no delegate joins a run underway; both are refused naming the busy folder | 2026-09-22 |
 
 ## Why not "sub-harness"
 
@@ -298,10 +302,10 @@ SIGTERM still writes the terminal record, and `--` before the goal parses.
 
 | # | lands | proof |
 | --- | --- | --- |
-| **1** | `internal/delegate`: manifest and loader; `Worker` (spawn under `processgroup`, stream to the reader, SIGTERM then kill, `Report`); the one generic reader and its protocol, already written down in `docs/DELEGATE-PROTOCOL.md` | unit tests against a fake binary emitting scripted protocol lines and honouring SIGTERM; the outcome table pinned; a recorded swe-pro stream replayed through the reader |
-| **2** | the door: task row carries `via`; `CrewFactory` branches on it; generated `/<name>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the `delegate` cancel kind; squash-then-merge landing for `tree`, text fold for `text`; `via` on the spend row | focused `internal/session` and `internal/tui3` tests |
-| **3** | the manual: the built-in *Delegates* page; the corpus overlay; the load-time page check; swe-pro's own `manual.md` | `internal/manual/chat_test.go` probes: "can you hand this to swe-pro", "what does /swe-pro do", "why can't the delegate ask me", "difference between /harness and /swe-pro" |
-| **4** | hosted: the row crosses `internal/remote`; until then `--host` refuses with one sentence | `internal/remote` wire tests |
+| **1** ✓ | `internal/delegate`: manifest and loader; `Worker` (spawn under `processgroup`, stream to the reader, SIGTERM then kill, `Report`); the one generic reader and its protocol, already written down in `docs/DELEGATE-PROTOCOL.md` | unit tests against a fake binary emitting scripted protocol lines and honouring SIGTERM; the outcome table pinned; a recorded swe-pro stream replayed through the reader |
+| **2** ✓ | the door (`via` rides the run, not a store column: a delegated run is one task); `CrewFactory` branches on it; generated `/<name>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the `delegate` cancel kind; squash-then-merge landing for `tree`, text fold for `text`; `via` on the spend row | focused `internal/session` and `internal/tui3` tests |
+| **3** ✓ | the manual: the built-in *Delegates* page; the corpus overlay; the load-time page check; swe-pro's own `manual.md` | `internal/manual/chat_test.go` probes: "can you hand this to swe-pro", "what does /swe-pro do", "why can't the delegate ask me", "difference between /harness and /swe-pro" |
+| **4** ✓ | hosted: a `--host` surface installs no rows and `/delegate` answers `<host> owns delegates · change it on that machine`; nothing crosses `internal/remote`, because the registry and the run are the far machine's | `internal/tui3` delegate tests |
 | later | `codeaf do` speaking the protocol so codeaf on another machine is a delegate; pr-af's one-shot mode; delegates chosen by crew seat; answering a delegate's question | — |
 
 Wave 1 has no door and spends no money. Wave 2 is the first thing a person
@@ -312,9 +316,3 @@ can type.
 1. **Who picks swe-pro's models.** Today its own `--high` default. The manifest
    could pass codeaf's work seat, but swe-pro speaks OpenRouter slugs and the
    seat may be on another lane. First cut: the manifest's argv, no seat.
-2. **Is `via` on the task or the run.** First cut: a delegated task is a run of
-   one task and is never split. Mixing bash workers and a delegate in one run
-   is a later question.
-3. **Stage records on the task page.** The page expects a step to be a command
-   and an observation. swe-pro's tool parts fit; its `stage` records do not.
-   Either the page learns a stage row, or stages feed the live step only.

@@ -77,9 +77,12 @@ type Manifest struct {
 	Limits Limits `json:"limits,omitempty"`
 
 	// Path is the manifest file this was read from, and ManualPath the page
-	// beside it. Both are the loader's, never the file's.
+	// beside it; Manual is that page's text, kept so the chat's manual can
+	// layer it over the packed corpus (internal/manual's overlay). All three
+	// are the loader's, never the file's.
 	Path       string `json:"-"`
 	ManualPath string `json:"-"`
+	Manual     string `json:"-"`
 	// BinPath is the program as it resolved at load time. The loader fills it;
 	// a manifest whose Bin is not found is not in the registry at all.
 	BinPath string `json:"-"`

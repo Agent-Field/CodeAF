@@ -88,10 +88,12 @@ func Load(dir string) (*Registry, error) {
 			continue
 		}
 		manifest.ManualPath = filepath.Join(dir, stem+".md")
-		if reason := checkManualPage(manifest); reason != "" {
+		page, reason := readManualPage(manifest)
+		if reason != "" {
 			registry.refusals = append(registry.refusals, Refusal{Name: stem, Reason: reason})
 			continue
 		}
+		manifest.Manual = page
 		bin, err := resolveBin(manifest.Bin, dir)
 		if err != nil {
 			registry.absent = append(registry.absent, Absent{Name: stem, Bin: manifest.Bin})
@@ -124,21 +126,21 @@ func readManifest(path string) (Manifest, error) {
 	return manifest, nil
 }
 
-// checkManualPage is the load-time manual law. The page must exist and must
+// readManualPage is the load-time manual law. The page must exist and must
 // say the command, because the chat answers "what does /<name> do" from it and
-// nowhere else.
-func checkManualPage(m Manifest) string {
+// nowhere else. It answers the page's text, or the refusal.
+func readManualPage(m Manifest) (string, string) {
 	page, err := os.ReadFile(m.ManualPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Sprintf("no manual page beside it — write %s.md saying what /%s does — not added", m.Name, m.Name)
+		return "", fmt.Sprintf("no manual page beside it — write %s.md saying what /%s does — not added", m.Name, m.Name)
 	}
 	if err != nil {
-		return "its manual page could not be read: " + err.Error()
+		return "", "its manual page could not be read: " + err.Error()
 	}
 	if !strings.Contains(string(page), "/"+m.Name) {
-		return fmt.Sprintf("its manual page does not say /%s — not added", m.Name)
+		return "", fmt.Sprintf("its manual page does not say /%s — not added", m.Name)
 	}
-	return ""
+	return strings.TrimSpace(strings.ReplaceAll(string(page), "\r\n", "\n")), ""
 }
 
 // resolveBin finds the program. A name with no separator is looked up on
@@ -210,6 +212,25 @@ func (r *Registry) Refusals() []Refusal {
 		return nil
 	}
 	return append([]Refusal(nil), r.refusals...)
+}
+
+// PagePrefix is what a delegate's manual page is called in the chat's corpus:
+// `delegate-<name>`, so a delegate can never wear a packed page's name.
+const PagePrefix = "delegate-"
+
+// Pages is every runnable delegate's manual page, keyed by its corpus name,
+// for the chat's manual to layer over its own (internal/manual's overlay).
+func (r *Registry) Pages() map[string]string {
+	if r == nil {
+		return nil
+	}
+	pages := make(map[string]string, len(r.entries))
+	for name, m := range r.entries {
+		if m.Manual != "" {
+			pages[PagePrefix+name] = m.Manual
+		}
+	}
+	return pages
 }
 
 // Empty is a registry with nothing runnable, nothing absent and nothing

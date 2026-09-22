@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // DelegateRow is one delegate as a surface lists it: the command word, the
@@ -103,6 +104,18 @@ var delegateFact = beltFact{
 	fill: func(config Config, text string) string {
 		return fmt.Sprintf(text, strings.Join(config.delegateNames(), ", "))
 	},
+}
+
+// chatManual is the manual this conversation answers from: the packed corpus,
+// with every installed delegate's own page layered over it under
+// `delegate-<name>` (internal/manual's overlay). It is what makes "what does
+// /swe-pro do" answerable from swe-pro's page and nowhere else, and it is built
+// once per agent because the registry is read once per launch.
+func (a *Agent) chatManual() *manual.Corpus {
+	a.manualOnce.Do(func() {
+		a.manualCorpus = manual.Chat().WithPages(a.config.Delegates.Pages())
+	})
+	return a.manualCorpus
 }
 
 // DelegateUnknownError is the refusal for a `via` naming no delegate this

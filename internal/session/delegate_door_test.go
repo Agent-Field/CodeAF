@@ -194,3 +194,32 @@ func TestThePromptNamesTheDelegatesThisLaunchHasAndOnlyThose(t *testing.T) {
 		t.Fatal("a task node is told it may delegate")
 	}
 }
+
+// The manual tool answers "what does /fake do" from the delegate's own page,
+// layered over the packed corpus under `delegate-<name>`, and lists it among
+// the pages; a conversation with no delegates answers from the packed corpus
+// alone.
+func TestTheManualToolAnswersFromADelegatesOwnPage(t *testing.T) {
+	registry := installTestDelegate(t, "fake")
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
+		config.Workspace = t.TempDir()
+		config.Delegates = registry
+	})
+	tool := agent.manualTool()
+	text, refused, err := tool.Execute(context.Background(), []byte(`{"page":"delegate-fake"}`))
+	if err != nil || refused {
+		t.Fatalf("the page read was refused: %v %v", refused, err)
+	}
+	if !strings.Contains(text, "## /fake") {
+		t.Fatalf("the page is not the delegate's own:\n%s", text)
+	}
+	if _, ok := agent.chatManual().Page("delegates"); !ok {
+		t.Fatal("the packed delegates page is gone from the layered corpus")
+	}
+	plain, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
+		config.Workspace = t.TempDir()
+	})
+	if _, refused, _ := plain.manualTool().Execute(context.Background(), []byte(`{"page":"delegate-fake"}`)); !refused {
+		t.Fatal("a conversation with no delegates read a delegate page")
+	}
+}

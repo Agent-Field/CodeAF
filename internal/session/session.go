@@ -32,6 +32,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -3196,6 +3197,11 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
+	// manualCorpus is the manual this conversation answers from — the packed
+	// corpus with the installed delegates' pages over it — built once on first
+	// use ([Agent.chatManual]).
+	manualOnce   sync.Once
+	manualCorpus *manual.Corpus
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active
