@@ -264,6 +264,30 @@ func (a *Agent) tasksTool() bare.Tool {
 				}
 				return markTaskLook(ctx, listing), false, nil
 			}
+			// A STOP ON A ROW OF THE LIVE RUN IS THE RUN'S OWN STOP, and it is
+			// routed here because the reader below cannot find these rows at all.
+			//
+			// MEASURED ON THE REAL BINARY, 2026-09-22: a person said "I do not want
+			// division in this package at all" while three hand-offs were running;
+			// the conversation read the digest, worked out that row #2 was the one
+			// that had gone wrong — which is the whole of what change 2 is for — and
+			// called `tasks {"id":"2","stop":true}`. It was answered `No task "2" in
+			// this project`, four times, under four spellings of the same row. Then
+			// it told the person "Task #2 stopped", and task 2 ran to completion,
+			// was checked, and landed. A false report to a person, from a door that
+			// refuses the one thing the turn had correctly decided to do.
+			//
+			// The cause is that a hand-off on this road publishes a run ROW and
+			// never a node of the session tree ([Agent.startKnownTaskRun]), so
+			// [Agent.taskByToken] misses and [Agent.oneTask] refuses before
+			// stoprun.go is ever reached. The person's own stop does reach it, by
+			// the number the row wears ([Agent.CancelWithReason]), and this is the
+			// model taking that same door with the same number.
+			if parsed.Stop {
+				if answer, ok := a.stopPlanRow(token, parsed.Say); ok {
+					return answer, false, nil
+				}
+			}
 			// A NOTE IS WRITTEN ONTO THE RUN'S OWN ROW, and only there. It is the
 			// chat's half of the note channel: a worker writes to a sibling's row
 			// through `plandb task note`, the person writes from the task's page,
@@ -1508,6 +1532,63 @@ func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// stopPlanRow ends one row of the live run, named the way the model read it in
+// the listing or the digest — `#2`, `#2.1` — and answers false for a token that
+// names no row of this run, so the caller goes on to the session tree's own
+// reader exactly as before.
+//
+// TWO ROADS, BECAUSE THE TWO KINDS OF ROW ARE DIFFERENT THINGS. A row whose id
+// is a number is a hand-off: the run publishes it under that number, and the
+// number is what a person's own stop names ([Agent.CancelWithReason] →
+// stoprun.go), which ends the run itself when the number is the run's and one
+// joined hand-off when it is not — settling the row so a stopped part does not
+// go on spinning until everything beside it finishes. A part the run made for
+// itself has no number of its own, so it is ended through the store the way the
+// task page's own `x stop it` ends one ([Agent.PlanCancel]), which cascades to
+// its descendants and to the work hard-depending on it.
+//
+// THE ANSWER SAYS WHAT A STOP DOES AND DOES NOT DO, for stopOneTask's reason: a
+// model that goes looking for a landing to judge is a model spending a turn on
+// work nothing will check.
+func (a *Agent) stopPlanRow(token, why string) (string, bool) {
+	rows := a.runPlanTasks()
+	labels := planTaskLabels(rows)
+	want := "#" + strings.TrimPrefix(strings.TrimSpace(token), "#")
+	for _, row := range rows {
+		if labels[row.ID] != want {
+			continue
+		}
+		bare := planTaskID(row.ID)
+		// The parse is the QUESTION and not the value: a row whose id is a number
+		// is a hand-off the run published under that number, and the number is
+		// what the person's own stop names. Anything else is a part the run made
+		// for itself, which has no number and takes the store's road below.
+		if _, err := strconv.ParseUint(bare, 10, 64); err == nil {
+			line, stopErr := a.CancelWithReason(CancelTask+":"+bare, strings.TrimSpace(why))
+			if stopErr != nil {
+				return capitalized(stopErr.Error()) + ".", true
+			}
+			return line + ". It is not checked and nothing re-runs it.", true
+		}
+		if err := a.PlanCancel(row.ID); err != nil {
+			return capitalized(err.Error()) + ".", true
+		}
+		return fmt.Sprintf("stopped %s · %s%s. Everything under it and the work waiting on it ends with it; it is not checked and nothing re-runs it.",
+			want, cutChars(row.Title, runAskLineChars), stopReasonClause(why)), true
+	}
+	return "", false
+}
+
+// stopReasonClause is the reason a stop carried, said the way the answer reads
+// it, and nothing at all when the caller gave none — the emptiness law applied
+// to a sentence rather than to a screen.
+func stopReasonClause(why string) string {
+	if why = strings.TrimSpace(why); why != "" {
+		return " — " + why
+	}
+	return ""
 }
 
 // planNoteFromChat writes one note onto a row of the live run, named the way

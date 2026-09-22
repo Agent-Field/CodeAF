@@ -297,6 +297,50 @@ cancelled, and a revision is only for work that has not started. A hold asked of
 the run's own task answers `a run is not held as a whole: hold one of its parts, or
 stop it`.
 
+## Does the chat know what is running while I talk to it
+
+It does, while a run is live. Everything you type arrives with the run's rows in
+front of it: one line per task, the number you see on the side list, its title,
+whether it is running or queued or done, and the newest note left on it. You
+never see that block — the conversation reads it, and your own sentence is what
+stays on the screen and in the transcript.
+
+- **It sees rows, never results.** The block carries no result, no steps and no
+  output; those cost context and it can ask for them with `tasks` when it has a
+  reason to. A run wider than eight rows shows eight and says how many more
+  there are.
+- **Only while something is open.** A conversation that has handed nothing out,
+  or whose run has finished every row, gets none of this and pays nothing for it.
+- **You are looking at the same picture.** The rows it reads are the rows on your
+  side list, so if it says something about one of them you can check it.
+
+What it is for is the next section: a sentence of yours can make work that is
+already underway wrong, and it is the only thing in the room that can notice.
+
+## I changed my mind and it kept going — skipping a part, dropping work you no longer want
+
+Say it in your own words. "On reflection I do not want division in this package
+at all" is enough: you do not have to name a task or a number. The conversation
+already has the run's rows in front of your message, and it is told to act on
+the row your sentence just made wrong **before** it answers you, and to leave the
+rest alone.
+
+- **What it does about it is its judgement, not a rule.** It may end the task,
+  leave it a note with the fact it was missing, or tell you that work already
+  landed and ask what you want instead. What it must not do is answer you and let
+  the task carry on as if you had said nothing.
+- **It can end a task and it can note one; it cannot rewrite one.** Changing what
+  a task was asked for is the worker's own verb, not the conversation's, so "make
+  it do X instead" comes out as an ending and a fresh task, or as a note the
+  worker weighs. If you want the ended task's work kept, say so.
+- **A task it ends is ended the way your own `x stop it` ends it.** Work halts
+  where it stands, the branch is kept, nothing re-runs it and no check judges it.
+  Ending one part of a run leaves the run going; ending the run's own row ends
+  the whole run.
+
+If it acted on the wrong row, say so — and if it kept going when you meant it to
+drop something, the plainest fix is to name the row: "drop #2".
+
 ## Does a note actually reach the worker, when does it read it, does it have to ask for it
 
 Yes, and it does not have to ask. A note left on a task is handed to that task's
