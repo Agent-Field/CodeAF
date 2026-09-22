@@ -34,6 +34,8 @@ at the person's discretion.
 | swe-pro control plane | optional. Landed in swe-pro `f3b9716` | 2026-09-21 |
 | Live cost from swe-pro | a `stage: spend` record. Landed in swe-pro `f3b9716` | 2026-09-21 |
 | Command rows and the manual law | rows are generated at launch; each delegate ships its own manual page; the law is checked at load | 2026-09-21 |
+| Readers | **one generic reader**, compiled in, over a small stdout protocol. No per-program reader | 2026-09-21 |
+| Delegates that produce no tree | allowed. The manifest says `"lands": "text"` and the terminal record's text is the deliverable | 2026-09-21 |
 
 ## Why not "sub-harness"
 
@@ -146,7 +148,7 @@ Two things codeaf does **not** ask, and the manual page says so:
            "--max-cost", "{{cost_usd}}", "--max-hours", "{{hours}}",
            "--", "{{brief}}"],
   "env": { "OPENROUTER_API_KEY": "{{key:openrouter}}" },
-  "reader": "swe-pro",
+  "lands": "tree",                                   // "tree": squash and merge the copy; "text": the terminal's text is the answer
   "limits": { "cost": true, "elapsed": true, "steps": false, "questions": false }
 }
 ```
@@ -157,39 +159,59 @@ Two things codeaf does **not** ask, and the manual page says so:
   draws one dim line naming the binary it looked for.
 - A `manual.md` ships beside the manifest. See *The manual law* below.
 
-### The reader
+### The protocol, and the one reader
 
-A reader turns the program's stream into what the supervisor wants: a rising
-dollar figure, a live step sentence, trajectory lines, and at the end a
-`Report` and an outcome word. Readers are Go, in the binary, one per stream
-shape. One ships now.
+There is **one reader**, compiled in. It reads a small protocol on the
+program's stdout: one JSON object per line, four record types, everything
+else ignored. Ignoring the rest is what makes it generic: swe-pro's bus
+payloads pass straight through it.
 
-**The swe-pro reader:**
+| record | required fields | the reader makes it |
+| --- | --- | --- |
+| `{"type":"stage","stage":S,"status":T}` | `stage`, `status` | the live step, `S · T`, and one trajectory line |
+| `{"type":"spend","cost_usd":C}` | `cost_usd`, cumulative, non-decreasing | banked spend |
+| `{"type":"step","command":X,"observation":Y}` | `command`; `observation` optional | one trajectory step. `Steps` counts these. Optional: a program with no steps is drawn by its stages |
+| `{"type":"terminal","status":U,"message":M,"data":{"cost_usd":C,…}}` | `status`, `message`, `data.cost_usd` | the `Report` and the outcome. Exactly one, last |
 
-| stream record | becomes |
-| --- | --- |
-| `stage` records | the live step, e.g. `implement · running`, and one trajectory line each |
-| `message.part.updated`, `part.type == "tool"`, state `completed` or `error` | one trajectory step: tool, command, observation head. `Steps` counts these |
-| `stage == "spend"`, `status == "recorded"` | banked spend from `data.cost_usd`, cumulative and non-decreasing |
-| `terminal` | the `Report`: result from `message`, `data.reason`, `data.submission_reason`; `USD` from `data.cost_usd`; outcome from `status` |
-| process exit with no terminal seen | `ran and did not finish`, naming the last stage seen |
+`terminal.status` is a closed set, and it is swe-pro's:
 
-**Never sum `cost` off `message.updated`.** An assistant message is written
-more than once, so a naive sum double-counts. The `spend` record exists for
-exactly this reason.
-
-**Outcome mapping:**
-
-| swe-pro `terminal.status` | run outcome | rail word |
+| `status` | run outcome | rail word |
 | --- | --- | --- |
 | `pass` | done | done |
 | `fail` | ran and did not finish | incomplete |
 | `budget-exhausted` | a limit you set stopped it | stopped, naming the limit (#1279) |
 | `crashed` | ran and did not finish | incomplete |
 
+Process exit with no terminal seen is `ran and did not finish`, naming the
+last stage seen. Optional `data` keys the landing note reads when present:
+`reason`, `claim` (what the program's model said), `observed` (what the
+program itself saw), `deliverable` (the answer text, for `"lands": "text"`).
+
+**What this costs each program:**
+
+- **swe-pro** already emits `stage` and `terminal` in this shape, and its
+  status set is the protocol's. Two small asks, both optional: move `spend`
+  from `{"type":"stage","stage":"spend"}` to `{"type":"spend"}` (until then the
+  reader accepts both spellings, one line), and emit a `step` record per
+  tool call so the task page shows steps rather than stages.
+- **pr-af** needs a one-shot mode that prints these four records and exits:
+  `stage` per review phase, `spend` per model call, `terminal` with the
+  findings as `data.deliverable`, and `"lands": "text"` in its manifest.
+
+**Never sum `cost` off swe-pro's `message.updated`.** An assistant message is
+written more than once, so a naive sum double-counts. The `spend` record
+exists for exactly this reason.
+
 swe-pro keeps the model's claim and its own observation as separate fields.
 The landing note keeps them separate too: *swe-pro says it submitted; its
 verification failed 2 of 5 commands* is two sentences.
+
+### Two kinds of landing
+
+| `lands` | working copy | when the program ends |
+| --- | --- | --- |
+| `tree` (swe-pro) | cut per run, passed as `{{workspace}}` | squash, merge home, landing card |
+| `text` (pr-af) | none; `{{workspace}}` is the person's folder, read-only by contract | `data.deliverable` is folded into the conversation the way a quick task's answer is, and the woken turn reads it |
 
 ### Money
 
@@ -212,7 +234,7 @@ conversation's limits (`runCostLeft`, #1281), so swe-pro cuts itself first.
 group, waits the job grace, then kills. A terminal record inside the grace is
 read and folded. Without one the row reads `stopped` with the last stage seen.
 
-### Landing
+### Landing a `tree` delegate
 
 1. swe-pro works in the run's own copy, passed as `--dir`.
 2. swe-pro commits every edit as it goes: `wip(edit): <path>`, dozens per run.
@@ -267,11 +289,11 @@ SIGTERM still writes the terminal record, and `--` before the goal parses.
 
 | # | lands | proof |
 | --- | --- | --- |
-| **1** | `internal/delegate`: manifest and loader; `Worker` (spawn under `processgroup`, stream to reader, SIGTERM then kill, `Report`); the swe-pro reader | unit tests against a fake binary emitting scripted NDJSON and honouring SIGTERM; the outcome table pinned |
-| **2** | the door: task row carries `via`; `CrewFactory` branches on it; generated `/<name>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the `delegate` cancel kind; squash-then-merge landing; `via` on the spend row | focused `internal/session` and `internal/tui3` tests |
+| **1** | `internal/delegate`: manifest and loader; `Worker` (spawn under `processgroup`, stream to the reader, SIGTERM then kill, `Report`); the one generic reader and its protocol, written down in `docs/DELEGATE-PROTOCOL.md` | unit tests against a fake binary emitting scripted protocol lines and honouring SIGTERM; the outcome table pinned; a recorded swe-pro stream replayed through the reader |
+| **2** | the door: task row carries `via`; `CrewFactory` branches on it; generated `/<name>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the `delegate` cancel kind; squash-then-merge landing for `tree`, text fold for `text`; `via` on the spend row | focused `internal/session` and `internal/tui3` tests |
 | **3** | the manual: the built-in *Delegates* page; the corpus overlay; the load-time page check; swe-pro's own `manual.md` | `internal/manual/chat_test.go` probes: "can you hand this to swe-pro", "what does /swe-pro do", "why can't the delegate ask me", "difference between /harness and /swe-pro" |
 | **4** | hosted: the row crosses `internal/remote`; until then `--host` refuses with one sentence | `internal/remote` wire tests |
-| later | a `codeaf` reader so `codeaf do` on another machine is a delegate; delegates chosen by crew seat; answering a delegate's question | — |
+| later | `codeaf do` speaking the protocol so codeaf on another machine is a delegate; pr-af's one-shot mode; delegates chosen by crew seat; answering a delegate's question | — |
 
 Wave 1 has no door and spends no money. Wave 2 is the first thing a person
 can type.
