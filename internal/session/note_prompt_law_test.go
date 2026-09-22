@@ -29,10 +29,21 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
+// A NEEDLE IS MATCHED AGAINST THE SENTENCE AND NOT AGAINST THE WRAP. The pages
+// are Markdown wrapped at about eighty columns, so a clause this test is about
+// falls across a line break as often as not — "not an\norder" is how the page
+// spells "not an order" today, and a plain Contains would report it missing
+// from a page that says it. This test failed exactly that way when it was
+// written, which is the failure worth keeping the note about: a needle that can
+// be broken by a re-wrap is a needle that will one day fail a page with nothing
+// wrong with it, or pass one that has lost the sentence. So both sides have
+// their whitespace collapsed first, and what is compared is the words.
+func oneLine(text string) string { return strings.Join(strings.Fields(text), " ") }
+
 func TestABeltWorkerIsTaughtBothHalvesOfTheNoteChannel(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv(planCLIBinEnv, filepath.Join(t.TempDir(), "stub-codeaf"))
-	page := systemTextOf(newRunBeltWorker(t, effort.None))
+	page := oneLine(systemTextOf(newRunBeltWorker(t, effort.None)))
 
 	for _, law := range []struct{ needle, why string }{
 		{"REACHES THAT TASK'S WORKER BETWEEN ITS STEPS",
@@ -46,7 +57,7 @@ func TestABeltWorkerIsTaughtBothHalvesOfTheNoteChannel(t *testing.T) {
 		{"revised assignment",
 			"and what a real change of direction looks like instead"},
 	} {
-		if !strings.Contains(page, law.needle) {
+		if !strings.Contains(page, oneLine(law.needle)) {
 			t.Errorf("the worker's page lost %q — %s", law.needle, law.why)
 		}
 	}
