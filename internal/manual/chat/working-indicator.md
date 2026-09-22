@@ -5,8 +5,7 @@
 The single-line chevron and gold dot below the latest submitted question mean the conversation is still
 working. The same indicator appears inside a running task's page and an adaptive
 run's page. It remains visible while an answer streams or the work is waiting on
-a model. A short developer-flavored phrase stays unchanged through thinking, tools and
-model waits; actual details stay in the transcript. The motion is not a
+a model. A short developer-flavored phrase changes every ten seconds in dim ink; actual details stay in the transcript. The motion is not a
 percentage, a promise of success, or a claim that a particular tool is running.
 
 Each new conversation turn chooses one of ten animations at random and avoids
@@ -42,7 +41,8 @@ fixed-width slot keeps neighboring text still. It adds no row above the input.
 The activity caption combines a compatible action and object into a two- or
 three-word phrase. It is a playful sign that work is ongoing, not a claim that
 codeaf is literally compiling, debugging, or reading logs. A new operation chooses
-a new combination, avoiding its eight most recent captions. The phrase does not
-change during the operation. A slow decoding ripple briefly replaces one letter
+a shuffled set of combinations, avoiding its eight most recent opening captions.
+A fresh phrase appears every ten seconds; none repeats until the set is exhausted.
+Its dim color separates it from actual progress updates. A slow decoding ripple briefly replaces one letter
 at a time with symbols, then restores it. Readable pauses separate passes; the
 reserved space never moves. ASCII and screen-reader modes keep plain text.

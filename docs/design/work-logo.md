@@ -19,9 +19,11 @@ turn; each task/run page owns another. The indicator anchors immediately after
 the latest submitted question, including its wrapped text and attachments. Work
 details and the answer grow below it. On adaptive graph pages, it sits below the
 goal header. It scrolls with that question rather than occupying input chrome.
-Its caption is generated once per operation from compatible action/object
-families: two or three words such as `Rebasing reality`. The last eight phrases
-are excluded from the next choice. These are playful metaphors, not tool claims.
+Its caption deck is generated and shuffled once per operation from compatible
+action/object families: two or three words such as `Rebasing reality`. Every
+ten seconds the next phrase appears, with no repeats until the deck is exhausted.
+The initial phrase excludes the eight previous operation starters. Dim ink
+separates the playful caption from factual progress updates. These are playful metaphors, not tool claims.
 
 The animation reserves nine terminal columns whether its pose is wide or narrow,
 followed by two columns of whitespace. Including its two-column inset, following

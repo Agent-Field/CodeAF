@@ -28,12 +28,13 @@ const (
 // boundary, samples it from its existing clock, and decides when it is visible.
 // Its zero value is dormant; callers can keep one per conversation or task.
 type WorkActivity struct {
-	style   int
-	began   time.Time
-	chosen  bool
-	caption string
-	recent  [8]string
-	next    int
+	style    int
+	began    time.Time
+	chosen   bool
+	caption  string
+	captions []string
+	recent   [8]string
+	next     int
 }
 
 // Start selects once. Random selection avoids immediately repeating the previous
@@ -50,6 +51,16 @@ func (w *WorkActivity) Start(at time.Time, choice int) {
 	w.caption = nextWorkCaption(w.recent[:])
 	w.recent[w.next] = w.caption
 	w.next = (w.next + 1) % len(w.recent)
+	w.captions = []string{w.caption}
+	for _, recipe := range workCaptionRecipes {
+		for _, object := range recipe.objects {
+			phrase := recipe.action + " " + object
+			if phrase != w.caption {
+				w.captions = append(w.captions, phrase)
+			}
+		}
+	}
+	rand.Shuffle(len(w.captions)-1, func(i, j int) { w.captions[i+1], w.captions[j+1] = w.captions[j+1], w.captions[i+1] })
 }
 
 // Started distinguishes a real operation from an uninitialized display value.
@@ -70,5 +81,17 @@ func (w WorkActivity) Frame(at time.Time) [WorkLogoWidth]WorkLogoCell {
 // Caption is selected once alongside the motion; rendering never rewrites it.
 func (w WorkActivity) Caption() string { return w.caption }
 
-// Elapsed lets the owner's existing frame clock sample the caption's light.
+// WorkCaptionPeriod gives each phrase a full decoding pass and reading time.
+const WorkCaptionPeriod = 10 * time.Second
+
+// CaptionAt samples a deck shuffled once at Start. Every phrase appears before
+// the deck repeats, with no random work or mutation during layout and paint.
+func (w WorkActivity) CaptionAt(at time.Time) string {
+	if len(w.captions) == 0 || w.Elapsed(at) < 0 {
+		return w.caption
+	}
+	return w.captions[int(w.Elapsed(at)/WorkCaptionPeriod)%len(w.captions)]
+}
+
+// Elapsed lets the owner's existing frame clock sample the caption motion.
 func (w WorkActivity) Elapsed(at time.Time) time.Duration { return at.Sub(w.began) }

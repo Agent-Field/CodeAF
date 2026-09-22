@@ -246,7 +246,7 @@ func TestWorkingCaptionDecodeKeepsFollowingContentStill(t *testing.T) {
 		if at := strings.Index(stripped, "next"); at < 0 || ansi.StringWidth(stripped[:at]) != activityContentColumn {
 			t.Fatal("following content moved")
 		}
-		decoded := tokens.DecodeWorkCaption(caption, elapsed)
+		decoded := tokens.DecodeWorkCaption(a.workActivity.CaptionAt(a.now()), elapsed%tokens.WorkCaptionPeriod)
 		if !strings.Contains(stripped, decoded) {
 			t.Fatal("shared decoding frame missing")
 		}

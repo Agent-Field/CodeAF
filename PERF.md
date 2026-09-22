@@ -2558,8 +2558,9 @@ remote frame ceiling is unchanged; unchanged frames need no terminal writes.
 Screen-reader, ASCII, monochrome, copy and small-window modes keep the compact
 text treatment. No size or frame-interval budget changes.
 
-The activity caption is assembled only at Start from bounded action/object recipes,
-excluding an eight-entry ring of recent phrases. Rendering samples the existing
+The activity caption deck is assembled and shuffled only at Start from bounded
+action/object recipes. Its first phrase excludes eight recent opening choices.
+Rendering selects a phrase by elapsed ten-second interval and samples the existing
 decoding ripple with 240 ms letter steps and a 1.8-second pause per pass. The 28-column caption and
 nine-column mark have fixed widths. This uses the existing clock and one
 foreground span; it adds no timer, I/O, model call or per-frame randomness.
