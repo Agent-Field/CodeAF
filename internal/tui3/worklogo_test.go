@@ -178,7 +178,7 @@ func TestWorkingLogoQuestionAnchorReservesColumnsAcrossEveryPose(t *testing.T) {
 				t.Fatal("motion moved its anchor or added input chrome")
 			}
 			text := ansi.Strip(rows[at].text)
-			prefix := strings.SplitN(text, a.workActivity.Caption(), 2)
+			prefix := strings.SplitN(text, tokens.DecodeWorkCaption(a.workActivity.Caption(), a.workActivity.Elapsed(a.now())), 2)
 			if len(prefix) != 2 || ansi.StringWidth(prefix[0]) != activityLabelColumn || strings.TrimSpace(prefix[1]) != "" {
 				t.Fatalf("unstable label: %q", text)
 			}
@@ -234,30 +234,33 @@ func TestWorkingLogoAdaptiveRunUsesItsOwnState(t *testing.T) {
 	}
 }
 
-func TestWorkingCaptionShimmerKeepsTextAndFollowingContentStill(t *testing.T) {
+func TestWorkingCaptionDecodeKeepsFollowingContentStill(t *testing.T) {
 	a := workLogoApp(t)
 	start := a.now()
 	caption := a.workActivity.Caption()
-	colors := map[string]bool{}
-	for i := 0; i < 120; i++ {
-		a.clock = func() time.Time { return start.Add(time.Duration(i) * 50 * time.Millisecond) }
-		text := a.activityRows(a.workActivity, "next", 90)[0].text
-		stripped := ansi.Strip(text)
-		if !strings.Contains(stripped, caption) {
-			t.Fatal("shimmer rewrote the caption")
-		}
+	frames := map[string]bool{}
+	for i := 0; i < 240; i++ {
+		elapsed := time.Duration(i) * 50 * time.Millisecond
+		a.clock = func() time.Time { return start.Add(elapsed) }
+		stripped := ansi.Strip(a.activityRows(a.workActivity, "next", 90)[0].text)
 		if at := strings.Index(stripped, "next"); at < 0 || ansi.StringWidth(stripped[:at]) != activityContentColumn {
 			t.Fatal("following content moved")
 		}
-		colors[a.shimmerAt(caption, a.workActivity.Elapsed(a.now()), 2*shimmerPeriod, .25)] = true
+		decoded := tokens.DecodeWorkCaption(caption, elapsed)
+		if !strings.Contains(stripped, decoded) {
+			t.Fatal("shared decoding frame missing")
+		}
+		frames[decoded] = true
+		if a.workActivity.Caption() != caption {
+			t.Fatal("operation caption changed")
+		}
 	}
-	if len(colors) < 2 {
-		t.Fatal("caption light never moves")
+	if len(frames) < 2 {
+		t.Fatal("caption never decodes")
 	}
-	a.pal = newPalette(tokens.ANSI256, false)
-	first := a.shimmerAt(caption, 0, 2*shimmerPeriod, .25)
-	second := a.shimmerAt(caption, time.Second, 2*shimmerPeriod, .25)
-	if first != second || ansi.Strip(first) != caption {
-		t.Fatal("lower-color caption must stay still")
+	a.pal.ascii = true
+	a.clock = func() time.Time { return start.Add(1800 * time.Millisecond) }
+	if !strings.Contains(ansi.Strip(a.activityRows(a.workActivity, "", 90)[0].text), caption) {
+		t.Fatal("accessible caption must stay readable")
 	}
 }

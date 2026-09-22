@@ -668,8 +668,8 @@ are the ones that survive being re-derived in your own material.
 The running-logo studies occupy a reserved nine-column slot immediately below
 the latest submitted question, before the answer and tool details. A two-column
 gap precedes a stable two- or three-word developer caption. Its 28-column slot
-keeps any later content aligned, and a faint four-second shimmer only changes
-foreground brightness. The row scrolls with the question and
+keeps any later content aligned. A slow decoding ripple changes one letter
+at a time into symbols before restoring it, with readable pauses between passes. The row scrolls with the question and
 disappears on completion; it adds nothing to the input chrome. Chevrons and a
 gold dot use native glyphs. Accessible and small-window views retain text.
 See `docs/design/work-logo.md` for the shared geometry contract.

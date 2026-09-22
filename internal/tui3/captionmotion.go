@@ -42,7 +42,7 @@ func (a *app) shimmer(text string) string {
 }
 
 // shimmerAt shares the same feather and palette ladder across caption owners.
-// The playful activity phrase uses half the speed and a quarter of the contrast.
+// Activity phrases use a separate decoding ripple instead of a light sweep.
 func (a *app) shimmerAt(text string, elapsed, period time.Duration, strength float64) string {
 	if text == "" || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor {
 		return a.pal.narr(text)

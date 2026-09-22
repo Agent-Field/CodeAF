@@ -21,4 +21,5 @@ It scrolls with the question and leaves the input area clear.
 
 Activity captions now compose short developer humor from compatible verb/object
 families, avoid eight recent phrases, and keep the chosen text for the operation.
-A low-contrast four-second shimmer changes brightness without moving the words.
+A slow decoding ripple briefly changes one letter at a time into symbols, with
+readable pauses and no change to the reserved width.

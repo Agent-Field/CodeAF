@@ -43,5 +43,6 @@ The activity caption combines a compatible action and object into a two- or
 three-word phrase. It is a playful sign that work is ongoing, not a claim that
 codeaf is literally compiling, debugging, or reading logs. A new operation chooses
 a new combination, avoiding its eight most recent captions. The phrase does not
-change during the operation. A faint four-second shimmer runs across its letters
-on truecolor terminals; the text and its reserved space never move.
+change during the operation. A slow decoding ripple briefly replaces one letter
+at a time with symbols, then restores it. Readable pauses separate passes; the
+reserved space never moves. ASCII and screen-reader modes keep plain text.
