@@ -252,3 +252,123 @@ func seatTranscript(s *seat) string {
 	}
 	return b.String()
 }
+
+// TestTwoWorkersLiveAtOnceEachGetOnlyItsOwnNote is the test the old serialism
+// hid, and it is here because a claim of mine was wrong.
+//
+// Every earlier drive of this channel ran on a tree where [NewSupervisor]
+// clamped a slot count below one up to one, so a chat's `/task` dispatched ONE
+// worker at a time however many rows the plan had. #1355 removed that clamp —
+// `task.parallel` is 0 out of the box and 0 now means no bound — so the road
+// this channel runs on has several workers live at once. A pass on a serial run
+// cannot see either of the two failures that matters:
+//
+//   - A NOTE REACHING A WORKER IT WAS NOT ADDRESSED TO. The reader is scoped to
+//     the worker's own task ([unreadNotes] takes the task's id), and with one
+//     worker at a time a reader that ignored the scope would look correct,
+//     because there is nothing else in the store to deliver.
+//   - A NOTE LOST TO A MARK TWO LOOPS SHARE. The mark is a map local to one
+//     worker's loop, so N workers are N independent readers; an implementation
+//     that kept one watermark for the store would let whichever worker read
+//     first suppress the other's note, and with one worker at a time there is
+//     no other.
+//
+// So: two workers on two tasks of one store, both mid-command, a note written
+// to each while both are in flight, and each seat is asserted to have been
+// handed its own note and NEVER the other's.
+func TestTwoWorkersLiveAtOnceEachGetOnlyItsOwnNote(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "alpha", ParentID: store.RootID(), Title: "Alpha"},
+		{ID: "beta", ParentID: store.RootID(), Title: "Beta"},
+	}); err != nil {
+		t.Fatalf("seed two tasks: %v", err)
+	}
+	// The supervisor hands a worker a task it has already claimed, and the
+	// finish verb's ownership check is taken against that claim, so the test
+	// claims them the way the run would.
+	for _, id := range []string{"alpha", "beta"} {
+		if _, err := store.Claim(id, id); err != nil {
+			t.Fatalf("claim %s: %v", id, err)
+		}
+	}
+
+	workspace := t.TempDir()
+	const forAlpha = "alpha's own fact: the settings file is cfg/alpha.toml"
+	const forBeta = "beta's own fact: the settings file is cfg/beta.toml"
+
+	// Each worker's first command waits on a file of its own, so both are
+	// genuinely inside a command when the notes are written — which is the
+	// state the whole test is about.
+	open := func(id string) (*seat, chan error) {
+		release := filepath.Join(workspace, "release-"+id)
+		s := &seat{script: []step{
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				command := "while [ ! -f " + release + " ]; do sleep 0.02; done; echo " + id
+				return toolReply(`{"command":` + jsonString(command) + `}`), nil
+			},
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return toolReply(finishCommand(id, "read what was addressed to me")), nil
+			},
+		}}
+		worker := run.NewBashWorker(store, workspace, "test/model", s)
+		done := make(chan error, 1)
+		task := *store.Task(id)
+		go func() {
+			_, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), task)
+			done <- err
+		}()
+		return s, done
+	}
+	alphaSeat, alphaDone := open("alpha")
+	betaSeat, betaDone := open("beta")
+
+	// BOTH LIVE AT THE SAME MOMENT, read from the store's own live rows rather
+	// than assumed: a live row is true only while its command runs, so two of
+	// them is two workers inside a command at once. This is the assertion the
+	// old serial tree could not have satisfied.
+	waitForLiveStep(t, store, "alpha")
+	waitForLiveStep(t, store, "beta")
+	if live := store.Live("alpha"); live.Empty() {
+		t.Fatal("alpha stopped running a command before beta started one")
+	}
+
+	if _, err := store.AddPersonNote("alpha", forAlpha); err != nil {
+		t.Fatalf("leave alpha's note: %v", err)
+	}
+	if _, err := store.AddPersonNote("beta", forBeta); err != nil {
+		t.Fatalf("leave beta's note: %v", err)
+	}
+	for _, id := range []string{"alpha", "beta"} {
+		if err := os.WriteFile(filepath.Join(workspace, "release-"+id), nil, 0o644); err != nil {
+			t.Fatalf("release %s: %v", id, err)
+		}
+	}
+	<-alphaDone
+	<-betaDone
+
+	// EACH GOT ITS OWN, ONCE.
+	if saw := seatSawTimes(alphaSeat, forAlpha); saw != 1 {
+		t.Errorf("alpha was handed its own note %d times, want once:\n%s", saw, seatTranscript(alphaSeat))
+	}
+	if saw := seatSawTimes(betaSeat, forBeta); saw != 1 {
+		t.Errorf("beta was handed its own note %d times, want once:\n%s", saw, seatTranscript(betaSeat))
+	}
+	// AND NEITHER GOT THE OTHER'S. A reader that ignored the task scope, or a
+	// mark two loops shared, shows here and nowhere else.
+	if seatSaw(alphaSeat, forBeta) {
+		t.Errorf("alpha was handed beta's note:\n%s", seatTranscript(alphaSeat))
+	}
+	if seatSaw(betaSeat, forAlpha) {
+		t.Errorf("beta was handed alpha's note:\n%s", seatTranscript(betaSeat))
+	}
+	// AND THE STORE STILL HOLDS BOTH, for the screen that draws them.
+	for _, row := range []struct{ id, body string }{{"alpha", forAlpha}, {"beta", forBeta}} {
+		notes := store.Notes(row.id, 0)
+		if len(notes) != 1 || notes[0].Body != row.body {
+			t.Errorf("%s's notes after delivery = %#v, want its one note still there", row.id, notes)
+		}
+	}
+}
