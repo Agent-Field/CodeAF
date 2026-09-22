@@ -288,7 +288,16 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		// a request to get it accepted. Both are dim status, already handled and
 		// never asking for the person's attention.
 		if len(ev.Skills) > 0 {
-			f.note("skills · " + strings.Join(ev.Skills, ", "))
+			// IT IS A TOLD NOTE AND NOT A PLAIN ONE, so the work chip may not
+			// swallow it. A plain note lives inside the fold between a question
+			// and its answer, which means the one line saying a skill was used
+			// is visible while the turn runs and gone the second it settles —
+			// and expanding the chip cannot bring it back, because the open fold
+			// draws captions and steps and skips the entries underneath
+			// (workfold.go's blocked rule, render.go's `i = f.answer - 1`).
+			// Which skills a turn used is a fact about the answer sitting above
+			// it, so it outlives the run that produced it.
+			f.toldNote("skills · " + strings.Join(ev.Skills, ", "))
 		} else {
 			f.note(ev.Text)
 		}

@@ -53,3 +53,31 @@ func TestSkillNoticeDrawsNamesFromFieldAsADimNote(t *testing.T) {
 		t.Fatalf("skills were derived from Event.Text: %q", got.text)
 	}
 }
+
+// THE SKILLS ROW OUTLIVES THE RUN THAT PRODUCED IT. A plain note lives inside
+// the work chip's fold, so the one line saying which skills a turn used would be
+// visible while the turn ran and gone the moment it settled — and expanding the
+// chip could not bring it back, because the open fold draws its own caption and
+// step rows and skips the entries underneath. A person asking "did it use my
+// skill?" asks after the answer arrives, not during.
+func TestTheSkillsRowIsNotSwallowedByTheWorkChip(t *testing.T) {
+	f := &feed{live: -1, think: -1}
+	f.ingest(session.Event{Kind: session.EventNotice, Text: "skills carried: release-notes", Skills: []string{"release-notes"}})
+	if len(f.entries) == 0 {
+		t.Fatal("the skills notice wrote no entry")
+	}
+	last := f.entries[len(f.entries)-1]
+	if last.kind != entryNote {
+		t.Fatalf("the skills notice landed as %v, want a note", last.kind)
+	}
+	if !last.told {
+		t.Fatal("the skills row is a plain note, so the work chip swallows it when the turn settles")
+	}
+	// AND AN ORDINARY NOTICE IS UNCHANGED, because the adapter's own retry line
+	// belongs inside the fold with the rest of the machinery.
+	f.ingest(session.Event{Kind: session.EventNotice, Text: "Retry 1/3: removed max_tokens"})
+	plain := f.entries[len(f.entries)-1]
+	if plain.told {
+		t.Fatal("an ordinary notice became a told note, so the fold now keeps machinery on screen")
+	}
+}
