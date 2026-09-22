@@ -1392,8 +1392,9 @@ opening a conversation`, `alt+1 to alt+7 jump straight to a place`. It is drawn 
 the box is empty and nothing else is up, it moves on to the next tip every time you come to
 home and every two minutes at rest, and each tip goes away for good the first time you do
 what it names. It sits at the right, led by a bulb and closed by a small cross: clicking it
-means NOT THIS ONE, and the row answers with the next tip in the rotation rather than going
-blank. The tip you put away keeps its whole allowance and comes round again. A conversation has the same row over its own box, from
+means ENOUGH FOR NOW, and the row stays blank until you leave home and come back, when a
+different tip is there. The tip you put away keeps its whole allowance and comes round
+again. A conversation has the same row over its own box, from
 the same one list of tips, drawn once you have been quiet there for a minute. The keys row
 at the very foot is not a tip and never changes. The whole list, what makes each one appear
 and disappear, and the **disable hints** row on the Workspace tab that turns them off, are on

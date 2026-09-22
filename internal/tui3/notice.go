@@ -653,11 +653,16 @@ type noticeBoard struct {
 	// counted from it when the tip leaves or the row goes out of sight
 	// ([noticeBoard.settle]), and only if it stood [noticeReadTime].
 	since [noticeSlots]time.Time
-	// hidden is the cross on a row having been pressed WITH NOTHING ELSE TO
-	// PUT THERE: the tip standing is not drawn until the slot next changes
-	// hands, which clears it. Ordinarily the cross rotates instead
-	// ([app.noticeDismiss]), so this is the one-eligible-tip case. It is this
-	// session's and never the ledger's — putting a tip away is not using it.
+	// hidden is the cross on a row having been pressed: the row draws nothing
+	// at all until THE ROW ITSELF GOES OUT OF VIEW, which is the only thing
+	// that lifts it — home closing ([app.dropHome]) for home's row, a key
+	// taking the conversation's row back and the next quiet minute returning
+	// it ([app.noticeIdleBeat]) for that one. Deciding the slot again does
+	// not lift it, and neither does the two-minute beat: a cross answered
+	// with another sentence on the same screen is the surface talking over
+	// somebody who asked it to stop (the owner's ruling, 2026-09-22). It is
+	// this session's and never the ledger's — putting a tip away is not
+	// using it.
 	hidden [noticeSlots]bool
 	// touched is the last proof the person was doing something in a
 	// conversation — a key pressed, a turn ending — and due is whether they
@@ -926,16 +931,14 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 	now := a.now()
 	changed, wrote := b.take(slot, id, a.noticeLive(slot), now, a.noticeLimit)
 	if changed {
-		// A new tip is a new thing to read: the clock starts again and a cross
-		// pressed over the old one is spent.
+		// A new tip is a new thing to read, so its clock starts again. THE
+		// CROSS IS NOT SPENT HERE: a row somebody put away stays away until
+		// that row leaves the frame ([noticeBoard.hidden]), and a tip arriving
+		// behind it is a tip nobody is being shown.
 		b.at[slot] = now
-		b.hidden[slot] = false
 	}
 	// A ROW IN FRONT WITH A TIP ON IT IS BEING SHOWN, whether the tip was
-	// decided just now or before the row came into view. IT IS ASKED AGAIN
-	// HERE, after the cross above was spent: a tip arriving on a hidden row
-	// starts no standing, and the same decision that un-hides the row is what
-	// starts one.
+	// decided just now or before the row came into view.
 	if a.noticeLive(slot) {
 		b.visible(slot, now)
 	}
@@ -994,13 +997,17 @@ func (a *app) noticeLimit(id string) int {
 // rest ([app.noticeHomeBeat]), and on the conversation's beat while the person
 // stays quiet ([app.noticeIdleBeat]). Rotating is the one thing an event does
 // not do to a slot, so it is its own seam.
+//
+// IT DOES NOT LIFT A CROSS. The row a person put away is put away until it
+// leaves the frame, and the beat that turns the ring every two minutes is
+// exactly the thing that used to bring a tip back onto a home they were still
+// standing on ([noticeBoard.hidden]).
 func (a *app) noticeRotate(slot noticeSlot) {
 	b := &a.notices
 	if b.seen == nil {
 		*b = bareNoticeBoard()
 	}
 	b.advance[slot] = true
-	b.hidden[slot] = false
 	if a.noticeFill(slot) {
 		b.save()
 	}
@@ -1055,37 +1062,33 @@ func (a *app) noticeHomeQuiet() bool {
 		a.paneExchange() == nil && !a.targetPickShowing() && !a.composer.open && !a.hopShowing()
 }
 
-// noticeDismiss is the cross on a tip row, and what it means is NOT THIS ONE,
-// SAY SOMETHING ELSE — so the row moves on to the next tip in the rotation on
-// the very next frame rather than going blank.
+// noticeDismiss is the cross on a tip row, and what it means is ENOUGH OF
+// THESE FOR NOW — not "say something else". The row goes blank and STAYS
+// blank for the rest of this sitting: on home, until home is left and come
+// back to; in a conversation, until the row goes out of sight under a key and
+// the next quiet minute brings it back ([noticeBoard.hidden] names both, and
+// they are the same law — the cross is lifted by the row going out of view).
+//
+// THE OWNER'S RULING, 2026-09-22: "do not show another hint until the user
+// comes back to the home tab after leaving it". A cross answered with a second
+// sentence in the same breath is the surface talking over somebody who has
+// just asked it to stop.
 //
 // AND THE TIP THAT WAS PUT AWAY KEEPS ITS WHOLE ALLOWANCE. Its standing is
 // thrown away rather than counted: a person who pressed the cross was telling
 // the surface they did not want to read that line now, which is the opposite
 // of having read it, and spending a showing on the gesture would retire a tip
-// six dismissals in. It goes back into the ring and comes round another time.
-//
-// Until 2026-09-22 the cross counted the standing and left the row BLANK until
-// the slot next changed hands, which on home meant the same tip was back on
-// the next visit with one of its six showings gone. The owner met exactly
-// that with the /attach tip.
-//
-// THE ROW ONLY GOES BLANK WHEN THERE IS NOTHING ELSE TO SAY. With one tip left
-// in the ring the rotation is that tip, and drawing it again under the cross
-// somebody just pressed would be the surface arguing — so the row is hidden
-// the way it always was, until the slot next changes hands.
+// six dismissals in. The slot is asked to advance, so the row that comes back
+// is a different one and this tip takes its turn again later in the ring.
 func (a *app) noticeDismiss(slot noticeSlot) {
 	b := &a.notices
 	if b.seen == nil {
 		*b = bareNoticeBoard()
 	}
 	b.since[slot] = time.Time{}
-	held := b.current[slot]
-	a.noticeRotate(slot)
-	if b.current[slot] == held {
-		b.hidden[slot] = true
-		a.touch()
-	}
+	b.hidden[slot] = true
+	b.advance[slot] = true
+	a.touch()
 }
 
 // noticeShow puts a newly chosen notice where its slot draws. The hint slots

@@ -278,38 +278,55 @@ func TestTheTableIsThirtyOneHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
 
 // ── the cross ───────────────────────────────────────────────────────────────
 
-// THE CROSS MEANS "NOT THIS ONE, SAY SOMETHING ELSE": the row answers with the
-// next tip in the rotation, and the tip put away is charged NOTHING — however
-// long it had been standing when the cross was pressed. It used to be charged
-// a showing and the row went blank, so six presses retired a tip nobody had
-// read and the next visit to home brought the same sentence straight back.
-func TestTheCrossMovesTheRowOnAndSpendsNothingOfTheTipItPutAway(t *testing.T) {
+// THE CROSS MEANS "ENOUGH OF THESE FOR NOW": the row goes blank and no second
+// sentence takes its place on the screen the person is still standing on. The
+// tip put away is charged NOTHING — however long it had been standing when the
+// cross was pressed, because the gesture says the opposite of "I have read
+// this" (it used to be charged a showing, so six presses retired a tip nobody
+// had read).
+func TestTheCrossBlanksHomesRowAndSpendsNothingOfTheTipItPutAway(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.door("")
 	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 	a.clock = func() time.Time { return now }
-	a.showPage(pageHome)
+	runCmd(a.showPage(pageHome))
 
 	was := a.notices.current[slotHome]
 	if was == "" {
 		t.Fatal("home opened with no tip")
 	}
-	// LONG ENOUGH TO HAVE BEEN READ, which is the case that used to cost a
-	// showing: the gesture says the opposite of "I have read this".
 	now = now.Add(noticeReadTime * 3)
 	a.noticeDismiss(slotHome)
 
-	if got := a.notices.current[slotHome]; got == was {
-		t.Fatalf("the cross left %q standing", got)
-	}
-	if a.noticeHomeHint() == "" {
-		t.Fatal("the cross left the row blank with other tips still to say")
+	if got := a.noticeHomeHint(); got != "" {
+		t.Fatalf("the cross answered with another tip: %q", got)
 	}
 	if got := a.notices.ledger.shown(was); got != 0 {
 		t.Fatalf("the cross spent %d showings of the tip it put away", got)
 	}
 	if a.notices.retired(was) {
 		t.Fatalf("the cross retired %q", was)
+	}
+
+	// AND NOTHING THAT HAPPENS ON HOME BRINGS ONE BACK. The two-minute beat is
+	// the one that used to, and an event re-deciding the slot is the other.
+	now = now.Add(hintEvery * 3)
+	a.noticeHomeBeat()
+	a.noticeEvent(eventTurnEnded)
+	if got := a.noticeHomeHint(); got != "" {
+		t.Fatalf("the row came back on the same visit: %q", got)
+	}
+
+	// LEAVING HOME AND COMING BACK IS WHAT LIFTS IT, and it lifts to a
+	// different tip.
+	runCmd(a.showPage(pageNone))
+	runCmd(a.showPage(pageHome))
+	back := a.noticeHomeHint()
+	if back == "" {
+		t.Fatal("coming back to home brought no tip")
+	}
+	if a.notices.current[slotHome] == was {
+		t.Fatalf("coming back brought the tip the cross put away: %q", was)
 	}
 
 	// AND IT COMES ROUND AGAIN. The ring is a ring: walk it and the tip that
@@ -327,36 +344,35 @@ func TestTheCrossMovesTheRowOnAndSpendsNothingOfTheTipItPutAway(t *testing.T) {
 	}
 }
 
-// AND WITH NOTHING ELSE TRUE TO SAY THE ROW GOES BLANK. Drawing the same
-// sentence again under the cross somebody just pressed would be the surface
-// arguing, so the one-eligible-tip case keeps the old behaviour: hidden until
-// the slot next changes hands.
-func TestTheCrossBlanksTheRowWhenItIsTheLastTipStanding(t *testing.T) {
-	lab := newHomeLab(t)
-	a := lab.door("")
-	a.showPage(pageHome)
-
-	// Retire every tip but the one standing, so the ring is that one tip.
-	last := a.notices.current[slotHome]
-	if last == "" {
-		t.Fatal("home opened with no tip")
-	}
-	for _, n := range notices {
-		if n.id != last {
-			a.notices.retire(n.id)
-		}
-	}
-	a.noticeHomeRotate()
-	if got := a.notices.current[slotHome]; got != last {
-		t.Fatalf("the last tip standing is %q, want %q", got, last)
+// AND THE SAME LAW IN A CONVERSATION, where the row going out of view is a key
+// rather than a door: the cross blanks it, the quiet minutes that follow do
+// not bring it back, and a key and a fresh quiet minute do.
+func TestTheCrossHoldsTheConversationsRowUntilAKeyAndAFreshQuietMinute(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.turn = 1
+	a.noticeEvent(eventTurnEnded)
+	advance := quietMinute(a)
+	if a.noticeHint() == "" {
+		t.Fatal("the quiet minute drew no tip")
 	}
 
-	a.noticeDismiss(slotHome)
-	if got := a.noticeHomeHint(); got != "" {
-		t.Fatalf("the cross redrew the only tip there was: %q", got)
+	a.noticeDismiss(slotHint)
+	if got := a.noticeHint(); got != "" {
+		t.Fatalf("the cross answered with another tip: %q", got)
 	}
-	if a.notices.retired(last) {
-		t.Fatal("the cross retired the last tip standing")
+	// The beat that turns the ring every two minutes does not lift it.
+	advance(hintEvery * 2)
+	a.noticeIdleBeat(a.notices.idleGen)
+	if got := a.noticeHint(); got != "" {
+		t.Fatalf("the two-minute beat brought the row back: %q", got)
+	}
+
+	// A key takes the row, and the next quiet minute gives it back.
+	a.noticeTouched()
+	advance(chatHintIdle)
+	a.noticeIdleBeat(a.notices.idleGen)
+	if a.noticeHint() == "" {
+		t.Fatal("a key and a fresh quiet minute did not bring the row back")
 	}
 }
 

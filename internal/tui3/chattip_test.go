@@ -120,16 +120,32 @@ func TestAConversationSaysATipOnlyAfterAQuietMinute(t *testing.T) {
 	if b.retired("task-page-after-first-task") {
 		t.Fatal("putting a tip away retired it")
 	}
-	// THE NEXT BEAT BRINGS A TIP BACK — the ring has one eligible tip here, so
-	// it is the same one.
+	// AND THE BEAT ALONE DOES NOT BRING IT BACK (the owner's ruling,
+	// 2026-09-22): a cross holds the row until the row leaves the frame, and
+	// the two-minute beat is what used to answer it with another sentence on
+	// the screen somebody was still sitting in front of.
 	advance(hintEvery)
 	if cmd := a.noticeIdleBeat(b.idleGen); cmd == nil {
 		t.Fatal("the beat after a quiet minute did not re-arm")
 	}
-	if got := a.noticeHint(); got != taskPageTip {
-		t.Fatalf("the beat did not bring the tip back: %q", got)
+	if got := a.noticeHint(); got != "" {
+		t.Fatalf("the beat brought the row back under a cross: %q", got)
 	}
-	// AND A KEY HIDES IT until the next quiet minute.
+	// A KEY TAKES THE ROW, and the next quiet minute gives it back — the ring
+	// has one eligible tip here, so it is the same one.
+	drive(t, a, key("y"), key("backspace"))
+	if b.due || a.noticeHint() != "" {
+		t.Fatalf("a key did not stand the tip down: due=%v hint=%q", b.due, a.noticeHint())
+	}
+	advance(chatHintIdle)
+	if cmd := a.noticeIdleBeat(b.idleGen); cmd == nil {
+		t.Fatal("the beat after the fresh quiet minute did not re-arm")
+	}
+	if got := a.noticeHint(); got != taskPageTip {
+		t.Fatalf("a key and a fresh quiet minute did not bring the row back: %q", got)
+	}
+	// And a key stands it down again, which is where the rest of this test
+	// picks up.
 	drive(t, a, key("y"), key("backspace"))
 	if b.due || a.noticeHint() != "" {
 		t.Fatalf("a key did not stand the tip down: due=%v hint=%q", b.due, a.noticeHint())

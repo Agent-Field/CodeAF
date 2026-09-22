@@ -24,9 +24,9 @@ func homeFrameLines(a *app) []string {
 }
 
 // The tip is right-aligned over the rule, led by the bulb and closed by the
-// cross, ending one cell in from the edge — and the cross moves the row on to
-// another tip.
-func TestHomeTipIsRightAlignedWithABulbAndACrossThatMovesTheRowOn(t *testing.T) {
+// cross, ending one cell in from the edge — and the cross blanks the row for
+// the rest of this visit to home.
+func TestHomeTipIsRightAlignedWithABulbAndACrossThatBlanksTheRow(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.door("")
 	a.showPage(pageHome)
@@ -54,8 +54,8 @@ func TestHomeTipIsRightAlignedWithABulbAndACrossThatMovesTheRowOn(t *testing.T) 
 	if a.targetRow != a.tipRow+1 {
 		t.Fatalf("the tip is on row %d and the rule on row %d; they should be neighbours", a.tipRow, a.targetRow)
 	}
-	// THE CROSS. A press on it says NOT THIS ONE, and the row answers with
-	// another tip on the very next frame; a press beside it does nothing.
+	// THE CROSS. A press on it says ENOUGH FOR NOW and the row goes blank; a
+	// press beside it does nothing.
 	if !a.tipCloseSpan.pressable() {
 		t.Fatal("the draw recorded no columns for the cross")
 	}
@@ -65,12 +65,8 @@ func TestHomeTipIsRightAlignedWithABulbAndACrossThatMovesTheRowOn(t *testing.T) 
 	}
 	was := a.notices.current[slotHome]
 	a.homePress(a.tipCloseSpan.from, a.tipRow)
-	next := a.noticeHomeHint()
-	if next == "" {
-		t.Fatal("the cross left the row blank with other tips still to say")
-	}
-	if next == tip {
-		t.Fatalf("the cross left the same tip standing: %q", next)
+	if got := a.noticeHomeHint(); got != "" {
+		t.Fatalf("the cross answered with another tip: %q", got)
 	}
 	if strings.Contains(homeText(a), tip) {
 		t.Fatal("the tip is still drawn after its cross was pressed")
@@ -83,10 +79,16 @@ func TestHomeTipIsRightAlignedWithABulbAndACrossThatMovesTheRowOn(t *testing.T) 
 	if got := a.notices.ledger.shown(was); got != 0 {
 		t.Fatalf("the cross spent %d showings of the tip it put away", got)
 	}
-	// The next visit still has something to say.
-	a.showPage(pageHome)
-	if a.noticeHomeHint() == "" {
-		t.Fatal("the next visit brought no tip back")
+	// LEAVING HOME AND COMING BACK IS WHAT BRINGS ONE, and it is a different
+	// one.
+	runCmd(a.showPage(pageNone))
+	runCmd(a.showPage(pageHome))
+	back := a.noticeHomeHint()
+	if back == "" {
+		t.Fatal("the next visit to home brought no tip back")
+	}
+	if back == tip {
+		t.Fatalf("the next visit brought back the tip the cross put away: %q", back)
 	}
 }
 

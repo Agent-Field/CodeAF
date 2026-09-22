@@ -1194,8 +1194,12 @@ func (a *app) closeHome() {
 func (a *app) dropHome() {
 	a.homeGen++
 	// THE TIP ON HOME'S ROW GOES OUT OF SIGHT HERE, so here is where its
-	// standing is measured (notice.go's [app.noticeSettle]).
+	// standing is measured (notice.go's [app.noticeSettle]) — AND HERE IS
+	// WHERE A CROSS PRESSED ON IT IS LIFTED. The row a person put away stays
+	// away for the whole of the visit they pressed it on; coming back to home
+	// is what brings the next tip ([noticeBoard.hidden]).
 	a.noticeSettle(slotHome)
+	a.notices.hidden[slotHome] = false
 	// CLOSING IS THE LOOK. The stamp the next open measures news against is
 	// written here and only here — see [homeView.seen] for why not on the way
 	// in, and session's look.go for why a window that dies instead loses

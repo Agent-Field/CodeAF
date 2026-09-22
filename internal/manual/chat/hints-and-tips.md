@@ -16,13 +16,16 @@ again. Left alone, the row moves on to the next tip every two minutes. On home t
 there from the first minute, moves on every time you come to home and every two minutes at
 rest, and goes blank while the box is being typed into or a list is up.
 
-**The small cross after the tip means NOT THIS ONE**: click it and the row moves on to the
-next tip in the rotation, on the very next frame. The tip you put away is **not** spent —
-it keeps its whole allowance, nothing is written down, and it comes round again another
-time. Only when there is nothing else true to say does the row go blank instead, until it
-next changes hands. Until 2026-09-22 the cross always blanked the row AND counted the tip
-as shown, so the same tip was back on the next visit with one of its six showings gone.
-A tip never takes a row of its own: it stands on the blank row that separates the conversation (or home's list) from the
+**The small cross after the tip means ENOUGH OF THESE FOR NOW**: click it and the row goes
+blank and stays blank — no second sentence takes its place on the screen you are still
+looking at. **The cross is lifted when the row leaves the frame, and by nothing else.** On
+home that means leaving home and coming back; in a conversation it means the next key
+taking the row away and the next quiet minute bringing it back. Neither the two-minute
+beat nor anything else happening on the screen brings it back sooner. The tip you put away
+is **not** spent: it keeps its whole allowance, nothing is written down, and the row that
+comes back is a different one, with the one you dismissed taking its turn again later.
+Until 2026-09-22 the cross counted the tip as shown, so the same sentence was back with
+one of its six showings gone. A tip never takes a row of its own: it stands on the blank row that separates the conversation (or home's list) from the
 rule, and never blocks a keystroke. The keys row at the very foot — `alt+e effort · alt+a
 approvals · / commands` — is not a tip and never changes; until 2026-09-22 the tip stood
 there in a conversation, and it moved up to the row over the rule so both boxes say their
@@ -40,8 +43,9 @@ list or a reply being read all take the row back — and it moves on to the next
 true for you on every road home (`esc` from a conversation, `/home`, `alt+1`, `tab`), in a
 fixed order, round and round. Left at rest, it moves on by itself after two minutes; a home
 nobody is looking at (the box being typed into, a list up) does not age, because what has
-not been read has not been shown. The cross at its end moves the row on to another tip and
-costs the one you put away nothing.
+not been read has not been shown. The cross at its end blanks the row for the rest of that
+visit — leaving home and coming back is what brings the next tip — and costs the one you
+put away nothing.
 
 ## Why did the hint disappear — each tip retires once you use what it teaches
 
