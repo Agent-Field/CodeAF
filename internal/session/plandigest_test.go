@@ -75,6 +75,9 @@ func TestTheDigestCarriesNoResultNoStepAndNoTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open the store: %v", err)
 	}
+	if _, err := store.Claim("alpha", "alpha"); err != nil {
+		t.Fatalf("claim the task: %v", err)
+	}
 	if _, err := store.Done("alpha", "alpha", "THE-RESULT-NOBODY-ASKED-FOR", nil, nil); err != nil {
 		t.Fatalf("finish the task: %v", err)
 	}
@@ -136,7 +139,12 @@ func TestTheDigestIsAbsentWithNoRunAndWithAFinishedOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open the store: %v", err)
 	}
-	for _, id := range []string{planRootID, "alpha"} {
+	// The children finish before their parent: the store refuses a root whose
+	// work is still open, which is its own law and not this test's business.
+	for _, id := range []string{"alpha", planRootID} {
+		if _, err := store.Claim(id, id); err != nil {
+			t.Fatalf("claim %s: %v", id, err)
+		}
 		if _, err := store.Done(id, id, "done", nil, nil); err != nil {
 			t.Fatalf("finish %s: %v", id, err)
 		}
