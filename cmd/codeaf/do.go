@@ -323,11 +323,18 @@ func runDo(args []string) error {
 	completionReserve := flags.Int("completion-reserve", 0,
 		"tokens every call keeps free for its answer and its reasoning "+
 			"(default "+strconv.Itoa(ctxbudget.DefaultCompletionReserveTokens)+")")
+	slotsRaw := flags.String("slots", "",
+		"how many workers may run at once for this run; 0 is no limit "+
+			"(default: your task.parallel setting, which is no limit)")
 	debug := flags.Bool("debug", false, debugFlagHelp())
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	noteRenamedFlags(flags)
+	slots, err := parseSlots(*slotsRaw)
+	if err != nil {
+		return err
+	}
 	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything
 	// can make a call, so that every record this errand leaves names the same
 	// run. The folder is announced on the way out and only when something was
@@ -351,7 +358,7 @@ func runDo(args []string) error {
 		task: task, run: run, database: *database, keep: *keep, workspace: *workspace,
 		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel, checkModel: *checkModel,
-		contextFill: *contextFill, completionReserve: *completionReserve,
+		contextFill: *contextFill, completionReserve: *completionReserve, slots: slots,
 		stdout: os.Stdout, stderr: os.Stderr,
 	})
 }
@@ -398,9 +405,11 @@ type doRequest struct {
 	// a run to a price can say so, and a ceiling of nothing is a run that may
 	// spend nothing: the limit stopped it before a worker did.
 	costCap *float64
-	// slots bounds how many run-engine workers run at once. Zero is the door's
-	// own default ([defaultRunSlots]); a test names one it can watch.
-	slots int
+	// slots bounds how many run-engine workers run at once. Nil is the
+	// person's own `task.parallel` setting, the same row the chat door reads,
+	// and a named 0 is no bound at all (the `--slots` flag); a test names one
+	// it can watch.
+	slots *int
 	// newBeltCompleter scripts the run road's worker, the way newClient scripts
 	// the legacy road's. Nil builds a real provider client per seat model, which
 	// is what a live run does; a test hands back a [session.Completer] that
@@ -3356,17 +3365,36 @@ func errandStatus(outcome headlessOutcome) error {
 
 // ── the run road ────────────────────────────────────────────────────────────
 
-// defaultRunSlots is how many run-engine workers `codeaf do` starts at once
-// when no caller names a number. Four is the same width the resident's own
-// dispatcher runs a job at, and it is a bound rather than a target: a brief
-// that needs one worker uses one.
-const defaultRunSlots = 4
-
-func (r doRequest) slotsOrDefault() int {
-	if r.slots > 0 {
-		return r.slots
+// slotsFor answers how many run-engine workers this errand may run at once,
+// where 0 is no bound. A caller who named a figure gets it; anyone else gets
+// the profile's `task.parallel`, which is the ONE row that answers this
+// question for the chat door too (internal/session's task_run_belt.go reads
+// the same setting) and is no limit out of the box. This door used to carry
+// a constant of its own, four, beside a setting that promised no limit — two
+// answers to one question, and the person who had set the row found `codeaf
+// do` ignoring it.
+func (r doRequest) slotsFor(profileDir string) int {
+	if r.slots != nil {
+		return *r.slots
 	}
-	return defaultRunSlots
+	return config.TaskParallelAt(profileDir)
+}
+
+// parseSlots reads the `--slots` flag. Blank is the flag unset, which leaves
+// the answer to the profile; anything else is a whole number of workers, and
+// 0 is no bound. The flag is a string rather than an int so that an unset
+// flag and a named 0 are two different things, which an int's zero value
+// cannot say.
+func parseSlots(raw string) (*int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return nil, fmt.Errorf("--slots wants a whole number of workers, 0 for no limit; got %q", raw)
+	}
+	return &n, nil
 }
 
 // runErrand is `codeaf do` on the run engine: the same errand as the road above
@@ -3440,7 +3468,7 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 		Workspace: workspace,
 		Title:     title,
 		Brief:     request.task,
-		Slots:     request.slotsOrDefault(),
+		Slots:     request.slotsFor(settings.ProfileDir),
 		Limits:    limits,
 		Factory: runengine.CrewFactory(store, workspace, settings.ProfileDir, runengine.Seats{
 			Work:  seats.Work.Model,

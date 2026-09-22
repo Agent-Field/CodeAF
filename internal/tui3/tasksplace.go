@@ -165,6 +165,12 @@ type tasksMineRow struct {
 	entry session.TaskIndexEntry
 	runs  bool
 	live  *session.TaskStatus
+	// planTask is WHICH TASK OF THE RUN'S PLAN STORE this row is, when the row
+	// is one the run's door published ([taskNode.planTask]). It rides the row
+	// rather than the entry because it is a fact about the LIVE row and not
+	// about the project's record: the index has never carried a store id and a
+	// row written to it would be claiming one for work whose store has gone.
+	planTask string
 }
 
 // tasksReading is everything drawing and routing need from one world reading.
@@ -262,6 +268,14 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
 	r := tasksReading{win: win.Normalized(), seen: seen, now: now, summaryNow: strings.TrimSpace(mine.now), tilde: mine.tilde, order: by}
+	// THE ROWS THE RUN'S STORE ANSWERS FOR ARE TAKEN OUT FIRST, before anything
+	// reads them: they are drawn as the store's own plan rows below, and this is
+	// the one line that keeps the pair from being drawn twice or drawn as the
+	// wrong half (taskplan.go's [planStoreDraws] says which half and why). It is
+	// done here rather than in either loop so the title dedupe further down sees
+	// the same set of rows the page does — a run's row left in the name set
+	// would hide its own plan row.
+	mine.rows = planStoreDraws(mine.rows, mine.plan)
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.

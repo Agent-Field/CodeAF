@@ -114,6 +114,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("a_refused_task_proposal_draws_no_schema_sentence", testRefusedTaskProposal)
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
 	t.Run("TaskOnTheRunEngine", testTaskOnTheRunEngine)
+	t.Run("TaskOnTheDefaultBelt", testTaskOnTheDefaultBelt)
 }
 
 // testPlainLaunchConnectionsAndHarnesses is the engine-road regression: the
@@ -2232,15 +2233,17 @@ func waitForRecord(t *testing.T, home string, within time.Duration) string {
 // place that moves with the store's own state, and the page that row opens,
 // whose trajectory is the worker's record of every command it ran.
 //
-// THE BELT IS ASKED FOR IN THE BINARY'S OWN ENVIRONMENT. CODEAF_TASK_BELT=bash
-// is the one switch that makes the door take the run road at all (internal/run's
-// engine is linked and registered for it, cmd/codeaf/runwire.go); with the
-// variable unset the same `/task` starts an ordinary node of this session's
-// tree, which the roster subtests already read. [startWithEnv] is how this suite
-// hands a variable to the launched process.
+// THE BELT IS NAMED IN THE BINARY'S OWN ENVIRONMENT. The harness is the
+// default, and this subtest still says CODEAF_TASK_BELT=bash outright, for the
+// reason [start] says `node`: a scenario that names its road keeps testing that
+// road when the default moves. The default itself — that a `/task` with the
+// variable absent takes this same road — is what [testTaskOnTheDefaultBelt]
+// proves, on the same screens, with no word given. `node`, `legacy` and `off`
+// are the words that send the same `/task` to an ordinary node of this
+// session's tree instead, which the roster subtests read.
 //
 // IT COSTS A FEW CENTS AND LANDS IN ABOUT THIRTY SECONDS, the shape and the
-// price [testStatesDone] pays for the same brief on the shipped belt.
+// price [testStatesDone] pays for the same brief on the node belt.
 //
 // THE STATE WORD IS READ OFF THE ROW AND NOT OFF THE SCREEN. The place files its
 // rows under headings that are state words themselves — everything working stands
@@ -2249,11 +2252,29 @@ func waitForRecord(t *testing.T, home string, within time.Duration) string {
 // care [statesHeadLine] takes on a landing card, spent on a row of the list
 // ([planRowWearing]).
 func testTaskOnTheRunEngine(t *testing.T) {
+	taskOnTheRunEngine(t, "afe2e_task_run", "CODEAF_TASK_BELT=bash")
+}
+
+// testTaskOnTheDefaultBelt is the one scenario in this suite that launches the
+// binary with NO belt word and asserts the road it takes. It is the only thing
+// here that tests the default: every other scenario names its road, so the
+// default could move without one of them noticing, and it did, twice, in
+// #1335 and #1340. [startWithEnv] drops the runner's own variable before the
+// child starts, so absent here means absent in the process and not merely
+// unmentioned by the test.
+func testTaskOnTheDefaultBelt(t *testing.T) {
+	taskOnTheRunEngine(t, "afe2e_task_default")
+}
+
+// taskOnTheRunEngine is the body the two subtests above share: launch with the
+// key and whatever belt words the caller names, put one `/task` on the run
+// engine, and read the run off the tasks place, the plan page and the thread.
+func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	home := newHome(t, nil)
 	ws := newWorkspace(t, "runws", false)
 	r := startWithEnv(t,
-		[]string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_TASK_BELT=bash"},
-		"afe2e_task_run", home, ws, tuiWide, 45, "chat", "--one-model")
+		append([]string{config.APIKeyEnv + "=" + liveKey(t)}, beltWords...),
+		rigName, home, ws, tuiWide, 45, "chat", "--one-model")
 	r.skipSetup(t)
 
 	// runRowWord is the run's own words on the tasks place, and one word of the
@@ -2275,9 +2296,8 @@ func testTaskOnTheRunEngine(t *testing.T) {
 	// store saying a task is deliverable and a worker has it — both read as work
 	// in flight, and a task whose root has landed reads done.
 	openTasksPlace(t, r)
-	running := r.waitFor(40*time.Second, say(t, "planRunningWord"))
+	running := planRowWaitsToWear(t, r, 40*time.Second, runRowWord, say(t, "planRunningWord"))
 	t.Logf("the run on the tasks place, while a worker holds its task:\n%s", running)
-	planRowWearing(t, running, runRowWord, say(t, "planRunningWord"))
 
 	// ── the page mid-run: the live step at the live edge ────────────────────
 	//
@@ -2288,22 +2308,40 @@ func testTaskOnTheRunEngine(t *testing.T) {
 	// taskPlanBody). It is read here, before the root lands, because the live step
 	// is gone the moment its command ends — the page after the landing is the
 	// settled page the section below reads.
+	//
+	// AND THE CURSOR IS MOVED ONTO THE ROW FIRST ([tasksPlaceRunRow]). Enter on
+	// the conversation row is the door into the conversation and always was, so
+	// a press made without this one read the chat and said nothing about a plan
+	// page at all — and passed, because the mark it waits for is drawn on the
+	// conversation too.
+	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	live, sawLive := r.glimpse(20*time.Second, say(t, "planLiveGlyph"))
-	if !sawLive {
-		t.Fatalf("the plan page open on a running task never drew its live step (%q beside the "+
-			"command):\n%s", say(t, "planLiveGlyph"), r.capture())
+	// THE PAGE COMING UP IS THE ASSERTION AND THE LIVE STEP IS AN OBSERVATION,
+	// and the two are separated here because only one of them is a fact about
+	// the surface. That the press over the row opens the STORE'S page rather
+	// than a room is true every time, and the page's own note box says it is
+	// the page. Which command a worker happens to be part-way through when the
+	// key lands is a moment: this brief is four steps and about half a minute,
+	// so a page opened a second after the last one ends is an honest page of a
+	// task that has finished — [rig.glimpse]'s own bargain, which never fails
+	// on a thing that is only on screen while work runs. Asserting it made a
+	// red out of a fast run and said nothing about any defect.
+	page := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"))
+	t.Logf("the page the press over the run's row opened:\n%s", page)
+	if live, sawLive := r.glimpse(15*time.Second, say(t, "planLiveGlyph")); sawLive {
+		if !strings.Contains(live, say(t, "planLiveClockWord")) {
+			t.Errorf("the plan page's live line has no clock under it (%q):\n%s",
+				say(t, "planLiveClockWord"), live)
+		}
+		t.Logf("the plan page mid-run, carrying the live step:\n%s", live)
+	} else {
+		t.Logf("the run finished before a live step could be caught on the page, which is this " +
+			"brief on a fast worker and not a defect")
 	}
-	if !strings.Contains(live, say(t, "planLiveClockWord")) {
-		t.Errorf("the plan page's live line has no clock under it (%q):\n%s",
-			say(t, "planLiveClockWord"), live)
-	}
-	t.Logf("the plan page mid-run, carrying the live step:\n%s", live)
 	r.keys("Escape")
 
-	done := r.waitFor(runPatience, say(t, "planDoneWord"))
+	done := planRowWaitsToWear(t, r, runPatience, runRowWord, say(t, "planDoneWord"))
 	t.Logf("the run on the tasks place once its root landed:\n%s", done)
-	planRowWearing(t, done, runRowWord, say(t, "planDoneWord"))
 
 	// ── the landing, in the thread ──────────────────────────────────────────
 	//
@@ -2328,20 +2366,29 @@ func testTaskOnTheRunEngine(t *testing.T) {
 	// command the worker ran, and the run's own finish among them. `esc` backs out
 	// one layer to the list, the card's own bargain.
 	openTasksPlace(t, r)
+	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	// glimpse AND NOT waitFor, BECAUSE THE PAGE NOT COMING UP IS NOT A TIMEOUT. A
-	// wait that ran out would report a screen the suite never saw and leave the
-	// reader to work out which of two pages answered the key; the answer is a fact
-	// about the row that was under the cursor, and it is said as one.
-	page, saw := r.glimpse(40*time.Second, say(t, "planFinishCommand"))
-	if !saw {
-		t.Fatalf("Enter over the run's row never opened the store's plan page, so no screen this suite "+
-			"can reach carries the %q line its worker finishes with. The row under the cursor is the "+
-			"run's node row and not its plan row — planRowWearing says why — and a node row opens a "+
-			"room, which the engine holds no node for, so it is empty. The screen after Enter was:\n%s",
-			say(t, "planFinishCommand"), r.capture())
+	// THE PAGE IS READ BY TWO OF ITS OWN WORDS, and neither is the model's. The
+	// note box stands on this page and on nothing else, and the head's figures
+	// are the store's count of the steps its worker took and what they cost —
+	// so the pair says the press opened THE STORE'S PAGE and not the room a
+	// record row opens, which is the whole of what this scenario came to prove.
+	//
+	// WHICH COMMANDS ARE ON IT IS THE WORKER'S BUSINESS. The finish is the
+	// worker's own `plandb done` when the worker writes one, and the RUN's when
+	// it does not (internal/run's worker.go), and a brief this small on a fast
+	// model is regularly the second — measured twice on this lane, where the
+	// page carried `echo`, `cat` and the run's own ending note. So the finish
+	// command is observed and logged, never waited out: asserting it made a red
+	// out of a model's choice and said nothing about the surface.
+	stored := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"), say(t, "planStepsSpend"))
+	t.Logf("the page the run's row opens, with the store's own figures on it:\n%s", stored)
+	if finish, saw := r.glimpse(5*time.Second, say(t, "planFinishCommand")); saw {
+		t.Logf("and this worker wrote its own finish into the trajectory:\n%s", finish)
+	} else {
+		t.Logf("this worker left the ending to the run, so no %q step is on the page",
+			say(t, "planFinishCommand"))
 	}
-	t.Logf("the plan page, carrying the worker's own finish command:\n%s", page)
 	r.keys("Escape")
 	back := r.waitFor(30*time.Second, say(t, "planDoneWord"))
 	t.Logf("esc backed out of the page to the list:\n%s", back)
@@ -2358,10 +2405,59 @@ func openTasksPlace(t *testing.T, r *rig) {
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
 	time.Sleep(700 * time.Millisecond)
-	// THE FOLD IS OPENED UNDER THE CURSOR. The place groups its rows by
-	// conversation and opens every group shut, so the run's row is not drawn until
-	// its conversation is unfolded.
+	// THE FOLD IS OPENED UNDER THE CURSOR, AND THE PRESS IS WAITED OUT. The place
+	// groups its rows by conversation and opens every group shut, so the run's row
+	// is not drawn until its conversation is unfolded — and a `→` that reached the
+	// program before the place was up is a key nothing answered, which left the
+	// page holding no row for the work at all. The foot says which way the fold
+	// is, so both halves of the gesture are read off the screen rather than slept
+	// through: measured on two runs of one binary, one opened and one did not.
+	r.waitFor(30*time.Second, say(t, "tasksFoldShutWord"))
 	r.keys("Right")
+	r.waitFor(30*time.Second, say(t, "tasksFoldOpenWord"))
+}
+
+// planRowWaitsToWear polls until the run's OWN ROW on the tasks place wears this
+// state word, and answers the screen it was read on.
+//
+// IT IS A WAIT ON THE ROW AND NOT ON THE SCREEN, which is this scenario's own law
+// ([planRowWearing]) spelled as a wait rather than only as an assertion. The
+// place files its rows under headings that are state words themselves, so a
+// screen-wide wait returns the instant a HEADING says `running` — which on a real
+// screen can be before the store's own read has landed and before the fold has
+// opened, and the assertion then reads whichever line happens to carry the title.
+// Two runs of one binary split on exactly that: one read the row and passed, the
+// next read the side list's line and failed.
+func planRowWaitsToWear(t *testing.T, r *rig, within time.Duration, words, state string) string {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		screen := r.capture()
+		if tasksRowWearing(screen, words, state) != "" {
+			return screen
+		}
+		if time.Now().After(deadline) {
+			// THE RED IS THE ASSERTION'S OWN, so a row wearing the wrong word reads
+			// as what that means and not as a timeout.
+			planRowWearing(t, screen, words, state)
+			return screen
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+// tasksPlaceRunRow steps the cursor off the conversation group and onto the
+// first row inside it, which is the run's own.
+//
+// THE PLACE SELECTS THE CONVERSATION FIRST and `enter` over that row opens the
+// conversation ([app.openConversationRow]), which is not a mistake in the
+// surface: a group row's door is the group. So a press over a piece of work is
+// a press over the row, and the walk down onto it is part of the gesture —
+// the same `↓` [testStatesDone] takes before it reads a task's own door.
+func tasksPlaceRunRow(t *testing.T, r *rig) {
+	t.Helper()
+	r.keys("Down")
+	time.Sleep(400 * time.Millisecond)
 }
 
 // tasksRowOf is the one line of the tasks place carrying these words, or "" when
@@ -2374,6 +2470,26 @@ func openTasksPlace(t *testing.T, r *rig) {
 func tasksRowOf(screen, words string) string {
 	for _, line := range strings.Split(screen, "\n") {
 		if row := strings.TrimSpace(line); strings.Contains(row, words) {
+			return row
+		}
+	}
+	return ""
+}
+
+// tasksRowWearing is the one line of the tasks place carrying these words AND
+// this state word, or "" when no line carries both.
+//
+// IT IS BOTH WORDS ON ONE LINE AND NOT THE FIRST LINE WITH THE TITLE. At the
+// width this suite runs the place draws the record pane beside the list, on the
+// same rows, and the pane LEADS WITH THE SELECTED ROW'S OWN TITLE — so the first
+// line carrying the work's name is the pane's heading, which wears no state at
+// all. A search that stopped there read `⌕ type to filter … │ write HELLO.md …`
+// off a screen whose row said `done · 4 steps · $0.03` two lines below, and
+// reported the row as bare.
+func tasksRowWearing(screen, words, state string) string {
+	for _, line := range strings.Split(screen, "\n") {
+		row := strings.TrimSpace(line)
+		if strings.Contains(row, words) && strings.Contains(row, state) {
 			return row
 		}
 	}
@@ -2395,6 +2511,9 @@ func tasksRowOf(screen, words string) string {
 // Enter over that row opens a room the engine holds no node for.
 func planRowWearing(t *testing.T, screen, words, state string) string {
 	t.Helper()
+	if row := tasksRowWearing(screen, words, state); row != "" {
+		return row
+	}
 	row := tasksRowOf(screen, words)
 	if row == "" {
 		t.Errorf("the tasks place draws no row for the run (%q), so nothing on it can wear %q:\n%s",
@@ -2403,9 +2522,11 @@ func planRowWearing(t *testing.T, screen, words, state string) string {
 	}
 	if !strings.Contains(row, state) {
 		t.Errorf("the run's row does not wear %q, so the row the place drew is not the store's plan "+
-			"row: planRowShown (internal/tui3/taskplan.go) drops a plan row whose title a node row of "+
-			"this conversation already wears, and the run's door publishes its own row with the store "+
-			"root's title on it. The row drawn is the node's, in the engine's own word:\n\t%s", state, row)
+			"row. The run's door publishes a row for work the graph holds no node for and says which "+
+			"store task it is (session's TaskNotice.PlanTask); the place takes those rows out by that "+
+			"identity and draws the store's own (internal/tui3's planStoreDraws). A row wearing the "+
+			"engine's `working` instead is the node half, which means the identity did not join — it is "+
+			"dropped on the way, or the two ends spell the store id differently:\n\t%s", state, row)
 	}
 	return row
 }
