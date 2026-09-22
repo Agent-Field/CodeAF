@@ -32,7 +32,7 @@ import (
 // the turn to end. They differ in WHO IS HOLDING IT WHILE IT WAITS, and
 // everything a person can do about it follows from that: a parked message is
 // still theirs — it can be edited, taken back with ↑, or sent at once by
-// stopping the turn it was typed over (`esc`, or `ctrl+shift+enter` as one gesture,
+// stopping the turn it was typed over (`ctrl+shift+enter` as one gesture,
 // bargein.go) — while a follow-up is in the session with no take-backs, and is
 // DROPPED when the turn it was queued behind is interrupted, because a drain
 // never restarts a turn the person stopped ([app.dropFollows]).
