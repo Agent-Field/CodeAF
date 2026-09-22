@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -1803,3 +1804,40 @@ const (
 	glyphHarness      = "◆"
 	glyphHarnessASCII = "#"
 )
+
+// workLogoCell resolves raster coverage through the current reading palette.
+// Empty halves leave the terminal's background alone; measured truecolour
+// grounds permit soft edges, while 256-colour terminals keep crisp silhouettes.
+func (p palette) workLogoCell(cell tokens.WorkLogoCell) string {
+	color := func(c tokens.WorkLogoInk) (hue, bool) {
+		coverage := c.Ink + c.Gold
+		if coverage < .12 {
+			return hue{}, false
+		}
+		h := p.ramp.ink
+		if c.Gold > c.Ink {
+			h = p.ramp.warn
+		}
+		if p.profile == tokens.TrueColor && p.measured {
+			channel := func(ground, ink, gold uint8) uint8 {
+				return uint8(math.Round(float64(ground)*(1-coverage) + float64(ink)*c.Ink + float64(gold)*c.Gold))
+			}
+			h.r = channel(p.ground.r, p.ramp.ink.r, p.ramp.warn.r)
+			h.g = channel(p.ground.g, p.ramp.ink.g, p.ramp.warn.g)
+			h.b = channel(p.ground.b, p.ramp.ink.b, p.ramp.warn.b)
+		}
+		return h, true
+	}
+	top, hasTop := color(cell.Top)
+	bottom, hasBottom := color(cell.Bottom)
+	switch {
+	case !hasTop && !hasBottom:
+		return " "
+	case !hasTop:
+		return p.paint(tokens.WorkLogoLowerBlock, bottom)
+	case !hasBottom:
+		return p.paint(tokens.WorkLogoHalfBlock, top)
+	default:
+		return p.background(p.paint(tokens.WorkLogoHalfBlock, top), 1, bottom)
+	}
+}

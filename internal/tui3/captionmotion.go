@@ -28,7 +28,7 @@ const (
 // bell reaches ordinary answer ink only at its crest. Measuring whole graphemes
 // in terminal cells keeps accents and joined emoji intact under the highlight.
 func (a *app) shimmer(text string) string {
-	if text == "" || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor {
+	if text == "" || a.anyWorkLogoVisible() || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor {
 		return a.pal.narr(text)
 	}
 	// A turn supplies a stable origin when it has one. Rooms can run while the
