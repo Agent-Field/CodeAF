@@ -313,10 +313,13 @@ var (
 // and the page say the same words — and notice_test.go holds the page to every
 // line here, so the table cannot say a thing the manual does not.
 //
-// THIRTY-ONE ROWS, AND THE CUT WAS DELIBERATE. A survey of the surface on
-// 2026-09-21 turned up forty-eight lines worth saying; these are the thirty
-// that teach a door a person cannot see from the box, and /project made
-// thirty-one when it became a command of its own on 2026-09-22. What was left out is
+// TWENTY-SIX ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
+// 2026-09-21 turned up forty-eight lines worth saying; thirty of those shipped,
+// /project made thirty-one when it became a command of its own on 2026-09-22,
+// and the owner's read of the whole list that same day took it to twenty-six:
+// `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off as rows the
+// foot or the tab bar already teaches, and the two lines about a running
+// answer became one. What was left out is
 // what the foot already names — `alt+p`, `alt+e`, `alt+a`, `alt+k`, `/` — and
 // the second spelling of anything already here. `/ shows every command` was a
 // row until both feet started saying `/ commands` outright (footswap.go).
@@ -405,7 +408,7 @@ var notices = []notice{
 	{
 		id: "at-completion", slot: slotHint,
 		armed:  ready,
-		text:   "@ completes a file, a folder or a task into your message",
+		text:   "type @ to quickly attach files in the current project",
 		retire: eventAtOpened,
 	},
 	{
@@ -430,15 +433,18 @@ var notices = []notice{
 		retire: eventProjectSet,
 	},
 	{
+		// THE ID OUTLIVED ITS OWN WORDS. The line named a picture until
+		// 2026-09-22 and names the browser now; the id may not change with it
+		// ([notice.id] says why), so it reads as a misnomer on purpose.
 		id: "attach-a-picture", slot: slotHint,
 		armed:  ready,
-		text:   "/attach takes a picture too, or paste a screenshot in",
+		text:   "/attach lets browse anywhere for files",
 		retire: eventAttached,
 	},
 	{
 		id: "export-the-conversation", slot: slotHint,
 		armed:  func(a *app) bool { return a.turn >= 2 },
-		text:   "/export writes this whole conversation to a file",
+		text:   "/export writes the current conversation to a file",
 		retire: eventDeliverableMade,
 	},
 	// ── models, thinking and cost ───────────────────────────────────────────
@@ -457,26 +463,19 @@ var notices = []notice{
 	{
 		id: "budget-cap", slot: slotHint,
 		armed:  ready,
-		text:   "/budget caps what today may cost",
+		text:   "/budget sets the spending cap for the day",
 		retire: eventBudgetShown,
-	},
-	{
-		id: "spend-place", slot: slotHint,
-		armed:  ready,
-		text:   "alt+3 shows what this machine has spent, by the day",
-		retire: eventSpendOpened,
 	},
 	// ── steering a running answer ───────────────────────────────────────────
 	{
-		id: "steer-with-enter", slot: slotHint,
+		// ONE LINE FOR THE TWO THINGS A KEY DOES OVER A RUNNING ANSWER, since
+		// 2026-09-22: `steer-with-enter` and `queue-with-ctrl-q` were a row
+		// each and the owner folded them together. It is a NEW id and not
+		// either of theirs, because a person who retired one of the pair has
+		// not been told the other half ([notice.id]).
+		id: "steer-and-queue", slot: slotHint,
 		armed:  spoken,
-		text:   "enter while an answer is coming stops it and steers",
-		retire: eventSteered,
-	},
-	{
-		id: "queue-with-ctrl-q", slot: slotHint,
-		armed:  spoken,
-		text:   "ctrl+q queues this message for after the current turn",
+		text:   "using enter stops and steers conversations, use ctrl+q to queue",
 		retire: eventQueued,
 	},
 	// ── moving around ───────────────────────────────────────────────────────
@@ -486,12 +485,6 @@ var notices = []notice{
 		text:   "ctrl+t starts a fresh chat in this folder",
 		retire: eventChatStarted,
 	},
-	{
-		id: "place-chords", slot: slotHint,
-		armed:  ready,
-		text:   "alt+1 to alt+7 jump straight to a place",
-		retire: eventPlaceJumped,
-	},
 	// ── memory, accounts and the rest ───────────────────────────────────────
 	{
 		id: "remember-one-thing", slot: slotHint,
@@ -500,21 +493,9 @@ var notices = []notice{
 		retire: eventRemembered,
 	},
 	{
-		id: "search-place", slot: slotHint,
-		armed:  ready,
-		text:   "/search finds anything ever said on this machine",
-		retire: eventSearchOpened,
-	},
-	{
-		id: "subharness-list", slot: slotHint,
-		armed:  ready,
-		text:   "/subharness lists the programs you can run",
-		retire: eventSubharnessOpened,
-	},
-	{
 		id: "connect-accounts", slot: slotHint,
 		armed:  ready,
-		text:   "/connect links Google, Slack or another model service",
+		text:   "/connect links Notion, Slack and other services",
 		retire: eventConnectOpened,
 	},
 	{

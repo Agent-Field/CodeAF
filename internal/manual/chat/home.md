@@ -1388,7 +1388,7 @@ The double-space binding has been removed. Spaces type normally in message boxes
 
 The one dim line directly above the rule over home's box is a **tip**: one sentence naming a
 key or a command you have not used yet, and what it does — `/ask answers right here without
-opening a conversation`, `alt+1 to alt+7 jump straight to a place`. It is drawn only while
+opening a conversation`, `ctrl+t starts a fresh chat in this folder`. It is drawn only while
 the box is empty and nothing else is up, it moves on to the next tip every time you come to
 home and every two minutes at rest, and each tip goes away for good the first time you do
 what it names. It sits at the right, led by a bulb and closed by a small cross: clicking it

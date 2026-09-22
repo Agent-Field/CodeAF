@@ -6,7 +6,7 @@ The dim sentence directly above the rule over your message box, led by a bulb an
 by a small cross — `💡 ctrl+. sees every task this project has run ✕` — is a **tip**: one
 line naming a key or a command you have not used yet, and what it does. It reads the way
 every hint on this surface does: the key or the command first, then what it does. Home has
-the same row over its own box, and the two rows draw from **one list** of thirty-one tips
+the same row over its own box, and the two rows draw from **one list** of twenty-six tips
 (below).
 
 **In a conversation the row appears only once you have been quiet for a minute** — no key
@@ -92,7 +92,7 @@ later when the ring comes round. It jumps once and then takes its turn like the 
 
 ## Every hint codeaf can show, and what makes each one go away
 
-There are thirty-one, one list for both boxes. Each one says the moment it first appears
+There are twenty-six, one list for both boxes. Each one says the moment it first appears
 and the gesture that retires it. The list is the program's own table (the surface refuses to
 build if the two disagree), so a tip you saw is on it word for word.
 
@@ -126,7 +126,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Files and context**
 
-- `@ completes a file, a folder or a task into your message` — retired when the `@` list
+- `type @ to quickly attach files in the current project` — retired when the `@` list
   opens.
 - `/attach sends a file along with your message` — retired when a file goes on the tray by
   path or the file browser opens.
@@ -135,9 +135,9 @@ build if the two disagree), so a tip you saw is on it word for word.
   after it or on the browser it opens.
 - `/folder picks the folder codeaf works in` — retired when the folder chooser opens, from
   a conversation or aimed at home's target.
-- `/attach takes a picture too, or paste a screenshot in` — retired by the same gesture as
+- `/attach lets browse anywhere for files` — retired by the same gesture as
   the other `/attach` tip.
-- `/export writes this whole conversation to a file` — after two exchanges. Retired when
+- `/export writes the current conversation to a file` — after two exchanges. Retired when
   an export lands.
 
 **Models, thinking and cost**
@@ -146,36 +146,34 @@ build if the two disagree), so a tip you saw is on it word for word.
   opens, over a conversation or over home's draft.
 - `/crew sets the models codeaf uses on its own behalf` — retired when `/crew` answers,
   bare or with a preset.
-- `/budget caps what today may cost` — retired when `/budget` answers.
-- `alt+3 shows what this machine has spent, by the day` — retired when the spend place
-  opens by any door.
+- `/budget sets the spending cap for the day` — retired when `/budget` answers.
 
 **Steering a running answer**
 
-- `enter while an answer is coming stops it and steers` — after the first exchange.
-  Retired the first time you steer.
-- `ctrl+q queues this message for after the current turn` — after the first exchange.
-  Retired the first time you queue one.
+- `using enter stops and steers conversations, use ctrl+q to queue` — after the first
+  exchange. Retired the first time you queue a message. It was two rows until 2026-09-22
+  — one for the steer and one for the queue — and the owner folded them into one.
 
 **Moving around**
 
 - `ctrl+t starts a fresh chat in this folder` — retired when the new-chat page opens.
-- `alt+1 to alt+7 jump straight to a place` — retired the first time a place chord reaches
-  one.
 
 **Memory, accounts and the rest**
 
 - `/remember keeps one thing across conversations` — retired when `/remember` is typed.
-- `/search finds anything ever said on this machine` — retired when the search place opens
-  by any door.
-- `/subharness lists the programs you can run` — retired when `/subharness` is typed, bare
-  or with a name.
-- `/connect links Google, Slack or another model service` — retired when the connect panel
+- `/connect links Notion, Slack and other services` — retired when the connect panel
   is reached for.
 - `/autonomy sets how questions are handled while you are away` — after the first
   exchange. Retired when `/autonomy` is typed, bare or with a rule. (It took the seat
   `ctrl+b freezes the screen so you can read and copy from it` held for one build on
   2026-09-22, and `ask for a picture, a voiceover, music or a video` before that.)
+
+**Four rows came off on 2026-09-22**, on the owner's read of the whole list: `alt+3 shows
+what this machine has spent, by the day`, `alt+1 to alt+7 jump straight to a place`,
+`/search finds anything ever said on this machine` and `/subharness lists the programs you
+can run`. All four name doors the tab bar or the `/` list already puts in front of you,
+which is the same argument that kept `alt+p`, `alt+e` and `/` off the list in the first
+place. The features are unchanged; only the tips about them are gone.
 
 Unless a line above says otherwise, a tip is true from the first minute on home and after
 the first exchange in a conversation.
