@@ -1,8 +1,9 @@
 # Delegates — handing a task to an outside harness — DESIGN (draft)
 
-*2026-09-21, written against `dev @ 17ae56d34` and `swe-pro-go @ 4c3084f`
-(branch `zeropoint95/improvements`). Status: a draft for discussion. Nothing
-here is built.*
+*2026-09-21, written against `dev @ 17ae56d34` and `swe-pro-go @ f3b9716`
+(branch `zeropoint95/improvements`, PR #30). Status: a draft for discussion.
+Nothing here is built on the codeaf side; the two swe-pro changes it asked for
+have landed.*
 
 ## The one sentence
 
@@ -160,7 +161,7 @@ Two things codeaf does **not** ask, and says so on the page:
   "argv": ["run", "--dir", "{{workspace}}",
            "--max-cost", "{{cost_usd}}", "--max-hours", "{{hours}}",
            "--", "{{brief}}"],
-  "env": { "OPENROUTER_API_KEY": "{{key:openrouter}}", "SWE_PRO_CP_URL": "off" },
+  "env": { "OPENROUTER_API_KEY": "{{key:openrouter}}" },   // no plane needed: swe-pro runs standalone
   "reader": "swe-pro",                               // which stream reader (below)
   "limits": { "cost": true, "elapsed": true, "steps": false, "questions": false }
 }
@@ -186,7 +187,7 @@ are Go, in the binary, one per stream shape; a manifest names one. Two ship:
 | --- | --- |
 | `stage`/`status` compact records | the live step (`implement · running`, `verification · pass`) and one trajectory line each |
 | `message.part.updated` with `part.type == "tool"` reaching `completed`/`error` | a trajectory step: the tool and its command, the observation head; `Steps` counts these |
-| `message.updated` for an assistant message with `cost` | banked spend: the sum over completed assistant messages, monotonic |
+| `stage == "spend"`, `status == "recorded"` | banked spend: `data.cost_usd`, cumulative for the whole run and non-decreasing, one per completed assistant message (coder and compaction). NEVER sum `cost` off `message.updated`: an assistant message is written more than once and a naive sum double-counts, which is why this record exists |
 | `terminal` | the `Report`: `Result` from `message` plus `data.reason` and `data.submission_reason`; `USD` from `data.cost_usd`; the outcome word from `status` |
 | process exit with no terminal read | `ran and did not finish`, with the last stage seen in the result |
 
@@ -260,26 +261,29 @@ specified well enough that nobody will be asked anything* — and the model
 proposes it on the same card `/task` shows, with `swe-pro` named on the card,
 so the person still answers before money moves.
 
-## What has to change in swe-pro
+## What swe-pro changed for this (landed 2026-09-21, `f3b9716`, PR #30)
 
-These are on the swe-pro side, and none of them is codeaf's to work around.
+1. **The control plane is optional.** A reachable plane is mirrored onto as
+   before; an unreachable one costs one stderr line —
+   `[swe-pro] no AgentField control plane at <url> (…); running standalone,
+   events go to stdout only` — and the run proceeds. The `run-contract` record
+   carries `"control_plane": {"enabled": false, "url": "<probed url>"}`.
+   `swe-pro serve` still requires a plane, which is right: serve is a node.
+   The manifest therefore sets no `SWE_PRO_CP_*` variable at all.
+2. **A live spend record.** `{"type":"stage","stage":"spend","status":"recorded","data":{"cost_usd":0.0213},…}`,
+   one per completed assistant message, cumulative and non-decreasing,
+   compaction included. `agent-summary` and `terminal` still carry the
+   authoritative end-of-run totals; `spend` is the one the live limit reads.
+3. **No question road.** Decided: a delegate does not ask. swe-pro keeps
+   auto-rejecting `question`, and the manual page says the brief has to be
+   self-sufficient.
 
-1. **The control plane becomes optional.** `swe-pro run` refuses to start
-   without an AgentField control plane answering `/health`; the message says
-   "cannot be used standalone". A codeaf user has no plane. The owner's
-   direction (2026-09-21): mirror onto a plane when one answers, run without
-   one when none does, one stderr note either way. The seam already exists —
-   the `injected` backend path tolerates a failed probe and continues with the
-   plane disabled. Asked of the `swe-pro finalize` session on 2026-09-21.
-2. **Cost as a compact record.** Live cost is today only recoverable by summing
-   `message.updated` assistant `cost` fields. A `{"type":"spend","cost_usd":…}`
-   compact record after each model request, cumulative, would make every
-   consumer's live limit exact and free the reader from the bus schema. Put
-   to the `swe-pro finalize` session as a question; the reader is written
-   against whichever answer comes back.
-3. **No question road.** Decided 2026-09-21: a delegate does not ask. swe-pro
-   keeps auto-rejecting `question`, and the manual page says the brief has to
-   be self-sufficient. `question.replied` stays a seam nobody uses.
+Checked by the swe-pro side against its code: the outcome table above holds,
+SIGTERM unwinds through the normal path and still writes the terminal record,
+and `--` before the goal parses. The model's claim (`submission_reason`,
+`submission_evidence`, `checklist_satisfied`) and swe-pro's own observation
+(`status`, `verification_failing`, `patch_bytes`) are separate fields and are
+never reconciled; "did it actually work" is the latter.
 
 ## What has to change in codeaf
 
