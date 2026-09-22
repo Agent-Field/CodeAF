@@ -163,3 +163,17 @@ func TestWorkingLogoUsesOneExistingStatusLine(t *testing.T) {
 		t.Fatal("indicator is not one line")
 	}
 }
+
+func TestWorkingLogoHeaderHasStaticBrandMark(t *testing.T) {
+	p := newPalette(tokens.TrueColor, false)
+	if got := ansi.Strip(p.wordmark(80)); got != ">● codeaf" {
+		t.Fatalf("wordmark: %q", got)
+	}
+	if ansi.StringWidth(p.wordmark(80)) != 9 {
+		t.Fatal("wordmark shifts header geometry")
+	}
+	p.ascii = true
+	if got := ansi.Strip(p.wordmark(80)); got != product {
+		t.Fatalf("ASCII fallback: %q", got)
+	}
+}

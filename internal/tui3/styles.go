@@ -1816,3 +1816,17 @@ func (p palette) workLogoCell(cell tokens.WorkLogoCell) string {
 	}
 	return p.paint(string(cell.Glyph), h)
 }
+
+// wordmark keeps the header recognizable without implying an idle app is busy.
+// Small and accessible terminals retain the plain product name.
+func (p palette) wordmark(width int) string {
+	name := p.bold(p.muted(product))
+	if width < 24 || p.ascii || p.linear || p.profile < tokens.ANSI256 {
+		return name
+	}
+	var mark strings.Builder
+	for _, cell := range tokens.WorkLogoMark() {
+		mark.WriteString(p.workLogoCell(cell))
+	}
+	return mark.String() + " " + name
+}

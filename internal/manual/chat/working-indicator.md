@@ -26,3 +26,9 @@ uses ordinary terminal characters; it needs no special font or image support.
 
 There is no new keyboard command to choose an animation. The choice is automatic;
 the component's named selections are available to application code.
+
+## What is the symbol beside codeaf at the top left?
+
+The small chevron and gold dot beside `codeaf` are the resting logo. They stay
+still in the header. Only the activity mark beside ongoing work animates. Narrow,
+ASCII and monochrome terminals keep the plain product name.
