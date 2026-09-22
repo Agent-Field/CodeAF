@@ -293,12 +293,17 @@ func TestHomesRuleShortensTheProjectAfterItsRoot(t *testing.T) {
 	if !strings.Contains(a.homeHint(), targetFolderKeyWord) {
 		t.Fatalf("the foot does not carry the folder chord:\n%s", a.homeHint())
 	}
-	// A long path keeps its root and yields its tail before the model.
+	// A long path keeps its root on the keys row and yields its tail to the
+	// keys; the rule carries the model and never the path (hometip.go).
 	a.target.where = "/tmp/" + strings.Repeat("nested/", 20)
 	narrow, drew := a.targetLegend(80, a.pal)
 	stripped := ansi.Strip(narrow)
-	if !drew || !strings.HasPrefix(stripped, "─ "+a.modelIdentity(a.model)) || !strings.Contains(stripped, "project: /tmp/") || !strings.Contains(stripped, "… ─") {
-		t.Fatalf("the model or project root was lost: %q", stripped)
+	if !drew || !strings.HasPrefix(stripped, "─ "+a.modelIdentity(a.model)) || strings.Contains(stripped, targetProjectLead) {
+		t.Fatalf("the model was lost or the project is still on the rule: %q", stripped)
+	}
+	foot := ansi.Strip(a.homeFootLine(80, a.pal))
+	if !strings.Contains(foot, "project: /tmp/") || !strings.HasSuffix(foot, "…") {
+		t.Fatalf("the keys row lost the project root or its ellipsis: %q", foot)
 	}
 }
 

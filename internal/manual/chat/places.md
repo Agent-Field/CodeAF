@@ -197,18 +197,22 @@ The line over home's box is the same shape as the line over a conversation's own
 box:
 
 ```
-─ glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser
+                              💡 /ask answers right here without opening a conversation ✕
+─ glm-5.3-flash:auto · ◇ asks ──────────────────────────────────────────────────────
 › type to search or start something new
-alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
+alt+p project · alt+e effort · alt+a approvals · / commands        project: ~/src/parser
 ```
 
 At the left it says **what model** answers, then a colon and **how hard it thinks**
 (the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
 approvals chip uses inside a conversation). The model is always bold and bright cyan,
-on home and in conversations. At the far right, `project: <path>` names where the
-next conversation opens; in a conversation it names that conversation's workspace.
-Long paths truncate on the right, and the field disappears if there is no room. The bottom row names the
-available project, effort and approval controls; the cells can also be pressed:
+on home and in conversations. In a conversation the seam's far right names that
+conversation's workspace; on home, `project: <path>` is at the right end of the **keys row
+under the box** instead, naming where the next conversation opens (it left the rule on
+2026-09-22). The keys keep their room: a long path truncates on the right, and the field
+disappears if there is less than a word of room. The dim line above the rule, when there is
+one, is a tip (see *hints and tips*). The bottom row names the available project, effort
+and approval controls; the cells can also be pressed:
 
 | cell | chord | or |
 |---|---|---|

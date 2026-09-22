@@ -3814,6 +3814,12 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	if a.homePhone() {
 		return a.homePhonePress(x, y)
 	}
+	// THE CROSS ON THE TIP ROW PUTS THE TIP AWAY (hometip.go). It is read
+	// first because its row carries no other door and moves no cursor.
+	if a.tipRow >= 0 && y == a.tipRow && a.tipCloseSpan.holds(x) {
+		a.noticeHomeDismiss()
+		return nil
+	}
 	// A CLICK MOVES THE CURSOR, so it is one of the two gestures that can leave
 	// a settled exchange behind ([app.sweepExchanges] is the other half of
 	// [app.homeKey]'s own deferred sweep).

@@ -1176,15 +1176,18 @@ your words. Use `/ask <question>` to ask in a home pane instead.
  alpha
  ○ Pricing Sheet Import                                                 2h
  ○ Pricing                                                             12m   ← one ↑
- ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
+ ─ glm-5.3-flash:auto · ◇ asks ───────────────────────────────────────
  › pricing
- alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
+ alt+p project · alt+e effort · alt+a approvals · / commands     project: ~/codeaf
 ```
 
-**Where it opens is on the rule above the box, and `enter` honours it.** That line reads
-`glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`: the model, effort and approvals
-start at the left, with `project: <path>` at the far right naming where the conversation will open.
-The effort word follows a colon with no badge. A long project path is cut on the right.
+**Where it opens is at the right end of the keys row under the box, and `enter` honours it.**
+The rule reads `glm-5.3-flash:auto · ◇ asks`: the model, effort and approvals start at the
+left, and the keys row under the box ends with `project: <path>`, right-justified, naming
+where the conversation will open (until 2026-09-22 the path stood at the rule's right).
+The effort word follows a colon with no badge. The keys keep their room: a long project
+path is cut on the right, one ellipsis, and goes entirely where the keys leave it less
+than a word.
 With nothing pinned the folder **follows the row your cursor is on** — walk onto another
 project's row and the rule re-points — and with nothing under the cursor it is this window's
 own project. `alt+p` pins it, `/model` pins the model, `alt+e` walks the rung and `alt+a`
@@ -1294,10 +1297,10 @@ files are still there, and the conversation you open shows them.
 ## Change the model before starting — /model on home, the seam above the box
 
 **The model the next conversation will answer on is written on the rule above home's box**,
-at the left: `z-ai/glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`.
+at the left: `z-ai/glm-5.3-flash:auto · ◇ asks`.
 Home and conversation seams both keep the complete model identifier, including the
 organization before `/`, for the current model or a model pinned for the next conversation.
-The project sits at the right edge of the seam. A long path
+The project sits at the right edge of the keys row under the box. A long path
 truncates at its right end before the project field disappears on narrow frames.
 With nothing pinned that is this window's own model. Two doors change it, and they are the
 same door:
@@ -1332,10 +1335,11 @@ on the pin — at which point it is an ordinary model switch, note and all.
 conversation, returning home, moving the cursor or clearing the box does not reset the
 selected project. A new window starts with its own default.
 
-**`alt+p` is the same gesture for the folder** — press it, or press the path on the rule, and
+**`alt+p` is the same gesture for the folder** — press it, or press the path at the right of
+the keys row, and
 the target walks through the projects in the panel's order, including projects with only
 standing work, and wraps after the last. Both controls share one selection, shown only
-as `project: <path>` on the seam. If `/folder` selected a destination outside the panel,
+as `project: <path>` at the right of the keys row. If `/folder` selected a destination outside the panel,
 the next cycle starts at its first project. With just one destination already selected,
 `alt+p project` is absent.
 
@@ -1383,9 +1387,10 @@ key or a command you have not used yet, and what it does — `/ask answers right
 opening a conversation`, `alt+1 to alt+7 jump straight to a place`. It is drawn only while
 the box is empty and nothing else is up, it moves on to the next tip every time you come to
 home and every two minutes at rest, and each tip goes away for good the first time you do
-what it names. The keys row at the very foot is not a tip and never changes. The whole list,
-what makes each one appear and disappear, and the **hints** row on the Display tab that
-turns them off, are on the *hints and tips* page.
+what it names. It sits at the right, led by a bulb and closed by a small cross a click puts
+it away with until your next visit. The keys row at the very foot is not a tip and never
+changes. The whole list, what makes each one appear and disappear, and the **disable hints**
+row on the Workspace tab that turns them off, are on the *hints and tips* page.
 
 ## What does pressing space twice do — space space does nothing now
 

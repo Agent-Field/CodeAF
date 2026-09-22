@@ -22,11 +22,14 @@ Home has a row of its own for the same tips, directly above the rule over its bo
 ## The dim sentence above the rule on home — the tip on home, what is that line over the box
 
 On home the tip is the dim row **directly above the rule** over the message box — the blank
-that separates the list from the rule, with one sentence written into it. It reads the way
-every tip does: the key or the command first, then what it does — `/ask answers right here
-without opening a conversation`, `alt+1 to alt+7 jump straight to a place`. The keys row at
-the very foot of home is not a tip and never changes: it names the row's options and the
-draft's chords (`→ options · alt+p project · alt+e effort · alt+a approvals · / commands`).
+that separates the list from the rule, with one sentence written into its right end, led
+by a bulb: `💡 /ask answers right here without opening a conversation ✕`. It reads the way
+every tip does: the key or the command first, then what it does. **The small cross after it
+puts the tip away** — click it and the row is blank until your next visit to home or the
+row's own two-minute turn brings the next tip; putting a tip away does not retire it. The
+keys row at the very foot of home is not a tip and never changes: it names the row's options
+and the draft's chords (`→ options · alt+p project · alt+e effort · alt+a approvals · /
+commands`) and ends with `project: <path>`, where the next conversation opens.
 
 It is there only while home is at rest: the box empty, no command list or model list up, no
 task or question open in the right pane. Type a letter and the row is blank again; clear
@@ -151,15 +154,18 @@ home nothing wins: every tip that is true for you has its turn, in the order abo
 `/ shows every command` used to be one of these. It is gone because both keys rows now say
 `/ commands` outright, so there was nothing left to teach.
 
-## Turn off hints — stop showing tips, disable the hints
+## Turn off hints — stop showing tips, disable the hints, the disable hints row
 
-Open the settings panel with `/settings` (or `ctrl+,`), go to the **Display** tab, and flip
-the **hints** row off. Enter or space toggles it. The change lands at the end of the next
-turn. Off silences the tips — in the conversation's keys row and on home's row alike — and
-the what's-new lines together; it does not touch the keys the slot names for a live state —
-`ctrl+c interrupt` and the rest are not hints and cannot be turned off.
+Open the settings panel with `/settings` (or `ctrl+,`), go to the **Workspace** tab, and flip
+the **disable hints** row on. Enter or space toggles it; it is off by default, which means
+the tips show. (Until 2026-09-22 it was a **hints** row on the Display tab, on by default.)
+The change lands at the end of the next turn. On silences the tips — in the conversation's
+keys row and on home's row alike — and the what's-new lines together; it does not touch the
+keys the slot names for a live state — `ctrl+c interrupt` and the rest are not hints and
+cannot be turned off. From the terminal, `codeaf config` shows the same row under the same
+name.
 
-Turning the row back on shows whatever is due. Tips you had already retired stay retired.
+Turning the row back off shows whatever is due. Tips you had already retired stay retired.
 
 ## What "news" lines are — what's new after an update
 
@@ -171,4 +177,4 @@ of the same build says nothing.
 
 There is nothing to announce yet, so no news line has ever been printed by this build. A
 first launch on a fresh profile says nothing either — nothing is new to somebody who never saw
-the older build. The **hints** row on the Display tab silences news lines along with the tips.
+the older build. The **disable hints** row on the Workspace tab silences news lines along with the tips.

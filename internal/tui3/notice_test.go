@@ -615,7 +615,7 @@ func TestTheHintsRowSilencesTheSlot(t *testing.T) {
 
 	a.openSettings()
 	for i, tab := range settingTabs {
-		if tab == tabDisplay {
+		if tab == tabWorkspace {
 			a.sheet.tab = i
 		}
 	}

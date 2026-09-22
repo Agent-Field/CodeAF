@@ -867,6 +867,11 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	//
 	// The resting row adds the available draft controls without navigation hints.
 	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
+	// THE PROJECT RIDES THE ROW'S RIGHT since 2026-09-22 (hometip.go), after
+	// the keys; the sentence under test is the keys.
+	if at := strings.LastIndex(rest, targetProjectLead); at >= 0 {
+		rest = strings.TrimSpace(rest[:at])
+	}
 	want := hintFit(dotted(homeOptionsWord, a.targetChordWords()), a.width-2)
 	if rest != want || strings.Contains(rest, "↑↓ pick") || strings.Contains(rest, "enter open") {
 		t.Fatalf("the resting hint reads %q, want %q", rest, want)

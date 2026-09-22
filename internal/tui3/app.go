@@ -2258,6 +2258,14 @@ type app struct {
 	targetHover      hoverKind
 	targetFolderSpan hudSpan
 	targetModelSpan  hudSpan
+	// footRow is which row of the frame home's keys row was drawn on — the
+	// row [targetFolderSpan] is on since the project moved down to it
+	// (hometip.go) — and tipRow is the tip row above the rule, with
+	// tipCloseSpan the columns of its cross. Both are -1 on a frame that
+	// drew neither.
+	footRow      int
+	tipRow       int
+	tipCloseSpan hudSpan
 	// targetEffortSpan and targetApprovalSpan are the rung's and the gate's
 	// columns on that same line — the draft's twins of [app.seamEffortSpan] and
 	// [app.seamApprovalSpan] (boxseam.go), recorded on the same bargain.

@@ -2230,10 +2230,11 @@ readings of what you type: a search of everything home shows, or the first messa
 new conversation. (Until 2026-09-17 the box said `› say what you want done` and the
 promise opened the foot.) **The rule above it is a legend on home and nowhere else**, and
 it says what the box is a draft *for*:
-`─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`
+`─ glm-5.3-flash:auto · ◇ asks ───`
 
-— the model, a colon and effort, then approvals at the left; the project the next
-conversation opens in sits at the far right. The arrow and effort badge are gone. A long
+— the model, a colon and effort, then approvals at the left. The project the next
+conversation opens in is `project: <path>` at the right end of the keys row under the box
+(it stood at the rule's right until 2026-09-22). The arrow and effort badge are gone. A long
 project path keeps its root and truncates on the right. The chords that change them are on **the line
 under the box**, with home's own keys, because the lowest line is for keys on home as in a
 conversation: `alt+p project` walks all projects in the projects panel's order, `alt+e effort`

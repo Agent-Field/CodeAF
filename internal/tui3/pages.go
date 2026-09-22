@@ -1405,8 +1405,19 @@ func placeFrameWithBar(a *app, width, height int,
 	// way — the foot is one height with a tip and without — and it is dim,
 	// one cell in, in the grammar every hint on this surface keeps: the key or
 	// the command, then what it does.
+	//
+	// IT IS RIGHT-ALIGNED, led by a bulb and closed by a cross (hometip.go's
+	// [app.homeTipLine]), and the cross's columns are recorded as the line is
+	// laid out, published below the clamp with the rule's own row.
+	tipTop := -1
+	a.tipCloseSpan = hudSpan{}
 	if tip := a.noticeHomeHint(); hasBox && tip != "" {
-		add(" "+pal.dim(fit(tip, width-2)), nil)
+		if line, span := a.homeTipLine(tip, width, pal); line != "" {
+			a.tipCloseSpan, tipTop = span, len(lines)
+			add(line, nil)
+		} else {
+			add("", nil)
+		}
 	} else {
 		add("", nil)
 	}
@@ -1533,6 +1544,10 @@ func placeFrameWithBar(a *app, width, height int,
 	default:
 		if msg, ok := a.placeMsgLine(width); ok {
 			add(msg, nil)
+		} else if hasBox {
+			// HOME'S KEYS ROW CARRIES THE PROJECT AT ITS RIGHT (hometip.go's
+			// [app.homeFootLine]): the keys first, and the path in what they leave.
+			add(a.homeFootLine(width, pal), nil)
 		} else {
 			add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
 		}
@@ -1574,11 +1589,28 @@ func placeFrameWithBar(a *app, width, height int,
 		case targetTop > 0:
 			targetTop = -1
 		}
+		// AND THE TIP ROW OVER IT, by the same arithmetic.
+		switch {
+		case tipTop >= 1+removed:
+			tipTop -= removed
+		case tipTop > 0:
+			tipTop = -1
+		}
 	}
 	a.boxRow, a.boxRows = boxTop, boxHeight
 	a.targetRow = targetTop
 	if targetTop < 0 {
 		a.clearTargetSpans()
+	}
+	a.tipRow = tipTop
+	if tipTop < 0 {
+		a.tipCloseSpan = hudSpan{}
+	}
+	// THE KEYS ROW IS THE LAST ROW, and the clamp keeps the last rows, so it
+	// is on every frame that has a box at all.
+	a.footRow = -1
+	if hasBox {
+		a.footRow = len(lines) - 1
 	}
 	for len(lines) < height {
 		add("", nil)

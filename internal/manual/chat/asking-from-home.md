@@ -7,9 +7,9 @@ from the command menu writes `/ask `, ready for your question, like `/task`. A b
 `/ask` waits for your words. An inline `/ask` tag works too.
 
 ```
- ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
+ ─ glm-5.3-flash:auto · ◇ asks ──────────────────────────────────────────────
  › /ask remind me at 6 to leave
- alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
+ alt+p project · alt+e effort · alt+a approvals · / commands     project: ~/codeaf
 ```
 
 Plain text followed by Enter starts a new conversation by default. Only search results

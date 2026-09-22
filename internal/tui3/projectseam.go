@@ -44,11 +44,12 @@ func seamModelPaint(pal palette, text string, hovered bool) string {
 // when the pointer leaves home or crosses onto the tab bar or another field.
 func (a *app) hoverDraftSeam(x, y int) {
 	next := hoverNothing
-	if a.placeHasDraft() && !a.composer.open && !a.target.pick.open && a.targetRow > 0 && y == a.targetRow {
+	if a.placeHasDraft() && !a.composer.open && !a.target.pick.open {
 		switch {
-		case a.targetModelSpan.holds(x):
+		case a.targetRow > 0 && y == a.targetRow && a.targetModelSpan.holds(x):
 			next = hoverStatusModel
-		case a.targetFolderSpan.holds(x):
+		case a.footRow > 0 && y == a.footRow && a.targetFolderSpan.holds(x):
+			// The path is on the keys row now (hometip.go).
 			next = hoverSeamProject
 		}
 	}

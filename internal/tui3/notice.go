@@ -640,6 +640,10 @@ type noticeBoard struct {
 	// homeAt is when home's row last changed hands, or zero when it never
 	// has; [homeHintEvery] is measured from it by the beat.
 	homeAt time.Time
+	// homeHidden is the cross on the row having been pressed: the tip standing
+	// is not drawn until the next rotation, which clears it. It is this
+	// session's and never the ledger's — putting a tip away is not using it.
+	homeHidden bool
 }
 
 // bareNoticeBoard is a board with nothing behind it: no ledger on disk, no
@@ -896,6 +900,7 @@ func (a *app) noticeHomeRotate() {
 		*b = bareNoticeBoard()
 	}
 	b.homeAdvance = true
+	b.homeHidden = false
 	if a.noticeFill(slotHome) {
 		b.save()
 	}
@@ -923,7 +928,7 @@ func (a *app) noticeHomeBeat() {
 func (a *app) noticeHomeHint() string {
 	b := &a.notices
 	id := b.current[slotHome]
-	if id == "" || !b.enabled || !a.noticeHomeQuiet() {
+	if id == "" || !b.enabled || b.homeHidden || !a.noticeHomeQuiet() {
 		return ""
 	}
 	for _, n := range notices {

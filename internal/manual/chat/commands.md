@@ -1750,8 +1750,7 @@ after" are written the way you would say them — `20m`, `4h`, `1h30m` — and `
 off.
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
-"input history", "keep drafts", "task column", "hints" — the one-line tips above the
-message box, and the what's-new lines with them (see *Hints and tips*) — "chat width",
+"input history", "keep drafts", "task column", "chat width",
 "mouse", "timestamps", "turn work". There is no "nerd font" or "linear mode" row: icons
 need no patched font anywhere on this surface, and the accessible single-column rendering
 is the `--linear` flag at launch rather than a persisted setting.

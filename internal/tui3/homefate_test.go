@@ -124,9 +124,10 @@ func TestFolderAtHomeBrowsesForTheTargetAndPinsIt(t *testing.T) {
 	if a.home.msg != "" {
 		t.Fatalf("the project selection added a footer message: %q", a.home.msg)
 	}
-	// THE RULE ABOVE THE BOX SAYS IT ON THE VERY NEXT FRAME.
-	if text := homeText(a); !strings.Contains(text, targetPathWord(a)) {
-		t.Fatalf("the rule does not name the folder that was just pinned:\n%s", text)
+	// THE KEYS ROW UNDER THE BOX SAYS IT ON THE VERY NEXT FRAME (hometip.go), read
+	// at a width where a temp-dir path is not cut.
+	if text := ansi.Strip(a.homeFootLine(400, a.pal)); !strings.Contains(text, targetPathWord(a)) {
+		t.Fatalf("the keys row does not name the folder that was just pinned:\n%s", text)
 	}
 	// AND NOTHING REACHED THE CONVERSATION BEHIND HOME. A pin is a decision about
 	// a conversation that does not exist yet.
