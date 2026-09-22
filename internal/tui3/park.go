@@ -1,10 +1,13 @@
 package tui3
 
 import (
+	"context"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE PARKED MESSAGE: what plain enter does while an answer is still coming.
@@ -23,10 +26,10 @@ import (
 // and it goes when the answer is finished — as a turn of its own, which is a
 // turn the model always answers. Held on the surface rather than handed to the
 // session is what makes the other things possible: it can still be edited or
-// taken back, and esc can drop it together with everything else waiting.
+// taken back, and a conversation switch can keep it with the turn it follows.
 //
 //	enter    park it. The answer keeps streaming, the box is clear again.
-//	esc      stop the answer and drop what is parked.
+//	ctrl+c   stop the answer and drop what is parked.
 //	↑        with an empty box, pull the parked message back in to edit it.
 //	click    the same, on the block itself.
 //
@@ -55,6 +58,10 @@ type parked struct {
 	text   string
 	chips  []chip
 	pastes []pasteChip
+	// sending belongs only to the oldest message while a held conversation's
+	// submit is crossing back to the surface. It prevents a return during that
+	// crossing from treating the same message as unsent and sending it twice.
+	sending bool
 	// standing says the person MARKED this one as something to keep true
 	// (standmark.go). It travels with the words for the chips' own reason: the
 	// gesture was made when the message was typed, and a queue that forgot it
@@ -99,7 +106,7 @@ func (a *app) park(text string, standing bool) tea.Cmd {
 // jumped a queue the person filled first would be this surface reordering their
 // sentences. Whichever starts, the rest stay parked and go at the next close.
 func (a *app) sendParked() tea.Cmd {
-	if a.stream != nil || len(a.parks) == 0 {
+	if a.stream != nil || a.parkSending || len(a.parks) == 0 {
 		return nil
 	}
 	next := a.parks[0]
@@ -130,6 +137,21 @@ func (a *app) sendParked() tea.Cmd {
 		return a.submitStandingShown(spoken, shown)
 	}
 	return a.submitShown(spoken, shown)
+}
+
+// parkedStart turns one waiting message into the same engine call a front send
+// makes, without drawing anything on the surface that happens to be in front.
+// The returned words let a caller that came forward during the call draw the
+// ordinary user line if its earlier replay could not have seen it.
+func parkedStart(agent Agent, ctx context.Context, hosted bool, p parked) (spoken, shown string, start func() (<-chan session.Event, error)) {
+	spoken, shown = p.spoken(), p.text
+	if len(p.chips) > 0 {
+		return attachmentStart(agent, ctx, hosted, spoken, shown, p.chips)
+	}
+	if p.standing {
+		return spoken, shown, standingStart(agent, ctx, spoken)
+	}
+	return spoken, shown, submitStart(agent, ctx, spoken)
 }
 
 // dropParked forgets everything parked and says so, because the person typed
@@ -167,6 +189,9 @@ func (a *app) recallParked() bool {
 		return false
 	}
 	last := a.parks[len(a.parks)-1]
+	if last.sending {
+		return false
+	}
 	a.parks = a.parks[:len(a.parks)-1]
 	a.input.setText(last.text)
 	a.chips = append(a.chips, last.chips...)
@@ -183,6 +208,9 @@ func (a *app) recallParkedAt(i int) bool {
 		return false
 	}
 	one := a.parks[i]
+	if one.sending {
+		return false
+	}
 	a.parks = append(a.parks[:i], a.parks[i+1:]...)
 	a.input.setText(one.text)
 	a.chips = append(a.chips, one.chips...)
@@ -206,9 +234,9 @@ func (a *app) recallParkedAt(i int) bool {
 // down through on a narrow frame. Each piece is dropped from the right, because
 // what the message is DOING outranks what you can do about it.
 // AND THE MIDDLE PIECES ARE CONDITIONAL, which is what the `stops` and `steers`
-// arguments below buy. There is a window — the seconds between a person's esc
+// arguments below buy. There is a window — the seconds between a person's ctrl+c
 // and the engine letting go of the turn (render.go's [app.windingDown]) — in
-// which a message is still parked and esc does NOTHING: [app.interrupt] returns
+// which a message is still parked and ctrl+c does NOTHING: [app.interrupt] returns
 // at its first line outside [stateWorking], and [app.sendParked] stands down
 // while the stream is open. A line offering a key that is inert for three
 // seconds is the surface lying at the exact moment a person is pressing keys
@@ -288,13 +316,13 @@ func (a *app) parkedRows(width int) []string {
 // only spelled when there is more than one message waiting — one message
 // counted is a number that says nothing the block above it does not.
 //
-// stops says esc still has a turn to stop. When it does not — the turn was
+// stops says ctrl+c still has a turn to stop. When it does not — the turn was
 // stopped a moment ago and is winding down — the middle pieces are dropped
 // rather than reworded: what is left is still exactly true (the message waits
 // for this answer, and it can still be edited), and there is no key to name,
 // which is the same silence [stoppingWord] keeps in the status line for the same
 // seconds. A turn with no boundary left to reach takes the arrow down with the
-// esc, because a steer into it would be refused for the same reason the stop is
+// stop, because a steer into it would be refused for the same reason the stop is
 // inert (steer.go).
 //
 // steers says the arrow's clause is true besides: this session has the verb at
