@@ -2188,16 +2188,28 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// conversation too.
 	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	live, sawLive := r.glimpse(20*time.Second, say(t, "planLiveGlyph"))
-	if !sawLive {
-		t.Fatalf("the plan page open on a running task never drew its live step (%q beside the "+
-			"command):\n%s", say(t, "planLiveGlyph"), r.capture())
+	// THE PAGE COMING UP IS THE ASSERTION AND THE LIVE STEP IS AN OBSERVATION,
+	// and the two are separated here because only one of them is a fact about
+	// the surface. That the press over the row opens the STORE'S page rather
+	// than a room is true every time, and the page's own note box says it is
+	// the page. Which command a worker happens to be part-way through when the
+	// key lands is a moment: this brief is four steps and about half a minute,
+	// so a page opened a second after the last one ends is an honest page of a
+	// task that has finished — [rig.glimpse]'s own bargain, which never fails
+	// on a thing that is only on screen while work runs. Asserting it made a
+	// red out of a fast run and said nothing about any defect.
+	page := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"))
+	t.Logf("the page the press over the run's row opened:\n%s", page)
+	if live, sawLive := r.glimpse(15*time.Second, say(t, "planLiveGlyph")); sawLive {
+		if !strings.Contains(live, say(t, "planLiveClockWord")) {
+			t.Errorf("the plan page's live line has no clock under it (%q):\n%s",
+				say(t, "planLiveClockWord"), live)
+		}
+		t.Logf("the plan page mid-run, carrying the live step:\n%s", live)
+	} else {
+		t.Logf("the run finished before a live step could be caught on the page, which is this " +
+			"brief on a fast worker and not a defect")
 	}
-	if !strings.Contains(live, say(t, "planLiveClockWord")) {
-		t.Errorf("the plan page's live line has no clock under it (%q):\n%s",
-			say(t, "planLiveClockWord"), live)
-	}
-	t.Logf("the plan page mid-run, carrying the live step:\n%s", live)
 	r.keys("Escape")
 
 	done := planRowWaitsToWear(t, r, runPatience, runRowWord, say(t, "planDoneWord"))
@@ -2228,20 +2240,27 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	openTasksPlace(t, r)
 	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	// glimpse AND NOT waitFor, BECAUSE THE PAGE NOT COMING UP IS NOT A TIMEOUT. A
-	// wait that ran out would report a screen the suite never saw and leave the
-	// reader to work out which of two pages answered the key; the answer is a fact
-	// about the row that was under the cursor, and it is said as one.
-	page, saw := r.glimpse(40*time.Second, say(t, "planFinishCommand"))
-	if !saw {
-		t.Fatalf("Enter over the run's row never opened the store's plan page, so no screen this suite "+
-			"can reach carries the %q line its worker finishes with. Either the row under the cursor is "+
-			"not the store's plan row — planRowWearing says what that means — or the store had no page "+
-			"to answer for it, which leaves the list where it was ([app.taskSheetPlanAsk]). The screen "+
-			"after Enter was:\n%s",
-			say(t, "planFinishCommand"), r.capture())
+	// THE PAGE IS READ BY TWO OF ITS OWN WORDS, and neither is the model's. The
+	// note box stands on this page and on nothing else, and the head's figures
+	// are the store's count of the steps its worker took and what they cost —
+	// so the pair says the press opened THE STORE'S PAGE and not the room a
+	// record row opens, which is the whole of what this scenario came to prove.
+	//
+	// WHICH COMMANDS ARE ON IT IS THE WORKER'S BUSINESS. The finish is the
+	// worker's own `plandb done` when the worker writes one, and the RUN's when
+	// it does not (internal/run's worker.go), and a brief this small on a fast
+	// model is regularly the second — measured twice on this lane, where the
+	// page carried `echo`, `cat` and the run's own ending note. So the finish
+	// command is observed and logged, never waited out: asserting it made a red
+	// out of a model's choice and said nothing about the surface.
+	stored := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"), say(t, "planStepsSpend"))
+	t.Logf("the page the run's row opens, with the store's own figures on it:\n%s", stored)
+	if finish, saw := r.glimpse(5*time.Second, say(t, "planFinishCommand")); saw {
+		t.Logf("and this worker wrote its own finish into the trajectory:\n%s", finish)
+	} else {
+		t.Logf("this worker left the ending to the run, so no %q step is on the page",
+			say(t, "planFinishCommand"))
 	}
-	t.Logf("the plan page, carrying the worker's own finish command:\n%s", page)
 	r.keys("Escape")
 	back := r.waitFor(30*time.Second, say(t, "planDoneWord"))
 	t.Logf("esc backed out of the page to the list:\n%s", back)
@@ -2286,7 +2305,7 @@ func planRowWaitsToWear(t *testing.T, r *rig, within time.Duration, words, state
 	deadline := time.Now().Add(within)
 	for {
 		screen := r.capture()
-		if row := tasksRowOf(screen, words); strings.Contains(row, state) {
+		if tasksRowWearing(screen, words, state) != "" {
 			return screen
 		}
 		if time.Now().After(deadline) {
@@ -2329,6 +2348,26 @@ func tasksRowOf(screen, words string) string {
 	return ""
 }
 
+// tasksRowWearing is the one line of the tasks place carrying these words AND
+// this state word, or "" when no line carries both.
+//
+// IT IS BOTH WORDS ON ONE LINE AND NOT THE FIRST LINE WITH THE TITLE. At the
+// width this suite runs the place draws the record pane beside the list, on the
+// same rows, and the pane LEADS WITH THE SELECTED ROW'S OWN TITLE — so the first
+// line carrying the work's name is the pane's heading, which wears no state at
+// all. A search that stopped there read `⌕ type to filter … │ write HELLO.md …`
+// off a screen whose row said `done · 4 steps · $0.03` two lines below, and
+// reported the row as bare.
+func tasksRowWearing(screen, words, state string) string {
+	for _, line := range strings.Split(screen, "\n") {
+		row := strings.TrimSpace(line)
+		if strings.Contains(row, words) && strings.Contains(row, state) {
+			return row
+		}
+	}
+	return ""
+}
+
 // planRowWearing asserts that the run's row is on the tasks place wearing this
 // state word, and answers the row for the log.
 //
@@ -2344,6 +2383,9 @@ func tasksRowOf(screen, words string) string {
 // Enter over that row opens a room the engine holds no node for.
 func planRowWearing(t *testing.T, screen, words, state string) string {
 	t.Helper()
+	if row := tasksRowWearing(screen, words, state); row != "" {
+		return row
+	}
 	row := tasksRowOf(screen, words)
 	if row == "" {
 		t.Errorf("the tasks place draws no row for the run (%q), so nothing on it can wear %q:\n%s",

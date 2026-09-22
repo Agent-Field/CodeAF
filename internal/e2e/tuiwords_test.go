@@ -629,7 +629,19 @@ var tuiWords = map[string]tuiWord{
 		why: "the command a bash-belt worker finishes its store task with, recorded in the task's own " +
 			"trajectory and drawn as a step line on the plan page (taskplan.go's taskPlanBody reads " +
 			"PlanTaskPage.Steps). THE PAGE DOES NOT SPELL IT — the worker runs it — so the gate looks where " +
-			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish",
+			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish. " +
+			"IT IS OBSERVED AND NEVER WAITED OUT, because whether it is on a page is the WORKER'S " +
+			"choice: the run writes the ending itself for a task whose worker stopped calling tools " +
+			"without writing one (internal/run's worker.go), which a small brief on a fast model " +
+			"regularly is. What the suite asserts about that page instead is that it is the store's " +
+			"page at all — planNoteBoxWord and planStepsSpend, two words no room draws",
+	},
+	"planNoteBoxWord": {
+		screen: "a note for this task",
+		why: "the plan page's own note box (taskplan.go's taskPlanNoteWord), and the one word on it " +
+			"that is there whatever state the task is in. It is what says the press over a run's row " +
+			"opened THE STORE'S PAGE rather than a room — the assertion that defect #1359 was about — " +
+			"where the live step beside it is a moment and is only ever observed",
 	},
 	"planLiveGlyph": {
 		screen: tokens.GlyphStepRunning,
