@@ -18,13 +18,6 @@ func (a *app) workLogoVisible() bool {
 		!a.pal.ascii && a.pal.profile >= tokens.ANSI256 && a.width >= 48 && a.height >= 20
 }
 
-// workLogoRows is the transient left-aligned foot of the live reply, never a
-// saved transcript entry. All studies occupy the same box, so a moving ball
-// cannot reflow the answer or the status words beside it.
-func (a *app) workLogoRows(width int, _ string) []row {
-	return a.activityRows(a.workActivity, "", width)
-}
-
 // questionActivity anchors one indicator to the last submitted question, never
 // to a changing caption or to the transcript's growing tail.
 func (a *app) questionActivity(d deck) (tokens.WorkActivity, int, bool) {
@@ -100,11 +93,6 @@ func (a *app) roomWorkLogoVisible() bool {
 	status := a.taskStatus(node)
 	return status.State == session.TaskRunning && status.On != session.TaskWaitPerson &&
 		status.Presence != session.TaskPresenceNeedsLook && !a.roomLandingAsking()
-}
-
-// roomWorkLogoRows uses the task's own stable phrase and motion.
-func (a *app) roomWorkLogoRows(width int) []row {
-	return a.activityRows(a.room.workActivity, "", width)
 }
 
 func (a *app) anyWorkLogoVisible() bool { return a.workLogoVisible() || a.roomWorkLogoVisible() }

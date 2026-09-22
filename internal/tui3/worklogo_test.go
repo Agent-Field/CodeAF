@@ -33,9 +33,9 @@ func TestWorkingLogoFollowsChatAndKeepsItsChoice(t *testing.T) {
 	}
 	style := a.workActivity.Style()
 	began := a.turnBegan
-	first := a.workLogoRows(90, "")
+	first := a.activityRows(a.workActivity, "", 90)
 	a.clock = func() time.Time { return began.Add(700 * time.Millisecond) }
-	second := a.workLogoRows(90, "")
+	second := a.activityRows(a.workActivity, "", 90)
 	if first[0].text == second[0].text {
 		t.Fatal("working frame did not advance")
 	}
@@ -86,7 +86,7 @@ func TestWorkingLogoFallbacksAndTransientRows(t *testing.T) {
 	}
 	a := workLogoApp(t)
 	a.pal = newPalette(tokens.ANSI256, false)
-	for _, r := range a.workLogoRows(48, "") {
+	for _, r := range a.activityRows(a.workActivity, "", 48) {
 		if r.entry != -1 || r.hit != 0 {
 			t.Fatal("animation entered the selectable transcript")
 		}
@@ -110,7 +110,7 @@ func TestWorkingLogoUsesTasksOwnState(t *testing.T) {
 	if a.room.workActivity.Style() != choice {
 		t.Fatal("chat turn changed task animation")
 	}
-	if len(a.roomWorkLogoRows(80)) != tokens.WorkLogoHeight {
+	if len(a.activityRows(a.room.workActivity, "", 80)) != tokens.WorkLogoHeight {
 		t.Fatal("task does not use shared layout")
 	}
 	node := a.roomNode()
@@ -262,5 +262,23 @@ func TestWorkingCaptionDecodeKeepsFollowingContentStill(t *testing.T) {
 	a.clock = func() time.Time { return start.Add(1800 * time.Millisecond) }
 	if !strings.Contains(ansi.Strip(a.activityRows(a.workActivity, "", 90)[0].text), caption) {
 		t.Fatal("accessible caption must stay readable")
+	}
+}
+
+// The ball's gold must stay legible on whichever page the ladder is written
+// for, including a light ladder put there by a theme setting.
+func TestTheWorkingBallIsDeeperGoldOnALightPage(t *testing.T) {
+	dark := newPalette(tokens.TrueColor, false)
+	light := newThemedPalette(tokens.TrueColor, false, themeLight, func(string) string { return "" })
+	ball := tokens.WorkLogoCell{Glyph: '●', Gold: true}
+	if got := dark.workLogoCell(ball); got != dark.paint("●", hueWorkGold) {
+		t.Fatalf("dark page ball = %q, want the bright gold", got)
+	}
+	if got := light.workLogoCell(ball); got != light.paint("●", lightWorkGold) {
+		t.Fatalf("light page ball = %q, want the deeper gold", got)
+	}
+	white := luminanceOf(255, 255, 255)
+	if r := contrastOn(lightWorkGold, white); r < 4.5 {
+		t.Fatalf("light gold contrast on white = %.2f, want at least 4.5", r)
 	}
 }
