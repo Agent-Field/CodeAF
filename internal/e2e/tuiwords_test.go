@@ -135,6 +135,13 @@ var tuiWords = map[string]tuiWord{
 		screen: "interrupted",
 		why:    "the status word once a stopped turn is genuinely over — what the bound is measured against",
 	},
+	"idleWord": {
+		screen: "idle",
+		why: "the status word once a turn has finished of its own accord — the other end of the same reading " +
+			"[interruptedWord] is one state of ([app.runState]). It is HOW THIS SUITE KNOWS A MODEL HAS " +
+			"STOPPED without guessing at a number of seconds, on a scenario whose own card offers nothing " +
+			"to wait for",
+	},
 	"stopDetachedWord": {
 		screen: "detached — the turn was let go of and nothing is waiting for it",
 		why:    "the note a turn let go of at the bound leaves in the conversation",

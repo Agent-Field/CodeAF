@@ -2025,8 +2025,19 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	time.Sleep(700 * time.Millisecond)
 	first.keys("Enter")
 	// The tasks page selects the conversation group first. Once the task is
-	// recorded, move onto its child row to inspect the task's own door.
+	// recorded, open that group and move onto its child row to inspect the
+	// task's own door.
+	//
+	// THE GROUP IS SHUT AND `→` IS WHAT OPENS IT. #905 made this page a table
+	// with every family folded, so the heading over this one reads `finished
+	// today · 1 folded away` and the only row on the list is the conversation
+	// root — a `Down` on its own had nowhere to go, and every press after it was
+	// reading the conversation's foot (`enter go to that conversation`) as though
+	// it were the task's. The key is the one the foot itself names, `→ what ran
+	// under it`, so this presses what a person reading that line would press.
 	bucket := waitForRecord(t, home, 5*time.Minute)
+	first.keys("Right")
+	time.Sleep(700 * time.Millisecond)
 	first.keys("Down")
 	// AND EITHER FOOT WILL DO, BECAUSE HOW THE WORK LANDED IS THE MODEL'S
 	// BUSINESS AND NOT THIS SUBTEST'S. When the checker answers, the node lands
@@ -2057,24 +2068,23 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// the first window wrote, which is what makes this window a stranger to the
 	// node and a reader of its record at the same time — the only combination
 	// the record card exists for.
-	fresh := filepath.Join(bucket, "read-it-back", "transcript.jsonl")
+	//
+	// AND ITS FOLDER IS SHAPED LIKE A SESSION'S, which is a fact the assertion
+	// below turns on. A session's folder IS its id — sixteen hex digits — and
+	// every surface names a conversation nothing has titled after that folder,
+	// drawing the word only where the folder has nothing a person could read in
+	// it (internal/tui3's names.go, [listName]). This fixture called its folder
+	// `read-it-back`, so the product read it as a name and drew `Read It Back`:
+	// #915's law was being asked about a conversation the fixture had given a
+	// title to.
+	fresh := filepath.Join(bucket, "9c1d4a0b7e2f6538", "transcript.jsonl")
 	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh, "--one-model", "--no-host")
 	statesPastTheDoor(t, r)
 	r.lit("/history")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	// AND THE CONVERSATION THIS WINDOW IS IN IS ITSELF THE TITLELESS ROW (#915).
-	// This terminal was launched on a fresh transcript nothing has been said in,
-	// so the one session it stands in is the launch's own untitled conversation —
-	// and the page this door opened is the one that used to draw it as its raw
-	// sixteen-hex id. The word is what the row must answer to now, and it is the
-	// same word home's own column spells for a chat nothing has named, so the
-	// wait holds both the name and the one spelling of it.
-	untitledAt := r.waitFor(30*time.Second, say(t, "tasksUntitledWord"))
-	t.Logf("the conversation this window stands in is on the page by its word:\n%s", untitledAt)
-	// AND NOW THE OTHER DOOR. No window is holding the node any more, so the
-	// foot offers the record rather than the room — which is the mode this test
-	// is about.
+	// THE DOOR THIS SUBTEST IS ABOUT. No window is holding the node any more, so
+	// the foot offers the record rather than the room.
 	//
 	// THE FOOT IS THE WHOLE SYNCHRONISATION AND THE GROUP HEADING WAS NEVER PART
 	// OF IT. This wait used to sit behind `finished today`, which is the roster's
@@ -2083,6 +2093,26 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// model's work landed standing in front of a test about paging a record.
 	roster := r.waitFor(30*time.Second, say(t, "tasksEnterInsideWord"))
 	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
+
+	// AND THE CONVERSATION THIS WINDOW IS IN IS ITSELF THE TITLELESS ROW (#915).
+	// This terminal was launched on a fresh transcript nothing has been said in,
+	// so the one session it stands in is the launch's own untitled conversation —
+	// and the page this door opened is the one that used to draw it as its raw
+	// sixteen-hex id. The word is what the row must answer to now, and it is the
+	// same word home's own column spells for a chat nothing has named, so the
+	// wait holds both the name and the one spelling of it.
+	//
+	// IT IS ONE ROW DOWN AND NOT ON THE FIRST FRAME. A conversation that has
+	// delegated no work stands under `earlier`, the last of the page's five
+	// sections, and this window is fourteen rows tall on purpose — the list has
+	// room for one heading and one row, which `finished today` and the task fill.
+	// So the row is walked to with the arrow this page offers, and the cursor is
+	// put back on the task, because everything below reads the task's own foot.
+	r.keys("Down")
+	untitledAt := r.waitFor(30*time.Second, say(t, "tasksUntitledWord"))
+	t.Logf("the conversation this window stands in is on the page by its word:\n%s", untitledAt)
+	r.keys("Up")
+	r.waitFor(20*time.Second, say(t, "tasksEnterInsideWord"))
 
 	// AND THE RECORD IS ALREADY BESIDE THE LIST. This terminal is [tuiPlain] wide,
 	// which is over the pane's floor, so the row under the cursor has its record
