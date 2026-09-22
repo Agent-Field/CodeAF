@@ -64,7 +64,10 @@ func DecodeWorkCaption(text string, elapsed time.Duration) string {
 	if letters == 0 || elapsed < 0 {
 		return text
 	}
-	phase := elapsed % (pause + time.Duration(letters)*step)
+	phase := elapsed
+	if phase >= pause+time.Duration(letters)*step {
+		return text
+	}
 	if phase < pause {
 		return text
 	}

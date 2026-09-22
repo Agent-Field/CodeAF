@@ -45,3 +45,30 @@ func TestWorkCaptionDecodeReadabilityAndRest(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkCaptionRotationIsStableAndDoesNotRepeatDeck(t *testing.T) {
+	start := time.Unix(1000, 0)
+	var w WorkActivity
+	w.Start(start, WorkLogoRally)
+	seen := map[string]bool{}
+	for i := 0; i < len(w.captions); i++ {
+		at := start.Add(time.Duration(i) * WorkCaptionPeriod)
+		phrase := w.CaptionAt(at)
+		if seen[phrase] {
+			t.Fatal("phrase repeated before deck finished")
+		}
+		seen[phrase] = true
+		if w.CaptionAt(at.Add(WorkCaptionPeriod-time.Nanosecond)) != phrase {
+			t.Fatal("phrase changed before reading interval ended")
+		}
+		if w.CaptionAt(at) != phrase {
+			t.Fatal("rendering mutated phrase")
+		}
+	}
+	if len(seen) < 60 {
+		t.Fatal("caption deck too small")
+	}
+	if w.CaptionAt(start.Add(time.Duration(len(w.captions))*WorkCaptionPeriod)) != w.Caption() {
+		t.Fatal("deck does not loop")
+	}
+}

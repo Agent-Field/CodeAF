@@ -54,9 +54,9 @@ const activityContentColumn = activityLabelColumn + tokens.WorkCaptionWidth + 2
 func (a *app) activityRows(activity tokens.WorkActivity, trailing string, width int) []row {
 	caption := activity.Caption()
 	if !a.linear && !a.pal.linear && !a.pal.ascii && a.pal.profile >= tokens.ANSI256 {
-		caption = tokens.DecodeWorkCaption(caption, activity.Elapsed(a.now()))
+		caption = tokens.DecodeWorkCaption(activity.CaptionAt(a.now()), activity.Elapsed(a.now())%tokens.WorkCaptionPeriod)
 	}
-	caption = a.pal.narr(caption)
+	caption = a.pal.dim(caption)
 	line := "  " + a.activityMark(activity) + "  " + padTo(caption, tokens.WorkCaptionWidth)
 	if trailing != "" {
 		line += "  " + trailing

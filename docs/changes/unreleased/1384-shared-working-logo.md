@@ -20,6 +20,8 @@ details. Its nine-column slot and two-column gap keep following content still.
 It scrolls with the question and leaves the input area clear.
 
 Activity captions now compose short developer humor from compatible verb/object
-families, avoid eight recent phrases, and keep the chosen text for the operation.
+families, avoid eight recent opening phrases, and rotate through a shuffled deck
+every ten seconds without repeats until exhausted. Dim ink distinguishes these
+playful captions from factual work updates.
 A slow decoding ripple briefly changes one letter at a time into symbols, with
 readable pauses and no change to the reserved width.
