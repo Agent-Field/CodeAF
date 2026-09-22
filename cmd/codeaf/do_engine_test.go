@@ -272,7 +272,7 @@ func TestDoOnTheRunEngineRootStoreFinishBeforeWorkerReturnNamesRootResult(t *tes
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	})
 	if err != nil {
@@ -313,7 +313,7 @@ func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	})
 	if err != nil {
@@ -419,7 +419,7 @@ func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err = doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, model: workModel, planModel: planModel,
+		timeout: 60 * time.Second, slots: bound(1), model: workModel, planModel: planModel,
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
 	})
 	if err != nil {
@@ -485,7 +485,7 @@ func TestDoOnTheRunEngineChecksALeafAndExitsZeroWhenItHolds(t *testing.T) {
 	var stdout, stderr strings.Builder
 	if err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	}); err != nil {
 		t.Fatalf("a run whose check held left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
@@ -525,7 +525,7 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 	var stdout, stderr strings.Builder
 	if err := doErrand(doRequest{
 		task: "do the work alone and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	}); err != nil {
 		t.Fatalf("a self-finished root whose check held left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
@@ -620,7 +620,7 @@ func TestDoOnTheRunEngineLeavesTheUsageLedgerToTheSession(t *testing.T) {
 	var stdout, stderr strings.Builder
 	if err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	}); err != nil {
 		t.Fatalf("errand: %v\n%s", err, stderr.String())
@@ -705,7 +705,7 @@ func TestDoOnTheRunEngineSeatsACheckOnTheCheckModel(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err = doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1,
+		timeout: 60 * time.Second, slots: bound(1),
 		model: workModel, planModel: planModel, checkModel: checkModel,
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
 	})
@@ -796,7 +796,7 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err = doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1,
+		timeout: 60 * time.Second, slots: bound(1),
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
 	})
 	if err != nil {
@@ -825,3 +825,6 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 		t.Fatalf("the completer was never asked for the crew's careful row; the check was seated elsewhere (built %v)", models)
 	}
 }
+
+// bound is a named slot count for a request, the way the flag would name one.
+func bound(n int) *int { return &n }

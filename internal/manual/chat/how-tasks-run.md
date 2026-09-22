@@ -629,11 +629,11 @@ where it stands.
 
 A task is the same agent you talk to, with the same tools, in a quieter place.
 
-**On the worker harness road its belt is not the conversation's.** With
-`CODEAF_TASK_BELT=bash` set, a worker carries one shell and the plan CLI rather than
-these tools, and the verbs for handing work out come off it; the *worker harness* page
-names what that belt carries. Everything below is the belt the older road composes,
-which is what a build without the switch gives every task.
+**On the worker harness road its belt is not the conversation's.** That road is the
+default: a worker carries one shell and the plan CLI rather than these tools, and the
+verbs for handing work out come off it; the *worker harness* page names what that belt
+carries. Everything below is the belt the older road composes, which is what a build
+reaches only when `CODEAF_TASK_BELT` is set to `node`, `legacy` or `off`.
 
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and
@@ -2519,6 +2519,11 @@ By default, **no limit**. `task.parallel` is 0 (blank) out of the box, and 0 mea
 
 A cap, if you set one, is a **queue and never a refusal**: a ready task past the cap sits
 and starts when a slot frees.
+
+The same row answers for every road work runs on: a task this conversation puts on the
+worker harness runs as many of its parts at once as `task.parallel` allows, and so does
+`codeaf do`. That command can also name a figure for one run with `--slots <n>`, where
+`0` is no limit, and a figure named there outranks the setting for that run only.
 
 The real ceiling is the machine. Before starting **each** task, codeaf asks whether one
 more may start:
