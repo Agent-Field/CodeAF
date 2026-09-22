@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/run"
 )
 
