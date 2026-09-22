@@ -505,9 +505,10 @@ var handoffFacts = []beltFact{{
 		// conversation that can start a run reads.
 		"WHILE WORK IS RUNNING, YOUR MESSAGE FROM THE PERSON OPENS WITH ITS ROWS. If what\n" +
 		"they just said makes one of those tasks wrong — they changed their mind, dropped\n" +
-		"a part, told you a fact it is built on is untrue — steer or stop THAT task before\n" +
-		"you answer them. You are the only one holding the conversation, so you are the\n" +
-		"only one who can know. Leave the rest alone.",
+		"a part, told you a fact it is built on is untrue — act on THAT row before you\n" +
+		"answer them: `tasks` with `stop` ends work that should not go on, and `tasks`\n" +
+		"with `note` tells a worker a fact it is missing. You are the only one holding\n" +
+		"the conversation, so you are the only one who can know. Leave the rest alone.",
 	bashAbsent: "Work goes out through the plan when it has parts that do not need each other:\n" +
 		"`plandb add` and `plandb split` in bash are how, and every ready task they make\n" +
 		"is given a worker of its own. What is yours alone you carry here, in the order\n" +

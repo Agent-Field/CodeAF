@@ -310,9 +310,13 @@ task doing the migration. It is told to steer or stop THAT task before it
 answers you, and to leave the others alone.
 
 - **What it does about it is its judgement, not a rule.** It may stop the task,
-  revise what the task was asked for, or tell you the work is already done and
-  ask what you want. What it must not do is answer you and let the task carry
-  on as if you had said nothing.
+  leave it a note with the fact it was missing, or tell you the work is already
+  done and ask what you want. What it must not do is answer you and let the task
+  carry on as if you had said nothing.
+- **It can end a task and it can note one; it cannot rewrite one.** Changing
+  what a task was asked for is the worker's own verb, not the conversation's, so
+  "make it do X instead" comes out as a stop and a fresh task, or as a note the
+  worker weighs. If you want the old task's work kept, say so.
 - **It sees rows, never results.** The block carries no result, no steps and no
   output — those cost context and it can ask for them with `tasks` when it has
   a reason to. A run wider than eight rows shows eight and says how many more
