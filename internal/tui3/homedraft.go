@@ -350,6 +350,7 @@ func (a *app) moveTarget() bool {
 // It opens on the target's own model for [picker.start]'s stated reason: the
 // cursor sits on what you are on, so enter confirms rather than changes.
 func (a *app) openTargetPicker() {
+	a.noticeEvent(eventModelListOpened)
 	a.target.pick.startFor(a.modelsFor(chatModel), a.targetModel(), chatModel)
 	// AND THE PROVIDERS OPEN HERE TOO. The box under this list has always named
 	// `→ providers`, and for one wave the key did nothing at all, because the

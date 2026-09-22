@@ -130,7 +130,9 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 		t.Fatalf("an ordinary launch keeps its notices at %q, want %q", got, want)
 	}
 
-	const hint = "menu-after-first-turn"
+	// The task tip is the one a first exchange arms highest (notice.go's
+	// table); `/ shows every command` stood here until both feet said it.
+	const hint = "task-in-chat"
 	launch := func() *app {
 		a := noticeApp(t, "")
 		a.turn = 1
@@ -507,6 +509,46 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventCostShown:       func(t *testing.T, a *app) { a.slash("/cost") },
 		eventStandingOpened:  func(t *testing.T, a *app) { a.slash("/standing") },
 		eventDeliverableMade: func(t *testing.T, a *app) { a.exportDone(exportedMsg{path: "/tmp/lab/talk.md"}) },
+		eventAsked:           func(t *testing.T, a *app) { a.askHere("what is this") },
+		eventTaskTyped:       func(t *testing.T, a *app) { a.slash("/task") },
+		eventSpelledOut: func(t *testing.T, a *app) {
+			a.input.setText("build me a login page")
+			a.spellAsk()
+		},
+		eventAtOpened: func(t *testing.T, a *app) {
+			drive(t, a, key("@"), key("s"), key("h"))
+			if !a.comp.open {
+				t.Fatal("typing @ did not open the completion")
+			}
+		},
+		eventAttached:        func(t *testing.T, a *app) { a.slash("/attach") },
+		eventFolderPicked:    func(t *testing.T, a *app) { a.slash("/folder") },
+		eventModelListOpened: func(t *testing.T, a *app) { a.slash("/model") },
+		eventCrewShown:       func(t *testing.T, a *app) { a.slash("/crew") },
+		eventBudgetShown:     func(t *testing.T, a *app) { a.slash("/budget") },
+		eventSpendOpened:     func(t *testing.T, a *app) { a.slash("/spend") },
+		eventSteered: func(t *testing.T, a *app) {
+			a.state = stateWorking
+			a.input.setText("go left instead")
+			drive(t, a, key("enter"))
+		},
+		eventQueued: func(t *testing.T, a *app) {
+			a.state = stateWorking
+			a.input.setText("and then this")
+			drive(t, a, key("ctrl+q"))
+		},
+		eventChatStarted:      func(t *testing.T, a *app) { drive(t, a, key("ctrl+t")) },
+		eventPlaceJumped:      func(t *testing.T, a *app) { drive(t, a, key("alt+3")) },
+		eventRemembered:       func(t *testing.T, a *app) { a.slash("/remember the parser is under internal") },
+		eventSearchOpened:     func(t *testing.T, a *app) { a.slash("/search") },
+		eventSubharnessOpened: func(t *testing.T, a *app) { a.slash("/subharness") },
+		eventConnectOpened:    func(t *testing.T, a *app) { a.slash("/connect") },
+		eventMediaAsked: func(t *testing.T, a *app) {
+			a.state = stateWorking
+			drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
+				Kind: session.EventToolBegin, CallID: "g1", Tool: "generate_image", Hint: "generate_image",
+			}})
+		},
 	}
 	for _, name := range noticeEvents {
 		if name == eventBoot {

@@ -1376,6 +1376,17 @@ The double-space binding has been removed. Spaces type normally in message boxes
 `/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row or use
 `alt+k` to return to a conversation; Escape does not leave Home.
 
+## The dim sentence above the rule on home — what is that tip over the box, why did it change
+
+The one dim line directly above the rule over home's box is a **tip**: one sentence naming a
+key or a command you have not used yet, and what it does — `/ask answers right here without
+opening a conversation`, `alt+1 to alt+7 jump straight to a place`. It is drawn only while
+the box is empty and nothing else is up, it moves on to the next tip every time you come to
+home and every two minutes at rest, and each tip goes away for good the first time you do
+what it names. The keys row at the very foot is not a tip and never changes. The whole list,
+what makes each one appear and disappear, and the **hints** row on the Display tab that
+turns them off, are on the *hints and tips* page.
+
 ## What does pressing space twice do — space space does nothing now
 
 Two spaces are ordinary text. The old Home shortcut is removed. Use `esc` to back out

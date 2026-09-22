@@ -276,6 +276,7 @@ func (a *app) removeChip(i int) {
 // not. Every refusal names the file, because "not an image" about a path the
 // person typed is a sentence they can act on and "could not attach" is not.
 func (a *app) attachPath(raw string) {
+	a.noticeEvent(eventAttached)
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		a.note("/image takes a path · try /image shot.png")
@@ -314,6 +315,7 @@ func (a *app) attachPath(raw string) {
 // empty argument is a caller mistake and not a person's, and the refusal that
 // used to stand for it is gone rather than unreachable.
 func (a *app) attachFilePath(raw string) {
+	a.noticeEvent(eventAttached)
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return

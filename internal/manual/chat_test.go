@@ -2372,6 +2372,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn off hints", "hints-and-tips"},
 		{"stop showing tips", "hints-and-tips"},
 		{"what is a news line", "hints-and-tips"},
+		{"what is the dim sentence above the rule on home", "hints-and-tips"},
+		{"the tip on home changed by itself", "hints-and-tips"},
+		{"every hint codeaf can show", "hints-and-tips"},
+		{"is a retired tip gone for good", "hints-and-tips"},
 
 		// The wave that made the places follow the session's machine. These are
 		// the owner's own sentences, from the report that started it: they

@@ -261,6 +261,7 @@ func (a *app) steerIn() tea.Cmd {
 		// bottom of input.go's router would have done nothing with it anyway.
 		return nil
 	}
+	a.noticeEvent(eventSteered)
 	waiting := len(a.parks)
 	// The mark is deliberately not passed, for [app.bargeIn]'s reason: ctrl+enter
 	// is the gesture that means "keep this true" and this one means "and also

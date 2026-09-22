@@ -239,6 +239,7 @@ func (a *app) openFolderPick(query string) tea.Cmd {
 // [folderRemoteWord]'s argument said about the target: the pin would name a
 // directory the next conversation cannot open.
 func (a *app) openTargetFolderPick(query string) tea.Cmd {
+	a.noticeEvent(eventFolderPicked)
 	if a.hosted() {
 		a.home.say(folderRemoteWord, "")
 		return nil
@@ -310,6 +311,12 @@ func (a *app) closeFolderSheet() tea.Cmd {
 //     needs no folder door whatever. The sheet opens; a folder row on it then
 //     refuses with the same sentence when it is confirmed (folderact.go).
 func (a *app) openContextPick(query string, folders bool) tea.Cmd {
+	// Either door found is a door learned, whatever the list answers (notice.go).
+	if folders {
+		a.noticeEvent(eventFolderPicked)
+	} else {
+		a.noticeEvent(eventAttached)
+	}
 	// THE INTENT CHOOSES THE REFUSAL BEFORE THE LIST IS BUILT. The connection's
 	// sentence used to be said for BOTH doors, which answered a request about a
 	// file with an answer about folders and left the person who did not know the

@@ -313,6 +313,9 @@ func (a *app) spellKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // hint slot turns the build's spinner while it is out, and [app.wake] is what
 // keeps the frames coming for it — nothing else on the surface is moving.
 func (a *app) spellAsk() tea.Cmd {
+	// The chord was reached for; the tip that names it is only ever armed where
+	// the door below stands (notice.go).
+	a.noticeEvent(eventSpelledOut)
 	door, ok := a.spellDoor()
 	if !ok {
 		return nil

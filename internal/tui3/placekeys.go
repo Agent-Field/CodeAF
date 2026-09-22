@@ -305,6 +305,7 @@ func (a *app) placeJumpKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
+	a.noticeEvent(eventPlaceJumped)
 	return a.showPage(id), true
 }
 

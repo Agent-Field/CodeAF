@@ -77,6 +77,7 @@ func (a *app) followUp() tea.Cmd {
 	if line == "" {
 		return nil
 	}
+	a.noticeEvent(eventQueued)
 	agent := a.agent
 	// The model reads the paste and the queue's row keeps the tag (pastechip.go).
 	spoken, line := a.composed(line)

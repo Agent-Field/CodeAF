@@ -4503,6 +4503,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// one (placecounts.go).
 		if a.at(pageHome) {
 			a.refreshPlaceCounts(a.now())
+			// AND THE TIP ON HOME'S ROW AGES ON THE SAME BEAT (notice.go).
+			a.noticeHomeBeat()
 		}
 		return a, a.homeBeat(msg.gen)
 
@@ -5256,6 +5258,11 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.settleThought()
 	default:
 		a.collapseThought()
+	}
+	// A PICTURE, A VOICE, MUSIC OR FILM BEGINNING is the proof the person knows
+	// to ask for one (notice.go's [mediaTools]).
+	if ev.Kind == session.EventToolBegin && mediaTools[ev.Tool] {
+		a.noticeEvent(eventMediaAsked)
 	}
 	// THE WAIT CLOCK IS ANCHORED HERE, on both edges, before anything else reads
 	// it. The two lists below are the whole of what the surface knows about a
@@ -7101,6 +7108,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "subharness":
+		a.noticeEvent(eventSubharnessOpened)
 		// THE PROGRAMS THIS CONVERSATION CAN RUN, as a filterable list, and the
 		// intake card behind each of them (subharness.go). Unlike /harness this
 		// one DOES take a name: a subharness's name is its identity across the
@@ -8428,6 +8436,8 @@ func (a *app) syncLists() tea.Cmd {
 	was := a.comp.open
 	a.comp.sync(&a.input)
 	if a.comp.open && !was {
+		// The list coming up is the proof that `@` has been found (notice.go).
+		a.noticeEvent(eventAtOpened)
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the
 		// walk lands when it lands (taskmention.go, files.go).

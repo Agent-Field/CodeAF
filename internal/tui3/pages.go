@@ -1400,7 +1400,16 @@ func placeFrameWithBar(a *app, width, height int,
 	for _, row := range rows {
 		add(row.text, row.hit)
 	}
-	add("", nil)
+	// THE BLANK OVER THE RULE IS HOME'S HINT ROW, when there is a tip to say
+	// and the box is at rest ([app.noticeHomeHint]). It is the same row either
+	// way — the foot is one height with a tip and without — and it is dim,
+	// one cell in, in the grammar every hint on this surface keeps: the key or
+	// the command, then what it does.
+	if tip := a.noticeHomeHint(); hasBox && tip != "" {
+		add(" "+pal.dim(fit(tip, width-2)), nil)
+	} else {
+		add("", nil)
+	}
 	// AND HOME'S RULE IS A LEGEND RATHER THAN A LINE. The other six places have
 	// nothing to put on it — you are IN them, and the tab bar four rows up says
 	// which — but home's box is a draft for a conversation that does not exist
@@ -2246,6 +2255,17 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 		return nil
 	}
 	a.page = id
+	// AND THE DOOR IS THE GESTURE THE TIPS ABOUT IT WAIT FOR (notice.go): a
+	// place reached by any road retires its tip, and every visit to home
+	// moves home's row on to the next.
+	switch id {
+	case pageHome:
+		a.noticeHomeRotate()
+	case pageSpend:
+		a.noticeEvent(eventSpendOpened)
+	case pageSearch:
+		a.noticeEvent(eventSearchOpened)
+	}
 	return next.open(a)
 }
 
