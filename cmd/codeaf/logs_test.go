@@ -46,6 +46,16 @@ func TestMain(m *testing.M) {
 		os.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
 	}
 	restore := isolateTestEnvironment()
+	// AND THIS BINARY'S SUITE IS THE OLDER BELT'S SUITE, for the reason
+	// internal/session's TestMain gives at length: these tests drive `codeaf do`
+	// and the task doors down the node road they were written against, and they
+	// said which road by saying nothing. The pin is unconditional and it is set
+	// AFTER the isolation above, which clears this variable when the binary was
+	// launched by a plan worker — a suite whose answer depends on what the
+	// person running it exported is the one thing a test may not be, and a pin
+	// that a later unset undoes is not a pin. A test that means the harness sets
+	// "bash" for itself and wins.
+	os.Setenv("CODEAF_TASK_BELT", "node")
 	code := m.Run()
 	restore()
 	os.Exit(code)
