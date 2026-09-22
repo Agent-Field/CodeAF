@@ -25,6 +25,8 @@ func workLogoApp(t *testing.T) *app {
 
 func TestWorkingLogoFollowsChatAndKeepsItsChoice(t *testing.T) {
 	a := workLogoApp(t)
+	// Pick a known moving interval; other studies deliberately hold at contact.
+	a.workActivity.Start(a.now(), tokens.WorkLogoRally)
 	if !a.workLogoVisible() {
 		t.Fatal("submitted turn has no logo")
 	}
