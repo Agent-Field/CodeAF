@@ -438,7 +438,7 @@ var notices = []notice{
 		// ([notice.id] says why), so it reads as a misnomer on purpose.
 		id: "attach-a-picture", slot: slotHint,
 		armed:  ready,
-		text:   "/attach lets browse anywhere for files",
+		text:   "/attach lets you browse anywhere for files",
 		retire: eventAttached,
 	},
 	{

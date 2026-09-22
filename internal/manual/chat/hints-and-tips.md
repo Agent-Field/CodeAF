@@ -135,7 +135,7 @@ build if the two disagree), so a tip you saw is on it word for word.
   after it or on the browser it opens.
 - `/folder picks the folder codeaf works in` — retired when the folder chooser opens, from
   a conversation or aimed at home's target.
-- `/attach lets browse anywhere for files` — retired by the same gesture as
+- `/attach lets you browse anywhere for files` — retired by the same gesture as
   the other `/attach` tip.
 - `/export writes the current conversation to a file` — after two exchanges. Retired when
   an export lands.
