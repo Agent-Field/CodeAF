@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a message waiting above the box stays waiting when you leave for Home or another chat, and still goes when its answer ends
+title: a waiting message stays waiting when you leave the chat, and still goes when its answer ends
 pr: 1385
 surface: [chat]
 invalidates:
