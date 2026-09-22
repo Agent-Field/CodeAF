@@ -65,7 +65,7 @@ func TestLandRunTreeRefusesATreeWithNothingToLand(t *testing.T) {
 // THE SWITCH IS THE BELT'S. With CODEAF_TASK_BELT off the door refuses and not
 // one byte of the tree moves: no commit, no index, the work still on the floor.
 func TestLandRunTreeLeavesTheTreeAloneWithTheFlagOff(t *testing.T) {
-	t.Setenv("CODEAF_TASK_BELT", "")
+	t.Setenv("CODEAF_TASK_BELT", "node")
 	repo := newTestRepo(t)
 	before := gitOut(t, repo, "rev-parse", "HEAD")
 	writeFile(t, filepath.Join(repo, "second.txt"), "two\n")

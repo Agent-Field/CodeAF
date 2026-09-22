@@ -78,7 +78,8 @@ type RunSpec struct {
 	// and the brief is the assignment the root worker reads.
 	Title string
 	Brief string
-	// Slots is how many workers run at once. CostUSD is what is left of the
+	// Slots is how many workers run at once, and 0 is no limit, which is
+	// the word `task.parallel` itself uses. CostUSD is what is left of the
 	// smaller dollar limit the person set on the conversation, so the run and
 	// conversation spend from the same finite allowance.
 	Slots   int
