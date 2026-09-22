@@ -2680,10 +2680,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can one task tell another task something", "worker-harness"},
 		// The plan the conversation reads when you speak: the questions of
 		// somebody who has just changed their mind with work in flight.
-		{"I changed my mind while a task was running", "worker-harness"},
-		{"does the chat know what is running when I talk to it", "worker-harness"},
+		{"I changed my mind while work was underway", "worker-harness"},
+		{"does the chat know what is running while I talk to it", "worker-harness"},
 		{"it kept going after I said to skip that part", "worker-harness"},
-		{"it stopped the wrong task when I changed my mind", "worker-harness"},
+		{"how do I drop work I no longer want", "worker-harness"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
