@@ -1793,6 +1793,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// have a pool to draw from means the step had one, and the narrower
 	// allowance is the honest one (provider's [provider.StreamCut.OneMachine]).
 	oneMachine := true
+	// waitingSince is when the first of this step's cuts arrived, which is what
+	// the person is told the length of while an unbounded wait goes on
+	// ([waitingOnOneMachine]). Zero until there is a cut to date.
+	waitingSince := time.Time{}
 	// hopped is the models this step has already moved to, in order, and its
 	// length is where the chain is read from next. It is what the failure
 	// sentence names when even the fallbacks could not answer. `origin` is kept
@@ -1850,7 +1854,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// against the session's own model (steer.go's [Agent.rideModel]).
 		a.rideModel(next)
 		rung = a.effortFor(model)
-		cuts, rerouted, oneMachine = 0, false, true
+		cuts, rerouted, oneMachine, waitingSince = 0, false, true, time.Time{}
 		deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
 	}
 	// takeTheModel is THE ONE PLACE THIS STEP CHANGES MODEL, and `root` is the
@@ -2092,6 +2096,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			if !cut.OneMachine {
 				oneMachine = false
 			}
+			if waitingSince.IsZero() {
+				waitingSince = turnNow()
+			}
 			cuts++
 		}
 		// AND THE BOUNDARY READS IT. The row above says WHAT the provider said;
@@ -2186,6 +2193,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			degenerate: isCut && degenerateCut(cut),
 			rerouted:   rerouted,
 			oneMachine: cuts > 0 && oneMachine,
+			watched:    a.config.Interactive && !a.config.isWorker(),
 			fallback:   haveFallback,
 			outOfTime:  !spentAt().Before(deadline),
 		}
@@ -2208,11 +2216,22 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// the deadline over this ladder is reached as fast as the endpoint can
 		// fail ([nextMoveWait] states the whole argument).
 		wait := time.Duration(0)
-		if verdict.Retries() && !isCut {
-			if wait = verdict.Backoff; wait <= 0 && attempt > 0 {
+		if verdict.Retries() {
+			if wait = verdict.Backoff; wait <= 0 && attempt > 0 && !isCut {
 				wait = nextMoveWait(unpaid, a.failureLimits().TransportBackoff)
 			}
-			if !spentAt().Add(wait).Before(deadline) {
+			// A CUT USED TO BE UNABLE TO ASK FOR A WAIT AT ALL, and the guard
+			// that did it read `!isCut` here — written when no cut had a backoff
+			// to ask for, and left standing when one did. A verdict carrying a
+			// wait that the loop then dropped is the loop and the boundary
+			// disagreeing in silence, so the verdict's own figure is honoured
+			// whatever shape produced it, and only the FALLBACK wait for a
+			// failure that named none stays a refusal's alone.
+			//
+			// AND AN UNBOUNDED WAIT IS NOT CONVERTED BY THE DEADLINE. It is the
+			// one verdict the give-up does not end (taxonomy's [waitsForEver]),
+			// because the person who can see it waiting is the bound.
+			if !verdict.Unbounded && !spentAt().Add(wait).Before(deadline) {
 				ladder.outOfTime = true
 				verdict, evidence = a.weighLadder(err, ladder)
 			}
@@ -2292,8 +2311,15 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// has a real allowance ([taxonomy.transportBudget]). Nothing is
 			// invented to fill the gap: unknown renders as nothing.
 			unpaid = wait
-			a.tellPhase(provider.PhaseRetrying,
-				retryOrdinal(attempt+2, verdict.Attempts), time.Now())
+			// AND AN UNBOUNDED WAIT SAYS HOW LONG IT HAS BEEN WAITING, because
+			// it is the one retry with no denominator to count towards, and a
+			// phase that says only `retrying` for ten minutes is a hang as far
+			// as the person can tell ([waitingOnOneMachine]).
+			detail := retryOrdinal(attempt+2, verdict.Attempts)
+			if verdict.Unbounded && cuts > 0 {
+				detail = waitingOnOneMachine(cuts, turnNow().Sub(waitingSince))
+			}
+			a.tellPhase(provider.PhaseRetrying, detail, time.Now())
 			waitBegan := turnNow()
 			waitErr := turnBackoff(ctx, wait)
 			if took := turnNow().Sub(waitBegan); took < wait {
@@ -2378,6 +2404,44 @@ func retryOrdinal(at, of int) string {
 		return ""
 	}
 	return fmt.Sprintf("%d of %d", at, of)
+}
+
+// waitingOnOneMachine is what a person reads while the harness keeps asking the
+// only machine there is.
+//
+// IT IS THE HALF THAT MAKES THE OTHER HALF SAFE. Asking for ever is patience
+// when somebody can see it happening and dishonest when they cannot: the same
+// loop behind a phase that says `retrying` and nothing else is indistinguishable
+// from a wedged program, and the person's only move is to guess. So the line
+// carries the two facts they would ask for, how many times it has asked and how
+// long that has taken, and the one thing they can do about it.
+//
+// It says nothing about WHY the machine is quiet, because this layer does not
+// know: weights still loading, one slot already busy, and a request the server
+// will never accept all arrive here as the same silence.
+func waitingOnOneMachine(asks int, waited time.Duration) string {
+	if asks < 1 {
+		return ""
+	}
+	times := "once"
+	if asks > 1 {
+		times = fmt.Sprintf("%d times", asks)
+	}
+	return fmt.Sprintf("no answer %s in %s · still asking · esc stops", times, roundWait(waited))
+}
+
+// roundWait is a waiting length in the shortest honest words: seconds under a
+// minute, whole minutes over one. A person watching a spinner wants to know
+// whether this has been going for twenty seconds or twenty minutes, and no
+// grain finer than that changes anything they would do.
+func roundWait(d time.Duration) string {
+	if d < time.Minute {
+		if s := int(d.Round(time.Second) / time.Second); s > 0 {
+			return fmt.Sprintf("%ds", s)
+		}
+		return "0s"
+	}
+	return fmt.Sprintf("%dm", int(d.Round(time.Minute)/time.Minute))
 }
 
 // giveUp is how long one model may spend answering this agent's turn: the
