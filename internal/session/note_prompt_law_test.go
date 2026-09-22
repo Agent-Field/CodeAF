@@ -37,9 +37,8 @@ import (
 // written, which is the failure worth keeping the note about: a needle that can
 // be broken by a re-wrap is a needle that will one day fail a page with nothing
 // wrong with it, or pass one that has lost the sentence. So both sides have
-// their whitespace collapsed first, and what is compared is the words.
-func oneLine(text string) string { return strings.Join(strings.Fields(text), " ") }
-
+// their whitespace collapsed first ([oneLine], which this package already has
+// for the same reason on a different string), and what is compared is the words.
 func TestABeltWorkerIsTaughtBothHalvesOfTheNoteChannel(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv(planCLIBinEnv, filepath.Join(t.TempDir(), "stub-codeaf"))
