@@ -400,7 +400,7 @@ func (a *app) doorPress(door statusDoor) (tea.Cmd, bool) {
 // answer, and laying it out is what writes the doors — read the other way
 // round, this would be testing a column from the frame before this one.
 func (a *app) statusDoorPress(x, y int) (tea.Cmd, bool) {
-	if a.copy.on || a.at(pageSettings) || a.pick.open {
+	if a.at(pageSettings) || a.pick.open {
 		return nil, false
 	}
 	mark, ok := a.chromeAt(y)
@@ -697,7 +697,7 @@ func seamSpans(head, model, rider, rung, gate string) (hudSpan, hudSpan, hudSpan
 // conversation's model; a room's own door is on its status row
 // ([app.statusPress]).
 func (a *app) legendModelPress(x, y int) bool {
-	if a.copy.on || a.at(pageSettings) || a.pick.open {
+	if a.at(pageSettings) || a.pick.open {
 		return false
 	}
 	mark, ok := a.chromeAt(y)
@@ -727,7 +727,7 @@ func (a *app) legendModelPress(x, y int) bool {
 // resolved word read back, so the work goes to the loop rather than being run
 // under the pointer.
 func (a *app) legendEffortPress(x, y int) (tea.Cmd, bool) {
-	if a.copy.on || a.at(pageSettings) || a.pick.open {
+	if a.at(pageSettings) || a.pick.open {
 		return nil, false
 	}
 	mark, ok := a.chromeAt(y)
@@ -747,7 +747,7 @@ func (a *app) legendEffortPress(x, y int) (tea.Cmd, bool) {
 // WALKS THE GATE'S WHEEL ONE STOP on the rung's own terms (approvalchip.go):
 // one press, one step, with a note describing the resulting posture.
 func (a *app) legendApprovalPress(x, y int) (tea.Cmd, bool) {
-	if a.copy.on || a.at(pageSettings) || a.pick.open || a.roomOpen() {
+	if a.at(pageSettings) || a.pick.open || a.roomOpen() {
 		return nil, false
 	}
 	mark, ok := a.chromeAt(y)

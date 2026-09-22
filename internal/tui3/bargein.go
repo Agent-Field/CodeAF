@@ -123,7 +123,7 @@ func (a *app) bargeOffered() bool {
 	// outright, and the rail holds it while the roster is up. Every one of these
 	// is read above the plain switch in [app.key], so the guard is here for the
 	// HINT's sake as much as the key's.
-	return !a.roomOpen() && !a.copy.on && !a.rew.on && !a.railHold
+	return !a.roomOpen() && !a.rew.on && !a.railHold
 }
 
 // bargeIn is the chord: the draft goes, and the turn stops.

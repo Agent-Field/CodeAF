@@ -601,7 +601,7 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(), a.guarding(),
 		a.taskSheet.planOn, a.railPlanPending.id != "",
 		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.deckShowing(), a.pick.open,
-		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open,
+		a.roster.open, a.welcome.open, a.menu.open, a.comp.open,
 		a.rew.on, a.rewSheet.open:
 		return nil, false
 	}
@@ -643,7 +643,7 @@ const stopRaiseKey = "x"
 // took it. Two targets, in the order they are stacked on screen: the card's own
 // answers while it is up, and the ✕ in the room's header.
 func (a *app) stopPress(x, y int) bool {
-	if a.copy.on || a.rew.on {
+	if a.rew.on {
 		return false
 	}
 	if a.stopping() {

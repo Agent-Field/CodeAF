@@ -67,12 +67,11 @@ func jumpLabel(pal palette) string {
 // conversation shorter than the window has nothing below it, and a chip offering
 // to jump to a row that is already on screen is a chip that does nothing.
 func (a *app) jumpShowing() bool {
-	// THE BODY REGION HAS TO BE THE CONVERSATION. A frozen viewport manages its
-	// own edge and rejoins it on the way out (copymode.go's [app.exitCopy]), and
-	// a room or the fullscreen roster has put the transcript off the frame
-	// entirely — a chip that offered to scroll a list nobody can see is the same
-	// mistake [app.rowAt] refuses to make.
-	if a.copy.on || a.roomOpen() || a.railFull() {
+	// THE BODY REGION HAS TO BE THE CONVERSATION. A room or the fullscreen
+	// roster has put the transcript off the frame entirely — a chip that
+	// offered to scroll a list nobody can see is the same mistake [app.rowAt]
+	// refuses to make.
+	if a.roomOpen() || a.railFull() {
 		return false
 	}
 	height := a.viewHeight()
@@ -144,8 +143,8 @@ func (a *app) jumpPress(x, y int) bool {
 // never mean slightly different things.
 //
 // The edge is rejoined by ARMING THE STICK rather than by computing a bottom
-// offset, which is how every other path back does it (welcome.go, app.go's /new,
-// copymode.go's [app.exitCopy]): the offset is resolved from the row count at
+// offset, which is how every other path back does it (welcome.go, app.go's
+// /new): the offset is resolved from the row count at
 // draw time, so a stick armed here survives the four rows the turn streams
 // between this keystroke and the next frame.
 func (a *app) toLatest() {

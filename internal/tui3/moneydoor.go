@@ -66,7 +66,7 @@ func (a *app) moneyPress(x, y int) tea.Cmd {
 // moneyDoorAt is that question on its own, because the pointer asks it too: the
 // set that LIGHTS has to be the set the press acts on (hover.go's own law).
 func (a *app) moneyDoorAt(x, y int) bool {
-	if a.copy.on || a.at(pageSettings) || a.pick.open {
+	if a.at(pageSettings) || a.pick.open {
 		return false
 	}
 	mark, ok := a.chromeAt(y)

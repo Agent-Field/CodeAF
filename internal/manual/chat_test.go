@@ -546,6 +546,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// nothing, and by the one who wants a title off the list.
 		{"ctrl+b on home does nothing", "keys"},
 		{"can I copy text off the home screen", "keys"},
+		// Copy mode went on 2026-09-22; these are the person who remembers it.
+		{"how do I copy text out of the conversation", "keys"},
+		{"is there a copy mode", "keys"},
+		{"what happened to /copy", "commands"},
 		// The spell-it-out gesture, asked the three ways people meet it: wanting
 		// it, seeing the hint and not knowing what it is, and being unhappy about
 		// what came back.

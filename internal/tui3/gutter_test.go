@@ -193,7 +193,7 @@ func TestATaskPageIsReadTwoColumnsInToo(t *testing.T) {
 
 // A YANK PASTES WHAT WAS SAID AND NOT THE FRAME IT WAS SAID IN. The gutter is
 // furniture; the indent under it is the block's own hierarchy and stays
-// (copymode.go's [copyClean]).
+// (clipboard.go's [copyClean]).
 func TestAYankLiftsTheGutterAndKeepsTheIndent(t *testing.T) {
 	if got := copyClean("  the parser guard is back", spacingConversationLead); got != "the parser guard is back" {
 		t.Fatalf("a yank of a guttered row pasted %q", got)

@@ -548,33 +548,6 @@ func TestAFallenThroughCorrectionIsOnTheScreenExactlyOnce(t *testing.T) {
 	}
 }
 
-// ── the overlays above ──────────────────────────────────────────────────────
-
-// AN OVERLAY THAT HAS TAKEN THE KEYBOARD KEEPS BOTH KEYS. Copy mode is read
-// above the plain switch, and while it is up the surface is a reader: a chord
-// that reached past it would send a sentence out of a box nobody is looking at.
-func TestAnOverlayAboveKeepsBothSteerKeys(t *testing.T) {
-	a, agent := steerableTurn(t, "reading the tree. ")
-	parkLine(t, a, "do much more of a deep research please")
-	a.input.setText("no, the other file")
-	a.enterCopy()
-	if !a.copy.on {
-		t.Fatal("copy mode did not open")
-	}
-
-	drive(t, a, wirePress(t, "\x1b[13;9u", steerKeySuper), key("right"))
-	if len(agent.steered) != 0 {
-		t.Fatalf("a key reached past copy mode and steered: %q", agent.steered)
-	}
-	if len(a.parks) != 1 {
-		t.Fatalf("a key reached past copy mode and moved the queue: %+v", a.parks)
-	}
-	// And the slot names neither, because neither would do anything.
-	if got := a.hintWord(); strings.Contains(got, parkKey) || strings.Contains(got, steerSendWord) {
-		t.Fatalf("the hint named the steer while copy mode held the keyboard: %q", got)
-	}
-}
-
 // ── the two lines that teach it ─────────────────────────────────────────────
 
 // H2 and H3: the one running-turn line names every deliverable key in its fixed

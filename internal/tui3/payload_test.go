@@ -121,7 +121,7 @@ func TestTheKeySheetLiftsItsChordsAndChipsItsCommands(t *testing.T) {
 	rows := noteRows(a, help, columnFacts(help, true)...)
 	body := strings.Join(rows, "\n")
 
-	for _, chord := range []string{"ctrl+b", "ctrl+o", "alt+enter", "@path"} {
+	for _, chord := range []string{"ctrl+s", "ctrl+o", "alt+enter", "@path"} {
 		if !lifted(a.pal, body, chord) {
 			t.Fatalf("the key sheet draws %q at the weight of the sentence beside it", chord)
 		}
@@ -158,8 +158,8 @@ func TestAStatusFigureReadsAboveItsLabel(t *testing.T) {
 // THE COLUMN IS READ BACK OFF THE TEXT, in both directions, so the fact list and
 // the note cannot be two spellings of one thing that drift apart.
 func TestColumnFactsReadEitherHalfOfATwoColumnNote(t *testing.T) {
-	text := "codeaf\n\n/help          what you can type\nctrl+b         copy mode\nsession · x.json"
-	if got := columnFacts(text, true); len(got) != 2 || got[0] != "/help" || got[1] != "ctrl+b" {
+	text := "codeaf\n\n/help          what you can type\nctrl+s         drag to select\nsession · x.json"
+	if got := columnFacts(text, true); len(got) != 2 || got[0] != "/help" || got[1] != "ctrl+s" {
 		t.Fatalf("the leading column is not the two keys: %q", got)
 	}
 	if got := columnFacts(text, false); len(got) != 2 || got[0] != "what you can type" {

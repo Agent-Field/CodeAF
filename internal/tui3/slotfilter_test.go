@@ -170,32 +170,26 @@ func TestASlotWithNoCandidateSaysSo(t *testing.T) {
 // ── 3. the hint slot follows the KEYBOARD ───────────────────────────────────
 
 // THE ORDER IS input.go's ROUTING ORDER. A hint is only true if it names the
-// keys the handler that reads first would take, and copy mode is the state this
-// slot was most wrong about: every key means something else while the viewport
-// is frozen, and the slot was drawing the input box's own two affordances.
+// keys the handler that reads first would take.
 func TestTheHintSlotFollowsTheKeyboard(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
 
-	a.copy.on = true
-	if got := a.hintWord(); got != "v select · a block · y yank · esc" {
-		t.Fatalf("copy mode offered %q", got)
-	}
-	// And the handed-over pointer leads even copy mode, because the key that
-	// ends it is read above everything (input.go's [app.key]).
+	// The handed-over pointer leads, because the key that ends it is read
+	// above everything (input.go's [app.key]).
 	a.released = true
 	if got := a.hintWord(); got != "drag to select · any key ends it" {
 		t.Fatalf("a handed-over pointer offered %q", got)
 	}
 	a.released = false
-	// The picker is read ABOVE copy mode (input.go reads it before ctrl+c), so
-	// it wins the slot when both are somehow up.
+	// The picker is read above the plain switch (input.go reads it before
+	// ctrl+c), so it wins the slot.
 	a.pick.open = true
 	// And the crew rides the end of it on any launch that has one (crew.go's
 	// [app.crewHint]).
 	if got := a.hintWord(); got != "enter switch · esc · crew "+config.DefaultCrew {
 		t.Fatalf("an open picker offered %q", got)
 	}
-	a.pick.open, a.copy.on = false, false
+	a.pick.open = false
 
 	a.menu.open = true
 	if got := a.hintWord(); got != "↑↓ · enter · esc" {

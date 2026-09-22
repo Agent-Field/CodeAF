@@ -559,7 +559,7 @@ background band. It was right-aligned until 2026-09-09, and out there beside the
 column it was the one thing on the frame nobody saw.
 
 It is not drawn at all when there is no gap row (a short window), when the label is
-wider than the frame, in copy mode, while a room is open, or while the fullscreen
+wider than the frame, while a room is open, or while the fullscreen
 roster is up. A room keeps its own edge: `ctrl+l` inside a room scrolls the room, not
 the conversation.
 
@@ -674,8 +674,8 @@ answer to being scrolled away: it offers the way back rather than taking it. Pre
 `ctrl+l`, clicking the chip, or scrolling down to the bottom yourself re-arms following,
 and from then on new output keeps you at the edge again.
 
-Three things do deliberately put you back at the bottom, because in each you asked for
-it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
+Two things do deliberately put you back at the bottom, because in each you asked for
+it: sending a message, and queueing one with `ctrl+q`.
 
 ## The line above the message box (the legend) — the model, the machine in brackets after it, and why the conversation's name is not on it
 
@@ -884,7 +884,7 @@ a mark means:
   at the start or a live `/standing`, `/orders`, or `/task` tag later in the draft. Help
   rows chip their leading command too. Nothing else borrows the mark, so it never
   highlights a slash word the send path will ignore.
-- **A key chord is brighter ink and never a background.** `ctrl+b`, `esc`, `↑↓` step up a
+- **A key chord is brighter ink and never a background.** `ctrl+s`, `esc`, `↑↓` step up a
   tier; they do not get a chip.
 - **Nothing here is ever drawn in the accent.** The accent marks the one live or chosen
   thing on a screen — your own `›`, the rail — and a line that appears and scrolls away is
@@ -1149,7 +1149,7 @@ Four things about it:
   have been with no such rule.
 - **The row you are on is never faded**, wherever it has been scrolled to — including
   when it is the very last row before the fold. Neither is a row under the mouse.
-- **Nothing you are reading fades.** The conversation and copy mode are untouched: a
+- **Nothing you are reading fades.** The conversation is untouched: a
   transcript is read line by line and every line of it is the content, not context.
 - **Rows never alternate light and dark.** codeaf draws no striped lists anywhere. Rows
   are told apart by spacing, and groups inside a list by a blank line — never by a rule,
@@ -1231,11 +1231,8 @@ words:
 | `waiting · your call` | an approval, standing or saved-program question requires an answer, or a task proposal has no countdown | the question hue, bold |
 | `stopping · detaching in 7s` | you pressed `ctrl+c` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before codeaf detaches | dim |
 | `interrupted` | the last turn was stopped by hand and is over | the bad hue |
-| `COPY` or `COPY · 12 lines` | copy mode | accent |
 
 `stopping` outranks `waiting · your call`, and `waiting · your call` outranks `working`.
-Copy mode outranks everything, because it is the only state about the keyboard rather
-than about the turn.
 
 **A door at rest whose work outlived its turn is not `idle`.** Handing a task out ends
 your turn, and the node it started works on for minutes with nothing happening in the
@@ -1794,8 +1791,8 @@ a source line. The marker sits outside the code plane, so it can never be mistak
 something the code said. Breaks prefer a space in the back half of the row and go
 mid-token when there is none — a 40-cell URL in a 30-cell column has no break in it.
 
-Copying takes the block whole: `a` in copy mode selects the run of code rows around the
-cursor, wrapped rows included, and the paste carries neither the hairline nor the `↳`.
+A drag across the block copies its source whole, wrapped rows included, and the paste
+carries neither the hairline nor the `↳`.
 
 This used to be true only under 60 columns. Above it a long line was **cut** — with an
 ellipsis at some widths and with nothing at all at others — so the same answer was whole
@@ -1955,7 +1952,7 @@ below is drawn as plain text on purpose:
 
 ## Copying a path, and why a reply cannot make its own link
 
-**What you copy is the plain path.** Copy mode (`ctrl+b`, or `/copy`) and `/export` strip the
+**What you copy is the plain path.** A mouse drag and `/export` strip the
 escape sequences, so a path leaves this conversation as the characters you can read, and
 an exported `.md` has no terminal machinery in it. Your terminal's own
 select-and-copy takes the visible characters too.
@@ -2008,7 +2005,7 @@ When there is no offer:
 An **open** table keeps its foot at every width, because the foot is the only way back
 from a choice you made.
 
-Copy mode yanks the rendered rows, so opening a table is the only way to put its real
+A drag copies the rendered rows, so opening a table is the only way to put its real
 content on the clipboard. A closed one offers the ellipses you can already see.
 
 ## What opening a table actually does
@@ -2835,8 +2832,8 @@ Four rungs, detected once from what your terminal says it can do:
   tint.
 - **NoColor** — no escape sequences at all, weight included.
 
-Backgrounds — the hover band, the selection band, the stronger band under a copy-mode
-or drag selection, and the chip behind a recognized slash command — are drawn only at
+Backgrounds — the hover band, the selection band, the stronger band under a drag
+selection, and the chip behind a recognized slash command — are drawn only at
 ANSI256 and above. There is no weight that means "this row", so a slash command falls
 back to bold and a hovered row to nothing.
 
@@ -3276,7 +3273,7 @@ repaints in colours measured against your real background rather than an assumed
 Four things are re-aimed when it lands:
 
 - **The three background bands** — the row under the pointer, the chosen row, and a
-  copy-mode selection — are built out of your own background colour, moved away from
+  drag selection — are built out of your own background colour, moved away from
   itself by a fixed amount. They inherit your terminal's tint, and on a 256-colour
   terminal they still land on greys, never on a hue.
 - **The reading tiers** — ink, muted, dim — are checked against the real background and

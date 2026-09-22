@@ -117,8 +117,6 @@ const (
 	// eventRewound is a rewind that landed, from either surface (rewind.go's
 	// [app.rewindLand]).
 	eventRewound = "rewound"
-	// eventCopyEntered is copy mode freezing the viewport (copymode.go).
-	eventCopyEntered = "copy-entered"
 	// eventModelSwitched is the conversation's model changing by any door
 	// (palette.go's [app.switchModel]).
 	eventModelSwitched = "model-switched"
@@ -194,7 +192,7 @@ const (
 // refuse a retire rule that names a word nobody fires.
 var noticeEvents = []string{
 	eventBoot, eventTurnEnded, eventTaskStarted, eventTaskPageOpened,
-	eventMenuOpened, eventRewound, eventCopyEntered, eventModelSwitched,
+	eventMenuOpened, eventRewound, eventModelSwitched,
 	eventCompacted, eventFilesOpened, eventResumeOpened, eventCostShown,
 	eventStandingOpened, eventDeliverableMade,
 	eventAsked, eventTaskTyped, eventManualAsked, eventTabReopened, eventAtOpened, eventAttached,
@@ -1068,7 +1066,7 @@ func (a *app) noticeHint() string {
 // noticeQuiet is whether nothing on the frame outranks a tip.
 func (a *app) noticeQuiet() bool {
 	return a.input.empty() && a.state != stateWorking && a.showing() == nil &&
-		!a.rew.on && !a.rewSheet.open && !a.copy.on && !a.menu.open && !a.comp.open &&
+		!a.rew.on && !a.rewSheet.open && !a.menu.open && !a.comp.open &&
 		!a.pick.open && !a.roster.open && !a.asking() && !a.roomOpen()
 }
 

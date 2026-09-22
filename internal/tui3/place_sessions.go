@@ -891,7 +891,7 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, false
 		}
 		switch {
-		case a.asking(), a.awaitingTask(), a.copy.on, a.rew.on, a.rewSheet.open, a.welcome.open,
+		case a.asking(), a.awaitingTask(), a.rew.on, a.rewSheet.open, a.welcome.open,
 			a.menu.open, a.comp.open, a.guarding(), a.stopping():
 			return nil, false
 		}

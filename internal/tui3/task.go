@@ -3854,7 +3854,7 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
-		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.pick.open, a.copy.on,
+		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.pick.open,
 		a.welcome.open, a.menu.open, a.comp.open, a.effPick.open:
 		return nil, false
 	}

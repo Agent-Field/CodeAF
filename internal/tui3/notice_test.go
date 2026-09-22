@@ -644,13 +644,6 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 				t.Fatal(err)
 			}
 		},
-		eventCopyEntered: func(t *testing.T, a *app) {
-			a.note("something to copy")
-			a.enterCopy()
-			if !a.copy.on {
-				t.Fatal("copy mode did not open")
-			}
-		},
 		eventModelSwitched:   func(t *testing.T, a *app) { a.switchModel("openai/gpt-4.1", 1_000_000) },
 		eventCompacted:       func(t *testing.T, a *app) { drive(t, a, compactedMsg{}) },
 		eventFilesOpened:     func(t *testing.T, a *app) { a.slash("/files") },

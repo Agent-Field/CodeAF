@@ -3328,7 +3328,6 @@ local conversation the same page tails that log live.
 | legend hint | `ctrl+c interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
 | clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next request — and does nothing at all once the task has landed |
-| `ctrl+b` | freezes the transcript | freezes the room's own rows |
 | scroll position | the conversation's | the room's own, kept separately |
 | attachments | the tray sends pictures | a room's box sends words only |
 | proposals | drawn as cards | never — a task's own pieces start without asking you |
@@ -3532,9 +3531,7 @@ see *A task's room after a restart*.
 
 `pgup`/`pgdown` scroll a page, the mouse wheel scrolls, and reaching the bottom re-sticks
 to the live edge. `↑`/`↓` walk your history first and only scroll a line when there is no
-history to walk — see *Typing in a task's room*. `ctrl+b` freezes the room's rows for
-copying — one known wrinkle: leaving copy mode rejoins the conversation's live edge, so
-freezing a room while the conversation was scrolled up loses that scroll.
+history to walk — see *Typing in a task's room*.
 
 The task's elapsed clock freezes while you stand in its room. That number exists to ask
 whether you should go and look; being there is the answer. Nothing is stopped, only
@@ -4510,7 +4507,7 @@ What else you can do yourself, on a task that is running:
 | walk into it | click it, `enter` on it, or `→` over an empty box |
 | talk to it | `enter` on a sentence in its room |
 | read its whole transcript | its room |
-| copy text out of it | `ctrl+b` in its room |
+| copy text out of it | drag across its rows with the mouse, in its room |
 | refer to it in conversation | `@<slug>` |
 | leave it | `esc`, `←`, or `←←` — the work keeps running |
 | stop it | `x`, or `Stop` on its room's facts row — one confirmation card, always |

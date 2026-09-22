@@ -319,16 +319,11 @@ func TestABuildWithNoExpanderNeverOffersTheChord(t *testing.T) {
 	}
 }
 
-// The block is never up while the pointer is somewhere else on the surface — it
-// belongs to the draft, and a page that replaced the draft took it with them.
-func TestTheBlockIsNotOfferedInCopyMode(t *testing.T) {
+// The block is never up while a turn is running — it belongs to the draft at
+// rest, and a running answer took the keys with it.
+func TestTheBlockIsNotOfferedWhileATurnRuns(t *testing.T) {
 	a, _ := spellLab(t)
 	typeDraft(t, a, "build me a login page")
-	a.copy.on = true
-	if a.spellOffered() {
-		t.Fatal("the chord was offered while the viewport was frozen")
-	}
-	a.copy.on = false
 	a.state = stateWorking
 	if a.spellOffered() {
 		t.Fatal("the chord was offered while a turn was running")

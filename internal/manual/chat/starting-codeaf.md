@@ -771,7 +771,7 @@ This is not the record of what codeaf sent the model: that is a separate file, r
 
 codeaf ships with this manual compiled into it, and it reads it with a tool
 called `manual` rather than answering about itself from memory. So "what can you
-do?", "what does ctrl+b do?", "can you read a PDF?" and "why did you just ask me
+do?", "what does ctrl+s do?", "can you read a PDF?" and "why did you just ask me
 that?" are all fair questions to type straight into the conversation. If the
 manual has nothing on something, that usually means codeaf does not do it, and it
 will tell you so instead of inventing an answer.

@@ -1109,9 +1109,6 @@ func (a *app) bodyRows(width, height int) ([]row, int) {
 		// row is what says which page it belongs to.
 		return []row{{text: a.pal.dim(fit(startTinyWord, width)), entry: -1}}, max(0, height-1)
 	}
-	if a.copy.on {
-		return a.copyRows(width, height)
-	}
 	// AND A QUESTION OPENED OUT INTO ITS OWN PAGE IS THE FOURTH ANSWER, on the
 	// room's own terms and above it (questionroom.go): a question is drawn over
 	// whatever it was raised about, and a node's page is one of the things it can

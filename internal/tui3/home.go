@@ -3813,7 +3813,7 @@ func (a *app) homeDoorOpen() bool {
 // it: Home is reachable and no copy or rewind mode owns the foot. The draft
 // may contain words because back navigation preserves them.
 func (a *app) homeDoorShowing() bool {
-	return (a.roomOpen() || a.homeDoorOpen()) && !a.copy.on && !a.rew.on
+	return (a.roomOpen() || a.homeDoorOpen()) && !a.rew.on
 }
 
 // homeDoorPress is a click on that advertisement.
