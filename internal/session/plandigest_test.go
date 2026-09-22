@@ -182,3 +182,44 @@ func TestTheDigestRidesInTheMessageAndNotInTheJournal(t *testing.T) {
 		t.Fatalf("what the journal keeps = %q, want their own sentence alone", message.said)
 	}
 }
+
+// A ROW OF THE LIVE RUN IS A ROW THE CHAT CAN END. This is the door the digest
+// exists to be acted on through, and until it was routed the tool could not find
+// these rows at all: measured on the real binary, a conversation that had
+// correctly worked out which row the person's change of mind had made wrong was
+// answered `No task "2" in this project` four times, and then told the person it
+// had stopped work it had not stopped.
+//
+// A part the run made for itself has no number of its own, so it goes through the
+// store the way the task page's own stop does; both are asserted here, because
+// the two kinds of row are different things and one working proved nothing about
+// the other.
+func TestTheChatCanEndOneRowOfALiveRun(t *testing.T) {
+	agent, path := armLiveRun(t,
+		plandb.TaskSpec{ID: "2", Title: "Move the schema"},
+		plandb.TaskSpec{ID: "inner", ParentID: "2", Title: "The part it made for itself"},
+	)
+
+	// The part with no number of its own: `#2.1` in the words the model reads.
+	answer, ok := agent.stopPlanRow("2.1", "the person dropped it")
+	if !ok {
+		t.Fatalf("the tool did not recognise #2.1 as a row of this run; it answered %q", answer)
+	}
+	if !strings.Contains(answer, "stopped") {
+		t.Fatalf("the answer to a stop does not say it stopped: %q", answer)
+	}
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("open the store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if status := store.Task("inner").Status; status != plandb.StatusCancelled {
+		t.Fatalf("the part's row is %q after the stop, want cancelled", status)
+	}
+
+	// AND A TOKEN THAT NAMES NO ROW OF THIS RUN FALLS THROUGH, so the session
+	// tree's own reader answers it exactly as it did before this door existed.
+	if answer, ok := agent.stopPlanRow("94", ""); ok {
+		t.Fatalf("a token naming no row of this run was claimed by the run: %q", answer)
+	}
+}

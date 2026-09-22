@@ -317,6 +317,10 @@ answers you, and to leave the others alone.
   what a task was asked for is the worker's own verb, not the conversation's, so
   "make it do X instead" comes out as a stop and a fresh task, or as a note the
   worker weighs. If you want the old task's work kept, say so.
+- **A task it ends is ended the way your own `x stop it` ends it.** Work halts
+  where it stands, the branch is kept, nothing re-runs it and no check judges it.
+  Ending one part of a run leaves the run going; ending the run's own row ends
+  the whole run.
 - **It sees rows, never results.** The block carries no result, no steps and no
   output — those cost context and it can ask for them with `tasks` when it has
   a reason to. A run wider than eight rows shows eight and says how many more
