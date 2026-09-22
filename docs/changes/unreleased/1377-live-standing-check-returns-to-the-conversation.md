@@ -1,5 +1,6 @@
 ---
 kind: internal
+pr: 1377
 title: the live standing check returns to the conversation that receives the firing
 surface: [chat, remote]
 invalidates:
