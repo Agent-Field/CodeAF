@@ -63,13 +63,19 @@ func TestLoadAdmitsAManifestWithItsPageAndItsProgram(t *testing.T) {
 	}
 }
 
-func TestLoadIsEmptyWhenTheFolderDoesNotExist(t *testing.T) {
-	registry, err := Load(filepath.Join(t.TempDir(), "nowhere"))
+// A machine with no delegates gets an empty registry AND the folder, so the
+// person who goes to add one finds it waiting.
+func TestLoadIsEmptyWhenTheFolderDoesNotExistAndMakesIt(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nowhere")
+	registry, err := Load(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !registry.Empty() {
 		t.Fatalf("registry = %+v, want empty", registry)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		t.Fatalf("the folder was not made: %v", err)
 	}
 }
 

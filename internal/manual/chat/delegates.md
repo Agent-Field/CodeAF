@@ -14,9 +14,10 @@ codeaf's own parts and run inside this process; a delegate is somebody else's bi
 running as a child process. `/harness` and `/subharness` list the first kind; `/delegate`
 lists the second.
 
-Each delegate is one manifest and one page under `~/.codeaf/delegates/`: `<name>.json`
-says how to run the program, `<name>.md` says what it does. A delegate is found at launch,
-so one added while codeaf is running appears the next time codeaf starts.
+Each delegate is one manifest and one page under `~/.codeaf/delegates/`, a folder codeaf
+makes at launch when it is not there: `<name>.json` says how to run the program,
+`<name>.md` says what it does. A delegate is found at launch, so one added while codeaf
+is running appears the next time codeaf starts.
 
 ## How do I hand work to a delegate — /<name> <brief>, /delegate, via, "delegate this to another agent", the command for a delegate
 

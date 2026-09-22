@@ -54,9 +54,12 @@ type Registry struct {
 	refusals []Refusal
 }
 
-// Load reads every `<name>.json` in dir. A missing directory is an empty
-// registry and no error: most machines have no delegates. An error is only a
-// directory that exists and cannot be read.
+// Load reads every `<name>.json` in dir. A missing directory is MADE, so the
+// person who goes to install a delegate finds the folder waiting rather than
+// reading its name off a page; it is then an empty registry and no error, since
+// most machines have no delegates. An error is only a directory that exists and
+// cannot be read: a folder that cannot be made is read as missing, because the
+// registry is not worth failing a launch over.
 //
 // THE LAW IS CHECKED HERE, at the moment the command comes into existence: a
 // manifest whose manual page is missing or does not spell `/<name>` is refused
@@ -65,6 +68,7 @@ type Registry struct {
 // moved to load time for rows that cannot be in the table.
 func Load(dir string) (*Registry, error) {
 	registry := &Registry{entries: map[string]Manifest{}}
+	_ = os.MkdirAll(dir, 0o755)
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return registry, nil
