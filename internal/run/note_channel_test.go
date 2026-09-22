@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/run"
 )
 
@@ -39,15 +40,11 @@ func TestANoteLeftWhileATaskWorksReachesItsWorkerBetweenSteps(t *testing.T) {
 	release := filepath.Join(workspace, "release")
 	const said = "the settings file is cfg/app.toml and not config.yaml"
 
-	seat := &seat{script: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			command := "while [ ! -f " + release + " ]; do sleep 0.02; done; echo looked"
-			return toolReply(`{"command":` + jsonString(command) + `}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(finishCommand("root", "read the note and finished")), nil
-		},
-	}}
+	// The first command waits on the file, so the note can be written while it
+	// is in flight; every reply after that keeps the task alive until the note
+	// has actually arrived [worksUntilItIsToldThen].
+	seat := &seat{ever: worksUntilItIsToldThen("root", said, "read the note and finished",
+		"while [ ! -f "+release+" ]; do sleep 0.02; done; echo looked")}
 	worker := run.NewBashWorker(store, workspace, "test/model", seat)
 	ctx := run.WithStepsPerTask(runContext(t), 9)
 
@@ -153,14 +150,7 @@ func TestANoteDoesNotChangeWhatATaskWasAskedFor(t *testing.T) {
 		t.Fatalf("leave the note: %v", err)
 	}
 
-	seat := &seat{script: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(`{"command":"echo working"}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(finishCommand("root", "did what was asked")), nil
-		},
-	}}
+	seat := &seat{ever: worksUntilItIsToldThen("root", "task t-2", "did what was asked", "echo working")}
 	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", seat)
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
@@ -190,17 +180,7 @@ func TestNotesBeyondTheBoundWaitForTheNextBoundary(t *testing.T) {
 			t.Fatalf("leave the note: %v", err)
 		}
 	}
-	seat := &seat{script: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(`{"command":"echo one"}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(`{"command":"echo two"}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(finishCommand("root", "read them all")), nil
-		},
-	}}
+	seat := &seat{ever: worksUntilItIsToldThen("root", "the sixth thing nobody must lose", "read them all", "echo working")}
 	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", seat)
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
@@ -252,3 +232,149 @@ func seatTranscript(s *seat) string {
 	}
 	return b.String()
 }
+
+// TestTwoWorkersLiveAtOnceEachGetOnlyItsOwnNote is the test the old serialism
+// hid, and it is here because a claim of mine was wrong.
+//
+// Every earlier drive of this channel ran on a tree where [NewSupervisor]
+// clamped a slot count below one up to one, so a chat's `/task` dispatched ONE
+// worker at a time however many rows the plan had. #1355 removed that clamp —
+// `task.parallel` is 0 out of the box and 0 now means no bound — so the road
+// this channel runs on has several workers live at once. A pass on a serial run
+// cannot see either of the two failures that matters:
+//
+//   - A NOTE REACHING A WORKER IT WAS NOT ADDRESSED TO. The reader is scoped to
+//     the worker's own task ([unreadNotes] takes the task's id), and with one
+//     worker at a time a reader that ignored the scope would look correct,
+//     because there is nothing else in the store to deliver.
+//   - A NOTE LOST TO A MARK TWO LOOPS SHARE. The mark is a map local to one
+//     worker's loop, so N workers are N independent readers; an implementation
+//     that kept one watermark for the store would let whichever worker read
+//     first suppress the other's note, and with one worker at a time there is
+//     no other.
+//
+// So: two workers on two tasks of one store, both mid-command, a note written
+// to each while both are in flight, and each seat is asserted to have been
+// handed its own note and NEVER the other's.
+func TestTwoWorkersLiveAtOnceEachGetOnlyItsOwnNote(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "alpha", ParentID: store.RootID(), Title: "Alpha"},
+		{ID: "beta", ParentID: store.RootID(), Title: "Beta"},
+	}); err != nil {
+		t.Fatalf("seed two tasks: %v", err)
+	}
+	// The supervisor hands a worker a task it has already claimed, and the
+	// finish verb's ownership check is taken against that claim, so the test
+	// claims them the way the run would.
+	for _, id := range []string{"alpha", "beta"} {
+		if _, err := store.Claim(id, id); err != nil {
+			t.Fatalf("claim %s: %v", id, err)
+		}
+	}
+
+	workspace := t.TempDir()
+	const forAlpha = "alpha's own fact: the settings file is cfg/alpha.toml"
+	const forBeta = "beta's own fact: the settings file is cfg/beta.toml"
+
+	// Each worker's first command waits on a file of its own, so both are
+	// genuinely inside a command when the notes are written — which is the
+	// state the whole test is about.
+	open := func(id, want string) (*seat, chan error) {
+		release := filepath.Join(workspace, "release-"+id)
+		s := &seat{ever: worksUntilItIsToldThen(id, want, "read what was addressed to me",
+			"while [ ! -f "+release+" ]; do sleep 0.02; done; echo "+id)}
+		worker := run.NewBashWorker(store, workspace, "test/model", s)
+		done := make(chan error, 1)
+		task := *store.Task(id)
+		go func() {
+			_, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), task)
+			done <- err
+		}()
+		return s, done
+	}
+	alphaSeat, alphaDone := open("alpha", forAlpha)
+	betaSeat, betaDone := open("beta", forBeta)
+
+	// BOTH LIVE AT THE SAME MOMENT, read from the store's own live rows rather
+	// than assumed: a live row is true only while its command runs, so two of
+	// them is two workers inside a command at once. This is the assertion the
+	// old serial tree could not have satisfied.
+	waitForLiveStep(t, store, "alpha")
+	waitForLiveStep(t, store, "beta")
+	if live := store.Live("alpha"); live.Empty() {
+		t.Fatal("alpha stopped running a command before beta started one")
+	}
+
+	if _, err := store.AddPersonNote("alpha", forAlpha); err != nil {
+		t.Fatalf("leave alpha's note: %v", err)
+	}
+	if _, err := store.AddPersonNote("beta", forBeta); err != nil {
+		t.Fatalf("leave beta's note: %v", err)
+	}
+	for _, id := range []string{"alpha", "beta"} {
+		if err := os.WriteFile(filepath.Join(workspace, "release-"+id), nil, 0o644); err != nil {
+			t.Fatalf("release %s: %v", id, err)
+		}
+	}
+	<-alphaDone
+	<-betaDone
+
+	// EACH GOT ITS OWN, ONCE.
+	if saw := seatSawTimes(alphaSeat, forAlpha); saw != 1 {
+		t.Errorf("alpha was handed its own note %d times, want once:\n%s", saw, seatTranscript(alphaSeat))
+	}
+	if saw := seatSawTimes(betaSeat, forBeta); saw != 1 {
+		t.Errorf("beta was handed its own note %d times, want once:\n%s", saw, seatTranscript(betaSeat))
+	}
+	// AND NEITHER GOT THE OTHER'S. A reader that ignored the task scope, or a
+	// mark two loops shared, shows here and nowhere else.
+	if seatSaw(alphaSeat, forBeta) {
+		t.Errorf("alpha was handed beta's note:\n%s", seatTranscript(alphaSeat))
+	}
+	if seatSaw(betaSeat, forAlpha) {
+		t.Errorf("beta was handed alpha's note:\n%s", seatTranscript(betaSeat))
+	}
+	// AND THE STORE STILL HOLDS BOTH, for the screen that draws them.
+	for _, row := range []struct{ id, body string }{{"alpha", forAlpha}, {"beta", forBeta}} {
+		notes := store.Notes(row.id, 0)
+		if len(notes) != 1 || notes[0].Body != row.body {
+			t.Errorf("%s's notes after delivery = %#v, want its one note still there", row.id, notes)
+		}
+	}
+}
+
+// worksUntilItIsToldThen is the seat every test in this file waits on, and it
+// is the answer to a flake that was telling the truth.
+//
+// A note is handed to a worker at a step boundary, and the boundary the note
+// lands on is a race with the worker's own ending: script a seat that finishes
+// its task on the step after the note is written and, about one run in twelve
+// under the race detector, the task was already over when the note came up —
+// nothing to hand it to, correctly nothing handed, and an assertion that the
+// note arrived that fails for a reason that is not a defect.
+//
+// So the seat does what a working worker does: it keeps working until it is
+// told the thing, and finishes once it has been. Every reply is a harmless
+// command, so the turn stays alive and boundaries keep coming, and the finish
+// goes out on the first request that carries want. It reads only the messages
+// it was handed, so there is nothing here for the race detector to find, and
+// the step cap is the deadline — a channel that never delivers runs the cap out
+// and fails, which is what the controls on this file turn off the delivery to
+// check.
+func worksUntilItIsToldThen(id, want, result, working string) step {
+	return func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		for _, message := range messages {
+			if strings.Contains(oneLineOfRun(messageContent(message)), oneLineOfRun(want)) {
+				return toolReply(finishCommand(id, result)), nil
+			}
+		}
+		return toolReply(`{"command":` + jsonString(working) + `}`), nil
+	}
+}
+
+// oneLineOfRun flattens whitespace, because the belt's pages and sentences wrap
+// and a needle that reads as one line on the page is two in the request.
+func oneLineOfRun(text string) string { return strings.Join(strings.Fields(text), " ") }

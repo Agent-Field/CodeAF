@@ -154,9 +154,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	// landed them: the next round opens on them instead, the same road the
 	// no-action note rides, so a sentence the belt says is never lost to a race
 	// with the turn's own ending. It is a list and not one string because two
-	// sentences can fall in the same gap — the same-step observation and a plan
-	// note that arrived while the turn was closing — and dropping either of them
-	// would be the race this carry exists to close.
+	// sentences can fall in the same gap, and dropping either would be the race
+	// this carry exists to close. A PLAN NOTE DOES NOT RIDE HERE: it is not the
+	// belt's own observation about one step but somebody else's words, still on
+	// the store and still unread until a turn takes them, so a refused splice
+	// leaves it to the next boundary rather than to this carry.
 	var owed []string
 	// readNotes is the ids of this task's notes THIS WORKER has already been
 	// handed. THE MARK IS THE WORKER'S ALONE and lives only for the life of the
@@ -175,17 +177,6 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 			_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Reason: "the turn never started: " + err.Error()})
 			return Report{Steps: steps}, err
 		}
-		// THE ROUND OPENS ON THE HARNESS'S OWN SENTENCES, and never on the
-		// no-action note beside them: what is owed [owed] — the same-step
-		// observation, a plan note, or both — stands in for it, because those
-		// sentences say what the worker can do and acting on them answers the
-		// no-action ending too.
-		if len(owed) > 0 {
-			brief, owed = strings.Join(owed, "\n\n"), nil
-		} else {
-			brief = noActionNote
-		}
-
 		var (
 			roundSteps int
 			turnErr    error
@@ -325,18 +316,26 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				// because that is a revised assignment's job and a revision
 				// carries a version for a reason.
 				//
-				// THE TURN THAT ENDS BEFORE THE STEER LANDS STILL GETS THE NOTE.
-				// The words go to [owed] and open the next round, exactly as the
-				// same-step sentence does, and the note is marked read either way
-				// so nobody is handed it twice.
+				// A NOTE IS MARKED READ ONLY WHEN IT WAS HANDED OVER, and that
+				// is the whole reason this reads the way it does. The splice can
+				// refuse — the worker's own turn ends in the gap between the step
+				// that brought the note and the steer that would have landed it,
+				// and there is nothing to splice into. Marked read on a refusal
+				// the note would be delivered to nobody and never offered again:
+				// a silent drop of the one thing a channel may not drop. Left
+				// unread it is simply still unread, so the next boundary offers
+				// it again, and the boundary after that, until a turn takes it.
+				//
+				// A NOTE THE TASK ITSELF OUTLIVES IS NEVER HANDED OVER, and that
+				// is correct rather than a loss: a task that has finished has
+				// nobody left to tell. The words stay on the store for the person
+				// who opens the page, which is where an undelivered note belongs.
 				if ending.kind == endingNone && !stalled {
 					if fresh := unreadNotes(w.store, task.ID, readNotes); len(fresh) > 0 {
-						spoken := planNoteSpoken(fresh)
-						if _, steerErr := agent.Steer(spoken); steerErr != nil {
-							owed = append(owed, spoken)
-						}
-						for _, note := range fresh {
-							readNotes[note.ID] = true
+						if _, steerErr := agent.Steer(planNoteSpoken(fresh)); steerErr == nil {
+							for _, note := range fresh {
+								readNotes[note.ID] = true
+							}
 						}
 					}
 				}
@@ -441,6 +440,24 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				return Report{Steps: steps, USD: usd}, err
 			}
 			return Report{Steps: steps, USD: usd}, errors.New(reason)
+		}
+
+		// THE NEXT ROUND OPENS ON THE HARNESS'S OWN SENTENCES, and never on the
+		// no-action note beside them: what this round left owed [owed] — the
+		// same-step observation the turn ended under — stands in for it,
+		// because that sentence says what the worker can do and acting on it
+		// answers the no-action ending too.
+		//
+		// IT IS READ HERE, AT THE FOOT OF THE ROUND THAT OWED IT, AND NOT BESIDE
+		// THE SUBMIT ABOVE. Read up there it was read before the round that
+		// fills it had run, so a sentence owed in one round opened not the next
+		// round but the one after — and a task that ended in between never said
+		// it at all. The comment above has always claimed the next round; this
+		// is the line that makes the claim true.
+		if len(owed) > 0 {
+			brief, owed = strings.Join(owed, "\n\n"), nil
+		} else {
+			brief = noActionNote
 		}
 	}
 }
