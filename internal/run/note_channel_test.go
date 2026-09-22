@@ -101,23 +101,13 @@ func TestANoteIsHandedToAWorkerOnceAndTheScreenStillReadsIt(t *testing.T) {
 		t.Fatalf("leave the note: %v", err)
 	}
 
-	// Four steps go by after the note is already on the row. The note predates
-	// the worker, so its first boundary is where it is handed over, and the
-	// three boundaries after that must hand over nothing.
-	seat := &seat{script: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(`{"command":"echo one"}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(`{"command":"echo two"}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(`{"command":"echo three"}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(finishCommand("root", "counted to three")), nil
-		},
-	}}
+	// The note predates the worker, so the boundary that hands it over is an
+	// early one — and THREE MORE BOUNDARIES GO BY AFTER IT, which is what this
+	// test is for: each of them must hand over nothing. The seat keeps working
+	// until it has been told, then works on for three more replies, so the
+	// boundaries that must stay silent are boundaries that certainly happened
+	// AFTER the delivery rather than boundaries that happened instead of it.
+	seat := &seat{ever: worksOnAfterItIsToldThen("root", said, "counted to three", 3)}
 	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", seat)
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
@@ -378,3 +368,24 @@ func worksUntilItIsToldThen(id, want, result, working string) step {
 // oneLineOfRun flattens whitespace, because the belt's pages and sentences wrap
 // and a needle that reads as one line on the page is two in the request.
 func oneLineOfRun(text string) string { return strings.Join(strings.Fields(text), " ") }
+
+// worksOnAfterItIsToldThen is worksUntilItIsToldThen for the test that needs
+// boundaries on the far side of the delivery: it keeps working until it is told
+// the thing, works on for more replies after that, and then finishes. The
+// counter is a plain int because a worker's seat is called from that worker's
+// own loop, one request at a time.
+func worksOnAfterItIsToldThen(id, want, result string, more int) step {
+	told := 0
+	return func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		for _, message := range messages {
+			if strings.Contains(oneLineOfRun(messageContent(message)), oneLineOfRun(want)) {
+				told++
+				break
+			}
+		}
+		if told > more {
+			return toolReply(finishCommand(id, result)), nil
+		}
+		return toolReply(`{"command":"echo working"}`), nil
+	}
+}
