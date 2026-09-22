@@ -131,3 +131,18 @@ func TestWorkingLogoUsesTasksOwnState(t *testing.T) {
 		t.Fatal("disconnected task claims progress")
 	}
 }
+
+func TestWorkingLogoStopsForQuestions(t *testing.T) {
+	a := workLogoApp(t)
+	a.questions = append(a.questions, questionShown{question: session.Question{ID: 12, Head: "Which branch?"}})
+	if a.workLogoVisible() {
+		t.Fatal("chat question still advertises progress")
+	}
+	r, _ := roomModelApp(t, "task-model")
+	r.width, r.height = 100, 40
+	r.pal = newPalette(tokens.TrueColor, false)
+	r.questions = append(r.questions, questionShown{question: session.Question{ID: 13, Head: "May I continue?"}})
+	if r.roomWorkLogoVisible() {
+		t.Fatal("task question still advertises progress")
+	}
+}

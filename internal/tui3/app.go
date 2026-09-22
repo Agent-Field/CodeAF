@@ -5005,7 +5005,9 @@ func (a *app) paint() tea.Cmd {
 	// stream has stopped arriving does not need thirty frames a second: the
 	// clock steps at the spinner's own cadence, and the animations that count
 	// in paints (spinnerStep, pulseStep) land exactly where they would have at
-	// full cadence, one stride at a time. Any OTHER liveness term, or a stream
+	// full cadence, one stride at a time. A visible working logo also needs the
+	// full cadence because its geometry moves between spinner glyph changes.
+	// Any OTHER liveness term, or a stream
 	// still arriving ([app.streamFresh]), keeps the full cadence.
 	if waitLive || otherLive {
 		every := a.frameEvery()
