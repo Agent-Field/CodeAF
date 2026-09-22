@@ -455,6 +455,10 @@ func (a *app) taskSheetMine() tasksMine {
 		if node := a.taskSheetNodeFor(&entry); node != nil {
 			status := a.taskStatus(node)
 			row.live = &status
+			// AND WHICH STORE TASK THE ROW IS, when the node is one the run's door
+			// published. It is read off the node and never off the entry, because
+			// the node is the half that was told ([taskNode.planTask]).
+			row.planTask = node.planTask
 		}
 		mine.rows = append(mine.rows, row)
 	}

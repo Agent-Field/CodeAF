@@ -183,12 +183,20 @@ type Supervisor struct {
 
 // NewSupervisor builds a run over store. The workspace is the run's own
 // working copy, carried for the worker seat and the landing that follow this
-// loop; slots bounds how many workers run at once (a slot count below one
-// runs one at a time, which keeps a misconfigured run alive rather than
-// dead); limits bound the run's cost and, per task, its steps.
+// loop; slots bounds how many workers run at once; limits bound the run's
+// cost and, per task, its steps.
+//
+// A SLOT COUNT BELOW ONE IS NO BOUND AT ALL. That is the word the setting the
+// chat door reads gives it — `task.parallel` is 0 out of the box and 0 means no
+// limit (internal/config's DefaultTaskParallel) — and the door passes the
+// figure through as given. This constructor used to read the same 0 as 1 "to
+// keep a misconfigured run alive", which quietly ran every task a conversation
+// put on the harness one worker at a time while the setting beside it promised
+// no limit. What runs out is the machine and the provider's rate, and both are
+// governed elsewhere; the number of workers is not the resource.
 func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limits, factory WorkerFactory) *Supervisor {
-	if slots < 1 {
-		slots = 1
+	if slots < 0 {
+		slots = 0
 	}
 	return &Supervisor{
 		Owner:     ownerName(),
@@ -198,7 +206,7 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		limits:    limits,
 		factory:   factory,
 		after:     time.After,
-		finished:  make(chan workerReturn, slots+1),
+		finished:  make(chan workerReturn, returnsBuffer(slots)),
 		liveMoved: make(chan struct{}, 1),
 		cancels:   make(map[string]context.CancelFunc),
 		cut:       make(map[string]bool),
@@ -386,7 +394,7 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		}
 		return OutcomeIncomplete
 	}
-	if s.inFlight < s.slots && !s.dispatchedRoot {
+	if !s.full() && !s.dispatchedRoot {
 		// The root is the first worker of the run. It is claimed by the runtime
 		// in the store, so it needs no claim here — only a seat.
 		s.dispatchedRoot = true
@@ -394,7 +402,7 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	}
 	if s.limitHit == "" {
 		for _, ready := range s.store.ReadySet().Runnable {
-			if s.inFlight >= s.slots {
+			if s.full() {
 				break
 			}
 			task := *ready
@@ -486,34 +494,55 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 //
 // THE DOLLARS ARE NOT DROPPED, for absorb's own reason: what a run counts as
 // spent includes every paid call whatever way its task ended, and a worker the
-// run outlived was paid for like any other. Every worker has returned by the
-// time the wait is over and each left exactly one return in the channel, which
-// is deep enough to hold them all, so they are read here without waiting and
-// only their spend is settled. It also leaves the channel empty, so a return
-// from this run can never be read as one of the next.
+// run outlived was paid for like any other. Every worker leaves exactly one
+// return in the channel on its way out, and inFlight is the count of those not
+// yet read, so exactly that many are read here and only their spend is
+// settled. It also leaves the channel empty, so a return from this run can
+// never be read as one of the next.
+//
+// THE RETURNS ARE READ BEFORE THE GOROUTINES ARE WAITED FOR. A run with no
+// slot bound can have more workers out than the channel has room for, and a
+// worker blocked on handing its return in never reaches Done; waiting first
+// would wait forever. Reading first is right on a bounded run too, where it
+// changes nothing but the order.
 func (s *Supervisor) drain() {
 	for id, cancel := range s.cancels {
 		cancel()
 		delete(s.cancels, id)
 	}
-	s.workers.Wait()
-	for {
-		select {
-		case ret := <-s.finished:
-			s.inFlight--
-			// THE ENDING IS DROPPED, BUT THE FACT OF WHO IT CUT IS NOT: a
-			// worker that came home with the run's own ending as its error was
-			// taken down by that ending, and the run records it where it knows
-			// ([Summary.Cut]). The ending itself stays dropped, for the reason
-			// the comment above gives.
-			if errors.Is(ret.err, context.Canceled) {
-				s.cut[ret.task.ID] = true
-			}
-			s.settleSpend(ret)
-		default:
-			return
+	for s.inFlight > 0 {
+		ret := <-s.finished
+		s.inFlight--
+		// THE ENDING IS DROPPED, BUT THE FACT OF WHO IT CUT IS NOT: a worker
+		// that came home with the run's own ending as its error was taken down
+		// by that ending, and the run records it where it knows ([Summary.Cut]).
+		// The ending itself stays dropped, for the reason the comment above
+		// gives.
+		if errors.Is(ret.err, context.Canceled) {
+			s.cut[ret.task.ID] = true
 		}
+		s.settleSpend(ret)
 	}
+	s.workers.Wait()
+}
+
+// full says whether the run may launch nothing more right now: a bounded run
+// with every slot taken. An unbounded run is never full.
+func (s *Supervisor) full() bool {
+	return s.slots > 0 && s.inFlight >= s.slots
+}
+
+// returnsBuffer sizes the channel workers hand their returns through. A
+// bounded run can have at most slots workers out, so slots+1 holds every
+// return without a sender ever waiting; an unbounded run has no such figure,
+// so it gets a modest depth and the loop's habit of reading the channel in
+// every select — and [drain]'s order — is what keeps a sender from waiting
+// long.
+func returnsBuffer(slots int) int {
+	if slots < 1 {
+		return 16
+	}
+	return slots + 1
 }
 
 // bankLive is the one thing a worker's goroutine does to the run's account: it
@@ -997,7 +1026,7 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		if !needsWake(tasks, &task, s.cancels, s.wakes, s.reported) {
 			continue
 		}
-		if s.inFlight >= s.slots {
+		if s.full() {
 			return
 		}
 		// THE WOKEN-PARENT LAW: every non-root launch holds the task under its
@@ -1050,7 +1079,7 @@ func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 		if len(moved) == 0 {
 			continue
 		}
-		if s.inFlight >= s.slots {
+		if s.full() {
 			return
 		}
 		// A READY LEAF IS CLAIMED, the same claim every dispatch makes, so its
@@ -1519,9 +1548,9 @@ type Spec struct {
 	// assignment the root worker reads.
 	Title string
 	Brief string
-	// Slots bounds how many workers run at once, and Limits bound the run's
-	// cost and its per-task steps. Both pass through to the supervisor as
-	// given.
+	// Slots bounds how many workers run at once, and 0 is no bound; Limits
+	// bound the run's cost and its per-task steps. Both pass through to the
+	// supervisor as given.
 	Slots  int
 	Limits Limits
 	// Factory makes the worker for every task the run dispatches. Start holds

@@ -177,6 +177,18 @@ type taskNode struct {
 	// only run; a child carries both, so the same door opens the run's page at
 	// the card this row represents. Empty is an ordinary task, unchanged.
 	run, node string
+	// planTask is WHICH TASK OF THE RUN'S PLAN STORE this row is
+	// (session's TaskNotice.PlanTask), and it is set on the rows the run's door
+	// publishes and on nothing else. Empty is an ordinary node of this
+	// session's own tree, which is every row until a `/task` takes the run road.
+	//
+	// IT IS AN IDENTITY THIS SURFACE COULD NOT WORK OUT FOR ITSELF. A row the
+	// run's door published wears the store root's own title, so the tasks place
+	// matched the two halves on those words and drew the row the engine holds no
+	// node for — whose Enter opens an empty room. The store says which task it
+	// is now, so the place can draw the half the store answers for
+	// (taskplan.go's [planStoreDraws]).
+	planTask string
 	// stopped says a PERSON ended this node rather than the work ending on its
 	// own (session's TaskNotice.Stopped). It rides beside the state rather than
 	// replacing it — a stopped node still settles as failed — and it is what the
@@ -5913,6 +5925,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	}
 	if notice.Node != "" {
 		node.node = notice.Node
+	}
+	// AND WHICH STORE TASK THIS ROW IS, kept on the run door's own rule: the
+	// identity was settled when the row was minted and is true for the row's
+	// whole life, so an update quiet about it has not turned a run's row back
+	// into a node of this session's tree ([taskNode.planTask]).
+	if notice.PlanTask != "" {
+		node.planTask = notice.PlanTask
 	}
 	if notice.Branch != "" {
 		node.branch = notice.Branch
