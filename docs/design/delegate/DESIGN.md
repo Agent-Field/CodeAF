@@ -1,8 +1,8 @@
 # Delegates — handing a task to an outside program — DESIGN (draft)
 
-*2026-09-21. Written against `dev @ 17ae56d34` and `swe-pro-go @ f3b9716`
-(branch `zeropoint95/improvements`, PR #30). Nothing is built on the codeaf
-side yet. The two swe-pro changes this asked for have landed.*
+*2026-09-21, revised 2026-09-22. Written against `dev @ 17ae56d34` and
+`swe-pro-go @ 5793499` (branch `zeropoint95/improvements`, PR #30). Nothing is
+built on the codeaf side yet. Every swe-pro change this asked for has landed.*
 
 ## In one paragraph
 
@@ -32,7 +32,8 @@ at the person's discretion.
 | Questions from the delegate | none. The brief must be self-sufficient | 2026-09-21 |
 | swe-pro's `wip(edit)` commits | squashed into one commit at landing | 2026-09-21 |
 | swe-pro control plane | optional. Landed in swe-pro `f3b9716` | 2026-09-21 |
-| Live cost from swe-pro | a `stage: spend` record. Landed in swe-pro `f3b9716` | 2026-09-21 |
+| Live cost from swe-pro | a top-level `spend` record. Landed in swe-pro `5793499` | 2026-09-22 |
+| Steps from swe-pro | a `step` record per finished tool call. Landed in swe-pro `5793499` | 2026-09-22 |
 | Command rows and the manual law | rows are generated at launch; each delegate ships its own manual page; the law is checked at load | 2026-09-21 |
 | Readers | **one generic reader**, compiled in, over a small stdout protocol. No per-program reader | 2026-09-21 |
 | Delegates that produce no tree | allowed. The manifest says `"lands": "text"` and the terminal record's text is the deliverable | 2026-09-21 |
@@ -189,11 +190,11 @@ program itself saw), `deliverable` (the answer text, for `"lands": "text"`).
 
 **What this costs each program:**
 
-- **swe-pro** already emits `stage` and `terminal` in this shape, and its
-  status set is the protocol's. Two small asks, both optional: move `spend`
-  from `{"type":"stage","stage":"spend"}` to `{"type":"spend"}` (until then the
-  reader accepts both spellings, one line), and emit a `step` record per
-  tool call so the task page shows steps rather than stages.
+- **swe-pro** emits all four in exactly this shape as of `5793499`. Its
+  `step` is one per tool call reaching `completed` or `error`, never twice
+  for a republished part; `command` is `tool: argument`, the argument capped
+  at 200 bytes; `observation` is the output or the error string, capped at
+  2048 bytes on a rune boundary. Nothing to adapt.
 - **pr-af** needs a one-shot mode that prints these four records and exits:
   `stage` per review phase, `spend` per model call, `terminal` with the
   findings as `data.deliverable`, and `"lands": "text"` in its manifest.
@@ -272,15 +273,23 @@ it is enforced moves.
 
 ## What swe-pro changed for this
 
-Landed 2026-09-21 as `f3b9716` on `zeropoint95/improvements`, PR #30.
+Landed 2026-09-21 and 2026-09-22 on `zeropoint95/improvements`, PR #30.
 
-1. **Control plane optional.** Reachable: mirrored as before. Unreachable: one
-   stderr line, and the run proceeds. The `run-contract` record carries
-   `"control_plane": {"enabled": false, "url": "<probed url>"}`. `swe-pro
-   serve` still requires a plane. The manifest sets no `SWE_PRO_CP_*` variable.
-2. **Live spend record.** `{"type":"stage","stage":"spend","status":"recorded","data":{"cost_usd":0.0213}}`,
-   one per completed assistant message, cumulative, compaction included.
-3. **No question road**, by decision. Auto-reject stays.
+1. **Control plane optional** (`f3b9716`). Reachable: mirrored as before.
+   Unreachable: one stderr line, and the run proceeds. The `run-contract`
+   record carries `"control_plane": {"enabled": false, "url": "<probed url>"}`.
+   `swe-pro serve` still requires a plane. The manifest sets no `SWE_PRO_CP_*`
+   variable.
+2. **Live spend record** (`5793499`). `{"type":"spend","cost_usd":0.0213,"ts":…}`,
+   top-level, one per completed assistant message, cumulative, compaction
+   included. Emitted even at zero. Not projected onto the control plane.
+3. **Step record** (`5793499`). `{"type":"step","command":"bash: go test ./...","observation":"…","ts":…}`,
+   one per finished tool call. stdout only, not in the stderr trace.
+4. **No question road**, by decision. Auto-reject stays.
+
+Both stream additions were verified on the swe-pro side to touch only the
+event layer: nothing under its engine, session, prompt builders or tool-result
+path changed, and a standing test asserts the exact stdout record count.
 
 Checked by the swe-pro side against its code: the outcome table above holds,
 SIGTERM still writes the terminal record, and `--` before the goal parses.
