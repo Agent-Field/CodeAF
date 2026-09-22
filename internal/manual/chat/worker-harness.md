@@ -304,8 +304,14 @@ worker between its steps, in the gap after one command has finished and before
 it chooses the next. It is not something the worker has to think to look for.
 
 - **When.** At the next step boundary. A worker mid-command finishes that
-  command first; if the task's turn ends in the same moment, the note opens its
-  next round instead, so nothing is lost either way.
+  command first. If its turn happens to be ending in that same moment there is
+  nothing to hand the note to, so it stays unread and the next boundary offers
+  it again: an unread note is a note nobody has been told.
+- **When it is not handed over at all.** A task that finishes before its next
+  boundary never reads the note left on it — there is nobody left to tell — and
+  the words stay on its page for you. A worker that has just been told it is
+  repeating itself is handed nothing else at that boundary either; its note
+  waits for the one after.
 - **Once.** Each worker is handed each note one time. Reading a note on the
   task's page does not use it up — you and the worker read the same notes, and
   what you opened is never a note the worker then missed.
@@ -317,16 +323,12 @@ it chooses the next. It is not something the worker has to think to look for.
 
 **A note is not an order, and the worker is told so.** What it reads says the
 note is something somebody knows, not a direction, and that its work order has
-not changed. If you want the task to be asked for something *different*, that is
-a revised assignment, not a note — a note can never move what a task is judged
-by. This is deliberate: a worker that treated a passing remark as a new contract
-would quietly build something nobody asked for.
+not changed. A note can never move what a task is judged by: asking for
+something *different* is a revised assignment, not a note.
 
-Three hands write notes: you, from the task's page; another worker in the run,
-which is how a task that finds a sibling's premise wrong says so; and the
-conversation itself, which notes a row when it learns something the plan does
-not hold. Each is named where the note is drawn — `the person`, `task t-…`, or
-`you` when it was the conversation.
+Three hands write notes — you, from the task's page; another worker in the run;
+and the conversation itself — and each is named where the note is drawn: `the
+person`, `task t-…`, or `you` when it was the conversation.
 
 ## Where do I see the notes on a run, why didn't the chat know about the note
 
