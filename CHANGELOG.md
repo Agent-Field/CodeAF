@@ -18,6 +18,1730 @@ rule.
 
 <!-- codeaf-changes inserts new versions directly below this line -->
 
+## v0.4.0 — 2026-09-22
+
+### Added
+
+- **the worker harness wave one — the bash belt, the plan store on SQLite, the shell doors** — [#1109](https://github.com/Agent-Field/codeaf/pull/1109) · `engine` `chat` `build`
+
+  <details><summary>7 things that are no longer true</summary>
+
+  - The bash task belt's plandb shim exec'd os.Executable() blind, so an engine embedded in another program (the bench driver) sent every plandb call to that program. It now probes for a binary that answers `plandb status` — CODEAF_PLANDB_BIN, the running binary, a sibling plandb, a codeaf on PATH — and records, rather than swallows, a shim it could not arm; the shim directory rides the worker's own command environment, never the process PATH.
+  - A bash-belt worker's shell edits never reached its branch: landing staged only the write/edit ledger, which a shell never fills. Landing now stages the tree's own git status for a bash-belt node, minus what the harness itself writes, and the left-behind sentence no longer loses the first character of every path.
+  - The plan pulse ran only after a bash call or a landing, so a ready task could wait on another worker's next command and root completion could cancel it first. The pulse also runs when a bash-belt worker ends its turn and when a fan slot is freed, and a pass that handed work out never completes the root.
+  - The plan store was one JSON file with an flock sidecar per run. It is plandb.db, SQLite through the Go driver already in go.mod, one transaction per write, WAL once per file; the lock sidecar and both lock_*.go files are gone.
+  - The bash worker's system prompt was the composed chat page with a swapped section. It now opens on the loop policy (prompts/bashtask.md), then the belt's doctrine, then the kept constraints (prompts/bashrules.md); `ask` is off the bash belt; a plan-born child opens on its own task id with the person's request as background; the per-step frame carries steps left, free slots and child news.
+  - The plan store refused a hard dependency across a containment lineage, which the worker page taught as allowed. It is allowed now (ancestor and descendant edges still refused); `task insert --before` lifts the edge it replaces; critical-path, bottlenecks, overview, pivot and note answers carry the shapes the page promises.
+  - The hands a shell could not reach — the billed document parse, web fetch and search, image generation, an exact-match edit — are `codeaf doc`, `codeaf web fetch|search`, `codeaf image --out` and `codeaf patch`, each on the same function its tool runs.
+
+  Wave 1 of docs/design/worker-harness/DESIGN.md. Everything here is behind
+  CODEAF_TASK_BELT=bash except the four shell doors and the plan store package,
+  which are new surfaces; the shipped belt and the conversation are unchanged.
+  The comparison against the shipped engine is bench/bashloop on the Spark, and
+  its rows are recorded on the pull request as they land.
+
+  </details>
+
+- **the worker harness wave two — pause, person notes, finish gate, archive, spend, crew arms** — [#1109](https://github.com/Agent-Field/codeaf/pull/1109) · `engine` `build`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - A task in the plan store could only be cancelled or left running. `plandb task pause` now holds a task and its subtree out of the ready frontier and `task resume` returns it; a paused task is never handed to a worker.
+  - A note on a task carried no author, so a worker could not tell a person's steering from a sibling's record. Notes carry who wrote them, and a store read of what changed since a moment (`Changed`) wakes a waiter instead of leaving it on its clock.
+  - `plandb done` finished a task whose children or hard dependencies were still open. `CanFinish` gates it now and answers with the sentence naming what is still open.
+  - Finished subtrees stayed in the live plan forever, so `overview` and `status` grew with every run. `Archive` moves finished subtrees older than a window out of the live plan; `Archived` reads them back.
+  - The plan store kept no spend. `AddSpend` records one row per model call — task, model, seat, dollars, tokens — so a run's cost is readable from the store and the supervisor's limits have something to read.
+  - `bench/bashloop` ran both belts on one model only. `-seats one|crew` and `-arms A-one,B-one,A-crew,B-crew` run either belt on the profile's own tier rows, and the summary and CSV name each arm's seats and models.
+
+  Wave 2 of docs/design/worker-harness/DESIGN.md: the plan store gains the
+  verbs the chat surface and the supervisor need (D4, D5, D8, D11), and the
+  bench can compare the belts on the crew as well as on one model. Everything
+  is behind CODEAF_TASK_BELT=bash except the store package and the bench;
+  the shipped belt is unchanged.
+
+  </details>
+
+- **a footprint benchmark under docs/benchmarks measures what the binary costs to install and run** — [#1126](https://github.com/Agent-Field/codeaf/pull/1126) · `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `docs/benchmarks/performance/` is new: `measure-cli.sh` measures any agent CLI given a name, a HOME and a command; `README.md` there states the four rules the numbers depend on (a real repository, an authenticated profile, PSS rather than RSS, and a quiet box the script does not try to make quiet) and the known limits, including that the idle-wakeup figure ranged 0 to 84/s across runs of one unchanged build and so belongs in no comparison.
+  - `results-2026-09-17.md` is the full named table for that day — on disk, first interactive frame, memory during a turn, cold start, idle memory — including the rows where another single-binary CLI beats this one. The top-level README is unchanged; where and whether these figures appear there is a separate decision.
+  - The existing `## Benchmarks` section, which promises task quality on held-out issues, is unchanged and unrelated: the footprint numbers say what the binary costs to install and run, and nothing about whether the work is any good.
+
+  </details>
+
+- **a run nothing is driving can be carried on, in the copy its work is already in** — [#1305](https://github.com/Agent-Field/codeaf/pull/1305) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A run whose process went away could be read but not picked up. It comes back interrupted, its store holds every step it took, and until now there was nothing that could start work on it again. There is now one door that does: it adopts the working copy the run recorded when it started and the store that is already on disk, hands both to the same engine under the same seats, and lets the supervisor's ordinary next pass release the claims whose owner is gone. There is no resume machinery and no second scheduler; carrying on is the ordinary pass, run by a process that was not there for the last one.
+  - Nothing reaches this door yet, and that is deliberate rather than unfinished. Continuing seats workers and spends money, so the door is left with no caller until the card that offers the choice lands. A person cannot carry a run on from any surface today.
+
+  The door refuses rather than repairs, and each refusal names what is in the
+  way: a run that never stopped, a number with no run behind it, a run that
+  already said its last word, and a run whose working copy was never written down
+  or is gone from disk.
+
+  The refusal for a run with no copy recorded is the same sentence the row itself
+  shows where the offer would otherwise be. One sentence taken from one constant
+  cannot drift into two spellings of the same fact, one written for a row and one
+  written for an answer.
+
+  That refusal is not a guard against a case somebody might hit. The record of a
+  run's working copy landed today, so every run on disk that predates it carries
+  none, and that is the whole existing population. The first interrupted run most
+  people meet will be one of them, and what it says is the permanent answer for
+  it rather than a message about a version skew that will pass.
+
+  Every refusal is proved twice: that it said no in the person's words, and that
+  nothing started. The second half is the half that costs money if it is wrong.
+
+  The test that matters puts a worker's file in a run's copy, carries the run on,
+  and reads the file back. The road this door could have taken instead clears
+  that directory and cuts a fresh branch (#1298 shows it doing so), so that one
+  assertion is the difference between the feature and a deletion with a friendly
+  sentence on it.
+
+  Fourth cell of the settled close-window design (#1224). The card that calls it
+  is the next change.
+
+  </details>
+
+- **the footprint benchmark measures what resuming a session costs** — [#1317](https://github.com/Agent-Field/codeaf/pull/1317) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `docs/benchmarks/performance/results-resume-2026-09-20.md` joins the footprint set: memory before and after resuming a 50-turn session, and milliseconds to a usable resumed prompt, for the four CLIs the stub can drive, with empty rows and probe reasons for the other three.
+
+  </details>
+
+- **a dev build installs beside codeaf as devaf and follows the dev channel** — [#1333](https://github.com/Agent-Field/codeaf/pull/1333) · `build` `chat` `docs`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - A dev or staging build made no launch request and said nothing about being out of date. It now asks its own channel and draws the same one dim line when that channel has a newer build.
+  - `/update` and `codeaf update` with no channel word installed stable on every build. They now select the channel the running build came from, and stable is only the default for a stable or rc build.
+  - The launch notice and every update failure ended with one constant curl line for stable codeaf. They now end with the road that reinstalls the file actually running, so a devaf is never told to reinstall itself as codeaf.
+  - The installer always wrote the file `codeaf` and had no way to choose another name. It now takes `--name WORD` and `CODEAF_INSTALL_NAME`, so a build can be installed beside codeaf instead of over it.
+  - There was one install address per channel under `agentfield.ai/get/codeaf`. `agentfield.ai/get/devaf` now installs the newest dev build as `devaf`, and it is served by a separate website change that fails closed until this one is on `dev`.
+  - The launch check kept one answer in `update-check.json` for 24 hours. A dev or staging build keeps its own `update-check.dev.json` or `update-check.staging.json` for one hour instead, so two builds sharing a profile cannot thrash one file.
+
+  Santosh asked for internal dev usage to be separated from the main install. A dev
+  build could already be installed, but only over `~/.codeaf/bin/codeaf`, and it
+  then quietly turned back into a stable binary at the next `/update`. `devaf` is a
+  file name, not a product: every sentence codeaf prints still says codeaf.
+
+  </details>
+
+
+### Changed
+
+- **UX changes — consistent message boxes, Home sessions and task trees** — [#1071](https://github.com/Agent-Field/codeaf/pull/1071) · `chat` `engine` `remote`
+
+  <details><summary>23 things that are no longer true</summary>
+
+  - Home no longer has separate threads and tasks lists. One sessions list combines open tabs and saved history, deduplicated and limited to the fifteen most recent conversations; its heading opens the renamed Sessions tab. Closed conversations are dim and remain searchable.
+  - Closing a Home conversation with Right then x closes its tab and chats-menu entry while preserving history and running work. A conversation this window still holds never claims another window merely because its tab was closed.
+  - Mouse hover no longer overrides a later keyboard selection. The most recent navigation method owns the single selection; Right opens actions in the middle description column: x close, n new in project, o open folder and p copy project where applicable.
+  - The empty Home message box starts its footer with → options, followed by alt+p project, alt+e effort, alt+a approvals, alt+k chats and / commands where supported. Conversation boxes share effort, approvals, chats and commands; project cycling belongs to Home. Mac modifiers display as opt rather than alt.
+  - Home no longer advertises pick, Enter, ctrl+o, Tab or model-selection chords. Model selection uses /model or a press on the model; the old alt+o model shortcut is absent on Home.
+  - Home and conversation seams start with the full provider/model identifier, bold in the bright data hue, followed by separately styled :effort with no space, dot or badge. The approvals cell follows; Home places its clickable project path at the far right. Model and project hover underline, and conversation seams omit the git branch.
+  - The headed model picker and its alt+s / alt+shift+s sorting remain available alongside Sessions age-click sorting. Home shows draft per-model reasoning on the seam immediately; an explicit message-box effort choice takes precedence.
+  - Home project cycling uses every visible project and is sticky across alt+p and seam clicks. Project paths preserve their absolute root, abbreviate only the actual home prefix to ~, and truncate on the right. The redundant next-conversation-project footer sentence is gone.
+  - Shift+Enter inserts a newline in both message boxes. Home removes its placeholder on the first newline and keeps the cursor aligned with the edited line.
+  - Home no longer draws ask and new-conversation choice rows among search results. Enter on a draft starts a new conversation by default; /ask opens an inline answer with an animated activity indicator.
+  - A leading slash command token shows only the live-filtered alphabetical command list, scrollable above the seam on both Home and conversations. /approvals and /yolo are removed; approvals change through alt+a, the seam cell or settings.
+  - A failed attachment does not consume pasted text. A folder pasted into an empty Home box can offer a new conversation in that project; the next non-Enter input deactivates that offer, while Enter accepts it.
+  - Escape backs out of the current layer and ultimately reaches Home. Double-space navigation is removed. Conversation footers say esc home, task conversation footers say esc main, and Sessions, Spend and Settings say esc home at rest. Editors and filters dismiss before leaving their page.
+  - Conversation naming requests one five-to-eight-word phrase, without a separate tab label. Home and tabs use the same full title truncated to fit; new conversations use the initial prompt until naming finishes, and empty unsent tabs are not saved. Model control-token output is rejected both during naming and when reading old saved titles.
+  - The needs-you heading is gone. Conversation and task bullets distinguish answering, unread and unanswered questions; questions use a question-mark bullet with their actions retained. Since you left opens Memory, and the spend heading no longer repeats today's cost and allowance.
+  - Sessions contains conversation trees under running and completed. A whole tree moves together as its work changes state. Trees start expanded, newest activity comes first, and clicking age reverses sorting. Project has its own column, connectors show ancestry, and the collapse arrow follows the title in the left column.
+  - Stopped, interrupted, errored and incomplete ordinary tasks, quick tasks, designs and saved workflows can retry through their original runners. Successful or running tasks and separate background-job or adaptive-run summaries do not offer this action. Old records lacking required restart inputs explain the refusal.
+  - The compact task rail retains running-first ordering and finished-child folding without changing the full Sessions tree. Run tabs are views of their parent conversation and do not create duplicate Home or chats-menu rows or replace its title. The ctrl+g hide control sits above + /task in the conversation task panel.
+  - Interactive conversations default to YOLO, including remote conversations. Ordinary destructive commands and file overwrites can run without asking; tool-specific rules and the critical-command floor still apply. Headless runs require explicit authorization such as local --yolo or saved approval settings instead of inheriting the interactive default. Invalid saved approval values fall back to asking.
+  - Conversation approval choices and effort survive direct launch, picker reopen and engine reopen. An explicit --yolo launch outranks the saved approvals choice. Restoring one conversation's choice does not change the default for new conversations.
+  - Remote protocol version 17 replaces version 16 because clarification now keeps the original question pending while opening a discussion, ReplaceQuestion withdraws and replaces the request, and headless callers identify their lack of an approval resolver. Incompatible peers refuse at the handshake.
+  - Reattaching to an engine replays the last serving-provider sighting with its age. Direct model services have no provider rider; routed models retain their last serving machine until another answers.
+  - Settings search and model-picker carets live in their visible body fields. Other full-screen places have no general conversation composer; Home and conversations keep their shared message-box behavior.
+
+  This entry describes the final UX wave. Intermediate key bindings and layouts
+  have been removed so it can correct stale assumptions without introducing new
+  ones. Proposed additions to standing preferences and the design law are reviewed
+  separately from the product changes.
+
+  </details>
+
+- **The model picker is a table with headed columns, not a ragged tail of facts** — [#1107](https://github.com/Agent-Field/codeaf/pull/1107) · `chat`
+
+  <details><summary>59 things that are no longer true</summary>
+
+  - A `/model` row drew its facts as one right-aligned `·` tail — `$0.06/$0.18 per M · 131k · sees · watches` — so no two rows put their price, window or score in the same column and the list could not be read down. From sixty columns up the facts are a TABLE now: `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, `reads`, `makes`, each under a dim heading line, each cell in its own column. Under sixty columns the ranked tail is unchanged and is what still draws.
+  - The capability verbs are gone from every row. `sees`, `hears`, `watches`, `draws`, `speaks` and `films` are replaced by the catalog's own nouns under two heads that name the side: `image`, `audio`, `video`, `file` under `inputs`, and `image`, `speech`, `audio`, `music`, `video` under `outputs` — `text` is in NEITHER, because every model on the list reads and writes it and a word on every row is not a fact about any of them. `speaks` had folded speech, audio and music into one word and no longer can. A tail with no head to lean on — `codeaf models`, a narrow frame, a phone — spells the side out as `inputs image file · outputs image`, which is what `tui3.ModalityWord` returns now.
+  - The heads were `reads` and `makes` for one wave and are `inputs` and `outputs`; the cells are joined by a SPACE and not `, `, which is three cells on the widest row and decided whether the column was drawn at all at a hundred columns. `text` is in neither cell — two blank cells mean text in, text out.
+  - The picker's filter-box placeholder was `filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc` and is `filter by name · ctrl+r refresh` (degrading to `filter` on a narrow frame). Every key moved to the FOOT, which does not vanish under the first typed character; the foot is cursor-shaped and now names `ctrl+t effort` beside `→ providers` on a model row.
+  - `→ providers` and `ctrl+t` did NOTHING on home's model list — the door never armed the fold (`app.armLanes` was not called) and answered neither key, while the box promised both. Home arms the fold now, `enter` on a provider pins it, and `ctrl+t` walks the rung. The rung is held on the DRAFT (`targetDraft.levels`) and spent by `app.applyTargetLevels` when the next conversation attaches, because nothing behind home may be touched.
+  - The `auto` row reads `auto-route based on /settings`. It read `automatic routing according to /settings (recommended)` for one wave, and before that named a routing value (`simple`) that nothing on the screen introduces.
+  - A table's column heads are painted apart from their cells — `palette.head`, which is muted and italic where the two dim tiers land close together. They were dim like everything else, so a line of labels read as a row whose figures had gone missing. `palette.italic` has two jobs now, not one.
+  - ENTER NO LONGER CLOSES THE MODEL LIST. It applies — switches the model, pins the provider, writes the settings row, binds the task's model — and leaves the list up; `esc` is the way out and undoes nothing. All four doors onto the picker moved together (`app.pickerKey`, `app.targetPickKey`, `app.sheetSelectKey`, `app.composerPickKey`). A test that pressed enter and then read the frame, or drove more keys at the panel behind it, now needs an `esc` first.
+  - `picker.current`/`pin`/`force` are no longer snapshots for the whole life of the list: `picker.restate` moves them after a choice, so the marked row follows what was just chosen. Nothing running underneath may still move them — that freeze is unchanged — only the person pressing enter.
+  - The manual said `esc leaves and changes nothing — your half-typed draft, the model in use and the frame all come back as they were`. The model in use no longer comes back: enter already changed it, and esc only closes.
+  - The `openrouter` row carries no sentence at all now; it read `default routing`. That answer is a ROW inside its fold — `default`, last after the machines, with empty cells — because it is the same kind of choice as the machines above it and a container that describes one of the things it holds reads like a third option. `enter` on the container still writes it, one press earlier, and `internal/tui3.laneRouterNote` is now `laneDefaultWord`.
+  - `no provider has been measured for this model yet …` moved from under the `auto` row to inside the OPEN `openrouter` fold, standing where the machines would be — and that fold now opens with nothing measured, where `→` on it used to do nothing, because `default` is always in there.
+  - THE PROVIDER FOLD IS TWO LEVELS. `→` on a model opens `auto` and `openrouter` and nothing else; `→` on `openrouter` opens the machines it routes to, and walks the cursor in. `←` closes one level at a time. A test that reached a machine with `right, down` now needs `right, down, right`, and one that asserted a machine was on screen after a single `→` needs the second.
+  - The machines are drawn as a TABLE with their own heading — `provider first t/s $/M note up last 8` — by the same engine as the model list. `internal/tui3`'s `modelTable`/`modelTableFit` are `colTable`/`colTableFit`, built with `newColTable(cols, indent)` over a `[]tableColumn`; `modelColumns` is one such set and `laneColumns` is the other. A lane row is no longer `laneRowPlan`'s `·` tail wherever the frame can hold the table.
+  - The machines are drawn in ALPHABETICAL order. `laneViews` still hands them back fastest-feeling first and `auto`, `bestLane` and the model row's `via` still read that order — the picker sorts its own copy after taking the prediction, because an order that moves whenever the ledger learns something is an order a reader has to start over on.
+  - The `auto` and `openrouter` rows in the provider fold stood at either end of the machines and now stand TOGETHER above them, because they are the two rows a person chooses between — and under the shipped `simple` routing row they send the same thing, so telling them apart means reading them side by side. A machine is therefore two rows into an open fold, not one: a test that walked `right, down` onto the first provider now walks `right, down, down`.
+  - Both rows lost their bullet. `● auto` / `○ openrouter` meant `filled chooses for you, hollow declines to` and that is not true under `simple`, where neither chooses — the mark made a distinction the wire does not. The indent says they are not machines. `picker.mark` and the picker's `ascii` snapshot are gone with them.
+  - Their sentences are rewritten. `auto` reads `automatic routing according to /settings (recommended)` under EVERY routing row; it read `openrouter's own routing; codeaf stays out` / `router routes; codeaf takes over if answers turn bad`, and for one wave `codeaf tries to pick the best provider — not while routing is simple`, which named a value of a setting nothing on that screen mentions. `openrouter` reads `default routing` and read `let the router balance on price`. The constants are `laneAutoNote` and `laneRouterNote` in `internal/tui3/palette.go`.
+  - The dim sentence under the cursor's provider row is gone — `cloudflare: first token 0.8s, steady 58 t/s, no tail — from the sheet + your last 12 answers`. It repeated the row's own three numbers in prose under a name the row had just written, and cost the open fold a line on every move of the cursor. `internal/tui3.laneWhy` is deleted; `picker.lineUnder` now draws only `laneUnmeasured`, the line that stands where the providers would be when none has been measured.
+  - `app.setLevel` is the ONE site in the surface that asks `Agent.SetReasoningFor`, and it writes the surface's own table in the same breath. `app.cycleReasoning` (ctrl+t in the picker) and `app.applyTargetLevels` (home spending what its draft dialled) were that pair written out twice, which cost a call site against `offlooplaw_test.go`'s ratchet — a budget that may only ever be lowered.
+  - `picker.keysHint` is assembled from `picker.keysParts`, which returns the three pieces — before enter, what enter does, after enter — so a door can put its own ending on the same middle. Home's foot is `app.targetPickFoot` and says `enter use it` where /model says `enter switch`.
+  - A column the list was FILTERED ON is not drawn when every row of it agrees, which is why `makes` is absent nearly everywhere — `image` on all fifty-four rows of the drawing slot is the slot's own name written once per row. It is asked of `reads` and `makes` only (`modelColumn.selects`), because a price or a window that agrees across a short list is a coincidence rather than a definition, and the emptiness law may not grow into hiding facts that were published.
+  - `sees` and `draws` survived one wave longer than the other four verbs, as filter words in the picker's box. They do not survive that either: the box searches names only now, so `sees` is four letters to look for — it still finds `deepseek/deepseek-v4-flash`, whose id carries them in order, and no longer finds a model because of what the model can see. Nothing in codeaf spells any of the six verbs any more.
+  - `/model <slug>` on a model that cannot hold a conversation said `— it speaks.`; it says `— it answers with speech.` now, built from the same reading (`cannotChatBecause` in `internal/tui3/palette.go`). It also answers for families the verbs never covered — `— it answers with transcription.` — where it used to give the bare sentence.
+  - The order the modalities are said in is codeaf's, not the catalog's: the live rows publish the same set as `text, image, file`, `file, image, text` and `image, text, file` on neighbouring models, so echoing the published order put one fact in three places down a column. A modality this build does not know is still drawn, after the ones it does, sorted.
+  - `modelNameWide` — the most the name column may demand — is 38, not 44. It was measured against a live 355-row catalog where 343 ids are 36 cells or fewer; at 44 the twelve outliers cost every row the whole `reads` column.
+  - The picker rows no longer spell the unit on every row: the heading carries it. `$0.09/$0.18 per M` is `$0.09` under `in/M` and `$0.18` under `out/M` (two columns now, not one string), `elo 1290` is `1290` under `elo`, and `58t/s` is `58` under `t/s`. A test or a screen-scrape matching those old spellings on a wide frame will miss; `internal/tui3.modelNote` and the tail path still write them, and so does `codeaf models`.
+  - A picker row's tail could be shorter on one row than on its neighbour, because each row spent its own cells. Every row now draws the same columns, so an empty cell means the catalog published nothing and can mean nothing else — and a column no row on the list published is not drawn at all, heading included.
+  - `picker.headLines` takes a width now and counts the table's heading; the heading is charged OUTSIDE the twelve-row ceiling, so twelve models still show. A test that asks `picker.rows` for exactly `len(hits)` lines gets the heading and one model fewer — ask for `len(hits) + p.headLines(width)`.
+  - The manual said the six capability words — `sees`, `hears`, `watches`, `draws`, `speaks`, `films` — were what a model row may say, without saying that only the three INPUT words can ever appear in `/model`: a model publishing any non-text output modality is not a conversation model and is off that list entirely, so `draws`, `speaks` and `films` only ever show in the media slots on the Providers tab. The page says which is which now, and that the `can` cell reads published modalities only and never infers from the id — the **looking** slot does fall back to `vl`/`vision` in a name, so a silent `…-vl` row can be offered there while showing nothing under `can`.
+  - The tilde on a floating model id had one heading covering it and `…-latest` together, and neither `why are some model names prefixed with a squiggle` nor `why does this model start with ~` reached it. `internal/manual/chat/lanes.md` splits them: `Why a model name starts with ~` is its own section, `A model name that ends in latest` keeps the rest, and the unmeasured-model paragraph that was buried in the unpinning section has its own heading too.
+  - THE PICKER'S FILTER BOX SEARCHES MODEL NAMES AND NOTHING ELSE. The query language beside the search is GONE: `@cloudflare` (kept the models one provider serves and opened the first of them on it), `<1s` and `<800ms`, `>50t/s`, `$<0.3`, `fp4`/`fp8`/`int8`/`bf16`/`fp16`/`fp32`, `tools`, `sees`, `draws`, and the two that reordered rather than kept, `fast` and `cheap`. Every one of those is now an ordinary search word, which for most of them matches nothing — no model id carries an `@`, a `<` or a `$` — so the list comes back EMPTY instead of quietly answering the old question. `internal/tui3`'s `laneTerm`, `laneTermKind` and its eleven constants, `parseLaneTerm`, `parseLaneSeconds`, `laneTerm.keeps`, `laneNamed`, `splitQuery`, `keepsLanes`, `picker.orderByLanes`, `bestOf`, `lanePrice`, `laneTermWord` and the `picker.first` field are all deleted; `picker.unfoldAt` takes `(at, now)` and no longer lifts a named lane to the top of a fold. What replaced the grammar is the table those terms were asking about: `first`, `t/s`, `in/M`, `out/M`, `window`, `inputs`, `outputs` on the model rows and `$/M`, `note`, `up` on the provider rows are columns a person can read, and `codeaf models` from a terminal is where `grep` and `sort` answer the rest.
+  - `/model <one-word>` is ALWAYS a slug now. A single word the filter grammar recognised used to open a narrowed list instead — `/model fast`, `/model <1s` — and `/model fast` is now a request to switch to a model called `fast`, which for a slug the catalog has never carried means it is taken at its word, exactly as any other unknown slug is. `/model @name`, `/model auto` and the two-words-open-the-picker rule are all unchanged.
+  - Typing inside an OPEN provider fold still narrows that model's providers by name (`picker.narrowFold`, issue #1022) and still falls through to the model list when nothing matches. It is the only thing left that the box does besides ranking model ids, and it is a name search too.
+  - `→` AND `←` IN THE MODEL PICKER ARE THE TREE'S UNLESS SOMEBODY IS MID-TYPING. They used to be the tree's only at the very END and the very START of what was typed and the caret's everywhere between, which made leaving an open fold cost one press per character in the box: with `deep` typed, `←` stepped through `p`, `e`, `e`, `d` while the fold stayed open. The tie is broken by TIME now as well as position — `pickerQuiet` is 600ms since the box last changed (`picker.editing`), chosen against typing cadence so it cannot land inside a word — and the position rule is kept on top of it, so an empty box behaves exactly as before. Any edit hands the arrows back to the caret, and `ctrl+b`/`ctrl+f` are never the tree's, so they are the way back that costs no letter of the query; `↑`/`↓` deliberately do not count, so reading a filtered list never takes the arrows back. The foot names whichever key actually works, so `tab back`/`tab providers` now appear only while the box is warm. `picker.navigate` decides by asking whether the text or the caret MOVED rather than by keeping its own list of editing keys. A PASTE counts as editing and stamps for itself (`picker.pasteFilter`, which is now the one door clipboard text takes into either picker's box), while opening the list with a query already in it — `/model deep flash`, home's and a room's same command — deliberately does NOT: that query was finished before the list existed, so the arrows are the tree's on the first frame.
+  - `enter` on the bare `openrouter` row OPENS its list as well as choosing (`picker.showChoice`, called from all three doors onto the fold). It writes what it always wrote — the same answer the `default` row inside it writes, one press earlier — but shut, that gesture read as `you have chosen openrouter`, which sounds like a destination and hides that there was a list of machines under it. Open, the cursor lands on `default` wearing the mark and it reads as the true sentence. No new state was needed: `picker.marked` already gave the container the mark only while shut and `default` the mark once open, and `picker.cursorToMachine` already walks onto the marked row. A test that pressed enter on `openrouter` and then asserted the fold was still shut now sees it open.
+  - THE SORT READS THE LANE THE ROW DRAWS, which is what makes the sparse columns behave. `pickerRankOf` asked `bestLane` — the quickest-feeling lane the ledger holds — while the `via`, `first` and `t/s` CELLS come from the lane the row NAMES: the pin, or the chooser's answer, or nothing at all under a routing row where codeaf does not choose. So a row whose cells were blank still carried real numbers into the sort, the blanks did not land together, and the order was one the screen could not explain. `internal/tui3.modelLaneReading` is that one reading now, asked by `modelFactsOf` for the cells and by `pickerRankOf` for the order; the pin is read for the row in use alone, exactly as the cells read it.
+  - AND THE NAME BREAKS EVERY TIE, so a sparse column's block of blanks comes back ALPHABETICALLY. A stable sort alone left that block in whatever order the rung before it produced, so the same press drew a different screen depending on how it was reached. `tableColumn.words` marks the columns holding names rather than figures (`via` is the only one), because a pair that both published nothing used to fall past the name test and be compared as zeroes — one rule for the column and another for some of its pairs.
+  - THE FOOT READS IN ONE ORDER AT EVERY LEVEL: `↑↓ pick · ← back · → providers · alt+s sort · enter <verb> · ctrl+t effort · esc`. It is grouped by what each key MOVES — the cursor, then the list, then the one key that decides, then the one key that is about neither. `← back` used to sit AFTER enter, which put a cursor move on the far side of the only key that commits something; `ctrl+t` used to sit before the sort and before enter. `picker.keysParts` still returns three pieces and the doors still splice their own walk and leave words around them, but `before` now holds the back word, the open word and the sort, and `after` holds the effort key alone. Every spelled-out row (`pickerKeysModel`, `…Fold`, `…Unpin`, `…SwitchEffort` and the `Tab` variants) moved with it, and `payload_test.go`'s hint-grammar table lists the keys in the new order.
+  - HOME'S FOOT SAYS `enter choose` AND NOT `enter use it`. Every other row of the same fold already said `choose`, so `use it` was a second word for one gesture on one rung of it. `targetPickWord` moved with it.
+  - A MACHINE'S ROW AND THE `openrouter` ROW NAME THE SORT KEY NOW, because `alt+s` orders the PROVIDERS from in there. And the `openrouter` row names `→ providers` with nothing measured: the hint asked for at least one believed machine, which stopped being true the moment `default` became a row inside that fold — leaving `→` working on a row that did not name it.
+  - PINNING A MODEL AT HOME SAYS NOTHING ON THE LINE UNDER THE BOX. It read `model · <name> · for the next conversation you start here`; the RULE above the box already carries the pinned model, and carries it for as long as the pin lasts rather than until the next note replaces it. `internal/tui3.targetPinnedModelWord` is deleted, and `app.pinTargetModel` no longer calls `home.say`.
+  - THE `/model` YOU TYPED STAYS IN THE FILTER BOX, drawn as the chip it was, with the placeholder after it: `› /model filter by name`. The list is a different editor from the one the command was typed into, so the words vanished from the one line a person was looking at and left a `›` and a grey phrase that could have belonged to any list on this surface. `draftBlockTacked` is the new shape of `draftBlock` that takes it, and `draftBlockFull` is the one function all four now go through; the tack's width is paid by `head`, so the room the text wraps in, the caret column and the indent of every continuation row follow from it. A test asserting the picker's caret at `len(inputPad)+2` now wants the tack's cells as well.
+  - EVERY TABLE IS ALWAYS SORTED AND ALWAYS SHOWS ITS ARROW. There is no unsorted state: `tableSort`'s zero value is each table's FIRST column — the name — ascending, so `/model` opens alphabetical rather than in the catalog's order and the providers open alphabetical as they already did. A test that asserted the picker's rows in catalog order now sees them by name; `internal/tui3`'s `chatFiltered` (what `app.modelList` filters to, in source order) and `chatOnly` (what a picker offers, alphabetically) are two slices now because one was standing for both claims and made the sort look like a filter regression.
+  - EVERY COLUMN IS TWO RUNGS OF THE CYCLE — its own direction, then reversed — so `alt+s` alone reaches every order a table has: `model ↓`, `model ↑`, `via ↓`, `via ↑`, and round. `alt+shift+s` RETRACES that cycle rather than meaning `reverse`, which is what it meant while a column was one rung (and is what it still means on the tasks page). Walking back off the first column wraps to the last.
+  - THE PROVIDERS' TABLE SORTS TOO, with its own `tableSort` (`picker.laneSort`) and its own arrow, and `alt+s` orders whichever table THE CURSOR IS IN — the rule the fold's other keys already follow. The two orders are independent, so sorting the machines leaves the model list where it was. `note` and `last 8` are not sortable (`tableColumn.sorts`): a note is whichever ONE thing is worth saying about a lane, so ordering by its text would rank `bad replies` against `tail 3s` alphabetically, and a sparkline has no single value. `picker.unfoldAt` no longer sorts alphabetically as a special case — the fold opens in its own sort, whose zero value is that same order.
+  - `up` STANDS BEFORE `note` in the providers' table, and both `laneColumns` and `laneCells` moved together. Uptime is a figure and is read down its last digit with the three figures before it; a note is prose, and prose in the middle of a run of numbers breaks the run. It is the DROP order as well (law 3), so a narrow fold now keeps `100%` — comparable between rows — over one row's own caveat.
+  - WITH SOMETHING TYPED, THE NAME COLUMN IS BEST MATCH FIRST and alphabetical only inside a band of equally scored rows. An alphabetical default put the fuzzy hit above the exact one — `gpt` answered `anthropic/claude-gpt-echo` before `gpt-5-classic` — which is the search itself going wrong, so the name column reads the search’s own score first while the box has text (the biggest first — [fuzzy.Score]’s direction). With an empty box every score is equal and the column is plainly alphabetical, which is why the arrow still means the whole column.
+  - THE MODEL LIST SORTS BY ITS COLUMNS. `alt+s` orders by the next column and `alt+shift+s` turns that column round — the tasks place's own two chords (`tasksSortKeyChord`), read in `picker.foldKey` so all four doors onto the list get them, and a chord rather than a bare `s` because `s` is one of the commonest letters a filter starts with. The cycle is `list → model → first → in/M → out/M → window → t/s → elo` and back, each column opening the way it is asked about (cheapest, quickest, biggest, highest, A–Z) and `alt+shift+s` for the other half. `pickerByList` is in the cycle because it is the name search's own best-match order: a sort you cannot undo would throw that away for the life of the list. Four laws come with it: a column this list published nothing in is SKIPPED, since a rung that moves no row and paints no arrow is indistinguishable from a broken key; rows that published nothing sort LAST in both directions, which is the emptiness law said about order (the old `cheap` filter word got this right in one direction only, by calling an unknown price infinity); a sorted list draws no service HEADINGS, because the rows are no longer grouped and interleaved services would put a heading on nearly every row; and the cursor lands on the TOP rather than going back to the model in use, because the top is the answer. New file `internal/tui3/pickersort.go`.
+  - `colTable.fit` takes the sorted column and its arrow (`fit(width, mark, arrow)`), and `colTableFit` carries `mark`/`arrow`, because THE ARROW TAKES CELLS. A heading that grew two cells wide after the columns were budgeted would push the block past `overlayMeasure` and drag the right edge every row is aligned inside — so the mark is measured with the head (`colTableFit.headAt`, `nameHead`) rather than appended when the heading is drawn. `picker.measure` is split out of `picker.tableFit` for the same reason the two were never one question: the measurement is over the ROWS and the fit is over a WIDTH, and the sort cycle needs the first without the second — joined, it could not tell an empty column from an unmeasured one until a frame had been drawn.
+  - `←` ON THE `default` ROW CLOSED TWO LEVELS AT ONCE and now closes one, like every other row inside the machines. `picker.foldHere` asked whether the cursor was on a row INSIDE the open machines with `row.lane >= 0`, which is every real machine — and `default`'s lane number is negative like the two containers' are, so it was missed when `default` stopped being a note beside `openrouter` and became a row under it. `←` there shut the model's whole fold instead of just the machines, so the way in and the way out were different lengths. It matters more than it did: `enter` on `openrouter` now lands the cursor on exactly that row, and `←` is the press a person makes next.
+  - `cmd/codeaf`'s update tests build the pretend binary's path with `updateTarget(t)`, which resolves the temporary directory before joining the name. Handing `filepath.Join(t.TempDir(), "codeaf")` to the update door and expecting that spelling back is asserting the opposite of the law under test: `codeupdate.ExecutableTarget` runs the path through `filepath.EvalSymlinks` on purpose, so an installer replaces the real file rather than writing through a link. On macOS `t.TempDir` answers under `/var/folders/…` and `/var` is a symlink to `/private/var`, so `TestC9SourceBuildRefusesBeforeTheNetwork` and `TestC9AnInstallEndsWithTheNewBinarysVersionLine` failed on every developer's laptop while passing in CI on Linux, where the two spellings are one. The product is unchanged; nine call sites now get a canonical path by construction rather than two of them comparing one.
+  - `internal/tui3`'s free `priceField` and `eloWord` are gone. One reading of a model is `modelFactsOf` returning `modelFacts`, which both shapes of row dress: `modelFields` puts the units back on for the tail, `modelFacts.cells` leaves them off for the table. `priceWord`, `contextWord` and `ModalityWord` are unchanged. `lanes.go` gained `laneRateBare` and `laneRateUnit` under `laneRateTight`.
+  - A SERVICE HEADING IS NOT A COLUMN: every sort orders the rows INSIDE a service and never the services themselves. With a connection of your own the list is drawn under one dim heading per service in the order those services are held (`Model.GroupOrder`), and a sort that ignored them put a lonely local box above `openrouter` because its one row published no price — and two services' rows interleaved would have drawn the same heading twice. `pickerRank.group` is the outer key of the comparator; on the ordinary door with one service there is nothing to see. The manual said `a sorted list drops the service headings`, which was never what the code did.
+  - HALF A PRICE IS NO PRICE IN THE ORDER TOO. `pickerRankOf` took `PromptPrice` and `CompletionPrice` as it found them, so a catalog row that published one side of a price — which draws NO price at all, `modelFactsOf`'s both-halves-or-neither — sorted among the cheapest rows with a blank cell. It reads the pair the way the cell does now, and such a row sorts with the blanks.
+  - AND THE PICKER SEARCHES WITH THE MATCHER THE WHOLE SURFACE SHARES. #1321 moved every quick-search list onto `internal/fuzzy` while this branch was out, and the model picker's own three-rung ladder — `queryScore`, `tokenScore`, `subsequenceAt` and the `rungPrefix`/`rungSubstring`/`rungSubsequence` constants — is deleted rather than merged back: the bonus model produces the same order (a prefix above a substring above scattered letters) without tiers to hold it. A score is now BIGGER-IS-BETTER wherever this surface ranks, `picker.sortHits` reads it that way, and the words are folded before they become terms because every model id is lowercase and the matcher's smart case would pin `GPT` to bytes no id carries. #1321 also said the picker's queries keep the `@lane` and `<1s` terms and the `splitQuery` fall-through: they do not — this branch deletes that grammar, and `splitQuery`, `keepsLanes`, `orderByLanes`, `bestOf`, `lanePrice` and `laneTermWord` go with it.
+  - ALL FOUR DOORS ONTO THE LIST ANSWER THE SORT, and the two feet that were silent about it say it now. `app.composerPickKey` (the task composer's `alt+o` list) handed every key straight to `picker.navigate` and never read `picker.foldKey`, so it drew the headed table wearing `model ↓` and then swallowed the chord that moves it — the four-lists-again that the fold's own comment warns of. The settings panel's slot row answered the chord all along and its legend never named it, and the composer's foot did not either; both are spelled from `sortKeyWord` now, so the chord has one name on this surface.
+  - The manual said a plain text chat model `says `text` under both` columns. It never did: `modalitySay` skips `text` on both sides, so a text-in row draws an EMPTY `inputs` cell — which `models-and-cost.md` states correctly and `commands.md` contradicted, on the page the in-product model answers `what do these columns mean` from. The cycle block on the sorting page had also lost the `out/M` rung its own prose names, and `docs/MULTIMODAL.md` still promised the `sees · draws` tail that this change deletes.
+  - AND ESC NO LONGER GIVES THE MODEL BACK, which `models-and-cost.md` and palette.go's own header still promised: `esc leaves the picker and changes nothing — your half-typed draft, the model in use and the frame all come back exactly as they were`. Enter commits when it is pressed and esc only closes; the draft and the frame do come back, the model in use does not. A manual section is retrieved ALONE, so the stale one was served by itself to anybody asking what esc does.
+
+  Six hundred rows, and the question in front of somebody scrolling them is never
+  "what does this one cost" — it is "which of these is cheap", "which holds a
+  million tokens", "which can see". Those are comparisons between rows, and a
+  comparison needs the fact in the same place on each of them. The ranked tail is
+  the right shape for a list of settings, where each row's facts are about that row
+  alone; it was the wrong shape for the one list on this surface that is read down.
+
+  The ranking did not change and neither did the facts. `internal/tui3/modeltable.go`
+  is `modelFields`' own ordering laid out down the page instead of along the row,
+  giving up its columns from the same end for the same reasons, and falling back to
+  the tail wherever a frame has no room for columns.
+
+  </details>
+
+- **the worker harness design replaces the task engine under /task and do, in waves on one branch** — [#1109](https://github.com/Agent-Field/codeaf/pull/1109) · `docs` `engine` `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The bash-only task worker and the plan store were an experiment behind CODEAF_TASK_BELT=bash on the branch spark/bash-task-loop, judged not to replace the shipped belt. They are now the design for the task engine itself (docs/design/worker-harness/DESIGN.md): one worker, one bash tool, the plan in PlanDB, a runtime that owns the lifecycle, under both /task and codeaf do; the old engine stays reachable as CODEAF_TASK_ENGINE=legacy for one comparison and is then deleted.
+  - The experiment's report scored the bash-only worker 0 of 3 on the fan-out cell and read it as the worker not asking to split. The zero was a harness fault: the plandb shim ran the bench driver instead of the CLI, and the worker had tried to split. The measured cheaper-and-faster result stands; the capability loss does not.
+  - The plan store was one JSON file per run beside the session, archived when the run ended. The design makes it one store per home, in SQLite through the Go driver already in go.mod, with every row tagged by project and chat; scope is a filter on views, never a file boundary.
+
+  This entry records the design only; each wave that lands on the branch carries
+  its own entry naming what moved.
+
+  </details>
+
+- **A task is one worker and a plan store; the older node engine is deleted** — [#1109](https://github.com/Agent-Field/codeaf/pull/1109) · `engine` `chat` `build`
+
+  <details><summary>9 things that are no longer true</summary>
+
+  - `propose_task`, `quick_task`, `divide_work` and `revise_assignment` were a task's and a worker's doors to the node engine. They are gone; a task splits and is steered through the plan store its worker reaches by running `plandb` through bash.
+  - The `tasks` window read this session's own task graph. Its engine half is gone; a run is read from the plan store, and the rows a pane draws come from the store and the project index.
+  - `CODEAF_TASK_BELT` chose between the shipped node belt and the bash belt, and `CODEAF_TASK_ENGINE=legacy` kept the node engine reachable. Neither exists; the run engine is the only task engine and it wears one belt.
+  - `codeaf do` dispatched a task through the node engine's own door. It is a run with no chat attached over the same plan store, and its exit ladder, JSON envelope and usage ledger are unchanged.
+  - A task node was judged by a second model that read its worktree and answered VERIFIED or REFUTED. There is no auditor call; a task cannot finish while a child or a dependency is open, and the action that asks to finish must exit 0.
+  - A worker handed its parts to `divide_work` and each ran in a worktree of its own. Parts are `plandb split` tasks in the run's one working copy, and the run's landing is a single commit on its root.
+  - The belt refused `git clone` in a workspace that was not a repository. The task's git guard reads the workspace root now: where the folder is not inside a git work tree every git verb — clone, checkout, fetch, pull — passes, and inside a repository the refusals stand.
+  - A parent was not woken when its children landed: the plan pulse ran only after a bash call or a landing. It also fires at a bash-belt worker's turn end and when a fan slot goes back, so a task that became ready is dispatched instead of waiting on some worker's next bash call.
+  - The run's `plandb` was not on the worker's PATH. Every belt command is now prefixed with the run's armed shim directory, so the worker reaches the run's own plan CLI and the process environment is never touched.
+
+  The node engine was `internal/session`'s `TaskGraph`: a frontier that admitted
+  `TaskNode`s, a child agent per node in a `git worktree` of its own, an auditor,
+  and the verbs that reached it. Its replacement is the run — `internal/run`'s
+  supervisor over one `internal/plandb` store, one bash-belt worker per task, all
+  in the run's one working copy, coordinated through the store. This entry lands
+  with the deletion; `docs/design/worker-harness/LEGACY-INVENTORY.md` is the map
+  of what went and what stayed, and the manual pages and prompts that named the
+  old tools change in the same commit.
+
+  </details>
+
+- **the worker harness wave seven — the work seat, the belt's pages, parent wakes, the run's store** — [#1109](https://github.com/Agent-Field/codeaf/pull/1109) · `engine` `chat` `remote`
+
+  <details><summary>10 things that are no longer true</summary>
+
+  - A run worker sent no reasoning field, so the depth a person configured was paid again on every round of a one-action loop. It answers at the work seat now — low reasoning, and a rung set on the task, the conversation or the turn is still above it.
+  - A bash-belt worker opened on the chat's whole system page: a pane, slash commands and ten tools its belt does not carry. It reads the belt's own two pages alone — the loop policy and the bash doctrine — and not one byte of the chat page or the task worker's page.
+  - A parent was not run again when its children landed: the store auto-completed the composite. It is woken with each child's title, status and result, up to four times, and the report it gives then is its own result — for the root, the run's result.
+  - The run's `plandb` was resolved on the host PATH, so a worker found a stranger's `plandb` and wrote 19 of 85 tests into a store the run never reads. Every command the belt runs is bound now: an export puts the run's shim directory first on PATH and pins `PLANDB_DB` to the run's own store, for the one shell process the call runs and nowhere in the shared environment.
+  - The task rail listed a run's plan flat: every task at column zero, and the only relation a person could read was the word `waits:` on a held row. The rail draws the plan as a tree now — a child indented under the task that requested it, a task held behind work that is not its parent drawn under what it waits on, still wearing `queued · waits: <that task>` — and a task's page shows its children under its steps, each with its live step.
+  - A run whose root did the whole job alone and ended it with `plandb done root` was never reviewed: the store refused a check under a terminal root and the run completed unchecked. A root is not done until its check has landed, whoever wrote its ending: the store reopens it for that one check, a `does not hold` finding opens a `fix:` task the root waits on, and a check's landing wakes nobody.
+  - A task in a belt run could not say which commands prove it, so the review check had nothing it was allowed to run. `plandb add --check '<command>'` declares a task's checks on the node; the check task carries them and runs them first, and a task that declares none is checked by reading against its acceptance alone.
+  - The belt refused `git clone` in a workspace that is not a repository. Where the folder is not inside a git work tree every git verb — clone, checkout, fetch, pull — passes, and inside a repository every refusal stands.
+  - A fast run could answer before its last worker ended, and that worker's spend row or completion met the store the run had just closed — a nil handle and a panic in the middle of a report. Every road out of the run drains its workers first, and a closed store answers `plandb.ErrClosed` to each write and each read the database holds rather than this handle's memory.
+  - The spend page's tasks-by-seat block read the engine directly, so over `--host` it drew nothing and was silently absent. The seat rollup crosses the wire now, and an engine older than the new door answers `no such method`, which the page reads as nothing drawn.
+
+  Wave 7 of docs/design/worker-harness/DESIGN.md: the fixes the corpus reruns
+  and the wire audit turned up on the run engine. The work seat stops a run
+  worker paying the person's depth on every round; a belt worker reads the
+  belt's own pages; a parent is woken with its children's landings and reports
+  them as its result; the run's `plandb` is bound to the run's own store on
+  every command; git is free in a workspace that is not a repository; a run
+  drains its workers before it answers so a closed store refuses instead of
+  panicking; and the spend page's seat block crosses `--host`. The measured
+  reruns are in docs/design/worker-harness/BENCHMARKS.md, and the pull-request
+  body is docs/design/worker-harness/PR-BODY.md.
+
+  </details>
+
+- **Decision dialogs support updated requests and concurrent clarification** — [#1146](https://github.com/Agent-Field/codeaf/pull/1146) · `chat` `engine` `remote` `docs`
+
+  <details><summary>7 things that are no longer true</summary>
+
+  - Incomplete task cards previously offered no retry key. enter retry now continues the same owned task, with current state replacing stale failure displays across the task pages, sidebar and conversation receipt; the hosted engine supports the same action.
+  - The tasks heading and its working count beneath the sidebar hide hint are replaced by a blank spacer row.
+  - The conversation sidebar previously put its hide control after the task rows and reordered families by activity. The hide control now stays pinned at the top, task families and their children retain creation order, and + /task follows the scrolling list.
+  - Decision panels previously displayed c change and ? ask back, plus keyboard hints below the frame. They now display only esc later, o other and ? clarify on the lower boundary, with cyclic navigation in both directions.
+  - Other previously sent lane-dependent corrections, which could implicitly approve a task proposal. It now withdraws the pending decision without approval and starts the updated request in the same conversation.
+  - Clarification on a permission dialog previously queued behind the blocked tool call. It now runs in context beside that call, retains the original decision, and gives any question raised by the clarification priority until answered.
+  - The lowercase o shortcut previously opened a question's full page. Uppercase O opens that page now; c remains a note on the full page and a change action on completed receipts.
+
+  Clarification tools and replies appear in the conversation without consuming the
+  original turn's transcript entries. The pending permission remains unanswered,
+  and an updated request never grants it. The behavior also crosses the local
+  engine connection and remote connections.
+
+  </details>
+
+- **the curated lexer set loads on first use, not all 279 at init** — [#1193](https://github.com/Agent-Field/codeaf/pull/1193) · `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - Highlighting reached chroma's whole lexer registry, whose package initializer parsed all 279 of its embedded XML definitions — about seven of the twelve milliseconds a cold start cost — before main and whether or not a block was ever drawn. codeaf now owns a set of about forty languages, embedded as the same XML and parsed lazily on first use, so nothing is parsed at package init.
+  - A fenced block in a language outside the set, and an unlabelled one, were highlighted by chroma's fallback lexer or guessed from the source by text analysis (`lexers.Analyse`). Both are now plain text with no error, which is exactly what a nil lexer already drew.
+  - `internal/tui2/prose` imported `github.com/alecthomas/chroma/v2/lexers`; it no longer does. The four call sites there — `lexers.Get`, `lexers.Analyse`, `lexers.Fallback` in `highlightPieces`, and `lexers.Match` in `LexerName` — now go through the curated set, which is the only thing chroma's XML is reached by.
+
+  **Cold start, measured on Spark the benchmark's way** — `docs/benchmarks/measure-cli.sh`
+  startup phase, best-of-7 `codeaf --version` after 2 warmups, both binaries built from
+  this tree (the parent `f4079d716` and the change on top of it, so the pair differs
+  only by this work), measured BACK TO BACK in a quiet window — **1-min load 0.50
+  throughout, well under the load-2 ceiling; no figure here without its load** — three
+  rounds each:
+
+  | round | before best | before median | after best | after median |
+  | --- | --- | --- | --- | --- |
+  | 1 | 11.2 ms | 12.6 ms | **7.8 ms** | 8.6 ms |
+  | 2 | 10.7 ms | 17.7 ms | **8.3 ms** | 8.9 ms |
+  | 3 | 11.7 ms | 18.1 ms | **7.9 ms** | 11.3 ms |
+
+  Headline: **before ~11 ms, after ~8 ms** (best-of-7, the middle of each side's three
+  rounds) — about 3 ms of startup gone. The whole 279-lexer init parse is ~7 ms, but a
+  `--version` start pays only the part the process actually reaches before exit; the
+  binary-size drop below shows the rest of the removed cost. Every row above was taken
+  at 1-min load 0.50.
+
+  **Size.** Both binaries are `make build` of this tree — the parent commit `f4079d716`
+  without the change, and the change on top of it — so the pair differs only by this
+  work: **53,739,785 → 51,511,561 bytes**, 2,228,224 bytes (2.2 MB) the binary no longer
+  carries. Of that, 1,657,714 bytes is embedded XML: the dependency's 279 definitions
+  weigh 1,975,839 bytes and the curated 40 weigh 318,125. The remaining 570,510 bytes is
+  the dependency's compiled lexer package — its registry initializer and the lexers it
+  ships as Go source — which nothing in this tree imports any more.
+
+  **Why it is lazy and not per-language.** Every file in the set is parsed the first
+  time any block or filename needs one, and never again. It is not loaded one
+  language at a time because a definition can delegate to another BY NAME —
+  `html.xml` leans on CSS and Javascript, `docker.xml` on Bash and JSON,
+  `makefile.xml` on Bash — and a definition parsed alone whose delegate was not
+  registered would tokenise the delegated region as text. So first use builds the
+  whole set, each file once; nothing is parsed at init.
+
+  **The set** (names and aliases come from each definition's own config, so there is
+  no second table to drift): bash, c, c++, c#, css, dart, diff, docker/dockerfile,
+  elixir, go, graphql, haskell, hcl, html, ini, java, javascript, json, kotlin, lua,
+  makefile, markdown, nix, objective-c, perl, php, plaintext, protobuf, python, r,
+  ruby, rust, scala, sql, swift, terraform, toml, typescript, xml, yaml, zig. Go and
+  markdown are the two chroma ships as Go source rather than XML, so they keep their
+  highlighting from a local lazy definition built out of the same rule tables;
+  without them the most common fence in this repository would lose its colour.
+
+  A language outside the set is a MISS: plain text, no error, which the callers
+  already degraded to. `LexerName` still answers "" for an uncurated filename, so a
+  file preview falls back to what it drew before rather than being painted by a
+  fallback lexer as if it were code.
+
+  The laziness is pinned: `internal/tui2/prose/lexers_test.go` fails before any test
+  runs if the registry is not empty at init, so a re-added eager parse — a package
+  variable that calls the loader — is caught rather than silently restoring the
+  cost this removes. That is not a claim about the test, it is a run of it: adding
+  `var _ = curatedGet("go")` to the package makes `TestMain` exit non-zero before a
+  single test reports, printing `the curated lexer set parsed 39 definition(s) from
+  XML before any use; the registry is eager`; deleting that one line returns the
+  package to green.
+
+  </details>
+
+- **the task rail and the task page draw a belt run's plan as a tree, and the work tab is designed** — [#1204](https://github.com/Agent-Field/codeaf/pull/1204) · `chat` `engine`
+
+  <details><summary>7 things that are no longer true</summary>
+
+  - A held plan row was drawn under the task it waits on, out of its own family. A row sits under the task that requested it, always; a dependency shows as `queued · waits: <task>` on the row and never moves it.
+  - The rail listed every plan task at every state. A family whose every task is done or failed folds to one line with its count; a family with running or queued work stays open, and `enter` on the folded line opens its page.
+  - A task's page showed one level of children. It shows the whole subtree under its steps, each row with its live `$ <command>` line, `· N queued behind it` on a row other open tasks wait on, and a `waits` section in both directions; `enter` on a subtree row opens that task's page and `esc` returns.
+  - A plan row on the chat's rail took two to four lines: the tasks page's stats line wrapped under the title, and the steps and money were drawn a second time under a running row's live command. A plan row on the rail is one line — the connector, the state mark, the fitted title — with `waits: <task>` at the end of a held row's line (never cut short of the task's name) and the one `$ <command>` line under a row with a step in flight; the run's own row ends in the dot row at the rail's width tier, and a run of one task shows no dots.
+  - The chat's rail drew one flat row per `/task` and nothing of the tasks a worker added to the plan; the run's tree was only on the tasks page. The rail draws the run's tree out of the tasks place's own reading, in a conversation that never opened that page, and the run's row carries its progress on a run rooted at a task's number, where it used to be counted only for a root named `root`.
+  - A task woken after its children ended was launched holding no claim, so a planner that added more work on a wake had every `plandb wait` and `plandb done` refused as not claimed, its new child never started, and its worker stepped on until the spend cap, even after the store marked the task failed. A woken planner holds its task as a first launch does, a refused claim never drops the wake, a worker whose task another writer failed or cancelled is stopped on the next pass, and a worker that wrote its own `done` is never cancelled.
+  - A run had no account of itself in words: its landing note was the outcome word and where the work went. A run now keeps four lines (`what`, `since`, `now`, `next`) written by the worker model, stored beside a stamp of the run's tasks and held questions and rewritten only when that stamp moves; the landing note ends in the last `now` sentence. The chat's rail draws the `now` sentence under the run's dot row, dim, two lines at most; it is refreshed off the loop when the run's rows moved, at most once a minute, and once when the run lands (a six second wait at most). The pane that reads all four lines is `docs/design/worker-harness/RUN-PANE.md` and lands as its own cell.
+
+  The owner ran a `/task` under the belt and saw a flat list of tasks with no
+  relation between them. The store is a graph and the workers write it; the
+  surface now draws it. `docs/design/worker-harness/TREE.md` and `WORK-TAB.md`
+  are the rulings; the dot row, the rail's activity order and the home
+  dashboard's `work` tab land in this pull request as their own cells.
+
+  A plan row on the rail spent up to four of the column's lines, because the
+  rail drew the tasks page's own two-line card and its under-block. The rail is
+  read beside a conversation somebody is typing into, so its projection of the
+  run is one line per task with the state's tail at the end of the line, and the
+  steps and money stay on the page's rows, which have the width for them.
+
+  </details>
+
+- **a belt landing no longer wakes the chat, the conversation gains a work tab, three hand-off rules** — [#1205](https://github.com/Agent-Field/codeaf/pull/1205) · `chat` `engine`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - Every landing of a belt run woke a full model turn over the whole conversation, the shape pull request 1183 measured at one 28-minute turn of 49 tool rounds. A landing writes one dim digest line to the conversation's record and starts no turn; the wake is kept behind `landingOwesAnswer` for the case where the chat launched the task to answer the person and owes a reply.
+  - There was no place to watch a run without leaving the conversation. A conversation with a live belt run gains a tab on the strip titled with the run's root, holding the run's rows as the tasks place draws them, the live lines and the note composer; it closes itself when the run lands.
+  - The chat's system page said nothing about when to hand work off. Under the belt it states three rules once: hand off (launch a task), add to (a second `/task` joins the live root), ask about (answer from the store's rows and the task's steps, never redo the work).
+  - An approved `propose_task` was admitted to the session tree and ran on the shipped engine even under `CODEAF_TASK_BELT=bash`; only a typed `/task` reached the plan store. An approved hand-off under the belt now starts as a run like a typed `/task`, keeps the id its card showed, joins the live root when one is running, carries its acceptance and its declared dependencies into the store, and outlives the turn that launched it.
+  - The conversation carried two verbs for putting work out, `propose_task` and `quick_task`, and under `CODEAF_TASK_BELT=bash` only the first reached the plan store: a quick task ran on the session tree where no tree showed it and no check read it. Under the belt, with a run engine wired, `quick_task` is absent from the conversation's belt and its page; the chat parallelizes by proposing several tasks in one message, each joining the live run. With the belt off both verbs stay.
+
+  Design: `docs/design/worker-harness/CHAT-ROLE.md`, candidate C with the
+  owner's amendment, "a landing speaks only when an answer is owed". Its
+  section "Where the hand-off enters" states the two doors and the two facts the
+  routing had to get right.
+
+  </details>
+
+- **the installer prints a receipt, a three-line telemetry notice, and the bare export PATH line last** — [#1208](https://github.com/Agent-Field/codeaf/pull/1208) · `build` `docs`
+
+  <details><summary>8 things that are no longer true</summary>
+
+  - The installer printed `codeaf: add it to this shell with: export PATH=...` between `codeaf: installed` and `codeaf version`. That sentence is gone; the bare `export PATH=...` line is now the very last thing the script prints, with a blank line above and below, bold green on a terminal.
+  - The installer opened with `codeaf: stable v0.3.0 for darwin/arm64` and `codeaf: installed <path>`. Neither prints on a normal run any more; `--verbose` still reports both on stderr, and the receipt is `installed codeaf v… built … · go… os/arch`.
+  - The installer printed the full six-line telemetry notice from docs/TELEMETRY.md. It prints a three-line form now (`codeaf shares anonymous performance data with AgentField` / `codeaf does NOT share your prompts, code, files, or any private information` / `see what is shared: codeaf telemetry show · turn off: CODEAF_TELEMETRY=off`); the full notice still prints from the binary before the first session's events leave.
+  - `codeaf telemetry show` printed a field-by-field table with a meaning column and a `never:` line per stream. It prints the shape of the data now: the rows waiting first, then this machine's live every-event values, one example row per event from the contract's bands, the stop reasons, and the pool row in the relay's bytes; no `never` line, only what is sent.
+  - `codeaf telemetry` had four verbs: status, show, on, off, and `show` printed both the field listing and the waiting rows. It has five: `info` opens on `codeaf does NOT collect or share your chat` and prints what is collected (the shape, live values, example rows) and `show` prints only what is waiting to leave, as one JSON object indented by two with a key per destination (`usage`, `model_pool`), each carrying `destination`, an `off` reason when nothing is sent, and `waiting`.
+  - The notice's fifth line was `See exactly what leaves:  codeaf telemetry show`, and the installer's third line pointed at `show` too. Both point at `codeaf telemetry info` now: `What is collected:        codeaf telemetry info`, and `see what is shared: codeaf telemetry info · turn off: CODEAF_TELEMETRY=off`. The binary, the README, docs/TELEMETRY.md and the installer all carry the new bytes.
+  - docs/TELEMETRY.md listed an empty `CODEAF_TELEMETRY_ENDPOINT` among the switches that also stop the Model Pool from sending, and the pool did not read it: the counts stopped and the pool kept sending. poolcfg reads it now, and a set-and-empty endpoint caps the pool at `read` like the other rungs.
+  - A missing release failed with `could not download codeaf-<os>-<arch>; check the tag on the Releases page`, and the tag was only visible because the channel line above it named it. The failure names the tag itself now: `no codeaf-<os>-<arch> in release <tag>; check the tag on the Releases page`.
+
+  The install one-liner ends on the one line a person still has to paste, and
+  says as little as possible above it. `test/installer-telemetry.sh` pins the
+  receipt, the three-line notice against docs/TELEMETRY.md, and the hint's shape.
+
+  </details>
+
+- **chat answers number their steps, say where a job stands, and end on one next action** — [#1209](https://github.com/Agent-Field/codeaf/pull/1209) · `chat`
+
+  <details><summary>why</summary>
+
+  The answer section of the system prompt (internal/session/prompts/system.md)
+  now shapes replies the way the i-have-adhd skill does, adapted in our own
+  words and credited here: the skill is MIT licensed, Copyright 2026 Ayoub
+  Ghriss. No text of the skill was copied.
+
+  What moved: a multi-step job must say where it stands each turn (like
+  "step 3 of 5") and its cost in minutes or hours; a sequence is numbered with
+  as few steps as the job allows; an error is stated matter-of-factly, cause
+  then fix; and when one concrete thing is the person's to do next, the answer
+  ends on that action instead of a permission question. A closing offer is
+  still banned, and a next action is not one: it names the single thing to do,
+  it does not ask "Want me to?".
+
+  The rewrite is paid for by rewording, not growth, and both prefix budgets in
+  internal/session/prefixbudget_test.go stay green: the fixed prefix goes 55,266
+  to 55,253 bytes (budget 55,280) and the lean prefix 47,055 to 47,042 (budget
+  47,055), so each one shrinks. Completed work stays folded into the "worked"
+  line; that rule was deliberately left alone.
+
+  </details>
+
+- **a proposal learns every problem in one refusal, and a task stands where its brief plainly says** — [#1214](https://github.com/Agent-Field/codeaf/pull/1214) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A refused `propose_task` named one problem and the next problem arrived with the next refusal: the shape of a check first, what it expects next, where it stands last. One refusal now carries every problem the proposal has, each as its own sentence.
+  - Where a task stands was read from `ground`, then from the folders the conversation is about, then from what it had touched; a conversation that had worked in two repositories was asked which, even when every brief named a third. There is now a rung between `ground` and the conversation's places: when exactly one ground holds every existing folder a task's own contract names (a folder inside a repository counts as that repository), the task stands there, and the receipt says the folder in words: `It works in <folder>, the one folder its brief names the work in.` Two grounds that both hold everything are no answer and the rungs below decide. A named folder inside no repository is where output goes and does not vote when another named folder is inside one.
+  - A task whose deliverable named a folder outside every repository was refused unless `ground` was said. A stand read from the brief is trusted the same way a said one is.
+
+  The owner proposed three tasks in one message and nine calls were refused over
+  three rounds before three started. Every brief named the repository the work
+  was in and a scratch folder the reports went to. The third round's refusal was
+  a question (which of two other repositories?) that every brief had answered.
+
+  </details>
+
+- **The telemetry off switch quiets the Model Pool too, and `codeaf telemetry show` prints both streams** — [#1214](https://github.com/Agent-Field/codeaf/pull/1214) · `chat` `engine` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `codeaf telemetry show` printed only the usage-count spool — two empty arrays on the day a person installs, when the notice had just told them to run it — so "see exactly what leaves" was untrue of the Model Pool rows and empty of meaning before the first run. It prints both streams now: every field with the value this machine would send, what each event adds, the never lists, then what is waiting, each under a line naming where it goes or why it is not sent.
+  - `CODEAF_TELEMETRY=off` stopped the usage counts and nothing else; the Model Pool went on posting model slugs and scores under `model_pool = on`, the default. Every rung of the telemetry off ladder — the variable, `DO_NOT_TRACK=1`, the project file, `codeaf telemetry off` — now caps the pool at `read`, over an explicit `on`, and `codeaf pool status` names the cap as `mode read · telemetry`.
+  - docs/TELEMETRY.md and the chat manual read as though the usage counts were the only thing sent to AgentField. The Model Pool is a second stream to codeaf.agentfield.ai, and both pages name it, its fields, its relay and its switches.
+
+  </details>
+
+- **a run's step rows show the work and leave out the run's own bookkeeping** — [#1257](https://github.com/Agent-Field/codeaf/pull/1257) · `chat` `engine`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - Every step a run's worker recorded was drawn on its task page as typed, so most rows began with a change into the run's own copy and a third of them were the run updating its own record. A step row now leaves out a leading change into the run's own copy and any part addressed only to the run's record, with whatever that part is piped through. A step with nothing else in it has no row.
+  - Every other byte is drawn as it ran. Parts carry the span they were typed in (`PlanCommandPart.Start`, `End`, `SepEnd`) and the surface CUTS left-out spans from the recorded command; it never rejoins trimmed parts. A command with nothing left out is drawn whole. `PlanStep.Command` is unchanged and is still the record.
+  - A row keeps the number its step ran as, so the numbers can skip: a page headed `12 steps` may draw rows `1` to `4`, then `9`.
+  - There is ONE reader of where a command ends and the next begins, in `internal/approval` (`SplitBashCommand`, which the allow-rule reader `splitSegments` now sits on). The session asks it; nothing else may split a command.
+  - The parts cross the wire (`PlanStep.Parts`, `PlanTaskRow.LiveParts`), so a hosted conversation draws the same rows a local one does. The run's copy is the belt run's own (`beltRun.workspace`), and a folder directly under the conversation's folder of copies counts after the run has ended and the copy is given back. `PlanTaskRow.Folder` keeps its meaning.
+  - A part is marked only where cutting is safe: in sequence with its neighbours, never inside `$( )` or a group, and never when work is piped INTO a record command.
+
+  Two cells built this and neither brought it home: the first hit the rig's wall
+  with its commits in the run's cut copy, the second its checker cap. Both sets
+  were recovered by hand. The hosted review on the real binary found that the
+  surface retyped the command from trimmed parts, which the span cut replaces.
+
+  </details>
+
+- **quick-search rows draw the matched letters in bold, and internal/fuzzy says where each term hit** — [#1321](https://github.com/Agent-Field/codeaf/pull/1321) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - internal/fuzzy answered scores only: no caller could ask where a term matched. It now records its DP decisions as it runs and backtracks the best cell, and ScoreHits and ScoreFieldsHits return per term the winning field and the matched byte indices into caller-reused slices — the optimal span: `foo` against `xf foo` lights the whole word after the space, not fzf's `xf_oo`.
+  - The settings sheet's rows and the model picker's rows were plain ink: nothing on a row said which letters the query hit. Matched runes now draw bold over the row's own colour through the existing token system — no new colour, no background fill, nothing dimmed — and each term lights only in the field it won, so `ask prompt` bolds `ask` on the label and leaves the value's `prompt` alone; a row with no query paints byte-identically to before.
+
+  The positions come from backtracking the DP that scored the row — the came-from
+  byte each cell already recorded — and not from a second forward pass, so the
+  keystroke hot path still allocates nothing per row. Some matches highlight
+  nothing, deliberately: a term past the needle guard, a field that had to be
+  case-folded whole, and a lineage whose prefix its own gap costs floored all
+  come back matched with an empty span, because bolding bytes that are not the
+  alignment the score paid for would lie about why the row ranked.
+
+  </details>
+
+- **one fzf-style fuzzy matcher ranks every quick-search picker, and the settings search takes spaces** — [#1321](https://github.com/Agent-Field/codeaf/pull/1321) · `chat`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - Every picker on the chat surface kept its own quick-search scorer. The model picker, the harness picker, the subharness page, the resume roster and the deliverables shelf ranked by a prefix-then-substring-then-subsequence token ladder (palette.go's [tokenScore], lower score better); the settings sheet, the autonomy rows, the connections catalog, the memory place, the folder picker's loose rung and the rewind sheet matched by substring. All of them now rank with one matcher, internal/fuzzy — a port of fzf's FuzzyMatchV2 with helix/nucleo's two-matrix correction — and a higher score is better everywhere.
+  - The model picker's ranking direction is inverted: score sort is now descending within [GroupOrder]. Queries keep their behavior — same splits, same `@lane` and `<1s` terms, same fold-narrowing (issue #1022) — but the rungs that used to hold prefix above substring above subsequence are gone; the boundary and consecutive bonuses produce that order instead.
+  - The settings search reads the query as typed and applies the matcher's smart case: a word with no uppercase in it matches anywhere, a word with any uppercase in it has to be found as typed. The old search folded the query and left the words it searched folded too, so an uppercase word matched nothing at all.
+  - The settings search ranks the rows each tab keeps best-first, stable on registry order within equal scores, and searches a row's five fields — shown label, registry key, about line, the VALUE the row currently holds, and the tab name — so `prompt` finds the gate by what it answers with, not just by what it is called.
+  - A space typed while the settings search is open inserts into the query instead of activating the row under the cursor, so phrases like `shell command` can be typed and a setting cannot be flipped by a word's separator. Out of a search, space still activates rows exactly as before.
+  - internal/registry's own scorer is gone: FuzzyMatch is a pass-through to the shared matcher over the verb and the description — best field per term, higher better like everywhere else — and the greedy position-sum scoreSubsequence walk it used to be, with the precomputed lowerVerb/lowerDescription folds that walk read, is deleted. No live caller of FuzzyMatch remains outside its own tests; the exported shape stays as the registry's door.
+
+  The picker's old ladder existed because its scorer had no bonus model — it
+  needed tiers to keep loose matches at the bottom. fzf's scoring produces that
+  order on its own: a boundary bonus for landing after a word start, a consecutive
+  bonus for a tight run, the first character's boundary doubled. The port is
+  hand-written in-repo (no dependency), credits fzf (MIT) and nucleo (MPL-2.0) in
+  its header, keeps the camelCase retune nucleo made (5, not fzf's 7), fixes the
+  non-optimality nucleo documented (`foo` against `xf foo` finds `x__foo`, not
+  fzf's `xf_oo`), and allocates nothing per matched row on the hot path — one
+  pooled slab across calls.
+
+  </details>
+
+- **the commit co-author links to the CodeAF account, and assisted-by names the model** — [#1325](https://github.com/Agent-Field/codeaf/pull/1325) · `engine` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The commit trailer was `Co-Authored-By: codeaf <agentfield-bot@users.noreply.github.com>`. That bare-username noreply form renders as a dead mailto on GitHub; the address is now ID-prefixed (`267109073+agentfield-bot@users.noreply.github.com`), the form GitHub links to the CodeAF account and renders with its avatar.
+  - A commit carried one trailer line. It now carries two: `Assisted-by: CodeAF (<model id>)` above `Co-Authored-By: CodeAF <…>`. The assisted-by line is filled at the belt render (`internal/session/beltfacts.go`) out of `Config.Model`; the exec law still carries the co-author alone.
+
+  GitHub only links a co-author to an account when the email resolves, and for
+  accounts since mid-2017 that resolution is the numeric id in front of the
+  username. `agentfield-bot` is id 267109073, so the ID-prefixed noreply address
+  is the spelling that makes the co-author avatar click through to the account
+  instead of dead-mailtoing.
+
+  The `Assisted-by` line follows the convention Artsy's open RFC argues for:
+  `Co-authored-by` reads to GitHub as a teammate, while `Assisted-by` keeps the
+  human owner and makes the tool provenance. Naming the model there makes `git
+  interpret-trailers` able to answer who typed the commit, and the line is
+  formatted with the session's configured model rather than left to the model to
+  guess its own name. The fixed arm's prefix waiver rose by the 162 bytes the
+  wider belt fact costs; the lean shape never renders the attribution row.
+
+  </details>
+
+
+### Fixed
+
+- **a belt check runs on the crew checking seat, not the thinking seat** — [#1207](https://github.com/Agent-Field/codeaf/pull/1207) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Under CODEAF_TASK_BELT=bash a review check resolved to the mastermind (thinking) tier, so the crew checker model was billed for but never asked to check. A check now takes the careful work tier where the checker is seated, and the work, fix, and plan seats are unchanged.
+
+  SeatFor maps a check to the careful work tier (config.ModelTierHigh) rather than
+  the mastermind tier, so a review round runs on the model the crew seats to check.
+  The work, fix, plan, and probe seats are unchanged, and the check seat stays
+  read-only.
+
+  The check seat is resolved at the door: `--check-model`, then
+  `CODEAF_CHECK_MODEL`, then a plan seat pinned by `--plan-model` or
+  `CODEAF_PLAN_MODEL`, then the crew's careful row. A pinned run sees no third
+  model from the profile. run.Seats carries the door's Check seat and CrewFactory
+  seats the careful tier on it. `CHECKER_CAP_USD=2` is live, so a cell can end
+  on the checker cap.
+
+  </details>
+
+- **a run's result is read from the store when the root's worker returns after the run ended** — [#1210](https://github.com/Agent-Field/codeaf/pull/1210) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - `run.Start`'s summary took the run's result only from the root worker's return. A pass on the supervisor's clock that saw the root done in the store ended the run before that return was absorbed, and the summary's result was empty while the store held it. The summary now falls back to the done root's stored result.
+
+  The root's worker finishes its own task with `plandb done`, so the store reads
+  done before the worker has come home. The supervisor looks at the store every
+  300 milliseconds; when that look lands in the gap, the run ends with the right
+  outcome word and an empty result. On a loaded box
+  `TestStartAnswersTheRootsDoneResult` lost the result about once in fifteen
+  runs, which failed two full gates. The store is the record of the result and
+  the worker's return is its echo, so `Start` reads the record when the echo is
+  missing. `TestStartAnswersTheRootsDoneResultWhenItsWorkerReturnsLate` holds the
+  return back for longer than a pass, so the gap is every run of the test.
+
+  </details>
+
+- **a landing's report counts as evidence, and a check refused for its cd says the form that passes** — [#1212](https://github.com/Agent-Field/codeaf/pull/1212) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - After a hand-off landed and the conversation answered the question it owed, the completion check said the task's report never came back and the turn carried on once more with nothing to add. The landing's report was the turn's own message, and the check read all of it as the ask. The ask it reads is now the person's question alone, and the report is shown to it as something that came back.
+  - A check declared as `cd <folder> && <command>` was refused with a sentence that ended `… is not` and said nothing about what would pass. It is still refused (dropping the step would run the command where its files may not be), and the refusal now ends: `A check runs from the root of the task's own copy: leave the directory change out and name each file by its path`.
+
+  Both were seen on the real binary on 2026-09-18, belt on, in a two-file
+  repository: the first proposal of a hand-off was refused for its check's
+  spelling, and after the landing replied correctly the conversation was told
+  `the ask is not finished` and took a turn that said nothing.
+
+  </details>
+
+- **a reopened conversation keeps its tasks, and a task file that cannot be read is never overwritten** — [#1213](https://github.com/Agent-Field/codeaf/pull/1213) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A checkpoint that failed its schema check was dropped whole and the session's next save landed on the same path, so the unreadable file was replaced by an empty one. It is now moved beside itself as `tasks.json.refused-<seconds>` first, and the id counter is raised past every task that left a transcript or a working copy on disk.
+  - Every node in `tasks.json` had to carry an acceptance or the whole file was refused. A task that came out of a run's plan is admitted with the plan store's id and no acceptance of its own, so with the belt on the first such task made the file unreadable on the next open. A plan-born node now reads back without one.
+  - A belt run's ending reached the screen and never the checkpoint, so `tasks.json` said `running` for a run that had finished; a conversation closed and reopened drew it with a spinner and counted it as moving. The ending is saved with the row, and a run's row now keeps when it started and ended.
+
+  The owner closed and reopened a conversation that had run twenty tasks and the
+  rail came back empty. The engine's log said `ignoring corrupt task checkpoint …
+  node 5 has no acceptance`; the file had been 42 KB, the next save made it 1.8
+  KB with `"nodes": null`, and the counter restarted, so new rows answered to
+  numbers the transcript already used for other tasks. The transcripts, the
+  working copies and the plan store were all still on disk; only the sheet that
+  indexes them was gone.
+
+  </details>
+
+- **a check is one command as the shell reads its quotes, and its refusal says what passes** — [#1215](https://github.com/Agent-Field/codeaf/pull/1215) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A declared check holding a bar, a dollar, a brace or a parenthesis anywhere in its text was refused as shell composition, quoted or not, so a search pattern of three words joined by bars could not be a check. Inside single quotes those characters are now text and the check reaches the checker byte for byte. Inside double quotes a dollar, a backtick and a backslash still refuse it, because the shell still expands them there.
+  - The refusal read `checks must each be ONE command with no shell composition` and ended `… is not`. It now names the character and says what passes: `"|" joins, redirects or expands commands in "<the check>". Such a character may stand only inside a single-quoted argument, where it is text`.
+  - Three `propose_task` calls made side by side in one reply and refused for one reason earned a `[stuck]` note saying the call had been repeated three times. Calls made side by side in one reply are one attempt, and a failure they share counts once.
+
+  The owner proposed three tasks in one message on 2026-09-18 and nine calls
+  were refused over three rounds before three started. Each round sent three
+  whole briefs again. The briefs were good: every refusal was about the shape of
+  a check, the second round's was wrong (a quoted bar is an argument), and none
+  of them said what would pass.
+
+  The rule is stated by what the shell would do with a character, never by which
+  program the check names. Nothing the shape law stopped before starts running.
+
+  </details>
+
+- **a review conclusion is judged by the commands the worker declared and the checker ran** — [#1220](https://github.com/Agent-Field/codeaf/pull/1220) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A review backfilled its contract by guessing which recorded command was a runner, which named specific tools and missed others. The contract is now only what the worker declares, judged by properties any project shares.
+
+  The review round's contract is the command or commands the worker declares as the
+  proof of its work. The engine no longer guesses a runner from the recorded
+  trajectory; it judges a declared command only by properties it can observe in any
+  project: the checker ran it in this check task, its exit was recorded, and it
+  passed the shipped read-only audit law. A `holds:` conclusion requires every
+  declared command to have a recorded zero-exit audited run. A `does not hold:`
+  conclusion is never gated, so a reading checker can still report a defect on an
+  empty or partial contract. A leaf that declared nothing is judged by reading, and
+  reading can hold. Each verdict records its basis on the leaf, by run with the
+  commands and their exit codes, or by reading, so a later reader and a grid see how
+  it was earned.
+
+  The check seat remains read-only. This does not change `verifyOnlyBash` or
+  `refuseOutsideDoor`.
+
+  </details>
+
+- **the conversation's tasks tool reads a run's tasks, by the names the rail shows** — [#1222](https://github.com/Agent-Field/codeaf/pull/1222) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - Under the bash belt the `tasks` tool could not see a hand-off at all: `tasks {"id":"1"}` answered `No task "1" in this project` and `tasks {}` answered `No tasks have run in this project yet` beside a rail showing `#1 done`, and the conversation then redid the work's checks by hand. It now lists the run's tasks first and reads one from the run's own record.
+  - A run's tasks had no name a conversation could use. A hand-off is `#2`, the number its card and the rail show, and a part the run made is `#2.1` by its place under it. A store id is never shown.
+  - The manual said a person could open an ask box on the run's pane and ask about one task. No screen opens that box. The way to ask what a task did is to ask the conversation, and the manual now says so.
+
+  Seen on the real binary on 2026-09-18: a hand-off ran, split in two, was
+  checked and landed, and one turn later the conversation was told no task
+  existed. It set out to check the work by running the suite itself and spent
+  five minutes on an approval that timed out.
+
+  Tasks from earlier sittings and other windows are still listed after the
+  run's, and a name the run does not hold is answered as it always was.
+
+  </details>
+
+- **unread profile config keys are reported once at load** — [#1223](https://github.com/Agent-Field/codeaf/pull/1223) · `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A profile config.json key that no reader consumed was silently ignored. Each unread top-level key is now named once through the load diagnostic channel.
+
+  Profile loading compares the file's top-level keys with the settings registry and
+  its non-setting profile fields. Unknown keys, including an object used where a
+  dotted key was intended, are reported through the process logger once per load.
+  Correctly shaped flat keys keep their existing resolution.
+
+  </details>
+
+- **a resident dispatch pass does not run again the leaf it just released** — [#1225](https://github.com/Agent-Field/codeaf/pull/1225) · `engine`
+
+  <details><summary>why</summary>
+
+  A background resident pass could reclaim a leaf that the same pass had just
+  released to a worker, so one pass ran the leaf twice and spent its budget twice
+  before the pass ended. A leaf a pass dispatches is now held out of that pass's
+  own claim set and picked up by a later pass.
+
+  </details>
+
+- **a place sweep note can no longer write after the process it belongs to closes** — [#1227](https://github.com/Agent-Field/codeaf/pull/1227) · `chat`
+
+  <details><summary>why</summary>
+
+  The chat process starts a place sweep in the background; on an error the sweep
+  resolves the current home and appends to sweep.log. The sweep was started and
+  forgotten, so a process or test that closed quickly could let that write land
+  after close, under a directory already being torn down, which is the cleanup race
+  that leaves a directory not empty. Close now seals the note under the sweep lock
+  before it closes shared state: a note already in flight finishes, no note writes
+  after the seal, and close does not wait for the walk itself, so quit does not grow
+  with the number of conversation folders the machine has held. The property test
+  blocks the sweep as an unbounded walk and asserts close returns within a small
+  fixed bound while a note attempted after the seal writes nothing.
+
+  </details>
+
+- **a hosted conversation reads and steers its run** — [#1230](https://github.com/Agent-Field/codeaf/pull/1230) · `chat` `engine` `remote`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A run's rows, its tasks' pages, the six steering verbs and the run summary existed only in a conversation whose engine ran in the same process (`codeaf chat --no-host`) and in tests. `codeaf chat` hosts its engine by default, and there the rail drew one row with the task's internal number and nothing under it. All ten methods now cross the wire, and `remote` holds a compile-time assertion that its client is a `session.PlanAgent`, so a method added to that set fails the build until it is carried.
+  - The rail re-read a run's plan only when the reading of other windows' work took a new stamp. A hosted conversation has no such reading, so its rail stood on the run's first row until the run ended. The plan has a three-second beat of its own.
+  - The plan reads and verbs were called on the update loop. They go through the ordered door line, the page's follow read is one at a time, and an answer is folded only into the page that asked.
+
+  Seen on the real binary on 2026-09-19. The same two-part task was handed off
+  hosted and unhosted side by side: unhosted the rail drew each part ten
+  seconds after the run added it, hosted it drew them only at the end. After
+  this change the hosted rail drew the parts at ten seconds and each check as it
+  was added, a part's page opened with its description and steps, and a note
+  typed on that page was on the page a moment later.
+
+  The refresh of a run's summary carries how long the caller will wait and never
+  the instant it stops waiting, because an engine reached with `--host` runs
+  under another machine's clock.
+
+  </details>
+
+- **a task's page opens with the task, and a run's rows on the rail open their pages** — [#1231](https://github.com/Agent-Field/codeaf/pull/1231) · `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A run task's page opened with a line addressed to its worker that named an internal plan id, and never said what the task was asked. It opens with the task's title, its brief with the rest one key away, its declared checks, and the folder it works in, said once.
+  - Every step row on that page began with a change into the task's own folder, so the command was cut at the right edge. One function draws a command on the page, the rail and the tree: a leading change into the folder the head names is not drawn, any other directory change is, and a command of many lines is its first line and a mark. What ran is recorded unchanged.
+  - With a run on the rail, the run was drawn as its parts with nothing over them, a press on a row was answered out of the rows from before the run's were put in, and a run's own rows opened nothing. A run is its own row with its parts under it, the frame and the pointer read one drawn view, and each row opens that task's page over the conversation. `esc` returns to the conversation with the draft as it was.
+
+  Seen on the real binary, hosted, on 2026-09-19: a two-part run drew six rows
+  and no row for the run; a click on any of them did nothing. The owner's words
+  about the page before this: "task details is not shown like actual task it
+  just says like internal name task4".
+
+  A row the store has no page for opens what it always opened, its room. That is
+  every task with the switch off.
+
+  </details>
+
+- **a run works in a copy of its own, and its work comes home when it ends** — [#1232](https://github.com/Agent-Field/codeaf/pull/1232) · `chat` `engine`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - With the bash belt on, a hand-off's workers typed in the person's own folder and the run's landing committed straight onto the branch they had checked out, while the receipt said `in a copy of its own`. A run now works in a copy cut from the folder the task is about, as that folder stands, and the receipt is true.
+  - A run's work now comes home the way a task's always has: committed in the copy, merged into the folder it was cut from, the copy given back, and `its work is in <folder> on <branch>` on the run's page. Work that will not go in keeps its branch in the person's repository and the note names it.
+  - The landing card read `branch kept` for every run that named a branch. It says `merged` when the work is in the folder, and `branch kept` only for a branch that is waiting.
+  - A hand-off that joined a run already underway stayed `running` on the rail after the run ended. It ends with the run, in the state the store gives it. A proposed task about ANOTHER folder than the run underway is refused with both folders named and `Propose it again when that work has ended`; every other failure of the run road still falls through to the shipped engine.
+
+  Seen on the real binary on 2026-09-19, hosted, with two hand-offs typed six
+  seconds apart and an unsaved file of the person's own in the folder. While the
+  run worked the folder held only that file. When it ended the folder held one
+  new commit with the three files the run wrote, the unsaved file was untouched,
+  the copy was gone, the card read `done · 30s · 3 files · merged`, and the
+  joined hand-off's row had settled under the run's.
+
+  A hand-off after a run has ended starts a run of its own, in a new copy cut
+  from the folder as the first run left it.
+
+  </details>
+
+- **a self-finished codeaf do run seats its review before it ends** — [#1233](https://github.com/Agent-Field/codeaf/pull/1233) · `engine`
+
+  <details><summary>why</summary>
+
+  A codeaf do run whose root finished its own work could end without ever running
+  its review. A root worker can record its result in the store a moment before its
+  goroutine returns, and a run that read that stored result first ended right there,
+  so the review round was never seated and the run exited with no check. The run now
+  waits for the root worker to return before it ends, so the review is seated and
+  runs. It waits only while that root worker is still in flight, so a completed tree
+  that left another worker behind still finishes, and a killed or hung worker ends
+  the run by the same wall that already bounds every worker.
+
+  </details>
+
+- **every run a conversation has made stays readable** — [#1234](https://github.com/Agent-Field/codeaf/pull/1234) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A second hand-off in one conversation renamed the first run's store to `plandb.db.1` and every read opened only the live store, so the first run's row stayed on the rail while its page, its parts and its notes could no longer be opened. Every read now takes the ended stores oldest first and then the live one, and a task of any run opens by the id the rail shows.
+  - An ended run is read, never steered. A note, pause, resume, cancel, amend or priority on one of its tasks answers `that task's run has ended` and changes nothing on disk. Only the run underway takes those.
+  - A lock handed out through a returned closer was outside every law: the lock law asks for a defer in the function that locks, and these lock in one function and release in another. `internal/guard` now holds the two-half law for them: the helper never answers nil while locked, and its caller writes no return before the closer is deferred or called, except on the first result being nil.
+
+  Seen on the real binary on 2026-09-19: after a second hand-off, the first
+  run's row opened nothing. Driven hosted after this change, with two runs one
+  after the other: a click on the first run's row opened its page with its
+  brief, its notes and its steps, and a note typed there was answered `that
+  task's run has ended` with the words left in the box.
+
+  An ended store never changes, so it is opened once and kept for the life of
+  the conversation, and given back when the conversation closes. The live store
+  is still opened for each read, so another process's writes are seen.
+
+  </details>
+
+- **a wait whose stream has stopped arriving paints at the spinner cadence, not thirty frames a second** — [#1235](https://github.com/Agent-Field/codeaf/pull/1235) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The paint clock ran at its full 33 ms cadence whenever any liveness term held, the wait on a model included, so a turn in flight with nothing arriving but a spinner cost the same as one streaming text. A quiet wait now steps at the spinner own cadence instead, and animations counted in paints land where they would have at full cadence. Any other liveness term, or a stream still arriving within 250 ms, keeps the full cadence.
+  - Idle CPU of a waiting surface was measured at 3 to 6 percent of one core. On the pinned FRESH profile with daily_budget_usd, suppressed host mode, the held wait now reads 2.011 percent against 2.589 before and a slow stream 1.033 against 1.639, a saving of about 0.6 percentage points of a core in both cases. Those figures are suppressed host only: hosted mode, which is what a person runs, is not measured yet.
+
+  The harness that produced them is in `bench/idle-surface/`. Two cautions travel with it.
+  Its runs launch `chat --yolo --no-host --max-cost 5`, so every figure describes one process
+  with no engine daemon. And reproducing them needs `daily_budget_usd` in the profile: without
+  it a fresh profile stops on the first run settings screen, and the harness cannot tell,
+  because its poll for the composer logs success after exhausting its attempts.
+
+  </details>
+
+- **a reconnect reuses its registered identity instead of introducing itself again** — [#1236](https://github.com/Agent-Field/codeaf/pull/1236) · `chat`
+
+  <details><summary>why</summary>
+
+  On reconnect, when a service's saved registration had used a fallback loopback
+  redirect, the client could bind a fresh redirect the service did not know, so its
+  identity check failed and it introduced itself a second time. The reconnect now
+  tries the saved registration's redirect first, so when that address is free it
+  reuses the identity the service already has and introduces once. The fixed
+  callback ports and their order are unchanged.
+
+  </details>
+
+- **chat names unread config keys once before using default models** — [#1239](https://github.com/Agent-Field/codeaf/pull/1239) · `chat` `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Unread profile config keys were reported only to process logs that chat users do not see. Hosted and no-host chat now name those keys in the existing conversation notice once per profile, and a changed key set shows once again.
+
+  The notice uses the unread-key result from profile loading rather than classifying
+  config keys again. Hosted mode carries that result across the engine and client
+  boundary; no-host mode carries it directly into the same notice mechanism.
+
+  </details>
+
+- **a task's page says only what is true of it** — [#1240](https://github.com/Agent-Field/codeaf/pull/1240) · `chat`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A run task's page named `x stop it` and `p pause` under a task that had ended, and the store refused both. A task that is `done` or `incomplete` is offered neither, on its row and on its page.
+  - A note on that page was drawn with its author as the store spells it, which for a worker or the run is an id of the store's own. A note you left reads `you`; any other note names no author. No id of the store's is drawn on the page.
+  - Under its note box the page said `the worker reads a note at its next step` on every task. A task that has ended takes no next step, so its page leaves the sentence out.
+  - On the page opened from the side list, a note holding the letter that raises the stop card raised it mid-word, and the card swallowed the rest of the sentence. The page is read ahead of the card wherever it was opened from, and reads that key itself over an empty box.
+
+  Seen on the real binary, hosted, on 2026-09-19: `keep the examples short`
+  typed on a running task's page left `keep the e` in the box and nothing in the
+  store. The same drive after the change shows the note under `notes` as
+  `you · now`, and the finished page's foot as `↑↓ scroll · enter send · esc back`.
+
+  </details>
+
+- **what is typed after a press on a run's row goes to its page, never the conversation** — [#1244](https://github.com/Agent-Field/codeaf/pull/1244) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A task's page is read off the update loop, and until the answer came back the conversation's box still took the keyboard: a note typed right after the press was sent to the model as a message. From the press on, keys are kept in order and handed to the page's own keyboard when it opens; `esc` withdraws the press; a row that turns out to have no page opens its room and those keys are dropped.
+  - The stop card's key is read above every page, so with a task running a note holding that letter raised the card while the page was still on its way. A page on its way stands the card down, as a page that is up already did.
+
+  Seen on the real binary, hosted, on 2026-09-19: `keep the examples short` and
+  `enter`, typed at once after a press on the run's row, was answered by the model
+  and saved as a standing preference nobody asked for. The same drive after the
+  change: the page opened with the note under `notes` as `you · now`, and the
+  words were in the run's record and nowhere in the conversation.
+
+  Measured the same day: the read behind the page takes two milliseconds. The
+  seconds a person waited were spent in line behind one other door, the run's
+  summary, which asks a model with a ten second budget on the same ordered line.
+  That is its own change.
+
+  </details>
+
+- **unread-config notice skips keys the product itself retired** — [#1245](https://github.com/Agent-Field/codeaf/pull/1245) · `engine` `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The unread-config-key notice named a top-level key that a shipped version once wrote as a settings row but that nothing reads at head, telling a person about an ignored key they never typed.
+
+  Seven retired keys (linear_mode, nerd_font, rail_state, work.workers,
+  memory.consolidation, practice_demand_pct, propose_new_skills) are skipped
+  silently by the unread check. A ledger of every top-level key the product has
+  ever written, plus a law test, keeps the set honest: adding a settings row
+  forces a ledger line, and removing one leaves its line behind and turns the law
+  red until the key is retired on purpose.
+
+  </details>
+
+- **stop it ends a run, from the card, from the run's own page, and from the chat** — [#1250](https://github.com/Agent-Field/codeaf/pull/1250) · `chat` `engine`
+
+  <details><summary>8 things that are no longer true</summary>
+
+  - A run under the bash belt could not be stopped by anything a person pressed. The stop card's `stop it` answered `there is no task 1 in this session` and the run carried on to its own landing; the run's own page answered `x stop it` and `p pause` with `the harness owns the root task`. Now `stop it` ends the run: every open part is ended, what it was running is cut off, no further model call is made for it, and nothing goes into the folder.
+  - The stop a surface sends for a row (`task:N`) went to the task graph and nowhere else, and a run's rows are not in it. The session now resolves that id to whoever owns the row, the live run first and the graph second, so a window built before this change stops a run through an engine built after it, and the model's own `tasks … stop` ends a run too.
+  - A run was started on a context nothing could cut and kept no cancel. It keeps one now. A stop writes the ending into the run's store first (`plandb.Store.StopRoot`, the runtime's verb for a person's word), then cuts the context, then commits what was made on the run's own branch and gives the copy back.
+  - A stopped run stayed open in its store, so the next `/task` in the same conversation adopted it and picked the stopped work back up. A stopped run is over in the store, and the next `/task` starts a fresh run.
+  - A surface asks for a run's four-line summary again whenever the run's rows move, and a stop moves them, so a stop taken from the run's page was followed about twenty seconds later by one more model call. The engine declines a summary for a run a person stopped; the last reading it had stands.
+  - `p pause` was offered under the run's own task and could only be refused. Nothing holds a whole run: the key is not offered there and is a letter in the note. A hold asked of a run by an older window answers `a run is not held as a whole: hold one of its parts, or stop it`.
+  - `x stop it` on the run's own page sent the store's cancel directly. It now raises the `Stop this task?` card, and the page steps aside for it the way a background job's page does, because the page takes the frame whole and the card is drawn above the message box.
+  - While a task's page was on its way every key was held for it, `ctrl+c` included, and an answer that came back for a tab the person had left kept the hold standing until `esc`. `ctrl+c` is read before the hold and before the page, and every ending of the read ends the hold.
+
+  Measured on the real binary, hosted, belt on, on 2026-09-19 at trunk 12840eeb5:
+  the card was raised four times of four and `stop it` stopped nothing four times
+  of four. `ctrl+c` once, `ctrl+c` twice and `/quit` each close the window and
+  leave the run going in the engine, three of three each, and its work lands by
+  itself; THAT IS UNCHANGED HERE and is a separate open question. This change is
+  about an explicit stop only.
+
+  Two laws hold it. In `internal/session`, every function that publishes a row in
+  a state a stop means something in is listed with the cancel kind that reaches its
+  owner and the test that proves it by stopping one; a new publisher fails the law
+  until it has both. In `internal/tui3`, every verb word the foot offers, for every
+  kind of row a run's store can hold, is pressed against a real store over the real
+  wire, and none may be refused.
+
+  </details>
+
+- **a press on a run's row opens its page at once, and an open page reads on a beat** — [#1251](https://github.com/Agent-Field/codeaf/pull/1251) · `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - Every ask the surface makes of its engine stood in ONE ordered line, the run's summary included, and the summary asks a model with a ten second budget. A press made while a summary was out waited behind it: press to page measured 2.4, 5.4 and 7.7 seconds hosted, and about ten on a slow answer. The summary is now asked beside the line (`besideLine`), and the same press measures 0.09, 0.18 and 0.18 seconds.
+  - `offLoop` was the only road off the update loop. There are two now, and the second is for one kind of ask only: a read nobody pressed for, where nothing a person does next depends on the engine having seen it first. A ledger law lists every caller of it (`doorsBesideTheLine`), and the structural law that keeps engine doors off the loop accepts both roads.
+  - An open task page asked for its page again from the paint clock, about six reads a second over the wire for as long as it was open, ended tasks included. It reads once per three second beat while the task is queued or running, and a page on an ended task is read once, to open it.
+
+  Both were measured on the real binary, hosted, on 2026-09-19. The read behind a
+  page takes two milliseconds; the seconds a person waited were spent in line. The
+  page's own follow stays in the ordered line, because its answer replaces the page
+  and a note re-reads the page too, so the two must not cross.
+
+  </details>
+
+- **drawing the side list never waits on the engine for a run's rows** — [#1255](https://github.com/Agent-Field/codeaf/pull/1255) · `chat`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - The side list's rows of a run were read inside the freshness check every drawing path comes through (`tasksPlace.regroup`, by way of `taskSheetMine`), so a FRAME asked the engine for them. Three things made that read due and each made it from a frame: the first reading of a conversation, a row of this window's own graph moving, and the run's three second beat. Over a connection the read is a call to another process with a ten second deadline. With 250 ms injected on that one read, the frame that made it took 254 to 258 ms on all three; it now takes under 1 ms and makes no read.
+  - The rows are held on the surface (`app.planRows`) and asked for after a message (`app.refreshPlanRows`), one read at a time and beside the ordered line. `tasksPlace.planDue` and `planReadAt` are gone: the beat lives with the read, and `regroup` re-files what is held when a newer read has been folded in (`planRowsGen`). What makes a read due is unchanged, and a conversation at rest still reads nothing.
+  - Opening the run's tab read the rows and the run's page on the key press itself. It opens on the held rows and asks for the page through the one door every stored page arrives through, off the loop; `openWorkTab` returns that command.
+  - The law that keeps engine doors off the update loop could not see a door reached through `planReader`, so none of this was ever reported. It now counts that reading as handing the agent back, which puts every plan door under the law.
+
+  An earlier change moved the beat's read off the frame and left the other two. A
+  test that calls `regroup` and expects fresh rows now folds the read first, the
+  way a window does after a message (`readPlanRows` in the tests).
+
+  </details>
+
+- **a run or a part you stopped reads stopped on its page, not incomplete** — [#1258](https://github.com/Agent-Field/codeaf/pull/1258) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A run a person stopped read `stopped` on the side list and `incomplete` on its own page and in the tasks place, at the same moment: the page reads the plan store, where a stopped task is `cancelled`, and `planStateWord` spelled `failed` and `cancelled` alike. On the real binary, hosted, the stopped run's page drew `incomplete` twelve times and `stopped` never; it now draws `stopped` thirteen times and `incomplete` never.
+  - `PlanTaskRow` carries `Stopped`, established by the session from the store and sent over the wire as a field. It is true when the task's own ending is a person's stop, and when the task was cancelled in the very instant an ancestor of it was stopped, which is what the store does to everything under a cancelled task. A part that failed, or was cancelled at another moment for the run's own reasons, keeps `incomplete`.
+  - `planStateWord`, `planStatus` and `planEnded` take the row, not the store's status string, so the word is decided in one place. `stopped` counts as ended: a stopped task is offered no verb and no next step, and it is not read as work that can still move.
+
+  Found by the hosted two-arm drive that closed #1253. The glyph follows the word
+  the way an ordinary stopped task's does.
+
+  </details>
+
+- **a call that did not run is no longer drawn as a step that ran** — [#1260](https://github.com/Agent-Field/codeaf/pull/1260) · `chat` `engine`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A worker that answered one turn with several tool calls had none of them run, and each was answered by the belt with its own correction. Every one of them was recorded as a step, and a run's task page drew them as steps: a command a person reads as having run, with the belt's sentence to the worker in dim under it. On the real binary that was rows 2, 3 and 4 of a page, each reading `[not run] no action executed: return exactly one bash tool call per response`.
+  - A step now records whether its call ran, and if not, which of two things it was. `Step.NotRun` in the run engine is set from the event's `HarnessMade` fact. `Step.Refused` is set from a new event fact, `Event.Refused`: an action the worker attempted and a door refused, set at the one place every pre-action veto passes through. Both are carried on `PlanStep`. The surface reads the two fields and never the answer's words, and a record written before the fields draws as it did.
+  - A correction about the FORM of a reply (several calls in one answer, a call that could not be read, a tool that is not on the belt, a held process rule) has no row. It stays in the record and in the head's step count.
+  - AN ACTION THE WORKER TRIED AND WAS REFUSED IS DRAWN, as one dim line in the step's place: `refused`, the word the permissions page already uses, and the command as typed. It has no number, because a number on that page is a step that ran, and the rows around it keep their recorded numbers. The answer written for the worker is not drawn.
+
+  Seen on the hosted drive for #1257. What the belt tells the worker, the rule of one
+  call per answer, and every refusal's wording are unchanged. The manual said a batch
+  had its first call run. It does not: the whole batch is answered and none of it runs.
+
+  </details>
+
+- **a task's step numbers continue across a wake** — [#1261](https://github.com/Agent-Field/codeaf/pull/1261) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A run worker numbered its steps from one each time it ran. A task that waited on its children and was launched again recorded a second step 1, so its page drew `1` to `5` and then `1` to `3`, and the live step was called by a number an earlier row already wore.
+  - A worker now starts from the last number the task's record holds, so a task's step numbers are counted over the task and never repeat. The step cap and the worker's own report still count THIS run of the worker only: a task that came back has a fresh count against the cap, and its ending line reports the steps of that run.
+
+  The record's shape is unchanged; a record written before this keeps the numbers it has.
+
+  </details>
+
+- **a time limit a person sets now ends a run, by the same road as the cost limit** — [#1262](https://github.com/Agent-Field/codeaf/pull/1262) · `chat` `engine`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A session's elapsed-time limit (`--max-hours`) never reached a run that `/task` started. `chatBudget` turns the flag into `session.Budget.Wall`, the interactive check reads it before a new turn, and nothing handed it to the run engine: a run carried a dollar limit (the conversation's spend ceiling) and no time limit at all, so it ran on past the hours its person set.
+  - `RunSpec.Elapsed` now carries what is left of the session's wall when the run starts, measured on the same clock the interactive check uses, and `run.Limits.Elapsed` ends the run on it. The ending is the cost limit's: nothing new is launched, the outcome is `a limit you set stopped it`, and what finished lands the ordinary way. A session with no time limit puts none on its runs.
+  - THE ONE DIFFERENCE FROM THE COST LIMIT IS THE WORK IN FLIGHT. A cost limit lets it finish. A time limit ends it, and absorbs each ending the way the caller's wall does, so a cut task reads `incomplete` instead of `running` and what it spent is in the run's account.
+  - A run that ended on a limit with no result of its own now says the limit's sentence on its row. It said nothing there before.
+
+  `--max-cost` still does not reach a run: a run's dollar limit is the conversation's
+  spend ceiling. The manual says which limit is which.
+
+  </details>
+
+- **the dim line under a step row is only drawn when it must be the row's own** — [#1265](https://github.com/Agent-Field/codeaf/pull/1265) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A step's row leaves out the change into the run's copy and any part addressed to the run's record, and under the row one dim line drew the head of what came back. That head is cut from the ONE observation the record holds for the whole line, so when a left-out part printed first, the dim line showed that part's words under a row that no longer showed the part.
+  - THE HEAD IS DRAWN UNDER A ROW ONLY WHEN EVERY PART LEFT OUT OF THE ROW CANNOT HAVE WRITTEN TO IT AND STOPS EVERYTHING AFTER IT IF IT FAILS. A left-out part addressed to the run's record withholds the dim line. A left-out change into the run's copy keeps it only when it is joined so that its failure ends the line. A row with nothing left out keeps it. The engine establishes the fact with the other display facts (`PlanStep.ObservationHeadWithheld`), it crosses the wire as a field, and the surface never reads the words that came back. The field is the negative on purpose: a step from an engine built before it draws its head as it did.
+  - Nothing can do better from the record as it is: the belt runs the whole line as one shell with its output interleaved, and no part's output has a boundary (diagnosis c340).
+
+  How a command is cut for its row, the step numbers and the whole answer on disk are unchanged.
+
+  </details>
+
+- **a worker that has stopped making progress is told once, and then ends, well short of the step cap** — [#1266](https://github.com/Agent-Field/codeaf/pull/1266) · `engine` `chat`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A run worker that alternated one action and one text reply could never be ended by the no-action rule, because a reply carrying a tool call resets that run to one; nothing but the step cap (200 finished calls), the wall or an outside limit ended it. A real pair of workers spent 820 model calls and $4.30 in half an hour in exactly that shape.
+  - Now the same command coming back with the same answer, with nothing moving under the worker's own task between the looks, is first ANSWERED and then ended. After three identical steps the run tells the worker once, in its own voice and inside the turn that is still running, what it saw and what the worker can do: try something else, wait for an outside thing in one longer action (the note states the longest one action may run, read from the belt's own ceiling), or park with `plandb wait` when the plan names what it waits on. Three more identical steps after that end the task with the reason `the same command came back with the same answer 6 times in a row: the work was not moving`. The note records no step and draws no row.
+  - A different command resets everything, the note included, so a later run of identical steps is told again. A worker whose repeated look answers differently each time, or whose own task or a row under it moved between the looks (a person's note on the task counts), is never ended by it. What its siblings do is not its progress. A worker the store says is blocked on another task is not failed either: the loop parks it the way `plandb wait` would, and it wakes when its wait is over.
+  - The only endings a run worker's loop had were a store finish, a store park, the no-action run, the step cap, the wall and an errored turn. There is now one more.
+
+  The property is read from what the run already records about a step: the command
+  as spelled, the head of the answer that came back, and the store's own record of
+  movement under the worker's task. It reads no word of any command or any error,
+  so it holds whatever the tool and whatever the cause. A worker waiting on
+  something outside the plan is the most common honest loop there is, which is why
+  the run speaks before it ends anything.
+
+  </details>
+
+- **closing chat now stops and joins the pool judge sweep** — [#1267](https://github.com/Agent-Field/codeaf/pull/1267) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The pool judge sweep could outlive chat close and resolve an empty profile path against a later CODEAF_HOME, allowing it to write pool files into another launch's home. Each launch's sweep is now context-owned by the profile pool errand set, and close cancels and joins it before returning.
+  - Process guard goroutines had no structural inventory of their close ownership. A class law now rejects a new unclassified process launch and records joined, self-completing, and explicitly known-open goroutines.
+
+  </details>
+
+- **a run's dollar limit now holds while a worker is still working** — [#1268](https://github.com/Agent-Field/codeaf/pull/1268) · `chat` `engine`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - A run's dollar limit was read only when a worker came home. A worker's spend reached the run's count in its report, so one long worker could pass the limit many times over before anything counted it, and the limit was a word about the run after it instead of a hold on this one.
+  - A worker now says what it has spent as each model call is paid for, and the run adds it while the worker is still working. When the sum reaches the limit the run launches nothing new, ends the work in flight, absorbs every ending, and answers `a limit you set stopped it`. That is the time limit's road, so the sentence in the entry for the time limit that said a cost limit lets work in flight finish is no longer true.
+  - A worker never waits on the run to report its spend. It writes a running figure and leaves a token the run may miss; the figure is the whole of what the worker has spent, so a missed token loses nothing, and a run that is draining is never held open by a worker that has something to say.
+  - What a run counts as spent never goes down. A worker whose task the store cancelled under it handed back no spend the run counted, so those dollars were missing from the run's figure and from the limit. Its words and steps are still dropped; its dollars are now counted, whatever way the task ended. The same holds for a worker the run outlived, ended when the tree finished under it: its return was dropped whole, and its dollars are now settled.
+  - The call that reaches the limit is already paid for, so a run can end a little over its figure. A run with no dollar limit counts as it always did, at each return.
+
+  `--max-cost` still does not reach a run: a run's dollar limit is the conversation's
+  spend ceiling.
+
+  </details>
+
+- **a parked task is finished only by a worker woken for it** — [#1271](https://github.com/Agent-Field/codeaf/pull/1271) · `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A worker that parked its task with `plandb wait` could still finish it. A round the worker had already started still ends its tool, and when that tool was the task's own `plandb done` the plan store admitted it, because the claim a park releases was never what the store checked for the run's own task.
+  - On the run's own task that closed a run over work nobody had reviewed: the root parked on its child, the child wrote its own done, the root's late finish landed, and the run answered `done` while the child's worker was still out. Five loaded runs in four hundred did this and no quiet one did. Every one left a task that was done and still flagged waiting.
+  - The store now refuses an ending on a parked task, on all three roads that write one: a worker's done, a worker's fail, and the run's own completion of its root. The late worker hears `task "<id>" is waiting and can only be finished after it is woken`. Nothing else changes: the task stays parked, and the run wakes it the ordinary way when its wait is over. Done together with waiting is a pair no road in the store can write.
+
+  A person sees no new word. The run that used to end early now reviews the child,
+  wakes its root, and answers with what the woken worker said.
+
+  </details>
+
+- **a headless launch and task-owner open reach a restarting host, not a crashed one** — [#1272](https://github.com/Agent-Field/codeaf/pull/1272) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A host takes its lock before it removes the old socket and begins listening, so for a moment the lock is held while a connect is refused. A headless launch (codeaf chat --once) that probed the host in that window read the refusal as proof no host was there and quietly went in-process, and a task-owner row opened for another workspace could refuse the same way and freeze on it.
+  - The probe now retries a refused or briefly missing connect only while the host lock is held, through one shared helper (enginehost.DialStartingHost, a non-blocking flock read of host.lock that is the same answer across pid namespaces), bounded to 250ms. A failure with the lock free, the ordinary state after a host crashed and left a stale socket that nobody restarted, answers at once as before, so a start pays nothing for it. On Windows errors.Is(err, syscall.ECONNREFUSED) never matches, so the retry never engages there and the prior behaviour stands.
+
+  The two raw callers, cmd/codeaf/chatv3_local.go and cmd/codeaf/chatv3_taskowner.go, now
+  share the one helper so they cannot drift, and the readiness gate a host stands behind
+  is unchanged. The retry is keyed on the host lock, not on the shape of the connect
+  error, because a refused connect alone does not say whether a host is coming up.
+
+  </details>
+
+- **a backslash pair inside double quotes is text to the one-command reader** — [#1273](https://github.com/Agent-Field/codeaf/pull/1273) · `engine` `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A declared check holding a backslash inside double quotes was refused as more than one command, whatever the backslash stood before. A search pattern written `"a\|b"` is one command to the shell and was turned away, naming the backslash.
+  - The reader that finds where a line's first stage ends had no escape rule at all, so it read an escaped quote as the end of the quotation. The two readers now share one scanner and cannot disagree.
+  - Inside double quotes a backslash and the character after it are text. A dollar or a backtick there still refuses the check. A backslash outside quotes, one that ends the line, one before a newline, and a quotation left open all still refuse it. A doubled backslash before the closing quote does not hide that quote, so what follows it is still read as composition.
+
+  A person sees no new word. The refusal sentence and the checks schema description
+  are unchanged. The manual's paragraph on declared checks now says what a backslash
+  inside double quotes does.
+
+  </details>
+
+- **closing a process cancels and joins lazy catalog warming before a late cache write** — [#1274](https://github.com/Agent-Field/codeaf/pull/1274) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Lazy catalog warming could outlive process close and write its cache afterward, including beneath a home selected by a later launch. Close now cancels and joins the warm, and a fetch that succeeds after cancellation does not write the cache.
+  - A later process launch still warms its catalog normally.
+
+  # Lazy catalog warming stops cleanly at close
+
+  A process close now cancels and joins its in-flight lazy catalog warm. If a fetch succeeds after cancellation, catalog loading checks the canceled context before writing the cache, so no cache write can occur after close returns. A later process launch can still warm its catalog normally.
+
+  </details>
+
+- **no run answers done while a finished piece of work has had no review** — [#1275](https://github.com/Agent-Field/codeaf/pull/1275) · `engine` `chat`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - A run could answer `done` with a finished task never checked, and only under load. A worker writes its own done to the plan store and comes home a moment later; its return is what adds its check. The run read the store row as the landing, so when a root finished, or was woken, in that moment, the check was added too late or refused, and the refusal was dropped without a word. #1233 closed the first of these orders for a root that did the work alone; the others stayed open.
+  - A landing is now a return the run has absorbed, not a store row. The root's completion, a parent's wake and the run's own answer all wait for the worker of a done task to come home. The wait is bounded by the worker: it reads its own row when the command it is in ends, at most 600 seconds (the belt's ceiling on one command).
+  - A check can now be seated beneath a task that already reads done: `Store.AddReviewCheck` (it was `AddRootCheck`, for a childless done root only) adds the check and moves every done task above it back to waiting on it, each keeping the result it earned. Nothing but a check comes in that way. A root reopened like this is owed the wake any parent is owed for a landing it was never given.
+  - A review the store will not seat ends the run as `incomplete`. It used to be dropped, and the run answered done with the round silently absent.
+  - A return already waiting in the run's channel is absorbed before a pass looks at the root's ending, and the root's row is read after that, never before.
+
+  A person sees no new word. The manual's section on who checks a task's work says
+  what the run waits for and for how long.
+
+  </details>
+
+- **closing chat stops the place sweep before it can change the home again** — [#1276](https://github.com/Agent-Field/codeaf/pull/1276) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The once-per-binary place sweep was started as an unowned background goroutine. Closing the chat process neither cancelled nor joined its folder walk, so the walk could outlive close and rename or remove stale session folders under a later value of `CODEAF_HOME`.
+  - The sweep is now owned by each chat process. Close cancels its context and joins it promptly, while the walk checks cancellation between entries and immediately before each rename or remove. No destructive operation under the home can begin after close returns.
+  - Starting another chat process in the same binary starts another sweep. Closing an earlier process no longer consumes a process-global once or prevents a later launch from cleaning stale places.
+
+  The earlier fix sealed only the sweep note writer and deliberately left the
+  folder walk running after close. That preserved fast shutdown, but the walk
+  resolves the places root from the current home when it runs. A later process or
+  test could therefore replace or remove its home while the old walk was still
+  renaming and removing entries there, leaving cleanup to fail with a directory
+  not empty.
+
+  The folder walk now has per-process cancellation and ownership. Close cancels
+  and joins that work without waiting for the remaining folders to be walked, and
+  a later process in the same binary still performs its own sweep.
+
+  </details>
+
+- **the woken-turn handover test no longer fails on a loaded machine** — [#1278](https://github.com/Agent-Field/codeaf/pull/1278) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `TestAWokenTurnPastTheCeilingMovesToAFreshContext` failed about once in forty runs on a loaded machine and never on a quiet one. It was the test's fault and not the product's: the checkpoint fixtures pin the order of a reading and an answer through the turn's context, a submitted turn inherits that context from its caller, and a turn the agent wakes by itself has no caller and started under the plain background, so the fixture could reach every turn but that one.
+  - The agent has one unexported field, `wokenTurnBase`, that a fixture sets so a woken turn starts under the watched context. It is nil in the running product, which starts a woken turn under the background exactly as before. Closing a session ends a woken turn the way it ends any turn, through the turn's own cancel.
+
+  Nothing a person sees or a model reads changes.
+
+  </details>
+
+- **an ending names the limit that caused it** — [#1279](https://github.com/Agent-Field/codeaf/pull/1279) · `engine` `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A run its elapsed-time limit or its dollar limit ended drew its reason as `a fault: a limit you set stopped it`. Both halves were wrong: a limit a person set is not a fault, and the sentence did not say which of the two limits it was.
+  - The run now records which limit ended it, beside its one outcome word, and the row says `a time limit you set stopped it` or `a dollar limit you set stopped it`, with no `a fault:` in front. The outcome word is unchanged: such a run still reads `incomplete`.
+  - A joined row the run's ending took down mid-flight used to draw a fault of its own. It now draws the run's ending. A part a person stopped alone, in a run a limit ended later, is not counted as cut by that limit: a limit writes no store row, so a cancelled row under a standing root is a person's stop.
+
+  Two sentences a person reads changed, both on a task's reason line. The words `incomplete`,
+  `stopped` and every other ending are as they were.
+
+  </details>
+
+- **a run's dollars reach the conversation's own total** — [#1280](https://github.com/Agent-Field/codeaf/pull/1280) · `engine` `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A task run under the bash belt spent money the conversation never counted. Its workers are agents of their own, each banked its paid calls on its own account, and the road that drives a run to its landing added nothing home, on any ending. So the conversation's spend limit, the launch limit, `/cost` and the status line all left every such run out: a conversation with a five dollar limit could start any number of five dollar runs, one after another. The two older roads, a task node and an adaptive run, always folded theirs.
+  - The run now tells the conversation its total as it rises, while its workers are still working and whether or not the run was handed a dollar limit, and the conversation adds each difference once. The run's own final figure closes any gap, before the road splits for a person's stop, so every ending counts: done, incomplete, a limit, a person's stop, an error.
+  - It goes through the door that writes no usage ledger line, because each worker already wrote its own calls there. The day's figure on disk is unchanged; what changes is the conversation's total and every limit that reads it. The turn after a run that spent past the conversation's limit is refused with the limit's own shipped sentence.
+
+  A person sees no new word. `/cost`, the status line and the limits now include what a
+  task spent, while it is still spending it.
+
+  </details>
+
+- **a run is handed what is left of every dollar limit** — [#1281](https://github.com/Agent-Field/codeaf/pull/1281) · `engine` `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A task run was handed the conversation's whole spend limit as its own dollar limit, however much the conversation had already spent, and `--max-cost` did not bound a run at all. A conversation that had spent four of its five dollars could start a run allowed five more.
+  - A run is now handed what is LEFT of the smaller dollar limit the person set: the conversation's spend limit (`/settings`, Spending, per conversation, off by default) and `--max-cost` when codeaf was started with one, less what the conversation has spent so far. Which limit is the smaller is decided in one place, the same one an adaptive run reads.
+  - A limit already spent hands the run the smallest positive figure, not zero, because zero means no limit to the run engine. Such a run ends on its first paid call with `a dollar limit you set stopped it`.
+
+  No new word on screen. The manual's two passages on a run's dollar limit are rewritten in
+  the same change, and the old sentence saying `--max-cost` does not bound a run is gone.
+
+  </details>
+
+- **a cancelled command is ended by the call that ran it** — [#1282](https://github.com/Agent-Field/codeaf/pull/1282) · `engine` `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A command cancelled in the same instant it started could go on running after its call answered `Command aborted`. The call's wait returned on the cancellation and trusted a second goroutine to have ended the command already; when that one had not reached its wait yet it found two reasons to wake, was handed one at random, and on the other sent nothing. The command is started as the leader of a session of its own, so it lived on under no parent, in a folder that was then removed.
+  - It was seen on the real binary: a run whose dollar limit was reached by the very call that issued a command ended `incomplete`, and the command's shell was still running minutes later under no parent. A context already done when the call is made shows it every time, which is what the new test does, two hundred times. Shells that tests of a time limit have left looping on a shared box are the same shape but were NOT reproduced in a hundred quiet runs, so this change does not claim them.
+  - The part of the call that sees the cancellation now ends the command itself, unless the command was handed on as a background job or had already exited. A stop in the middle of a command was always ended and still is.
+
+  Nothing a person reads changed. The manual already says a stopped command is stopped;
+  this makes it true of a command that had only just begun.
+
+  </details>
+
+- **a long declared check says why it was refused** — [#1283](https://github.com/Agent-Field/codeaf/pull/1283) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A declared check longer than the admission limit was refused as though it were not one rerunnable command, even when it was one real command. The refusal now names length as the cause and says how long the check actually is, so the person shortens that check instead of guessing which one was too long.
+  - The audit door silently dropped a long declared check even after the task had recorded it. It now keeps that command in the checker contract, so the checker is not later told its own declared check was absent from the door.
+
+  The proposal limit still keeps an invalid check short enough to quote readably in a
+  refusal. Length limits admission of a new check, not whether an already recorded
+  check belongs to the task.
+
+  </details>
+
+- **the heavy-suite lock is held for the suite, not for what the suite leaves behind** — [#1284](https://github.com/Agent-Field/codeaf/pull/1284) · `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The locked descriptor was handed to the heavy suite itself. An advisory lock lives on the open file description, and an inherited descriptor is not close-on-exec, so every process the suite left behind kept the whole box locked: one orphaned test shell held it for eight minutes after a green run.
+  - The descriptor now goes to a holder started beside the suite, in its own session, which runs nothing else and exits when the suite's pid is gone. The suite never receives it, so nothing can inherit it, and a wrapper killed mid-run still does not unlock a box that is running a suite.
+
+  The lock is released when the holder notices the suite has ended, within its poll,
+  rather than at the instant the suite exits. After a suite ends, the wrapper checks
+  the lock and, if it is still held, says so and names the file-level way to find the
+  holder. It ends nothing.
+
+  </details>
+
+- **a usage flush says whether it drained or ran out of time** — [#1285](https://github.com/Agent-Field/codeaf/pull/1285) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - FlushUsage waited under a ceiling and returned the same way whether every row had reached the disk or the deadline had fired, so a caller could not tell a join from a timeout and went on as though the writing were done.
+  - It now answers true only when everything in front of it was written. A caller that needs a join rather than a wait can stop one path's writer and wait for it with StopUsageWriter, the single-path form of the close the process already performs.
+
+  The wait itself is unchanged and deliberate: a stalled ledger must not hold a
+  terminal open. What was missing is the one thing the caller cannot work out for
+  itself.
+
+  </details>
+
+- **a row that needs you names what it needed and opens the item** — [#1288](https://github.com/Agent-Field/codeaf/pull/1288) · `chat`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - A watch whose action is a piece of work runs with nobody to ask, so a call the person's own rules would have put to somebody is refused where it stands. The engine's words for that are written for the worker, which has to act on them, and they travelled unchanged onto the home screen under the mark that says a person is needed: `refused in a task: default — nobody to ask`.
+  - The row now says what the firing wanted, in the sentence this surface already uses when a conversation waits for permission: `stopped: it needed your ok to run ` and the command, or the name of the hand for anything that is not a shell call, or `something` when the call's arguments cannot be read. It never says how much was refused, because it is written from the first refused call and knows nothing about the calls that came back fine. The engine's own line still reaches the worker unchanged.
+  - The key on such a row opened the conversation the watch was asked for in, which is idle and holds nothing to answer. It now opens the item, which is where it can be paused, reworded or let go.
+  - The line was written only by the next firing, so a watch that had spent its allowance for the day kept its row on the home screen for as long as that stayed true, with nothing the person did able to put it down. Changing the item now puts it down too. Opening it and closing it again does not: nothing moved, and the reason is still true.
+
+  Nothing widens. What a firing is allowed to run is unchanged, and the decision about
+  that is still open.
+
+  </details>
+
+- **a task's page draws its brief through the reader the transcript already uses** — [#1289](https://github.com/Agent-Field/codeaf/pull/1289) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A run task's page drew the stored brief raw, so a task whose description was the generated work order opened on the scaffold addressed to its worker — the shouted heading, the rule under it, and one line of the ask — and a person read machinery before they read the work. The page draws the brief through the same reader the conversation's transcript uses: plain headings, this task's own work first, and a brief that is not the generated document draws exactly as it always did. The stored brief itself never changes; only what is drawn does.
+
+  The reader that turns a generated work order into something a person reads
+  already lived in the same surface, used by the conversation's own transcript:
+  it recognises the generated opening, puts the task's own work first under
+  plain headings, and relabels the shouted sections. The plan page was drawing
+  the same document raw. Its shared half is lifted into a function over a plain
+  string, so the page and the transcript read one text one way; the
+  transcript's own caller draws exactly what it drew before.
+
+  </details>
+
+- **a standing firing runs behind the gate a task node runs behind** — [#1290](https://github.com/Agent-Field/codeaf/pull/1290) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A firing copied the conversation's approval policy, which on a fresh install prompts a person, while also being told it was inside a task where no person exists. Every decision came back as a refusal, so a watch could run the read-only lift and no shell command at all, not even one the person had explicitly allowed.
+  - A firing now carries the policy a task node carries, allowing everything except approval's critical floor. The floor still turns an allow into a prompt for the shapes that destroy a disk or drop the machine, and a prompt with nobody to ask is still a refusal the firing can read and report.
+
+  The calls that act in the person's name outside the machine stay refused, and a
+  bash call whose arguments cannot be read stays refused. What changes is that the
+  work the watch was set up to do can happen while nobody is watching.
+
+  </details>
+
+- **a live run counts as work, so its conversation is not retired out from under it** — [#1291](https://github.com/Agent-Field/codeaf/pull/1291) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A conversation whose only live work was a run read as idle, because a run's rows are kept beside the task graph rather than in it and the work tree walked only the graph. The engine retires an idle conversation at thirty minutes and asks that same door what idle means, so a run longer than thirty minutes had its room taken down while its workers were out. A live run is now a row in the work tree, which is the whole of what keeps the engine alive while a run lives.
+  - A run's context was cut by nothing: it drops the proposing turn's cancellation on purpose, and no other road reached it, so a run's life belonged to the process rather than to the conversation. A conversation that ended while a run was going left workers spending against a room nobody could read or stop. Closing a conversation now ends its run, beside the adaptive runs it already ended and for the same stated reason. It is not a person's stop and writes nothing on the run's record.
+
+  Two halves of one fact: a run is work, and a run's life is the conversation's.
+
+  The work tree is the one door both surfaces and the engine read to ask what is
+  happening. A run's rows are kept beside the task graph, so the walk over the
+  graph's own nodes never saw them, and the honest answer for a conversation
+  driving a run was that it was working on nothing. The run's row joins the tree
+  under the number every other surface already knows it by, so a reader can hand
+  it straight back to the stop road.
+
+  Closing a conversation ends its run. The run drops the proposing turn's
+  cancellation deliberately, because a run must outlive the sentence that asked
+  for it, but until now nothing else could reach it. It is cut where the adaptive
+  runs are cut and for the reason written there. Nothing is written on the run's
+  own record: the room closing is not a person's stop and must not read as one.
+
+  </details>
+
+- **a session stopped on a sub-harness question says so instead of working** — [#1293](https://github.com/Agent-Field/codeaf/pull/1293) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A sub-harness run blocked on its own question left the session reporting itself as working. The question was registered and readable, but the predicate behind presence never read that lane, so no row appeared on home, no mark was drawn, and the work stopped in silence until somebody happened to open the conversation.
+  - That lane is now read like the lanes beside it, and it banks its row at the presence desk when it raises, so the session says a person is needed and the row carries the question itself.
+
+  Three sibling lanes share the shape this fixes and are deliberately left: sign-in,
+  the sub-harness offer and the harness design card each raise without banking a
+  desk row. They belong to the desk piece, which needs the owner's word on the
+  state words first.
+
+  </details>
+
+- **work nothing is driving comes back interrupted, not failed and stopped** — [#1296](https://github.com/Agent-Field/codeaf/pull/1296) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A row that was live when the process holding it went away came back stamped failed and stopped, and the run's row read `it ended when codeaf closed; its journal is kept`. That told a person two untrue things in one line: that something had gone wrong with the work, and that somebody had ended it. Such a row now reads `interrupted`, which means nothing is driving it and everything it did is kept. It sits in the person's own tier, wearing the asking mark, and offers two answers: continue it, or leave it. The old sentence is deleted; the reading carries what it was carrying.
+  - A task landed with one of four words. There are now five. `interrupted` joins done, stopped, incomplete and your call, and it is the only one of them that does not mean the work is over. A background job is unchanged: its process died with the program that forked it, so `stopped` stays the honest word and its row keeps the path to its log.
+
+  The word is the owner's own, settled on 2026-09-20 (#1224). It means one thing
+  and only that: nothing is driving this, and every step it took is kept.
+
+  It is neither of the two words it used to be read as. `stopped` is a person
+  ending the work. `incomplete` is work that ran and came up short. A closed
+  window, a sleeping machine and an engine that went away are none of those, and
+  collapsing them into either is how work whose only misfortune was a closed
+  window came back looking as though it had gone wrong.
+
+  The reading is where the word lives, so nothing had to grow a table of its own:
+  the tier, the mark, the two answers and the sentence beside the word all follow
+  from one rung. Continuing always asks first and the answer is never the model's,
+  because continuing spends money.
+
+  Second cell of the settled close-window design (#1224). Answering the question
+  is the third.
+
+  </details>
+
+- **a run's working copy is written down, so carrying it on adopts the work instead of deleting it** — [#1298](https://github.com/Agent-Field/codeaf/pull/1298) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Nothing recorded where a run's work was. A run's directory is derived from its own number and could be worked out again, but its branch is minted with a random suffix when the copy is cut and was written nowhere, so after a restart the product knew a run had existed and knew nothing about where its work was. A run row now carries its copy: the directory, the branch, the repository, the ground and mode, the checkout it was cut from, and which rung of the ground ladder made the world. The field is additive and a row written before it decodes with nothing, which is a run that genuinely cannot be carried on.
+  - The road that makes a run's working copy may not be asked for one twice. It carves the directory it is handed and cuts a fresh branch with a new random suffix, which is safe exactly once; asked again for the same run — which is what a naive carry-on would do — it deletes every step of the work it was meant to resume and hands back a branch that looks healthy. A run's copy is now ADOPTED from the record. A run with no copy recorded, or whose copy is gone from disk, is refused in words naming what is missing, and the refusal is the permanent answer rather than a stopgap.
+
+  The directory is derived and the branch is not. That asymmetry is the whole
+  reason the record exists, and a reader who believes both are reconstructible
+  will delete it.
+
+  Nothing here carves a directory, cuts a branch or derives a path. Every road
+  out of the reader is either the copy that was written down or a refusal, which
+  is the one rule that keeps a resume from being a deletion.
+
+  The copy is carried forward in the one function every publisher of a run's row
+  goes through, because each publish replaces the row and only the first one
+  knows where the work is.
+
+  Third cell of the settled close-window design (#1224), split out ahead of the
+  card because the piece where getting it wrong deletes somebody's work gets its
+  own proof and its own gate.
+
+  </details>
+
+- **the interrupted page no longer offers two answers nobody can press** — [#1304](https://github.com/Agent-Field/codeaf/pull/1304) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The page that explains `interrupted` said the row offers two answers, `continue it` or `leave it`. Those two words are real in the reading, and no surface draws them for a run. The only three readers of a task ask's yes and no are home's needs column, which is fed from the task record and which a run row never reaches; the landing question, which is built only for a node that finished unchecked; and the record card's verb line, which needs a question already on screen. A person who went looking for those two answers would not have found them. The page now says what the row does say, and states plainly that nothing picks an interrupted run up yet.
+
+  The word and the line beside it are drawn, and the row does stand in the column
+  that waits for a person, wearing the asking mark. What is not there is anything
+  to press.
+
+  A page that promises an answer nobody can give is the same defect as a surface
+  that asserts what is not so, and the fact that the answers are coming in the
+  next change is not a reason to say they are here now. They go back on this page
+  in the change that makes them real.
+
+  </details>
+
+- **a watch stopped for permission says the line, and no longer says a person asked** — [#1314](https://github.com/Agent-Field/codeaf/pull/1314) · `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A standing row whose watch stopped for want of permission read `asks: stopped: it needed your ok to run ...`, which said somebody had asked a question. Nobody had. The row now says the line bare.
+
+  standing.Item.NeedsPerson carries two different things and its own doc says so:
+  a question a firing put to a person in its own words, or the line written when a
+  call was refused for want of somebody to allow it. The switcher's note put the
+  ask word over both. It now asks standing.IsPermissionLine, the one predicate
+  that knows the difference, and says a refusal bare, because the refusal is
+  already a whole sentence about the item.
+
+  </details>
+
+- **a sign-in and a harness ask say what they are waiting for, instead of only that somebody is needed** — [#1315](https://github.com/Agent-Field/codeaf/pull/1315) · `engine` `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A session stopped on a sign-in, a harness offer or a harness design card told every other window that a person was needed and gave no sentence saying what for, so a surface drew a mark nobody could act on. Both lanes now bank the question at the desk and the row says what it is waiting for.
+
+  personAskLanes decides THAT a person is needed from the lane books, while
+  waitingOnPerson takes the sentence from the presence desk. A lane counted in the
+  first and absent from the second leaves waiting true with an empty reason. The
+  sign-in lane and the harness lane, which is one book written by both the offer
+  and the design card, now raise through presenceAskingWhole, so the row carries
+  the question's own words. The lanes whose words come from another arm of
+  waitingOnPerson, the sub-harness offer, the fuel gate and landings, are
+  unchanged.
+
+  </details>
+
+- **the front tab and the tab beside it agree about whether one conversation needs a person** — [#1316](https://github.com/Agent-Field/codeaf/pull/1316) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A conversation holding a standing answer carried the needs-a-person mark while it was held and LOST it when a person brought it forward, because the front tab re-spelled the lane list on the surface and left that lane out. Both sides now count it.
+  - A landed task saying `your call` is deliberately NOT counted by either tab's mark. Its question object stays open through the whole settle after the person has answered, so counting it would hold a mark up over an answer already given. It is drawn in the conversation itself and on its own card.
+
+  frontSignal answers from the surface rather than from the engine, deliberately,
+  because Agent.NeedsPerson takes the agent's mutex and allocates a map and the
+  strip is laid out every frame. That is unchanged. What is added is asksStanding,
+  one allocation-free walk over the questions the surface already holds, in the
+  same shape as the harness and consent readings beside it. An automatic proposal
+  carrying a deadline is still excluded, because a countdown answers itself.
+
+  </details>
+
+- **the caret parks in the box the person is typing into, and hides on surfaces with no box** — [#1321](https://github.com/Agent-Field/codeaf/pull/1321) · `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The connections key entry left the caret blinking in the resting search box at the foot while the person typed into the entry row 12 rows up, and its choice list left the caret in the resting box too. A caretRow hook on the place interface now answers 'where is your live box among the rows just built', and the frame parks the caret there, the column from the box's own renderer.
+  - The tasks filter parked the caret in the foot's 'type to filter this list' while the letters landed in the control row 17 rows up. The caret now parks on the control row, after the typed words, and at rest on the box's first cell.
+  - The task record card blinked a bar at (0,0) over the title on a boxless surface, though its own comment claimed the caret was hidden. It is hidden, by the same law the job page and home at rest follow.
+
+  Seven contracts pin the parks in internal/tui3/caretpark_test.go: each asserts the caret's row is the box's painted line and its column sits immediately after the typed words, including the settings search box with the foot line present and at rest. The settings search park itself was audited across widths 30 to 160 and heights 8 to 40 and was already right; the wrong parks were the three surfaces above.
+
+  </details>
+
+- **a landing whose accept is already in flight stops asking the person to accept it** — [#1322](https://github.com/Agent-Field/codeaf/pull/1322) · `engine` `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - After a person accepted a landed task, home and the switcher went on saying your call about it for as long as the merge took, because the arm read the pending list and the list filters on node state alone.
+  - With two landings open, one answered and one not, the row named the answered one: the arm took the first entry in admission order rather than the first entry that was still a question.
+
+  waitingOnPerson's landing arm took the first pending decision and named it. An
+  accept does not move the node's state until the merge finishes, so the entry
+  stays on the list through the whole settle and the row kept asking a question
+  the person had answered. The record card already read the decision record and
+  said accepted, so the two readers of one state disagreed.
+
+  The arm now takes the first pending entry whose Settling is empty and
+  contributes nothing when none are, which covers both the all-answered case and
+  the case where an answered landing was admitted before an unanswered one.
+  PendingDecisions is unchanged: its membership is state in, state out, and the
+  skip belongs at the arm that draws the line.
+
+  </details>
+
+- **a heavy suite takes both the file lock and the older directory lock, so a checkout behind** — [#1324](https://github.com/Agent-Field/codeaf/pull/1324) · `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Two heavy suites ran side by side and each believed it had the box: one took the file lock and one took the directory lock, and neither mechanism could see the other, so the reds and the timings that came out of the pile were attributable to nothing.
+  - Checking both locks when starting would have stopped us joining a stale holder and could never have stopped a stale runner joining us, because being unaware of the file lock is what makes a checkout stale.
+
+  A run takes the directory lock first, so there is no moment when it holds the
+  file lock and is still invisible to a checkout that reads only the directory.
+  The refusal is reported after the file lock has been tried, because two current
+  trees collide there and that refusal can say whether the recorded pid is visible
+  from this process namespace.
+
+  The directory is freed by whichever process holds the file lock, which is the
+  holder beside the suite rather than the wrapper. Killing the wrapper is allowed
+  by design and must not open the box while a suite is still running, so the two
+  locks share one lifetime.
+
+  The two paths are named independently in the configuration rather than one
+  trimmed from the other: a name spelled twice is a fact that can disagree with
+  itself, and a derived name would follow a test harness driving a private lock
+  straight to the real one.
+
+  The suite itself runs WITHOUT the lock's name in its environment. Exporting it
+  so the wrapper could read it handed it to the suite as well, and every process
+  the suite started then tried to take a lock the suite was already holding and
+  refused itself. The suite already never sees the file lock's descriptor, for the
+  same reason: what a suite inherits, its children keep alive.
+
+  </details>
+
+- **the drafted-with footer links to the codeaf repository** — [#1329](https://github.com/Agent-Field/codeaf/pull/1329) · `engine` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The three attribution footers linked to `https://agentfield.ai/github`, which 302s to `github.com/Agent-Field/agentfield`. They link to `https://agentfield.ai/github/codeaf`, which 302s to `github.com/Agent-Field/CodeAF`. The utm parameters and the rest of each line are unchanged.
+
+  Every pull request, issue and comment codeaf drafted ended with a line
+  offering to show the reader what drafted it, and the address under that offer
+  went to a different repository. The redirect for this one already serves, so
+  the fix is the longer path and nothing on the site has to move.
+
+  `AttributionPullFooter`, `AttributionIssueFooter` and `AttributionCommentFooter`
+  in `internal/exec/linear.go` carry the new address, with the fixtures that pin
+  them and the two manual pages that quote them. The CHANGELOG keeps the old
+  address wherever it records what the line used to be.
+
+  </details>
+
+- **a landing that turned the work back offers its answer without standing in needs you** — [#1331](https://github.com/Agent-Field/codeaf/pull/1331) · `engine` `chat`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A task that ended failed with its work kept wore your call and counted toward needs you for the rest of the session, with no way to reach zero except answering each one, while nothing was waiting on any of those answers.
+
+  A landing question is raised for a node nobody could check and retired for every
+  other state, so a failed node has no question object and never had one: no turn
+  is parked on it and no conversation is holding it. The owner road says the same
+  thing, writing a decider only for that one state because a node that landed
+  done, incomplete or stopped is not waiting on anybody's word. The reading was
+  inventing that question out of the ending's shape alone.
+
+  The card is untouched. The tier, the word, the reason and both answers stay,
+  because the branch is on disk and taking it anyway is a real thing to do. What
+  goes is the mark that files a row under needs you, which is the same separation
+  already made for a question somebody else is holding.
+
+  The demand is not deleted, it is moved back to whoever has one: anything that
+  needs the answer to carry on asks, and an ask raises the mark through its own
+  lane with no help from this row.
+
+  </details>
+
+- **a changed directory in a nested module is not a package of the root module** — [#1332](https://github.com/Agent-Field/codeaf/pull/1332) · `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The `touched packages` job derived its test set as every directory holding a changed `.go` file, with no test for which module that directory belongs to. A change that edits a bench fixture under `bench/bashloop/fixtures/` fed `go test` a directory under its own `go.mod`, which answers `main module (github.com/Agent-Field/codeaf) does not contain package …` and failed the job as a setup error while every real package passed. The job now walks up from each directory to the first `go.mod` and keeps the directory only when that `go.mod` is the root's.
+  - `.github/workflows/ci.yml` and the Makefile's `test-touched` target derived the touched set separately, and only one of them was ever fixed. They now carry the same walk, so `make pr-ready` predicts the gate again.
+
+  The bench fixtures are small programs the task door edits during a bench run, and
+  each carries a `go.mod` of its own so a worker can build and test it in place.
+  That makes them modules, not packages of this one, and `go test ./that/dir` from
+  the root has always refused them. Nothing had touched one in the same change as a
+  Go file before, so the gap was latent until a branch that edits both.
+
+  </details>
+
+- **hosted chat stops the live run it can see** — [#1376](https://github.com/Agent-Field/codeaf/pull/1376) · `chat` `engine` `remote`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The `tasks` tool could list a live bash-belt run but could not stop that same row until it had ended and entered the project index. A stop now resolves the live run first, returns its real receipt over the hosted wire, and publishes the stopped row.
+
+  A failed stop now says `Could not stop task …:` and gives the reason, so the
+  model cannot mistake a refusal or missing receipt for a successful stop.
+
+  </details>
+
+
+### Internal
+
+- **v0.3.0 is rolled up into CHANGELOG.md** — [#1196](https://github.com/Agent-Field/codeaf/pull/1196) · `build` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The 95 entries that accumulated under docs/changes/unreleased/ since v0.2.1 were loose files; they are the `## v0.3.0 — 2026-09-18` section of CHANGELOG.md now, and the stable release reads its notes from that section.
+
+  </details>
+
+- **a repeatable hosted drive of a run on the real binary** — [#1241](https://github.com/Agent-Field/codeaf/pull/1241) · `chat` `build`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - A surface change to the run, the side list of tasks or a task's page was accepted on a drive somebody typed by hand, which nobody else could repeat. `scripts/hosted-drive.sh <path to bin/codeaf>` types into the real binary, hosted as the chat runs by default, and asserts fifteen things about the screen and the folder. It makes real model calls, so no make target runs it.
+
+  Two defects this week were on trunk with every test green and were found only
+  by driving the real binary hosted: the run's rows that no hosted conversation
+  could read, and a note on a task's page that lost everything after one letter.
+  The script's header says what it needs and what each check asserts.
+
+  </details>
+
+- **three proof steps that could not report failure now have one written form with a tested failing arm** — [#1308](https://github.com/Agent-Field/codeaf/pull/1308) · `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - A proof step written the obvious way can be incapable of reporting the failure it is checking for, and three such shapes were each written more than once. `gofmt -l` prints what it would reformat and exits 0 either way, so a step reading its exit code reports green on every tree. A pipeline ending in a reader hands back the reader's status, so `cmd 2>&1 | tail -25; echo "exit=$?"` printed `exit=0` underneath a screen of FAIL. And a `-run` pattern is a second copy of the list of tests in a file; when the two drift, `go test` answers a filter matching nothing with `ok`, so a named test that never ran reads exactly like one that passed. `scripts/proof.sh` is the one written form of all three, to be sourced.
+  - No caller is converted in this change, on purpose. If the library is right the conversions are mechanical, and if it is wrong that is better learned on one caller than on all of them.
+
+  Every proof step answers one question: what would this print if the thing it
+  checks were broken? If the answer is the same thing it prints now, it is not a
+  check, and it spends the attention a real check would have earned.
+
+  `fmt_check` reads the list rather than the exit code. `step` captures its
+  command's status before anything else can run, keeps output in a file rather
+  than a pipe, and counts failures from that file as a second witness sourced
+  differently from the status. `run_tests` compares the names it was asked for
+  against the tests that actually reported, and names every one that reported
+  nothing, because a guard whose satisfaction can only be shown as a tick
+  eventually becomes a tick.
+
+  **The acceptance is the failing arm.** `internal/ci/prooflib_test.go` runs each
+  function twice, once where the thing it checks is sound and once where it is
+  broken, and each broken arm also pins what the plain command says about the
+  same situation: in all three cases it reports success. A guard against invisible
+  failure that has only ever been seen passing is the thing it was written to
+  prevent, wearing its own name.
+
+  The three shapes were found in one night, each by a different person, each in a
+  different instrument. The review question and the test-shaped version of the
+  same family are in the issue titled "Tests that cannot fail".
+
+  **The survey, with its scope attached.** Three defects were looked for, in three
+  places: a `gofmt -l` whose exit code is read, a status reported after a pipe, and
+  a `-run` pattern listing named tests that can drift from a file, across
+  `Makefile`, `scripts/` and `.github/`. Zero instances of all three.
+  `fmt-check` was already written in the correct form before any of this. Every
+  instance found was in an ad-hoc chain script written outside the repository.
+
+  That count is a claim about those three shapes in those three directories and
+  nothing else. It says nothing about any other way a failure can be discarded, and
+  nothing about Go source, which was not looked at. A finding quoted without its
+  scope becomes a larger claim than the one that was tested, which is the same
+  defect as a check that cannot fail, facing the boundary instead of the content.
+
+  This is true of any count and worst of a zero. A zero is the most quotable number
+  there is and the most dangerous, because it reads as a property of the tree
+  rather than as the result of a search, and it is the one nobody thinks to ask the
+  scope of: zero feels like the absence of a thing rather than the outcome of a
+  procedure that had a boundary.
+
+  So these functions may have no caller here, and the file's standing value is its
+  test rather than its convenience: three assertions about how the tooling behaves
+  that our proof chains depend on, which run on every pull request whether or not
+  anything sources a line of it.
+
+  </details>
+
+- **the live standing check returns to the conversation that receives the firing** — [#1377](https://github.com/Agent-Field/codeaf/pull/1377) · `chat` `remote`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The live standing acceptance pressed `ctrl+t` while Home still selected the settled reminder exchange and assumed it had opened a chat. That chord acts only on a conversation row there, so the test stayed on Home and reported a delivered `said:` row as missing. It now reopens the existing conversation and proves that transition before waiting for the firing.
+
+  The standing event already crossed the hosted task-update wire, remained visible
+  through its reply, and reached the conversation exactly once. Focused tests now
+  pin those two boundaries directly.
+
+  The end-to-end scenario moves from the settled reminder row onto its existing
+  conversation and waits for that conversation's footer before the five-minute
+  standing pass. Both the attended firing and the later closed-window drain are
+  read from the surfaces where a person actually receives them.
+
+  </details>
+
+
 ## v0.3.0 — 2026-09-18
 
 ### Added
