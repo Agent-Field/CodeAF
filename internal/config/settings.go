@@ -1572,6 +1572,21 @@ type Setting struct {
 	// suppress its own echo while typing reads this.
 	Secret bool
 
+	// read RETURNS WHAT THE PRODUCT WILL ACTUALLY USE, and not what is stored
+	// in the profile. Where a value passes through a resolver before anything
+	// acts on it, this reads THE RESOLVER, so a person who types something the
+	// resolver will not honour watches it change in front of them instead of
+	// believing the row.
+	//
+	// That is what makes a lossy store safe, and it is the only thing that
+	// does. A 0 that means "use the default" downstream has lost the
+	// difference between unset and chosen the moment it is written, and
+	// nothing below this row can recover it; what stops the loss being
+	// invisible is that the row types the default back at the person. A read
+	// that hands over the raw stored value instead will show somebody a
+	// setting nothing obeys, and no test downstream can catch it, because
+	// downstream never sees what was typed. [persistedCount] is the lossy
+	// store this applies to today.
 	read    func() string
 	write   func(string) error
 	receipt func() string
