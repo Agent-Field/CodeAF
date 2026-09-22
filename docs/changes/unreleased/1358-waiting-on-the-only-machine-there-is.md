@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: a conversation against one machine waits for it instead of giving up on it
-pr: 1344
+pr: 1358
 surface: [engine, chat]
 invalidates:
   - "A quiet reply from a build with no router behind it spent a fixed allowance and then ended the turn — two attempts before #1343, four after it. A watched conversation with no model chain now has no allowance at all: it keeps asking, on a wait that climbs to ten seconds and holds there, until the machine answers or the person stops it. The deadline does not end it either, which is the only place in the failure policy where running out of time is not the last word."
