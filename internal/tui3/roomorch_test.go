@@ -708,7 +708,7 @@ func TestTheGraphsGoldenAtTheWideTier(t *testing.T) {
 	a.room.workActivity.Start(now, tokens.WorkLogoRally)
 
 	want := strings.Join([]string{
-		"  |●  Working",
+		"  |●  " + a.room.workActivity.Caption(),
 		"",
 		"work",
 		"  ● plan decide what to read  $0.02",

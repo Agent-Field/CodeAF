@@ -314,7 +314,7 @@ func TestLeavingARoomAndComingBackShowsTheSamePage(t *testing.T) {
 
 	a.openRoom(7, "Fix the nil-map crash")
 	a.touch()
-	first := roomText(a)
+	first := roomStableText(a)
 
 	a.closeRoom()
 	if a.roomOpen() {
@@ -323,7 +323,7 @@ func TestLeavingARoomAndComingBackShowsTheSamePage(t *testing.T) {
 	a.openRoom(7, "Fix the nil-map crash")
 	a.touch()
 
-	if second := roomText(a); second != first {
+	if second := roomStableText(a); second != first {
 		t.Fatalf("the room came back different:\nfirst:\n%s\n\nsecond:\n%s", first, second)
 	}
 	rows := a.roomRows(a.bodyWidth())
@@ -344,7 +344,7 @@ func TestWalkingBetweenTwoRoomsKeepsEachPageItsOwn(t *testing.T) {
 	a.openRoom(7, "Fix the nil-map crash")
 	a.touch()
 	a.room.workActivity.Start(a.now(), tokens.WorkLogoRally)
-	seven := roomText(a)
+	seven := roomStableText(a)
 
 	a.openRoom(8, "Write the loader test")
 	a.touch()
@@ -361,7 +361,7 @@ func TestWalkingBetweenTwoRoomsKeepsEachPageItsOwn(t *testing.T) {
 		t.Fatalf("the room is on node %d, want 7", a.room.id)
 	}
 	a.room.workActivity.Start(a.now(), tokens.WorkLogoRally)
-	if got := roomText(a); got != seven {
+	if got := roomStableText(a); got != seven {
 		t.Fatalf("walking to another node and back changed the page:\nwas:\n%s\n\nnow:\n%s",
 			seven, got)
 	}
@@ -383,4 +383,16 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// Journal comparisons omit the deliberately per-visit transient activity mark.
+func roomStableText(a *app) string {
+	var lines []string
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		if r.activity && r.entry == -1 && r.hit == hitNone {
+			continue
+		}
+		lines = append(lines, plain(r.text))
+	}
+	return strings.Join(lines, "\n")
 }

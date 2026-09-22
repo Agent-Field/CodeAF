@@ -28,9 +28,12 @@ const (
 // boundary, samples it from its existing clock, and decides when it is visible.
 // Its zero value is dormant; callers can keep one per conversation or task.
 type WorkActivity struct {
-	style  int
-	began  time.Time
-	chosen bool
+	style   int
+	began   time.Time
+	chosen  bool
+	caption string
+	recent  [8]string
+	next    int
 }
 
 // Start selects once. Random selection avoids immediately repeating the previous
@@ -44,6 +47,9 @@ func (w *WorkActivity) Start(at time.Time, choice int) {
 		}
 	}
 	w.style, w.began, w.chosen = choice, at, true
+	w.caption = nextWorkCaption(w.recent[:])
+	w.recent[w.next] = w.caption
+	w.next = (w.next + 1) % len(w.recent)
 }
 
 // Started distinguishes a real operation from an uninitialized display value.
@@ -60,3 +66,9 @@ func (w WorkActivity) Frame(at time.Time) [WorkLogoWidth]WorkLogoCell {
 	}
 	return WorkLogo(w.style, at.Sub(w.began).Seconds())
 }
+
+// Caption is selected once alongside the motion; rendering never rewrites it.
+func (w WorkActivity) Caption() string { return w.caption }
+
+// Elapsed lets the owner's existing frame clock sample the caption's light.
+func (w WorkActivity) Elapsed(at time.Time) time.Duration { return at.Sub(w.began) }

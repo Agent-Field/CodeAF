@@ -2557,3 +2557,9 @@ terminal writes small and status words still. The existing 33 ms local / 99 ms
 remote frame ceiling is unchanged; unchanged frames need no terminal writes.
 Screen-reader, ASCII, monochrome, copy and small-window modes keep the compact
 text treatment. No size or frame-interval budget changes.
+
+The activity caption is assembled only at Start from bounded action/object recipes,
+excluding an eight-entry ring of recent phrases. Rendering samples the existing
+shimmer feather at twice its period and 0.25 contrast. The 28-column caption and
+nine-column mark have fixed widths. This uses the existing clock and grouped
+foreground spans; it adds no timer, I/O, model call or per-frame randomness.
