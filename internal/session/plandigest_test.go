@@ -75,7 +75,7 @@ func TestTheDigestCarriesNoResultNoStepAndNoTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open the store: %v", err)
 	}
-	if _, err := store.Done("alpha", "alpha", "THE-RESULT-NOBODY-ASKED-FOR"); err != nil {
+	if _, err := store.Done("alpha", "alpha", "THE-RESULT-NOBODY-ASKED-FOR", nil, nil); err != nil {
 		t.Fatalf("finish the task: %v", err)
 	}
 	if err := store.Close(); err != nil {
@@ -137,7 +137,7 @@ func TestTheDigestIsAbsentWithNoRunAndWithAFinishedOne(t *testing.T) {
 		t.Fatalf("open the store: %v", err)
 	}
 	for _, id := range []string{planRootID, "alpha"} {
-		if _, err := store.Done(id, id, "done"); err != nil {
+		if _, err := store.Done(id, id, "done", nil, nil); err != nil {
 			t.Fatalf("finish %s: %v", id, err)
 		}
 	}
