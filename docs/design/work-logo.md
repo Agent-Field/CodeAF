@@ -38,7 +38,8 @@ stays still. All frames are nine columns wide. The ball's brand gold is distinct
 from the question hue. Completed text never moves. ASCII, monochrome, linear,
 copy and small-window views retain the existing compact text treatment.
 
-The caption uses the existing cosine-feather shimmer at half speed and one quarter
-of its ordinary contrast: a four-second light sweep, with no font-weight changes,
-text replacement or movement. Truecolor only; lower-color and accessible modes
-stay still. Other live captions do not shimmer while the logo is present.
+The caption uses a slow decoding ripple: one letter becomes two symbols over
+160 ms, then resolves for 80 ms before the next letter starts. Each pass begins
+with a 1.8-second readable pause. Only one letter changes at a time, always in
+one terminal cell. Accessible modes stay still. Other live captions do not
+shimmer while the logo is present.

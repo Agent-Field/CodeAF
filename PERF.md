@@ -2560,6 +2560,6 @@ text treatment. No size or frame-interval budget changes.
 
 The activity caption is assembled only at Start from bounded action/object recipes,
 excluding an eight-entry ring of recent phrases. Rendering samples the existing
-shimmer feather at twice its period and 0.25 contrast. The 28-column caption and
-nine-column mark have fixed widths. This uses the existing clock and grouped
-foreground spans; it adds no timer, I/O, model call or per-frame randomness.
+decoding ripple with 240 ms letter steps and a 1.8-second pause per pass. The 28-column caption and
+nine-column mark have fixed widths. This uses the existing clock and one
+foreground span; it adds no timer, I/O, model call or per-frame randomness.

@@ -52,7 +52,11 @@ const activityContentColumn = activityLabelColumn + tokens.WorkCaptionWidth + 2
 
 // activityRows is one shared, single-line layout for every activity owner.
 func (a *app) activityRows(activity tokens.WorkActivity, trailing string, width int) []row {
-	caption := a.shimmerAt(activity.Caption(), activity.Elapsed(a.now()), 2*shimmerPeriod, .25)
+	caption := activity.Caption()
+	if !a.linear && !a.pal.linear && !a.pal.ascii && a.pal.profile >= tokens.ANSI256 {
+		caption = tokens.DecodeWorkCaption(caption, activity.Elapsed(a.now()))
+	}
+	caption = a.pal.narr(caption)
 	line := "  " + a.activityMark(activity) + "  " + padTo(caption, tokens.WorkCaptionWidth)
 	if trailing != "" {
 		line += "  " + trailing
