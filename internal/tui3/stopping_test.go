@@ -175,6 +175,12 @@ func TestNothingArrivingAfterTheStopIsDrawn(t *testing.T) {
 // nobody predicted, which is the only kind a stop leaks.
 // [TestTheStoppedFramesComparisonStillCoversTheHead] is red the moment this
 // stops covering the head, which is the part that was moving.
+//
+// AND IT EXISTS IN ORDER TO BE SHARED. The guard is a guard only because it
+// calls the same function the real test calls, so inlining this back into its
+// callers reads like removing a pointless indirection, leaves every test
+// green, and detaches the guard from the comparison it guards in the same
+// stroke. Keep the call.
 func stoppedFrame(a *app) string { return plain(frame(a)) }
 
 // AND THE FRAME ABOVE IS COMPARED AGAINST A CLOCK THAT DOES NOT MOVE ON ITS
