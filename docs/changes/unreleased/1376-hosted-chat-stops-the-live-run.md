@@ -1,5 +1,6 @@
 ---
 kind: fixed
+pr: 1376
 title: hosted chat stops the live run it can see
 surface: [chat, engine, remote]
 invalidates:
