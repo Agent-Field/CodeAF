@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -113,6 +114,12 @@ type RunSpec struct {
 	CompleterFor func(model string) Completer
 	// OnSpend observes the reconciled cumulative run spend while work is live.
 	OnSpend func(float64)
+	// Delegate, when set, is the outside program this run's root task is handed
+	// to instead of a bash worker (delegate_door.go). APIKey is the person's key
+	// the program is handed through its manifest's `{{key}}`. Nil is every run
+	// the conversation's own workers drive.
+	Delegate *delegate.Manifest
+	APIKey   string
 }
 
 // RunLimit is which bound a person set ended a run. The engine's outcome word
@@ -228,6 +235,12 @@ type beltRun struct {
 	// It is the same reading the row published to the surface carries, so the
 	// tree and the row cannot disagree about when the work began.
 	born time.Time
+	// delegate is the outside program this run's root is handed to, nil for a
+	// run the conversation's own workers drive; startSha is the commit the copy
+	// stood on the moment the run began, the point a tree delegate's commits are
+	// squashed back to at landing (delegate_door.go).
+	delegate *delegate.Manifest
+	startSha string
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -272,6 +285,15 @@ func (e standsElsewhereError) Error() string {
 
 // An approved hand-off under the bash belt belongs to the run store and never to the session tree.
 func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string) error {
+	return a.startKnownTaskRunVia(ctx, id, title, brief, dependsOn, stand, question, nil)
+}
+
+// startKnownTaskRunVia is [Agent.startKnownTaskRun] with the worker named: nil
+// is the conversation's own bash worker, and a manifest is the outside program
+// the root task is handed to (delegate_door.go). One body serves both because a
+// delegated run IS a run — the store, the copy, the row and the stop road are
+// the same — and a second body would be two roads that must stay in step.
+func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Manifest) error {
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
@@ -293,6 +315,15 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	// parent — and the supervisor already turning finds it ready on its next
 	// pass. Nothing opens a second store.
 	if live != nil {
+		// A DELEGATE NEVER JOINS A RUN AND NOTHING JOINS A DELEGATE'S. A delegated
+		// run is a run of one task whose worker owns the whole copy for the hour;
+		// a second task beside it would be a bash worker typing in the tree the
+		// program is editing, and a delegate added under a live run would be a
+		// second program in the same tree. Both are refused with what is underway.
+		if via != nil || live.delegate != nil {
+			return errors.New("work is already underway in a copy of " + live.ground +
+				"; a delegate runs alone, so propose it again when that work has ended")
+		}
 		if canonicalPath(stand.dir) != live.ground {
 			return standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
 		}
@@ -335,7 +366,15 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
 		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
-		born: born,
+		born: born, delegate: via,
+	}
+	if via != nil && via.LandsTree() {
+		// THE SQUASH POINT IS READ NOW, off the copy itself, before the program
+		// has written a byte: whatever the ground ladder put under this copy is
+		// under this commit, and everything the program commits is above it.
+		if head, err := git(tree.dir, "rev-parse", "HEAD"); err == nil {
+			run.startSha = strings.TrimSpace(head)
+		}
 	}
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
@@ -390,6 +429,8 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		WorkModel:    workSeat,
 		PlanModel:    planSeat,
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
+		Delegate:     run.delegate,
+		APIKey:       a.config.APIKey,
 	}
 }
 
@@ -521,7 +562,12 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		_ = run.store.Close()
 		return
 	}
-	landing := a.landBeltRun(ctx, engine, run)
+	var landing RunLanding
+	if run.delegate != nil {
+		landing = a.landDelegateRun(run, summary)
+	} else {
+		landing = a.landBeltRun(ctx, engine, run)
+	}
 	// A LANDING GETS ONE LAST READING before its digest is composed. The call
 	// owns the short beltRunSummaryDeadline: refusal, malformed output, or a
 	// slow provider leaves the stored reading alone and cannot hold the run
@@ -572,6 +618,14 @@ func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun)
 		}
 		return RunLanding{}
 	}
+	return a.bringBeltRunHome(run, landing)
+}
+
+// bringBeltRunHome is the second half of a run's landing, shared by the engine's
+// landing and a delegate's: the copy's branch merged into the ground it was cut
+// from, the person's unfinished work carried across or the branch kept and the
+// files named, the copy given back, and the homecoming written on the run's page.
+func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 	if run.tree.dir == "" {
 		return landing
 	}

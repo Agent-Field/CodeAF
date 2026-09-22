@@ -909,6 +909,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I stop a run writing outside one folder", "adaptive-runs"},
 		{"it broke a rule I set", "adaptive-runs"},
 		{"what is a harness", "saved-shapes-of-work"},
+		{"what is a delegate", "delegates"},
+		{"can you hand this to swe-pro", "delegates"},
+		{"what does /swe-pro do", "delegates"},
+		{"delegate this to another coding agent", "delegates"},
+		{"why can't the delegate ask me anything", "delegates"},
+		{"why is there no /swe-pro here", "delegates"},
+		{"where does a delegate's work go, does it squash the commits", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
 		// The card codeaf raises by itself, asked the three ways somebody meets

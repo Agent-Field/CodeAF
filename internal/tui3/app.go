@@ -3090,6 +3090,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	// and from then on [app.retitle] sends it again only when it moves.
 	a.titleSent = terminalTitle(a)
 	a.refreshCreditWarnings()
+	// THE DELEGATE ROWS GO ON THE TABLE BEFORE THE FIRST FRAME, so the picker
+	// and /help list them from the first keystroke (delegate.go).
+	a.installDelegates()
 	return a
 }
 
@@ -7225,6 +7228,13 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openHarness()
 		return nil
 
+	case "delegate":
+		// THE OUTSIDE PROGRAMS A TASK CAN BE HANDED TO WHOLE, listed, or one of
+		// them run on the words after its name (delegate.go). The installed rows
+		// are also commands in their own right and dispatch below, under the
+		// default arm, because they are not in this switch's literal table.
+		return a.openDelegate(rest)
+
 	case "subharness":
 		a.noticeEvent(eventSubharnessOpened)
 		// THE PROGRAMS THIS CONVERSATION CAN RUN, as a filterable list, and the
@@ -7413,6 +7423,12 @@ func (a *app) slash(line string) tea.Cmd {
 		if a.droppedLine(line) {
 			return a.edited()
 		}
+		// AN INSTALLED DELEGATE IS A COMMAND OF ITS OWN (delegate.go). It is
+		// asked for last, after the literal table, so nothing a delegate is
+		// called can shadow a word this surface already answers to.
+		if isDelegateCommand(name) {
+			return a.runDelegateCommand(name, rest)
+		}
 		a.note(unknownCommandWord(name))
 		return nil
 	}
@@ -7493,6 +7509,8 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 		// ANSWERING ABOUT SOMEWHERE ELSE (offloop.go). This is the one place the
 		// agent in front changes, so it is the one place that counter moves.
 		a.frontGen++
+		// The delegate rows are the conversation's, so they follow it (delegate.go).
+		a.installDelegates()
 	}
 	a.file = conv.SessionFile
 	// AND THE SENDS ARE NOT RE-KEYED HERE. They are held under the drafts lane's

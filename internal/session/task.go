@@ -83,6 +83,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
@@ -191,6 +192,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
 	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
+	`"via":{"type":"string","description":"Optional: the name of a delegate — an outside program on this machine that does the whole task on its own — for one large, well-specified change. Only a name your instructions list; it cannot ask the person anything"},` +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
 	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
@@ -215,6 +217,7 @@ type taskArguments struct {
 	DependsOn  []uint64 `json:"depends_on"`
 	Wide       bool     `json:"wide"`
 	Model      string   `json:"model"`
+	Via        string   `json:"via"`
 	MaxSteps   int      `json:"max_steps"`
 	NoProgress int      `json:"no_progress"`
 }
@@ -338,6 +341,10 @@ type taskSpec struct {
 	modelWord    string
 	model        string
 	modelOptions []string
+	// via is the delegate this work is proposed for, empty for the conversation's
+	// own worker (delegate_door.go). It is resolved at staging, so a name this
+	// machine has no delegate for is a refusal before any card goes up.
+	via string
 	// effort is the rung this node's workers ask the model for, empty when
 	// nobody has set one and the ladder's next rung down decides
 	// (internal/effort). It travels the same road `model` travels — set at
@@ -639,6 +646,17 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	if refusal := a.refuseProposedTask(spec); refusal != "" {
 		return bare.Settled(refusal, true)
 	}
+	// A DELEGATE IS RESOLVED BEFORE THE CARD, so a name this machine has no
+	// delegate for is answered with the names it has and nobody is asked to
+	// approve work that could not start (delegate_door.go).
+	if spec.via != "" {
+		if _, err := a.delegateFor(spec.via); err != nil {
+			return bare.Settled(err.Error(), true)
+		}
+		if a.config.InTask || chatRunEngine == nil {
+			return bare.Settled("a delegate can only be given work from the conversation, and only where the run road is linked", true)
+		}
+	}
 	// WHICH HANDS THE WORK LEAVES ON, settled before anybody is asked anything
 	// (taskmodel.go). A word that names no model this install has is a refusal
 	// the model can act on — it names the nearest ids — and one that names
@@ -814,10 +832,18 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// already underway is refused here ([standsElsewhereError]); any other
 	// failure of the run road falls through to the shipped engine, exactly as a
 	// typed /task does, and that engine cuts its own copy from the same stand.
-	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
+	if (bashBeltAsked() || spec.via != "") && chatRunEngine != nil && !a.config.InTask {
 		a.mu.Lock()
 		question := questionAtTaskHandoff(a.owedAsks)
 		a.mu.Unlock()
+		var via *delegate.Manifest
+		if spec.via != "" {
+			m, err := a.delegateFor(spec.via)
+			if err != nil {
+				return err.Error(), true, nil
+			}
+			via = &m
+		}
 		description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
 		// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
 		// This context is the turn's, and the turn cancels it on its way out
@@ -831,16 +857,27 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		// life belonging to the PROCESS, and a run whose room had closed went on
 		// spending with nobody able to read it or stop it.
 		joined := a.beltRunStandsOn(p.stand)
-		err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
+		stand := p.stand
+		if via != nil {
+			stand = delegateStand(stand.dir, *via)
+		}
+		err := a.startKnownTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via)
 		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 			return refusal.Error(), true, nil
 		}
 		if err == nil {
 			receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
-			if joined {
+			if via != nil {
+				receipt = withReport(receipt, "It is "+via.Name+"'s: the program works alone in the copy and lands when it ends.")
+			} else if joined {
 				receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
 			}
 			return receipt, false, nil
+		}
+		if via != nil {
+			// A DELEGATE HAS NO OTHER ROAD. The shipped engine would seat a worker
+			// of its own on this brief, which is not what was asked for.
+			return "the delegate could not start: " + err.Error(), true, nil
 		}
 	}
 	state := graph.admit(p.id, spec)
@@ -974,6 +1011,7 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		// proposed before it existed.
 		wide:       parsed.Wide,
 		modelWord:  strings.TrimSpace(parsed.Model),
+		via:        strings.TrimSpace(parsed.Via),
 		maxSteps:   parsed.MaxSteps,
 		noProgress: parsed.NoProgress,
 	}

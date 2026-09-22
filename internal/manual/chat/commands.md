@@ -178,6 +178,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
 | `/subharness` | `/sub` | — | lists the programs you can run; type to filter, enter opens that one's card |
 | `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
+| `/delegate` | `/delegates` | — | lists the outside programs a task can be handed to whole, and what each leaves behind |
+| `/delegate` | `/delegates` | `<name> <brief>` | hands that brief to the named delegate; `/<name> <brief>` is the same door |
+| `/<delegate>` | — | `<brief>` | one row per installed delegate, e.g. `/swe-pro <brief>`: starts a task that program does on its own |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
 | `/memories` | — | — | prints every memory into the conversation |
@@ -1259,6 +1262,28 @@ The first is what you get with no registry wired — a headless frame, and every
 launch on this machine and `--no-host` both wire this machine's registry and open the
 panel. The second is drawn as the panel's only row, and it is also what a registry that
 cannot be read at all shows, rather than an error.
+
+## /delegate — the outside programs a task can be handed to, and /swe-pro
+
+`/delegate` (or `/delegates`) lists the delegates on this machine, one line each: the
+command to type, what it does, whether it lands its work on your branch or answers in the
+conversation, and the program it resolved to. Under those, dimly, any manifest whose program
+is not here and any that was not added, with the reason.
+
+Every installed delegate is also a command of its own: `/swe-pro <brief>` hands the brief
+to swe-pro and starts a task at once, exactly as `/task <brief>` does with codeaf's own
+worker. `/delegate <name> <brief>` is the same door written long. The rows come from the
+manifests under `~/.codeaf/delegates/` and exist only where the program does; a machine with
+no swe-pro has no `/swe-pro`.
+
+With nothing installed it says, exactly:
+
+```
+no delegates here — a delegate is an outside program codeaf can hand a whole task to; a manifest under ~/.codeaf/delegates adds one
+```
+
+Over `--host` it says `<host> owns delegates · change it on that machine`. The *Delegates*
+page says what one is, what it cannot do, and where its work goes.
 
 ## /subharness — the command's two forms, bare and with a name after it
 

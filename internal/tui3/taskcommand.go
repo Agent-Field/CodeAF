@@ -129,6 +129,16 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 // naming a pause that no longer exists would be the surface describing
 // machinery rather than work.
 func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.Cmd {
+	return a.startTaskDoorVia(brief, func(ctx context.Context) (uint64, string, string, error) {
+		return door.StartTask(ctx, brief, solo)
+	})
+}
+
+// startTaskDoorVia is [app.startTaskDoor] with the door itself handed in: the
+// notes said before the spend and the start message are the same whichever
+// door opens — the conversation's own worker or a delegate (delegate.go) — and
+// two copies of the preflight would be two places for one line to drift.
+func (a *app) startTaskDoorVia(brief string, start func(context.Context) (uint64, string, string, error)) tea.Cmd {
 	ctx := a.ctx
 	// WHICH CONVERSATION IS SAYING THIS, read HERE rather than when the answer
 	// lands: the door is opened on a goroutine and the window may have moved on
@@ -165,7 +175,7 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.
 		a.note(line)
 	}
 	return func() tea.Msg {
-		id, title, note, err := door.StartTask(ctx, brief, solo)
+		id, title, note, err := start(ctx)
 		return taskStartedMsg{
 			kind: "single", id: strconv.FormatUint(id, 10), title: title,
 			err: err, note: note, brief: brief, conv: conv,

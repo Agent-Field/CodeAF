@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -1569,6 +1570,14 @@ type Config struct {
 	// surface built against them draws nothing rather than an error — which is
 	// the "absent, not broken" law arriving at a door that was never wired.
 	Subharnesses *exec.Registry
+
+	// Delegates is this machine's delegate registry: the outside programs a
+	// task can be handed to whole (delegate_door.go, docs/DELEGATE-PROTOCOL.md).
+	// The surface reads it at launch from ~/.codeaf/delegates and hands it in,
+	// for the reason Subharnesses is a registry and not a path. NIL IS DELEGATES
+	// OFF: the door lists nothing, `via` refuses every name, and the prompt says
+	// nothing about them.
+	Delegates *delegate.Registry
 
 	// SubharnessMemory is where a running subharness keeps what it has learned
 	// about its OWN domain — its file in its own bundle, never this
