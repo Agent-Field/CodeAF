@@ -355,14 +355,30 @@ func TestTwoWorkersLiveAtOnceEachGetOnlyItsOwnNote(t *testing.T) {
 // and fails, which is what the controls on this file turn off the delivery to
 // check.
 func worksUntilItIsToldThen(id, want, result, working string) step {
+	done := 0
 	return func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
 		for _, message := range messages {
 			if strings.Contains(oneLineOfRun(messageContent(message)), oneLineOfRun(want)) {
 				return toolReply(finishCommand(id, result)), nil
 			}
 		}
-		return toolReply(`{"command":` + jsonString(working) + `}`), nil
+		done++
+		return toolReply(`{"command":` + jsonString(keepsMoving(working, done)) + `}`), nil
 	}
+}
+
+// keepsMoving makes each of a waiting seat's commands a different command, and
+// that is not decoration. THE BELT HAS A STUCK LAW: three identical calls with
+// the same result and the worker is told so — "You have repeated the same bash
+// call 3 times with the same result" — and while a worker is stalled the loop
+// hands it no note, because the sentence it is already being given is the one
+// about being stuck. A seat that waits by repeating one command therefore
+// stalls itself, and then reports the note as undelivered when what it really
+// did was earn the stuck sentence instead. At GOMAXPROCS=4 that cost the
+// two-worker test eleven runs in twenty-eight. A working worker does not
+// repeat itself, so neither does a seat that stands in for one.
+func keepsMoving(command string, nth int) string {
+	return fmt.Sprintf("%s; : step %d", command, nth)
 }
 
 // oneLineOfRun flattens whitespace, because the belt's pages and sentences wrap
@@ -375,7 +391,7 @@ func oneLineOfRun(text string) string { return strings.Join(strings.Fields(text)
 // counter is a plain int because a worker's seat is called from that worker's
 // own loop, one request at a time.
 func worksOnAfterItIsToldThen(id, want, result string, more int) step {
-	told := 0
+	told, done := 0, 0
 	return func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
 		for _, message := range messages {
 			if strings.Contains(oneLineOfRun(messageContent(message)), oneLineOfRun(want)) {
@@ -386,6 +402,7 @@ func worksOnAfterItIsToldThen(id, want, result string, more int) step {
 		if told > more {
 			return toolReply(finishCommand(id, result)), nil
 		}
-		return toolReply(`{"command":"echo working"}`), nil
+		done++
+		return toolReply(`{"command":` + jsonString(keepsMoving("echo working", done)) + `}`), nil
 	}
 }
