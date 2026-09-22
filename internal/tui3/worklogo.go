@@ -13,7 +13,7 @@ import (
 // and an approval never wears movement that implies work can continue unaided.
 func (a *app) workLogoVisible() bool {
 	return a.workActivity.Started() && !a.turnBegan.IsZero() && a.state == stateWorking &&
-		a.page == pageNone && !a.asking() && !a.copy.on && a.room == nil && !a.linear && !a.pal.linear &&
+		a.showing() == nil && len(a.questionOpen()) == 0 && !a.asking() && !a.copy.on && a.room == nil && !a.linear && !a.pal.linear &&
 		!a.pal.ascii && a.pal.profile >= tokens.ANSI256 && a.width >= 48 && gutterInner(a.bodyWidth()) >= 32 && a.height >= 20
 }
 
@@ -61,9 +61,12 @@ func (a *app) activityRows(activity tokens.WorkActivity, label string, width int
 // roomWorkLogoVisible reads the task being viewed, never its parent chat's turn.
 // A held, finished, failed or disconnected task cannot advertise progress.
 func (a *app) roomWorkLogoVisible() bool {
-	if a.room == nil || !a.room.running() || !a.room.workActivity.Started() || a.page != pageNone ||
+	if a.room == nil || !a.room.running() || !a.room.workActivity.Started() || a.showing() != nil || len(a.questionOpen()) > 0 ||
 		a.copy.on || a.linear || a.pal.linear || a.pal.ascii || a.pal.profile < tokens.ANSI256 ||
 		a.width < 48 || gutterInner(a.bodyWidth()) < 32 || a.height < 20 {
+		return false
+	}
+	if _, waiting := a.roomGuest().waiting(); waiting {
 		return false
 	}
 	node := a.roomNode()
