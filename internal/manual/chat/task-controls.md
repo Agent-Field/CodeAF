@@ -54,6 +54,11 @@ conversation and the model calls `tasks` with that id and `stop`. That is the sa
 it: the worker is cut off where it stands, its branch is kept with its work committed on it,
 the row reads `stopped`, and what it spent freezes where it was.
 
+**A hosted conversation waits for the stop to come back before it claims success.** Once the
+normal session host has ended the run and returned its receipt, the chat can answer `Stopped.`.
+If the stop does not land, the tool instead begins `Could not stop task 2:` and says why; a
+failure is never a receipt that the model can truthfully repeat as success.
+
 **It asks you nothing.** Your own `x` raises a confirmation card, because one bare keystroke
 over a list should not be able to end an hour of work. The sentence you typed already *is*
 the decision, so the model does not hand it back to you as a question. If you would rather
