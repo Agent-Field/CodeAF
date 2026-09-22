@@ -230,7 +230,8 @@ var commands = []command{
 	// what it can be told to know — and on the picker's own terms: a space
 	// after it opens the shelf, enter on a row toggles that skill on or off,
 	// and a query that looks like a path offers the skill in that folder.
-	{name: "skill", desc: "put a skill in front of this conversation · a space opens the shelf to pick from", alias: []string{"skills"}},
+	{name: "skill", desc: "what you can hand this conversation · a space picks more than one",
+		alias: []string{"skills"}},
 	// WHAT IT KNOWS ABOUT YOU, and the two ways to change it. They sit beside
 	// /harness because they answer the neighbouring question — one is what this
 	// conversation has learned to DO, these are what it has been told about YOU
