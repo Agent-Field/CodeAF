@@ -139,15 +139,11 @@ func TestTheDigestIsAbsentWithNoRunAndWithAFinishedOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open the store: %v", err)
 	}
-	// The children finish before their parent: the store refuses a root whose
-	// work is still open, which is its own law and not this test's business.
-	for _, id := range []string{"alpha", planRootID} {
-		if _, err := store.Claim(id, id); err != nil {
-			t.Fatalf("claim %s: %v", id, err)
-		}
-		if _, err := store.Done(id, id, "done", nil, nil); err != nil {
-			t.Fatalf("finish %s: %v", id, err)
-		}
+	// The run ends the way a person's stop ends it — the root and everything
+	// open under it in one write — which is the shape of an over run the digest
+	// has to be silent about.
+	if err := store.StopRoot("stopped"); err != nil {
+		t.Fatalf("end the run: %v", err)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatalf("close the handle: %v", err)
