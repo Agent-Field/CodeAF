@@ -48,18 +48,18 @@ func TestWorkingLogoFollowsChatAndKeepsItsChoice(t *testing.T) {
 	if !a.workLogoVisible() {
 		t.Fatal("streaming reply lost the logo")
 	}
-	rows := a.layout(90)
+	rows, marks, _, _ := a.chrome(90)
 	found := 0
-	for _, r := range rows {
-		if r.activity && r.entry == -1 {
+	for i, r := range rows {
+		if marks[i].kind == chromeActivity && strings.Contains(ansi.Strip(r), "Working") {
 			found++
 		}
-		if ansi.StringWidth(r.text) > 90 {
-			t.Fatal("logo overflows the transcript")
+		if ansi.StringWidth(r) > 90 {
+			t.Fatal("dock overflows")
 		}
 	}
-	if found < tokens.WorkLogoHeight {
-		t.Fatal("layout never emitted the shared component")
+	if found != 1 {
+		t.Fatal("chrome did not emit one activity dock")
 	}
 	a.state = stateIdle
 	if a.workLogoVisible() {
@@ -149,20 +149,45 @@ func TestWorkingLogoStopsForQuestions(t *testing.T) {
 	}
 }
 
-func TestWorkingLogoUsesOneExistingStatusLine(t *testing.T) {
+func TestWorkingLogoDockReservesGeometryAcrossEveryPose(t *testing.T) {
 	a := workLogoApp(t)
-	a.entries = append(a.entries, entry{kind: entryThinking, text: "Considering the request", turn: 1})
-	a.workActivity.Start(a.now(), tokens.WorkLogoRally)
-	rows := a.layout(90)
-	working := 0
-	for _, r := range rows {
-		working += strings.Count(ansi.Strip(r.text), "Working")
+	began := a.now()
+	dockAt, caretAt := -1, -1
+	for style := 0; style < tokens.WorkLogoCount; style++ {
+		a.workActivity.Start(began, style)
+		for i := 0; i < 28; i++ {
+			a.clock = func() time.Time { return began.Add(time.Duration(i) * 100 * time.Millisecond) }
+			rows, marks, _, caret := a.chrome(100)
+			at := -1
+			for j, mark := range marks {
+				if mark.kind == chromeActivity {
+					at = j
+				}
+			}
+			if at < 0 {
+				t.Fatal("missing pinned slot")
+			}
+			if dockAt < 0 {
+				dockAt, caretAt = at, caret
+			}
+			if at != dockAt || caret != caretAt {
+				t.Fatal("motion moved the dock or input")
+			}
+			text := ansi.Strip(rows[at])
+			prefix := strings.SplitN(text, "Working", 2)
+			if len(prefix) != 2 || ansi.StringWidth(prefix[0]) != activityLabelColumn || prefix[1] != "" {
+				t.Fatalf("unstable label: %q", text)
+			}
+			if got := ansi.StringWidth(a.activityMark(a.workActivity)); got != tokens.WorkLogoWidth {
+				t.Fatalf("slot is %d columns", got)
+			}
+		}
 	}
-	if working != 1 {
-		t.Fatalf("want one working label, got %d: %#v", working, rows)
-	}
-	if len(a.workLogoRows(90, "")) != 1 {
-		t.Fatal("indicator is not one line")
+	before := a.chromeBaseHeight()
+	a.state = stateIdle
+	rows, marks, _, caret := a.chrome(100)
+	if a.chromeBaseHeight() != before || caret != caretAt || marks[dockAt].kind != chromeActivity || rows[dockAt] != "" {
+		t.Fatal("finishing changed reserved geometry")
 	}
 }
 

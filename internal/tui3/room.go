@@ -3445,10 +3445,6 @@ func (a *app) roomRows(width int) []row {
 	// same questions for both pages, and only what fills them differs.
 	if room.orch != nil {
 		out := a.orchRows(width)
-		if a.roomWorkLogoVisible() && !hasCompactActivity(out) {
-			out = append(out, row{entry: -1})
-			out = append(out, a.roomWorkLogoRows(width)...)
-		}
 		a.hoverPass(out, width)
 		room.rows, room.width, room.height, room.dirty = out, width, height, false
 		return out
@@ -3553,12 +3549,6 @@ func (a *app) roomRows(width int) []row {
 			// at this window's conversation, which is the wrong one.
 			out = append(out, row{text: a.pal.dim(a.roomDoneRefusal().fit(inner)), entry: -1})
 		}
-	}
-	if a.roomWorkLogoVisible() && !hasCompactActivity(out) {
-		if len(out) > 0 {
-			out = append(out, row{entry: -1})
-		}
-		out = append(out, a.roomWorkLogoRows(inner)...)
 	}
 	// THE GUTTER, BEFORE THE PASS THAT PAINTS THE WHOLE ROW (gutter.go). The
 	// room's own foot is asked for by name because a node that needs a look draws

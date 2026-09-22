@@ -18,7 +18,6 @@ package tui3
 // to the conversation and back, and after walking to another node and back.
 
 import (
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"strconv"
 	"strings"
 	"testing"
@@ -285,13 +284,6 @@ func TestARoomOpensAtTheLiveEdgeAndNotAtTheTop(t *testing.T) {
 	if len(visible) == 0 {
 		t.Fatal("the room's first frame is empty")
 	}
-	// The transient activity foot is not part of the journal's live edge.
-	for len(visible) > 0 && visible[len(visible)-1].entry == -1 && (visible[len(visible)-1].activity || strings.TrimSpace(plain(visible[len(visible)-1].text)) == "") {
-		visible = visible[:len(visible)-1]
-	}
-	if len(visible) == 0 {
-		t.Fatal("activity displaced the journal")
-	}
 	if !strings.Contains(plain(visible[len(visible)-1].text), "line 59") {
 		t.Fatalf("the first frame does not end on the newest line:\n%q",
 			plain(visible[len(visible)-1].text))
@@ -350,7 +342,6 @@ func TestWalkingBetweenTwoRoomsKeepsEachPageItsOwn(t *testing.T) {
 
 	a.openRoom(7, "Fix the nil-map crash")
 	a.touch()
-	a.room.workActivity.Start(a.now(), tokens.WorkLogoRally)
 	seven := roomText(a)
 
 	a.openRoom(8, "Write the loader test")
@@ -367,7 +358,6 @@ func TestWalkingBetweenTwoRoomsKeepsEachPageItsOwn(t *testing.T) {
 	if a.room.id != 7 {
 		t.Fatalf("the room is on node %d, want 7", a.room.id)
 	}
-	a.room.workActivity.Start(a.now(), tokens.WorkLogoRally)
 	if got := roomText(a); got != seven {
 		t.Fatalf("walking to another node and back changed the page:\nwas:\n%s\n\nnow:\n%s",
 			seven, got)
