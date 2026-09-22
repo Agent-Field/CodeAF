@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/trace"
@@ -943,6 +944,12 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// memory row is on, which is what makes "memory off makes no calls" a
 		// fact about the wiring instead of a branch every caller has to keep.
 		Memory: proc.Memory,
+		// AND WHETHER THERE IS A SHELF THIS SESSION CANNOT REACH, which is
+		// only ever true with the line above nil. It is measured here, beside
+		// the decision that causes it, because the prompt cannot walk six
+		// folders on every render and because a sentence about a setting
+		// belongs to the door that read the setting.
+		SkillsAwaitMemory: skillsWaitingOnMemory(proc.Memory, workspace),
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
 		// than derived down there for the reason every other path is.
@@ -1166,6 +1173,40 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 // the catalog already gives when memory is off — and a home that cannot be
 // resolved is skipped, never fatal: a scan that finds nothing must not be the
 // reason a conversation does not open.
+// skillsWaitingOnMemory reports whether this machine holds skills that this
+// session cannot reach, which is the case exactly when memory is off and a
+// scanned folder holds at least one skill that would have loaded.
+//
+// IT IS THE DIFFERENCE BETWEEN TWO SILENCES. With memory on the catalog speaks
+// for itself and this is false; with memory off and no folders it is false too,
+// because a person with no skills must not be told about a setting they have no
+// use for. It is true only in the case that produced the defect: a person with
+// skills on disk, told by the chat that codeaf has no such mechanism.
+//
+// A scan that fails is not a shelf. Discovery already answers a missing home,
+// an unreadable folder and a malformed SKILL.md as absence rather than as an
+// error, and a launch must not turn any of those into a sentence claiming a
+// shelf exists.
+func skillsWaitingOnMemory(memory *store.Store, workspace string) bool {
+	if memory != nil {
+		return false
+	}
+	homeDir, err := home.Login()
+	if err != nil {
+		return false
+	}
+	found, err := skills.Discover(skills.Options{ProjectDir: workspace, HomeDir: homeDir})
+	if err != nil {
+		return false
+	}
+	for _, skill := range found {
+		if skill.Name != "" && skill.Description != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func importForeignSkillsBeforeFirstMessage(memory *store.Store, workspace string) {
 	if memory == nil {
 		return

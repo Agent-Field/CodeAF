@@ -29,6 +29,25 @@ name the shelf actually holds. An empty shelf says so in one plain line.
 
 The distiller saves procedures it watched run as skills and promotes them to the active shelf. Until now nothing a worker held could reach one — the shelf was written to and promoted, and the only reader was a person with the CLI. This is your door onto it: mid-run discovery rather than a prompt fact.
 
+## Can you use skills, and why they might be switched off
+
+Yes, when memory is on. Skills are read through memory: discovery finds every
+`SKILL.md` folder on the machine and records each one as a fact on the shelf, and
+`use_skill` reads the shelf. So the `memory.enabled` setting decides whether this
+conversation has skills at all.
+
+With `memory.enabled` off there is no store, nothing is recorded, `use_skill` is
+not on the belt, and the prompt carries one line saying so. That line exists
+because the alternative was silence, and a conversation reasoning from silence
+answers that codeaf has no skills, which is wrong: they are switched off, not
+missing. Turn `memory.enabled` on in settings and relaunch, and the folders
+already on the machine arrive on the shelf at the next open.
+
+The `/skill` picker reads the folders directly rather than the shelf, so it lists
+skills whether or not memory is on. With memory off each row says
+`memory is off, so this cannot be attached`, because attaching resolves a name
+against the shelf and there is no shelf to resolve against.
+
 ## Where the shelf lives
 
 Active skills are `store.Fact` entries of kind `"skill"`, pointed at a shelf directory their `Artifact` names. The shelf is curated — skills are promoted by a person through the resident.

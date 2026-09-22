@@ -183,3 +183,37 @@ func TestSkillCatalogRendersOnThePageWhenSkillsExist(t *testing.T) {
 		t.Fatalf("a conversation with no store reads a catalog:\n%s", withoutShelf)
 	}
 }
+
+// SWITCHED OFF IS NOT THE SAME AS EMPTY, and this is the whole of #1379. A
+// person with eighty-one skills on disk and memory off asked the chat whether
+// it could use skills and was told codeaf has no such mechanism, because the
+// model had no shelf, no verb, and no sentence about either, so it reasoned
+// from the silence and denied a feature that had shipped.
+func TestTheCatalogSaysSkillsAreSwitchedOffRatherThanMissing(t *testing.T) {
+	catalog := renderSkillCatalog(Config{SkillsAwaitMemory: true})
+	if catalog == "" {
+		t.Fatal("a machine with skills and memory off rendered nothing, which is the silence the model denied the feature from")
+	}
+	// IT NAMES THE SETTING, because "switched off" a person cannot act on is
+	// half an answer.
+	if !strings.Contains(catalog, "memory.enabled") {
+		t.Fatalf("the notice does not name the setting that turns skills back on:\n%s", catalog)
+	}
+	// AND IT SAYS THEY EXIST. The failure was not that the model said the
+	// shelf was empty, it was that the model said codeaf has no shelf.
+	if !strings.Contains(strings.ToLower(catalog), "switched off") {
+		t.Fatalf("the notice does not say the skills are switched off:\n%s", catalog)
+	}
+	// A MACHINE WITH NO SKILLS PAYS NOTHING. The flag is the difference
+	// between the two silences and a person with no folders keeps the old one.
+	if got := renderSkillCatalog(Config{}); got != "" {
+		t.Fatalf("a machine with no skills and memory off rendered %q, want the empty string", got)
+	}
+	// AND A STORE THAT IS THERE ANSWERS FOR ITSELF. The flag can only be set
+	// by a door that found memory nil, but the catalog must not be the thing
+	// that assumes it: an empty shelf with a store is still zero bytes.
+	brain := openTestBrain(t)
+	if got := renderSkillCatalog(Config{Memory: brain, Workspace: "/srv/app", SkillsAwaitMemory: true}); got != "" {
+		t.Fatalf("a readable empty shelf rendered %q, want the empty string", got)
+	}
+}

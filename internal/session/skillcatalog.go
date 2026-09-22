@@ -48,6 +48,21 @@ const (
 	// and the shelf is not a law to be traded against window size.
 	skillCatalogHeader = "## Available skills\n\n" +
 		"The shelf this project holds. Skills suited to a message are attached to it, and `use_skill` reaches any of them by name.\n"
+
+	// skillCatalogOffNotice is what the section says when this machine HAS
+	// skills and this conversation cannot reach them.
+	//
+	// IT NAMES THE SETTING AND IT SAYS THE FEATURE EXISTS, because those are
+	// the two things the silence it replaces got wrong. A model handed no
+	// shelf and no `use_skill` has no evidence the shelf is a thing codeaf
+	// does, so it answers from what it can see and denies the feature,
+	// correctly from the inside and wrongly about the world. The last sentence is
+	// here for that reason and not as politeness.
+	skillCatalogOffNotice = "## Available skills\n\n" +
+		"There are skills on this machine and this conversation cannot use them: the shelf is read through memory, " +
+		"and the `memory.enabled` setting is off, so there is no shelf to reach and `use_skill` is not on the belt. " +
+		"Turning that setting on makes them available. If you are asked whether you can use skills, say they are " +
+		"switched off here rather than that codeaf has no such thing."
 )
 
 // renderSkillCatalog composes the skill catalog for one config, or the empty
@@ -59,6 +74,14 @@ const (
 // render byte-for-byte what it rendered before this file existed.
 func renderSkillCatalog(config Config) string {
 	if config.Memory == nil {
+		// AND A SHELF THAT EXISTS BUT CANNOT BE REACHED IS NOT AN EMPTY SHELF.
+		// The emptiness law is about a number nobody has yet: draw nothing
+		// rather than a zero. It was never a licence to render "you have no
+		// skills" and "skills are switched off on this machine" as the same
+		// silence, and the door measured which of the two this is.
+		if config.SkillsAwaitMemory {
+			return skillCatalogOffNotice
+		}
 		return ""
 	}
 	active, err := config.Memory.SkillFacts(store.FactActive, skillCatalogScanLimit)

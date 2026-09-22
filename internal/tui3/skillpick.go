@@ -64,6 +64,15 @@ const (
 	skillFromShelf   = "shelf"
 	skillFromProject = skills.ScopeProject
 	skillFromUser    = skills.ScopeUser
+
+	// skillOffWarning is the dim tail every folder row carries when memory is
+	// off. The picker reads the DISK, so it lists a person's skills whether or
+	// not this session can use one, and attaching is inert with no store to
+	// resolve a name against (skillturn.go's turnSkills). A list of rows that
+	// do nothing when chosen, with nothing saying why, is the control present
+	// and failing rather than absent, which is the thing this codebase does
+	// not do. The row is where "why is my skill not working" is answered.
+	skillOffWarning = "memory is off, so this cannot be attached"
 )
 
 // skillHomeDir is where discovery looks beside the workspace. It is a door
@@ -324,6 +333,10 @@ func (a *app) syncSkillPick() bool {
 // store keeps, and the folders internal/skills discovers in place.
 func (a *app) skillPickList() []skillPickRow {
 	attached := a.attachedSkillNames()
+	// WHETHER A CHOICE ON THIS LIST CAN DO ANYTHING. The shelf is the store and
+	// the rows below come off the disk, so the two can disagree, and they do on
+	// every machine with memory off.
+	_, shelfReadable := a.memory.(skillShelf)
 	rows := make([]skillPickRow, 0, 16)
 	seen := make(map[string]bool, 16)
 	// THE ATTACHED ONES FIRST, in the order the session holds them. Attachment
@@ -351,7 +364,17 @@ func (a *app) skillPickList() []skillPickRow {
 		if skill.Scope == skills.ScopeProject {
 			from = skillFromProject
 		}
-		rest = append(rest, skillPickRow{name: skill.Name, desc: skill.Description, from: from, warning: skill.Warning, on: attachedHas(attached, nameOf(skill))})
+		warning := skill.Warning
+		if !shelfReadable {
+			// BOTH, AND THE FOLDER'S FIRST. The two warnings answer different
+			// questions: one is what is wrong with this skill, the other is
+			// what is wrong with the machine, and a row that dropped the first
+			// to make room for the second would hide a fault that outlives the
+			// setting.
+			warning = strings.TrimSpace(strings.Join([]string{warning, skillOffWarning}, " · "))
+			warning = strings.TrimPrefix(warning, "· ")
+		}
+		rest = append(rest, skillPickRow{name: skill.Name, desc: skill.Description, from: from, warning: warning, on: attachedHas(attached, nameOf(skill))})
 	}
 	// PROJECT BEFORE USER, and the name as the tie-break: scope is a claim
 	// about where a skill lives and the name is the only order left inside a

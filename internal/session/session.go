@@ -1246,6 +1246,21 @@ type Config struct {
 	// memory.enabled row is read. A door that turns memory off hands nothing
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
+	// SkillsAwaitMemory says this machine HAS skills and this session cannot
+	// reach them, because the shelf is read through the store and memory is
+	// off. The door measures it once at launch: the scan is a walk over six
+	// folders and a prompt prefix may not pay for one on every render.
+	//
+	// IT EXISTS BECAUSE ABSENT-AND-IMPOSSIBLE AND ABSENT-AND-UNBUILT ARE
+	// OTHERWISE THE SAME SILENCE. A model handed no shelf and no `use_skill`
+	// reasons from that silence and answers that codeaf has no skills at all,
+	// which is what a person with eighty-one of them on disk was told.
+	//
+	// FALSE IS NOT "NO SKILLS", it is "nothing to explain": either the store
+	// is there and the catalog speaks for itself, or the folders are empty too
+	// and a person with no skills must not pay for a sentence about a setting
+	// they have no use for.
+	SkillsAwaitMemory bool
 
 	// ConversationHistory grants only indexed history reads. Workers inherit
 	// this interface without receiving memory extraction, writes, or journaling.
