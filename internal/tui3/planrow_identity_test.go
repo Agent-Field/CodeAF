@@ -35,9 +35,13 @@ func planRowFixtureNow() time.Time { return time.Date(2026, 9, 21, 12, 0, 0, 0, 
 // row have to wear it or the test would be proving nothing.
 const planRowChat = "a-conversation"
 
-// planRowRun reads one reading for a run whose row and whose store task are
-// both in front of the place: `plan` is what the store answered, `planTask` is
-// what the row says it is ("" for a node of this session's own tree).
+// planRowReading reads one reading for a run whose row and whose store task are
+// both in front of the place: `storeID` is what the store answered under and
+// `planTask` is what the row says it is ("" for a node of this session's own
+// tree). BOTH ARE SPELLED THE WAY A STORE ID CROSSES THE SEAM — `t-<id>`,
+// which is what [session.PlanTaskRow.ID] carries — because an id spelled two
+// ways is an identity that joins nothing, and that is the second half of what
+// this defect was.
 func planRowReading(t *testing.T, planTask string, storeID string) tasksReading {
 	t.Helper()
 	const title = "write HELLO.md containing the word hello"
@@ -91,7 +95,7 @@ func planRowItemOf(reading tasksReading, words string) (tasksItem, int) {
 // [session.TaskNode] nobody is driving, on a row the graph holds no node for,
 // and it is what the tmux drive read off the real screen.
 func TestARunsRowIsDrawnAsTheStoreTaskItSaysItIs(t *testing.T) {
-	reading := planRowReading(t, "7", "7")
+	reading := planRowReading(t, "t-7", "t-7")
 	item, drawn := planRowItemOf(reading, "HELLO.md")
 	if drawn != 1 {
 		t.Fatalf("the place draws the run %d times, want once: the row and its store task are one "+
@@ -118,7 +122,7 @@ func TestARunsRowIsDrawnAsTheStoreTaskItSaysItIs(t *testing.T) {
 // lives on the node's own spec and never on the row — so the place matches the
 // two halves on the title they share and keeps the half with a room behind it.
 func TestAPlanBornNodeIsStillDrawnAsItsNodeRow(t *testing.T) {
-	reading := planRowReading(t, "", "kq3f7a")
+	reading := planRowReading(t, "", "t-kq3f7a")
 	item, drawn := planRowItemOf(reading, "HELLO.md")
 	if drawn != 1 {
 		t.Fatalf("the place draws the plan-born node %d times, want once", drawn)
@@ -134,12 +138,61 @@ func TestAPlanBornNodeIsStillDrawnAsItsNodeRow(t *testing.T) {
 // rows — dropping the row on the strength of an identity nothing answers for
 // would take the run off the page altogether.
 func TestARunsRowSurvivesAPlanReadThatDoesNotHoldIt(t *testing.T) {
-	reading := planRowReading(t, "7", "some-other-task")
+	reading := planRowReading(t, "t-7", "t-someother")
 	item, drawn := planRowItemOf(reading, "HELLO.md")
 	if drawn != 1 {
 		t.Fatalf("the place draws the run %d times, want once", drawn)
 	}
 	if item.plan != nil {
 		t.Fatalf("the run's row was replaced by a store task that is not the one it named")
+	}
+}
+
+// AND THE IDENTITY SURVIVES THE WHOLE SURFACE, which is the half a reading built
+// by hand cannot prove: the notice the run's door publishes reaches
+// [app.taskUpdate], the node keeps the store task it named, [app.taskSheetMine]
+// carries it onto the row, and the place reads it there. Every one of those four
+// is a place the fact can be dropped, and the tmux drive that found this defect
+// is the only other thing that walks all four.
+func TestTheRunsRowCarriesItsStoreTaskThroughTheWholeSurface(t *testing.T) {
+	const title = "write HELLO.md containing the word hello"
+	root := session.PlanTaskRow{ID: "t-1", Title: title, Status: "claimed"}
+	a, _ := planAppWith(t, []session.PlanTaskRow{root}, nil)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, title, session.TaskRunning,
+		session.TaskNotice{PlanTask: "t-1"})})
+	if node := a.tasks[1]; node == nil || node.planTask != "t-1" {
+		t.Fatalf("the node kept planTask=%q, want \"t-1\": the run's row said which store task it is",
+			func() string {
+				if a.tasks[1] == nil {
+					return "<no node>"
+				}
+				return a.tasks[1].planTask
+			}())
+	}
+	mine := a.taskSheetMine()
+	found := false
+	for _, row := range mine.rows {
+		if strings.Contains(row.entry.Title, "HELLO.md") {
+			found = true
+			if row.planTask != "t-1" {
+				t.Fatalf("the place's own row carries planTask=%q, want \"t-1\"", row.planTask)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("the place holds no row for the run at all; it holds %d rows and %d plan rows",
+			len(mine.rows), len(mine.plan))
+	}
+	if len(mine.plan) != 1 {
+		t.Fatalf("the place holds %d plan rows, want the one the store answered", len(mine.plan))
+	}
+	reading := readTasks(session.World{}, mine, session.LastDays(a.now(), 10), tasksSort{}, time.Time{}, a.now())
+	item, drawn := planRowItemOf(reading, "HELLO.md")
+	if drawn != 1 || item.plan == nil {
+		t.Fatalf("the place draws the run %d times and item.plan=%v, want once as the store's own row",
+			drawn, item.plan != nil)
+	}
+	if got := item.status().Word; got != "running" {
+		t.Fatalf("the run's row wears %q, want %q", got, "running")
 	}
 }

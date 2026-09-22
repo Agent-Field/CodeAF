@@ -312,8 +312,12 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 			// store is the authority for this work's state and for the page
 			// carrying its worker's trajectory, and a row that could not name its
 			// task left a surface guessing from the title
-			// ([TaskNotice.PlanTask]).
-			PlanTask: storeID,
+			// ([TaskNotice.PlanTask]). IT IS SPELLED THE ONE WAY A STORE ID
+			// CROSSES THIS SEAM — [planStoreID], which is what
+			// [PlanTaskRow.ID] carries and what [Agent.PlanTaskPage] is asked
+			// for — so the id the row names is the id the plan read answers
+			// under. The bare stored id is answered under by nothing.
+			PlanTask: planStoreID(storeID),
 		})
 		return nil
 	}
@@ -358,8 +362,9 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		// THE ROOT'S ROW NAMES THE STORE'S ROOT, which is this same number: the
 		// store was seeded under `storeID` a few lines up, so the row the person
 		// was answered with and the task the store drives are one identity said
-		// twice rather than two pieces of work ([TaskNotice.PlanTask]).
-		PlanTask: storeID,
+		// twice rather than two pieces of work ([TaskNotice.PlanTask]). In
+		// [planStoreID]'s spelling, which is the one the plan read answers under.
+		PlanTask: planStoreID(storeID),
 	})
 
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))

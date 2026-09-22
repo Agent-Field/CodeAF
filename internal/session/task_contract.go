@@ -609,6 +609,12 @@ type TaskNotice struct {
 	// [Agent.startKnownTaskRun] names the store task with the number the row
 	// wears), and it is empty on every node of the session's own tree.
 	//
+	// IT IS SPELLED THE ONE WAY A STORE ID CROSSES THIS SEAM ([planStoreID]):
+	// the same spelling [PlanTaskRow.ID] carries and [Agent.PlanTaskPage] is
+	// asked for. The store's own bare id is answered under by nothing a surface
+	// can reach, so a row carrying that instead would name an identity no read
+	// in this package joins.
+	//
 	// IT IS AN IDENTITY AND NOT A DESCRIPTION. A surface reading it knows this
 	// row and that store task are one piece of work read from two ends, so it
 	// can draw the one of them the store is the authority for — its state word,
