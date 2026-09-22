@@ -397,7 +397,7 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 
 	stub := lanestub.New(e2eModel, e2eStubLanes()...)
 	defer stub.Close()
-	router := newE2ERouter(stub, ledger)
+	router := newE2ERouter(stub, ledger).onScript()
 
 	// Who the router would pick with everything healthy. That is the lane the
 	// scenario then breaks, because breaking a lane nobody was using would
@@ -418,7 +418,7 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 	}
 	pinnedStub := lanestub.New(e2eModel, e2eStubLanes()...)
 	defer pinnedStub.Close()
-	pinned := newE2ERouter(pinnedStub, control).run(t, 20, victim, true)
+	pinned := newE2ERouter(pinnedStub, control).onScript().run(t, 20, victim, true)
 
 	// ── HOW THE TWO ARMS ARE SCORED, AND WHY IT IS THE SCRIPTED FIRST TOKEN ──
 	//
@@ -429,6 +429,15 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 	// a talk turn. The victim is scripted to go slow in exactly that way, four
 	// seconds to say its first word, so the first token is the only part of the
 	// answer the script moves at all.
+	//
+	// BOTH SIDES OF THE SCENARIO ARE ON THE SCRIPT: the number below, and the
+	// belief the router chose from ([e2eRouter.script]). Scoring the verdict on
+	// the script while feeding the choice from a wall clock left the arm that is
+	// supposed to move steered by whatever else the box was running — the one
+	// channel by which anything outside the script reaches a routing decision
+	// here, and the one that ends a run with both arms at the scripted four
+	// seconds and 0.0% between them. The gate below is unchanged; what the
+	// router knows when it picks is now as fixed as what it is marked on.
 	//
 	// The gate reads the SCRIPTED first token and not the wall clock. Each
 	// request's scripted first token is the answering lane's own median from the
@@ -522,7 +531,7 @@ func TestS3ItComesBack(t *testing.T) {
 	defer stub.Close()
 	sheet := e2eServeSheet(stub)
 	Default().SetSheet(sheet)
-	router := newE2ERouter(stub, ledger)
+	router := newE2ERouter(stub, ledger).onScript()
 
 	first := Default().Chooser().Choose(e2eTalk(e2eMoment))
 	if len(first.Order) == 0 {
@@ -681,7 +690,7 @@ func TestS5NoFetchOnTheSendPath(t *testing.T) {
 		t.Fatalf("one beat read the sheet %d times", fetched)
 	}
 
-	router := newE2ERouter(stub, ledger)
+	router := newE2ERouter(stub, ledger).onScript()
 	router.more(t, 20, "", false)
 
 	if now := stub.Sheets(e2eModel); now != fetched {
@@ -733,11 +742,48 @@ type e2eRouter struct {
 	// machine. firsts carries the test machine's scheduler and drifts with box
 	// load; firstsScripted does not, so the ship gate reads it.
 	firstsScripted []time.Duration
-	// brokenVictim is the lane run() has rescripted to go slow, or empty before
-	// the break. The scripted first token of a request the broken lane answered
-	// is the slow figure, not the sheet's healthy median.
-	brokenVictim string
-	hedges       int
+	// script says where the BELIEF this router routes on comes from: the answer
+	// the stub was scripted to give, or the one this box's clock timed.
+	//
+	// A SCENARIO ABOUT CHOOSING MUST NOT ALSO BE A SCENARIO ABOUT THE
+	// SCHEDULER, and reading the gate off the script is only half of that. The
+	// other half is the number the CHOICE was made from. The wire runs
+	// [e2eSpeedup] times faster than the world it describes, so every
+	// millisecond between a token landing on the socket and this reader waking
+	// up to stamp it becomes a hundred milliseconds of believed first token. On
+	// a quiet box that overhead is about a quarter of a second of world time and
+	// nothing notices it. Beside a full suite it has been measured between one
+	// and ten seconds — and it lands on the healthy lanes and on the broken one
+	// alike, which is exactly the shape that breaks a router, because what
+	// separates two lanes for a sampler is a RATIO and an ADDITIVE error does
+	// not cancel in one.
+	//
+	// Traced ask by ask on a failing run: with the overhead off, the chooser
+	// compares a broken lane believed at about 2.1 s against a pack believed at
+	// 0.76 s, nearly three to one, and the broken lane does not head the order
+	// again inside twenty asks. With four seconds of the instrument's own
+	// overhead on every measurement the same comparison is 4.5 s against 3.7 s,
+	// under a fifth of the separation and well inside the spread, and the broken
+	// lane heads the order again every six or seven asks. Three of those after
+	// the break is the whole failure, because a p90 over twenty answers is
+	// QUANTIZED: two broken answers in the routed arm score about 79% better
+	// than the pin and pass, three score exactly 0.0% and fail, and there is
+	// nothing in between. What the scenario then reports is that the router did
+	// not steer, when what happened is that the test could not see straight.
+	//
+	// THAT CLIFF IS WHY THIS IS WORTH THE FIELD rather than a wider gate. On the
+	// wire the routed arm sat on two broken answers, one short of the cliff, on
+	// every run that passed. On the script it puts ONE on the wire and puts the
+	// same one there every time, which is two clear of it.
+	//
+	// So a scenario whose subject is the ROUTING DECISION folds the scripted
+	// answer in ([e2eRouter.onScript]) and is free of the box. A scenario whose
+	// subject is the MEASUREMENT keeps the wall clock, and that one is
+	// [TestTheInstrumentInThisFileWorksBeforeAnySeamDoes]: it is where a
+	// measured sighting is held to the script over a live round trip, and
+	// scripting its ledger would leave it asserting a lookup against itself.
+	script bool
+	hedges int
 }
 
 func newE2ERouter(stub *lanestub.Server, ledger Ledger) *e2eRouter {
@@ -755,6 +801,14 @@ func newE2ERouter(stub *lanestub.Server, ledger Ledger) *e2eRouter {
 	}
 }
 
+// onScript points this router's ledger at the script rather than at the wall
+// clock and hands the router back, so a scenario says which it is in the line
+// that builds it. See the note on [e2eRouter.script] for what it buys.
+func (r *e2eRouter) onScript() *e2eRouter {
+	r.script = true
+	return r
+}
+
 // run sends count requests, breaking victim from the sixth onward, and hands
 // back the router itself so a scenario can read what it measured.
 func (r *e2eRouter) run(t *testing.T, count int, victim string, pin bool) *e2eRouter {
@@ -766,7 +820,6 @@ func (r *e2eRouter) run(t *testing.T, count int, victim string, pin bool) *e2eRo
 			// goes bad, and it is the case a strike table's fixed two seconds
 			// was invented for and gets wrong for every other lane.
 			r.stub.Model(e2eModel, e2eBrokenLanes(victim)...)
-			r.brokenVictim = victim
 		}
 		r.send(t, victim, pin)
 	}
@@ -810,10 +863,13 @@ func (r *e2eRouter) send(t *testing.T, pinned string, pin bool) {
 	for _, sighting := range answer.sightings {
 		r.ledger.Note(sighting)
 	}
-	// The world moves on by what this took plus the seconds somebody spends
-	// reading four hundred tokens at reading speed.
+	// The world moves on by what this answer took plus the seconds somebody
+	// spends reading four hundred tokens at reading speed. A belief AGES by that
+	// clock, so a router on the script moves it by the script too: a world whose
+	// Tuesday ran at the speed of whatever else the box had running would age
+	// the ledger at a rate no scenario chose.
 	reading := float64(time.Second) * 400 / ReadRate
-	r.at = r.at.Add(answer.total + time.Duration(reading))
+	r.at = r.at.Add(answer.moves + time.Duration(reading))
 }
 
 // e2eAnswer is what one request came back with, in the world's units.
@@ -830,9 +886,13 @@ type e2eAnswer struct {
 	// hedged request it is the winning lane's first token and not the wait
 	// before the hedge fired, which the hedge budget bounds separately below.
 	firstScripted time.Duration
-	cost          float64
-	hedged        bool
-	sightings     []Sighting
+	// moves is how far the world's clock advances for this answer: the measured
+	// total for a router reading the wire, the scripted one for a router on the
+	// script.
+	moves     time.Duration
+	cost      float64
+	hedged    bool
+	sightings []Sighting
 }
 
 // race sends the choice, watches the stream, and spends at most one hedge on
@@ -926,10 +986,21 @@ func (r *e2eRouter) finish(answer e2eAnswer, result e2eResult, request Request, 
 		answer.firstScripted = answer.total
 	}
 	answer.cost = result.cost
+	// WHAT THE LEDGER IS TAUGHT. A router reading the wire folds in what this
+	// box timed, which is what the instrument scenario holds to the script; a
+	// router on the script folds in what the lane was scripted to do, which is
+	// what every scenario about a ROUTING DECISION reads. See the note on
+	// [e2eRouter.script].
+	ttft, gen := e2eWorld(result.ttft), e2eWorld(result.gen)
+	answer.moves = answer.total
+	if r.script {
+		ttft, gen = answer.firstScripted, r.scriptedGenWorld(result.lane, result.tokens)
+		answer.moves = ttft + gen
+	}
 	answer.sightings = append(answer.sightings, Sighting{
 		ID:           ID{Model: request.Model, Lane: result.lane},
-		TTFT:         e2eWorld(result.ttft),
-		Gen:          e2eWorld(result.gen),
+		TTFT:         ttft,
+		Gen:          gen,
 		Tokens:       result.tokens,
 		PromptTokens: request.PromptTokens,
 		At:           r.at,
@@ -938,20 +1009,32 @@ func (r *e2eRouter) finish(answer e2eAnswer, result e2eResult, request Request, 
 }
 
 // scriptedFirstWorld is the first token the script names for a lane, in the
-// world's units: the sheet's median for a healthy lane and the slow figure a
-// broken lane was rescripted to. It is fixed by the script, so a verdict read
-// from it does not move with the test machine's load. Zero for a lane the sheet
-// does not carry, which no scenario here should produce.
+// world's units: the median a healthy lane is serving at and the slow figure a
+// broken one was rescripted to. It is READ BACK OFF THE STUB and never kept
+// here, so a lane that has gone bad and come back is scored at whatever it is
+// answering as at the moment it answered ([lanestub.Server.Script]). Being
+// fixed by the script, a verdict read from it does not move with the test
+// machine's load. Zero for a lane this stub does not carry, which no scenario
+// here should produce.
 func (r *e2eRouter) scriptedFirstWorld(lane string) time.Duration {
-	if lane != "" && lane == r.brokenVictim {
-		return 4 * time.Second
+	profile, carried := r.stub.Script(e2eModel, lane)
+	if !carried {
+		return 0
 	}
-	for _, candidate := range e2eSheet {
-		if candidate.name == lane {
-			return time.Duration(candidate.ttft[0]) * time.Millisecond
-		}
+	return e2eWorld(profile.TTFT)
+}
+
+// scriptedGenWorld is how long the script says a lane spends writing an answer
+// of this many tokens, in the world's units, read off the stub for the same
+// reason [e2eRouter.scriptedFirstWorld] is. Zero for an answer with no tokens
+// in it or a lane the stub does not carry, which leaves the sighting's rate
+// unknown rather than invented.
+func (r *e2eRouter) scriptedGenWorld(lane string, tokens int) time.Duration {
+	profile, carried := r.stub.Script(e2eModel, lane)
+	if tokens <= 0 || !carried || profile.Rate <= 0 {
+		return 0
 	}
-	return 0
+	return e2eWorld(time.Duration(float64(time.Second) * float64(tokens) / profile.Rate))
 }
 
 // requests is how many asks this router put on the wire, over every lane.
