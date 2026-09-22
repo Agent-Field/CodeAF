@@ -2,8 +2,10 @@ package tui3
 
 import (
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/orchestrate"
@@ -700,7 +702,14 @@ func TestTheGraphsGoldenAtTheWideTier(t *testing.T) {
 	snap.Notes = []string{"the client matters more than the RFCs"}
 	a, _ := orchApp(t, snap)
 
+	// Freeze the transient mark as well as the graph for the golden frame.
+	now := a.now()
+	a.clock = func() time.Time { return now }
+	a.room.workActivity.Start(now, tokens.WorkLogoRally)
+
 	want := strings.Join([]string{
+		"  |●  Working",
+		"",
 		"work",
 		"  ● plan decide what to read  $0.02",
 		"  ◐ rfcs read the three RFCs  needs plan · $0.11",

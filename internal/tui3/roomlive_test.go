@@ -18,6 +18,7 @@ package tui3
 // to the conversation and back, and after walking to another node and back.
 
 import (
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"strconv"
 	"strings"
 	"testing"
@@ -342,6 +343,7 @@ func TestWalkingBetweenTwoRoomsKeepsEachPageItsOwn(t *testing.T) {
 
 	a.openRoom(7, "Fix the nil-map crash")
 	a.touch()
+	a.room.workActivity.Start(a.now(), tokens.WorkLogoRally)
 	seven := roomText(a)
 
 	a.openRoom(8, "Write the loader test")
@@ -358,6 +360,7 @@ func TestWalkingBetweenTwoRoomsKeepsEachPageItsOwn(t *testing.T) {
 	if a.room.id != 7 {
 		t.Fatalf("the room is on node %d, want 7", a.room.id)
 	}
+	a.room.workActivity.Start(a.now(), tokens.WorkLogoRally)
 	if got := roomText(a); got != seven {
 		t.Fatalf("walking to another node and back changed the page:\nwas:\n%s\n\nnow:\n%s",
 			seven, got)

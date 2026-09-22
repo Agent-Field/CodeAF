@@ -1285,6 +1285,13 @@ func (a *app) orchRows(width int) []row {
 		a.orchHoverPass(page, width)
 		return page.rows
 	}
+	if a.roomWorkLogoVisible() {
+		for _, r := range a.activityRows(a.room.workActivity, a.pal.narr("Working"), width) {
+			page.put(r.text)
+			page.rows[len(page.rows)-1].activity = true
+		}
+		page.put("")
+	}
 	a.orchPlannerRow(page, width)
 	if run.card != "" {
 		a.orchCardRows(page, width)

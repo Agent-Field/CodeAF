@@ -2,7 +2,7 @@
 
 ## Why is a little logo moving on the left while I wait for an answer?
 
-The single-line chevron and gold dot above the input mean the conversation is still
+The single-line chevron and gold dot below the latest submitted question mean the conversation is still
 working. The same indicator appears inside a running task's page and an adaptive
 run's page. It remains visible while an answer streams or the work is waiting on
 a model. The label stays `Working` through thinking, tools and model waits; details stay
@@ -34,5 +34,5 @@ The small chevron and gold dot beside `codeaf` are the resting logo. They stay
 still in the header. Only the activity mark beside ongoing work animates. Narrow,
 ASCII and monochrome terminals keep the plain product name.
 
-The activity row remains reserved while idle, so starting and finishing do not
-move the input. Its fixed-width animation slot keeps neighboring text still.
+The indicator follows the last line of your question and scrolls with it. Its
+fixed-width slot keeps neighboring text still. It adds no row above the input.

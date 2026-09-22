@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/session"
 
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -24,23 +25,24 @@ func (a *app) workLogoRows(width int, _ string) []row {
 	return a.activityRows(a.workActivity, a.pal.narr("Working"), width)
 }
 
-// activityDockHeight reserves the row while idle as well as while working.
-// It belongs to chrome, never to the scrollback or a changing tool caption.
-func (a *app) activityDockHeight() int {
-	if a.showing() != nil || a.linear || a.pal.linear || a.pal.ascii || a.pal.profile < tokens.ANSI256 || a.width < 48 || a.height < 20 {
-		return 0
+// questionActivity anchors one indicator to the last submitted question, never
+// to a changing caption or to the transcript's growing tail.
+func (a *app) questionActivity(d deck) (tokens.WorkActivity, int, bool) {
+	var activity tokens.WorkActivity
+	switch {
+	case d.lens.clock && a.workLogoVisible():
+		activity = a.workActivity
+	case !d.lens.clock && a.roomWorkLogoVisible():
+		activity = a.room.workActivity
+	default:
+		return activity, -1, false
 	}
-	return 1
-}
-
-func (a *app) activityDock(width int) string {
-	if a.roomWorkLogoVisible() {
-		return a.activityRows(a.room.workActivity, a.pal.narr("Working"), width)[0].text
+	for i := len(d.entries) - 1; i >= 0; i-- {
+		if d.entries[i].kind == entryUser || d.entries[i].kind == entrySteer {
+			return activity, i, true
+		}
 	}
-	if a.workLogoVisible() {
-		return a.workLogoRows(width, "")[0].text
-	}
-	return ""
+	return activity, -1, false
 }
 
 // activityLabelColumn is a terminal-cell contract, independent of the current
@@ -70,6 +72,16 @@ func (a *app) roomWorkLogoVisible() bool {
 	}
 	if _, waiting := a.roomGuest().waiting(); waiting {
 		return false
+	}
+	if run := a.orchOf(); run != nil {
+		if !run.known || run.snap.Done || run.snap.Stopped || run.snap.Paused || run.gate != nil {
+			return false
+		}
+		if run.transcript != "" {
+			node, ok := orchNodeOf(run.snap, run.transcript)
+			return ok && node.State == orchestrate.Running
+		}
+		return true
 	}
 	node := a.roomNode()
 	if node == nil || node.stopped {
