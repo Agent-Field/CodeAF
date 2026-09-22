@@ -470,6 +470,32 @@ func (s *Server) Model(model string, lanes ...Lane) {
 	s.models[model] = lanes
 }
 
+// Script is the profile a lane is serving under right now, and whether this
+// model carries that lane at all.
+//
+// It is here because a test that scores an answer against what the lane was
+// TOLD to do must read the script rather than keep a copy of it. A copy is one
+// fact in two places, and it goes stale at exactly the interesting moment: a
+// scenario stages a lane going bad and then getting better by re-scripting this
+// server, and a scorer holding yesterday's copy goes on marking a recovered
+// lane at its broken figure.
+//
+// A floating id is resolved the way a completion resolves one, so a caller may
+// ask under the spelling it sent. See [Server.Alias].
+func (s *Server) Script(model, lane string) (Profile, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if target, floating := s.aliases[model]; floating {
+		model = target
+	}
+	for _, candidate := range s.models[model] {
+		if candidate.Name == lane {
+			return candidate.Profile, true
+		}
+	}
+	return Profile{}, false
+}
+
 // Alias makes the router ANSWER for a floating id without PUBLISHING one.
 //
 // That asymmetry is the whole point and it is the router's real behaviour: a
