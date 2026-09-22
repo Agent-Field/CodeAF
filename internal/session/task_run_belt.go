@@ -305,7 +305,20 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		a.beltMu.Lock()
 		live.joined = append(live.joined, id)
 		a.beltMu.Unlock()
-		a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow()})
+		a.publishRunRow(g, TaskNotice{
+			ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow(),
+			// AND THE ROW SAYS WHICH STORE TASK IT IS, from its first breath, for
+			// the reason the copy is written down in the same breath below: the
+			// store is the authority for this work's state and for the page
+			// carrying its worker's trajectory, and a row that could not name its
+			// task left a surface guessing from the title
+			// ([TaskNotice.PlanTask]). IT IS SPELLED THE ONE WAY A STORE ID
+			// CROSSES THIS SEAM — [planStoreID], which is what
+			// [PlanTaskRow.ID] carries and what [Agent.PlanTaskPage] is asked
+			// for — so the id the row names is the id the plan read answers
+			// under. The bare stored id is answered under by nothing.
+			PlanTask: planStoreID(storeID),
+		})
 		return nil
 	}
 
@@ -346,6 +359,12 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	a.publishRunRow(g, TaskNotice{
 		ID: id, Title: title, State: TaskRunning, StartedAt: born,
 		Copy: runCopyOf(tree),
+		// THE ROOT'S ROW NAMES THE STORE'S ROOT, which is this same number: the
+		// store was seeded under `storeID` a few lines up, so the row the person
+		// was answered with and the task the store drives are one identity said
+		// twice rather than two pieces of work ([TaskNotice.PlanTask]). In
+		// [planStoreID]'s spelling, which is the one the plan read answers under.
+		PlanTask: planStoreID(storeID),
 	})
 
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
@@ -453,13 +472,26 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // Carrying it forward in the one function every publisher goes through is what
 // keeps that from depending on each of them remembering. A notice that names a
 // copy of its own wins, because it is the more recent reading.
+//
+// AND THE STORE TASK IS CARRIED THE SAME WAY, for the same reason: which task
+// of the plan this row IS was settled when the row was minted and is true for
+// its whole life, so a settle or a stop that publishes a fresh notice must not
+// be able to drop it ([TaskNotice.PlanTask]). A row that lost its identity
+// halfway through would send the place back to guessing by title exactly when
+// the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
-	if notice.Copy == nil {
+	if notice.Copy == nil || notice.PlanTask == "" {
 		for _, kept := range g.runRows(notice.ID) {
-			if kept.ID == notice.ID && kept.Copy != nil {
-				notice.Copy = kept.Copy
-				break
+			if kept.ID != notice.ID {
+				continue
 			}
+			if notice.Copy == nil && kept.Copy != nil {
+				notice.Copy = kept.Copy
+			}
+			if notice.PlanTask == "" && kept.PlanTask != "" {
+				notice.PlanTask = kept.PlanTask
+			}
+			break
 		}
 	}
 	a.emitTaskUpdate(notice)
