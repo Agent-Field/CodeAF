@@ -4712,6 +4712,20 @@ func contextLaw(profileDir string) ctxbudget.Limits {
 // "did a person set this?" — the same file [Settings.PersistedKeys] reads to
 // draw a provenance chip — narrowed to a single key for a caller that needs the
 // value with it.
+//
+// IT DESTROYS THE DIFFERENCE BETWEEN UNSET AND ZERO, and that is a law about
+// its callers rather than a note about its body. A key nobody wrote and a key
+// written as 0 both come back 0, so no caller downstream can tell which it
+// was or decide what the person meant. Every caller today feeds
+// [ctxbudget.Limits], where 0 means use the default and the row's read
+// returns the resolver, so a person who types 0 sees the default appear in
+// the row and the loss is visible to them. That is what makes it safe here.
+//
+// A CALLER THAT NEEDS TO TELL UNSET FROM ZERO MUST NOT USE THIS. Use
+// [persistedInt], which returns the value and whether it was present, and
+// decide at the call site. Reaching for this one because it hands back a
+// bare int is how a setting acquires a zero whose meaning lives somewhere
+// other than where the setting is declared.
 func persistedCount(profileDir, key string) int {
 	if value, ok := persistedInt(profileDir, key); ok && value > 0 {
 		return value
