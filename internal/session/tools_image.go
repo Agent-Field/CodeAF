@@ -184,6 +184,21 @@ func (a *Agent) recordImageArtifact(path, prompt string) {
 // a bad minute are all things a caller can act on, and none of them is a
 // reason to crash anything.
 func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) (string, bool) {
+	// AN EMPTY PROMPT IS REFUSED BEFORE ANYTHING IS PAID FOR, the way the video
+	// and music doors refuse theirs (tools_video.go, tools_music.go). A provider
+	// asked to draw nothing still bills the call, and the answer it sends back
+	// reads as its own fault rather than the caller's.
+	//
+	// THE GUARD LIVES HERE AND NOT ON THE BELT, so the command line's picture
+	// door refuses the same call the same way (cmd/codeaf's image.go calls this
+	// function too). It was here until the web pair and the picture hand were
+	// made plain functions a command line could share: the block around it moved
+	// and the check did not come with it, which left the one paid door of the
+	// three with no argument check at all.
+	prompt := strings.TrimSpace(parsed.Prompt)
+	if prompt == "" {
+		return "Invalid arguments: prompt is required", true
+	}
 	// The call's own choice, resolved before anything is paid for, so a word
 	// that matches nothing costs nothing. From here down `model` is the model
 	// that actually draws, wherever it is named — the request, the failure
@@ -202,7 +217,7 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	}
 
 	response, err := gen.Client.GenerateImage(ctx, provider.ImageRequest{
-		Model: model, Prompt: strings.TrimSpace(parsed.Prompt), N: 1, OutputFormat: "png",
+		Model: model, Prompt: prompt, N: 1, OutputFormat: "png",
 		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
 		Size:            strings.TrimSpace(parsed.Size),
 		InputReferences: references,
