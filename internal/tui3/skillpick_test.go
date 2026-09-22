@@ -433,3 +433,32 @@ func containsString(hay []string, needle string) bool {
 }
 
 var _ = tea.Msg(nil)
+
+// A LIST OF ROWS THAT DO NOTHING WHEN CHOSEN SAYS SO ON THE ROW. The picker
+// reads the disk and attachment resolves against the shelf, so with memory off
+// it lists every skill a person has and none of them can be attached. Drawing
+// that list with nothing saying why is the control present and failing.
+func TestTheSkillPickerSaysWhyARowCannotBeAttachedWithMemoryOff(t *testing.T) {
+	a, _, project, _ := skillApp(t)
+	seedSkill(t, filepath.Join(project, ".claude", "skills"), "alpha-flake", "chase a flaky test")
+	a.memory = nil
+
+	typeInto(t, a, "/skill ")
+	screen := strings.Join(plainOverlay(a), "\n")
+	if !strings.Contains(screen, "alpha-flake") {
+		t.Fatalf("the picker stopped listing the skills on disk:\n%s", screen)
+	}
+	if !strings.Contains(screen, skillOffWarning) {
+		t.Fatalf("the row does not say why choosing it does nothing:\n%s", screen)
+	}
+
+	// AND A SESSION WITH A SHELF IS UNCHANGED, because the sentence is about
+	// the machine and not about the skill.
+	b, _, other, _ := skillApp(t)
+	seedSkill(t, filepath.Join(other, ".claude", "skills"), "beta-diff", "read a diff")
+	b.memory = &skillMemory{}
+	typeInto(t, b, "/skill ")
+	if got := strings.Join(plainOverlay(b), "\n"); strings.Contains(got, skillOffWarning) {
+		t.Fatalf("a session with a shelf was told memory is off:\n%s", got)
+	}
+}
