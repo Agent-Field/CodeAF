@@ -666,6 +666,24 @@ func planLastNote(store *plandb.Store, taskID string) string {
 	return notes[len(notes)-1].Body
 }
 
+// planNoteAuthorWord names the hand behind one note in the words a reader
+// knows, and it is the one spelling this package uses for that: the person
+// steering the run, the sibling task whose worker wrote it when the store kept
+// a name, and otherwise another worker on the run. It exists so the listing and
+// the task page cannot come to say the same author two different ways.
+func planNoteAuthorWord(note PlanTaskNote) string {
+	if note.Person {
+		return "the person"
+	}
+	switch name := strings.TrimSpace(note.Author); {
+	case name == plandb.NoteAgentChat:
+		return "you"
+	case name != "" && name != "default":
+		return "task " + name
+	}
+	return "a worker on this run"
+}
+
 // planTaskNotes answers every note on a task, oldest first, each with its
 // author and moment. The store bounds the count; a page that outgrows the
 // bound shows the notes it keeps.

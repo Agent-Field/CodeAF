@@ -262,10 +262,12 @@ rather than quietly choosing.
 The person's door onto a run's plan is six verbs, each resolving an id **inside
 this conversation's plan**, so a task another chat spawned is never reachable:
 
-- **note** — a note in your own voice on one task, which the worker reads in its
-  next frame. On a plan task's page it is what the composer sends: type in it and
-  press `enter`, under the placeholder `a note for this task`. It is not a chat
-  turn — the words go to the store and never to the model.
+- **note** — a note in your own voice on one task, which that task's worker is
+  handed between its own steps. On a plan task's page it is what the composer
+  sends: type in it and press `enter`, under the placeholder `a note for this
+  task`. It is not a chat turn — the words go to the store and never to the
+  conversation's model. "Does a note actually reach the worker" has its own
+  section below.
 - **pause** / **resume** — hold a task and everything under it out of the ready
   frontier without changing its rung, so running steps finish and nothing new in
   the subtree is launched; or release the hold. The key is `p`: a running row
@@ -294,6 +296,53 @@ store is the one that knows its own laws — a task that has ended cannot be
 cancelled, and a revision is only for work that has not started. A hold asked of
 the run's own task answers `a run is not held as a whole: hold one of its parts, or
 stop it`.
+
+## Does a note actually reach the worker, when does it read it, does it have to ask for it
+
+Yes, and it does not have to ask. A note left on a task is handed to that task's
+worker between its steps, in the gap after one command has finished and before
+it chooses the next. It is not something the worker has to think to look for.
+
+- **When.** At the next step boundary. A worker mid-command finishes that
+  command first. If its turn happens to be ending in that same moment there is
+  nothing to hand the note to, so it stays unread and the next boundary offers
+  it again: an unread note is a note nobody has been told.
+- **When it is not handed over at all.** A task that finishes before its next
+  boundary never reads the note left on it — there is nobody left to tell — and
+  the words stay on its page for you. A worker that has just been told it is
+  repeating itself is handed nothing else at that boundary either; its note
+  waits for the one after.
+- **Once.** Each worker is handed each note one time. Reading a note on the
+  task's page does not use it up — you and the worker read the same notes, and
+  what you opened is never a note the worker then missed.
+- **Notes left before the task started** are handed over too, on its first step
+  boundary. So a finding written onto a task that has not begun is waiting for
+  its worker when it does.
+- **Several at once** arrive together, up to five in one handover; any beyond
+  that come at the next boundary.
+
+**A note is not an order, and the worker is told so.** What it reads says the
+note is something somebody knows, not a direction, and that its work order has
+not changed. A note can never move what a task is judged by: asking for
+something *different* is a revised assignment, not a note.
+
+Three hands write notes — you, from the task's page; another worker in the run;
+and the conversation itself — and each is named where the note is drawn: `the
+person`, `task t-…`, or `you` when it was the conversation.
+
+## Where do I see the notes on a run, why didn't the chat know about the note
+
+Every note is on the task's page, under `notes`, oldest first.
+
+The conversation reads them too, and you can ask it: the run's listing puts the
+newest note on each row after the row's state, as `note: …`, and asking about one
+task prints that task's notes in full under `notes`, up to the last three. So
+"what has anyone said about these tasks" is a question the chat can answer without
+you opening a page.
+
+Before this, a note was drawn on the task's page and nowhere else. A worker could
+write down that another task's premise was wrong, and the conversation holding
+what you actually asked for would list every row of the run and never learn it.
 
 ## How do I stop a run? Stop it did nothing and the task kept running, cancel the whole run
 

@@ -106,6 +106,27 @@ var tasksSchemaJSON = `{"type":"object","properties":{` +
 	`"forward":{"type":"boolean","description":"Sends what the person just said into the running task named by id, verbatim and as theirs: the one door by which a correction typed here moves what that task is judged by. Their words go alone."}` +
 	`},"additionalProperties":false}`
 
+// tasksSchemaWithNote is [tasksSchemaJSON] with the plan road's own field on
+// it, and it is built rather than typed twice so the two cannot drift.
+//
+// THE FIELD IS ABSENT WHERE IT CANNOT WORK, which is this package's own law
+// stated in beltfacts.go and applied here: a note lands in a plan store, and a
+// conversation whose hand-offs are nodes of the session tree has no plan store
+// at all. Carrying the field there would be a verb the model would reach for
+// once and be refused by forever, and — the reason it matters more than tidiness
+// — the node road's request bytes would change, which is a thing this change is
+// not allowed to do.
+var tasksSchemaWithNote = strings.TrimSuffix(tasksSchemaJSON, `},"additionalProperties":false}`) +
+	// A NOTE IS NOT `say`, AND THE DESCRIPTION IS WHERE THAT IS SETTLED. `say`
+	// is a correction aimed at a node of this session's own tree; a note is a
+	// fact written onto a row of the run's plan, where the worker reads it
+	// between its steps and every other worker and the person can read it too.
+	// It says what it cannot do in the same breath, because a model that
+	// believed a note moved a task's work order would be changing what the work
+	// is judged by with no version check behind it.
+	`,"note":{"type":"string","description":"A fact written onto the run row named by id (\"2\", \"2.1\"): its worker reads it between its steps, and it stays on the row for the person and the other workers. It is information, not an order — it cannot change what that task was asked for or what it is judged by; revise_assignment does that. It ends nothing."}` +
+	`},"additionalProperties":false}`
+
 // tasksArguments is the wire form. The id is RAW because a model that has just
 // read "7 · fix-the-nil-map-crash" will send either `"7"` or `7`, and both of
 // them mean task seven: a schema type is a request, not a guarantee, and
@@ -122,6 +143,11 @@ type tasksArguments struct {
 	Forward  bool            `json:"forward"`
 	Continue bool            `json:"continue"`
 	Resolve  string          `json:"resolve"`
+	// Note is the plan road's own field: a fact written onto one row of the
+	// live run, which that row's worker reads between its steps. It is decoded
+	// on every road, because a model that sent it where the schema does not
+	// offer it is better answered with a sentence than with a parse error.
+	Note string `json:"note"`
 }
 
 // The two words `scope` takes. They are constants because the schema's enum,
@@ -179,10 +205,18 @@ func taskScopeWord(raw string) (string, bool) {
 //     failed or finished. Same brief, same working copy, last report as this
 //     round's finding. A new propose_task is the wrong door.
 func (a *Agent) tasksTool() bare.Tool {
+	// THE SCHEMA THE CALL CARRIES IS THE ONE THIS AGENT CAN ANSWER. The plan
+	// road's `note` field is offered only where a plan store exists to hold it
+	// ([Config.oneTaskRoad]), which is the same predicate the hand-off facts
+	// branch on, so the page and the schema cannot disagree about the verb.
+	schema := tasksSchemaJSON
+	if a.config.oneTaskRoad() {
+		schema = tasksSchemaWithNote
+	}
 	return bare.Tool{
 		Name:        "tasks",
 		Description: tasksDescription,
-		Schema:      json.RawMessage(tasksSchemaJSON),
+		Schema:      json.RawMessage(schema),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed tasksArguments
 			// An absent argument object is a valid call — "what has been going
@@ -213,6 +247,9 @@ func (a *Agent) tasksTool() bare.Tool {
 				if parsed.Stop {
 					return "Invalid arguments: stop needs an id — it ends one running task, not a search", true, nil
 				}
+				if strings.TrimSpace(parsed.Note) != "" {
+					return "Invalid arguments: note needs an id — it is written onto one row of the run, not onto a search", true, nil
+				}
 				// THE RUN'S TASKS LEAD AND THE SHIPPED LISTING FOLLOWS. A conversation
 				// that has handed work to a run still has the tasks of earlier
 				// sittings and of other windows, and a listing that showed only the
@@ -226,6 +263,16 @@ func (a *Agent) tasksTool() bare.Tool {
 					}
 				}
 				return markTaskLook(ctx, listing), false, nil
+			}
+			// A NOTE IS WRITTEN ONTO THE RUN'S OWN ROW, and only there. It is the
+			// chat's half of the note channel: a worker writes to a sibling's row
+			// through `plandb task note`, the person writes from the task's page,
+			// and this is the one mind holding the conversation writing what the
+			// plan does not know. The row is named the way the model has just read
+			// it in the listing (`#2`, `#2.1`), which is the only spelling of a run
+			// row that exists outside the store.
+			if note := strings.TrimSpace(parsed.Note); note != "" {
+				return a.planNoteFromChat(token, note)
 			}
 			// A READ OF A TASK THE RUN'S STORE HOLDS IS ANSWERED FROM THE STORE, by the
 			// number the rail shows for it. Anything else about it (say, stop,
@@ -1429,24 +1476,64 @@ func planTaskLabels(rows []PlanTaskRow) map[string]string {
 }
 
 // planTasksText is the run's tasks as a listing: the name a person sees, the
-// title, the state, and the first line of what came back. Empty when there is
-// no run or nothing in it matches, so the caller's own listing stands alone.
+// title, the state, the first line of what came back, and the newest note
+// anybody left on it. Empty when there is no run or nothing in it matches, so
+// the caller's own listing stands alone.
+//
+// THE NOTE IS ON THE ROW BECAUSE NOBODY WAS READING IT. A note is the channel a
+// worker uses to say that another task's premise is wrong, and a person uses to
+// tell a task something the plan does not hold; both were drawn on the task's
+// page and nowhere else, so the conversation — the one mind holding what the
+// person actually asked for — could list every row of a run and never learn
+// that one of them had found the plan wrong. The row carries the newest note
+// alone, cut to a line: the whole of them is [Agent.planTaskText]'s job, and a
+// listing that grew with every note would be the context this tool exists to
+// spend sparingly.
 func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 	query = strings.ToLower(strings.TrimSpace(query))
 	labels := planTaskLabels(rows)
 	var b strings.Builder
 	for _, row := range rows {
 		page, _ := a.PlanTaskPage(row.ID)
-		if query != "" && !strings.Contains(strings.ToLower(row.Title+" "+row.Status+" "+page.Result), query) {
+		if query != "" && !strings.Contains(strings.ToLower(row.Title+" "+row.Status+" "+page.Result+" "+row.Note), query) {
 			continue
 		}
 		fmt.Fprintf(&b, "%s · %s · %s", labels[row.ID], cutChars(row.Title, runAskLineChars), row.Status)
 		if line := summaryFirstLine(page.Result, runAskLineChars); line != "" {
 			fmt.Fprintf(&b, " · %s", line)
 		}
+		if note := summaryFirstLine(row.Note, runAskLineChars); note != "" {
+			fmt.Fprintf(&b, " · note: %s", note)
+		}
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// planNoteFromChat writes one note onto a row of the live run, named the way
+// the model read it — `#2`, `#2.1` — and answers the sentence the model reads
+// back. A token that names no row of this run falls through to false, and the
+// caller says so in the words it already has for an id it does not hold.
+//
+// THE RECEIPT SAYS WHAT THE NOTE CANNOT DO, in the same breath as the delivery.
+// A model told only that its words arrived will reach for this field again the
+// next time it wants a task to do something different, and a note that was read
+// as a direction is a task quietly working to a contract nobody versioned. So
+// the answer names the door that does move a work order.
+func (a *Agent) planNoteFromChat(token, note string) (string, bool, error) {
+	rows := a.runPlanTasks()
+	labels := planTaskLabels(rows)
+	want := "#" + strings.TrimPrefix(strings.TrimSpace(token), "#")
+	for _, row := range rows {
+		if labels[row.ID] != want {
+			continue
+		}
+		if err := a.PlanNoteFromChat(row.ID, note); err != nil {
+			return capitalized(err.Error()) + ".", true, nil
+		}
+		return fmt.Sprintf("noted on %s · %s: %s\nIts worker reads it between its steps, and it stays on the row for the person and the other workers. It does not change what that task was asked for: revise_assignment is the door that does.", want, cutChars(row.Title, runAskLineChars), note), false, nil
+	}
+	return fmt.Sprintf("No task %q in this run. Call tasks with no arguments to see its rows.", token), true, nil
 }
 
 // planTaskText is ONE task of the run, answered from the store: what it was
@@ -1482,6 +1569,23 @@ func (a *Agent) planTaskText(rows []PlanTaskRow, token string) (string, bool) {
 		if check, _ := a.PlanTaskPage(row.ID); check.Result != "" {
 			fmt.Fprintf(&b, "\n%s · %s:\n%s\n", labels[row.ID], cutChars(row.Title, runAskLineChars), cutChars(check.Result, runAskBodyChars))
 		}
+	}
+	// EVERY NOTE ON THE TASK, oldest first and bounded, between what came back
+	// and the steps that made it. The page is where the whole channel is read:
+	// the listing carries only the newest note, and a conversation that has seen
+	// one and wants the rest opens the task rather than being handed all of them
+	// on every row. The bound is [runAskNotesPerTask]'s, the same figure the run
+	// summary spends on one task's notes, and the oldest go first because a
+	// worker's later note usually answers its earlier one.
+	notes := page.Notes
+	if len(notes) > runAskNotesPerTask {
+		notes = notes[len(notes)-runAskNotesPerTask:]
+	}
+	if len(notes) > 0 {
+		b.WriteString("\nnotes:\n")
+	}
+	for _, note := range notes {
+		fmt.Fprintf(&b, "%s · %s\n", planNoteAuthorWord(note), cutChars(note.Body, runAskLineChars))
 	}
 	steps := page.Steps
 	if len(steps) > runAskNotesPerTask*4 {

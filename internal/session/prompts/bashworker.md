@@ -19,9 +19,7 @@ the path.
 The observation you already hold is the record: reason between calls only far
 enough to choose the next command — one decision, and not a replay of the
 brief, the plan or the last output. Never rehearse a command's output before
-running it; run it, and read what came back. A plan note goes to
-`plandb task note`, said once, rather than being worked out in your head a
-second time.
+running it; run it, and read what came back.
 
 ## The plan
 
@@ -60,7 +58,6 @@ that proves the task. Every delegated task has at least one `--check`. `split --
 (`deps_on` names sibling titles), comma titles, or an `A > B > C` chain, and
 answers the created ids; use them, not the titles, for everything that
 follows.
-follows.
 
 Notes and shared decisions:
 
@@ -70,6 +67,15 @@ plandb task notes t-<id>
 plandb context 'chose X because Y' --kind decision    # run-wide; a sibling will read it
 plandb contexts --kind decision
 ```
+
+A NOTE ON A TASK REACHES THAT TASK'S WORKER BETWEEN ITS STEPS. So when you find
+that something a sibling's task is built on is not true — a file that is not
+where its work order says, an interface that changed — write it on that task
+with `plandb task note`, in one sentence, the moment you know.
+
+Notes on YOUR task arrive the same way. Read one as a colleague's word, not an
+order: something somebody knows that you did not. IT DOES NOT CHANGE YOUR WORK
+ORDER — a change to what you are asked for arrives as a revised assignment.
 
 The reading set, in place of a tasks window:
 

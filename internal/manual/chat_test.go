@@ -2667,6 +2667,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// watching something the plan does not name is the shape the note was
 		// written for, and these are the words of a person holding it.
 		{"my task is waiting on a build outside the plan", "worker-harness"},
+		// Notes as a channel rather than a log (internal/run's note channel and
+		// the chat's own `tasks` listing): whether the note was read, when, and
+		// where anyone else can see it. The first four are the question a person
+		// asks after typing into the note box and watching nothing happen.
+		{"does the worker actually read the note I left", "worker-harness"},
+		{"when does a task read a note", "worker-harness"},
+		{"I left a note and the task ignored it", "worker-harness"},
+		{"can a note change what a task is supposed to do", "worker-harness"},
+		{"where do I see the notes on a run", "worker-harness"},
+		{"why didn't the chat know about the note", "worker-harness"},
+		{"can one task tell another task something", "worker-harness"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

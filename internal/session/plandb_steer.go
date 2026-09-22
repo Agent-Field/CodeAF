@@ -78,12 +78,30 @@ func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) err
 }
 
 // PlanNote leaves a note in the person's own voice on one task. It is the soft
-// steering beside the hard verbs: the worker reads it in its next frame, and
+// steering beside the hard verbs: the task's worker is handed it between its own
+// steps, on the road internal/run's note channel carries, and
 // the note carries the person as its author the way the store spells that
 // (AddPersonNote), so a surface draws the two voices apart.
 func (a *Agent) PlanNote(id, text string) error {
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
 		_, err := store.AddPersonNote(task.ID, text)
+		return err
+	})
+}
+
+// PlanNoteFromChat leaves a note on one task in THE CONVERSATION'S voice, and
+// it is [Agent.PlanNote] with the one difference that matters: the author.
+//
+// THE MODEL IS NOT THE PERSON, AND THE WORKER MUST BE ABLE TO TELL. A note
+// arriving named as the person is a note a worker may read as authority, and a
+// conversation that could write in the person's voice could grant itself
+// permissions nobody gave it — the same hazard, and the same answer, as the
+// `say` door's ([Agent.relayToTask]). So the note carries [plandb.NoteAgentChat]
+// and is a worker-side note by the store's own column, and every reader draws it
+// apart from the person's own.
+func (a *Agent) PlanNoteFromChat(id, text string) error {
+	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
+		_, err := store.AddNote(task.ID, plandb.NoteAgentChat, text)
 		return err
 	})
 }

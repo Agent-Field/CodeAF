@@ -1125,7 +1125,8 @@ func (a *app) taskPlanToggle(id string) tea.Cmd {
 
 // taskPlanNoteSend writes what is typed in the page's composer as a person-note
 // on the plan task — the store's own note verb, in the person's voice, which the
-// worker reads on its next frame ([session.Agent.PlanNote]). IT IS NOT A CHAT
+// task's worker is handed between its own steps ([session.Agent.PlanNote], and
+// internal/run's note channel carries it). IT IS NOT A CHAT
 // TURN: the words go to the store and never to the model, so nothing here starts
 // one.
 func (a *app) taskPlanNoteSend() tea.Cmd {

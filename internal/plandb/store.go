@@ -1212,6 +1212,16 @@ const (
 	NoteFromPerson = "person"
 )
 
+// NoteAgentChat is the agent name a note carries when the CONVERSATION left it
+// rather than a worker or the person. It is a worker-side note by the column
+// above and deliberately so — the person's voice is the one thing on a run that
+// may move what the work is judged by, and a model writing in it could grant
+// itself permissions nobody gave (internal/session's relayToTask states the
+// same law about the same hazard). The name is a constant here, in the package
+// both the writer and every reader import, so the one hand that is neither the
+// person nor a worker is spelled one way wherever it is drawn.
+const NoteAgentChat = "chat"
+
 // AddNote leaves a task-scoped message. The note is public to every worker on
 // the run — the CLI's notes listing prints all of them — and the author is
 // recorded so a reader can tell an owner's handoff from a bystander's
