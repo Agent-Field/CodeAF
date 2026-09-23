@@ -3,6 +3,17 @@
 This page is the honest inventory: what codeaf can reach, what it refuses, and
 what is simply not there in this build.
 
+## Why are replies short — developer-friendly answers, summaries and more detail
+
+codeaf is prompted to keep routine coding reports short: the outcome first, followed
+by up to three brief bullets covering the changed behavior, checks and their results,
+and any remaining issue. Empty categories are omitted. A command you need to run or
+an exact edit comes first in instructions. Failed or unrun checks must still be stated.
+
+Ask for an explanation, a walkthrough, or a particular format when you want more detail.
+Requested code and other deliverables stay complete. This is guidance to the model,
+not a hard word limit; the wording and length can vary with the model and the task.
+
 ## Is this only for programming — is codeaf only for code, or for any kind of work?
 
 Not only programming. Nothing else on this page is about code in particular:
