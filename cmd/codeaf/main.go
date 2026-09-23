@@ -711,7 +711,10 @@ func usage(args []string) error {
 		fmt.Fprintln(usageOut, environmentText)
 		return nil
 	}
-	fmt.Fprintln(usageOut, usageText)
+	// The table with the programs this build carries in it (carried.go): a
+	// verb nobody can find on the page that lists the verbs is a verb nobody
+	// types.
+	fmt.Fprintln(usageOut, frontPage())
 	return nil
 }
 

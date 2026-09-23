@@ -30,6 +30,13 @@ import (
 // they stopped at a live provider instead (testenv_test.go carries the whole
 // case).
 func TestMain(m *testing.M) {
+	// A SHELL RUN'S CHILD COMES IN HERE: carried_test.go starts this very test
+	// binary as the program's process, marked in its environment, and the
+	// binary then runs the dispatch the way `codeaf <name>` would. Its
+	// environment is the parent's, already isolated below.
+	if code, child := runAsCarriedChild(); child {
+		os.Exit(code)
+	}
 	if _, pinned := os.LookupEnv(calllog.EnvVar); !pinned {
 		os.Setenv(calllog.EnvVar, calllog.OffValue)
 	}
