@@ -405,6 +405,58 @@ func TestATaskWhoseAcceptanceCarriesAProseSlashIsAdmitted(t *testing.T) {
 	waitDoneNode(t, graph.node(1))
 }
 
+// A PATH ON ANOTHER MACHINE IS NOT A FOLDER THIS TASK COULD STAND IN.
+//
+// Work handed to a host reached over ssh writes its deliverable as an absolute
+// path on that host, and such a path has no directory along it on this machine.
+// Read as a place it can never fall inside the ground, so the refusal fired on
+// every one of them and the proposer stopped handing the work out at all. The
+// contract below is that shape, and it is admitted; the same contract pointed at
+// a directory that really is here and really is outside the ground is still
+// refused, by that directory's name.
+func TestAPathOnAnotherMachineDoesNotRefuseTheTask(t *testing.T) {
+	repo := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+	})
+
+	remote := filepath.Join(string(filepath.Separator), "no-such-host-"+t.Name(), "src", "probe", "bin", "codeaf")
+	if _, ok := placeOnThisMachine(remote); ok {
+		t.Fatalf("%s resolves to a directory on this machine, so it cannot stand in for a remote path", remote)
+	}
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "build it there", Summary: "s",
+		Brief:       "On the remote host, clone the branch into " + remote + " and build it.",
+		Deliverable: "the binary at " + remote,
+		Acceptance:  remote + " exists on the remote host and runs",
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if isError {
+		t.Fatalf("a deliverable naming a path on another machine was refused: %q", result)
+	}
+
+	elsewhere := filepath.Join(t.TempDir(), "somewhere-else")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(elsewhere, "notes.md")
+	arguments, _ = json.Marshal(taskArguments{
+		Title: "write the notes", Summary: "s", Brief: "b",
+		Deliverable: "a file at " + out,
+		Acceptance:  "the file is there",
+	})
+	result, isError, err = agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if !isError || !strings.Contains(result, out) {
+		t.Fatalf("a real folder outside the ground was answered %q, want it refused by name", result)
+	}
+}
+
 // A path in the contract that is outside the ground and in no repository is
 // refused in one sentence. The work would have nowhere to put what it made, and
 // starting it to have a guard turn every write back is a worse answer than
