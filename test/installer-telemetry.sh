@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # THE INSTALLER'S TELEMETRY DUTIES, PROVED WITHOUT A NETWORK.
 #
-# The notice text lives once, byte for byte, in docs/TELEMETRY.md and is
-# quoted in three places — the binary, this installer and the README — and
-# only a test notices when one of them drifts. The installer's main body
+# The notice text lives once, byte for byte, in docs/TELEMETRY.md: the full
+# form quoted by the binary and the README, and the three-line form the
+# installer prints. Only a test notices when one of them drifts. The installer's main body
 # downloads a release, so this test never sources it whole: it lifts out the
 # three telemetry functions and runs them against a temporary state root.
 # Nothing here opens a socket.
@@ -15,10 +15,11 @@ doc=docs/TELEMETRY.md
 test -f "$doc" || { echo "docs/TELEMETRY.md is missing; this test reads the notice from it"; exit 1; }
 
 eval "$(awk '/^TELEMETRY_NOTICE=/{f=1} /^VERBOSE=/{f=0} f' "$script")"
-eval "$(sed -n '/^telemetry_off()/,/^}/p; /^write_install_marker()/,/^}/p; /^print_telemetry_notice()/,/^}/p' "$script")"
+eval "$(sed -n '/^telemetry_off()/,/^}/p; /^write_install_marker()/,/^}/p; /^print_telemetry_notice()/,/^}/p; /^print_path_hint()/,/^}/p' "$script")"
 type telemetry_off >/dev/null
 type write_install_marker >/dev/null
 type print_telemetry_notice >/dev/null
+type print_path_hint >/dev/null
 
 pass=0
 fail=0
@@ -82,14 +83,24 @@ ok "unwritable state root does not fail the install" 'write_install_marker /proc
 
 notice="$tmp/notice.txt"
 print_telemetry_notice 2> "$notice"
+# The first fenced block under "The notice" is the binary's full notice, the
+# second is the installer's three-line form; awk counts fences to tell them apart.
 expected=$(awk '
 	/^## The notice$/ {f=1; next}
 	f && /^```$/ {f++; next}
 	f == 2 {print}
 ' "$doc")
+installer_expected=$(awk '
+	/^## The notice$/ {f=1; next}
+	f && /^```$/ {f++; next}
+	f == 4 {print}
+' "$doc")
 body=$(sed 1d "$notice")
 ok "one blank line before the notice" '[ -z "$(head -n 1 "$notice")" ]'
-ok "notice matches docs/TELEMETRY.md verbatim" '[ "$body" = "$expected" ]'
+ok "installer notice matches docs/TELEMETRY.md verbatim" '[ "$body" = "$installer_expected" ]'
+ok "installer notice is three lines" '[ "$(printf "%s\n" "$body" | wc -l | tr -d " ")" = 3 ]'
+ok "installer notice names the inspector and the switch" 'case "$body" in *"codeaf telemetry info"*CODEAF_TELEMETRY=off*) true;; *) false;; esac'
+ok "installer notice names what is never shared" 'case "$body" in *"does NOT share your prompts, code, files"*) true;; *) false;; esac'
 readme_block=$(awk '
 	/^```text$/ {f = 1; buf = ""; next}
 	/^```$/     {if (f && buf ~ /codeaf sends anonymous usage counts/) {print buf; exit} f = 0; next}
@@ -102,7 +113,7 @@ for v in off 0 false OFF False; do
 	export CODEAF_TELEMETRY="$v"
 	out=$( print_telemetry_notice 2>&1 )
 	ok "CODEAF_TELEMETRY=$v opts out" 'case "$out" in *"off"*) true;; *) false;; esac'
-	ok "opt-out prints no notice body" 'case "$out" in *"anonymous usage counts to AgentField"*) false;; *) true;; esac'
+	ok "opt-out prints no notice body" 'case "$out" in *"anonymous performance data"*) false;; *) true;; esac'
 	unset CODEAF_TELEMETRY
 done
 for v in 1 true TRUE; do
@@ -112,11 +123,33 @@ for v in 1 true TRUE; do
 	unset DO_NOT_TRACK
 done
 out=$( print_telemetry_notice 2>&1 )
-ok "unset prints the notice" 'case "$out" in *"anonymous usage counts to AgentField"*) true;; *) false;; esac'
+ok "unset prints the notice" 'case "$out" in *"anonymous performance data with AgentField"*) true;; *) false;; esac'
 export CODEAF_TELEMETRY=1
 out=$( print_telemetry_notice 2>&1 )
-ok "CODEAF_TELEMETRY=1 prints the notice" 'case "$out" in *"anonymous usage counts to AgentField"*) true;; *) false;; esac'
+ok "CODEAF_TELEMETRY=1 prints the notice" 'case "$out" in *"anonymous performance data with AgentField"*) true;; *) false;; esac'
 unset CODEAF_TELEMETRY
+
+# --- the PATH line comes last -------------------------------------------------
+# The line a person has to paste is the installer's final word: bare, after a
+# blank line, and never prefixed with "codeaf: add it to this shell with:",
+# which made it a sentence to trim rather than a line to select.
+
+hint='export PATH="/x/bin:$PATH"'
+has_escape() { printf '%s' "$1" | grep -q "$(printf '\033')"; }
+ok "an empty hint prints nothing" '[ -z "$(print_path_hint "" 2>&1)" ]'
+out=$(print_path_hint "$hint"; printf x); out=${out%x}
+expected_hint=$(printf '\n%s\n\nx' "$hint"); expected_hint=${expected_hint%x}
+ok "the hint is one blank line, the bare export, one blank line" '[ "$out" = "$expected_hint" ]'
+ok "channel and path announcements go to stderr, verbose only" '[ -z "$(grep -E "printf .codeaf: (installed|%s %s for|%s for)" "$script" | grep -v ">&2")" ]'
+ok "the receipt is the installed binary naming itself" 'grep -q "printf .installed %s" "$script"'
+ok "no colour when stdout is not a terminal" '! has_escape "$out"'
+export NO_COLOR=1
+out=$(print_path_hint "$hint" 2>&1)
+ok "NO_COLOR is respected" '! has_escape "$out"'
+unset NO_COLOR
+last_line=$(grep -v '^[[:space:]]*#' "$script" | grep -v '^[[:space:]]*$' | tail -n 1)
+ok "the hint is the installer's last line" '[ "$last_line" = "print_path_hint \"\$PATH_HINT\"" ]'
+ok "the old prefixed sentence is gone" '! grep -q "add it to this shell with" "$script"'
 
 # --- nothing new on the wire --------------------------------------------------
 

@@ -48,6 +48,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/leave"
@@ -402,6 +403,15 @@ type OpenRouterFlow interface {
 	Cancel()
 }
 
+// CodexFlow is one browser sign-in that returns the ChatGPT-plan credentials
+// config keeps outside the surface. The loopback listener and token file both
+// belong to the door; the surface only shows, waits and cancels the attempt.
+type CodexFlow interface {
+	URL() string
+	Wait(context.Context) (codexauth.Tokens, error)
+	Cancel()
+}
+
 // Options configures one surface.
 type Options struct {
 	// Agent is the conversation this surface shows. Required.
@@ -417,7 +427,8 @@ type Options struct {
 	// machines, where this process's own build would be the wrong answer.
 	Build string
 
-	// UpdateCheck is the silent launch look at the newest stable release. It is
+	// UpdateCheck is the silent launch look at the newest release in this
+	// build's channel. It is
 	// a command rather than an opening read so the first frame never waits for
 	// the network. Nil leaves the capability absent.
 	UpdateCheck func(context.Context) (codeupdate.Available, bool)
@@ -430,6 +441,7 @@ type Options struct {
 	// decoration. UpdateArgs are its original arguments. Restart is the slot the
 	// surface fills before quitting and the door reads after the terminal is back.
 	UpdateRunning string
+	UpdateCurl    string
 	UpdateArgs    []string
 	Restart       *codeupdate.Plan
 
@@ -1046,6 +1058,11 @@ type Options struct {
 	// browser behind it.
 	ConnectOpenRouter func(context.Context) (OpenRouterFlow, error)
 
+	// ConnectCodex starts the Codex CLI-compatible browser sign-in used by the
+	// Codex model-service row. Nil leaves that browser row without a local road,
+	// as on a hosted surface; the whole /connect panel already explains why.
+	ConnectCodex func(context.Context) (CodexFlow, error)
+
 	// Linear is the SCREEN-READER TIER: one column, no animation, no hover,
 	// ASCII markers instead of the pastel glyph set. Everything the surface says
 	// it still says — the difference is that it says all of it in words and
@@ -1267,7 +1284,7 @@ type StandingSeam struct {
 	Runs func(since time.Time) map[string]standing.Spend
 
 	// SetEffort moves the rung one item's firings and its checks think at
-	// (internal/standing's [Store.SetStandingEffort]) — `ctrl+v` on that item's
+	// (internal/standing's [Store.SetStandingEffort]) — `alt+e` on that item's
 	// card, and nothing else on this surface.
 	//
 	// IT IS ITS OWN FUNCTION AND NOT A FIELD ON THE ITEM [StandingSeam.Save]

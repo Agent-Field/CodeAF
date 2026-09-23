@@ -62,6 +62,15 @@ func TestOnlyAnInteractiveDefaultOpenRouterLaunchGetsTheBrowserDoor(t *testing.T
 	}
 }
 
+func TestOnlyAnInteractiveLocalLaunchGetsTheCodexBrowserDoor(t *testing.T) {
+	if got := v3CodexConnection(true); got == nil {
+		t.Fatal("an interactive local launch got no Codex browser connection")
+	}
+	if got := v3CodexConnection(false); got != nil {
+		t.Fatal("a headless launch offered a Codex browser nobody can finish")
+	}
+}
+
 // And the model half, which the door does NOT resolve: the environment slot is
 // passed through, and an empty one is passed through as empty so the session
 // falls back to the person's own pin. The tier ladder is deliberately not

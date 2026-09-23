@@ -61,7 +61,9 @@ func (h *homeView) spinAt() int {
 				return at
 			}
 		}
-		return homeNoLine
+		// Sessions now owns running conversations, so their timestamps choose
+		// the spinner even without the former running-task panel.
+		return h.newestMoving()
 	}
 	return h.newestMoving()
 }

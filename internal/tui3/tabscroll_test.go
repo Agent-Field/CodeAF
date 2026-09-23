@@ -181,9 +181,10 @@ func TestClosingFromTabBrowseAndOpeningNewChatRevealTheirSelection(t *testing.T)
 	_ = b.tabsRow(b.width)
 	b.tabScroll(-1)
 	openStart(t, b)
+	b.input.setText("investigate unicode parser failures")
 	_ = b.tabsRow(b.width)
 	here := tabScrollTarget(t, b, tabHere)
-	if !here.tab.start || !strings.Contains(plain(b.tabsRow(b.width)), "New chat") {
+	if !here.tab.start || !strings.Contains(plain(b.tabsRow(b.width)), "investigate") {
 		t.Fatal("new chat failed to reveal its synthetic selected tab")
 	}
 }

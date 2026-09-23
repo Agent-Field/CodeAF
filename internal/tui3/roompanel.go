@@ -45,9 +45,10 @@ func (a *app) roomPanelView(height int) ([]railLine, int) {
 	// Column navigation retains its existing doors and their exact hit targets.
 	footer := make([]railLine, len(foot))
 	for i, s := range foot {
-		footer[i] = railLine{text: s, entry: -1, hint: i == marks.hint, stow: i == marks.door,
+		footer[i] = railLine{text: s, entry: -1, hint: i == marks.hint,
 			more: i == marks.more, keeping: i == marks.keeping}
 	}
+	// The shared sidebar header owns the hide control in this view too.
 	available := height - len(controls) - len(footer)
 	detailHeight := min(roomDetailsMax, max(available/3, 3))
 	if len(a.roomDetailContent(width)) == 0 {

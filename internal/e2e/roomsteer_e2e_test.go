@@ -87,7 +87,7 @@ func TestARoomSteerIsAnElbowAndTheRecordKeepsIt(t *testing.T) {
 	// The first launch on a state root built one minute ago sets itself up before
 	// it draws anything, so this waits for whichever door it opens on rather than
 	// for a fixed number of seconds.
-	r.waitForAny(2*time.Minute, say(t, "homeFootWord"), say(t, "starterTaskWord"))
+	r.waitForAny(2*time.Minute, say(t, "placeRestWord"), say(t, "starterTaskWord"))
 	r.keys("Escape")
 	r.waitFor(30*time.Second, "steerws · ")
 
@@ -232,7 +232,7 @@ func TestARoomSteerIsAnElbowAgainstTheShippedModel(t *testing.T) {
 	ws := newWorkspace(t, "steerlivews", false)
 	r := start(t, "afe2e_roomsteerlive", home, ws, tuiPlain, 44)
 
-	r.waitForAny(2*time.Minute, say(t, "homeFootWord"), say(t, "starterTaskWord"))
+	r.waitForAny(2*time.Minute, say(t, "placeRestWord"), say(t, "starterTaskWord"))
 	r.keys("Escape")
 	r.waitFor(30*time.Second, "steerlivews · ")
 

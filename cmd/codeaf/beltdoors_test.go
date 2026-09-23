@@ -25,7 +25,9 @@ import (
 // helpLineCap is the most lines `codeaf --help` may run to: the page was cut
 // down to the commands, grouped, and five examples, and every line past this is
 // a command that scrolled off a person's screen.
-const helpLineCap = 110
+// Part A's terminal connect door adds its two required forms and descriptions.
+// The cap moves by exactly those seven lines; unrelated help growth still fails.
+const helpLineCap = 117
 
 // doorsOffThePage are the command words main.go dispatches that `codeaf --help`
 // deliberately does NOT name, so the check below does not demand a line for

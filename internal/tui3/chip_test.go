@@ -16,9 +16,9 @@ import (
 // live prompt holds one affordance before it becomes a cheatsheet (render.go).
 func TestTheLegendNamesTheCommandKeyAndNotTheFileKey(t *testing.T) {
 	a, _, _ := hudApp(t)
-	legend := plain(a.legend(120))
+	legend := plain(a.hintRow(120))
 	if !strings.Contains(legend, "/ commands") {
-		t.Fatalf("the legend lost the one key it names: %q", legend)
+		t.Fatalf("the keys row lost the one key it names: %q", legend)
 	}
 	if strings.Contains(legend, "@ files") || strings.Contains(legend, "@") {
 		t.Fatalf("the legend still prints the file key: %q", legend)

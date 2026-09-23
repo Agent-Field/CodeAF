@@ -61,6 +61,7 @@ const (
 // switcherRow holds every kind of door the router can open. Zero fields are
 // deliberately meaningful: a row never fabricates an address it was not given.
 type switcherRow struct {
+	chatKey string
 	kind    switcherKind
 	session session.SessionRow
 	item    StandingItemView
@@ -524,9 +525,13 @@ func switcherVerbsFor(row switcherRow) []switcherVerb {
 		return nil
 	}
 	verbs := switcherQuestionVerbs(row.options)
-	verbs = append(verbs, switcherVerb{key: 'a', word: "put it away"})
+	word := "close"
+	if row.session.Archived {
+		word = "reopen"
+	}
+	verbs = append(verbs, switcherVerb{key: 'x', word: word})
 	if strings.TrimSpace(row.session.Workspace) != "" || strings.TrimSpace(row.session.ProjectDir) != "" {
-		verbs = append(verbs, switcherVerb{key: 't', word: "new chat here"}, switcherVerb{key: 'o', word: "open folder"}, switcherVerb{key: 'c', word: "copy path"})
+		verbs = append(verbs, switcherVerb{key: 'n', word: "new in project"}, switcherVerb{key: 'o', word: "open folder"}, switcherVerb{key: 'p', word: "copy project"})
 	}
 	return verbs
 }

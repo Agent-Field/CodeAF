@@ -251,6 +251,9 @@ func TestPinningARoleWritesThePinnedRolesRow(t *testing.T) {
 		t.Fatalf("pinning the planner moved the designer to %q", got)
 	}
 
+	// The list a role is pinned from stays open ([app.pickerKey]); the panel
+	// behind it is what this reads.
+	drive(t, a, key("esc"))
 	cursorToRole(t, a, roles.RolePlanner)
 	a.touch()
 	screen := plain(frame(a))

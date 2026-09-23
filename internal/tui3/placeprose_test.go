@@ -142,7 +142,7 @@ func TestEveryEmptyPlaceDrawsItsHeadingAndOneWhisper(t *testing.T) {
 			a.width, a.height = size[0], size[1]
 			lines, _, _, _ := a.placeDraw(placeFor(lab.id), a.width, a.height)
 			body := make([]string, 0, len(lines))
-			for _, line := range lines[placeHeadRows : len(lines)-placeFootRowsAt(size[1])+1] {
+			for _, line := range lines[placeHeadRows : len(lines)-placeFootRowsFor(lab.id, size[1])+1] {
 				body = append(body, strings.TrimRight(plain(line), " "))
 			}
 			want := placeWhisperLines(lab.id, a.width, newPalette(tokens.NoColor, false))

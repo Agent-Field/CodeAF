@@ -655,9 +655,6 @@ const (
 	// setupConnectFailedWord is the browser sign-in that never started: the
 	// listener, the flow, the round trip to openrouter.
 	setupConnectFailedWord = "could not reach openrouter to start the sign-in — check the network, or paste a key instead"
-	// setupBrowserWord is the browser that would not open. The link is on the
-	// screen directly above it, which is the whole of what to do about it.
-	setupBrowserWord = "could not open your browser · open the link above"
 	// setupSignInLostWord is the trip that started and did not come back —
 	// closed tab, refused page, a connection that went away mid-flight.
 	setupSignInLostWord = "the browser sign-in did not finish — enter tries again, or paste a key instead"

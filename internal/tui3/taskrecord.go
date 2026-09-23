@@ -374,6 +374,12 @@ func (a *app) taskTailRead(msg taskTailMsg) {
 	if !a.taskSheet.detailOn || taskURIPath(a.taskSheet.detail.TranscriptURI) != msg.path {
 		return
 	}
+	if node := a.taskSheetNodeFor(&a.taskSheet.detail); node != nil && node.retried {
+		current := a.currentTaskEntry(a.taskSheet.detail)
+		if current.Live() || !current.EndedAt.Equal(msg.at) {
+			return
+		}
+	}
 	a.taskSheet.tail, a.taskSheet.tailRead = msg.tail, true
 	a.taskSheet.tailKept, a.taskSheet.tailUnread = msg.kept, msg.unread
 	a.touch()
@@ -428,6 +434,8 @@ func (a *app) taskCardKey(key string) tea.Cmd {
 		return cmd
 	}
 	switch key {
+	case "enter":
+		return a.retryTask(entry)
 	case "esc", "left":
 		// ONE LAYER AT A TIME. The list is underneath and it is where this came
 		// from; a key that closed the whole page would throw away a list somebody
@@ -556,7 +564,7 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 		hits = append(hits, hit)
 	}
 
-	entry := a.taskSheet.detail
+	entry := a.currentTaskEntry(a.taskSheet.detail)
 	title, wayOut := a.taskCardTitleLine(width, entry)
 	add(title, taskCardHitHead)
 	add("", taskCardHitHead)
@@ -610,11 +618,11 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 		}
 	}
 	// phone lane: the keys line becomes bands a thumb can hit (taskphone.go).
-	if taskCardPhone(width) {
+	if taskCardPhone(width) && !a.taskCanRetry(entry) {
 		line, _ := a.taskCardBar(width)
 		add(line, taskCardHitMention)
 	} else {
-		add(" "+paintHint(hintFit(taskCardFootKeys(wayOut, a.taskSheet.awayOwner.on, asking), width-2), pal, pal.dim), taskCardHitFoot)
+		add(" "+paintHint(hintFit(a.taskRetryFoot(taskCardFootKeys(wayOut, a.taskSheet.awayOwner.on, asking), entry), width-2), pal, pal.dim), taskCardHitFoot)
 	}
 
 	// A terminal too short for the whole card keeps its head and its foot: what
@@ -957,6 +965,9 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	// survive, which is the detail column's own assembly (home.go's [homeBands]):
 	// whitespace is how this surface separates blocks.
 	var bands [][]string
+	if hint := a.taskRetryHint(entry); hint != "" {
+		bands = append(bands, wrap(hint, width))
+	}
 
 	if line := a.taskCardWhenLine(entry); line != "" {
 		bands = append(bands, []string{pal.ink(fit(line, width))})
@@ -1000,7 +1011,9 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	bands = append(bands, facts)
 
 	bands = append(bands, a.taskCardWhereRows(entry, width))
-	bands = append(bands, a.taskCardTailRows(entry, width))
+	if !entry.Live() {
+		bands = append(bands, a.taskCardTailRows(entry, width))
+	}
 
 	return taskRecordBands(bands)
 }

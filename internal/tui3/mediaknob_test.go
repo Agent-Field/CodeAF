@@ -87,19 +87,40 @@ func TestTheRowSaysWhatTheModelCanDo(t *testing.T) {
 		model Model
 		want  string
 	}{
+		// A TAIL LEAVES `text` OUT — it carries what tells rows apart, and a
+		// plain chat model has nothing to say here. The COLUMN puts it in,
+		// because a cell has to be true of every row under its head
+		// ([modalitySay]'s withText, and [modelFields] beside it).
 		{Model{ID: "vendor/plain", Input: []string{"text"}, Output: []string{"text"}}, ""},
 		{Model{ID: "vendor/quiet"}, ""},
-		{Model{ID: "vendor/seer", Input: []string{"text", "image"}, Output: []string{"text"}}, "sees"},
-		{Model{ID: "vendor/painter", Input: []string{"text"}, Output: []string{"image"}}, "draws"},
-		{Model{ID: "vendor/tts", Input: []string{"text"}, Output: []string{"speech"}}, "speaks"},
-		{Model{ID: "vendor/film", Input: []string{"text"}, Output: []string{"video"}}, "films"},
-		{Model{ID: "vendor/ear", Input: []string{"audio"}, Output: []string{"text"}}, "hears"},
-		{Model{ID: "vendor/watcher", Input: []string{"text", "video"}, Output: []string{"text"}}, "watches"},
+		{Model{ID: "vendor/seer", Input: []string{"text", "image"}, Output: []string{"text"}}, "inputs image"},
+		{Model{ID: "vendor/painter", Input: []string{"text"}, Output: []string{"image"}}, "outputs image"},
+		{Model{ID: "vendor/tts", Input: []string{"text"}, Output: []string{"speech"}}, "outputs speech"},
+		{Model{ID: "vendor/film", Input: []string{"text"}, Output: []string{"video"}}, "outputs video"},
+		{Model{ID: "vendor/ear", Input: []string{"audio"}, Output: []string{"text"}}, "inputs audio"},
+		{Model{ID: "vendor/watcher", Input: []string{"text", "video"}, Output: []string{"text"}}, "inputs video"},
 		// Input before output, and both when both are true.
-		{Model{ID: "vendor/omni", Input: []string{"text", "image"}, Output: []string{"image", "text"}}, "sees · draws"},
-		// The catalog files synthesized sound as audio or as music depending on
-		// the family; both are one word here.
-		{Model{ID: "vendor/song", Input: []string{"text"}, Output: []string{"music"}}, "speaks"},
+		{Model{ID: "vendor/omni", Input: []string{"text", "image"}, Output: []string{"image", "text"}}, "inputs image · outputs image"},
+		// THE CATALOG'S OWN WORD, WHICH IS WHY THE FOLD IS GONE. Synthesized
+		// sound is filed as `speech`, `audio` or `music` depending on the
+		// family, and the old vocabulary called all three `speaks` — so a model
+		// that writes songs and a model that reads a paragraph aloud came out
+		// of this function identically. They do not now.
+		{Model{ID: "vendor/song", Input: []string{"text"}, Output: []string{"music"}}, "outputs music"},
+		{Model{ID: "vendor/audio", Input: []string{"text"}, Output: []string{"audio"}}, "outputs audio"},
+		// THE ORDER IS OURS AND NOT THE PUBLISHED ORDER, because the catalog
+		// has none: it spells the same set `text, image, file`, `file, image,
+		// text` and `image, text, file` on neighbouring rows, and a column that
+		// echoed that would put one fact in three places.
+		{Model{ID: "vendor/jumbled", Input: []string{"file", "video", "text", "image", "audio"}}, "inputs image audio video file"},
+		{Model{ID: "vendor/sorted", Input: []string{"text", "image", "audio", "video", "file"}}, "inputs image audio video file"},
+		// A WORD THIS BUILD HAS NEVER HEARD OF IS STILL SAID, after the ones it
+		// knows. `embeddings`, `transcription` and `rerank` are in today's
+		// catalog and tomorrow's will carry something else; a surface that drew
+		// only its own vocabulary would answer "text in, text out" for a whole
+		// family it simply did not recognise.
+		{Model{ID: "vendor/scribe", Input: []string{"audio"}, Output: []string{"transcription"}}, "inputs audio · outputs transcription"},
+		{Model{ID: "vendor/odd", Input: []string{"text"}, Output: []string{"rerank", "image"}}, "outputs image rerank"},
 	} {
 		if got := ModalityWord(test.model.Input, test.model.Output); got != test.want {
 			t.Fatalf("ModalityWord(%q, in=%v out=%v) = %q, want %q",
@@ -113,7 +134,7 @@ func TestTheRowSaysWhatTheModelCanDo(t *testing.T) {
 		ID: "vendor/seer", ContextLength: 128_000,
 		Input: []string{"text", "image"}, Output: []string{"text"},
 	})
-	if note != "128k · sees" {
+	if note != "128k · inputs image" {
 		t.Fatalf("the row's note reads %q", note)
 	}
 	if plain := modelNote(Model{ID: "vendor/plain", ContextLength: 128_000, Output: []string{"text"}}); plain != "128k" {
@@ -132,7 +153,7 @@ func TestModelBySlugWarnsOnAModelThatCannotTalk(t *testing.T) {
 		t.Fatalf("the conversation moved to %q", a.model)
 	}
 	last := a.entries[len(a.entries)-1].text
-	if !strings.Contains(last, "cannot hold a conversation") || !strings.Contains(last, "speaks") {
+	if !strings.Contains(last, "cannot hold a conversation") || !strings.Contains(last, "it answers with speech") {
 		t.Fatalf("the warning reads %q", last)
 	}
 

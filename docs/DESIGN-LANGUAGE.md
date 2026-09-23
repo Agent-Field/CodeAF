@@ -609,7 +609,7 @@ copy of the corner pieces. What is true now: a question IS a different kind of
 thing from the conversation around it — it is the one object on the surface
 that is waiting for the person, it is answered and then gone, and borderless it
 read as more transcript with the answers somewhere inside it. So a question
-hangs above the input as ONE framed object: a rounded, dim edge; its title in
+hangs below the latest submitted question as ONE framed object: a rounded, dim edge; its title in
 the top edge and a right-aligned aside beside it; its keys in the bottom edge;
 and on a terminal refused box drawing, two plain rules and no sides. There is
 exactly one frame on this surface (`internal/tui3/frame.go`), its pieces are
@@ -662,3 +662,14 @@ a rung their compositor does not have. Two of our steps ended up on values this
 file already held, one hue moved five points, and everything else stayed where it
 was. A design language you adopt wholesale is a costume; the parts worth keeping
 are the ones that survive being re-derived in your own material.
+
+## A working logo is one line
+
+The running-logo studies occupy a reserved nine-column slot immediately below
+the latest submitted question, before the answer and tool details. A two-column
+gap precedes a dim two- or three-word developer caption that changes every ten seconds. Its 28-column slot
+keeps any later content aligned. A slow decoding ripple changes one letter
+at a time into symbols before restoring it, with readable pauses between passes. The row scrolls with the question and
+disappears on completion; it adds nothing to the input chrome. Chevrons and a
+gold dot use native glyphs. Accessible and small-window views retain text.
+See `docs/design/work-logo.md` for the shared geometry contract.

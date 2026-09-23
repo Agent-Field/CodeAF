@@ -20,17 +20,26 @@ has ever timed — and it tells you which one served you, in the status line:
 via cloudflare · 0.6s · 61 t/s
 ```
 
-## A model name that ends in latest, and the tilde in front of it — what the pointer names, and what via says instead
+## Why a model name starts with ~ — the tilde or squiggle in front of a model name, and whether it is a typo
 
-The model codeaf ships with is spelled `~deepseek/deepseek-v4-flash-latest`, and that is
-the name on the model picker and on the status line. Two things about it are worth
-knowing, because neither is guessable.
+Some rows on the model list are prefixed with `~`. The model codeaf ships with is spelled
+`~deepseek/deepseek-v4-flash-latest`, and that is the name on the model picker and on the
+status line.
 
 **The leading `~` is not a typo and not a home directory.** It is the router's own marker
 for a *floating* name: one that does not point at a fixed build of a model but at
-whichever build is current. Everywhere else on a terminal a leading `~` means your home
-folder, and codeaf still reads it that way when it is followed by a slash — `~/` is a
-path, `~deepseek/…` is a model.
+whichever build is current. It is part of the id as the router publishes it, not something
+codeaf puts there, and a name without one points at a fixed build. Everywhere else on a
+terminal a leading `~` means your home folder, and codeaf still reads it that way when it
+is followed by a slash — `~/` is a path, `~deepseek/…` is a model.
+
+What that costs is the next section: a floating name and the build it points at are two
+different names, and only one of them has providers behind it.
+
+## A model name that ends in latest — what the pointer names, and what via says instead
+
+`…-latest` is the other half of the same row. Two things about it are worth knowing,
+because neither is guessable.
 
 **A pointer is not a provider, so what is learned is filed under what it points at.**
 `…-latest` names whichever dated build the model's makers published most recently — today
@@ -232,9 +241,24 @@ its providers — the machines serving it — open under it, the cursor **moves 
 onto the provider you pinned or onto `auto` when you have not, and the list scrolls so the
 model and every provider are in view. `enter` pins the provider under the cursor — every request
 for that model goes there until you say otherwise — and `←` (or `tab`) walks back out.
-The hint slot says which: `→ providers · enter switch · esc` on a model,
-`enter choose · ← back · esc` inside. On the default service, the `openrouter` row means
+The hint slot says which: `→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a
+model, `← back · alt+s sort · enter choose · esc` inside. On the default service, the `openrouter` row means
 "no opinion from me — let the router balance it".
+
+## What enter on the openrouter row does — it chooses default and opens the list under it
+
+`enter` on the bare `openrouter` row writes the same answer the `default` row **inside** that
+row's own list writes: ask for no provider, let the router balance. It is that answer reached
+one press earlier, not a fourth option.
+
+**So it opens the list as well as choosing**, and the cursor lands on `default` with the
+selected band on it. Shut, the gesture reads as "you have chosen openrouter", which sounds
+like a destination and hides that there was a list of machines under it at all. Open, it
+reads as the true sentence: here are the machines this routes between, and you have chosen not
+to pick among them.
+
+Pressing `enter` there again does **not** shut it. `enter` never means "close" anywhere in
+this list — `←` or `tab` is the way back out.
 
 ## Going back to auto — unpinning with the same key that pinned, and filtering inside an open fold
 
@@ -257,11 +281,11 @@ word you type has to match, prefix first — and a query that matches none of th
 providers falls through to filtering the model list as it always has, closing the fold with
 it.
 
-**A model nobody has measured still opens**, onto `auto` and `openrouter`, with one
-line where the providers would be:
-`no provider has been measured for this model yet — providers show up after its first answer`.
-Opening it asks for that model's list of providers in the background. With the routing
-row at `off` nothing opens at all.
+**But `@cloudflare` in the picker's box finds nothing.** Until 2026-09-17 typing it there
+kept the models that provider serves and opened the first of them on it; the box searches
+names only now, and no model id carries an `@`, so the list comes back empty. The two doors
+onto a provider are still open and are the ones to use: `→` on a model lists its providers,
+and `/model @cloudflare` from the box pins one outright.
 
 **The provider you are pinned to is written on the model's name** — `deepseek-v4-flash@cloudflare`
 on the line above the box and on a phone's status deck — with the same `@` you would
@@ -277,6 +301,15 @@ somewhere else because it thinks it knows better.
 profile row when it opens: `codeaf do`, `codeaf exec`, `codeaf plan`, `codeaf run` and
 the background pass all honour the provider you picked, just as the chat does. A run from a
 terminal and a task running overnight therefore ask for your pinned provider too.
+
+## A model with no providers measured yet — the model picker says no machine has been measured for this model, and no provider list opens
+
+**A model nobody has measured still opens**, onto `auto` and `openrouter` — and
+`openrouter` opens too, because the `default` row is always inside it. Where the machines
+would be there is one line:
+`no provider has been measured for this model yet — providers show up after its first answer`.
+Opening it asks for that model's list of providers in the background. With the routing
+row at `off` nothing opens at all.
 
 ## When the provider I pinned cannot serve the model — a machine that will not serve it, the one thing that ends a pin without me
 
@@ -954,7 +987,7 @@ being drawn is the bug above, and it is worth reporting.
 provider is demanded on your own turn, on a task room you are sitting in front
 of, and on a headless `codeaf exec` you typed — all three are you, waiting. The
 errands that run beside a turn send no provider name at all: a conversation's
-two-word title, the memory reflex, the question that routes your message, a
+conversation title, the memory reflex, the question that routes your message, a
 hand asking a model about a document, a subharness node. The row is spelled
 `lane.talk` and the slot is its whole scope.
 
