@@ -2684,6 +2684,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the account a person owns and the terminal door they want to use.
 		{"sign in with chatgpt", "models-and-cost"},
 		{"use my codex plan", "models-and-cost"},
+		// #1383 and #1391: what a Codex model holds, and who answered it.
+		{"what context window does a codex model have", "models-and-cost"},
+		{"which server answered my codex request in the call lines", "sessions-and-rewind"},
 		{"connect from the terminal without opening the chat", "running-from-the-terminal"},
 		{"how do I read a plan file back as a table", "running-from-the-terminal"},
 		{"why does codeaf show --help print a file error", "running-from-the-terminal"},
