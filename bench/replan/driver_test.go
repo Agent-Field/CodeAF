@@ -139,16 +139,16 @@ func TestEveryCellHasAFixtureAStrangerCanRun(t *testing.T) {
 
 func TestEditedFilesReadsTheBeltsEditHands(t *testing.T) {
 	for command, want := range map[string][]string{
-		"codeaf patch canon.go --old 'a' --new 'b'":                   {"canon.go"},
-		"cat > money/money.go <<'EOF'\nif a > b {}\nEOF":              {"money.go"},
-		"sed -i 's/x/y/' email.go dedup.go":                           {"dedup.go", "email.go"},
-		"go test ./... 2>&1 | tail -5":                                nil,
-		"sed -n '1,40p' canon.go":                                     nil,
-		"cat canon.go > /dev/null":                                    nil,
-		"rm -rf legacy && go build ./...":                             {"legacy/"},
-		"git rm -r -q legacy/":                                        {"legacy/"},
-		"echo x | tee -a notes.txt":                                   nil,
-		"python3 - <<'EOF'\nopen('slug.go','w').write(s)\nEOF":        {"slug.go"},
+		"codeaf patch canon.go --old 'a' --new 'b'":                    {"canon.go"},
+		"cat > money/money.go <<'EOF'\nif a > b {}\nEOF":               {"money.go"},
+		"sed -i 's/x/y/' email.go dedup.go":                            {"dedup.go", "email.go"},
+		"go test ./... 2>&1 | tail -5":                                 nil,
+		"sed -n '1,40p' canon.go":                                      nil,
+		"cat canon.go > /dev/null":                                     nil,
+		"rm -rf legacy && go build ./...":                              {"legacy/"},
+		"git rm -r -q legacy/":                                         {"legacy/"},
+		"echo x | tee -a notes.txt":                                    nil,
+		"python3 - <<'EOF'\nopen('slug.go','w').write(s)\nEOF":         {"slug.go"},
 		"cd /tmp/w/fixture && codeaf patch ./export/export.go --old a": {"export.go"},
 	} {
 		got := editedFiles(command)

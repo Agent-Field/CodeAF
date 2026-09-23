@@ -352,15 +352,15 @@ type row struct {
 	MeanParallel float64
 	MultiShare   float64 // share of polls with two or more workers
 
-	TestRuns       int
-	TestFailed     int
-	FailedCmds     int
-	OverlapFiles   int    // files edited by two or more tasks
-	OverlapNames   string // which
-	CellMetric     string // the cell's own measure, spelled key=value;...
-	SpendByRole    string
-	ModelsByUSD    string
-	RunDir         string
+	TestRuns     int
+	TestFailed   int
+	FailedCmds   int
+	OverlapFiles int    // files edited by two or more tasks
+	OverlapNames string // which
+	CellMetric   string // the cell's own measure, spelled key=value;...
+	SpendByRole  string
+	ModelsByUSD  string
+	RunDir       string
 }
 
 var csvHeader = []string{
