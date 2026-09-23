@@ -90,6 +90,11 @@ func TestDiscoverInstalledEnabledPluginSkill(t *testing.T) {
 func TestDiscoverIgnoresPluginsClaudeCodeWouldNotLoad(t *testing.T) {
 	root := pluginFixture(t)
 	found := discover(t, filepath.Join(root, "elsewhere"), filepath.Join(root, "home"))
+	// The control first: the same registry's live plugin IS read, so the
+	// absences below are the rule at work and not a scan that reads no plugin.
+	if len(byName(found, "tidy-commits")) != 1 {
+		t.Fatalf("the live plugin's skill is missing, so the exclusions below prove nothing: %+v", found)
+	}
 	for _, name := range []string{"dormant-helper", "stale-version", "never-installed", "escaped", "project-helper"} {
 		if hits := byName(found, name); len(hits) > 0 {
 			t.Errorf("%s was discovered but its plugin is not live here: %+v", name, hits)
