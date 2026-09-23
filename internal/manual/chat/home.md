@@ -873,9 +873,39 @@ the other window untouched. The moment it lets go, the row opens here.
 from their checkpoint in this window. The unsent sentence comes too.
 
 **If nothing ever answers, the wait ends and says so.** A request is only good for ten
-minutes; past that it says `that window did not answer — it still has it` and
-`enter asks again`. **And if it comes free while you are looking at something else**,
-nothing is opened under you: home says `it came free — enter opens it` when you come back.
+minutes; past that it says `that window did not answer — it still has it`, names the window
+(`held by pid <n> · <terminal> · <build>`) and `enter asks again`. **And if it comes free
+while you are looking at something else**, nothing is opened under you: home says
+`it came free — enter opens it` when you come back.
+
+## The other window will not let go — who is holding my conversation, enter stops that window, pid, terminal, build
+
+**After fifteen seconds with no answer, the card names the window that has it** — from the
+record that window keeps beside the conversation — and says what `enter` now does:
+
+```
+held by pid 58673 · ttys004 · a1b2c3d4 built 2026-09-21 09:00
+enter stops that window
+```
+
+**`enter` asks first**: `Stop that window?`, with what it costs — it stops its reply and lets
+go of every conversation it holds — and the cursor on `keep waiting`. Press `1`, then
+`enter`, to `stop it`. The foot says `asked pid <n> to stop — the conversation comes here as
+it lets go`: that window leaves the way a `kill` asks it to, closing its conversations and
+keeping their transcripts, and the row opens here the moment it lets go. A window held up
+behind its own work may not finish leaving; asking a second time says
+`told pid <n> to stop now — it exits without finishing`, and it exits at once.
+
+This works on any window, whatever build it is: a window that has already gone holds
+nothing and the row simply opens. The window is only ever stopped when you answer
+`stop it`, and only while it still holds the conversation.
+
+**It used to not move at all from an ordinary window.** When the conversation was held by a
+window with no engine — `--no-host`, or an older codeaf — pressing `enter` on an ordinary
+`codeaf chat` printed `this conversation is open in another window — open codeaf here and
+press enter on it to move it here`, the sentence you had just followed, and nothing was
+asked. It asks now, exactly as above. An engine holding a conversation that a window asked
+for lets go of it too.
 
 ## Open another project from home
 

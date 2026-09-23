@@ -2768,6 +2768,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the chat know what is running while I talk to it", "worker-harness"},
 		{"it kept going after I said to skip that part", "worker-harness"},
 		{"how do I drop work I no longer want", "worker-harness"},
+		// #1430: the engine's own account of itself, the window that will not
+		// let go, and the time limit that now closes the window.
+		{"which engine process is holding my folder", "staying-on-that-machine"},
+		{"the other window will not let go of my conversation", "home"},
+		{"does max-hours close the window when the time runs out", "starting-codeaf"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
