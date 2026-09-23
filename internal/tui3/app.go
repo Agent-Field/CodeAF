@@ -7194,7 +7194,6 @@ func (a *app) slash(line string) tea.Cmd {
 		// the shape every choice row on this surface refuses in.
 		return a.runEffort(rest)
 
-
 	case "task":
 		return a.runTaskCommand(rest)
 
