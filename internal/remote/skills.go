@@ -3,6 +3,7 @@ package remote
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -18,12 +19,14 @@ import (
 // listed every skill a person had and answered every choice with "this
 // conversation cannot carry attached skills".
 //
-// EVERY DOOR IS A CALL, AND NONE OF THEM IS ON A FRAME. The picker reads the
-// shelf and the attachment when the list opens and after a toggle, and the
-// tray chip reads the attachment when it draws — which it does only while one
-// is on, and which is the one read here that is not a keystroke. It stays a
-// call anyway, because the attachment is the session's and a copy held at
-// this end would be a second answer the moment another window changed it.
+// THE ATTACHMENT COMES DOWN UNASKED; EVERYTHING ELSE IS A CALL. The tray chip
+// reads the attachment on every frame it draws, so it rides the facts
+// photograph ([session.Facts.Skills]) and [Agent.AttachedSkills] is a read of
+// the replica — the engine states the set again whenever a door moves it, so
+// another window's change reaches this chip without being asked for. The
+// shelf and the three doors that move the attachment are calls, asked off the
+// surface's update loop (internal/tui3's offloop.go), and each one that moves
+// the set writes the answer into the replica so the next frame draws it.
 //
 // AND THE CAPABILITY IS THE WELCOME'S TO ANSWER ([Welcome.Skills]): every
 // connection has these methods, so the type assertion cannot tell a far engine
@@ -64,6 +67,7 @@ func (a *Agent) AttachSkills(names ...string) []string {
 	}
 	var held []string
 	_ = json.Unmarshal(payload, &held)
+	a.c.facts.setSkills(held)
 	return held
 }
 
@@ -78,23 +82,25 @@ func (a *Agent) DetachSkill(name string) bool {
 	}
 	var was bool
 	_ = json.Unmarshal(payload, &was)
+	if was {
+		kept := make([]string, 0, len(a.AttachedSkills()))
+		for _, held := range a.AttachedSkills() {
+			if !strings.EqualFold(held, name) {
+				kept = append(kept, held)
+			}
+		}
+		a.c.facts.setSkills(kept)
+	}
 	return was
 }
 
-// AttachedSkills is the set as the far conversation holds it, in attachment
-// order. A link that cannot answer reads as nothing attached, which is also
-// what the chip then draws: nothing, rather than a stale name.
+// AttachedSkills is the set as the far conversation last stated it, in
+// attachment order, read off the replica and never asked for.
 func (a *Agent) AttachedSkills() []string {
 	if !a.SkillsSupported() {
 		return nil
 	}
-	payload, err := a.c.call(nil, MethodAttachedSkills, nil)
-	if err != nil {
-		return nil
-	}
-	var held []string
-	_ = json.Unmarshal(payload, &held)
-	return held
+	return append([]string(nil), a.c.facts.read().Skills...)
 }
 
 // ClearAttachedSkills takes every name back off and says how many were on.
@@ -108,6 +114,7 @@ func (a *Agent) ClearAttachedSkills() int {
 	}
 	var count int
 	_ = json.Unmarshal(payload, &count)
+	a.c.facts.setSkills(nil)
 	return count
 }
 

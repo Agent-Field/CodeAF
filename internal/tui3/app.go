@@ -1767,7 +1767,12 @@ type app struct {
 	// (skillpick.go). It holds no attachment state of its own: the names live
 	// in the session, and the tray chip reads them there.
 	skillPick skillPick
-	connNames map[string]string
+	// skillShelfSeen is the session's shelf as its last reading answered, nil
+	// until one has (skillpick.go's [app.readSkillShelf]). It outlives the
+	// list, so a list opened again draws the last answer while the next read
+	// is on its way.
+	skillShelfSeen *skillShelfReading
+	connNames      map[string]string
 	connFlows map[string]*connect.Flow
 	// codexFlow is the model-service browser sign-in. Its result is tokens rather
 	// than a connected-account status, so it cannot live in connFlows; it is held
@@ -8543,9 +8548,9 @@ func (a *app) syncLists() tea.Cmd {
 	// AND THE SKILL PICKER IS THE FOURTH OF THEM, on the harness picker own
 	// terms: the same space that begins an argument begins the shelf
 	// (skillpick.go).
-	if a.syncSkillPick() {
+	if open, read := a.syncSkillPick(); open {
 		a.comp.close()
-		return nil
+		return read
 	}
 	was := a.comp.open
 	a.comp.sync(&a.input)

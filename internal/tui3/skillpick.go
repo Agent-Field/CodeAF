@@ -322,20 +322,70 @@ func skillPickQuery(line string) (string, bool) {
 // syncSkillPick opens, narrows or closes the picker from what is in the draft,
 // and reports whether it is up. It is called from [app.syncLists] beside the
 // harness picker, and the two can never be open together: a draft is one line.
-func (a *app) syncSkillPick() bool {
+//
+// THE LIST OPENS ON THE KEYSTROKE AND THE SHELF ARRIVES AFTER IT. The folders
+// on disk and the attachment the facts already carry are drawn at once; the
+// session's shelf is a door, asked off the update loop ([app.readSkillShelf]),
+// and the list is redrawn from its answer with the cursor where it was.
+func (a *app) syncSkillPick() (bool, tea.Cmd) {
 	query, ok := skillPickQuery(a.input.String())
 	if !ok {
 		a.skillPick.close()
-		return false
+		return false, nil
 	}
 	if !a.skillPick.open {
 		a.skillPick.start(a.skillPickList(), query)
-		return true
+		return true, a.readSkillShelf()
 	}
 	if query != a.skillPick.query {
 		a.skillPick.rank(query)
 	}
-	return true
+	return true, nil
+}
+
+// skillShelfReading is the session's shelf as the last read of it answered:
+// the active skills, and whether there was a shelf to read at all.
+type skillShelfReading struct {
+	rows     []shelfSkillRow
+	readable bool
+}
+
+// readSkillShelf asks the session for its shelf off the update loop and
+// redraws the open list from the answer. It is a read nobody pressed for, so
+// it is asked beside the door line rather than in it (offloop.go).
+func (a *app) readSkillShelf() tea.Cmd {
+	shelf, ok := a.agent.(skillShelf)
+	if !ok {
+		return nil
+	}
+	return a.besideLine(func() func(bool) tea.Cmd {
+		facts, err := shelf.SkillFacts(store.FactActive, skillPickListLimit)
+		reading := &skillShelfReading{readable: err == nil}
+		for _, fact := range facts {
+			reading.rows = append(reading.rows, shelfSkillRow{name: fact.SkillName(), desc: strings.TrimSpace(fact.Body)})
+		}
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			a.skillShelfSeen = reading
+			if a.skillPick.open {
+				a.restartSkillPick()
+				a.touch()
+			}
+			return nil
+		}
+	})
+}
+
+// restartSkillPick rebuilds the open list from what is known now, keeping the
+// query and, where it still points at a row, the cursor.
+func (a *app) restartSkillPick() {
+	cursor, query := a.skillPick.cursor, a.skillPick.query
+	a.skillPick.start(a.skillPickList(), query)
+	if cursor < a.skillPick.count() {
+		a.skillPick.cursor = cursor
+	}
 }
 
 // skillPickList resolves the shelf into rows: the attached ones first, in
@@ -427,24 +477,19 @@ type shelfSkillRow struct {
 	desc string
 }
 
-// shelfSkillFacts is the active shelf as the SESSION reads it, newest first
-// as the store returns it, and whether there is a shelf at all. A read that
-// fails is no shelf: the rows the disk gives are still listed, and each says
-// it cannot be attached.
+// shelfSkillFacts is the active shelf as the SESSION last answered it, newest
+// first as the store returns it, and whether there is a shelf at all. A read
+// that failed is no shelf: the rows the disk gives are still listed, and each
+// says it cannot be attached. A shelf not yet answered is not a missing one —
+// no row is marked until the session has said so.
 func (a *app) shelfSkillFacts() ([]shelfSkillRow, bool) {
-	shelf, ok := a.agent.(skillShelf)
-	if !ok {
+	if _, ok := a.agent.(skillShelf); !ok {
 		return nil, false
 	}
-	facts, err := shelf.SkillFacts(store.FactActive, skillPickListLimit)
-	if err != nil {
-		return nil, false
+	if a.skillShelfSeen == nil {
+		return nil, true
 	}
-	out := make([]shelfSkillRow, 0, len(facts))
-	for _, fact := range facts {
-		out = append(out, shelfSkillRow{name: fact.SkillName(), desc: strings.TrimSpace(fact.Body)})
-	}
-	return out, true
+	return a.skillShelfSeen.rows, a.skillShelfSeen.readable
 }
 
 // skillShelf is the session's own reading of its shelf, asserted on the agent
@@ -537,14 +582,40 @@ func (a *app) skillToggled() tea.Cmd {
 		// enter: it falls through to the editor and sends what was typed.
 		return nil
 	}
-	if row.on {
-		door.DetachSkill(row.name)
-	} else {
-		door.AttachSkills(row.name)
+	// THE MARK MOVES ON THE KEYSTROKE AND THE DOOR IS ASKED OFF THE LOOP. The
+	// row turns over at once because this window knows what it just asked for;
+	// the session's answer then re-marks every row from the set it holds.
+	name, on := row.name, row.on
+	a.markSkillRow(name, !on)
+	a.touch()
+	return a.offLoop(func() func(bool) tea.Cmd {
+		if on {
+			door.DetachSkill(name)
+		} else {
+			door.AttachSkills(name)
+		}
+		return a.skillsMoved
+	})
+}
+
+// skillsMoved is the fold every attachment door hands back: the rows are
+// re-marked from the set the session now holds.
+func (a *app) skillsMoved(here bool) tea.Cmd {
+	if !here {
+		return nil
 	}
 	a.remarkSkillRows()
 	a.touch()
 	return nil
+}
+
+// markSkillRow turns one row's mark over without asking anybody.
+func (a *app) markSkillRow(name string, on bool) {
+	for i := range a.skillPick.rows {
+		if strings.EqualFold(a.skillPick.rows[i].name, name) {
+			a.skillPick.rows[i].on = on
+		}
+	}
 }
 
 // remarkSkillRows rewrites the on marks against the session after a toggle,
@@ -582,13 +653,18 @@ func (a *app) skillFolderAttached(door skillAttacher) tea.Cmd {
 		}
 		name = read
 	}
-	door.AttachSkills(name)
-	// The list is rebuilt rather than patched, so the skill just attached is
-	// on it at the top where the attached ones open.
-	query := a.skillPick.query
-	a.skillPick.start(a.skillPickList(), query)
-	a.touch()
-	return nil
+	// The list is rebuilt rather than patched once the session answers, so the
+	// skill just attached is on it at the top where the attached ones open.
+	return a.offLoop(func() func(bool) tea.Cmd {
+		door.AttachSkills(name)
+		return func(here bool) tea.Cmd {
+			if here && a.skillPick.open {
+				a.skillPick.start(a.skillPickList(), a.skillPick.query)
+				a.touch()
+			}
+			return nil
+		}
+	})
 }
 
 // expandSkillPath turns a typed path into one the file system answers to:
@@ -679,8 +755,7 @@ func (a *app) skillPickPress(y int) (tea.Cmd, bool) {
 		return nil, false
 	}
 	a.skillPick.cursor = at
-	a.skillToggled()
-	return nil, true
+	return a.skillToggled(), true
 }
 
 // ── the chip ────────────────────────────────────────────────────────────────
@@ -745,19 +820,17 @@ func skillChipMark(pal palette) string {
 	return pal.glyph(tokens.GDoneCell)
 }
 
-// dropSkillChip takes every attached skill back off, and reports whether it
-// changed anything. It is the ✕ on the chip.
-func (a *app) dropSkillChip() bool {
+// dropSkillChip takes every attached skill back off, off the update loop, and
+// answers nil when there was nothing on to take off. It is the ✕ on the chip.
+func (a *app) dropSkillChip() tea.Cmd {
 	door, ok := a.skillDoor()
-	if !ok {
-		return false
+	if !ok || len(a.attachedSkillNames()) == 0 {
+		return nil
 	}
-	if door.ClearAttachedSkills() == 0 {
-		return false
-	}
-	a.remarkSkillRows()
-	a.touch()
-	return true
+	return a.offLoop(func() func(bool) tea.Cmd {
+		door.ClearAttachedSkills()
+		return a.skillsMoved
+	})
 }
 
 // skillUnavailableWord is what the surface says when the session under it

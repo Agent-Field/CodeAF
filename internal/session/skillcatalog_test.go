@@ -71,7 +71,9 @@ func TestSkillCatalogNamesEverySkillOnAnOrdinaryShelf(t *testing.T) {
 // Every description is clipped to one line of its own budget.
 func TestSkillCatalogIsBoundedByBytes(t *testing.T) {
 	brain := openTestBrain(t)
-	long := strings.Repeat("a very thorough description of what this skill is for ", 12)
+	// Long enough to be clipped, and short enough for the store's own limit on
+	// one fact.
+	long := strings.Repeat("a very thorough description of what this skill is for ", 8)
 	for index := 0; index < 300; index++ {
 		activeSkill(t, brain, "harness:claude", long, "/shelf/skill-with-a-longish-name-"+strconv.Itoa(1000+index))
 	}

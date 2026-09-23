@@ -354,9 +354,11 @@ func TestTheSkillChipCountsAndClearsInOneGesture(t *testing.T) {
 	if chip := strings.Join(a.skillTrayCells(), " "); !strings.Contains(chip, "2 skills") {
 		t.Fatalf("two attached skills did not count themselves: %q", chip)
 	}
-	if !a.dropSkillChip() {
+	drop := a.dropSkillChip()
+	if drop == nil {
 		t.Fatal("the ✕ changed nothing")
 	}
+	drain(t, a, drop)
 	if len(agent.held) != 0 {
 		t.Fatalf("the ✕ left %v attached", agent.held)
 	}

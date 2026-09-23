@@ -2551,7 +2551,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, nil
 
 	case MethodAttachSkills, MethodDetachSkill, MethodAttachedSkills, MethodClearSkills, MethodSkillShelf:
-		return serveSkills(agent, call)
+		payload, err := serveSkills(agent, call)
+		// A door that moved the attachment is a fact every window's chip is
+		// drawing, so every surface is told, not only the one that asked.
+		if err == nil && call.Method != MethodAttachedSkills && call.Method != MethodSkillShelf {
+			s.session.announce()
+		}
+		return payload, err
 
 	case MethodEffort, MethodResolvedEffort, MethodSetEffort:
 		door, ok := agent.(effortDoor)
