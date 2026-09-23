@@ -1,6 +1,7 @@
 ---
 kind: fixed
 title: a deliverable path on another machine no longer refuses the task
+pr: 1421
 surface: [engine]
 invalidates:
   - "`groundLint` refused a task whose deliverable named any absolute path outside its ground, whether or not that path was a directory on this machine. A path is a place only when the directory it names exists here and is not the filesystem root. A directory merely somewhere along the path does not count: on macOS `/home` is a symlink to a directory that is there, so a path from another host that begins `/home` was still read as a place and still refused."
