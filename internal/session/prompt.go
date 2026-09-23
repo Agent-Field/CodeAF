@@ -550,8 +550,61 @@ func (a *Agent) rerenderSystemLocked(now time.Time) {
 	if !a.systemOwn {
 		return
 	}
-	a.system = renderSystemAt(a.config, now)
+	a.system = renderSystemAt(a.liveModelConfigLocked(), now)
 	a.systemAt = now
+	a.refreshSystemLocked()
+}
+
+// liveModelConfigLocked is this agent's config with the model it is talking to
+// NOW in place of the one it was launched on, which is the config the page is
+// rendered from. The two differ after a `/model`: [Agent.setModel] moves
+// [Agent.model] and leaves [Config.Model] where the launch put it, and a page
+// rendered from the launch model names that model in the one line that is
+// supposed to say which model wrote the work — `Assisted-by`
+// (beltfacts.go's attribution fact).
+//
+// The caller holds a.mu.
+func (a *Agent) liveModelConfigLocked() Config {
+	config := a.config
+	if model := strings.TrimSpace(a.model); model != "" {
+		config.Model = model
+	}
+	return config
+}
+
+// followModelOnThePageLocked re-renders the page after the model changed, and
+// touches nothing when the page does not say which model it is.
+//
+// THE `Assisted-by` LINE NAMES THE MODEL, AND IT WENT STALE AFTER `/model`. The
+// page was rendered once from [Config.Model] and a switch never rendered it
+// again, so every commit after one still credited the model the conversation
+// was launched on.
+//
+// WHY THIS DOES NOT COST THE PREFIX CACHE ANYTHING IT WAS STILL GOING TO HAVE.
+// A prompt cache belongs to one model: the first request on the model just
+// picked is written cold whatever the page says, so re-rendering it on the
+// switch buys the right name for nothing. Two things keep it that way:
+//
+//   - THE CLOCK IS NOT MOVED. The page is rendered at [Agent.systemAt], the
+//     moment it was last rendered, so the only bytes that change are the ones
+//     that follow the model. Switching back to the model before is then the
+//     page that model already has cached, byte for byte, rather than a second
+//     cold write for a newer minute.
+//   - A PAGE THAT DOES NOT NAME THE MODEL IS LEFT ALONE. With attribution off
+//     the render comes back identical and message[0] is not touched at all.
+//
+// A prompt this agent did not write is never re-rendered ([Agent.systemOwn]).
+//
+// The caller holds a.mu.
+func (a *Agent) followModelOnThePageLocked() {
+	if !a.systemOwn {
+		return
+	}
+	page := renderSystemAt(a.liveModelConfigLocked(), a.systemAt)
+	if page == a.system {
+		return
+	}
+	a.system = page
 	a.refreshSystemLocked()
 }
 

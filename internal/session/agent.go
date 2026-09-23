@@ -699,6 +699,7 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// with the session (loop.go's [Agent.noteModelWindow]).
 	a.noteModelWindow(model)
 	a.scrubBlindImagePartsLocked(model)
+	a.followModelOnThePageLocked()
 	a.mu.Unlock()
 	// AND THE BEAT IS TOLD, OUTSIDE THE LOCK. Everything above is about this
 	// session's own state; this is about a fetch somebody else will do, and a
@@ -1176,6 +1177,13 @@ type userMessage struct {
 	// the messages this turn reasons from carry the rest.
 	said string
 
+	// lead is how many of the message's leading content parts the SESSION put
+	// there, for a message whose parts are not all words: a picture message the
+	// plan digest opens (plandigest.go's [planDigestedParts]). [userMessage.said]
+	// cannot carry that case, because it keeps words alone and the journal of a
+	// picture message must keep its pictures. Zero on every other message.
+	lead int
+
 	// authored marks a line the SESSION wrote rather than the person: every note
 	// that goes through [Agent.enqueueNote] or the watch-only
 	// [Agent.enqueueAmbient]. It is WHO SAID IT, where wake is WHAT IS OWED, and
@@ -1627,7 +1635,35 @@ func (u userMessage) empty() bool {
 // text is the message's words — what a queued message says, with its parts left
 // out. It is what a reader of the queue wants: the pictures are not a line of
 // the conversation, and a data URL rendered into one would be unreadable.
-func (u userMessage) text() string { return messageContentText(u.message) }
+//
+// AND IT IS THE PERSON'S WORDS, never the session's in front of them. A message
+// the plan digest or a standing mark opens is read by the model whole, but what
+// a reader of the message wants — the recall, the owed answer, the ask a
+// `forward` carries into a task — is what the person typed, and a digest read
+// back as their ask would forward the run's own rows into a worker as the
+// person's sentence.
+func (u userMessage) text() string {
+	if u.said != "" {
+		return u.said
+	}
+	return messageContentText(u.journaled())
+}
+
+// journaled is the message as the record keeps it: the person's own sentence
+// where the session wrote something in front of it ([userMessage.said]), the
+// message without the session's leading parts where those are separate parts
+// ([userMessage.lead]), and the message itself every other time.
+func (u userMessage) journaled() ai.Message {
+	if u.said != "" {
+		return textMessage("user", u.said)
+	}
+	if u.lead > 0 && u.lead <= len(u.message.Content) {
+		kept := u.message
+		kept.Content = append([]ai.ContentPart(nil), u.message.Content[u.lead:]...)
+		return kept
+	}
+	return u.message
+}
 
 // startTurnLocked begins one turn on a transcript the caller has already
 // checked, with a.mu held. It is the ONE place a turn starts: Submit reaches it
@@ -2486,10 +2522,7 @@ func (a *Agent) recordUserLocked(user userMessage) {
 	// instruction the person never typed and never sees (standing_mark.go); the
 	// turn reasons from it and nothing outlives it, because a replay is a
 	// reading of the conversation and that paragraph was never part of one.
-	kept := user.message
-	if user.said != "" {
-		kept = textMessage("user", user.said)
-	}
+	kept := user.journaled()
 	// The store's copy is taken before the journal's early return: a session
 	// with no file still has a conversation worth keeping, and the person's own
 	// words are the last thing that should depend on which layout they opened in.

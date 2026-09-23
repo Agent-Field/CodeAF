@@ -369,6 +369,12 @@ var nonSettingProfileFields = []string{
 	KeyResponseLiftAfter,
 	KeyResponseLiftCap,
 	keyModelSources,
+	// THE TALK LANE'S BORROW FLAG. It is no row of its own — it rides the
+	// `provider` row's words (`pinned: cloudflare, borrow when slow`) — but
+	// [WriteLaneRow] writes it on EVERY save of that row, `false` included, and
+	// [LaneBorrowAt] reads it. Left off this list, every launch after the row
+	// was saved told the person their profile carried an ignored key.
+	LaneBorrowKey(LaneSlotTalk),
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once

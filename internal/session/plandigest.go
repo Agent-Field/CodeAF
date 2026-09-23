@@ -31,13 +31,16 @@ package session
 //
 // THE PERSON NEVER SEES IT. The digest rides in the message this turn reasons
 // from and nowhere else: [Agent.recordUserLocked] journals their own sentence
-// through [userMessage.said], so a resume, an export and the transcript on
-// screen all show what they typed. That is standing_mark.go's law, applied to
-// the second door that needs it.
+// through [userMessage.said] (or past [userMessage.lead], on a message with
+// pictures), so a resume, an export and the transcript on screen all show
+// what they typed. That is standing_mark.go's law, applied to the second door
+// that needs it.
 
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
@@ -91,7 +94,11 @@ func (a *Agent) planDigest() string {
 	if !planAnyOpen(rows) {
 		return ""
 	}
+	// THE LABELS ARE TAKEN BEFORE THE ROWS ARE REORDERED. A part's `#2.1` is its
+	// place under its parent in the store's own order, which is the order the
+	// rows arrive in, so reading them after the reorder would renumber parts.
 	labels := planTaskLabels(rows)
+	rows = planDigestOrder(rows)
 	var b strings.Builder
 	b.WriteString(planDigestHeading + "\n")
 	shown := 0
@@ -100,7 +107,14 @@ func (a *Agent) planDigest() string {
 			break
 		}
 		shown++
-		fmt.Fprintf(&b, "%s · %s · %s", labels[row.ID], cutChars(row.Title, planDigestLineChars), row.Status)
+		// THE RAIL'S WORD AND NOT THE STORE'S ([PlanTaskRow.StateWord]). The
+		// person reads `stopped` and `running` beside the row; a digest that said
+		// `cancelled` and `claimed` of the same rows would have the conversation
+		// and the person describing one plan in two vocabularies.
+		fmt.Fprintf(&b, "%s · %s", labels[row.ID], cutChars(row.Title, planDigestLineChars))
+		if word := row.StateWord(); word != "" {
+			fmt.Fprintf(&b, " · %s", word)
+		}
 		// THE NEWEST NOTE AND NOTHING OLDER. A note is the one thing on a row
 		// that can say the plan has gone wrong — a worker's finding, the
 		// person's own word from the task page — and the newest is the one that
@@ -118,6 +132,30 @@ func (a *Agent) planDigest() string {
 	}
 	b.WriteString(planDigestRule)
 	return b.String()
+}
+
+// planDigestOrder is the rows with THE LIVE RUN FIRST, and every ended run's
+// rows after it in the order they came. Store order is kept inside each half.
+//
+// [Agent.PlanTasks] answers ended runs oldest first and the live run last,
+// which is the right order for a list a person scrolls and the wrong one for a
+// digest cut at [planDigestRows]: a conversation with eight rows of history
+// behind it was handed eight `cancelled` rows of runs long over and not one
+// line of the run the person was talking about. The rows the bound leaves out
+// are the old ones, and they are still counted.
+func planDigestOrder(rows []PlanTaskRow) []PlanTaskRow {
+	ordered := make([]PlanTaskRow, 0, len(rows))
+	for _, row := range rows {
+		if !row.Archived {
+			ordered = append(ordered, row)
+		}
+	}
+	for _, row := range rows {
+		if row.Archived {
+			ordered = append(ordered, row)
+		}
+	}
+	return ordered
 }
 
 // planAnyOpen answers whether anything in the run is still going. A run whose
@@ -144,4 +182,21 @@ func planDigested(digest, text string) userMessage {
 		message: textMessage("user", digest+"\n\n"+text),
 		said:    text,
 	}
+}
+
+// planDigestedParts is [planDigested] for a message another door has already
+// assembled out of parts — the person's words and the pictures they attached
+// (image.go). The digest is its own leading part, and [userMessage.lead]
+// counts it, so the journal keeps the pictures and the words and not the rows.
+//
+// EVERY DOOR THE PERSON SPEAKS THROUGH OPENS ON THE ROWS. The digest reached
+// the plain sentence only, so a person who changed their mind while attaching a
+// screenshot, or while marking a draft standing, was talking to a conversation
+// that could not see what was running — the one failure this file exists to end.
+func planDigestedParts(digest string, user userMessage) userMessage {
+	parts := make([]ai.ContentPart, 0, len(user.message.Content)+1)
+	parts = append(parts, ai.ContentPart{Type: "text", Text: digest})
+	user.message.Content = append(parts, user.message.Content...)
+	user.lead++
+	return user
 }

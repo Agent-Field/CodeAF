@@ -299,16 +299,21 @@ stop it`.
 
 ## Does the chat know what is running while I talk to it
 
-It does, while a run is live. Everything you type arrives with the run's rows in
-front of it: one line per task, the number you see on the side list, its title,
-whether it is running or queued or done, and the newest note left on it. You
-never see that block — the conversation reads it, and your own sentence is what
-stays on the screen and in the transcript.
+It does, while a run is live. Everything you send arrives with the run's rows in
+front of it — a plain sentence, a message with pictures attached, and a draft you
+marked standing alike: one line per task, the number you see on the side list,
+its title, its state in the side list's own words (`queued`, `running`, `done`,
+`stopped`, `incomplete`, `your call`), and the newest note left on it. You never
+see that block — the conversation reads it, and your own sentence is what stays
+on the screen and in the transcript.
 
 - **It sees rows, never results.** The block carries no result, no steps and no
   output; those cost context and it can ask for them with `tasks` when it has a
   reason to. A run wider than eight rows shows eight and says how many more
   there are.
+- **The live run comes first.** Rows of runs this conversation finished earlier
+  come after the live run's, so history never pushes the work you are talking
+  about out of the eight.
 - **Only while something is open.** A conversation that has handed nothing out,
   or whose run has finished every row, gets none of this and pays nothing for it.
 - **You are looking at the same picture.** The rows it reads are the rows on your
@@ -341,16 +346,41 @@ rest alone.
 If it acted on the wrong row, say so — and if it kept going when you meant it to
 drop something, the plainest fix is to name the row: "drop #2".
 
+## say and forward on a row of a run, #2 or #2.1
+
+The conversation reaches every row of a live run by the name the side list and
+its own digest show — `#2` for a task it handed off, `#2.1` for a part the run
+made for itself — with `tasks` and `stop` or `note`. Two more verbs of `tasks`
+answer for those rows too, in words that say what happened:
+
+- **`say`** on a row of a run is written onto the row as a note, because on a run
+  that is what a line to the worker is. The answer opens "A row of the run takes
+  `say` as a note, so your line went through `note`:", and the worker is handed
+  it the way it is handed any note.
+- **`forward`** on a row of a run is refused. It exists to move what a task is
+  judged by, and nothing the conversation holds does that for a run's task. The
+  refusal says so and names what does exist: `note` to put your words on the row
+  as information, or `stop` and a fresh hand-off when the work itself is now
+  wrong.
+
+Neither ever answers that the row does not exist. A number no run of this
+conversation holds still goes on to the ordinary task reader.
+
 ## Does a note actually reach the worker, when does it read it, does it have to ask for it
 
-Yes, and it does not have to ask. A note left on a task is handed to that task's
-worker between its steps, in the gap after one command has finished and before
-it chooses the next. It is not something the worker has to think to look for.
+Yes, and it does not have to ask. The run looks for unread notes each time the
+worker finishes a step, and hands them over at once, through the same door your
+own typing into a running conversation takes. It is not something the worker has
+to think to look for, and it does not wait politely for a pause.
 
-- **When.** At the next step boundary. A worker mid-command finishes that
-  command first. If its turn happens to be ending in that same moment there is
-  nothing to hand the note to, so it stays unread and the next boundary offers
-  it again: an unread note is a note nobody has been told.
+- **What it interrupts.** If the worker's model is in the middle of writing its
+  next reply, that reply is cut off and asked again with the note in view. If the
+  worker is running a command in the foreground that has been going for three
+  seconds or more, the command is moved to the background and keeps running as a
+  job the worker can check on; a younger command is let finish first.
+- **When it is missed.** If the worker's turn is ending in that same moment there
+  is nothing to hand the note to, so it stays unread and the next step offers it
+  again: an unread note is a note nobody has been told.
 - **When it is not handed over at all.** A task that finishes before its next
   boundary never reads the note left on it — there is nobody left to tell — and
   the words stay on its page for you. A worker that has just been told it is
