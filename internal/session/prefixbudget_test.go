@@ -457,9 +457,23 @@ const fixedPrefixTarget = 48_000
 // the widest page pays for it: fixed is 55,442, over its 55,280 by 162, so that
 // waiver rises by 162. The lean shape's page never renders the attribution row
 // and lean is 47,055 still, exactly on its measurement.
+//
+// 2026-09-23, the programs codeaf carries, and the owner's call by name. The
+// hand-off page's programs paragraph (delegate_door.go) is each carried
+// program's own guide, printed under its name, and codeaf's rule about the
+// folder a program that edits files must be handed; `propose_task`'s `via`
+// field points at `ground`. The paragraph was already on the shipped page
+// and was never weighed: the shipping shape carried no programs, and
+// [widestPage] weighed the frame without its fill. Both are fixed in the same
+// change, and the true cost shows on both arms: fixed is 56,271, over its
+// 55,442 by 829, and lean is 47,719, over its 47,055 by 664. Both waivers rise
+// by exactly that and sit on the measurement. Paying it back out of other
+// prompt text was offered and declined: the paragraph is how the conversation
+// learns what senior-dev is for and which folder to hand it, and cutting
+// other lanes' wording to make room was the riskier edit days before a ship.
 const (
-	fixedPrefixWaiver = 7_442
-	leanPrefixWaiver  = 15_555
+	fixedPrefixWaiver = 8_271
+	leanPrefixWaiver  = 16_219
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
