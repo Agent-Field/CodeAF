@@ -890,7 +890,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// has a good answer without it, and an unknown window leaves the session on
 	// its conservative default.
 	models := proc.Models
-	activeModels, activeModel, activeListsModels := v3CatalogForModel(context.Background(), settings, chosen, models)
+	// A DIRECT SERVICE'S OWN CATALOG IS A WARM OF ITS OWN, and it is owned the
+	// way the process's is (#1274): it runs under the process lifetime and
+	// closeAll cancels and joins it, so no cache write can land after the
+	// process has closed or in a later home.
+	activeModels, activeModel, activeListsModels := v3CatalogForModel(proc.lifetime(), settings, chosen, models)
+	if activeModels != models {
+		proc.ownCatalog(activeModels)
+	}
 	harnesses := proc.Harnesses
 
 	// The typed programs this conversation can reach, and the two stores they are

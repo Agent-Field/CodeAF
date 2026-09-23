@@ -245,6 +245,30 @@ func TestTypingNarrowsTheModelListByNameAndById(t *testing.T) {
 	}
 }
 
+// SETUP FINDS WHAT /model FINDS. The first-run chooser matched the typed text
+// as one substring, so `ds v4` found nothing there while /model's picker found
+// deepseek/deepseek-v4-flash: the two lists read one catalog and must read one
+// query the same way, which is the shared matcher's tokens (#1321).
+func TestSetupsModelFilterIsTheModelPickersMatcher(t *testing.T) {
+	a, _ := controlsApp(t, nil)
+	a.models = func() []Model {
+		return []Model{
+			{ID: "anthropic/claude-sonnet-4.5"},
+			{ID: "deepseek/deepseek-v4-flash"},
+			{ID: "openai/gpt-4.1-mini"},
+		}
+	}
+	walkToControl(t, a, controlChatModel)
+	pressSetup(a, key("enter"))
+	for _, letter := range []string{"d", "s", " ", "v", "4"} {
+		pressSetup(a, key(letter))
+	}
+	got := a.setupModelChoices()
+	if len(got) != 1 || got[0].ID != "deepseek/deepseek-v4-flash" {
+		t.Fatalf("`ds v4` in setup left %v, want the one model /model finds for it", got)
+	}
+}
+
 // THE MODEL IN USE IS CONFIRMABLE WITH NO CATALOG AT ALL. A fresh machine has
 // fetched nothing; a list that was empty — or worse, that opened on some other
 // model — would turn "let me look" into an accidental switch.

@@ -68,6 +68,25 @@ func TestWorkTabNoteUsesPlanNoteAndShowsThePageReceipt(t *testing.T) {
 	}
 }
 
+// THE WORK TAB NAMES NO AUTHOR BY A STORE ID. A note another author left was
+// drawn under the store's own id for it (`2ytmh2 · …`), which the page itself
+// has never done: an author is `you` or nothing (#1240).
+func TestWorkTabDrawsNoAuthorAsAStoreID(t *testing.T) {
+	a, _ := workTabFixture(t)
+	openWorkTabNow(t, a)
+	a.taskSheet.plan.Notes = []session.PlanTaskNote{
+		{Author: "2ytmh2", Body: "the worker's own note"},
+		{Person: true, Body: "keep the middleware order"},
+	}
+	text := plain(strings.Join(a.workTabFrame(a.width, a.height), "\n"))
+	if strings.Contains(text, "2ytmh2") {
+		t.Fatalf("the work tab drew a store id as a note's author:\n%s", text)
+	}
+	if !strings.Contains(text, "the worker's own note") || !strings.Contains(text, "you"+railSep+"keep the middleware order") {
+		t.Fatalf("the work tab lost a note or its person's word:\n%s", text)
+	}
+}
+
 func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 	a, fake := workTabFixture(t)
 	openWorkTabNow(t, a)
