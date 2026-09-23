@@ -2101,7 +2101,9 @@ type sessionCompleter struct {
 }
 
 func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	ctx = provider.WithCacheKey(ctx, f.cacheKey)
+	if !bringsOwnLineage(ctx) {
+		ctx = provider.WithCacheKey(ctx, f.cacheKey)
+	}
 	if f.patient {
 		ctx = provider.WithPatientRateLimits(ctx)
 	}
@@ -2112,6 +2114,34 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 		ctx = provider.WithoutBabbleGuard(ctx)
 	}
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
+}
+
+// ownLineageKey marks a call that brings its own prompt-cache lineage
+// ([WithOwnCacheLineage]).
+type ownLineageKey struct{}
+
+// WithOwnCacheLineage marks a call whose context already carries the cache key
+// its request must travel under, so the conversation's wrapper keeps that key
+// rather than stamping its own.
+//
+// IT EXISTS FOR ONE CALLER AND IT IS OPT-IN. A program codeaf carries talks to
+// its model through the run's model API (internal/provider/modelapi), which
+// hands each call to this conversation's completer — and the program keeps
+// conversations of its own, each with its own `prompt_cache_key`. Stamped with
+// the conversation's key, every one of them would ask for the conversation's
+// warm instance: two different prefixes on one lineage, each cold-starting the
+// other, which is [unwrapCompleter]'s reason for giving a task node a lineage
+// of its own. A call that is not marked keeps exactly the stamp it always had.
+func WithOwnCacheLineage(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ownLineageKey{}, true)
+}
+
+// bringsOwnLineage reports a call marked by [WithOwnCacheLineage] that really
+// does carry a key: a marked call with none is stamped like any other, so the
+// mark can never send a request out unkeyed.
+func bringsOwnLineage(ctx context.Context) bool {
+	own, _ := ctx.Value(ownLineageKey{}).(bool)
+	return own && provider.CacheKeyFrom(ctx) != ""
 }
 
 // ProbeLanes passes the keystroke's pre-warm through, and does nothing at all

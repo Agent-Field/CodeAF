@@ -112,6 +112,11 @@ type RunSpec struct {
 	// conversation's do — and a nil one lets the engine build each worker's
 	// client itself.
 	CompleterFor func(model string) Completer
+	// Serves answers whether this conversation's services can take a call on a
+	// model ([ServesModel], read live). A delegated run's model API asks it of
+	// every model the program names, and answers a model nothing here can
+	// reach on the run's work seat instead. Nil answers yes for every model.
+	Serves func(model string) bool
 	// OnSpend observes the reconciled cumulative run spend while work is live.
 	OnSpend func(float64)
 	// Delegate, when set, is the program this run's root task is handed to
@@ -452,6 +457,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		WorkModel:    workSeat,
 		PlanModel:    planSeat,
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
+		Serves:       a.servesModel,
 		Delegate:     run.delegate,
 	}
 }
