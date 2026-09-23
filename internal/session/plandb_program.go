@@ -66,11 +66,10 @@ type PlanProgram struct {
 	// whole log and not over Turns, so it stays the run's own figure however
 	// long the run has gone.
 	Calls int
-	// CeilingUSD is the dollar ceiling the run handed the program, when the page
-	// knows it, and zero when it does not — which today is always: the ceiling
-	// is worked out when the run starts (task_run_belt.go's beltRunSpec) and is
-	// written down nowhere a page can read it afterwards. The page draws it
-	// beside the spend the day a record carries it, and nothing before.
+	// CeilingUSD is the dollar ceiling the run handed the program, off the
+	// program record the worker writes at the hello (delegate.ProgramRecord),
+	// and zero when the run set none or the program has not said hello yet —
+	// which the page draws as no ceiling at all rather than as $0.00.
 	CeilingUSD float64
 }
 
@@ -162,7 +161,7 @@ func planProgramPage(dir, id, carried string, copies planRunCopies) *PlanProgram
 	if !known && len(all) == 0 {
 		return nil
 	}
-	program := &PlanProgram{Name: record.Name}
+	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD}
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)
 	}

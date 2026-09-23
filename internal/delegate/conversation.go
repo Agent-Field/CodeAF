@@ -36,6 +36,11 @@ const ProgramFile = "delegate-program.json"
 type ProgramRecord struct {
 	Name   string   `json:"name"`
 	Stages []string `json:"stages,omitempty"`
+	// CeilingUSD is the dollar ceiling the run handed the program, zero for
+	// none. It is written here because the run works it out when it starts and
+	// keeps it nowhere a page could read it afterwards, and a page that shows
+	// the spend without the ceiling beside it leaves out half the reading.
+	CeilingUSD float64 `json:"ceiling_usd,omitempty"`
 }
 
 // WriteProgram writes the record, whole, making the folder when it is not
