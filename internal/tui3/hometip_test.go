@@ -248,11 +248,11 @@ func TestEveryTipIsOnTheManualPage(t *testing.T) {
 	}
 }
 
-// The cut was thirty, /project made it thirty-one, and two reads of the whole
-// list by the owner took it to twenty-three. There is ONE set: every hint draws
+// The cut was thirty, /project made it thirty-one, and three reads of the whole
+// list by the owner took it to twenty-two. There is ONE set: every hint draws
 // on both boxes, a news row on neither, and a row filed under home's slot does
 // not build.
-func TestTheTableIsTwentyThreeHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
+func TestTheTableIsTwentyTwoHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
 	hints := 0
 	for _, n := range notices {
 		if n.slot != slotHint {
@@ -266,8 +266,8 @@ func TestTheTableIsTwentyThreeHintsAndEveryOneDrawsOnBothBoxes(t *testing.T) {
 			t.Errorf("hint %q draws in the transcript", n.id)
 		}
 	}
-	if hints != 23 {
-		t.Fatalf("the table holds %d hints, want 23 — the cut is deliberate, and the manual page counts them", hints)
+	if hints != 22 {
+		t.Fatalf("the table holds %d hints, want 22 — the cut is deliberate, and the manual page counts them", hints)
 	}
 	news := notice{id: "noted", slot: slotNote, armed: ready, text: "x"}
 	if news.draws(slotHint) || news.draws(slotHome) || !news.draws(slotNote) {
@@ -351,7 +351,7 @@ func TestTheCrossBlanksHomesRowAndSpendsNothingOfTheTipItPutAway(t *testing.T) {
 // press to land in, and nothing on that row is a door.
 func TestAConversationsTipRowCarriesNoCross(t *testing.T) {
 	a, _ := sheetApp(t)
-	startTask(t, a)
+	makeDeliverable(t, a)
 	if a.noticeHint() == "" {
 		t.Fatal("the conversation says no tip to begin with")
 	}
@@ -361,7 +361,7 @@ func TestAConversationsTipRowCarriesNoCross(t *testing.T) {
 	}
 	// And the tip is on the keys row rather than on a row of its own with a
 	// cross at the end of it.
-	if got := plain(a.footHint(a.width)); !strings.Contains(got, taskPageTip) {
+	if got := plain(a.footHint(a.width)); !strings.Contains(got, deliverTip) {
 		t.Fatalf("the conversation's tip is not on the keys row: %q", got)
 	}
 }

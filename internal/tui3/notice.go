@@ -17,12 +17,12 @@ import (
 // A surface learns you by what you have already done, and this file is where it
 // keeps what it has told you. Two kinds of thing live here at launch:
 //
-//   - EARNED HINTS. One dim line over the box — `ctrl+. sees every task this
-//     project has run` — drawn on the row directly above the rule over home's
-//     box, and on the same row above a conversation's box once the person has
-//     been idle there for a minute. A tip RETIRES FOR GOOD the first time the
-//     gesture it teaches is used (the task page opened), or after it has been
-//     shown [noticeShownDefault] times without being acted on. A hint that stays
+//   - EARNED HINTS. One dim line beside the box — `/files finds everything
+//     made for you` — on the row directly above the rule over home's box, and
+//     on the lowest rung of a conversation's keys row. A tip RETIRES FOR GOOD
+//     the first time the gesture it teaches is used (the files place opened),
+//     or after it has been shown [noticeShownDefault] times without being
+//     acted on. A hint that stays
 //     up after you have learned the key is a cheatsheet, and a cheatsheet is
 //     read once and never again (render.go's [app.hintWord] says the same about
 //     static keys).
@@ -31,18 +31,17 @@ import (
 //     The channel exists and is empty; a wave that ships something registers a
 //     row with [notice.news] set and writes nothing else.
 //
-// ONE TABLE, TWO BOXES. Until 2026-09-22 a hint row named which box it could
-// draw beside and the conversation's foot ranked its rows by a priority number
-// while home's row took turns. The owner ruled that there is ONE set of tips
-// and that both boxes say them the same way: in the table's order, round and
-// round, every tip that is true getting its turn — with one exception, that a
-// tip which has JUST become true jumps the ring, so `/compact summarizes the
-// conversation now` is said when the window crosses half and not forty minutes
-// later ([noticeBoard.pick]). The two boxes keep two clocks, because home has
-// no turns and a conversation has no visits: home's row moves on every visit
-// and every [hintEvery] at rest; a conversation's row appears only once the
-// person has been idle for [chatHintIdle], and then moves on every [hintEvery]
-// while they stay idle ([app.noticeIdleBeat]).
+// ONE TABLE, TWO BOXES, TWO RULES. Until 2026-09-22 a hint row named which box
+// it could draw beside; the owner ruled that there is ONE set of tips, and the
+// two boxes say them by rules of their own, because a conversation is a screen
+// you sit in and home is a screen you pass through. A CONVERSATION RANKS: the
+// first eligible row in the table's order takes the foot, so a tip that has
+// just become true is said at once — `/compact summarizes the conversation
+// now` when the window crosses half, not forty minutes later — and
+// [noticeGap] keeps a busy first session from reading as a slideshow
+// ([noticeBoard.rank]). HOME TAKES TURNS: every tip that is true gets one, the
+// row moving on with every visit and every [hintEvery] at rest
+// ([noticeBoard.rotate]). Both go through [noticeBoard.pick].
 //
 // THE TABLE BELOW IS THE ONE PLACE A NOTICE IS WRITTEN DOWN, the way commands.go
 // is the one place a command is. [checkNotices] runs over it at init and fails
@@ -72,9 +71,8 @@ import (
 type noticeSlot uint8
 
 const (
-	// slotHint is the row directly above the rule over a conversation's box
-	// (view.go's [app.chrome] draws it on the foot's clearance), drawn only
-	// once the person has been idle for [chatHintIdle] and the frame is quiet
+	// slotHint is the lowest rung of a conversation's keys row at the foot
+	// (render.go's [app.footHint] draws it), taken whenever the frame is quiet
 	// enough for a tip to be read over an idle box ([app.noticeHint]).
 	slotHint noticeSlot = iota
 	// slotNote is one calm transcript line through [feed.note]. It is reserved
@@ -306,21 +304,21 @@ var (
 // and the page say the same words — and notice_test.go holds the page to every
 // line here, so the table cannot say a thing the manual does not.
 //
-// TWENTY-THREE ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
+// TWENTY-TWO ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
 // 2026-09-21 turned up forty-eight lines worth saying; thirty of those shipped,
 // /project made thirty-one when it became a command of its own on 2026-09-22,
-// and two reads of the whole list by the owner that same day took it to
-// twenty-three. `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off
+// and three reads of the whole list by the owner that same day took it to
+// twenty-two. `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off
 // as rows the foot or the tab bar already teaches; the two lines about a
 // running answer became one; `/ask`'s came off ahead of the door it taught;
 // `/folder`'s came off because it was not true and /attach's line now covers
-// both kinds; and the second /attach row was one row too many about one
-// command. What was left out is
+// both kinds; the second /attach row was one row too many about one command;
+// and `ctrl+.` came off on the owner's word. What was left out is
 // what the foot already names — `alt+p`, `alt+e`, `alt+a`, `alt+k`, `/` — and
 // the second spelling of anything already here. `/ shows every command` was a
 // row until both feet started saying `/ commands` outright (footswap.go).
 var notices = []notice{
-	// ── the seven that were here first ──────────────────────────────────────
+	// ── the rows this surface shipped with ─────────────────────────────────
 	{
 		id: "compact-at-half", slot: slotHint,
 		armed: func(a *app) bool {
@@ -336,12 +334,11 @@ var notices = []notice{
 		text:   "/cost says what this conversation has spent",
 		retire: eventCostShown,
 	},
-	{
-		id: "task-page-after-first-task", slot: slotHint,
-		armed:  func(a *app) bool { return a.notices.seen[eventTaskStarted] },
-		text:   "ctrl+. sees every task this project has run",
-		retire: eventTaskPageOpened,
-	},
+	// `ctrl+. sees every task this project has run` was here from the first
+	// seven rows until 2026-09-22, when the owner took it off. The chord, the
+	// page and `/history` are untouched, and [eventTaskStarted] and
+	// [eventTaskPageOpened] are still fired at their seams: nothing in the
+	// table waits on either one now, and a later row may.
 	{
 		id: "rewind-after-long-answer", slot: slotHint,
 		armed:  func(a *app) bool { return a.lastAnswerRunes() >= longAnswerRunes },
@@ -1037,10 +1034,10 @@ func (a *app) noticeLimit(id string) int {
 }
 
 // noticeRotate moves a row on to the next tip. It is asked on every visit to
-// home ([app.showPage]), on home's beat once a tip has stood [hintEvery] at
-// rest ([app.noticeHomeBeat]), and on the conversation's beat while the person
-// stays quiet ([app.noticeIdleBeat]). Rotating is the one thing an event does
-// not do to a slot, so it is its own seam.
+// home ([app.showPage]) and on home's beat once a tip has stood [hintEvery] at
+// rest ([app.noticeHomeBeat]) — HOME'S ROW ALONE, because a conversation's
+// takes the first eligible row rather than a turn. Rotating is the one thing an
+// event does not do to a slot, so it is its own seam.
 //
 // IT DOES NOT LIFT A CROSS. The row a person put away is put away until it
 // leaves the frame, and the beat that turns the ring every two minutes is

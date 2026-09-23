@@ -510,38 +510,46 @@ func startTask(t *testing.T, a *app) {
 	drive(t, a, taskStartedMsg{kind: "single", id: "7", title: "port the parser"})
 }
 
-const taskPageTip = "ctrl+. sees every task this project has run"
+// THE SUITE'S FIXTURE TIP, and the moment that arms it. These tests are about
+// a tip's whole road — armed by something that happens mid-session, drawn,
+// retired by a different gesture — so they need a row with an event on both
+// ends. It was `ctrl+. sees every task this project has run` until 2026-09-22,
+// when the owner took that row off the table.
+const deliverTip = "/files finds everything made for you"
+
+// makeDeliverable is an export landing on disk, as the loop sees it: the first
+// thing written for the person, which is what arms [deliverTip].
+func makeDeliverable(t *testing.T, a *app) {
+	t.Helper()
+	a.exportDone(exportedMsg{path: filepath.Join(t.TempDir(), "talk.md")})
+}
 
 // THE WHOLE ROAD. A hint arms on its moment, draws in the hint slot and only at
 // the lowest rung there, retires on the gesture it teaches, and is still
 // retired when the surface comes up again over the same profile.
 func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	a, dir := sheetApp(t)
-	// The gesture that retires the hint is the task page OPENING ON ROWS, and
-	// the row seeded below is dated from the fixture clock — so the surface goes
-	// on it too ([pinFixtureClock] states the law).
-	pinFixtureClock(a)
 	if got := a.notices.current[slotHint]; got != "" {
 		t.Fatalf("a fresh surface already holds hint %q", got)
 	}
-	if strings.Contains(plain(frame(a)), taskPageTip) {
-		t.Fatal("the task page tip is up before any task has started")
+	if strings.Contains(plain(frame(a)), deliverTip) {
+		t.Fatal("the files tip is up before anything has been written")
 	}
 
-	startTask(t, a)
-	if got := a.notices.current[slotHint]; got != "task-page-after-first-task" {
-		t.Fatalf("a task starting armed %q", got)
+	makeDeliverable(t, a)
+	if got := a.notices.current[slotHint]; got != "files-after-first-deliverable" {
+		t.Fatalf("an export landing armed %q", got)
 	}
 	// AND IT IS UP THE MOMENT IT ARMS, on the keys row at the foot: the
 	// conversation's tip is on no clock (chattip_test.go holds the whole of
 	// where it draws).
-	if got := a.noticeHint(); got != taskPageTip {
+	if got := a.noticeHint(); got != deliverTip {
 		t.Fatalf("the tip row reads %q, want the tip", got)
 	}
-	if got := plain(a.footHint(a.width)); !strings.Contains(got, taskPageTip) {
+	if got := plain(a.footHint(a.width)); !strings.Contains(got, deliverTip) {
 		t.Fatalf("the keys row does not carry the tip: %q", got)
 	}
-	if !strings.Contains(plain(frame(a)), taskPageTip) {
+	if !strings.Contains(plain(frame(a)), deliverTip) {
 		t.Fatalf("the tip is not on the frame:\n%s", plain(frame(a)))
 	}
 
@@ -557,42 +565,38 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 		t.Fatalf("a tip drew over a box with words in it: %q", got)
 	}
 	a.input.reset()
-	if got := a.noticeHint(); got != taskPageTip {
+	if got := a.noticeHint(); got != deliverTip {
 		t.Fatalf("the tip did not come back over an empty box: %q", got)
 	}
 
-	// THE GESTURE RETIRES IT: the task page actually opening.
-	a.comp.tasks = []session.TaskIndexEntry{pastTask("4", "port-the-parser", "Port the parser", time.Hour)}
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the task page did not open")
-	}
-	a.closeTaskSheet()
+	// THE GESTURE RETIRES IT: /files actually reached for.
+	a.slash("/files")
 	if got := a.notices.current[slotHint]; got != "" {
 		t.Fatalf("the slot still holds %q after the gesture", got)
 	}
-	if !a.notices.retired("task-page-after-first-task") {
+	if !a.notices.retired("files-after-first-deliverable") {
 		t.Fatal("the gesture did not retire the hint")
 	}
-	if strings.Contains(plain(frame(a)), taskPageTip) {
+	if strings.Contains(plain(frame(a)), deliverTip) {
 		t.Fatal("the tip is still drawn after its gesture")
 	}
 	// Re-arming does nothing this session either.
-	startTask(t, a)
-	if got := a.notices.current[slotHint]; got == "task-page-after-first-task" {
+	makeDeliverable(t, a)
+	if got := a.notices.current[slotHint]; got == "files-after-first-deliverable" {
 		t.Fatal("a retired hint came back in the same session")
 	}
 
 	// And it is on disk, beside config.json, so the next surface knows.
 	ledger := loadNoticeLedger(filepath.Join(dir, noticeLedgerName))
-	if !ledger.retired("task-page-after-first-task") {
+	if !ledger.retired("files-after-first-deliverable") {
 		t.Fatalf("the ledger on disk does not have it retired: %+v", ledger)
 	}
 	again := noticeApp(t, dir)
-	startTask(t, again)
-	if got := again.notices.current[slotHint]; got == "task-page-after-first-task" {
+	makeDeliverable(t, again)
+	if got := again.notices.current[slotHint]; got == "files-after-first-deliverable" {
 		t.Fatal("a retired hint came back after a restart")
 	}
-	if strings.Contains(plain(frame(again)), taskPageTip) {
+	if strings.Contains(plain(frame(again)), deliverTip) {
 		t.Fatal("the tip is drawn after a restart")
 	}
 }
@@ -730,8 +734,8 @@ func TestTheCompactHintFollowsTheContextReading(t *testing.T) {
 // lands at the next turn end, the way the mouse row's does.
 func TestTheHintsRowSilencesTheSlot(t *testing.T) {
 	a, dir := sheetApp(t)
-	startTask(t, a)
-	if got := a.noticeHint(); got != taskPageTip {
+	makeDeliverable(t, a)
+	if got := a.noticeHint(); got != deliverTip {
 		t.Fatalf("the tip row reads %q before the toggle", got)
 	}
 
@@ -754,12 +758,12 @@ func TestTheHintsRowSilencesTheSlot(t *testing.T) {
 	if a.notices.enabled {
 		t.Fatal("the turn end did not re-read the row")
 	}
-	if got := a.noticeHint(); got == taskPageTip {
+	if got := a.noticeHint(); got == deliverTip {
 		t.Fatal("a silenced slot still draws the tip")
 	}
 	// The next surface over this profile is quiet from the start.
 	again := noticeApp(t, dir)
-	startTask(t, again)
+	makeDeliverable(t, again)
 	if got := again.notices.current[slotHint]; got != "" {
 		t.Fatalf("a silenced profile armed %q", got)
 	}
@@ -844,8 +848,8 @@ func TestABoardWithNoPathKeepsNoticesForTheSession(t *testing.T) {
 	if a.notices.path != "" {
 		t.Fatalf("the pinned board has a ledger at %q", a.notices.path)
 	}
-	startTask(t, a)
-	if got := a.notices.current[slotHint]; got != "task-page-after-first-task" {
+	makeDeliverable(t, a)
+	if got := a.notices.current[slotHint]; got != "files-after-first-deliverable" {
 		t.Fatalf("a session-only board armed %q", got)
 	}
 	if err := a.notices.ledger.write(""); err != nil {

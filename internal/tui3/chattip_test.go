@@ -53,20 +53,20 @@ func tipRowOf(a *app, tip string) (int, []string) {
 func TestAConversationSaysItsTipOnTheKeysRow(t *testing.T) {
 	a, _ := chatTipLab(t)
 	b := &a.notices
-	startTask(t, a)
-	if b.current[slotHint] != "task-page-after-first-task" {
-		t.Fatalf("a task starting armed %q", b.current[slotHint])
+	makeDeliverable(t, a)
+	if b.current[slotHint] != "files-after-first-deliverable" {
+		t.Fatalf("an export landing armed %q", b.current[slotHint])
 	}
-	if got := a.noticeHint(); got != taskPageTip {
+	if got := a.noticeHint(); got != deliverTip {
 		t.Fatalf("the tip is not up the moment it arms: %q", got)
 	}
 
 	// ON THE FRAME: the foot, under the box, and NOT a row of its own over the
 	// rule.
-	if got := plain(a.footHint(a.width)); !strings.Contains(got, taskPageTip) {
+	if got := plain(a.footHint(a.width)); !strings.Contains(got, deliverTip) {
 		t.Fatalf("the keys row does not carry the tip: %q", got)
 	}
-	y, rows := tipRowOf(a, taskPageTip)
+	y, rows := tipRowOf(a, deliverTip)
 	if y < 0 {
 		t.Fatalf("the tip is not on the frame:\n%s", strings.Join(rows, "\n"))
 	}
@@ -85,7 +85,7 @@ func TestAConversationSaysItsTipOnTheKeysRow(t *testing.T) {
 		t.Fatalf("the tip drew over a box with a letter in it: %q", got)
 	}
 	drive(t, a, key("backspace"))
-	if got := a.noticeHint(); got != taskPageTip {
+	if got := a.noticeHint(); got != deliverTip {
 		t.Fatalf("emptying the box did not give the row back: %q", got)
 	}
 
@@ -100,7 +100,7 @@ func TestAConversationSaysItsTipOnTheKeysRow(t *testing.T) {
 		t.Fatalf("the tip drew under a place: %q", got)
 	}
 	a.leavePlace()
-	if got := a.noticeHint(); got != taskPageTip {
+	if got := a.noticeHint(); got != deliverTip {
 		t.Fatalf("leaving the place did not give the row back: %q", got)
 	}
 }
@@ -108,7 +108,7 @@ func TestAConversationSaysItsTipOnTheKeysRow(t *testing.T) {
 // Silencing hints silences the conversation's row along with home's.
 func TestDisableHintsSilencesTheConversationRow(t *testing.T) {
 	a, _ := chatTipLab(t)
-	startTask(t, a)
+	makeDeliverable(t, a)
 	if a.noticeHint() == "" {
 		t.Fatal("the tip is not up before the toggle")
 	}
@@ -116,7 +116,7 @@ func TestDisableHintsSilencesTheConversationRow(t *testing.T) {
 	if got := a.noticeHint(); got != "" {
 		t.Fatalf("a silenced profile still says %q in a conversation", got)
 	}
-	if got := plain(a.footHint(a.width)); strings.Contains(got, taskPageTip) {
+	if got := plain(a.footHint(a.width)); strings.Contains(got, deliverTip) {
 		t.Fatalf("a silenced profile still draws the tip on the keys row: %q", got)
 	}
 }

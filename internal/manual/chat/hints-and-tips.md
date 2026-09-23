@@ -3,7 +3,7 @@
 ## What was that tip at the bottom of the screen — the one-line hint, the sentence under the message box
 
 The dim sentence at the very bottom of a conversation, where the keys usually are —
-`ctrl+. sees every task this project has run` — is a **tip**: one line naming a key or a
+`/files finds everything made for you` — is a **tip**: one line naming a key or a
 command you have not used yet, and what it does. It reads the way every hint on this
 surface does: the key or the command first, then what it does.
 
@@ -21,7 +21,7 @@ it until you leave home and come back. A conversation is a screen you sit in and
 screen you pass through, so the tip worth saying differs: a conversation gets the most
 urgent thing that is true right now, and home gets everything in turn.
 
-Both rows draw from **one list** of twenty-three tips (below), and using a gesture on
+Both rows draw from **one list** of twenty-two tips (below), and using a gesture on
 either retires it on both.
 
 **A conversation's tip has changed places twice.** It was the keys row's lowest rung until
@@ -50,8 +50,8 @@ put away nothing.
 Every tip is earned and then spent. It appears the first time it becomes relevant — the
 first task you start, the first long answer, the first time a conversation passes half its
 context window, or simply the first time home is open — and it goes away for good the first
-time you do the thing it names. Open the task page once and `ctrl+. sees every task this
-project has run` never comes back; run `/compact` once and the compact tip is retired. A tip
+time you do the thing it names. Run `/files` once and `/files finds everything made for
+you` never comes back; run `/compact` once and the compact tip is retired. A tip
 retired from either box is retired from both: opening the model list on home retires
 `/model lists every model` in every conversation as well.
 
@@ -94,7 +94,7 @@ later when the ring comes round. It jumps once and then takes its turn like the 
 
 ## Every hint codeaf can show, and what makes each one go away
 
-There are twenty-three, one list for both boxes. Each one says the moment it first appears
+There are twenty-two, one list for both boxes. Each one says the moment it first appears
 and the gesture that retires it. The list is the program's own table (the surface refuses to
 build if the two disagree), so a tip you saw is on it word for word.
 
@@ -104,8 +104,6 @@ build if the two disagree), so a tip you saw is on it word for word.
   context window. Retired when a `/compact` finishes.
 - `/cost says what this conversation has spent` — once the conversation has spent about
   ten cents. Retired when you run `/cost`.
-- `ctrl+. sees every task this project has run` — after the first task starts. Retired
-  when you open the task page, by `ctrl+.` or `/history`.
 - `/rewind takes back an earlier message` — after an answer of about 1,500 characters or
   more. Retired the first time a rewind lands.
 - `/files finds everything made for you` — after the first export writes a file. Retired
@@ -166,8 +164,8 @@ build if the two disagree), so a tip you saw is on it word for word.
   `ctrl+b freezes the screen so you can read and copy from it` held for one build on
   2026-09-22, and `ask for a picture, a voiceover, music or a video` before that.)
 
-**Seven rows came off on 2026-09-22**, over two reads of the whole list, and **every one of
-the commands they named still works** — only the tips about them are gone.
+**Eight rows came off on 2026-09-22**, over three reads of the whole list, and **every one
+of the commands they named still works** — only the tips about them are gone.
 
 - `alt+3 shows what this machine has spent, by the day`, `alt+1 to alt+7 jump straight to a
   place`, `/search finds anything ever said on this machine` and `/subharness lists the
@@ -185,6 +183,9 @@ the commands they named still works** — only the tips about them are gone.
   file or folder" now and this one is gone.
 - `/attach lets you browse anywhere for files` was a second row about one command, which
   is one row too many.
+- `ctrl+. sees every task this project has run` came off on the owner's word, the last of
+  the three reads. The chord still opens the task page, `/history` still opens it too, and
+  the *tasks* page still says so.
 
 Unless a line above says otherwise, a tip is true from the first minute on home and after
 the first exchange in a conversation.
