@@ -197,6 +197,18 @@ func readTrajectory(storeDir, id string) taskTrace {
 		return tr
 	}
 	defer f.Close()
+	// A LAUNCH IS A LIFE BETWEEN AN OPENING AND AN ENDING. A first launch
+	// writes an opening line, but a parked task woken again goes straight on
+	// with steps and writes only its ending (the run of 2026-09-23 showed a
+	// root woken after `plandb wait` with no opening line of its own), so a
+	// life starts at an opening or at the first step after an ending, and
+	// every ending closes one.
+	open := false
+	newLife := func() {
+		tr.Launches++
+		tr.StepsByLife = append(tr.StepsByLife, 0)
+		open = true
+	}
 	scan := bufio.NewScanner(f)
 	scan.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 	for scan.Scan() {
@@ -206,16 +218,20 @@ func readTrajectory(storeDir, id string) taskTrace {
 		}
 		switch line.Kind {
 		case "begin":
-			tr.Launches++
-			tr.StepsByLife = append(tr.StepsByLife, 0)
+			if !open {
+				newLife()
+			}
+		case "end":
+			if !open {
+				newLife()
+			}
+			open = false
 		case "step":
 			if line.NotRun {
 				continue
 			}
-			if len(tr.StepsByLife) == 0 {
-				// A record from before launches were marked: one launch.
-				tr.Launches = 1
-				tr.StepsByLife = append(tr.StepsByLife, 0)
+			if !open {
+				newLife()
 			}
 			tr.Steps++
 			tr.StepsByLife[len(tr.StepsByLife)-1]++

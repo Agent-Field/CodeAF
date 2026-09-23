@@ -191,6 +191,35 @@ func TestTheThrowawayProfileCarriesNoKey(t *testing.T) {
 	}
 }
 
+// A parked task woken again goes on with steps and writes only its ending, so
+// a launch is counted from an opening or from the first step after an ending.
+func TestTrajectoryCountsAWokenLifeWithNoOpeningLine(t *testing.T) {
+	storeDir := t.TempDir()
+	dir := filepath.Join(storeDir, "tasks", "root")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Join([]string{
+		`{"kind":"begin","step":0}`,
+		`{"kind":"step","step":1,"command":"cat a.go","exit_code":0}`,
+		`{"kind":"step","step":2,"command":"go test ./...","exit_code":1}`,
+		`{"kind":"end","reason":"waiting"}`,
+		`{"kind":"step","step":3,"command":"codeaf patch a.go --old x --new y","exit_code":0}`,
+		`{"kind":"step","step":4,"command":"go test ./...","exit_code":0}`,
+		`{"kind":"end","result":"done"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tr := readTrajectory(storeDir, "root")
+	if tr.Launches != 2 || !reflect.DeepEqual(tr.StepsByLife, []int{2, 2}) {
+		t.Fatalf("launches %d, steps by life %v; want 2 and [2 2]", tr.Launches, tr.StepsByLife)
+	}
+	if tr.Steps != 4 || tr.TestRuns != 2 || tr.TestFailed != 1 || tr.FailedCmds != 1 || tr.Edited["a.go"] != 1 {
+		t.Fatalf("trace %+v", tr)
+	}
+}
+
 func TestTestsChangedNamesAnEditedOrMissingTest(t *testing.T) {
 	dir := t.TempDir()
 	pristine := fixtureFiles{"a_test.go": []byte("package a\n"), "b_test.go": []byte("package b\n"), "a.go": []byte("package a\n")}
