@@ -1131,6 +1131,7 @@ type app struct {
 	// writing. Both are cleared when the turn settles — a rate quoted over a
 	// finished turn is a rate nobody is watching.
 	turnBegan    time.Time
+	workActivity tokens.WorkActivity
 	turnOutStart int
 	// turnCostAt is what the session had spent when the turn now running
 	// started, and it is the other end of the subtraction a turn footer's price
@@ -1815,9 +1816,13 @@ type app struct {
 	follows []queued
 	// parks are the messages typed with plain enter while an answer was still
 	// coming: held HERE rather than handed to the session, so they can still be
-	// edited, taken back, or sent early with esc (park.go). Each one goes as an
-	// ordinary turn of its own, oldest first, one per finished turn.
+	// edited, taken back, or steered into the running turn (park.go). Each one
+	// goes as an ordinary turn of its own, oldest first, one per finished turn.
 	parks []parked
+	// parkSending closes the one race between a background parked send and the
+	// person bringing that conversation forward. While it is true, a stream
+	// close cannot send the same head of the queue a second time (keeper.go).
+	parkSending bool
 	// wakeLane is the standing subscription to turns the session started ON ITS
 	// OWN, and wakeGen the generation it belongs to. It is a lane of STREAMS
 	// rather than of events (followup.go's wake lane), and its generation is the
@@ -3568,6 +3573,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the agent it already has a pointer to (keeper.go).
 		return a, a.behindStir(msg)
 
+	case behindParkedMsg:
+		// One held conversation tried to start the message waiting behind its
+		// finished answer. The key, not the conversation in front, decides where
+		// the result and the returned stream belong (keeper.go).
+		return a, a.tookBehindParked(msg)
+
 	case startRecentsMsg:
 		// This directory's earlier conversations, read off the loop for the
 		// new-chat start page (chatstart.go). It never touches the box.
@@ -5007,11 +5018,13 @@ func (a *app) paint() tea.Cmd {
 	// stream has stopped arriving does not need thirty frames a second: the
 	// clock steps at the spinner's own cadence, and the animations that count
 	// in paints (spinnerStep, pulseStep) land exactly where they would have at
-	// full cadence, one stride at a time. Any OTHER liveness term, or a stream
+	// full cadence, one stride at a time. A visible working logo also needs the
+	// full cadence because its geometry moves between spinner glyph changes.
+	// Any OTHER liveness term, or a stream
 	// still arriving ([app.streamFresh]), keeps the full cadence.
 	if waitLive || otherLive {
 		every := a.frameEvery()
-		if waitLive && !otherLive && !a.streamFresh() {
+		if waitLive && !otherLive && !a.streamFresh() && !a.workLogoVisible() {
 			every *= spinnerStep
 		}
 		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
@@ -5220,7 +5233,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	// has to be waited on afterwards.
 	var after tea.Cmd
 	// THE STOP IS THE LAST THING THAT TURN WRITES ON THIS SCREEN. Between a
-	// person's esc and the stream closing the engine is still winding the turn
+	// person's ctrl+c and the stream closing the engine is still winding the turn
 	// down ([app.windingDown]) and still speaking: the tail of a reply the
 	// provider had already buffered, a call the model was half-way through
 	// spelling out, a nudge about a request nobody is waiting for any more. Every
@@ -6084,12 +6097,20 @@ func (a *app) setTitleEvent(title, _ string) {
 // a lock and possibly a provider, and the Update loop is not a place to wait.
 func (a *app) submit(text string) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
-	return a.submitting(text, func() (<-chan session.Event, error) { return agent.Submit(ctx, text) })
+	return a.submitting(text, submitStart(agent, ctx, text))
 }
 
 func (a *app) submitShown(text, shown string) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
-	return a.submittingShown(text, shown, func() (<-chan session.Event, error) { return agent.Submit(ctx, text) })
+	return a.submittingShown(text, shown, submitStart(agent, ctx, text))
+}
+
+// submitStart is the one plain-message engine call used by both front and held
+// sends. Keeping the call in one place means the two roads cannot drift in what
+// counts as an accepted turn, and keeps the update-loop door budget from growing
+// merely because a conversation can now send while it is behind the screen.
+func submitStart(agent Agent, ctx context.Context, text string) func() (<-chan session.Event, error) {
+	return func() (<-chan session.Event, error) { return agent.Submit(ctx, text) }
 }
 
 // submitting is that body with the CALL left to the caller: everything a
@@ -6173,6 +6194,7 @@ func (a *app) startClock() {
 		return
 	}
 	a.turnBegan, a.turnOutStart, a.turnCostAt = a.now(), a.outputTokens, a.cost
+	a.workActivity.Start(a.turnBegan, tokens.WorkLogoRandom)
 	// AND THE COLUMN OPENS AT NOTHING, because the figures it chases are this
 	// turn's rather than the session's (tokencol.go's [tokenCol.open]).
 	a.col.open()
@@ -7529,7 +7551,9 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	// own repair: a /new that failed used to leave the surface holding a closed
 	// session with nothing to fall back on, and now a refusal costs nothing at
 	// all.
+	leavingConv := a.front()
 	leaving, side := a.agent, a.detachConversation()
+	var stowed tea.Cmd
 	if replacing {
 		// AND NOT ON A SHARED HANDLE, for [app.openSession]'s reason: that agent
 		// is the same object the door just handed back, now naming the session
@@ -7545,7 +7569,7 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 		// AND THE CONVERSATION GOES ON RUNNING, in the keeper (keeper.go). Its
 		// draft file is written there; the sentence in the box goes with the
 		// PERSON, which is what this door has always promised.
-		a.stow(a.front(), side)
+		stowed = a.stow(leavingConv, side)
 	}
 	if !whole {
 		// The older seam hands back an agent alone, so the surface keeps every
@@ -7556,14 +7580,16 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
 			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}
 	}
-	cmd := a.attachConversation(conv, nil)
+	cmd := tea.Batch(stowed, a.attachConversation(conv, nil))
 	a.resumed = false
 	// THE DRAFT GOES WITH THE PERSON AND NOT WITH THE CONVERSATION, which is what
 	// this door has always promised in those words: /new starts something else,
-	// and the sentence in the box is the person's NEXT one. The messages that
-	// were parked behind a turn come with it, in the order they would have been
-	// sent — nobody is left to send them, and they are still what somebody typed
-	// (park.go, leaving.go's [app.leavingDraft]).
+	// and the sentence in the box is the person's NEXT one.
+	//
+	// PARKED MESSAGES DO NOT FOLLOW THE PERSON. When /new keeps the conversation
+	// they were typed in, its watcher keeps them with the answer they follow and
+	// sends them there when it ends (keeper.go). Only a shared handle folds them
+	// into [aside.draft], because its old conversation no longer exists.
 	if side.draft != "" {
 		a.input.setText(side.draft)
 	}
@@ -7883,7 +7909,7 @@ func (a *app) interruptTurn() {
 const stopGrace = 10 * time.Second
 
 // windingDown reports that the turn on screen was STOPPED BY HAND and its stream
-// has not closed yet: the seconds between a person's esc and the engine letting
+// has not closed yet: the seconds between a person's ctrl+c and the engine letting
 // go of the turn.
 //
 // IT IS A REAL WINDOW, THOUGH IT IS NO LONGER A LONG ONE FOR ORDINARY WORK.

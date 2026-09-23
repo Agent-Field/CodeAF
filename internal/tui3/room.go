@@ -322,6 +322,7 @@ const taskModelUnavailableWord = "changing a task's model is unavailable — thi
 // taskRoom is one node's page: what it has said, the lane carrying what it says
 // next, and where the reader is in it.
 type taskRoom struct {
+	workActivity tokens.WorkActivity
 	// detailsTop belongs to this page so scrolling its facts never moves the tree.
 	detailsTop int
 
@@ -621,6 +622,7 @@ func (a *app) newRoom(id uint64, title string) *taskRoom {
 		stick:    true,
 		dirty:    true,
 	}
+	r.workActivity.Start(a.now(), tokens.WorkLogoRandom)
 	r.feed = newFeed(a.roomFeedHooks(r))
 	r.mdAt = a.now()
 	return r

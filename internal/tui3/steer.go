@@ -143,7 +143,7 @@ func (a *app) steerable() bool {
 // dropped it would be the sentence quietly becoming ordinary work, which is the
 // one ending that gesture exists to rule out (standmark.go).
 func (p parked) steerable() bool {
-	return p.text != "" && len(p.chips) == 0 && !p.standing
+	return p.text != "" && len(p.chips) == 0 && !p.standing && !p.sending
 }
 
 // spoken is this message as the model reads it: its own chips unfolded into
