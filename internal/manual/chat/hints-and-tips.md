@@ -6,7 +6,7 @@ The dim sentence directly above the rule over your message box, led by a bulb an
 by a small cross — `💡 ctrl+. sees every task this project has run ✕` — is a **tip**: one
 line naming a key or a command you have not used yet, and what it does. It reads the way
 every hint on this surface does: the key or the command first, then what it does. Home has
-the same row over its own box, and the two rows draw from **one list** of twenty-six tips
+the same row over its own box, and the two rows draw from **one list** of twenty-three tips
 (below).
 
 **In a conversation the row appears only once you have been quiet for a minute** — no key
@@ -37,7 +37,7 @@ On a Mac the row says `opt` where the table below says `alt`, exactly as the key
 
 On home the tip is the dim row **directly above the rule** over the message box — the blank
 that separates the list from the rule, with one sentence written into its right end, led
-by a bulb: `💡 /ask answers right here without opening a conversation ✕`. It is drawn only
+by a bulb: `💡 /project sets the project folder for the next conversation ✕`. It is drawn only
 while the box is empty and nothing else is up — a letter in the box, the `/` list, the `@`
 list or a reply being read all take the row back — and it moves on to the next tip that is
 true for you on every road home (`esc` from a conversation, `/home`, `alt+1`, `tab`), in a
@@ -92,7 +92,7 @@ later when the ring comes round. It jumps once and then takes its turn like the 
 
 ## Every hint codeaf can show, and what makes each one go away
 
-There are twenty-six, one list for both boxes. Each one says the moment it first appears
+There are twenty-three, one list for both boxes. Each one says the moment it first appears
 and the gesture that retires it. The list is the program's own table (the surface refuses to
 build if the two disagree), so a tip you saw is on it word for word.
 
@@ -112,9 +112,6 @@ build if the two disagree), so a tip you saw is on it word for word.
   a conversation. Retired when you run `/resume`.
 - `/standing keeps something always true` — once this directory has three or more earlier
   conversations. Retired when a standing order is made or the standing page opened.
-- `/ask answers right here without opening a conversation` — on home, whenever home's ask
-  door is there (it is the one tip that is only true on home). Retired the first time
-  `/ask` or `alt+enter` sends something from home.
 - `/task starts work you can walk away from` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
 - `ctrl+enter sends your message as something to keep true` — retired when a standing
@@ -128,15 +125,11 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 - `type @ to quickly attach files in the current project` — retired when the `@` list
   opens.
-- `/attach sends a file along with your message` — retired when a file goes on the tray by
-  path or the file browser opens.
-- `/project sets the folder the next conversation opens in` — on home only, since that is
+- `/attach sends a file or folder with your message` — retired when a file or a folder goes
+  on by path, or the browser opens.
+- `/project sets the project folder for the next conversation` — on home only, since that is
   the only screen `/project` works on. Retired when `/project` takes a folder, by a path
   after it or on the browser it opens.
-- `/folder picks the folder codeaf works in` — retired when the folder chooser opens, from
-  a conversation or aimed at home's target.
-- `/attach lets you browse anywhere for files` — retired by the same gesture as
-  the other `/attach` tip.
 - `/export writes the current conversation to a file` — after two exchanges. Retired when
   an export lands.
 
@@ -150,13 +143,13 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Steering a running answer**
 
-- `using enter stops and steers conversations, use ctrl+q to queue` — after the first
+- `using enter steers conversations · use ctrl+q to queue` — after the first
   exchange. Retired the first time you queue a message. It was two rows until 2026-09-22
   — one for the steer and one for the queue — and the owner folded them into one.
 
 **Moving around**
 
-- `ctrl+t starts a fresh chat in this folder` — retired when the new-chat page opens.
+- `ctrl+t starts a fresh chat in this project` — retired when the new-chat page opens.
 
 **Memory, accounts and the rest**
 
@@ -168,12 +161,25 @@ build if the two disagree), so a tip you saw is on it word for word.
   `ctrl+b freezes the screen so you can read and copy from it` held for one build on
   2026-09-22, and `ask for a picture, a voiceover, music or a video` before that.)
 
-**Four rows came off on 2026-09-22**, on the owner's read of the whole list: `alt+3 shows
-what this machine has spent, by the day`, `alt+1 to alt+7 jump straight to a place`,
-`/search finds anything ever said on this machine` and `/subharness lists the programs you
-can run`. All four name doors the tab bar or the `/` list already puts in front of you,
-which is the same argument that kept `alt+p`, `alt+e` and `/` off the list in the first
-place. The features are unchanged; only the tips about them are gone.
+**Seven rows came off on 2026-09-22**, over two reads of the whole list, and **every one of
+the commands they named still works** — only the tips about them are gone.
+
+- `alt+3 shows what this machine has spent, by the day`, `alt+1 to alt+7 jump straight to a
+  place`, `/search finds anything ever said on this machine` and `/subharness lists the
+  programs you can run` name doors the tab bar or the `/` list already puts in front of
+  you, which is the argument that kept `alt+p`, `alt+e` and `/` off the list in the first
+  place.
+- `/ask answers right here without opening a conversation` came off ahead of the door it
+  taught: `/ask` is on its way out, and a tip is for something you will still have
+  tomorrow. It was the only tip that was true on home alone until `/project` took that
+  place.
+- `/folder picks the folder codeaf works in` came off because **it was not true**. `/folder`
+  never moves the directory codeaf is standing in — that is fixed for the life of a
+  conversation — it registers a directory the conversation is *about*, which is exactly
+  what a folder after `/attach` does, through the same door. So `/attach`'s row says "a
+  file or folder" now and this one is gone.
+- `/attach lets you browse anywhere for files` was a second row about one command, which
+  is one row too many.
 
 Unless a line above says otherwise, a tip is true from the first minute on home and after
 the first exchange in a conversation.

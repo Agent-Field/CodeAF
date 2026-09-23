@@ -297,10 +297,6 @@ var (
 	// spoken is a conversation that has had at least one exchange: a tip about
 	// steering or queueing over an answer means nothing before one has arrived.
 	spoken = func(a *app) bool { return a.turn >= 1 }
-	// askable is home's own door standing — the errand builder a launch may or
-	// may not hand the surface (homeexchange.go's [app.askHereWith]) — and the
-	// person standing on home, where the sentence it arms is true.
-	askable = func(a *app) bool { return a.errand != nil && a.at(pageHome) }
 	// onHome is a tip about a command home is the only screen for: it is armed
 	// while home is in front and stands down the moment it is not, so the one
 	// list can hold a sentence that would be a lie over a conversation's box.
@@ -313,13 +309,16 @@ var (
 // and the page say the same words — and notice_test.go holds the page to every
 // line here, so the table cannot say a thing the manual does not.
 //
-// TWENTY-SIX ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
+// TWENTY-THREE ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
 // 2026-09-21 turned up forty-eight lines worth saying; thirty of those shipped,
 // /project made thirty-one when it became a command of its own on 2026-09-22,
-// and the owner's read of the whole list that same day took it to twenty-six:
-// `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off as rows the
-// foot or the tab bar already teaches, and the two lines about a running
-// answer became one. What was left out is
+// and two reads of the whole list by the owner that same day took it to
+// twenty-three. `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off
+// as rows the foot or the tab bar already teaches; the two lines about a
+// running answer became one; `/ask`'s came off ahead of the door it taught;
+// `/folder`'s came off because it was not true and /attach's line now covers
+// both kinds; and the second /attach row was one row too many about one
+// command. What was left out is
 // what the foot already names — `alt+p`, `alt+e`, `alt+a`, `alt+k`, `/` — and
 // the second spelling of anything already here. `/ shows every command` was a
 // row until both feet started saying `/ commands` outright (footswap.go).
@@ -374,12 +373,11 @@ var notices = []notice{
 		retire: eventStandingOpened,
 	},
 	// ── starting work ───────────────────────────────────────────────────────
-	{
-		id: "ask-on-home", slot: slotHint,
-		armed:  askable,
-		text:   "/ask answers right here without opening a conversation",
-		retire: eventAsked,
-	},
+	//
+	// `/ask answers right here without opening a conversation` stood here
+	// until 2026-09-22 and came off ahead of the door it taught: /ask is on
+	// its way out, and a tip is a thing to teach somebody who will still have
+	// it tomorrow. The command itself is untouched.
 	{
 		id: "task-in-chat", slot: slotHint,
 		armed:  spoken,
@@ -414,32 +412,24 @@ var notices = []notice{
 	{
 		id: "attach-a-file", slot: slotHint,
 		armed:  ready,
-		text:   "/attach sends a file along with your message",
+		text:   "/attach sends a file or folder with your message",
 		retire: eventAttached,
 	},
-	{
-		id: "pick-a-folder", slot: slotHint,
-		armed:  ready,
-		text:   "/folder picks the folder codeaf works in",
-		retire: eventFolderPicked,
-	},
+	// `/folder picks the folder codeaf works in` stood here until 2026-09-22
+	// and was NOT TRUE: /folder never moves the directory codeaf is standing
+	// in — that is fixed for the life of a conversation — it registers a
+	// directory the conversation is ABOUT (folderplace.go's [app.referPlace]),
+	// which is what /attach does with a folder after it, through the very same
+	// seam. So the row came off and /attach's says "a file or folder". The
+	// command, and `/place` and `/dir` with it, is untouched.
 	{
 		// ON HOME ALONE, because /project is home's alone (projectcmd.go). A
 		// conversation's box would be reading it over a command that answers
 		// there by pointing back at home.
 		id: "pick-a-project", slot: slotHint,
 		armed:  onHome,
-		text:   "/project sets the folder the next conversation opens in",
+		text:   "/project sets the project folder for the next conversation",
 		retire: eventProjectSet,
-	},
-	{
-		// THE ID OUTLIVED ITS OWN WORDS. The line named a picture until
-		// 2026-09-22 and names the browser now; the id may not change with it
-		// ([notice.id] says why), so it reads as a misnomer on purpose.
-		id: "attach-a-picture", slot: slotHint,
-		armed:  ready,
-		text:   "/attach lets you browse anywhere for files",
-		retire: eventAttached,
 	},
 	{
 		id: "export-the-conversation", slot: slotHint,
@@ -475,14 +465,14 @@ var notices = []notice{
 		// not been told the other half ([notice.id]).
 		id: "steer-and-queue", slot: slotHint,
 		armed:  spoken,
-		text:   "using enter stops and steers conversations, use ctrl+q to queue",
+		text:   "using enter steers conversations · use ctrl+q to queue",
 		retire: eventQueued,
 	},
 	// ── moving around ───────────────────────────────────────────────────────
 	{
 		id: "new-chat", slot: slotHint,
 		armed:  ready,
-		text:   "ctrl+t starts a fresh chat in this folder",
+		text:   "ctrl+t starts a fresh chat in this project",
 		retire: eventChatStarted,
 	},
 	// ── memory, accounts and the rest ───────────────────────────────────────
