@@ -9345,15 +9345,14 @@ func beltTreeWork(dir string) []string {
 	}
 	var paths []string
 	for _, path := range porcelainPaths(out) {
-		switch {
-		case isTaskDropping(path):
-		case path == "bench-results" || strings.HasPrefix(path, "bench-results/"):
-		case path == planStoreFilename || strings.HasPrefix(path, planStoreFilename+"."):
-		case path == "bin/plandb":
-		case strings.HasSuffix(path, ".lock"):
-		default:
-			paths = append(paths, literalPathspec+path)
+		// WHAT IS MACHINERY IS ANSWERED IN ONE PLACE ([harnessWrote]), by where
+		// the harness itself writes, and never by a name project files share: a
+		// `.lock` suffix here once kept every lockfile a run changed off the
+		// branch, and a `bench-results` directory is a project's own folder.
+		if harnessWrote(path) {
+			continue
 		}
+		paths = append(paths, literalPathspec+path)
 	}
 	return paths
 }

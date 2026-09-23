@@ -812,8 +812,9 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// ask with it when this turn owes one (CHAT-ROLE.md, "A landing speaks only
 	// when an answer is owed"). A task about ANOTHER FOLDER than the work
 	// already underway is refused here ([standsElsewhereError]); any other
-	// failure of the run road falls through to the shipped engine, exactly as a
-	// typed /task does, and that engine cuts its own copy from the same stand.
+	// failure of the run road falls through to the older engine, which cuts its
+	// own copy from the same stand, and the receipt says so and why
+	// ([runRoadFellBack]).
 	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
 		a.mu.Lock()
 		question := questionAtTaskHandoff(a.owedAsks)
@@ -842,10 +843,26 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 			}
 			return receipt, false, nil
 		}
+		// THE FALLBACK IS SAID, NOT SILENT. The work still starts — on the older
+		// engine, which cuts its own copy from the same stand — but a receipt
+		// identical to the run road's hid which engine took it and why, so the
+		// conversation described a run that did not exist. The reason rides the
+		// receipt in the run road's own words.
+		state := graph.admit(p.id, spec)
+		admitted = true
+		return withReport(taskReceipt(p.id, spec, state, p.stand, elsewhere), runRoadFellBack(err)), false, nil
 	}
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
+}
+
+// runRoadFellBack is the line an approved hand-off's receipt carries when the
+// run engine could not start it and the older engine took it instead: which
+// engine the work is on, and the run road's own reason.
+func runRoadFellBack(err error) string {
+	return "It runs on the older task engine, because the run engine could not start it: " +
+		strings.TrimRight(strings.TrimSpace(err.Error()), ".") + "."
 }
 
 // taskReceipt is what an admitted proposal hands back to the model.

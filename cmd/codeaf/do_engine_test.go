@@ -9,8 +9,9 @@ package main
 // bashworker tests make.
 //
 // THREE FACTS ARE UNDER TEST. A brief the scripted model completes leaves with
-// exit 0 and an envelope naming the root's result, its landed file and the
-// branch the landing answered. A ceiling of nothing leaves with exit 3 and
+// exit 0 and an envelope naming the root's result and the file it wrote, left
+// in place and uncommitted (do_engine_contract_test.go holds the rest of that
+// contract). A ceiling of nothing leaves with exit 3 and
 // `blocked_on` naming the price it was held to. And the usage ledger is the
 // session's own — the worker the run hosts writes it, so the door adds no
 // second accounting.
@@ -237,9 +238,8 @@ func beltGit(t *testing.T, dir string, args ...string) {
 // THE RUN ROAD COMPLETES A BRIEF AND NAMES THE ROOT'S RESULT.
 //
 // The scripted worker writes one file through bash and then finishes its task
-// in the store with the result as its words; the run lands that file on the copy's branch, and the caller reads on
-// stdout the root's own result, the landed path, and the branch the landing
-// answered — the whole of what the run road owes an envelope.
+// in the store with the result as its words; the caller reads on stdout the
+// root's own result and the path the run wrote.
 // A ROOT FINISH THAT LANDS IN THE STORE BEFORE ITS WORKER RETURNS STILL NAMES THE ROOT RESULT.
 //
 // The finish command writes the root done row before its shell exits. Holding that
@@ -330,14 +330,11 @@ func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 	if outcome.Seconds <= 0 {
 		t.Fatal("the run reported no elapsed time")
 	}
-	// The landing committed the worker's file, and both the file and the
-	// branch it went to are on the object.
+	// The worker's file is on the object, where the run left it: in the
+	// directory it was handed, edited in place and not committed.
 	want := filepath.Join(workspace, "out.txt")
 	if len(outcome.Artifacts) != 1 || outcome.Artifacts[0] != want {
-		t.Fatalf("artifacts = %v, want the one landed path %s", outcome.Artifacts, want)
-	}
-	if !strings.Contains(outcome.Deliverable, "landed on work") {
-		t.Fatalf("the answer never named the branch the landing answered:\n%s", outcome.Deliverable)
+		t.Fatalf("artifacts = %v, want the one path the run wrote %s", outcome.Artifacts, want)
 	}
 }
 
