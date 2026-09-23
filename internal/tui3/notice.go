@@ -390,7 +390,7 @@ var notices = []notice{
 	{
 		id: "manual-answers", slot: slotHint,
 		armed:  ready,
-		text:   "/manual answers any question about codeaf from its own manual",
+		text:   "/manual answers any question about codeaf",
 		retire: eventManualAsked,
 	},
 	{

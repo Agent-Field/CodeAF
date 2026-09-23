@@ -118,7 +118,7 @@ build if the two disagree), so a tip you saw is on it word for word.
   `/task` is typed, bare or with a brief.
 - `ctrl+enter sends your message as something to keep true` — retired when a standing
   order is made or the standing page opened.
-- `/manual answers any question about codeaf from its own manual` — retired when
+- `/manual answers any question about codeaf` — retired when
   `/manual` is typed, bare or with a question.
 - `ctrl+shift+t reopens the last closed conversation tab` — retired the first time the chord is
   pressed, on a terminal that can send it.
