@@ -67,8 +67,8 @@ const (
 	// and the shelf is not a law to be traded against window size.
 	skillCatalogHeader = "## Available skills\n\n" +
 		"Procedures installed for this project and this machine, each with what it is for. " +
-		"When a request's work fits one, fetch it with `use_skill` (mode get) and follow it before starting; " +
-		"skills suited to a message's words are also attached to that message.\n"
+		"When a request's work fits one, even in none of its words, fetch it with `use_skill` (mode get) and follow it before starting: " +
+		"before any other tool and before answering. Skills suited to a message's words are also attached to that message.\n"
 
 	// skillCatalogNamesLead opens the line of skills listed by name alone.
 	skillCatalogNamesLead = "- also on the shelf (fetch by name): "
