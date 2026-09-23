@@ -4172,6 +4172,11 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 // `served` is the endpoint the router says answered, "" when nothing said.
 // `lane` is what the witness measured about THIS request and nothing else.
 func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served string, lane laneFacts) {
+	// The row's endpoint is the answer's own naming or, for a service that
+	// declared the one machine it is, that declared name ([Agent.attributedEndpoint]).
+	// `lane` was read from the answer alone, so what the lane layer learns and
+	// draws is untouched by the declaration.
+	served = a.attributedEndpoint(model, served)
 	if response == nil || response.Usage == nil {
 		return
 	}
