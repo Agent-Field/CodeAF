@@ -72,6 +72,11 @@ type paceCompleter struct {
 	taken int
 	// slow is what every reading costs.
 	slow time.Duration
+	// recallAfter, when set, holds the memory router's answer until it closes.
+	// A test that is ABOUT the recall landing during a particular request closes
+	// it from inside that request, which makes the ordering a fact of the
+	// fixture instead of a race the scheduler usually wins.
+	recallAfter <-chan struct{}
 	// route is what the memory router answers, and sketch what a mark's reader
 	// draws.
 	route  string
@@ -93,7 +98,15 @@ func (p *paceCompleter) CompleteWithMessages(ctx context.Context, messages []ai.
 		}
 		p.readings[kind]++
 		slow := p.slow
+		hold := p.recallAfter
 		p.mu.Unlock()
+		if kind == "recall" && hold != nil {
+			select {
+			case <-hold:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
 		select {
 		case <-time.After(slow):
 		case <-ctx.Done():
@@ -319,12 +332,23 @@ func namesAside(list []string, want string) bool {
 // sees nothing — there was nothing on their screen yet. This is the move that
 // makes taking the wait off the path cost no memories at all.
 func TestARecallThatLandsBeforeTheFirstWordIsAskedAgainWithIt(t *testing.T) {
+	// THE RECALL LANDS WHILE THE FIRST REQUEST IS ON THE WIRE, BY CONSTRUCTION.
+	// Started beside the turn and answering instantly, it used to win a second
+	// race as well: on two starved cores it sometimes answered before the first
+	// request was even assembled, which the product rightly handles by carrying
+	// the block in that request with no cut (memory.go's [recallAside.applyOrDefer],
+	// "A GENERATION THAT HAS NOT STARTED NEEDS NO CUTTING"). This step then waited
+	// for a cut that was never owed and the turn hung until collect gave up —
+	// about one run in forty on two CPUs, 2026-09-23. The router's answer is now
+	// held until this request is in flight, so the test proves the cut it names.
+	inFlight := make(chan struct{})
 	completer := &paceCompleter{
 		// The turn's first request waits for its own context, which is what a
 		// model that has not written a word yet looks like from here. The recall
 		// lands underneath it and cuts it; the second step is the re-ask.
 		steps: []step{
 			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				close(inFlight)
 				<-ctx.Done()
 				return nil, ctx.Err()
 			},
@@ -332,8 +356,10 @@ func TestARecallThatLandsBeforeTheFirstWordIsAskedAgainWithIt(t *testing.T) {
 				return textResponse("reformatted"), nil
 			},
 		},
-		// Instant: this reading is meant to win the race.
-		slow: 0,
+		// Instant once the first request is out: this reading is meant to win
+		// the race against the first word.
+		slow:        0,
+		recallAfter: inFlight,
 	}
 	agent, brain, journal := paceAgent(t, completer)
 	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")

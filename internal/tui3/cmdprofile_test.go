@@ -20,19 +20,19 @@ import (
 //
 // It measures the harness, not the surface, so it lives beside [runCmd] and
 // records what [runCmd] itself decides: which command was run, whether the
-// command answered inside its budget or was dropped at the end of it, and how
-// long the answer took when it came. The last is the question the design turns
-// on — a waiter that answers in microseconds can have its waiting overlapped
-// with every other waiter's, and one that answers at 140ms cannot.
+// command answered, and how much deadline wall was charged when it was dropped.
+// An owner-proven empty waiter is recorded as a zero-wall drop; an unknown owner
+// still records [cmdBudget]. The distinction is the question the design turns
+// on, and it can be measured without treating scheduler latency as evidence.
 var (
 	cmdProfileOn bool
 	cmdProfileMu sync.Mutex
 	// cmdProfile is keyed by the runtime symbol behind the command, which is the
 	// same key [budgetFor] prices by, so the two readings line up.
 	cmdProfile = map[string]*cmdStat{}
-	// cmdBatches counts batches by how many commands they held, flattened —
-	// [runCmd] runs a batch's members one after another, so a batch of n parked
-	// waiters costs n budgets, and this is how much that is worth.
+	// cmdBatches counts batches by how many commands they held, flattened. Their
+	// waiters overlap on the default road, while exact registered empty queues
+	// cost no deadline; the distribution still explains where commands entered.
 	cmdBatches = map[int]int{}
 	// cmdProfileWall is the total time spent inside [runCmd] at the top level,
 	// nested batch members excluded, which is the share of the package's wall

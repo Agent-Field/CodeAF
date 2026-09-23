@@ -788,7 +788,10 @@ func (a *app) taskPaneFollow() tea.Cmd {
 	}
 	a.taskSheet.paneGen++
 	gen := a.taskSheet.paneGen
-	return tea.Tick(taskPaneSettle, func(time.Time) tea.Msg {
+	// The surface clock keeps this debounce a real production timer while the
+	// harness declines it deterministically: it sits at the old command budget,
+	// where a real timer was already outside the test clock's admitted range.
+	return surfaceTick(taskPaneSettle, func(time.Time) tea.Msg {
 		return taskPaneSettleMsg{gen: gen, key: key}
 	})
 }

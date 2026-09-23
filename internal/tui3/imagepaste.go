@@ -279,7 +279,7 @@ func pastedWords(text string) []string {
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
 		if quote == 0 && word.Len() == 0 && !asciiPasteSpace(r) {
-			windowsWord = windowsBackslashWord(string(runes[i:]))
+			windowsWord = windowsBackslashWord(runes[i:])
 		}
 		switch {
 		case quote != 0:
@@ -314,16 +314,28 @@ func pastedWords(text string) []string {
 	return out
 }
 
+// windowsBackslashHead is the longest prefix this question can recognise. It
+// also caps the work at each word boundary: no word may make the splitter copy
+// or lowercase the rest of the paste.
+const windowsBackslashHead = `\\wsl.localhost\`
+
 // windowsBackslashWord says whether backslashes in this word are separators
 // rather than shell escapes. It is asked only at a word boundary and recognises
 // only a drive or one of WSL's two UNC hosts, so POSIX `Screen\ Shot.png` keeps
 // the escaping it arrived with.
-func windowsBackslashWord(text string) bool {
-	if len(text) >= 3 && asciiDriveLetter(text[0]) && text[1] == ':' && text[2] == '\\' {
+func windowsBackslashWord(text []rune) bool {
+	if len(text) >= 3 && text[0] <= unicode.MaxASCII && asciiDriveLetter(byte(text[0])) && text[1] == ':' && text[2] == '\\' {
 		return true
 	}
-	lower := strings.ToLower(text)
-	return strings.HasPrefix(lower, `\\wsl.localhost\`) || strings.HasPrefix(lower, `\\wsl$\`)
+	if len(text) < len(`\\wsl$\`) || text[0] != '\\' || text[1] != '\\' {
+		return false
+	}
+	head := text
+	if len(head) > len(windowsBackslashHead) {
+		head = head[:len(windowsBackslashHead)]
+	}
+	lower := strings.ToLower(string(head))
+	return strings.HasPrefix(lower, windowsBackslashHead) || strings.HasPrefix(lower, `\\wsl$\`)
 }
 
 // asciiPasteSpaces is the shell whitespace a terminal escapes in a dropped
@@ -417,11 +429,11 @@ func literalPastePath(text string) string {
 	if len(text) >= 2 && (text[0] == '\'' || text[0] == '"') && text[len(text)-1] == text[0] {
 		text = text[1 : len(text)-1]
 	}
-	if windowsBackslashWord(text) {
+	runes := []rune(text)
+	if windowsBackslashWord(runes) {
 		return strings.Trim(text, asciiPasteSpaces)
 	}
 	var out strings.Builder
-	runes := []rune(text)
 	for i := 0; i < len(runes); i++ {
 		if runes[i] == '\\' && i+1 < len(runes) {
 			i++
