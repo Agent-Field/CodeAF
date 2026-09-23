@@ -1079,6 +1079,25 @@ func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 		if len(moved) == 0 {
 			continue
 		}
+		// THE WAIT IS OVER ON LANDINGS, NOT ON ROWS ([landed]). waitMoved reads
+		// the store, and a child's worker writes its own done before it comes
+		// home; waking the parent on that row lets the parent write its ending
+		// before the child's return seats the child's review beneath it, and
+		// the store then refuses the parent over a check that has not run. On a
+		// loaded box that order came up often enough to fail the run
+		// (review_order_test.go's parked root). The parent stays parked until
+		// the return is absorbed; the next pass reads the review as one more
+		// open wait and wakes it when that lands.
+		unlanded := false
+		for _, settled := range moved {
+			if !s.landed(settled) {
+				unlanded = true
+				break
+			}
+		}
+		if unlanded {
+			continue
+		}
 		if s.full() {
 			return
 		}
