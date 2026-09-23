@@ -30,8 +30,10 @@ package run
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -113,6 +115,13 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		// reads as the work seat, the same fallback SeatFor gives an unknown
 		// role, so RoleOf's error needs no reader here.
 		role, _ := store.RoleOf(task.ID)
+		// THE EXPERIMENT SWITCH, OFF UNLESS A BENCH TURNS IT ON. A root with no
+		// children yet reads as a work leaf, so the run's first split decision is
+		// made on the worker seat; the replan baseline measures what seating that
+		// first turn on the plan seat changes ([rootPlanSeatAsked]).
+		if role == plandb.RoleWork && task.ID == store.RootID() && rootPlanSeatAsked() {
+			role = plandb.RolePlan
+		}
 		tier := SeatFor(role)
 		// THE DOOR'S SEAT WINS WHERE IT NAMED ONE. A planner (the run's root or
 		// a task that has children) rides the plan seat. A check rides the careful
@@ -138,6 +147,30 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		}
 		return NewBashWorker(store, workspace, model, completerFor(model))
 	}
+}
+
+// RootPlanSeatEnv is the experiment switch that seats the run's root on the
+// plan seat from its very first turn, before it has any children.
+//
+// IT IS AN EXPERIMENT, NOT A PRODUCT SETTING, AND IT IS OFF BY DEFAULT. Today a
+// root answers the work role until it splits ([plandb.Store.RoleOf] reads the
+// shape), so the model that decides whether and how to split is the worker
+// seat's, while the comment on [SeatFor] says the root rides the plan seat. The
+// replan baseline (docs/design/replan/DESIGN.md) runs both shapes side by side
+// to learn whether that difference matters before anybody changes the default.
+// Only the words "1", "on" and "true" turn it on; anything else, and unset,
+// leaves every seat exactly where it was.
+const RootPlanSeatEnv = "CODEAF_EXPERIMENT_ROOT_PLAN_SEAT"
+
+// rootPlanSeatAsked reads [RootPlanSeatEnv] through the one door onto the
+// environment, at every launch, so a bench arm that sets it for one process
+// changes nothing in any other.
+func rootPlanSeatAsked() bool {
+	switch strings.ToLower(strings.TrimSpace(env.Get(RootPlanSeatEnv))) {
+	case "1", "on", "true":
+		return true
+	}
+	return false
 }
 
 // seatlessWorker is the seat a task gets when the crew holds no model for its
