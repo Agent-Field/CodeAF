@@ -13,7 +13,7 @@ Yes. Type it on the home screen, press `↑` once — which lands on the row spe
  enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+p project · alt+e effort · alt+a approvals · esc clear
 ```
 
-What you get is **a row at the top of home's `threads` panel and a pane holding the exchange**. The row
+What you get is **a row in home's conversation list and a pane holding the exchange**. The row
 stays there — with what the errand is doing written in its tail — until the errand is
 finished and you have read what it came to. The pane is the exchange itself: what you said,
 the reply as it streams, one line per tool call, and the card when one arrives. On an

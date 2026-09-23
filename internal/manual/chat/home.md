@@ -1380,7 +1380,7 @@ standing choice. The selected project remains pinned. Neither cell is drawn on a
 
 **Home and conversations share the model, effort and approvals controls.**
 Other full-screen places have no general conversation message box; return Home
-with Escape to start a conversation.
+with `space` `space` (or `alt+1`) to start a conversation.
 
 **`/folder` is the third door onto the same pin, and it is the one that shows you the disk.**
 Typed on home — bare, or with a path after it — it opens the folder browser with the title
@@ -1407,7 +1407,8 @@ and opens home. So a space you actually wanted is never eaten: space then `x` le
 **Wherever the door is drawn, two spaces open it.** That includes a box holding only blank
 lines, from a `ctrl+j` or an `alt+enter` you did not mean. It also includes the other
 places: the same two spaces, typed into a place's own empty box — the tasks roster's filter,
-the memory filter, the search and spend composers — open home from there. The door still
+the memory filter and the search query — open home from there. Places without a box,
+such as spend and standing, count the two spaces directly. The door still
 loses to a space that already means something where you are standing: on the settings panel
 space is the row's `activate` verb, inside a task's record `space` pages the card, and on
 home itself two spaces type into home's own box.
@@ -1418,14 +1419,13 @@ with none, and over `--host` — where what opens is the **far machine's** home.
 
 ## What does pressing space twice do — the home door at the foot of a conversation
 
-When the box is empty, the keys row under the box — the last row of the frame — reads
-exactly:
+When the box is empty, the keys row under the box ends with:
 
 ```
 / commands · space space home
 ```
 
-That is the whole advertisement. It costs no extra row — it is the keys row the frame
+The model controls and chats shortcut can precede it. It costs no extra row — it is the keys row the frame
 already has — and it **vanishes the moment you type anything**, because it is a door
 and not decoration. It also goes while a turn is running, where the same row has something
 more urgent to say (`esc interrupt`); the gesture still works then, it is just not being
