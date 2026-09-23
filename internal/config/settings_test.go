@@ -1438,6 +1438,11 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 	dir := t.TempDir()
 	t.Setenv("CODEAF_MODEL_POOL", "")
 	t.Setenv("CI", "")
+	// The telemetry off switch quiets the pool to `read` (ModelPoolResolved),
+	// so a shell that exports it would make this untouched profile read as a
+	// touched one. The test is about the row, not the shell it runs in.
+	t.Setenv("CODEAF_TELEMETRY", "")
+	t.Setenv("DO_NOT_TRACK", "")
 	rows := registry(t, dir)
 	row, ok := rows.Row(KeyModelPool)
 	if !ok {
