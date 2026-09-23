@@ -2800,6 +2800,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// watching something the plan does not name is the shape the note was
 		// written for, and these are the words of a person holding it.
 		{"my task is waiting on a build outside the plan", "worker-harness"},
+		// A program's task page (internal/tui3's taskconversation.go), asked
+		// the way somebody meets it: a page that is not the list of steps every
+		// other task opens on, and the exchange they are watching on it.
+		{"what is the program saying to the model on its task page", "worker-harness"},
+		{"what does the delegate's task page show", "worker-harness"},
+		{"can I leave a note for the delegate", "worker-harness"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

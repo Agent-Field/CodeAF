@@ -119,6 +119,12 @@ func (a *app) workTabFrame(width, height int) []string {
 		}
 		out = append(out, a.pal.dim(who+railSep)+a.pal.ink(note.Body))
 	}
+	// A PROGRAM'S RUN TAKES NO NOTE, so its tab offers no box: nothing typed
+	// there would reach the program, and the keys it would have typed are the
+	// page's reading keys and nothing else ([app.taskPlanKey]).
+	if a.taskPlanIsProgram() {
+		return out
+	}
 	text := a.taskSheet.planNote.String()
 	if strings.TrimSpace(text) == "" {
 		text = taskPlanNoteWord

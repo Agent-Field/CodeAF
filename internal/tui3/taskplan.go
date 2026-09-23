@@ -681,7 +681,7 @@ func planRailLive(line tasksLine, width int, pal palette) string {
 	if room < 1 {
 		return ""
 	}
-	if live := planLiveRow(line.item.plan.Live.Command, line.item.plan.LiveParts, room, pal); live != "" {
+	if live := planLiveLine(*line.item.plan, room, pal); live != "" {
 		return lead + live
 	}
 	return ""
@@ -1186,11 +1186,31 @@ func planEnded(row session.PlanTaskRow) bool {
 // than a chat turn.
 func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
+	// A PROGRAM'S PAGE IS READ, NEVER TYPED INTO. It has no box, so it takes the
+	// reading keys and the way back below exactly as every page takes them, `x`
+	// for the stop its run's own task has, and `enter` only into a part it
+	// lists; every other key is nothing, rather than a note no program reads or
+	// a letter aimed at a box that is not there.
+	if a.taskPlanIsProgram() {
+		switch key {
+		case stopRaiseKey:
+			return a.taskPlanStop(a.taskSheet.plan.Row)
+		case "enter":
+			if a.taskSheet.planAt >= 0 && a.taskSheet.planAt < len(a.taskSheet.plan.Children) {
+				old := a.taskSheet.plan
+				return a.taskSheetPlanFrom(old.Children[a.taskSheet.planAt].ID, &old)
+			}
+			return nil
+		case "esc", "left", taskSheetKey, "up", "ctrl+p", "down", "ctrl+n", "pgup", "pgdown", "ctrl+o":
+		default:
+			return nil
+		}
+	}
 	// The caret's own chords first, the route every box on this surface takes
 	// (place_tasks.go's filter, the conversation's composer).
-	if editorMotion(&a.taskSheet.planNote, key) ||
+	if !a.taskPlanIsProgram() && (editorMotion(&a.taskSheet.planNote, key) ||
 		editorUndo(&a.taskSheet.planNote, key) ||
-		editorWordKill(&a.taskSheet.planNote, key) {
+		editorWordKill(&a.taskSheet.planNote, key)) {
 		a.touch()
 		return nil
 	}
@@ -1244,7 +1264,7 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.taskPlanScroll(taskSheetRows)
 		return nil
 	case "ctrl+o":
-		if len(planBriefRows(a.taskSheet.plan.Description, a.bodyWidth())) > briefFoldLines {
+		if a.taskPlanBriefFolds() {
 			a.taskSheet.planBriefFull = !a.taskSheet.planBriefFull
 			a.taskSheet.detailTop = 0
 			a.taskSheet.planStick = false
@@ -1277,9 +1297,37 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// taskPlanHead is what the page spends above its body: the task's title, the
-// air under it and the rule — three rows, the card's own head.
-const taskPlanHead = 3
+// taskPlanBriefFolds reports whether the open page's brief is long enough for
+// `ctrl+o` to fold: measured at the width a program's conversation draws it at
+// on a program's page ([app.taskConversationFolds]), and at the body's width on
+// every other.
+func (a *app) taskPlanBriefFolds() bool {
+	if a.taskPlanIsProgram() {
+		return a.taskConversationFolds()
+	}
+	return len(planBriefRows(a.taskSheet.plan.Description, a.bodyWidth())) > briefFoldLines
+}
+
+// taskPlanHeadRows is what the page spends above its body: the task's title,
+// the line under it, and the rule — the card's own head. It is drawn and
+// counted by this one function, so the frame, the window and the scroll cannot
+// disagree about where the body starts.
+//
+// ON A PROGRAM'S PAGE THE LINE UNDER THE TITLE IS PINNED: where the program is,
+// what it has spent, how many calls it has made and how long it has been going
+// ([app.taskPlanPinned]). The page opens stuck to its bottom edge and follows
+// the conversation down, so a figure drawn as the body's first line — where
+// every other page draws its telemetry — is a figure that scrolls away the
+// moment there is more than a screen of it. On every other page, and on a
+// program's page with nothing yet to say, that line is the air it always was.
+func (a *app) taskPlanHeadRows(width int) []string {
+	pal := a.pal
+	under := ""
+	if pinned := a.taskPlanPinned(a.taskSheet.plan, width); pinned != "" {
+		under = pal.dim(pinned)
+	}
+	return []string{fit(pal.bold(pal.ink(a.taskSheet.plan.Row.Title)), width), under, pal.dim(rule(width))}
+}
 
 // taskPlanFoot is what the page spends under its body: the closing rule, the
 // note composer, the one sentence saying when a note is read, and the key line,
@@ -1287,22 +1335,39 @@ const taskPlanHead = 3
 // into and the sentence that says what happens to what is typed in it.
 const taskPlanFoot = 4
 
-// taskPlanWindow is the page's body, the rows it is drawn in and the rows its
-// foot spends, resolved from the frame once: the draw and the scroll both read
-// the bottom off this, so the two cannot disagree about where the bottom is.
-func (a *app) taskPlanWindow(width, height int) ([]string, int, int) {
+// taskPlanProgramFoot is a program's page's foot: the closing rule and the key
+// line, and no box. A program reads no note — nothing a person types on its
+// page would ever reach it — so the box, and the sentence promising that a
+// worker reads a note at its next step, are absent there rather than false.
+const taskPlanProgramFoot = 2
+
+// taskPlanFootRows is how many rows the open page spends under its body.
+func (a *app) taskPlanFootRows() int {
+	if a.taskPlanIsProgram() {
+		return taskPlanProgramFoot
+	}
+	return taskPlanFoot
+}
+
+// taskPlanWindow is the page's head, its body, the rows the body is drawn in and
+// the rows its foot spends, resolved from the frame once: the draw and the scroll
+// both read the bottom off this, so the two cannot disagree about where the
+// bottom is — and the head is counted here, never assumed, so a pinned line is
+// a row the body gives up rather than a row drawn over it.
+func (a *app) taskPlanWindow(width, height int) ([]string, []string, int, int) {
 	if height < 1 {
 		height = 1
 	}
-	foot := taskPlanFoot
-	if height-taskPlanHead-foot < 1 {
+	head := a.taskPlanHeadRows(width)
+	foot := a.taskPlanFootRows()
+	if height-len(head)-foot < 1 {
 		foot = 0
 	}
-	room := height - taskPlanHead - foot
+	room := height - len(head) - foot
 	if room < 1 {
 		room = 1
 	}
-	return a.taskPlanBody(width - 2), room, foot
+	return head, a.taskPlanBody(width - 2), room, foot
 }
 
 // taskPlanTopFor resolves the page's scroll position, sticking to the live edge
@@ -1331,7 +1396,7 @@ func (a *app) taskPlanTopFor(count, room int) int {
 // resumes following without pressing anything.
 func (a *app) taskPlanScroll(delta int) {
 	width, height := a.size()
-	body, room, _ := a.taskPlanWindow(width, height)
+	_, body, room, _ := a.taskPlanWindow(width, height)
 	bottom := len(body) - room
 	if bottom < 0 {
 		bottom = 0
@@ -1353,21 +1418,31 @@ func (a *app) taskPlanScroll(delta int) {
 // frame, one rule, one foot — so the two pages of this place read as one. The
 // one thing the card has not got and this page has is the note composer: the box
 // a person types into, in the foot, under the rule.
+//
+// A PROGRAM'S PAGE HAS NO BOX, so it has no caret either: its foot is the rule
+// and the keys ([taskPlanProgramFoot]), and a blinking bar over nothing a person
+// can type into is a cursor pointing at a key that does not exist — the card's
+// own law (place_sessions.go's ownFrame hides it for the same reason).
 func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 	pal := a.pal
 	if height < 1 {
 		height = 1
 	}
+	program := a.taskPlanIsProgram()
+	if program {
+		a.caret = false
+	}
 	lines := make([]string, 0, height)
 	add := func(text string) { lines = append(lines, text) }
 
-	add(fit(pal.bold(pal.ink(a.taskSheet.plan.Row.Title)), width))
-	add("")
-	add(pal.dim(rule(width)))
-	// THE FOOT IS THE LAST FOUR ROWS, and a frame too short for the body under
-	// it gives the body up rather than the way out — the page's own trim, and the
-	// one [app.taskPlanWindow] resolves so the draw and the scroll agree ([app.taskPlanScroll]).
-	body, room, foot := a.taskPlanWindow(width, height)
+	// THE HEAD AND THE FOOT ARE THE PAGE'S OWN ROWS, and a frame too short for
+	// the body between them gives the body up rather than the way out — the
+	// page's own trim, and the one [app.taskPlanWindow] resolves so the draw and
+	// the scroll agree ([app.taskPlanScroll]).
+	head, body, room, foot := a.taskPlanWindow(width, height)
+	for _, row := range head {
+		add(row)
+	}
 	// THE PAGE RESOLVES ITS OFFSET, it does not hold it: a stuck page reads the
 	// bottom where the body now is, so a step appended between frames is on
 	// screen at the next draw ([app.taskPlanTopFor]).
@@ -1392,24 +1467,26 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 			legend = append(legend, " "+pal.dim(a.pageMsg))
 		}
 		add(placeNoteRule(legend, width, pal))
-		if a.taskSheet.planNote.empty() {
-			add(" " + pal.dim(fit(prompt+taskPlanNoteWord, width-1)))
-		} else {
-			add(" " + fit(prompt+a.taskSheet.planNote.String(), width-1))
-		}
-		caretX, caretY = ansi.StringWidth(prompt)+1, len(lines)-1
-		// AND WHEN THE WORKER READS IT, under the box that writes it: the worker
-		// is a separate loop, so a note waits in the store until it asks for its
-		// next step — the one thing a person needs to know about the box they are
-		// typing into (taskPlanPickupWord).
-		//
-		// A TASK THAT HAS ENDED TAKES NO NEXT STEP, so the sentence is absent
-		// there rather than false. Its row stays, empty, because the foot's
-		// height is fixed and the caret is placed against it.
-		if planEnded(a.taskSheet.plan.Row) {
-			add("")
-		} else {
-			add(" " + pal.dim(fit(taskPlanPickupWord, width-1)))
+		if !program {
+			if a.taskSheet.planNote.empty() {
+				add(" " + pal.dim(fit(prompt+taskPlanNoteWord, width-1)))
+			} else {
+				add(" " + fit(prompt+a.taskSheet.planNote.String(), width-1))
+			}
+			caretX, caretY = ansi.StringWidth(prompt)+1, len(lines)-1
+			// AND WHEN THE WORKER READS IT, under the box that writes it: the
+			// worker is a separate loop, so a note waits in the store until it
+			// asks for its next step — the one thing a person needs to know about
+			// the box they are typing into (taskPlanPickupWord).
+			//
+			// A TASK THAT HAS ENDED TAKES NO NEXT STEP, so the sentence is absent
+			// there rather than false. Its row stays, empty, because the foot's
+			// height is fixed and the caret is placed against it.
+			if planEnded(a.taskSheet.plan.Row) {
+				add("")
+			} else {
+				add(" " + pal.dim(fit(taskPlanPickupWord, width-1)))
+			}
 		}
 		add(" " + paintHint(hintFit(a.taskPlanKeys(), width-2), pal, pal.dim))
 	}
@@ -1427,7 +1504,11 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 // by [hintFit], so `esc back` is kept last and the clause a narrow frame drops
 // first is the scroll.
 func (a *app) taskPlanKeys() string {
-	parts := []string{"↑↓ scroll", "enter send"}
+	parts := []string{"↑↓ scroll"}
+	// A PROGRAM'S PAGE SENDS NOTHING, so its key line offers no send.
+	if !a.taskPlanIsProgram() {
+		parts = append(parts, "enter send")
+	}
 	parts = append(parts, a.tasksPlanKeyWords(a.taskSheet.plan.Row)...)
 	parts = append(parts, taskCardBackWord)
 	return strings.Join(parts, railSep)
@@ -1441,6 +1522,11 @@ func (a *app) taskPlanKeys() string {
 func (a *app) taskPlanBody(width int) []string {
 	if width < 1 {
 		width = 1
+	}
+	// A PROGRAM'S PAGE IS ITS CONVERSATION, drawn where every other page draws
+	// its steps (taskconversation.go).
+	if a.taskPlanIsProgram() {
+		return a.taskProgramBody(width)
 	}
 	page, pal := a.taskSheet.plan, a.pal
 	var out []string
@@ -1518,29 +1604,7 @@ func (a *app) taskPlanBody(width int) []string {
 	}
 	if len(page.Notes) > 0 {
 		section("notes")
-		for _, note := range page.Notes {
-			// AN AUTHOR IS DRAWN ONLY AS A WORD A PERSON WOULD RECOGNISE. `you` is
-			// one. Every other author the store holds is an id of its own, the
-			// run's number or a worker's handle, and this page has no word for the
-			// kind of task that left the note; a page headed `1 · now` or
-			// `2ytmh2 · now` names nobody. The moment is kept and the id is never
-			// drawn, which is the owner's ruling on this surface: no internal name
-			// on a person's screen.
-			who := ""
-			if note.Person {
-				who = "you"
-			}
-			when := sinceAt(note.At, a.now())
-			switch {
-			case who != "" && when != "":
-				add(pal.dim(who + railSep + when))
-			case who != "":
-				add(pal.dim(who))
-			case when != "":
-				add(pal.dim(when))
-			}
-			addWrapped(note.Body, pal.ink)
-		}
+		out = append(out, a.taskPlanNoteRows(page.Notes, width)...)
 	}
 	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
@@ -1631,6 +1695,43 @@ func (a *app) taskPlanBody(width int) []string {
 			add(pal.ink(lead + word))
 			if line := planLiveRow(kid.Live.Command, kid.LiveParts, width-ansi.StringWidth(lead)-2, pal); line != "" {
 				add(lead + "  " + line)
+			}
+		}
+	}
+	return out
+}
+
+// taskPlanNoteRows is every note on a task as the page draws them under its
+// `notes` heading: each one's author and moment on a dim line, then its words.
+func (a *app) taskPlanNoteRows(notes []session.PlanTaskNote, width int) []string {
+	pal := a.pal
+	var out []string
+	for _, note := range notes {
+		// AN AUTHOR IS DRAWN ONLY AS A WORD A PERSON WOULD RECOGNISE. `you` is
+		// one. Every other author the store holds is an id of its own, the run's
+		// number or a worker's handle, and this page has no word for the kind of
+		// task that left the note; a page headed `1 · now` or `2ytmh2 · now` names
+		// nobody. The moment is kept and the id is never drawn, which is the
+		// owner's ruling on this surface: no internal name on a person's screen.
+		who := ""
+		if note.Person {
+			who = "you"
+		}
+		when := sinceAt(note.At, a.now())
+		switch {
+		case who != "" && when != "":
+			out = append(out, pal.dim(who+railSep+when))
+		case who != "":
+			out = append(out, pal.dim(who))
+		case when != "":
+			out = append(out, pal.dim(when))
+		}
+		for _, para := range strings.Split(note.Body, "\n") {
+			if strings.TrimSpace(para) == "" {
+				continue
+			}
+			for _, line := range wrap(strings.TrimSpace(para), width) {
+				out = append(out, pal.ink(line))
 			}
 		}
 	}

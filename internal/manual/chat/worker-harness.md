@@ -95,8 +95,9 @@ With the switch on, a run is drawn in the conversation's side list as its own ro
 door: click the run's row, or select it and press `enter`, and its page opens over the
 conversation; click a part's row or a check's row and THAT task's page opens. The page
 is the one the tasks place opens: what the task was asked, its notes, its steps, and the
-box that leaves a note. `esc` goes back to the conversation exactly as you left it, with
-whatever you had typed still in the box.
+box that leaves a note — except a program's page, which is its conversation and has no
+box (see *A program's task page is a conversation, not steps*). `esc` goes back to the
+conversation exactly as you left it, with whatever you had typed still in the box.
 
 The page can take a moment to arrive. From the press on, what you type belongs to the
 page and never to the conversation: the keys are kept in order and land in the page's
@@ -183,6 +184,39 @@ steps
 
 When the command ends the store clears the live step and the next read draws it as an ordinary
 step, with its number and the head of what came back.
+
+## A program's task page is a conversation, not steps — a delegate's page: what the program sent, what the model answered, the call in flight, no note box
+
+A task handed to a program codeaf carries (`/<name> <brief>`) has its own page. Every model
+call the program makes goes through codeaf, so the page is that conversation: the program on one
+side, like a very particular person asking codeaf things, and the model that answered on the
+other.
+
+```
+ rewrite the auth middleware
+ implement · $1.24 · 3 calls · 14m 3s
+ ───────────────────────────────────
+  <program>          rewrite the auth middleware to use the new session store
+  deepseek-v4-flash  I'll read the middleware and the store first.
+                     ▤ read internal/auth/middleware.go
+  <program>          read: package auth
+  ◐ deepseek-v4-flash · 12s
+```
+
+The line under the title stays put while you scroll: the stage the program says it is in (the
+task's own word, such as `running` or `done`, when there is none), what the run has spent so
+far, how many model calls it has made, and how long it has been going. A figure with nothing
+behind it is left out. The conversation opens on the brief. Each call is the program's side — a
+tool's result as `<tool>: <first line>`, its own words, or `summarized its history so far` —
+and the model's, named by its short name: the first line of its answer, and one dim row per tool
+it asked for behind that tool's mark. A call codeaf refused is one line from `codeaf`,
+`refused · <why>`; a failed one is `the call failed · <why>`. The call in flight is the last
+line, `◐`, the model and its seconds, gone when the call returns.
+
+Only the first line of each message is drawn, and a long run shows its newest calls under a
+line such as `…142 earlier calls`; the whole of every call is kept in the task's own record.
+The page has no note box: a program reads no note, so nothing typed there would reach it. While
+the run goes, `x` stops it. On the side list the run's row says the stage and the spend so far.
 
 ## Why is a step missing, the step numbers skip, the cd at the front of a command is gone
 

@@ -5057,7 +5057,14 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// specific true thing there is about it, and the rows below would each
 		// say something less: a call it is inside of, a hold that is not holding
 		// it, or a clock. It takes the row for [app.railDoing]'s reason.
+		//
+		// AND A PROGRAM'S RUN SAYS THE STAGE ITS PROGRAM IS IN, next after a
+		// named phase and for the same reason: it is what the node is doing, in
+		// the only vocabulary the program has ([app.railStage]).
 		rows := a.railDoing(node, width)
+		if len(rows) == 0 {
+			rows = a.railStage(node, width)
+		}
 		if len(rows) == 0 {
 			rows = a.railPhase(node, width)
 		}
@@ -5299,7 +5306,7 @@ func planUnderRows(item tasksItem, width int, pal palette) []string {
 		return nil
 	}
 	rows := make([]string, 0, railUnderRows)
-	if line := planLiveRow(item.plan.Live.Command, item.plan.LiveParts, width, pal); line != "" {
+	if line := planLiveLine(*item.plan, width, pal); line != "" {
 		rows = append(rows, line)
 	}
 	if figures := planFigures(item.plan); figures != "" {
@@ -5309,6 +5316,28 @@ func planUnderRows(item tasksItem, width int, pal palette) []string {
 		rows = rows[:railUnderRows]
 	}
 	return rows
+}
+
+// planLiveLine is a plan row's live line, whichever kind of worker it has. A
+// PROGRAM'S LIVE STEP IS ITS STAGE AND NOT A COMMAND: the worker publishes the
+// program's phase on the same live row a bash worker publishes its command on
+// (internal/run's delegateSink.Stage), and drawn behind the shell's `$` it read
+// as a command somebody typed — `$ senior-dev: implement · running`. So a
+// program's row draws the running mark and the stage its row carries
+// ([session.PlanTaskRow.Stage]), and every other row draws its command; a
+// program's row with no stage to name draws what it always drew, so the line
+// the layout counted is always a line with something on it.
+func planLiveLine(row session.PlanTaskRow, width int, pal palette) string {
+	if strings.TrimSpace(row.Program) != "" {
+		if stage := strings.TrimSpace(row.Stage); stage != "" {
+			lead := pal.glyph(tokens.GStepRunning) + " "
+			if room := width - ansi.StringWidth(lead); room > 0 {
+				return lead + pal.dim(fit(stage, room))
+			}
+			return ""
+		}
+	}
+	return planLiveRow(row.Live.Command, row.LiveParts, width, pal)
 }
 
 // planLiveRow is the live step's own line: the running step's glyph, the shell
@@ -5344,6 +5373,65 @@ func (a *app) railDoing(node *taskNode, width int) []string {
 		return nil
 	}
 	return []string{a.pal.dim(fit(node.doing, width))}
+}
+
+// railProgramRow is the run's own plan row for a node whose run was handed to
+// a program, read out of the rows the surface already holds
+// ([app.heldPlanRows]) — never out of the store, because this is asked on every
+// frame the column is drawn. A run's row and its store's root are one piece of
+// work under one number (the store is rooted at the task's own id), so the row
+// is found by that number, and only a row that names a program answers.
+func (a *app) railProgramRow(node *taskNode) (session.PlanTaskRow, bool) {
+	if node == nil || node.id == 0 {
+		return session.PlanTaskRow{}, false
+	}
+	rows, ok := a.heldPlanRows()
+	if !ok {
+		return session.PlanTaskRow{}, false
+	}
+	id := itoa(int(node.id))
+	for _, row := range rows {
+		if strings.TrimPrefix(strings.TrimSpace(row.ID), "t-") == id && strings.TrimSpace(row.Program) != "" {
+			return row, true
+		}
+	}
+	return session.PlanTaskRow{}, false
+}
+
+// railStage is the row a program's run wears while it runs: the stage its
+// program says it is in, alone, the way a named phase is drawn ([app.railDoing]).
+//
+//	implement                  senior-dev writing the change
+//	verification               and checking it
+//
+// A program's run used to wear only its clock here, because nothing the run
+// publishes on its row says what the program is doing: the stage lives on the
+// store's live step, which the side list reads on its own beat. It is nil
+// between stages and for every other node.
+func (a *app) railStage(node *taskNode, width int) []string {
+	row, ok := a.railProgramRow(node)
+	if !ok {
+		return nil
+	}
+	stage := fit(strings.TrimSpace(row.Stage), width)
+	if stage == "" {
+		return nil
+	}
+	return []string{a.pal.dim(stage)}
+}
+
+// railSpent is what a node has cost so far, for the telemetry under it. It is
+// [taskNode.spent] for every node, and for a program's run the larger of that
+// and what the run's own spend rows carry: the run publishes no price on its row
+// until it lands, while the model API banks a row per call as it goes. THE TWO
+// ARE THE SAME MONEY AND ARE NEVER ADDED — the larger is the more recent reading
+// of one bill, the rule [taskNode.spent] already keeps for its own two lanes.
+func (a *app) railSpent(node *taskNode) float64 {
+	spent := node.spent()
+	if row, ok := a.railProgramRow(node); ok && row.USD > spent {
+		spent = row.USD
+	}
+	return spent
 }
 
 // railMending is the row a node wears while it is closing a named gap in work it
@@ -5437,7 +5525,7 @@ func (a *app) railTelemetry(node *taskNode, width int) string {
 		// difference between keeping the price and dropping it.
 		segs = append(segs, tokenWord(node.tokens))
 	}
-	if spent := node.spent(); spent > 0 {
+	if spent := a.railSpent(node); spent > 0 {
 		segs = append(segs, dollars(spent))
 	}
 	if model := railModelWord(node); model != "" {
