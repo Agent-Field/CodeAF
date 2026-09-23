@@ -1,0 +1,1 @@
+{"baseRefName":"santos/dev","headRefName":"task/dual-hold-suite-lock","mergeCommit":null,"mergedAt":null,"number":1324,"state":"CLOSED","title":"scripts: a heavy suite takes both locks so a stale tree can see it","url":"https://github.com/Agent-Field/CodeAF/pull/1324"}
