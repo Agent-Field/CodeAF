@@ -87,7 +87,7 @@ type delegateSink struct {
 
 func (s *delegateSink) Stage(stage, status string) {
 	// THE LIVE STEP IS THE PROGRAM'S PHASE, numbered after the last step
-	// recorded, so the row reads "swe-pro: implement · running" while the
+	// recorded, so the row reads "senior-dev: implement · running" while the
 	// program is inside that phase and the count on the row stays the steps'.
 	label := s.name + ": " + stage
 	if status != "" {

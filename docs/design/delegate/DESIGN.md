@@ -1,8 +1,15 @@
 # Delegates — handing a task to an outside program — DESIGN (draft)
 
-*2026-09-21, revised 2026-09-22. Written against `dev @ 17ae56d34` and
-`swe-pro-go @ 5793499` (branch `zeropoint95/improvements`, PR #30). Waves 1 to
-4 are built on this branch; every swe-pro change this asked for has landed.*
+*2026-09-21, revised 2026-09-23. Written against `dev @ 17ae56d34` and
+`swe-pro-go @ 6103488` (branch `zeropoint95/improvements`, PR #30). Waves 1 to
+4 are built on this branch; every senior-dev change this asked for has landed.*
+
+*The first delegate was called `swe-pro` when this was written. It was renamed
+`senior-dev` in its own repository on 2026-09-22 (`b43daaf`): the binary,
+`cmd/senior-dev`, the `.senior-dev/` run folder, `refs/senior-dev/*` and every
+`SENIOR_DEV_*` variable. The repository and Go module keep the name
+`swe-pro-go`. The commit pins below predate the rename and are still in its
+history.*
 
 ## In one paragraph
 
@@ -10,7 +17,7 @@ A **delegate** is an outside program that does a whole coding task on its own.
 You start one by typing its name as a command:
 
 ```
-/swe-pro rewrite the auth middleware to use the new session store
+/senior-dev rewrite the auth middleware to use the new session store
 ```
 
 That starts an ordinary **task**. It runs in its own working copy, under your
@@ -19,7 +26,7 @@ branch when it ends. The chat is not blocked while it runs. Inside codeaf, a
 delegate is one more **worker kind** behind the existing run supervisor. It is
 not a second engine.
 
-`swe-pro` is the first delegate. Others are added later, one manifest each,
+`senior-dev` is the first delegate. Others are added later, one manifest each,
 at the person's discretion.
 
 ## Decisions already taken
@@ -30,10 +37,10 @@ at the person's discretion.
 | Command | `/<name> <brief>`, one word per installed delegate | 2026-09-21 |
 | What it starts | a task through the existing `/task` door, never a blocking turn | 2026-09-21 |
 | Questions from the delegate | none. The brief must be self-sufficient | 2026-09-21 |
-| swe-pro's `wip(edit)` commits | squashed into one commit at landing | 2026-09-21 |
-| swe-pro control plane | optional. Landed in swe-pro `f3b9716` | 2026-09-21 |
-| Live cost from swe-pro | a top-level `spend` record. Landed in swe-pro `5793499` | 2026-09-22 |
-| Steps from swe-pro | a `step` record per finished tool call. Landed in swe-pro `5793499` | 2026-09-22 |
+| senior-dev's `wip(edit)` commits | squashed into one commit at landing | 2026-09-21 |
+| senior-dev control plane | optional. Landed in senior-dev `f3b9716` | 2026-09-21 |
+| Live cost from senior-dev | a top-level `spend` record. Landed in senior-dev `5793499` | 2026-09-22 |
+| Steps from senior-dev | a `step` record per finished tool call. Landed in senior-dev `5793499` | 2026-09-22 |
 | Command rows and the manual law | rows are generated at launch; each delegate ships its own manual page; the law is checked at load | 2026-09-21 |
 | Readers | **one generic reader**, compiled in, over a small stdout protocol. No per-program reader | 2026-09-21 |
 | Delegates that produce no tree | allowed. The manifest says `"lands": "text"` and the terminal record's text is the deliverable | 2026-09-21 |
@@ -61,25 +68,25 @@ is what the chat answers from.
 | --- | --- | --- | --- |
 | `/harness` | a saved shape of work | codeaf, at your request | in this process |
 | `/subharness` | the same, through an intake card | codeaf or a bundle author | in this process |
-| `/swe-pro` | an outside program | someone else | a child process in a working copy |
+| `/senior-dev` | an outside program | someone else | a child process in a working copy |
 
 ## The command
 
-`/swe-pro <brief>` is `/task <brief>` with the worker already chosen.
+`/senior-dev <brief>` is `/task <brief>` with the worker already chosen.
 
 1. The same card appears. You answer it before money moves.
 2. The turn ends. You are not held for the hour.
 3. A run starts in the tasks store, in its own working copy.
 4. It shows on the rail with a live step. `stop` works.
 5. When it ends, the landing wakes a turn, as every task does today. That
-   turn reads swe-pro's terminal record and the landing note, and answers.
+   turn reads senior-dev's terminal record and the landing note, and answers.
 
 The model never watches the stream. You watch the rail.
 
 **Rows are generated.** A manifest at `~/.codeaf/delegates/<name>.json` whose
 binary is on PATH adds one row `/<name> <brief>` to the live command list, so
-`/help` and the picker show it beside `/task`. No swe-pro on the machine means
-no `/swe-pro` row. A name that collides with a built-in command or alias is
+`/help` and the picker show it beside `/task`. No senior-dev on the machine means
+no `/senior-dev` row. A name that collides with a built-in command or alias is
 refused, naming the row.
 
 **The model can propose one too.** `propose_task` gets an optional `via`
@@ -119,36 +126,36 @@ type Report struct { Result string; Steps int; USD float64; Waiting bool }
 by role today. It gains one branch: a task whose row names a delegate gets a
 `delegate.Worker` instead of a `BashWorker`. Nothing above the factory changes.
 
-**The floor.** With no change at all, the model can run `swe-pro run …`
+**The floor.** With no change at all, the model can run `senior-dev run …`
 through the `bash` tool in the background. That gives a job log and an exit
 notice, and none of the rows in the table above. That gap is what this design
 pays for.
 
 ## The contract a program must meet
 
-| the program must | swe-pro today |
+| the program must | senior-dev today |
 | --- | --- |
-| **launch** from argv with brief, directory, dollar ceiling, wall ceiling | `swe-pro run --dir D --max-cost X --max-hours H -- "goal"` |
+| **launch** from argv with brief, directory, dollar ceiling, wall ceiling | `senior-dev run --dir D --max-cost X --max-hours H -- "goal"` |
 | **stream** progress as one JSON object per line on stdout, nothing else | yes, EVENTS-CONTRACT.md |
 | **end** with exactly one terminal record: status, reason, `cost_usd` | yes, `{"type":"terminal",…}` |
 | **stop** cleanly on SIGTERM, still writing the terminal record | yes. Only SIGKILL loses it |
-| **leave its work in the tree** it was given, and nothing else | yes. `.swe-pro/` is git-excluded |
+| **leave its work in the tree** it was given, and nothing else | yes. `.senior-dev/` is git-excluded |
 
 Two things codeaf does **not** ask, and the manual page says so:
 
-- **No questions.** swe-pro auto-rejects its own `question` tool and has no
+- **No questions.** senior-dev auto-rejects its own `question` tool and has no
   stdin road. Write the brief so nobody needs to be asked.
-- **No step cap.** swe-pro has cost and hours only. The step count on the
+- **No step cap.** senior-dev has cost and hours only. The step count on the
   task page is whatever the reader can count off the stream.
 
 ### The manifest
 
 ```jsonc
-// ~/.codeaf/delegates/swe-pro.json
+// ~/.codeaf/delegates/senior-dev.json
 {
-  "name": "swe-pro",                                 // also the command: /swe-pro <brief>
+  "name": "senior-dev",                                 // also the command: /senior-dev <brief>
   "description": "an autonomous coding agent for one large, well-specified change",
-  "bin": "swe-pro",                                  // resolved on PATH; a path is allowed
+  "bin": "senior-dev",                                  // resolved on PATH; a path is allowed
   "argv": ["run", "--dir", "{{workspace}}",
            "--max-cost", "{{cost_usd}}", "--max-hours", "{{hours}}",
            "--", "{{brief}}"],
@@ -168,7 +175,7 @@ Two things codeaf does **not** ask, and the manual page says so:
 
 There is **one reader**, compiled in. It reads a small protocol on the
 program's stdout: one JSON object per line, four record types, everything
-else ignored. Ignoring the rest is what makes it generic: swe-pro's bus
+else ignored. Ignoring the rest is what makes it generic: senior-dev's bus
 payloads pass straight through it.
 
 | record | required fields | the reader makes it |
@@ -178,7 +185,7 @@ payloads pass straight through it.
 | `{"type":"step","command":X,"observation":Y}` | `command`; `observation` optional | one trajectory step. `Steps` counts these. Optional: a program with no steps is drawn by its stages |
 | `{"type":"terminal","status":U,"message":M,"data":{"cost_usd":C,…}}` | `status`, `message`, `data.cost_usd` | the `Report` and the outcome. Exactly one, last |
 
-`terminal.status` is a closed set, and it is swe-pro's:
+`terminal.status` is a closed set, and it is senior-dev's:
 
 | `status` | run outcome | rail word |
 | --- | --- | --- |
@@ -194,7 +201,7 @@ program itself saw), `deliverable` (the answer text, for `"lands": "text"`).
 
 **What this costs each program:**
 
-- **swe-pro** emits all four in exactly this shape as of `5793499`. Its
+- **senior-dev** emits all four in exactly this shape as of `5793499`. Its
   `step` is one per tool call reaching `completed` or `error`, never twice
   for a republished part; `command` is `tool: argument`, the argument capped
   at 200 bytes; `observation` is the output or the error string, capped at
@@ -203,34 +210,34 @@ program itself saw), `deliverable` (the answer text, for `"lands": "text"`).
   `stage` per review phase, `spend` per model call, `terminal` with the
   findings as `data.deliverable`, and `"lands": "text"` in its manifest.
 
-**Never sum `cost` off swe-pro's `message.updated`.** An assistant message is
+**Never sum `cost` off senior-dev's `message.updated`.** An assistant message is
 written more than once, so a naive sum double-counts. The `spend` record
 exists for exactly this reason.
 
-swe-pro keeps the model's claim and its own observation as separate fields.
-The landing note keeps them separate too: *swe-pro says it submitted; its
+senior-dev keeps the model's claim and its own observation as separate fields.
+The landing note keeps them separate too: *senior-dev says it submitted; its
 verification failed 2 of 5 commands* is two sentences.
 
 ### Two kinds of landing
 
 | `lands` | working copy | when the program ends |
 | --- | --- | --- |
-| `tree` (swe-pro) | cut per run, passed as `{{workspace}}` | squash, merge home, landing card |
+| `tree` (senior-dev) | cut per run, passed as `{{workspace}}` | squash, merge home, landing card |
 | `text` (pr-af) | none; `{{workspace}}` is the person's folder, read-only by contract | `data.deliverable` is folded into the conversation the way a quick task's answer is, and the woken turn reads it |
 
 ### Money
 
-1. swe-pro spends the person's key outside codeaf's provider ledger.
+1. senior-dev spends the person's key outside codeaf's provider ledger.
 2. The reader hands every rising `spend` figure to the supervisor's bank.
 3. At the ceiling the supervisor cancels the context, which sends SIGTERM,
-   which lets swe-pro write its terminal record.
+   which lets senior-dev write its terminal record.
 4. The conversation total, `/cost` and the status line move through
    `foldSpend`, as for any run.
-5. The on-disk usage ledger does **not** get swe-pro's calls, because they
-   did not go through a codeaf lane. The spending page says `via swe-pro`.
+5. The on-disk usage ledger does **not** get senior-dev's calls, because they
+   did not go through a codeaf lane. The spending page says `via senior-dev`.
 
 The ceiling passed on the command line is what is left of the smaller of the
-conversation's limits (`runCostLeft`, #1281), so swe-pro cuts itself first.
+conversation's limits (`runCostLeft`, #1281), so senior-dev cuts itself first.
 
 ### Stopping
 
@@ -241,15 +248,15 @@ read and folded. Without one the row reads `stopped` with the last stage seen.
 
 ### Landing a `tree` delegate
 
-1. swe-pro works in the run's own copy, passed as `--dir`.
-2. swe-pro commits every edit as it goes: `wip(edit): <path>`, dozens per run.
-   These stay on inside the copy, because swe-pro's crash recovery and its
+1. senior-dev works in the run's own copy, passed as `--dir`.
+2. senior-dev commits every edit as it goes: `wip(edit): <path>`, dozens per run.
+   These stay on inside the copy, because senior-dev's crash recovery and its
    restore-after-ship read them.
 3. At landing codeaf **squashes** everything past the cut point into one
    commit. Subject: the task's title. Body: two sentences from the terminal
-   record, what the model claimed and what swe-pro observed.
+   record, what the model claimed and what senior-dev observed.
 4. That one commit merges home the way every task lands.
-5. `.swe-pro/` is git-excluded in the copy and never lands. `refs/swe-pro/*`
+5. `.senior-dev/` is git-excluded in the copy and never lands. `refs/senior-dev/*`
    die with the copy.
 
 ## The manual law
@@ -266,23 +273,23 @@ it is enforced moves.
    rules as `internal/manual/chat/` pages. At launch the chat's corpus is the
    packed corpus plus an **overlay** of installed delegate pages. `manual.Corpus`
    gains one constructor that layers pages over another corpus. The `manual`
-   tool then answers "what does /swe-pro do" from swe-pro's own page.
+   tool then answers "what does /senior-dev do" from senior-dev's own page.
 3. **The check runs at load.** A page that does not mention `/<name>` refuses
-   the manifest. `/delegate` shows why: `swe-pro: its manual page does not say
-   /swe-pro — not added`.
+   the manifest. `/delegate` shows why: `senior-dev: its manual page does not say
+   /senior-dev — not added`.
 4. **One built-in page explains the family.** *Delegates — programs codeaf can
    hand a task to* mentions `/delegate` and answers "what is a delegate", "how
-   do I add one", "why is there no /swe-pro here". It never names a delegate
+   do I add one", "why is there no /senior-dev here". It never names a delegate
    the build cannot promise exists.
 
-## What swe-pro changed for this
+## What senior-dev changed for this
 
 Landed 2026-09-21 and 2026-09-22 on `zeropoint95/improvements`, PR #30.
 
 1. **Control plane optional** (`f3b9716`). Reachable: mirrored as before.
    Unreachable: one stderr line, and the run proceeds. The `run-contract`
    record carries `"control_plane": {"enabled": false, "url": "<probed url>"}`.
-   `swe-pro serve` still requires a plane. The manifest sets no `SWE_PRO_CP_*`
+   `senior-dev serve` still requires a plane. The manifest sets no `SENIOR_DEV_CP_*`
    variable.
 2. **Live spend record** (`5793499`). `{"type":"spend","cost_usd":0.0213,"ts":…}`,
    top-level, one per completed assistant message, cumulative, compaction
@@ -291,20 +298,20 @@ Landed 2026-09-21 and 2026-09-22 on `zeropoint95/improvements`, PR #30.
    one per finished tool call. stdout only, not in the stderr trace.
 4. **No question road**, by decision. Auto-reject stays.
 
-Both stream additions were verified on the swe-pro side to touch only the
+Both stream additions were verified on the senior-dev side to touch only the
 event layer: nothing under its engine, session, prompt builders or tool-result
 path changed, and a standing test asserts the exact stdout record count.
 
-Checked by the swe-pro side against its code: the outcome table above holds,
+Checked by the senior-dev side against its code: the outcome table above holds,
 SIGTERM still writes the terminal record, and `--` before the goal parses.
 
 ## Waves
 
 | # | lands | proof |
 | --- | --- | --- |
-| **1** ✓ | `internal/delegate`: manifest and loader; `Worker` (spawn under `processgroup`, stream to the reader, SIGTERM then kill, `Report`); the one generic reader and its protocol, already written down in `docs/DELEGATE-PROTOCOL.md` | unit tests against a fake binary emitting scripted protocol lines and honouring SIGTERM; the outcome table pinned; a recorded swe-pro stream replayed through the reader |
+| **1** ✓ | `internal/delegate`: manifest and loader; `Worker` (spawn under `processgroup`, stream to the reader, SIGTERM then kill, `Report`); the one generic reader and its protocol, already written down in `docs/DELEGATE-PROTOCOL.md` | unit tests against a fake binary emitting scripted protocol lines and honouring SIGTERM; the outcome table pinned; a recorded senior-dev stream replayed through the reader |
 | **2** ✓ | the door (`via` rides the run, not a store column: a delegated run is one task); `CrewFactory` branches on it; generated `/<name>` rows and `/delegate`; `propose_task.via`; `HANDOFF_FACTS`; the `delegate` cancel kind; squash-then-merge landing for `tree`, text fold for `text`; `via` on the spend row | focused `internal/session` and `internal/tui3` tests |
-| **3** ✓ | the manual: the built-in *Delegates* page; the corpus overlay; the load-time page check; swe-pro's own `manual.md` | `internal/manual/chat_test.go` probes: "can you hand this to swe-pro", "what does /swe-pro do", "why can't the delegate ask me", "difference between /harness and /swe-pro" |
+| **3** ✓ | the manual: the built-in *Delegates* page; the corpus overlay; the load-time page check; senior-dev's own `manual.md` | `internal/manual/chat_test.go` probes: "can you hand this to senior-dev", "what does /senior-dev do", "why can't the delegate ask me", "difference between /harness and /senior-dev" |
 | **4** ✓ | hosted: the door crosses the wire (`Delegate.List`, `Delegate.Start`, wire version 18), so a `--host` surface generates its rows from the far machine's registry and a delegate runs there | `internal/remote` surface-door law; `internal/tui3` delegate tests |
 | later | `codeaf do` speaking the protocol so codeaf on another machine is a delegate; pr-af's one-shot mode; delegates chosen by crew seat; answering a delegate's question | — |
 
@@ -313,6 +320,6 @@ can type.
 
 ## Open questions
 
-1. **Who picks swe-pro's models.** Today its own `--high` default. The manifest
-   could pass codeaf's work seat, but swe-pro speaks OpenRouter slugs and the
+1. **Who picks senior-dev's models.** Today its own `--high` default. The manifest
+   could pass codeaf's work seat, but senior-dev speaks OpenRouter slugs and the
    seat may be on another lane. First cut: the manifest's argv, no seat.

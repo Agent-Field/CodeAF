@@ -232,7 +232,7 @@ var commands = []command{
 		alias: []string{"sub"}},
 	{name: "subharness", args: "<name>", desc: "…straight to that one's card"},
 	// THE DELEGATES: outside programs a whole task can be handed to. Each
-	// installed one is a row of its own — `/swe-pro <brief>` — generated at
+	// installed one is a row of its own — `/senior-dev <brief>` — generated at
 	// launch from its manifest (delegate.go), so this row is the list and the
 	// long form, never the only door.
 	{name: "delegate", desc: "the outside programs a task can be handed to whole", alias: []string{"delegates"}},

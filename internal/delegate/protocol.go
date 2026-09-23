@@ -2,7 +2,7 @@ package delegate
 
 // The protocol: one JSON object per line on the program's stdout, four record
 // types read, everything else ignored (docs/DELEGATE-PROTOCOL.md §2). Ignoring
-// the rest is what makes the reader generic — swe-pro's bus payloads and any
+// the rest is what makes the reader generic — senior-dev's bus payloads and any
 // future program's own records pass straight through — and it is also why a
 // line that is not JSON at all is dropped and counted rather than failing the
 // run: a program that printed one stray line has not stopped being a delegate.
@@ -24,8 +24,8 @@ const (
 	RecordTerminal = "terminal"
 )
 
-// The terminal statuses. The set is closed and it is swe-pro's, because
-// swe-pro's projection of an ending onto four words was already the right one:
+// The terminal statuses. The set is closed and it is senior-dev's, because
+// senior-dev's projection of an ending onto four words was already the right one:
 // the work stands, it does not, a ceiling stopped it, or the program itself
 // broke.
 const (
@@ -50,7 +50,7 @@ const maxLineBytes = 4 << 20
 
 // Terminal is the one record that is the result. Data is kept whole so the
 // landing note can read the optional keys, in the protocol's spelling and in
-// swe-pro's own, through the accessors below rather than by every caller
+// senior-dev's own, through the accessors below rather than by every caller
 // knowing both.
 type Terminal struct {
 	Status  string                     `json:"status"`
@@ -65,11 +65,11 @@ func (t Terminal) CostUSD() (float64, bool) { return t.number("cost_usd") }
 func (t Terminal) Reason() string { return t.text("reason") }
 
 // Claim is what the program's model said it did: `claim` in the protocol,
-// `submission_reason` in swe-pro's record.
+// `submission_reason` in senior-dev's record.
 func (t Terminal) Claim() string { return first(t.text("claim"), t.text("submission_reason")) }
 
 // Observed is what the program itself verified: `observed` in the protocol.
-// swe-pro spells its observation as its own inner status and a count of
+// senior-dev spells its observation as its own inner status and a count of
 // failing verification commands, which read here as one sentence so the
 // landing note can keep the claim and the observation apart.
 func (t Terminal) Observed() string {

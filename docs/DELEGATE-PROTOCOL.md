@@ -2,7 +2,8 @@
 
 *Version 1, 2026-09-22. What a program must do to be a codeaf delegate. The
 design behind it is `docs/design/delegate/DESIGN.md`. Conforming today:
-`swe-pro` (`zeropoint95/improvements @ 5793499`).*
+`senior-dev` (`swe-pro-go`, branch `zeropoint95/improvements @ 6103488`). It was
+called `swe-pro` until `b43daaf`; the commit pins in §8 predate that rename.*
 
 A delegate is an outside program codeaf hands one task to. codeaf starts it,
 reads its stdout, stops it when a limit is hit, and takes its result. This page
@@ -115,11 +116,11 @@ The manifest says which of two things the program produces.
 Two files in `~/.codeaf/delegates/`:
 
 ```jsonc
-// swe-pro.json
+// senior-dev.json
 {
-  "name": "swe-pro",                 // also the command: /swe-pro <brief>
+  "name": "senior-dev",                 // also the command: /senior-dev <brief>
   "description": "an autonomous coding agent for one large, well-specified change",
-  "bin": "swe-pro",                  // on PATH, or a path
+  "bin": "senior-dev",                  // on PATH, or a path
   "argv": ["run", "--dir", "{{workspace}}",
            "--max-cost", "{{cost_usd}}", "--max-hours", "{{hours}}",
            "--", "{{brief}}"],
@@ -134,16 +135,16 @@ Two files in `~/.codeaf/delegates/`:
 - `{{key:<provider>}}` is filled from the person's profile.
 - A `bin` not found means the delegate is not offered. Nothing fails.
 
-`swe-pro.md` beside it is the delegate's manual page: what it does, how to
+`senior-dev.md` beside it is the delegate's manual page: what it does, how to
 ask it, what it cannot do, what a run costs, where the work lands. It follows
 the rules of `internal/manual/chat/` pages and **must mention `/<name>`**. A
 page that does not refuses the manifest.
 
-## 8. Conformance: swe-pro
+## 8. Conformance: senior-dev
 
-| requirement | swe-pro |
+| requirement | senior-dev |
 | --- | --- |
-| launch from argv | `swe-pro run --dir D --max-cost X --max-hours H -- "goal"` |
+| launch from argv | `senior-dev run --dir D --max-cost X --max-hours H -- "goal"` |
 | no stdin, no questions | nothing reads stdin; `question` is auto-rejected |
 | stdout is JSON lines only | yes, EVENTS-CONTRACT.md |
 | `stage` | yes, thirteen stages |
@@ -152,10 +153,11 @@ page that does not refuses the manifest.
 | exactly one `terminal`, last, on every path | yes, including crash and signal |
 | `status` set | `pass`, `fail`, `budget-exhausted`, `crashed`, exactly |
 | SIGTERM writes the terminal | yes |
-| `lands: tree`, own state excluded | `.swe-pro/` is in `.git/info/exclude`; `refs/swe-pro/*` stay in the copy |
+| `lands: tree`, own state excluded | `.senior-dev/` is in `.git/info/exclude`; `refs/senior-dev/*` stay in the copy |
 | runs without a control plane | yes, since `f3b9716` |
+| name | `senior-dev` since `b43daaf`; the binary is built from `./cmd/senior-dev` |
 
-Not yet mapped on swe-pro's side: `data.claim` and `data.observed` are spelled
+Not yet mapped on senior-dev's side: `data.claim` and `data.observed` are spelled
 `submission_reason` / `submission_evidence` and `status` /
-`verification_failing` in its `data`. The reader accepts swe-pro's spellings
+`verification_failing` in its `data`. The reader accepts senior-dev's spellings
 for these two optional fields.

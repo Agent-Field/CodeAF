@@ -47,12 +47,12 @@ func (r *recorder) Terminal(t Terminal) {
 	r.terminal = &t
 }
 
-// A recorded swe-pro stream, taken from EVENTS-CONTRACT.md's shapes, read
+// A recorded senior-dev stream, taken from EVENTS-CONTRACT.md's shapes, read
 // through the one generic reader: the stages reach the live step, the spend
 // reaches the bank, the steps reach the page, the terminal is the result, and
 // every bus payload passes through untouched.
-func TestTheReaderReplaysASweProStream(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("testdata", "swe-pro-stream.ndjson"))
+func TestTheReaderReplaysASeniorDevStream(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "senior-dev-stream.ndjson"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestTheReaderReplaysASweProStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	if reading.Terminal == nil || reading.Terminal.Status != StatusPass {
-		t.Fatalf("terminal = %+v, want the pass swe-pro wrote last", reading.Terminal)
+		t.Fatalf("terminal = %+v, want the pass senior-dev wrote last", reading.Terminal)
 	}
 	if reading.LastStage != "agent-summary" {
 		t.Fatalf("last stage = %q, want agent-summary, the stage before the terminal", reading.LastStage)
@@ -85,16 +85,16 @@ func TestTheReaderReplaysASweProStream(t *testing.T) {
 	if sink.steps[0] != "bash: go test ./...→ok  \tpkg\t0.3s" || sink.steps[1] != "edit: internal/auth/middleware.go→" {
 		t.Fatalf("steps told = %q", sink.steps)
 	}
-	// The terminal's optional keys read in swe-pro's spelling.
+	// The terminal's optional keys read in senior-dev's spelling.
 	cost, ok := sink.terminal.CostUSD()
 	if !ok || cost != 0.0213 {
 		t.Fatalf("terminal cost = %v %v", cost, ok)
 	}
 	if sink.terminal.Claim() != "tests pass" {
-		t.Fatalf("claim = %q, want swe-pro's submission_reason", sink.terminal.Claim())
+		t.Fatalf("claim = %q, want senior-dev's submission_reason", sink.terminal.Claim())
 	}
 	if sink.terminal.Observed() != "pass" {
-		t.Fatalf("observed = %q, want swe-pro's own inner status", sink.terminal.Observed())
+		t.Fatalf("observed = %q, want senior-dev's own inner status", sink.terminal.Observed())
 	}
 }
 
@@ -143,7 +143,7 @@ func TestTheReaderCapsAStepOnARuneBoundary(t *testing.T) {
 	}
 }
 
-func TestObservedReadsSweProsVerificationCount(t *testing.T) {
+func TestObservedReadsSeniorDevsVerificationCount(t *testing.T) {
 	sink := &recorder{}
 	stream := `{"type":"terminal","status":"fail","message":"x","data":{"status":"fail","verification_failing":2,"verification_commands":5}}`
 	if _, err := Read(strings.NewReader(stream), sink); err != nil {

@@ -1,7 +1,7 @@
 {"type":"stage","stage":"bootstrap","status":"ready","data":{"workspace":"/tmp/copy"},"ts":1725000000000,"trace_id":"ses_1","step":1,"occurrence":1,"title":"Bootstrap: Ready","elapsed_ms":3}
 {"type":"stage","stage":"run-contract","status":"ready","data":{"base_sha":"abc","high_models":["openrouter/deepseek/deepseek-v4-flash-0731"],"entry_agent":"coder","control_plane":{"enabled":false,"url":"http://localhost:8080"}},"ts":1725000000010}
 {"id":"evt_1","type":"session.created","properties":{"sessionID":"ses_1","info":{"id":"ses_1","title":"rewrite the auth middleware"}}}
-{"type":"stage","stage":"intake","status":"captured","data":{"spec_path":".swe-pro/spec.md","spec_bytes":42},"ts":1725000000020}
+{"type":"stage","stage":"intake","status":"captured","data":{"spec_path":".senior-dev/spec.md","spec_bytes":42},"ts":1725000000020}
 {"type":"stage","stage":"agent-runtime","status":"configured","data":{"agent":"coder","session_id":"ses_1","model_id":"deepseek-v4-flash-0731"},"ts":1725000000030}
 {"type":"stage","stage":"implement","status":"running","data":{"attempt":0},"ts":1725000000040}
 {"id":"evt_2","type":"message.updated","properties":{"sessionID":"ses_1","info":{"role":"assistant","id":"msg_1","cost":0.0101,"tokens":{"input":100,"output":20}}}}

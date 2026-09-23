@@ -109,7 +109,7 @@ var delegateFact = beltFact{
 // chatManual is the manual this conversation answers from: the packed corpus,
 // with every installed delegate's own page layered over it under
 // `delegate-<name>` (internal/manual's overlay). It is what makes "what does
-// /swe-pro do" answerable from swe-pro's page and nowhere else, and it is built
+// /senior-dev do" answerable from senior-dev's page and nowhere else, and it is built
 // once per agent because the registry is read once per launch.
 func (a *Agent) chatManual() *manual.Corpus {
 	a.manualOnce.Do(func() {
@@ -193,7 +193,7 @@ func delegateStand(workspace string, m delegate.Manifest) taskStand {
 
 // landDelegateRun is a delegated run's landing, in place of the engine's own.
 //
-// A TREE DELEGATE'S COMMITS ARE SQUASHED. swe-pro commits every edit as it goes
+// A TREE DELEGATE'S COMMITS ARE SQUASHED. senior-dev commits every edit as it goes
 // (`wip(edit): <path>`, dozens a run), so the copy's branch holds bookkeeping
 // history that is the program's own and nobody else's; the engine's landing
 // would also find nothing to commit, because everything is already committed,

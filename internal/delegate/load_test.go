@@ -130,7 +130,7 @@ func TestLoadRefusesTheThingsValidateRefuses(t *testing.T) {
 		"no brief":            strings.Replace(goodManifest, `"--", "{{brief}}"`, `"--"`, 1),
 		"a bad name":          strings.Replace(goodManifest, `"name": "fake"`, `"name": "Fake Thing"`, 1),
 		"an unknown lands":    strings.Replace(goodManifest, `"lands": "tree"`, `"lands": "branch"`, 1),
-		"an unknown field":    strings.Replace(goodManifest, `"lands": "tree"`, `"lands": "tree", "reader": "swe-pro"`, 1),
+		"an unknown field":    strings.Replace(goodManifest, `"lands": "tree"`, `"lands": "tree", "reader": "senior-dev"`, 1),
 		"not json":            "{",
 	}
 	for name, manifest := range cases {

@@ -107,12 +107,12 @@ func TestADelegateRowWithNoBriefSaysItsUsage(t *testing.T) {
 
 func TestSlashDelegateListsTheRowsAndTheOnesNotHere(t *testing.T) {
 	a, fake := newDelegateApp(t, session.DelegateRow{Name: "fake", Description: "a fake delegate", Lands: "text", Bin: "/opt/fake"})
-	fake.report.Absent = []string{"swe-pro: swe-pro is not on this machine"}
+	fake.report.Absent = []string{"senior-dev: senior-dev is not on this machine"}
 	fake.report.Refused = []string{"broken: its manual page does not say /broken — not added"}
 	a.width = 200
 	settleDoor(t, a, a.slash("/delegate"))
 	got := plain(frame(a))
-	for _, want := range []string{"/fake <brief>", "a fake delegate", "answers in the conversation", "not here: swe-pro", "not added: broken"} {
+	for _, want := range []string{"/fake <brief>", "a fake delegate", "answers in the conversation", "not here: senior-dev", "not added: broken"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("/delegate did not say %q:\n%s", want, got)
 		}

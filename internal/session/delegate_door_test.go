@@ -42,7 +42,7 @@ func installTestDelegate(t *testing.T, name string) *delegate.Registry {
 // squashed into ONE commit whose subject is the task's title and whose body is
 // the run's result, and that commit comes home to the folder the copy was cut
 // from. The engine is a double whose `work` hook plays the program: two files,
-// two commits, the way swe-pro commits every edit.
+// two commits, the way senior-dev commits every edit.
 func TestADelegatedRunSquashesTheProgramsCommitsIntoOneAndLandsIt(t *testing.T) {
 	// The double answers the run's result off the completer it is handed, so
 	// the result is scripted there: the sentence the landing commit must carry.

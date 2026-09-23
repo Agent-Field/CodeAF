@@ -23,7 +23,7 @@ import (
 
 // DefaultGrace is how long a SIGTERM has to work before SIGKILL follows. It is
 // the job registry's own two seconds plus what a program that has to write a
-// terminal record and close a database needs: swe-pro ships its frozen tree on
+// terminal record and close a database needs: senior-dev ships its frozen tree on
 // the way out, and a grace that cut that short would lose the one record the
 // whole protocol exists for.
 const DefaultGrace = 15 * time.Second
