@@ -1394,11 +1394,11 @@ home and every two minutes at rest, and each tip goes away for good the first ti
 what it names. It sits at the right, led by a bulb and closed by a small cross: clicking it
 means ENOUGH FOR NOW, and the row stays blank until you leave home and come back, when a
 different tip is there. The tip you put away keeps its whole allowance and comes round
-again. A conversation has the same row over its own box, from
-the same one list of tips, drawn once you have been quiet there for a minute. The keys row
-at the very foot is not a tip and never changes. The whole list, what makes each one appear
-and disappear, and the **disable hints** row on the Workspace tab that turns them off, are on
-the *hints and tips* page.
+again. **A conversation says its tips differently**: there the tip is the lowest rung of
+the keys row at the very foot, with no bulb, no cross and no clock — it is simply there
+whenever nothing else is happening. Both rows draw from the same one list. The whole list,
+what makes each one appear and disappear, and the **disable hints** row on the Workspace
+tab that turns them off, are on the *hints and tips* page.
 
 ## Typing @ on home — does the @ file list work on home, complete a path into home's box
 

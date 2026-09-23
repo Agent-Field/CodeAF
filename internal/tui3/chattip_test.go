@@ -13,15 +13,17 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// ── THE CONVERSATION'S TIP ROW, ITS KEYS ROW'S PROJECT, AND TWO DOORS ────────
+// ── THE CONVERSATION'S TIP, ITS KEYS ROW'S PROJECT, AND TWO DOORS ───────────
 //
-// Since 2026-09-22 a conversation says its tips the way home does — on the row
-// over the rule, right-aligned, with a bulb and a cross — and only once the
-// person has been quiet for a minute (notice.go's THE CONVERSATION'S CLOCK).
-// The project came down off the seam to the right end of the keys row, as it
-// did on home. And two of the owner's bug reports from the same day: enter on
-// `/attach` in the list opens the browser at once, and the search place finds
-// conversations by name when memory is off.
+// A conversation's tip is the LOWEST RUNG OF THE KEYS ROW at the foot, decided
+// by the events that prove what is happening and drawn whenever the frame is
+// quiet. It had a row of its own over the rule for one build on 2026-09-22 —
+// with a quiet minute before it appeared, a two-minute rotation and a cross —
+// and the owner put it back here. Home's row keeps that newer shape, and
+// hometip_test.go holds it to that. The project came down off the seam to the
+// right end of the keys row, as it did on home. And two of the owner's bug
+// reports from the same day: enter on `/attach` in the list opens the browser
+// at once, and the search place finds conversations by name when memory is off.
 
 // chatTipLab is a conversation over a clock the test turns by hand.
 func chatTipLab(t *testing.T) (*app, func(time.Duration)) {
@@ -43,130 +45,63 @@ func tipRowOf(a *app, tip string) (int, []string) {
 	return -1, rows
 }
 
-// A conversation's row says nothing until the person has been quiet for
-// [chatHintIdle]; the one clock measures from the last key; the row then draws
-// over the rule with the bulb and the cross, the keys row does not carry it,
-// the cross puts it away, the next beat moves the row on, and a key hides it
-// again until the next quiet minute.
-func TestAConversationSaysATipOnlyAfterAQuietMinute(t *testing.T) {
-	a, advance := chatTipLab(t)
+// THE TIP IS THE KEYS ROW'S LOWEST RUNG, on no clock at all: the event that
+// arms it puts it there, and it is drawn from that moment on while the frame is
+// quiet. A key in the box takes the row back because the row belongs to the
+// sentence being written, and emptying the box gives it back at once — no
+// minute, no beat, no cross.
+func TestAConversationSaysItsTipOnTheKeysRow(t *testing.T) {
+	a, _ := chatTipLab(t)
 	b := &a.notices
-	if a.noticeArmIdle() == nil {
-		t.Fatal("the surface coming up did not start the clock")
-	}
-	if a.noticeArmIdle() != nil {
-		t.Fatal("a second start armed a second clock")
-	}
 	startTask(t, a)
 	if b.current[slotHint] != "task-page-after-first-task" {
 		t.Fatalf("a task starting armed %q", b.current[slotHint])
 	}
-	if got := a.noticeHint(); got != "" {
-		t.Fatalf("the tip drew before a quiet minute: %q", got)
-	}
-	// A BEAT BEFORE THE MINUTE GOES BACK TO SLEEP for what is left.
-	advance(30 * time.Second)
-	if cmd := a.noticeIdleBeat(b.idleGen); cmd == nil || b.due {
-		t.Fatal("a beat inside the minute did not go back to sleep")
-	}
-	// A KEY STAMPS THE CLOCK AGAIN, so the minute is measured from it.
-	drive(t, a, key("x"), key("backspace"))
-	advance(45 * time.Second)
-	if cmd := a.noticeIdleBeat(b.idleGen); cmd == nil || b.due {
-		t.Fatal("the beat did not measure the minute from the last key")
-	}
-	advance(chatHintIdle)
-	if cmd := a.noticeIdleBeat(b.idleGen); cmd == nil || !b.due {
-		t.Fatal("a quiet minute did not make the tip due")
-	}
 	if got := a.noticeHint(); got != taskPageTip {
-		t.Fatalf("after a quiet minute the row reads %q, want the tip", got)
+		t.Fatalf("the tip is not up the moment it arms: %q", got)
 	}
-	// ON THE FRAME: the row directly over the rule, right-aligned, bulb and cross.
+
+	// ON THE FRAME: the foot, under the box, and NOT a row of its own over the
+	// rule.
+	if got := plain(a.footHint(a.width)); !strings.Contains(got, taskPageTip) {
+		t.Fatalf("the keys row does not carry the tip: %q", got)
+	}
 	y, rows := tipRowOf(a, taskPageTip)
 	if y < 0 {
 		t.Fatalf("the tip is not on the frame:\n%s", strings.Join(rows, "\n"))
 	}
-	row := strings.TrimRight(rows[y], " ")
+	if y+1 < len(rows) && strings.HasPrefix(rows[y+1], "─") {
+		t.Fatalf("the tip is sitting over the rule again:\n%s", strings.Join(rows, "\n"))
+	}
+	// AND IT WEARS NO BULB AND NO CROSS. Those belong to home's row.
 	cross := a.pal.glyph(tokens.GFailed)
-	if !strings.HasSuffix(row, homeTipLead+homeTipGap+taskPageTip+homeTipGap+cross) {
-		t.Fatalf("the tip row does not end with the bulb, the tip and the cross: %q", row)
+	if row := rows[y]; strings.Contains(row, homeTipLead) || strings.HasSuffix(strings.TrimRight(row, " "), cross) {
+		t.Fatalf("the conversation's tip wears home's bulb or cross: %q", row)
 	}
-	if got := ansi.StringWidth(row); got != a.width-1 {
-		t.Fatalf("the tip row measures %d cells on a %d-cell frame, want %d", got, a.width, a.width-1)
-	}
-	if y+1 >= len(rows) || !strings.HasPrefix(rows[y+1], "─") {
-		t.Fatalf("the rule is not the row under the tip:\n%s", strings.Join(rows, "\n"))
-	}
-	if got := a.footHint(a.width); strings.Contains(got, taskPageTip) {
-		t.Fatalf("the keys row still carries the tip: %q", got)
-	}
-	// THE CROSS. A press on it puts the tip away; a press beside it does not.
-	if !a.tipCloseSpan.pressable() {
-		t.Fatal("the draw recorded no columns for the cross")
-	}
-	if a.tipClosePress(a.tipCloseSpan.from-4, y) {
-		t.Fatal("a press on the tip's words was taken as the cross")
-	}
-	if !a.tipClosePress(a.tipCloseSpan.from, y) {
-		t.Fatal("a press on the cross was not taken")
-	}
+
+	// A LETTER IN THE BOX TAKES THE ROW; emptying it gives the row back.
+	drive(t, a, key("x"))
 	if got := a.noticeHint(); got != "" {
-		t.Fatalf("the cross did not put the tip away: %q", got)
+		t.Fatalf("the tip drew over a box with a letter in it: %q", got)
 	}
-	if strings.Contains(plain(frame(a)), taskPageTip) {
-		t.Fatal("the tip is still drawn after its cross was pressed")
-	}
-	if b.retired("task-page-after-first-task") {
-		t.Fatal("putting a tip away retired it")
-	}
-	// AND THE BEAT ALONE DOES NOT BRING IT BACK (the owner's ruling,
-	// 2026-09-22): a cross holds the row until the row leaves the frame, and
-	// the two-minute beat is what used to answer it with another sentence on
-	// the screen somebody was still sitting in front of.
-	advance(hintEvery)
-	if cmd := a.noticeIdleBeat(b.idleGen); cmd == nil {
-		t.Fatal("the beat after a quiet minute did not re-arm")
-	}
-	if got := a.noticeHint(); got != "" {
-		t.Fatalf("the beat brought the row back under a cross: %q", got)
-	}
-	// A KEY TAKES THE ROW, and the next quiet minute gives it back — the ring
-	// has one eligible tip here, so it is the same one.
-	drive(t, a, key("y"), key("backspace"))
-	if b.due || a.noticeHint() != "" {
-		t.Fatalf("a key did not stand the tip down: due=%v hint=%q", b.due, a.noticeHint())
-	}
-	advance(chatHintIdle)
-	if cmd := a.noticeIdleBeat(b.idleGen); cmd == nil {
-		t.Fatal("the beat after the fresh quiet minute did not re-arm")
-	}
+	drive(t, a, key("backspace"))
 	if got := a.noticeHint(); got != taskPageTip {
-		t.Fatalf("a key and a fresh quiet minute did not bring the row back: %q", got)
+		t.Fatalf("emptying the box did not give the row back: %q", got)
 	}
-	// And a key stands it down again, which is where the rest of this test
-	// picks up.
-	drive(t, a, key("y"), key("backspace"))
-	if b.due || a.noticeHint() != "" {
-		t.Fatalf("a key did not stand the tip down: due=%v hint=%q", b.due, a.noticeHint())
+
+	// A RUNNING TURN TAKES IT TOO, and every state with keys of its own.
+	a.state = stateWorking
+	if got := a.noticeHint(); got != "" {
+		t.Fatalf("the tip drew over a running turn: %q", got)
 	}
-	// A PLACE IN FRONT SLEEPS THE MINUTE AGAIN, showing nothing, and a beat
-	// from an older arming is dropped.
+	a.state = stateIdle
 	a.showPage(pageSpend)
-	advance(2 * chatHintIdle)
-	if cmd := a.noticeIdleBeat(b.idleGen); cmd == nil || b.due {
-		t.Fatal("a beat over a place did not sleep the minute again")
-	}
-	if cmd := a.noticeIdleBeat(b.idleGen - 1); cmd != nil {
-		t.Fatal("a beat from an older arming was not dropped")
+	if got := a.noticeHint(); got != "" {
+		t.Fatalf("the tip drew under a place: %q", got)
 	}
 	a.leavePlace()
-	if a.showing() != nil {
-		t.Fatalf("the conversation did not come back; %v is showing", a.showing().id())
-	}
-	advance(2 * chatHintIdle)
-	if cmd := a.noticeIdleBeat(b.idleGen); cmd == nil || !b.due {
-		t.Fatal("the conversation coming back and going quiet did not bring the tip")
+	if got := a.noticeHint(); got != taskPageTip {
+		t.Fatalf("leaving the place did not give the row back: %q", got)
 	}
 }
 
@@ -174,7 +109,6 @@ func TestAConversationSaysATipOnlyAfterAQuietMinute(t *testing.T) {
 func TestDisableHintsSilencesTheConversationRow(t *testing.T) {
 	a, _ := chatTipLab(t)
 	startTask(t, a)
-	a.notices.due = true
 	if a.noticeHint() == "" {
 		t.Fatal("the tip is not up before the toggle")
 	}
@@ -182,11 +116,8 @@ func TestDisableHintsSilencesTheConversationRow(t *testing.T) {
 	if got := a.noticeHint(); got != "" {
 		t.Fatalf("a silenced profile still says %q in a conversation", got)
 	}
-	// The clock keeps ticking over a silenced profile, showing nothing, so
-	// turning hints back on needs no restart.
-	a.noticeArmIdle()
-	if cmd := a.noticeIdleBeat(a.notices.idleGen); cmd == nil {
-		t.Fatal("a silenced profile stopped the tip clock")
+	if got := plain(a.footHint(a.width)); strings.Contains(got, taskPageTip) {
+		t.Fatalf("a silenced profile still draws the tip on the keys row: %q", got)
 	}
 }
 

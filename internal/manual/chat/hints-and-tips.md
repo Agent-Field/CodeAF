@@ -1,35 +1,33 @@
 # Hints and tips
 
-## What was that tip above the message box — the one-line hint over the rule, the sentence with a bulb
+## What was that tip at the bottom of the screen — the one-line hint, the sentence under the message box
 
-The dim sentence directly above the rule over your message box, led by a bulb and closed
-by a small cross — `💡 ctrl+. sees every task this project has run ✕` — is a **tip**: one
-line naming a key or a command you have not used yet, and what it does. It reads the way
-every hint on this surface does: the key or the command first, then what it does. Home has
-the same row over its own box, and the two rows draw from **one list** of twenty-three tips
-(below).
+The dim sentence at the very bottom of a conversation, where the keys usually are —
+`ctrl+. sees every task this project has run` — is a **tip**: one line naming a key or a
+command you have not used yet, and what it does. It reads the way every hint on this
+surface does: the key or the command first, then what it does.
 
-**In a conversation the row appears only once you have been quiet for a minute** — no key
-pressed and no answer landing for sixty seconds — so it never talks over you while you type
-or read what just arrived. The moment you press a key it goes away, and the minute starts
-again. Left alone, the row moves on to the next tip every two minutes. On home the row is
-there from the first minute, moves on every time you come to home and every two minutes at
-rest, and goes blank while the box is being typed into or a list is up.
+**In a conversation the tip is the keys row's lowest rung.** It takes that row from the
+rest state — the line a newcomer reads when nothing is happening — and every state with
+keys of its own outranks it: a running turn, a list, a panel, a room, and a box with so
+much as one letter in it. Empty the box and it is back. There is no clock over it and no
+cross on it: the event that makes a tip true puts it there, and it stays until something
+truer takes the row or you use what it teaches.
 
-**The small cross after the tip means ENOUGH OF THESE FOR NOW**: click it and the row goes
-blank and stays blank — no second sentence takes its place on the screen you are still
-looking at. **The cross is lifted when the row leaves the frame, and by nothing else.** On
-home that means leaving home and coming back; in a conversation it means the next key
-taking the row away and the next quiet minute bringing it back. Neither the two-minute
-beat nor anything else happening on the screen brings it back sooner. The tip you put away
-is **not** spent: it keeps its whole allowance, nothing is written down, and the row that
-comes back is a different one, with the one you dismissed taking its turn again later.
-Until 2026-09-22 the cross counted the tip as shown, so the same sentence was back with
-one of its six showings gone. A tip never takes a row of its own: it stands on the blank row that separates the conversation (or home's list) from the
-rule, and never blocks a keystroke. The keys row at the very foot — `alt+e effort · alt+a
-approvals · / commands` — is not a tip and never changes; until 2026-09-22 the tip stood
-there in a conversation, and it moved up to the row over the rule so both boxes say their
-tips the same way.
+**Home says its tips differently, and the two are not the same row.** Home's is the dim
+line **directly above the rule** over its box, right-aligned, led by a bulb and closed by a
+small cross. It rotates on every visit and every two minutes at rest, and the cross blanks
+it until you leave home and come back. A conversation is a screen you sit in and home is a
+screen you pass through, so the tip worth saying differs: a conversation gets the most
+urgent thing that is true right now, and home gets everything in turn.
+
+Both rows draw from **one list** of twenty-three tips (below), and using a gesture on
+either retires it on both.
+
+**A conversation's tip has changed places twice.** It was the keys row's lowest rung until
+2026-09-22, moved up to a row of its own over the rule that day — with a quiet minute
+before it appeared, a two-minute rotation and a cross — and moved back to the keys row the
+same day, which is where it is now.
 
 On a Mac the row says `opt` where the table below says `alt`, exactly as the keys row does.
 
@@ -57,16 +55,20 @@ project has run` never comes back; run `/compact` once and the compact tip is re
 retired from either box is retired from both: opening the model list on home retires
 `/model lists every model` in every conversation as well.
 
-A tip you never act on is not shown forever either. **A showing is a tip that stood for
-twenty seconds or more on a row you could see** — home's row while home was in front, a
-conversation's row after its quiet minute — and once a tip has been shown six times it is
-taken as read and retires by itself. Passing through home for a second or two is not a
-showing, however many times you do it, and a row deciding while nobody could see it —
-home's while you are in a conversation, a conversation's before its quiet minute — is not
-one either. Until 2026-09-22 every visible change of hands counted, so an afternoon of
-stepping through home could spend the whole table in flashes nobody read; the first
-launch of a build with the twenty-second rule gives back, once, every tip that rule
-spent, and leaves retired every tip you retired by using it.
+A tip you never act on is not shown forever either. Once a tip has been **shown six times**
+it is taken as read and retires by itself — and the two rows count a showing differently,
+because they behave differently.
+
+- **In a conversation, a showing is one session.** However many times the tip comes and
+  goes on the keys row while you work, that is one showing, counted the first time the row
+  takes it. Six sessions of never acting on it and it is done.
+- **On home, a showing is a tip that stood twenty seconds or more on a row you could see.**
+  Passing through home for a second or two is not a showing, however many times you do it,
+  and a row deciding while home is not in front is not one either. Until 2026-09-22 every
+  visible change of hands on home counted, so an afternoon of stepping through could spend
+  the whole table in flashes nobody read; the first launch of a build with the
+  twenty-second rule gives back, once, every tip that rule spent, and leaves retired every
+  tip you retired by using it.
 
 This is remembered per profile, in a small file called `notices.json` beside `config.json`
 in your codeaf profile directory. Retiring is permanent: turning hints off and on does not

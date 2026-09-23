@@ -767,8 +767,10 @@ long title could never push the numbers off the frame, and the name moved off ag
 **The keys row under the box** — the last row of the frame — is the hint slot. Until
 2026-09-17 it was the right end of the rule above the box; the numbers took that end and
 the keys got a row of their own. Since 2026-09-22 it carries `project: <path>` at its right
-end and never an earned tip — the tips stand on the row above the rule, after a quiet
-minute (see *hints and tips*). It names the keys that work right now when a state has
+end, and its LOWEST RUNG is the earned tip (see *hints and tips*): a conversation's tip
+lives on this row, under every state's own keys, and takes the slot from the rest state
+whenever nothing is happening. Home's tip is the row above the rule instead. It names the
+keys that work right now when a state has
 keys of its own — for example `y allow · n deny · a always` while a question is up,
 `ctrl+c interrupt` while a turn is running,
 `enter steers it in · ctrl+shift+enter stops and sends · ctrl+c interrupt` while a turn is

@@ -60,19 +60,11 @@ func (a *app) seamProjectPress(x, y int) (tea.Cmd, bool) {
 	return a.openFolderPick(""), true
 }
 
-// tipClosePress is a press on the cross at the end of the conversation's tip
-// row (view.go's [chromeTip]): the row moves on to the next tip, and the one
-// put away keeps its whole allowance (notice.go's [app.noticeDismiss]). It
-// reports whether it took the press; the rest of that row is blank, and blank
-// is not a gesture.
-func (a *app) tipClosePress(x, y int) bool {
-	mark, ok := a.chromeAt(y)
-	if !ok || mark.kind != chromeTip || !a.tipCloseSpan.holds(x) {
-		return false
-	}
-	a.noticeDismiss(slotHint)
-	return true
-}
+// THERE IS NO CROSS ON A CONVERSATION'S TIP. `tipClosePress` stood here for
+// one build on 2026-09-22, while the tip had a row of its own over the rule;
+// the tip is the keys row's lowest rung again (render.go's [app.footHint]) and
+// the keys row has never had one. Home's row keeps its cross (home.go's
+// [app.homePress]).
 
 // seamModelPaint keeps the current model bold and bright even while underlined.
 func seamModelPaint(pal palette, text string, hovered bool) string {

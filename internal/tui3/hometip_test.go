@@ -170,11 +170,12 @@ func TestATipSpentOnHomeIsSpentEverywhere(t *testing.T) {
 	}
 }
 
-// Every turn of a row's rotation that stood long enough to be read is a
-// showing, on either box, and a tip that has come round [noticeShownDefault]
-// times that way is taken as read.
+// Every turn of HOME's rotation that stood long enough to be read is a showing,
+// and a tip that has come round [noticeShownDefault] times that way is taken as
+// read. The conversation's row counts its showings by the session instead
+// (notice_test.go), which is why only home's slot is walked here.
 func TestEveryTurnOfTheRotationThatStoodIsAShowing(t *testing.T) {
-	for _, slot := range []noticeSlot{slotHome, slotHint} {
+	for _, slot := range []noticeSlot{slotHome} {
 		b := bareNoticeBoard()
 		now := time.Date(2026, 9, 22, 9, 0, 0, 0, time.UTC)
 		limit := func(string) int { return noticeShownDefault }
@@ -182,11 +183,11 @@ func TestEveryTurnOfTheRotationThatStoodIsAShowing(t *testing.T) {
 		turns := map[string]int{}
 		for i := 0; i < 2*noticeShownDefault; i++ {
 			b.advance[slot] = true
-			id := b.pick(slot, cands)
+			id := b.pick(slot, cands, 0)
 			if id == "" {
 				t.Fatalf("turn %d put nothing on the row", i)
 			}
-			b.take(slot, id, true, now, limit)
+			b.take(slot, id, true, now, limit, 0)
 			turns[id]++
 			now = now.Add(noticeReadTime)
 		}
@@ -198,7 +199,7 @@ func TestEveryTurnOfTheRotationThatStoodIsAShowing(t *testing.T) {
 			t.Fatalf("after %d turns each the tips are not retired: %+v", noticeShownDefault, b.ledger)
 		}
 		b.advance[slot] = true
-		if got := b.pick(slot, cands); got != "" {
+		if got := b.pick(slot, cands, 0); got != "" {
 			t.Fatalf("a retired tip came back: %q", got)
 		}
 	}
@@ -211,24 +212,24 @@ func TestARowHoldsBetweenVisitsAndYieldsWhenSpent(t *testing.T) {
 	b := bareNoticeBoard()
 	cands := []noticeCandidate{{id: "a", armed: true}, {id: "b", armed: true}, {id: "c", armed: true}}
 	b.advance[slotHome] = true
-	if got := b.pick(slotHome, cands); got != "a" {
+	if got := b.pick(slotHome, cands, 0); got != "a" {
 		t.Fatalf("the ring did not start at the top: %q", got)
 	}
-	b.take(slotHome, "a", true, time.Now(), func(string) int { return noticeShownDefault })
+	b.take(slotHome, "a", true, time.Now(), func(string) int { return noticeShownDefault }, 0)
 	// An event with nothing advancing keeps the one standing.
-	if got := b.pick(slotHome, cands); got != "a" {
+	if got := b.pick(slotHome, cands, 0); got != "a" {
 		t.Fatalf("an event moved the row without a visit, to %q", got)
 	}
 	// The one standing retiring hands the row to the next in the ring.
 	b.retire("a")
-	if got := b.pick(slotHome, cands); got != "b" {
+	if got := b.pick(slotHome, cands, 0); got != "b" {
 		t.Fatalf("a spent tip did not yield to the next: %q", got)
 	}
 	// And with nothing eligible the row is empty rather than stale.
 	for _, c := range cands {
 		b.retire(c.id)
 	}
-	if got := b.pick(slotHome, cands); got != "" {
+	if got := b.pick(slotHome, cands, 0); got != "" {
 		t.Fatalf("an empty ring still says %q", got)
 	}
 }
@@ -345,35 +346,23 @@ func TestTheCrossBlanksHomesRowAndSpendsNothingOfTheTipItPutAway(t *testing.T) {
 	}
 }
 
-// AND THE SAME LAW IN A CONVERSATION, where the row going out of view is a key
-// rather than a door: the cross blanks it, the quiet minutes that follow do
-// not bring it back, and a key and a fresh quiet minute do.
-func TestTheCrossHoldsTheConversationsRowUntilAKeyAndAFreshQuietMinute(t *testing.T) {
+// THE CROSS IS HOME'S ALONE. A conversation says its tip on the keys row
+// (chattip_test.go), and a keys row has never had one: there is no span for a
+// press to land in, and nothing on that row is a door.
+func TestAConversationsTipRowCarriesNoCross(t *testing.T) {
 	a, _ := sheetApp(t)
-	a.turn = 1
-	a.noticeEvent(eventTurnEnded)
-	advance := quietMinute(a)
+	startTask(t, a)
 	if a.noticeHint() == "" {
-		t.Fatal("the quiet minute drew no tip")
+		t.Fatal("the conversation says no tip to begin with")
 	}
-
-	a.noticeDismiss(slotHint)
-	if got := a.noticeHint(); got != "" {
-		t.Fatalf("the cross answered with another tip: %q", got)
+	frame(a)
+	if a.tipCloseSpan.pressable() {
+		t.Fatalf("a conversation drew a cross at columns %+v", a.tipCloseSpan)
 	}
-	// The beat that turns the ring every two minutes does not lift it.
-	advance(hintEvery * 2)
-	a.noticeIdleBeat(a.notices.idleGen)
-	if got := a.noticeHint(); got != "" {
-		t.Fatalf("the two-minute beat brought the row back: %q", got)
-	}
-
-	// A key takes the row, and the next quiet minute gives it back.
-	a.noticeTouched()
-	advance(chatHintIdle)
-	a.noticeIdleBeat(a.notices.idleGen)
-	if a.noticeHint() == "" {
-		t.Fatal("a key and a fresh quiet minute did not bring the row back")
+	// And the tip is on the keys row rather than on a row of its own with a
+	// cross at the end of it.
+	if got := plain(a.footHint(a.width)); !strings.Contains(got, taskPageTip) {
+		t.Fatalf("the conversation's tip is not on the keys row: %q", got)
 	}
 }
 
@@ -468,13 +457,22 @@ func TestATipBehindAHiddenRowStandsForNothing(t *testing.T) {
 		t.Fatal("the cross did not blank the row")
 	}
 
-	// AN HOUR OF EVENTS OVER A BLANK ROW. Each one re-decides the slot.
+	// AN HOUR OF EVENTS OVER A BLANK ROW. Each one re-decides the slot. The
+	// conversation's slot takes the same tip and counts it ONCE, which is its
+	// own rule (notice.go's [noticeBoard.take]); what is under test is that
+	// home's blank row adds nothing on top of that, ever.
+	now = now.Add(noticeReadTime * 2)
+	a.noticeEvent(eventTurnEnded)
+	settled := a.notices.ledger.shown(last)
 	for i := 0; i < noticeShownDefault*3; i++ {
 		now = now.Add(noticeReadTime * 2)
 		a.noticeEvent(eventTurnEnded)
 	}
-	if got := a.notices.ledger.shown(last); got != 0 {
-		t.Fatalf("a tip behind a blank row was shown %d times", got)
+	if got := a.notices.ledger.shown(last); got != settled {
+		t.Fatalf("a tip behind a blank row climbed from %d to %d showings", settled, got)
+	}
+	if !a.notices.since[slotHome].IsZero() {
+		t.Fatal("a blank home row started a standing")
 	}
 	if a.notices.retired(last) {
 		t.Fatal("a tip behind a blank row retired itself")

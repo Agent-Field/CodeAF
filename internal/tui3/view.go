@@ -141,11 +141,6 @@ const (
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
 	// it is a question about the column as well as the row (jumpchip.go).
 	chromeJump
-	// chromeTip is the same gap row carrying the tip instead, once the person
-	// has been quiet for a minute (notice.go). The row is EMPTY apart from the
-	// tip, right-aligned, and the one thing on it a person can press is the
-	// cross at its end (projectseam.go's [app.tipClosePress]).
-	chromeTip
 	// chromeLegend is the rule between the transcript and the box. Its right
 	// end carries the hint slot, and the one thing in that slot a person can
 	// press is the door home (home.go's [app.homeDoorPress]).
@@ -680,27 +675,13 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	chip := a.jumpChip(width)
 	jumped := false
 	// addGap spends one row of the ladder, and hands it to the chip if the chip
-	// has not been placed yet.
-	// AND THE TIP RIDES THE SAME ROW WHEN THE CHIP DOES NOT (notice.go's
-	// [app.noticeHint]): the chip is a door back to the live edge and outranks
-	// a sentence; the tip is laid out as home's is (hometip.go's [app.tipLine]),
-	// and its cross's columns are written here, as the row is laid out.
-	a.tipCloseSpan = hudSpan{}
-	tipRow, tipSpan := "", hudSpan{}
-	if tip := a.noticeHint(); tip != "" {
-		tipRow, tipSpan = a.tipLine(tip, width, a.pal)
-	}
-	tipped := false
+	// has not been placed yet. THE TIP DOES NOT RIDE THIS ROW: it is the keys
+	// row's lowest rung at the foot (render.go's [app.footHint]), which is
+	// where it was before 2026-09-22 and where the owner put it back.
 	addGap := func() {
 		if chip != "" && !jumped {
 			jumped = true
 			add(chip, chromeRow{kind: chromeJump})
-			return
-		}
-		if tipRow != "" && !tipped {
-			tipped = true
-			a.tipCloseSpan = tipSpan
-			add(tipRow, chromeRow{kind: chromeTip})
 			return
 		}
 		add("", chromeRow{})

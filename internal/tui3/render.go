@@ -3680,10 +3680,19 @@ func (a *app) footHint(width int) string {
 	if a.chordLost && a.chords.meta == chordMetaWord {
 		return a.chords.chordShortWords()
 	}
-	// THE EARNED TIP IS NOT ON THIS ROW ANY MORE. Until 2026-09-22 it was the
-	// rung under the rest state here; it has a row of its own now, over the
-	// rule, once the person has been quiet for a minute (notice.go's
-	// [app.noticeHint]), so the keys row is the keys and nothing else.
+	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED TIP (notice.go). It is the
+	// lowest rung there is — a tip about a gesture the person has not used yet,
+	// drawn only over an idle box — and it takes the slot from the rest state
+	// below because that is what the rest state is for: the one line a newcomer
+	// reads when nothing is happening.
+	//
+	// IT LEFT THIS ROW FOR ONE BUILD ON 2026-09-22, for a row of its own over
+	// the rule with a clock and a cross, and the owner put it back here. Home's
+	// row keeps that newer shape; the two boxes are read differently and are
+	// allowed to differ (notice.go's [noticeBoard.pick]).
+	if tip := a.noticeHint(); tip != "" {
+		return tip
+	}
 	return a.idleHint()
 }
 
