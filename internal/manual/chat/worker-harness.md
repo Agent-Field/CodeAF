@@ -180,8 +180,7 @@ A run row that nothing drives any more, because its run is not the one this
 conversation is driving or its plan holds no such task, answers a message with
 `nothing is driving this task any more, so no worker can read a message; stop it to
 clear the row`. It never answers `no task N in this session` while the side list
-draws it running. Stopping it settles the row as `stopped`, and the stop answers
-`stopped task N (<title>) — nothing was driving it any more`.
+still draws it. *How do I stop a run?* says what clearing it does.
 
 ## Why is this task indented under that one?
 
@@ -500,7 +499,9 @@ off, and no further model call is made for it. The row reads `stopped`. A second
 on a run that is already stopping answers that it is already stopping.
 
 `x` on one PART of a run ends that part only, at once and without a card, and the
-rest of the run carries on. A run cannot be paused as a whole, so under the run's own
+rest of the run carries on. A row nothing drives any more is cleared the same way:
+the stop settles it as `stopped` and answers `stopped task N (<title>) — nothing was
+driving it any more`. A run cannot be paused as a whole, so under the run's own
 task no `p pause` is named.
 
 Closing the window, `ctrl+c` and `/quit` do NOT stop a run: it carries on without the
