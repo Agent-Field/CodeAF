@@ -70,6 +70,8 @@ var skillRoots = []string{
 	".codex/skills",
 	".cursor/skills",
 	".gemini/skills",
+	".opencode/skills",
+	".goose/skills",
 }
 
 // RootCodexSystem is the folder Codex installs its own bundled skills into.
