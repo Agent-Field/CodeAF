@@ -194,8 +194,8 @@ func TestDelegateWorkerServesItsChildTheModelAPIAndMetersEveryCall(t *testing.T)
 		// is a history rewritten — said so, and sent whole.
 		t.Fatalf("sent = %+v / restarted %v", turns[0].Sent, turns[1].Restarted)
 	}
-	if record, ok := delegate.ReadProgram(taskDir); !ok || record.Name != "fake" || strings.Join(record.Stages, ",") != "implement,verify" {
-		t.Fatalf("program record = %+v %v, want the hello's name and stages", record, ok)
+	if record, ok := delegate.ReadProgram(taskDir); !ok || record.Name != "fake" || strings.Join(record.Stages, ",") != "implement,verify" || record.CeilingUSD != 2.5 {
+		t.Fatalf("program record = %+v %v, want the hello's name and stages and the run's ceiling", record, ok)
 	}
 	if models := calling.seen(); len(models) != 2 || models[0] != "deepseek/deepseek-v4-flash-0731" {
 		t.Fatalf("the funnel was asked for %q", models)

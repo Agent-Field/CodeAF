@@ -144,11 +144,12 @@ type delegateSink struct {
 
 func (s *delegateSink) Hello(h delegate.Hello) {
 	if h.Protocol == delegate.ProtocolVersion {
-		// THE PAGE LEARNS WHOSE CONVERSATION IT IS DRAWING, and the stages the
-		// program will move through, the moment the program says them — and
-		// keeps knowing after the run. It is a record, so a disk that refuses it
-		// costs the page its heading and never the run.
-		_ = delegate.WriteProgram(s.taskDir, delegate.ProgramRecord{Name: s.name, Stages: h.Stages})
+		// THE PAGE LEARNS WHOSE CONVERSATION IT IS DRAWING, the stages the
+		// program will move through and the ceiling its spend is read against,
+		// the moment the program says hello — and keeps knowing after the run.
+		// It is a record, so a disk that refuses it costs the page its heading
+		// and never the run.
+		_ = delegate.WriteProgram(s.taskDir, delegate.ProgramRecord{Name: s.name, Stages: h.Stages, CeilingUSD: s.worker.cost})
 		return
 	}
 	// TWO BUILDS, ONE RUN. Nothing a newer child writes can be trusted to mean
