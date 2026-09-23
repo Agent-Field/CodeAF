@@ -12,6 +12,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // ── SPACES: NAMED SETS OF CONVERSATIONS, KEPT ON THEIR OWN FILE ────────────
@@ -44,9 +46,18 @@ type spacesDisk struct {
 	Spaces []space `json:"spaces"`
 }
 
+// spacesPath is where the sets live. AN EMPTY PROFILE DIRECTORY IS THE
+// ORDINARY LAUNCH, not the absence of a profile: CODEAF_PROFILE_DIR is almost
+// never exported, and the empty string resolves to this process's own profile
+// in the state root, as every other file a profile keeps does
+// (emptyprofile_test.go states the law; [config.ProfilePath] is the one
+// resolution).
+func spacesPath(profileDir string) string {
+	return config.ProfilePath(profileDir, spacesFile)
+}
+
 // loadSpaces reads the sets from profileDir. A missing file is no spaces and
-// no error, because a person who never made one has no file. An empty
-// profileDir is the in-memory case and reads nothing. A file that is there but
+// no error, because a person who never made one has no file. A file that is there but
 // unreadable is an ERROR and is left exactly as it was: what to do with it is
 // the caller's decision, and silently treating it as empty would let the next
 // save overwrite every set the person made.
@@ -59,10 +70,7 @@ func loadSpaces(profileDir string) ([]space, error) {
 // file gave it a colour. A file from before colours has none, and a hue of 0
 // is a real hue, so absence is read off the file and not off the value.
 func loadSpacesHued(profileDir string) ([]space, []bool, error) {
-	if profileDir == "" {
-		return nil, nil, nil
-	}
-	raw, err := os.ReadFile(filepath.Join(profileDir, spacesFile))
+	raw, err := os.ReadFile(spacesPath(profileDir))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil, nil
 	}
@@ -111,11 +119,9 @@ func spacesHueLegacy(spaces []space, hued []bool, reserved []float64) {
 // saveSpaces writes the sets to profileDir, all at once or not at all: the
 // bytes go to a temporary file beside the real one and are renamed over it, so
 // a crash mid-write leaves the previous file whole rather than half a list.
-// An empty profileDir keeps the sets in memory only and writes nothing.
 func saveSpaces(profileDir string, s []space) error {
-	if profileDir == "" {
-		return nil
-	}
+	path := spacesPath(profileDir)
+	dir := filepath.Dir(path)
 	if s == nil {
 		s = []space{}
 	}
@@ -123,10 +129,10 @@ func saveSpaces(profileDir string, s []space) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(profileDir, spacesFile+".writing-*")
+	temp, err := os.CreateTemp(dir, spacesFile+".writing-*")
 	if err != nil {
 		return err
 	}
@@ -140,7 +146,7 @@ func saveSpaces(profileDir string, s []space) error {
 		_ = os.Remove(name)
 		return err
 	}
-	if err := os.Rename(name, filepath.Join(profileDir, spacesFile)); err != nil {
+	if err := os.Rename(name, path); err != nil {
 		_ = os.Remove(name)
 		return err
 	}
@@ -304,7 +310,7 @@ func (a *app) spacesEnsure() {
 	a.wall.active = -1
 	spaces, hued, err := loadSpacesHued(a.profileDir)
 	if err != nil {
-		path := filepath.Join(a.profileDir, spacesFile)
+		path := spacesPath(a.profileDir)
 		_ = os.Rename(path, path+".unreadable-"+strconv.FormatInt(time.Now().UnixNano(), 10))
 		spaces = nil
 	}
