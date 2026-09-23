@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -74,8 +75,8 @@ func TestTheWireCarriesEveryFieldTheFunnelHasAHomeFor(t *testing.T) {
 		!strings.Contains(string(decoded.reasoning[2].Details), "reasoning.text") || decoded.reasoning[0].Text != "" {
 		t.Fatalf("working sidecar = %+v, want the assistant's working aligned with its message", decoded.reasoning)
 	}
-	if !decoded.hasEffort || decoded.effort != provider.EffortHigh {
-		t.Fatalf("effort = %q %v", decoded.effort, decoded.hasEffort)
+	if decoded.depth != (depth{rung: effort.High}) {
+		t.Fatalf("depth = %+v, want the high rung", decoded.depth)
 	}
 	request := applied(t, decoded)
 	if len(request.Tools) != 1 || request.Tools[0].Function.Name != "bash" || request.Tools[0].Function.Parameters["type"] != "object" {
@@ -97,27 +98,32 @@ func TestTheWireCarriesEveryFieldTheFunnelHasAHomeFor(t *testing.T) {
 	}
 }
 
+// EVERY SPELLING OF A DEPTH LANDS ON CODEAF'S OWN LADDER: the three shared
+// words and the two rungs above them as rungs — senior-dev's `--variant xhigh`
+// included — the pass switched off and the router's lowest word as the
+// adapter's own words, and anything else as nothing.
 func TestTheWireReadsEveryReasoningSpelling(t *testing.T) {
 	for _, row := range []struct {
-		body   string
-		effort provider.Effort
-		set    bool
+		body string
+		want depth
 	}{
-		{`"reasoning_effort": "low"`, provider.EffortLow, true},
-		{`"reasoning": {"effort": "medium"}`, provider.EffortMedium, true},
-		{`"reasoning": {"effort": "minimal"}`, provider.EffortMinimal, true},
-		{`"reasoning": {"enabled": false}`, provider.EffortOff, true},
-		{`"reasoning_effort": "none"`, provider.EffortOff, true},
-		{`"reasoning": {"enabled": true}`, provider.EffortNone, false},
-		// A word codeaf's adapter does not have is never sent.
-		{`"reasoning_effort": "xhigh"`, provider.EffortNone, false},
+		{`"reasoning_effort": "low"`, depth{rung: effort.Low}},
+		{`"reasoning": {"effort": "medium"}`, depth{rung: effort.Medium}},
+		{`"reasoning": {"effort": "xhigh"}`, depth{rung: effort.XHigh}},
+		{`"reasoning_effort": "max"`, depth{rung: effort.Max}},
+		{`"reasoning": {"effort": "minimal"}`, depth{word: provider.EffortMinimal}},
+		{`"reasoning": {"enabled": false}`, depth{word: provider.EffortOff}},
+		{`"reasoning_effort": "none"`, depth{word: provider.EffortOff}},
+		{`"reasoning": {"enabled": true}`, depth{}},
+		// A word nothing in codeaf has a place for is never sent.
+		{`"reasoning_effort": "ultra"`, depth{}},
 	} {
 		decoded, err := decodeRequest([]byte(`{"model":"m","messages":[{"role":"user","content":"hi"}],` + row.body + `}`))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if decoded.effort != row.effort || decoded.hasEffort != row.set {
-			t.Fatalf("%s: effort %q %v, want %q %v", row.body, decoded.effort, decoded.hasEffort, row.effort, row.set)
+		if decoded.depth != row.want {
+			t.Fatalf("%s: depth %+v, want %+v", row.body, decoded.depth, row.want)
 		}
 	}
 }

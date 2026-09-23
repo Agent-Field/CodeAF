@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -82,8 +83,16 @@ type call struct {
 	messages  []ai.Message
 	reasoning []provider.MessageReasoning
 	options   []ai.Option
-	effort    provider.Effort
-	hasEffort bool
+	depth     depth
+}
+
+// depth is how hard the program asked its model to think, in codeaf's own
+// words: a rung of the ladder (internal/effort) from low to max, or — for the
+// two requests that are not rungs, the pass switched off and the lowest word
+// the router has — the adapter's own word. At most one of the two is set.
+type depth struct {
+	rung effort.Rung
+	word provider.Effort
 }
 
 // maxRequestBytes bounds one request body. A transcript with pictures in it is
@@ -143,7 +152,7 @@ func decodeRequest(body []byte) (*call, error) {
 		return nil, err
 	}
 	decoded.options = options
-	decoded.effort, decoded.hasEffort = request.effort()
+	decoded.depth = request.depth()
 	return decoded, nil
 }
 
@@ -289,34 +298,34 @@ func withResponseFormat(format *ai.ResponseFormat) ai.Option {
 	}
 }
 
-// effort is the reasoning depth the program asked for, in codeaf's words:
-// OpenRouter's `reasoning` object or OpenAI's `reasoning_effort`. A word
-// codeaf's adapter does not have is not sent, because a knob a model would
-// refuse must never reach the wire; `enabled: false` and `none` are the one
-// request to switch the pass off.
-func (r chatRequest) effort() (provider.Effort, bool) {
+// depth is the reasoning depth the program asked for — OpenRouter's
+// `reasoning` object or OpenAI's `reasoning_effort` — on codeaf's own ladder:
+// low, medium and high are the words every provider shares, and xhigh and max
+// are the two rungs above them, which codeaf says with a thinking budget
+// (internal/provider's effortladder.go). `enabled: false` and `none` switch the
+// pass off, and `minimal` is the router's own lowest word. A word none of that
+// has a place for is not sent, because a knob a model would refuse must never
+// reach the wire.
+func (r chatRequest) depth() depth {
 	word := strings.TrimSpace(r.ReasoningEffort)
 	if r.Reasoning != nil {
 		if r.Reasoning.Enabled != nil && !*r.Reasoning.Enabled {
-			return provider.EffortOff, true
+			return depth{word: provider.EffortOff}
 		}
 		if said := strings.TrimSpace(r.Reasoning.Effort); said != "" {
 			word = said
 		}
 	}
-	switch strings.ToLower(word) {
+	switch word = strings.ToLower(word); word {
 	case "none", "off":
-		return provider.EffortOff, true
+		return depth{word: provider.EffortOff}
 	case "minimal":
-		return provider.EffortMinimal, true
-	case "low":
-		return provider.EffortLow, true
-	case "medium":
-		return provider.EffortMedium, true
-	case "high":
-		return provider.EffortHigh, true
+		return depth{word: provider.EffortMinimal}
 	}
-	return provider.EffortNone, false
+	if rung := effort.Rung(word); rung.Valid() {
+		return depth{rung: rung}
+	}
+	return depth{}
 }
 
 // ── the answer ──────────────────────────────────────────────────────────────

@@ -45,6 +45,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -512,12 +513,16 @@ func (s *Server) settings(ctx context.Context, request *call, bill *tally, catch
 	ctx = provider.WithCallTag(ctx, "task")
 	ctx = provider.WithCallNode(ctx, s.config.Node)
 	ctx = provider.WithCacheKey(ctx, request.cacheKey)
-	if request.hasEffort {
-		// The program asked for this depth in so many words, which is what an
-		// operator's configured level is: sent even to a model the catalog
-		// cannot vouch for, and dropped by the adapter's own repair if the
-		// model refuses it.
-		ctx = provider.WithConfiguredReasoningEffort(ctx, request.effort)
+	// THE PROGRAM ASKED FOR ITS DEPTH IN SO MANY WORDS, which is what a person's
+	// configured level is: sent even to a model the catalog cannot vouch for,
+	// and dropped by the adapter's own repair if the model refuses it. A rung
+	// rides the ladder's one translation (xhigh and max as a thinking budget);
+	// the two words that are not rungs ride the adapter's own.
+	switch {
+	case request.depth.rung != effort.None:
+		ctx = provider.WithConfiguredEffortRung(ctx, request.depth.rung)
+	case request.depth.word != provider.EffortNone:
+		ctx = provider.WithConfiguredReasoningEffort(ctx, request.depth.word)
 	}
 	ctx = provider.WithMessageReasoning(ctx, request.reasoning)
 	ctx = provider.WithBilling(ctx, func(billed provider.Billed) { s.charge(bill, billed, false) })
