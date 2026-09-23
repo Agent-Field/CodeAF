@@ -66,8 +66,8 @@ func TestSkillRelevanceEval(t *testing.T) {
 
 	type row struct {
 		prompt, want, got string
-		shared           int
-		hit              bool
+		shared            int
+		hit               bool
 	}
 	rows := make([]row, 0, len(evalPrompts))
 	for _, prompt := range evalPrompts {

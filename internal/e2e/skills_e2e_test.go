@@ -127,10 +127,10 @@ func skillsHome(t *testing.T, memory string) string {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	rows := map[string]any{
-		"model.talk":             "deepseek/deepseek-v4-flash",
-		config.KeyIcons:          config.IconsPlain,
-		"tools.approvalMode":     "allow",
-		config.KeyMemoryEnabled:  memory,
+		"model.talk":            "deepseek/deepseek-v4-flash",
+		config.KeyIcons:         config.IconsPlain,
+		"tools.approvalMode":    "allow",
+		config.KeyMemoryEnabled: memory,
 	}
 	writeJSON(t, filepath.Join(home, "config.json"), rows)
 

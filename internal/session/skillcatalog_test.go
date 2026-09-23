@@ -256,7 +256,6 @@ func TestSkillCatalogRendersOnThePageWhenSkillsExist(t *testing.T) {
 	}
 }
 
-
 // MEMORY OFF IS NOT SKILLS OFF, and this is the whole of #1379 answered in
 // full rather than explained. A person with eighty-one skills on disk and
 // memory off asked the chat whether it could use skills and was told codeaf

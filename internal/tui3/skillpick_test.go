@@ -456,7 +456,7 @@ var _ = tea.Msg(nil)
 // has no reading of the skill shelf at all.
 type memoryOnly struct{}
 
-func (memoryOnly) Snapshot(int) (store.MemoryShelves, error)       { return store.MemoryShelves{}, nil }
+func (memoryOnly) Snapshot(int) (store.MemoryShelves, error)        { return store.MemoryShelves{}, nil }
 func (memoryOnly) ChangedSince(time.Time) (int, int, error)         { return 0, 0, nil }
 func (memoryOnly) ListMemories(string, int) ([]store.Memory, error) { return nil, nil }
 func (memoryOnly) UpdateMemory(string, string, string, []string) error {
