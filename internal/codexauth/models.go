@@ -12,20 +12,34 @@ import (
 	"time"
 )
 
-// Model is one model the signed-in account may choose, with the reasoning
-// levels the request translator is allowed to send for it.
+// Model is one model the signed-in account may choose, with how many tokens it
+// accepts and the reasoning levels the request translator is allowed to send
+// for it.
 type Model struct {
-	ID              string   `json:"id"`
+	ID string `json:"id"`
+	// ContextLength is the listing's own `context_window`, zero when the row
+	// carried none. It is what the session compacts against and what the status
+	// line's meter is a share of, so a Codex model that dropped it kept whatever
+	// window the conversation's previous model had (#1383).
+	ContextLength   int      `json:"context_length,omitempty"`
 	ReasoningLevels []string `json:"reasoning_levels,omitempty"`
 }
+
+// FallbackContextWindow is the window the account's own model list gave every
+// visible model when it was last observed (2026-09-21, a Pro account:
+// `"context_window": 272000` on each row). It is ONE figure because the
+// fallback rows below are one observation, and a row that carried no window
+// would leave a conversation that moved onto it compacting at its previous
+// model's figure.
+const FallbackContextWindow = 272000
 
 // FallbackModels is the last observed public list used when a fresh account
 // listing cannot be reached during connection.
 var FallbackModels = []Model{
-	{ID: "gpt-5.5"},
-	{ID: "gpt-5.6-sol"},
-	{ID: "gpt-5.6-terra"},
-	{ID: "gpt-5.6-luna"},
+	{ID: "gpt-5.5", ContextLength: FallbackContextWindow},
+	{ID: "gpt-5.6-sol", ContextLength: FallbackContextWindow},
+	{ID: "gpt-5.6-terra", ContextLength: FallbackContextWindow},
+	{ID: "gpt-5.6-luna", ContextLength: FallbackContextWindow},
 }
 
 // List asks the account's own backend which models are visible and remembers
@@ -52,9 +66,10 @@ func List(ctx context.Context, profileDir string, options Options) ([]Model, err
 	}
 	var answer struct {
 		Models []struct {
-			Slug       string `json:"slug"`
-			Visibility string `json:"visibility"`
-			Levels     []struct {
+			Slug          string `json:"slug"`
+			Visibility    string `json:"visibility"`
+			ContextWindow int    `json:"context_window"`
+			Levels        []struct {
 				Effort string `json:"effort"`
 			} `json:"supported_reasoning_levels"`
 		} `json:"models"`
@@ -67,7 +82,7 @@ func List(ctx context.Context, profileDir string, options Options) ([]Model, err
 		if row.Visibility != "list" || strings.TrimSpace(row.Slug) == "" {
 			continue
 		}
-		model := Model{ID: strings.TrimSpace(row.Slug)}
+		model := Model{ID: strings.TrimSpace(row.Slug), ContextLength: max(row.ContextWindow, 0)}
 		for _, level := range row.Levels {
 			if effort := strings.TrimSpace(level.Effort); effort != "" {
 				model.ReasoningLevels = append(model.ReasoningLevels, effort)
