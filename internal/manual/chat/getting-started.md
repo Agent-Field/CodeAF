@@ -35,6 +35,10 @@ returns on the next local interactive launch because that model cannot work with
 conversation on a connected direct service's model does not owe OpenRouter a key, so that
 step stays away.
 
+Codex is deliberately not another first-run step. After setup, its browser sign-in is
+available from the Codex row in `/connect`, or from `codeaf connect codex` without
+opening the chat.
+
 The header reads `codeaf` on the left and `setup · 2 of 2` on the right; with only one
 screen to show there is no count at all. The foot names the keys that work on the row you
 are standing on — `tab` walks the rows, `?` opens a control's detail — and on a narrow

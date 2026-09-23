@@ -136,11 +136,10 @@ func fadeWord(i int) string { return strings.Repeat("i", i%7+1) + itoa(i) }
 func historyRows(a *app) []string {
 	width, height := a.size()
 	lines, _, _, _ := a.taskSheetFrame(width, height)
-	// The foot the router draws is the same rows on every place, filtering or
-	// not — the note rides the rule (placebodies.go's [placeNoteRule]) — and how
-	// many of them the composer is worth depends on the height ([boxFloor]), so
-	// the frame's own door is asked for the count.
-	return lines[placeHeadRows : len(lines)-placeFootRowsAt(height)]
+	// The foot the router draws under a place that is not home is three rows,
+	// filtering or not — the note rides the rule (placebodies.go's
+	// [placeNoteRule]) and there is no box ([placeBareFootRows]).
+	return lines[placeHeadRows : len(lines)-placeFootRowsFor(pageTasks, height)]
 }
 
 // THE TAIL OF THE RECORD FADES AND ITS HEAD DOES NOT. A page holding two hundred
@@ -254,7 +253,7 @@ func TestTheHistoryPageSeparatesItsSectionsWithABlankLine(t *testing.T) {
 	// AND THE PAGE OPENS ON WHAT IT IS HOLDING rather than on air: a blank line
 	// under the router's own rule would be the head of the page drifting away
 	// from it.
-	if got := strings.TrimSpace(plain(rows[0])); !strings.HasPrefix(got, tasksHeadWord+railSep) {
+	if got := strings.TrimSpace(plain(rows[0])); got == "" || strings.HasPrefix(got, tasksHeadWord+railSep) {
 		t.Fatalf("the page opens on %q rather than on what it is holding", got)
 	}
 }

@@ -314,15 +314,20 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	type edges struct{ bar, headRule, blank, footRule, box, hint int }
 	sizes := [][2]int{{80, 24}, {120, 45}, {180, 45}}
 	labs := append(everyPlaceTable(), everyEmptyPlace()...)
-	want := map[[2]int]edges{}
-	for _, size := range sizes {
+	// TWO SHAPES, AND EVERY PLACE HAS ONE OF THEM. Home's foot carries the box —
+	// as many rows as the height can afford ([boxFloor]), the rule directly over
+	// the first of them; every other place's foot is the blank, the rule and
+	// the hint, with no box at all ([placeBareFootRows]): only home starts
+	// things (pages.go's [place.box]). Both are derived from the frame's own
+	// doors rather than counted out again here.
+	wantFor := func(id page, size [2]int) edges {
 		height := size[1]
-		// The box is as many rows as this height can afford ([boxFloor]), and the
-		// rule sits directly over the first of them, so both edges are derived
-		// from the frame's own door rather than counted out again here.
-		floor := boxFloor(height)
-		want[size] = edges{bar: placeTabRow, headRule: 2, blank: placeHeadRows - 1,
-			footRule: height - placeFootRowsAt(height) + 1, box: height - 1 - floor, hint: height - 1}
+		got := edges{bar: placeTabRow, headRule: 2, blank: placeHeadRows - 1,
+			footRule: height - placeFootRowsFor(id, height) + 1, box: -1, hint: height - 1}
+		if id == pageHome {
+			got.box = height - 1 - boxFloor(height)
+		}
+		return got
 	}
 	for _, lab := range labs {
 		for _, size := range sizes {
@@ -345,16 +350,20 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 			// [homeDraftFloor] rows and its FIRST row is the one carrying the
 			// prompt, so the rule sits one above that and the rows between the
 			// prompt and the hint are the composer's own.
-			floor := boxFloor(size[1])
+			floor := 0
+			if lab.id == pageHome {
+				floor = boxFloor(size[1])
+			}
 			if at := len(rows) - 2 - floor; at >= 0 && strings.HasPrefix(rows[at], "─") {
 				got.footRule = at
 			}
-			if at := len(rows) - 1 - floor; at >= 0 && strings.HasPrefix(rows[at], " "+prompt) {
+			if at := len(rows) - 1 - floor; lab.id == pageHome && at >= 0 && strings.HasPrefix(rows[at], " "+prompt) {
 				got.box = at
 			}
-			if got != want[size] {
-				t.Errorf("the %s place at %dx%d puts its edges at %+v, and every place puts them at %+v\n%s",
-					lab.id.word(), size[0], size[1], got, want[size], strings.Join(rows, "\n"))
+			want := wantFor(lab.id, size)
+			if got != want {
+				t.Errorf("the %s place at %dx%d puts its edges at %+v, and its shape puts them at %+v\n%s",
+					lab.id.word(), size[0], size[1], got, want, strings.Join(rows, "\n"))
 			}
 		}
 	}

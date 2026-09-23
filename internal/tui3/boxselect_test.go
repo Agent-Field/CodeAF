@@ -327,14 +327,15 @@ func TestCtrlZReachesTheMessageBox(t *testing.T) {
 
 // ── and on the places, which is what "in all places" asked for ──────────────
 
-// THE SWEEP IS THE ROUTER'S GESTURE AND NOT THE CONVERSATION'S. The composer at
-// the foot of every place answers it on exactly the message box's terms — the
-// press puts the caret down, the sweep highlights, the release copies.
+// THE SWEEP IS THE ROUTER'S GESTURE AND NOT THE CONVERSATION'S. The box at the
+// foot of home — the one place with a box (pages.go's [place.box]) — answers
+// it on exactly the message box's terms: the press puts the caret down, the
+// sweep highlights, the release copies.
 func TestASweepOverAPlacesComposerSelectsAndCopiesIt(t *testing.T) {
 	lab := newHomeLab(t)
-	a, box := driveToPlace(t, lab, pageSearch)
+	a, box := driveToPlace(t, lab, pageHome)
 	if box == nil {
-		t.Fatal("the search place has no box to type into")
+		t.Fatal("home has no box to type into")
 	}
 	box.setText("alpha beta gamma")
 	box.forgetUndo()

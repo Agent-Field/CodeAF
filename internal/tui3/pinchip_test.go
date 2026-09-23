@@ -24,7 +24,7 @@ func TestTheSurfaceNamesNoMachineTheTransportIsNotAskingFor(t *testing.T) {
 	a := laneApp(t)
 	a.width, a.height = 120, 24
 	a.pinLane(flash, "cloudflare")
-	if a.modelWord() != "deepseek-v4-flash@cloudflare" {
+	if a.modelWord() != flash+"@cloudflare" {
 		t.Fatalf("the pin did not reach the model word: %q", a.modelWord())
 	}
 
@@ -48,13 +48,24 @@ func TestTheSurfaceNamesNoMachineTheTransportIsNotAskingFor(t *testing.T) {
 	// AND THE FOLD MARKS `auto`, which is where the requests are going — not the
 	// machine the row names.
 	typeLine(t, a, "/model")
-	drive(t, a, key("right"))
-	screen := plain(frame(a))
-	if line := screenLine(screen, "auto"); !strings.Contains(line, "●") {
-		t.Fatalf("the fold does not mark auto:\n%s", screen)
+	drive(t, a, key("right"), key("down"), key("right"))
+	// THE MARK IS THE ROW'S BAND AND NOT A GLYPH any more ([picker.mark] is
+	// gone, palette.go says why), so what is asserted is the answer the list
+	// gives about which row it is on rather than a character on the screen.
+	autoAt, machineAt := -1, -1
+	for at, row := range a.pick.list {
+		if row.lane == laneAutoAt {
+			autoAt = at
+		}
+		if row.lane >= 0 && strings.EqualFold(a.pick.lanes[row.lane].Name, "cloudflare") {
+			machineAt = at
+		}
 	}
-	if line := screenLine(screen, "cloudflare"); strings.Contains(line, "●") {
-		t.Fatalf("the fold marks a machine nothing is asking for:\n%s", screen)
+	if autoAt < 0 || !a.pick.marked(autoAt) {
+		t.Fatalf("the fold does not mark auto:\n%s", plain(frame(a)))
+	}
+	if machineAt < 0 || a.pick.marked(machineAt) {
+		t.Fatalf("the fold marks a machine nothing is asking for:\n%s", plain(frame(a)))
 	}
 }
 
@@ -120,8 +131,9 @@ func TestEnterOnThePinnedMachineUnpinsIt(t *testing.T) {
 
 	// AND ENTER ON A MACHINE THAT IS NOT IN FORCE STILL PINS IT, which is the
 	// other half of a toggle.
+	drive(t, a, key("esc"))
 	typeLine(t, a, "/model")
-	drive(t, a, key("right"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
 	if got := a.pinnedNow(); got == "" {
 		t.Fatal("enter on an unpinned machine did not pin it")
 	}
@@ -159,6 +171,7 @@ func TestTypingInsideAnOpenFoldFiltersTheMachines(t *testing.T) {
 	}
 
 	// AND A QUERY ONLY ONE MACHINE ANSWERS LEAVES ONLY THAT ONE.
+	drive(t, a, key("esc"))
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"))
 	typeInto(t, a, "corew")
@@ -238,7 +251,7 @@ func TestARoutingChangeReachesTheTransportAndThePanelAtOnce(t *testing.T) {
 	a.closeSettings()
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"))
-	if screen := plain(frame(a)); !strings.Contains(screen, "openrouter's own routing; codeaf stays out") {
+	if screen := plain(frame(a)); !strings.Contains(screen, laneAutoSaid(config.RoutingSimple).note) {
 		t.Fatalf("the fold still promises the old row's takeover:\n%s", screen)
 	}
 }

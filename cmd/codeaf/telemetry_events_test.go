@@ -23,9 +23,9 @@ func countingTestStream() []session.Event {
 		{Kind: session.EventToolFailed, Tool: "edit", Hint: "oldText did not match"},
 		{Kind: session.EventToolFailed, Tool: "propose_task", HarnessMade: true},
 		{Kind: session.EventTextDelta, Text: "partial"},
-		{Kind: session.EventTurnDone, Usage: session.Usage{Calls: 1, CostUSD: 0.123456}},
+		{Kind: session.EventTurnDone, Usage: session.Usage{Calls: 1, Input: 100, Output: 20, CostUSD: 0.123456}},
 		{Kind: session.EventRetrying, Text: "the endpoint went quiet — asking again"},
-		{Kind: session.EventTurnDone, Usage: session.Usage{Calls: 1}},
+		{Kind: session.EventTurnDone, Usage: session.Usage{Calls: 1, Input: 30, Output: 5}},
 		{Kind: session.EventNotice, Text: "row news"},
 	}
 }
@@ -57,6 +57,7 @@ func TestTelemetryEventsTeeCountsAHostedSession(t *testing.T) {
 		ToolCalls:        2,
 		ToolCallsFailed:  1,
 		CostUSD:          0.123456,
+		TotalTokens:      155,
 	}
 	if got := telemetry.Snapshot(); got != want {
 		t.Fatalf("hosted stream counted %+v, want %+v", got, want)

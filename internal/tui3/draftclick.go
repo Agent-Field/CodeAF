@@ -62,6 +62,10 @@ func (a *app) draftPress(x, y int) bool {
 	// and returned — which is exactly why a sweep over a draft used to reach
 	// nothing at all.
 	a.boxPressed(&a.input, false, x, y)
+	a.menu.sync(&a.input)
+	if a.menu.open {
+		a.comp.close()
+	}
 	return true
 }
 

@@ -550,6 +550,9 @@ func AnswerFromKey(kind QuestionKind, key string) (AnswerAction, bool) {
 // their pick, the blanks they filled, what they asked back, and — the one that
 // makes the record worth keeping — WHO decided and how long it lasts.
 type Answer struct {
+	// Clarify asks for context without resolving the pending decision.
+	Clarify bool `json:"clarify,omitempty"`
+
 	// At is when it was given. It orders a drain and is the only thing here a
 	// reader could use to notice an answer that sat on the doorstep for a week
 	// — nothing does, because a question that old is one nobody is waiting on

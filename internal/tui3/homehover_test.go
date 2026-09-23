@@ -10,14 +10,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
-// THE POINTER PREVIEWS AND THE CURSOR SELECTS.
-//
-// These are the laws of the card's subject. Home's right column used to read
-// the cursor and nothing else, so a person moving the pointer down the left
-// column watched rows light up one after another beside a card that never
-// changed — the screen answering a gesture with a highlight and no content.
-// What the pointer is over is now what the card is about, and the cursor is
-// left exactly where it was put.
+// Mouse and keyboard navigation share one selected row. The card follows
+// that row, and leaving the list does not restore an older keyboard choice.
 //
 // THE HOVER MAP IS UNTOUCHED BY THE SWITCHER AND THE ROWS UNDER IT ARE NOT.
 // The resting list is one flat ranked reading now (switcher.go), so a pointer
@@ -116,9 +110,7 @@ func hoverLab(t *testing.T) (*app, *homeLab, string) {
 	return a, lab, mine
 }
 
-// Hovering a conversation shows THAT conversation on the right, and the cursor
-// does not move an inch: the row it is on keeps the selected look it had, and
-// the hovered row takes the hover look on top of it.
+// Hovering a conversation selects it and removes the previous highlight.
 func TestHoveringARowPreviewsItOnTheRight(t *testing.T) {
 	a, _, _ := hoverLab(t)
 	cursor := a.home.cursor
@@ -134,21 +126,18 @@ func TestHoveringARowPreviewsItOnTheRight(t *testing.T) {
 	if title := homeCardTitle(t, a); title != "Alpha Chat" {
 		t.Fatalf("hovering a row did not move the card to it: the card says %q", title)
 	}
-	if a.home.cursor != cursor {
-		t.Fatalf("the pointer moved the cursor from %d to %d", cursor, a.home.cursor)
+	if a.home.cursor != at {
+		t.Fatalf("the pointer selected %d, want %d", a.home.cursor, at)
 	}
-	if now := homeLeftText(a, cursor); now != selected {
-		t.Fatalf("the cursor's row lost its selected look while another row was hovered:\n%q\n%q", selected, now)
+	if now := homeLeftText(a, cursor); now == selected {
+		t.Fatal("the old row kept its selected look after mouse navigation")
 	}
 	if now := homeLeftText(a, at); now == before {
 		t.Fatalf("the hovered row is painted exactly as it was, so nothing on the left says the pointer is there: %q", now)
 	}
 }
 
-// AND THE CARD COMES BACK THE MOMENT THE POINTER LEAVES. The right column is
-// the pane's own ground: a pointer resting there is not pointing at any row of
-// the list, so the card returns to the cursor's conversation rather than being
-// held on whatever row shares that screen line.
+// Leaving the list keeps the most recently selected conversation on the card.
 func TestThePointerLeavingTheColumnGivesTheCardBackToTheCursor(t *testing.T) {
 	a, _, _ := hoverLab(t)
 	at := homeLineOfKind(t, a, homeSession, "alpha")
@@ -164,8 +153,8 @@ func TestThePointerLeavingTheColumnGivesTheCardBackToTheCursor(t *testing.T) {
 	if a.home.hover != -1 {
 		t.Fatalf("a pointer in the right column is still hovering column line %d", a.home.hover)
 	}
-	if title := homeCardTitle(t, a); title != "Zeta Chat" {
-		t.Fatalf("the card did not go back to the cursor when the pointer left the column: %q", title)
+	if title := homeCardTitle(t, a); title != "Alpha Chat" {
+		t.Fatalf("the card lost the last selected row when the pointer left: %q", title)
 	}
 }
 
@@ -219,7 +208,7 @@ func TestHoveringAWatchPreviewsTheWatchsOwnCard(t *testing.T) {
 // (placekeys.go's [app.placeKey], verbstrip.go) — which on the resting list is
 // every conversation and every watch, so the fold arm below it is no longer
 // reachable from a row at all. What is pinned here is the half that survived
-// both: the verbs are the PREVIEWED row's and never the cursor's.
+// both: the verbs belong to the single row selected by the latest navigation.
 func TestTheVerbKeyActsOnTheRowThePointerIsOn(t *testing.T) {
 	a, _, _ := hoverLab(t)
 	watch := -1
@@ -253,7 +242,7 @@ func TestTheVerbKeyActsOnTheRowThePointerIsOn(t *testing.T) {
 	if !strings.Contains(joined, homeItemPauseWord) {
 		t.Fatalf("→ did not offer the previewed watch's own verbs, it offered %q", joined)
 	}
-	if strings.Contains(joined, "put it away") {
+	if strings.Contains(joined, "close") {
 		t.Fatalf("→ acted on the cursor's conversation instead of the row on the screen: %q", joined)
 	}
 }

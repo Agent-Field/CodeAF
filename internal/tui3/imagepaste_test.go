@@ -83,14 +83,49 @@ func TestDroppingAnOrdinaryFileAttachesItInsteadOfPastingItsPath(t *testing.T) {
 	}
 }
 
-func TestDroppingAFolderUsesTheAttachRefusal(t *testing.T) {
-	a, _, dir := attachLab(t, nil)
-	pasteText(t, a, dir)
-	if len(a.chips) != 0 || a.input.String() != "" {
-		t.Fatalf("the folder became draft or tray content: %q %v", a.input.String(), chipNames(a))
-	}
-	if said := strings.Join(plainRows(a), "\n"); !strings.Contains(said, filepath.Base(dir)+" is a folder · attach a file") {
-		t.Fatalf("the folder refusal was not shown:\n%s", said)
+func TestRejectedFolderPasteKeepsTextInTheFocusedMessageBox(t *testing.T) {
+	for _, surface := range []string{"home", "conversation"} {
+		for _, gesture := range []string{"empty", "middle", "mixed files and folder"} {
+			t.Run(surface+"/"+gesture, func(t *testing.T) {
+				var a *app
+				var dir string
+				if surface == "home" {
+					a, dir = homeDropLab(t, "shot.png")
+				} else {
+					a, _, dir = attachLab(t, map[string]int{"shot.png": 12})
+				}
+				box, chips := a.keyboardBox()
+				text := dir
+				before, after := "", ""
+				if gesture == "middle" {
+					before, after = "use ", " for this"
+					box.setText(before + after)
+					box.cursor = len([]rune(before))
+				} else if gesture == "mixed files and folder" {
+					text = filepath.Join(dir, "shot.png") + " " + dir
+				}
+				pasteText(t, a, text)
+				if got, want := box.String(), before+text+after; got != want {
+					t.Fatalf("paste left %q in the box, want %q", got, want)
+				}
+				if box.cursor != len([]rune(before+text)) {
+					t.Fatal("the cursor did not follow the pasted text")
+				}
+				if len(*chips) != 0 {
+					t.Fatalf("a refused paste partially filled the tray: %v", *chips)
+				}
+				said := strings.Join(plainRows(a), "\n")
+				if surface == "home" {
+					said = homeText(a)
+					if a.input.String() != "" {
+						t.Fatal("home's paste changed the hidden conversation draft")
+					}
+				}
+				if !strings.Contains(said, filepath.Base(dir)+" is a folder · attach a file") {
+					t.Fatalf("the folder notice was not shown:\n%s", said)
+				}
+			})
+		}
 	}
 }
 

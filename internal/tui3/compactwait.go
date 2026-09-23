@@ -51,6 +51,9 @@ func (a *app) compactWaitWords(d deck) string {
 // cannot fit, the caller puts that dot in the existing icon gutter instead.
 // The caption keeps every word and the clock never creates another row.
 func (a *app) compactWaitSuffix(line string, room int, d deck) (string, bool) {
+	if a.anyWorkLogoVisible() {
+		return "", true
+	}
 	space := room - ansi.StringWidth(line)
 	if space < 3 {
 		return "", false

@@ -182,7 +182,7 @@ type Meta struct {
 	// Title is what a picker row says. Empty until something names the
 	// session; an empty title marks a session the launch groom may reuse.
 	Title      string `json:"title,omitempty"`
-	ShortTitle string `json:"shortTitle,omitempty"`
+	ShortTitle string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 	// Workspace is the REAL workspace path — the resolved git root for a
 	// borrowed session, the work/ directory for an owned one. The encoded
 	// bucket directory above the session folder is derived from it and is
@@ -209,6 +209,13 @@ type Meta struct {
 	// written to fix: a person set it, worked in it, closed the terminal, and
 	// came back to a conversation that had quietly forgotten.
 	Effort string `json:"effort,omitempty"`
+	// Approval is the posture this conversation set on its own tool gate —
+	// ask, guardian, allow, deny, or auto for "the settings rows decide"
+	// (approvalposture.go). Empty is "nobody moved it here", which is every
+	// session until somebody does, and it is here for the reason Effort is:
+	// a gate a person opened from inside a conversation must be open when they
+	// come back to it.
+	Approval string `json:"approval,omitempty"`
 	// Created is when the session was minted.
 	Created time.Time `json:"created"`
 	// LastUserAt is when the PERSON last said something. Resume order is on
@@ -266,6 +273,9 @@ type Meta struct {
 	// person's own act (home's `e`) and its own undoing — nothing automatic
 	// ever sets or clears it, and nothing else about the session changes.
 	Archived bool `json:"archived,omitempty"`
+	// ArchivedTasks hides individual task rows without changing their execution
+	// or putting away the conversation that owns them. IDs are local to this session.
+	ArchivedTasks map[string]bool `json:"archivedTasks,omitempty"`
 }
 
 // LoadMeta reads a session folder's identity. A missing file, an unparsable
@@ -297,12 +307,10 @@ func LoadMeta(dir string) (Meta, error) {
 		meta.Title = openingPlaceholder(dir)
 	}
 	meta.Title = healedTitle(meta.Title)
-	meta.ShortTitle = compactTitle(healedTitle(meta.ShortTitle))
+	meta.ShortTitle = "" // Old tab labels no longer participate in naming.
 	return meta, nil
 }
 
-// SaveMeta writes the identity whole, temp-and-rename, never partially: a
-// picker that reads a half-written meta.json would draw a phantom row.
 // SetArchived marks or unmarks one conversation as put away, through the same
 // meta file every other fact about the session rides. A folder with no
 // conversation in it is refused rather than given a meta that claims one.
@@ -323,6 +331,35 @@ func SetArchived(dir string, archived bool) error {
 	})
 }
 
+// SetTaskArchived changes one task's visibility under the conversation's metadata
+// lock. It never changes the task index, execution state, or conversation archive.
+func SetTaskArchived(dir, sessionID, taskID string, archived bool) error {
+	sessionID, taskID = strings.TrimSpace(sessionID), strings.TrimSpace(taskID)
+	if sessionID == "" || taskID == "" {
+		return fmt.Errorf("put away task: missing conversation or task id")
+	}
+	return withMetaLock(dir, func() error {
+		meta, err := LoadMeta(dir)
+		if err != nil {
+			return err
+		}
+		if meta.ID != sessionID {
+			return fmt.Errorf("put away task: conversation does not match %s", dir)
+		}
+		if archived {
+			if meta.ArchivedTasks == nil {
+				meta.ArchivedTasks = make(map[string]bool)
+			}
+			meta.ArchivedTasks[taskID] = true
+		} else {
+			delete(meta.ArchivedTasks, taskID)
+		}
+		return SaveMeta(dir, meta)
+	})
+}
+
+// SaveMeta writes the identity whole, temp-and-rename, never partially: a
+// picker that reads a half-written meta.json would draw a phantom row.
 func SaveMeta(dir string, meta Meta) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("save session meta: no session directory")

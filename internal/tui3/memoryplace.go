@@ -42,7 +42,11 @@ func memoryFoldKey(scope string) string { return "\x00" + scope }
 const memoryShelvesFold = "\x00"
 
 type memoryReading struct {
-	held int
+	// typed is the filter exactly as it was typed, for the head row to echo;
+	// filter below is its lowercased form, which is what the lines are matched
+	// against.
+	typed string
+	held  int
 	// letGo and replaced are the two ways a memory stops being held, and they
 	// are counted apart because they are not the same event
 	// ([memoryHelp] says which word each row wears). One was asked for; the
@@ -105,6 +109,7 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 	r := memoryReading{
 		held: shelves.Held, letGo: shelves.LetGo, replaced: shelves.Superseded,
 		total: shelves.Total, shelves: len(shelves.Shelves), filter: query,
+		typed: strings.TrimSpace(filter),
 	}
 	// A MACHINE THAT HAS REMEMBERED NOTHING HAS NO LINES AT ALL, and the place
 	// draws its heading and its whisper instead ([placeWhisper]). Every other
@@ -410,7 +415,14 @@ func (r memoryReading) paint(width int, pal palette, lit func(row int) bool) []s
 			// heading's ink: it was the reading ink, the one heading on the bar
 			// lit like a row (PLACES-AUDIT.md finding 9).
 			left := memoryCounts(r.held, r.shelves, r.letGo, r.replaced)
-			rows = append(rows, " "+memoryJoin(placeHeading(left, pal), pal.dim(memoryFilterWord), memoryFilterWord, room))
+			// AND THE FILTER'S OWN WORDS STAND IN THE RIGHT FIELD ONCE THERE ARE
+			// ANY: the foot draws no box on this place ([place.box]), so the
+			// letters a person types are echoed here, over the rows they kept.
+			right, plainRight := pal.dim(memoryFilterWord), memoryFilterWord
+			if r.typed != "" {
+				right, plainRight = pal.ink(r.typed), r.typed
+			}
+			rows = append(rows, " "+memoryJoin(placeHeading(left, pal), right, plainRight, room))
 		case memoryReadingSection:
 			// THE HEADING IS WHOLE AND THE LEGEND IS A PREFIX OF ITSELF. The
 			// legend is fitted to what the heading leaves rather than the other

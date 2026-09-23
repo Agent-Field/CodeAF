@@ -608,7 +608,7 @@ const taskPaneChatRows = 3
 // broken — and its verb line is the door alone.
 func (a *app) taskPaneVerbs(item tasksItem) []taskPaneVerb {
 	var verbs []taskPaneVerb
-	if q, ok := a.taskRecordLanding(item.entry); ok {
+	if q, ok := a.taskRecordLanding(item.entry); ok && !a.strip.open {
 		for _, verb := range taskRecordVerbs(q, a.taskRecordAsk(item.entry)) {
 			verbs = append(verbs, taskPaneVerb{key: verb.digit, text: verb.digit + " " + verb.word})
 		}

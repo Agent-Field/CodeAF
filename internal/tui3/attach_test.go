@@ -18,7 +18,10 @@ import (
 // SubmitImage answers the seam for every test that never attaches anything: a
 // message with no pictures is exactly Submit, which is what session.Agent
 // documents and what the surface relies on.
-func (f *fakeAgent) SubmitImage(ctx context.Context, text string, _ []session.Image) (<-chan session.Event, error) {
+
+func (f *fakeAgent) SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error) {
+	f.imageText = append(f.imageText, text)
+	f.images = append(f.images, append([]session.Image(nil), images...))
 	return f.Submit(ctx, text)
 }
 
