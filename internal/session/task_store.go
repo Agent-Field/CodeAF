@@ -1163,9 +1163,8 @@ func runRowNotice(record runRecord) TaskNotice {
 // not true. `it ended when codeaf closed; its journal is kept` said the work was
 // over, and the work is not over — nothing is driving it and every step it took
 // is in its store. What the sentence was carrying is now carried by the reading:
-// the state is [TaskInterrupted] and the row asks whether to continue it
-// ([TaskAskContinue]), whose own words say that nothing is driving it and that
-// everything it did is kept.
+// the state is [TaskInterrupted], and the line beside the word says that
+// nothing is driving it and that everything it did is kept.
 
 // recordLocked copies one node out, with the graph held.
 func (n *TaskNode) recordLocked() taskRecord {

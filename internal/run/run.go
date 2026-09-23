@@ -373,6 +373,14 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		// Other in-flight workers may be remnants of an already completed tree;
 		// they must be drained rather than mistaken for the root return.
 		if root.Status != plandb.StatusDone || !s.hasUnlandedDone() {
+			// A REVIEW THE STORE WOULD NOT SEAT OUTRANKS A ROOT THAT READS DONE.
+			// A root worker can write its own done before its return seats the
+			// review, and a seating the store refused marks the run failed
+			// ([addReviewCheck]); read after this return, that mark was never
+			// read at all, and the run answered done with its review absent.
+			if s.rootFailed && root.Status == plandb.StatusDone {
+				return OutcomeIncomplete
+			}
 			return s.outcomeForRoot(root.Status)
 		}
 		// Preserve an ending written directly through the store while the run
@@ -586,11 +594,34 @@ func (s *Supervisor) countLiveSpend() {
 	}
 	s.liveMu.Unlock()
 	s.publishSpend()
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
-		s.limitHit = LimitCost
-		for _, cancel := range s.cancels {
-			cancel()
-		}
+	s.reachCostLimit()
+}
+
+// reachCostLimit is THE ONE PLACE THE DOLLAR LIMIT IS REACHED, whichever road
+// carried the dollar that reached it: a live reading while the work goes
+// ([countLiveSpend]) or a returning worker's receipt ([settleSpend]). Either
+// way the limit is marked and every worker still in flight has its context
+// ended, and the loop goes on absorbing their returns until the pass that finds
+// nothing in flight answers the limit.
+//
+// IT WAS TWO PLACES, AND ONLY ONE OF THEM CANCELLED. A receipt that carried the
+// spend past the limit marked it and ended nothing; the live road's guard then
+// saw the limit already marked and skipped its own cancel, so the peers of the
+// worker that crossed the line worked on and spent on a run whose limit had
+// been reached. Measured: peers left running in ten runs of twenty, two dollars
+// spent against a one-dollar limit. The limit a person set ends the work in
+// flight, not the work that happens to come home next.
+//
+// THE FIRST LIMIT REACHED NAMES THE ENDING. A dollar that crosses the line
+// after the time limit already ended the run does not rename that ending, and
+// the workers are already ended by it.
+func (s *Supervisor) reachCostLimit() {
+	if s.limits.CostUSD <= 0 || s.spent < s.limits.CostUSD || s.limitHit != "" {
+		return
+	}
+	s.limitHit = LimitCost
+	for _, cancel := range s.cancels {
+		cancel()
 	}
 }
 
@@ -605,12 +636,9 @@ func (s *Supervisor) settleSpend(ret workerReturn) {
 		s.spent += ret.report.USD - counted
 	}
 	s.forgetLive(ret.task.ID)
-	// THE LIMIT THAT ENDED THE RUN IS THE FIRST ONE REACHED. A return that carries
-	// the spend past the dollar limit after the time limit already ended the run
-	// does not rename the ending.
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
-		s.limitHit = LimitCost
-	}
+	// A RETURN THAT REACHES THE LIMIT ENDS ITS PEERS, the same as a live reading
+	// that reaches it ([reachCostLimit] says why this is one place and not two).
+	s.reachCostLimit()
 	s.publishSpend()
 }
 
@@ -1587,6 +1615,44 @@ type Summary struct {
 	Seconds float64
 }
 
+// endRootOn writes the run's own ending on its root task when the run ended on
+// something of its own that is not the tree's completion: a limit its person
+// set, its own worker failing, a review it could not seat, or the caller's
+// deadline. The store's verb is [plandb.Store.EndRoot], which fails the root and
+// cancels whatever is still open under it, and a root the run already ended —
+// completed, or stopped by a person — is left exactly as it ended.
+//
+// EVERY ENDING WRITES THE ROOT'S ENDING, OR THE NEXT REQUEST ADOPTS IT. Only a
+// person's stop and the tree's own completion used to write one, so a run that
+// hit its dollar limit, whose root worker failed or whose caller's timeout ran
+// out stayed `running` in its store, and the next hand-off over the same store
+// found a live run and took it for its own.
+//
+// A CONTEXT SOMEBODY CANCELLED IS THE ONE ENDING LEFT OPEN, ON PURPOSE. It is a
+// conversation closing, a process told to stop, or a person's stop that has
+// already written its own ending before it cut the context — and the first two
+// are not the run's ending at all: nothing decided anything about the work, and
+// every step it took is in the store. A store left open that way is work nothing
+// is driving, which is what `interrupted` means, and the doors that open a store
+// set such a run aside as interrupted rather than adopting it
+// ([session.OpenRunPlan]). A DEADLINE IS NOT THAT: it is a time bound the caller
+// set, and it ends the run the way the run's own time limit does.
+func endRootOn(ctx context.Context, store *plandb.Store, outcome Outcome) {
+	if outcome == OutcomeDone || outcome == OutcomeCannotRun {
+		return
+	}
+	reason := string(outcome)
+	if outcome != OutcomeLimit {
+		switch {
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			reason = string(OutcomeLimit)
+		case ctx.Err() != nil:
+			return
+		}
+	}
+	_ = store.EndRoot(reason)
+}
+
 // Start is the one door a caller runs a plan through: it puts the run's
 // words on the store's root task, runs the supervisor over the store to one
 // outcome word, and answers what came of it. The context is the run's wall —
@@ -1612,14 +1678,28 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	// root opened bare takes the brief here — the store's one write onto a
 	// running task's description — and a resume of the same run finds the
 	// words already there and writes nothing.
-	if root := store.Task(store.RootID()); root != nil && strings.TrimSpace(root.Description) == "" && strings.TrimSpace(spec.Brief) != "" {
-		if _, err := store.Amend(root.ID, spec.Brief); err != nil {
+	//
+	// A ROOT THAT ALREADY CARRIES A DIFFERENT BRIEF IS ANOTHER RUN, AND IT IS
+	// NOT RUN. This door used to run whatever root it was handed, so a store an
+	// earlier run had left open ran that run's brief under the new request's
+	// name: the new words were dropped and the old ones spent money a second
+	// time, and nobody was asked. A door that means to carry an earlier run on
+	// hands no brief of its own, and one that hands a brief is asking for that
+	// brief and nothing else.
+	if root := store.Task(store.RootID()); root != nil && strings.TrimSpace(spec.Brief) != "" {
+		switch described := strings.TrimSpace(root.Description); {
+		case described == "":
+			if _, err := store.Amend(root.ID, spec.Brief); err != nil {
+				return OutcomeCannotRun, Summary{Outcome: OutcomeCannotRun}
+			}
+		case described != strings.TrimSpace(spec.Brief):
 			return OutcomeCannotRun, Summary{Outcome: OutcomeCannotRun}
 		}
 	}
 	supervisor := NewSupervisor(store, spec.Workspace, spec.Slots, spec.Limits, spec.Factory)
 	supervisor.onSpend = spec.OnSpend
 	outcome := supervisor.Run(ctx)
+	endRootOn(ctx, store, outcome)
 	result := supervisor.rootResult
 	// THE TERMINAL ROOT'S STORED RESULT IS DELIVERABLE even when its worker return lands after the supervisor stops absorbing returns.
 	if root := store.Task(store.RootID()); strings.TrimSpace(result) == "" && root != nil && root.Status == plandb.StatusDone {

@@ -170,6 +170,9 @@ func planStateWord(row session.PlanTaskRow) string {
 	if row.Stopped {
 		return "stopped"
 	}
+	if row.Interrupted {
+		return "interrupted"
+	}
 	switch strings.TrimSpace(row.Status) {
 	case "pending":
 		return "queued"
@@ -196,6 +199,16 @@ func planStatus(row session.PlanTaskRow) session.TaskStatus {
 		return session.TaskStatus{
 			Tier:     session.TaskTierOver,
 			Presence: session.TaskPresenceStopped,
+			Word:     planStateWord(row),
+		}
+	}
+	if row.Interrupted {
+		// A PART OF A RUN NOTHING WAS DRIVING, set aside when the next request
+		// arrived. It reads as the run's own row reads ([session.TaskStatus] of
+		// an interrupted row): not in flight, no fault, and no question asked.
+		return session.TaskStatus{
+			Tier:     session.TaskTierOver,
+			Presence: session.TaskPresenceInterrupted,
 			Word:     planStateWord(row),
 		}
 	}

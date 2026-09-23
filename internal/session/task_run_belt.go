@@ -25,9 +25,10 @@ package session
 // opening a second one, because one store is one run (`plandb`'s own law: a
 // store belongs to one root), and the becomes-live child is dispatched by the
 // supervisor already turning. A conversation that has no live run seeds a fresh
-// store the way [TaskGraph.planSeed] seeds one — adopting a live store it finds,
-// archiving a finished one beside the session folder — so a resumed
-// conversation keeps reading its own plan.
+// store for the new request, archiving the one it finds beside the session
+// folder — a finished one as it ended, and one nothing was driving as
+// interrupted — so a resumed conversation keeps reading every plan it had, and
+// no request ever runs under another run's words ([Agent.openBeltRunStore]).
 
 import (
 	"context"
@@ -224,6 +225,16 @@ type beltRun struct {
 	cut        context.CancelFunc
 	stopped    bool
 	stopReason string
+	// ending says the engine has answered and the run is only landing,
+	// summarising and settling now: its supervisor is gone, so nothing will ever
+	// run work added to its store. closing says the CONVERSATION is ending
+	// ([Agent.cutBeltRun]), which is not a person's stop and not the run's own
+	// ending. Both are written and read under [Agent.beltMu]. over is closed
+	// once the run has been cleared off the Agent, which is what a hand-off that
+	// arrived while the run was ending waits on before it opens a fresh one.
+	ending  bool
+	closing bool
+	over    chan struct{}
 	// born is when this run started, off the conversation's own clock, and it is
 	// what the run's row in the work tree ages from ([Agent.beltRunWorkingNow]).
 	// It is the same reading the row published to the surface carries, so the
@@ -285,26 +296,22 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		dependencies = append(dependencies, plandb.Dependency{TaskID: strconv.FormatUint(dependency, 10)})
 	}
 
-	a.beltMu.Lock()
-	live := a.beltRun
-	a.beltMu.Unlock()
-
 	// A SECOND TASK JOINS THE LIVE RUN. The store holds one root, so the new
 	// work is a child of it — normalizeSpec's own law for a task that names no
 	// parent — and the supervisor already turning finds it ready on its next
 	// pass. Nothing opens a second store.
+	//
+	// BUT ONLY A RUN THAT IS STILL TURNING CAN BE JOINED. A run whose engine has
+	// answered is only landing and settling now, which takes seconds, and work
+	// added to its store in that time was never run: its row settled `failed`
+	// with no report and no ending. So a hand-off that meets a run on its way
+	// out waits for the run to be over and then starts a fresh one of its own
+	// ([joinOrWait] is the whole of the decision).
+	live, err := a.joinOrWait(ctx, stand, id, title, brief, dependencies)
+	if err != nil {
+		return err
+	}
 	if live != nil {
-		if canonicalPath(stand.dir) != live.ground {
-			return standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
-		}
-		if _, err := live.store.AddMany([]plandb.TaskSpec{{
-			ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies,
-		}}); err != nil {
-			return err
-		}
-		a.beltMu.Lock()
-		live.joined = append(live.joined, id)
-		a.beltMu.Unlock()
 		a.publishRunRow(g, TaskNotice{
 			ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow(),
 			// AND THE ROW SAYS WHICH STORE TASK IT IS, from its first breath, for
@@ -322,7 +329,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		return nil
 	}
 
-	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief)
+	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief, false)
 	if err != nil {
 		return err
 	}
@@ -349,7 +356,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
 		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
-		born: born,
+		born: born, over: make(chan struct{}),
 	}
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
@@ -369,6 +376,71 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
 	return nil
+}
+
+// beltJoinWaits is a test's observation point: it is called when a hand-off has
+// met a run on its way out and is about to wait for it to be over. Nil outside
+// tests, and nothing in the product reads it.
+var beltJoinWaits func()
+
+// joinOrWait adds a hand-off's work to the live run when there is one that is
+// still turning, and answers that run; it answers nil when there is no run to
+// join, and by then any run that was on its way out has been cleared.
+//
+// THE DECISION IS TAKEN UNDER THE BELT'S OWN LOCK, and the store write with it,
+// because the flag it reads ([beltRun.ending]) is set under that lock the moment
+// the engine answers. Read first and written after, a hand-off could still slip
+// its work into a store whose supervisor had already gone home.
+//
+// AND THE STORE HAS THE LAST WORD. A run whose engine has not answered yet may
+// already have written its root's ending ([plandb.Store.CompleteRoot], or the
+// ending of a limit), and the store refuses a child under an ended task in the
+// same transaction that would have added it. That refusal is read as the run
+// being on its way out, never as the hand-off failing.
+func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, title, brief string, dependencies []plandb.Dependency) (*beltRun, error) {
+	storeID := strconv.FormatUint(id, 10)
+	for {
+		a.beltMu.Lock()
+		live := a.beltRun
+		if live == nil {
+			a.beltMu.Unlock()
+			return nil, nil
+		}
+		over := live.over
+		if !live.ending && !live.closing && !live.stopped {
+			if canonicalPath(stand.dir) != live.ground {
+				a.beltMu.Unlock()
+				return nil, standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
+			}
+			_, err := live.store.AddMany([]plandb.TaskSpec{{
+				ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies,
+			}})
+			if err == nil {
+				live.joined = append(live.joined, id)
+				a.beltMu.Unlock()
+				return live, nil
+			}
+			if root := live.store.Task(live.root); root != nil && !terminalStoreStatus(root.Status) {
+				a.beltMu.Unlock()
+				return nil, err
+			}
+		}
+		a.beltMu.Unlock()
+		// THE RUN IS ON ITS WAY OUT: wait for it to be over, and look again. A run
+		// installed by nobody else is the common answer, and a fresh run is then
+		// this hand-off's own.
+		if over == nil {
+			return nil, errors.New("the run already underway is ending")
+		}
+		if beltJoinWaits != nil {
+			beltJoinWaits()
+		}
+		select {
+		case <-over:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 }
 
 // beltRunSpec is what the engine is handed for a run of this conversation: its
@@ -413,36 +485,80 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	}
 }
 
-// openBeltRunStore opens the conversation's store for a run, creating it under
-// this run's root or adopting the live one already there. It is [planSeed]'s own
-// road stated for the run door: a store whose root has ended is archived beside
-// the session folder and a fresh one seeded, because a finished plan is not a
-// live one; a store still running is adopted, because it is this conversation's
-// run and a second `/task` is more of its work.
-func (a *Agent) openBeltRunStore(g *TaskGraph, path, rootID, title, brief string) (*planState, *plandb.Store, error) {
+// openBeltRunStore opens the conversation's store for a run. A NEW REQUEST GETS
+// A STORE OF ITS OWN, seeded under its own root with its own words; whatever
+// store it finds there is set aside first ([setAsideRunStore]). Only carryOn —
+// the door that picks a named run back up ([Agent.ContinueRun]) — adopts what is
+// there, and only when the store's own root is the run it was asked to carry on.
+//
+// A NEW REQUEST NEVER ADOPTS A RUN IT DID NOT START. This door used to adopt any
+// store whose root was still open, on the reading that an open root was this
+// conversation's live run and the new `/task` more of its work. But a live run
+// is joined before this door is reached ([Agent.joinOrWait]), so an open root
+// here is one NOTHING is driving: a run whose conversation closed, whose process
+// died, or that ended on something that wrote no ending. Adopting it ran that
+// run's brief under the new request's number and dropped the new words, and
+// nobody was asked.
+func (a *Agent) openBeltRunStore(g *TaskGraph, path, rootID, title, brief string, carryOn bool) (*planState, *plandb.Store, error) {
 	plan := &planState{path: path, chat: g.planChat()}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if carryOn {
+			return nil, nil, errRunStoreGone
+		}
 		store, err := plandb.Open(path, title, rootID, title, brief, plan.chat)
 		return plan, store, err
 	} else if err != nil {
 		return nil, nil, err
 	}
-	adopted, err := plandb.Open(path, "", "", "", "")
-	if err != nil {
-		return nil, nil, err
-	}
-	if root := adopted.RootID(); adopted.Task(root) != nil && !terminalStoreStatus(adopted.Task(root).Status) {
+	if carryOn {
+		adopted, err := plandb.Open(path, "", "", "", "")
+		if err != nil {
+			return nil, nil, err
+		}
+		root := adopted.Task(adopted.RootID())
+		if adopted.RootID() != rootID || root == nil || terminalStoreStatus(root.Status) {
+			_ = adopted.Close()
+			return nil, nil, errRunStoreGone
+		}
 		return plan, adopted, nil
 	}
-	// A FINISHED PLAN IS NOT A LIVE ONE. The store is archived beside the
-	// session with its own number and a fresh one is seeded under this run.
-	_ = adopted.Close()
-	archived := fmt.Sprintf("%s.%d", path, len(planArchivePaths(path))+1)
-	if err := os.Rename(path, archived); err != nil {
+	if err := setAsideRunStore(path); err != nil {
 		return nil, nil, err
 	}
 	store, err := plandb.Open(path, title, rootID, title, brief, plan.chat)
 	return plan, store, err
+}
+
+// errRunStoreGone is the carry-on door's refusal for a run whose store is no
+// longer the conversation's live one: a later request set it aside, or it ended.
+var errRunStoreGone = errors.New("this run's plan is no longer the conversation's live one, so there is nothing to carry on")
+
+// setAsideRunStore moves the store at path beside itself under the next archive
+// number, so the path is free for a fresh run and the old run stays readable
+// ([planArchivePaths] is how the reading verbs find it again).
+//
+// A RUN NOTHING WAS DRIVING IS ARCHIVED AS INTERRUPTED, NOT AS RUNNING. Its root
+// and everything still open under it are ended with the word `interrupted`
+// ([plandb.Store.EndRoot]) before it is moved, because an archived store is read
+// as it stands for good, and one whose rows still said running would draw work
+// in flight that nothing will ever move. The word is the one its row already
+// wears ([TaskInterrupted]): nothing decided anything about the work, and every
+// step it took is kept. A store whose run had ended is moved as it ended.
+func setAsideRunStore(path string) error {
+	existing, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		return err
+	}
+	if root := existing.Task(existing.RootID()); root != nil && !terminalStoreStatus(root.Status) {
+		if err := existing.EndRoot(taskWordInterrupted); err != nil {
+			_ = existing.Close()
+			return err
+		}
+	}
+	if err := existing.Close(); err != nil {
+		return err
+	}
+	return os.Rename(path, fmt.Sprintf("%s.%d", path, len(planArchivePaths(path))+1))
 }
 
 // installBeltRun arms the conversation's plan read and records the live run, so
@@ -507,10 +623,19 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 // (stoprun.go); this writes nothing and says nothing, because nobody asked for
 // anything — the room simply closed. What the run did is in its store, which is
 // where the next launch reads it from.
+//
+// AND THE RUN'S DRIVER IS TOLD SO BEFORE THE CONTEXT IS CUT ([beltRun.closing]),
+// because what a cut context means is otherwise ambiguous to it: the engine
+// answers the same unfinished word for a closed room as for any other road
+// that cut it short, and the driver used to go on to land the work and settle
+// the row `failed` after the conversation had gone. The record then disagreed
+// with itself: the row the surface was sent said failed, and the row read back
+// tomorrow said interrupted.
 func (a *Agent) cutBeltRun() {
 	a.beltMu.Lock()
 	var cut context.CancelFunc
 	if a.beltRun != nil {
+		a.beltRun.closing = true
 		cut = a.beltRun.cut
 	}
 	a.beltMu.Unlock()
@@ -536,6 +661,16 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	}
 	spec.OnSpend = foldSpend
 	summary := engine.Start(ctx, spec)
+	// THE RUN IS ON ITS WAY OUT FROM THE MOMENT ITS ENGINE ANSWERS. Nothing will
+	// run work added to its store after this line, so a hand-off arriving now
+	// waits for the run to be over instead of joining it ([Agent.joinOrWait]).
+	// The run is cleared off the Agent and its waiters released on every road
+	// out of here, which is what the deferred release says once.
+	a.beltMu.Lock()
+	run.ending = true
+	closing := run.closing
+	a.beltMu.Unlock()
+	defer a.releaseBeltRun(run)
 	// The final receipt closes any gap between the last live reading and every
 	// ending, before the person-stop road and the ordinary landing road split.
 	foldSpend(summary.USD)
@@ -546,13 +681,24 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		// A RUN A PERSON STOPPED IS NOT LANDED. Its work is kept where the stop's
 		// own sentence said it would be, and the ending is the stop's (stoprun.go).
 		a.settleStoppedBeltRun(run, why, summary.Cut)
-		a.beltMu.Lock()
-		if a.beltRun == run {
-			a.beltRun = nil
-		}
-		a.beltMu.Unlock()
-		_ = run.store.Close()
 		return
+	}
+	if closing && summary.Outcome != beltRunOutcomeDone {
+		// THE CONVERSATION CLOSED UNDER THE RUN, AND THAT IS NOBODY'S ENDING. The
+		// run is not landed, its row is not settled and nothing is written on its
+		// record: it is work nothing is driving any more, every step of it is in
+		// its store, and the row read back tomorrow says so in the one word for
+		// it ([TaskInterrupted]). Landing it here put the work into the folder of
+		// a person who had closed the window on it, and settling the row said
+		// `failed` about work that had not failed.
+		return
+	}
+	// EVERY OTHER ENDING IS WRITTEN ON THE RUN'S OWN TASK. The engine writes the
+	// ending of a limit or a failed root worker itself; this is the same write
+	// made again from the door, which the store takes once and ignores after, so
+	// no engine can leave a run the next hand-off would find still open.
+	if summary.Outcome != beltRunOutcomeDone {
+		_ = run.store.EndRoot(summary.Outcome)
 	}
 	landing := a.landBeltRun(ctx, engine, run)
 	// A LANDING GETS ONE LAST READING before its digest is composed. The call
@@ -569,13 +715,23 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	}
 	a.deliverBeltRunLanding(run, summary, landing)
 	a.settleBeltRun(run, summary, landing)
+}
 
+// releaseBeltRun is the last thing every run does: it is cleared off the Agent,
+// its store is closed, and every hand-off that was waiting for it to be over is
+// let go to start a run of its own. The clearing comes first, so a waiter that
+// wakes finds no run on the Agent and opens a fresh one rather than meeting this
+// one again.
+func (a *Agent) releaseBeltRun(run *beltRun) {
 	a.beltMu.Lock()
 	if a.beltRun == run {
 		a.beltRun = nil
 	}
 	a.beltMu.Unlock()
 	_ = run.store.Close()
+	if run.over != nil {
+		close(run.over)
+	}
 }
 
 // landBeltRun brings a finished run's work home, and it does it THE WAY THE
@@ -754,7 +910,17 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, ru
 				notice.Report = strings.TrimSpace(task.Error)
 			}
 		}
-		if notice.State != TaskDone && runEnding != "" && cutRows[id] {
+		// A JOINED ROW THE RUN'S OWN ENDING CANCELLED BEFORE IT STARTED IS THE
+		// RUN'S ENDING TOO, not a fault. The store ends every task still open
+		// under the ending's own reason ([plandb.Store.EndRoot]), so work that was
+		// waiting for a slot when a limit fired carries that limit's sentence
+		// with no ending to read it by, and drew `a fault` over a bound its
+		// person set.
+		cancelledByRun := false
+		if task := run.store.Task(strconv.FormatUint(id, 10)); task != nil && task.Status == plandb.StatusCancelled && !planStopReason(task.Error) {
+			cancelledByRun = true
+		}
+		if notice.State != TaskDone && runEnding != "" && (cutRows[id] || cancelledByRun) {
 			notice.Ending = runEnding
 		}
 		a.publishRunRow(g, notice)

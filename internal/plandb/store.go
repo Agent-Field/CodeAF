@@ -1536,6 +1536,35 @@ func (s *Store) CompleteRoot(result string) error {
 // included. Two presses are one stop, and a run that ended by itself is left as
 // it ended.
 func (s *Store) StopRoot(reason string) error {
+	return s.closeRoot(StatusCancelled, reason)
+}
+
+// EndRoot ends the run on an ending of its OWN that is not its tree's
+// completion: a limit its person set was reached, or the run's own worker
+// failed. Only the runtime calls it, the way only the runtime calls
+// [Store.StopRoot] and [Store.CompleteRoot]. The run's own task is FAILED with
+// the reason, every task still open is cancelled with the same reason, and
+// every task that had already ended keeps the ending it has.
+//
+// IT IS [Store.StopRoot]'s WRITE WITH ONE WORD CHANGED, AND THE WORD IS THE
+// POINT. A cancelled run's task is a person's stop and reads as one; a run that
+// hit a limit or whose own worker failed was stopped by nobody, and a store that
+// said cancelled over it would put a person's hand on an ending no person made.
+//
+// A RUN LEFT OPEN IS A RUN THE NEXT HAND-OFF ADOPTS, which is why these endings
+// have to be written at all: until this verb only a person's stop wrote an
+// ending on the run's own task, so a run that ended on its dollar limit stayed
+// `running` in its store and the next request in the same place read that
+// store's brief as its own. Two calls are one ending, and a run that has
+// already ended is left as it ended.
+func (s *Store) EndRoot(reason string) error {
+	return s.closeRoot(StatusFailed, reason)
+}
+
+// closeRoot is the one write [Store.StopRoot] and [Store.EndRoot] share: the
+// run's own task takes the ending named, every open task is cancelled under the
+// same reason, and nothing that had already ended is touched.
+func (s *Store) closeRoot(rootStatus Status, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.transact(func(next *state, now time.Time) error {
@@ -1552,6 +1581,7 @@ func (s *Store) StopRoot(reason string) error {
 			task.Owner, task.SeenAt = "", time.Time{}
 			task.UpdatedAt, task.CompletedAt = now, now
 		}
+		root.Status = rootStatus
 		promote(next, now)
 		return nil
 	})

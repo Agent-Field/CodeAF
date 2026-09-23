@@ -349,9 +349,10 @@ const (
 	// "The work did not finish" and "nobody was there to carry it on" are
 	// different news with different consequences, and collapsing the second into
 	// the first is how a run whose window was closed came back reading as though
-	// it had gone wrong. A person's answer is the only thing that moves it, and
-	// the answer is to continue it or to leave it ([TaskAskContinue]); continuing
-	// spends money, so nothing here moves on its own.
+	// it had gone wrong. Nothing here moves it on its own, because continuing
+	// spends money; and nothing a person can press moves it yet either, so the
+	// row asks no question and raises no mark (task_status.go's
+	// [taskInterruptedReason]) until the card that carries a run on lands.
 	TaskInterrupted TaskState = "interrupted"
 )
 

@@ -48,8 +48,12 @@ type PlanTaskRow struct {
 	// Stopped is true only when this task's own ending records a person's stop.
 	// It is established from store data here and crosses remote reads as row data.
 	Stopped bool
-	Seat    string
-	Parent  string
+	// Interrupted is true only when this task was ended because nothing was
+	// driving its run when the next request arrived ([planTaskInterrupted]). It
+	// crosses remote reads as row data, the way Stopped does.
+	Interrupted bool
+	Seat        string
+	Parent      string
 	// Depth is the row's level below the page task; direct children are zero.
 	Depth int
 	// Waits is the tasks this row is held behind that are not its parent: the ids
@@ -591,6 +595,7 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		Title:          task.Title,
 		Status:         status,
 		Stopped:        planTaskStopped(store, task),
+		Interrupted:    planTaskInterrupted(task),
 		Seat:           seat,
 		Steps:          len(planTrajectory(dir, task.ID)),
 		USD:            spend[task.ID],
@@ -647,6 +652,18 @@ func planTaskStopped(store *plandb.Store, task *plandb.Task) bool {
 		up = parent.ParentID
 	}
 	return false
+}
+
+// planTaskInterrupted is the store property a run set aside as interrupted
+// leaves on its rows: the run's own task and every part still open when the next
+// request arrived were ended under the word `interrupted` ([setAsideRunStore]).
+// Such a row is not a failure and not a stop, and reading it as either would say
+// something happened to the work when nothing did: nobody was driving it.
+func planTaskInterrupted(task *plandb.Task) bool {
+	if task == nil || (task.Status != plandb.StatusFailed && task.Status != plandb.StatusCancelled) {
+		return false
+	}
+	return strings.TrimSpace(task.Error) == taskWordInterrupted
 }
 
 // planStopReason reports whether an ending's reason is the one a person's stop
