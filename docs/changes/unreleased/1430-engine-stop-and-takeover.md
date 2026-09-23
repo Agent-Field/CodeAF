@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: engine --status and a named --stop, the older engine gives up the slot, a held conversation always moves, --max-hours ends the window
+title: engine --status, the older engine gives up the slot, held chats always move, --max-hours ends it
 pr: 1430
 surface: [engine, remote, chat]
 invalidates:
