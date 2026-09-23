@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf do on the run engine edits in place, commits nothing, and stops at a price
-pr: 1393
+pr: 1416
 surface: [engine, chat]
 invalidates:
   - "`codeaf do` on the run engine committed the directory's whole `git status` as `task: <title>` on the checked-out branch, the person's own uncommitted edits and untracked files included. It edits the directory in place and commits nothing, as `--dir` says, and its files are only the ones the run changed."
