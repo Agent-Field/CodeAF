@@ -83,7 +83,10 @@ func TestPlanPageUnderItDrawsWholeSubtreeLiveLinesAndReverseWaitCounts(t *testin
 	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
 	text := taskSheetText(a)
-	for _, want := range []string{"under it", "Handler", "Fixtures", "Tests", "$ go test ./internal/auth/...", "· 2 queued behind it"} {
+	// THE PARTS ARE THE RAIL'S ROWS: the part in flight names its call the way a
+	// node row names one, and a part's row carries no count of the work queued
+	// behind it, because a node row never did.
+	for _, want := range []string{"under it", "Handler", "Fixtures", "Tests", "bash go test ./internal/auth/..."} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the subtree page is missing %q:\n%s", want, text)
 		}
@@ -121,7 +124,7 @@ func TestEnterOnSubtreeRowOpensItAndEscapeReturnsToCallingPage(t *testing.T) {
 	if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != child.ID {
 		t.Fatalf("enter on the subtree row stayed on %q", a.taskSheet.plan.Row.ID)
 	}
-	if text := taskSheetText(a); !strings.Contains(text, "esc/← Root page") {
+	if text := taskSheetText(a); !strings.Contains(text, "Root page"+roomCrumbSep+"Child page") {
 		t.Fatalf("the child page has no parent breadcrumb:\n%s", text)
 	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
