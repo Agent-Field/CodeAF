@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,7 +29,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/trace"
@@ -944,12 +944,11 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// memory row is on, which is what makes "memory off makes no calls" a
 		// fact about the wiring instead of a branch every caller has to keep.
 		Memory: proc.Memory,
-		// AND WHETHER THERE IS A SHELF THIS SESSION CANNOT REACH, which is
-		// only ever true with the line above nil. It is measured here, beside
-		// the decision that causes it, because the prompt cannot walk six
-		// folders on every render and because a sentence about a setting
-		// belongs to the door that read the setting.
-		SkillsAwaitMemory: skillsWaitingOnMemory(proc.Memory, workspace),
+		// AND THE SKILL SHELF, which is the line above when memory is on and a
+		// shelf of the skill folders alone when it is off ([v3SkillShelf]):
+		// the skills a person installed for another harness are not memory,
+		// and turning memory off never asked for them to go.
+		Skills: proc.skillShelf(),
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
 		// than derived down there for the reason every other path is.
@@ -1125,7 +1124,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// The pass is idempotent — an unchanged disk journals nothing — so an open
 	// costs one scan and no writes, and a skill edited since the last open is
 	// re-read before the model ever sees the shelf.
-	importForeignSkillsBeforeFirstMessage(proc.Memory, workspace)
+	importForeignSkillsBeforeFirstMessage(proc.skillShelf(), workspace)
 
 	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
 	// lock and runs the pass; the OS timer is the backup for "no terminal open"
@@ -1152,6 +1151,74 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	}, nil
 }
 
+// importForeignSkillsBeforeFirstMessage runs the foreign-skill import pass
+// against the conversation's own shelf, in place: every SKILL.md folder a
+// person already has for another harness becomes one active skill fact whose
+// artifact is the ORIGINAL directory, before the first message is built. The
+// resident reconciler keeps the same pass behind its gate for the processes
+// that tick; a launch runs it on the open itself, because a shelf that
+// arrives after the first message is a shelf the first conversation cannot
+// use.
+//
+// A launch with no shelf runs no pass, and a home that cannot be resolved is
+// skipped, never fatal: a scan that finds nothing must not be the reason a
+// conversation does not open.
+func importForeignSkillsBeforeFirstMessage(shelf *store.Store, workspace string) {
+	if shelf == nil {
+		return
+	}
+	homeDir, err := home.Login()
+	if err != nil {
+		return
+	}
+	resident.ReconcileImportedSkills(shelf, workspace, homeDir)
+}
+
+// v3SkillShelf is the store the skill shelf lives in for one process: the
+// memory store when there is one, and with memory off a store of its own in a
+// fresh temporary folder, which the process removes when it closes. The
+// second answer is the folder it made, so the close knows what to remove; it
+// is empty when the shelf is the memory store.
+//
+// MEMORY OFF IS NOT SKILLS OFF. The setting promises a conversation that
+// carries nothing about the person across conversations and makes no memory
+// calls, and the skills a person installed for Claude Code or Codex are
+// neither: they are folders on disk that say nothing about them. So the shelf
+// is still built, from those folders and nothing else, by the same import
+// pass that fills it with memory on — the folders stay the one source of
+// truth either way, and nothing is written into the memory database the
+// person turned off. The shelf is thrown away with the process, so it never
+// becomes a second, older copy of what the folders say.
+//
+// A shelf that cannot be made is no shelf: the conversation opens without
+// skills, the way it would have with no skill folders at all, and the /skill
+// picker says on each row that it cannot attach.
+func v3SkillShelf(memory *store.Store) (*store.Store, string) {
+	if memory != nil {
+		return memory, ""
+	}
+	dir, err := os.MkdirTemp("", "codeaf-skills-")
+	if err != nil {
+		return nil, ""
+	}
+	shelf, err := store.Open(filepath.Join(dir, "shelf.db"))
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, ""
+	}
+	return shelf, dir
+}
+
+// skillShelf is the shelf this process's conversations read, falling back to
+// the memory store for a process assembled without [v3SkillShelf] (the
+// suite's own processes are built by hand).
+func (p *v3Process) skillShelf() *store.Store {
+	if p.Skills != nil {
+		return p.Skills
+	}
+	return p.Memory
+}
+
 // v3SavedEffort is the rung this conversation was last left on, read back off
 // its own folder, and "" for a session that has none — a fresh conversation, a
 // build before the field existed, or a launch with no folder at all.
@@ -1160,64 +1227,6 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 // answers everything else about a folder: the rung is a convenience, and a
 // launch that refused to open because it could not read one would be the
 // convenience costing the thing it was meant to serve.
-// importForeignSkillsBeforeFirstMessage runs the foreign-skill import pass
-// against the conversation's own store, in place: every SKILL.md folder a
-// person already has for another harness becomes one active skill fact whose
-// artifact is the ORIGINAL directory, before the first message is built. The
-// resident reconciler keeps the same pass behind its gate for the processes
-// that tick; a launch runs it on the open itself, because a shelf that
-// arrives after the first message is a shelf the first conversation cannot
-// use.
-//
-// A launch with no store has no shelf and runs no pass — the same nil answer
-// the catalog already gives when memory is off — and a home that cannot be
-// resolved is skipped, never fatal: a scan that finds nothing must not be the
-// reason a conversation does not open.
-// skillsWaitingOnMemory reports whether this machine holds skills that this
-// session cannot reach, which is the case exactly when memory is off and a
-// scanned folder holds at least one skill that would have loaded.
-//
-// IT IS THE DIFFERENCE BETWEEN TWO SILENCES. With memory on the catalog speaks
-// for itself and this is false; with memory off and no folders it is false too,
-// because a person with no skills must not be told about a setting they have no
-// use for. It is true only in the case that produced the defect: a person with
-// skills on disk, told by the chat that codeaf has no such mechanism.
-//
-// A scan that fails is not a shelf. Discovery already answers a missing home,
-// an unreadable folder and a malformed SKILL.md as absence rather than as an
-// error, and a launch must not turn any of those into a sentence claiming a
-// shelf exists.
-func skillsWaitingOnMemory(memory *store.Store, workspace string) bool {
-	if memory != nil {
-		return false
-	}
-	homeDir, err := home.Login()
-	if err != nil {
-		return false
-	}
-	found, err := skills.Discover(skills.Options{ProjectDir: workspace, HomeDir: homeDir})
-	if err != nil {
-		return false
-	}
-	for _, skill := range found {
-		if skill.Name != "" && skill.Description != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func importForeignSkillsBeforeFirstMessage(memory *store.Store, workspace string) {
-	if memory == nil {
-		return
-	}
-	homeDir, err := home.Login()
-	if err != nil {
-		return
-	}
-	resident.ReconcileImportedSkills(memory, workspace, homeDir)
-}
-
 func v3SavedEffort(place session.Place) string {
 	dir := strings.TrimSpace(place.Dir)
 	if dir == "" {

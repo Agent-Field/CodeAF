@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/skills"
 	store "github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -65,24 +66,34 @@ const (
 	skillFromProject = skills.ScopeProject
 	skillFromUser    = skills.ScopeUser
 
-	// skillOffWarning is the dim tail every folder row carries when memory is
-	// off. The picker reads the DISK, so it lists a person's skills whether or
-	// not this session can use one, and attaching is inert with no store to
-	// resolve a name against (skillturn.go's turnSkills). A list of rows that
-	// do nothing when chosen, with nothing saying why, is the control present
-	// and failing rather than absent, which is the thing this codebase does
-	// not do. The row is where "why is my skill not working" is answered.
-	skillOffWarning = "memory is off, so this cannot be attached"
+	// skillNoShelfWarning is the dim tail every folder row carries when this
+	// conversation has no skill shelf at all. The picker reads the DISK, so it
+	// lists a person's skills whether or not this session can use one, and
+	// attaching is inert with no store to resolve a name against (skillturn.go's
+	// turnSkills). A list of rows that do nothing when chosen, with nothing
+	// saying why, is the control present and failing rather than absent, which
+	// is the thing this codebase does not do.
+	//
+	// IT NO LONGER BLAMES MEMORY. It said "memory is off" once, and it said so
+	// on every machine: it looked for the shelf through the live door's memory
+	// seam, which never read skills, so the check failed with memory on too.
+	// The shelf is now asked of the session itself ([skillShelf]), and memory
+	// off has a shelf of its own, so the one case left is a conversation whose
+	// door built none, or a far engine too old to be asked.
+	skillNoShelfWarning = "this conversation has no skill shelf, so this cannot be attached"
 )
 
-// skillHomeDir is where discovery looks beside the workspace. It is a door
-// rather than a call so the suite can point it at a temporary home.
+// skillHomeDir is where discovery looks beside the workspace: the same login
+// home the launch's import pass reads (internal/home's Login, which follows
+// CODEAF_HOME), so the list a person picks from and the shelf a choice
+// resolves against are read out of the same folders. It is a door rather than
+// a call so the suite can point it at a temporary home.
 var skillHomeDir = func() string {
-	home, err := os.UserHomeDir()
+	dir, err := home.Login()
 	if err != nil {
 		return ""
 	}
-	return home
+	return dir
 }
 
 // skillPickRow is one skill as this list draws it: the name, the one-line
@@ -334,9 +345,9 @@ func (a *app) syncSkillPick() bool {
 func (a *app) skillPickList() []skillPickRow {
 	attached := a.attachedSkillNames()
 	// WHETHER A CHOICE ON THIS LIST CAN DO ANYTHING. The shelf is the store and
-	// the rows below come off the disk, so the two can disagree, and they do on
-	// every machine with memory off.
-	_, shelfReadable := a.memory.(skillShelf)
+	// the rows below come off the disk, so the two can disagree, and they do in
+	// a conversation whose door built no shelf.
+	shelf, shelfReadable := a.shelfSkillFacts()
 	rows := make([]skillPickRow, 0, 16)
 	seen := make(map[string]bool, 16)
 	// THE ATTACHED ONES FIRST, in the order the session holds them. Attachment
@@ -347,7 +358,7 @@ func (a *app) skillPickList() []skillPickRow {
 		seen[strings.ToLower(name)] = true
 	}
 	var rest []skillPickRow
-	for _, skill := range a.shelfSkillFacts() {
+	for _, skill := range shelf {
 		name := skill.name
 		if name == "" || seen[strings.ToLower(name)] {
 			continue
@@ -371,7 +382,7 @@ func (a *app) skillPickList() []skillPickRow {
 			// what is wrong with the machine, and a row that dropped the first
 			// to make room for the second would hide a fault that outlives the
 			// setting.
-			warning = strings.TrimSpace(strings.Join([]string{warning, skillOffWarning}, " · "))
+			warning = strings.TrimSpace(strings.Join([]string{warning, skillNoShelfWarning}, " · "))
 			warning = strings.TrimPrefix(warning, "· ")
 		}
 		rest = append(rest, skillPickRow{name: skill.Name, desc: skill.Description, from: from, warning: warning, on: attachedHas(attached, nameOf(skill))})
@@ -392,7 +403,7 @@ func (a *app) skillPickList() []skillPickRow {
 // without the door — the seam is asserted rather than added to [Agent], on
 // [harnessRunner]'s terms.
 func (a *app) attachedSkillNames() []string {
-	door, ok := a.agent.(skillAttacher)
+	door, ok := a.skillDoor()
 	if !ok {
 		return nil
 	}
@@ -416,28 +427,38 @@ type shelfSkillRow struct {
 	desc string
 }
 
-// shelfSkillFacts is the active shelf through the store the surface already
-// holds, newest first as the store returns it.
-func (a *app) shelfSkillFacts() []shelfSkillRow {
-	shelf, ok := a.memory.(skillShelf)
+// shelfSkillFacts is the active shelf as the SESSION reads it, newest first
+// as the store returns it, and whether there is a shelf at all. A read that
+// fails is no shelf: the rows the disk gives are still listed, and each says
+// it cannot be attached.
+func (a *app) shelfSkillFacts() ([]shelfSkillRow, bool) {
+	shelf, ok := a.agent.(skillShelf)
 	if !ok {
-		return nil
+		return nil, false
 	}
 	facts, err := shelf.SkillFacts(store.FactActive, skillPickListLimit)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	out := make([]shelfSkillRow, 0, len(facts))
 	for _, fact := range facts {
 		out = append(out, shelfSkillRow{name: fact.SkillName(), desc: strings.TrimSpace(fact.Body)})
 	}
-	return out
+	return out, true
 }
 
-// skillShelf is the store's own reading of the shelf, asserted on the memory
-// the surface holds rather than widened into the memory place's seam
-// (place_memory.go's [MemoryStore] is for memories, and a surface with the
-// memory place off still has skills).
+// skillShelf is the session's own reading of its shelf, asserted on the agent
+// the surface holds (internal/session's Agent.SkillFacts, and the same door
+// across the wire on a hosted conversation).
+//
+// IT IS ASKED OF THE AGENT AND NOT OF A STORE THE SURFACE HOLDS, because the
+// shelf is the session's: the store it reads is chosen by the door — the
+// memory database, or with memory off a shelf built from the skill folders
+// alone — and a surface that read some store of its own would be a second
+// answer to "which skills can this conversation use". It was one, once: it
+// read the memory seam, which the live door wraps without any reading of
+// skills, so every row said memory was off on every machine. An error is no
+// shelf, and so is an agent without the door.
 type skillShelf interface {
 	SkillFacts(status string, limit int) ([]store.Fact, error)
 }
@@ -498,7 +519,7 @@ func (a *app) skillToggled() tea.Cmd {
 	if !a.skillPick.open {
 		return nil
 	}
-	door, ok := a.agent.(skillAttacher)
+	door, ok := a.skillDoor()
 	if !ok {
 		// A capability that cannot work is absent rather than broken
 		// (harnesspick.go's law).
@@ -674,6 +695,23 @@ type skillAttacher interface {
 	ClearAttachedSkills() int
 }
 
+// skillDoor is the attachment doors of the session under this surface, and
+// false when it has none. A hosted conversation's agent ALWAYS has the
+// methods (internal/remote's skills.go), so the assertion alone cannot tell a
+// far engine with the doors from one built before them; such an agent also
+// says which it is, and one that says no is treated as having no doors at
+// all — the picker's own sentence rather than choices that go nowhere.
+func (a *app) skillDoor() (skillAttacher, bool) {
+	door, ok := a.agent.(skillAttacher)
+	if !ok {
+		return nil, false
+	}
+	if far, asks := a.agent.(interface{ SkillsSupported() bool }); asks && !far.SkillsSupported() {
+		return nil, false
+	}
+	return door, true
+}
+
 // skillTrayCells is the skill chip's cells on the row above the box: the name
 // of the one skill attached, or "N skills" for more than one, with the ✕ that
 // takes every one back off. Nothing at all when none is attached.
@@ -683,7 +721,7 @@ type skillAttacher interface {
 // knows it is still on three messages later; the ✕ — one gesture — is how it
 // comes off, and the manual page says so.
 func (a *app) skillTrayCells() []string {
-	if _, ok := a.agent.(skillAttacher); !ok {
+	if _, ok := a.skillDoor(); !ok {
 		return nil
 	}
 	held := a.attachedSkillNames()
@@ -710,7 +748,7 @@ func skillChipMark(pal palette) string {
 // dropSkillChip takes every attached skill back off, and reports whether it
 // changed anything. It is the ✕ on the chip.
 func (a *app) dropSkillChip() bool {
-	door, ok := a.agent.(skillAttacher)
+	door, ok := a.skillDoor()
 	if !ok {
 		return false
 	}

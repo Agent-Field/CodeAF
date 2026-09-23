@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/home"
 	store "github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -26,6 +28,17 @@ import (
 type skillAgent struct {
 	*fakeAgent
 	held []string
+	// shelf is the session's own shelf, read through the agent the way the
+	// live session answers it (internal/session's Agent.SkillFacts). Nil is a
+	// conversation with no shelf store at all.
+	shelf *skillMemory
+}
+
+func (s *skillAgent) SkillFacts(status string, limit int) ([]store.Fact, error) {
+	if s.shelf == nil {
+		return nil, errors.New("this conversation has no skill shelf")
+	}
+	return s.shelf.SkillFacts(status, limit)
 }
 
 func (s *skillAgent) AttachSkills(names ...string) []string {
@@ -106,13 +119,17 @@ func seedSkill(t *testing.T, root, name, desc string) string {
 func skillApp(t *testing.T) (*app, *skillAgent, string, string) {
 	t.Helper()
 	project := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	agent := &skillAgent{fakeAgent: &fakeAgent{}}
+	homeDir := t.TempDir()
+	// Both doors to the home point at one directory: HOME for the surface's
+	// own `~`, and CODEAF_HOME for the login home discovery reads, which is
+	// the one the launch's import pass reads too (internal/home's Login).
+	t.Setenv("HOME", homeDir)
+	t.Setenv(home.EnvVar, homeDir)
+	agent := &skillAgent{fakeAgent: &fakeAgent{}, shelf: &skillMemory{}}
 	a := newTestApp(agent)
 	a.workspace = project
 	a.width = 100
-	return a, agent, project, home
+	return a, agent, project, homeDir
 }
 
 // ── the list ────────────────────────────────────────────────────────────────
@@ -152,9 +169,9 @@ func TestTheSkillPickerOpensOnTheWholeShelf(t *testing.T) {
 // THE SHELF FACTS RIDE THE SAME LIST, deduplicated by name against what
 // discovery found in place.
 func TestTheSkillPickerMergesTheShelfWithDiscovery(t *testing.T) {
-	a, _, project, _ := skillApp(t)
+	a, agent, project, _ := skillApp(t)
 	seedSkill(t, filepath.Join(project, ".claude", "skills"), "alpha-flake", "chase a flaky test")
-	a.memory = &skillMemory{facts: []store.Fact{
+	agent.shelf = &skillMemory{facts: []store.Fact{
 		{Kind: store.FactSkill, Status: store.FactActive, Artifact: filepath.Join(project, "shelf", "alpha-flake"), Body: "the shelf's own line"},
 		{Kind: store.FactSkill, Status: store.FactActive, Artifact: filepath.Join(project, "shelf", "nightly-notes"), Body: "write the notes"},
 	}}
@@ -434,31 +451,88 @@ func containsString(hay []string, needle string) bool {
 
 var _ = tea.Msg(nil)
 
-// A LIST OF ROWS THAT DO NOTHING WHEN CHOSEN SAYS SO ON THE ROW. The picker
-// reads the disk and attachment resolves against the shelf, so with memory off
-// it lists every skill a person has and none of them can be attached. Drawing
-// that list with nothing saying why is the control present and failing.
-func TestTheSkillPickerSaysWhyARowCannotBeAttachedWithMemoryOff(t *testing.T) {
-	a, _, project, _ := skillApp(t)
+// memoryOnly is the memory place's seam and nothing more, the way the live
+// door wraps its store (cmd/codeaf's v3Brain): it answers the memory place and
+// has no reading of the skill shelf at all.
+type memoryOnly struct{}
+
+func (memoryOnly) Snapshot(int) (store.MemoryShelves, error)       { return store.MemoryShelves{}, nil }
+func (memoryOnly) ChangedSince(time.Time) (int, int, error)         { return 0, 0, nil }
+func (memoryOnly) ListMemories(string, int) ([]store.Memory, error) { return nil, nil }
+func (memoryOnly) UpdateMemory(string, string, string, []string) error {
+	return nil
+}
+func (memoryOnly) ForgetMemory(string) error  { return nil }
+func (memoryOnly) RestoreMemory(string) error { return nil }
+func (memoryOnly) MemoryProvenance(string) (string, string, time.Time, error) {
+	return "", "", time.Time{}, nil
+}
+
+// THE PICKER READS THE SHELF THE SESSION READS, whatever memory is doing. It
+// used to look for the shelf through the memory seam, which the live door
+// wraps with no reading of skills, so on every machine it dropped the shelf's
+// own rows and told a person with memory on that memory was off. Asked of the
+// session, the shelf is there with a memory-shaped store beside it and with
+// no memory at all.
+func TestTheSkillPickerReadsTheShelfTheSessionReads(t *testing.T) {
+	for _, memory := range []memoryStore{memoryOnly{}, nil} {
+		a, agent, project, _ := skillApp(t)
+		seedSkill(t, filepath.Join(project, ".claude", "skills"), "alpha-flake", "chase a flaky test")
+		a.memory = memory
+		agent.shelf = &skillMemory{facts: []store.Fact{
+			{Kind: store.FactSkill, Status: store.FactActive, Artifact: filepath.Join(project, "shelf", "nightly-notes"), Body: "write the notes"},
+		}}
+
+		typeInto(t, a, "/skill ")
+		screen := strings.Join(plainOverlay(a), "\n")
+		for _, want := range []string{"alpha-flake", "nightly-notes", "write the notes"} {
+			if !strings.Contains(screen, want) {
+				t.Fatalf("memory %T: the list does not say %q:\n%s", memory, want, screen)
+			}
+		}
+		for _, stale := range []string{skillNoShelfWarning, "memory is off"} {
+			if strings.Contains(screen, stale) {
+				t.Fatalf("memory %T: a conversation with a shelf was told %q:\n%s", memory, stale, screen)
+			}
+		}
+	}
+}
+
+// A LIST OF ROWS THAT DO NOTHING WHEN CHOSEN SAYS SO ON THE ROW. A session
+// with no shelf store at all still lists the folders on disk, and every one of
+// those rows says it cannot be attached, rather than being chosen for nothing.
+func TestTheSkillPickerSaysWhyARowCannotBeAttachedWithNoShelf(t *testing.T) {
+	a, agent, project, _ := skillApp(t)
 	seedSkill(t, filepath.Join(project, ".claude", "skills"), "alpha-flake", "chase a flaky test")
-	a.memory = nil
+	agent.shelf = nil
 
 	typeInto(t, a, "/skill ")
 	screen := strings.Join(plainOverlay(a), "\n")
 	if !strings.Contains(screen, "alpha-flake") {
 		t.Fatalf("the picker stopped listing the skills on disk:\n%s", screen)
 	}
-	if !strings.Contains(screen, skillOffWarning) {
+	if !strings.Contains(screen, skillNoShelfWarning) {
 		t.Fatalf("the row does not say why choosing it does nothing:\n%s", screen)
 	}
+}
 
-	// AND A SESSION WITH A SHELF IS UNCHANGED, because the sentence is about
-	// the machine and not about the skill.
-	b, _, other, _ := skillApp(t)
-	seedSkill(t, filepath.Join(other, ".claude", "skills"), "beta-diff", "read a diff")
-	b.memory = &skillMemory{}
-	typeInto(t, b, "/skill ")
-	if got := strings.Join(plainOverlay(b), "\n"); strings.Contains(got, skillOffWarning) {
-		t.Fatalf("a session with a shelf was told memory is off:\n%s", got)
+// THE PICKER LISTS THE SAME HOME THE LAUNCH IMPORTS FROM. The import pass
+// reads the login home through internal/home, which follows CODEAF_HOME; a
+// picker that read the process's HOME instead listed one machine's skills
+// while the shelf held another's.
+func TestTheSkillPickerReadsTheLoginHomeTheImportReads(t *testing.T) {
+	a, _, _, homeDir := skillApp(t)
+	moved := t.TempDir()
+	t.Setenv(home.EnvVar, moved)
+	seedSkill(t, filepath.Join(moved, ".claude", "skills"), "moved-skill", "a skill under the moved home")
+	seedSkill(t, filepath.Join(homeDir, ".claude", "skills"), "process-home-skill", "a skill under the process HOME")
+
+	typeInto(t, a, "/skill ")
+	screen := strings.Join(plainOverlay(a), "\n")
+	if !strings.Contains(screen, "moved-skill") {
+		t.Fatalf("the picker did not list the home the import reads:\n%s", screen)
+	}
+	if strings.Contains(screen, "process-home-skill") {
+		t.Fatalf("the picker listed a home the import never reads:\n%s", screen)
 	}
 }
