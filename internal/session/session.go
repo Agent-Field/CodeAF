@@ -3240,6 +3240,12 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
+	// beltStartMu is the start lock: it is held from a hand-off's look for a
+	// live run until the run it opens is registered on beltRun, so a batch of
+	// hand-offs committed at one moment is one run and never several racing to
+	// one store ([Agent.lockBeltStart]). It is never taken while beltMu is
+	// held; beltMu is taken inside it.
+	beltStartMu sync.Mutex
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active

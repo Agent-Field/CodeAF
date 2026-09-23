@@ -259,6 +259,14 @@ func cliStore(p *cliParsed) (*Store, error) {
 	if want := p.vals["project"]; want != "" && st.Project() != want {
 		return nil, fmt.Errorf("the plan store at %s belongs to project %q, not %q", path, st.Project(), want)
 	}
+	// A STORE THAT IS ANOTHER RUN'S IS REFUSED WHOLE, reads and writes alike: a
+	// worker reading another run's plan would plan against work that is not its
+	// own, and one writing it filed its children under the other run's root.
+	if want := os.Getenv(RunEnv); want != "" && st.RootID() != want {
+		root := st.RootID()
+		_ = st.Close()
+		return nil, fmt.Errorf("the plan store at %s is another run's (t-%s), not this worker's run (t-%s), so nothing was read or written; this worker's run is over or was set aside", path, root, want)
+	}
 	return st, nil
 }
 

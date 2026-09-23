@@ -811,9 +811,16 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// and its depends_on as the store's own dependencies, and takes the person's
 	// ask with it when this turn owes one (CHAT-ROLE.md, "A landing speaks only
 	// when an answer is owed"). A task about ANOTHER FOLDER than the work
-	// already underway is refused here ([standsElsewhereError]); any other
-	// failure of the run road falls through to the shipped engine, exactly as a
-	// typed /task does, and that engine cuts its own copy from the same stand.
+	// already underway is refused here ([standsElsewhereError]).
+	//
+	// AND A RUN ROAD THAT FAILS IS SAID, NOT HIDDEN. Any other failure of the run
+	// road used to fall through to the older engine's tree, which is the one
+	// thing this comment's first line says an approved hand-off never becomes:
+	// a batch of eight approved at once raced to one store and six of them
+	// quietly became old-tree nodes. The receipt now says the task did not start
+	// and why ([runDidNotStart]), and reads as a failure. Only a run road that
+	// is not there at all (no engine linked, no place for a store) leaves this
+	// door for the older one.
 	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
 		a.mu.Lock()
 		question := questionAtTaskHandoff(a.owedAsks)
@@ -830,8 +837,12 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		// turn's cancellation here without either of those is what left a run's
 		// life belonging to the PROCESS, and a run whose room had closed went on
 		// spending with nobody able to read it or stop it.
-		joined := a.beltRunStandsOn(p.stand)
-		err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
+		//
+		// WHETHER IT JOINED is the start door's answer and not a look taken
+		// before it: in a batch committed at one moment none of the hand-offs
+		// could see a live run beforehand, and the one that opened the run is
+		// decided under the start lock ([Agent.startOrJoinTaskRun]).
+		joined, err := a.startOrJoinTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
 		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 			return refusal.Error(), true, nil
 		}
@@ -841,6 +852,9 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 				receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
 			}
 			return receipt, false, nil
+		}
+		if !errors.Is(err, errRunRoadUnavailable) {
+			return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, nil
 		}
 	}
 	state := graph.admit(p.id, spec)
