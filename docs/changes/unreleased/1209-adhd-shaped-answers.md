@@ -5,7 +5,7 @@ pr: 1209
 surface: [chat]
 invalidates:
   - "The answer section's bans carried examples: no opener (\"Sure\", \"Great question\", \"You're right\") and no closing offer (\"Want me to…\", \"Say the word and I'll…\"). The rewording kept both bans and cut the examples to \"Want me to…\" alone, to stay inside the prefix budget. A test that used `Say the word and I'll` as a sentence only the chat's page carries went on passing without testing anything; it now uses `no closing offer` and checks its sentinels are still on the page."
-  - "The rewording also dropped \"never hand back half-solved work\" from the definition of done, which no line of this entry said. That was not intended and #1386 put it back, as \"never a compiling scaffold, a narrowed test or half-solved work\", paid for by rewording the same section."
+  - "The rewording also dropped \"never hand back half-solved work\" from the definition of done, which no line of this entry said. That was not intended and #1393 put it back, as \"never a compiling scaffold, a narrowed test or half-solved work\", paid for by rewording the same section."
 ---
 
 The answer section of the system prompt (internal/session/prompts/system.md)
