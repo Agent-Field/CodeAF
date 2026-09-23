@@ -144,6 +144,21 @@ type engineFleet struct {
 
 	mu    sync.Mutex
 	conns []*engineConn
+	// closers are what this window opened beside its connections and must join
+	// when it lets them go — the model catalog [hostOptions] warms, whose warm
+	// writes a cache when it lands (#1274). [engineFleet.closeAll] runs them.
+	closers []func()
+}
+
+// own hands one close to [engineFleet.closeAll]. A nil fleet or a nil close is
+// nothing to own.
+func (f *engineFleet) own(shut func()) {
+	if f == nil || shut == nil {
+		return
+	}
+	f.mu.Lock()
+	f.closers = append(f.closers, shut)
+	f.mu.Unlock()
 }
 
 // machineReadings is the handful of per-window facts a beside conversation needs
@@ -303,6 +318,15 @@ func (f *engineFleet) closeAll() {
 		}
 	}
 	_ = f.boot.close()
+	// AND WHAT THE WINDOW OPENED BESIDE THEM, joined last: nothing it warmed may
+	// write after the door has let go.
+	f.mu.Lock()
+	closers := f.closers
+	f.closers = nil
+	f.mu.Unlock()
+	for _, shut := range closers {
+		shut()
+	}
 }
 
 // takeAll hands over every connection this window opened and empties the list,

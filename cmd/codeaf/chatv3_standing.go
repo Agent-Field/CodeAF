@@ -121,17 +121,22 @@ func standingWatch(store *standing.Store) standing.Watch {
 // where a machine that has none says so on that item's own row — `could not
 // check: no API key: this session has not been given one yet` — and the rest of
 // the walk goes on.
-func v3StandingTicker(store *standing.Store) (*standing.Ticker, error) {
+//
+// IT ANSWERS A RELEASE BESIDE THE PASS, which the caller runs when the pass is
+// over: the posture's model catalog warms in the background and writes a cache
+// when it lands, and the release cancels and joins it (#1274). It is never nil
+// when the error is.
+func v3StandingTicker(store *standing.Store) (*standing.Ticker, func(), error) {
 	if store == nil {
-		return nil, fmt.Errorf("standing: no store")
+		return nil, nil, fmt.Errorf("standing: no store")
 	}
 	settings, err := config.LoadKeyless()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	posture, err := v3StandingPosture(settings)
+	posture, models, err := v3StandingPosture(settings)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	idle := session.StandingIdle()
 	return &standing.Ticker{
@@ -149,7 +154,7 @@ func v3StandingTicker(store *standing.Store) (*standing.Ticker, error) {
 		// seam nil and the pass absent.
 		Tidy:         session.NewMemoryTidy(posture, v3MemoryPath(settings.ProfileDir), store.Root(), idle),
 		DailyRailUSD: v3StandingDailyRail(settings.ProfileDir),
-	}, nil
+	}, models.Close, nil
 }
 
 // v3MemoryPath is the brain's file when the memory row is on, and the empty
@@ -172,7 +177,10 @@ func v3MemoryPath(profileDir string) string {
 //
 // The workspace here is only where the rows are read from. Every firing runs in
 // its own item's workspace, which the runner sets before it opens anything.
-func v3StandingPosture(settings config.Config) (session.Config, error) {
+//
+// It answers the lazy catalog it opened as well, which the caller closes when
+// the pass is over; closing it does not take the rows it has already read.
+func v3StandingPosture(settings config.Config) (session.Config, *catalog.Catalog, error) {
 	root, err := os.UserHomeDir()
 	if err != nil || root == "" {
 		root = os.TempDir()
@@ -206,13 +214,18 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 	// have.
 	cfg, err = applyV3Governance(cfg, settings.ProfileDir, false, false)
 	if err != nil {
-		return session.Config{}, err
+		return session.Config{}, nil, err
 	}
 	// The media pair, resolved the way a conversation resolves it (chatv3.go):
 	// a firing briefed to draw a diagram needs the hand that draws it, and the
 	// resolver is what says which model does. The catalog is LAZY and is never
 	// waited for — a pass whose catalog has not resolved simply has no media
 	// verbs on its belt, which is the same absence a cold conversation has.
+	//
+	// THE CATALOG IS THE PASS'S TO CLOSE (#1274). Its warm writes a cache when it
+	// lands, and a pass is rebuilt every five minutes; a warm nobody joined could
+	// write after the window had closed. So it is handed back to the one caller,
+	// [v3StandingTicker], whose release closes it when the pass is over.
 	models := catalog.LoadLazy(context.Background(), catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
@@ -223,7 +236,7 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 	cfg.NearestModels = v3NearestModels(models)
 	// AskConsent stays false and Standing stays nil: nobody is watching a
 	// firing, and nothing that fires may arm anything else.
-	return cfg, nil
+	return cfg, models, nil
 }
 
 // startStandingTicks runs a pass every [standing.Interval] for as long as this
@@ -327,11 +340,12 @@ func runStandingTick(ctx context.Context, store *standing.Store) {
 	// whole contribution to the ambient side, and a goroutine that unwound out
 	// of it would leave a window that looks like it is keeping watch and is not.
 	defer guard.Recover("standing tick")
-	pass, err := v3StandingTicker(store)
+	pass, release, err := v3StandingTicker(store)
 	if err != nil {
 		noteStanding("could not start a pass: " + err.Error())
 		return
 	}
+	defer release()
 	// The pass's ceiling is a CHILD of the caller's ctx, so closing the ticker
 	// (which cancels that ctx) ends an in-flight pass at once, and the 120s
 	// TickWindow stays the pass's own upper bound when nobody is quitting.

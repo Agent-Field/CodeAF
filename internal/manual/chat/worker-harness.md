@@ -284,7 +284,9 @@ this conversation's plan**, so a task another chat spawned is never reachable:
 `x` and `p` are read only over an **empty box**: the moment there is a note to
 type, a letter is a letter. A task that has ended, `done` or `incomplete`, is offered
 neither: its row and its page name no `x stop it` and no `p pause`, because the store
-would refuse both.
+would refuse both — **and neither key does anything there**. On an ended task's page
+both are letters in the note box; on an ended row in the list they are letters too. No
+`Stop this task?` card is raised over a run that has already finished.
 
 Two refusals are this layer's own, and they are the words the pane reads back:
 

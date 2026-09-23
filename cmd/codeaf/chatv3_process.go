@@ -113,7 +113,48 @@ type v3Process struct {
 	standingDone    chan struct{}
 	sweepCancel     context.CancelFunc
 	sweepDone       chan struct{}
-	closed          bool
+	// catalogs are the lazy catalogs this process opened beside Models — a
+	// direct service's own listing, asked for when a conversation is opened on
+	// one of its models ([v3Process.ownCatalog]). closeAll cancels and joins each.
+	catalogs []*catalog.Catalog
+	closed   bool
+}
+
+// lifetime is the context background work owned by this process runs under,
+// and it ends when closeAll begins. A process built without one (a test's bare
+// literal) hands out the plain background, which is what it had before.
+func (p *v3Process) lifetime() context.Context {
+	if p == nil || p.processCtx == nil {
+		return context.Background()
+	}
+	return p.processCtx
+}
+
+// ownCatalog hands a lazy catalog this process opened to closeAll, which
+// cancels and joins its warm the way it does Models' (#1274). A catalog handed
+// over after the close has begun is closed at once, so none is left unowned.
+func (p *v3Process) ownCatalog(models *catalog.Catalog) {
+	if p == nil || models == nil {
+		return
+	}
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		models.Close()
+		return
+	}
+	p.catalogs = append(p.catalogs, models)
+	p.mu.Unlock()
+}
+
+// takeCatalogs hands over every catalog [v3Process.ownCatalog] was given and
+// empties the list, so the joins run after the lock is let go.
+func (p *v3Process) takeCatalogs() []*catalog.Catalog {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	owned := p.catalogs
+	p.catalogs = nil
+	return owned
 }
 
 // openV3Process builds the once-only half of a v3 launch.
@@ -427,6 +468,11 @@ func (p *v3Process) closeAll() {
 	}
 	if p.Models != nil {
 		p.Models.Close()
+	}
+	// AND EVERY OTHER CATALOG THIS PROCESS OPENED, for the same promise: a direct
+	// service's own listing warms under the same lifetime and is joined here.
+	for _, models := range p.takeCatalogs() {
+		models.Close()
 	}
 
 	// Cancellation is checked between entries and before destructive operations.

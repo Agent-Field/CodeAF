@@ -18,9 +18,10 @@ finished tasks can recover their pages too.
 ## What is on this task page — everything a task's page shows, in order
 
 A task opened from the rail starts with its full title, then the opening three lines of
-its brief with a key to unfold the rest, then its declared checks, then the folder where
-it works. A part with nothing in it is absent. The folder is said once in this head and
-is not repeated on every step.
+its brief with a key to unfold the rest, then its declared checks. A part with nothing in
+it is absent. **The folder a run's task works in is not shown**: it is the run's own
+working copy, not a place you go, and each step's command is drawn without the change
+into it, so the rows read as the work itself.
 
 The brief stays in the head, folded to three lines with a key to unfold it. The work it
 did is folded into chips it counts. The paragraphs it wrote as it went, each standing above the chip that
@@ -346,7 +347,7 @@ Three things that look like the same picture and are not:
   nothing more coming; scroll up to read what it did, and the foot names where the words in
   your box can still go, because the box is still there and the worker is not.
 - **A task that has not started** — one still queued behind the running ones — opens
-  with its title, brief, declared checks, and folder before any steps have been written. The
+  with its title, brief and declared checks before any steps have been written. The
   page then says `nothing on this page yet — it fills in as the task works`. The roster's row for it
   says `queued`; the page fills when it starts.
 - **A row that was never a task.** A background job — a server, a build, a watch, a video
@@ -384,7 +385,7 @@ opened the second it starts has journaled nothing yet — its first message is s
 written — so there is no transcript to replay for a few seconds.
 
 What the page draws in that gap is what it already holds: **the full title, the folded
-brief, the declared checks, and the folder**, followed by a note about what the task is doing now when there is one. Then it says why there are no steps yet.
+brief, and the declared checks**, followed by a note about what the task is doing now when there is one. Then it says why there are no steps yet.
 
 ```
 Widen the import pipe so the nightly run stops timing out.
@@ -394,7 +395,7 @@ nothing on this page yet — it fills in as the task works
 
 Three things worth knowing about that page:
 
-- **The head stays.** The title, brief, declared checks, and folder remain when the first
+- **The head stays.** The title, brief and declared checks remain when the first
   step arrives. Only the note about there being no steps leaves the page.
 - **Opening it starts nothing.** The page is a reader onto work that is already running;
   pressing the row again closes the page rather than starting anything, and no task is

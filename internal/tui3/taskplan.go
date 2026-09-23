@@ -1129,9 +1129,21 @@ func (a *app) taskPlanToggle(id string) tea.Cmd {
 // internal/run's note channel carries it). IT IS NOT A CHAT
 // TURN: the words go to the store and never to the model, so nothing here starts
 // one.
+//
+// ONE NOTE IS ONE SEND. The box keeps the words until the store answers, so a
+// second `enter` pressed before then sent them again; while a note is on its way
+// ([taskSheet.planSending]) `enter` sends nothing.
+//
+// AND THE ANSWER LANDS ON THE PAGE IT WAS SENT FROM OR NOWHERE. A person can
+// move to another task's page while the store is answering, and the receipt used
+// to put the sent-from page over whichever page was open and empty that page's
+// box (#1240). So the answer is folded only while the same task's page is still
+// the one up, and the box is emptied only if it still holds exactly what was
+// sent, so words typed after the send are not taken with it.
 func (a *app) taskPlanNoteSend() tea.Cmd {
-	text := strings.TrimSpace(a.taskSheet.planNote.String())
-	if text == "" {
+	raw := a.taskSheet.planNote.String()
+	text := strings.TrimSpace(raw)
+	if text == "" || a.taskSheet.planSending {
 		return nil
 	}
 	agent, ok := a.planReader()
@@ -1139,21 +1151,32 @@ func (a *app) taskPlanNoteSend() tea.Cmd {
 		return nil
 	}
 	id := a.taskSheet.plan.Row.ID
+	a.taskSheet.planSending = true
 	return a.offLoop(func() func(bool) tea.Cmd {
 		err := agent.PlanNote(id, text)
 		page, found := agent.PlanTaskPage(id)
 		return func(here bool) tea.Cmd {
+			a.taskSheet.planSending = false
 			if !here {
 				return nil
 			}
+			onPage := a.taskSheet.planOn && a.taskSheet.plan.Row.ID == id
 			if err != nil {
-				a.pageMsg = err.Error()
+				if onPage {
+					a.pageMsg = err.Error()
+				}
 				a.touch()
 				return nil
 			}
-			a.taskSheet.planNote.reset()
 			a.pageMsg = ""
 			a.railStamp++
+			if !onPage {
+				a.touch()
+				return nil
+			}
+			if a.taskSheet.planNote.String() == raw {
+				a.taskSheet.planNote.reset()
+			}
 			// Read the page again so the note a person just left is on the screen, which
 			// is the receipt the store cannot draw itself.
 			if found {
@@ -1177,6 +1200,12 @@ func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
 	}
 	item, ok := a.taskSheetCurrent()
 	if !ok || item.plan == nil {
+		return nil, false
+	}
+	// AN ENDED ROW TAKES NEITHER KEY, because its foot names neither
+	// ([app.tasksPlanKeyWords]): a key the line does not offer is the letter it
+	// is, never a verb the store can only refuse.
+	if planEnded(*item.plan) {
 		return nil, false
 	}
 	switch key {
@@ -1250,7 +1279,13 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	// A letter is a letter the moment there is a note to type, so the row's own
 	// keys are read over an empty box and never over a sentence (the list's own
 	// law, [app.taskSheetPlanKey]).
-	if a.taskSheet.planNote.empty() {
+	//
+	// AND ON A PAGE WHOSE TASK HAS ENDED THEY ARE LETTERS TOO, because the key
+	// line names neither there ([app.tasksPlanKeyWords]). `x` on a finished run
+	// asked "Stop this task?" and the stop it sent changed nothing, and on a
+	// finished part it drew the store's own refusal; a key the line does not
+	// offer is the letter it is (#1240).
+	if a.taskSheet.planNote.empty() && !planEnded(a.taskSheet.plan.Row) {
 		switch key {
 		case stopRaiseKey:
 			return a.taskPlanStop(a.taskSheet.plan.Row)
@@ -1297,7 +1332,11 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.taskPlanScroll(taskSheetRows)
 		return nil
 	case "ctrl+o":
-		if len(planBriefRows(a.taskSheet.plan.Description, a.bodyWidth())) > briefFoldLines {
+		// THE FOLD IS COUNTED AT THE WIDTH THE PAGE DRAWS AT ([app.taskPlanBodyWidth]),
+		// never at the conversation's body width: the page takes the whole frame,
+		// and a brief counted narrower than it is drawn could toggle a fold the
+		// page never showed (#1289).
+		if len(planBriefRows(a.taskSheet.plan.Description, a.taskPlanBodyWidth())) > briefFoldLines {
 			a.taskSheet.planBriefFull = !a.taskSheet.planBriefFull
 			a.taskSheet.detailTop = 0
 			a.taskSheet.planStick = false
@@ -1355,7 +1394,30 @@ func (a *app) taskPlanWindow(width, height int) ([]string, int, int) {
 	if room < 1 {
 		room = 1
 	}
-	return a.taskPlanBody(width - 2), room, foot
+	return a.taskPlanBody(planBodyWidth(width)), room, foot
+}
+
+// planNoteWho is the one word a note's author is drawn as, on the page and on
+// the work tab alike: `you` for a note a person left, and nothing for every
+// other author, because the store holds those as ids (the run's number, a
+// worker's handle) and no internal name goes on a person's screen.
+func planNoteWho(note session.PlanTaskNote) string {
+	if note.Person {
+		return "you"
+	}
+	return ""
+}
+
+// planBodyWidth is the page's body width inside a frame `width` cells wide: one
+// cell of margin on each side, the indent the frame draws every body row with.
+func planBodyWidth(width int) int { return width - 2 }
+
+// taskPlanBodyWidth is the width the page's body is drawn at in this window,
+// which is what a key that measures the body must measure at ([app.taskPlanWindow]
+// is handed the whole frame, as [app.taskPlanScroll] reads it).
+func (a *app) taskPlanBodyWidth() int {
+	width, _ := a.size()
+	return planBodyWidth(width)
 }
 
 // taskPlanTopFor resolves the page's scroll position, sticking to the live edge
@@ -1578,11 +1640,8 @@ func (a *app) taskPlanBody(width int) []string {
 			// kind of task that left the note; a page headed `1 · now` or
 			// `2ytmh2 · now` names nobody. The moment is kept and the id is never
 			// drawn, which is the owner's ruling on this surface: no internal name
-			// on a person's screen.
-			who := ""
-			if note.Person {
-				who = "you"
-			}
+			// on a person's screen ([planNoteWho]).
+			who := planNoteWho(note)
 			when := sinceAt(note.At, a.now())
 			switch {
 			case who != "" && when != "":
@@ -2020,11 +2079,12 @@ func planWithoutOwnFolder(command, folder string) string {
 // 2.4 seconds on a real screen. Until it folds back the conversation is still
 // what is drawn, and its box used to take whatever was typed: a note meant for
 // a task was sent to the model as a message. A person types at what they
-// pressed, so from the press on, every key is held here, in order, and handed
-// to the page's own keyboard the moment the page is up ([app.finishRailPlan]).
+// pressed, so from the press on, every key is held here, in order, and typed
+// into the page's note box the moment the page is up ([app.finishRailPlan]) —
+// into the box and nowhere else ([app.railPlanReplay]).
 //
 // THREE WAYS OUT, and none of them reaches the conversation: the answer opens
-// the page and replays the keys; the answer says there is no page, the row's
+// the page and types the keys into its box; the answer says there is no page, the row's
 // room opens as it always did and the keys are dropped, because a room's box
 // is a different receiver again; `esc` withdraws the press. A second press
 // replaces the first and starts with no keys.
@@ -2042,21 +2102,38 @@ func (a *app) finishRailPlan(id string) tea.Cmd {
 	keys := a.railPlanPending.keys
 	a.railPlanPending = railPlanPending{}
 	a.railTaskPlanOn = true
-	var cmds []tea.Cmd
 	for _, key := range keys {
-		// A KEY THAT LEFT THE PAGE ENDS THE REPLAY. The keys were kept for the
-		// page, and one of them can close it (`esc`, or the stop on the run's own
-		// page, which steps aside for its card): what was typed after it was typed
-		// blind, and is dropped rather than aimed at whatever is up now.
-		if !a.taskSheet.planOn {
-			break
-		}
-		if cmd := a.taskPlanKey(key); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+		a.railPlanReplay(key)
 	}
-	if !a.taskSheet.planOn {
-		a.railTaskPlanOn = false
+	a.touch()
+	return nil
+}
+
+// railPlanReplay puts one key typed in the gap into the page's NOTE BOX, and
+// does nothing else with it.
+//
+// THE GAP'S KEYS ARE THE NOTE AND NEVER THE PAGE'S VERBS. They were replayed
+// through the page's whole keyboard, so a sentence that began with the stop key
+// (`x-axis labels are wrong`) cancelled a running part with nothing asked, and
+// the `enter` after it sent the rest to the store, all before the page had been
+// drawn (#1244). A person typing at a page they cannot see yet is writing to its
+// box, so the text keys and the box's own editing keys are replayed and every
+// other key is dropped, `enter` included: a note typed blind waits in the box,
+// unsent, until the person has read the page it is about to go to.
+func (a *app) railPlanReplay(key tea.KeyPressMsg) {
+	note := &a.taskSheet.planNote
+	switch key.String() {
+	case "backspace":
+		note.deleteBackward()
+		return
+	case "ctrl+w":
+		note.deleteWord()
+		return
+	case "ctrl+u":
+		note.killToStart()
+		return
 	}
-	return tea.Batch(cmds...)
+	if text := key.Key().Text; text != "" {
+		note.insert(text)
+	}
 }

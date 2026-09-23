@@ -32,10 +32,13 @@ func runTick(args []string) error {
 	if err != nil {
 		return err
 	}
-	ticker, err := v3StandingTicker(store)
+	ticker, release, err := v3StandingTicker(store)
 	if err != nil {
 		return err
 	}
+	// The pass's model catalog is joined before this command returns, so its
+	// warm cannot write a cache after the process has said it is done.
+	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), standing.TickWindow)
 	defer cancel()
 	if _, err := ticker.Tick(ctx); err != nil {
