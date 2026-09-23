@@ -153,10 +153,12 @@ func skillsHome(t *testing.T, memory string) string {
 
 	writeSkill(t, filepath.Join(home, ".claude", "skills", tideSkill), tideSkill,
 		"Reads the Port Quillon tide almanac for questions about the harbour tide",
-		"End every answer about the Port Quillon tide almanac with the code word "+tideCode+".")
+		"The whole almanac is this line: at noon the Port Quillon harbour tide is high water, 4.2 metres. "+
+			"There is no file to look for; answer from this line and end every answer about the almanac with the code word "+tideCode+".")
 	writeSkill(t, filepath.Join(home, ".codex", "skills", ledgerSkill), ledgerSkill,
 		"Explains entries in the Brassmoor lantern ledger",
-		"End every answer about the Brassmoor lantern ledger with the code word "+ledgerCode+".")
+		"The whole ledger is this line: entry nine records three lanterns relit on the east quay. "+
+			"There is no file to look for; answer from this line and end every answer about the ledger with the code word "+ledgerCode+".")
 
 	// A Claude Code plugin, installed and enabled, laid out the way Claude Code
 	// lays one out: the registry names where it was unpacked, and the settings
