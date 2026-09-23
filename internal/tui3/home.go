@@ -597,6 +597,10 @@ type homeView struct {
 	// mode and nothing to switch: a person's fingers should not have to choose
 	// what a word is for before they have finished typing it.
 	box editor
+	// A close removes its current search result until the person changes the
+	// query. Otherwise archived history would put it back on the next refresh.
+	hiddenAfterClose map[string]bool
+	closeQuery       string
 	// carrying says the tray this box's next message would take with it is
 	// holding something ([app.chips], attach.go). It is a COPY of a fact that
 	// lives on the app, kept the way [homeView.exchanges] is and for the same
@@ -1408,6 +1412,10 @@ func (a *app) refreshHome() {
 
 // build turns the world into lines, applying the filter when one is typed.
 func (h *homeView) build() {
+	if h.query() != h.closeQuery {
+		h.hiddenAfterClose = nil
+	}
+
 	if len(h.box.value) == 0 {
 		h.projectPaste = homeProjectPaste{}
 	}
@@ -1612,6 +1620,9 @@ func (h *homeView) buildWorld() {
 	for _, project := range h.world.Projects {
 		hit := homeHit{project: project}
 		for _, row := range project.Sessions {
+			if h.hiddenAfterClose[filepath.Clean(row.Transcript)] {
+				continue
+			}
 			// A PUT-AWAY ROW STILL COMPETES UNDER A QUERY, because a filter that
 			// hid a match would be lying about the machine — and typing its name
 			// is the only way back to it now that the resting list is the ranked
