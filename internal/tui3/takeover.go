@@ -230,6 +230,14 @@ type takeoverWait struct {
 	// (takeovervoice.go).
 	outcome takeoverOutcome
 	about   string
+	// holder is the process holding the conversation, read ONCE from its own
+	// presence record when the wait has gone on long enough to be news
+	// (holderRead says the read happened, found or not). It outlives an
+	// unanswered ending so the card can still name the window.
+	holder     session.Holder
+	holderRead bool
+	// stopped is how many times this window has asked that process to stop.
+	stopped int
 }
 
 // takeoverOutcome is how a claim ended, for the two endings that are not simply
@@ -345,6 +353,14 @@ func (a *app) homeTakeoverEnter(line homeLine) tea.Cmd {
 	// to add — it repeats the line, which is what a person leaning on enter is
 	// looking for anyway.
 	if a.waitingToTakeOver() && a.takeover.file == line.row.Transcript {
+		// A WAIT NOBODY HAS ANSWERED IS WHERE ENTER STOPS THE OTHER WINDOW,
+		// and it asks first, with the cursor on `keep waiting`. The card has
+		// already named the process by then ([app.takeoverCanStop]).
+		if a.takeoverCanStop() {
+			a.raiseHomeAsk(a.takeoverStopShown())
+			a.sayHomeAsk()
+			return nil
+		}
 		h.say(a.takeoverLine(), "")
 		return nil
 	}
@@ -411,6 +427,14 @@ func (a *app) takeoverTick(msg takeoverTickMsg) tea.Cmd {
 		return nil
 	}
 	if session.InUse(a.takeover.file) {
+		// THE HOLDER IS NAMED ONCE THE WAIT IS NEWS, and read once: its own
+		// presence record, whatever its age, and its terminal off the process
+		// table (session's holder.go). Before [takeoverPatience] an ordinary
+		// move is still in flight and there is nobody worth naming.
+		if !a.takeover.holderRead && a.takeoverPatienceGone() {
+			a.takeover.holder, _ = session.ReadHolder(a.takeover.dir, a.now())
+			a.takeover.holderRead = true
+		}
 		// A REQUEST NOBODY CAN ANSWER ANY MORE ENDS THE WAIT. Past
 		// [session.TakeoverStale] the holder deletes the request unread, so
 		// every beat after that is this window watching a lock that will never
@@ -465,9 +489,9 @@ func (a *app) takeoverTick(msg takeoverTickMsg) tea.Cmd {
 // the next window to open that conversation will find it, and the one thing
 // this window still knows is that nobody is listening for the answer.
 func (a *app) giveUpTakeover() tea.Cmd {
-	about := a.takeover.file
+	about, holder := a.takeover.file, a.takeover.holder
 	session.CancelTakeover(a.takeover.dir)
-	a.takeover = takeoverWait{gen: a.takeover.gen + 1, outcome: takeoverEndedUnanswered, about: about}
+	a.takeover = takeoverWait{gen: a.takeover.gen + 1, outcome: takeoverEndedUnanswered, about: about, holder: holder}
 	a.syncHomeClaim()
 	if a.at(pageHome) && !a.takeoverCarded(about) {
 		a.home.say(takeoverUnansweredWord, "")
@@ -842,4 +866,74 @@ func (a *app) pointMovedRow() {
 		return
 	}
 	a.home.point(a.movedFrom)
+}
+
+// ── the window that does not let go ────────────────────────────────────────
+
+// takeoverStopKind is the lane the stop question travels under, for
+// [takeoverQuestionKind]'s reason: nothing in the engine raises or answers it.
+const takeoverStopKind session.QuestionKind = "surface-takeover-stop"
+
+// The stop question's words. It is the move question's shape, one step further:
+// what it does, what that costs, and the answer that loses nothing under the
+// cursor.
+const (
+	takeoverStopAskWord  = "Stop that window?"
+	takeoverStopCostWord = "it stops its reply and lets go of every conversation it holds"
+	takeoverStopItWord   = "stop it"
+	takeoverKeepWaitWord = "keep waiting"
+)
+
+// takeoverStopAt is the safe answer's index, and the cursor's home.
+const takeoverStopAt = 1
+
+// takeoverCanStop reports that the wait has gone on long enough to be news and
+// the process holding the conversation is known by its pid — which is when enter
+// on the row offers to stop it instead of repeating that it is coming.
+func (a *app) takeoverCanStop() bool {
+	return a.waitingToTakeOver() && a.takeoverPatienceGone() && a.takeover.holder.PID > 0
+}
+
+// takeoverStopShown is the question, and the closure that acts on it.
+//
+// THE FIRST YES IS THE ORDINARY LEAVING ROAD AND THE SECOND IS THE DOOR OUT.
+// The process is sent SIGTERM, which every build answers by closing every
+// conversation it holds and flushing their journals; one that is wedged behind
+// its own worker (the 2026-09-23 case) ignores that road's end, and a second
+// yes sends the signal every build since the leave road answers by exiting at
+// once. The wait stays out the whole time, so the row opens the moment the
+// flock frees.
+func (a *app) takeoverStopShown() questionShown {
+	holder := a.takeover.holder
+	return questionShown{
+		question: session.Question{
+			Kind:    takeoverStopKind,
+			Ask:     session.AskConfirmation,
+			Form:    session.FormCard,
+			Asker:   session.Asker{Kind: session.AskerSurface},
+			Head:    takeoverStopAskWord,
+			Reason:  takeoverHolderWord(holder) + " — " + takeoverStopCostWord,
+			Subject: session.SubjectRef{Name: a.takeover.file},
+			Options: []session.AnswerOption{
+				{Key: "1", Label: takeoverStopItWord},
+				{Key: "2", Label: takeoverKeepWaitWord, Safe: true},
+			},
+			Stakes: session.StakesIrreversible,
+			Asked:  a.now(),
+		},
+		pick: takeoverStopAt,
+		local: func(answer session.Answer) tea.Cmd {
+			if answer.FirstKey() != "1" || !a.waitingToTakeOver() {
+				return nil
+			}
+			pid, err := session.StopHolder(a.takeover.dir, a.takeover.file, a.now())
+			if err != nil {
+				a.home.say(err.Error(), "")
+				return nil
+			}
+			a.takeover.stopped++
+			a.home.say(takeoverStoppingWord(pid, a.takeover.stopped), "")
+			return nil
+		},
+	}
 }

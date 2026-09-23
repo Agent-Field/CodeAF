@@ -264,7 +264,10 @@ func (f *engineFleet) take(ask engineAsk) (tui3.Conversation, error) {
 	}
 	conn, err := f.dial(ask)
 	if err != nil {
-		return tui3.Conversation{}, err
+		// A journal another window holds comes back over the socket as the
+		// engine's sentence; it is handed to the surface as the lock it is, so
+		// home asks that window for it (chatv3.go's [engineHeldRefusal]).
+		return tui3.Conversation{}, asHeldRefusal(err)
 	}
 	welcome := conn.client.Welcome()
 	if strings.TrimSpace(welcome.SessionFile) == "" {

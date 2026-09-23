@@ -42,6 +42,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
@@ -85,6 +86,36 @@ type HostSelf struct {
 	// Workspace is the directory this host holds, for a sentence that has to
 	// name it.
 	Workspace string `json:"workspace,omitempty"`
+
+	// ── WHAT A PERSON TYPING `codeaf engine --status` IS TOLD ──────────────
+	//
+	// The five fields below are the process's account of itself, and they
+	// exist because the answer to "which engine is holding this folder" used to
+	// be `ps` and a kill by hand. Every one is omitted by a build older than
+	// them, which reads as "not said" rather than as a zero: a host that does
+	// not name its binary is a host too old to, and the door that asks falls
+	// back to the kernel's own answer for the pid.
+
+	// PID is the host process.
+	PID int `json:"pid,omitempty"`
+	// Binary is the file the host was started from, as it resolved at start.
+	Binary string `json:"binary,omitempty"`
+	// Revision is the build as a person reads it — the source revision and
+	// when it was built — which [HostSelf.Build] is not written for.
+	Revision string `json:"revision,omitempty"`
+	// Started is when the host process began holding the workspace.
+	Started time.Time `json:"started,omitzero"`
+	// BuiltAt is the moment the host's binary was built: the stamp `make
+	// build` links in, or the binary file's own modification time when there
+	// is none. IT IS WHAT DECIDES WHICH OF TWO BUILDS IS THE OLDER ONE, and so
+	// which of them gives up the workspace (cmd/codeaf's takeover rule): the
+	// source identity says two builds differ and never which came first.
+	BuiltAt time.Time `json:"builtAt,omitzero"`
+	// Surfaces is how many windows are attached right now, not counting the
+	// connection asking.
+	Surfaces int `json:"surfaces,omitempty"`
+	// Conversations is how many conversations the host is holding open.
+	Conversations int `json:"conversations,omitempty"`
 }
 
 // ErrNoHostThere is a far end that answered the question with a refusal, which
@@ -153,6 +184,7 @@ func (s *server) whois(frame Frame) error {
 	self := s.host(ask)
 	self.Version = Version
 	self.Build = buildinfo.Identity()
+	self.Revision = buildinfo.String()
 	// The connection is over either way, and it is over WITHOUT a session: the
 	// serve loop reads [server.asked] and returns before it waits for a second
 	// line.
