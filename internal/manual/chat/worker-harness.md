@@ -27,7 +27,9 @@ says `It joined the work already underway and shares its copy.` A proposed task 
 ANOTHER folder is refused while that run is underway, with both folders named and
 `tasks that run together share one copy of one folder. Propose it again when that work
 has ended`. A task handed off after the run has ended starts a run of its own, in a new
-copy cut from your folder as the first run left it.
+copy cut from your folder as the first run left it. A task handed off in the few seconds
+while a run is finishing (its work landing, its summary being written) waits until that
+run is over and then starts its own: it never joins a run on its way out.
 
 **When the run ends its work comes home by itself.** The copy's work is committed and
 merged into the folder it was cut from, the copy is given back, and the run's page
@@ -61,6 +63,9 @@ Each row wears one state word, mapped off the store's own status:
 - `done` — the store says `done`.
 - `incomplete` — the store says `failed`, or `cancelled` by anything but your own
   stop. Nothing judged it, so the word must not send you looking for a fault.
+- `interrupted` — the run was set aside because nothing was driving it when the next
+  task arrived (see *Does a new task pick up a run that did not finish?*). Not a fault,
+  and not a stop of yours.
 - `stopped` — you ended it. A run you stopped, a part you stopped with `x`, and every
   part that stop ended with it all read `stopped`, on the side list, in the tasks
   place and on the task's own page alike. A part that had already failed, or that the
@@ -118,7 +123,30 @@ Yes. Every run this conversation has made stays on the rail, oldest first. You
 can open any task from an earlier run and read its description, notes, steps and
 spend. An ended run is there to read, not to steer: a note, pause, resume, cancel,
 amend or priority on one of its tasks answers `that task's run has ended` and changes
-nothing. Only the run that is underway takes those.
+nothing. Only the run that is underway takes those. A run that has finished is ended
+from that moment, even while it is still the newest run on the rail and nothing has
+started after it: steering one of its tasks answers the same sentence.
+
+## Does a new task pick up a run that did not finish? A new /task starts fresh
+
+No. A new `/task`, or a new `codeaf do` in the same place, runs its own words in a run
+of its own. It never carries on a run it did not start, and nothing runs an earlier
+run's brief again.
+
+Every way a run ends is written on the run's own task: done, your stop, a dollar or
+time limit, `codeaf do --timeout`, or the run's own worker failing. Two endings leave
+the run's own task unfinished, because nobody decided anything about the work: codeaf
+itself closing while the run works (the engine ending it, or the program exiting) and
+an interrupt of `codeaf do`. When codeaf closes, nothing is landed and nothing is
+written on the run's record; every step it took is kept, and the run reads
+`interrupted` from then on. An interrupted `codeaf do` still lands what it reached, as
+it always has.
+
+When a later task finds such a run unfinished in its store, it sets it aside first:
+the run's own task and every part not yet ended are ended with the word `interrupted`,
+and the store is kept beside the new one, readable with the earlier runs. Its rows
+read `interrupted`, never `running`. Carrying an interrupted run on is not possible
+from any surface today.
 
 ## Why is this task indented under that one?
 
@@ -388,7 +416,10 @@ to think to look for, and it does not wait politely for a pause.
   the words stay on its page for you. A worker that has just been told it is
   repeating itself is handed nothing else at that boundary either; its note
   waits for the one after.
-- **Once.** Each worker is handed each note one time. Reading a note on the
+- **Once.** Each task is handed each note one time, across every worker it has: a
+  worker launched again on the same task (a parent woken to integrate its children, a
+  parked task woken) is not handed the notes an earlier worker of that task already
+  had. A worker is never handed a note it wrote itself. Reading a note on the
   task's page does not use it up — you and the worker read the same notes, and
   what you opened is never a note the worker then missed.
 - **Notes left before the task started** are handed over too, on its first step
@@ -586,6 +617,9 @@ requirement in them, and speed is no permission to skip the walk.
   spends counts against it while it works. The run's width and its dollar ceiling are the
   conversation's own numbers, so a run costs what the conversation costs and runs as wide
   as the conversation may.
+- **Reaching the dollar limit ends every worker in flight**, whichever worker's
+  spending crossed it: a live reading and a worker's final receipt end the rest alike.
+  The run's own task is ended with `a limit you set stopped it`.
 - **The time limit.** An elapsed-time limit on the session ends a run too: see
   "Does a time limit stop a running task?" on the page about starting codeaf.
 - **The step cap.** A worker stops at **200** finished tool calls — the same
@@ -679,7 +713,8 @@ moment after its row says so. A worker that ends its task in the middle of a
 command comes home when that command ends, at most 600 seconds later, and only
 then is its check added. The run waits for that, so every finished task is
 checked before the run answers, whatever order the workers came home in. A check
-the run cannot add ends the run as `incomplete`; it is never skipped.
+the run cannot add ends the run as `incomplete`, even when the run's own task already
+reads done; it is never skipped.
 
 A check does not redo the work. It reads the acceptance sentence by sentence,
 runs the leaf's own tests, and probes each sentence the tests do not cover. It

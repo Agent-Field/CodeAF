@@ -1823,7 +1823,7 @@ back, each saying what is true of it:
 `interrupted` means **nothing is driving it, and everything it did is kept**. It is not
 `stopped`, which is you ending the work, and it is not `incomplete`, which is work that
 ran and came up short. Nothing went wrong and nobody decided anything: the window closed.
-The row wears the asking mark, and its line reads:
+The row asks nothing of you and raises no `needs you` mark, and its line reads:
 
 ```
 nothing is driving it; everything it did is kept
