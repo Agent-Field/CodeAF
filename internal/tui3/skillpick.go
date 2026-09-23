@@ -351,14 +351,15 @@ type skillShelfReading struct {
 }
 
 // readSkillShelf asks the session for its shelf off the update loop and
-// redraws the open list from the answer. It is a read nobody pressed for, so
-// it is asked beside the door line rather than in it (offloop.go).
+// redraws the open list from the answer. It is asked IN the door line, not
+// beside it: the list opened because somebody typed, and a toggle pressed a
+// moment later must reach the session after this read, not race it.
 func (a *app) readSkillShelf() tea.Cmd {
 	shelf, ok := a.agent.(skillShelf)
 	if !ok {
 		return nil
 	}
-	return a.besideLine(func() func(bool) tea.Cmd {
+	return a.offLoop(func() func(bool) tea.Cmd {
 		facts, err := shelf.SkillFacts(store.FactActive, skillPickListLimit)
 		reading := &skillShelfReading{readable: err == nil}
 		for _, fact := range facts {
