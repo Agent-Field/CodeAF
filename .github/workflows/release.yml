@@ -300,6 +300,16 @@ jobs:
           \`\`\`
 
           EOF
+          if [ "$CHANNEL" = "dev" ]; then
+            cat >> install.md <<'EOF'
+          This installs this dev channel as `devaf` beside codeaf:
+
+          ```sh
+          curl -fsSL https://agentfield.ai/get/devaf | bash
+          ```
+
+          EOF
+          fi
           if [ "$CHANNEL" = "stable" ]; then
             # THE SECTION IS RENDERED FOR THE PAGE, NOT COPIED ONTO IT. GitHub
             # refuses a release body over its character ceiling, and a rolled-up

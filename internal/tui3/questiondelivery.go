@@ -19,14 +19,14 @@ package tui3
 // whichever line that place already has for saying things ([app.pageMsg], or
 // home's own [homeView.say]):
 //
-//	allow rm -rf build? · waiting in this conversation · alt+a
+//	allow rm -rf build? · waiting in this conversation · alt+y
 //
 // AWAY — ten minutes with nobody at this keyboard — and the project's rule
 // could not take it: the same row on home, the desktop notification this
 // surface already sends for a question nobody can see (notify.go), and, for a
 // question something is BLOCKED on, one bell. Once, ever, per question:
 //
-//	allow rm -rf build? · waiting in this conversation · alt+a
+//	allow rm -rf build? · waiting in this conversation · alt+y
 //
 // AWAY, and the project's rule took it: NOTHING ON SCREEN, which is not the
 // same as nothing said. The answer goes through the one door and comes back as
@@ -155,7 +155,7 @@ func (d *questionDeliveryRule) deliver(q session.Question, presence questionPres
 		// AWAY ADDS REACH AND TAKES NOTHING AWAY. It used to REPLACE the pin
 		// with a note and a bell, which meant a question raised while nobody was
 		// at the keyboard was never put on the block at all: the note is drawn
-		// only on a place, the chip counted nothing, so `alt+a` refused, and
+		// only on a place, the chip counted nothing, so `alt+y` refused, and
 		// nothing re-delivered it when the person came back. A turn that ran for
 		// ten minutes and ended in a question left a screen with the work
 		// stopped and nothing on it to work — which is exactly what the owner

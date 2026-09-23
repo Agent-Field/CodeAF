@@ -128,6 +128,63 @@ func TestResolveModeFromCI(t *testing.T) {
 	}
 }
 
+// TestResolveModeUnderTheTelemetryOffSwitch is the law the notice rests on:
+// "Turn off: CODEAF_TELEMETRY=off" is true of everything that leaves, so the
+// switch caps the pool at Read — over the default, over CI, and over an
+// explicit `on` from the setting or the environment — and leaves Read and Off
+// as they were, because they already send nothing.
+func TestResolveModeUnderTheTelemetryOffSwitch(t *testing.T) {
+	cases := []struct {
+		name    string
+		setting string
+		lookup  func(string) (string, bool)
+		want    Mode
+		wantSrc string
+	}{
+		{"telemetry off caps the default", "", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Read, "telemetry"},
+		{"telemetry 0 caps the default", "", envOf(map[string]string{"CODEAF_TELEMETRY": "0"}), Read, "telemetry"},
+		{"telemetry false, padded and mixed case", "", envOf(map[string]string{"CODEAF_TELEMETRY": "  False "}), Read, "telemetry"},
+		{"do not track 1 caps the default", "", envOf(map[string]string{"DO_NOT_TRACK": "1"}), Read, "telemetry"},
+		{"do not track true caps the default", "", envOf(map[string]string{"DO_NOT_TRACK": "true"}), Read, "telemetry"},
+		{"an empty endpoint caps the default", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": ""}), Read, "telemetry"},
+		{"a blank endpoint caps an explicit env on", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": "   ", "CODEAF_MODEL_POOL": "on"}), Read, "telemetry"},
+		{"a set endpoint does not cap", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": "https://example.test/t"}), On, "default"},
+		{"telemetry off caps an explicit setting on", "on", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Read, "telemetry"},
+		{"telemetry off caps an explicit env on", "off", envOf(map[string]string{"CODEAF_TELEMETRY": "off", "CODEAF_MODEL_POOL": "on"}), Read, "telemetry"},
+		{"telemetry off leaves read as read", "read", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Read, "setting"},
+		{"telemetry off leaves off as off", "off", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Off, "setting"},
+		{"telemetry off leaves ci as ci", "", envOf(map[string]string{"CODEAF_TELEMETRY": "off", "CI": "true"}), Read, "ci"},
+		{"telemetry on is not an answer", "", envOf(map[string]string{"CODEAF_TELEMETRY": "on"}), On, "default"},
+		{"telemetry set and empty is not an answer", "", envOf(map[string]string{"CODEAF_TELEMETRY": ""}), On, "default"},
+		{"do not track 0 is not an answer", "", envOf(map[string]string{"DO_NOT_TRACK": "0"}), On, "default"},
+	}
+	for _, c := range cases {
+		got := Resolve(c.setting, "", c.lookup)
+		if got.Mode != c.want || got.Source.Mode != c.wantSrc {
+			t.Errorf("%s: Mode = %v from %q, want %v from %q", c.name, got.Mode, got.Source.Mode, c.want, c.wantSrc)
+		}
+		if c.want != On && got.CanSend() {
+			t.Errorf("%s: CanSend must be false when the mode is %v", c.name, c.want)
+		}
+	}
+}
+
+// TestQuietedCapsOnlyOn pins the disk half: Quieted turns On into Read from
+// "telemetry" and answers Read and Off unchanged, source and all.
+func TestQuietedCapsOnlyOn(t *testing.T) {
+	on := Resolve("on", "", envOf(nil)).Quieted()
+	if on.Mode != Read || on.Source.Mode != "telemetry" || on.CanSend() || !on.CanRead() {
+		t.Errorf("Quieted on = %v from %q, CanSend %v, CanRead %v", on.Mode, on.Source.Mode, on.CanSend(), on.CanRead())
+	}
+	for _, word := range []string{"read", "off"} {
+		before := Resolve(word, "", envOf(nil))
+		after := before.Quieted()
+		if after.Mode != before.Mode || after.Source.Mode != before.Source.Mode {
+			t.Errorf("Quieted %s = %v from %q, want unchanged %v from %q", word, after.Mode, after.Source.Mode, before.Mode, before.Source.Mode)
+		}
+	}
+}
+
 func TestResolveIndexURL(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -489,14 +546,18 @@ func TestResolveNilLookupUsesSetting(t *testing.T) {
 	}
 }
 
-func TestResolveAsksEightNames(t *testing.T) {
+// TestResolveAsksElevenNames pins the whole of what Resolve reads: the eight
+// pool names, and the three environment rungs of the telemetry off switch,
+// which the pool obeys so the one switch the notice names stops everything
+// that leaves.
+func TestResolveAsksElevenNames(t *testing.T) {
 	var asked []string
 	Resolve("", "", func(name string) (string, bool) {
 		asked = append(asked, name)
 		return "", false
 	})
 	sort.Strings(asked)
-	want := []string{envMode, envCI, envRelay, envIndex, envSubmit, envMirror, envTTL, envKey}
+	want := []string{envMode, envCI, envRelay, envIndex, envSubmit, envMirror, envTTL, envKey, envTelemetry, envDoNotTrack, envEndpoint}
 	sort.Strings(want)
 	if !reflect.DeepEqual(asked, want) {
 		t.Errorf("Resolve asked lookup for %v, want %v", asked, want)

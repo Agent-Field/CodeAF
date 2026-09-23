@@ -64,12 +64,12 @@ func TestC2ReleaseCandidateIsPromptedOnlyWhenItsLineIsStable(t *testing.T) {
 	}
 }
 
-// TestC3SourceAndChannelLaunchesNeverReachTheNetwork proves C3.
-func TestC3SourceAndChannelLaunchesNeverReachTheNetwork(t *testing.T) {
+// Source and unstamped launches never reach the release service.
+func TestSourceLaunchesNeverReachTheNetwork(t *testing.T) {
 	var hits atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
 	defer server.Close()
-	for _, running := range []string{"dev-20260915-abcdefabcdef", "staging-20260915-abcdefabcdef", "deadbeef", ""} {
+	for _, running := range []string{"deadbeef", ""} {
 		answer, show := CheckLaunch(context.Background(), CheckOptions{
 			Running: running, ProfileDir: t.TempDir(), Client: releaseClient(server, running),
 		})
@@ -79,6 +79,305 @@ func TestC3SourceAndChannelLaunchesNeverReachTheNetwork(t *testing.T) {
 	}
 	if hits.Load() != 0 {
 		t.Fatalf("server saw %d requests", hits.Load())
+	}
+}
+
+// V3: Channel builds check their own release list once and show exactly one
+// executable-specific notice only when that channel has a newer build.
+func TestV3LaunchNoticeForChannelBuilds(t *testing.T) {
+	const (
+		oldDev   = "dev-20260918-aaaaaaaaaaaa"
+		newDev   = "dev-20260921-bbbbbbbbbbbb"
+		newStage = "staging-20260921-cccccccccccc"
+	)
+	list := `[
+		{"tag_name":"` + oldDev + `","published_at":"2026-09-18T12:00:00Z"},
+		{"tag_name":"` + newDev + `","published_at":"2026-09-21T12:00:00Z"},
+		{"tag_name":"` + newStage + `","published_at":"2026-09-21T13:00:00Z"}
+	]`
+	for _, row := range []struct {
+		name, running, executable, wantLatest, wantPath string
+		show                                            bool
+	}{
+		{"older dev", oldDev, "/opt/codeaf/devaf", newDev, "/releases?per_page=100", true},
+		{"older dev as codeaf", oldDev, "/opt/codeaf/codeaf", newDev, "/releases?per_page=100", true},
+		{"newest dev", newDev, "/opt/codeaf/devaf", newDev, "/releases?per_page=100", false},
+		{"staging", "staging-20260918-dddddddddddd", "/opt/codeaf/codeaf", newStage, "/releases?per_page=100", true},
+		{"stable", "v0.1.0", "/opt/codeaf/codeaf", "v0.2.0", "/releases/latest", true},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			var paths []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				paths = append(paths, request.URL.RequestURI())
+				if strings.HasSuffix(request.URL.Path, "/releases/latest") {
+					fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+					return
+				}
+				fmt.Fprint(w, list)
+			}))
+			defer server.Close()
+			answer, show := CheckLaunch(context.Background(), CheckOptions{
+				Running: row.running, Executable: row.executable,
+				ProfileDir: t.TempDir(), Client: releaseClient(server, row.running),
+			})
+			if show != row.show || answer.Latest != row.wantLatest {
+				t.Fatalf("answer = %+v, show = %t", answer, show)
+			}
+			if len(paths) != 1 || !strings.HasSuffix(paths[0], row.wantPath) {
+				t.Fatalf("requests = %q, want one ending in %q", paths, row.wantPath)
+			}
+			if row.name == "older dev" {
+				want := "codeaf " + newDev + " is out · you have " + oldDev + " · /update installs it and restarts · or: curl -fsSL https://agentfield.ai/get/devaf | bash"
+				if got := answer.Notice(); got != want {
+					t.Fatalf("notice = %q, want %q", got, want)
+				}
+			}
+			if row.name == "older dev as codeaf" {
+				wantEnd := "or: curl -fsSL https://agentfield.ai/get/codeaf/dev | bash"
+				if got := answer.Notice(); !strings.HasSuffix(got, wantEnd) {
+					t.Fatalf("notice = %q, want suffix %q", got, wantEnd)
+				}
+			}
+		})
+	}
+}
+
+// V4: Channel ordering uses matching tags, publish moments, tag dates, and the
+// API-selected same-day release in that order, including the mirror ahead cases.
+func TestV4ChannelOrdering(t *testing.T) {
+	oldDay := "dev-20260918-aaaaaaaaaaaa"
+	newDay := "dev-20260921-bbbbbbbbbbbb"
+	sameDayA := "dev-20260921-aaaaaaaaaaaa"
+	sameDayB := "dev-20260921-bbbbbbbbbbbb"
+	early := time.Date(2026, 9, 21, 9, 0, 0, 0, time.UTC)
+	late := early.Add(time.Hour)
+	for _, row := range []struct {
+		name, running, selected string
+		runningAt, selectedAt   time.Time
+		want                    int
+	}{
+		{"same tag", sameDayA, sameDayA, late, early, 0},
+		{"same day selected published later", sameDayA, sameDayB, early, late, -1},
+		{"dates disagree with publication", newDay, oldDay, early, late, -1},
+		{"running published later", sameDayA, sameDayB, late, early, 1},
+		{"selected later date with one moment unknown", oldDay, newDay, early, time.Time{}, -1},
+		{"running later date with one moment unknown", newDay, oldDay, time.Time{}, early, 1},
+		{"same day unknown moment selects API release", sameDayA, sameDayB, time.Time{}, late, -1},
+		{"no moment at all falls to the tag dates", newDay, oldDay, time.Time{}, time.Time{}, 1},
+		// TWO RELEASES PUBLISHED IN THE SAME SECOND ARE NOT ORDERED BY THEIR
+		// MOMENTS. D4's second rule names a later publication, and neither is
+		// later, so the remaining rules answer: the tag date first, then the
+		// release the API named.
+		{"one moment, twice, falls to the tag dates", newDay, oldDay, early, early, 1},
+		{"one moment, twice, on one day gives the API release", sameDayA, sameDayB, early, early, -1},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			got, ok := CompareChannelBuilds(row.running, row.runningAt, row.selected, row.selectedAt)
+			if !ok || got != row.want {
+				t.Fatalf("comparison = %d, %t; want %d, true", got, ok, row.want)
+			}
+			available := Available{
+				Latest: row.selected, Running: row.running,
+				LatestPublished: row.selectedAt, RunningPublished: row.runningAt,
+			}
+			if available.Newer() != (row.want < 0) || available.Ahead() != (row.want > 0) {
+				t.Fatalf("newer = %t ahead = %t for comparison %d", available.Newer(), available.Ahead(), row.want)
+			}
+			if available.Ahead() && available.Notice() != "" {
+				t.Fatalf("ahead build drew notice %q", available.Notice())
+			}
+		})
+	}
+}
+
+// D3 and D6: the channel a build FOLLOWS, which is the one its launch line
+// speaks about and the one the road under that line must reinstall. A release
+// candidate follows stable; only dev and staging follow themselves.
+func TestTheChannelABuildFollowsIsStableUnlessItIsDevOrStaging(t *testing.T) {
+	for _, row := range []struct{ running, want string }{
+		{"v0.3.0", "stable"},
+		{"v0.3.0-rc.1", "stable"},
+		{"dev-20260921-aaaaaaaaaaaa", "dev"},
+		{"staging-20260921-aaaaaaaaaaaa", "staging"},
+		{"deadbeefdead", "stable"},
+		{"", "stable"},
+	} {
+		if got := FollowedChannel(row.running); got != row.want {
+			t.Errorf("FollowedChannel(%q) = %q, want %q", row.running, got, row.want)
+		}
+	}
+}
+
+// D6: a release candidate is told about the stable release ahead of it, so the
+// road under that notice installs STABLE — an rc road would install something
+// the notice never named. The file's own name still chooses the address.
+func TestAReleaseCandidateNoticeOffersTheStableRoad(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"tag_name":"v0.3.0"}`)
+	}))
+	defer server.Close()
+	for _, row := range []struct{ name, executable, want string }{
+		{"as codeaf", "/opt/codeaf/codeaf", CurlCommand},
+		{"as devaf", "/opt/codeaf/devaf", "curl -fsSL https://agentfield.ai/get/devaf | bash"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			answer, show := CheckLaunch(context.Background(), CheckOptions{
+				Running: "v0.3.0-rc.1", Executable: row.executable,
+				ProfileDir: t.TempDir(), Client: releaseClient(server, "v0.3.0-rc.1"),
+			})
+			if !show {
+				t.Fatalf("an rc behind its stable line drew no notice: %+v", answer)
+			}
+			if got := answer.Notice(); !strings.HasSuffix(got, "or: "+row.want) {
+				t.Fatalf("notice = %q, want it to end in %q", got, row.want)
+			}
+			if strings.Contains(answer.Notice(), "/get/codeaf/rc") {
+				t.Fatalf("the rc notice offered an rc road: %q", answer.Notice())
+			}
+		})
+	}
+}
+
+// V4: A pair the channel law cannot rank — two different channels, a channel
+// tag beside a version number, or a tag that names no release at all — is
+// neither newer nor ahead, and draws no launch line.
+func TestV4UnrankablePairsAreNeitherNewerNorAhead(t *testing.T) {
+	for _, row := range []struct{ running, selected string }{
+		{"dev-20260921-aaaaaaaaaaaa", "staging-20260921-bbbbbbbbbbbb"},
+		{"dev-20260921-aaaaaaaaaaaa", "v0.3.0"},
+		{"dev-20260921-aaaaaaaaaaaa", "not-a-tag"},
+		{"staging-20260921-aaaaaaaaaaaa", "dev-20260921-bbbbbbbbbbbb"},
+	} {
+		if _, ok := CompareChannelBuilds(row.running, time.Time{}, row.selected, time.Time{}); ok {
+			t.Errorf("CompareChannelBuilds(%q, %q) claimed an order", row.running, row.selected)
+		}
+		available := Available{Latest: row.selected, Running: row.running}
+		if available.Newer() || available.Ahead() || available.Notice() != "" {
+			t.Errorf("%q against %q: newer = %t, ahead = %t, notice = %q",
+				row.running, row.selected, available.Newer(), available.Ahead(), available.Notice())
+		}
+	}
+}
+
+// V8: An install that cannot replace the running file offers the road back to
+// THAT file. A devaf told to reinstall from /get/codeaf would come back as a
+// stable codeaf, which is the surprise this whole change exists to remove.
+func TestV8InstallFailureCarriesTheCallersCurlLine(t *testing.T) {
+	asset := []byte("new codeaf")
+	digest := sha256.Sum256(asset)
+	server, _ := servedRelease(t, asset, hex.EncodeToString(digest[:]))
+	defer server.Close()
+	devafCurl := CurlLine("/home/x/.codeaf/bin/devaf", "dev")
+	unreachable := filepath.Join(t.TempDir(), "gone", "devaf")
+	_, err := Install(context.Background(), InstallOptions{
+		Client:  releaseClient(server, "dev-20260918-aaaaaaaaaaaa"),
+		Release: Release{Tag: "dev-20260921-bbbbbbbbbbbb", Repository: primaryRepository},
+		Target:  unreachable, Curl: devafCurl,
+	})
+	if err == nil || !strings.Contains(err.Error(), "cannot replace "+unreachable) ||
+		!strings.Contains(err.Error(), devafCurl) || strings.Contains(err.Error(), "get/codeaf") {
+		t.Fatalf("error = %v, want the devaf road", err)
+	}
+	// With no road supplied the stable constant is still the answer.
+	if _, bare := Install(context.Background(), InstallOptions{
+		Client:  releaseClient(server, "v0.1.1"),
+		Release: Release{Tag: "v0.2.0", Repository: primaryRepository},
+		Target:  unreachable,
+	}); bare == nil || !strings.Contains(bare.Error(), CurlCommand) {
+		t.Fatalf("bare error = %v", bare)
+	}
+}
+
+// V5: Stable and channel builds use separate cache files and retain their
+// unchanged 24-hour and one-hour lifetimes when launches alternate.
+func TestV5ChannelCacheFilesAndLifetimes(t *testing.T) {
+	const runningDev = "dev-20260918-aaaaaaaaaaaa"
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	var hits atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		hits.Add(1)
+		if strings.HasSuffix(request.URL.Path, "/releases/latest") {
+			fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+			return
+		}
+		fmt.Fprint(w, `[
+			{"tag_name":"`+runningDev+`","published_at":"2026-09-18T12:00:00Z"},
+			{"tag_name":"dev-20260921-bbbbbbbbbbbb","published_at":"2026-09-21T12:00:00Z"}
+		]`)
+	}))
+	defer server.Close()
+	profile := t.TempDir()
+	client := releaseClient(server, runningDev)
+	clock := func() time.Time { return now }
+	stable := CheckOptions{Running: "v0.1.0", ProfileDir: profile, Client: client, Now: clock}
+	dev := CheckOptions{Running: runningDev, ProfileDir: profile, Client: client, Now: clock}
+	devOnly := t.TempDir()
+	CheckLaunch(context.Background(), CheckOptions{Running: runningDev, ProfileDir: devOnly, Client: client, Now: clock})
+	if _, err := os.Stat(filepath.Join(devOnly, "update-check.dev.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(devOnly, "update-check.json")); !os.IsNotExist(err) {
+		t.Fatalf("a dev launch wrote the stable cache: %v", err)
+	}
+	hits.Store(0)
+	CheckLaunch(context.Background(), stable)
+	CheckLaunch(context.Background(), dev)
+	CheckLaunch(context.Background(), stable)
+	CheckLaunch(context.Background(), dev)
+	if hits.Load() != 2 {
+		t.Fatalf("alternating launches made %d requests, want one per channel", hits.Load())
+	}
+	for _, name := range []string{"update-check.json", "update-check.dev.json"} {
+		if _, err := os.Stat(filepath.Join(profile, name)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(profile, "update-check.staging.json")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected staging cache: %v", err)
+	}
+
+	now = now.Add(59 * time.Minute)
+	CheckLaunch(context.Background(), dev)
+	if hits.Load() != 2 {
+		t.Fatalf("fresh dev cache made %d requests", hits.Load())
+	}
+	now = now.Add(2 * time.Minute)
+	CheckLaunch(context.Background(), dev)
+	if hits.Load() != 3 {
+		t.Fatalf("stale dev cache made %d requests, want 3 total", hits.Load())
+	}
+	now = now.Add(22 * time.Hour)
+	CheckLaunch(context.Background(), stable)
+	if hits.Load() != 3 {
+		t.Fatalf("fresh stable cache made %d requests", hits.Load())
+	}
+	now = now.Add(2 * time.Hour)
+	CheckLaunch(context.Background(), stable)
+	if hits.Load() != 4 {
+		t.Fatalf("stale stable cache made %d requests, want 4 total", hits.Load())
+	}
+}
+
+// V8: CurlLine preserves the stable road, follows named codeaf channels, gives
+// devaf its proxy, and carries arbitrary executable names through the installer.
+func TestV8CurlLineTable(t *testing.T) {
+	for _, row := range []struct{ executable, channel, want string }{
+		{"codeaf", "stable", CurlCommand},
+		{"codeaf.exe", "stable", CurlCommand},
+		{"codeaf", "dev", "curl -fsSL https://agentfield.ai/get/codeaf/dev | bash"},
+		{"codeaf", "staging", "curl -fsSL https://agentfield.ai/get/codeaf/staging | bash"},
+		{"codeaf", "rc", "curl -fsSL https://agentfield.ai/get/codeaf/rc | bash"},
+		{"devaf", "dev", "curl -fsSL https://agentfield.ai/get/devaf | bash"},
+		{"devaf", "stable", "curl -fsSL https://agentfield.ai/get/devaf | bash"},
+		{"devaf.exe", "dev", "curl -fsSL https://agentfield.ai/get/devaf | bash"},
+		{"mine", "dev", "curl -fsSL https://agentfield.ai/get/codeaf/dev | CODEAF_INSTALL_NAME=mine bash"},
+		{"mine", "stable", "curl -fsSL https://agentfield.ai/get/codeaf | CODEAF_INSTALL_NAME=mine bash"},
+		{"", "dev", "curl -fsSL https://agentfield.ai/get/codeaf/dev | bash"},
+		{"codeaf", "other", CurlCommand},
+	} {
+		if got := CurlLine(row.executable, row.channel); got != row.want {
+			t.Errorf("CurlLine(%q, %q) = %q, want %q", row.executable, row.channel, got, row.want)
+		}
 	}
 }
 

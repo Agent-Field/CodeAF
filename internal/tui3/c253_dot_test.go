@@ -74,7 +74,7 @@ func TestTasksWideRunRowShowsPlanProgressAtWidthTier(t *testing.T) {
 	reading := tasksReading{items: []tasksItem{item}, held: 1, now: taskFixtureNow}
 	pal := palette{}
 
-	for _, width := range []int{100, 70} {
+	for _, width := range []int{140, 70} {
 		t.Run(itoa(width), func(t *testing.T) {
 			text := strings.Join(reading.rows(width, pal), "\n")
 			want := planProgress(root, width, pal)

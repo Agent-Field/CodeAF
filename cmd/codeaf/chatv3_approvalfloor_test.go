@@ -166,7 +166,7 @@ func TestTheSecondConversationKeepsTheLaunchsPosture(t *testing.T) {
 // A rebuild that cannot read the rows leaves the launch's gate in place. The
 // answer to "I could not read the rules" is never a session with no rules.
 func TestAnUnreadableRowLeavesTheSecondConversationOnTheLaunchsGate(t *testing.T) {
-	launch, err := applyV3Governance(session.Config{Model: "m"}, t.TempDir(), false, false)
+	launch, err := applyV3Governance(session.Config{Model: "m"}, v3Profile(t, map[string]any{"tools.approvalMode": "prompt"}), false, false)
 	if err != nil {
 		t.Fatalf("the launch did not load: %v", err)
 	}

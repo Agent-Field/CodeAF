@@ -126,7 +126,12 @@ var settingReaders = map[string]string{
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
 	KeyAttribution:    "Attribution",
-	KeyModelPool:      "ModelPoolSettingAt",
+	// The pool row is read through [ModelPoolAt] since the telemetry off switch
+	// started capping the pool at read: `codeaf pool` and `codeaf telemetry`
+	// call [ModelPoolResolved] with their injected environment, and every
+	// other verb calls [ModelPoolAt]. Nothing outside this package reads the
+	// stored word directly any more.
+	KeyModelPool: "ModelPoolAt",
 	// The pool key row names the resolver that reads it: [ModelPoolAt] carries
 	// the word into poolcfg beside the mode, and the puller's keys resolve
 	// from there (cmd/codeaf's poolTrustedKeys).

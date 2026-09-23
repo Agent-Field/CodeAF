@@ -126,6 +126,7 @@ func countEvent(event session.Event) {
 		// carry nothing: the total is the number the chokepoint would have
 		// counted.
 		telemetry.CountTurn()
+		telemetry.CountTokens(event.Usage.Input, event.Usage.Output)
 		for i := 0; i < event.Usage.Calls; i++ {
 			cost := 0.0
 			if i == 0 {

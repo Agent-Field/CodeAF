@@ -78,7 +78,7 @@ const (
 	panelNeeds homePanelID = iota
 	panelRecent
 	panelProjects
-	panelRunning
+	panelSessions
 	panelLeft
 	panelSpend
 	panelNext
@@ -161,22 +161,22 @@ type homePanelSlot struct {
 // 2026-09-15). What the table still fixes is the rank inside whichever column
 // the panel lands in, so two panels that both fill never swap places:
 //
-//	field (panels with rows)   needs · recent · running · left · next
+//	field (panels with rows)   recent · needs · running · left · next
 //	rail (pinned, then quiet)  projects · spend  ·  the quiet ones in the same rank
 //
 // The keep column is the order a short frame takes rows away in and a tall one
 // hands them out in, and rest and most are each panel's natural height and its
 // growth budget (owner, 2026-09-10: a fifty-five-row terminal was two short
 // columns over thirty rows of air). Spend's budget is its rest: it never grows.
-// The head column is where a press on each heading goes; `projects` names no
-// place but itself, so its heading opens nothing. The explainer is the dim
-// clause a heading may carry after its word — see [homePanelSlot.explainer].
+// The head column is where a press on a heading goes. The conversation list
+// has no heading; projects is read-only. The explainer is the dim clause a
+// heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
-	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10, head: pageSearch},
-	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
-	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: sessionsPanel{homePanelBase{panelSessions}}, word: sessionsWord, keep: 7, least: 4, rest: homeSessionsLimit, most: homeSessionsLimit, place: pageTasks, head: pageTasks},
+	{panel: recentPanel{homePanelBase{panelRecent}}, keep: 5, least: 3, rest: tabsCap + homeClosedLimit, most: tabsCap + homeClosedLimit},
+	{panel: needsPanel{homePanelBase{panelNeeds}}, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
+	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageMemory},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
 	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
@@ -199,18 +199,16 @@ const homeNeedsTaskFresh = 48 * time.Hour
 // than being cut ([homeWhisperLines]), so a `…` on one of these lines could only
 // be read as the screen having run out of room.
 var homeWhisper = map[homePanelID]string{
-	panelNeeds:   "questions from any chat or task land here · a digit answers them",
-	panelRunning: "work you send off with /task runs here on its own",
-	panelLeft:    "what watches and tasks did while the terminal was shut",
-	panelRecent:  "your conversations · what you type below starts one",
-	panelSpend:   "every chat and task is priced here",
-	panelNext:    `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"`,
+	panelSessions: "your recent conversations appear here",
+	panelLeft:     "what watches and tasks did while the terminal was shut",
+	panelSpend:    "every chat and task is priced here",
+	panelNext:     `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"`,
 }
 
 // homePanelCut is a panel's rows cut at its cap, with the count of what the
 // fold stands for past it. Which of the kept rows are drawn is the layout's to
 // say ([homeGridLayout]); a panel only ever hands it at most this many, so a
-// machine with four hundred conversations builds ten lines and not four hundred
+// panel with four hundred records builds its budget rather than four hundred
 // — unless it is THE panel somebody opened, whose cap is lifted
 // ([homeGridInput.cap]).
 func homePanelCut(in *homeGridInput, id homePanelID, lines []homeLine) homePanelRows {
@@ -281,6 +279,8 @@ func homeColumnOf(slot homePanelSlot, cols int, empty bool) int {
 // and never from a seam. It is built by [homeView.gridInput] on the beat and on
 // every rebuild, and it is a plain value so a test can hand one to a panel.
 type homeGridInput struct {
+	openChats, closedChats []switcherRow
+
 	// rows is every row the switcher ranks — conversations and the standing
 	// things that need somebody or are firing — in its own order: what needs
 	// you (oldest first), then what is moving, then the rest by recency.
@@ -343,7 +343,8 @@ func (h *homeView) gridInput() homeGridInput {
 	if h.openedOn && h.opened == panelNeeds {
 		calls, older = needsCalls(world, h.world.Read), 0
 	}
-	return homeGridInput{rows: reading.rows, ledger: reading.ledger, calls: calls, callsOlder: older,
+	open, closed := h.conversationRows()
+	return homeGridInput{openChats: open, closedChats: closed, rows: reading.rows, ledger: reading.ledger, calls: calls, callsOlder: older,
 		opened: h.opened, openedOn: h.openedOn,
 		desc: homeDescOn(h.cols), world: world, items: h.items,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
@@ -438,10 +439,12 @@ const (
 // line is built. It is a reading and holds no state: the cursor, the pointer
 // and the spinner's frame are the paint's.
 type homeCell struct {
-	kind  homeCellKind
-	panel homePanelID
-	mark  homeCellMark
-	title string
+	// chatKey is an already resolved tab identity for live conversation bullets.
+	chatKey string
+	kind    homeCellKind
+	panel   homePanelID
+	mark    homeCellMark
+	title   string
 	// pad is the cells the title is padded to before the note, so a panel's
 	// notes stand in one column (the projects panel's counts).
 	pad int
@@ -450,6 +453,8 @@ type homeCell struct {
 	note, tag, right string
 	// bold is this window's own conversation.
 	bold bool
+	// closed conversations stay dim even when the cursor is on them.
+	closed bool
 	// path says the title is a folder's path, which is cut FROM THE LEFT —
 	// `…/code/codeaf` — so the folder's own name and the facts beside it
 	// stay on the row ([homeCellPathTitle]).
@@ -460,6 +465,13 @@ type homeCell struct {
 	// held row grows into under the cursor ([app.homeCellDoor]).
 	hold bool
 	door string
+	// thread is the conversation the row belongs to, spelled as `threads`
+	// spells it, and it heads the row's description as its own title line —
+	// `thread: <name>`, then a blank line, then [sub] (owner, 2026-09-17). It
+	// is drawn wherever the description is: in the description column, or
+	// under the row on a frame without one, where the row grows three lines
+	// rather than one ([homeCell.grownLines]).
+	thread string
 	// sub is the line under the row, and subRight what that line carries at
 	// its right — the answers a key sends.
 	sub, subRight string
@@ -468,11 +480,12 @@ type homeCell struct {
 	// answer to offer. Whether they are actually drawn is the frame's to say:
 	// exactly one row draws them ([app.homeAnswerAt]).
 	answers string
-	// grows says the row draws that line ONLY WHILE THE CURSOR IS ON IT, which
-	// is how a landing is one line at rest and two under the cursor
-	// (homepanel_needs.go). The line it grows into is reserved by its panel
-	// ([homeGridPanel.height]) so the column does not change shape as the
-	// cursor walks over the rows.
+	// grows says the row draws that line ONLY WHILE IT IS THE ROW BEING READ —
+	// under the pointer, or under the cursor when nothing is pointed at
+	// ([homeView.previewAt]) — which is how every row of the field is one line
+	// at rest and two when it is looked at. The line it grows into is reserved
+	// by its panel ([homeGridPanel.height]) so the column does not change shape
+	// as the cursor walks over the rows.
 	grows bool
 	// share is how full the spend bar is, and spark the fortnight's days.
 	share float64
@@ -504,23 +517,30 @@ func (l homeLine) height() int {
 	return 1
 }
 
-// alwaysSaid reports a row whose sentence the description column draws WHETHER
-// OR NOT the row is selected.
-//
-// `needs you` IS THE ONE PANEL THAT GETS THIS, and the owner made it so on
-// 2026-09-15. Everywhere else the second line is a gloss on the row — what a
-// piece of work is doing, the first sentence of a report — and a gloss is worth
-// a column only for the row a person is actually on. On `needs you` the second
-// line IS the row: the question is the thing that stopped, and the panel's whole
-// purpose is that a person reads what is waiting on them WITHOUT walking the
-// cursor onto it. A question you must select to read is a question you can miss.
-//
-// It is the permanent one only. A `unread` landing in the same panel grows its
-// sentence under the cursor and has never been readable at a glance, so it is
-// drawn only while it is the selected row, like every other row's.
-func (c *homeCell) alwaysSaid() bool {
-	return c != nil && c.panel == panelNeeds && !c.grows && strings.TrimSpace(c.sub) != ""
+// grownLines is how many lines a growing row draws under itself while it is
+// being read on a frame without a description column: its sentence, or — for a
+// row that names its thread — the thread's title line, a blank, and the
+// sentence. It is what a panel reserves for the one row that will grow
+// ([homeGridPanel.growLines]).
+func (c *homeCell) grownLines() int {
+	if c == nil || !c.grows || strings.TrimSpace(c.sub) == "" {
+		return 0
+	}
+	if strings.TrimSpace(c.thread) != "" {
+		return 3
+	}
+	return 1
 }
+
+// homeThreadWord leads a description's thread line: `thread: Prime Sieve`.
+const homeThreadWord = "thread: "
+
+// NO ROW'S SENTENCE IS DRAWN AT REST ANY MORE. `needs you`'s questions were the
+// one exception — the owner made them so on 2026-09-15, so that what was waiting
+// on a person could be read without walking onto it — and reversed it on
+// 2026-09-17: the amber `?` always shows, and the question under it shows only
+// while the row is being read, under the pointer or the cursor, like the
+// description of every other row of the field ([homeCell.grows]).
 
 // ── the layout ─────────────────────────────────────────────────────────────
 
@@ -542,6 +562,13 @@ type homeGridPanel struct {
 	// gone from the page.
 	shown   int
 	dropped bool
+	// tight is that the column was too short for the panel's full reservation
+	// for the row that grows ([homeGridPanel.growLines]): a squeezed column
+	// gives up the thread's two extra lines before it gives up a row, keeps one
+	// line as it always did, and while a thread row on it is read the lines
+	// under it move down two and the column's foot is clipped — a short frame
+	// costs a moment of shape, never a row ([squeezeColumn]).
+	tight bool
 	// desc is that this frame draws the description column, which changes what
 	// a ROW is: its second line is drawn there instead of under it, so the panel
 	// neither draws that line nor reserves the room for it ([homeDescOn]).
@@ -594,7 +621,10 @@ func (p homeGridPanel) height() int {
 		}
 		return 1 + len(p.whisper)
 	}
-	n := 1
+	n := 0
+	if p.slot.word != "" {
+		n = 1
+	}
 	for _, line := range p.read.lines[:p.shown] {
 		// A ROW IS ONE LINE WHERE THE DESCRIPTION COLUMN HAS ITS SECOND, and the
 		// reservation below goes with it — unless it is a row that keeps its own
@@ -613,12 +643,16 @@ func (p homeGridPanel) height() int {
 			n++
 		}
 	}
-	// AND ONE LINE IS KEPT FOR THE ROW THE CURSOR WILL GROW. Which row that is
-	// belongs to the paint; that one of them will grow is known here, and
-	// reserving it is what keeps the column the same height whichever row the
-	// cursor is standing on ([homeCell.grows]).
-	if p.growsARow() && !p.desc {
-		n++
+	// AND THE LINES ARE KEPT FOR THE ROW THE CURSOR WILL GROW. Which row that
+	// is belongs to the paint; that one of them will grow, and by how much, is
+	// known here, and reserving it is what keeps the column the same height
+	// whichever row the cursor is standing on ([homeCell.grows]).
+	if !p.desc {
+		if p.tight {
+			n += min(1, p.growLines())
+		} else {
+			n += p.growLines()
+		}
 	}
 	if p.folds() {
 		n++
@@ -634,13 +668,17 @@ func (p homeGridPanel) groupOpen() bool {
 
 // growsARow reports that one of the rows on the screen will grow a line under
 // the cursor.
-func (p homeGridPanel) growsARow() bool {
+func (p homeGridPanel) growsARow() bool { return p.growLines() > 0 }
+
+// growLines is the most lines any row on the screen grows while it is being
+// read ([homeCell.grownLines]): the panel's reservation for the one row that
+// will.
+func (p homeGridPanel) growLines() int {
+	most := 0
 	for _, line := range p.read.lines[:p.shown] {
-		if line.cell != nil && line.cell.grows {
-			return true
-		}
+		most = max(most, line.cell.grownLines())
 	}
-	return false
+	return most
 }
 
 // homeColumnHeight is a column's height with one blank row between panels.
@@ -708,6 +746,15 @@ func squeezeColumn(column []*homeGridPanel, room int) {
 		return
 	}
 	order := byKeep(column)
+	// THE RESERVATION GIVES WAY BEFORE A ROW DOES: every panel keeps one line for
+	// the row that grows and no more ([homeGridPanel.tight]), and only if the
+	// column is still too tall are rows taken.
+	for _, p := range order {
+		if homeColumnHeight(column) <= room {
+			break
+		}
+		p.tight = true
+	}
 	for _, p := range order {
 		if homeColumnHeight(column) <= room {
 			break
@@ -727,7 +774,7 @@ func squeezeColumn(column []*homeGridPanel, room int) {
 // ANY PANEL WITH ROWS, each group lowest keep first. A whisper says what would
 // be here; a row is something a person can stand on and open. At 120×14 with
 // no question waiting, the old order kept `needs you`'s whisper and dropped
-// `where you were` whole, so the page had no row at all — a home with nothing
+// `threads` whole, so the page had no row at all — a home with nothing
 // to press is not a home, whatever its priorities say.
 func byDrop(order []*homeGridPanel) []*homeGridPanel {
 	drop := make([]*homeGridPanel, 0, len(order))
@@ -747,7 +794,7 @@ func byDrop(order []*homeGridPanel) []*homeGridPanel {
 // regrowColumn hands back what the squeeze did not need, a row at a time, to
 // the panels it cut, the most important first. A floor is a whole step, and a
 // drop frees a whole panel, so the squeeze can overshoot — and air under a
-// column while `where you were` is folded is the squeeze spending the wrong
+// column while `threads` is folded is the squeeze spending the wrong
 // panel's rows.
 //
 // IT GIVES BACK ONLY UP TO A PANEL'S NATURAL HEIGHT. A squeezed column is a
@@ -879,6 +926,9 @@ func homeDescOn(cols int) bool { return cols >= 3 }
 func orderRail(rail []*homeGridPanel) []*homeGridPanel {
 	out := make([]*homeGridPanel, 0, len(rail))
 	for _, p := range rail {
+		if p.height() == 0 {
+			continue
+		}
 		if p.slot.pinned {
 			out = append(out, p)
 		}
@@ -899,6 +949,9 @@ func orderRail(rail []*homeGridPanel) []*homeGridPanel {
 func markRailGap(rail []*homeGridPanel) {
 	seen := false
 	for _, p := range rail {
+		if p.height() == 0 {
+			continue
+		}
 		if p.slot.pinned {
 			seen = true
 			continue
@@ -985,7 +1038,10 @@ func (p homeGridPanel) lines() []homeLine {
 	if p.read.said != "" {
 		head += rowSep + p.read.said
 	}
-	out := []homeLine{{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, note: p.slot.explainer, right: p.read.right, money: p.read.money}}}
+	var out []homeLine
+	if head != "" {
+		out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, note: p.slot.explainer, right: p.read.right, money: p.read.money}})
+	}
 	if p.empty() {
 		for _, words := range p.whisper {
 			out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellWhisper, panel: id, title: words}})
@@ -1031,12 +1087,14 @@ func (p homeGridPanel) lines() []homeLine {
 // and a line that named a place `enter` did not go to would be a door drawn on
 // a wall (review of #1046). The way to the rest is the panel's HEADING, which
 // opens the place that owns the panel (law 10): tasks for `needs you`,
-// `running` and `since you left`, standing for `scheduled`, the search for
-// `where you were`. It used to be the other way round: law 9 said the fold IS
-// the door, `N more · tasks` opened the tasks place, and `where you were`'s `N
-// more · type to find one` was not a stop at all because typing was its door;
-// the owner found one line that opened somewhere and another that could not be
-// stood on and asked for one thing that expands.
+// `tasks` and `since you left`, standing for `scheduled`. `threads` has no
+// place of its own to open (the search place was its door until 2026-09-17;
+// the box under home is the search now), so its heading names only the panel.
+// It used to be the other way round: law 9 said the fold IS the door, `N more
+// · tasks` opened the tasks place, and `threads`'s `N more · type to find one`
+// was not a stop at all because typing was its door; the owner found one line
+// that opened somewhere and another that could not be stood on and asked for
+// one thing that expands.
 func (p homeGridPanel) fold() homeLine {
 	words := ""
 	rest := p.hidden() + p.read.older
@@ -1171,134 +1229,27 @@ func (h *homeView) rowOf(at int) int {
 	return row
 }
 
-// gridCross moves the cursor into the neighbouring column, onto the stop whose
-// row is nearest the one it left — the same rank a person's eye was at. It
-// reports false when there is no column that way, or none with a row in it, so
-// the arrow keeps whatever else it means at the edge (the verb strip).
-func (h *homeView) gridCross(dir int) bool {
-	best := h.gridCrossTarget(dir)
-	if best < 0 {
-		return false
-	}
-	h.cursor, h.picked = best, true
-	return true
-}
-
-// gridCrossTarget is the line [homeView.gridCross] would land on, and -1 where
-// the arrow keeps its other meaning. The foot asks it too, to know whether `→`
-// on the row under the cursor is a move or the strip ([app.homeCrossChord]).
-func (h *homeView) gridCrossTarget(dir int) int {
-	y := h.rowOf(h.cursor)
-	// A COLUMN WITH NOTHING TO STAND ON IS NO COLUMN THAT WAY — every panel in
-	// it is whispering, or the field never filled it at all — so the arrow STEPS
-	// OVER IT and asks the next one. It stopped at the neighbour until the field
-	// began leaving its second column empty (law 2, ruled 2026-09-15), and a
-	// crossing that stopped there would put the rail out of the arrows' reach
-	// entirely on a wide quiet frame: projects and spend would be drawn on the
-	// screen with no key that walks to them.
-	for next := h.columnOf(h.cursor) + dir; next >= 0 && next < h.grid.cols; next += dir {
-		best, gap := -1, 0
-		for _, at := range h.columnStops(next) {
-			d := h.rowOf(at) - y
-			if d < 0 {
-				d = -d
-			}
-			if best < 0 || d < gap {
-				best, gap = at, d
-			}
-		}
-		if best >= 0 {
-			return best
-		}
-	}
-	// AND WHERE NO COLUMN THAT WAY HAS A ROW, the arrow keeps its other meaning.
-	return -1
-}
-
-// homeGridCross is `←` and `→` on the resting grid: the neighbouring column.
-//
-// IT IS READ BEFORE THE ROUTER'S ARROWS (place_home.go's [placeHome.owns]),
-// because the router's `→` opens a row's verbs and nearly every row on home has
-// some — so the geography would lose to the strip on every row a person could
-// stand on. The strip is still one arrow away where no column lies to the right.
-// Nothing else that holds the arrows is overruled: the tab bar, an open strip, a
-// question this window raised about a row.
-func (a *app) homeGridCross(msg tea.KeyPressMsg) bool {
-	// AN ERRAND'S ROW KEEPS ITS `→`, which takes the keyboard into the errand
-	// (home.go's [app.homeKey]) — the one row on home whose arrow already meant
-	// "into what is beside me".
-	if a.bar.on || a.strip.open || a.home.ask != nil || !a.home.gridOn() || a.paneExchange() != nil {
-		return false
-	}
-	dir := 0
-	switch msg.String() {
-	case "left":
-		dir = -1
-	case "right":
-		dir = 1
-	default:
-		return false
-	}
-	if !a.home.gridCross(dir) {
-		return false
-	}
-	// A KEY IS THE PERSON TAKING THE CURSOR BACK, and it clears what every other
-	// key on home clears ([app.homeKey]).
-	a.movedFrom = ""
-	a.home.say("", "")
-	a.sweepExchanges()
-	a.touch()
-	return true
-}
-
-// homeFolderChordWord is the ONE chord the foot names for a row whose `→`
-// crosses columns: the strip's own word for the verb, after the key that
-// reaches it without the strip.
-const homeFolderChordWord = "ctrl+o " + homeProjectFolderWord
-
-// homeCrossChord is the one chord the foot names on a grid row whose `→` crosses
-// into the next column, and "" everywhere else.
-//
-// COLUMNS WIN THE ARROW (DESIGN §6 ruling 6), so a row with a column of rows to
-// its right has verbs `→` cannot reach. The chords still reach them, and a door
-// a person cannot see is a door they never learn (docs/DESIGN-LANGUAGE.md: every
-// chord keeps a visible door beside it) — so the foot says one.
-//
-// AND IT IS THE SAME ONE ON EVERY ROW: THE FOLDER. It used to be the row's own
-// verb — `ctrl+e pause` on a standing order, `ctrl+x stop` on work this window
-// holds, the folder otherwise — so the foot changed as the cursor walked from a
-// conversation to an order to a task, three sentences for one gesture (owner,
-// 2026-09-15: "it flops between a few redundant alternatives"). One sentence on
-// every row of the field is a thing a person stops reading, which is what a
-// resting foot is for; pause and stop are still on their chords and on the
-// `alt+.` map. The folder is the one verb every kind of row has, because every
-// row of the field belongs to a project — a conversation's workspace, an
-// order's, the conversation a landing ran in — and a row with none, or whose
-// folder has been deleted, or on a machine whose folders are not this one's,
-// says the four keys alone rather than a chord that would refuse.
-func (a *app) homeCrossChord(line homeLine) string {
-	if !a.home.gridOn() || a.home.gridCrossTarget(1) < 0 {
-		return ""
-	}
-	if folder := homeRowFolder(line); folder != "" && !a.hosted() && !a.home.gone[folder] {
-		return homeFolderChordWord
-	}
-	return ""
-}
+// THE ARROWS STAY IN THEIR COLUMN. `←` and `→` used to cross into the
+// neighbouring column, onto the row nearest the one they left (DESIGN §6 ruling
+// 6, "columns win the arrow"), and the foot named `ctrl+o open folder` on every
+// field row because the strip was then not one arrow away. The owner ruled
+// (2026-09-17) that nothing outside the left column is to be walked at all: the
+// rail is read, not stood on — `projects` and `spend` have no stops — and a
+// person on a field row who pressed `→` landed on a project and then opened its
+// strip under the row they had just left. So the two arrows are the router's
+// again on every column, as they are at one column: `→` opens the row's verbs
+// and `←` closes them, and the foot is the resting sentence alone.
 
 // homeRowFolder is the folder `ctrl+o` opens for a row, and "" for a row that
 // belongs to no folder — a spend row, a fold.
 //
 // EVERY ROW OF THE FIELD ANSWERS, not only a conversation's: a standing order
 // carries the workspace it stands over, and a `since you left` line carries the
-// conversation the news happened in, so the foot's one chord is true on all of
-// them ([app.homeCrossChord]).
+// conversation the news happened in. The same shortcut works on every kind of row.
 func homeRowFolder(line homeLine) string {
 	switch line.kind {
 	case homeSession:
 		return strings.TrimSpace(line.row.Workspace)
-	case homeProjectRow:
-		return strings.TrimSpace(line.proj.Path)
 	case homeItem:
 		return strings.TrimSpace(line.item.Workspace)
 	case homeLedger:
@@ -1370,21 +1321,37 @@ func (a *app) homeHitAt(x, y int, hits []int) int {
 // heading worked out apart from the draw would open the wrong place on exactly
 // the frame a person could not tell why.
 func (a *app) homeHeadPress(x, y int) (tea.Cmd, bool) {
+	at, ok := a.homeHeadAt(x, y)
+	if !ok {
+		return nil, false
+	}
+	if !a.homeHeadDoor(at) {
+		return nil, true
+	}
+	return a.showPage(homeSlotOf(a.home.lines[at].cell.panel).head), true
+}
+
+// homeHeadAt is the heading line under a pointer at (x, y), read from the
+// headings the frame drew ([homeMark.heads]). It is the one lookup a press and
+// a hover share, so the heading that underlines under the pointer is the
+// heading the press would open ([app.homeHover]).
+func (a *app) homeHeadAt(x, y int) (int, bool) {
 	marks := a.home.gridMarks
 	if y < 0 || y >= len(marks) || !marks[y].grid {
-		return nil, false
+		return -1, false
 	}
 	at := marks[y].heads[a.home.gridColumnAt(x)]
 	if at < 0 || at >= len(a.home.lines) || a.home.lines[at].cell == nil {
-		return nil, false
+		return -1, false
 	}
-	// The registry answers whether the heading names a place at all, which keeps
-	// this file from asking a page id what it is (placelaws_test.go, law 1).
-	id := homeSlotOf(a.home.lines[at].cell.panel).head
-	if placeFor(id) == nil {
-		return nil, true
-	}
-	return a.showPage(id), true
+	return at, true
+}
+
+// homeHeadDoor reports whether the heading on line at names a place. The
+// registry answers rather than the page id, which keeps this file from asking
+// a page id what it is (placelaws_test.go, law 1).
+func (a *app) homeHeadDoor(at int) bool {
+	return homeHeadOpens(a.home.lines[at].cell.panel)
 }
 
 // gridColumnAt is the column an x falls in: the last one starting at or before
@@ -1476,7 +1443,7 @@ func (a *app) homeOffersAnswer(at int) bool {
 // folder to leave the answer in can be answered from here, and one without
 // cannot (homepanel_needs.go's [app.homeAnswerLanding]).
 func (a *app) homeRowOffer(line homeLine) string {
-	if line.cell == nil || line.cell.panel != panelNeeds || line.cell.answers == "" {
+	if line.cell == nil || line.cell.answers == "" {
 		return ""
 	}
 	row, now := a.homeTrue(line.row), a.home.world.Read
@@ -1527,7 +1494,9 @@ func (a *app) homeRowOffer(line homeLine) string {
 // beside the cursor's). The description column already drew it only for the
 // selected row ([app.homeDescNote]); this makes the second-line shape agree.
 func (a *app) homeRowAnswers(line homeLine, at int) string {
-	if line.cell == nil {
+	// The option menu owns the letters while open; normal answer hints would
+	// promise a different action for the same key.
+	if line.cell == nil || a.strip.open {
 		return ""
 	}
 	if words := a.homeRowOffer(line); words != "" {
@@ -1566,7 +1535,7 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 // homePreselect puts the cursor on THE CONVERSATION THIS WINDOW WAS IN BEFORE
 // THIS ONE (law 6): the most recent key on this window's own stack that is not
 // the one in front and is on the grid. Enter is then a switch in two keys, and
-// esc still goes back to the conversation behind home.
+// repeated Escape presses stay on Home.
 func (a *app) homePreselect() {
 	if !a.home.gridOn() {
 		return
@@ -1574,8 +1543,10 @@ func (a *app) homePreselect() {
 	front := a.frontTabKey()
 	for at := len(a.prev) - 1; at >= 0; at-- {
 		if key := a.prev[at]; key != "" && key != front {
-			a.home.point(key)
-			return
+			if tab, ok := chatTabAt(a.tabList(), key); ok {
+				a.home.point(tab.file)
+				return
+			}
 		}
 	}
 }

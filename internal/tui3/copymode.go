@@ -149,17 +149,20 @@ type copyMode struct {
 	at, top, mark int
 }
 
-// enterCopy freezes the viewport. It snapshots the CURRENT row list and parks
-// the cursor on the last row a person can see, which is where their eye is —
-// the live edge is what they were watching when they reached for the key.
+// enterCopy freezes the viewport. It lays the page out after copy mode owns it,
+// so a transient sign of life and the blank that belongs to it cannot become
+// transcript, then parks the cursor on the last row a person can see — the live
+// edge is what they were watching when they reached for the key.
 func (a *app) enterCopy() {
 	if a.copy.on {
 		return
 	}
 	width := a.bodyWidth()
 	height := a.viewHeight()
-	rows := a.visible(width)
+	a.copy.on = true
+	rows := a.layout(width)
 	if len(rows) == 0 {
+		a.copy.on = false
 		return
 	}
 	snapshot := make([]string, 0, len(rows))

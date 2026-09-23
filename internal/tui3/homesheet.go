@@ -778,19 +778,19 @@ func (a *app) homeSheetKeyFirst(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// (homestanding.go's [app.homeItemWrite]). The sheet is the card, and
 		// the card names `ctrl+e pause` and `ctrl+x stop`; the bare pair stays
 		// as a synonym for the same modal reason as `m` above.
-		if line, ok := a.home.focusedLine(); ok && line.kind == homeItem {
+		if line, ok := a.home.focusedLine(); ok && line.standsForItem() {
 			if msg.String() == "p" || msg.String() == "ctrl+e" {
 				return a.homeItemWrite(line, standing.StatusPaused), true
 			}
 			return a.homeItemWrite(line, standing.StatusRetired), true
 		}
 		return nil, true
-	case "ctrl+v":
+	case effortKey:
 		// AND THE ITEM'S RUNG, at this width too, on the rule above: a key the
 		// card's legend names works wherever the card is drawn (homeeffort.go).
 		// An item's rung is the only one this chord moves anywhere now, so there
 		// is nothing else it could mean here.
-		if line, ok := a.home.focusedLine(); ok && line.kind == homeItem {
+		if line, ok := a.home.focusedLine(); ok && line.standsForItem() {
 			return a.cycleItemEffort(line.item), true
 		}
 		return nil, true

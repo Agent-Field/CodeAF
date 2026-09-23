@@ -268,6 +268,8 @@ type SessionRow struct {
 	// Archived says the person put this conversation away from home's resting
 	// list ([Meta.Archived]); home gathers such rows under one folded line.
 	Archived bool
+	// ArchivedTasks is the person's per-task visibility choice from metadata.
+	ArchivedTasks map[string]bool
 }
 
 // NeedsPerson reports that this conversation is stopped waiting on somebody. It
@@ -469,20 +471,21 @@ func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 	}
 	meta, _ := LoadMeta(dir)
 	row := SessionRow{
-		ID:         filepath.Base(dir),
-		Dir:        dir,
-		Transcript: transcript,
-		Title:      firstWord(seed.Title, meta.Title),
-		Workspace:  firstWord(seed.Workspace, meta.Workspace),
-		Owned:      meta.Owned,
-		Model:      firstWord(seed.Model, meta.Model),
-		At:         meta.LastUserAt,
-		Created:    meta.Created,
-		Spend:      meta.SpentUSD,
-		Tokens:     meta.Tokens,
-		Open:       InUse(transcript),
-		Archived:   meta.Archived,
-		Places:     metaPlaces(meta),
+		ID:            filepath.Base(dir),
+		Dir:           dir,
+		Transcript:    transcript,
+		Title:         firstWord(seed.Title, meta.Title),
+		Workspace:     firstWord(seed.Workspace, meta.Workspace),
+		Owned:         meta.Owned,
+		Model:         firstWord(seed.Model, meta.Model),
+		At:            meta.LastUserAt,
+		Created:       meta.Created,
+		Spend:         meta.SpentUSD,
+		Tokens:        meta.Tokens,
+		Open:          InUse(transcript),
+		Archived:      meta.Archived,
+		ArchivedTasks: meta.ArchivedTasks,
+		Places:        metaPlaces(meta),
 	}
 	row.Presence, row.Live = ReadSessionPresence(dir, now)
 	var mine []TaskIndexEntry
@@ -638,22 +641,23 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 	// and every reader of this row asks Live before it asks anything else.
 	presence, live := ReadSessionPresence(dir, now)
 	return SessionRow{
-		ID:         id,
-		Dir:        dir,
-		Transcript: transcript,
-		Title:      strings.TrimSpace(meta.Title),
-		Workspace:  strings.TrimSpace(meta.Workspace),
-		Owned:      meta.Owned,
-		Model:      strings.TrimSpace(meta.Model),
-		At:         at,
-		Created:    meta.Created,
-		Spend:      meta.SpentUSD,
-		Tokens:     meta.Tokens,
-		Open:       InUse(transcript),
-		Presence:   presence,
-		Live:       live,
-		Archived:   meta.Archived,
-		Places:     metaPlaces(meta),
+		ID:            id,
+		Dir:           dir,
+		Transcript:    transcript,
+		Title:         strings.TrimSpace(meta.Title),
+		Workspace:     strings.TrimSpace(meta.Workspace),
+		Owned:         meta.Owned,
+		Model:         strings.TrimSpace(meta.Model),
+		At:            at,
+		Created:       meta.Created,
+		Spend:         meta.SpentUSD,
+		Tokens:        meta.Tokens,
+		Open:          InUse(transcript),
+		Presence:      presence,
+		Live:          live,
+		Archived:      meta.Archived,
+		ArchivedTasks: meta.ArchivedTasks,
+		Places:        metaPlaces(meta),
 	}, true
 }
 

@@ -71,12 +71,13 @@ func TestTheQuestionMarkOpensHelpAndNeverEatsATypedOne(t *testing.T) {
 		t.Fatal("? twice on a place left the map up — the key is a toggle or it is a mode")
 	}
 
-	// AND A PLACE'S BOX KEEPS ITS OWN QUESTION MARK.
+	// AND A PLACE'S BOX KEEPS ITS OWN QUESTION MARK — the search place's query,
+	// since spend has no box any more (pages.go's [place.box]).
 	d := placeApp(t)
-	d.showPage(pageSpend)
+	d.showPage(pageSearch)
 	typeInto(t, d, "how much")
 	drive(t, d, key(helpAskKey))
-	if got := d.compose.String(); got != "how much?" {
+	if got := d.search.query.String(); got != "how much?" {
 		t.Fatalf("? into a place's box left %q — the key ate a character somebody typed", got)
 	}
 	if d.mapShowing {

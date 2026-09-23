@@ -52,8 +52,8 @@ package tui3
 //     func() tea.Cmd{…}}` ([verb], and homephone's `do func(a *app) tea.Cmd`) is
 //     handing the LOOP something to run when a key is pressed. Walking those
 //     made the frame's graph the whole surface's, and #898's wider reach is what
-//     showed it: `a.homeCrossChord` asks a running row for its verbs in order to
-//     NAME them on the hint line, the stop verb's closure calls `a.closeHome`,
+//     showed it: the former `a.homeCrossChord` asked a running row for its verbs
+//     to NAME them on the hint line; the stop verb's closure calls `a.closeHome`,
 //     and from there the walk reached navigation, `app.stowDrafts` and a draft
 //     record read off the disk — a call no paint has ever made. A fictional call
 //     chain is worse than a missing one (the local rule below says the same of

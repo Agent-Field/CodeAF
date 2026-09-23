@@ -130,15 +130,34 @@ type LaneNews struct {
 var (
 	laneNewsMu     sync.RWMutex
 	laneNewsReader func(LaneNews)
+	// laneNewsHeld is the last LANDED sighting told while nobody was
+	// listening, kept for the next reader. An engine host replays a
+	// conversation's last sighting to a window the moment it attaches
+	// (internal/remote's news.go), which is during the welcome — before the
+	// surface has registered its reader — and a sighting dropped there was a
+	// window that named no machine until the next answer (2026-09-17). A
+	// rescue in flight or a withdrawal is not held: it is a claim about a
+	// moment, and the moment has passed by the time anybody listens.
+	laneNewsHeld *LaneNews
 )
 
 // OnLaneNews registers the reader every answer's lane story is told to, and
 // hands back the one that was there — so a surface that opens over another can
-// put it back when it closes. A nil function unregisters.
+// put it back when it closes. A nil function unregisters. A sighting told
+// while nobody was registered is handed to the reader as it registers
+// ([laneNewsHeld]).
 func OnLaneNews(fn func(LaneNews)) (previous func(LaneNews)) {
 	laneNewsMu.Lock()
-	defer laneNewsMu.Unlock()
 	previous, laneNewsReader = laneNewsReader, fn
+	held := laneNewsHeld
+	if fn != nil {
+		laneNewsHeld = nil
+	}
+	laneNewsMu.Unlock()
+	if fn != nil && held != nil {
+		news := *held
+		laneNewsDesk.tell(func() { fn(news) })
+	}
 	return previous
 }
 
@@ -155,14 +174,18 @@ func postLaneNews(news LaneNews) {
 	if news.Model == "" {
 		return
 	}
-	laneNewsMu.RLock()
-	reader := laneNewsReader
-	laneNewsMu.RUnlock()
-	if reader == nil {
-		return
-	}
 	if news.At.IsZero() {
 		news.At = time.Now()
+	}
+	laneNewsMu.Lock()
+	reader := laneNewsReader
+	if reader == nil && !news.Trying && !news.Failed && (news.Lane != "" || news.Winner != "") {
+		kept := news
+		laneNewsHeld = &kept
+	}
+	laneNewsMu.Unlock()
+	if reader == nil {
+		return
 	}
 	laneNewsDesk.tell(func() { reader(news) })
 }

@@ -490,7 +490,7 @@ Look at what happened — read-only, no key, nothing spent
   codeaf why <task-id> [--db path]
       what one piece of work did — its turns, tools, arguments, how it ended
   codeaf telemetry
-      the anonymous usage counts: status, show, off, on
+      the anonymous usage counts: status, info, show, off, on
   codeaf logs [--tail 40] [--follow] [--path] [--json] [--run id]
               [--call id] [--tag t] [--model m] [--node n] [--body id]
       every model call codeaf made — what was asked, which lane answered, what
@@ -509,7 +509,7 @@ Look at what happened — read-only, no key, nothing spent
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
   codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
-      check for or install a release; stable is the default
+      check or install a release; this build's own channel is the default
   codeaf cache
       what the shared build cache holds, and how big it is
   codeaf cache clean [--yes]

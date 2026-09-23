@@ -44,9 +44,10 @@ func TestADoorAtRestWhoseTaskSubtreeTurnsSaysWorking(t *testing.T) {
 	if painted != a.pal.accent(tabWorkingWord) {
 		t.Fatalf("the working word is not painted accent: %q", painted)
 	}
-	// AND THE ROW ITSELF CARRIES IT, not only the word function.
-	if row := plain(a.status(a.width)); !strings.Contains(row, tabWorkingWord) {
-		t.Fatalf("the status row does not say %q:\n%q", tabWorkingWord, row)
+	// AND THE SEAM ITSELF CARRIES IT, not only the word function: the
+	// status reading lives above the message box beside the model.
+	if row := plain(a.legend(a.width)); !strings.Contains(row, tabWorkingWord) {
+		t.Fatalf("the seam does not say %q:\n%q", tabWorkingWord, row)
 	}
 	// AND IT IS A READING, NOT A TURN: no spinner and no clock, which belong to a
 	// turn that is not running (render.go's [app.stateSegment]).

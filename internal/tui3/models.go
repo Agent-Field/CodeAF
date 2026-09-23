@@ -6,6 +6,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -749,56 +751,170 @@ func modelNoteVia(model Model, pin, routing string) string {
 // that is last to be drawn is a field that should be said in words or not at
 // all.
 func modelFields(model Model, pin, routing string) []rowField {
-	if model.Direct {
-		return []rowField{
-			{}, {}, priceField(model.PromptPrice, model.CompletionPrice),
-			rowSay(contextWord(model.ContextLength)), {},
-			rowSay(eloWord(model.ArenaElo)), rowSay(ModalityWord(model.Input, model.Output)),
-		}
+	facts := modelFactsOf(model, pin, routing)
+	lane, first, rate := rowField{}, rowField{}, rowField{}
+	if facts.via != "" {
+		lane = rowSay("via "+facts.via, facts.via)
 	}
-	// THE CLOCK IS READ HERE AND NOT PASSED IN because ageing a belief by a few
-	// milliseconds cannot change a figure rounded to a tenth of a second, and
-	// [laneAuto] asks typically — posterior means, no Thompson draw — so the
-	// clock cannot re-sample a `via` either. Threading a moment through every
-	// list on this surface to prove that would be a parameter nobody could
-	// ever see the effect of.
+	if facts.first != "" {
+		first = rowSay(laneUpMark+facts.first, facts.first)
+	}
+	if facts.rate != "" {
+		rate = rowSay(facts.rate + laneRateUnit)
+	}
+	// THE TWO MODALITY SIDES ARE TWO FIELDS, exactly as they are two columns,
+	// so the tail gives up `outputs` before `inputs` the way a narrow table does
+	// and the two shapes rank the same facts the same way. Each spells its own
+	// side, because a tail has no head to spell it ([ModalityWord]).
+	//
+	inputs, outputs := rowField{}, rowField{}
+	if facts.inputs != "" {
+		inputs = rowSay(modalityInputsLead + " " + facts.inputs)
+	}
+	if facts.outputs != "" {
+		outputs = rowSay(modalityOutputsLead + " " + facts.outputs)
+	}
+	return []rowField{
+		lane,
+		first,
+		facts.priceField(),
+		rowSay(facts.window),
+		rate,
+		rowSay(facts.eloWord()),
+		inputs,
+		outputs,
+	}
+}
+
+// ── ONE READING OF A MODEL, FOR BOTH SHAPES OF ROW ──────────────────────────
+//
+// modelFacts is what a row says about a model past its name, each fact in the
+// BARE spelling — the figure with no unit on it and no word in front of it.
+//
+// It exists because this surface now draws those facts two ways. The ranked
+// tail says the unit on every row, because a fact standing alone in a sentence
+// of facts has to name itself: `$0.09/$0.18 per M · 1M · elo 1424`. The table
+// says it once, in the column's head, and a row under it carries the figure
+// alone. Both are right for what they are, and both must be the same reading of
+// the same model — a price that meant dollars per million in one and dollars
+// per thousand in the other would be the exact defect CLAUDE.md's
+// one-source-of-truth rule is written against.
+//
+// So the reading happens HERE, once, and each shape dresses it: [modelFields]
+// puts the units back on, [modelFacts.cells] leaves them off and lets
+// [modelColumns] carry them.
+type modelFacts struct {
+	// via is the machine that would serve this model, lowercased and with no
+	// `via ` in front of it.
+	via string
+	// first is the wait before the first word, `0.8s`, with no [laneUpMark].
+	first string
+	// in and out are what a million prompt and completion tokens cost, `$0.09`
+	// and `$0.18`. BOTH ARE SET OR NEITHER IS ([priceWord] states why: zero is
+	// "nobody published a figure" and never "free", so half a price is a row
+	// that cannot answer).
+	in, out string
+	// window is how much it holds, `128k` or `1M`.
+	window string
+	// rate is how fast it writes once it has started, `58`, with no unit.
+	rate string
+	// elo is the arena score as a bare number, `1424`, with no `elo ` on it.
+	elo string
+	// inputs and outputs are what the model takes in and gives back BEYOND text,
+	// in the catalog's own nouns: `image file`, `speech`. They are the two facts
+	// here that are already words rather than figures, and the two that a head
+	// can only name by side — which is why they are a pair rather than one fact
+	// ([modalityInputs], [modalityOutputs]).
+	inputs, outputs string
+}
+
+// modelFactsOf reads one model. pin is the machine this conversation is held
+// to when the row is this conversation's, and routing is the row in force —
+// the two things a lane fact cannot be read without.
+func modelFactsOf(model Model, pin, routing string) modelFacts {
+	facts := modelFacts{
+		window:  contextWord(model.ContextLength),
+		elo:     eloBare(model.ArenaElo),
+		inputs:  modalityInputs(model.Input),
+		outputs: modalityOutputs(model.Output),
+	}
+	// BOTH HALVES OR NEITHER, which is [priceWord]'s rule read once here rather
+	// than asked again by everything that draws half a price.
+	if model.PromptPrice > 0 && model.CompletionPrice > 0 {
+		facts.in = "$" + perMillion(model.PromptPrice)
+		facts.out = "$" + perMillion(model.CompletionPrice)
+	}
+	// A CONNECTED SERVICE HAS ONE ROAD, so router lane facts do not belong on
+	// its row and are not even read for it.
+	if model.Direct {
+		return facts
+	}
+	via, best, known := modelLaneReading(model, pin, routing)
+	facts.via = via
+	// THE NUMBERS BELONG TO THE LANE THE ROW NAMES ([laneShown] states why).
+	if known {
+		facts.first = laneSecondsWord(best.TTFT)
+		facts.rate = laneRateBare(best.Rate)
+	}
+	return facts
+}
+
+// modelLaneReading is the lane a model's row NAMES and the figures that row draws
+// from it: the name as `via` spells it, the view, and whether it carries timing at
+// all.
+//
+// ── ONE READING, FOR THE CELL AND FOR THE SORT ──────────────────────────────
+//
+// It is its own function because two things ask it. [modelFactsOf] draws the
+// cells; pickersort.go's [pickerRankOf] orders the rows BY those cells, and it
+// used to ask [bestLane] instead — which answers a different question. `bestLane`
+// is the fastest-feeling lane in the ledger; this is the lane the row actually
+// SAYS, which is the pin when there is one, otherwise whatever the chooser would
+// send to, and NOTHING AT ALL under a routing row where codeaf does not choose
+// ([laneAutoSaid]). So a row whose `first` cell was blank could still carry a real
+// number into the sort, and the blanks stopped landing together: the list was
+// ordered by a figure that was not on the screen.
+//
+// THE CLOCK IS READ HERE AND NOT PASSED IN because ageing a belief by a few
+// milliseconds cannot change a figure rounded to a tenth of a second, and
+// [laneAuto] asks typically — posterior means, no Thompson draw — so the clock
+// cannot re-sample a `via` either. Threading a moment through every list on this
+// surface to prove that would be a parameter nobody could ever see the effect of.
+func modelLaneReading(model Model, pin, routing string) (string, laneView, bool) {
+	// A CONNECTED SERVICE HAS ONE ROAD, so router lane facts do not belong on its
+	// row and are not even read for it — the same early return the cells take.
+	if model.Direct {
+		return "", laneView{}, false
+	}
 	now := timeNow()
 	views := laneViews(model.ID, now)
 	via := pin
 	if via == "" {
 		via = laneAuto(routing, model.ID, views, now)
 	}
-	// THE NUMBERS BELONG TO THE LANE THE ROW NAMES ([laneShown] states why),
-	// and they are three fields rather than one phrase now: the lane a person
-	// is served by outranks every number, and the throughput sits five rungs
-	// under the wait it used to be glued to.
 	best, known := laneShown(routing, views, via)
-	first, rate := rowField{}, rowField{}
-	if known {
-		if word := laneSecondsWord(best.TTFT); word != "" {
-			first = rowSay(laneUpMark+word, word)
-		}
-		if word := laneRateTight(best.Rate); word != "" {
-			rate = rowSay(word)
-		}
-	}
-	lane := rowField{}
-	if via != "" {
-		lane = rowSay("via "+strings.ToLower(via), strings.ToLower(via))
-	}
-	return []rowField{
-		lane,
-		first,
-		priceField(model.PromptPrice, model.CompletionPrice),
-		rowSay(contextWord(model.ContextLength)),
-		rate,
-		rowSay(eloWord(model.ArenaElo)),
-		rowSay(ModalityWord(model.Input, model.Output)),
-	}
+	return strings.ToLower(via), best, known
 }
 
-// ModalityWord is what a row can do BESIDES hold a conversation, in the
-// shortest words that stay true: "sees · draws".
+// priceField is the price as the ranked tail's one fact, in three spellings —
+// see [priceField]'s own account of why the short ones drop the prompt half.
+func (f modelFacts) priceField() rowField {
+	if f.in == "" || f.out == "" {
+		return rowField{}
+	}
+	return rowSay(f.in+"/"+f.out+" per M", f.out+"/M", f.out)
+}
+
+// eloWord is the arena score with the word that names it, for a tail where no
+// column head can.
+func (f modelFacts) eloWord() string {
+	if f.elo == "" {
+		return ""
+	}
+	return "elo " + f.elo
+}
+
+// ── WHAT A MODEL TAKES IN AND GIVES BACK ────────────────────────────────────
 //
 // Since the door stopped narrowing the list (docs/MULTIMODAL.md Decision 6),
 // every picker is a filtered view of one catalog, and a filtered list is only
@@ -806,40 +922,127 @@ func modelFields(model Model, pin, routing string) []rowField {
 // no capability on them is a list where "why is this one here" has no answer on
 // screen.
 //
-// THE EMPTINESS LAW DECIDES WHAT IS SAID: a plain text chat model — text in,
-// text out, the overwhelming majority of every list — says NOTHING NEW, because
-// "reads · writes" on five hundred rows is furniture rather than information. A
-// row that published nothing says nothing either: silence is text-in/text-out by
-// the one silence law, which is exactly the case that earns no words.
+// THESE ARE THE CATALOG'S OWN NOUNS AND NOT A VOCABULARY OF OURS. The row used
+// to say `sees · hears · watches · draws`, one invented verb per modality, and
+// two things were wrong with it. The first is that a verb has to say the side
+// as well as the thing — `sees` is "image, on the way in" — so six words had to
+// be learned before a row could be read, and the words were the only place the
+// side was written down. A table has a head over every column, and a head can
+// say the side for the whole list: under `reads` and `makes`, `image` needs no
+// verb at all and no learning.
 //
-// The input side comes first because it is what a person is usually shopping
-// for — can it see my screenshot — and because a model that both sees and draws
-// reads better forwards than backwards.
+// The second is that the verbs were LOSSY where the catalog is not. `speaks`
+// was `speech`, `audio` and `music` folded into one word, so a row that answers
+// in music and a row that answers in speech read identically — and the two are
+// different products. The noun is what was published, so it cannot fold.
+//
+// THE EMPTINESS LAW DECIDES WHAT IS SAID: `text` is dropped from both sides,
+// because a plain text chat model — text in, text out, the overwhelming
+// majority of every list — says NOTHING NEW, and `text` on five hundred rows is
+// furniture rather than information. A row that published nothing says nothing
+// either: silence is text-in/text-out by the one silence law, which is exactly
+// the case that earns no words.
+
+// modalityOrderIn and modalityOrderOut are the order the words are said in, and
+// they are OURS rather than the catalog's for one reason: the catalog does not
+// have one. The live rows publish the same set three ways — `text, image, file`,
+// `file, image, text` and `image, text, file` are all in today's catalog for
+// models that read the same things — so a column that echoed the published
+// order would put the same fact in a different place on three neighbouring rows,
+// which is the exact defect the table was built to end.
+//
+// TEXT IS NOT IN EITHER LIST. Every model on every list here reads and writes
+// it — that is what makes them models you can talk to — so the word would be the
+// same five cells on five hundred rows, and a column is as wide as its widest
+// row. It was tried the other way for one wave and taken back out: what the
+// owner wanted from a cell is what the model can do BEYOND the ordinary, and
+// `text` on every row is the ordinary.
+//
+// The order is what a person is shopping for, commonest first: sight before
+// sound before video, and attachments last because a model that takes a file
+// usually takes a picture too.
+var (
+	modalityOrderIn  = []string{"image", "audio", "video", "file"}
+	modalityOrderOut = []string{"image", "speech", "audio", "music", "video"}
+)
+
+// modalityInputs is what a model takes in beyond text: "image file".
+func modalityInputs(input []string) string { return modalitySay(input, modalityOrderIn) }
+
+// modalityOutputs is what it gives back beyond text: "image", "speech".
+func modalityOutputs(output []string) string { return modalitySay(output, modalityOrderOut) }
+
+// modalitySay is one side of a model in the catalog's own words, in the given
+// order, with `text` left out of both by not being in either order.
+//
+// THE EMPTINESS LAW DECIDES WHAT IS SAID: a plain text chat model — text in,
+// text out, the overwhelming majority of every list — says NOTHING here, and a
+// row that published nothing says nothing either, because silence is
+// text-in/text-out by the one silence law (docs/MULTIMODAL.md Decision 6) and
+// that is exactly the case that earns no words. What a cell is for is the thing
+// the model can do BEYOND holding a conversation.
+//
+// A WORD THIS BUILD HAS NEVER HEARD OF IS STILL SAID, after the ones it knows
+// and in sorted order so two rows carrying it agree. The catalog publishes
+// `embeddings`, `transcription` and `rerank` today and will publish something
+// else tomorrow; a surface that drew only the words it was compiled with would
+// answer "text in, text out" for a whole family of models, which is the one
+// answer that cannot be told from the truth.
+func modalitySay(modalities []string, order []string) string {
+	said := make([]string, 0, len(modalities))
+	for _, want := range order {
+		if hasModality(modalities, want) {
+			said = append(said, want)
+		}
+	}
+	rest := make([]string, 0, len(modalities))
+	for _, modality := range modalities {
+		if modality == "" || modality == "text" || hasModality(order, modality) {
+			continue
+		}
+		rest = append(rest, modality)
+	}
+	sort.Strings(rest)
+	said = append(said, slices.Compact(rest)...)
+	return strings.Join(said, modalityJoin)
+}
+
+// modalityJoin is what separates two modalities INSIDE one cell, and it is a
+// SPACE. A comma was three cells wider on the widest row, and a column is as
+// wide as its widest row — three cells that decided, at a hundred columns,
+// whether the column was drawn at all. Under a head that names the side, the
+// words read as a set without help.
+const modalityJoin = " "
+
+// ModalityWord is both sides as ONE string, for a row with no head to lean on:
+// "inputs image file · outputs image".
+//
+// THE SIDE IS SAID IN WORDS HERE BECAUSE THERE IS NOTHING ELSE TO SAY IT. In
+// the table a head carries it (modeltable.go's `inputs` and `outputs` columns)
+// and the cell is the words alone; in a ranked tail, on a phone, and on
+// `codeaf models` there is no head, so the tail spells the side out.
 //
 // It is exported for `codeaf models`, which draws the same tail beside the same
-// facts (cmd/codeaf's models.go). One spelling of "draws", in one place.
+// facts (cmd/codeaf's models.go). One spelling, in one place.
 func ModalityWord(input, output []string) string {
-	words := make([]string, 0, 5)
-	if hasModality(input, "image") {
-		words = append(words, "sees")
+	said := make([]string, 0, 2)
+	if inputs := modalityInputs(input); inputs != "" {
+		said = append(said, modalityInputsLead+" "+inputs)
 	}
-	if hasModality(input, "audio") {
-		words = append(words, "hears")
+	if outputs := modalityOutputs(output); outputs != "" {
+		said = append(said, modalityOutputsLead+" "+outputs)
 	}
-	if hasModality(input, "video") {
-		words = append(words, "watches")
-	}
-	if hasModality(output, "image") {
-		words = append(words, "draws")
-	}
-	if hasModality(output, "speech") || hasModality(output, "audio") || hasModality(output, "music") {
-		words = append(words, "speaks")
-	}
-	if hasModality(output, "video") {
-		words = append(words, "films")
-	}
-	return strings.Join(words, " · ")
+	return strings.Join(said, rowSep)
 }
+
+// modalityInputsLead and modalityOutputsLead are the one word that names each
+// side. They are the SAME words the table's heads carry ([modelColumns]), so a
+// person who read `inputs` over a column and a person who read `inputs text
+// image` on a phone have learned one thing and not two.
+const (
+	modalityInputsLead  = "inputs"
+	modalityOutputsLead = "outputs"
+)
 
 // priceWord is what a million tokens cost, prompt then completion:
 // "$0.08/$0.15 per M".
@@ -857,26 +1060,6 @@ func priceWord(prompt, completion float64) string {
 		return ""
 	}
 	return "$" + perMillion(prompt) + "/$" + perMillion(completion) + " per M"
-}
-
-// priceField is the price as the row's ranked fact, in three spellings:
-//
-//	$0.08/$0.15 per M   both halves and the unit — what a person compares on
-//	$0.15/M             the completion price alone, which is the half a long
-//	                    answer spends, with the unit that makes it readable
-//	$0.15               the bare figure, for a frame with five cells left
-//
-// THE SHORT SPELLINGS DROP THE PROMPT HALF AND NOT THE COMPLETION ONE. A turn
-// pays for its answer far more than for its question, and of the two figures
-// the completion price is the one that decides between two models.
-//
-// Both halves must be known for any of them, exactly as [priceWord] demands:
-// zero is "nobody published a figure" and never "free".
-func priceField(prompt, completion float64) rowField {
-	if prompt <= 0 || completion <= 0 {
-		return rowField{}
-	}
-	return rowSay(priceWord(prompt, completion), "$"+perMillion(completion)+"/M", "$"+perMillion(completion))
 }
 
 // perMillion renders one per-token price as dollars per million tokens, to two
@@ -916,13 +1099,14 @@ func perMillion(perToken float64) string {
 	return text
 }
 
-// eloWord is the arena score as "elo 1243", empty when the catalog carries
-// none. It is spelled out rather than left as a bare number because a bare
-// four-digit figure beside a price and a window is a fourth number nobody can
-// name.
-func eloWord(elo float64) string {
+// eloBare is the arena score as a bare number, "1424", and empty when the
+// catalog carries none. The word that names it is put back on by whichever
+// shape of row draws it — [modelFacts.eloWord] for the tail, the column's own
+// head for the table — because a bare four-digit figure beside a price and a
+// window is a fourth number nobody can name until something names it.
+func eloBare(elo float64) string {
 	if elo <= 0 {
 		return ""
 	}
-	return "elo " + strconv.Itoa(int(math.Round(elo)))
+	return strconv.Itoa(int(math.Round(elo)))
 }

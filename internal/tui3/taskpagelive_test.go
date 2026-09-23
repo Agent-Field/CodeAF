@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -78,19 +79,17 @@ func TestTheOpenTaskPageDoesNotRefileWhenNothingMoved(t *testing.T) {
 
 // THE CURSOR STAYS ON THE WORK IT WAS ON WHEN THE LIST MOVES UNDER IT.
 //
-// This is the same defect the whole lane is about, reached by the clock rather
-// than by a bad match. The cursor is a LINE of a layout the beat replaces whole,
-// and the sections are ordered by what you do next — so a task finishing leaves
-// `running`, joins `finished today`, and every row that was below it moves up
-// one. A cursor kept as a number is then on a different piece of work than the
-// person is looking at, and the next `enter` opens it.
+// A task finishing changes the chronological order inside its conversation.
+// Selection must follow the task's identity, rather than staying on a line
+// number that now belongs to another task.
 func TestTheTaskPageCursorFollowsItsRowWhenAnotherTaskLands(t *testing.T) {
 	a := hostedPlaceLab(t)
 	a.showPage(pageTasks)
-	// Two live rows, and the cursor put on the SECOND of them — so the row above
-	// it is the one that will leave and take the numbering with it.
-	a.taskUpdate(oneRunningNode(41, "widening the sluice"))
-	a.taskUpdate(oneRunningNode(42, "reading the gauge"))
+	// Two live rows have distinct activity times, and the newer one is selected.
+	first, second := oneRunningNode(41, "widening the sluice"), oneRunningNode(42, "reading the gauge")
+	first.Task.StartedAt, second.Task.StartedAt = a.now().Add(-time.Hour), a.now().Add(-2*time.Hour)
+	a.taskUpdate(first)
+	a.taskUpdate(second)
 	a.taskSheet.regroup(a)
 	a.taskSheet.cursor = a.tasksSettle(0)
 	for i := 0; i < 20; i++ {
@@ -105,14 +104,11 @@ func TestTheTaskPageCursorFollowsItsRowWhenAnotherTaskLands(t *testing.T) {
 	}
 	was := a.taskSheet.cursor
 
-	// The row ABOVE it lands, which re-files it into another section. WHICH ROW IS
-	// ABOVE IS THE SORT'S ANSWER and not the order they arrived in: the list is
-	// sorted by age, newest first, so the gauge — asked for second — is the row
-	// over the sluice (tassort.go).
+	// The older sibling finishes and moves ahead of the selected row.
 	a.taskUpdate(session.Event{
 		Kind: session.EventTaskUpdate,
 		Tool: "propose_task",
-		Task: &session.TaskNotice{ID: 42, Title: "reading the gauge", State: session.TaskDone},
+		Task: &session.TaskNotice{ID: 42, Title: "reading the gauge", State: session.TaskDone, EndedAt: a.now()},
 	})
 	a.taskSheet.regroup(a)
 

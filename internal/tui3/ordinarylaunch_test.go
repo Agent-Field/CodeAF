@@ -175,29 +175,39 @@ func TestAHostedWindowIsAskedNothingOnAnOrdinaryLaunch(t *testing.T) {
 
 // ── 3. the approval posture, which is a safety claim ────────────────────────
 
-// THE YOLO SEGMENT REPORTS THE POSTURE IN FORCE.
+// THE APPROVALS CHIP REPORTS THE POSTURE IN FORCE.
 //
 // THIS ONE IS TESTED SEPARATELY BECAUSE IT IS NOT A STATUS SEGMENT, IT IS A
-// SAFETY CLAIM. The segment is drawn only when the gate is open (render.go's
-// NEGATIVE-SPACE SAFETY), so its ABSENCE is the claim that every tool call will
-// be asked about — and the gate it is claiming about is the one cmd/codeaf
+// SAFETY CLAIM. The chip says the gate's posture at every posture
+// (approvalchip.go) and the gate it is claiming about is the one cmd/codeaf
 // builds from [config.ToolApprovalModeAt] on the same profile directory
 // (chatv3.go's v3Policy). Before #322 the surface's reading answered "" on an
 // empty profile directory while the policy's reading resolved it to the state
 // root, so a person who had turned the asking OFF was shown nothing at all on
-// every ordinary launch: the one posture this segment exists to remind them of
-// was the one it never mentioned.
+// every ordinary launch: the one posture this cell exists to remind them of
+// was the one it never mentioned. The surface here has no dial of its own — the
+// fake agent has no door — so what is under test is the fallback the chip
+// draws from, which is what a hosted window draws from too.
 //
 // Four cases, which is the whole matrix: the ordinary launch and the hosted
 // window, under both postures.
-func TestTheYoloSegmentMatchesThePostureInForce(t *testing.T) {
-	t.Run("an ordinary launch that asks first says nothing", func(t *testing.T) {
+func TestTheApprovalsChipMatchesThePostureInForce(t *testing.T) {
+	t.Run("a fresh ordinary launch says YOLO", func(t *testing.T) {
 		a := ordinaryLaunch(t, Options{}, nil)
 		if force := config.ToolApprovalModeAt(""); force != config.DefaultToolApprovalMode {
-			t.Fatalf("the gate in force on a fresh profile is %q, want the strict default", force)
+			t.Fatalf("the gate in force on a fresh profile is %q, want the shipped default", force)
 		}
-		if got := a.yoloSegment(); got != "" {
-			t.Fatalf("the status line drew %q over a gate that asks first", got)
+		if got := a.approvalWord(); got != approvalYoloWord {
+			t.Fatalf("the chip reads %q over the default YOLO gate", got)
+		}
+	})
+
+	t.Run("an ordinary launch preserves a saved ask choice", func(t *testing.T) {
+		a := ordinaryLaunch(t, Options{}, func() {
+			writeOrdinaryRow(t, config.KeyToolApprovalMode, "prompt")
+		})
+		if got := a.approvalWord(); got != approvalAsksWord {
+			t.Fatalf("a saved prompt choice drew %q", got)
 		}
 	})
 
@@ -208,26 +218,38 @@ func TestTheYoloSegmentMatchesThePostureInForce(t *testing.T) {
 		if force := config.ToolApprovalModeAt(""); force != "allow" {
 			t.Fatalf("the gate in force is %q, want the posture just written", force)
 		}
-		if got := a.yoloSegment(); got != "YOLO" {
-			t.Fatalf("the status line drew %q while every tool call runs without asking", got)
+		if got := a.approvalWord(); got != approvalYoloWord {
+			t.Fatalf("the chip reads %q while every tool call runs without asking", got)
 		}
-		if screen := ordinaryScreen(a); !strings.Contains(screen, "YOLO") {
-			t.Fatalf("the segment never reached the frame:\n%s", screen)
+		// THE GREETING SAYS NOTHING ABOUT THE GATE (approvalchip.go's header).
+		// The first conversation's greeting stands through typing and goes
+		// with the first message ([app.spendWelcome]); the cell is on the seam
+		// the moment it does.
+		if screen := ordinaryScreen(a); strings.Contains(screen, approvalYoloWord) {
+			t.Fatalf("the greeting carries the gate's word:\n%s", screen)
+		}
+		a.spendWelcome()
+		if screen := ordinaryScreen(a); !strings.Contains(screen, approvalYoloWord) {
+			t.Fatalf("the chip never reached the frame once the greeting was spent:\n%s", screen)
 		}
 	})
 
-	// A person whose launch forced the gate open sees that posture in the
-	// segment and in the frame, even though the launch wrote nothing down.
+	// A person whose launch forced the gate open sees that posture on the chip
+	// and in the frame, even though the launch wrote nothing down.
 	t.Run("a launch the flag opened says so", func(t *testing.T) {
 		a := ordinaryLaunch(t, Options{ApprovalMode: "allow"}, nil)
-		if got := a.yoloSegment(); got != "YOLO" {
-			t.Fatalf("the status line drew %q while the launch's flag held the gate open", got)
+		if got := a.approvalWord(); got != approvalYoloWord {
+			t.Fatalf("the chip reads %q while the launch's flag held the gate open", got)
 		}
-		if screen := ordinaryScreen(a); !strings.Contains(screen, "YOLO") {
-			t.Fatalf("the segment never reached the frame:\n%s", screen)
+		if screen := ordinaryScreen(a); strings.Contains(screen, approvalYoloWord) {
+			t.Fatalf("the greeting carries the gate's word:\n%s", screen)
+		}
+		a.spendWelcome()
+		if screen := ordinaryScreen(a); !strings.Contains(screen, approvalYoloWord) {
+			t.Fatalf("the chip never reached the frame once the greeting was spent:\n%s", screen)
 		}
 		if force := config.ToolApprovalModeAt(""); force != config.DefaultToolApprovalMode {
-			t.Fatalf("the launch wrote %q into a profile whose strict default should stand", force)
+			t.Fatalf("the launch wrote %q into a profile whose default should stand", force)
 		}
 	})
 
@@ -237,26 +259,26 @@ func TestTheYoloSegmentMatchesThePostureInForce(t *testing.T) {
 		a := ordinaryLaunch(t, Options{ApprovalMode: "allow"}, func() {
 			writeOrdinaryRow(t, config.KeyToolApprovalMode, "prompt")
 		})
-		if got := a.yoloSegment(); got != "YOLO" {
+		if got := a.approvalWord(); got != approvalYoloWord {
 			t.Fatalf("the profile row hid the launch's open gate behind %q", got)
 		}
 	})
 
 	// THIS LAPTOP SAYS ALLOW AND THE ENGINE SAYS ASK, in both hosted cases: a
-	// badge drawn from this side would be a safety claim about a machine nobody
+	// chip drawn from this side would be a safety claim about a machine nobody
 	// consulted, and the engine's own answer travelled once on the welcome.
-	t.Run("a hosted window whose engine asks first says nothing", func(t *testing.T) {
-		a := ordinaryLaunch(t, Options{Host: "devbox", ApprovalMode: config.DefaultToolApprovalMode}, func() {
+	t.Run("a hosted window whose engine asks first says asks", func(t *testing.T) {
+		a := ordinaryLaunch(t, Options{Host: "devbox", ApprovalMode: "prompt"}, func() {
 			writeOrdinaryRow(t, config.KeyToolApprovalMode, "allow")
 		})
-		if got := a.yoloSegment(); got != "" {
+		if got := a.approvalWord(); got != approvalAsksWord {
 			t.Fatalf("a connection to an engine that asks first drew %q from this laptop's profile", got)
 		}
 	})
 
 	t.Run("a hosted window whose engine has the asking off says so", func(t *testing.T) {
 		a := ordinaryLaunch(t, Options{Host: "devbox", ApprovalMode: "allow"}, nil)
-		if got := a.yoloSegment(); got != "YOLO" {
+		if got := a.approvalWord(); got != approvalYoloWord {
 			t.Fatalf("a connection to an engine with the asking off drew %q", got)
 		}
 	})

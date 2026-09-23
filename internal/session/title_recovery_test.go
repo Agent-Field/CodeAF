@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestEmptyNamingAnswerFallsThroughAndPublishesBothNames(t *testing.T) {
+func TestEmptyNamingAnswerFallsThroughAndPublishesOneName(t *testing.T) {
 	completer := naming(&scriptedCompleter{steps: oneTurn("the rentals")},
 		namerReply{title: ""}, namerReply{title: "**Full:** rentals around victoria memorial square\n**Tab:** park rentals"})
 	agent, path := titleAgent(t, completer, func(c *Config) {
@@ -17,31 +17,28 @@ func TestEmptyNamingAnswerFallsThroughAndPublishesBothNames(t *testing.T) {
 	})
 	collect(t, mustSubmit(t, agent, "find apartments near the park"))
 	agent.titleJobs.Wait()
-	if agent.Title() != "rentals around victoria memorial square" || agent.ShortTitle() != "park rentals" {
+	if agent.Title() != "rentals around victoria memorial square" || agent.ShortTitle() != agent.Title() {
 		t.Fatalf("names = %q / %q", agent.Title(), agent.ShortTitle())
 	}
 	if completer.asks() != 2 || completer.namerModel(1) != "test/model" {
 		t.Fatal("invalid answer did not reach the fallback model")
 	}
 	replay, err := replaySessionFile(path)
-	if err != nil || replay.title != agent.Title() || replay.shortTitle != agent.ShortTitle() {
+	if err != nil || replay.title != agent.Title() || replay.shortTitle != "" {
 		t.Fatalf("replay = %+v, %v", replay, err)
 	}
 }
 
-func TestNamingRepairsFormattingAndCapsTabWords(t *testing.T) {
+func TestNamingRepairsFormattingAndIgnoresLegacyTabLabels(t *testing.T) {
 	for _, raw := range []string{
 		"**Full:** exploring backai github marketing\n**Tab:** backai marketing ideas",
 		"# Full: exploring backai github marketing\n> Tab: backai marketing ideas",
 		"Full: exploring backai github marketing\nTab: backai marketing ideas",
 	} {
 		got := cleanConversationTitle(raw)
-		if got.full != "exploring backai github marketing" || got.short != "backai marketing" {
+		if got.full != "exploring backai github marketing" {
 			t.Errorf("%q => %+v", raw, got)
 		}
-	}
-	if got := compactTitle("Full: Exploring BackAI's GitH…"); got != "Exploring BackAI's" {
-		t.Fatal(got)
 	}
 	for _, raw := range []string{"nothing to name", "Untitled", "no title"} {
 		if cleanTaskName(raw) != "" || cleanConversationTitle(raw).full != "" {
@@ -55,37 +52,37 @@ func TestNamingRepairsFormattingAndCapsTabWords(t *testing.T) {
 
 func TestConversationNamingReadsLabelsThroughFormattingAndKeepsRealNames(t *testing.T) {
 	for _, test := range []struct {
-		name        string
-		raw         string
-		full, short string
+		name string
+		raw  string
+		full string
 	}{
-		{name: "bare labels", raw: "full: agentfield star growth\ntab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "uppercase labels", raw: "FULL: agentfield star growth\nTAB: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "bold labels", raw: "**full:** agentfield star growth\n**tab:** star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "backtick labels", raw: "`full:` agentfield star growth\n`tab:` star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "heading labels", raw: "# Full: agentfield star growth\n# Tab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "quoted labels", raw: "> Full: agentfield star growth\n> Tab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "dash list", raw: "- full: agentfield star growth\n- tab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "dash list bold labels", raw: "- **full:** agentfield star growth\n- **tab:** star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "plus list", raw: "+ full: agentfield star growth\n+ tab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "plus list bold labels", raw: "+ **full:** agentfield star growth\n+ **tab:** star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "asterisk list", raw: "* full: agentfield star growth\n* tab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "asterisk list bold labels", raw: "* **full:** agentfield star growth\n* **tab:** star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "dot numbered list", raw: "1. full: agentfield star growth\n2. tab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "dot numbered list bold labels", raw: "1. **full:** agentfield star growth\n2. **tab:** star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "parenthesized numbered list", raw: "1) full: agentfield star growth\n2) tab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "parenthesized numbered list bold labels", raw: "1) **full:** agentfield star growth\n2) **tab:** star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "quoted list", raw: "> - full: agentfield star growth\n> - tab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "tab before full", raw: "- tab: star growth\n- full: agentfield star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "exclaimed interjection", raw: "Sure! full: agentfield star growth\ntab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "comma interjection", raw: "Okay, full: agentfield star growth\ntab: star growth", full: "agentfield star growth", short: "star growth"},
-		{name: "dash before one line name", raw: "- porting the parser", full: "porting the parser", short: "porting the"},
-		{name: "number before one line name", raw: "1. porting the parser", full: "porting the parser", short: "porting the"},
-		{name: "legacy one line", raw: "workspace inventory", full: "workspace inventory", short: "workspace inventory"},
-		{name: "dash without marker space", raw: "-v flag handling", full: "-v flag handling", short: "-v flag"},
-		{name: "version number", raw: "v1.2.3 release notes", full: "v1.2.3 release notes", short: "v1.2.3 release"},
-		{name: "word hyphen", raw: "port-b failures", full: "port-b failures", short: "port-b failures"},
-		{name: "colon in real name", raw: "fix: nil map crash", full: "fix: nil map crash", short: "fix: nil"},
+		{name: "bare labels", raw: "full: agentfield star growth\ntab: star growth", full: "agentfield star growth"},
+		{name: "uppercase labels", raw: "FULL: agentfield star growth\nTAB: star growth", full: "agentfield star growth"},
+		{name: "bold labels", raw: "**full:** agentfield star growth\n**tab:** star growth", full: "agentfield star growth"},
+		{name: "backtick labels", raw: "`full:` agentfield star growth\n`tab:` star growth", full: "agentfield star growth"},
+		{name: "heading labels", raw: "# Full: agentfield star growth\n# Tab: star growth", full: "agentfield star growth"},
+		{name: "quoted labels", raw: "> Full: agentfield star growth\n> Tab: star growth", full: "agentfield star growth"},
+		{name: "dash list", raw: "- full: agentfield star growth\n- tab: star growth", full: "agentfield star growth"},
+		{name: "dash list bold labels", raw: "- **full:** agentfield star growth\n- **tab:** star growth", full: "agentfield star growth"},
+		{name: "plus list", raw: "+ full: agentfield star growth\n+ tab: star growth", full: "agentfield star growth"},
+		{name: "plus list bold labels", raw: "+ **full:** agentfield star growth\n+ **tab:** star growth", full: "agentfield star growth"},
+		{name: "asterisk list", raw: "* full: agentfield star growth\n* tab: star growth", full: "agentfield star growth"},
+		{name: "asterisk list bold labels", raw: "* **full:** agentfield star growth\n* **tab:** star growth", full: "agentfield star growth"},
+		{name: "dot numbered list", raw: "1. full: agentfield star growth\n2. tab: star growth", full: "agentfield star growth"},
+		{name: "dot numbered list bold labels", raw: "1. **full:** agentfield star growth\n2. **tab:** star growth", full: "agentfield star growth"},
+		{name: "parenthesized numbered list", raw: "1) full: agentfield star growth\n2) tab: star growth", full: "agentfield star growth"},
+		{name: "parenthesized numbered list bold labels", raw: "1) **full:** agentfield star growth\n2) **tab:** star growth", full: "agentfield star growth"},
+		{name: "quoted list", raw: "> - full: agentfield star growth\n> - tab: star growth", full: "agentfield star growth"},
+		{name: "tab before full", raw: "- tab: star growth\n- full: agentfield star growth", full: "agentfield star growth"},
+		{name: "exclaimed interjection", raw: "Sure! full: agentfield star growth\ntab: star growth", full: "agentfield star growth"},
+		{name: "comma interjection", raw: "Okay, full: agentfield star growth\ntab: star growth", full: "agentfield star growth"},
+		{name: "dash before one line name", raw: "- porting the parser", full: "porting the parser"},
+		{name: "number before one line name", raw: "1. porting the parser", full: "porting the parser"},
+		{name: "legacy one line", raw: "workspace inventory", full: "workspace inventory"},
+		{name: "dash without marker space", raw: "-v flag handling", full: "-v flag handling"},
+		{name: "version number", raw: "v1.2.3 release notes", full: "v1.2.3 release notes"},
+		{name: "word hyphen", raw: "port-b failures", full: "port-b failures"},
+		{name: "colon in real name", raw: "fix: nil map crash", full: "fix: nil map crash"},
 		{name: "tab only refusal", raw: "tab: inventory"},
 		{name: "empty full refusal", raw: "full:"},
 		{name: "empty full with tab refusal", raw: "full:\ntab: inventory"},
@@ -96,24 +93,24 @@ func TestConversationNamingReadsLabelsThroughFormattingAndKeepsRealNames(t *test
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := cleanConversationTitle(test.raw)
-			if got.full != test.full || got.short != test.short {
-				t.Fatalf("cleanConversationTitle(%q) = %+v, want full=%q short=%q", test.raw, got, test.full, test.short)
+			if got.full != test.full {
+				t.Fatalf("cleanConversationTitle(%q) = %+v, want full=%q", test.raw, got, test.full)
 			}
 		})
 	}
 }
 
-func TestAListedNamingAnswerPublishesAndReplaysBothNames(t *testing.T) {
+func TestAListedNamingAnswerPublishesAndReplaysOneName(t *testing.T) {
 	completer := naming(&scriptedCompleter{steps: oneTurn("the stars are counted")},
 		namerReply{title: "- full: agentfield star growth\n- tab: star growth"})
 	agent, path := titleAgent(t, completer, nil)
 	collect(t, mustSubmit(t, agent, "measure agentfield star growth"))
 	agent.titleJobs.Wait()
-	if agent.Title() != "agentfield star growth" || agent.ShortTitle() != "star growth" {
+	if agent.Title() != "agentfield star growth" || agent.ShortTitle() != agent.Title() {
 		t.Fatalf("names = %q / %q", agent.Title(), agent.ShortTitle())
 	}
 	replay, err := replaySessionFile(path)
-	if err != nil || replay.title != "agentfield star growth" || replay.shortTitle != "star growth" {
+	if err != nil || replay.title != "agentfield star growth" || replay.shortTitle != "" {
 		t.Fatalf("replay = %+v, %v", replay, err)
 	}
 }

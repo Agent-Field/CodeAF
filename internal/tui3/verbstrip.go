@@ -24,9 +24,9 @@ import (
 //
 // So: `→` on a row that has verbs draws them, and while that strip is drawn the
 // letters on it are the verbs and THE COMPOSER IS ASLEEP. `esc` or `←` closes
-// it, `enter` still opens the row, and the strip displaces the body by its own
-// height — that visible displacement is what makes the bare letters safe, and it
-// is the reason the strip is a row of the frame rather than a popup.
+// it, and `enter` still opens the row. A wide home draws the options beneath
+// the selected description; elsewhere the strip displaces the list by its own
+// height. Either way the active letters are visible beside the selected item.
 //
 // The strip is [app.answerStrip] generalised. That function already held this
 // law in its own words — "IT IS AN ANSWER, NOT A MIRROR: it draws only when the
@@ -241,26 +241,49 @@ func placeRowAtLine(rows []placeRow, line int) int {
 	return -1
 }
 
-// stripRow paints the verbs: the letter in the payload rule's own ink, the word
-// beside it dim, one gap between pairs. It is [app.answerChipLines]' shape said
-// on one line, because a strip that wrapped would move the body under it by a
-// different amount depending on how many verbs a row happened to have.
+// verbStripRow keeps every active shortcut visible, wrapping whole choices.
+// The frame accounts for all returned rows when reserving space for the list.
 func (a *app) verbStripRow(width int) []string {
-	if width < 1 || len(a.strip.verbs) == 0 {
+	if width < 2 || len(a.strip.verbs) == 0 {
 		return nil
 	}
-	pal := a.pal
-	painted := make([]string, 0, len(a.strip.verbs))
-	plain := make([]string, 0, len(a.strip.verbs))
-	for _, v := range a.strip.verbs {
-		painted = append(painted, pal.data(string(v.key))+pal.dim(" "+v.word))
-		plain = append(plain, string(v.key)+" "+v.word)
+	return verbChoiceLines(a.strip.verbs, width, " ", a.pal)
+}
+
+// verbChoiceLines shares the same option layout between a list and home's
+// description column, so extra task actions cannot disappear past the edge.
+func verbChoiceLines(verbs []verb, width int, lead string, pal palette) []string {
+	room := max(1, width-ansi.StringWidth(lead))
+	var out []string
+	line, used := "", 0
+	for _, v := range verbs {
+		word := string(v.key) + " " + v.word
+		cells := ansi.StringWidth(word)
+		if used > 0 && used+len(verbGap)+cells > room {
+			out = append(out, lead+line)
+			line, used = "", 0
+		}
+		if cells > room {
+			for i, part := range wrap(word, room) {
+				painted := pal.dim(part)
+				if i == 0 {
+					painted = pal.data(string(v.key)) + pal.dim(strings.TrimPrefix(part, string(v.key)))
+				}
+				out = append(out, lead+painted)
+			}
+			continue
+		}
+		if used > 0 {
+			line += verbGap
+			used += len(verbGap)
+		}
+		line += pal.data(string(v.key)) + pal.dim(" "+v.word)
+		used += cells
 	}
-	line := " " + strings.Join(painted, verbGap)
-	if ansi.StringWidth(" "+strings.Join(plain, verbGap)) > width {
-		return []string{fit(line, width)}
+	if used > 0 {
+		out = append(out, lead+line)
 	}
-	return []string{line}
+	return out
 }
 
 // verbGap is the space between two verbs. Three cells, not a separator dot: the

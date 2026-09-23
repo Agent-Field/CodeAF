@@ -104,7 +104,7 @@ const guardianAnswerWindow = 10 * time.Second
 const guardianPhaseWho = "whether this is safe to run"
 
 func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) bool {
-	if !a.config.Guardian {
+	if !a.guardianOn() {
 		return false
 	}
 	// NOBODY STANDS IN FOR THE PERSON ON WHAT LEAVES IN THEIR NAME. A guardian

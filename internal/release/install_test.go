@@ -263,9 +263,21 @@ func TestInstallerGetsLatestStableAndFinishesWithVersion(t *testing.T) {
 	if run.code != 0 {
 		t.Fatalf("exit %d:\n%s", run.code, run.output)
 	}
-	for _, want := range []string{"stable v1.2.3", runtime.GOOS + "/" + runtime.GOARCH, "codeaf v1.2.3 · fake"} {
-		if !strings.Contains(run.output, want) {
-			t.Errorf("output does not contain %q:\n%s", want, run.output)
+	// A normal run says three things and nothing else: the installed binary
+	// naming itself, the notice, the line to paste. The channel, the tag and
+	// the platform are --verbose's to say.
+	if !strings.Contains(run.output, "installed codeaf v1.2.3 · fake") {
+		t.Errorf("output does not carry the receipt:\n%s", run.output)
+	}
+	for _, absent := range []string{"stable v1.2.3", "codeaf: installed"} {
+		if strings.Contains(run.output, absent) {
+			t.Errorf("a normal run should not say %q:\n%s", absent, run.output)
+		}
+	}
+	verbose := runInstaller(t, github, []string{"--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
+	for _, want := range []string{"stable v1.2.3", runtime.GOOS + "/" + runtime.GOARCH, "codeaf: installed", "installed codeaf v1.2.3 · fake"} {
+		if verbose.code != 0 || !strings.Contains(verbose.output, want) {
+			t.Errorf("verbose output does not contain %q (exit %d):\n%s", want, verbose.code, verbose.output)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(run.installDir, "codeaf")); err != nil {
@@ -474,7 +486,7 @@ func TestInstallerPicksTheNewestChannelBuildWhateverTheListOrder(t *testing.T) {
 			valid:     {published: "2026-09-15T15:00:00Z"},
 			malformed: {published: "2026-09-15T16:00:00Z"},
 		}
-		run := runInstaller(t, github, []string{"--dev"}, "CODEAF_NO_MODIFY_PATH=1")
+		run := runInstaller(t, github, []string{"--dev", "--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
 		if run.code != 0 || !strings.Contains(run.output, "dev "+valid) || strings.Contains(run.output, malformed) {
 			t.Fatalf("exit %d, want valid tag %s:\n%s", run.code, valid, run.output)
 		}
@@ -490,7 +502,7 @@ func TestInstallerPicksTheNewestChannelBuildWhateverTheListOrder(t *testing.T) {
 			valid:     {published: "2026-09-15T15:00:00Z"},
 			malformed: {published: "2026-09-15T16:00:00Z"},
 		}
-		run := runInstaller(t, github, []string{"--rc"}, "CODEAF_NO_MODIFY_PATH=1")
+		run := runInstaller(t, github, []string{"--rc", "--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
 		if run.code != 0 || !strings.Contains(run.output, "rc "+valid) || strings.Contains(run.output, malformed) {
 			t.Fatalf("exit %d, want valid tag %s:\n%s", run.code, valid, run.output)
 		}
@@ -508,7 +520,7 @@ func TestInstallerPicksTheNewestChannelBuildWhateverTheListOrder(t *testing.T) {
 			middle: {published: "2026-09-15T14:56:00Z"},
 			newest: {published: "2026-09-15T15:21:00Z"},
 		}
-		run := runInstaller(t, github, []string{"--dev"}, "CODEAF_NO_MODIFY_PATH=1")
+		run := runInstaller(t, github, []string{"--dev", "--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
 		if run.code != 0 {
 			t.Fatalf("exit %d:\n%s", run.code, run.output)
 		}
@@ -543,7 +555,7 @@ func TestInstallerPicksTheNewestChannelBuildWhateverTheListOrder(t *testing.T) {
 			older:  {created: "2026-09-15T13:00:00Z", published: "2026-09-15T14:00:00Z"},
 			newest: {created: "2026-09-15T16:00:00Z", published: json.RawMessage("null")},
 		}
-		run := runInstaller(t, github, []string{"--dev"}, "CODEAF_NO_MODIFY_PATH=1")
+		run := runInstaller(t, github, []string{"--dev", "--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
 		if run.code != 0 || !strings.Contains(run.output, "dev "+newest) {
 			t.Fatalf("exit %d, want %s:\n%s", run.code, newest, run.output)
 		}
@@ -563,7 +575,7 @@ func TestInstallerPicksTheNewestChannelBuildWhateverTheListOrder(t *testing.T) {
 			older:  {published: "2026-09-15T12:00:00Z"},
 			newest: {published: "2026-09-15T17:00:00Z"},
 		}
-		run := runInstaller(t, github, []string{"--staging"}, "CODEAF_NO_MODIFY_PATH=1")
+		run := runInstaller(t, github, []string{"--staging", "--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
 		if run.code != 0 || !strings.Contains(run.output, "staging "+newest) {
 			t.Fatalf("exit %d, want %s:\n%s", run.code, newest, run.output)
 		}
@@ -572,15 +584,17 @@ func TestInstallerPicksTheNewestChannelBuildWhateverTheListOrder(t *testing.T) {
 
 func TestInstallerPinsAReleaseAndNamesAMissingOne(t *testing.T) {
 	github := newInstallGitHub(t, "v1.2.3", "build-legacy")
-	run := runInstaller(t, github, []string{"--version", "v1.2.3"}, "CODEAF_NO_MODIFY_PATH=1")
+	// The channel and tag are --verbose lines; a normal run's receipt is the
+	// installed binary naming itself, which the fake does with its tag.
+	run := runInstaller(t, github, []string{"--version", "v1.2.3", "--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
 	if run.code != 0 || !strings.Contains(run.output, "stable v1.2.3") {
 		t.Fatalf("exit %d:\n%s", run.code, run.output)
 	}
 	fromEnvironment := runInstaller(t, github, nil, "VERSION=v1.2.3", "CODEAF_NO_MODIFY_PATH=1")
-	if fromEnvironment.code != 0 || !strings.Contains(fromEnvironment.output, "stable v1.2.3") {
+	if fromEnvironment.code != 0 || !strings.Contains(fromEnvironment.output, "installed codeaf v1.2.3 · fake") {
 		t.Fatalf("VERSION install exit %d:\n%s", fromEnvironment.code, fromEnvironment.output)
 	}
-	legacy := runInstaller(t, github, []string{"--version", "build-legacy"}, "CODEAF_NO_MODIFY_PATH=1")
+	legacy := runInstaller(t, github, []string{"--version", "build-legacy", "--verbose"}, "CODEAF_NO_MODIFY_PATH=1")
 	wantLegacy := "codeaf: build-legacy for " + runtime.GOOS + "/" + runtime.GOARCH
 	if legacy.code != 0 || !strings.Contains(legacy.output, wantLegacy) || strings.Contains(legacy.output, "codeaf: version ") {
 		t.Fatalf("legacy-tag install exit %d:\n%s", legacy.code, legacy.output)
@@ -619,7 +633,7 @@ func TestDocumentedVersionPinReachesThePipedInstaller(t *testing.T) {
 		"SHELL=/bin/bash",
 	}
 	output, err := command.CombinedOutput()
-	if err != nil || !strings.Contains(string(output), "stable v1.2.3") || strings.Contains(string(output), "v9.9.9") {
+	if err != nil || !strings.Contains(string(output), "installed codeaf v1.2.3 · fake") || strings.Contains(string(output), "v9.9.9") {
 		t.Fatalf("documented pin failed: %v\n%s", err, output)
 	}
 }
@@ -850,7 +864,124 @@ func TestInstallerKeepsTheWebsiteChannelSeam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "\nCHANNEL=\"${CHANNEL:-stable}\"\n") {
-		t.Fatal("the website-rewritten CHANNEL line is missing")
+	const seams = "CHANNEL=\"${CHANNEL:-stable}\"\nINSTALL_NAME=\"${CODEAF_INSTALL_NAME:-codeaf}\""
+	if strings.Count(string(raw), seams) != 1 || strings.Count(string(raw), "INSTALL_NAME=\"${CODEAF_INSTALL_NAME:-codeaf}\"") != 1 {
+		t.Fatal("the website-rewritten CHANNEL and INSTALL_NAME lines are not adjacent and unique")
+	}
+}
+
+// V1: --name and CODEAF_INSTALL_NAME install the selected dev build under the
+// requested file, leave codeaf untouched, and reject every invalid name before writing.
+func TestV1InstallerName(t *testing.T) {
+	const tag = "dev-20260921-bbbbbbbbbbbb"
+	github := newInstallGitHub(t, tag)
+
+	t.Run("flag", func(t *testing.T) {
+		dir := t.TempDir()
+		codeaf := filepath.Join(dir, "codeaf")
+		original := []byte("stable stays here")
+		if err := os.WriteFile(codeaf, original, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		run := runInstaller(t, github, []string{"--name", "devaf", "--dev"},
+			"CODEAF_INSTALL_DIR="+dir, "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 0 {
+			t.Fatalf("exit %d:\n%s", run.code, run.output)
+		}
+		devaf := filepath.Join(dir, "devaf")
+		if _, err := os.Stat(devaf); err != nil {
+			t.Fatal(err)
+		}
+		kept, err := os.ReadFile(codeaf)
+		if err != nil || string(kept) != string(original) {
+			t.Fatalf("codeaf = %q, %v", kept, err)
+		}
+		// A normal run's receipt is the installed file naming itself, and the
+		// last thing said is the line to paste; the path is --verbose's to say.
+		if !strings.Contains(run.output, "installed codeaf "+tag+" · fake") {
+			t.Fatalf("output does not carry the receipt:\n%s", run.output)
+		}
+		if got := strings.Split(strings.TrimSpace(run.output), "\n"); got[len(got)-1] != `export PATH="`+dir+`:$PATH"` {
+			t.Fatalf("last line = %q:\n%s", got[len(got)-1], run.output)
+		}
+		verbose := runInstaller(t, github, []string{"--name", "devaf", "--dev", "--verbose"},
+			"CODEAF_INSTALL_DIR="+dir, "CODEAF_NO_MODIFY_PATH=1")
+		if verbose.code != 0 || !strings.Contains(verbose.output, "codeaf: installed "+devaf) {
+			t.Fatalf("verbose output does not name %s (exit %d):\n%s", devaf, verbose.code, verbose.output)
+		}
+	})
+
+	t.Run("environment and flag precedence", func(t *testing.T) {
+		dir := t.TempDir()
+		fromEnv := runInstaller(t, github, []string{"--dev"},
+			"CODEAF_INSTALL_DIR="+dir, "CODEAF_INSTALL_NAME=devaf", "CODEAF_NO_MODIFY_PATH=1")
+		if fromEnv.code != 0 {
+			t.Fatalf("environment exit %d:\n%s", fromEnv.code, fromEnv.output)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "devaf")); err != nil {
+			t.Fatal(err)
+		}
+		flag := runInstaller(t, github, []string{"--name", "mine", "--dev"},
+			"CODEAF_INSTALL_DIR="+dir, "CODEAF_INSTALL_NAME=ignored", "CODEAF_NO_MODIFY_PATH=1")
+		if flag.code != 0 {
+			t.Fatalf("flag exit %d:\n%s", flag.code, flag.output)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "mine")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "ignored")); !os.IsNotExist(err) {
+			t.Fatalf("environment overrode flag: %v", err)
+		}
+	})
+
+	for _, invalid := range []string{"../x", "-x", ""} {
+		t.Run("invalid "+invalid, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "install")
+			run := runInstaller(t, github, []string{"--name", invalid, "--dev"},
+				"CODEAF_INSTALL_DIR="+dir, "CODEAF_NO_MODIFY_PATH=1")
+			if run.code != 2 || !strings.Contains(run.output, "must match ^[A-Za-z0-9][A-Za-z0-9._-]*$") {
+				t.Fatalf("exit %d:\n%s", run.code, run.output)
+			}
+			if _, err := os.Stat(dir); !os.IsNotExist(err) {
+				t.Fatalf("invalid name wrote install directory: %v", err)
+			}
+		})
+	}
+
+	t.Run("invalid from the environment", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "install")
+		run := runInstaller(t, github, []string{"--dev"},
+			"CODEAF_INSTALL_DIR="+dir, "CODEAF_INSTALL_NAME=../x", "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 2 || !strings.Contains(run.output, "must match ^[A-Za-z0-9][A-Za-z0-9._-]*$") {
+			t.Fatalf("exit %d:\n%s", run.code, run.output)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("invalid environment name wrote install directory: %v", err)
+		}
+	})
+
+	t.Run("no word after the flag", func(t *testing.T) {
+		run := runInstaller(t, github, []string{"--name"}, "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 2 || !strings.Contains(run.output, "--name needs a word") {
+			t.Fatalf("exit %d:\n%s", run.code, run.output)
+		}
+	})
+}
+
+// V2: The website name seam is the one exact line beneath CHANNEL, and the
+// installer's help names both ways to choose it.
+func TestV2InstallerNameSeamAndHelp(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const nameLine = "INSTALL_NAME=\"${CODEAF_INSTALL_NAME:-codeaf}\""
+	if strings.Count(string(raw), nameLine) != 1 || !strings.Contains(string(raw), "CHANNEL=\"${CHANNEL:-stable}\"\n"+nameLine+"\n") {
+		t.Fatal("the installer name seam is not unique and directly below CHANNEL")
+	}
+	github := newInstallGitHub(t, "v1.2.3")
+	help := runInstaller(t, github, []string{"--help"})
+	if help.code != 0 || !strings.Contains(help.output, "--name WORD") || !strings.Contains(help.output, "CODEAF_INSTALL_NAME") {
+		t.Fatalf("help exit %d:\n%s", help.code, help.output)
 	}
 }

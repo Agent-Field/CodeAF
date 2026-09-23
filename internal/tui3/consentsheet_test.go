@@ -359,7 +359,7 @@ func TestTheSheetLeavesTheAlwaysBandOffAQuestionThatCannotRememberIt(t *testing.
 // call on its first row, a row per answer, the keys in the frame's bottom edge —
 // and every one of those answer rows is a target.
 //
-// NINE ROWS AND NOT ELEVEN, because a permission draws no lifetimes row: the
+// EIGHT ROWS, because a permission has no second hint or lifetimes row: the
 // gate reads an answer's key and never [session.Answer.Scope]
 // ([questionScopes]).
 func TestTheWideBlockIsUnchangedByThePhoneSheet(t *testing.T) {
@@ -367,8 +367,8 @@ func TestTheWideBlockIsUnchangedByThePhoneSheet(t *testing.T) {
 		_, a := phoneAsk(t)
 		a.width = width
 		rows := askRows(a)
-		if len(rows) != 9 {
-			t.Fatalf("at %d columns the block is %d rows, not nine:\n%s", width, len(rows),
+		if len(rows) != 8 {
+			t.Fatalf("at %d columns the block is %d rows, not eight:\n%s", width, len(rows),
 				strings.Join(rows, "\n"))
 		}
 		// The top edge carries the head; the call and the policy's own words are

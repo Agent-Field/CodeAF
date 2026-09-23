@@ -220,7 +220,7 @@ func TestTheHintSlotFollowsTheKeyboard(t *testing.T) {
 	if got := a.hintWord(); got != "" {
 		t.Fatalf("an idle surface offered %q", got)
 	}
-	if !strings.Contains(plain(a.legend(120)), microcopy) {
-		t.Fatal("an idle legend lost the input's own affordances")
+	if !strings.Contains(plain(a.hintRow(120)), microcopy) {
+		t.Fatal("an idle keys row lost the input's own affordances")
 	}
 }

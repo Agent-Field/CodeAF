@@ -24,6 +24,14 @@ import (
 // hands the checker's evidence back as this round's finding, and the
 // conversation does not call propose_task again.
 func TestContinuingAFailedTaskResumesItsWorktreeAndDoesNotProposeANewNode(t *testing.T) {
+	testContinueSameTask(t, false)
+}
+
+func TestRetryTaskResumesTheSameWorktreeAndFinishes(t *testing.T) {
+	testContinueSameTask(t, true)
+}
+
+func testContinueSameTask(t *testing.T, retry bool) {
 	repo := newGoModuleRepo(t)
 	t.Setenv("HOME", t.TempDir())
 
@@ -83,7 +91,14 @@ func TestContinuingAFailedTaskResumesItsWorktreeAndDoesNotProposeANewNode(t *tes
 		t.Fatalf("seq = %d, want 1 — only one node was proposed", firstSeq)
 	}
 
-	text, isError := runTool(t, agent, "tasks", `{"id":1,"continue":true}`)
+	text, isError := "continuing task 1", false
+	if retry {
+		if err := agent.RetryTask(node.id); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		text, isError = runTool(t, agent, "tasks", `{"id":1,"continue":true}`)
+	}
 	if isError {
 		t.Fatalf("continue failed:\n%s", text)
 	}
@@ -122,6 +137,11 @@ func TestContinuingAFailedTaskResumesItsWorktreeAndDoesNotProposeANewNode(t *tes
 	if state := node.stateNow(); state != TaskDone {
 		t.Fatalf("continued node landed %q, want done — the second run should have written greet.go (report %q)",
 			state, node.notice().Report)
+	}
+	if retry {
+		if err := agent.RetryTask(node.id); err == nil {
+			t.Fatal("retry restarted completed work")
+		}
 	}
 	if !completer.childSaw(brief) {
 		t.Fatal("the continued worker was not handed the original brief")
@@ -202,4 +222,39 @@ func continueLane(turns int, run func(continuing, wrote bool) *ai.Response) []st
 		}
 	}
 	return steps
+}
+
+// A delayed close from the prior attempt must not end the new attempt's stream.
+func TestRetryTaskOpensANewStreamAndClearsTheOldEnding(t *testing.T) {
+	nest := newNest(t, nil, nil)
+	node := pieceUnder(t, nest.graph, nest.parent.id, "currency")
+	oldRoom := node.openRoom()
+	oldDone := node.done
+	endWith(t, node, TaskFailed)
+	if err := nest.session.RetryTask(node.id); err != nil {
+		t.Fatal(err)
+	}
+	room := node.openRoom()
+	if room == nil || room == oldRoom {
+		t.Fatal("retry reused the prior attempt's room")
+	}
+	stream, joined := room.joinStream()
+	if !joined {
+		t.Fatal("retry has a closed event stream")
+	}
+	defer room.leave(stream)
+	close(oldDone)
+	oldRoom.close()
+	room.publish(Event{Kind: EventTextDelta, Text: "second attempt"})
+	event, ok := <-stream.out
+	if !ok || event.Text != "second attempt" {
+		t.Fatalf("new attempt did not reach its watcher: %+v", event)
+	}
+	notice := node.notice()
+	if !notice.EndedAt.IsZero() || notice.Report != "" || notice.Ending != "" || notice.Stopped {
+		t.Fatalf("retry retained its old ending: %+v", notice)
+	}
+	if err := nest.session.RetryTask(node.id); err == nil {
+		t.Fatal("retry duplicated running work")
+	}
 }

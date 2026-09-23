@@ -297,16 +297,16 @@ func TestASettingsCycleWritesTheRegistryKey(t *testing.T) {
 	a.openSettings()
 	cursorTo(t, a, config.KeyToolApprovalMode)
 
-	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
-		t.Fatalf("the gate did not start at prompt: %q", got)
-	}
-	drive(t, a, key("enter"))
 	if got := config.ToolApprovalModeAt(dir); got != "allow" {
-		t.Fatalf("the cycle wrote %q, want the next choice after prompt", got)
+		t.Fatalf("the gate did not start at allow: %q", got)
 	}
 	drive(t, a, key("enter"))
 	if got := config.ToolApprovalModeAt(dir); got != "deny" {
-		t.Fatalf("the second cycle wrote %q, want deny", got)
+		t.Fatalf("the cycle wrote %q, want the next choice after allow", got)
+	}
+	drive(t, a, key("enter"))
+	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
+		t.Fatalf("the second cycle wrote %q, want prompt", got)
 	}
 }
 
@@ -464,9 +464,28 @@ func TestASettingsSelectSubmenuSwitchesTheModel(t *testing.T) {
 	if chosen, _ := a.sheet.sel.choice(); chosen != "openai/gpt-4.1-mini" {
 		t.Fatalf("the submenu opened on %q", chosen)
 	}
-	drive(t, a, key("down"), key("enter"))
+	// THE OTHER MODEL IS UP AND NOT DOWN, because the list is alphabetical — every
+	// table on this surface opens sorted by its first column (pickersort.go) — and
+	// `openai/…` sorts after `anthropic/…`. The walk is written as "onto the other
+	// row" rather than as one key, so the order is the sort's business and not this
+	// test's.
+	for at := 0; at < len(a.sheet.sel.pick.list); at++ {
+		if chosen, _ := a.sheet.sel.choice(); chosen == "anthropic/claude-sonnet-4.5" {
+			break
+		}
+		drive(t, a, key("up"))
+	}
+	if chosen, _ := a.sheet.sel.choice(); chosen != "anthropic/claude-sonnet-4.5" {
+		t.Fatalf("the walk did not reach the other model, it is on %q", chosen)
+	}
+	drive(t, a, key("enter"))
+	// ENTER WRITES AND LEAVES THE LIST UP ([app.pickerKey] argues it).
+	if a.sheet.sel == nil {
+		t.Fatal("enter closed the submenu; esc is the way out now")
+	}
+	drive(t, a, key("esc"))
 	if a.sheet.sel != nil {
-		t.Fatal("enter did not close the submenu")
+		t.Fatal("esc left the submenu open")
 	}
 	if a.model != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("the session is on %q", a.model)
@@ -745,9 +764,11 @@ func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 		t.Fatal("the closed column's edge is on a fresh screen")
 	}
 	a.railAway = false
+	// The greeting has no seam, so the state word rides the keys row's right
+	// (footswap.go's [app.hintRow]).
 	status := plain(a.status(140))
 	if !strings.Contains(status, "idle") {
-		t.Fatalf("the quiet status row lost its state word: %q", status)
+		t.Fatalf("the quiet keys row lost its state word: %q", status)
 	}
 	if strings.Contains(status, "gpt-4.1-mini") {
 		t.Fatalf("the greeting's status row is still naming the model: %q", status)
@@ -824,7 +845,7 @@ func TestTheStatusLineRegainsItsSegmentsAfterTheFirstTurn(t *testing.T) {
 	a, _ := welcomeApp(t, nil)
 	a.width = 140
 	a.touch()
-	if status := plain(a.status(140)); strings.Contains(status, "$") {
+	if status := plain(a.legend(140)); strings.Contains(status, "$") {
 		t.Fatalf("a session that has sent nothing is billed: %q", status)
 	}
 	if deck := plain(strings.Join(a.statusRows(44), "\n")); strings.Contains(deck, "$") {
@@ -834,7 +855,7 @@ func TestTheStatusLineRegainsItsSegmentsAfterTheFirstTurn(t *testing.T) {
 	if a.statusQuiet() {
 		t.Fatal("a submitted line did not count as a turn")
 	}
-	if status := plain(a.status(140)); !strings.Contains(status, "$0.00") {
+	if status := plain(a.legend(140)); !strings.Contains(status, "$0.00") {
 		t.Fatalf("the running status row lost its spend segment: %q", status)
 	}
 	if deck := plain(strings.Join(a.statusRows(44), "\n")); !strings.Contains(deck, "$0.00") {
@@ -1112,7 +1133,7 @@ func TestTheContextSegmentIsPaintedOnlyWhenItIsCrowded(t *testing.T) {
 	crowded := newTestApp(&fakeAgent{model: "m"})
 	crowded.ctxWindow, crowded.ctxTokens = 200_000, 170_000
 
-	quiet, loud := calm.status(90), crowded.status(90)
+	quiet, loud := calm.legend(90), crowded.legend(90)
 	segment, _ := crowded.contextSegment()
 	if !strings.Contains(plain(loud), segment) {
 		t.Fatalf("the crowded segment is missing from the line:\n%q", plain(loud))
@@ -1140,7 +1161,7 @@ func TestTheWarmShareSegmentIsTheSessionsCachedInput(t *testing.T) {
 	if got := a.warmSegment(); got != "⟲ 62% cached" {
 		t.Fatalf("the warm share reads %q, want ⟲ 62%% cached", got)
 	}
-	if line := plain(a.status(90)); !strings.Contains(line, "⟲ 62% cached") {
+	if line := plain(a.legend(90)); !strings.Contains(line, "⟲ 62% cached") {
 		t.Fatalf("the status line is missing the warm share:\n%s", line)
 	}
 
@@ -1263,7 +1284,7 @@ func TestAResumedConversationDrawsWhatItsCacheSavedOnTheFirstFrame(t *testing.T)
 	if got := a.warmSegment(); got != "⟲ saved $0.2520 · 28% cached" {
 		t.Fatalf("a resumed conversation reads %q, want the cash and the rate", got)
 	}
-	if line := plain(a.status(200)); !strings.Contains(line, "⟲ saved $0.2520 · 28% cached") {
+	if line := plain(a.legend(200)); !strings.Contains(line, "⟲ saved $0.2520 · 28% cached") {
 		t.Fatalf("the first frame is missing what the cache saved:\n%s", line)
 	}
 }
@@ -1441,7 +1462,7 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 		t.Fatal("the task page refused to open over home")
 	}
 	page, _, _ := a.frame()
-	if strings.Contains(plain(page), "Somewhere Else") {
+	if strings.Contains(plain(page), placeRestWord) {
 		t.Fatalf("home is still being drawn under the task page:\n%s", page)
 	}
 	if !strings.Contains(plain(page), "Port the parser") {

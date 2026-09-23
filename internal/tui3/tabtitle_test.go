@@ -7,10 +7,9 @@ import (
 
 func TestTabHoverRevealsFullTitleWithoutMovingTargets(t *testing.T) {
 	a, _, _ := tabApp(t)
-	a.shortTitle = "parser work"
 	a.title = "Shipping the parser with complete unicode support"
 	a.tabsRow(a.width)
-	span := tabSpanFor(t, a, "parser work")
+	span := tabSpanFor(t, a, a.title)
 	a.hot, _ = a.tabHoverAt(span.from, placeTabRow)
 	before := a.tabsRow(a.width)
 	frame := strings.Repeat(strings.Repeat(" ", a.width)+"\n", a.height-1)
@@ -21,7 +20,7 @@ func TestTabHoverRevealsFullTitleWithoutMovingTargets(t *testing.T) {
 	if !strings.Contains(plain(shown), a.title) {
 		t.Fatal("hover lost the full title")
 	}
-	if a.tabsRow(a.width) != before || tabSpanFor(t, a, "parser work") != span {
+	if a.tabsRow(a.width) != before || tabSpanFor(t, a, a.title) != span {
 		t.Fatal("preview moved the tab")
 	}
 	hidden := strings.Repeat(" ", a.width)

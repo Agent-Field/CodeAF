@@ -625,7 +625,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// machine. This is the same line `codeaf chat` sets and for the same reason,
 	// and it is the one fact the shared assembly cannot know for itself.
 	cfg := launch.Config
-	cfg.AskConsent = true
+	cfg.AskConsent = !hello.Headless
 
 	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,
 	// through the very pair [remote.Engine.Fresh] below is written from
@@ -723,7 +723,8 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	proc.warmModels("engine/models", launch.Models, agent, launch.Model)
 
 	return &remote.Engine{
-		Agent: agent,
+		Headless: hello.Headless,
+		Agent:    agent,
 		// A model picked through a linked-local surface arrives on the existing
 		// model-set call. Re-read the engine's profile immediately before it is
 		// applied, so that model's address and key are live for the next turn.
@@ -815,7 +816,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			// opening it creates it: a path nobody has written yet is a new
 			// conversation, and the surface says so on its first line.
 			_, statErr := os.Stat(path)
-			replacement, err := open(earlier)
+			replacement, _, _, err := openV3Agent(earlier, workspace, open)
 			if err != nil {
 				// Returned unwrapped, the way the local picker returns it: a
 				// locked file's error names the file, and the surface prints
@@ -906,9 +907,10 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 // is the one caller that fills it (chatv3_local.go).
 func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Options {
 	opts := v3Options{
-		Workspace: workspace,
-		Model:     strings.TrimSpace(hello.Model),
-		Session:   firstEngineWord(hello.Session, sessionFlag),
+		Workspace:   workspace,
+		Interactive: !hello.Headless,
+		Model:       strings.TrimSpace(hello.Model),
+		Session:     firstEngineWord(hello.Session, sessionFlag),
 	}
 	// A HELLO MINTING ITS OWN CONVERSATION NAMES NO TRANSCRIPT, and the host's
 	// --session flag is not an answer for it either: that flag says which
@@ -923,7 +925,7 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 		opts.NoCompact = shape.NoCompact
 		opts.OneModel = shape.OneModel
 		opts.Budget = chatBudget(shape.MaxHours, shape.MaxCost)
-		opts.Interactive = shape.Interactive
+		opts.Interactive = shape.Interactive && !hello.Headless
 	}
 	return opts
 }

@@ -185,19 +185,21 @@ func TestTheStopCardStopsTheFocusedTask(t *testing.T) {
 	}
 }
 
-// THE CURSOR CLAMPS. A cursor that wrapped would put "stop it" under a key
-// pressed to reach "keep going".
-func TestTheStopCardCursorClampsAtBothEnds(t *testing.T) {
-	a, _ := stopApp(t)
+// The cursor wraps in either direction without ending any work.
+func TestTheStopCardCursorWrapsAtBothEnds(t *testing.T) {
+	a, agent := stopApp(t)
 	drive(t, a, key("x"))
 	showStop(a)
-	drive(t, a, key("right"), key("right"))
-	if at := stopPick(t, a); at != stopKeepAt {
-		t.Fatalf("→ past the end moved to %q", stopAnswers[at])
-	}
-	drive(t, a, key("left"), key("left"))
+	drive(t, a, key("right"))
 	if at := stopPick(t, a); at != 0 {
-		t.Fatalf("← past the start moved to %q", stopAnswers[at])
+		t.Fatalf("right did not wrap from keep going: %q", stopAnswers[at])
+	}
+	drive(t, a, key("left"))
+	if at := stopPick(t, a); at != stopKeepAt {
+		t.Fatalf("left did not wrap back to keep going: %q", stopAnswers[at])
+	}
+	if len(agent.asked) != 0 {
+		t.Fatalf("navigation stopped work: %v", agent.asked)
 	}
 }
 

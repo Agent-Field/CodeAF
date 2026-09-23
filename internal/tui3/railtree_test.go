@@ -31,15 +31,13 @@ func railKinship(a *app, parent uint64, kids ...uint64) {
 // planner spawned under it.
 //
 // THE NODES ARRIVE IN ID ORDER AND THE COLUMN DOES NOT DRAW THEM IN IT. A
-// family's members are ranked by what they need — running, then waiting, then
-// over — with arrival order deciding between two in the same state (task.go's
-// [app.railKin]), so the drawn shape is:
+// family's members keep their creation order:
 //
 //	1 Ship the port        running
+//	├─ 2 Read the law      done
 //	├─ 3 Write the tree    running
 //	│  └─ 4 Cut goldens    queued
-//	├─ 5 Wire the seam     queued
-//	└─ 2 Read the law      done
+//	└─ 5 Wire the seam     queued
 func railRun(a *app) {
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	a.taskUpdate(update(2, "Read the law", session.TaskDone, session.TaskNotice{}))
@@ -108,24 +106,13 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 	railRun(a)
 	spin := tokens.Spinner(0)
 	want := []string{
-		// The column opens with the margin's own section label (margin.go), and the
-		// family is drawn whole under it.
-		//
-		// AND THE MEMBERS ARE RANKED, which is what changed here. They used to be
-		// drawn in the order the session met them, so a run that finishes its
-		// pieces one at a time put every settled row in front of the ones still
-		// going — `done, done, running, running`, with the only rows anybody was
-		// watching at the bottom of the block. The column already ranked whole
-		// FAMILIES this way and stopped at the family boundary; it now goes all the
-		// way down (task.go's [app.railKin]). Arrival order still separates two
-		// pieces in the same state, so #5 (queued) leads #2 (done) by state and
-		// nothing settled ever trades places with anything else settled.
-		"│ " + marginTasksWord,
+		"│ " + railGripOpenGlyph + " " + railStowHint,
+		"│ ",
 		"│ " + spin + " Ship the port           #1",
+		"│ ├─ " + glyphDone + " Read the law         #2",
 		"│ ├─ " + spin + " Write the tree       #3",
 		"│ │  └─ " + glyphQueued + " Cut the goldens   #4",
-		"│ ├─ " + glyphQueued + " Wire the seam        #5",
-		"│ └─ " + glyphDone + " Read the law         #2",
+		"│ └─ " + glyphQueued + " Wire the seam        #5",
 	}
 	got := railText(a, 12)
 	if len(got) < len(want) {
@@ -152,16 +139,11 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 	}
 }
 
-// A FAMILY STANDS WHERE ITS MOST URGENT MEMBER PUTS IT, and its members stand
-// the same way inside it — the same ladder at both scales, with the session's own
-// admission order breaking ties at each (task.go's [app.railKin] and
-// [app.railForest]). Every family here holds one child, so what this pins is the
-// outer half; [TestAFamilyIsDrawnWholeUnderItsRoot] pins the inner one.
-func TestAFamilyStandsWhereItsMostUrgentMemberPutsIt(t *testing.T) {
+// State changes must not reorder families somebody is reading.
+func TestAFamilyKeepsItsCreationOrderAcrossStates(t *testing.T) {
 	a, _, _ := taskApp(t)
 	// A settled family, then a running one, then a family with a conflicted branch in
-	// it — planted in that order, which is the opposite of the order they belong
-	// in.
+	// it — all remain in the order they were created.
 	a.taskUpdate(update(1, "Cut the trailer", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged}))
 	a.taskUpdate(update(2, "Trim silence", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged}))
 	a.taskUpdate(update(3, "Ship the port", session.TaskRunning, session.TaskNotice{}))
@@ -180,8 +162,8 @@ func TestAFamilyStandsWhereItsMostUrgentMemberPutsIt(t *testing.T) {
 
 	rail := strings.Join(railText(a, 20), "\n")
 	at := -1
-	for _, want := range []string{"Port the parser", "Render titles", "Ship the port", "Write the tree",
-		"Cut the trailer", "Trim silence"} {
+	for _, want := range []string{"Cut the trailer", "Trim silence", "Ship the port", "Write the tree",
+		"Port the parser", "Render titles"} {
 		found := strings.Index(rail, want)
 		if found < 0 {
 			t.Fatalf("the roster has no %q row:\n%s", want, rail)
@@ -290,8 +272,8 @@ func TestTheTreeGrammarOpensStepsInFoldsAndWalksUp(t *testing.T) {
 		t.Fatalf("→ opened the family and moved the cursor to %+v", a.railWhere)
 	}
 	drive(t, a, key("right"))
-	if a.railWhere.id != 3 {
-		t.Fatalf("→ stepped to %+v, want the first visible child (running before done)", a.railWhere)
+	if a.railWhere.id != 2 {
+		t.Fatalf("→ stepped to %+v, want the first child created", a.railWhere)
 	}
 
 	// ← FROM A LEAF JUMPS TO THE PARENT ROW. A cursor left pointing at nothing is

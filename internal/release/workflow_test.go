@@ -117,6 +117,24 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 	}
 }
 
+// V10: Dev release notes offer the proxy that installs the dev channel as
+// devaf beside codeaf, and no other channel enters that conditional block.
+func TestV10DevReleaseNotesNameTheDevafInstaller(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(raw)
+	const line = "curl -fsSL https://agentfield.ai/get/devaf | bash"
+	if strings.Count(workflow, line) != 1 {
+		t.Fatalf("devaf install line count = %d, want 1", strings.Count(workflow, line))
+	}
+	block := regexp.MustCompile(`(?ms)if \[ "\$CHANNEL" = "dev" \]; then\n(.*?)\n\s+fi`).FindStringSubmatch(workflow)
+	if block == nil || !strings.Contains(block[1], "installs this dev channel") || !strings.Contains(block[1], line) {
+		t.Fatalf("dev notes block does not describe and spell the devaf road:\n%v", block)
+	}
+}
+
 // releaseSurfacePrologue is the shell of the "Test release surface" step up to
 // its go test line, with the go test replaced by a line that prints the
 // arguments it would have been given.

@@ -268,7 +268,7 @@ func (a *app) folderConfirm() tea.Cmd {
 //
 // A PIN IS NOT A ROUND TRIP. Registering a folder with an agent is a write and a
 // wire call, which is why the ordinary confirm runs off the loop; setting a
-// string on this window is neither, and it is the same act `alt+w` performs
+// string on this window is neither, and it is the same act `alt+p` performs
 // synchronously one keystroke away (homedraft.go's [app.moveTarget]). So the
 // rule above home's box says the new folder on the very next frame — which is
 // the whole of what the owner asked to be able to see.
@@ -292,12 +292,10 @@ func (a *app) targetFolderConfirm(takes []folderTake) tea.Cmd {
 		files = append(files, take)
 	}
 	back := a.closeFolderSheet()
-	// HOME COMES BACK FIRST AND THE SENTENCE IS SAID SECOND. Raising home builds
-	// a fresh [homeView] (home.go's [app.raiseHome]), so a line said before it
-	// would be a line thrown away.
+	// The seam names the selected folder after home returns. It needs no
+	// duplicate announcement on the keys row.
 	if where != "" {
 		a.target.where = where
-		a.home.say(targetMovedWord+a.hostedPath(shortPath(where, a.tilde, 0)), "")
 	}
 	a.touch()
 	if len(files) == 0 {

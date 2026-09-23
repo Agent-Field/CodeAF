@@ -124,7 +124,6 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 	"taskWeightDoor":                  {loses: "one task's context tokens (the conversation's own ContextTokens crosses; the task's does not)"},
 	"turnResumer":                     {loses: "resuming a turn that was stopped"},
 	"wakeAgent":                       {loses: "reading wakes"},
-	"workingNowAgent":                 {loses: "what is working right now, which the margin draws"},
 	"interface{ LandingFor/1/2 }":     {loses: "the landing a folder already has, beside folderLander"},
 	"interface{ PendingConsent/0/1 }": {loses: "which approvals are still open when a surface detaches"},
 }
@@ -132,7 +131,7 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 // surfaceDoorLedger is the ratchet: the ledger above may shrink and may never
 // grow, and shrinking it without lowering this number in the same commit is a
 // red as well ([ratchetComplaint]).
-const surfaceDoorLedger = 23
+const surfaceDoorLedger = 22
 
 // TestEverySurfaceDoorTheEngineHasCrossesTheWire is the law above.
 func TestEverySurfaceDoorTheEngineHasCrossesTheWire(t *testing.T) {

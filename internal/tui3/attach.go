@@ -893,32 +893,8 @@ func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
 	chips := append([]chip(nil), a.chips...)
 	a.chips, a.sent = nil, chips
-	pictures, files := pictureChips(chips), fileChips(chips)
-	// EVERY PICTURE IS NAMED IN THE WORDS THAT GO WITH IT. A pasted one already
-	// carries its `[image #n]` where the person put it; one attached by /image or
-	// the @ completion has none, and gets its token appended here so that "image
-	// 2" means something whichever door the picture came in by (imagepaste.go).
-	// The transcript is drawn from the same string, so what the person reads and
-	// what the model reads are one sentence.
-	text = imageSentence(text, pictures)
-	shown = imageSentence(shown, pictures)
-
-	// AND WHAT THE MODEL IS TOLD ABOUT A FILE IS A PATH, which is a sentence
-	// this surface writes only where the file is not going anywhere. On a local
-	// session the path already means something to the engine, so the words are
-	// composed here; over a connection the bytes travel and the ENGINE composes
-	// the same sentence about the paths it wrote them to, because those are the
-	// only paths that exist on the machine that owns the journal
-	// (internal/remote's file.go, whose [remote.AttachedSentence] both ends call
-	// so that a model never meets two phrasings of one fact).
-	//
-	// The transcript keeps the person's own line either way — the paths go to
-	// the model and the NAMES go on the screen ([chipMarkers]), because a
-	// scrollback full of absolute paths is a scrollback nobody reads.
-	hosted, spoken := a.hosted(), text
-	if len(files) > 0 && !hosted {
-		spoken = remote.AttachedSentence(text, chipPaths(files))
-	}
+	_, shown, start := attachmentStart(agent, ctx, a.hosted(), text, shown, chips)
+	pictures := pictureChips(chips)
 
 	if a.stream == nil {
 		a.turn++
@@ -956,9 +932,49 @@ func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 	a.follow()
 	a.touch()
 	return tea.Batch(func() tea.Msg {
+		ch, err := start()
+		return submittedMsg{ch: ch, err: err, echo: mark}
+	}, a.wake())
+}
+
+// attachmentStart is the one body that starts a message carrying pictures or
+// files, whether the conversation is on screen or held by the keeper.
+//
+// THE DISK AND WIRE WORK STAYS INSIDE THE RETURNED CLOSURE. The front calls it
+// from its submit command and a held conversation calls it from its own command;
+// neither makes the Bubble Tea update loop read a file or cross a connection.
+func attachmentStart(agent Agent, ctx context.Context, hosted bool, text, shown string, chips []chip) (spoken, display string, start func() (<-chan session.Event, error)) {
+	pictures, files := pictureChips(chips), fileChips(chips)
+	// EVERY PICTURE IS NAMED IN THE WORDS THAT GO WITH IT. A pasted one already
+	// carries its `[image #n]` where the person put it; one attached by /image or
+	// the @ completion has none, and gets its token appended here so that "image
+	// 2" means something whichever door the picture came in by (imagepaste.go).
+	// The transcript is drawn from the same string, so what the person reads and
+	// what the model reads are one sentence.
+	text = imageSentence(text, pictures)
+	shown = imageSentence(shown, pictures)
+
+	// AND WHAT THE MODEL IS TOLD ABOUT A FILE IS A PATH, which is a sentence
+	// this surface writes only where the file is not going anywhere. On a local
+	// session the path already means something to the engine, so the words are
+	// composed here; over a connection the bytes travel and the ENGINE composes
+	// the same sentence about the paths it wrote them to, because those are the
+	// only paths that exist on the machine that owns the journal
+	// (internal/remote's file.go, whose [remote.AttachedSentence] both ends call
+	// so that a model never meets two phrasings of one fact).
+	//
+	// The transcript keeps the person's own line either way — the paths go to
+	// the model and the NAMES go on the screen ([chipMarkers]), because a
+	// scrollback full of absolute paths is a scrollback nobody reads.
+	spoken = text
+	if len(files) > 0 && !hosted {
+		spoken = remote.AttachedSentence(text, chipPaths(files))
+	}
+	display = shown
+	start = func() (<-chan session.Event, error) {
 		images, err := readAttachments(pictures)
 		if err != nil {
-			return submittedMsg{err: err, echo: mark}
+			return nil, err
 		}
 		// A MESSAGE WITH NO FILES AND A MESSAGE WHOSE FILES ARE ALREADY ON THE
 		// ENGINE'S OWN DISK ARE THE SAME CALL. Locally nothing is copied and
@@ -967,8 +983,7 @@ func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 		// words for a picture that arrives with a path and no bytes: a caller
 		// naming a file on the engine's own disk, which the session reads itself.
 		if len(files) == 0 || !hosted {
-			ch, err := agent.SubmitImage(ctx, spoken, images)
-			return submittedMsg{ch: ch, err: err, echo: mark}
+			return agent.SubmitImage(ctx, spoken, images)
 		}
 		// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A door that
 		// handed no file seam over is a connection this build cannot put a file
@@ -976,15 +991,15 @@ func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 		// still in their hands rather than to send the words without the file.
 		taker, ok := agent.(fileSubmitter)
 		if !ok {
-			return submittedMsg{err: errors.New(attachRemoteWord), echo: mark}
+			return nil, errors.New(attachRemoteWord)
 		}
 		loaded, err := readFiles(files)
 		if err != nil {
-			return submittedMsg{err: err, echo: mark}
+			return nil, err
 		}
-		ch, err := taker.SubmitFiles(ctx, spoken, loaded, images)
-		return submittedMsg{ch: ch, err: err, echo: mark}
-	}, a.wake())
+		return taker.SubmitFiles(ctx, spoken, loaded, images)
+	}
+	return spoken, display, start
 }
 
 // fileSubmitter is the optional seam "this session can be handed a file the

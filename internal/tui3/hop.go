@@ -474,41 +474,20 @@ func (a *app) hopTick() tea.Cmd {
 	return surfaceTick(hopSettle, func(time.Time) tea.Msg { return hopSettleMsg{pulse: pulse} })
 }
 
-// hopReading is the card's whole reading: the conversations this window is
-// holding, IN THE ORDER THE TAB ROW DRAWS THEM, and then everything else on the
-// machine behind the fold.
-//
-// IT WALKS THE PREVIOUS-STACK AND NEVER THE MAP. Go's map order is random, and a
-// switcher whose rows moved between two presses of the same key would be
-// unusable; [app.prev] is the order the keeper already keeps (keeper.go's
-// [app.rememberOpen]). That walk is what BUILDS the rows; [app.hopStripOrder]
-// then lays them out the way the strip above them is laid out, and the recency
-// walk survives as the tie-break for a conversation with no tab on the row.
+// hopReading reads open tabs in the strip's exact order, then the remaining
+// held and saved conversations behind the fold. Remembered tabs whose agents
+// are elsewhere remain open rows because membership belongs to the strip.
 func (a *app) hopReading(all bool) (rows []hopRow, tabs, rest int) {
 	now := a.now()
-	rows = make([]hopRow, 0, hopShown)
-	for at := len(a.prev) - 1; at >= 0; at-- {
-		held := a.behind[a.prev[at]]
-		if held == nil {
-			// A key the keeper no longer has. Stepped over rather than cleaned
-			// up, exactly as [app.lastBehind] steps over it.
-			continue
+	open := a.openTabRows(now)
+	var loose []hopRow
+	for _, key := range a.prev {
+		if held := a.behind[key]; held != nil && a.tabShut[key] {
+			loose = append(loose, a.hopKept(held, now))
 		}
-		rows = append(rows, a.hopKept(held, now))
 	}
-	rows = append(rows, a.hopFront(now))
-	rows = a.hopStripOrder(rows)
-	// AND THE LIST IS CUT WHERE THE TAB ROW IS. A conversation whose tab was
-	// dismissed is still held and still running, and it belongs with everything
-	// else this window is not showing rather than on a list that claims to BE the
-	// tab row ([app.hopTabbed]).
-	open, loose := make([]hopRow, 0, len(rows)), []hopRow(nil)
-	for _, row := range rows {
-		if a.hopTabbed(row) {
-			open = append(open, row)
-			continue
-		}
-		loose = append(loose, row)
+	if a.tabShut[a.frontTabKey()] {
+		loose = append(loose, a.hopFront(now))
 	}
 	// The held set hopRest skips is BOTH halves: a conversation this window holds
 	// must not be drawn a second time off the machine's own reading, where it
@@ -520,6 +499,27 @@ func (a *app) hopReading(all bool) (rows []hopRow, tabs, rest int) {
 		return open, len(open), len(behind)
 	}
 	return append(open, behind...), len(open), 0
+}
+
+// openTabRows reads exactly the tab strip, including remembered connections
+// whose agents are no longer held locally. Home reads the same tab list.
+func (a *app) openTabRows(now time.Time) []hopRow {
+	var rows []hopRow
+	for _, tab := range a.tabList() {
+		// A run tab is a view of its conversation, not another conversation.
+		if tab.work {
+			continue
+		}
+		row := hopRow{file: tab.file, title: tab.word, where: tab.where, open: true}
+		if tab.here {
+			row = a.hopFront(now)
+		} else if held := a.behind[tab.key]; held != nil {
+			row = a.hopKept(held, now)
+		}
+		row.title, row.where = tab.word, tab.where
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 // hopTabbed is whether a row has a tab on the row above the card — the one
@@ -547,7 +547,7 @@ func (a *app) hopReading(all bool) (rows []hopRow, tabs, rest int) {
 // `dev` refused that correctly before this card learned to fold. Found in review.
 func (a *app) hopTabbed(row hopRow) bool {
 	if row.here {
-		return true
+		return !a.tabShut[a.frontTabKey()]
 	}
 	return row.open && !a.tabShut[a.convKey(row.file)]
 }
@@ -612,7 +612,7 @@ func (a *app) hopStripOrder(rows []hopRow) []hopRow {
 // The feature was invisible until you had learned the thing it exists for.
 //
 // THE WORLD IS READ ON THE KEYSTROKE, ONCE, and that is affordable for one
-// reason: this gesture REPLACES pressing `space space`, which takes the same
+// reason: this gesture REPLACES pressing `esc`, which takes the same
 // reading and then draws a whole page with it. It can be no slower than what a
 // person does today to answer the same question.
 func (a *app) hopRest(open []hopRow, now time.Time) []hopRow {
@@ -775,6 +775,12 @@ func hopRawTitle(agent Agent, side *aside) string {
 	}
 	if title == "" && side != nil {
 		title = strings.TrimSpace(side.title)
+		if title == "" || title == unnamedConversationWord {
+			title = promptName(side.openingPrompt)
+			if title == "" {
+				title = promptName(side.draft)
+			}
+		}
 	}
 	return title
 }
@@ -871,6 +877,9 @@ func runningTasks(agent Agent) int {
 // modal on this surface — leaving is never modal — and it puts the card away on
 // its way through.
 func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if a.hopShowing() {
+		a.keyboardPlaceSelection()
+	}
 	key := msg.String()
 	if !a.hop.open {
 		forward, backward := a.hopOpens(key), a.hopBacks(key)
@@ -1026,6 +1035,9 @@ func (a *app) hopSlide() tea.Cmd {
 	wasNote := hopNote(a.frontSignal(), runningTasks(a.agent), 0)
 	cmd, ok := a.bringForward(row.file)
 	if !ok {
+		if _, remembered := chatTabAt(a.tabList(), a.convKey(row.file)); remembered {
+			return a.hopStart(row)
+		}
 		// The conversation went away mid-burst. The card stops fading and says
 		// so where the person is looking; they are mid-gesture, and a receipt
 		// that vanished while carrying a refusal would be a refusal nobody saw.
@@ -1123,6 +1135,7 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 	row := a.hop.rows[a.hop.at]
 	a.hopClose()
 	if row.here {
+		a.rememberOpen(a.frontTabKey())
 		return a.hopLand(nil)
 	}
 	if !row.open {
@@ -1130,6 +1143,9 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 	}
 	cmd, ok := a.bringForward(row.file)
 	if !ok {
+		if _, remembered := chatTabAt(a.tabList(), a.convKey(row.file)); remembered {
+			return a.hopStart(row)
+		}
 		// The conversation went away between the card opening and this key —
 		// another window took it over (takeover.go), or it was closed. The card
 		// is already down; saying so is better than a keystroke that did nothing.
@@ -1434,7 +1450,7 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 			}
 		}
 		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines) + topEdge, at: at})
-		hovered := a.hot.kind == hoverHop && a.hot.index == at
+		hovered := a.hot.kind == hoverHop && a.hot.index == at && a.hop.at == at
 		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, hovered, room, pal), at == a.hop.at, hovered))
 	}
 	if footWord != "" && len(lines)+topEdge+1+verticalPad < height {
@@ -1551,14 +1567,10 @@ const hopClosedLabel = "closed"
 
 // hopClauses are the keys the card owns, in the order a person meets them.
 //
-// THE CLOSE CLAUSE SAYS `close tab` AND NOT `put away`, because `put away` is
-// already home's word for a different act: `ctrl+e` on a home row ARCHIVES a
-// conversation, hides it from the list until its name is typed, and says so
-// (`put away · type its name to find it again`, place_home.go). This key takes
-// a row off this window's tab row and leaves the conversation running on the
-// list — which is exactly what the receipt two lines below already says
-// ([hopAwayWord]). A legend that spelled the lighter act with the heavier act's
-// verb had the card contradicting its own answer.
+// THE CLOSE CLAUSE SAYS `close tab`, because home's `close` archives a
+// conversation and hides it from the list until its name is typed. This key
+// only removes the tab from this window and leaves the conversation on home's
+// list, as [hopAwayWord] explains after the press.
 var hopClauses = []string{"enter open", "esc cancel", "↑↓ choose", hopAwayKey + " close tab"}
 
 // hopFootWords is the foot of the FRAME while the card is up — the same clauses

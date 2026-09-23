@@ -727,6 +727,16 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 	if parsed.Stop && (parsed.Continue || parsed.Forward || strings.TrimSpace(parsed.Resolve) != "") {
 		return "stop ends the task, so it cannot be combined with continue, resolve or forward; send one action at a time.", true, nil
 	}
+	// A LIVE RUN HAS NO PROJECT-INDEX ROW YET. Its rows are kept beside the
+	// graph's nodes and are written to the finished-work index only when the run
+	// ends, so a stop must resolve that live owner before asking the index. Every
+	// other operation keeps its existing reader: run details come from the plan
+	// store and ordinary tasks come from the graph and project index below.
+	if parsed.Stop {
+		if entry, id, found := a.liveBeltTaskByToken(token); found {
+			return a.stopOneTask(entry, id, true, parsed.Say)
+		}
+	}
 	rows := a.taskRows()
 	entry, found := a.taskByToken(rows, token)
 	if !found {
@@ -736,6 +746,12 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 		// that this session has no graph for that id.
 		if parsed.Continue {
 			return continueNoGraph(token, TaskIndexEntry{}), true, nil
+		}
+		if parsed.Stop {
+			if a.config.taskID != 0 {
+				return fmt.Sprintf("Could not stop task %q: no task by that id is running among the pieces you handed out. Call tasks with no arguments to see them.", token), true, nil
+			}
+			return fmt.Sprintf("Could not stop task %q: no task by that id is running in this project. Call tasks with no arguments to see the most recent ones.", token), true, nil
 		}
 		if a.config.taskID != 0 {
 			// Scoped, so the miss is a different fact: the id may well name real
@@ -846,7 +862,7 @@ func (a *Agent) stopOneTask(entry TaskIndexEntry, id uint64, here bool, why stri
 		// there is nothing here to end and nobody to end it — the same fact
 		// steering and resolving already give for the same row.
 		if entry.Live() {
-			return fmt.Sprintf("Task %s is running in the conversation that owns it, and a stop reaches only this session's own work. It has to be stopped in that window.", entry.ID), true, nil
+			return fmt.Sprintf("Could not stop task %s: it is running in another conversation and has to be stopped in that window.", entry.ID), true, nil
 		}
 		return fmt.Sprintf("task %s ran in an earlier conversation and is %s; there is nothing to stop.", entry.ID, taskEntryWord(entry)), false, nil
 	}
@@ -857,7 +873,10 @@ func (a *Agent) stopOneTask(entry TaskIndexEntry, id uint64, here bool, why stri
 	}
 	line, err := a.CancelWithReason(CancelTask+":"+strconv.FormatUint(id, 10), why)
 	if err != nil {
-		return capitalized(err.Error()) + ".", true, nil
+		return fmt.Sprintf("Could not stop task %s: %s.", entry.ID, strings.TrimSuffix(err.Error(), ".")), true, nil
+	}
+	if strings.TrimSpace(line) == "" {
+		return fmt.Sprintf("Could not stop task %s: codeaf received no answer that the work stopped.", entry.ID), true, nil
 	}
 	// AND THE ANSWER SAYS THE THING THE OLD WORKAROUND GOT WRONG. A task told in
 	// words to stop still ended as an unfinished run and was sent back to close

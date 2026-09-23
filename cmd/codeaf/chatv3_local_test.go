@@ -350,7 +350,7 @@ func TestAConnectedModelServiceIsLiveInTheRunningEngineConversation(t *testing.T
 // the answer releases the call. The next matching command therefore runs
 // without asking the person a second time.
 func TestABankedBashRuleReachesTheRunningEngineBeforeTheAnswer(t *testing.T) {
-	profileDir := t.TempDir()
+	profileDir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
 	workspace := t.TempDir()
 	command := "printf banked-rule-probe"
 	server := consentSource(t, command)

@@ -147,6 +147,33 @@ func TestAStopOnARunsOwnRowEndsTheRun(t *testing.T) {
 	}
 }
 
+// THE MODEL'S STOP RESOLVES A LIVE RUN BEFORE IT HAS AN INDEX ENTRY. A run is
+// kept beside the graph's nodes and reaches the project index only when it
+// ends, so looking up the model's id only in that index made `tasks stop`
+// answer that no such task existed while the rail was drawing it as running.
+func TestTasksToolStopsARunsOwnRowBeforeItHasEnded(t *testing.T) {
+	agent, double, _, dir := stoppableBeltRun(t, 71)
+
+	text, isError := runTool(t, agent, "tasks", `{"id":71,"stop":true}`)
+	if isError {
+		t.Fatalf("the model's stop on the live run was refused:\n%s", text)
+	}
+	if !strings.Contains(text, "stopping task 71") || !strings.Contains(text, "its branch is kept") {
+		t.Fatalf("the model's stop answered:\n%s", text)
+	}
+	beltRunWaitFor(t, "the run to end", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
+	double.mu.Lock()
+	cut := double.ctx.Err() != nil
+	double.mu.Unlock()
+	if root := beltRunTaskAt(t, dir, "71"); !cut || root == nil || root.Status != plandb.StatusCancelled {
+		t.Fatalf("after the model's stop the run's context cut = %t, its task = %+v", cut, root)
+	}
+}
+
 // A RUN STOPPED BEFORE IT CHANGED ANYTHING NAMES NO BRANCH. A branch named over
 // no work sends a person looking for something that is not there.
 func TestAStoppedRunThatChangedNothingSaysSo(t *testing.T) {

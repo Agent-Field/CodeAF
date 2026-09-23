@@ -47,22 +47,22 @@ func TestSwitcherSurfaceKeepsItsFrameAndSelectedTargetAtEverySize(t *testing.T) 
 	}
 }
 
-func TestSwitcherSurfaceHasInsetAirAndSeparateSelectionAndHover(t *testing.T) {
+func TestSwitcherSurfaceHasInsetAirAndOneSelection(t *testing.T) {
 	for _, profile := range []tokens.Profile{tokens.TrueColor, tokens.ANSI256, tokens.ANSI16, tokens.NoColor} {
 		a := newTestApp(&fakeAgent{model: "m"})
 		a.pal = newPalette(profile, false)
 		a.file = "/tmp/lab/this-one.jsonl"
 		keepThree(t, a)
 		drive(t, a, key(hopOpenKey))
-		a.hop.at = 0
+		a.hop.at = 1
 		a.hot = hoverAt{kind: hoverHop, index: 1}
 		lines := a.hopCardLines(80, 20, a.pal)
 		if strings.Trim(plain(lines[1]), " │") != "" || strings.Trim(plain(lines[len(lines)-2]), " │") != "" {
 			t.Fatal("roomy card crowds its top or bottom outline")
 		}
 		selected, hovered := lines[a.hop.spots[0].row], lines[a.hop.spots[1].row]
-		if !strings.HasPrefix(plain(selected), "│>  1") || !strings.HasPrefix(plain(hovered), "│ · 2") {
-			t.Fatal("hover is indistinguishable from the keyboard destination")
+		if strings.Contains(plain(selected), ">") || !strings.Contains(plain(hovered), ">") {
+			t.Fatal("hover did not take over the sole selection")
 		}
 		if profile == tokens.NoColor {
 			if strings.Contains(strings.Join(lines, ""), "\x1b") {

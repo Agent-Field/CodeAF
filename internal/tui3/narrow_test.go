@@ -53,13 +53,13 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 	// columns that re-spaced a hundred and sixty would be a fix that cost every
 	// other terminal something.
 	wide := plain(a.placeTabBar(120, false, a.pal))
-	if !strings.Contains(wide, "home   tasks") {
+	if !strings.Contains(wide, "home   sessions") {
 		t.Fatalf("at 120 columns the bar drew\n\t%q\nand the air between two chips is gone; it should read\n\t%q",
-			wide, "  home   tasks   spend   settings")
+			wide, "  home   sessions   spend   settings")
 	}
-	if narrow := plain(a.placeTabBar(tight, false, a.pal)); !strings.Contains(narrow, "home  tasks") {
+	if narrow := plain(a.placeTabBar(tight, false, a.pal)); !strings.Contains(narrow, "home  sessions") {
 		t.Fatalf("at %d columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
-			tight, narrow, "  home  tasks  spend  settings")
+			tight, narrow, "  home  sessions  spend  settings")
 	}
 }
 
@@ -79,7 +79,7 @@ func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 		}
 		if !strings.Contains(bar, tokens.GlyphCollapsed) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nand said nothing about the places it could not carry; it should end in a marked count, as in\n\t%q",
-				tc.width, bar, "  home  tasks  "+tokens.GlyphCollapsed+" 2")
+				tc.width, bar, "  home  sessions  "+tokens.GlyphCollapsed+" 2")
 		}
 		if got := ansi.StringWidth(bar); got > tc.width {
 			t.Fatalf("at %d columns the bar is %d cells wide and runs past the frame:\n\t%q", tc.width, got, bar)
@@ -253,15 +253,17 @@ func TestAConversationWithNoTitleIsNamedInWordsNotHex(t *testing.T) {
 	for _, width := range []int{60, 80, 120, 160} {
 		a := lab.app(mine)
 		a.width, a.height = width, 30
+		a.openingPrompt = "explain open addressing"
+		openHomeFixtureTabs(a)
 		a.openHome()
 		frame := homeText(a)
 		if strings.Contains(frame, "927D303242f9d00e") || strings.Contains(frame, "927d303242f9d00e") {
 			t.Fatalf("at %d columns home drew\n\t%q\nwith the folder's id where the name goes; it should read\n\t%q",
-				width, rowSaying(frame, "927"), "○ "+unnamedConversationWord+"   alpha  here")
+				width, rowSaying(frame, "927"), "○ "+"explain open addressing"+"   alpha  here")
 		}
-		if !strings.Contains(frame, unnamedConversationWord) {
+		if !strings.Contains(frame, "explain open addressing") {
 			t.Fatalf("at %d columns home drew\n%s\nand nothing on it names the conversation with no title; the row should read\n\t%q",
-				width, frame, "○ "+unnamedConversationWord)
+				width, frame, "○ "+"explain open addressing")
 		}
 		// AND A CONVERSATION THAT HAS A NAME STILL WEARS IT.
 		if !strings.Contains(frame, "Porting the Picker") {
@@ -274,7 +276,7 @@ func TestAConversationWithNoTitleIsNamedInWordsNotHex(t *testing.T) {
 		t.Fatalf("a folder that reads as words was named %q, and it should keep its own words: %q", got, want)
 	}
 	if got := listName("", "/p/01J8ZK4Q2M7X/transcript.jsonl"); got != unnamedConversationWord {
-		t.Fatalf("an id-shaped folder was named %q, and a name that cannot be had is said in words: %q", got, unnamedConversationWord)
+		t.Fatalf("an id-shaped folder was named %q, and a name that cannot be had is said in words: %q", got, "explain open addressing")
 	}
 }
 
@@ -341,11 +343,11 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 		width int
 		want  string
 	}{
-		{160, " " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500) + " · " + clock},
-		{60, " " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500)},
-		{47, " " + product + "   12 want you · 4 moving · $123.45"},
-		{40, " " + product + "   12 want you · 4 moving"},
-		{30, " " + product + "   12 want you"},
+		{160, " >● " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500) + " · " + clock},
+		{60, " >● " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500)},
+		{47, " >● " + product + "   12 want you · 4 moving · $123.45"},
+		{40, " >● " + product + "   12 want you · 4 moving"},
+		{30, " >● " + product + "   12 want you"},
 		{16, " " + product},
 	} {
 		line := plain(a.pulseLine(one.width, a.pal, pulseWhole))

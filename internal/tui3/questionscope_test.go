@@ -43,7 +43,6 @@ func TestAFrameDrawsTheLifetimesTheQuestionOffers(t *testing.T) {
 		questionScopeWord(session.ScopeOnce),
 		questionScopeWord(session.ScopeProject),
 		questionScopeWord(session.ScopeAlways),
-		questionScopeKey + " how long",
 	} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the frame does not say %q:\n%s", want, screen)
@@ -109,7 +108,6 @@ func TestAnIrreversibleQuestionOffersNoLifetimeRow(t *testing.T) {
 	for _, gone := range []string{
 		questionScopeWord(session.ScopeProject),
 		questionScopeWord(session.ScopeAlways),
-		questionScopeKey + " how long",
 	} {
 		if strings.Contains(screen, gone) {
 			t.Fatalf("an irreversible question offers %q:\n%s", gone, screen)
@@ -178,7 +176,6 @@ func TestAPermissionOffersNoLifetimesUntilTheGateHonoursOne(t *testing.T) {
 	for _, gone := range []string{
 		questionScopeWord(session.ScopeProject),
 		questionScopeWord(session.ScopeAlways),
-		questionScopeKey + " how long",
 	} {
 		if strings.Contains(screen, gone) {
 			t.Fatalf("a permission frame says %q:\n%s", gone, screen)

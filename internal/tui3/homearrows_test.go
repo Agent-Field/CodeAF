@@ -116,9 +116,8 @@ func TestArrowsWalkTheWholeColumnOnANarrowHome(t *testing.T) {
 	}
 }
 
-// A POINTER RESTING ON A ROW DOES NOT HOLD THE ARROWS DOWN. The hover is a
-// preview and the cursor is the selection, and the last input is the one that
-// moved (home.go's [app.homeHover]).
+// A POINTER RESTING ON A ROW DOES NOT HOLD THE ARROWS DOWN. Mouse and keyboard
+// share one selected row, and the arrows take over immediately.
 func TestAHoveredRowDoesNotStopTheArrowsOnANarrowHome(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := twoProjectsAndFive(t, lab)
@@ -171,8 +170,8 @@ func TestAHeldRosterDoesNotTakeNarrowHomesKeys(t *testing.T) {
 	}
 	// And esc is home's own way out rather than the roster's.
 	drive(t, a, key("esc"))
-	if a.at(pageHome) {
-		t.Fatal("esc handed the keyboard back to a roster instead of closing home")
+	if !a.at(pageHome) {
+		t.Fatal("esc left Home for the hidden roster")
 	}
 }
 
@@ -191,7 +190,9 @@ func TestAHeldRosterDoesNotTakeTheFollowUpEnterOnANarrowHome(t *testing.T) {
 	a.railTake(true)
 	a.openHome()
 	typeHome(a, "remind me at 6")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	ex := theExchange(a)
 	if ex == nil {

@@ -673,7 +673,6 @@ func (a *app) armLanes(p *picker, slot string) {
 	// any row that draws a machine's NAME may draw ([picker.force]).
 	p.force = a.pinnedNow()
 	p.guard = config.LaneGuardAt(a.profileDir)
-	p.ascii = a.pal.ascii
 }
 
 // routingOff is whether this session's routing row is `off` — the one answer
@@ -710,7 +709,10 @@ func (a *app) applyLaneChoice(model string, row pickRow, lanes []laneView) {
 	switch {
 	case row.lane == laneAutoAt:
 		a.clearLanePin(model)
-	case row.lane == laneRoutAt:
+	case row.lane == laneRoutAt, row.lane == laneDefaultAt:
+		// THE CONTAINER AND THE ROW INSIDE IT WRITE THE SAME THING, which is
+		// what makes `enter` on `openrouter` a shortcut rather than a fourth
+		// answer: it is the same choice reached one press earlier.
 		a.setLaneRouterOnly(model)
 	case row.lane >= 0 && row.lane < len(lanes):
 		if name := lanes[row.lane].Name; strings.EqualFold(laneInForce(model).name, name) {
@@ -810,16 +812,31 @@ func laneShown(routing string, views []laneView, now string) (laneView, bool) {
 // as a measurement; on the model's own line it is one ranked fact among seven
 // competing for a sixty-cell frame, and the space would be a cell spent on air.
 func laneRateTight(rate float64) string {
+	if bare := laneRateBare(rate); bare != "" {
+		return bare + laneRateUnit
+	}
+	return ""
+}
+
+// laneRateUnit is what a throughput is measured in, and it is a constant
+// because the table writes it in a column head while the tail writes it on
+// every row ([modelFacts]) — one spelling, in one place.
+const laneRateUnit = "t/s"
+
+// laneRateBare is a throughput with no unit on it, "58", for a row whose column
+// head carries the unit instead.
+func laneRateBare(rate float64) string {
 	if rate <= 0 {
 		return ""
 	}
-	return strconv.Itoa(int(math.Round(rate))) + "t/s"
+	return strconv.Itoa(int(math.Round(rate)))
 }
 
 // laneExactly is one lane's view by its whole name, false when nothing is
 // believed about a lane by that name — which is every reading of an empty name.
-// It is the strict sibling of [laneNamed], which matches the part of a name a
-// person half-remembers; a row's own numbers may not be found that loosely.
+// IT IS THE WHOLE NAME AND NEVER A PART OF ONE: a row's own numbers may not be
+// found by the fragment a person half-remembers, because the wrong row's figures
+// are worse than no figures.
 func laneExactly(views []laneView, name string) (laneView, bool) {
 	if strings.TrimSpace(name) == "" {
 		return laneView{}, false
@@ -892,6 +909,35 @@ func laneRowPlan(view laneView) rowPlan {
 	return plan
 }
 
+// laneCells is one provider's facts in [laneColumns] order, each in the
+// spelling its column's head has already accounted for — the unit off the rate
+// and the price, because a head says those once for the whole list.
+//
+// IT IS laneRowPlan's OWN READING with the labels taken off, which is the
+// arrangement models.go keeps for the same two shapes: the table's cells and
+// the ranked tail are one reading of one provider, dressed twice.
+func laneCells(view laneView) []string {
+	price := ""
+	if view.PriceOut > 0 {
+		price = "$" + perMillion(view.PriceOut)
+	}
+	uptime := ""
+	if view.Uptime > 0 {
+		uptime = strconv.Itoa(int(math.Round(view.Uptime))) + "%"
+	}
+	// THE ORDER IS [laneColumns]' ORDER and there is no second spelling of it:
+	// this slice is indexed by column, so `up` before `note` here is the same
+	// decision as `up` before `note` there, and the two cannot drift.
+	return []string{
+		laneSecondsWord(view.TTFT),
+		laneRateBare(view.Rate),
+		price,
+		uptime,
+		laneNote(view),
+		barSpark(view.Sightings, 0, laneSightings),
+	}
+}
+
 // laneRowText is that plan in room cells, as the row's two halves.
 func laneRowText(view laneView, room int) (string, string) {
 	return laneRowPlan(view).fit(room)
@@ -947,162 +993,10 @@ func laneNote(view laneView) string {
 	return ""
 }
 
-// laneWhy is the dim line under the cursor: what this lane is, in a sentence,
-// with where the claim came from.
-//
-//	cloudflare: first token 0.8s, steady 58 t/s, no tail — from the sheet + your last 12 answers
-//
-// IT SAYS WHERE THE NUMBER CAME FROM because that is the difference between a
-// figure a person can argue with and one they have to trust. "The sheet" is the
-// public prior everybody gets; "your last n answers" is ours, and when there
-// are none it says the sheet alone rather than claiming a history.
-func laneWhy(view laneView) string {
-	if !view.Known {
-		return ""
-	}
-	parts := make([]string, 0, 3)
-	if word := laneSecondsWord(view.TTFT); word != "" {
-		parts = append(parts, "first token "+word)
-	}
-	if word := laneRateWord(view.Rate); word != "" {
-		parts = append(parts, "steady "+word)
-	}
-	if view.Tail == 0 && !view.Vague {
-		parts = append(parts, "no tail")
-	}
-	line := strings.ToLower(view.Name) + ": " + strings.Join(parts, ", ")
-	switch n := len(view.Sightings); {
-	case n == 1:
-		return line + " — from the sheet + your last answer"
-	case n > 1:
-		return line + " — from the sheet + your last " + strconv.Itoa(n) + " answers"
-	}
-	return line + " — from the sheet"
-}
-
-// ── THE FILTER GRAMMAR ──────────────────────────────────────────────────────
-//
-// The picker's box has always been a fuzzy search over model ids, and it stays
-// one: EVERY TOKEN THAT DOES NOT PARSE AS ONE OF THESE FALLS THROUGH TO
-// [picker.rank] UNCHANGED, so nothing a person types today ranks differently
-// tomorrow. What is added is a handful of tokens that are not names at all —
-// they are questions about the machines behind the name, and a fuzzy search
-// over ids can never answer them.
-//
-// A term either KEEPS rows or ORDERS them, never both. Keeping is ANDed with
-// every other token, which is the only thing typing more can sensibly do; the
-// two ordering words come last and win over the text score, because a person
-// who typed `fast` asked for an order out loud.
-
-// laneTermKind says what a parsed token does.
-type laneTermKind uint8
-
-const (
-	// termLane keeps models served by a lane whose name carries the word, and
-	// unfolds the first of them with that lane at the top.
-	termLane laneTermKind = iota
-	// termTTFT keeps models whose best lane starts within a bound.
-	termTTFT
-	// termRate keeps models whose best lane writes at least this fast.
-	termRate
-	// termPrice keeps models whose best lane charges under this per million
-	// output tokens.
-	termPrice
-	// termQuant keeps models with a lane serving at least this precision.
-	termQuant
-	// termTools keeps models with a lane that honours a tool call.
-	termTools
-	// termSees and termDraws are the model's own modalities, which the row
-	// already says — they are here so that one grammar answers the whole row.
-	termSees
-	termDraws
-	// termFast and termCheap order what is left.
-	termFast
-	termCheap
-)
-
-// laneTerm is one parsed token.
-type laneTerm struct {
-	kind  laneTermKind
-	word  string
-	value float64
-}
-
-// parseLaneTerm reads one lowercased token, and reports false for everything
-// that is not one of the forms above — which is how an ordinary search word
-// reaches the ranking it has always reached.
-func parseLaneTerm(token string) (laneTerm, bool) {
-	switch token {
-	case "":
-		return laneTerm{}, false
-	case "tools":
-		return laneTerm{kind: termTools}, true
-	case "sees":
-		return laneTerm{kind: termSees}, true
-	case "draws":
-		return laneTerm{kind: termDraws}, true
-	case "fast":
-		return laneTerm{kind: termFast}, true
-	case "cheap":
-		return laneTerm{kind: termCheap}, true
-	case "fp4", "fp8", "int8", "bf16", "fp16", "fp32":
-		return laneTerm{kind: termQuant, word: token}, true
-	}
-	if strings.HasPrefix(token, "@") {
-		if name := strings.TrimPrefix(token, "@"); name != "" {
-			return laneTerm{kind: termLane, word: name}, true
-		}
-		return laneTerm{}, false
-	}
-	// `$<0.3` — the dollar leads because that is how a person writes a price,
-	// and the comparison follows it.
-	if rest, ok := strings.CutPrefix(token, "$<"); ok {
-		if value, err := strconv.ParseFloat(rest, 64); err == nil && value > 0 {
-			return laneTerm{kind: termPrice, value: value}, true
-		}
-		return laneTerm{}, false
-	}
-	// `<1s` and `<800ms` — a bound on the wait before the first word, kept in
-	// SECONDS because that is the unit the row is drawn in.
-	if rest, ok := strings.CutPrefix(token, "<"); ok {
-		if seconds, ok := parseLaneSeconds(rest); ok {
-			return laneTerm{kind: termTTFT, value: seconds}, true
-		}
-		return laneTerm{}, false
-	}
-	// `>50t/s` — a floor under how fast it writes.
-	if rest, ok := strings.CutPrefix(token, ">"); ok {
-		rest = strings.TrimSuffix(strings.TrimSuffix(rest, "t/s"), "tok/s")
-		if value, err := strconv.ParseFloat(rest, 64); err == nil && value > 0 {
-			return laneTerm{kind: termRate, value: value}, true
-		}
-		return laneTerm{}, false
-	}
-	return laneTerm{}, false
-}
-
-// parseLaneSeconds reads `1s`, `800ms` or a bare number of seconds.
-func parseLaneSeconds(text string) (float64, bool) {
-	switch {
-	case strings.HasSuffix(text, "ms"):
-		value, err := strconv.ParseFloat(strings.TrimSuffix(text, "ms"), 64)
-		if err != nil || value <= 0 {
-			return 0, false
-		}
-		return value / 1000, true
-	case strings.HasSuffix(text, "s"):
-		text = strings.TrimSuffix(text, "s")
-	}
-	value, err := strconv.ParseFloat(text, 64)
-	if err != nil || value <= 0 {
-		return 0, false
-	}
-	return value, true
-}
-
-// laneQuantRank orders the weight precisions a sheet publishes, coarsest first.
-// Zero is "nobody said", which no `fp8` filter can satisfy and no row is judged
-// by: a lane that published no precision has not published a bad one.
+// laneQuantRank orders the weight precisions a sheet publishes, coarsest first,
+// so [laneNote] can ask whether a lane is serving BELOW the floor without
+// comparing the words themselves. Zero is "nobody said", and no row is judged by
+// it: a lane that published no precision has not published a bad one.
 func laneQuantRank(quant string) int {
 	switch strings.ToLower(strings.TrimSpace(quant)) {
 	case "fp4", "int4", "nf4":
@@ -1117,64 +1011,6 @@ func laneQuantRank(quant string) int {
 		return 5
 	}
 	return 0
-}
-
-// keeps reports whether one model survives this term. Terms that only order
-// keep everything.
-func (t laneTerm) keeps(model Model, views []laneView) bool {
-	best, known := bestLane(views)
-	switch t.kind {
-	case termLane:
-		_, found := laneNamed(views, t.word)
-		return found
-	case termTTFT:
-		return known && best.TTFT > 0 && best.TTFT <= t.value
-	case termRate:
-		return known && best.Rate >= t.value
-	case termPrice:
-		// THE CHEAPEST LANE ANSWERS THIS ONE, not the best. `$<0.3` is a
-		// question about what this model CAN be served for — the same shape as
-		// `tools` and `fp8` — while `<1s` and `>50t/s` are about the lane you
-		// would actually land on.
-		for _, view := range views {
-			if view.PriceOut > 0 && view.PriceOut*1_000_000 < t.value {
-				return true
-			}
-		}
-		return false
-	case termQuant:
-		want := laneQuantRank(t.word)
-		for _, view := range views {
-			if laneQuantRank(view.Quant) >= want {
-				return true
-			}
-		}
-		return false
-	case termTools:
-		for _, view := range views {
-			if view.Tools {
-				return true
-			}
-		}
-		return false
-	case termSees:
-		return hasModality(model.Input, "image")
-	case termDraws:
-		return hasModality(model.Output, "image")
-	}
-	return true
-}
-
-// laneNamed finds the first lane whose name CARRIES the word, so `@cloud` finds
-// cloudflare — a person filtering types the part they remember, exactly as they
-// do for a model id.
-func laneNamed(views []laneView, word string) (laneView, bool) {
-	for _, view := range views {
-		if strings.Contains(strings.ToLower(view.Name), strings.ToLower(word)) {
-			return view, true
-		}
-	}
-	return laneView{}, false
 }
 
 // ── PINNING ─────────────────────────────────────────────────────────────────
@@ -1311,9 +1147,11 @@ func (a *app) routingRowChanged() {
 
 // ── THE PIN, WRITTEN ON THE MODEL ───────────────────────────────────────────
 
-// laneAtSign is what joins a model to the machine it is pinned to. It is the
-// `@` of the picker's own filter grammar ([parseLaneTerm]) and of `/model
-// @cloudflare`, so what a person reads on the chrome is what they would type.
+// laneAtSign is what joins a model to the machine it is pinned to. It is the `@`
+// of `/model @cloudflare`, so what a person reads on the chrome is what they
+// would type to put it there. The picker's filter box once took the same `@` and
+// no longer does — it searches names only ([picker.rank]) — which leaves the
+// command as the one place a person types this character.
 const laneAtSign = "@"
 
 // pinnedNow is the machine this conversation's requests are held to, as the
@@ -1338,8 +1176,21 @@ func (a *app) laneForceNow() laneForce {
 	return laneInForce(a.model)
 }
 
-// modelWord is THE MODEL AS THE CHROME NAMES IT: its basename ([modelBase]),
-// and — while a lane is pinned — `@` and that lane: `deepseek-v4-flash@cloudflare`.
+// modelIdentity keeps the complete model address on home and conversation seams.
+// Connected services qualify their own models; without a catalog the stored id
+// still keeps its organization prefix, so the two surfaces cannot disagree.
+func (a *app) modelIdentity(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" || a.sources.Empty() {
+		return id
+	}
+	service, bare := a.sources.For(id)
+	return service.Qualify(bare)
+}
+
+// modelWord is THE MODEL AS THE CHROME NAMES IT: its complete address,
+// and — while a lane is pinned — `@` and that lane:
+// `deepseek/deepseek-v4-flash@cloudflare`.
 //
 // A PIN IS AN INSTRUCTION THAT CHANGES EVERY FUTURE REQUEST, and until this the
 // chrome never said it. The picker's row said `via inception` only while the
@@ -1355,7 +1206,7 @@ func (a *app) laneForceNow() laneForce {
 func (a *app) modelWord() string { return a.modelWordAt("") }
 
 // modelWordAt is [app.modelWord] with a reasoning level spelled onto the id —
-// `deepseek-v4-flash:high@cloudflare` — which is how the phone deck's chip names
+// `deepseek/deepseek-v4-flash:high@cloudflare` — which is how the phone deck's chip names
 // the conversation's model (statusdeck.go's [app.deckModelRow]). An empty level
 // is the word [app.modelWord] draws.
 //
@@ -1365,11 +1216,7 @@ func (a *app) modelWord() string { return a.modelWordAt("") }
 // the model by a name nothing is filed under — which is how a person who had set
 // a level lost the live rate from the right edge of the row.
 func (a *app) modelWordAt(level string) string {
-	model := modelBase(a.model)
-	if !a.sources.Empty() {
-		service, bare := a.sources.For(a.model)
-		model = service.Qualify(bare)
-	}
+	model := a.modelIdentity(a.model)
 	if model == "" {
 		return ""
 	}
@@ -1456,7 +1303,32 @@ func (a *app) openPickerFromChip() {
 // a machine the address already names is not said twice. The seam asks
 // [app.talkLaneRider] instead, which never suppresses.
 func (a *app) laneRider(timed bool) string {
-	return a.laneRiderFor(a.talkLaneStory(), a.model, "", timed, a.state == stateWorking)
+	return a.laneRiderFor(a.talkLaneStory(), a.model, a.model, "", riderVia, timed, a.state == stateWorking)
+}
+
+// riderStyle is how a lane rider is spelled.
+type riderStyle uint8
+
+const (
+	// riderVia is ` · via relace`: a segment of its own, on the sheet's
+	// `served` row and the phone deck's identity, said shorter when the row
+	// is tight.
+	riderVia riderStyle = iota
+	// riderBeside is ` (relace)`: the machine written onto the model's own
+	// cell on the seam — `deepseek-v4-flash (relace)` — whole or nothing, and
+	// never aged out. The owner's ruling of 2026-09-17: the model and the
+	// machine answering for it are one fact, read as one word, and the last
+	// machine to answer stays named until another does.
+	riderBeside
+)
+
+// riderWords spells a machine in one style, with an optional tail inside the
+// same cell (` · rescued`).
+func riderWords(style riderStyle, machine, tail string) string {
+	if style == riderBeside {
+		return " (" + machine + tail + ")"
+	}
+	return " · via " + machine + tail
 }
 
 // talkLaneRider is the conversation's rider ON THE SEAM: who is answering, with
@@ -1474,7 +1346,7 @@ func (a *app) talkLaneRider() string {
 	if news, ok := a.livePhase(); ok {
 		live = news.Lane
 	}
-	return a.laneRiderFor(a.talkLaneStory(), "", live, false, a.state == stateWorking)
+	return a.laneRiderFor(a.talkLaneStory(), a.model, "", live, riderBeside, false, a.state == stateWorking)
 }
 
 // roomLaneRider is that rider for THE OPEN ROOM'S NODE: which machine answered
@@ -1504,34 +1376,44 @@ func (a *app) roomLaneRider() string {
 	}
 	news, working := a.roomPhase()
 	story, _ := laneStoryFor(subject)
-	return a.laneRiderFor(story, "", news.Lane, false, working)
+	return a.laneRiderFor(story, a.roomNode().model, "", news.Lane, riderBeside, false, working)
 }
 
 // laneRiderFor is that rider for one window's story: the piece of work the
 // window asking is a window onto (phase.go's law and [newsDeskKeys]).
 //
+// model is the id the work runs on, asked one thing: whether it is a directly
+// connected service's, which has one road and no machine to name. It is
+// ALWAYS a real id: until 2026-09-17 the seam and a room asked this of the
+// empty string they pass as named, which [modelsource.Set.For] answers with
+// the default service — right by accident, and wrong the day the default is
+// a direct one.
+//
 // named is the id the row beside it spells IN FULL, read for one thing only —
 // the rule that a machine the id already carries is not said twice. Only the
 // sheet passes one ([app.laneRider]); the seam and a room spell a basename, so
 // the vendor is not on the screen and they pass nothing (the owner's ruling of
-// 2026-09-09: `via` always on the seam).
+// 2026-09-09: the machine always on the seam).
 //
 // live is the machine the request in flight has named, or "" — see
 // [app.talkLaneRider] for why it outranks the last answer's sighting.
+//
+// style is the spelling ([riderStyle]): the sheet's segment ages out with
+// [servedWindow], because a figure about an answer that finished ten minutes
+// ago is not a reading; the seam's word beside the model does not, because
+// who answered last is a fact until somebody else answers.
 //
 // working says whether the work this rider is about is RUNNING, because that is
 // what decides whether the rate may ride along and whether a rescue may still
 // be promised. It is the caller's answer and not `a.state`: the session's state
 // is the conversation's liveness, and a window onto a node must not go quiet
 // because the conversation it was launched from is idle.
-func (a *app) laneRiderFor(story laneStory, named, live string, timed, working bool) string {
+func (a *app) laneRiderFor(story laneStory, model, named, live string, style riderStyle, timed, working bool) string {
 	// A DIRECTLY CONNECTED SERVICE HAS ONE ROAD, so there is no machine to name
 	// and the lane desk holds none for it. The sighting this would otherwise
 	// find is the DEFAULT service's, matched on the full model id the sheet row
-	// names — which is how an ollama row came to say `via akashml`. The seam and
-	// task room pass no full id, so the default service's rescue rider remains
-	// available there.
-	if a.modelIsDirect(named) {
+	// names — which is how an ollama row came to say `via akashml`.
+	if a.modelIsDirect(model) {
 		return ""
 	}
 	now := a.now()
@@ -1545,15 +1427,15 @@ func (a *app) laneRiderFor(story laneStory, named, live string, timed, working b
 	// a sighting is the last one.
 	if live = strings.ToLower(strings.TrimSpace(live)); live != "" {
 		if named == "" || !strings.Contains(strings.ToLower(named), live) {
-			return " · via " + live
+			return riderWords(style, live, "")
 		}
 	}
 	news := story.seen
-	if !story.hasSeen || now.Sub(news.At) > servedWindow {
+	if !story.hasSeen || (style == riderVia && now.Sub(news.At) > servedWindow) {
 		return ""
 	}
 	if news.rescued() {
-		return " · via " + strings.ToLower(news.Winner) + " · rescued"
+		return riderWords(style, strings.ToLower(news.Winner), " · rescued")
 	}
 	if news.Lane == "" {
 		return ""
@@ -1566,7 +1448,7 @@ func (a *app) laneRiderFor(story laneStory, named, live string, timed, working b
 	if named != "" && strings.Contains(strings.ToLower(named), served) {
 		return ""
 	}
-	rider := " · via " + served
+	rider := riderWords(style, served, "")
 	if !timed {
 		return rider
 	}

@@ -258,7 +258,7 @@ func TestUnderOneModelTheCrewSurfacesNameTheFlagAndNoSeatReceiptIsPosted(t *test
 	if strings.Contains(page, config.CrewCustom) {
 		t.Errorf("/status names the crew the flag overrode:\n%s", page)
 	}
-	if line := plain(a.status(200)); strings.Contains(line, "crew "+config.CrewCustom) {
+	if line := plain(a.legend(200)); strings.Contains(line, "crew "+config.CrewCustom) {
 		t.Errorf("the status line still draws the overridden crew:\n%q", line)
 	}
 

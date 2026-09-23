@@ -6,7 +6,7 @@ A **place** is a full-screen room in codeaf that is not this conversation. There
 and they are always in the same order — the four on the tab bar, then the three reached by
 their command:
 
-`home` · `tasks` · `spend` · `settings` · `standing` · `memory` · `search`
+`home` · `sessions` · `spend` · `settings` · `standing` · `memory` · `search`
 
 **The tab bar draws four:** `home  tasks  spend  settings`. Standing, memory and search are
 places all the same — `/standing`, `/memory`, `/search`, their digit, the map and the typed
@@ -27,8 +27,9 @@ Every place is drawn in the same frame:
 5. a rule, then the **composer** — one line you can type into, wherever you are
 6. the hint line — what the keys do here
 
-`esc` leaves a place and puts you back in the conversation you were in. Places are not
-stacked: opening one closes whichever was up, so `esc` is always one press from the chat.
+`esc` dismisses an editor or filter first, then returns to Home. The resting tasks,
+spend and settings footers say `esc home`, including compact task screens. Places are not
+stacked: opening one closes whichever was up. Further Escape presses stay on Home.
 
 ## How to get to a place — the keyboard shortcut to jump between pages
 
@@ -54,8 +55,7 @@ Four ways, and they all reach the same seven rooms:
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
   right margin. Home's list is a **drop-up** — it is read upward, out of the box you typed
   into — so ranking first means the offered place sits **below every conversation the same
-  words matched**, one row above `ask here` and `start a new conversation`, which is the
-  nearest row to your hand.
+  words matched**, nearest the message box. One `↑` selects it.
   Where the place can say what is behind it without going to the disk for it, the margin
   says that too: `a place · 6 orders, 1 fired today` on standing. A place that has nothing
   to count, or nothing in it, says `a place` alone.
@@ -77,7 +77,7 @@ empty room actually wants — see **Every place opens, always** further down thi
 
 That is true of every door onto a place and not only of the walk: a number, a click on the
 word, and the command that names it all open the same room on the same machine. `/history`
-and a bare `/task` on a machine that has run nothing open the tasks place, headed `tasks`
+and a bare `/task` on a machine that has run nothing open the sessions place, headed `sessions`
 over one line: `work you send off with /task lands here, and its record stays`.
 
 ## How do I move between the tabs with the arrow keys — the tab bar is a row the cursor can stand on
@@ -128,7 +128,7 @@ pointer off the word puts the ink back, and moving it into the gap between two w
 nothing, because the gap belongs to no room.
 
 **Hovering moves nothing else at all.** No cursor, no page, no window — the pointer
-previews and the cursor selects, which is the same law the rows underneath keep. If the
+previews the tab words; list rows instead share one selection with the keyboard. If the
 keyboard cursor is standing on the bar as well you will see both marks at once: the band on
 the word the cursor is on, the lifted ink on the word the pointer is on.
 
@@ -143,9 +143,11 @@ a press on the word you are already standing on does nothing.
 
 Three gestures, the same on all seven places:
 
-- **the pointer previews and the cursor selects.** Whatever your pointer is resting on is
-  what the card beside the list is about, and on home the row it lights.
-  Moving the pointer moves nothing else — the cursor stays where you put it.
+- **List rows have one selection.** On home, tasks, standing, memory, spend and search,
+  moving the mouse onto a row selects it. Keyboard navigation immediately takes over
+  and clears the old mouse highlight. A parked pointer cannot reclaim the selection;
+  move it again to switch back. Leaving the list keeps the latest selection. Settings
+  retains its separate hover preview.
 - **a click on a row opens it**, exactly as `enter` on it would: on standing, spend and
   search the first press puts the cursor there and opens what the row names. **A click
   never spends**: on memory, where `enter` on a line asks the model about it, the press
@@ -157,83 +159,121 @@ Three gestures, the same on all seven places:
   scroll offset: the window follows the cursor, so scrolling and choosing are one gesture.
   Walking off the bottom with `↓` scrolls the same way.
 
+`→` opens options for the selected row, and a letter such as `a` acts on that row.
+Moving to another row closes the old options, so they cannot affect the previous row.
+The chat switcher uses the same mouse/keyboard handoff.
+
 The **tab bar** answers all three too, and it answers them as itself rather than as a row of
 the list: the pointer lifts the word it is on, the wheel walks the places one room a turn,
 and a click opens. Its own section is above.
 
-## The composer — typing on any place, and how to start a task from any page
+## Typing on a place — only home starts things, how to start a task from any page, why is there no message box on tasks or spend, where did the box go
 
-Every place has one box at the foot, and **every printable key goes into it, always**. There
-is no mode to enter and no key to press first.
+**Only home has a message box.** Type a sentence on home and `enter` starts a conversation
+carrying it; `alt+enter` sends it off as a task instead (the composer layer, below). No
+other place starts anything: there is no box under tasks, standing, memory, spend or
+search, `enter` on those pages opens the row under the cursor and nothing else, and
+`alt+enter` does nothing there. `tab` to home, or `alt+1`, when you want to start something
+— its rule already says where the conversation will land and what it will run on.
 
-The box has two readings at once, with no switch between them:
+There used to be a box at the foot of every place, reading `› say what you want done`,
+whose `enter` "talked about it" in a new conversation and whose `alt+enter` sent a task. On
+six of the seven places that box was a lie in a slot: `enter` opened rows, typing on tasks
+went to the filter at the top of the list, and on spend the words went nowhere at all. It
+is gone (2026-09-17).
 
-- what you type **filters** what the place is showing — the conversations on home, the runs
-  on tasks, the rows in settings;
-- and it is also the **first sentence** of something new.
+**Typing still filters where a list is worth filtering.** On **sessions** every printable key
+narrows the list, and the letters draw on the control row at the top of it beside the `⌕`
+mark. On **search** the words you type are the query, drawn on the first row of the body the
+same way, and `esc` clears them. On **memory** the head row echoes the filter in place of
+`type to filter`. Spend and standing take no text.
 
-Two keys tell those apart:
+**Escape backs out to Home from every place.** Filters clear first where present;
+editors and nested views close before their parent page. Two spaces no longer navigate.
 
-- **`enter`** — talk about it. On a row, it opens that row. With something typed and no row
-  chosen, it starts a conversation carrying what you wrote. However many conversations this
-  terminal already holds, it starts another: nothing refuses one for being the ninth. Where
-  the door itself fails — `/new is unavailable here`, or a session
-  folder that could not be made — your sentence is not sent anywhere at all, and never into
-  the conversation that was behind the place.
-- **`alt+enter`** — send it off as a task. It runs on its own and tells you when it lands.
-  The first press opens the composer layer, where the three facts a task needs are settled;
-  the second press is the send. The next section is that layer in full.
+## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
 
-**What the empty box SAYS is the place's own sentence where the two readings are not both
-true.** With nothing typed it reads `› say what you want done` on home and on every place
-you can start something from. On the **tasks** place it reads `› type to filter this list`,
-because there is nothing to send from there — `enter` opens the row under the cursor and
-nothing else — so the shared prompt was inviting an instruction into a slot that could only
-ever narrow a list. The moment you type, the box is your text on every place alike, and a
-click puts the caret where you clicked — **except on tasks**, where the letters draw on the
-control row at the top of the list instead, beside the `⌕` mark, so that what you typed is
-above the rows it changed rather than two lines below them.
-
-## The scope chip — what is the here ~/codeaf thing next to the box
-
-At the right of the box is the **scope chip** — the `here ~/codeaf` next to the box. It is where what you type
-will land — the project the cursor is on, or this window's own project. It is drawn even
-with nothing typed, because a verb that is always in reach has to always say where it goes.
-The path is shortened the same way every path on this surface is: `~` for your home
-directory, and a first letter for each folder above the last when the whole thing will not
-fit. Home used to draw it in full while every other place shortened it; both are short now.
-
-**Home has no chip.** It says the same thing one row up, on its rule, and says more:
-`→ new conversation in ~/src/parser · glm-5.3-flash` is where a sentence will land *and*
-what it will answer on, with `alt+w folder · alt+o model · alt+k chats` naming the chords that change
-either. The chip on home was a reading nothing acted on — `enter` opened a conversation in
-this window's folder whatever the chip said — and the rule is that reading with `enter`
-honouring it. Home's own page has the whole gesture.
-
-## The composer layer — `alt+w` and `alt+o`, what does alt+w do, set which project, pick the model and set a spend limit before starting a task
-
-Press **`alt+enter`** with something typed into the composer, on any place, and the layer
-opens. It is not a new screen: **the page behind dims to the faintest tier instead of being
-covered**, the box stays exactly where it was, and three lines appear in the air under it.
+The line over home's box is the same shape as the line over a conversation's own message
+box:
 
 ```
-› cut the opus spend in half without losing the sweep                       here ~/codeaf
+─ glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser
+› type to search or start something new
+alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
+```
+
+At the left it says **what model** answers, then a colon and **how hard it thinks**
+(the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
+approvals chip uses inside a conversation). The model is always bold and bright cyan,
+on home and in conversations. At the far right, `project: <path>` names where the
+next conversation opens; in a conversation it names that conversation's workspace.
+Long paths truncate on the right, and the field disappears if there is no room. The bottom row names the
+available project, effort and approval controls; the cells can also be pressed:
+
+| cell | chord | or |
+|---|---|---|
+| the folder | `alt+p` walks to the next project | press the path |
+| the model | `/model` opens the model list | press the name |
+| the rung | `alt+e` walks auto → low → … → max → auto | press the cell |
+| the gate | `alt+a` walks asks → guardian → YOLO → asks | press the cell |
+
+Each one changes **the draft** — the next conversation you start from home — and says so
+on the line under the box: `thinking · high · for the next conversation you start here`,
+`approvals · YOLO · every tool runs without asking · dangerous commands still ask · for the
+next conversation you start here`. The conversation behind home is not touched. The model is always bold and bright. A pinned
+rung that differs from what this window would have used is drawn in the accent; an
+open gate is painted in the warning hue, exactly as it is inside a conversation.
+
+**Which pins last:** the project, model and rung last as long as this window does. The
+project stays selected when a conversation starts and when you return home. Only the gate
+is **spent** by the conversation that uses it — back to `asks` (or whatever the settings
+rows say) — so an open gate is never quietly the default for the conversation after
+the one you opened it for. With nothing pinned the rung and the gate are what a fresh conversation on this install
+would run at: the `thinking` and `ask before running` rows in `/settings`, or `--yolo` if
+this process was started with it.
+
+**The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
+draw over their boxes. The arrow and `new conversation in` lead are gone from home too;
+the model starts the seam, and the project sits at the far right. A place with something to say about its page — `nothing matches`
+on tasks when a filter emptied it, a receipt on memory, the "this session is on another
+machine" line over `--host` — says it on its rule, where the box's rule would have been.
+
+**Over `--host`, and on a session with no dial**, the rung and the gate are simply not on
+home's rule — the folder and the model still are. The far machine's rows decide what a
+conversation there runs without asking.
+
+## Why did pressing alt+enter not send my task straight away
+
+On home, the first `alt+enter` opens the task composer so you can check the project,
+execution model and spending cap. Press `alt+enter` again to send it off. `enter`
+talks about the sentence in a conversation instead; `esc` returns to home with the
+sentence still in the box. Other places have no message box and do not start tasks.
+
+## The composer layer — `alt+p` and `alt+o`, what does alt+p do, set which project, pick the model and set a spend limit before starting a task
+
+Press **`alt+enter`** with something typed into home's box, and the layer opens. It is not
+a new screen: **the page behind dims to the faintest tier instead of being covered**, the
+box stays exactly where it was, and three lines appear in the air under it. It opens from
+home alone — no other place has a box to send from.
+
+```
+› cut the opus spend in half without losing the sweep
  it will run on its own and tell you when it lands                                    a task
- · in ~/codeaf, on master                                                alt+w to move it
+ · in ~/codeaf, on master                                                alt+p to move it
  · execution runs on opus 4.1                                                alt+o to change
  · it may spend up to $100.00 before it asks                                    type a number
- alt+enter send it off · enter talk about it first · esc back to spend
+ alt+enter send it off · enter talk about it first · esc back to home
 ```
 
 Those three are the only facts a task needs before it leaves: **where, on what, how much.**
 Each one is edited on the line that shows it.
 
 - **`in ~/codeaf, on master`** — the project the task will work in, and the branch that
-  tree is on right now. **`alt+w`** cycles it through the projects codeaf knows, this
-  window's own first, and round again from the last. A machine with one project has nowhere
-  to move a task to, so the `alt+w to move it` clause is not on the line and the key does
-  nothing. A folder that is not a repository, or one on a detached head, draws the project
-  and stops there rather than trailing a comma.
+  tree is on right now; it is the folder home's rule names. **`alt+p`** cycles it through the
+  projects codeaf knows, this window's own first, and round again from the last. A machine
+  with one project has nowhere to move a task to, so the `alt+p to move it` clause is not on
+  the line and the key does nothing. A folder that is not a repository, or one on a detached
+  head, draws the project and stops there rather than trailing a comma.
 - **`execution runs on opus 4.1`** — the model the WORK will run on. That is the *execution*
   slot, which is a different thing from the model you are talking to: the errand still talks
   on this window's own model, and only the work it hands out moves. **`alt+o`** opens the
@@ -248,23 +288,19 @@ Each one is edited on the line that shows it.
 
 The foot names everything that is live: **`alt+enter` sends it off**, **`enter` talks about
 it first** (which is the ordinary conversation, carrying the same sentence), and **`esc`
-goes back to the place you were on** with your sentence still in the box. Nothing was
-applied on the way in, so `esc` has nothing to undo.
+goes back to home** with your sentence still in the box. Nothing was applied on the way in,
+so `esc` has nothing to undo.
 
 While the layer is up it has the whole keyboard. `tab` does not walk to the next place and
-letters do not reach the composer — the sentence is already written and is on the screen
-above you.
+letters do not reach the box — the sentence is already written and is on the screen above
+you.
 
-## Where the task appears after you send it — `alt+enter` takes you to home
+## Where the task appears after you send it — the errand is drawn on home
 
-**`alt+enter` from a place that is not home takes you to home**, because home's column is
-the only surface that draws an errand's answer. You are left looking at the thing you just
-started rather than on the page you typed it from.
-
-That is a deliberate limit and not a finished design. The right answer is for the errand to
-be drawn on the place you sent it from — a small band the frame draws above the composer on
-any place — and until that lands, the surface carries you to where the answer will arrive
-rather than starting work somewhere you cannot watch it.
+The task you send from the layer is drawn on home's own column, which is the one surface
+that draws an errand's answer, and you are already standing there: the layer only opens
+from home. Its row says what the errand is doing until it lands, and the pane beside it
+holds the exchange (*Asking from home* has the whole of it).
 
 ## The keys, and the one law behind them
 
@@ -281,19 +317,19 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) | jump straight to a place |
 | `ctrl+1` … `ctrl+7` | the same jump, only on terminals that report they can send it |
 | `alt+<letter>` | change how THIS place is shown |
-| `alt+w` `alt+o` | inside the composer layer only: move the task, change its model |
+| `alt+p` `alt+o` | inside the composer layer only: move the task, change its model |
 | `shift+←` `→` `↑` `↓` | move this place's time window |
 | `→` then a letter | act on the row — letters are verbs only here |
 
-`alt+w` and `alt+o` belong to the composer layer and to nothing else. No place binds either
-of them, so they can never move a view out from under you while you are aiming at a
-destination; pressed with no layer up, they do nothing.
+`alt+o` changes a model only inside the task composer layer; on home use `/model`
+or press the model name instead. `alt+p` also works on home, where it moves the draft
+to the next project. Other places bind neither chord.
 
 The last two classes are bound where there is something to bind. `alt+<letter>` today is
 `alt+s` on the memory place, which changes which shelf it is showing; home's panels have no
 second shape, so `alt+g` and `alt+q` do nothing there. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
-three places have one: **tasks** (when it ran), **standing** (when it fired) and **spend**
+three places have one: **sessions** (when it ran), **standing** (when it fired) and **spend**
 (which days). All three draw the same control on their own head row, at the right of the
 line: `shift+← aug 12 – aug 25 →`, with `shift+↑ coarser` beside it where the line has room.
 The label between the arrows is the control and the reading at once, so the span is on the
@@ -312,17 +348,15 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers in its own words on
-`y` and `n`, `a put it away`, `t new chat here`, `o open folder`, `c copy path`, and
+verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `n new in project`, `o open folder`, `p copy project`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
-`its chats` and `open folder` on a project. On home's panels `→` opens them only where no
-column with rows lies to the right; elsewhere it crosses columns and the chords
-(`ctrl+e`, `ctrl+o`, `ctrl+y`) reach the same verbs.
+`its chats` and `open folder` on a project. On home, `→` opens the selected row's
+options at every width; the arrows stay in the list.
 
-While that strip is drawn, **those letters are the verbs** and the composer is asleep. The
-strip pushes the rest of the list down by its own height — the frame stays the same height
-and the composer does not move — and that visible displacement is exactly why the letters
-are safe: you can see that typing has stopped.
+While those options are drawn, **those letters are the verbs** and the composer is asleep.
+On wide home layouts they appear below the selected description in the middle column,
+without moving the list. Elsewhere the strip pushes the rows below it down; the frame
+stays the same height and the composer does not move.
 
 `esc` or `←` closes it. `enter` still opens the row. **Anything that moves the cursor off
 that row closes it** — `↑`, `↓`, `ctrl+p`, `ctrl+n`, `home`, `end`, the page keys, a click on
@@ -410,44 +444,67 @@ it was always going to do. `esc` just takes it away.
 It is a chord rather than a hold because a terminal cannot tell a program that a modifier is
 being held down — it only reports what arrived.
 
-## home — what wants you, as seven panels
+## home — conversations, tasks and project panels
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
-project, as **seven panels** in one, two or three columns — `needs you`, `where you were`,
-`projects`, `running`, `since you left`, `spend`, `scheduled`, always in that order. Which
+project, in one, two or three columns — one `sessions` list of the fifteen most recent
+conversations, then question rows, `projects`, `since you left`, `spend`, and `scheduled`.
+Open tabs and saved history share that list, with closed conversations dimmed. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
 them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
 naming what arrives there.
 
 Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
-answers the one row of `needs you` drawing its answers, and `enter` opens a row. `tab` is the way to the
+answers the question row drawing its answers, and `enter` opens a row. `tab` is the way to the
 next place, and the errand pane is taken into with `→` rather than `tab`. Home has no
 `alt+<letter>` keys — `alt+g` and `alt+q` are unbound there.
 
+Clicking Home’s `since you left` heading opens memory. Questions appear as amber `?`
+bullets on the conversation or task, with no separate `needs you` heading.
+
 ## tasks — the tasks page, and how to get to it without a command
 
-Everything this machine has run, across every project and every conversation, grouped by
-what you do next: `your call`, `running`, `waiting`, `finished today`, `earlier`.
-`/history` and `ctrl+.` both open it, and so does `alt+2`.
+The full-screen conversation tree groups every chat and its tasks into **running** and
+**completed**. A conversation stays under running while it is answering or has running,
+queued, waiting or unanswered work. Once that work settles, its whole tree moves to
+completed; new work moves it back. Each task retains its own state word.
 
-The groups describe each task's own tier. An unrelated approval in its conversation
-does not move running tasks into `your call`. A live design approval stays there
-until you answer; a provider or dependency wait belongs under `waiting`. A retained
-branch stays available to inspect and does not, by itself, ask you to merge it.
+Both sections default to newest activity first; click the age heading to reverse. Conversation titles match Home, and the same
+bullets mark answering, unread and unanswered states. Every conversation and nested task
+starts expanded, with connecting tree lines and fold arrows immediately after titles in the left column. Projects
+have their own column. You can fold a branch yourself. `/history`, `ctrl+.` and `alt+2` open it.
 
 **Typing here narrows the list.** While this place is up every printable key goes to its
 filter — the one exception being `1` and `2` over a row the record pane beside the list is
 offering those two answers for, which answer it — and **the box at the foot says so itself** — it rests on `› type to filter this list`
-rather than the `› say what you want done` every other place shows. It used to show the
+rather than home's `› type to search or start something new`. It used to show the
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
-the row's verbs, and this place has one — `s stop it`, over a task this conversation is
-holding that is still queued or running. Nothing is behind a fold; the list scrolls and its
-tail fades. The count of what is on the page is written into the rule just above the
-composer — `─ 9 finished today · 191 earlier ───` — and the foot names
-only what is true of the row you are on: `enter open its room · → verbs: stop it`.
+the row's options: `x close`, `n new in project`, `o open folder`, and
+`p copy project` where the local conversation and project are available. A task this
+conversation is holding that is still queued or running also offers `s stop it`. Everything starts expanded; the list scrolls and its
+tail fades. The rule under the list is a bare line — the counts are on the section headings
+the list already draws, and it says `nothing matches` only when your filter has emptied the
+page — and the foot names only what is true of the row you are on: `enter open its room ·
+→ verbs: stop it`.
+
+## Close or put away a task, find an archived task, or reopen it
+
+On home or the Sessions list, select the task, press `→`, then `x close`.
+This hides only that task from home's panels and the unfiltered Sessions list. Its work
+continues if it is running; its record, conversation, and other tasks are unchanged.
+The choice is saved with the conversation and survives reopening the app.
+
+To recover it, type its name in the Tasks filter. Search includes put-away tasks within
+the selected time window; expand that window if the task is older. Select the matching
+task and use `→`, then `x reopen`. `enter` can still open its record.
+
+`n new in project`, `o open folder`, and `p copy project` use the project of the conversation
+that owns the selected task. A new chat is independent of the task. These folder actions
+and per-task put-away are local capabilities; a connected remote window does not offer
+them. Its existing stop action remains available when that engine supports it.
 
 ## standing — what runs without being asked, and where to type on the standing page
 
@@ -537,7 +594,7 @@ one word most people guess for "what has this cost" printed one conversation's b
 never mentioned the machine-wide ledger. It opens the place now.
 
 **The foot names the keys this place has**, and it is built from the row under the cursor:
-`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc`.
+`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc home`.
 Where the head row is too narrow to draw its own arrows the window clause is dropped, and
 over an empty ledger only the way out is named.
 
@@ -645,7 +702,7 @@ do. It never says the place is empty.
 or any of the seven digits, is a key that does nothing. On a machine codeaf was installed on
 an hour ago, `alt+2`, `alt+5` and `alt+6` all open:
 
-- **tasks**, headed `tasks`:
+- **sessions**, headed `sessions`:
   `work you send off with /task lands here, and its record stays`
 - **standing**, headed `standing orders`:
   `reminders, watches and routines · "remind me at 6" or "every morning at 9"`
@@ -721,7 +778,7 @@ their readings have not crossed:
 | Place | Over `--host` |
 |---|---|
 | **home** | the far machine's projects and conversations |
-| **tasks** | the far machine's work, out of the same reading |
+| **sessions** | the far machine's work, out of the same reading |
 | **standing** | the far machine's orders — both what stands on this conversation and what stands anywhere else on that machine |
 | **settings** | this computer's rows; the sheet says the far conversation reads its profile on the other machine |
 | **spend** | the far machine's priced model calls |
@@ -739,7 +796,7 @@ afternoon.
 place segment and the legend under the box already carry. On a local session it is not there
 at all: a machine name is worth a word only when there is more than one machine in play.
 
-## Why is home empty over ssh when I connect to another machine — space space over --host
+## Why is home empty over ssh when I connect to another machine — Escape over --host
 
 **It is not empty any more, and this is the answer if you have seen it be.**
 
@@ -751,7 +808,7 @@ the chat you came from keeps running, the same door `codeaf resume` uses locally
 It used to draw **one dim line** where the rows would be —
 `home shows this machine's projects, and this session is on another` — because the projects
 it could reach were the laptop's while the work was on the server. Before that it refused to
-open at all. If you press space space over a connection and get one line, the machine you are
+open at all. If you press Escape over a connection and get one line, the machine you are
 attached to is running an older codeaf than the one you are sitting at, and the fix is the
 same as for any version mismatch: update the older one.
 
@@ -764,7 +821,7 @@ something true to say.
 
 **Yes — the far machine's work, and none of this one's.**
 
-The tasks place reads its rows out of the same reading home lists, so the door that carried
+The sessions place reads its rows out of the same reading home lists, so the door that carried
 home carried this too. `/history`, `ctrl+.` and the tabs all open the same page.
 
 This was the worst of the seven before it crossed. The page walked *this* computer's
@@ -782,8 +839,8 @@ honest dim sentence instead of falling through to this computer's files.
 
 ## Can I put away a conversation on the other machine from home
 
-Yes. `a` or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
-`enter` on a far conversation opens it in this window. `o open folder`, `c copy path`, and
+Yes. `x close` on the row menu or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
+`enter` on a far conversation opens it in this window. `o open folder`, `p copy project`, and
 starting a new conversation in that folder are absent on far rows because those paths do not
 name folders on the computer holding your file manager and clipboard.
 
@@ -796,7 +853,7 @@ what is in there now, which belongs to the machine the place describes, and when
 looked, which belongs to the terminal you are sitting at. Those are two different machines
 over a connection, so **the look stamps for a remote session are kept on this computer in a
 folder of their own** — `~/.codeaf/v3/looks/<machine>` — beside the local ones rather than in
-them. Glancing at the server's tasks does not clear the number over your laptop's tasks tab,
+them. Glancing at the server's tasks does not clear the number over your laptop's sessions tab,
 and your laptop's own windows do not overwrite the origin a remote one measures from.
 
 ## Why doesn't home say folder gone over --host
@@ -808,3 +865,25 @@ A local home stats every project directory it is about to draw and marks the mis
 `/srv/code/api` is almost certainly not on your laptop — so a stat here would mark **every**
 remote row as deleted. It is not made at all, and nothing is claimed: a row whose folder was
 never asked about is not a row with a missing folder.
+
+## What does alt+w do now — folder preview, project selection moved to alt+p
+
+`alt+w` (`opt+w` on a Mac) hides or shows the preview in the folder browser. When
+walking the conversation's task roster it still widens that roster. Project selection
+on home and in the task composer now uses `alt+p` (`opt+p`), and clicking home's
+project path takes the same step through the same list. The selected project remains
+set when you start a conversation and return home.
+
+## Where is the model filter in Settings
+
+When choosing a model for a setting, type to filter. The filter text appears above
+the model list, and Enter applies the selected model.
+
+## Where is the model filter in Settings
+
+When choosing a model for a setting, type to filter. The filter text appears above
+the model list, and Enter applies the selected model.
+
+## Where the Settings search cursor appears
+
+Settings draws its search field above the rows. The cursor follows your query there; model pickers use their own visible filter, and a connection key entry keeps its cursor inside the key field. The bottom row remains the navigation hints.

@@ -31,6 +31,14 @@ func barTop(t *testing.T, a *app) {
 	for i := 0; i < len(pl.stops(a))+3 && !a.bar.on; i++ {
 		drive(t, a, key("up"))
 	}
+	// HOME HAS NO WAY UP ONTO THE BAR (owner, 2026-09-17; pages.go's
+	// [app.barReach]): `↑` stays in the field there, and the bar is reached by
+	// a press, `tab` or a chord. A test that wants the cursor on home's bar
+	// raises it the way a press would, after proving the walk did not.
+	if !a.bar.on && a.at(pageHome) {
+		a.barRaise()
+		a.frame()
+	}
 }
 
 // barWordSpan is where one place's chip landed on the bar the last frame drew.

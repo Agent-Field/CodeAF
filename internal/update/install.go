@@ -20,6 +20,7 @@ type InstallOptions struct {
 	Client  *Client
 	Release Release
 	Target  string
+	Curl    string
 	GOOS    string
 	GOARCH  string
 }
@@ -36,6 +37,10 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 		return InstallResult{}, errors.New("no release client is available")
 	}
 	target := strings.TrimSpace(options.Target)
+	curl := strings.TrimSpace(options.Curl)
+	if curl == "" {
+		curl = CurlCommand
+	}
 	if target == "" {
 		return InstallResult{}, errors.New("the running executable path is empty")
 	}
@@ -92,7 +97,7 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 
 	temporaryFile, err := os.CreateTemp(filepath.Dir(target), fmt.Sprintf(".codeaf.tmp.%d.", os.Getpid()))
 	if err != nil {
-		return InstallResult{}, fmt.Errorf("cannot replace %s: %w; install a release with: %s", target, err, CurlCommand)
+		return InstallResult{}, fmt.Errorf("cannot replace %s: %w; install a release with: %s", target, err, curl)
 	}
 	temporary := temporaryFile.Name()
 	defer os.Remove(temporary)
@@ -108,7 +113,7 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 		return InstallResult{}, fmt.Errorf("make %s executable: %w", temporary, err)
 	}
 	if err := replaceExecutable(temporary, target); err != nil {
-		return InstallResult{}, fmt.Errorf("cannot replace %s: %w; install a release with: %s", target, err, CurlCommand)
+		return InstallResult{}, fmt.Errorf("cannot replace %s: %w; install a release with: %s", target, err, curl)
 	}
 	return InstallResult{Release: release, Path: target}, nil
 }

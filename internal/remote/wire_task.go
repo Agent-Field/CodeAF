@@ -11,6 +11,7 @@ const (
 	MethodTaskRoom      = "Task.Room"
 	MethodTaskSteer     = "Task.Steer"
 	MethodTaskStop      = "Task.Stop"
+	MethodTaskRetry     = "Task.Retry"
 	MethodTaskModel     = "Task.Model"
 	MethodTaskEffort    = "Task.Effort"
 	MethodTaskSetEffort = "Task.SetEffort"

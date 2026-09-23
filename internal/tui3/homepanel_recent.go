@@ -6,50 +6,12 @@ import (
 	"strings"
 )
 
-// recentPanel is `where you were`: this window's own conversation first, in
-// bold, with the last thing said in it on the line under it; then the most
-// recently active of the rest; then `N more · type to find one`.
-//
-// IT IS EVERY CONVERSATION NOT WAITING ON A PERSON. One that is waiting is on
-// `needs you`, and a row drawn twice is the same reading said twice. One that is
-// mid-turn or coming here stays: `running` lists the work a conversation sent
-// out (tasks and jobs), never the conversation itself, so a chat dropped from
-// here for moving would be on no panel at all. And this window's own
-// conversation is always the first row, because `where you were` without the
-// place you were is not an answer.
-//
-// AND THE ERRANDS STAND OVER IT. An `ask here` exchange is a conversation this
-// window started a minute ago, with no row in the world at all
-// (homeexchange.go), and the top of this panel is where the thing you asked
-// for belongs.
+// recentPanel keeps Home's ask exchanges separate from conversation history.
+// Conversations have exactly one resting list, under Sessions.
 type recentPanel struct{ homePanelBase }
 
 func (recentPanel) rows(in *homeGridInput) homePanelRows {
-	var own *switcherRow
-	var rest []switcherRow
-	for _, row := range in.rows {
-		switch {
-		case row.kind != switcherConversation:
-		case row.here:
-			mine := row
-			own = &mine
-		case !row.needs:
-			rest = append(rest, row)
-		}
-	}
-	lines := append([]homeLine(nil), in.errands...)
-	// The panel hands the layout as many conversations as its budget in the
-	// order table, and the layout draws five of them or, in a tall frame, more.
-	room := in.cap(panelRecent)
-	if own != nil {
-		lines = append(lines, switcherRowLine(*own, recentOwnCell(*own, in)))
-		room--
-	}
-	shown := min(room, len(rest))
-	for _, row := range rest[:shown] {
-		lines = append(lines, switcherRowLine(row, recentCell(row, in)))
-	}
-	return homePanelRows{lines: lines, more: len(rest) - shown}
+	return homePanelCut(in, panelRecent, in.errands)
 }
 
 // recentOwnCell is this window's own row: bold, `here` at the margin, and the
@@ -80,7 +42,7 @@ func recentOwnCell(row switcherRow, in *homeGridInput) *homeCell {
 	if in.desc {
 		said = rowClauses(homeHereWord, said)
 	}
-	return &homeCell{panel: panelRecent, title: row.title, right: row.age, bold: true, sub: said}
+	return &homeCell{panel: panelSessions, title: row.title, right: row.age, bold: true, sub: said}
 }
 
 // recentCell is any other row: its age at the margin — or the one fact that
@@ -103,7 +65,7 @@ func recentCell(row switcherRow, in *homeGridInput) *homeCell {
 	// empty until the journal's tail has come back ([app.askHomeLeftOff] asks for
 	// the row being read, off the draw), and a row with nothing to say draws
 	// nothing rather than a gap.
-	cell := &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row)}
+	cell := &homeCell{panel: panelSessions, title: row.title, right: switcherMarginWord(row)}
 	project := ""
 	if homeBucketOf(row.session.Transcript) != in.bucket {
 		project = chatProjectTag(row, in.tilde)

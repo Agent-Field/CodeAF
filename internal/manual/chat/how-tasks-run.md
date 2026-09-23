@@ -1943,8 +1943,8 @@ at its own work never carries a line about a wait that has finished.
 
 ## What briefing a worker means — briefing a worker, the wait before a handed-over turn becomes a task, codeaf froze for thirty seconds, nothing appeared on the rail
 
-When your turn is handed over, the **status line at the bottom says `briefing a worker`**
-with a clock counting up beside it, and no task exists yet.
+When your turn is handed over, the **state word at the right end of the rule over the box
+says `briefing a worker`** with a clock counting up beside it, and no task exists yet.
 
 That is the harness writing the instruction the task will open on, and it is two model runs
 back to back: the model that spent the turn writes down what it found out, and a second

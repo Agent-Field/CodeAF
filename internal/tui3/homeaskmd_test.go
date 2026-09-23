@@ -48,7 +48,9 @@ func askMarkdownLab(t *testing.T) *app {
 	besideTheList(a)
 	a.openHome()
 	typeHome(a, "what is standing")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 	return a
 }
 

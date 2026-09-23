@@ -71,6 +71,7 @@ import (
 // was five copies of the same two lines — a place added later that forgot them
 // would be a room `tab` could not leave.
 func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
+	a.keyboardPlaceSelection()
 	pl := a.showing()
 	if pl == nil {
 		return nil
@@ -89,16 +90,6 @@ func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 	if cmd, took := a.placeKey(msg); took {
-		return cmd
-	}
-	// THE DOOR HOME IS READ HERE, at the bottom of the place router, because it
-	// must lose to every other meaning a space could have where a person is
-	// standing: the whole-keyboard layers above it, the router's six classes, and
-	// every key a place claims for its own rows. What is left — a plain space
-	// falling toward the place's box — is exactly what the door is made of
-	// ([app.placeHomeGesture]). It stands beside the conversation's own reading
-	// at the bottom of [app.key], one law about the box, two doors in.
-	if cmd, took := a.placeHomeGesture(msg); took {
 		return cmd
 	}
 	return pl.key(a, msg)
@@ -161,6 +152,16 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := a.barKey(msg); took {
 		return cmd, true
 	}
+	// A newline is a draft row even before it holds a letter. Let the caret
+	// move within home's draft before the page claims arrows for its rows.
+	if a.at(pageHome) {
+		commandWalk := a.home.cmd.open && (key == "up" || key == "down")
+		if !commandWalk && homeDraftMotion(&a.home.box, key) {
+			a.home.build()
+			a.touch()
+			return nil, true
+		}
+	}
 
 	switch key {
 	case placeMapKey:
@@ -181,21 +182,17 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.walkPage(true), true
 
 	case "alt+enter":
-		return a.placeSend(), true
+		// ONLY HOME STARTS THINGS ([place.box]). Everywhere else the chord is
+		// swallowed rather than passed down, so it cannot put a newline into a
+		// filter — the same arm every other undeclared chord takes.
+		if a.at(pageHome) {
+			return a.placeSend(), true
+		}
+		return nil, true
 
-	case "alt+w", "alt+o":
-		// THE LAYER'S TWO CHORDS ARE HELD BACK FROM THE PLACES. They mean one
-		// thing and only inside the layer, and a place that bound either of them
-		// would be a place whose view moved when somebody was aiming at a
-		// destination. The layer is read above this function, so a press that
-		// reaches here has no layer up and there is nothing to do.
-		//
-		// WITH ONE PLACE CLAIMING THEM BEFORE THIS LINE, and it is the place they
-		// already mean something on: home's rule states where the next
-		// conversation opens and what it will run on, and these are the two chords
-		// that move those two facts — the same pair, moving the same kind of
-		// thing, one row from the hand. [placeHome.owns] takes them above this
-		// function, so the other six places are exactly as they were.
+	case "alt+p", "alt+o":
+		// Home takes the project chord before the router. Other places swallow
+		// it, and `alt+o` no longer opens a model list outside the task layer.
 		return nil, true
 
 	case "shift+left", "shift+right", "shift+up", "shift+down":
@@ -398,38 +395,6 @@ func (a *app) placeBox() *editor {
 	return pl.box(a)
 }
 
-// placeHomeGesture is the door home read from WHATEVER PLACE IS STANDING: two
-// spaces typed into that place's own box, the same two keystrokes that open it
-// from inside a conversation (home.go's [app.homeGesture]).
-//
-// THE DOOR USED TO BE A CONVERSATION'S DOOR ONLY. The gesture lived at the
-// bottom of [app.key], past the rung where a standing place takes the whole
-// keyboard — so a place never saw the check, and a person standing on the
-// search place, or the tasks place, or settings, had `space space` die under
-// their hands while the tab bar sat one walk away. The person's words were
-// `universal`, and this is what makes it so: the same guard
-// ([app.homeDoorOpen] — anywhere but home itself, where the gesture is a no-op
-// and the foot draws nothing), the same law about the box
-// ([app.homeDoorArmed]), the same box the place was already typing into
-// ([app.placeBox]).
-//
-// A PLACE WITH NO BOX HAS NO DOOR, and that is right rather than a gap: the
-// gesture is a thing typed into a box, and where there is no box the key does
-// nothing and always did. The box is RESET before home opens, because the two
-// spaces were two spaces somebody typed and not a draft anybody meant to keep
-// — the conversation's door empties its draft the same way ([app.key]).
-func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	if !a.homeDoorOpen() {
-		return nil, false
-	}
-	box := a.placeBox()
-	if !a.homeDoorArmed(box, msg) {
-		return nil, false
-	}
-	box.reset()
-	return a.openHome(), true
-}
-
 // placeSend is `alt+enter` over a composer with something in it: THE COMPOSER
 // LAYER OPENS, and a second press is what sends (composerlayer.go, SCREEN 2e).
 //
@@ -489,6 +454,10 @@ func (a *app) placeTalkAbout(text string) (tea.Cmd, bool) {
 	if text == "" {
 		return nil, false
 	}
+	// THE DRAFT IS HOME'S, so its pins ride only on a conversation home started
+	// — the layer's `enter talk about it first` — and never on one a memory
+	// row asked for ([placeMemory.enter]). Read before the place is left.
+	fromHome := a.at(pageHome)
 	if !a.canStart() {
 		a.pageMsg = newUnavailableWord
 		return nil, false
@@ -502,5 +471,40 @@ func (a *app) placeTalkAbout(text string) (tea.Cmd, bool) {
 		// it was typed into, which is where its owner will look for it.
 		return nil, false
 	}
+	// AND HOME'S PINS GO ONTO IT, exactly as they do from [app.homeOpenAtTarget]:
+	// the rule above home's box promised a model, a rung and a gate, and a
+	// conversation opened from home that ignored them would be the disagreement
+	// home's target was built to end.
+	if fromHome {
+		return tea.Batch(renewed, a.applyTargetPins(), a.submit(text)), true
+	}
 	return tea.Batch(renewed, a.submit(text)), true
+}
+
+// homeDraftMotion gives the draft its horizontal arrows whenever it has any
+// characters, and its vertical arrows while another logical line exists in
+// that direction. At the top and bottom, home's list keeps its navigation.
+func homeDraftMotion(box *editor, key string) bool {
+	if len(box.value) == 0 {
+		return false
+	}
+	switch key {
+	case "left":
+		box.left()
+	case "right":
+		box.right()
+	case "up":
+		if box.onFirstLine() {
+			return false
+		}
+		box.up()
+	case "down":
+		if box.onLastLine() {
+			return false
+		}
+		box.down()
+	default:
+		return false
+	}
+	return true
 }

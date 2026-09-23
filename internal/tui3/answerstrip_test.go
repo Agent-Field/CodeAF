@@ -12,7 +12,7 @@ import (
 // and the hint, and the empty string when that row is not a strip at all.
 //
 // IT HAS TO TELL THE STRIP FROM THE BOX ROW NOW, AND IT DID NOT HAVE TO BEFORE.
-// Home's box used to say [homeFootWord] — `type to search or start something
+// Home's box used to say the former home prompt — `type to search or start something
 // new …` — so `› ` at the head of that row could only ever be the strip's own
 // lead. The design's box row is the same sentence on every place, home included
 // (SCREEN 2b, FIDELITY.md item 3), so home's box now says `› say what you want

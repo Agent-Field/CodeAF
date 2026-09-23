@@ -604,9 +604,10 @@ func (a *app) mainDraftText() string {
 // the stash plus the live box when a page is the one holding it.
 //
 // MAIN IS DELIBERATELY NOT IN IT. The conversation's own sentence travels as
-// [aside.draft], which is that string plus everything still parked behind a turn
-// (leaving.go's [app.leavingDraft]), and having it in two places on one aside
-// would be two answers to what the person was typing.
+// [aside.draft], while messages still waiting behind a turn travel separately
+// as [aside.parks]. Having main in this map too would still be two answers to
+// what the person was typing. Only quitting folds both text lists together
+// (leaving.go's [app.leavingDraft]).
 func (a *app) composersAside() map[recipient]composerState {
 	out := map[recipient]composerState{}
 	for who, state := range a.everyComposer() {

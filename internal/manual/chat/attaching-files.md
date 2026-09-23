@@ -174,8 +174,12 @@ that was a file, not a command · attached
 ```
 
 A folder dropped or pasted gets the drop road's own sentence instead — `<name> is a folder ·
-attach a file` — and an unknown command that names nothing on the disk still refuses exactly
-as it always did. That sentence belongs to the drop and the paste alone: `/attach
+attach a file` — while the original pasted text is still inserted at the cursor in
+home and conversation message boxes. The notice does not discard the path. Only an
+empty home box offers to start in the pasted folder: the next Enter accepts, any other
+key or another paste dismisses the offer, and the text remains an ordinary draft. A mixed
+paste containing files and a folder stays entirely as text, with nothing attached.
+An unknown command that names nothing on the disk still refuses exactly as it always did. That sentence belongs to the drop and the paste alone: `/attach
 ~/code/thing`, typed, refers the folder and answers `folder · ~/code/thing`. A drop is a
 gesture nobody typed, and reading a decision about your project out of a mouse would be
 inferring far too much.
@@ -258,7 +262,8 @@ codeaf does not read picture bytes from the Windows or macOS clipboard. If the c
 contains a picture rather than a file path, the terminal sends no path into the message
 box, so its paste shortcut with that picture pastes nothing into the box. Most terminals
 consume their paste shortcut before codeaf sees a key. If a terminal does pass `ctrl+v`
-through, codeaf uses that chord to change thinking, never to read clipboard pixels.
+through, codeaf leaves it unbound; it does not read clipboard pixels. Effort uses
+`alt+e` (`opt+e` on macOS).
 
 Two things do work: drag the screenshot file onto the terminal, or paste the screenshot's
 path. Either one gives codeaf a real local file to put on the tray. If your screenshot is

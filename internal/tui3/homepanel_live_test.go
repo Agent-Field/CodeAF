@@ -102,24 +102,35 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	l.live("-alpha", "aaaa000000000002", session.SessionPresence{State: session.PresenceWaiting,
 		Question: consentQuestionAt(9, "needs your ok to run write", l.now.Add(-5*time.Minute))})
 	a := l.open()
-	rows := panelRows(a, panelNeeds)
-	if len(rows) != 2 || rows[0].title != "Pricing Site" || rows[1].title != "Prime Sieve" {
+	rows := homeAttentionRows(a)
+	if len(rows) != 2 || rows[0].title != "Prime Sieve" || rows[1].title != "Pricing Site" {
 		t.Fatalf("needs you is not the two waits, oldest first: %+v", rows)
 	}
-	if rows[0].sub != "needs your ok to run bash" || rows[0].right != "2h" {
+	if rows[1].sub != "needs your ok to run bash" || rows[1].right != "3h" {
 		t.Fatalf("the top row is not the gate's own sentence with its age: %+v", rows[0])
 	}
+	// THE SENTENCE AND THE CHIPS ARE DRAWN UNDER THE ROW BEING READ, and at
+	// rest a row is its mark, its title and its wait (owner, 2026-09-17).
 	frame := homeText(a)
-	if under := homeLineAfter(frame, "Pricing Site"); !strings.Contains(under, "1 allow once  2 always  3 deny") {
-		t.Fatalf("the top row does not draw its answers:\n%s", frame)
+	if under := homeLineAfter(frame, "Pricing Site"); strings.Contains(under, "needs your ok") || strings.Contains(under, "allow once") {
+		t.Fatalf("the top row draws its sentence with nobody reading it:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Pricing Site" })
+	frame = homeText(a)
+	if head := homeLineAfter(frame, "Pricing Site"); !strings.Contains(head, homeThreadWord+"Pricing Site") {
+		t.Fatalf("the read row's description does not open with its thread's title:\n%s", frame)
+	}
+	if under := homeLineBelow(frame, "Pricing Site", 3); !strings.Contains(under, "1 allow once  2 always  3 deny") {
+		t.Fatalf("the top row under the cursor does not draw its answers under the thread title:\n%s", frame)
 	}
 	if under := homeLineAfter(frame, "Prime Sieve"); strings.Contains(under, "allow once") || strings.Contains(under, "enter") {
 		t.Fatalf("the second row drew answers or a door word the cursor is not on:\n%s", frame)
 	}
-	// AND THE HEADING IS THE WORD ALONE. It used to count the questions
-	// (`needs you · 2`); the rows are under it (owner, 2026-09-15).
-	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
-		t.Fatalf("the heading counts its rows:\n%s", frame)
+	// The question's own sentence may say "needs your ok"; there is no heading.
+	for _, text := range strings.Split(frame, "\n") {
+		if strings.TrimSpace(text) == "needs you" {
+			t.Fatalf("the removed heading is still drawn:\n%s", frame)
+		}
 	}
 }
 
@@ -132,31 +143,19 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute),
 		FilesChanged: 3})
 	a := l.open()
-	rows := panelRows(a, panelNeeds)
-	// THE MARGIN IS WHEN IT LANDED AND NOTHING ELSE; the files it wrote open its
-	// description (owner, 2026-09-15: the right margin of every field row is a
-	// time). It used to read `3 files · 30m`.
-	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "30m" || !strings.HasPrefix(rows[0].sub, "3 files · ") {
+	rows := homeAttentionRows(a)
+	// THE MARGIN IS WHEN IT LANDED AND NOTHING ELSE; its description leads with
+	// the thread it belongs to, spelled as `threads` spells it (owner,
+	// 2026-09-17), then the files it wrote (owner, 2026-09-15: the right margin
+	// of every field row is a time). It used to read `3 files · 30m`.
+	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "30m" || rows[0].thread != "Prime Sieve" || !strings.HasPrefix(rows[0].sub, "3 files · ") {
 		t.Fatalf("the task's call is not a one-line row of needs you with its files in its description: %+v", rows)
 	}
-	if rows[0].mark != cellMarkNone {
+	if rows[0].mark != cellMarkNeeds {
 		t.Fatalf("a landing wears a mark: %+v", rows[0])
 	}
-	frame := homeText(a)
-	// THE GROUP LINE IS THE WORD ALONE — no count after it and no clause at its
-	// right (owner, 2026-09-15; it used to say `to check · 1` and `finished,
-	// nobody has checked it`).
-	if !strings.Contains(frame, needsCheckWord) || strings.Contains(frame, needsCheckWord+" · ") ||
-		strings.Contains(frame, "nobody has checked") {
-		t.Fatalf("the group line does not name the group, or says more than its name:\n%s", frame)
-	}
-	if strings.Contains(frame, "landed unchecked") {
-		t.Fatalf("the retired sub-line is still drawn:\n%s", frame)
-	}
-	for _, line := range panelLines(a, panelNeeds) {
-		if line.cell.kind == cellRow && (line.task == nil || line.task.ID != "4") {
-			t.Fatalf("the row does not carry the task its door opens: %+v", line)
-		}
+	if rows[0].panel != panelNeeds {
+		t.Fatal("the question is not on the task's existing row")
 	}
 }
 
@@ -186,18 +185,18 @@ func TestNeedsBlockingRowsSortFirst(t *testing.T) {
 	l.task("-alpha", session.TaskIndexEntry{ID: "4", SessionID: "aaaa000000000002", Label: "fix the flaky sieve",
 		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-40 * time.Hour)})
 	a := l.open()
-	rows := panelRows(a, panelNeeds)
+	rows := homeAttentionRows(a)
 	if len(rows) != 2 || rows[0].title != "Pricing Site" || rows[1].title != "fix the flaky sieve" {
 		t.Fatalf("the week-old landing did not sort under the fresh question: %+v", rows)
 	}
-	if rows[0].mark != cellMarkNeeds || rows[1].mark != cellMarkNone {
+	if rows[0].mark != cellMarkNeeds || rows[1].mark != cellMarkNeeds {
 		t.Fatalf("the mark is not on the stopped row alone: %+v", rows)
 	}
 	kinds := []homeCellKind{}
 	for _, line := range panelLines(a, panelNeeds) {
 		kinds = append(kinds, line.cell.kind)
 	}
-	if len(kinds) < 4 || kinds[0] != cellHead || kinds[1] != cellRow || kinds[len(kinds)-2] != cellGroup {
+	if len(kinds) != 2 || kinds[0] != cellGroup || kinds[1] != cellRow {
 		t.Fatalf("the group line does not stand between the question and the landing: %v", kinds)
 	}
 }
@@ -212,7 +211,7 @@ func TestToCheckDrawsTheNewestLandingFirst(t *testing.T) {
 			Title: "call " + id, Status: string(session.TaskUnverified), EndedAt: l.now.Add(-ago)})
 	}
 	a := l.open()
-	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
+	if rows := homeAttentionRows(a); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
 		t.Fatalf("unread is not newest first: %+v", rows)
 	}
 }
@@ -240,8 +239,17 @@ func TestALandingGrowsItsReportAndAnswersUnderTheCursor(t *testing.T) {
 	a.home.cursor = at
 	frame := homeText(a)
 	under := homeLineAfter(frame, "fix the flaky sieve")
+	// THE THREAD'S TITLE LINE COMES FIRST, then a blank, then the sentence with
+	// the answers beside it.
+	if cell := a.home.lines[at].cell; cell.thread != "Prime Sieve" || !strings.HasPrefix(cell.sub, "Reseeded the generator") {
+		t.Fatalf("the landing is not headed by its thread over the report's first sentence: %+v", cell)
+	}
+	if !strings.Contains(under, homeThreadWord+"Prime Sieve") {
+		t.Fatalf("the cursor row did not grow its thread's title line:\n%s", frame)
+	}
+	under = homeLineBelow(frame, "fix the flaky sieve", 3)
 	if !strings.Contains(under, "Reseeded the generator") {
-		t.Fatalf("the cursor row did not grow the report's first sentence:\n%s", frame)
+		t.Fatalf("the report's first sentence is not two lines under the thread title:\n%s", frame)
 	}
 	if !strings.Contains(under, needsYesKey+" accept") || !strings.Contains(under, needsNoKey+" not right") {
 		t.Fatalf("the grown line does not carry the ask's own answers:\n%s", frame)
@@ -290,17 +298,17 @@ func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
 			Status: string(session.TaskUnverified), EndedAt: l.now.Add(-ago)})
 	}
 	a := l.open()
-	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
+	if rows := homeAttentionRows(a); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
 		t.Fatalf("needs you is not the two fresh calls: %+v", rows)
 	}
 	frame := homeText(a)
 	// AND NEITHER THE HEADING NOR THE GROUP LINE COUNTS ANYTHING: the rows are
 	// under them. The one count is the fold's, which counts the aged landings
 	// with everything else it hides — `3 more`, no longer `3 older · tasks`.
-	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
+	if strings.Contains(frame, "needs you") {
 		t.Fatalf("the heading counted the landings:\n%s", frame)
 	}
-	if !strings.Contains(frame, needsCheckWord) || strings.Contains(frame, needsCheckWord+" · ") {
+	if !strings.Contains(frame, needsCheckWord) {
 		t.Fatalf("the group line says more than its name:\n%s", frame)
 	}
 	fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)].cell.title
@@ -311,7 +319,7 @@ func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
 	// of what it counted would have lied about its own number.
 	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
 	drive(t, a, key("enter"))
-	if rows := panelRows(a, panelNeeds); len(rows) != 5 {
+	if rows := homeAttentionRows(a); len(rows) != 5 {
 		t.Fatalf("opening needs you drew %d rows, want all five landings:\n%s", len(rows), homeText(a))
 	}
 }
@@ -322,7 +330,7 @@ func TestNeedsYouKeepsALiveQuestionPastTwoDays(t *testing.T) {
 	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
 		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-5*24*time.Hour))})
 	a := l.open()
-	if rows := panelRows(a, panelNeeds); len(rows) != 1 || rows[0].title != "Pricing Site" {
+	if rows := homeAttentionRows(a); len(rows) != 1 || rows[0].title != "Pricing Site" {
 		t.Fatalf("a question five days old is not on needs you: %+v", rows)
 	}
 	for _, line := range panelLines(a, panelNeeds) {
@@ -335,8 +343,8 @@ func TestNeedsYouKeepsALiveQuestionPastTwoDays(t *testing.T) {
 // AN EMPTY PANEL WHISPERS what arrives there, and never that it is empty.
 func TestNeedsYouWhispersWhenNothingWaits(t *testing.T) {
 	a := newLiveLab(t).open()
-	if frame := homeText(a); !strings.Contains(frame, "questions from any chat or task land here") {
-		t.Fatalf("an empty needs you does not whisper:\n%s", frame)
+	if frame := homeText(a); strings.Contains(frame, "questions from any chat or task land here") || strings.Contains(frame, "needs you") {
+		t.Fatalf("an empty attention panel is still visible:\n%s", frame)
 	}
 }
 
@@ -347,12 +355,12 @@ func consentQuestionAt(id uint64, text string, asked time.Time) session.Presence
 	return q
 }
 
-// ── where you were ──────────────────────────────────────────────────────────
+// ── threads ──────────────────────────────────────────────────────────
 
 // A BRAND-NEW LAUNCH'S OWN ROW IS ONE LINE: `new conversation` in bold, no age
 // and nothing under it — whatever the journal's tail has on hand — until
 // its person says something, and then the line under it is what they said.
-func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
+func TestAFreshLaunchHasNoHomeRowUntilItsFirstMessage(t *testing.T) {
 	l := newLiveLab(t)
 	dir := filepath.Join(l.project("-alpha"), "aaaa000000000009")
 	fresh := filepath.Join(dir, "transcript.jsonl")
@@ -369,151 +377,30 @@ func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
 	openOn := func() *app {
 		a := l.app(fresh)
 		a.width, a.height = 120, 45
+		openHomeFixtureTabs(a)
 		a.openHome()
 		a.home.last = map[string]session.Summary{fresh: {LastUser: "explain open addressing"}}
 		a.home.build()
 		return a
 	}
 	a := openOn()
-	own := panelRows(a, panelRecent)[0]
-	if own.title != unnamedConversationWord || own.right != "" || own.sub != "" || !own.bold {
-		t.Fatalf("the fresh launch's row is not one bold line with nothing at its right: %+v", own)
-	}
-	if next := homeLineAfter(homeText(a), unnamedConversationWord); !strings.Contains(next, "Porting the Resume Picker") {
-		t.Fatalf("the fresh launch's row carries a line under it:\n%s", homeText(a))
+	for _, own := range panelRows(a, panelSessions) {
+		if own.title == unnamedConversationWord {
+			t.Fatalf("empty launch has a saved row: %+v", own)
+		}
 	}
 	meta.LastUserAt = l.now
 	if err := session.SaveMeta(dir, meta); err != nil {
 		t.Fatal(err)
 	}
-	if next := homeLineAfter(homeText(openOn()), unnamedConversationWord); !strings.Contains(next, "explain open addressing") {
-		t.Fatalf("the first message did not arrive under the row:\n%s", next)
-	}
-}
-
-// ── running ─────────────────────────────────────────────────────────────────
-
-// A ROW PER PIECE OF WORK, the last started first: a task with what its worker
-// is doing and how far its run has got, and a job with where it is and how long
-// it has been up. The one moving cell is on the first row.
-func TestRunningDrawsEachTaskAndJobWithWhatItIsDoing(t *testing.T) {
-	l := newLiveLab(t)
-	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "3", Title: "generate the first 200 primes", State: "running", StartedAt: l.now.Add(-4 * time.Minute),
-			Activity: "bash · 12s", Done: 2, Total: 5},
-	}})
-	l.live("-beta", "bbbb000000000001", session.SessionPresence{Jobs: []session.PresenceJob{
-		{ID: "1", Title: "npm run dev", StartedAt: l.now.Add(-3 * time.Hour)},
-	}})
-	a := l.open()
-	rows := panelRows(a, panelRunning)
-	if len(rows) != 2 {
-		t.Fatalf("running is not the task and the job: %+v", rows)
-	}
-	task, job := rows[0], rows[1]
-	if task.title != "generate the first 200 primes" || task.right != "4m" || task.sub != "bash · 12s · 2 of 5" || task.mark != cellMarkSpin {
-		t.Fatalf("the task row is not title, clock, activity and progress: %+v", task)
-	}
-	if !strings.HasSuffix(job.title, rowSep+runningJobWord) || !strings.HasPrefix(job.title, "npm run dev · ") ||
-		job.right != "up 3h" || job.mark != cellMarkNone {
-		t.Fatalf("the job row is not `<title> · a background job` up its age: %+v", job)
-	}
-	if frame := homeText(a); !strings.Contains(frame, "running · 2") {
-		t.Fatalf("the heading does not count the work:\n%s", frame)
-	}
-}
-
-// A PIECE OF WORK UNDER A CHECK SAYS SO: the phase is the line when the worker
-// is not the node's life, which is exactly when the engine leaves the activity
-// off the file.
-func TestRunningSaysThePhaseWhenThereIsNoActivity(t *testing.T) {
-	l := newLiveLab(t)
-	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "3", Title: "sieve", State: "running", StartedAt: l.now.Add(-time.Minute), Phase: session.TaskPhaseChecking},
-	}})
-	rows := panelRows(l.open(), panelRunning)
-	if len(rows) != 1 || rows[0].sub != taskCheckingWord {
-		t.Fatalf("the running row does not say it is being checked: %+v", rows)
-	}
-}
-
-// `s` STOPS ONLY WHAT THIS WINDOW HOLDS: a task of this window's own
-// conversation offers it, and one in another window offers nothing.
-func TestRunningOffersStopOnlyOnThisWindowsOwnTask(t *testing.T) {
-	l := newLiveLab(t)
-	l.live("-alpha", "aaaa000000000001", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "5", Title: "mine", State: "running", StartedAt: l.now.Add(-time.Minute)},
-	}})
-	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "6", Title: "theirs", State: "running", StartedAt: l.now.Add(-2 * time.Minute)},
-	}})
-	a := l.open()
-	a.agent = &cancelFake{fakeAgent: &fakeAgent{model: "m"}}
-	a.tasks = map[uint64]*taskNode{5: {id: 5, state: session.TaskRunning}, 6: {id: 6, state: session.TaskRunning}}
-	var mine, theirs homeLine
-	for _, line := range panelLines(a, panelRunning) {
-		switch {
-		case line.cell.title == "mine":
-			mine = line
-		case line.cell.title == "theirs":
-			theirs = line
-		}
-	}
-	if verbs := a.runningVerbs(theirs); len(verbs) != 0 {
-		t.Fatalf("another conversation's task offered a stop: %+v", verbs)
-	}
-	verbs := a.runningVerbs(mine)
-	if len(verbs) != 1 || verbs[0].key != 's' {
-		t.Fatalf("this window's own task offered no stop: %+v", verbs)
-	}
-	verbs[0].do()
-	if !a.stopping() || a.at(pageHome) || !strings.Contains(plain(mustFrame(a)), "Stop this task?") {
-		t.Fatalf("s did not raise the stop card where it can be read:\n%s", plain(mustFrame(a)))
-	}
-}
-
-// ON A THREE-COLUMN HOME A `running` ROW IS IN THE FIELD — it has rows, and
-// that is what the field is (law 2, ruled 2026-09-15) — so `→` on it crosses to
-// the rail rather than opening the strip, and the stop the strip offers keeps a
-// door: `ctrl+x` raises the stop card from the row. THE FOOT DOES NOT NAME IT.
-// It used to say `ctrl+x stop it` on this row and something else on every
-// other, and the owner ruled the same day that every row of the field rests on
-// the one sentence — the four keys and `ctrl+o open folder`, which is as true
-// of a task's conversation as of any other row ([app.homeCrossChord]).
-//
-// THE CROSSING SKIPS THE EMPTY MIDDLE. A field that fits in one column leaves
-// the next one white, and `→` reaches the rail over it rather than stopping on
-// air — a key that lands nowhere is the one state this surface may not be in.
-func TestAThreeColumnRunningRowRestsOnTheOneFootAndStillStops(t *testing.T) {
-	l := newLiveLab(t)
-	l.live("-alpha", "aaaa000000000001", session.SessionPresence{RunningTasks: []session.PresenceTask{
-		{ID: "5", Title: "mine", State: "running", StartedAt: l.now.Add(-time.Minute)},
-	}})
-	a := l.open()
-	a.width, a.height = 180, 45
-	homeText(a)
-	a.agent = &cancelFake{fakeAgent: &fakeAgent{model: "m"}}
-	a.tasks = map[uint64]*taskNode{5: {id: 5, state: session.TaskRunning}}
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelRunning && l.cell.title == "mine" })
-	mine := a.home.cursor
-	if got := a.home.columnOf(mine); got != 0 {
-		t.Fatalf("running has rows and stands in column %d of a three-column home, want the field at 0", got)
-	}
-	if verbs := a.runningVerbs(a.home.lines[mine]); len(verbs) != 1 || verbs[0].word != stopActWord {
-		t.Fatalf("the row's strip offers %+v, want the tasks place's `%s`", verbs, stopActWord)
-	}
-	if foot := a.homeHint(); foot != homeFootWord+rowSep+homeFolderChordWord+" · tab next place" {
-		t.Fatalf("the foot on a running row this window holds is %q, want the resting sentence and the folder chord", foot)
-	}
-	a.placeKeyPress(key("right"))
-	if a.strip.open || a.home.columnOf(a.home.cursor) != homeRailCol(a.home.cols) {
-		t.Fatalf("→ on a field row landed in column %d (strip %v), want the rail at %d",
-			a.home.columnOf(a.home.cursor), a.strip.open, homeRailCol(a.home.cols))
-	}
-	a.home.cursor = mine
-	drive(t, a, key("ctrl+x"))
-	if !a.stopping() || a.at(pageHome) || !strings.Contains(plain(mustFrame(a)), "Stop this task?") {
-		t.Fatalf("ctrl+x did not raise the stop card where it can be read:\n%s", plain(mustFrame(a)))
+	wide := openOn()
+	wide.openingPrompt = "explain open addressing"
+	wide.home.build()
+	wide.width = 180
+	homeText(wide)
+	wide.home.point(fresh)
+	if frame := homeText(wide); !strings.Contains(frame, "explain open addressing") {
+		t.Fatalf("the first message did not reach the description column:\n%s", frame)
 	}
 }
 
@@ -522,51 +409,22 @@ type cancelFake struct{ *fakeAgent }
 
 func (cancelFake) Cancel(string) (string, error) { return "stopping", nil }
 
-// RUNNING GROWS INTO A TALL FRAME UP TO ITS BUDGET, and folds the rest behind a
-// door into tasks.
-func TestRunningGrowsToItsBudgetAndFoldsTheRestIntoTasks(t *testing.T) {
-	l := newLiveLab(t)
-	var out []session.PresenceTask
-	for i := 0; i < 10; i++ {
-		out = append(out, session.PresenceTask{ID: itoa(i + 1), Title: "part " + itoa(i+1), State: "running",
-			StartedAt: l.now.Add(-time.Duration(i+1) * time.Minute)})
-	}
-	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: out})
-	a := l.open()
-	if rows, most := panelRows(a, panelRunning), homeSlotOf(panelRunning).most; len(rows) != most {
-		t.Fatalf("running drew %d rows, want its budget of %d", len(rows), most)
-	}
-	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || !strings.Contains(frame, "running · 10") {
-		t.Fatalf("the fold does not name what it holds:\n%s", frame)
-	}
-}
-
-// A WATCH IN THE MIDDLE OF FIRING IS RUNNING WORK: its words, what its pass is
-// doing and how long ago the pass began — and it is still an item, so `→`
-// offers the item's own verb and never a task's stop.
-func TestRunningDrawsAFiringStandingItemWithItsOwnVerb(t *testing.T) {
+// A firing standing item keeps its own scheduled row, outside conversation history.
+func TestAFiringStandingItemIsNotARowOfTasks(t *testing.T) {
 	a, _ := itemHome(t)
-	var item homeLine
-	for _, line := range panelLines(a, panelRunning) {
-		if line.kind == homeItem {
-			item = line
+	for _, line := range panelLines(a, panelSessions) {
+		if line.kind == homeItem || (line.cell != nil && line.cell.title == "remind me on Fridays") {
+			t.Fatalf("the firing item is a row of tasks: %+v", line.cell)
 		}
 	}
-	if item.cell == nil || item.cell.title != "remind me on Fridays" ||
-		item.cell.sub != "reading the calendar" || item.cell.right != "1m" {
-		t.Fatalf("the firing item is not words, doing and clock on running: %+v", item.cell)
+	found := false
+	for _, line := range panelLines(a, panelNext) {
+		if line.cell != nil && line.cell.title == "remind me on Fridays" {
+			found = true
+		}
 	}
-	verbs := a.homeRowVerbs()
-	if len(verbs) != 1 || verbs[0].key != 'p' || verbs[0].word != homeItemPauseWord {
-		t.Fatalf("the firing item's strip is not its own pause: %+v", verbs)
-	}
-}
-
-// AN EMPTY PANEL WHISPERS.
-func TestRunningWhispersWhenNothingIsOut(t *testing.T) {
-	a := newLiveLab(t).open()
-	if frame := homeText(a); !strings.Contains(frame, homeWhisper[panelRunning]) {
-		t.Fatalf("an empty running does not whisper:\n%s", frame)
+	if !found {
+		t.Fatalf("the firing item is on no panel at all:\n%s", homeText(a))
 	}
 }
 
@@ -641,7 +499,7 @@ func TestSinceYouLeftWhispersOnAFirstLook(t *testing.T) {
 	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "audit", Title: "audit",
 		Status: string(session.TaskDone), EndedAt: l.now.Add(-time.Hour)})
 	a := l.open()
-	if frame := homeText(a); !strings.Contains(frame, homeWhisper[panelLeft]) || strings.Contains(frame, "audit") {
+	if frame := homeText(a); !strings.Contains(frame, homeWhisper[panelLeft]) || len(panelRows(a, panelLeft)) != 0 {
 		t.Fatalf("a first look drew news:\n%s", frame)
 	}
 }
@@ -660,4 +518,15 @@ func writeArtifacts(t *testing.T, path string, rows ...session.Artifact) {
 	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Question rows may live in either the conversation or task list now.
+func homeAttentionRows(a *app) []*homeCell {
+	var out []*homeCell
+	for _, line := range a.home.lines {
+		if line.cell != nil && line.cell.kind == cellRow && line.cell.mark == cellMarkNeeds {
+			out = append(out, line.cell)
+		}
+	}
+	return out
 }

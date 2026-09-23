@@ -103,6 +103,49 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 	return a.stopJoinedRow(run, id, why)
 }
 
+// liveBeltTaskByToken resolves the model's task spelling against the run that
+// is alive now. A run's rows are deliberately not graph nodes and do not reach
+// the project's finished-work index until they end, so that index cannot be
+// the door onto stopping one. The run's own kept rows carry the same ids and
+// titles the rail shows, which makes a number and a title-derived name mean the
+// same thing here that they mean for an ordinary task.
+func (a *Agent) liveBeltTaskByToken(token string) (TaskIndexEntry, uint64, bool) {
+	token = strings.ToLower(strings.TrimSpace(token))
+	if token == "" {
+		return TaskIndexEntry{}, 0, false
+	}
+	a.beltMu.Lock()
+	run := a.beltRun
+	if run == nil {
+		a.beltMu.Unlock()
+		return TaskIndexEntry{}, 0, false
+	}
+	ids := append([]uint64{run.row}, run.joined...)
+	root, rootTitle := run.row, run.title
+	a.beltMu.Unlock()
+
+	// The newest name wins, matching LookupTask. Numbers remain unambiguous
+	// because every row in one conversation comes from the graph's one counter.
+	for index := len(ids) - 1; index >= 0; index-- {
+		id := ids[index]
+		title := ""
+		if id == root {
+			title = rootTitle
+		} else if task := run.store.Task(strconv.FormatUint(id, 10)); task != nil {
+			title = task.Title
+		}
+		written := strconv.FormatUint(id, 10)
+		if token != written && token != TaskSlug(title) {
+			continue
+		}
+		return TaskIndexEntry{
+			ID: written, Name: TaskSlug(title), Label: taskLabel(title), Title: title,
+			Status: string(TaskRunning),
+		}, id, true
+	}
+	return TaskIndexEntry{}, 0, false
+}
+
 // stopJoinedRow ends one hand-off that joined a run and leaves the run going.
 // The store's own cancel is the whole stop: it ends the task and what hangs on
 // it, and the run's next pass ends the worker that held it. The row is settled

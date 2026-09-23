@@ -142,9 +142,10 @@ func (c Config) checkpointFile() string {
 // the reports its prerequisites left, which is the same thing it would have done
 // had nothing died.
 type taskRecord struct {
-	ID      uint64 `json:"id"`
-	Title   string `json:"title"`
-	Summary string `json:"summary,omitempty"`
+	Restart *taskRestartRecord `json:"restart,omitempty"`
+	ID      uint64             `json:"id"`
+	Title   string             `json:"title"`
+	Summary string             `json:"summary,omitempty"`
 	// Request is the person's own message, kept because a node that resumes
 	// without it would be re-opened on the model's paraphrase alone — the one
 	// part of what it was told that nothing downstream could reconstruct
@@ -1184,6 +1185,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		beat = n.graph.store.beatPath(n.id)
 	}
 	return taskRecord{
+		Restart:        taskRestartLocked(n.spec),
 		ID:             n.id,
 		Title:          n.spec.title,
 		Summary:        n.spec.summary,
@@ -2179,6 +2181,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			resume: record.Offer,
 		}
 	}
+	restoreTaskRestart(node, record.Restart)
 	if record.State != TaskQueued {
 		close(node.done)
 	}
@@ -2250,23 +2253,8 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 			return record, ""
 		}
 
-		// A DESIGN STILL WRITING IS NEVER RE-RUN, AND THIS IS THE LINE THAT
-		// MAKES IT TRUE.
-		//
-		// A design has nothing on disk to point at, ever: no worktree, no branch,
-		// no files, and nothing reaches the registry until somebody approves the
-		// card (harness_task.go). Half-written, it also has nothing to re-enter —
-		// what tells [Agent.runTaskNode] to hand a node to the designer instead
-		// of a worker is [taskSpec.design], which is only rebuilt from a finished
-		// Offer (task.go says why it is otherwise not checkpointed). So a
-		// mid-write design put back on the frontier is a node the next session
-		// would run as an ORDINARY WORKER, in a worktree, against the designer's
-		// brief — which is not the work anybody asked for, and it would spend
-		// real money doing it.
-		//
-		// It settles instead, with the same sentence a design that ran out of time
-		// says, because the two are the same fact from the person's side: the page
-		// was still being written and nothing was kept.
+		// An interrupted design settles until the person explicitly retries it.
+		// New records retain its runner inputs; older rows may only have a result.
 		record.State = TaskFailed
 		record.Report = harnessInterruptedReport
 		record.EndedAt = interruptedAt(record)
@@ -2274,19 +2262,8 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	}
 
 	if record.Kind == TaskKindSubharness {
-		// A RUN IS NEVER RE-RUN, and this is the line that makes it true.
-		//
-		// The argument is the design's one above, arrived at from the other side.
-		// What tells [Agent.runTaskNode] to hand a node to a program rather than
-		// to a worker is [taskSpec.run], and that field is not in the checkpoint:
-		// a run's input is the material of one conversation, and there is no
-		// finished-page record here that could rebuild it. So a run put back on
-		// the frontier is a node the next session would run as an ORDINARY WORKER
-		// in a worktree against a brief nobody wrote, spending real money on work
-		// nobody asked for.
-		//
-		// It settles instead, saying the one thing that is true of it: it did not
-		// finish, and what it got through is in its journal.
+		// A saved workflow does not replay automatically after interruption.
+		// Explicit Retry may restart it using the persisted runner and input.
 		record.State = TaskFailed
 		record.Report = subharnessInterruptedReport
 		record.EndedAt = interruptedAt(record)
@@ -2294,29 +2271,9 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	}
 
 	if record.Kind == TaskKindQuick {
-		// A QUICK TASK NEVER OUTLIVES ITS WINDOW, and this is the line that makes
-		// it true — for one that was working and for one still waiting its turn.
-		//
-		// Its body is on the record ([taskRecord.Quick]), so this is no longer a
-		// node that cannot be rebuilt; it is a node that must not be restarted.
-		// What died with the process is the part a quick task is FOR: the worker's
-		// context — everything it had read on the way down its list — and the
-		// caller that was going to read its last message and carry on. A worker
-		// started again would open on the line with none of that, in whatever
-		// folder the new session's runner stands in rather than the one its caller
-		// was in — walking a half-done list over the first worker's edits in the
-		// person's own folder rather than resuming them — and its answer would
-		// land in a turn that no longer exists; a
-		// waiting one started later would be work arriving in a conversation that
-		// has since forgotten why it was asked for. A quick task is small by
-		// design, so asking for it again costs less than any of those.
-		//
-		// It settles instead, saying what is true of it: whether it had begun,
-		// that anything it wrote is already in the person's own folder rather than
-		// a copy, and how far down its list it got ([quickReportOnClose], which
-		// reads the state the record ARRIVED in, so it is asked before the state
-		// is overwritten a line below). And what it wrote is its changed list,
-		// exactly as a quick node that landed carries it ([Agent.landQuickNode]).
+		// Quick work settles when its process disappears. The saved checklist
+		// supports an explicit retry, but opening a conversation spends nothing
+		// on replaying an unfinished quick task without the person's request.
 		record.Report = quickReportOnClose(record)
 		record.State = TaskFailed
 		record.Changed = mergePaths(record.Changed, record.Wrote)

@@ -8,7 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// Pointer feedback must not change the keyboard's destination or the draft.
+// Pointer motion selects the hovered row without opening its conversation.
 func TestChatSwitcherHoverPaintsTheClickedRowWithoutNavigating(t *testing.T) {
 	for _, mode := range []struct {
 		name  string
@@ -26,7 +26,7 @@ func TestChatSwitcherHoverPaintsTheClickedRowWithoutNavigating(t *testing.T) {
 			body := make([]string, 20)
 			before := a.hopOver(body, mode.width, a.pal)
 			spot := a.hop.spots[1]
-			selected, file := a.hop.at, a.file
+			file := a.file
 			x, y := a.hop.left+2, a.hop.top+spot.row
 			a.hop.live = true
 			drive(t, a, motionTo(x, y))
@@ -37,8 +37,8 @@ func TestChatSwitcherHoverPaintsTheClickedRowWithoutNavigating(t *testing.T) {
 			if !strings.Contains(plain(after[y]), "·") {
 				t.Fatal("hover has no marker when color is absent")
 			}
-			if a.hop.at != selected || a.file != file || a.hop.live {
-				t.Fatal("hover moved the keyboard choice or chat, or left the fade timer active")
+			if a.hop.at != spot.at || a.file != file || a.hop.live {
+				t.Fatal("hover failed to select its row, changed chat, or left the fade timer active")
 			}
 			drive(t, a, hopSettleMsg{pulse: a.hop.pulse})
 			if !a.hopShowing() {

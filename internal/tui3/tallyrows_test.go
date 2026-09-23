@@ -51,8 +51,9 @@ func tasksHeadingRow(lines []tasksLine, word string) string {
 func TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds(t *testing.T) {
 	world, win, now := tasksFamilyFixture()
 	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: false}
 
-	held := len(reading.section(tasksToday))
+	held := len(reading.section(tasksCompleted))
 	lines := reading.lay(120)
 	drawn := tasksWorkRows(lines)
 	frame := strings.Join(reading.rows(120, palette{}), "\n")
@@ -64,8 +65,8 @@ func TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds(t *testing.T) {
 		t.Fatalf("the foot says %q, want %q — the tally counts the work and never the rows:\n%s", reading.tally(), want, frame)
 	}
 	// The heading over those rows says only what the fold withholds.
-	head := tasksHeadingRow(lines, tasksSectionWord(tasksToday))
-	if want := tasksSectionWord(tasksToday) + railSep + itoa(held-drawn) + " folded away"; head != want {
+	head := tasksHeadingRow(lines, tasksSectionWord(tasksCompleted))
+	if want := tasksSectionWord(tasksCompleted) + railSep + itoa(held-drawn) + " folded away"; head != want {
 		t.Fatalf("the foot says %q over a section drawing %d rows of %d, and its heading reads\n  %s\nwant\n  %s\n%s",
 			reading.tally(), drawn, held, head, want, frame)
 	}
@@ -78,7 +79,7 @@ func TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds(t *testing.T) {
 	if drawn := tasksWorkRows(lines); drawn != held {
 		t.Fatalf("an opened family draws %d rows of %d pieces of work:\n%s", drawn, held, frame)
 	}
-	if head := tasksHeadingRow(lines, tasksSectionWord(tasksToday)); head != tasksSectionWord(tasksToday) {
+	if head := tasksHeadingRow(lines, tasksSectionWord(tasksCompleted)); head != tasksSectionWord(tasksCompleted) {
 		t.Fatalf("with the fold open the heading still reads %q, and every row is on the page:\n%s", head, frame)
 	}
 }
@@ -91,17 +92,18 @@ func TestTheSectionHeadCountsTheRowsItActuallyWithholds(t *testing.T) {
 	world, win, now := tasksFamilyFixture()
 	for _, open := range []bool{false, true} {
 		reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+		reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: false}
 		if open {
 			reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
 		}
 		lines := reading.lay(120)
-		held := len(reading.section(tasksToday))
+		held := len(reading.section(tasksCompleted))
 		withheld := held - tasksWorkRows(lines)
-		want := tasksSectionWord(tasksToday)
+		want := tasksSectionWord(tasksCompleted)
 		if withheld > 0 {
 			want += railSep + itoa(withheld) + " folded away"
 		}
-		if got := tasksHeadingRow(lines, tasksSectionWord(tasksToday)); got != want {
+		if got := tasksHeadingRow(lines, tasksSectionWord(tasksCompleted)); got != want {
 			t.Fatalf("with the family %s, %d laid-out rows are withheld but the heading is %q, want %q:\n%s",
 				map[bool]string{true: "open", false: "shut"}[open], withheld, got, want,
 				strings.Join(reading.rows(120, palette{}), "\n"))

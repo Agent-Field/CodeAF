@@ -19,8 +19,7 @@ answer:
 │   2  always, this command                                        │
 │ ▸ 3  deny                                           safe answer  │
 │                                                                  │
-╰─ ↑↓ choose · enter take it · esc later ──────────────────────────╯
-  c change · ? ask back · 1–3 jump
+╰─ esc later · o other · ? clarify ──────────────────────────╯
 ```
 
 The tool's own name and the wait mode are the aside in the top edge — ` · 7s`,
@@ -46,9 +45,12 @@ you are here to read.
   an error result, `denied by the person: <rule>`, and keeps going.
 - `2` — the widening yes. What it banks is a separate decision, and on a shell
   command codeaf asks you which shape to bank before it answers.
-- `c` — refuse or allow **in words**. It puts the cursor in the box (which was
-  never taken away); type your sentence and press `enter`, and the words go to
-  the model as the answer.
+- `o` — **other**. Write an updated request and press `enter`. The pending
+  call is withdrawn, the old turn stops, and the updated request starts in the
+  same conversation. This grants no permission.
+- `?` — **clarify**. Write your question and press `enter`. codeaf answers in
+  context while the original decision stays open. If the clarification needs
+  approval, that question comes first; answering it brings back the original.
 - `enter` — take the answer the pointer is on: `allow once` on an ordinary
   call, `deny` on a grave one — whichever it is, until you move it.
 - `esc` — **later**. The question folds in place to one titled rule, the chip on
@@ -65,8 +67,7 @@ a key on a permission either — it types itself into the box like any other
 letter (see **How long an answer lasts** below for why the lifetimes row is not
 offered here).
 
-**A key it does not draw belongs to your draft.** The question is not modal: the
-box below it is live, typing goes into your message, and the question is still
+**Typing belongs to the field inside the box.** The question stays visible, and the question is still
 there and still answerable the moment the box is clear. `ctrl+c` mid-turn — which
 a blocked call always is — interrupts the blocked call exactly as it always has.
 
@@ -74,11 +75,10 @@ a blocked call always is — interrupts the blocked call exactly as it always ha
 under a hand already moving would otherwise be answered by a keystroke aimed at
 the sentence you were typing.
 
-**And a letter reaches this question only once you have aimed at it.** `c` is
-the first letter of "can you check the other table first" — so `c`, `d` and the
-other letters go into an empty box until you press `↑`, `↓`, `tab` or `enter`,
-or click an answer. `1`, `2` and `3` are printed on the answers in front of you
-and always take them.
+**`o` and `?` work before you move through the options.** They open a text field
+inside the box after the initial quarter-second guard. Other letter shortcuts
+still require aiming at the question. A draft you are already typing keeps its
+letters. `1`, `2` and `3` always take the corresponding answers.
 
 `[2]` is only drawn, and only acts, when the question is one that can bank an
 answer. Every approval question is about a TOOL and can, so every one of them
@@ -132,7 +132,7 @@ answers.
 │ ▸ 1  allow all 4                                                  │
 │   2  one by one                                                   │
 │   3  deny all                                       safe answer   │
-╰─ ↑↓ choose · enter take it · esc later ───────────────────────────╯
+╰─ esc later · o other · ? clarify ───────────────────────────╯
 ```
 
 - **`1 allow all 4`** gives every one of them its own `allow once`, in one go.
@@ -199,15 +199,14 @@ At about seventy columns and up it is drawn whole:
 │   2  always, this tool                                             │
 │ ▸ 3  deny                                             safe answer  │
 │                                                                    │
-╰─ ↑↓ choose · enter take it · esc later ────────────────────────────╯
-  c change · ? ask back · 1–3 jump
+╰─ esc later · o other · ? clarify ────────────────────────────╯
 ```
 
-The bottom edge carries exactly `↑↓ choose · enter take it · esc later` at every
-width and never gives any of it up: those three are the way in and the way out,
-and a frame with no way off it is the modal this block replaced. Everything else
-is on the dim row underneath, and **that** row is what gives way, dropped from
-the right: `1–3 jump` goes first, then `? ask back`, then `c change`.
+The bottom edge carries `esc later · o other · ? clarify`. Nothing is drawn
+under the box. `o` and `?` work before you move through the answers and open their
+text field inside it. Arrows, Tab and the wheel over the box cycle through the
+answers in both directions; Enter and the numbered answers still work. The seam
+omits its duplicate yellow decision text while the permission box is open.
 
 The command itself **wraps** rather than being cut, and says so with `…` if even
 the wrap was not enough. An answer is never dropped at any width: an offer with
@@ -295,11 +294,11 @@ A question the asker took back says so once instead, and the chip's count drops:
 chip for as long as anything is open:
 
 ```
-? 1 question · alt+a
+? 1 question · alt+y
 ```
 
-`alt+a` raises the newest open question from **any page** — home, a room, the
-tasks place — and takes you back to the conversation it belongs to. The count
+`alt+y` raises the newest open question from **any page** — home, a room, the
+sessions place — and takes you back to the conversation it belongs to. The count
 includes the ones you folded: `esc` is later and not cancelled, so a question you
 put off is still a question the work is waiting on.
 
@@ -395,7 +394,7 @@ nowhere, it is one of these:
 - **A question is up.** The most common one. The answers row under the call
   reads `allow?`; the call is blocked until you answer, and the countdown is held
   while you are away rather than answering for you. If you pressed `esc` on it,
-  it is folded to the chip — `? 1 question · alt+a` on the status line — and the
+  it is folded to the chip — `? 1 question · alt+y` on the status line — and the
   work is still waiting on it.
 - **A call was already denied while you were gone** on a build from before
   silence stopped answering no. The row says `denied · no answer`. Say so and
@@ -429,7 +428,7 @@ shape can be written at all — and any lifetime at all on something
 **irreversible**, which is asked about every single time, the row absent rather
 than refusing.
 
-- **Once** — `1`, `3` and a typed answer under `c` answer this call and nothing
+- **Once** — `1` and `3` answer this call and nothing
   else. `esc` answers nothing at all: it puts the question off.
 - **For the session** — a "stop asking" answer is kept in memory for the rest of
   this agent's life. It is deliberately coarse: it answers for **the whole
@@ -559,8 +558,8 @@ labelled **"ask before running"**.
 
 | value | what it means |
 |---|---|
-| `prompt` | ask you. **This is the default.** |
-| `allow` | run it |
+| `prompt` | ask you |
+| `allow` | run it. **This is the interactive default, shown as YOLO.** |
 | `deny` | refuse it |
 
 The row's own hint reads: "what happens when the model asks to run a tool:
@@ -570,8 +569,13 @@ straight away, unless the panel says it lands on the next session."
 
 **Cycling the row changes the gate you are already behind — or says it could
 not.** The rules are rebuilt from this row and the two under it on the same
-keystroke, the `YOLO` badge on the status line moves with them, and `/status`
-says the posture in words under `approvals`. There is no turn to wait for.
+keystroke, the `◇` cell on the legend moves with them (and the `YOLO` badge on
+the status line, where the legend has no cell — never on the welcome box), and `/status` says the posture
+in words under `approvals`. There is no turn to wait for.
+
+**A conversation that set its own posture keeps it.** `alt+a` and a press on the
+approvals cell give this conversation a posture of its own (the next section).
+The settings rows apply to conversations without their own saved posture.
 
 Where the running gate cannot be reached, the row is still saved and the panel
 says, under the list:
@@ -587,7 +591,26 @@ its gate — the same answer `/permissions` gives when it drops a rule.
 `--no-host` lands the change at once; over `--host` the gate is the far
 machine's.
 
-A persisted value codeaf does not recognise reads as the default. A garbled
+## Default YOLO in interactive conversations and headless runs
+
+Interactive conversations without a saved approval choice start in **YOLO**,
+including conversations over `--host` and `--at`. Saved profile, project and
+conversation choices still win. YOLO permits ordinary destructive work without
+asking, including file overwrites, `rm -rf build`, `git reset --hard` and
+`git clean -fdx`. Critical machine-damaging commands still ask; this is not a
+blanket safeguard for your project files.
+
+Headless `--once` runs default to asking, which refuses a call needing consent
+because no person can answer. Explicit approval settings, including saved
+conversation choices, still apply. Local `--yolo` explicitly opens the ordinary
+gate; over `--host` or `--at`, configure approvals on the engine machine.
+Tool-specific rules and critical-command checks remain in force in every mode.
+The `--yolo` launch flag also controls unattended execution and its limits;
+the interactive default only changes approvals. A headless connection cannot
+reuse an already-open interactive conversation (or vice versa); close that
+conversation before retrying in the other mode.
+
+A persisted value codeaf does not recognise still reads as `prompt`. A garbled
 setting must never be the one that opens the gate.
 
 **No gate row can be pinned by an environment variable.** This is deliberate: a
@@ -645,8 +668,10 @@ goes through the ordinary shell-command rules, including prompts and denials.
 `codeaf chat --yolo` and `codeaf resume --yolo` stop the asking about ordinary
 work. The flag's own help reads: "run every tool without asking: the approval
 default becomes allow".
-A session launched with the flag draws the `YOLO` badge on the status line for
-as long as it runs, so that posture is never invisible.
+A session launched with the flag says `◇ YOLO` on the legend above the message
+box, in the warning hue, for as long as the gate is open — and `YOLO` on the
+status line while the welcome box or a task's page is up instead — so that
+posture is never invisible.
 
 It replaces **the default and nothing else**. If you wrote `bash:prompt`, you
 are still asked about bash, and your ordered shell command rules are untouched.
@@ -656,6 +681,44 @@ And the row cannot close a gate the flag opened. Cycling "ask before running" to
 on `allow` — so the badge stays up, because it reports the posture in force.
 
 `--yolo` cannot lift either of the two floors below.
+
+**You do not have to relaunch to get it.** The same posture is one keystroke
+inside a running conversation — see the next section — and `codeaf resume
+--yolo` outranks whatever that conversation last set, for that launch.
+
+## Turning YOLO on or off mid-conversation — stop asking me for this chat, run without asking from now on, the approvals chip, `alt+a`
+
+"Stop asking me for this chat" is one keystroke, and so is asking again. Every
+conversation has its own posture on the gate, moved from inside it. The
+legend above the message box names it after the thinking rung — `◇ asks`,
+`◇ guardian`, `◇ YOLO` or `◇ refuses` — and two controls move it:
+
+- **`alt+a`** walks `asks → guardian → YOLO → asks`. It never lands on
+  `refuses`.
+- **a press on the cell** is the same step.
+
+The change is **live** — the next tool call is decided under it — and
+**sticky**: it is written into this session's `meta.json` and is still in force
+after `/resume`. It changes **this conversation only**; every other conversation
+follows the "ask before running" and guardian rows on `/settings`' Safety tab.
+
+What each posture is, in the gate's terms:
+
+| posture | blanket answer | guardian |
+|---|---|---|
+| `ask` | `prompt` | stood down, whatever the row says |
+| `guardian` | `prompt` | standing in |
+| `yolo` | `allow` | — |
+| `deny` | `deny` | — |
+| `auto` | the rows as they stand | the row as it stands |
+
+Your named exceptions, your shell command rules and both floors below are the
+same at every posture: `yolo` here is exactly `--yolo`, built by the same code.
+
+Over `--host` the posture is set on the engine machine, whose gate it is, and
+the word on your legend is the one that machine resolved. An engine too old to
+have the door says so when the connection opens; the cell is then a reading of
+the far machine's row and every door answers: "what runs without asking is decided on the machine the conversation runs on — its engine has no dial for this window · change it in that machine's /settings".
 
 ## The guardian: a model answering the easy ones for you
 
@@ -753,13 +816,13 @@ already turned it into a prompt of its own.
 
 ## Who can see or view my files — privacy, file access and workspace visibility, what codeaf can read without asking, does git status need approval
 
-**Privacy: who can see my files.** In the default `prompt` mode, a look is not
+**Privacy: who can see my files.** Even in `prompt` mode, a look is not
 a question. codeaf can read and open these files without asking — the policy
 itself allows these without a card, even before the seeded row below is applied:
 
 - **`read`, `ls`, `grep`, `find`** — they change no file.
 - **`tasks` when it is a look** — a search, or one task's page. `say`,
-  `continue` and `resolve` still ask, because they write into a node.
+  `continue` and `resolve` follow the blanket mode, because they write into a node.
 - **`services` and `use_service`** — the first only lists accounts; the second
   has its own connect card as the one question about connecting, and every tool
   it brings is judged when called.
@@ -778,7 +841,7 @@ underneath whatever you wrote:
 
 - **Reads of this machine** — `read`, `grep`, `find`, `ls`.
 - **`jobs`**, whose list and output are reads of processes you already started.
-  Its kill is **not** on the floor; that inherits the blanket mode, which asks.
+  Its kill is **not** on the floor; that inherits the blanket mode.
 - **The agent's own bookkeeping** — `remember`, `track` and `recall`. These
   write to and read from the working state codeaf keeps for itself.
 - **`manual`**, which reads pages compiled into this binary and touches no disk

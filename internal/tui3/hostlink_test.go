@@ -25,7 +25,7 @@ func TestAWorkingLinkDrawsNothingBeforeItsFirstMeasurement(t *testing.T) {
 			t.Fatalf("a working link drew %q", part.text)
 		}
 	}
-	line := plain(a.status(a.width))
+	line := plain(a.legend(a.width))
 	for _, banned := range []string{"connected", "reconnect", "·  ·", "—"} {
 		if strings.Contains(line, banned) {
 			t.Fatalf("the status line says %q about a link with nothing to say:\n%s", banned, line)
@@ -48,7 +48,7 @@ func TestALocalSurfaceNeverDrawsTheRoundTripSegment(t *testing.T) {
 	if got := a.linkSegment(); got != "" {
 		t.Fatalf("a local surface drew %q", got)
 	}
-	if got := plain(a.status(200)); strings.Contains(got, "3ms") {
+	if got := plain(a.legend(200)); strings.Contains(got, "3ms") {
 		t.Fatalf("a local status line drew a hosted round trip:\n%s", got)
 	}
 }
@@ -62,11 +62,11 @@ func TestAHostedSurfaceDrawsLatencyOnlyAfterAReply(t *testing.T) {
 	a.link = LinkSeam{Ping: func() (time.Duration, error) { return 3 * time.Millisecond, nil }}
 	a.width = 200
 
-	if got := plain(a.status(a.width)); strings.Contains(got, "ms") || strings.Contains(got, "spark ·") {
-		t.Fatalf("the hosted status line guessed before a reply:\n%s", got)
+	if got := plain(a.legend(a.width)); strings.Contains(got, "3ms") {
+		t.Fatalf("the hosted seam guessed before a reply:\n%s", got)
 	}
 	a.linkPingBack(linkPingMsg{elapsed: 3 * time.Millisecond})
-	if got := plain(a.status(a.width)); !strings.Contains(got, "spark · 3ms") {
+	if got := plain(a.legend(a.width)); !strings.Contains(got, "spark · 3ms") {
 		t.Fatalf("the hosted status line missed the answered round trip:\n%s", got)
 	}
 	if got := a.statusText(); !strings.Contains(got, "the round trip to spark is about 3ms") {
@@ -122,7 +122,7 @@ func TestALinkBeingRedialledPutsItsSentenceOnTheStatusLine(t *testing.T) {
 	a.link = LinkSeam{Note: func() string { return note }}
 	a.width = 200
 
-	if got := plain(a.status(a.width)); !strings.Contains(got, note) {
+	if got := plain(a.legend(a.width)); !strings.Contains(got, note) {
 		t.Fatalf("the status line does not say the link is being redialled:\n%s", got)
 	}
 	if !a.linkNoting() {

@@ -27,11 +27,11 @@ func TestPlanRailOrdersFamiliesByWorkThenNewestActivity(t *testing.T) {
 		{ID: "done-new", Title: "done new", Status: "done", Ended: now.Add(-10 * time.Minute)},
 		{ID: "running-new", Title: "running new", Status: "claimed", Started: now.Add(-time.Minute)},
 	}
-	tree := tasksTreeOf(c253PlanItems(rows, "chat"), now, tasksSort{})
+	tree := (tasksReading{items: c253PlanItems(rows, "chat"), now: now}).railTree()
 	var got []string
 	for _, group := range tree.groups {
-		if len(group.roots) > 0 {
-			got = append(got, group.roots[0].entry.Title)
+		for _, root := range group.roots {
+			got = append(got, root.entry.Title)
 		}
 	}
 	want := []string{"running new", "running old", "queued family", "done new", "done old"}
@@ -49,7 +49,7 @@ func TestPlanRailKeepsStoreOrderInsideFamilyExceptRunningFloatsTop(t *testing.T)
 		{ID: "queued-b", Parent: "root", Title: "queued B", Status: "ready"},
 		{ID: "done-b", Parent: "root", Title: "done B", Status: "done"},
 	}
-	tree := tasksTreeOf(c253PlanItems(rows, "chat"), taskFixtureNow, tasksSort{})
+	tree := (tasksReading{items: c253PlanItems(rows, "chat"), now: taskFixtureNow}).railTree()
 	kids := tree.kids[tasksKey{session: "chat", id: "root"}]
 	var got []string
 	for _, kid := range kids {
@@ -70,7 +70,7 @@ func TestPlanRailFoldsDoneRowsToOneCountAtFamilyBottom(t *testing.T) {
 		{ID: "queued", Parent: "root", Title: "queued child", Status: "ready"},
 	}
 	items := c253PlanItems(rows, "chat")
-	reading := tasksReading{items: items, held: len(items), now: taskFixtureNow}
+	reading := tasksReading{items: items, held: len(items), now: taskFixtureNow, kinFloor: planRailLevels}
 	lines := reading.lay(55)
 	var titles []string
 	var folded *tasksLine
@@ -109,5 +109,26 @@ func TestPlanRailRunRowWearsFiveProgressCells(t *testing.T) {
 	cells-- // the row state mark is the same slot as a running progress cell
 	if cells != 5 {
 		t.Fatalf("rail run row has %d progress cells, want 5:\n%s", cells, text)
+	}
+}
+
+func TestTheRailDoesNotReorderTheSessionsTree(t *testing.T) {
+	rows := []session.PlanTaskRow{
+		{ID: "old", Title: "older running work", Status: "running", Started: taskFixtureNow.Add(-time.Hour)},
+		{ID: "new", Title: "newer completed work", Status: "done", Ended: taskFixtureNow.Add(-time.Minute)},
+	}
+	items := c253PlanItems(rows, "chat")
+	tree := tasksTreeOf(items, taskFixtureNow, tasksSort{})
+	reading := tasksReading{items: items, held: len(items), now: taskFixtureNow, shape: &tree}
+	before := strings.Join(reading.rows(140, palette{}), "\n")
+	rail := reading.planRailRows(55, palette{})
+	if len(rail) < 2 || rail[0].id != "old" {
+		t.Fatalf("the compact rail lost running-first order: %v", rail)
+	}
+	if after := strings.Join(reading.rows(140, palette{}), "\n"); after != before {
+		t.Fatalf("drawing the rail reordered the cached Sessions page:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	if strings.Index(before, "newer completed work") > strings.Index(before, "older running work") {
+		t.Fatal("the Sessions page did not retain newest-first order")
 	}
 }

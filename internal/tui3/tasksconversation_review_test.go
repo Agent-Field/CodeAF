@@ -10,7 +10,7 @@ import (
 
 func TestTasksIncludesMainChatsBeforeTheyDelegateWork(t *testing.T) {
 	now := time.Now()
-	row := session.SessionRow{ID: "main-chat", Title: "Investigate parser failures", Transcript: "/chat/main/transcript.jsonl", At: now}
+	row := session.SessionRow{ID: "main-chat", Title: "Investigate Parser Failures", Transcript: "/chat/main/transcript.jsonl", At: now}
 	world := session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}
 	r := readTasks(world, tasksMine{}, session.LastDays(now, 14), tasksSort{}, time.Time{}, now)
 	line := tasksLineOf(t, r.lay(80), row.Title)
@@ -115,7 +115,7 @@ func TestAwayPresenceKeepsItsKnownChatAndAncestry(t *testing.T) {
 		t.Fatal("the latest presence erased the known parent")
 	}
 	item := tree.at[key]
-	if item.row.Title != "shipping the gate" || !tasksMatches(item, "shipping the gate") {
+	if item.row.Title != "Shipping the Gate" || !tasksMatches(item, "Shipping the Gate") {
 		t.Fatal("the latest presence erased its searchable main chat")
 	}
 }

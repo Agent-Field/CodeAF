@@ -203,7 +203,7 @@ func openWorkTabNow(t *testing.T, a *app) {
 // answer with the title twice.
 func planLine(text, title string) (string, bool) {
 	for _, line := range strings.Split(text, "\n") {
-		if at := strings.Index(line, railSeam); at >= 0 {
+		if at := strings.LastIndex(line, railSeam); at >= 0 {
 			line = line[:at]
 		}
 		if strings.Contains(line, title) {

@@ -217,7 +217,7 @@ func (a *app) openFolderPick(query string) tea.Cmd {
 // about the one this window is holding behind the screen.
 //
 // IT IS THE SAME SHEET AND NOT A SECOND ONE. Home's own answer to "which
-// folder" used to be one line under the box — `alt+w moves the next conversation
+// folder" used to be one line under the box — `alt+p moves the next conversation
 // · or type a path` — which named a chord and a gesture and drew nothing a
 // person could walk. The owner's word for it was that they did not notice it.
 // So the command opens the browser every other surface opens, with three

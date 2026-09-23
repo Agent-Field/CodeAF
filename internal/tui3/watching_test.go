@@ -159,13 +159,14 @@ func TestAWatcherCanStillWalkAwayToHome(t *testing.T) {
 		t.Fatal("the spaces inside a typed sentence opened home")
 	}
 
-	// And two CONSECUTIVE spaces are still the door, counted where the keys are.
+	// Spaces are swallowed too; Escape is the shared back key.
 	if !a.homeDoorOpen() {
 		t.Skip("home is not reachable from this test surface")
 	}
 	drive(t, a, key(" "), key(" "))
+	a.key(key("esc"))
 	if !a.at(pageHome) {
-		t.Fatal("two spaces at a watcher did not open home")
+		t.Fatal("Escape at a watcher did not open home")
 	}
 }
 

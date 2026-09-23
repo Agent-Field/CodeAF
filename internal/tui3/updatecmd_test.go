@@ -279,3 +279,113 @@ func TestC8UpdateRefusesWhileATurnOrTaskIsRunning(t *testing.T) {
 		})
 	}
 }
+
+// V6: Bare /update follows dev and staging builds, stable and rc builds follow
+// stable, and an explicit channel or tag overrides that default.
+func TestV6UpdateChoiceFollowsTheRunningBuildUnlessOverridden(t *testing.T) {
+	for _, row := range []struct {
+		name, running, argument string
+		want                    codeupdate.Choice
+	}{
+		{"dev default", "dev-20260921-aaaaaaaaaaaa", "", codeupdate.Choice{Channel: "dev", Running: "dev-20260921-aaaaaaaaaaaa"}},
+		{"staging default", "staging-20260921-aaaaaaaaaaaa", "", codeupdate.Choice{Channel: "staging", Running: "staging-20260921-aaaaaaaaaaaa"}},
+		{"stable default", "v0.3.0", "", codeupdate.Choice{Channel: "stable", Running: "v0.3.0"}},
+		{"rc default", "v0.3.0-rc.1", "", codeupdate.Choice{Channel: "stable", Running: "v0.3.0-rc.1"}},
+		{"explicit staging", "dev-20260921-aaaaaaaaaaaa", "staging", codeupdate.Choice{Channel: "staging", Running: "dev-20260921-aaaaaaaaaaaa"}},
+		{"explicit stable", "dev-20260921-aaaaaaaaaaaa", "stable", codeupdate.Choice{Channel: "stable", Running: "dev-20260921-aaaaaaaaaaaa"}},
+		{"explicit tag", "dev-20260921-aaaaaaaaaaaa", "dev-20260918-bbbbbbbbbbbb", codeupdate.Choice{Version: "dev-20260918-bbbbbbbbbbbb", Running: "dev-20260921-aaaaaaaaaaaa"}},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			var got codeupdate.Choice
+			a := newApp(context.Background(), Options{
+				Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab",
+				UpdateRunning: row.running, Restart: &codeupdate.Plan{},
+				ResolveUpdate: func(_ context.Context, choice codeupdate.Choice) (codeupdate.Release, error) {
+					got = choice
+					return codeupdate.Release{Tag: row.running}, nil
+				},
+				InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+					return codeupdate.InstallResult{}, nil
+				},
+			})
+			command := a.runUpdateCommand(row.argument)
+			if command == nil {
+				t.Fatal("update returned no command")
+			}
+			_ = command()
+			if got != row.want {
+				t.Fatalf("choice = %+v, want %+v", got, row.want)
+			}
+		})
+	}
+}
+
+// V7: A dev build ahead of the API-selected dev release refuses a bare
+// downgrade, while naming the tag remains the deliberate install road.
+func TestV7ChatUpdateRefusesAnAheadChannelBuildUnlessTheTagIsNamed(t *testing.T) {
+	const running = "dev-20260921-bbbbbbbbbbbb"
+	const newest = "dev-20260918-aaaaaaaaaaaa"
+	installed := 0
+	newAppFor := func() *app {
+		return newApp(context.Background(), Options{
+			Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab", SessionFile: "/tmp/this.jsonl",
+			UpdateRunning: running, Restart: &codeupdate.Plan{},
+			ResolveUpdate: func(_ context.Context, choice codeupdate.Choice) (codeupdate.Release, error) {
+				if choice.Version != "" {
+					return codeupdate.Release{Tag: choice.Version}, nil
+				}
+				return codeupdate.Release{Tag: newest}, nil
+			},
+			InstallUpdate: func(_ context.Context, release codeupdate.Release) (codeupdate.InstallResult, error) {
+				installed++
+				return codeupdate.InstallResult{Release: release, Path: "/tmp/devaf"}, nil
+			},
+		})
+	}
+	ahead := newAppFor()
+	drive(t, ahead, ahead.slash("/update")())
+	want := "this codeaf is " + running + ", ahead of the newest dev " + newest + " — /update " + newest + " installs it anyway"
+	if installed != 0 || !strings.Contains(updateNotes(ahead), want) {
+		t.Fatalf("installed = %d notes:\n%s", installed, updateNotes(ahead))
+	}
+	named := newAppFor()
+	drive(t, named, named.slash("/update "+newest)())
+	if installed != 1 {
+		t.Fatalf("named tag installed %d times", installed)
+	}
+}
+
+// V8: /update failures use the running file's curl road, while a source-build
+// refusal keeps the stable codeaf CurlCommand.
+func TestV8UpdateNotesUseTheRightCurlLine(t *testing.T) {
+	const devafCurl = "curl -fsSL https://agentfield.ai/get/devaf | bash"
+	failing := newApp(context.Background(), Options{
+		Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab",
+		UpdateRunning: "dev-20260918-aaaaaaaaaaaa", UpdateCurl: devafCurl, Restart: &codeupdate.Plan{},
+		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
+			return codeupdate.Release{}, errors.New("release service is away")
+		},
+		InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+			return codeupdate.InstallResult{}, nil
+		},
+	})
+	drive(t, failing, failing.slash("/update")())
+	if !strings.Contains(updateNotes(failing), "install a release with: "+devafCurl) {
+		t.Fatalf("failure notes:\n%s", updateNotes(failing))
+	}
+
+	source := newApp(context.Background(), Options{
+		Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab",
+		UpdateRunning: "deadbeef", UpdateCurl: devafCurl, Restart: &codeupdate.Plan{},
+		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) { return codeupdate.Release{}, nil },
+		InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+			return codeupdate.InstallResult{}, nil
+		},
+	})
+	if command := source.slash("/update"); command != nil {
+		t.Fatal("source refusal returned a command")
+	}
+	if !strings.Contains(updateNotes(source), codeupdate.CurlCommand) || strings.Contains(updateNotes(source), devafCurl) {
+		t.Fatalf("source notes:\n%s", updateNotes(source))
+	}
+}

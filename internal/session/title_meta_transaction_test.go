@@ -79,7 +79,7 @@ func TestALongEarnedTitleSurvivesMetadataUsageAndReopen(t *testing.T) {
 	}
 	a.writeSpendSnapshot(dir, stale, .25, 140)
 	meta, err := LoadMeta(dir)
-	if err != nil || meta.Title != title || meta.ShortTitle != short || meta.SpentUSD != .25 || meta.Tokens != 140 {
+	if err != nil || meta.Title != title || meta.ShortTitle != "" || meta.SpentUSD != .25 || meta.Tokens != 140 {
 		t.Fatalf("usage stamp clipped or lost the earned title pair: %+v %v", meta, err)
 	}
 	if err := a.Close(); err != nil {
@@ -91,7 +91,7 @@ func TestALongEarnedTitleSurvivesMetadataUsageAndReopen(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	t.Cleanup(func() { _ = reopened.Close() })
-	if reopened.Title() != title || reopened.ShortTitle() != short {
+	if reopened.Title() != title || reopened.ShortTitle() != title {
 		t.Fatalf("reopened title pair = %q / %q", reopened.Title(), reopened.ShortTitle())
 	}
 }

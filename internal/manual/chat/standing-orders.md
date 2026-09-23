@@ -341,7 +341,7 @@ over every project, and "keep this branch green, just in this conversation" dies
 the chat does. If you say nothing about it, the card still tells you which one it picked
 before anything stands — read the `where ·` band before you press `1 yes, set it up`.
 
-**And if the reach is wrong, change it on the card.** `c change when or where` turns the box
+**And if the reach is wrong, change it on the card.** `o other` turns the box
 below into a place to say either one: "only in this project", "everywhere", "just this
 chat" — the same door that changes the time. `enter` sends your words back, nothing is set
 up yet, and a new card comes with the reach you asked for on its `where ·` band.
@@ -441,9 +441,9 @@ asked for it says `you are already in it`. Clicking a row moves the cursor and n
 acts — every verb here is a key. Clicking a heading, a `not here` line or the `last look`
 paragraph does nothing at all.
 
-**This page does not change how hard an order thinks.** `ctrl+v` does nothing here. The
+**This page does not change how hard an order thinks.** `alt+e` does nothing here. The
 rung lives on the item's own card on **home** — put the cursor on its `◦` row and press
-`ctrl+v` there — because that card is where the rung is drawn and a key belongs beside the
+`alt+e` there — because that card is where the rung is drawn and a key belongs beside the
 fact it moves. The home page has the whole of it.
 
 ## Not in this project — the "not here" exception
@@ -661,7 +661,7 @@ Honest limits, so you do not rely on something that is not built:
   something else that runs on its own.
 - **A firing thinks at `low` unless you raised that one thing.** Standing work is held to
   the cheapest rung however deep this machine is dialled, because it is unattended and it
-  repeats. `ctrl+v` on the item's row on home raises the one that needs it, and nothing
+  repeats. `alt+e` on the item's row on home raises the one that needs it, and nothing
   else does — there is no way to raise them all at once, on purpose.
 - **A firing gets no sizing call.** Work you type is read once for width beside its first
   worker; an order that fires is not, and is armed to split itself only off the items its own

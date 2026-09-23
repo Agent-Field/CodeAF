@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"runtime"
 	"strings"
@@ -357,6 +358,38 @@ func commonProps() map[string]any {
 		"usage_context":  usageContext(),
 		"install_method": installMethod(),
 	}
+}
+
+// PropValue is one every-event prop with the value this machine would send
+// for it right now.
+type PropValue struct {
+	Name  string
+	Value string
+}
+
+// CommonPropValues answers the six every-event props as this binary on this
+// machine would fill them, in contract order — the same reader every event
+// constructor uses, so what a listing shows is what an event would carry. It
+// reads the install marker and the build; it writes nothing.
+func CommonPropValues() []PropValue {
+	props := commonProps()
+	out := make([]PropValue, 0, len(commonPropNames))
+	for _, name := range commonPropNames {
+		out = append(out, PropValue{Name: name, Value: fmt.Sprint(props[name])})
+	}
+	return out
+}
+
+// InstallIDHashIfMinted answers the install id hash when this machine has an
+// install id already, and false when it has not: a reading verb must not mint
+// one, because the id is written on the first SEND and a machine that has
+// sent nothing has no identity to show.
+func InstallIDHashIfMinted() (string, bool) {
+	stored := readStoredInstallID(telemetryFile("install_id"))
+	if len(stored) != 64 {
+		return "", false
+	}
+	return hashHex(stored), true
 }
 
 // hashHex is sha256 over one string, spelled once because three different

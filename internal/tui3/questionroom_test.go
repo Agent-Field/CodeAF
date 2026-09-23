@@ -405,10 +405,10 @@ func TestTheExchangeRidesTheAnswer(t *testing.T) {
 	pageText(a)
 	tap(t, a, "1")
 	tapNamed(t, a, tea.KeyEnter, 0)
-	if len(agent.answers) != 1 {
-		t.Fatalf("expected one answer, got %d", len(agent.answers))
+	if len(agent.answers) != 2 || !agent.answers[0].Clarify || agent.answers[1].Clarify {
+		t.Fatalf("expected clarification followed by one answer, got %+v", agent.answers)
 	}
-	back := agent.answers[0].AskedBack
+	back := agent.answers[1].AskedBack
 	if len(back) != 1 || back[0].Asked != "does it read it directly" || back[0].Replied != "it does" {
 		t.Errorf("the exchange should ride the answer whole: %#v", back)
 	}

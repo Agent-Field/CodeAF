@@ -75,6 +75,10 @@ func itemAt(items []sheetItem, key string) int {
 func TestTheSettingsSearchFindsARowByItsCurrentValue(t *testing.T) {
 	a, dir := sheetApp(t)
 	a.openSettings()
+	// This search fixture exercises an explicitly saved prompt posture.
+	cursorTo(t, a, config.KeyToolApprovalMode)
+	drive(t, a, key("enter")) // allow -> deny
+	drive(t, a, key("enter")) // deny -> prompt
 	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
 		t.Fatalf("the gate did not start at prompt: %q", got)
 	}
@@ -124,6 +128,10 @@ func screenAt(lines []string, want string) int {
 func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.openSettings()
+	// This search fixture exercises an explicitly saved prompt posture.
+	cursorTo(t, a, config.KeyToolApprovalMode)
+	drive(t, a, key("enter")) // allow -> deny
+	drive(t, a, key("enter")) // deny -> prompt
 	typeQuery(t, a, "ask")
 	// The approval row, kept by the search, and where the query landed on it:
 	// the label's own head, because "ask" is the word the row's name begins
@@ -210,6 +218,10 @@ func TestTheSettingsSearchTakesASpaceMidQuery(t *testing.T) {
 func TestSpaceWhileSearchingTypesAndDoesNotPressTheRow(t *testing.T) {
 	a, dir := sheetApp(t)
 	a.openSettings()
+	// This search fixture exercises an explicitly saved prompt posture.
+	cursorTo(t, a, config.KeyToolApprovalMode)
+	drive(t, a, key("enter")) // allow -> deny
+	drive(t, a, key("enter")) // deny -> prompt
 	cursorTo(t, a, config.KeyToolApprovalMode)
 	// The space with no search open is the panel's own gesture: it activates.
 	drive(t, a, key(" "))

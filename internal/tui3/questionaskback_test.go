@@ -97,8 +97,8 @@ func TestAskingBackOnAConsentDoesNotAnswerIt(t *testing.T) {
 	if cmd := lab.a.askBack(head, "", "what is this command going to touch?"); cmd != nil {
 		cmd()
 	}
-	if len(lab.answer) != 0 {
-		t.Fatalf("asking back about a permission ANSWERED it: %+v", lab.answer)
+	if len(lab.answer) != 1 || !lab.answer[0].Clarify || session.AnswerResolves(lab.answer[0]) {
+		t.Fatalf("clarification did not preserve the permission: %+v", lab.answer)
 	}
 }
 
@@ -108,7 +108,7 @@ func TestAskingBackOnAConsentDoesNotAnswerIt(t *testing.T) {
 // [session.Question.Waiting] — and the SHAPE half of it is
 // [session.AskKind.Waits]: a ratify waits on nobody by definition, whatever else
 // it carries. The status chip was counting rows instead, so a standing ratify
-// put `? 1 question · alt+a` on every page and the key took the person to a
+// put `? 1 question · alt+y` on every page and the key took the person to a
 // screen with nothing on it for them to decide.
 
 func TestTheChipDoesNotCountAQuestionNobodyIsWaitingOn(t *testing.T) {

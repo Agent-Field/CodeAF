@@ -199,7 +199,7 @@ func (a *app) openWelcome() {
 
 // dismissWelcome puts the unit away for good, and says the two keys that leave.
 //
-// THE EXIT IS TAUGHT AFTER THE ENTRANCE. `esc interrupts · ctrl+c quits`
+// THE EXIT IS TAUGHT AFTER THE ENTRANCE. `esc back · ctrl+c interrupts or quits`
 // used to be the first line of every session, drawn above a greeting whose whole
 // job was to get somebody to type their first sentence — a way out, offered
 // before the way in. So while the unit is up the transcript carries nothing,
@@ -872,7 +872,9 @@ type welcomeMark struct {
 // welcomeFits reports whether the unit is on the frame at all: it is open, and
 // the window has the room stated above.
 func (a *app) welcomeFits() bool {
-	if !a.welcome.open {
+	// Browsing commands lends the greeting's space to the list and restores
+	// the ordinary seam and draft. The start page's ownership stays intact.
+	if !a.welcome.open || a.menu.open {
 		return false
 	}
 	// AND NEVER UNDER A QUESTION SOMEBODY OPENED OUT (questionroom.go). The

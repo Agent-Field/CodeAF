@@ -232,8 +232,13 @@ func TestThePhoneCursorRowFitsWholeAtTheWindowEdge(t *testing.T) {
 	if at+1 >= len(lines) || !banded(a.pal, lines[at+1]) {
 		t.Fatalf("the cursor's row is cut by the window's edge: %q", plain(lines[at]))
 	}
-	if got := plain(lines[at]); !strings.Contains(got, "gpt-5-classic") {
-		t.Fatalf("the cursor is on %q, want the last model", got)
+	// THE LAST MODEL IS WHICHEVER THE LIST'S OWN SORT PUTS THERE — the name column,
+	// ascending (pickersort.go) — and this test is about the window's edge rather
+	// than about which model that is, so it asks the list.
+	ids := pickerIDs(a)
+	last := ids[len(ids)-1]
+	if got := plain(lines[at]); !strings.Contains(got, last) {
+		t.Fatalf("the cursor is on %q, want the last model %q", got, last)
 	}
 }
 
@@ -245,10 +250,15 @@ func TestThePhoneCursorRowFitsWholeAtTheWindowEdge(t *testing.T) {
 func TestTheWiderTiersAreByteIdenticalToTheOneLineLaw(t *testing.T) {
 	for _, width := range []int{120, 80, 60} {
 		a := phonePicker(t, width)
+		// The table's heads are chrome over the rows and not one of them
+		// ([picker.headLines]); the law this test holds is about the rows.
+		head := a.pick.headLines(width)
 		lines := overlayBlock(a)
-		if len(lines) != len(phoneCatalog) {
-			t.Fatalf("at %d columns the list is %d rows for %d models", width, len(lines), len(phoneCatalog))
+		if len(lines) != len(phoneCatalog)+head {
+			t.Fatalf("at %d columns the list is %d rows for %d models under %d heading lines",
+				width, len(lines), len(phoneCatalog), head)
 		}
+		lines = lines[head:]
 		for i, line := range lines {
 			model := a.pick.all[a.pick.hits[i]]
 			label, note := a.pick.rowText(model, a.reasoningFor(model.ID), width)

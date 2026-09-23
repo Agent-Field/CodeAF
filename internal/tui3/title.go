@@ -2,7 +2,6 @@ package tui3
 
 import (
 	"io"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -136,9 +135,6 @@ func titleWhere(a *app) titleParts {
 // ([app.chatTabDisplayName]). Before naming finishes, it uses the same
 // placeholder every other conversation-name surface uses.
 func titleConversation(a *app) string {
-	if strings.TrimSpace(a.shortTitle) == "" && a.sessionName() == "" {
-		return unnamedConversationWord
-	}
 	return a.chatTabDisplayName()
 }
 

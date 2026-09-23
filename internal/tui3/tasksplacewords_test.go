@@ -70,11 +70,8 @@ func TestTheRowTakesItsStateAndReasonFromTheOneJoin(t *testing.T) {
 
 // A CONVERSATION ROOT NAMES ITS FOLDER ONLY WHERE THE FOLDER IS NEWS.
 //
-// The mission-control ruling retired `~` as a project name and the project tag
-// on rows in this window's own folder (docs/design/home-mission-control/DESIGN.md
-// §1, "What is retired"). This page drew both until #884: a chat opened in a
-// home directory arrived wearing a lone `~` at the right of its name.
-func TestAConversationRootWearsAFolderTagOnlyWhereItIsNews(t *testing.T) {
+// The explicit project column includes the current project and home directory.
+func TestConversationProjectColumnIncludesCurrentAndHomeProjects(t *testing.T) {
 	now := time.Date(2026, time.September, 11, 9, 0, 0, 0, time.UTC)
 	pal := newPalette(tokens.NoColor, false)
 	draw := func(chat tasksChat, folder string) string {
@@ -88,11 +85,11 @@ func TestAConversationRootWearsAFolderTagOnlyWhereItIsNews(t *testing.T) {
 			title: title, at: now.Add(-time.Hour),
 		}
 	}
-	if got := draw(root("Clever Bet Prediction Model", "~", "/home/pat"), "/home/pat/code/pricing"); strings.Contains(got, "~") {
-		t.Fatalf("a chat in the home directory still wears a tag:\n  %s", got)
+	if got := draw(root("Clever Bet Prediction Model", "~", "/home/pat"), "/home/pat/code/pricing"); !strings.Contains(got, "~") {
+		t.Fatalf("a chat in the home directory lost its project column:\n  %s", got)
 	}
-	if got := draw(root("Crafting a Multi-Page Website", "pricing", "/home/pat/code/pricing"), "/home/pat/code/pricing"); strings.Contains(got, "pricing") {
-		t.Fatalf("a chat in this window's own folder still wears its tag:\n  %s", got)
+	if got := draw(root("Crafting a Multi-Page Website", "pricing", "/home/pat/code/pricing"), "/home/pat/code/pricing"); !strings.Contains(got, "pricing") {
+		t.Fatalf("a chat in this window's own folder lost its project column:\n  %s", got)
 	}
 	if got := draw(root("AI Influencers", "codeaf", "/home/pat/code/codeaf"), "/home/pat/code/pricing"); !strings.Contains(got, "codeaf") {
 		t.Fatalf("another project's chat lost the one fact that places it:\n  %s", got)
@@ -123,10 +120,9 @@ func TestTheReadingKnowsTheFolderThisWindowIsSittingIn(t *testing.T) {
 	if r.folder != "/home/pat/code/codeaf" {
 		t.Fatalf("the reading thinks this window is in %q, want the folder its own conversation names", r.folder)
 	}
-	// AND THE PAGE DOES NOT DRAW THAT FOLDER. The conversation's own title is on
-	// the page and its project's name is not, which is the whole of the rule.
-	if page := tasksPage(r, 100); strings.Contains(page, "codeaf") {
-		t.Fatalf("the page drew the folder it is already in:\n%s", page)
+	// The project is visible independently of the conversation title.
+	if page := tasksPage(r, 100); !strings.Contains(page, "codeaf") {
+		t.Fatalf("the project column lost the current folder:\n%s", page)
 	}
 }
 

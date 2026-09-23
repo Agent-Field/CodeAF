@@ -245,30 +245,40 @@ func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
 	}
 }
 
-// THE COMPOSER IS ON EVERY PLACE AND IT ALWAYS SAYS WHERE IT WILL LAND. "Start a
-// task from anywhere" is only true if the verb says where anywhere is.
-func TestTheComposerAndItsScopeChipAreOnEveryPlace(t *testing.T) {
+// ONE BOX, ON HOME. Home's foot is the draft's rule and the box; every other
+// place's foot is its note on the rule and its hint, with no box row and no
+// `new conversation in` — only home starts things (pages.go's [place.box]).
+func TestOnlyHomeDrawsTheBoxAndTheDraftsRule(t *testing.T) {
 	a := placeApp(t)
-	// A FRAME WIDE ENOUGH FOR BOTH HALVES OF THE BOX ROW. The chip is dropped
-	// rather than crowding the sentence beside it (pages.go's [app.placeChipped]),
-	// and this suite's own temp directories are seventy cells of path — so a
-	// hundred and twenty columns is a frame where the chip's absence would be
-	// correct and would prove nothing.
+	// A FRAME WIDE ENOUGH FOR THE WHOLE RULE: this suite's own temp directories
+	// are seventy cells of path, and a narrow frame drops the lead before the
+	// folder (homedraft.go's [app.targetLegend]).
 	a.width, a.height = 200, 30
-	for _, id := range []page{pageHome, pageSpend, pageSearch} {
+	a.showPage(pageHome)
+	text := placeFrameText(a)
+	if !strings.Contains(text, targetProjectLead) || !strings.Contains(text, "› "+placeRestWord) {
+		t.Fatalf("home's foot lost its rule or its box:\n%s", text)
+	}
+	for _, id := range []page{pageTasks, pageStanding, pageSpend, pageSearch} {
 		a.showPage(id)
 		text := placeFrameText(a)
-		if !strings.Contains(text, placeScopeWord+" ") {
-			t.Fatalf("the %s place draws no scope chip:\n%s", id.word(), text)
+		if strings.Contains(text, targetProjectLead) || strings.Contains(text, placeRestWord) {
+			t.Fatalf("the %s place still draws a box or the draft's rule:\n%s", id.word(), text)
+		}
+		if strings.Contains(text, "here /") || strings.Contains(text, "here ~") {
+			t.Fatalf("the %s place still draws a scope chip:\n%s", id.word(), text)
 		}
 	}
-	// AND WHAT IS TYPED ON ONE PLACE IS STILL THERE ON THE NEXT. A composer that
-	// forgot on every tab press would be seven boxes rather than one line.
+	// AND A LETTER TYPED ON SPEND GOES NOWHERE — there is nothing there to type
+	// into, and nothing there to send.
 	a.showPage(pageSpend)
 	drive(t, a, key("c"), key("u"), key("t"))
-	drive(t, a, key("tab"))
-	if got := strings.TrimSpace(a.compose.String()); got != "cut" {
-		t.Fatalf("the composer lost what was typed across a tab: %q", got)
+	if a.placeBox() != nil {
+		t.Fatal("the spend place still has a box")
+	}
+	drive(t, a, key("alt+enter"))
+	if a.composerShowing() {
+		t.Fatal("alt+enter on spend opened the composer layer: only home starts things")
 	}
 }
 
@@ -331,7 +341,7 @@ func TestALetterIsAVerbOnlyWhileTheStripIsDrawn(t *testing.T) {
 // on the key rather than a seizure of it.
 //
 // A CONVERSATION WITH AN ADDRESS HAS VERBS AND ONE WITHOUT HAS NONE. The strip's
-// verbs are the READING's — put it away, and the three doors that need a folder
+// verbs are the READING's — close, and the three doors that need a folder
 // to open (switcher.go's [switcherVerbsFor]) — so a row the world recorded no
 // workspace for offers nothing, and the arrow goes on meaning what it meant.
 func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
@@ -346,7 +356,7 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 	for _, v := range a.strip.verbs {
 		words += string(v.key) + " " + v.word + " · "
 	}
-	for _, want := range []string{"a put it away", "t new chat here", "o open folder", "c copy path"} {
+	for _, want := range []string{"x close", "n new in project", "o open folder", "p copy project"} {
 		if !strings.Contains(words, want) {
 			t.Fatalf("the strip is missing %q: %s", want, words)
 		}
@@ -355,8 +365,12 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 	// letter safe: the strip cannot offer a verb the row has no way to perform.
 	drive(t, a, key("esc"))
 	bare := switcherRow{kind: switcherConversation, title: "Nowhere"}
-	if got := switcherVerbsFor(bare); len(got) != 1 || got[0].word != "put it away" {
+	if got := switcherVerbsFor(bare); len(got) != 1 || got[0].key != 'x' || got[0].word != "close" {
 		t.Fatalf("an addressless row offered %v", got)
+	}
+	bare.session.Archived = true
+	if got := switcherVerbsFor(bare); len(got) != 1 || got[0].key != 'x' || got[0].word != "reopen" {
+		t.Fatalf("an archived row offered %v", got)
 	}
 }
 
@@ -384,7 +398,7 @@ func TestTheVerbStripIsDrawnUnderTheRowAndPushesTheListDown(t *testing.T) {
 	}
 	at := -1
 	for i, row := range after {
-		if strings.Contains(row, "a put it away") && strings.Contains(row, "t new chat here") {
+		if strings.Contains(row, "x close") && strings.Contains(row, "n new in project") {
 			at = i
 		}
 	}
@@ -513,17 +527,14 @@ func TestAPlaceOutranksEveryConversationTheWordsAlsoMatch(t *testing.T) {
 	for _, r := range "sta" {
 		drive(t, a, key(string(r)))
 	}
-	place, lastChat, ask, action := -1, -1, -1, -1
+	place, lastChat := -1, -1
 	for i, line := range a.home.lines {
 		switch line.kind {
 		case homePlace:
 			place = i
 		case homeSession:
 			lastChat = i
-		case homeAskHere:
-			ask = i
-		case homeAction:
-			action = i
+
 		}
 	}
 	if place < 0 || lastChat < 0 {
@@ -532,11 +543,6 @@ func TestAPlaceOutranksEveryConversationTheWordsAlsoMatch(t *testing.T) {
 	if place < lastChat {
 		t.Fatalf("the place is drawn above a conversation it outranks: place at %d, last chat at %d\n%s",
 			place, lastChat, placeFrameText(a))
-	}
-	// AND THE TWO ROWS THAT ACT ON THE SENTENCE STAY UNDER IT. They are one
-	// cluster against the box and are not results at all ([homeAction]).
-	if ask < place || action < ask {
-		t.Fatalf("the sentence cluster moved: place %d, ask here %d, start %d", place, ask, action)
 	}
 	// AND THE ROW SAYS WHAT IS BEHIND IT, not just what kind of thing it is.
 	if !strings.Contains(placeFrameText(a), placeRowWord) {
@@ -686,7 +692,7 @@ func TestATabWearsTheCountTheSeamGivesIt(t *testing.T) {
 		pageStanding.word(): 0,
 	}
 	bar := plain(a.placeTabBar(160, false, a.pal))
-	if !strings.Contains(bar, "tasks 2") {
+	if !strings.Contains(bar, "sessions 2") {
 		t.Fatalf("the tasks tab does not wear its count: %q", bar)
 	}
 	if strings.Contains(bar, "spend 9") {
@@ -764,9 +770,9 @@ func placeAt(id page) int {
 // seizing keys somebody has muscle memory for. The digits are the spare class.
 func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	a := placeApp(t)
-	drive(t, a, key("esc"))
+	a.closeHome()
 	if a.at(pageHome) {
-		t.Fatal("esc did not put the conversation back")
+		t.Fatal("close did not put the conversation back")
 	}
 	drive(t, a, key("alt+2"))
 	if a.page != pageTasks || !a.at(pageTasks) {
@@ -778,7 +784,7 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 		t.Fatalf("%s from the conversation landed on %q", placeChord(pageStanding), a.page.word())
 	}
 	// AND `tab` IS STILL THE CONVERSATION'S OWN KEY THERE.
-	drive(t, a, key("esc"))
+	a.leavePlace()
 	page := a.page
 	drive(t, a, key("tab"))
 	if a.page != page || a.at(pageTasks) || a.at(pageStanding) {
@@ -796,7 +802,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		if !strings.Contains(bar, "home   tasks   spend   settings") {
+		if !strings.Contains(bar, "home   sessions   spend   settings") {
 			t.Fatalf("at %d columns the bar is not the four places in order: %q", width, bar)
 		}
 		for _, id := range []page{pageStanding, pageMemory, pageSearch} {

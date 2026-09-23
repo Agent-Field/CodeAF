@@ -1132,6 +1132,14 @@ var OperatorEnvPins = []string{
 	"CODEAF_NO_UPDATE_CHECK",
 	"CODEAF_GITHUB_API",
 	"CODEAF_GITHUB_DOWNLOAD",
+	// CODEAF_INSTALL_NAME belongs to the shell installer and not to this
+	// program: it chooses the file name an install writes, and codeaf never
+	// reads it. It is spelled in Go at all only because the curl line codeaf
+	// offers after a failed update has to be the command that reinstalls THIS
+	// file, and a file installed under another name needs that word in the
+	// line. Plumbing rather than a row for the plainest reason there is: a row
+	// would persist a preference this binary cannot act on.
+	"CODEAF_INSTALL_NAME",
 	// The two pins on the model-call log (internal/calllog). CODEAF_CALL_LOG
 	// switches it off or moves the file; CODEAF_CALL_LOG_BODIES adds the whole
 	// request and response to every line. Plumbing rather than settings rows,
@@ -1399,17 +1407,12 @@ const (
 	// is the surface throwing away the only thing on screen it did not write.
 	DefaultDraftPersist = true
 
-	// DefaultToolApprovalMode asks. It is the only defensible default for a
-	// gate: a fresh install that ran every tool the model asked for would be
-	// deciding, on the person's behalf, that nothing needs deciding. Widening
-	// it is one row; narrowing it after something ran is not possible.
-	DefaultToolApprovalMode = "prompt"
+	// DefaultToolApprovalMode opens new conversations in YOLO unless a saved
+	// profile, project or conversation choice supplies another posture.
+	DefaultToolApprovalMode = "allow"
 
-	// DefaultGuardian is off, and it is the only defensible default for the same
-	// reason the row above asks: this one hands the answer to a model. A gate
-	// that answers on your behalf must be something you turned on, not something
-	// you failed to notice — so a fresh install makes no guardian call at all,
-	// and the person who wants fewer questions opts into one.
+	// DefaultGuardian is off because choosing YOLO does not appoint a model
+	// to answer approval questions. The guardian remains an explicit choice.
 	DefaultGuardian = GuardianOff
 
 	// DefaultSpendRailUSD is 0 — no per-session ceiling. The rail that is on by
@@ -3428,7 +3431,43 @@ func ModelPoolPublicKeySettingAt(profileDir string) string {
 // and [ModelPoolPublicKeySettingAt] against its own lookup rather than
 // calling this.
 func ModelPoolAt(profileDir string) poolcfg.Config {
-	return poolcfg.Resolve(ModelPoolSettingAt(profileDir), ModelPoolPublicKeySettingAt(profileDir), os.LookupEnv)
+	return ModelPoolResolved(profileDir, os.LookupEnv)
+}
+
+// ModelPoolResolved is [ModelPoolAt] with the environment injected, for the
+// verbs whose tests hand one in. It is where the telemetry off switch reaches
+// the pool: the environment rungs (CODEAF_TELEMETRY, DO_NOT_TRACK) are read by
+// the resolver through lookup, and the two rungs that live on disk — the
+// project file and the profile row that `codeaf telemetry off` writes — are
+// read here and applied with [poolcfg.Config.Quieted]. The rows, not the
+// pin: a caller that injected an environment must get the answer for THAT
+// environment's CODEAF_TELEMETRY, not the one the harness happens to export
+// (the fall-through [telemetryRowsOff] describes is the one exception).
+func ModelPoolResolved(profileDir string, lookup func(string) (string, bool)) poolcfg.Config {
+	cfg := poolcfg.Resolve(ModelPoolSettingAt(profileDir), ModelPoolPublicKeySettingAt(profileDir), lookup)
+	cwd, _ := os.Getwd()
+	if telemetryRowsOff(cwd, profileDir) {
+		cfg = cfg.Quieted()
+	}
+	return cfg
+}
+
+// telemetryRowsOff is the disk half of [TelemetryOffReason]: the project file
+// and the profile row. It does not read CODEAF_TELEMETRY itself — the caller
+// has read that through its own lookup — but it is not blind to the process
+// environment either: [ProjectBoolAt] falls through to [TelemetryAt] when the
+// project file says nothing, and TelemetryAt reads the pin through
+// internal/env, which honours the former AFORGE_TELEMETRY spelling. // legacy-name
+// THAT FALL-THROUGH IS WHY THE FORMER SPELLING CAPS THE POOL; a rewrite that
+// read the two rows directly would drop it.
+func telemetryRowsOff(cwd, profileDir string) bool {
+	if cwd != "" {
+		if value, err := ProjectBoolAt(cwd, profileDir, KeyTelemetry); err == nil && !value {
+			return true
+		}
+	}
+	value, ok := persistedBool(profileDir, KeyTelemetry)
+	return ok && !value
 }
 
 // ExaKeyAt resolves the Exa credential: the environment first, then the sheet,
@@ -3636,15 +3675,40 @@ func knownDocumentEngine(engine string) bool {
 // answer is written down and can be read back.
 
 // ToolApprovalModeAt resolves the blanket answer the tool gate starts from. An
-// unrecognised persisted value reads as the default, which is the strictest of
-// the three — a garbled setting must never be the one that opens the gate.
+// absent setting uses YOLO; an unrecognised persisted value still asks, so a
+// garbled setting does not widen a previously selected posture.
 func ToolApprovalModeAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyToolApprovalMode); ok {
 		if mode := strings.ToLower(strings.TrimSpace(value)); knownToolApprovalMode(mode) {
 			return mode
 		}
+		return "prompt"
+	}
+	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
+		return "prompt"
 	}
 	return DefaultToolApprovalMode
+}
+
+// HeadlessToolApprovalModeAt requires an explicit setting to open an unwatched gate.
+// Invalid saved values retain the ordinary reader's conservative fallback.
+func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
+	project, err := LoadProjectConfig(workspace)
+	if err != nil {
+		return "", err
+	}
+	if _, found, err := project.String(KeyToolApprovalMode); err != nil {
+		return "", err
+	} else if found {
+		return project.ResolveString(profileDir, KeyToolApprovalMode)
+	}
+	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
+		if _, text := persistedString(profileDir, KeyToolApprovalMode); !text {
+			return "prompt", nil
+		}
+		return ToolApprovalModeAt(profileDir), nil
+	}
+	return "prompt", nil
 }
 
 // GuardianAt resolves whether a small model answers a tool prompt before the

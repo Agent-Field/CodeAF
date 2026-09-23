@@ -427,6 +427,10 @@ func TestTasksToolRefusesAStopSentWithAnotherVerb(t *testing.T) {
 		!strings.Contains(text, "stop needs an id") {
 		t.Fatalf("stop without an id was not refused:\n%s", text)
 	}
+	if text, isError := runTool(t, agent, "tasks", `{"id":404,"stop":true}`); !isError ||
+		!strings.HasPrefix(text, `Could not stop task "404":`) {
+		t.Fatalf("stop on an unknown task did not state that it failed:\n%s", text)
+	}
 }
 
 // WHAT THE MODEL IS TOLD ABOUT THE TWO VERBS. The defect was not that the door

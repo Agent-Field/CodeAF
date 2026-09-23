@@ -1,35 +1,57 @@
 # Commands you type in a terminal
 
-## Is there a newer version — how do I update codeaf — /update — codeaf update — why does it say this every time I start
+## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
-At launch, a stable release behind the newest stable gets one dim line naming both
-versions and offering `/update`. That command downloads the release, checks its
-sha256, replaces this executable and restarts the same conversation; `/upgrade` is
-its alias. Finish a running turn or task first. A matching release says `you are on
-the newest codeaf, <tag>` and does not restart.
+At launch, a stable, dev or staging build behind the newest release of its own
+channel gets one dim line: `codeaf <newest> is out · you have <running> · /update
+installs it and restarts · or: <curl line>`. A release candidate gets that line
+when its stable line is published. An equal or ahead build gets no line. Source
+and unstamped builds make no launch request, and their `/update` answers `this
+codeaf was built from source · rebuild with make build, or install a release:
+curl -fsSL https://agentfield.ai/get/codeaf | bash`.
 
-Release candidates get the launch line once their stable line is published. A
-stable build already newest or ahead gets no launch line. That silence does not
-authorize a downgrade: if this build is `v0.3.0` and stable is `v0.2.0`, `/update`
-refuses with `this codeaf is v0.3.0, ahead of the newest stable v0.2.0 — /update
-v0.2.0 installs it anyway`. Naming the tag is the deliberate road and installs it.
-Dev, staging, source and unstamped builds make no launch request. Set
-`CODEAF_NO_UPDATE_CHECK=1` to skip only this check. Its answer is cached in
-`update-check.json` beside `config.json` for 24 hours for the same running build;
-a cached newer release is still shown at every launch.
+`/update` downloads the release, checks its sha256, replaces this executable and
+restarts the same conversation; `/upgrade` is its alias. With no channel word,
+a dev or staging build selects its own channel; stable and rc select stable. An
+explicit channel or tag wins. Finish a running turn or task first. An ahead dev
+build refuses with `this codeaf is <running>, ahead of the newest dev <newest> —
+/update <newest> installs it anyway`; naming the tag is the deliberate downgrade.
 
-From a shell, `codeaf update --check` exits 3 for a newer selected stable or rc,
-or a different selected dev or staging tag; 0 when a stable or rc build is equal
-or ahead, or a channel tag is equal; and 1 when it could not check. `--version
-<tag>` exits 0 only on that tag and 3 otherwise. Every answer names the selected
-tag. `codeaf update` installs stable by default;
-`--rc`, `--dev`, and `--staging` select another channel. On `v0.3.0` with stable
-at `v0.2.0`, it exits 2 with `this codeaf is v0.3.0, ahead of the newest stable
-v0.2.0 — pass --version v0.2.0 to install it anyway`. `--version v0.2.0` installs
-what was named. A source build refuses and names its path: rebuild with `make
-build`, or install a release with `curl -fsSL https://agentfield.ai/get/codeaf | bash`.
-An unwritable target, failed download or bad checksum leaves the original in
-place and offers that same line; codeaf never tries sudo.
+Set `CODEAF_NO_UPDATE_CHECK=1` to skip only the launch check. Dev and staging
+answers are cached beside `config.json` for one hour in `update-check.dev.json`
+and `update-check.staging.json`; stable and rc use `update-check.json` for 24
+hours. A cached newer release is still shown. The curl line reinstalls this file
+from the channel the build follows — dev and staging follow themselves, and a
+stable, rc or source build follows stable. So `devaf` gets `curl -fsSL
+https://agentfield.ai/get/devaf | bash`, a dev build named `codeaf` gets
+`/get/codeaf/dev`, a release candidate gets the plain `/get/codeaf`, the same
+stable release its launch line just named, and a file under any other name gets
+`| CODEAF_INSTALL_NAME=<name> bash` on the end of its channel's line.
+
+## codeaf update from a shell — --check — default channel — ahead of newest
+
+`codeaf update` and `codeaf update --check` default to dev on a `dev-*` build,
+staging on a `staging-*` build, and stable on stable or rc. `--stable`, `--rc`,
+`--dev`, `--staging`, or `--version <tag>` overrides that choice.
+
+`--check` exits 3 when the selected release is newer, and also whenever a dev or
+staging tag is selected from a build of another channel, because a channel tag
+cannot be ordered against a build from another channel; that answer reads
+`codeaf <tag> is available · you have <running>`. It exits 0 when the
+selection is the tag already running, when this build is ahead of its own
+channel, and when the two cannot be ordered at all — which is what a dev build
+asking `--stable` gets. It exits 1 when it could not check. `--version <tag>`
+exits 0 only on that tag and 3 otherwise. Every answer names the selected tag.
+A build ahead of its own channel says `the newest dev codeaf is <newest> · this
+codeaf is <running>`, with `staging` in place of `dev` on that channel.
+Installing without `--check` refuses an implicit downgrade the same way:
+`this codeaf is <running>, ahead of the newest dev <newest> — pass --version
+<newest> to install it anyway`; naming that tag installs it.
+
+A source build refuses and names its path: rebuild with `make build`, or install
+a release with `curl -fsSL https://agentfield.ai/get/codeaf | bash`. An unwritable
+target, failed download or bad checksum leaves the original in place and offers
+the curl line for this executable and channel; codeaf never tries sudo.
 
 ## How do I install codeaf — the curl line, agentfield.ai/get/codeaf, dev, staging, rc and stable channels
 
@@ -63,17 +85,39 @@ final pipe with `| VERSION=<tag> bash`; for example:
 curl -fsSL https://agentfield.ai/get/codeaf | VERSION=v0.2.0 bash
 ```
 
-For the bare address the proxy hands the script out unchanged; for a channel path it
-rewrites the one line that sets the default channel. If it cannot find that line exactly
-once, or what it fetched is not a shell script, it answers 502 rather than serve the
-wrong thing.
+For the bare address the proxy hands the script out unchanged; for a channel path
+it rewrites the one line that sets the default channel. If it cannot find that line
+exactly once, or what it fetched is not a shell script, it answers 502.
 
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf`; its last line is `codeaf version`. For a
-newer build later, `/update` in the chat or `codeaf update` in a terminal replaces the
-binary in place (the section above); running the line again works too.
+The installer writes `~/.codeaf/bin/codeaf` and prints three things: one line
+naming the installed file's `version`, the three-line telemetry notice, and last,
+when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste.
+`/update` in the chat or `codeaf update` in a terminal replaces it in place;
+running the install line again works too.
+
+## What is devaf — dev build beside codeaf — side by side — two versions — install under a different file name — --name
+
+`devaf` is the file name for a codeaf dev-channel build, not another product.
+Install the newest dev build beside codeaf with:
+
+```sh
+curl -fsSL https://agentfield.ai/get/devaf | bash
+```
+
+That proxy serves the installer from the `dev` branch and rewrites exactly two
+default lines: the channel becomes dev and the installed name becomes devaf. It
+writes `~/.codeaf/bin/devaf` and leaves `~/.codeaf/bin/codeaf` untouched. On
+Windows the file is `devaf.exe`. `devaf version` still starts with `codeaf`.
+
+The general spelling is `--name WORD` or `CODEAF_INSTALL_NAME=WORD`; the name
+may contain ASCII letters, digits, `.`, `_`, and `-`, and must begin with a
+letter or digit. codeaf and devaf share `~/.codeaf`, including keys and
+conversations, and one engine per workspace; opening a workspace with the other
+build retires an idle host or joins a busy compatible one. A devaf launch checks
+the dev channel hourly, and bare `/update` keeps following dev.
 
 ## Why codeaf do may download rtk — compressed shell output and how to turn it off
 
@@ -597,7 +641,10 @@ setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
 does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
 from the shell, and on a CI machine with neither set codeaf reads but does
-not send.
+not send. **The telemetry off switch stops the pool sending too**:
+`CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1` or `codeaf telemetry off` caps the
+pool at `read` — it wins over an explicit `on` — and `codeaf pool status`
+then says `mode read · telemetry`.
 
 ```
 codeaf pool [show|status|verify] [--json] [--key key]
@@ -605,7 +652,8 @@ codeaf pool [show|status|verify] [--json] [--key key]
 
 `show` — also what bare `codeaf pool` prints — is the reading form: the mode
 and the addresses in force with the word saying where each came from
-(`default`, `setting`, `env` or `ci`), then what index is cached, how old
+(`default`, `setting`, `env`, `ci`, or `telemetry` when the telemetry off switch capped
+sending), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
 seed of <date>`. The binary carries a seed index of our own scored runs,
 read until a fresher signed one is cached. `--cells` lists the held
@@ -614,8 +662,9 @@ spells, the measurement and the installs behind it — and `--json
 --cells` carries them as an array. Your install also keeps
 the scores its judge gave in `own.json`
 under the pool directory — `show` and `status` say what that sheet holds — and
-the crew reads them beside the index. `status` adds what is waiting to be sent
-and whether the mode allows sending and reading. `codeaf pool status` also
+the crew reads them beside the index. `status` adds how many rows are waiting to be sent
+and whether the mode allows sending and reading; `codeaf telemetry show` prints the
+rows themselves, as JSON. `codeaf pool status` also
 says whether the relay answered, and whether the mirror did, and what the
 last judge did — which model, which seats it scored, or why it failed. `--json` prints
 the same answer as one object; `show` reads nothing off the network.
@@ -792,8 +841,21 @@ retracted belief restores, a stopped service starts again, a revoked device pair
 ## What does it count about a run — the anonymous usage counts, and `codeaf telemetry`
 
 `codeaf telemetry` is the door onto the anonymous usage counts: `status` says whether
-they are on and why not when they are off, `show` prints exactly what is waiting to
-leave the machine, and `off` and `on` write the answer to your profile. It reads and
+they are on and why not when they are off; `info` opens on `codeaf does NOT collect or
+share your chat` and then says what is collected, shaped like the data — for each stream, under a line naming where it goes or why it is not sent, every
+every-event field with the value this machine would send now and one example row per
+event (`session_ended  mode=chat  duration=5-30m  turns=6-20 …`) with the stop reasons a
+row can carry, and for the Model Pool one example row in the relay's own bytes; `show`
+prints what is waiting to leave right now as one JSON object, a key per destination
+(`usage`, `model_pool`) with its `destination`, an `off` reason when nothing is sent
+there, and `waiting`, the rows themselves, `[]` on the day you install; and `off` and
+`on` write the answer to your profile. `info` lists only what is sent, never a disclaimer.
+`session_ended` also carries `total_tokens`, the one exact number on it: the input and
+output tokens the provider reported across the session, never which model or what it read.
+`CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
+usage counts go quiet and the Model Pool is capped at `read`, so it still picks models
+from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or
+`CODEAF_MODEL_POOL`, adds `off`, which asks no judge at all. It reads and
 sends nothing of its own — it is a command about the counts, not a session. The
 notice the first session prints names the bargain before the first byte leaves, and
 `CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See

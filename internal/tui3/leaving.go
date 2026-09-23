@@ -58,15 +58,24 @@ import (
 // steering line as the conversation's unsent sentence and give it back at the
 // next launch in a box pointed at the model.
 func (a *app) leavingDraft() string {
-	text := a.mainDraftText()
-	if len(a.parks) == 0 {
+	return foldedParkedDraft(a.mainDraftText(), a.parks)
+}
+
+// foldedParkedDraft is quitting's text-only insurance assembled from either
+// the conversation in front or a held conversation's sidecar.
+//
+// STRUCTURED PARKS NEVER GO ON DISK. Pictures, paste bodies and standing marks
+// remain process memory while a conversation is held; the plain draft file is
+// the last-resort record that can promise only that nobody's typed words vanish.
+func foldedParkedDraft(text string, parks []parked) string {
+	if len(parks) == 0 {
 		return text
 	}
-	lines := make([]string, 0, len(a.parks)+1)
+	lines := make([]string, 0, len(parks)+1)
 	if strings.TrimSpace(text) != "" {
 		lines = append(lines, text)
 	}
-	for _, p := range a.parks {
+	for _, p := range parks {
 		if strings.TrimSpace(p.text) != "" {
 			lines = append(lines, p.text)
 		}

@@ -22,15 +22,15 @@ func TestRailMainReturnsDirectlyFromDeepTask(t *testing.T) {
 			a.openRailRoom(a.tasks[19])
 			a.railTop = 100
 			rows := a.railRows(a.viewHeight())
-			if len(rows) == 0 || !strings.Contains(plain(rows[0]), railMainWord) {
+			if len(rows) < 2 || !strings.Contains(plain(rows[0]), railStowHint) || !strings.Contains(plain(rows[1]), railMainWord) {
 				t.Fatalf("return door is not pinned: %v", rows)
 			}
-			x, y := a.bodyWidth()+ansi.StringWidth(railSeam)+6, a.bodyTop()
+			x, y := a.bodyWidth()+ansi.StringWidth(railSeam)+6, a.bodyTop()+1
 			if got := a.roomPanelActionAt(x, y); got != railMainAction {
 				t.Fatalf("return row has no hover target: %q", got)
 			}
 			a.hot = hoverAt{kind: hoverRoomControl, key: railMainAction}
-			if hovered := a.railRows(a.viewHeight())[0]; hovered == rows[0] {
+			if hovered := a.railRows(a.viewHeight())[1]; hovered == rows[1] {
 				t.Fatal("return row has no hover feedback")
 			}
 			drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})

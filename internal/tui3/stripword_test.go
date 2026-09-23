@@ -91,7 +91,7 @@ func TestATeachingPagesFootOffersNoVerbOverABodyWithNoRows(t *testing.T) {
 		bad []string
 	}{
 		{"tasks", func(a *app) string { return (placeTasks{}).hint(a) },
-			[]string{tasksTypeWord, tasksEnterRoomWord, tasksEnterInsideWord,
+			[]string{tasksEnterRoomWord, tasksEnterInsideWord,
 				tasksEnterAwayWord, tasksEnterOpenWord, tasksEnterJoinWord, tasksClearFilterWord}},
 		{"standing", func(a *app) string { return (placeStanding{}).hint(a) },
 			[]string{homeItemEnterWord, homeItemPauseWord, homeItemStopWord, standNotHereWord}},
@@ -106,15 +106,19 @@ func TestATeachingPagesFootOffersNoVerbOverABodyWithNoRows(t *testing.T) {
 		a.mem.reading = readMemory(store.MemoryShelves{}, nil, "", time.Time{})
 
 		foot := placeTailed(page.foot(a))
+		want := wayOut
+		if page.what == "tasks" {
+			want += " home"
+		}
 		for _, clause := range page.bad {
 			if strings.Contains(foot, clause) {
 				t.Errorf("the %s foot on a teaching page reads %q, which offers %q over a body with no rows — want %q",
 					page.what, foot, clause, wayOut)
 			}
 		}
-		if foot != wayOut {
+		if foot != want {
 			t.Errorf("the %s foot on a teaching page reads %q, want %q — the way out is all that is true there",
-				page.what, foot, wayOut)
+				page.what, foot, want)
 		}
 	}
 }

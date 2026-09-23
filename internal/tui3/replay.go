@@ -83,6 +83,13 @@ func (a *app) replayList(all []session.DisplayEntry) {
 	// reading across ssh; paging the words afterwards must be a local slice read,
 	// not another engine call hidden inside a scroll gesture.
 	a.transcript = append([]session.DisplayEntry(nil), all...)
+	// Capture the opening words before the visible replay tail is trimmed.
+	for _, e := range all {
+		if e.Role == "user" && e.Steer == nil && strings.TrimSpace(e.Text) != "" {
+			a.openingPrompt = e.Text
+			break
+		}
+	}
 	a.historyGen++
 	a.historyLoading = false
 	// THE BACKFILL'S BOOKKEEPING IS SET HERE, on every path including the one

@@ -47,7 +47,7 @@ func TestTUIPhaseClock(t *testing.T) {
 	ws := newWorkspace(t, "waitws", false)
 	r := start(t, "afe2e_phase", home, ws, tuiPlain, 40)
 
-	r.waitFor(25*time.Second, say(t, "homeFootWord"))
+	r.waitFor(25*time.Second, say(t, "placeRestWord"))
 
 	// A QUESTION WITH REAL WORK BEHIND IT, because the clock this file is about
 	// only runs while an answer is owed. A one-word reply is a wait nobody has

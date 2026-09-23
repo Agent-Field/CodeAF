@@ -63,25 +63,37 @@ func TestArrowWalksIntoTheFoldAndBringsItIntoView(t *testing.T) {
 	}
 
 	drive(t, a, key("right"))
+	if line := screenLine(plain(frame(a)), "auto"); !strings.Contains(line, "›") {
+		t.Fatalf("the cursor did not walk in onto auto: %q\n%s", line, plain(frame(a)))
+	}
+	// The machines are a SECOND fold, under `openrouter` ([picker.machines]),
+	// and `→` walks into them exactly as it walked into this one.
+	drive(t, a, key("down"), key("right"))
 	screen := plain(frame(a))
-	for _, want := range []string{flash, "● auto", "cloudflare", "coreweave", "deepinfra", "○ openrouter"} {
+	for _, want := range []string{flash, "auto", "cloudflare", "coreweave", "deepinfra", "openrouter"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("after → the frame does not show %q:\n%s", want, screen)
 		}
 	}
-	if line := screenLine(screen, "● auto"); !strings.Contains(line, "›") {
-		t.Fatalf("the cursor did not walk in onto auto: %q\n%s", line, screen)
+	if line := screenLine(screen, "cloudflare"); !strings.Contains(line, "›") {
+		t.Fatalf("the second → did not walk in onto the first machine: %q\n%s", line, screen)
 	}
 
-	// With a machine pinned, the walk lands on THAT row instead.
-	drive(t, a, key("down"), key("enter"))
+	// With a machine pinned, the walk lands on THAT row instead. The cursor is
+	// already on cloudflare — the second `→` walked it there — so enter pins it.
+	// Enter chooses and leaves the list up, so it is closed before it is
+	// opened again ([app.pickerKey]).
+	drive(t, a, key("enter"), key("esc"))
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"))
 	row, on := a.pick.laneUnder()
 	if !on || row.lane < 0 || !strings.EqualFold(a.pick.lanes[row.lane].Name, "Cloudflare") {
 		t.Fatalf("→ with cloudflare pinned walked onto %+v (on=%v)", row, on)
 	}
-	if line := screenLine(plain(frame(a)), "0.8s · 58 t/s"); !strings.Contains(line, "›") {
+	// The machines are a table, so the row is its name and its cells rather than
+	// a `·` tail (modeltable.go). The row is found by its `note` cell, because
+	// the machine's NAME is also on the model row above it, in the `via` column.
+	if line := screenLine(plain(frame(a)), "no tools"); !strings.Contains(line, "›") {
 		t.Fatalf("the cursor is not on the pinned row:\n%s", plain(frame(a)))
 	}
 }
@@ -177,7 +189,7 @@ func TestAPinnedLaneIsWrittenOnTheModelsName(t *testing.T) {
 
 	// A hosted window cannot see the far machine's pin, so it says none.
 	a.host = "devbox"
-	if a.modelWord() != "deepseek-v4-flash" {
+	if a.modelWord() != flash {
 		t.Fatalf("a hosted window wrote %q", a.modelWord())
 	}
 	a.host = ""
@@ -205,7 +217,7 @@ func TestRoutingOffOpensNoFoldAndWritesNoPin(t *testing.T) {
 	a.width, a.height = 120, 24
 	a.pinLane(flash, "cloudflare")
 
-	if a.modelWord() != "deepseek-v4-flash" {
+	if a.modelWord() != flash {
 		t.Fatalf("under routing off the name reads %q", a.modelWord())
 	}
 	typeLine(t, a, "/model")
@@ -242,7 +254,7 @@ func TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover(t *testing.T) {
 		t.Fatalf("under routing simple → left the fold at %q", a.pick.unfold)
 	}
 	screen := plain(frame(a))
-	if !strings.Contains(screen, "openrouter's own routing; codeaf stays out") {
+	if !strings.Contains(screen, laneAutoSaid(config.RoutingSimple).note) {
 		t.Fatalf("the auto row does not say who is choosing under simple:\n%s", screen)
 	}
 	// THE TWO CLAIMS THAT ONLY A CHOOSER CAN MAKE ARE GONE WITH IT: the machine
@@ -294,9 +306,6 @@ func TestADecayedBeliefDrawsNoTail(t *testing.T) {
 	}
 	if note := laneNote(view); strings.Contains(note, "tail") {
 		t.Fatalf("a decayed belief is noted %q", note)
-	}
-	if why := laneWhy(view); strings.Contains(why, "no tail") {
-		t.Fatalf("a decayed belief claims a worst case: %q", why)
 	}
 	left, right := laneRowText(view, 120)
 	if strings.Contains(left+right, "922337") || strings.Contains(left+right, "tail") {

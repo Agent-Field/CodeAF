@@ -46,8 +46,8 @@ import (
 //
 // THE SCREEN AND THE SOURCE ARE TWO DIFFERENT FACTS and the table carries both.
 // Most sentences this surface draws are one constant and the two are the same
-// string; some are composed at the draw — `type to search or start something new
-// · ↑↓ pick · enter open · tab next place` is two constants joined — and a gate
+// string; some are composed at the draw — `↑↓ pick · enter open · tab next
+// place` is two constants joined — and a gate
 // that grepped for the whole painted line would fail on a sentence the code
 // spells perfectly well in two halves. So `source` is what must stand in the
 // sources, and it defaults to `screen` when the two agree.
@@ -148,37 +148,17 @@ var tuiWords = map[string]tuiWord{
 	},
 
 	// ── home at rest ─────────────────────────────────────────────────────────
-	"homeFootWord": {
-		screen: "type to search or start something new · ↑↓ pick · enter open",
-		why:    "the front of home's resting foot: the three verbs this screen offers and stays at three",
-	},
-	"homeFootChordWord": {
-		screen: "ctrl+o open folder",
-		why: "the fourth clause of home's resting foot. It was drawn only on a machine whose right column " +
-			"had rows, because §6.6 refuses to leave a door invisible when `→` crosses columns; #1046 made " +
-			"the rail always hold rows, so the clause is always there. It stands between the three verbs " +
-			"and the key that leaves, which is the whole of why the suite waits for the sentence in three " +
-			"pieces rather than one",
-	},
-	"placeHintTail": {
-		screen: "tab next place",
-		why:    "every place's foot ends with the one key that leaves it",
-	},
 	"placeRestWord": {
-		screen: "say what you want done",
-		why:    "the prompt in the box at the foot of a resting place",
+		screen: "type to search or start something new",
+		why:    "the promise in home's box with nothing typed into it — the one box on a place",
 	},
 	"homeDoorWord": {
-		screen: "space space home",
+		screen: "esc back",
 		why:    "the gesture back to home, named on the conversation's own rule",
 	},
 	"microcopy": {
 		screen: "/ commands",
 		why:    "the other half of that rule, which is how a conversation is told from home",
-	},
-	"homeGoneShort": {
-		screen: "folder gone",
-		why:    "a row whose project folder is not there any more says so before enter is pressed",
 	},
 
 	// ── home's panels (docs/design/home-mission-control/DESIGN.md) ────────────
@@ -195,18 +175,14 @@ var tuiWords = map[string]tuiWord{
 			"are also the front of the gate's own `needs your ok …`, so a test that wants the HEADING has to " +
 			"read the column the heading opens rather than grep for the word",
 	},
-	"homePanelRecent": {
-		screen: "where you were",
-		why:    "the panel of conversations, this window's own first — the panel every resting home draws",
-	},
 	"homePanelProjects": {
 		screen: "projects",
-		why:    "the panel of folders, never empty, whose enter starts a chat there — the view by project alt+g used to be",
+		why:    "the panel of folders, never empty, read and never stood on since 2026-09-17 — the view by project alt+g used to be",
 	},
 	"homePanelRunning": {
-		screen: "running",
-		why: "every task, job and firing watch out on the machine. Which column it stands in is no fact about " +
-			"it since #1046 — a panel holding something is in the field, an empty one is in the rail",
+		screen: "sessions",
+		why: "the recent conversation section, newest first. It was " +
+			"`running` until 2026-09-17, and now shares its word with the bar's second tab, which it folds into",
 	},
 	"switcherSinceLeft": {
 		screen: "since you left",
@@ -221,23 +197,19 @@ var tuiWords = map[string]tuiWord{
 		why:    "every standing order this machine will act on — reminders, routines, watches, rules — soonest first",
 	},
 	"homeRunningWhisper": {
-		screen: "work you send off with /task runs here on its own",
-		why: "what `running` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
+		screen: "your recent conversations appear here",
+		why: "what `sessions` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
 			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
 			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",
 	},
-	"foldMoreWord": {
-		screen: " more",
-		why:    "every panel's fold counts what it stands over — `14 more` — and is a toggle, not a door",
-		pkg:    tui3Pkg,
-	},
+
 	"barHomeWord": {
 		screen: "home",
 		why:    "the first of the four words on the tab bar",
 	},
 	"barTasksWord": {
-		screen: "tasks",
-		why:    "the second word on the bar, and the place `running` and `needs you` fold into",
+		screen: "sessions",
+		why:    "the second word on the bar, and the place the sessions heading opens",
 	},
 	"barSettingsWord": {
 		screen: "settings",
@@ -255,26 +227,17 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homeHereWord": {
 		screen: "here",
-		why: "the word that says which row of `where you were` is this window's own. It is the FIRST CLAUSE " +
-			"OF THAT ROW'S DESCRIPTION and the person's last words are the clause after it — #1046 emptied " +
-			"the right margin of every field row for a time, and moved every fact that is not a time into " +
-			"the description",
+		why:    "this window's own row on `threads`, the row the person's last words sit under",
 	},
 	"homeFactsActive": {
 		screen: "last active ",
 		why:    "the facts line on the card beside a search — the one card left once the resting card went",
 	},
-	"homeStartWord": {
-		screen: "start a new conversation",
-		why:    "the action row under anything typed at home",
-	},
 
 	// ── asking from home ─────────────────────────────────────────────────────
 	"homeAskHereWord": {
 		screen: "ask here",
-		why: "what one ↑ off the action row starts, drawn as the row's own heading over the pane. " +
-			"`ctrl+enter` is still bound and is no longer advertised — most terminals cannot send it " +
-			"and `alt+enter` belongs to the task layer (home.go's [app.homeHintWords])",
+		why:    "the heading of the home pane opened by /ask",
 	},
 	"notifyAskWord": {
 		screen: "waiting on you",
@@ -312,13 +275,13 @@ var tuiWords = map[string]tuiWord{
 		why:    "the pane saying the exchange is filed under what it made",
 	},
 	"exchangeAnswerHint": {
-		screen: "1 yes, set it up · 0 no · c change",
+		screen: "1 yes, set it up · 0 no · o other",
 		source: "yes, set it up",
 		why: "the answers a ONE-OFF REMINDER's card offers, spelled in full under the box at every width. " +
 			"There are two rows and the key that asks for the box: a reminder has no `3 just once` to give, " +
 			"and since #189 the line is built from the answers the question carries rather than typed out, so " +
 			"it cannot name one. Since the standing card moved onto the question block (#780) the correction " +
-			"is `c change` — the key table's own word — rather than a `2` row. The source is the first " +
+			"is `o other` — the key table's own word — rather than a `2` row. The source is the first " +
 			"answer's own constant, because the sentence is no longer a literal anywhere",
 	},
 	"exchangeFollowUp": {
@@ -563,7 +526,7 @@ var tuiWords = map[string]tuiWord{
 			"words home's own row draws, so this gate holds the spelling without a second copy of it here",
 	},
 	"landingKeysWord": {
-		screen: "esc interrupts · ctrl+c quits",
+		screen: "esc back · ctrl+c interrupts or quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
 	},
 	"questionWaitingWord": {

@@ -214,7 +214,7 @@ func TestThePhoneRosterFootIsABackBarToTheConversation(t *testing.T) {
 
 	lines := taskSheetLines(a)
 	foot := lines[len(lines)-1]
-	if !strings.Contains(foot, plain(homeSheetBackWord)) {
+	if !strings.Contains(foot, homeDoorWord) {
 		t.Fatalf("the phone foot is not a back bar:\n%q", foot)
 	}
 	// And the key legend a keyboard reads is gone from it.
@@ -228,8 +228,8 @@ func TestThePhoneRosterFootIsABackBarToTheConversation(t *testing.T) {
 	}
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: y, Button: tea.MouseLeft})
-	if a.at(pageTasks) {
-		t.Fatal("tapping `‹ back` did not return to the conversation")
+	if !a.at(pageHome) {
+		t.Fatal("tapping esc home did not return to Home")
 	}
 }
 
@@ -248,7 +248,18 @@ func TestTappingAPhoneCardOpensTheRecordAndBacksToTheList(t *testing.T) {
 
 	// Tap the earlier card — a row of a conversation that is closed opens the
 	// record, not a room.
-	y, ok := taskSheetHitY(a, taskSheetHitRow)
+	y, ok := 0, false
+	reading := a.tasksFiltered()
+	lines := reading.lay(a.taskSheetListWidth())
+	_, hits, _, _ := a.taskSheetFrame(a.width, a.height)
+	for at, hit := range hits {
+		if hit.kind == taskSheetHitRow {
+			if _, task := reading.at(lines, hit.index); task {
+				y, ok = at, true
+				break
+			}
+		}
+	}
 	if !ok {
 		t.Fatal("the earlier card answers to no press")
 	}
