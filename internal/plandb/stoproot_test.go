@@ -49,3 +49,32 @@ func TestStopRootEndsTheRunAndEverythingStillOpenUnderIt(t *testing.T) {
 		t.Fatalf("a second stop rewrote the first one's reason: %q", root.Error)
 	}
 }
+
+// A RUN THAT ENDS ON ITS OWN LIMIT OR ITS OWN WORKER IS ENDED IN THE STORE,
+// AND NOT AS A PERSON'S STOP. The run's own task is failed with the reason,
+// what was still open is cancelled under the same reason, what had landed keeps
+// its ending, and a second call changes nothing.
+func TestEndRootFailsTheRunAndCancelsWhatWasStillOpen(t *testing.T) {
+	store := planOpen(t, filepath.Join(t.TempDir(), "plan.json"))
+	planAdd(t, store, planSpec("landed", "Landed"), planSpec("going", "Going"))
+	planFinish(t, store, "landed", "worker", "landed delivered")
+
+	if err := store.EndRoot("a limit you set stopped it"); err != nil {
+		t.Fatalf("end root: %v", err)
+	}
+	if root := store.Task("root"); root.Status != StatusFailed || root.Error != "a limit you set stopped it" || root.CompletedAt.IsZero() {
+		t.Fatalf("the run's own task after its ending = %s, %q, ended %v", root.Status, root.Error, root.CompletedAt)
+	}
+	if task := store.Task("going"); task.Status != StatusCancelled || task.Error != "a limit you set stopped it" {
+		t.Fatalf("open work after the run ended = %s, %q", task.Status, task.Error)
+	}
+	if task := store.Task("landed"); task.Status != StatusDone {
+		t.Fatalf("work that had landed was rewritten: %s", task.Status)
+	}
+	if err := store.EndRoot("again"); err != nil {
+		t.Fatalf("a second ending was refused: %v", err)
+	}
+	if root := store.Task("root"); root.Error != "a limit you set stopped it" {
+		t.Fatalf("a second ending rewrote the first: %q", root.Error)
+	}
+}

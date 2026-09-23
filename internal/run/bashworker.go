@@ -167,7 +167,12 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	// A worker opened on a task whose notes predate it is handed them on its
 	// first step boundary, which is the whole point — a sibling's finding
 	// written before this task started is the case the channel exists for.
-	readNotes := map[string]bool{}
+	//
+	// EXCEPT THE NOTES AN EARLIER WORKER OF THIS SAME TASK ALREADY HAD. A wake
+	// is a new worker on the same task, and the record says what the task has
+	// already been told ([notesAlreadyHad]); starting from nothing handed a woken
+	// parent its older notes a second time.
+	readNotes := notesAlreadyHad(storeDir, task.ID)
 	for {
 		events, err := agent.Submit(runCtx, brief)
 		if err != nil {
@@ -330,11 +335,23 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				// is correct rather than a loss: a task that has finished has
 				// nobody left to tell. The words stay on the store for the person
 				// who opens the page, which is where an undelivered note belongs.
+				//
+				// AND A WORKER IS NEVER HANDED ITS OWN WORDS. A note this step
+				// wrote on this task is the worker's own and it already knows it
+				// ([ownNotes]), so it is marked had before anything is handed over.
+				had := ownNotes(w.store, task.ID, stepCommand(event), readNotes)
 				if ending.kind == endingNone && !stalled {
-					deliverNotes(w.store, task.ID, readNotes, func(words string) error {
+					had = append(had, deliverNotes(w.store, task.ID, readNotes, func(words string) error {
 						_, err := agent.Steer(words)
 						return err
-					})
+					})...)
+				}
+				if len(had) > 0 {
+					// THE MARK IS WRITTEN DOWN, so the next worker of this task
+					// starts with it. A line that would not write costs only a
+					// repeat of words already said, never a lost note, so it does
+					// not end the task.
+					_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryNotesKind, Notes: had})
 				}
 				// THE STORE'S OWN ENDING IS DETECTED AFTER THE COMMAND RUNS. A
 				// `plandb done`, or a `plandb wait`, that the worker itself just
@@ -611,21 +628,54 @@ func unreadNotes(store *plandb.Store, taskID string, read map[string]bool) []pla
 // between the step that brought the note and the steer that would have landed
 // it. Reached through a steer of its own, that branch can be asserted directly
 // instead of waiting for the race to come round.
-func deliverNotes(store *plandb.Store, taskID string, read map[string]bool, steer func(string) error) {
+//
+// It answers the ids it marked, so the caller can write the mark down where the
+// next worker of the same task will read it ([notesAlreadyHad]).
+func deliverNotes(store *plandb.Store, taskID string, read map[string]bool, steer func(string) error) []string {
 	fresh := unreadNotes(store, taskID, read)
 	if len(fresh) == 0 {
-		return
+		return nil
 	}
 	if steer(planNoteSpoken(fresh)) != nil {
 		// NOTHING IS MARKED. The words reached nobody, so the notes are still
 		// unread — the next boundary offers them again, and the one after, until
 		// a turn takes them. Marked here they would have been delivered to
 		// nobody and never offered again.
-		return
+		return nil
 	}
+	marked := make([]string, 0, len(fresh))
 	for _, note := range fresh {
 		read[note.ID] = true
+		marked = append(marked, note.ID)
 	}
+	return marked
+}
+
+// ownNotes marks as had every unread note on the task that this step's own
+// command wrote, and answers their ids. A note is the worker's own when it is in
+// a worker's voice and its words are in the command the worker just ran: the
+// worker typed them, so there is nothing in them it has not already read.
+//
+// IT IS READ OFF THE WORDS AND NOT OFF THE AUTHOR'S NAME, because the name does
+// not say it: a worker's `plandb task note` carries whatever agent name it
+// passed, and the default is the same word for every worker on the run. A note
+// whose words the command does not carry verbatim — quoting the shell rewrote —
+// is handed over as it always was, which repeats the worker's own sentence
+// rather than losing anybody else's.
+func ownNotes(store *plandb.Store, taskID, command string, read map[string]bool) []string {
+	if strings.TrimSpace(command) == "" {
+		return nil
+	}
+	var marked []string
+	for _, note := range store.Notes(taskID, 0) {
+		body := strings.TrimSpace(note.Body)
+		if read[note.ID] || note.From == plandb.NoteFromPerson || body == "" || !strings.Contains(command, body) {
+			continue
+		}
+		read[note.ID] = true
+		marked = append(marked, note.ID)
+	}
+	return marked
 }
 
 // planNoteSpoken is how a plan note reads when it reaches a working worker: the

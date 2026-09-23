@@ -1991,8 +1991,9 @@ away. Nothing went wrong with the work and nobody decided anything about it.
 **Nothing is lost.** Every step the work took is in its own store, on disk, exactly as it
 was at the moment the last process went away.
 
-It is the one landing word that does not mean the work is over. The row waits for you,
-wearing the asking mark. Its line reads:
+It is the one landing word that does not mean the work is over. The row asks nothing of
+you and raises no `needs you` mark, because nothing you can press carries it on yet.
+Its line reads:
 
 ```
 nothing is driving it; everything it did is kept
@@ -2004,9 +2005,11 @@ nothing here came up short. Reading either over work whose only misfortune was a
 window would be telling you something that did not happen.
 
 **Nothing picks it up again today.** There is no key, no command and no background pass
-that starts an interrupted run's work a second time. The word and the line above are the
-whole of what the row says about it, and the store keeps every step in the meantime.
-Starting work again spends money, so nothing will ever do it without being asked.
+that starts an interrupted run's work a second time, and a new task never does: the next
+`/task` sets the interrupted run aside, readable with the earlier runs, and starts a run of
+its own. The word and the line above are the whole of what the row says about it, and the
+store keeps every step in the meantime. Starting work again spends money, so nothing will
+ever do it without being asked.
 
 **A background job is different.** A job is a process codeaf forked, and a forked process
 cannot outlive the program that forked it — so a job that was running comes back `stopped`,
