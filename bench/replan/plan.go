@@ -1,6 +1,6 @@
 package main
 
-// plan.go — what one run of the baseline will do, composed before anything is
+// plan.go: what one run of the baseline will do, composed before anything is
 // executed. The composition is pure: no clock, no key and no disk behind it, so
 // the dry run and the test read exactly what the live run would do
 // (bench/README.md's honest-wiring rule).

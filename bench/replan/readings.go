@@ -1,6 +1,6 @@
 package main
 
-// readings.go — the numbers, read from where the engine already keeps them.
+// readings.go: the numbers, read from where the engine already keeps them.
 //
 // The run engine writes three records a bench can read without asking a
 // model anything: the plan store (every task, its role, its ending, its

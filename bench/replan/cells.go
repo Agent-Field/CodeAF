@@ -1,6 +1,6 @@
 package main
 
-// cells.go — the four briefs, each with a structure the brief does not say.
+// cells.go: the four briefs, each with a structure the brief does not say.
 //
 // Every cell is a small Go module under fixtures/, seeded fresh per
 // invocation, and each one hides one thing a planner could only learn by
@@ -27,7 +27,7 @@ func allCells() []cell {
 	return []cell{cellR1, cellR2, cellR3, cellR4}
 }
 
-// cellR1 — seven "separate" bug reports, five of which are one bug in one
+// cellR1: seven "separate" bug reports, five of which are one bug in one
 // function (canonical, in canon.go). Graded on the whole suite; measured on
 // how many tasks edited canon.go and how many symptom files were patched
 // locally instead.
@@ -53,7 +53,7 @@ leave the tests exactly as they are.
 7. Phone numbers are grouped wrong: "5551234567" comes out as "555-1234-567".`,
 }
 
-// cellR2 — a migration whose width is only visible in the code: six packages
+// cellR2: a migration whose width is only visible in the code: six packages
 // call the deprecated legacy.Fetch, each with its own retry count and its own
 // reading of a 404, and the brief names none of them. Graded on the suite,
 // the tests untouched and legacy gone; measured on parallelism and wall.
@@ -68,7 +68,7 @@ caller does may change: the existing tests must still pass, and they must not
 be edited.`,
 }
 
-// cellR3 — the obvious change breaks a package the brief never mentions:
+// cellR3: the obvious change breaks a package the brief never mentions:
 // export writes CSV through money.Format, and the bank's format has no
 // separators and no parentheses. It shows only when the whole suite runs.
 // Graded on the suite; measured on failed test runs and repeated edits.
@@ -85,7 +85,7 @@ already describe the new behavior. Make the change, and leave every test as
 it is.`,
 }
 
-// cellR4 — the control: a one-function fix where no plan can help, so any
+// cellR4: the control: a one-function fix where no plan can help, so any
 // planning machinery shows up as pure overhead.
 var cellR4 = cell{
 	id:      "r4",
