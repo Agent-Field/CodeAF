@@ -2,80 +2,51 @@
 
 ## Typing a slash to see the command list
 
-Type `/` and the command list opens under the message box. There is one list of commands
-in codeaf: the pop-up you get by typing `/` and the list `/help` prints are drawn from
-the same table.
+Type `/` in the home or conversation message box to see every available command in
+**alphabetical order above the seam**. The list and `/help` use the same command table.
+The list scrolls; a short window does not remove commands. The new-conversation greeting
+yields its space to the list while browsing. At phone width, descriptions
+appear below command names. On home, only commands appear while this list is active:
+thread, task, project and place search results return when you leave the command token.
 
-**It opens at a word boundary, and not only at the start of the line.** A `/` typed as
-the first character of the box opens it, and so does a `/` typed after a space or a
-newline — so you can find a command half a sentence in without throwing the sentence
-away. A `/` with anything other than a space in front of it opens nothing at all, which
-is what keeps `cmd/codeaf` and `https://example.com` quiet.
+Keep typing to filter names and aliases by substring. The rows stay alphabetical; the
+initial selection favors a name match over an alias, and a prefix over a later match.
+For example, `/res` selects `/resume`, although `/new` also matches its `reset` alias.
+A filter with no matches shows `no commands match` and keeps unrelated results hidden.
 
-The list is not modal. You keep typing into the same box and the list narrows under it.
-Only ↑ ↓ enter esc are taken from the editor; every other key types into your draft and
-re-filters. A space ends the word the list is filtering on and closes it, because a line
-with an argument is a line being written rather than a command being chosen.
+- ↑ / ctrl+p and ↓ / ctrl+n choose a row. PgUp / PgDown and the mouse wheel scroll.
+- Enter takes the selected row. A command that takes words, such as `/model <slug>`,
+  leaves `/model ` in the box ready for its argument. A bare command runs.
+- In a conversation, Esc dismisses the list and leaves the typed word; the list stays
+  dismissed while you continue that token. On home, Esc clears the draft as usual.
 
-Moving in it:
+The list follows the caret as well as edits. The box remains editable while it is open.
+A command chosen inside a sentence completes its token rather than running on its own;
+send tags such as `/ask` and `/task` retain their submission behavior.
 
-- ↑ / ctrl+p and ↓ / ctrl+n move.
-- enter takes the row under the cursor. Whether that *runs* or completes a live tag
-  depends on where the word sits — see "Use /standing or /task in the middle of a
-  sentence".
-- esc closes the list and seals that word: it does not come back on the next letter you
-  type. Start another word and it opens again. The text you typed stays.
-
-**The list shows as many rows as the frame can hold, and never fewer than eight.** Eight
-used to be a ceiling as well as a floor, so a fifty-row terminal drew eight commands under
-thirty-six blank rows and both `/help` and `/manual` were below the fold. It is only the
-floor now: on a tall terminal the whole table is on the screen at once, on a short one the
-list is clamped so the status line and a row of conversation survive, and the list scrolls
-under the cursor either way. **Where rows are still hidden the list says how many**, in the
-same `▸ 25 more` spelling the search place and the spend place draw, though there it is
-a door and here it is only a count. At phone width fewer rows
-show, each with its description on its own line. Rows highlight under the mouse pointer,
-but a click does not run a row — this list has no mouse commit.
-
-Filtering is a substring search over the command's name, ranked by where the match was
-found, prefix first. An alias match ranks a whole rung below any name match, so typing
-`res` puts `/resume` above the `/new` that answers to `reset`.
-
-**Rows that take an argument are not run.** At the head of an otherwise empty box,
-choosing `/model <slug>` or `/export <path>` writes `/model ` or `/export ` into the box
-with the caret after it, and runs nothing.
-
-Anything you press enter on goes into the ↑-history, commands included. Choosing a row
-from the list records it as `/<name>`, exactly as if you had typed it.
-
-While a panel is up — settings, the model picker, resume, connect, harness, permissions,
-copy mode, rewind — typing `/` does nothing. Those states take the key first.
-
-**Home's box has the same list.** Typing `/` on the home screen opens the same ranked
-list over its box, and `↑` walks to a row and `enter` runs it, exactly as in a chat. A
-slash line typed in full and entered from home's typing row is run too — `/settings`
-opens the settings place rather than starting a conversation with the word in it.
-Commands that act on a conversation act on the one home holds behind the screen.
+On home, command rows describe what they will do there, including commands that open a
+conversation first. See *What each command does on home*. In a conversation, pointer
+hover highlights a row but clicking does not execute it. Enter confirms the keyboard
+selection. Commands entered in a conversation are kept in its ↑-history.
 
 ## Why a file path does not pop up the command list
 
-Typing `/Users/you/notes.md` or `/tmp/log` into the message box does not leave the
-command list flickering over your sentence. Three rules keep it away, and they are the
-same three wherever the slash is:
+The same token rules apply on home and in conversations:
 
-- **A slash needs a space in front of it.** Only the first character of the box, or a
-  slash after a space or a newline, is a candidate. So the second slash of
-  `/Users/you` is not one, and neither is the one in `cmd/codeaf/main.go` or in
-  `https://`.
-- **A word that matches no command closes the list.** The candidate runs to the next
-  space, so the word being matched is `Users/you`, and nothing in the table looks
-  like it. In practice a path drops the list within a couple of keystrokes and it stays
-  gone. Backspace back to a word that does match and it returns.
-- **esc seals the word.** If it did open over something you meant literally, esc puts it
-  away and it stays away for that word.
+- A slash starts a command token only at the beginning of the draft or after whitespace.
+  `cmd/codeaf` and `https://example.com` do not open the list.
+- The caret must be inside the command word. A space begins its argument and closes the
+  list; moving the caret back into the command word opens it again.
+- The entire token must contain command-name characters. A further slash, a dot or a
+  backslash makes it a path rather than a command token, even with the caret midway
+  through it. `/tmp/project` and `/image.png` therefore leave the list closed.
 
-There is no setting for this and nothing to turn off. The list follows what you type; it
-never holds itself open.
+A partial path such as `/tmp` is still indistinguishable from an unknown command word:
+it shows `no commands match` until another slash or path punctuation makes the intent
+clear. Pasting a complete path never needs those intermediate states.
+
+Panels such as settings, the model picker, resume and copy mode keep their own keyboard
+handling; typing `/` there does not open this composer list.
 
 ## Slash commands are drawn as chips
 
@@ -199,7 +170,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
-| `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
+| `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (Escape backs out without rewinding) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
@@ -216,7 +187,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
-| `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
+| `/history` | — | — | opens the full-screen sessions place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
@@ -268,7 +239,7 @@ drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
 back` — the places row, the task roster on `alt+t`, the conversation switcher on `alt+k`,
-`space space` — and that is the same two words the cards, pickers, the rewind sheet and the
+`esc` — and that is the same two words the cards, pickers, the rewind sheet and the
 switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
 and `esc leaves` on four different rows, which read as four gestures on the one screen you
 open to find out how many there are. The longer `esc leaves it as it was` is a different
@@ -297,7 +268,7 @@ any filter box, picker or panel: those have the keyboard first, so the key never
 this binding.
 
 The key is named on the first row of `/help` itself, and on the line every session opens
-with — `esc interrupts · ctrl+c quits · ? for help`. `/?` is also an alias of
+with — `esc back · ctrl+c interrupts or quits · ? for help`. `/?` is also an alias of
 `/help`, and has been all along.
 
 `/quit` (or `/exit`, `/q`) **closes the conversation in front**, and it does it at once —
@@ -397,11 +368,8 @@ maintained a little at a time by the reader that runs after each turn.
 ## /rewind — go back to an earlier point in the conversation
 
 `/rewind` (or `/undo`, `/back`) opens the **rewind timeline**: a fullscreen list of the
-whole conversation, oldest first, that you pick a point out of. It is the deliberate way
-in. The quick way is esc esc, which draws a cut line through the transcript on screen
-instead of opening anything — see the sessions and rewind page for both.
-
-The command row reads `go back to an earlier point · esc esc takes back the last`.
+whole conversation, oldest first, that you pick a point out of. Escape is back navigation;
+it no longer opens rewind. The command row reads `go back to an earlier point`.
 
 On the timeline: ↑↓ move, typing searches, the first `enter` places the pick and the
 second `enter` on that same point does the rewind, `esc` clears the search and then
@@ -695,19 +663,25 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 ## Is the asking on — what `/status` says under `approvals`, and where the YOLO badge went
 
 `/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
-the words the `/settings` row **"ask before running"** uses for it: `prompt` (it asks you),
-`allow` (it runs things without asking) or `deny` (it refuses). `/status --json` carries the
-same fact under the `approvals` key, and the phone's status sheet has the same row.
+the engine's posture words: `ask` (it asks you), `guardian` (a small model answers the
+plainly safe ones first), `allow` (it runs things without asking) or `deny` (it refuses).
+It is **this conversation's** posture — the one the `◇` cell on the legend shows — whichever
+setting decided it. `/status --json` carries the same fact under the `approvals` key, and
+the phone's status sheet has the same row.
 
-The status line spells that fact differently. It draws `YOLO` only while the gate is open,
-and nothing at all otherwise, because a permanent badge is a badge nobody reads — the
-absence IS the claim that you will be asked first. A page has room for the whole answer, so
-it names the posture whichever of the three it is.
+The legend spells that fact as a cell: `◇ asks`, `◇ guardian`, `◇ YOLO`, `◇ refuses`. The
+status line draws `YOLO` only while the gate is open **and** the legend has no cell — a
+conversation whose engine has no approvals door — because there a permanent badge is a badge
+nobody reads. The welcome box draws neither the cell nor the badge: the legend and its cell come up the
+moment the greeting goes — the first keystroke, or on the very first conversation the first
+message. Inside a task's page the legend carries the task's own
+cell, `◇ on its own`, and the badge stays off. A page has room for the whole answer, so it
+names the posture whichever it is.
 
-The badge and the line always agree, because both read one posture: the one this
-conversation's gate was built from. Change "ask before running" in `/settings` and both
-move together on the keystroke, or neither does and the panel says
-`saved · from the next session`.
+The cell, the badge and the line always agree, because all three read one posture. Walk
+it with `alt+a` and all three move on the keystroke; change "ask before running" in
+`/settings` and they move together for a conversation that follows the rows, or the panel
+says `saved · from the next session`.
 
 The one session with no `approvals` line is a remote one whose engine carried no posture
 over the wire. The gate there is the far machine's, and a line drawn from this laptop's
@@ -901,8 +875,15 @@ thinking control takes. enter switches.
 provider or `auto`; enter pins, ← or tab walks back out. *Providers → Pinning one provider yourself*
 has the rest.
 
-esc leaves and changes **nothing** — your half-typed draft, the model in use and the
-frame all come back as they were. The filter is forgotten when the picker closes.
+**Enter chooses and the list stays up; esc is the way out.** Pressing enter on a row
+switches to it there and then and leaves the list on screen, so you can compare two models
+by their prices, switch, and switch back without reopening anything — and the mark moves to
+whatever you just chose. The same is true of a provider inside a fold: enter pins it, the
+list stays.
+
+esc itself changes **nothing** — it closes the list and gives your half-typed draft and the
+frame back as they were. What enter already did is already done; esc does not undo it. The
+filter is forgotten when the picker closes.
 
 The cursor opens on the model in use, which is also the marked row, so enter with nothing
 typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
@@ -910,12 +891,26 @@ typed confirms rather than changes. Emptying the filter with ctrl+u puts it back
 The placeholder in the empty filter box reads:
 
 ```
-filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc
+filter by name · ctrl+r refresh
 ```
 
-and the hint slot above the box follows the cursor: `→ providers · enter switch · esc` on a
-model, `enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc`
-on the provider you are already pinned to, where the same key takes the pin off again.
+It says **by name** because that is the whole of what the box does: there is no way to type
+a question about speed, price or capability into it (the *models and cost* page, "You cannot
+filter the picker by speed, price or capability"). On a frame too narrow for the words it
+falls back to `filter`.
+
+**The keys are named on the foot and not in the box**, because a placeholder disappears the
+moment you type — which is exactly when you have found your model and want its providers.
+The foot follows the cursor and always reads in one order — the keys that move the **cursor**,
+then the ones that change the **list**, then `enter`, then the one key that is about neither:
+`→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model,
+`← back · alt+s sort · enter choose · esc` inside its providers — and `← back · alt+s sort ·
+enter unpin · esc` on the provider you are already pinned to, where the same key takes the pin
+off again. While you are
+mid-typing and the arrow would step over a character, those read `tab providers` and `tab
+back` — the foot names whichever key actually works at that moment. What is left in
+the box is the name of the box and the one key that is about the LIST rather than about the
+row under the cursor.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
@@ -934,19 +929,34 @@ each rung used only when the one above it came back empty after filtering:
 3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
    `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
 
-Filtering splits your text on whitespace and every word must match, each scored by
-the fuzzy alignment every picker on this surface shares: a word that starts an id,
-or lands right after a `/` or a hyphen, outranks the same letters sitting loose inside
+Filtering is over the model's **name** and nothing else — no word in the box means
+anything but itself. It splits your text on whitespace and every word must match, each
+scored by the fuzzy alignment every picker on this surface shares: a word that starts an
+id, or lands right after a `/` or a hyphen, outranks the same letters sitting loose inside
 it. So `ds v4` finds `deepseek/deepseek-v4-flash` and `claude 4.5` finds
-`anthropic/claude-sonnet-4.5`, and a tight prefix sits above a scattered match
-without needing tiers to hold it there.
+`anthropic/claude-sonnet-4.5`, and a tight prefix sits above a scattered match.
 
-Twelve rows show at a time. A row reads `<id>:<level>` on the left and, dimly on the
-right, what the catalog published: window, price per million prompt and completion, arena
-elo, and what the model can do besides write — `sees`, `hears`, `watches`, `draws`,
-`speaks`, `films`. Each part is hidden when nobody published it. A price shows only when
-both halves are known — a zero means "nobody said", never "free". A plain text chat model
-shows no capability words at all.
+**`alt+s` walks the sort and `alt+shift+s` walks it back.** The list is always sorted — it
+opens on the name, A to Z — and every column is two presses, its own direction then reversed.
+Columns this list published nothing in are skipped, the sorted one wears the arrow, and inside
+an open provider fold the same key sorts the providers instead (the *models and cost* page,
+"Sorting the model list by a column").
+
+Twelve rows show at a time, under a dim heading line. The list is a **table**: `<id>:<level>`
+on the left under `model`, and dim columns to the right of it for what the catalog
+published — `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, `inputs` and
+`outputs`. The last two carry everything the model takes in and gives back, in the
+catalog's own words: `text`, `image`, `audio`, `video`, `file`, `speech`, `music`. The heading names the unit, so the figure
+under it does not: `$0.18` under `out/M`, `1290` under `elo`. An empty cell means nobody
+published that fact; a column no row published is not drawn at all. A price shows only when
+both halves are known — a zero means "nobody said", never "free". `text` is never drawn on either
+side — every model on this list reads and writes it, so the cell is for what a model can do
+**beyond** holding a conversation, and an empty `inputs` cell means text in and nothing
+else. `outputs` is not drawn in `/model` at all: a model that answers with anything but
+text cannot hold a conversation and is not on that list, so the column every row agrees on
+is dropped. A narrow window gives up columns from the right, and under sixty
+columns the table gives way to the older `·` tail on a line of its own (the *models and
+cost* page, "What each row in the model picker tells you").
 
 Only models you can hold a conversation with are listed: text in and text out. A model
 that publishes `["image","text"]` out — a drawing model that also captions — is left out,
@@ -955,7 +965,7 @@ and so is a transcription model. A model that publishes nothing is judged by its
 Limits:
 
 - `/model <slug>` refuses a slug the catalog carries that **cannot hold a conversation**,
-  in one line — `openai/gpt-4o-mini-tts cannot hold a conversation — it speaks. Still on
+  in one line — `openai/gpt-4o-mini-tts cannot hold a conversation — it answers with speech. Still on
   <model>.` — and does not switch. A slug the catalog has never carried is taken as typed.
 
 - **ctrl+t does nothing at all, silently**, on a model whose catalog row does not accept a
@@ -988,8 +998,8 @@ If it fails, the list stays exactly as it was and the note says why in one line 
 `ctrl+r` is offered again.
 
 Where it is absent: only `/model` (and the model word in a task's status line, which opens
-the same list) has the key. Every other model list — the settings panel's rows, home's, the
-`alt+o model` one — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
+the same list) has the key. Every other model list — the settings panel's rows, home's `/model` list, and the
+task composer's `alt+o` list — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
 machine, whose list of names the picker shows.
 
 ## /resume — open an earlier conversation
@@ -1058,37 +1068,36 @@ conversation in them**, which is the one thing `/resume` cannot show you: `/resu
 "which conversation, here", and this is "what is there at all".
 
 **It is also what a bare `codeaf` opens on.** The conversation the launch picked is loaded
-underneath, and `esc` — or `enter` on the row the cursor starts on, which is that same
-conversation — drops into it. Home stays out of the way when you named a conversation
+underneath; opening its row returns to it. Escape stays on Home. Home stays out of the way when you named a conversation
 (`--session`, `codeaf resume`), on a `--once` or `--host` run, and on a machine whose only
 conversation is the one already open. There is no welcome box when home greets you. Not
-greeting you is not the same as being out of reach: `/home`, or `space` twice on an empty
-box, opens it on a one-conversation machine and on an empty one alike, and over `--host`
+greeting you is not the same as being out of reach: `/home`, or `esc` from a conversation, opens it on a one-conversation machine and on an empty one alike, and over `--host`
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+of the four places on the tab bar; **`esc`** from a conversation; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
-always in one order: `needs you` (every question waiting on you, a digit answers the top one
-from anywhere), `where you were` (this window's conversation, then the most recent, then a
-`N more` fold that opens the rest), `projects` (every folder, `enter` starts a chat there),
-`running` (every task, job and firing watch), `since you left` (what landed while you were
+always in one order: an unheaded list of open tabs followed by up to three dimmed
+closed conversations, `needs you` (every question waiting on you, a digit answers the
+top one from anywhere), `projects` (folders, read-only),
+`tasks` (the last day's tasks, running or landed, newest first), `since you left` (what landed while you were
 away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
 Which column a panel stands in follows what it holds: the panels with rows fill the **field**
 at the left, and the **rail** at the right holds `projects` and `spend` at its top with the
 quiet panels under them. An empty panel keeps its heading and one dim line naming what
 arrives there.
 
-`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
-conversation you came from. **Typing does two things at once**: what you type is a new
+`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` dismisses a local layer and otherwise stays on Home. **Typing does two things at once**: what you type is a new
 conversation waiting to be sent AND a live search over every project on the machine — the
-panels give way to the matches, with `start a new conversation: "…"` directly above the box
-holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
+panels give way to the matches, with none selected until you navigate into them.
+Type-and-enter starts a chat. `/ask <question>` asks in a home pane instead. **A line that starts with `/` is
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
-the command list*). The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`.
+the command list*). The box says `› type to search or start something new` and the foot
+names the available draft controls:
+`alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`. The arrow, `enter`, `ctrl+o` and `tab`
+keys still work, without hints on this row.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including
@@ -1109,14 +1118,23 @@ no conversation matches
 that folder is gone · <path>
 ```
 
-`no conversation matches` is a search that found nothing — the `start a new conversation`
-row is still there. `/new is unavailable here` is what the typing-to-start box says where no
+`no conversation matches` is a search that found nothing; Enter still starts a new
+conversation with your words. `/new is unavailable here` is what the typing-to-start box says where no
 fresh-session seam exists. The last is `enter` on a row whose folder has been deleted or
 moved since its last conversation: home stays up and nothing is opened. **How many
 conversations this terminal already holds is never a refusal.** Past twelve, a quiet
 one left alone may be let go of; that is not a refusal of the one you asked for.
-A task another window is running cannot be stopped from home: its `running` row says
+A task another window is running cannot be stopped from home: its `tasks` row says
 `another window` and offers no stop.
+
+## Changing approvals from the message box
+
+Use `alt+a` (Option+A on macOS) or press the approvals cell above the message box to
+cycle `asks → guardian → YOLO`. This works on home and in conversations. The keys and
+permissions pages describe the scope and meaning of each posture.
+
+`/approvals` and its `/yolo` alias are no longer commands. The `--yolo` launch flag is
+unchanged.
 
 ## /permissions — what runs without asking
 
@@ -1160,7 +1178,7 @@ own approval rules, that project's row replaces yours wholesale at launch — so
 line here changes what you carry everywhere and nothing inside that repository.
 
 **Over `--host`, this page still reads this machine's saved rows, not the other machine's.**
-The badge on the chat is the far session's actual approval posture, but `/permissions` has
+The `◇` cell on the legend is the far session's actual approval posture, but `/permissions` has
 no way to list or remove the far profile's individual rules yet. The page does not print a
 host-specific warning in this build, so do not treat its rows as the rules governing the
 remote conversation.
@@ -1503,8 +1521,10 @@ status sheet. Change that machine's profile there.
 ## /connect — your connected accounts
 
 `/connect` (or `/connections`) opens the connection panel. Its pinned `models` group
-holds the five built-in model services plus every one already connected; the account
-catalog groups follow it. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom service: it asks for a
+holds the six built-in model services plus every one already connected; the account
+catalog groups follow it. The Codex row says `browser`; enter opens the sign-in road and
+the waiting card keeps the address available to copy. The other listed services say what
+they need. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom service: it asks for a
 base URL, then a name of your own with the host's own spelling pre-filled (`127.0.0.1`
 becomes `127-0-0-1`), then a key. Several custom connections sit beside each other,
 each under its name; once one is connected an `add custom connection` row appears and
@@ -1533,7 +1553,14 @@ The third means the catalog came back empty.
 The settings panel has a `Connections` tab over the same accounts. It is a different
 surface from `/connect`, not a second copy of it.
 
-## Which machine's settings are these — /settings, /set, /config over --host
+## Which machine's settings are these
+
+The settings panel shows this machine's profile. Over `--host`, the conversation
+runs with the other machine's profile and project rules. Changing local settings
+does not silently change the remote conversation's approvals. The panel explains
+this split when it opens; configure the remote profile on that machine.
+
+## /settings, /set, /config — opening and navigating settings
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
 codeaf settings, plus a tab of connected accounts. It was the first of the three fullscreen
@@ -2053,3 +2080,16 @@ you closed*, including what a terminal that cannot send the key does instead.
 
 `alt+k` is the other way back: it lists every conversation on this machine, closed
 tabs included, and opening a row brings the tab and its draft back too.
+
+## /ask — ask from home without opening a regular conversation
+
+Type `/ask <question>` and press Enter to ask in a home pane. Choosing `/ask` from the
+command menu inserts `/ask ` and leaves the question for you to write, like `/task`.
+Bare `/ask` waits for your question. An inline `/ask` tag in a sentence works too, and
+is removed before sending. Multiple active submission tags keep the draft for correction.
+From a conversation, `/ask` opens Home and uses the same ask pane.
+
+Plain text on Home starts a new conversation by default. Only search results appear
+above the seam: one Up selects the best match, Enter opens a selected result, and Down
+past the last result returns to composing. The old ask/new action rows and their
+footer hints are absent.

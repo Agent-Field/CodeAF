@@ -949,9 +949,12 @@ func TestTheTierRowsAndTheVisionRowAreAnsweredByThePicker(t *testing.T) {
 		if a.sheet.sel == nil {
 			t.Fatalf("%s did not open a picker", row)
 		}
-		// It is THE picker: the rows carry what /model's rows carry.
-		if !strings.Contains(plain(frame(a)), "$3/$15 per M · 200k · elo 1300") {
-			t.Fatalf("%s opened a plainer list:\n%s", row, plain(frame(a)))
+		// It is THE picker: the rows carry what /model's rows carry, under the
+		// heads that name them (modeltable.go).
+		screen := plain(frame(a))
+		if !strings.Contains(screen, "in/M  out/M  window   elo") ||
+			!pickerRowSays(screen, "anthropic/claude-sonnet-4.5", "$3", "$15", "200k", "1300") {
+			t.Fatalf("%s opened a plainer list:\n%s", row, screen)
 		}
 		drive(t, a, key("esc"))
 	}
@@ -986,7 +989,9 @@ func TestEachSlotFiltersTheModelsByWhatItNeeds(t *testing.T) {
 
 	cursorTo(t, a, config.KeyTierHighModel)
 	drive(t, a, key("enter"))
-	chat := []string{"anthropic/claude-sonnet-4.5", "vendor/blind-chat", "moonshotai/kimi-k3"}
+	// Alphabetical, which is what a table opens in on this surface
+	// (pickersort.go). What this test is about is WHICH models are on offer.
+	chat := []string{"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3", "vendor/blind-chat"}
 	if got := pickedIDs(a.sheet.sel); strings.Join(got, ",") != strings.Join(chat, ",") {
 		t.Fatalf("a class row offers %v, want the models you can talk to %v", got, chat)
 	}
@@ -1077,7 +1082,7 @@ func TestTheModalityPredicates(t *testing.T) {
 func TestTheModelOverlayAsksTheChatQuestion(t *testing.T) {
 	a := pickerApp(t, &fakeAgent{model: "vendor/blind-chat"}, modalityCatalog)
 	typeLine(t, a, "/model")
-	want := []string{"anthropic/claude-sonnet-4.5", "vendor/blind-chat", "moonshotai/kimi-k3"}
+	want := []string{"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3", "vendor/blind-chat"}
 	if got := pickerIDs(a); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("/model offers %v, want %v", got, want)
 	}
@@ -1551,8 +1556,8 @@ func TestCompactionRereadsTheContextMeterImmediately(t *testing.T) {
 	a := newTestApp(agent)
 	a.ctxWindow, a.ctxTokens = 200_000, 168_000
 	typeLine(t, a, "keep going")
-	if !strings.Contains(plain(a.status(90)), "168k/200k") {
-		t.Fatalf("the meter did not open on the heavy conversation:\n%s", plain(a.status(90)))
+	if !strings.Contains(plain(a.legend(90)), "168k/200k") {
+		t.Fatalf("the meter did not open on the heavy conversation:\n%s", plain(a.legend(90)))
 	}
 
 	// The pass lands: the agent now weighs a tenth of what it did.
@@ -1563,7 +1568,7 @@ func TestCompactionRereadsTheContextMeterImmediately(t *testing.T) {
 	if a.ctxTokens != 12_000 {
 		t.Fatalf("ctxTokens = %d after the pass, want the agent's 12000", a.ctxTokens)
 	}
-	if line := plain(a.status(90)); !strings.Contains(line, "12k/200k") {
+	if line := plain(a.legend(90)); !strings.Contains(line, "12k/200k") {
 		t.Fatalf("the status line still carries the old weight:\n%s", line)
 	}
 }
@@ -1593,7 +1598,7 @@ func TestTheContextMeterClimbsAThreeRungRamp(t *testing.T) {
 			// The rung is what the line is PAINTED in, which is the whole point
 			// of having one.
 			segment, _ := a.contextSegment()
-			line := a.status(90)
+			line := a.legend(90)
 			switch test.want {
 			case ctxCalm:
 				if !strings.Contains(line, a.pal.dim(segment)) {
@@ -1652,7 +1657,7 @@ func TestTheWarmShareSaysWhatTheCacheWasWorth(t *testing.T) {
 	if got != "⟲ saved $0.8010 · 89% cached" {
 		t.Fatalf("the segment reads %q, want the cash then the rate", got)
 	}
-	if line := plain(a.status(120)); !strings.Contains(line, got) {
+	if line := plain(a.legend(120)); !strings.Contains(line, got) {
 		t.Fatalf("the status line is missing the warm segment:\n%s", line)
 	}
 
@@ -1762,31 +1767,33 @@ func hudApp(t *testing.T) (*app, *fakeAgent, *time.Time) {
 
 // ── the legend ──────────────────────────────────────────────────────────────
 
-// THE SEAM OWNS IDENTITY FROM 2026-09-09. The rule above the box carries who
-// you are talking to and where — the conversation's name, the model answering
-// it, the branch — on the left, and the keys that work now on the right. The
-// name and the model came UP here from the status row so that a long title
-// could never push the numbers off the frame (foot.go's [app.seamIdentity]).
-func TestTheSeamCarriesTheIdentityTheBranchAndTheInputsAffordances(t *testing.T) {
+// THE SEAM OWNS WHAT ANSWERS FROM 2026-09-09. The rule above the box carries
+// the model answering the conversation and the branch on the left, and the
+// numbers on the right. The name came UP here from the status row that day so
+// that a long title could never push the numbers off the frame, and came OFF
+// again on 2026-09-17: it took the room the numbers need, and the tab strip
+// already says it (foot.go's [app.seamIdentity]).
+func TestTheSeamCarriesTheModelAndTheInputsAffordances(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser"
 
 	line := plain(a.legend(100))
-	for _, want := range []string{"porting the parser", "deepseek-v4-flash", "chat-v3-task*", microcopy} {
+	for _, want := range []string{"deepseek/deepseek-v4-flash"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the legend is missing %q:\n%q", want, line)
 		}
 	}
-	// THE MODEL IS ITS BASENAME. The vendor half of a routing address is the
-	// same for every model a person is choosing between.
-	if strings.Contains(line, "deepseek/") {
-		t.Fatalf("the vendor is on the seam: %q", line)
+	if strings.Contains(line, "porting the parser") {
+		t.Fatalf("the conversation's name is on the seam: %q", line)
 	}
-	// THE PATH IS NOT ON IT ANY MORE. It is a fact a person already has — the
-	// shell prompt behind this pane says it — and the slot went to the one fact
-	// nothing else on the frame carries.
-	if strings.Contains(line, "codeaf") {
-		t.Fatalf("the legend is still carrying the workspace path: %q", line)
+	// AND THE INPUT'S OWN AFFORDANCE IS ON THE KEYS ROW under the box, where
+	// every key on this surface is named since 2026-09-17 (footswap.go).
+	if keys := plain(a.hintRow(100)); !strings.Contains(keys, microcopy) {
+		t.Fatalf("the keys row is missing %q:\n%q", microcopy, keys)
+	}
+	// The model keeps its provider prefix, and the project follows the telemetry.
+	if !strings.Contains(line, "project: ~/src/codeaf") {
+		t.Fatalf("the legend lost its project: %q", line)
 	}
 	if !strings.HasPrefix(line, "─ ") || !strings.HasSuffix(line, " ─") {
 		t.Fatalf("the label is not sitting inside a border: %q", line)
@@ -1806,42 +1813,39 @@ func TestTheSeamCarriesTheIdentityTheBranchAndTheInputsAffordances(t *testing.T)
 	a.branch = ""
 	line = plain(a.legend(100))
 	label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─")
-	if label != "porting the parser · deepseek-v4-flash" {
+	if label != "deepseek/deepseek-v4-flash" {
 		t.Fatalf("a workspace outside a repository left a separator behind: %q", label)
 	}
 }
 
-// THE EMPTINESS LAW ON THE BORDER: a session names itself one turn in, and until
-// it has, the slot where the name goes is EMPTY — never "untitled", never the
-// workspace standing in for it.
+// THE EMPTINESS LAW ON THE BORDER: a session names itself one turn in, and the
+// seam draws the same line before and after — never "untitled", never the
+// workspace standing in for a name the seam does not carry (foot.go).
 func TestAnUnnamedSessionPutsNoPlaceholderOnTheLegend(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = ""
 
-	// THE FOLDER'S NAME IS A TRUE FACT AND "untitled" IS NOT. The slot falls back
-	// to where the conversation is running — which the status row's identity
-	// cluster did before this moved up here — rather than inventing a word for a
-	// session that has not named itself yet.
+	// The folder stood in for the name here from 2026-09-09 until the name
+	// came off the seam on 2026-09-17; nothing stands in now.
 	line := plain(a.legend(100))
 	label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─")
-	if label != "codeaf · deepseek-v4-flash · chat-v3-task*" {
-		t.Fatalf("an unnamed session's legend label = %q, want the folder standing in for the name", label)
+	if label != "deepseek/deepseek-v4-flash" {
+		t.Fatalf("an unnamed session's legend label = %q, want the model alone", label)
 	}
-	for _, banned := range []string{"untitled", "Untitled", "new chat"} {
+	for _, banned := range []string{"untitled", "Untitled", "new chat", "codeaf"} {
 		if strings.Contains(label, banned) {
 			t.Fatalf("the legend invented %q for a session with no name: %q", banned, line)
 		}
 	}
 
-	// And with the branch gone too, what is left is the folder and the model —
-	// with the input's own affordance still on the other end, because a person
-	// who has not typed anything yet is exactly who "/ commands" is for.
+	// And with the branch gone too, what is left is the model — with the
+	// numbers still on the other end.
 	a.branch = ""
 	line = plain(a.legend(100))
-	if !strings.Contains(line, microcopy) {
-		t.Fatalf("the hint slot went with the label: %q", line)
+	if !strings.Contains(line, "idle") {
+		t.Fatalf("the numbers went with the label: %q", line)
 	}
-	if strings.Contains(line, "─ ─") || strings.Contains(line, "  ") {
+	if strings.Contains(line, "─ ─") {
 		t.Fatalf("the empty label left a gap in the rule: %q", line)
 	}
 	if ansi.StringWidth(line) != 100 {
@@ -1863,7 +1867,7 @@ func TestTheSeamNamesTheMachineEvenWhereTheVendorServesItsOwnModel(t *testing.T)
 		Model: "deepseek/deepseek-v4-flash", Provider: "DeepSeek", Rate: 92, At: now.Add(-time.Second),
 	}, true)
 
-	if line := plain(a.legend(140)); !strings.Contains(line, "deepseek-v4-flash · via deepseek") {
+	if line := plain(a.legend(140)); !strings.Contains(line, "deepseek-v4-flash (deepseek)") {
 		t.Fatalf("the seam dropped the rider because the vendor served: %q", line)
 	}
 	// AND THE SHEET'S `served` ROW KEEPS THE OLD RULE, because the line above it
@@ -1873,50 +1877,34 @@ func TestTheSeamNamesTheMachineEvenWhereTheVendorServesItsOwnModel(t *testing.T)
 	}
 }
 
-// A LONG IDENTITY IS SAID SHORTER, NEVER CLIPPED, AND NEVER AT THE KEYS' COST.
-// The seam gives up the cheapest true thing first (foot.go's [app.seamIdentity]):
-// the branch, which the shell prompt behind this pane still says, and only then
-// is the name cut with one ellipsis. The hint slot is not on that ladder at all
-// — the keys are written nowhere else on the frame.
-func TestALongNameIsCutOnTheSeamAndNeverTakesTheKeysSlot(t *testing.T) {
+// A LONG TITLE COSTS THE SEAM NOTHING, because the title is not on it (foot.go:
+// the owner's ruling of 2026-09-17). Until that day a long name was cut with
+// one ellipsis after the branch had gone; now the numbers stay, and the name
+// is on the tab strip whatever its length.
+func TestALongNameIsCutOnTheSeamAndNeverTakesTheNumbersSlot(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser off the old tokenizer and onto the new one at last"
 
 	line := plain(a.legend(100))
-	if !strings.Contains(line, microcopy) {
-		t.Fatalf("a long name pushed the keys off the seam: %q", line)
+	if !strings.Contains(line, "idle") {
+		t.Fatalf("a long name pushed the state word off the seam: %q", line)
 	}
-	if strings.Contains(line, "chat-v3-task*") {
-		t.Fatalf("the branch outlasted the name it stands after: %q", line)
+	if strings.Contains(line, "chat-v3-task*") || !strings.Contains(line, "deepseek-v4-flash") {
+		t.Fatalf("a title that is not on the seam cost it a cell: %q", line)
 	}
-	if !strings.Contains(line, "…") || !strings.Contains(line, "porting the parser") {
-		t.Fatalf("the name was neither kept whole nor cut with one ellipsis: %q", line)
+	if strings.Contains(line, "…") || strings.Contains(line, "porting") {
+		t.Fatalf("the name is on the seam: %q", line)
 	}
 	if ansi.StringWidth(line) != 100 {
 		t.Fatalf("the legend is %d cells wide, want the frame's 100", ansi.StringWidth(line))
 	}
-	// AND THE MODEL OUTLIVES THE BRANCH. Its rung is below the branch's, so a
-	// frame that had to drop one of them dropped the recoverable one.
-	if !strings.Contains(line, "deepseek-v4-flash") {
-		t.Fatalf("the model went before the branch did: %q", line)
-	}
 }
 
-// THE NARROW LADDER: THE BRANCH GOES BEFORE THE DOOR. It used to be the other
-// way round, and the phone tier paid for it — under the tight floor the hint
-// slot went silent AND the branch was dropped, so the line was refused at both
-// ends and drew a bare rule with nothing written on it, at the one width where
-// a newcomer most needs to be told that `/` opens the list of everything this
-// surface can be told to do. A branch is on the shell prompt behind this pane;
-// the door is written nowhere else on a frame this narrow.
-func TestTheLegendDropsTheBranchBeforeTheCommandsDoor(t *testing.T) {
+// The branch stays off the seam even when there is room for it, while the
+// model and commands door still survive narrow frames.
+func TestTheLegendOmitsTheBranchAndKeepsTheCommandsDoor(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser"
-	// The branch is long enough that the two cannot share an eighty-column frame.
-	// The microcopy is one affordance now rather than two (render.go), so the rung
-	// of the ladder where the branch stands alone is reached by a longer name
-	// rather than by a narrower frame — the ORDER is the law, and the width it
-	// bites at is a consequence of how much there is to say.
 	const branch = "feature/the-very-long-branch-name-that-goes-on-and-on"
 	a.branch, a.branchDirty = branch, false
 
@@ -1924,27 +1912,24 @@ func TestTheLegendDropsTheBranchBeforeTheCommandsDoor(t *testing.T) {
 	if strings.Contains(tight, "feature/") {
 		t.Fatalf("a tight frame kept the branch: %q", tight)
 	}
-	if !strings.Contains(tight, microcopy) {
+	if !strings.Contains(tight, "idle") {
 		t.Fatalf("a tight frame is a rule with nothing written on it: %q", tight)
 	}
-	// AND WHAT IT KEPT IS THE IDENTITY. The branch is the first rung of the
-	// seam's own ladder for the same reason it is dropped outright under
-	// [hudTight]: it is the one fact on this line a person can read off the
-	// shell prompt behind the pane (foot.go's [app.seamIdentity]).
-	if !strings.Contains(tight, "porting the parser") {
-		t.Fatalf("the tight legend gave up the name before the branch: %q", tight)
+	// The model is still useful on a narrow seam.
+	if !strings.Contains(tight, "deepseek-v4-flash") {
+		t.Fatalf("the tight legend gave up the model before the branch: %q", tight)
 	}
 
-	// A frame wide enough for all three says all three.
+	// A wider frame keeps the same division: keys below, model above.
 	middle := plain(a.legend(140))
-	if !strings.Contains(middle, microcopy) {
-		t.Fatalf("the legend dropped usable hints: %q", middle)
+	if !strings.Contains(plain(a.hintRow(140)), microcopy) {
+		t.Fatalf("the keys row dropped usable hints: %q", plain(a.hintRow(140)))
 	}
-	if !strings.Contains(middle, branch) {
-		t.Fatalf("the branch was dropped before the microcopy: %q", middle)
+	if strings.Contains(middle, branch) {
+		t.Fatalf("the seam still carries the branch: %q", middle)
 	}
-	if !strings.Contains(middle, "porting the parser") {
-		t.Fatalf("a roomy legend is missing the conversation's name: %q", middle)
+	if !strings.Contains(middle, "deepseek-v4-flash") {
+		t.Fatalf("a roomy legend is missing the model: %q", middle)
 	}
 
 	// And a frame with no room for a label at all is the rule it always was.
@@ -1987,21 +1972,20 @@ func TestTheStatusRowIsALedgerLeftAndAlivenessRight(t *testing.T) {
 	a.title, a.cost = "porting the parser", 0.14
 	a.ctxWindow, a.ctxTokens = 128_000, 12_400
 
-	rows := a.statusRows(200)
-	if len(rows) != 1 {
-		t.Fatalf("a 200-column frame took %d rows for the status", len(rows))
-	}
-	line := plain(rows[0])
+	// The numbers are on the seam over the box since 2026-09-17 (footswap.go),
+	// in the order the row kept them.
+	line := plain(a.legend(200))
 	cost, meter := strings.Index(line, "$0.14"), strings.Index(line, "12.4k/128k")
 	state := strings.Index(line, "idle")
 	if cost < 0 || meter < cost || state < meter {
 		t.Fatalf("the groups are out of order:\n%q", line)
 	}
-	// IDENTITY IS ON THE SEAM AND NOWHERE ELSE. A long title used to push these
-	// numbers off the frame from this end of the row.
-	for _, banned := range []string{"porting the parser", "deepseek-v4-flash", "deepseek/", product} {
-		if strings.Contains(line, banned) {
-			t.Fatalf("the row is still carrying %q: %q", banned, line)
+	// THE KEYS ROW CARRIES NO FACT AT ALL — not the identity, not the numbers
+	// (footswap.go).
+	keys := plain(a.hintRow(200))
+	for _, banned := range []string{"porting the parser", "deepseek-v4-flash", "deepseek/", product, "$0.14", "idle"} {
+		if strings.Contains(keys, banned) {
+			t.Fatalf("the keys row is carrying %q: %q", banned, keys)
 		}
 	}
 	if strings.ContainsAny(line, "|│") {
@@ -2019,9 +2003,9 @@ func TestTheStatusRowIsALedgerLeftAndAlivenessRight(t *testing.T) {
 	if !strings.Contains(line, "12.4k/128k · 10%") {
 		t.Fatalf("the meter's own halves are not joined by a dot: %q", line)
 	}
-	// The state word is LAST, whatever else is on the line.
-	if !strings.HasSuffix(strings.TrimRight(line, " "), "idle") {
-		t.Fatalf("the state word is not last: %q", line)
+	// The project follows the state at the right edge of the seam.
+	if !strings.HasSuffix(line, "idle   project: ~/src/codeaf ─") {
+		t.Fatalf("the project does not follow the state: %q", line)
 	}
 }
 
@@ -2047,7 +2031,7 @@ func TestTheAmbientCountsShowOnlyWhatIsAlive(t *testing.T) {
 	if got := a.ambientSegment(); got != "1 job · 1 watch" {
 		t.Fatalf("the ambient counts read %q, want 1 job · 1 watch", got)
 	}
-	if line := plain(a.status(200)); !strings.Contains(line, "1 job · 1 watch") {
+	if line := plain(a.legend(200)); !strings.Contains(line, "1 job · 1 watch") {
 		t.Fatalf("the counts are not on the line:\n%q", line)
 	}
 
@@ -2097,7 +2081,7 @@ func TestTheSessionDeltaIsOffTheRowAndOnTheSheet(t *testing.T) {
 		t.Fatalf("the session delta reads %q, want a Σ with the edit's stat in it", delta)
 	}
 	for _, width := range []int{hudWide, hudWide * 2, 200} {
-		if line := plain(a.status(width)); strings.Contains(line, "Σ") {
+		if line := plain(a.legend(width)); strings.Contains(line, "Σ") {
 			t.Fatalf("the delta is on a %d-column row:\n%q", width, line)
 		}
 	}
@@ -2148,7 +2132,7 @@ func TestTheContextSparklineNeedsTwoReadingsAndScalesToTheThreshold(t *testing.T
 	// where somebody who wants the shape asks for it (statusdeck.go).
 	a.ctxTokens = threshold / 2
 	for _, width := range []int{200, hudWide, hudTight - 1} {
-		if line := plain(a.status(width)); strings.Contains(line, spark) {
+		if line := plain(a.legend(width)); strings.Contains(line, spark) {
 			t.Fatalf("a %d-column row kept the sparkline:\n%q", width, line)
 		}
 	}
@@ -2189,7 +2173,7 @@ func TestTheBurnRateIsThisTurnsOutputOverThisTurnsSeconds(t *testing.T) {
 	// rate at the right edge is the one a person watching a turn reads, and an
 	// average over the whole turn beside it was two speeds saying different
 	// things about the same moment (foot.go's [groupOff]).
-	if line := plain(a.status(200)); strings.Contains(line, "tok/s avg") {
+	if line := plain(a.legend(200)); strings.Contains(line, "tok/s avg") {
 		t.Fatalf("the burn is still on the line:\n%q", line)
 	}
 	if got := deckValue(a.deckItems(), deckSegWords[segBurn]); got != "1k tok/s avg" {
@@ -2265,15 +2249,15 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	if got := a.hintWord(); got != "" {
 		t.Fatalf("an idle surface offered %q", got)
 	}
-	if !strings.Contains(plain(a.legend(120)), microcopy) {
-		t.Fatal("an idle legend lost the input's own affordances")
+	if !strings.Contains(plain(a.hintRow(120)), microcopy) {
+		t.Fatal("an idle keys row lost the input's own affordances")
 	}
 
 	a.state = stateWorking
-	if got := a.hintWord(); got != "esc interrupt" {
+	if got := a.hintWord(); got != "ctrl+c interrupt" {
 		t.Fatalf("a working surface offered %q", got)
 	}
-	if line := plain(a.legend(120)); !strings.Contains(line, "esc interrupt") ||
+	if line := plain(a.hintRow(120)); !strings.Contains(line, "ctrl+c interrupt") ||
 		strings.Contains(line, microcopy) {
 		t.Fatalf("the hint did not take the slot: %q", line)
 	}
@@ -2313,26 +2297,29 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 
 // ── negative-space safety ───────────────────────────────────────────────────
 
-// ABSENCE IS THE SAFE STATE: the posture is drawn only when the gate is open.
+// ABSENCE IS THE SAFE STATE ON THE ROW: the posture is drawn there only when the
+// gate is open — and only on a frame whose seam is not carrying the approvals
+// chip, which says every posture and is the control (approvalchip.go). This
+// app has no dial, so its seam has no chip and the row is where the badge is.
 func TestTheApprovalPostureIsDrawnOnlyWhenItIsUnsafe(t *testing.T) {
 	a, _, _ := hudApp(t)
 
 	for _, mode := range []string{"", "prompt", "deny"} {
 		a.approval = mode
-		if got := a.yoloSegment(); got != "" {
+		if got := a.approvalSegment(); got != "" {
 			t.Fatalf("the %q posture drew %q — absence is the safe state", mode, got)
 		}
-		if strings.Contains(plain(a.status(200)), "YOLO") {
+		if strings.Contains(plain(a.legend(200)), approvalYoloWord) {
 			t.Fatalf("the %q posture is shouting on the line", mode)
 		}
 	}
 
 	a.approval = "allow"
-	line := a.status(200)
-	if !strings.Contains(plain(line), "YOLO") {
+	line := a.legend(200)
+	if !strings.Contains(plain(line), approvalYoloWord) {
 		t.Fatalf("an open gate said nothing:\n%q", plain(line))
 	}
-	if !strings.Contains(line, a.pal.bad("YOLO")) {
+	if !strings.Contains(line, a.pal.bad(approvalYoloWord)) {
 		t.Fatalf("the open gate is not painted as one:\n%q", line)
 	}
 }
@@ -2346,20 +2333,20 @@ func TestTelemetryFadesWithAgeSoStaleNumbersStopCompeting(t *testing.T) {
 	a.cost = 0.10
 
 	// First appearance is not a change: there was nothing there to have changed.
-	if line := a.status(200); !strings.Contains(line, a.pal.dim("$0.10")) {
+	if line := a.legend(200); !strings.Contains(line, a.pal.dim("$0.10")) {
 		t.Fatalf("a segment's first appearance is already glowing:\n%q", line)
 	}
 
 	a.cost = 0.20
-	if line := a.status(200); !strings.Contains(line, a.pal.ink("$0.20")) {
+	if line := a.legend(200); !strings.Contains(line, a.pal.ink("$0.20")) {
 		t.Fatalf("a segment that just moved is not ink:\n%q", line)
 	}
 	*now = now.Add(5 * time.Second)
-	if line := a.status(200); !strings.Contains(line, a.pal.muted("$0.20")) {
+	if line := a.legend(200); !strings.Contains(line, a.pal.muted("$0.20")) {
 		t.Fatalf("a five-second-old figure is not on the middle rung:\n%q", line)
 	}
 	*now = now.Add(6 * time.Second)
-	if line := a.status(200); !strings.Contains(line, a.pal.dim("$0.20")) {
+	if line := a.legend(200); !strings.Contains(line, a.pal.dim("$0.20")) {
 		t.Fatalf("an eleven-second-old figure is still competing:\n%q", line)
 	}
 
@@ -2395,24 +2382,17 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	typeLine(t, a, "clean it")
 	a.cost = 0.20 // a figure that moved THIS INSTANT, and still may not glow
 
-	line := a.status(200)
-	if !strings.Contains(line, a.pal.askBold(waitingWord)) {
-		t.Fatalf("the state cluster is not the question hue:\n%q", line)
+	line := a.legend(200)
+	if strings.Contains(line, waitingWord) {
+		t.Fatalf("the seam repeats the open decision:\n%q", line)
 	}
 	if !strings.Contains(line, a.pal.dim("$0.20")) {
 		t.Fatalf("a number is competing with a question:\n%q", line)
 	}
-	// AND THE SEAM IS THE HUE'S SECOND HOME AGAIN. The conversation's name came
-	// back onto the legend on 2026-09-09, and while a person is being asked
-	// something the whole left label goes violet with the state word — the
-	// question is bottom-anchored and so is this border, which is the surface
-	// pointing at it with both hands (render.go's [app.legend]).
+	// The model keeps its ordinary seam presentation while the box owns attention.
 	legend := a.legend(120)
-	if !strings.Contains(plain(legend), "cleaning the build directory") {
-		t.Fatalf("the seam lost the conversation's name:\n%q", legend)
-	}
-	if !strings.Contains(legend, a.pal.ask("cleaning the build directory · m")) {
-		t.Fatalf("the seam's label is not the question hue:\n%q", legend)
+	if strings.Contains(plain(legend), waitingWord) {
+		t.Fatalf("the seam still repeats the question: %q", legend)
 	}
 
 	// Working, the paint is spent on ALIVENESS and on nothing else: the spinner
@@ -2461,78 +2441,81 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 	a.notices.enabled = false
 
 	for _, tc := range []struct {
-		width       int
-		eta         bool
-		branch, mic bool
-		rows        int
+		width                    int
+		eta, branch, cost, meter bool
 	}{
-		{width: 200, eta: true, branch: true, mic: true, rows: 1},
-		{width: 120, eta: true, branch: true, mic: true, rows: 1},
-		{width: 100, eta: true, branch: true, mic: true, rows: 1},
-		// At seventy the ledger and the right edge stop sharing a row — they
-		// cannot both fit with a barrier between them — and the seam is the end
-		// that starts giving things up: the branch goes first, because the shell
-		// prompt behind this pane still says it.
-		{width: 70, eta: true, branch: false, mic: true, rows: 2},
-		// Below that the ledger gives up its forecast — the meter beside it is
-		// already painted the warning — and the seam keeps the name, the model
-		// and the door, which is the one fact on this frame written nowhere else.
-		{width: 60, eta: false, branch: false, mic: true, rows: 2},
+		{width: 200, eta: true, branch: false, cost: true, meter: true},
+		{width: 120, eta: true, branch: false, cost: true, meter: true},
+		{width: 110, eta: false, branch: false, cost: true, meter: true},
+		{width: 90, eta: false, branch: false, cost: true, meter: true},
+		{width: 80, eta: false, branch: false, cost: true, meter: true},
+		// Then the cache's half of the bill goes, and the bill and the meter
+		// stand to the bottom of this tier: the deck takes over under sixty
+		// (statusdeck.go), and on a frame that keeps the seam's numbers the
+		// model is never spent for one — it is the one fact on this frame
+		// written nowhere else, and the state word is the last thing
+		// standing on the right.
+		{width: 70, eta: false, branch: false, cost: false, meter: true},
+		{width: 60, eta: false, branch: false, cost: false, meter: false},
 	} {
+		// THE LAST ROW IS THE KEYS, one row at every width, and it names the
+		// commands door at every one of them.
 		rows := a.statusRows(tc.width)
-		if len(rows) != tc.rows {
-			t.Fatalf("at %d columns the status took %d rows, want %d:\n%s",
-				tc.width, len(rows), tc.rows, strings.Join(rows, "\n"))
+		if len(rows) != 1 {
+			t.Fatalf("at %d columns the keys took %d rows, want 1:\n%s",
+				tc.width, len(rows), strings.Join(rows, "\n"))
 		}
-		for _, row := range rows {
-			if got := ansi.StringWidth(plain(row)); got > tc.width {
-				t.Fatalf("at %d columns a status row is %d wide: %q", tc.width, got, plain(row))
+		if got := ansi.StringWidth(plain(rows[0])); got > tc.width {
+			t.Fatalf("at %d columns the keys row is %d wide: %q", tc.width, got, plain(rows[0]))
+		}
+		if !strings.Contains(plain(rows[0]), microcopy) {
+			t.Fatalf("at %d columns the keys row lost the commands door: %q", tc.width, plain(rows[0]))
+		}
+		for _, banned := range []string{"the bottom hud wave", "deepseek-v4-flash", "$1.42", "idle"} {
+			if strings.Contains(plain(rows[0]), banned) {
+				t.Fatalf("at %d columns the keys row carries %q:\n%q", tc.width, banned, plain(rows[0]))
 			}
 		}
-		line := plain(strings.Join(rows, "\n"))
-		if has := strings.Contains(line, "compaction in"); has != tc.eta {
-			t.Fatalf("at %d columns the forecast is %v:\n%q", tc.width, has, line)
+		// THE SEAM IS THE NUMBERS' ROW, never wider than the frame.
+		legend := plain(a.legend(tc.width))
+		if got := ansi.StringWidth(legend); got > tc.width {
+			t.Fatalf("at %d columns the seam is %d wide: %q", tc.width, got, legend)
 		}
-		// The bill and the meter outlast every other figure, in that order.
-		if !strings.Contains(line, "$1.42") || !strings.Contains(line, "100k/200k") {
-			t.Fatalf("at %d columns the ledger lost the bill or the meter:\n%q", tc.width, line)
+		if has := strings.Contains(legend, "compaction in"); has != tc.eta {
+			t.Fatalf("at %d columns the forecast is %v:\n%q", tc.width, has, legend)
+		}
+		if has := strings.Contains(legend, "$1.42"); has != tc.cost {
+			t.Fatalf("at %d columns the bill is %v:\n%q", tc.width, has, legend)
+		}
+		if has := strings.Contains(legend, "100k/200k"); has != tc.meter {
+			t.Fatalf("at %d columns the meter is %v:\n%q", tc.width, has, legend)
 		}
 		// The state word survives every width: it is why the line is there.
-		if !strings.Contains(line, "idle") {
-			t.Fatalf("at %d columns the state word was dropped:\n%q", tc.width, line)
+		if !strings.Contains(legend, "idle") {
+			t.Fatalf("at %d columns the state word was dropped:\n%q", tc.width, legend)
 		}
-		// AND IDENTITY IS NOT ON THE ROW AT ANY WIDTH from 2026-09-09. It is on
-		// the seam above the box, which is what stops a long title pushing the
-		// numbers off the frame.
-		for _, banned := range []string{"the bottom hud wave", "deepseek-v4-flash"} {
-			if strings.Contains(line, banned) {
-				t.Fatalf("at %d columns the row carries %q:\n%q", tc.width, banned, line)
-			}
-		}
-		legend := plain(a.legend(tc.width))
 		if has := strings.Contains(legend, "chat-v3-task"); has != tc.branch {
 			t.Fatalf("at %d columns the branch is %v: %q", tc.width, has, legend)
 		}
-		if has := strings.Contains(legend, microcopy); has != tc.mic {
-			t.Fatalf("at %d columns the microcopy is %v: %q", tc.width, has, legend)
+		// The model is on the seam WHOLE at every width this ladder covers —
+		// the numbers give way before it does — and the name is on none of
+		// them: it left the seam for good on 2026-09-17 (foot.go).
+		if !strings.Contains(legend, "deepseek-v4-flash") {
+			t.Fatalf("at %d columns the seam is missing the model: %q", tc.width, legend)
 		}
-		// The name and the model are on the seam at every width this ladder
-		// covers — the two facts that tell one pane from another.
-		for _, want := range []string{"the bottom hud wave", "deepseek-v4-flash"} {
-			if !strings.Contains(legend, want) {
-				t.Fatalf("at %d columns the seam is missing %q: %q", tc.width, want, legend)
-			}
+		if strings.Contains(legend, "the bottom hud wave") {
+			t.Fatalf("at %d columns the seam carries the name: %q", tc.width, legend)
 		}
-		if strings.Contains(legend, "codeaf") {
-			t.Fatalf("at %d columns the legend is still carrying the path: %q", tc.width, legend)
+		if tc.width == 200 && !strings.Contains(legend, "project: ~/src/codeaf") {
+			t.Fatalf("the wide legend lost its project: %q", legend)
 		}
 	}
 }
 
-// The frame's geometry agrees with the row count at every width: a status that
-// took two rows and a chrome height that counted one would deliver every click
-// below the conversation to the wrong row (view.go).
-func TestTheChromeHeightCountsTheWrappedStatus(t *testing.T) {
+// The frame's geometry agrees with the row count at every width: a keys row
+// the builder drew and a chrome height that counted differently would deliver
+// every click below the conversation to the wrong row (view.go).
+func TestTheChromeHeightCountsTheKeysRow(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title, a.cost = "the bottom hud wave", 1.42
 	a.ctxWindow, a.ctxTokens = 200_000, 100_000
@@ -2616,17 +2599,17 @@ func TestAClockThatTicksMidFrameCannotPushTheStatusRowPastTheFrame(t *testing.T)
 }
 
 // The repository is asked off the model loop, and its answer lands on the
-// legend. A probe that fails leaves no branch rather than a stale one.
+// status data. A probe that fails leaves no branch rather than a stale one.
 func TestTheBranchArrivesAsAMessageAndCanGoAway(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.branch, a.branchDirty = "", false
 	drive(t, a, gitMsg{branch: "chat-v3-task", dirty: true, ok: true})
-	if !strings.Contains(plain(a.legend(120)), "chat-v3-task*") {
-		t.Fatalf("the branch did not reach the legend: %q", plain(a.legend(120)))
+	if a.branchWord() != "chat-v3-task*" {
+		t.Fatalf("the branch did not reach the status data: %q", a.branchWord())
 	}
 	drive(t, a, gitMsg{ok: false})
-	if strings.Contains(plain(a.legend(120)), "chat-v3-task") {
-		t.Fatalf("a failed probe left a stale branch: %q", plain(a.legend(120)))
+	if a.branchWord() != "" {
+		t.Fatalf("a failed probe left a stale branch: %q", a.branchWord())
 	}
 }
 
@@ -3037,11 +3020,11 @@ func TestHeldProposalAnswersKeepTheirMeanings(t *testing.T) {
 // on the row with their keys now, so the box is words: what a person types is a
 // correction, and a correction is a yes to the corrected version.
 func TestEveryTypedSentenceIsACorrectionAndNotAHiddenAnswer(t *testing.T) {
-	// The words are chosen not to open with a key the question DRAWS: `c` is
-	// `[c] change` and `?` is `[?] ask back` over an empty box, which is the
+	// The words are chosen not to open with a key the question DRAWS: `o` is
+	// `o other` and `?` is `? clarify` over an empty box, which is the
 	// trade every letter on this block is held to (question.go's key grammar).
 	// Everything else is a letter.
-	for _, text := range []string{"no", "nope", "stop", "don't", "yes", "ok", "sure", "no, use the flag"} {
+	for _, text := range []string{"no", "nope", "stop", "don't", "yes", "change", "sure", "no, use the flag"} {
 		t.Run(text, func(t *testing.T) {
 			a, agent, _ := taskApp(t)
 			agent.pending = []uint64{7}
@@ -3075,7 +3058,7 @@ func TestTheRedirectLaneReachesResolveTask(t *testing.T) {
 
 	// The box says what it is for while the question is open.
 	block, _, _, _ := a.chrome(a.width)
-	if !strings.Contains(plain(strings.Join(block, "\n")), taskRedirectLane) {
+	if !strings.Contains(plain(strings.Join(block, "\n")), "o other") {
 		t.Fatalf("the input box does not offer the correction lane:\n%s", plain(strings.Join(block, "\n")))
 	}
 
@@ -3333,7 +3316,7 @@ func TestEscFoldsTheProposalRatherThanDecliningItOrTheTurn(t *testing.T) {
 		t.Fatalf("esc answered the proposal: %+v", agent.answered)
 	}
 	if agent.stops != 0 {
-		t.Fatal("esc interrupted the turn")
+		t.Fatal("ctrl+c interrupted the turn")
 	}
 	if !a.awaitingTask() || a.questionCount() != 1 {
 		t.Fatalf("esc closed the proposal: awaiting=%v open=%d", a.awaitingTask(), a.questionCount())
@@ -3764,11 +3747,11 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 			name = "Fix the nil-ma"
 		}
 		top := a.bodyTop()
-		if tc.rail && !strings.Contains(lines[top], marginTasksWord) {
-			t.Fatalf("at %d columns the column does not open with its label:\n%q", tc.width, lines[top])
+		if tc.rail && !strings.Contains(lines[top], railStowHint) {
+			t.Fatalf("at %d columns the column does not open with its hide control:\n%q", tc.width, lines[top])
 		}
-		if tc.rail && !strings.Contains(lines[top+1], name) {
-			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top+1])
+		if tc.rail && !strings.Contains(lines[top+2], name) {
+			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top+2])
 		}
 		// AND THE STRIP IS THE ROW ABOVE IT ONLY WHERE THERE IS NO ROSTER: the two
 		// answer the same question, and the wide frame answers it in the column.
@@ -3811,7 +3794,7 @@ func rosterText(a *app, height int) string {
 // frame lent it, every row stays inside the column, and the window follows the
 // focus down rather than stopping at whatever fitted first.
 
-func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
+func TestTheRosterKeepsCreationOrderAndCountsTheWhole(t *testing.T) {
 	a, _, _ := taskApp(t)
 	// Use the wide tier so this aggregate test can see every count.
 	a.width, a.railWide = 160, true
@@ -3827,9 +3810,7 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 			Report: "the merge conflicted", Merge: mergeWordConflicted, Branch: "task/render",
 		})},
 		streamEventMsg{gen: a.gen, ev: update(5, "Cut the trailer", session.TaskQueued, session.TaskNotice{})},
-		// A FAILURE THAT KEPT NOTHING IS NOT A DEMAND, so it stands with the record
-		// at the bottom of the column rather than at the top (task.go's
-		// [app.railGroupOf]).
+		// A failure without a retained branch is counted as finished work.
 		streamEventMsg{gen: a.gen, ev: update(6, "Trim silence", session.TaskFailed, session.TaskNotice{
 			Report: "the tests did not build",
 		})},
@@ -3837,11 +3818,10 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 	a.cost, a.tokens = 1.42, 312_000
 	rail := rosterText(a, 24)
 
-	// The order IS the design: what is asking, what is running, what is waiting
-	// for a slot, what is parked behind other work, what is over.
+	// Creation order stays stable across every task state.
 	at := -1
-	for _, want := range []string{"Render titles", "Fix the nil-map", "Cut the trailer", "Mix audio",
-		"Collect sources", "Trim silence"} {
+	for _, want := range []string{"Collect sources", "Fix the nil-map", "Mix audio", "Render titles",
+		"Cut the trailer", "Trim silence"} {
 		found := strings.Index(rail, want)
 		if found < 0 {
 			t.Fatalf("the roster has no %q row:\n%s", want, rail)
@@ -3920,15 +3900,13 @@ func TestTheRosterTakesTheKeyboardOnlyWhenItIsHandedIt(t *testing.T) {
 	if !strings.Contains(rosterText(a, 16), railMark) {
 		t.Fatalf("the focused row has no marker:\n%s", rosterText(a, 16))
 	}
-	// The cursor opens on the first row, and the first row is the oldest of the
-	// two running nodes — equal urgency, so the column is in admission order (the
-	// session opened with node 7 running).
+	// The cursor opens on the oldest task; the session began with node 7.
 	if a.railWhere.id != 7 {
 		t.Fatalf("the cursor opened on %+v, want the first running node", a.railWhere)
 	}
 	drive(t, a, key("down"))
-	if a.railWhere.id != 2 {
-		t.Fatalf("↓ walked to %+v, want the second running node", a.railWhere)
+	if a.railWhere.id != 1 {
+		t.Fatalf("↓ walked to %+v, want the next task created", a.railWhere)
 	}
 
 	// Typing still reaches the box while the roster holds the arrows: only the
@@ -3973,7 +3951,7 @@ func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 		t.Fatalf("the cursor is on %+v, want the second running node", a.railWhere)
 	}
 	// It finishes with its branch conflicted, which is the one outcome that needs a
-	// person — so the row moves to the top group, and the cursor moves with it.
+	// person — while both its row and the cursor keep their place.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(2, "Fix the nil-map crash", session.TaskFailed,
 		session.TaskNotice{Merge: mergeWordConflicted, Branch: "task/fix-nil-map"})})
 	entries := a.railEntries()
@@ -3981,10 +3959,9 @@ func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 	if at < 0 || entries[at].node == nil || entries[at].node.id != 2 {
 		t.Fatalf("the cursor did not follow the node: %+v", entries)
 	}
-	// AND THE ROW ITSELF MOVED: a conflicted branch is the one outcome that needs a
-	// person, so it is the top of the column now (task.go's [app.railGroupOf]).
-	if at != 0 {
-		t.Fatalf("the node with a conflicted branch is at row %d, want the top of the column", at)
+	// Neither the row nor the cursor moves when the task needs input.
+	if at != 1 {
+		t.Fatalf("the node with a conflicted branch moved to row %d, want its original row", at)
 	}
 }
 
@@ -4005,8 +3982,8 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	// Three hundred families of one, all equally urgent, so the column is in the
 	// order the session admitted them — under the section label the column opens
 	// with (margin.go).
-	if !strings.Contains(plain(rows[1]), "node 1") {
-		t.Fatalf("the first row is not the first node the session met:\n%q", rows[1])
+	if !strings.Contains(plain(rows[2]), "node 1") {
+		t.Fatalf("the first row is not the first node the session met:\n%q", rows[2])
 	}
 
 	// Twenty rows down is past the window, so the window moves.
@@ -4018,16 +3995,12 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	if !strings.Contains(rail, "node 21") || !strings.Contains(rail, railMark) {
 		t.Fatalf("the window did not follow the cursor down:\n%s", rail)
 	}
-	// AND WHAT IS RUNNING DID NOT GO WITH IT. The head of the column is pinned
-	// (task.go's [app.railMovingHead]): a person who walks the cursor down into
-	// the record must not take the work that is happening off the one surface
-	// that exists to say it is happening. Everything under the head scrolls,
-	// which is what the cursor is standing in.
-	if !strings.Contains(rail, "node 1 ") {
-		t.Fatalf("the running head scrolled off the column:\n%s", rail)
+	// The task sequence scrolls together while the hide control stays fixed.
+	if strings.Contains(rail, "node 1 ") {
+		t.Fatalf("the first task did not scroll with the list:\n%s", rail)
 	}
-	if strings.Contains(rail, "node 20 ") {
-		t.Fatalf("nothing scrolled at all — the row above the cursor is still drawn:\n%s", rail)
+	if rows := railText(a, 12); !strings.Contains(rows[0], railStowHint) {
+		t.Fatalf("the hide control scrolled away: %v", rows)
 	}
 	// And the footer still counts the whole roster rather than the window.
 	if !strings.Contains(rail, "300 "+railGroupWords[railRunning]) {
@@ -4100,12 +4073,14 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 			t.Fatalf("the roster is missing %q:\n%s", want, rail)
 		}
 	}
-	// The two demands lead the column and the record follows them, whole.
-	demands := strings.Index(rail, "Cut the trailer")
-	for _, news := range []string{"Render titles", "Write the auth", "Collect sources"} {
-		if at := strings.Index(rail, news); at < 0 || at < demands {
-			t.Fatalf("%q stands above the work that needs a person:\n%s", news, rail)
+	// Demands retain their state without displacing earlier tasks.
+	previous := -1
+	for _, title := range []string{"Collect sources", "Render titles", "Mix audio", "Port the parser", "Cut the trailer", "Write the auth"} {
+		at := strings.Index(rail, title)
+		if at <= previous {
+			t.Fatalf("%q moved out of creation order:\n%s", title, rail)
 		}
+		previous = at
 	}
 }
 
@@ -4960,21 +4935,27 @@ func TestTheFrameSaysAPersonIsInARoom(t *testing.T) {
 	a.cost = 0.42
 	clickRail(t, a, 0)
 
-	status := plain(a.status(a.width))
-	// The chip is the node's mark and its name — no "task 7" ghost id, and no
-	// word standing in for the page's own name (room.go, taskident.go).
-	if !strings.Contains(status, "Fix the nil-map") {
-		t.Fatalf("the status line does not name the room:\n%s", status)
+	// THE TASK IS NAMED ON THE FRAME — the breadcrumb bar at the top is where
+	// (roomcrumbs.go) — with no "task 7" ghost id and no word standing in for
+	// the page's own name (room.go, taskident.go). The foot does not repeat it:
+	// its seam names the way out and the node's cells, and its last row is the
+	// keys (footswap.go).
+	if screen := plain(frame(a)); !strings.Contains(screen, "Fix the nil-map") {
+		t.Fatalf("the frame does not name the room:\n%s", screen)
 	}
-	if !strings.Contains(status, "$0.42") {
-		t.Fatalf("the room took the session's telemetry with it:\n%s", status)
+	seam := plain(a.legend(a.width))
+	if !strings.Contains(seam, "$0.42") {
+		t.Fatalf("the room took the session's telemetry with it:\n%s", seam)
 	}
-	if !strings.Contains(plain(a.legend(a.width)), roomLegendWord) {
-		t.Fatalf("the legend does not say how to leave:\n%s", plain(a.legend(a.width)))
+	if !strings.Contains(seam, roomLegendWord) {
+		t.Fatalf("the legend does not say how to leave:\n%s", seam)
+	}
+	if keys := plain(strings.Join(a.statusRow(a.width), "\n")); strings.Contains(keys, "Fix the nil-map") || strings.Contains(keys, "$0.42") {
+		t.Fatalf("the keys row carries a fact:\n%s", keys)
 	}
 	drive(t, a, key("esc"))
-	if strings.Contains(plain(a.status(a.width)), "Fix the nil-map") {
-		t.Fatalf("the status line stayed in the room:\n%s", plain(a.status(a.width)))
+	if strings.Contains(plain(a.legend(a.width)), roomLegendWord) {
+		t.Fatalf("the seam stayed in the room:\n%s", plain(a.legend(a.width)))
 	}
 }
 
@@ -5024,14 +5005,9 @@ func TestASessionWithoutRoomDoorsSaysSoAndStaysPut(t *testing.T) {
 	}
 }
 
-// THE RIDER OUTRANKS THE BRANCH AND THE NAME'S TAIL. On 2026-09-10 the owner
-// opened a conversation whose title ran to five words and the seam read `… ·
-// glm-5.3-flash · main` with no `via` at all, while `/status` said `served via
-// relace`: the rider was the filler after everything fixed, and a long title
-// left it nothing. Which machine is answering is the one fact on this line about
-// NOW, so it takes the branch's cells first and then the name's, and only a
-// name at its floor gives it up (foot.go's [app.seamIdentity]).
-func TestTheSeamKeepsTheRiderBeforeTheBranchAndTheNamesTail(t *testing.T) {
+// The provider stays beside the model while the title and branch stay off the
+// seam. Width changes must not bring either discarded label back.
+func TestTheSeamKeepsTheRiderWithoutTheBranchOrTitle(t *testing.T) {
 	a, _, now := hudApp(t)
 	a.title = "first line: casual greeting exchange about nothing"
 	a.branch = "main"
@@ -5039,28 +5015,31 @@ func TestTheSeamKeepsTheRiderBeforeTheBranchAndTheNamesTail(t *testing.T) {
 		Model: "deepseek/deepseek-v4-flash", Provider: "relace", Rate: 40, At: now.Add(-time.Second),
 	}, true)
 
-	// Wide enough for everything: name, model, rider, branch.
-	if line := plain(a.legend(160)); !strings.Contains(line, "via relace") || !strings.Contains(line, "· main") {
-		t.Fatalf("with room for all of it, something was dropped: %q", line)
+	// The rider rides the model, and the branch is absent at every width.
+	line := plain(a.legend(160))
+	if !strings.Contains(line, "deepseek-v4-flash (relace)") {
+		t.Fatalf("with room for all of it, something was dropped or moved: %q", line)
 	}
-	// Room for the name and the rider, but not the branch: the branch goes.
-	line := plain(a.legend(100))
-	if !strings.Contains(line, "via relace") {
-		t.Fatalf("the rider was given up before the branch: %q", line)
+	if strings.Contains(line, "casual") || strings.Contains(line, "…") {
+		t.Fatalf("the title is on the seam: %q", line)
 	}
-	if strings.Contains(line, "· main") {
-		t.Fatalf("the branch stayed while the rider had no room: %q", line)
+	// Narrowing may drop the rider, but never brings the branch back.
+	branchless := -1
+	for width := 160; width >= 40; width-- {
+		line := plain(a.legend(width))
+		if ansi.StringWidth(line) != width {
+			t.Fatalf("the legend is %d cells wide, want %d", ansi.StringWidth(line), width)
+		}
+		hasBranch, hasRider := strings.Contains(line, "· main"), strings.Contains(line, "(relace)")
+		if hasBranch {
+			t.Fatalf("at %d columns the seam carries the branch: %q", width, line)
+		}
+		if !hasBranch && hasRider && branchless < 0 {
+			branchless = width
+		}
 	}
-	// Tighter still: the name is cut and the rider stays whole.
-	line = plain(a.legend(80))
-	if !strings.Contains(line, "via relace") {
-		t.Fatalf("the rider was given up before the name's tail: %q", line)
-	}
-	if !strings.Contains(line, "…") {
-		t.Fatalf("the name was not cut to seat the rider: %q", line)
-	}
-	if ansi.StringWidth(line) != 80 {
-		t.Fatalf("the legend is %d cells wide, want 80", ansi.StringWidth(line))
+	if branchless < 0 {
+		t.Fatal("no width dropped the branch while keeping the rider")
 	}
 }
 
@@ -5077,7 +5056,7 @@ func TestTheSeamRiderNamesTheMachineAndNotTheLastAnswersFigures(t *testing.T) {
 	t.Cleanup(forgetLanes)
 
 	line := plain(a.legend(140))
-	if !strings.Contains(line, "· via relace") {
+	if !strings.Contains(line, "deepseek-v4-flash (relace)") {
 		t.Fatalf("the seam lost the machine: %q", line)
 	}
 	if strings.Contains(line, "t/s") || strings.Contains(line, "1.3s") {

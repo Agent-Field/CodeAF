@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"sort"
 	"strings"
 	"time"
 
@@ -138,7 +137,9 @@ func (c *taskCard) settled() bool { return c.verdict != "" }
 // elapsed clock counts on the frame tick instead of freezing at whatever the
 // last update happened to say. Everything else is the notice, kept.
 type taskNode struct {
-	id uint64
+	// retried keeps the conversation card in its original position across attempts.
+	retried bool
+	id      uint64
 	// title is what the rail draws: the NAME, two or three words, derived once
 	// from the engine's own title (taskident.go). label is that title whole,
 	// kept because the cards have width for it and because a name is a cut of
@@ -2267,7 +2268,7 @@ const (
 	// quoted from the handler rather than authored twice.
 	//
 	// It is split at the dismiss key because ONE OF THOSE KEYS IS CONDITIONAL:
-	// ctrl+v moves the focused node's rung and the engine refuses a node whose
+	// alt+e moves the focused node's rung and the engine refuses a node whose
 	// run is over, so it is named only while the row under the cursor could take
 	// it ([app.railHoldHintWord]), and esc stays last because leaving is what a
 	// person looks to the end of the line for.
@@ -2599,25 +2600,6 @@ type railEntry struct {
 	worst  *taskNode
 }
 
-// workingNowAgent is the engine door behind the ONE NUMBER this surface takes
-// from the live work tree: how many hands are moving right now, which the
-// column's head quotes (margin.go's [app.marginHead]). Each surface asserts
-// only the slice it reads, so an engine without the door draws the
-// byte-identical roster it drew before the door existed.
-//
-// IT IS A COUNT AND NOT A SECOND ROSTER, and that is the whole of the rule this
-// column keeps about live work. Every worker [session.WorkingNow] reports —
-// a node of the task graph, an adaptive run, one planned node inside one —
-// publishes a TaskNotice naming who spawned it, and this column grows its
-// families out of exactly those notices ([app.railForest]). So a worker already
-// has a row here by the time the engine can be asked about it, and a preview
-// hung under that row would be the same family drawn twice, one copy of it
-// carrying less than the other. What the engine's tree can say that the rows
-// cannot is how MANY of them are moving at once, so that is what is taken.
-type workingNowAgent interface {
-	WorkingNow() []session.WorkNode
-}
-
 // railSpot names a row by IDENTITY rather than by index, and it is what the
 // focus is stored as.
 //
@@ -2752,28 +2734,6 @@ func (a *app) railKin() (kids map[string][]*taskNode, byKey map[string]*taskNode
 		}
 		kids[up] = append(kids[up], node)
 	}
-	// AND EACH SET OF CHILDREN IS PUT IN THE ORDER THE COLUMN ALREADY PUTS
-	// FAMILIES IN: what will not move without a person first, then what is
-	// running, then what is waiting, then what is over.
-	//
-	// THE FAMILIES WERE SORTED AND THEIR MEMBERS WERE NOT, which showed on exactly
-	// the rows the sort exists for. A run that hands out four pieces finishes them
-	// one at a time, and the finished ones arrived FIRST — so the block under an
-	// open family read `done, done, running, running`, with the only rows anybody
-	// was watching at the bottom of it. The person's own instruction was that
-	// active work be easy to find, and it was easy to find down to the level the
-	// ordering stopped at.
-	//
-	// TIES KEEP ARRIVAL ORDER, which is what makes this safe to do under somebody
-	// who is reading: the slice is already in [app.taskOrder]'s order and the sort
-	// is stable, so two settled siblings never trade places and the block is still
-	// the family in the order the session met it wherever the states agree.
-	for up := range kids {
-		under := kids[up]
-		sort.SliceStable(under, func(i, j int) bool {
-			return a.railGroupOf(under[i]) < a.railGroupOf(under[j])
-		})
-	}
 	return kids, byKey
 }
 
@@ -2823,16 +2783,8 @@ func (t *railTwig) count() int {
 	return n
 }
 
-// railForest is every family this session has, each in the order it was
-// admitted, and the roots in the order the column draws them.
-//
-// A FAMILY STANDS WHERE ITS MOST URGENT MEMBER PUTS IT. The headings are gone
-// and this is what replaced them: the work that will not move without a person
-// is at the top of the column, then what is running, then what is waiting, then
-// what is parked, then what is over — the same five words the footer counts in,
-// applied to a whole run rather than to one node of it. Ties are broken by the
-// root's own arrival order, which is the order [app.taskOrder] is already in, so
-// two settled runs never trade places while nobody is looking.
+// railForest preserves creation order. State changes update each row without
+// moving a task away from the place where the person first saw it.
 func (a *app) railForest() []*railTwig {
 	kids, byKey := a.railKin()
 	seen, grown := map[string]bool{}, map[string]bool{}
@@ -2850,26 +2802,7 @@ func (a *app) railForest() []*railTwig {
 		seen[key] = true
 		trees = append(trees, railGrow(root, kids, grown))
 	}
-	// A STABLE SORT AND NOT A COMPARISON ON ARRIVAL. The slice is already in root
-	// arrival order, so stability IS the tie-break — spelling the tie out in the
-	// comparison would be the same law written twice.
-	sort.SliceStable(trees, func(i, j int) bool {
-		return a.railTreeUrgency(trees[i]) < a.railTreeUrgency(trees[j])
-	})
 	return trees
-}
-
-// railTreeUrgency is the family's place in the column: the most urgent thing in
-// it, in the group order this file already sorts by ([railGroup]'s constants are
-// that order).
-func (a *app) railTreeUrgency(t *railTwig) railGroup {
-	worst := a.railGroupOf(t.node)
-	for _, kid := range t.kids {
-		if g := a.railTreeUrgency(kid); g < worst {
-			worst = g
-		}
-	}
-	return worst
 }
 
 // railKinLive reports whether anything in this node's family is still moving or
@@ -2915,9 +2848,7 @@ func (a *app) railTwigLive(t *railTwig) bool {
 // and a name, under the fuller row that was already there.
 //
 // So the ownership rule, stated once: A WORKER IS DRAWN BY THE FAMILY THAT
-// OWNS IT, on the row its own notice minted. The live tree is still read — for
-// the count in the column's head, which is the one thing about it a row cannot
-// say (see [workingNowAgent]).
+// OWNS IT, on the row its own notice minted.
 func (a *app) railEntries() []railEntry {
 	out := make([]railEntry, 0, len(a.taskOrder))
 	for _, tree := range a.railForest() {
@@ -3262,7 +3193,7 @@ type railLine struct {
 	// hint says this line is the footer's widen offer, which is pressable and
 	// belongs to no entry.
 	hint bool
-	// stow says this line is the footer's last one, the column's own door
+	// stow marks the pinned first line, the column's own door
 	// ([railStowHint]). It is a second flag rather than a kind on the line above
 	// because both can be drawn at once and a press has to tell them apart: one
 	// changes the column's width and the other takes it off the frame.
@@ -3356,13 +3287,18 @@ func (a *app) railView(height int) ([]railLine, int) {
 	if height <= 0 || !a.railStanding() {
 		return nil, -1
 	}
-	if !a.roomOpen() {
-		return a.railContentView(height)
+	// The hide control belongs to the sidebar, outside every scrolling list
+	// and task panel. Neither a new task nor a deeper page may displace it.
+	var head []railLine
+	if !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= a.railRoom() {
+		head = append(head, railLine{text: a.railDoorLine(), entry: -1, stow: true})
 	}
-	rows, focus := a.railContentView(height - 1)
-	word := a.icon(tokens.GScopeUp) + " " + railMainWord
-	head := railLine{text: a.pal.accent(fit(word, a.railRoom())), entry: -1, roomAction: railMainAction}
-	return append([]railLine{head}, rows...), focus
+	if a.roomOpen() && len(head) < height {
+		word := a.icon(tokens.GScopeUp) + " " + railMainWord
+		head = append(head, railLine{text: a.pal.accent(fit(word, a.railRoom())), entry: -1, roomAction: railMainAction})
+	}
+	rows, focus := a.railContentView(height - len(head))
+	return append(head, rows...), focus
 }
 
 func (a *app) railContentView(height int) ([]railLine, int) {
@@ -3419,34 +3355,9 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 	margin := a.marginRows(room, marginRoomFor(body-len(head), len(lines)))
 	window := max(body-len(head)-len(margin), 0)
 
-	// WORK THAT IS STILL GOING IS NEVER SCROLLED OFF THIS COLUMN. The families
-	// are already sorted so that everything live leads ([app.railForest]), and
-	// that alone was not enough: a person who walked the cursor down into two
-	// hundred landed nodes took the running ones off the top of the window with
-	// it, and the column that exists to say "this is happening" said nothing about
-	// what was happening. So the live head is PINNED and only what is under it
-	// scrolls.
-	//
-	// IT YIELDS ONE ROW, never more. A session with more live work than the column
-	// is tall would otherwise pin the whole window and leave nothing to scroll; the
-	// honest answer to a column that has run out of room is the page the footer
-	// names ([taskSheetMoreHint], taskview.go) rather than a live row quietly
-	// dropped.
-	pin := 0
-	if window > 1 {
-		pin = min(a.railMovingHead(lines, entries), window-1)
-	}
-	tail := lines[pin:]
-	// The rows the WINDOW gets, which is what is left of the roster's own share
-	// once the pinned head has taken its own.
-	scroll := window - pin
-
-	// The cursor the window follows is the focused entry's first line, and the
-	// offset itself when nothing is focused: a roster nobody is navigating stays
-	// where it was rather than snapping back to the top under a landing node. A
-	// cursor inside the pinned head needs no scroll at all — those lines are on
-	// screen by construction — so the offset is merely clamped there.
-	cursor := a.railTop + pin
+	// The task list scrolls as one creation-ordered sequence. Only the sidebar
+	// controls are pinned; a running task must not split that sequence.
+	cursor := a.railTop
 	if focus >= 0 {
 		for i, line := range lines {
 			if line.entry == focus && line.head {
@@ -3455,14 +3366,13 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 			}
 		}
 	}
-	a.railTop = listTop(max(cursor-pin, 0), a.railTop, len(tail), scroll)
+	a.railTop = listTop(cursor, a.railTop, len(lines), window)
 
 	out := make([]railLine, 0, height)
 	out = append(out, head...)
-	out = append(out, lines[:pin]...)
 	i := a.railTop
-	for ; i < len(tail) && len(out) < len(head)+window; i++ {
-		out = append(out, tail[i])
+	for ; i < len(lines) && len(out) < len(head)+window; i++ {
+		out = append(out, lines[i])
 	}
 	// A LONG LIST'S TAIL FADES WITH DEPTH — NEVER STRIPES (depthfade.go). The
 	// column is the surface's longest list and the one most often cut off, and
@@ -3471,15 +3381,10 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 	// and say there is more of this than fits. A column whose last entry is on
 	// screen fades nothing: there is nothing below it to point at.
 	//
-	// The depth is measured over the label and the pinned head as well as the
-	// scrolling part, because the pinned live head is the sharpest head this
-	// column has: work that is still going leads the column by construction, and
-	// the fade walking away from it is exactly the shape the pin was already
-	// drawing. It stops at the ROSTER'S OWN LAST ROW rather than at the bottom of
-	// the column — what is under it is the reserved block, which is not the list
-	// being cut off and must not read as the quiet end of one.
+	// The fade stops at the task window. The pinned hide control and the
+	// actions below the list remain readable at every scroll position.
 	for at := range out {
-		if stop := tailStop(at, len(out), i < len(tail)); stop >= 0 {
+		if stop := tailStop(at, len(out), i < len(lines)); stop >= 0 {
 			out[at].fade = stop + 1
 		}
 	}
@@ -3497,7 +3402,7 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 	}
 	for i, text := range foot {
 		out = append(out, railLine{
-			text: text, entry: -1, hint: i == marks.hint, stow: i == marks.door,
+			text: text, entry: -1, hint: i == marks.hint,
 			more: i == marks.more, keeping: i == marks.keeping})
 	}
 	return out, focus
@@ -4056,7 +3961,7 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		a.railWiden(!a.railWide)
 		return nil, true
-	case "ctrl+v":
+	case effortKey:
 		// HOW HARD THE FOCUSED NODE THINKS, one step up the ladder. It is read
 		// here — inside the hold, beside the keys that move the cursor — because
 		// the roster's cursor IS what "the task you are standing on" means while
@@ -4343,19 +4248,15 @@ const railFootMax = 3
 // railFootMarks is where the footer's pressable lines landed, as indices into
 // the rows it returns, or -1 for a line this frame did not draw.
 //
-// IT IS A STRUCT AND NOT FOUR RETURNED INTEGERS because there are four of them
-// now: a caller unpacking `foot, hint, door, more, keeping :=` is four
-// positional ints nobody can read at the call site, and the fourth was added by
-// putting the standing count at the foot of the column (standdoor.go).
+// The named fields keep each pointer target attached to the row that drew it.
 type railFootMarks struct {
-	// hint is the widen offer, door the column's own way out, more the door onto
-	// the task page, and keeping the standing count.
-	hint, door, more, keeping int
+	// hint is the widen offer, more the task page, and keeping the standing count.
+	hint, more, keeping int
 }
 
 // noRailFoot is the answer for a frame with no footer at all: every line
 // missing.
-var noRailFoot = railFootMarks{hint: -1, door: -1, more: -1, keeping: -1}
+var noRailFoot = railFootMarks{hint: -1, more: -1, keeping: -1}
 
 // railFootRows is the aggregate: what the window cannot show, said once at the
 // bottom of the column.
@@ -4383,12 +4284,6 @@ var noRailFoot = railFootMarks{hint: -1, door: -1, more: -1, keeping: -1}
 // permanent "w widens" is chrome charged to every session that never grew a
 // tree. It reports which of its lines that offer landed on, or -1, because the
 // line is pressable and the press has to know where it was drawn.
-//
-// AND UNDER IT, THE COLUMN'S OWN DOOR ([railStowHint]). The chevron is always
-// live, while the chord is named only when the column actually owns it: a
-// promotable foreground command takes ctrl+g first. Widening is an offer the
-// column makes about itself when a title is being cut; hiding remains a pointer
-// answer at every moment and a keyboard answer whenever no command can be kept.
 //
 // AND THE STANDING COUNT IS A LINE OF IT SINCE 2026-09-09 ([app.railStandingLine],
 // standdoor.go). It was a segment of the status row; it belongs here, under the
@@ -4426,14 +4321,6 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 		hintText = a.chords.say(railNarrowHint)
 	}
 	offer := a.railOffersResize() && ansi.StringWidth(hintText) <= width
-	// THE DOOR IS ONLY DRAWN WHERE THERE IS A COLUMN TO CLOSE. Over the body the
-	// roster is an overlay a person raised with alt+t and drops with esc
-	// ([app.railFull]), and a second way out named at the bottom of it would be
-	// two exits from a room with one.
-	// The chevron and its space are charged for here, because the door is drawn
-	// with them ([app.railDoorLine]) and a width test that measured only the words
-	// would let the mark run off the end of a narrow column.
-	stow := !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= width
 	// THE DOOR ONTO THE TASK PAGE IS OFFERED ONLY WHEN THERE IS MORE BEHIND IT,
 	// which is the emptiness law applied to an affordance rather than to a figure.
 	// A door on a column that is already showing everything is a row that promises
@@ -4459,7 +4346,7 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	if ansi.StringWidth(standWord) > width {
 		standWord = ""
 	}
-	if len(segs) == 0 && standWord == "" && !offer && !stow && !view {
+	if len(segs) == 0 && standWord == "" && !offer && !view {
 		return nil, noRailFoot
 	}
 	// The footer never takes more than a third of the column: a roster that is
@@ -4484,10 +4371,9 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 		marks.keeping = len(out)
 		out = append(out, a.railStandingLine())
 	}
-	// THE PAGE'S DOOR GOES DIRECTLY UNDER THE TALLY, above the two lines about the
-	// column itself. The order is what the lines are ABOUT: the counts say what
-	// this session has, the door says where the rest of it is, and widening and
-	// hiding are answers to "how much of my screen is this taking". A person
+	// THE PAGE'S DOOR GOES DIRECTLY UNDER THE TALLY, above the width offer.
+	// The counts say what this session has, the door says where the rest of it
+	// is, and widening answers "how much of my screen is this taking". A person
 	// reading the tally and wanting more finds the next line saying so.
 	//
 	// IT IS DIM, which is the same weight the tally above it wears and the
@@ -4501,12 +4387,6 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	if offer && len(out)+1 < height {
 		marks.hint = len(out)
 		out = append(out, paintHint(hintText, a.pal, a.pal.dim))
-	}
-	// The door goes UNDER the width offer, at the very bottom of the column, which
-	// is where a person looks for the way out of anything.
-	if stow && len(out)+1 < height {
-		marks.door = len(out)
-		out = append(out, a.railDoorLine())
 	}
 	return out, marks
 }
@@ -4995,12 +4875,8 @@ func (a *app) railUnderCols(e railEntry) int {
 // railWorst is the node whose state a folded family wears: the most urgent thing
 // under it, its root included.
 //
-// IT IS NOT [app.railTreeUrgency] AND THE DIFFERENCE IS THE FAILURE. Where a
-// family STANDS in the column is a question about what a person still has to do,
-// and a failure that kept no branch is nothing they have to do (see
-// [app.railGroupOf]) — but the glyph on a folded row is the news of the subtree,
-// and "something in here did not come off" is the loudest news there is short of
-// a demand. So the two orders differ by exactly one rank.
+// A family's position is stable, but its folded glyph still reports the most
+// urgent state among its members.
 func (a *app) railWorst(t *railTwig) *taskNode {
 	worst := t.node
 	for _, kid := range t.kids {
@@ -5018,10 +4894,8 @@ func (a *app) railWorst(t *railTwig) *taskNode {
 // THE ONE RANK THE TIERS DO NOT DECIDE IS `over` AND UNFINISHED. The glyph on a
 // folded row is the news of the subtree, and "something in here did not come
 // off" is the loudest news there is short of a demand — so an incomplete child
-// outranks a sibling that has not started, which is why this order and
-// [app.railTreeUrgency]'s differ by exactly one rank. Where a family STANDS in
-// the column is a question about what a person still has to do; what it WEARS is
-// a question about what happened in it.
+// outranks a sibling that has not started. The glyph reports what happened
+// without changing the family's creation order.
 //
 // A CHILD WHOSE DECISION IS ITS PARENT'S AGENT'S DOES NOT MAKE THE FOLDED ROW A
 // DEMAND, which is [app.railGroupOf]'s law said on one cell: the parent holds
@@ -5905,6 +5779,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if a.room != nil && a.room.id == node.id && a.room.title == taskIDWord(node.id) {
 		a.room.title = node.title
 	}
+	var resumed tea.Cmd
+	if (notice.State == session.TaskQueued || notice.State == session.TaskRunning) &&
+		(node.state == session.TaskFailed || node.state == session.TaskDone || node.state == session.TaskUnverified) {
+		a.resetRetriedTask(node)
+		resumed = a.resumeRetriedRoom(node)
+	}
 	node.state = notice.State
 	if len(notice.DependsOn) > 0 {
 		node.dependsOn = notice.DependsOn
@@ -5951,15 +5831,11 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if notice.Mode != "" {
 		node.mode = notice.Mode
 	}
-	// WHO ENDED IT IS KEPT AND NEVER UNSET, on the rule the branch and the price
-	// are kept by: a person stopping this node is a fact about the work, and an
-	// update that says nothing about it is not an update that undid it. It also
-	// cannot arrive twice — nothing on the engine's side ever un-stops a node.
+	// Ending facts remain stable within an attempt; resetRetriedTask clears them
+	// when the same node returns to queued or running.
 	if notice.Stopped {
 		node.stopped = true
 	}
-	// AND WHY, kept on the same rule: an ending is a fact about how the work
-	// ended, and no later update un-ends it.
 	if notice.Ending != "" {
 		node.ending = notice.Ending
 	}
@@ -6071,6 +5947,9 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		a.dropTaskQuestion(a.task.id, taskStartedItselfReason)
 		a.markCardStale(a.task)
 	}
+	if node.retried && (notice.State == session.TaskQueued || notice.State == session.TaskRunning) {
+		a.landedCard(node)
+	}
 	var pilot tea.Cmd
 	switch notice.State {
 	case session.TaskRunning:
@@ -6123,7 +6002,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		}
 	}
 	a.touch()
-	return pilot
+	if node.retried && a.taskSheet.detailOn && a.taskSheetNodeFor(&a.taskSheet.detail) == node &&
+		notice.State != session.TaskRunning && notice.State != session.TaskQueued {
+		a.taskSheet.detail = a.currentTaskEntry(a.taskSheet.detail)
+		return tea.Batch(resumed, pilot, a.readTaskTail(a.taskSheet.detail))
+	}
+	return tea.Batch(resumed, pilot)
 }
 
 // cardFor is the proposal this surface drew about one node, or nil.

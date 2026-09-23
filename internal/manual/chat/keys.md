@@ -4,12 +4,23 @@
 
 `enter` sends the message you have typed.
 
-`alt+enter` opens a new line inside the message without sending. `ctrl+j` does the
-same thing — it is a second spelling for terminals that swallow `alt+enter`.
+`shift+enter` opens a new line without sending in home's message box, its ask-here
+pane, and conversations, including task rooms and while an answer is running.
+In conversations, `alt+enter` and `ctrl+j` also open a line. On home, `alt+enter`
+keeps its task-composer action.
 
-`shift+enter` does **not** open a line. While a turn is running it **stops the answer
-and sends what you have typed** — see "Interrupt and say something new in one key"
-below. At rest it does nothing at all. Use `alt+enter` or `ctrl+j` to open a line.
+On home, even a blank line hides the placeholder and moves the cursor onto the
+new line. Left/right move through the draft; up/down move between its lines,
+then return to list navigation at the top or bottom. Deleting the entire draft
+brings the placeholder back.
+
+Shift+enter requires a terminal that distinguishes it from plain enter. If your
+terminal sends plain enter instead, it has the ordinary send behavior; use
+`alt+enter` or `ctrl+j` in a conversation as a fallback.
+
+`ctrl+shift+enter` while a turn is running **stops the answer and sends what you
+have typed** — see "Interrupt and say something new in one key" below. At rest it
+does nothing.
 
 `cmd+enter` while a turn is running **holds** what you have typed for the answer
 after this one. It is the secondary choice for when you do not want to change the
@@ -67,16 +78,16 @@ have just said you do not want. If you then type something else, the model reads
 lines in the order you sent them; the stopped command is not restarted by the second
 one.
 
-## Enter, cmd+enter, shift+enter, and the waiting-message keys
+## Enter, cmd+enter, ctrl+shift+enter, and the waiting-message keys
 
 | What you do | What happens |
 |---|---|
 | `enter` | stops the current generation and sends the words into this turn |
 | `cmd+enter` | holds the message for an ordinary turn after this answer |
-| `esc` | stops the answer and clears both waiting-message queues |
+| `ctrl+c` | stops the answer and clears both waiting-message queues |
 | `→` over an empty box | steers the oldest waiting words into the running answer |
 | click `→ steers it in` | the same, with the pointer |
-| `shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
+| `ctrl+shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
 | `↑` over an empty box | takes the newest waiting message back into the box to edit |
 | click the block | takes **that** message back into the box to edit |
 | `cmd+enter` again | holds the edited sentence again |
@@ -85,7 +96,7 @@ Attachments in the tray go with the held message, and come back on the tray if y
 it back. `/`-commands are **not** held: a slash command is something you said to this
 surface rather than to the model, and it runs at once.
 
-**Limits.** `esc` with nothing waiting is exactly the plain interrupt it always was.
+**Limits.** `ctrl+c` interrupts only while a turn is running; at rest it quits.
 With messages waiting, it clears both the editable parked queue and the `ctrl+q`
 follow-up queue. Each nonempty queue says what was dropped — `1 waiting message dropped`
 or `N waiting messages dropped` for parked messages, and the corresponding `queued`
@@ -134,7 +145,7 @@ want to pay for stopping it. The three keys, side by side:
 |---|---|---|
 | `enter` | current generation stops; partial kept | goes into the same turn now |
 | `cmd+enter` | keeps going | waits above the box until the answer finishes |
-| `shift+enter` | stopped, and what it said is kept | opens the next turn |
+| `ctrl+shift+enter` | stopped, and what it said is kept | opens the next turn |
 
 **Over an empty box `enter` does nothing**, unless a waiting message offers the `→`
 shortcut. At rest, `enter` sends an ordinary new turn.
@@ -155,12 +166,12 @@ line does not offer `→ steers it in`.
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · shift+enter stops and sends · esc interrupt
+enter steers it in · ctrl+shift+enter stops and sends · ctrl+c interrupt
 ```
 
 That is the terminal-capable form when no command can be kept. A running foreground
-command adds `ctrl+g backgrounds` immediately before `esc interrupt`; a terminal that
-cannot deliver `shift+enter` leaves that clause out. `cmd+enter` still waits, but the
+command adds `ctrl+g backgrounds` immediately before `ctrl+c interrupt`; a terminal that
+cannot deliver `ctrl+shift+enter` leaves that clause out. `cmd+enter` still waits, but the
 one-line slot no longer advertises it.
 
 ## My message went in too late — the answer finished first, so it became the next message
@@ -243,7 +254,7 @@ before this binding is read, so a `?` typed into one of those reaches it and not
 
 ## Stop it and tell it something different at the same time — interrupt and say something new in one key
 
-`shift+enter` while a turn is running **stops the answer and sends what is in the box**,
+`ctrl+shift+enter` while a turn is running **stops the answer and sends what is in the box**,
 as one gesture. Unlike a steer, it ends the whole turn and starts your sentence as a
 new one after the stop finishes.
 
@@ -276,29 +287,29 @@ means "instead of that". One key does not do both.
 `enter` in a room steers the node there and then, with no queue to jump, and a room's way
 of ending work is `x` and a card that asks first. The chord is ignored there.
 
-**Terminals that cannot send it.** `shift+enter` reaches a program only where the terminal
+**Terminals that cannot send it.** `ctrl+shift+enter` reaches a program only where the terminal
 can tell it apart from a plain `enter` — the kitty keyboard protocol, xterm's
 modifyOtherKeys, or win32-input. Where it cannot, the key arrives as an ordinary `enter`
 and your message **steers** instead. On those terminals codeaf never advertises the
-chord. Use `esc` to stop the whole turn, then send the next message normally.
+chord. Use `ctrl+c` to stop the whole turn, then send the next message normally.
 
 **The line that teaches it.** While a turn is running and you have typed something, the
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · esc interrupt
+enter steers it in · ctrl+c interrupt
 ```
 
 On a terminal that can spell the secondary chords, the line reads
-`enter steers it in · shift+enter stops and sends · esc interrupt`. A foreground
+`enter steers it in · ctrl+shift+enter stops and sends · ctrl+c interrupt`. A foreground
 command that can be kept inserts `ctrl+g backgrounds` before the final stop clause.
 
 **A picture on the tray is a message even when the box has no words.** It cannot steer, so
-that form reads `enter waits · esc interrupt`, or
-`enter waits · shift+enter stops and sends · esc interrupt` on a terminal that can
+that form reads `enter waits · ctrl+c interrupt`, or
+`enter waits · ctrl+shift+enter stops and sends · ctrl+c interrupt` on a terminal that can
 spell the secondary chord. With neither words nor a picture, the line is simply
-`esc interrupt`, unless a command can be kept, when it is
-`ctrl+g backgrounds · esc interrupt`.
+`ctrl+c interrupt`, unless a command can be kept, when it is
+`ctrl+g backgrounds · ctrl+c interrupt`.
 
 ## I typed while it was working — did my message get lost?
 
@@ -324,9 +335,25 @@ The one thing that is not answered is a message you queued with `ctrl+q` for a
 turn you then **interrupted**. A drain never restarts a turn you stopped, so those
 are dropped — press `enter` again to send it.
 
+## Escape, esc, back, and getting home without stopping work
+
+Press `esc` to go back one layer: close a picker, leave an editor or room, or put a
+question aside. With no layer left, Escape opens Home. Further presses stay on Home.
+Message drafts, running turns and queued messages are preserved. Filters may clear first.
+**A message waiting above the box is preserved too, with its pictures, and still goes when
+that answer ends even while Home or another chat is in front.** The exception is a
+connection that holds one conversation at a time: its waiting words and pictures return
+to the box and tray because the old conversation has ended. Escape never starts rewind or
+stops a turn. `ctrl+c` interrupts a running turn and quits when idle; `/rewind` opens the
+rewind timeline.
+
+The double-space binding has been removed. Spaces type normally in message boxes.
+`/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row or use
+`alt+k` to return to a conversation; Escape does not leave Home.
+
 ## Interrupting a running turn — how do I stop it mid answer
 
-Press `esc` or `ctrl+c`. While a turn is running, both do the same thing: the turn
+Press `ctrl+c` while a turn is running. The turn
 is stopped and everything it already said is kept.
 
 What happens:
@@ -338,9 +365,7 @@ What happens:
    dropped`, or `N queued messages dropped`.
 4. The status word becomes `stopping`, then `interrupted`, and `interrupted` stays as the
    status word until the next turn starts.
-5. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
-   immediately as the next turn. That is the whole difference `esc` makes while
-   something is waiting.
+5. Parked messages are dropped too. Escape preserves both queues and goes back instead.
 
 **The words codeaf uses for one stop.** They are five slots and one key press, so they
 are worth reading together: `stopping` is the status word while the turn is being let go,
@@ -353,23 +378,20 @@ you are looking for the word *interrupted* anywhere else on the screen, that is 
 is — the status line, and only after the turn has truly ended.
 
 **What the screen says.** While a turn runs, the right end of the row under the
-message box ends with `esc interrupt` — for example
-`enter steers it in · shift+enter stops and sends · esc interrupt` while you have
-typed something and this terminal can deliver `shift+enter`. A foreground command that
+message box ends with `ctrl+c interrupt` — for example
+`enter steers it in · ctrl+shift+enter stops and sends · ctrl+c interrupt` while you have
+typed something and this terminal can deliver `ctrl+shift+enter`. A foreground command that
 can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
-`esc stops and drops`. On the very first frame of a session the conversation carries the note
-`esc interrupts · ctrl+c quits · ? for help`.
+`ctrl+c stops and drops`. On the very first frame of a session the conversation carries the note
+`esc back · ctrl+c interrupts or quits · ? for help`.
 
-**Stopping it and saying something new at once.** `shift+enter` does both in one key —
-see "Interrupt and say something new in one key" above. `esc` on its own stops without
+**Stopping it and saying something new at once.** `ctrl+shift+enter` does both in one key —
+see "Interrupt and say something new in one key" above. `ctrl+c` on its own stops without
 sending anything you have not already committed with `enter`.
 
-**Limits.** Interrupting does nothing at all when no turn is running. `esc` reaches
-the interrupt last: a history recall is cancelled first, rewind is armed on the way
-past, and any open list or overlay takes the key before the message box sees it. So
-`esc` while the command list or the `@` list is open closes that list and does
-**not** interrupt.
+**Escape is back, not stop.** It dismisses the nearest layer and eventually reaches
+Home, preserving drafts and running work. Ctrl+C at rest quits the application.
 
 **Mid-turn `ctrl+c` only ever interrupts — that press never leaves.** It is spent on
 the model. The NEXT press is read at rest, and at rest `ctrl+c` is the way out — so the
@@ -380,11 +402,10 @@ codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
 
 ## Esc is not stopping it — how long does a stop take, why the turn is still finishing, how long stopping takes, and what happens if it will not let go
 
-**I pressed escape and it is still running.** That is this section: escape is not being
-ignored, the turn is being let go of, and if it will not let go codeaf ends it for you
-after ten seconds.
+**Escape no longer stops work.** Use `ctrl+c` to interrupt. After Ctrl+C, the turn
+may need a few seconds to let go; codeaf stops waiting after ten seconds.
 
-`esc` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
+`ctrl+c` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
 `bash` call whose command left something holding its output waits up to three seconds
 before the pipes are forced shut, and a `jobs` kill spends two seconds on a polite signal
 and two more on the one that is not polite. For those seconds the status line reads
@@ -406,10 +427,8 @@ becomes a row. Two things do still land, because neither can draw anything new: 
 that was **already** on screen reports its own result if it returns in that moment, and
 what the turn spent is still counted.
 
-**No key makes it stop harder, because the second stage is a clock and not a key.** A
-second `esc` inside half a second is the rewind's door and `ctrl+c` at rest is the way
-out, so neither is free — and you do not need one. The `esc` you already pressed started the
-10-second window, and when it runs out codeaf stops waiting on its own.
+**No key makes it stop harder.** The first Ctrl+C starts the ten-second window;
+codeaf stops waiting when it expires. Another Ctrl+C at rest quits. Escape goes back.
 
 **What happens at 10 seconds.** codeaf detaches from the turn: the waits codeaf holds are
 ended and whatever request was still open to the model is aborted. A wait that ignores
@@ -434,15 +453,17 @@ process with it — but you no longer have to reach for that just to get your pr
 
 ## Quitting codeaf — how do I exit codeaf, how do I close codeaf, or why did ctrl+c not quit
 
+To exit codeaf, press `ctrl+c` once. That is the whole gesture: there is no second
+press to make, no window to beat, and nothing asking you to confirm it.
+
 **`ctrl+c`, once.** With nothing running, the press that lands is the way out: codeaf
-writes your draft to disk and exits. There is no second press to make, no window to
-beat, and nothing asking you to confirm it.
+writes your draft to disk and exits.
 
 **If `ctrl+c` did not quit, a turn was running.** Mid-turn that key is the interrupt —
-the same thing `esc` does — and the press is spent on the model. Press it again once the
-answer has stopped and codeaf leaves.
+the press is spent on the model. Escape only navigates back. Press it again once the
+answer has stopped and codeaf exits.
 
-**Nothing you typed is lost by leaving.** The unsent sentence in the box goes to disk,
+**Nothing you typed is lost when you exit.** The unsent sentence in the box goes to disk,
 with any message that was still waiting for an answer folded in underneath it, and the
 next launch puts them back in the box. See "What quitting saves and closes" below.
 
@@ -464,8 +485,8 @@ one that does.
 
 The quit gesture is one `ctrl+c`, but where the press lands changes what it does.
 
-**Mid-turn it is only the interrupt.** While an answer is streaming, `ctrl+c` is the same
-key `esc` is: it stops the turn, and that press does not leave. The next one, at rest,
+**Mid-turn it is only the interrupt.** While an answer is streaming, `ctrl+c`
+stops the turn, and that press does not leave. The next one, at rest,
 does — so the two-tap people make mid-turn stops the model once and then quits.
 
 **It works over everything.** `ctrl+c` is read above every picker, panel, room, mode
@@ -541,24 +562,25 @@ These apply with no overlay up, no room open, and no mode on.
 |---|---|
 | `enter` | Send the message. Empty box with attachments still sends; empty box with a tool row selected opens that row |
 | `ctrl+enter` | Send it as something to **keep true** — codeaf shapes it into a standing order's card instead of doing it once. See the standing orders page |
-| `alt+enter` | Open a new line in the message |
+| `shift+enter` | Open a new line without sending, on home and in conversations |
+| `alt+enter` | Open a new line in a conversation |
 | `ctrl+j` | Same as `alt+enter` |
-| `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
-| `esc` `esc` | Two presses inside a short window open the quick inline rewind mode. `/rewind` opens the full timeline instead |
+| `esc` | Back one layer, then Home; preserves message drafts and running work |
+| `/rewind` | Opens the rewind timeline; repeated Escape never rewinds |
 | `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: quit codeaf, on that press |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | A foreground command that can be kept: send that command to the background. Otherwise: close the task column, or bring it back. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `enter` while a turn runs | Stop the current generation, keep its partial reply, and steer the words into the same turn |
 | `cmd+enter` while a turn runs | Hold the message above the box until the answer finishes. Empty box: nothing. Nothing running: nothing |
-| `shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
+| `ctrl+shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
 | `→` over an empty box, a message waiting | Send that waiting message into the running answer. With text in the box it is the caret key |
 | `↑` over an empty box | Take the newest waiting message back into the box to edit; with none waiting, walk your history |
 
 The enter family, shortest first: `enter` sends or steers, `cmd+enter` holds it for the
-next answer, `ctrl+enter` marks it as something to keep true, `shift+enter` stops the
-whole turn and sends, and `alt+enter` or `ctrl+j` opens a line.
+next answer, `ctrl+enter` marks it as something to keep true, `ctrl+shift+enter` stops the
+whole turn and sends, and `shift+enter`, `alt+enter` or `ctrl+j` opens a line.
 
-Neither `shift+enter` nor `cmd+enter` opens a line — use `alt+enter` or `ctrl+j` for that.
+Neither `ctrl+shift+enter` nor `cmd+enter` opens a line — use `shift+enter` for that.
 Both need a terminal that can tell them apart from plain `enter`; where it cannot, the
 key arrives as ordinary `enter` and the message steers instead.
 
@@ -570,8 +592,9 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
-| `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed |
-| `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
+| `alt+e` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam |
+| `alt+a` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home and every other place it walks the gate of the **next** conversation — the `◇` cell on the rule above that box — and that pin is spent by the conversation that uses it |
+| `ctrl+.` | Open the sessions place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, the same door as `enter` on a `projects` row |
@@ -681,8 +704,8 @@ letter you aimed at, at the row's end when you click past the end of a line, and
 at the start of the text when you click on the prompt's side of it. It works on
 a wrapped, multi-line draft — the row you click is the row the caret lands on.
 
-It is the ordinary text-field gesture, and **the box on every place answers it
-too** — home, tasks, standing, memory, spend, search, settings. Holding the button
+It is the ordinary text-field gesture, and **home's box at the foot of the screen answers
+it too** — the one place with a box (the Places page, *Typing on a place*). Holding the button
 down and sweeping selects instead, and releasing copies what is lit (see "how do I
 select text in the message box" above). While a picker's
 filter box is standing in the box's place — the model picker, `/resume`,
@@ -751,7 +774,7 @@ task page and the rewind sheet they move the **list**, not the caret.
 ## cmd+right on home no longer puts a conversation away
 
 `ctrl+e` sets the row under the cursor aside on home — a conversation goes to the
-archive, a standing item is paused, and the card's legend says `ctrl+e put away`.
+archive, a standing item is paused, and the card's legend says `ctrl+e close`.
 `cmd+→` arrives as `ctrl+e` on a Mac, so reaching for the end of a sentence used
 to archive whatever the cursor was resting on.
 
@@ -762,16 +785,16 @@ So one press is never destructive, and the way back out of the archive still
 works: type the name of a row you put away, the list finds it, and `ctrl+e` from
 there brings it back.
 
-## Click the box to put the caret there — on home and on every place
+## Click the box to put the caret there — in the conversation and on home
 
 A click on the box puts the caret under the pointer: on the letter you aimed at,
 at the row's end when you click past the end of a line, and at the start of the
 text when you click on the prompt's side of it. It works on a wrapped, multi-line
 draft.
 
-It answers **on every place as well as in the conversation** — home, tasks,
-standing, memory, spend, search, settings. Until this wave only the conversation's
-message box answered it, so a click in home's box moved nothing.
+It answers **on home as well as in the conversation** — home is the one place with
+a box at its foot (the Places page, *Typing on a place*); the filters on tasks,
+memory and search are rows of their own bodies.
 
 Two things it does not do. With **nothing typed** there is no caret to place, so
 the click falls through to the place underneath — the row is carrying a dim
@@ -895,7 +918,7 @@ your sent message too. It adds no characters and no cells; see "Slash commands a
 as chips" in the commands page for the whole of it.
 
 **A key chord is never given that background.** Where codeaf names a key — the hint slot
-on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c quits · ? for
+on the legend, the `/help` sheet, the opening `esc back · ctrl+c interrupts or quits · ? for
 help` — the
 chord is drawn one tier brighter than the words around it and nothing else changes. A
 tinted background always means a slash command and only ever that, so the two marks
@@ -1043,7 +1066,7 @@ that has moved on. There is nothing to press; it is automatic.
   leave behind, and what `ctrl+enter` and `shift+enter` leave behind on a terminal that
   cannot send those chords, and nothing on the frame draws them. One kept on disk used
   to be adopted by the next window in the directory, which then opened with a box that
-  looked empty, was not, and refused `space space` for home.
+  looked empty but still held invisible whitespace.
 - The file is keyed by the directory plus this process's id, and is written with mode
   0600.
 - At startup, if this window's own draft file is missing, codeaf takes the newest
@@ -1130,13 +1153,15 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
-## The thinking chip above the message box — `ctrl+v`, `/effort`, and making this chat think harder
+## The thinking chip above the message box — `alt+e`, `/effort`, and making this chat think harder
 
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
+The effort follows a colon with no space: `model:effort`. The model stays bold and
+bright; effort keeps its own styling. The old six-dot badge is no longer shown.
 
 ```
-─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── / commands ─
+─ glm-5.3-flash (deepinfra):high · ◇ asks ──── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 
@@ -1146,10 +1171,16 @@ chose: it is the rung the next turn will ask for, whichever setting decided it. 
 *Making the model think harder, deeper, or less* on the "Models and cost" page for the
 whole ladder and for what each rung asks the provider for.
 
-**A conversation nobody has dialled reads `⠿ auto`**, which is what a shipped install
+**A conversation nobody has dialled reads `auto`**, which is what a shipped install
 says on every fresh conversation. See *What `auto` means beside the model* below.
 
-**`ctrl+v` walks it.** Each press moves one rung up, and off the top it comes back to
+**The same cell is on the rule above the box on home**, where it
+says how hard the conversation you are about to start will think, and `alt+e` or a press
+walks it there too. A rung set there is carried onto the conversation `enter` opens and
+lasts as long as this window does. *The rule above home's box* on the Places
+page has all four cells of that rule.
+
+**`alt+e` walks it.** Each press moves one rung up, and off the top it comes back to
 `auto`: auto → low → medium → high → xhigh → max → auto. It works with a sentence half
 typed — it is a chord, it carries no text of its own, and it leaves your draft and your
 caret exactly where they were. Ordinary letters keep typing.
@@ -1161,7 +1192,7 @@ not open a list: the list is `/effort`.
 
 **`/effort` opens the ladder**: six rows — `auto` first, then the five rungs cheapest
 first — with the row you are on marked. `↑`/`↓` walk it, `enter` applies, `esc` closes,
-and `ctrl+v` moves the cursor down a row while the list is up. While the list is up
+and `alt+e` moves the cursor down a row while the list is up. While the list is up
 **every key belongs to it** — a plain letter does not type into the message box
 underneath. Typing `/effort` again puts the list away. `/thinking` and `/think` are the
 same command. The six rows read:
@@ -1193,7 +1224,7 @@ What it changes and what it does not:
   row in `/settings`, which ships at `auto` (the provider default).
 - **`auto` is on the legend, it is the ladder's top row, and it is a stop on the wheel.**
   With thinking at `auto` and no more specific level chosen — which is what a shipped
-  install is — the cell reads `⠿ auto`, it is pressable, and `ctrl+v` walks it onto `low`.
+  install is — the cell reads `auto`, it is pressable, and `alt+e` walks it onto `low`.
   One more press past `max` brings it back to `auto`.
 - **It works on a `--host` conversation.** The rung is set on the engine machine, where
   the conversation lives, and the word on your legend is the one that machine resolved.
@@ -1202,29 +1233,100 @@ What it changes and what it does not:
 
 **When the rung will not move.** A thinking level dialled onto the model itself — the
 model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation's rung. Press
-`ctrl+v` there and codeaf says so in a note, naming the model and pointing at `ctrl+t`:
+`alt+e` there and codeaf says so in a note, naming the model and pointing at `ctrl+t`:
 *thinking stays low · the level set on \<model\> decides this conversation — ctrl+t in
 /model changes it*. Clear that level and the rung moves again.
 
 The rung is dim, like the rest of that line. It brightens for about two seconds after it
-changes — the cell takes a lit ground and its `⠿` goes cyan — so you can see the new word
+changes — the cell takes a lit ground and its effort word goes cyan — so you can see the new word
 without looking away from what you are typing, and then it goes quiet again. Walking it
 back onto `auto` flashes the same way and writes one line: *thinking · auto · the model
 decides*.
 
+## The approvals chip above the message box — `alt+a`, turning YOLO on inside a chat, stop asking me for this conversation
+
+After the thinking rung, the legend names what this conversation runs **without asking**:
+
+```
+─ glm-5.3-flash (deepinfra):high · ◇ asks ─── $0.27   66.8k/1.3M · 5%   idle ─
+› what changed in the relay this week
+```
+
+The cell is the permissions panel's own mark for "a whole tool" and one word, and it is
+there **at every posture** — a control you cannot see until you have used it is not a
+control. The word is what is in force, whichever setting decided it:
+
+| word | what it means |
+|---|---|
+| `asks` | every call the rules say to ask about is asked about |
+| `guardian` | a small model answers the plainly safe ones first; you get the rest |
+| `YOLO` | every tool runs without asking — the posture `--yolo` opens. Painted in the warning hue for as long as it is true |
+| `refuses` | every call the rules do not name is refused. Also painted as a warning |
+
+**`alt+a` walks it**: asks → guardian → YOLO → asks. Three stops, each more autonomy than
+the last, and **the wheel never lands on `refuses`** — a press past YOLO that refused every
+call would break the session you are in. It works with a sentence half typed and leaves
+your draft and caret where they were. **Pressing the cell walks it too**, one stop per
+press; it brightens under the pointer over exactly its own cells first.
+
+Why not `ctrl+y` or `shift+tab`: `ctrl+y` copies a path on home and in `/files`, and one
+chord means one thing on this surface; `shift+tab` walks backwards through the fields of
+every question card, and on some terminals arrives as a plain `tab`.
+
+**Inside a task's page the cell reads `◇ on its own`** — a task runs every tool without
+asking and has no wheel — and `alt+a` there says so instead of moving anything (the task
+page's "The line above the box on a task's page"). **On home and every other place, the same
+`◇` cell sits on the rule above that box** and
+says what the conversation you are about to start will run without asking — the settings
+rows' answer, or `YOLO` if this process was started with `--yolo`. `alt+a` or a press walks
+it there on the same wheel, the pin is carried onto the conversation `enter` opens, and it
+is **spent** by that conversation: back on home the cell says the rows' word again, so an
+open gate is never quietly the default for the one after. *The rule above the box on every
+place* on the Places page has the whole rule.
+
+What it changes and what it does not:
+
+- It sets **this conversation's** posture, live — the very next tool call is decided under
+  it. It is sticky, kept in this session's own `meta.json`, so it is still there after you
+  close codeaf and `/resume`. `codeaf resume --yolo` outranks the saved word for that
+  launch.
+- It does **not** change other conversations. Their answer is the **"ask before running"**
+  row and the **guardian** row on `/settings`' Safety tab, unless they have a saved
+  posture of their own.
+- **Neither floor moves.** Dangerous shell commands and anything sent in your name are
+  asked about at every stop, `YOLO` included, exactly as under `--yolo`.
+- **It works on a `--host` conversation.** The posture is set on the engine machine, where
+  the gate is, and the word on your legend is the one that machine resolved. An engine
+  too old to have the door says so when the connection opens: the cell is then a reading
+  of the far machine's own row, and `alt+a` and the press both answer:
+  *what runs without asking is decided on the machine the conversation runs on — its engine has no dial for this window · change it in that machine's /settings*.
+
+The cell flashes for about two seconds after it changes and writes one line —
+*approvals · YOLO · every tool runs without asking · dangerous commands still ask* — and
+then settles. While the welcome box is on screen there is no legend and no badge either —
+the cell arrives with the legend the moment the greeting goes (the first keystroke, or on the
+very first conversation the first message). The status line carries the old
+`YOLO` badge only on a frame whose legend has no cell, over an engine with no approvals
+door, and only while the gate is open.
+
 ## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
 
-`⠿ auto` on the line above the message box means **nobody has asked this conversation to
+`auto` on the line above the message box means **nobody has asked this conversation to
 think any particular amount**. codeaf sends no reasoning field on the request at all, and
 the model thinks however it thinks — its own published default. It is not "think as little
 as possible": that is a different request, and `low` is the rung for it.
 
 **It is what a fresh install says.** The **thinking** row in `/settings` ships at `auto`,
-so until you dial something — this conversation with `ctrl+v`, `/effort` or a press on the
-cell; one model with the picker's `ctrl+t`; one task with `ctrl+v` on it; or the machine
-itself in `/settings` — every conversation reads `⠿ auto`.
+so until you dial something — this conversation with `alt+e`, `/effort` or a press on the
+cell; one model with the picker's `ctrl+t`; one task with `alt+e` on it; or the machine
+itself in `/settings` — every conversation reads `auto`.
 
-**To put it back to `auto`:** keep pressing `ctrl+v` or the cell — the wheel's stop after
+Home also keeps `model:auto` on the seam and `alt+e effort` in the bottom row.
+This applies to local engine connections and `--host` alike: an unset default is
+`auto`, not a missing control. Press the effort word or use `alt+e` to change the
+next conversation's effort.
+
+**To put it back to `auto`:** keep pressing `alt+e` or the cell — the wheel's stop after
 `max` is `auto` — or type `/effort auto` (or `/effort off`, the older name for the same
 thing), or open `/effort` and pick the top row. The typed word and the top row do it in
 one move from any rung; the wheel gets there by walking. Until 2026-09-15 the wheel had
@@ -1234,7 +1336,7 @@ at as the one thing the control in front of you could not say.
 Clearing it does not always change the word on the line, and codeaf says why in a note
 either way:
 
-- Nothing else is set: the cell reads `⠿ auto` and the note is *thinking · auto · the
+- Nothing else is set: the cell reads `auto` and the note is *thinking · auto · the
   model decides*.
 - The **thinking** row in `/settings` is set on this machine: a cleared conversation
   falls back to that row, so the cell keeps its word and the note is *thinking · auto for
@@ -1473,19 +1575,39 @@ rows) · `tab` and `→` open the providers under the model the cursor is on and
 cursor into them, `tab` and `←` close them and put it back on the model ·
 `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
-`home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · anything else types into it.
+`home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · **`alt+s`** orders the list by the next
+column and **`alt+shift+s`** turns that column round · anything else types into it.
 
-`→` and `←` only open and close the providers from the **end** and the **start** of what you
-have typed — with anything to step over, they move the caret through the filter text
-instead. `tab` always opens and closes. With the providers open, `enter` on one of them pins
-it instead of switching model.
+Every column is two rungs — its own direction, then reversed — so `alt+s` walks `model ↓`,
+`model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
+published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
+column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
+sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the tasks place gives:
+`s` is one of the commonest letters a filter starts with, and the list a person was
+narrowing would re-sort instead.
 
-Its placeholder reads exactly `filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc`;
-on a narrow terminal the keys drop from the right, `esc` first. The hint slot follows the
-cursor: `→ providers · enter switch · esc` on a model, `enter choose · ← back · esc` inside its
+`→` and `←` are the providers' keys **unless you are in the middle of typing**, in which case
+they move the caret through the filter text. "In the middle of typing" means within **0.6
+seconds** of the last change to the box; every keystroke pushes that out again, so they stay
+the caret's for as long as you keep typing and become the tree's the moment you stop. They
+are also always the tree's at the very end and the very start of the text, where there is no
+character to step over — so an empty box, which is most of this list's life, never waits.
+
+**To get the caret back without waiting, press any key that edits** — a letter, `backspace`,
+`ctrl+w`, or a paste — or `ctrl+b`/`ctrl+f`, which are `←`/`→`'s understudies, are never the tree's, and
+so move the caret without changing a letter of what you typed. Walking the list with
+`↑`/`↓` does **not** count as editing, so reading a filtered list never takes the arrows back
+from the tree. `tab` always opens and closes whatever the box is doing.
+
+With the providers open, `enter` on one of them pins it instead of switching model.
+
+Its placeholder reads exactly `filter by name · ctrl+r refresh` — the keys are on the FOOT, because
+a placeholder vanishes under the first typed character and the foot does not. The hint slot
+follows the cursor: `→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model, `← back · alt+s sort · enter choose · esc` inside its
 providers, and `enter unpin · ← back · esc` on the provider already pinned, where `enter` takes
-the pin off — with `tab providers` and `tab back` in place of the arrows while there is typed
-text the arrow would step over. Typing while a fold is open filters that model's providers;
+the pin off — with `tab providers` and `tab back` in place of the arrows while you are
+mid-typing and the arrow would step over a character instead. The foot always names whichever
+of the two actually works at that moment. Typing while a fold is open filters that model's providers;
 only a query none of them match falls through to filtering the model list.
 
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the
@@ -1511,7 +1633,7 @@ box, where it quits codeaf. On the second
 beat of "always" for a bash command, `1`–`9` pick a shape and `esc` goes back — and
 while that beat is up the digits are the shapes', not the answers'.
 
-`alt+a` raises the newest question you put off, from any page.
+`alt+y` raises the newest question you put off, from any page.
 
 **A task proposal** is answered on that same block, in that same grammar: `1` start
 it · `2` no · `c` answer in words · `esc` **later**, which folds it to the chip and
@@ -1633,10 +1755,10 @@ chosen · `esc` leaves with nothing changed.
 `enter`.
 
 **Thinking ladder** (`/effort`, `/thinking`, `/think`): `esc` closes ·
-`up`/`ctrl+p`, `down`/`ctrl+n` walk the six rows — `auto` and the five rungs · `ctrl+v`
+`up`/`ctrl+p`, `down`/`ctrl+n` walk the six rows — `auto` and the five rungs · `alt+e`
 moves down one · `enter` applies the row under the cursor. Clicking a row applies it;
 clicking either of the two sentences around them does nothing. Its foot reads
-`↑↓ · enter apply · esc · ctrl+v next rung`. Pressing the `⠿` cell above the message box
+`↑↓ · enter apply · esc · alt+e next rung`. Pressing the effort word after the colon above the message box
 does **not** open this list — it walks the rung one step.
 
 **Permissions panel:** `esc` — which drops an armed confirmation first, then closes ·
@@ -1660,12 +1782,9 @@ All of these are modal: while one is up, every chord except `ctrl+c` belongs to 
 were in before this one.** Press it again and you are back. It is `cd -`.
 
 It **does nothing at all** when there is nowhere to go: one conversation open, or none this
-terminal has been in before. A key that cannot act says so by not being advertised — and
-when it can, the legend line above the box says `space space home · tab last · / commands`.
-
-With **three or more** open, that slot says `alt+k chats` instead, and `alt+k` opens the
-card of all of them — see *Switch between open conversations*. `tab` still works and still
-goes to the last one.
+terminal has been in before. The bottom row no longer advertises `tab`, but the key still
+works. `alt+k` opens the card of conversations whenever there is another to switch to —
+see *Switch between open conversations*.
 
 It works while either conversation is running, over every door: the one you leave keeps
 streaming into its own transcript and is all there when you come back.
@@ -1780,9 +1899,10 @@ that does not move you is a door that refuses: the place stays up with the refus
 own line, so you can read it.
 
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
-else — and says so by not being there: no card, and the legend above the box does not name
-it. Everywhere else the legend reads `space space home · tab last · alt+k chats ·
-/ commands` — `opt+k chats` on a Mac — dropping clauses from the left as the frame narrows.
+else — and says so by not being there: no card, and the keys row under the box does not
+name it. Everywhere else that row reads `alt+e effort · alt+a approvals · alt+k chats · / commands · esc back` — `opt` in place of `alt` on a Mac. Effort and approvals appear only when the session
+has those controls. As the frame narrows, controls give way from the left, keeping
+`/ commands · esc back`, then `/ commands` on its own.
 
 **Taking a row is never refused for having too many open.** The card draws the first twelve
 rows and hands a digit to the first nine; past that the cursor is the way, and home is the
@@ -1940,10 +2060,10 @@ everything else this window is not showing — so pressing it again closes the n
 rather than the same one, and several go in a row. Its conversation, its work and its
 draft are untouched; `→` reaches it and `enter` brings it back.
 
-**It does not put the conversation away.** Putting one away is a different act and is
-not on this card: `ctrl+e` on a home row archives it, and home says
-`put away · type its name to find it again`. A conversation whose tab you closed here
-is still running, still on this list, and still on home.
+**Tab closing does not archive the saved conversation.** Home shows up to three
+recently closed tabs as dimmed rows. `ctrl+e` or `→`, then `x close`, on Home also
+archives the conversation and closes its tab, removing it from the default chats
+list. Both routes keep work and drafts. Enter on a dimmed Home row reopens it.
 
 On the row marked `you are here`, the card closes and the window selects the most
 recently used remaining tab, or Home when none remain. This is the same action as
@@ -1974,28 +2094,29 @@ second conversation is open, `alt+k chats` whenever there is anywhere at all to 
 place the switcher is named on the map (`alt+.`) instead, because a place's foot is four
 fixed clauses the design sets word for word.
 
-## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
+## Keys in the composer layer — `alt+enter`, `alt+p`, `alt+o`, and typing a number
 
-On macOS every `alt+` below is drawn `opt+` — `alt+enter` is `opt+enter`, `alt+w` is
-`opt+w`, `alt+o` is `opt+o`. Same key, same chord, named the way the keycap names it.
+On macOS every `alt+` below is drawn `opt+` — `alt+enter` is `opt+enter`, `alt+p` is
+`opt+p`, `alt+o` is `opt+o`. Same key, same chord, named the way the keycap names it.
 
-`alt+enter` with something typed into the composer on any place opens the **composer
-layer**: the page behind dims, the box stays where it is, and the three facts a task needs
-appear under it. The places page has the layer in full; these are its keys.
+`alt+enter` with something typed into home's box opens the **composer layer**: the page
+behind dims, the box stays where it is, and the three facts a task needs appear under it.
+It opens from home alone — only home starts things. The places page has the layer in full;
+these are its keys.
 
 | Key | What it does |
 | --- | --- |
 | `alt+enter` | first press opens the layer; second press sends the task off |
-| `alt+w` | move the task to the next project codeaf knows, and round again |
+| `alt+p` | move the task to the next project codeaf knows, and round again |
 | `alt+o` | open the model list for the **execution** slot — what the work runs on |
 | a digit, or `.` | type the spend cap; the figure changes as you type |
 | `backspace` | take one character off the cap |
 | `enter` | talk about it instead — an ordinary conversation carrying the same sentence |
 | `esc` | back to the place you were on, sentence still in the box |
 
-`alt+w` and `alt+o` are bound **only** inside this layer. No place binds either of them, so
-neither can move a view while you are aiming at a destination, and pressing them with no
-layer up does nothing at all.
+`alt+o` changes a model only inside this task layer. On home, `/model` or a press on
+the model name opens the draft's model list instead. `alt+p` also works on home to move
+the draft to the next project; other places bind neither chord.
 
 While the layer is up it has the whole keyboard: `tab` does not walk to the next place, and
 letters do not reach the composer — what you typed is already written and is on the screen
@@ -2004,8 +2125,7 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 
 ## Keys on home, and is there a shortcut for it
 
-**Press the space bar twice with an empty message box.** That is the way back to home from
-inside a conversation, and `/home` opens it too.
+**Press `esc` to back out one layer at a time until Home.** `/home` opens it too.
 
 **There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the four places on
 the tab bar — `home  tasks  spend  settings` — and each answers to its position there,
@@ -2038,69 +2158,33 @@ such a page the line under the box names only the way out** — `tab next place 
 tasks, on standing orders and on memory alike: a foot that offered `enter` or `type to
 filter` over a body with no rows would be naming a key with nothing to act on.
 
-There is no `ctrl+<letter>` chord for home: every one this surface could use is already
-taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
-standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
-takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
-already arms rewind and already clears messages waiting from the turn, and a third
-meaning on one key in that state is how a surface stops being predictable.
+Press `esc` to go back one layer: close a picker, leave an editor or room, or put a
+question aside. With no layer left, Escape opens Home. Further presses stay on Home.
+Message drafts, running turns and queued messages are preserved. Filters may clear first.
+Escape never starts rewind or stops a turn. `ctrl+c` interrupts a running turn and quits
+when idle; `/rewind` opens the rewind timeline.
 
-**The first space types itself.** The second one, finding a box that still shows nothing
-with that space behind the cursor, takes the whole draft away and opens home — so a leading
-space you actually wanted is never eaten (space then `x` leaves ` x`). It does nothing when
-the box has words in it, and it is not a paste: text pasted with two leading spaces is two
-spaces. A machine with one conversation, or none, opens an empty home; so does a session
-over `--host`, where what opens is the **far machine's** home.
-
-**It answers from every place as well as from a conversation.** Wherever a place is
-standing, the two spaces are read against that place's own box — the tasks filter, the
-memory filter, the search and spend composers — and open home just as they do from a
-draft. On home itself the door is a no-op: the page is already open, and two spaces type
-into home's own filter. It also does not answer from under a layer that owns the
-keyboard: on the settings panel space is the drawn verb on a row (`activate`),
-memory's card editor keeps every key while it is open, and inside a task's
-record — the room the roster opens on `enter` — `space` pages the card the way
-`pgdown` and `ctrl+f` do, so the door yields there and the key scrolls. Standing
-cannot arm the door — its own keys never type into its box — but the box is the
-shared composer, so a space left in it on another place still opens home from
-standing.
-
-**A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
-`alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,
-draw nothing on the frame — and the gesture reads the box the same way the frame does, so
-two spaces open home and the blank lines go with the draft. The rule in one sentence:
-wherever the foot advertises `space space home`, two spaces open it.
-
-It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
-back in it.
-
-When the box is empty, the legend line above the box says so:
-`space space home · / commands`. Clicking those words opens home. It vanishes as soon as
-you type.
-
-**The door does not ask what the machine holds.** It is open on a machine with only this
-conversation and on one with none, from the first minute, and starting a second
-conversation with `/new` changes nothing about it. It used to be shut until the launch
-found somewhere else to go, and that rule is gone (the home page, *space space does
-nothing*).
+The double-space binding has been removed. Spaces type normally in message boxes.
+`/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row or use
+`alt+k` to return to a conversation; Escape does not leave Home.
 
 Once it is open, **home is seven panels in one, two or three columns** (the home page has
 what each holds), and its keys are a small grammar:
 
 | Key | On home |
 | --- | --- |
-| `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the column you are in, from one panel into the next; `↑` off the top of a column reaches **the tab bar** (*The tab bar is a row the cursor can stand on*) |
+| `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the field, from one panel into the next, and stop at both ends: `↑` off the top row stays there and does not climb onto the tab bar (reach the bar with a click, `tab`, or a place's chord) |
 | `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
 | a digit, or a question's own key | answers **the one row of `needs you` that is drawing its answers**, from anywhere on home, with no cursor move — the row under the cursor when it can take one, the top answerable row otherwise. A question's chips are `1 allow once  2 always  3 deny`; a landing in `unread` offers `1 accept   2 not right`, its own `[a]`/`[n]` being letters and letters always type on home |
-| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a spend or `scheduled` row opens spend or standing, a fold line opens or shuts its panel |
+| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a `scheduled` row opens standing, a fold line opens or shuts its panel. `spend`'s lines are not stops, so the cursor never reaches them |
 | `pgup` / `pgdown` | jump a screenful |
 | `tab` | **the next place** on the bar |
-| `esc` | clears the box if anything is in it, and closes home otherwise |
+| `esc` | dismisses a local layer; otherwise stays on Home and preserves the draft |
 | `alt+.` | the map |
 | `backspace`, `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` | edit the box |
 | anything else | goes into the box, which searches the whole machine and offers to start a new conversation at the same time |
 
-**Opening home puts the cursor on the chat you were in before this one**, so `space` `space`
+**Opening home puts the cursor on the chat you were in before this one**, so `esc`
 then `enter` is a switch back; a window with only one conversation opens on its own row,
 which says `here`. The panel holding the cursor marks its heading with the cursor's ground,
 which is how you tell which column your arrows are in. **`alt+g` and `alt+q` are unbound on
@@ -2110,10 +2194,10 @@ the answers are on the `needs you` row itself.
 **`←` `→` cross home's columns first**; where no column with rows lies to the right, **`→`
 opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
 of the list down by its own height, and while that strip is drawn its letters are the verbs
-and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
-`o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
-`←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
-with no verbs the arrows cross home's columns, and on a panel's fold line (`N more`) `enter`
+and the box is asleep — a question's own answer keys and words, `x close`, `n new in project`,
+`o open folder`, `p copy project`, `p pause it` or `r resume it` on a standing item. `esc` or
+`←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
+never leave home's field, and on a panel's fold line (`N more`) `enter`
 opens the panel and shows the rest; on `N fewer` it folds them again.
 While something is typed the two arrows move the caret in the box instead.
 
@@ -2121,15 +2205,16 @@ While something is typed the two arrows move the caret in the box instead.
 strip is the one state where a printable key is a verb, and it is why it has to be drawn.
 Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
 actions otherwise ride chords, which can never begin a word, and they work from any column:
-**`ctrl+e` puts the conversation away** — it leaves `where you were`, and typing its name is
-how you find it again, with `ctrl+e` on the found row bringing it back. **`ctrl+o`** opens
+**`ctrl+e` closes the conversation tab** — it leaves the open Home list and the
+default chats menu. Up to three closed rows stay dimmed on Home; typing finds older
+ones. Enter or `ctrl+e` on a closed row reopens it. **`ctrl+o`** opens
 its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row still
 starts a new one in that row's folder, though `enter` on a row of the `projects` panel is
 the way home offers now. On a standing item's row — in `needs you` while it asks, in
-`running` while it fires — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
-**`ctrl+v` raises how hard that item thinks** one rung. Each chord acts on the row under
+`scheduled` otherwise, firing or not — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
+**`alt+e` raises how hard that item thinks** one rung. Each chord acts on the row under
 your pointer when there is one, the cursor's row otherwise. The machine's own default is
-not on this chord — it is the `thinking` row of `/settings`, and *ctrl+v — how hard the
+not on this chord — it is the `thinking` row of `/settings`, and *alt+e — how hard the
 thing you are looking at thinks* says why.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it.
@@ -2144,45 +2229,48 @@ it was. The hint line becomes a bar of at most three wide targets — `open · n
 ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
 there is no hover on glass. Home's own page has the whole shape.
 
-The box row reads `› say what you want done`. **The rule above it is a legend on home and
-nowhere else**, and it says what the box is a draft *for*:
-`─ → new conversation in ~/codeaf · glm-5.3-flash ── alt+w folder · alt+o model · alt+k chats · / commands ─`
+The box row reads `› type to search or start something new` — the promise itself, both
+readings of what you type: a search of everything home shows, or the first message of a
+new conversation. (Until 2026-09-17 the box said `› say what you want done` and the
+promise opened the foot.) **The rule above it is a legend on home and nowhere else**, and
+it says what the box is a draft *for*:
+`─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`
 
-— the folder the next conversation opens in, the model it will answer on, and the chords
-that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`
-opens the model list in home's own body; pressing either label does the same as its chord.
-`alt+k chats` is the conversation switcher, named here for the same reason it is named on
-the conversation's own legend, and it is absent when there is nowhere to go.
-**On a Mac the right-hand side reads `opt+w folder · opt+o model · opt+k chats · / commands`** —
-the same keys, drawn with the modifier your keycaps wear.
-The line under the box is the foot, and **at rest it is exactly**
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`. `esc`
-still closes home from anywhere; the resting foot does not spend a cell naming it, and
-`alt+.` draws the whole map when you want it.
+— the model, a colon and effort, then approvals at the left; the project the next
+conversation opens in sits at the far right. The arrow and effort badge are gone. A long
+project path keeps its root and truncates on the right. The chords that change them are on **the line
+under the box**, with home's own keys, because the lowest line is for keys on home as in a
+conversation: `alt+p project` walks all projects in the projects panel's order, `alt+e effort`
+cycles auto → low → medium → high → xhigh → max → auto, and `alt+a approvals`
+walks asks → guardian → YOLO → asks. Pressing the project or approvals cell does the
+same. The project choice survives starting a conversation and returning home for the
+lifetime of this window; the seam alone shows it, with no footer announcement.
+`/model`, or pressing the model name, opens home's model list; `alt+o` no longer
+does. The model is always bold and bright cyan on both home's and a conversation's seam.
+`alt+k chats` opens the conversation switcher and is absent when there is nowhere to go.
+**On a Mac these clauses read `opt+p project · opt+e effort · opt+a approvals · opt+k chats`.**
+`opt+y` raises the newest pending question, and `opt+w` toggles the folder browser
+preview. These exchanged roles with approvals and projects respectively.
 
-On the grid every row under a moving heading — a conversation, a question, a running task,
-a `scheduled` order, a `since you left` line — rests on the one sentence,
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`,
-and it does not change as the cursor walks. Elsewhere, on a row with keys of its own, the
-foot says what THAT row's keys do and gains the two that are true everywhere —
-`enter opens the place this happened in · alt+. map · tab next place · esc close` on a
-`since you left` line or a standing order's row of the phone's list, on a spend row, or on a fold door, and
-`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
-on the action row — and
-`enter runs this command · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
-on that same row when what is typed is a slash command.
+With all controls available the resting foot is
+`alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`.
+The project and approvals hints are absent where those controls cannot act. `ctrl+o`
+still opens the selected row's folder and `tab` still moves to the next place, but neither
+has a hint in home's bottom row. `esc` stays on Home; `alt+.` draws the whole map.
 
-**With nothing typed home is the panels**, hanging from the top. **While anything is typed
-it is one list, a drop-up**: the action row — `start a new conversation: "…"` — is the LAST
-row of the list, with `ask here: "…"` directly above it, both directly above the box, and
-the matches rise above the pair **best one first**; the cursor starts on the action row, so
-one `↑` reaches `ask here` and a second lands on the strongest match. Clearing the box puts
-the panels back. On a frame 136 columns or wider a card about the match under the cursor
-stands to the right of the list while you type; at rest there is no card.
+Every ordinary grid row keeps the same list keys as the cursor walks. A fold names
+its own keys, with the available draft controls before `esc`. Submission modes add no
+footer hints. Plain text followed by Enter starts a new conversation; `/ask <question>`
+asks in a home pane.
 
-**On an `ask here` row** — the `?` rows an errand leaves at the top of `where you were` —
+**With nothing typed home is the panels. While typing, only search results appear above
+the seam.** The best match is nearest the box. One `↑` selects it; `↓` past the last
+result returns to composing. Clearing the box restores the panels. On wider frames,
+the card beside the results follows the selected match.
+
+**On an `ask here` row** — the `?` rows an errand leaves at the end of the conversation list —
 the line under the box reads
-`↑↓ move · enter or tab answer this ask here · esc close`. `enter` or `tab` hands the
+`↑↓ move · enter or tab answer this ask here`. `enter` or `tab` hands the
 keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
 `esc` or `tab` hands it back (*Asking from home*).
 
@@ -2253,7 +2341,7 @@ ink once this conversation has spent four fifths of its own `per conversation` l
 back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
 `alt+w` widens the column and narrows it again. Its hint reads exactly
 `↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
-still queued the hint gains one more clause before `esc` — `ctrl+v think harder`, which
+still queued the hint gains one more clause before `esc` — `alt+e think harder`, which
 moves that task's thinking rung. On an ordinary finished task, it saves the rung
 for when you continue; it does not restart work or rewrite the last attempt.
 
@@ -2278,7 +2366,7 @@ it is on the job's page. `→` on anything else does nothing.
 **The walk stops at this conversation's last job, after its last task.** The roster holds
 this conversation's work, then the jobs section under it, so `↓` walks both and clamps at
 the bottom rather than carrying on into the project's record. Old tasks from earlier
-sessions are on the tasks place, reached from the column's own `ctrl+. earlier` line, from
+sessions are on the sessions place, reached from the column's own `ctrl+. earlier` line, from
 `ctrl+.` or from `/history`; `enter` on an `earlier` row there goes inside that task's
 card. In a directory whose earlier sessions ran tasks but where **this** conversation has
 run none and started no jobs, `alt+t` falls through — there is nothing on the column to
@@ -2361,12 +2449,10 @@ words is news and the elbow's position is the whole of the record. They used to 
 as fresh questions with a `›`, which made yesterday's correction read as a second
 instruction and made the page count turns nobody opened.
 
-**`esc` in a room never interrupts and never stops.** Out in the conversation `esc`
-interrupts the running turn; inside a room the first `esc` leaves the room and the next
-one interrupts. Ending the task itself is `x` and its card. The legend's left end always
+**`esc` in a room never interrupts and never stops.** Inside a room the first `esc` leaves the room and the next opens Home. Ending the task itself is `x` and its card. The legend's left end always
 names what the next `esc` does: `room · esc/←← main`, and `room · esc your line back`
-while a history walk is on. The hint at the legend's right end reads `x stop` while there
-is work here to stop and `↑↓ history` during a walk — it never reads `esc interrupt`
+while a history walk is on. The keys row under the box reads `x stop` while there
+is work here to stop and `↑↓ history` during a walk — it never reads `ctrl+c interrupt`
 inside a room, because in here that is not what the key does.
 
 **A click inside the room's page does not leave it.** A press that lands on nothing —
@@ -2818,7 +2904,7 @@ stripped off it.
 ## Chords that mean more than one thing
 
 Three chords carry unrelated meanings. Which one you get depends on where you are.
-A fourth, `ctrl+v`, carries **one** meaning on several surfaces — move the thinking rung of
+A fourth, `alt+e`, carries **one** meaning on several surfaces — move the thinking rung of
 the thing you are standing on — and its own section below has the table.
 
 **`ctrl+.` — two meanings, and the two screens can never both be up:**
@@ -2887,9 +2973,9 @@ Two more chords surprise people:
 And over an **empty** box, `left` and `right` are navigation rather than caret
 movement. `ctrl+f` never is — it always moves the caret right.
 
-## ctrl+v — how hard the thing you are looking at thinks, and making this one task think harder
+## alt+e — how hard the thing you are looking at thinks, and making this one task think harder
 
-`ctrl+v` moves one step up the thinking ladder — `low`, `medium`, `high`, `xhigh`, `max` —
+`alt+e` moves one step up the thinking ladder — `low`, `medium`, `high`, `xhigh`, `max` —
 and it moves the rung of **the thing you are standing on**. One chord, three scopes:
 
 | Where you are | What moves |
@@ -2897,7 +2983,7 @@ and it moves the rung of **the thing you are standing on**. One chord, three sco
 | The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *The thinking chip above the message box* |
 | The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
-| Home, with the cursor on a standing item's row — in `needs you` or `running` | That item's rung |
+| Home, with the cursor on a standing item's row — in `needs you` or `scheduled` | That item's rung |
 
 Everywhere else it does nothing at all. A conversation row on home is deliberately not on
 the list: a conversation's rung belongs to the window that conversation is open in, where
@@ -2906,8 +2992,8 @@ by `/effort`.
 
 **The machine's own default is not one of the scopes.** It used to be — home had a state
 where the cursor stood on no row at all and the right-hand side became a card about the
-machine, and this chord moved the install's rung from there. `↑` off the top of a column on home
-reaches the **tab bar** now, so that card is gone. To change how hard this machine thinks by
+machine, and this chord moved the install's rung from there. That state is gone: `↑` off the
+top of the column on home stays on the top row, and there is no machine card. To change how hard this machine thinks by
 default, open `/settings` and walk to the **`thinking`** row, which is the setting both
 roads always wrote.
 
@@ -2932,7 +3018,7 @@ rung it started with, so the line codeaf writes says so: `task 7 · thinking · 
 next call takes it`. On an ordinary task that has finished, it instead saves
 the choice for the next continuation. The completed attempt stays unchanged.
 
-**Every card that takes it says so.** The card's dim legend reads `ctrl+v think harder`,
+**Every card that takes it says so.** The card's dim legend reads `alt+e think harder`,
 and it is drawn only where the key would work. A window with nowhere to write
 the setting does not offer it.
 
@@ -2943,14 +3029,16 @@ answer:
 
 | Chord | Status |
 |---|---|
-| `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
+| `shift+enter` | **Bound**: opens a new line in the home and conversation message boxes, even while an answer runs |
+| `ctrl+shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `shift+enter`. Over an empty box, or with nothing running, it does nothing |
 | `cmd+enter` | **Bound**, in one state: while a turn is running with something typed, it holds that message above the box for the next turn. It does **not** open a new line. Over an empty box, or with nothing running, it does nothing. Needs a terminal that can spell it |
 | `ctrl+d` | Not bound |
+| `ctrl+v` | Not bound. It used to change effort; use `alt+e` (`opt+e` on macOS) now. Pasting remains the terminal’s shortcut and arrives as pasted text |
 | `ctrl+k` | **Bound, in every box**: delete from the caret to the end of the line, the pair to `ctrl+u`. It does not eat the newline. It was the conversation switcher until that moved to `alt+k` (`opt+k` on a Mac) to give this letter back to the message box |
 | `alt+k` | **The switcher**: the card of every conversation this terminal has open. On a Mac it is `opt+k`, and it needs "use option as meta" turned on in your terminal — see "Why alt+k and not ctrl+k or ctrl+tab" |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
-| `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before codeaf ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
-| `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `running` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
+| `alt+e` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "alt+e — how hard the thing you are looking at thinks". Anywhere else it does nothing. On macOS it is shown as `opt+e`; the terminal must send Option as Alt/Meta, as for the other Option shortcuts |
+| `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `tasks` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
@@ -2970,7 +3058,7 @@ trailing marks, and the turn carries straight on. Read it as "go on" — let the
 command run and get on with the work.
 
 This is the key for the moment you realise `go test ./...` is going to take nine
-minutes. The alternatives are `esc`, which stops the turn and throws the run
+minutes. The alternatives are `ctrl+c`, which stops the turn and throws the run
 away, and waiting.
 
 Afterwards it is an ordinary job: ask codeaf to list them, tail one, or kill one,
@@ -2994,7 +3082,7 @@ been running longest**, which is the one you are waiting on.
 
 While a command can be kept, this meaning takes precedence over hiding or restoring the
 task column, so the column stays where it was. With no such command the key belongs to
-the column as described above. `ctrl+b` is copy mode and `esc` interrupts; neither changes.
+the column as described above. `ctrl+b` is copy mode and `ctrl+c` interrupts; neither changes.
 
 ## When a settings change lands
 
@@ -3192,7 +3280,7 @@ live-applies on the next render; work stays indented in either mode.
   `/resume`, `/permissions` and the rest do: the commands page.
 - **The status line, the legend under the box, and the layout**: the screen page.
 - **Tasks, rooms, proposals and the roster**: the tasks pages.
-- **Rewind**, which `esc` `esc` opens quick and `/rewind` opens whole: the sessions and
+- **Rewind**, which `/rewind` opens: the sessions and
   rewind page.
 
 ## Starting a new chat with plus
@@ -3245,3 +3333,17 @@ input, just as it does during tool permission. `alt+k` opens the chats card and 
 opens another conversation without answering the question. Cancel leaves the
 pending input untouched. Stop work cancels this conversation's pending question;
 reopening it does not restart the work.
+
+## What does alt+y do — reopen pending questions
+
+`alt+y` (`opt+y` on a Mac) brings the newest open question back from any page and
+returns to its conversation. It leaves approvals alone. `alt+a` (`opt+a`) now cycles
+approvals; the two shortcuts exchanged roles. A question with no answer remains open
+when you put it off with `esc`.
+
+## Get to my other conversation without going home — alt+k chats
+
+Press `alt+k` (`opt+k` on macOS) to open the chats menu from a conversation.
+It lists the same open tabs as Home, in the tab strip's order. Select one and press
+Enter. Closed conversations are behind the menu's fold; Home also keeps up to
+three recently closed conversations dimmed below the open list.

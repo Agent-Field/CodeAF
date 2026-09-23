@@ -110,7 +110,15 @@ func TestAnExhaustedPlanWaitsAndSpendsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for range events {
+	var failure Event
+	for event := range events {
+		if event.Kind == EventError {
+			failure = event
+		}
+	}
+	const pauseWord = "plan paused · /connect can switch to pay-as-you-go"
+	if failure.Err == nil || failure.Err.Error() != pauseWord {
+		t.Fatalf("final EventError = %v, want %q", failure.Err, pauseWord)
 	}
 	if got := metered.Requests(); len(got) != 0 {
 		t.Fatalf("wait mode sent %d requests to the metered host: %+v", len(got), got)
@@ -119,6 +127,23 @@ func TestAnExhaustedPlanWaitsAndSpendsNothing(t *testing.T) {
 		t.Fatalf("paused turn sent %d plan requests across retry, hedge, endpoint, or fallback roads; want one", len(got))
 	} else {
 		assertRequestsCarry(t, got, "wait-mode-test-key")
+	}
+}
+
+func TestAPlanPaymentRefusalEndsARealHeadlessTurnInTheVendorsWords(t *testing.T) {
+	plan, metered := sourcestub.New(), sourcestub.New()
+	defer plan.Close()
+	defer metered.Close()
+	plan.RefuseCompletion(http.StatusTooManyRequests,
+		`{"code":"1113","message":"Insufficient balance. Please recharge."}`)
+	source := planDoorSource(plan, metered)
+	connected := connectedPlanDoor(source, modelsource.Outcome{Door: source.Doors[0]}, "payment-test-key")
+	agent := planDoorAgent(t, connected)
+
+	failure := turnFailure(t, agent, "answer without another billing door")
+	const want = "z-ai accepted the key but the account cannot pay — Insufficient balance. Please recharge."
+	if failure.Err == nil || failure.Err.Error() != want {
+		t.Fatalf("final EventError = %v, want %q", failure.Err, want)
 	}
 }
 

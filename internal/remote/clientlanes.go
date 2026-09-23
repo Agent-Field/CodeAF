@@ -190,8 +190,8 @@ func (c *Client) factsFrame(payload json.RawMessage) {
 		return
 	}
 	before := c.facts.read()
-	if c.facts.takePush(push) && (push.Facts.Title != before.Title || push.Facts.ShortTitle != before.ShortTitle) {
-		c.announceTitle(push.Facts.Title, push.Facts.ShortTitle)
+	if c.facts.takePush(push) && push.Facts.Title != before.Title {
+		c.announceTitle(push.Facts.Title)
 	}
 }
 
@@ -204,15 +204,15 @@ func (c *Client) titleFrame(payload json.RawMessage) {
 		return
 	}
 	if c.facts.takePush(named) {
-		c.announceTitle(named.Facts.Title, named.Facts.ShortTitle)
+		c.announceTitle(named.Facts.Title)
 	}
 }
 
-func (c *Client) announceTitle(title, short string) {
+func (c *Client) announceTitle(title string) {
 	if title == "" {
 		return
 	}
-	payload, err := json.Marshal(WireEvent(session.Event{Kind: session.EventTitleChanged, Text: title, ShortTitle: short}))
+	payload, err := json.Marshal(WireEvent(session.Event{Kind: session.EventTitleChanged, Text: title}))
 	if err == nil {
 		c.laneFrame(laneTitle, payload)
 	}
@@ -235,7 +235,7 @@ func (c *Client) retakeTitle(left string, welcome Welcome) {
 		return
 	}
 	if welcome.Facts != nil {
-		c.announceTitle(welcome.Facts.Facts.Title, welcome.Facts.Facts.ShortTitle)
+		c.announceTitle(welcome.Facts.Facts.Title)
 	}
 	guard.Go("remote/title rewatch", func() { _, _ = c.call(nil, MethodTitleWatch, nil) })
 }

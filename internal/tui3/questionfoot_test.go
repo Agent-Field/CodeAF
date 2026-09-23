@@ -39,3 +39,18 @@ func TestTheChipSaysWhichQuestionIsWaiting(t *testing.T) {
 		t.Fatalf("the chip stopped naming the question that IS waiting: %q", seg)
 	}
 }
+
+// The old question key now belongs to approvals, including while home has a
+// pending question behind it. Only the new key brings that question forward.
+func TestAltYReopensQuestionsAndAltABelongsToApprovals(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.raise(consentAsk())
+	lab.a.showPage(pageHome)
+	if _, taken := lab.a.questionChipKeyPress(key("alt+a")); taken {
+		t.Fatal("the pending question intercepted the approvals key")
+	}
+	drive(t, lab.a, key("alt+y"))
+	if lab.a.at(pageHome) {
+		t.Fatal("alt+y did not bring the pending question back from home")
+	}
+}

@@ -43,30 +43,40 @@ func roomModelApp(t *testing.T, model string) (*app, *roomFake) {
 
 // statusText is the status line as a reader sees it, drawn through the frame's
 // own door (view.go's [app.statusRow]).
+// statusText is the foot as a reader sees it: the seam, which carries the
+// numbers and the state word since 2026-09-17 (footswap.go), and the keys row
+// under the box.
 func statusText(a *app) string {
-	return plain(strings.Join(a.statusRow(a.width), "\n"))
+	return plain(a.legend(a.width) + "\n" + strings.Join(a.statusRow(a.width), "\n"))
 }
 
-// AT WIDE WIDTH THE SEGMENT NAMES THE ROOM'S NODE, and it says whose model it
-// is: the task's, led by the word, and never the conversation's.
-func TestTheStatusLineNamesTheOpenRoomsModel(t *testing.T) {
+// AT WIDE WIDTH THE SEAM NAMES THE ROOM'S NODE, and it says whose model it
+// is: the task's, led by the word, and never the conversation's. The keys row
+// under the box names no model at all, and the task's own name is on the
+// breadcrumb bar (roomseam.go, roomcrumbs.go).
+func TestTheSeamNamesTheOpenRoomsModel(t *testing.T) {
 	a, _ := roomModelApp(t, "z-ai/glm-5.2")
 
-	line := statusText(a)
-	for _, want := range []string{"Ship the parser fix", roomModelLead + "glm-5.2"} {
-		if !strings.Contains(line, want) {
-			t.Fatalf("the status line is missing %q while the room is open:\n%q", want, line)
-		}
+	seam := plain(a.legend(a.width))
+	if !strings.Contains(seam, roomModelLead+"glm-5.2") {
+		t.Fatalf("the seam does not name the room's model while the room is open:\n%q", seam)
 	}
-	// THE CONVERSATION'S MODEL IS NOT ON THE LINE while somebody is standing in a
-	// room that runs on something else. This is the whole bug.
-	if strings.Contains(line, "deepseek") {
-		t.Fatalf("the room's status line still names the conversation's model:\n%q", line)
+	if screen := plain(frame(a)); !strings.Contains(screen, "Ship the parser fix") {
+		t.Fatalf("the frame stopped naming the task:\n%q", screen)
 	}
-	// It is the BASENAME, which is the row's own law about its scarce width — the
-	// vendor is nine cells that never vary (render.go's [app.identity]).
-	if strings.Contains(line, "z-ai/") {
-		t.Fatalf("the task's model is drawn as a routing address, not a name:\n%q", line)
+	line := plain(strings.Join(a.statusRow(a.width), "\n"))
+	if strings.Contains(line, roomModelLead) || strings.Contains(line, "glm-5.2") {
+		t.Fatalf("the room's model is on the keys row as well as the seam:\n%q", line)
+	}
+	// THE CONVERSATION'S MODEL IS NOT ON EITHER LINE while somebody is standing
+	// in a room that runs on something else. This is the whole bug.
+	if strings.Contains(seam, "deepseek") || strings.Contains(line, "deepseek") {
+		t.Fatalf("the room still names the conversation's model:\n%q\n%q", seam, line)
+	}
+	// It is the BASENAME, which is the seam's own law about its scarce width — the
+	// vendor is nine cells that never vary.
+	if strings.Contains(seam, "z-ai/") {
+		t.Fatalf("the task's model is drawn as a routing address, not a name:\n%q", seam)
 	}
 
 	// AND ESC GIVES EVERYTHING BACK. The window is the conversation again, so the
@@ -74,7 +84,7 @@ func TestTheStatusLineNamesTheOpenRoomsModel(t *testing.T) {
 	// it always is out of a room: on the seam above the box, which is the only
 	// place it is written since 2026-09-09 (foot.go's [app.seamIdentity]).
 	a.closeRoom()
-	line = statusText(a)
+	line = plain(strings.Join(a.statusRow(a.width), "\n"))
 	if strings.Contains(line, roomModelLead) || strings.Contains(line, "glm-5.2") {
 		t.Fatalf("the closed room's model is still on the line:\n%q", line)
 	}
@@ -105,7 +115,7 @@ func TestTheDecksModelChipNamesTheOpenRoomsModel(t *testing.T) {
 	}
 
 	a.closeRoom()
-	if deck := deckRowsOf(t, a); !strings.Contains(deck[1], "deepseek-v4-flash") {
+	if deck := deckRowsOf(t, a); !strings.Contains(deck[1], "deepseek/deepseek-v") || !strings.Contains(deck[1], "working") {
 		t.Fatalf("closing the room did not restore the deck's model chip:\n%q", deck[1])
 	}
 }
@@ -173,17 +183,18 @@ func TestPressingARunningTasksModelRetargetsThatTaskAlone(t *testing.T) {
 
 	// The frame is what records the columns, so it is drawn before they are read.
 	rows := strings.Split(plain(frame(a)), "\n")
-	if !a.modelSpan.pressable() {
+	if !a.seamModelSpan.pressable() {
 		t.Fatal("a running node's room recorded no press target for its model")
 	}
 	// The columns the render recorded are the columns the name is actually drawn
 	// on, which is what makes the press a press on the thing and not on a number.
-	line := rows[len(rows)-1]
-	if at := strings.Index(line, "glm-5.2"); at < 0 || !a.modelSpan.holds(at) {
-		t.Fatalf("the span %+v does not cover the task's model on the row:\n%q", a.modelSpan, line)
+	y := seamRowY(a)
+	line := rows[y]
+	if at := cellAt(line, "glm-5.2"); at < 0 || !a.seamModelSpan.holds(at) {
+		t.Fatalf("the span %+v does not cover the task's model on the seam:\n%q", a.seamModelSpan, line)
 	}
-	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: a.seamModelSpan.from + 1, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.seamModelSpan.from + 1, Y: y, Button: tea.MouseLeft})
 	if !a.pick.open {
 		t.Fatal("pressing a running task's model opened nothing")
 	}
@@ -258,17 +269,17 @@ func TestASettledTasksModelOpensItsContinuationPicker(t *testing.T) {
 			state, session.TaskNotice{Model: "z-ai/glm-5.2"})})
 		rows := strings.Split(plain(frame(a)), "\n")
 
-		if !a.modelSpan.pressable() {
-			t.Fatalf("a %s node's model is still a press target: %+v", state, a.modelSpan)
+		if !a.seamModelSpan.pressable() {
+			t.Fatalf("a %s node's model is still a press target: %+v", state, a.seamModelSpan)
 		}
-		// The name is still there to be read — this is a door removed, not a fact.
-		line := rows[len(rows)-1]
-		at := strings.Index(line, "glm-5.2")
+		y := seamRowY(a)
+		line := rows[y]
+		at := cellAt(line, "glm-5.2")
 		if at < 0 {
 			t.Fatalf("a %s node stopped naming its model at all:\n%q", state, line)
 		}
-		drive(t, a, tea.MouseClickMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
-		drive(t, a, tea.MouseReleaseMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseClickMsg{X: at + 1, Y: y, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseReleaseMsg{X: at + 1, Y: y, Button: tea.MouseLeft})
 		if !a.pick.open || a.pick.task != a.room.id {
 			t.Fatalf("pressing a %s node's model opened the picker", state)
 		}
@@ -279,20 +290,21 @@ func TestASettledTasksModelOpensItsContinuationPicker(t *testing.T) {
 }
 
 // THE SET THAT LIGHTS IS THE SET THE PRESS ACTS ON (hover.go). The model's name
-// is pressable at both subjects, so it lights at both — the room's node on the
-// status row, the conversation's on the seam above the box — and where it is
-// only a fact, it does not.
+// is pressable at both subjects, so it lights at both — the room's node and the
+// conversation's, each on the seam above its own box — and where it is only a
+// fact, it does not.
 func TestTheModelSegmentLightsUnderThePointerAtBothItsHomes(t *testing.T) {
 	a, _ := roomModelApp(t, "z-ai/glm-5.2")
 	a.width, a.height = 120, 24
 	_ = frame(a)
 
-	a.setHover(a.modelSpan.from+1, a.height-1)
+	roomRow := markedRowY(a, chromeLegend, 0)
+	a.setHover(a.seamModelSpan.from+1, roomRow)
 	if !a.hoveringStatusModel() {
 		t.Fatal("the running node's model segment does not light under the pointer")
 	}
 	// One cell to the left of the span is the separator, which is not a control.
-	a.setHover(a.modelSpan.from-1, a.height-1)
+	a.setHover(a.seamModelSpan.from-1, roomRow)
 	if a.hoveringStatusModel() {
 		t.Fatal("the model segment lights from outside its own columns")
 	}
@@ -324,8 +336,9 @@ func TestTheModelSegmentLightsUnderThePointerAtBothItsHomes(t *testing.T) {
 	drive(t, a2, streamEventMsg{gen: a2.gen, ev: update(9, "Ship the parser fix",
 		session.TaskDone, session.TaskNotice{Model: "z-ai/glm-5.2"})})
 	rows := strings.Split(plain(frame(a2)), "\n")
-	at := strings.Index(rows[len(rows)-1], "glm-5.2")
-	a2.setHover(at+1, a2.height-1)
+	y2 := markedRowY(a2, chromeLegend, 0)
+	at := cellAt(rows[y2], "glm-5.2")
+	a2.setHover(at+1, y2)
 	if !a2.hoveringStatusModel() {
 		t.Fatal("a settled node's continuation picker has no hover")
 	}
@@ -405,52 +418,37 @@ func (a *app) statusSheetLines() []string {
 // point a hundred-and-twenty-column status line came out as the single word
 // `idle`.
 
-// roomStatusLine is the status row at one width, as a reader sees it.
-func roomStatusLine(t *testing.T, a *app, width int) string {
-	t.Helper()
-	a.width = width
-	a.touch()
-	return statusText(a)
+// cellAt is the COLUMN a substring starts on — [strings.Index] answers in
+// bytes, and the seam has a `─`, a `·` and two `←` in front of the model, each
+// wider in bytes than in cells. -1 where the substring is not on the line.
+func cellAt(line, sub string) int {
+	at := strings.Index(line, sub)
+	if at < 0 {
+		return -1
+	}
+	return ansi.StringWidth(line[:at])
 }
 
-// A NAME WITH ROOM TO SPARE IS DRAWN WHOLE, however far past a cap it runs.
-func TestTheStatusLinesRoomChipKeepsAWholeNameWhileTheRowHoldsIt(t *testing.T) {
+// A NAME THE SEAM CANNOT HOLD COSTS THE SEAM ITS NUMBERS AND THEN ITS OWN CELLS
+// — never the whole line, and never the state word. The task's own name is not
+// on the foot at all since 2026-09-17: the breadcrumb bar carries it, the seam
+// carries the way out and the node's cells, and the last row is the keys
+// (footswap.go, roomcrumbs.go).
+func TestARoomsFootIsTheWayOutTheNumbersAndTheKeys(t *testing.T) {
 	a, _ := roomModelApp(t, "z-ai/glm-5.2")
-	// Nineteen cells — four cells past the cap that used to cut it, and nothing
-	// like the width of the row it is drawn on.
-	if line := roomStatusLine(t, a, 180); !strings.Contains(line, "Ship the parser fix") {
-		t.Fatalf("a name the row can afford was cut anyway:\n%q", line)
-	}
-	if line := roomStatusLine(t, a, 180); !strings.Contains(line, roomModelLead+"glm-5.2") {
-		t.Fatalf("the model gave way on a row with cells to spare:\n%q", line)
-	}
-}
-
-// AND A NAME THE ROW CANNOT HOLD COSTS THE ROW ITS FACTS AND THEN ITS OWN TAIL —
-// never the whole line. A hundred and one cells at a hundred and twenty columns
-// is the exact frame the `idle` collapse happened at.
-func TestALongRoomNameNeverCollapsesTheStatusLine(t *testing.T) {
-	long := "Ship the parser fix and the loader flake and the nil-map guard and the key table rewrite as well"
-	a, _ := roomModelApp(t, "z-ai/glm-5.2")
-	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, long, session.TaskRunning,
-		session.TaskNotice{Model: "z-ai/glm-5.2"})})
-	a.room.title = long
-
 	for _, width := range []int{160, 120, 100, 80} {
-		line := roomStatusLine(t, a, width)
-		for _, row := range strings.Split(line, "\n") {
-			if got := ansi.StringWidth(row); got > width {
-				t.Fatalf("at %d columns the status row is %d wide:\n%q", width, got, row)
-			}
+		a.width = width
+		a.touch()
+		seam := plain(a.legend(width))
+		if got := ansi.StringWidth(seam); got > width {
+			t.Fatalf("at %d columns the seam is %d wide:\n%q", width, got, seam)
 		}
-		// THE ROW STILL SAYS WHERE YOU ARE. The name is cut, and what is left of
-		// it is enough to recognise the work by — never nothing at all, which is
-		// what the line collapsed to before the cluster was fitted.
-		if !strings.Contains(line, "Ship the") {
-			t.Fatalf("at %d columns the status line stopped naming the room:\n%q", width, line)
+		state, _ := a.stateSegment()
+		if !strings.Contains(seam, roomLegendWord) || !strings.Contains(seam, state) {
+			t.Fatalf("at %d columns the seam lost the way out or the state word %q:\n%q", width, state, seam)
 		}
-		if strings.TrimSpace(plain(line)) == "idle" {
-			t.Fatalf("at %d columns the whole status line collapsed:\n%q", width, line)
+		if keys := plain(strings.Join(a.statusRow(width), "\n")); strings.Contains(keys, state) || strings.Contains(keys, "Ship the") {
+			t.Fatalf("at %d columns the keys row carries a fact:\n%q", width, keys)
 		}
 	}
 }

@@ -222,15 +222,15 @@ func TestTheWorldOverHostIsTheSeamsAndNeverThisDisk(t *testing.T) {
 // on this disk, under [app.looksRoot].
 func TestALookAtAnotherMachineLeavesThisOnesStampsAlone(t *testing.T) {
 	a := hostedPlaceLab(t)
-	before := session.LastLookAt(a.placesRoot(), pageTasks.word())
+	before := session.LastLookAt(a.placesRoot(), pageTasks.lookKey())
 	a.showPage(pageTasks)
 	a.leavePage(pageTasks)
-	if got := session.LastLookAt(a.placesRoot(), pageTasks.word()); !got.Equal(before) {
+	if got := session.LastLookAt(a.placesRoot(), pageTasks.lookKey()); !got.Equal(before) {
 		t.Fatal("a look at another machine's tasks moved this machine's own stamp")
 	}
 	// AND IT IS WRITTEN SOMEWHERE — a stamp that went nowhere would keep this
 	// test green while losing every remote place its origin.
-	if session.LastLookAt(a.looksRoot(), pageTasks.word()).IsZero() {
+	if session.LastLookAt(a.looksRoot(), pageTasks.lookKey()).IsZero() {
 		t.Fatal("the look at the far machine's tasks was never recorded")
 	}
 	if a.looksRoot() == a.placesRoot() {

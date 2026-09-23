@@ -25,7 +25,7 @@ package tui3
 //
 // ── AND IT IS THE FACT, NEVER THE KEY ──
 //
-// `ctrl+v` moves this rung and is named in the card's own legend
+// `alt+e` moves this rung and is named in the card's own legend
 // (homeband_keys.go), where every other chord on this screen is named. This band
 // states what IS; the legend states what the keyboard does. Saying the key here
 // as well would be the card teaching one gesture twice, three rows apart.

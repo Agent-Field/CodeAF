@@ -99,6 +99,12 @@ func (transportPolicy) Class() Class { return Transport }
 // and a model is not the last thing there is.
 func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 	spent, allowed := transportBudget(e, l)
+	// A TERMINAL TRANSPORT HAS ALREADY TAKEN ITS ONE RECOVERY. The report keeps
+	// it in transport accounting while preventing an endpoint retry or model hop
+	// from repeating a credential failure only the person can repair.
+	if e.TerminalTransport {
+		return Verdict{Action: ActionReport, Reason: ReasonUnauthorized, Attempts: spent}
+	}
 	// A PAUSED PLAN HAS NO AUTOMATIC MOVE. The dispatcher either uses the
 	// separately authorised metered door itself or returns the typed pause; an
 	// endpoint walk or model hop here would evade that billing decision.
@@ -360,6 +366,8 @@ func transportReason(e Evidence) string {
 	switch {
 	case e.Withdrawn:
 		return ReasonWithdrawn
+	case e.TerminalTransport:
+		return ReasonUnauthorized
 	case e.Unserved:
 		return ReasonUnauthorized
 	case e.Spent:

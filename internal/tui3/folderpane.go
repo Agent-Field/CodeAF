@@ -22,7 +22,7 @@ package tui3
 //
 // ── THREE STATES, TWO KEYS, AND THE RULE THAT MAKES SCROLLING OBVIOUS ───────
 //
-// The pane is BESIDE the list, ALONE on the sheet, or OFF. alt+p turns it off
+// The pane is BESIDE the list, ALONE on the sheet, or OFF. alt+w turns it off
 // and back on; alt+o gives it the whole sheet and gives the sheet back.
 //
 // And the pane the arrow keys act on is THE PANE THAT IS DRAWN — there is no
@@ -59,7 +59,7 @@ const (
 // because the manual quotes both of them exactly as they are spelled here, and
 // because the foot row's own legend is built from the same strings.
 const (
-	folderPaneKey = "alt+p"
+	folderPaneKey = "alt+w"
 	folderWideKey = "alt+o"
 	folderMarkKey = "alt+m"
 )

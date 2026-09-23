@@ -412,7 +412,7 @@ func headerBudgeted(t *testing.T, a *app, where string) {
 		// AND THE ROWS CHARGED ARE THE ROWS DRAWN: the pulse on top, the rule
 		// where the geometry says the seam is.
 		if a.room == nil && drawn == placeHeadRows &&
-			(!strings.HasPrefix(plain(rows[0]), " "+product) || strings.Trim(plain(rows[placeTabRow+1]), "─") != "") {
+			(!strings.HasPrefix(plain(rows[0]), " "+plain(a.pal.wordmark(a.width))) || strings.Trim(plain(rows[placeTabRow+1]), "─") != "") {
 			t.Fatalf("%s at %dx%d the head is charged as the places' and drawn as something else:\n%q\n%q",
 				where, size.w, size.h, plain(rows[0]), plain(rows[placeTabRow+1]))
 		}

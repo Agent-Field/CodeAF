@@ -340,7 +340,11 @@ import (
 // half a minute while this surface had stopped waiting at ten seconds: the
 // person would be told their work did not start while it did. NEVER TO A
 // SENTENCE THAT IS FALSE.
-const Version = 16
+// VERSION 17 separates clarification from answering a pending question and adds
+// ReplaceQuestion. It also carries whether a caller has no approval resolver.
+// Older peers must refuse before a question or an unwatched tool can run under
+// semantics the other side does not understand.
+const Version = 17
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -423,11 +427,12 @@ type Frame struct {
 const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
-	MethodSubmit      = "Submit"      // SubmitArgs → StreamRef, then "event" frames
-	MethodSubmitImage = "SubmitImage" // SubmitImageArgs → StreamRef, then "event" frames
-	MethodSubmitFiles = "SubmitFiles" // SubmitFilesArgs → StreamRef, then "event" frames
-	MethodFollowUp    = "FollowUp"    // SubmitArgs → StreamRef, then "event" frames
-	MethodSteer       = "Steer"       // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmit          = "Submit"          // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmitImage     = "SubmitImage"     // SubmitImageArgs → StreamRef, then "event" frames
+	MethodSubmitFiles     = "SubmitFiles"     // SubmitFilesArgs → StreamRef, then "event" frames
+	MethodFollowUp        = "FollowUp"        // SubmitArgs → StreamRef, then "event" frames
+	MethodQuestionReplace = "ReplaceQuestion" // QuestionArgs → StreamRef
+	MethodSteer           = "Steer"           // SubmitArgs → StreamRef, then "event" frames
 	// MethodTyping is a person having started writing, and it is the only frame
 	// on this wire that nobody waits for ([Agent.Typing]).
 	//
@@ -569,6 +574,14 @@ const (
 	MethodAttachedSkills = "AttachedSkills" // nothing → []string
 	MethodClearSkills    = "ClearSkills"    // nothing → int (how many were on)
 	MethodSkillShelf     = "SkillShelf"     // SkillShelfArgs → []store.Fact
+
+	// The conversation's own posture on the tool gate (internal/session's
+	// approvalposture.go), the dial above one door over: the resolved posture
+	// rides [session.Facts] unasked for the frame, and these are the keystroke's
+	// doors (approval.go). The set answers the refusal as a sentence rather than
+	// a bool because the local door answers an error and the surface prints it.
+	MethodResolvedApproval = "ResolvedApproval" // nothing → string (the posture in force)
+	MethodSetApproval      = "SetApproval"      // string → string ("" took, else the refusal)
 
 	// MethodAnswerLaneOffer answers the one question the phase seam can raise:
 	// the machine a person PINNED has gone quiet, there is somewhere else to
@@ -777,6 +790,9 @@ type StandingWatchResult struct {
 // after the colon — empty means the engine's own home — and the engine answers
 // with the path it resolved.
 type Hello struct {
+	// Headless says this caller cannot answer approval questions. The engine
+	// requires explicit approval settings instead of the interactive default.
+	Headless  bool   `json:"headless,omitempty"`
 	Version   int    `json:"version"`
 	Workspace string `json:"workspace,omitempty"`
 	// Session is an explicit session file to open, empty for the workspace's
@@ -1066,6 +1082,8 @@ type Welcome struct {
 	// would believe the engine was guarding something nobody is guarding.
 	SteerOwner bool `json:"steerOwner,omitempty"`
 	// TaskSetup advertises task-scoped model and thinking controls.
+	// TaskRetry advertises retrying incomplete tasks in place.
+	TaskRetry bool `json:"taskRetry,omitempty"`
 	TaskSetup bool `json:"taskSetup,omitempty"`
 	// TaskSettle says this engine can be ASKED TO DECIDE A LANDING — accept, not
 	// right, one more merge round, the hand-over and the take-back
@@ -1097,6 +1115,27 @@ type Welcome struct {
 	// nothing, and nothing on the screen offers to move a knob the far engine
 	// has never heard of.
 	Effort bool `json:"effort,omitempty"`
+
+	// Approval says this engine HAS A DIAL ON THE CONVERSATION'S OWN POSTURE ON
+	// THE TOOL GATE — that its agent answers [MethodResolvedApproval] and
+	// [MethodSetApproval] rather than refusing them (approval.go). It is
+	// carried for [Welcome.Effort]'s reason, and false is the safe reading for
+	// the same reason: the surface then draws the chip as a reading of
+	// [Welcome.ApprovalMode] and says the far machine's rules decide.
+	Approval bool `json:"approval,omitempty"`
+
+	// DefaultEffort is the far install's own `thinking` row, and
+	// StandingApproval is what a conversation nobody has touched opens at on
+	// that install (the rows as they stand, or the launch's `--yolo`). Both
+	// are carried ONCE, at the door, because they are facts about the install
+	// and not about any conversation: the draft on home and the other places
+	// draws them as the rung and the gate the NEXT conversation on that machine
+	// would run at (internal/tui3's boxseam.go), and a draft is drawn on every
+	// frame. An empty DefaultEffort means auto when Effort is true; Effort
+	// itself distinguishes an engine without the control. An empty
+	// StandingApproval means there is no gate and draws no approval cell.
+	DefaultEffort    string `json:"defaultEffort,omitempty"`
+	StandingApproval string `json:"standingApproval,omitempty"`
 
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather
@@ -1583,14 +1622,19 @@ type PhaseWire struct {
 // which one finished it, and whether a rescue went out while somebody was
 // waiting ([session.LaneNews]).
 //
-// It carries no moment at all, for [PhaseWire]'s reason one step further: a
-// sighting is drawn for ten minutes after it was taken (internal/tui3's
-// servedWindow) and the only clock that reading can be taken against is the
-// surface's own, so the surface stamps it when the frame lands. What is lost is
-// the pipe's own latency, which on the road this exists for — a surface and an
-// engine host on one machine — is a fraction of a millisecond against ten
-// minutes.
+// It carries no moment, for [PhaseWire]'s reason one step further: the sheet's
+// `served` row draws a sighting for ten minutes after it was taken
+// (internal/tui3's servedWindow) and the only clock that reading can be taken
+// against is the surface's own, so the surface stamps it when the frame lands.
+// What it carries instead is an AGE, and only when it has one: a sighting
+// replayed to a window that arrived after the answer (news.go's
+// [Session.watchNews]) says how long ago the answer landed, so the surface
+// files it as the old sighting it is. A live sighting's age is nothing, and
+// an older peer that does not know the field reads it as nothing.
 type LaneWire struct {
+	// AgeMS is how long before this frame was sent the answer landed — zero
+	// for a sighting that is crossing as it happens.
+	AgeMS int64 `json:"ageMs,omitempty"`
 	// Model is the model the answer came back on. A news with no model belongs
 	// to nobody and is dropped on both sides of the wire.
 	Model string `json:"model"`
