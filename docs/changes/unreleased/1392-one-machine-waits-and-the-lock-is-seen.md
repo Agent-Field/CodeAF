@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: the one machine is waited on rather than hammered, a router's pool is never one machine, and the dual suite lock is seen by old checkouts and taken back when its holder dies
+title: one machine is waited on, a pool is never one machine, and the suite lock is seen and freed
 pr: 1392
 surface: [engine, chat, build]
 invalidates:
