@@ -375,15 +375,24 @@ func (r *record) close(fill func(turn *delegate.Turn)) delegate.Turn {
 }
 
 // open numbers one call, opens its turn with what the thread had not said
-// before, and answers the run's spend at the moment the call arrived — the
-// figure its ceiling is asked against.
+// before, names the working the program handed back by the field its thread's
+// working last arrived on, and answers the run's spend at the moment the call
+// arrived — the figure its ceiling is asked against.
 func (s *Server) open(request *call, thread, served string) (*record, float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.seq++
 	entry := &record{turn: delegate.Turn{Seq: s.seq, Thread: thread, Started: time.Now(), Model: request.asked, Served: served}}
 	entry.turn.Sent, entry.turn.Restarted = s.threads.delta(thread, request.messages)
+	request.reasoning = s.threads.name(thread, request.reasoning)
 	return entry, s.spent
+}
+
+// arrived remembers the field a thread's working came in on.
+func (s *Server) arrived(thread, field string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.threads.arrived(thread, field)
 }
 
 // serve answers one decoded call: the model decided, the turn opened, the
@@ -436,6 +445,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 		status, sentence = s.failure(err, r.Context(), model)
 	} else {
 		said = answerOf(response, model, bill, catch, slot, out)
+		s.arrived(thread, said.reasoning.field)
 	}
 	s.log(entry.close(func(turn *delegate.Turn) {
 		turn.TokensIn, turn.TokensOut, turn.Cached, turn.CostUSD = bill.figures()

@@ -35,15 +35,15 @@ type captured struct {
 // present reports whether there is any working to hand over.
 func (c captured) present() bool { return c.text != "" || len(c.details) > 0 }
 
-// onto writes the working onto a message or a delta under the field it came
-// in on, `reasoning` when the funnel did not say.
+// onto writes the working onto a message or a delta under THE ROUTER'S OWN
+// NAME, `reasoning`, whatever field it arrived on. A program written against
+// OpenRouter reads that name and no other, and a direct endpoint's
+// `reasoning_content` would be working it never saw and so could never hand
+// back; the field it really arrived on is remembered for the thread instead
+// ([threads.arrived]), and a hand-back is replayed under it.
 func (c captured) onto(target map[string]any) {
 	if c.text != "" {
-		field := c.field
-		if field == "" {
-			field = "reasoning"
-		}
-		target[field] = c.text
+		target["reasoning"] = c.text
 	}
 	if len(c.details) > 0 {
 		target["reasoning_details"] = c.details

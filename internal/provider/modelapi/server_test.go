@@ -367,6 +367,34 @@ func TestTheCallCrossesIntoTheFunnelWholeAndTheAnswerComesBackWhole(t *testing.T
 	}
 }
 
+// A THINKING MODEL'S WORKING MAKES THE ROUND TRIP: an endpoint that writes it
+// as reasoning_content has it handed to the program under the router's own
+// `reasoning`, and the program handing it back that way has it replayed to the
+// endpoint under the field it came in with.
+func TestAModelsWorkingGoesOutUnderTheRoutersNameAndComesBackUnderItsOwn(t *testing.T) {
+	calls := &script{reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+		provider.EmitReasoning(ctx, "reasoning_content", "run the tests first", nil)
+		return &ai.Response{Model: model, Choices: []ai.Choice{{
+			Message: ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: "c1", Type: "function", Function: ai.ToolCallFunction{Name: "bash", Arguments: "{}"}}}},
+		}}}, nil
+	}}
+	_, api := open(t, modelapi.Config{CompleterFor: calls.completerFor})
+	status, payload := post(t, api, api.Token, `{"model":"m","messages":[{"role":"user","content":"fix it"}]}`)
+	if status != http.StatusOK || !strings.Contains(string(payload), `"reasoning":"run the tests first"`) || strings.Contains(string(payload), "reasoning_content") {
+		t.Fatalf("status %d, the working did not go out under the router's name: %s", status, payload)
+	}
+	back := `{"model":"m","messages":[{"role":"user","content":"fix it"},` +
+		`{"role":"assistant","content":null,"reasoning":"run the tests first","tool_calls":[{"id":"c1","type":"function","function":{"name":"bash","arguments":"{}"}}]},` +
+		`{"role":"tool","tool_call_id":"c1","content":"ok"}]}`
+	if status, payload := post(t, api, api.Token, back); status != http.StatusOK {
+		t.Fatalf("status %d: %s", status, payload)
+	}
+	seen := calls.calls()
+	if len(seen) != 2 || len(seen[1].reasoning) != 3 || seen[1].reasoning[1].Field != "reasoning_content" || seen[1].reasoning[1].Text != "run the tests first" {
+		t.Fatalf("the working handed back reached the funnel as %+v", seen[len(seen)-1].reasoning)
+	}
+}
+
 // A STREAM IS THE ROUTER'S STREAM: the words as a delta, the finish, then a
 // chunk carrying the usage with its cost, then [DONE].
 func TestAStreamedAnswerEndsWithItsCostThenDone(t *testing.T) {

@@ -156,18 +156,21 @@ func decodeRequest(body []byte) (*call, error) {
 	return decoded, nil
 }
 
-// working is the reasoning a program handed back, under the field it arrived
-// on — the provider's replay law is that working travels back unmodified under
-// the name it came in with (provider.ReasoningReplayPolicy).
+// working is the reasoning a program handed back. A field the program named
+// outright is the field it travels under; the router's own `reasoning` — the
+// name every answer here hands the working out under — is left unnamed, and
+// the call names it from what its thread's working last arrived on
+// ([threads.name]), because the provider's replay law is that working goes
+// back under the field it came in with (provider.ReasoningReplayPolicy).
 func (e messageExtras) working() provider.MessageReasoning {
 	working := provider.MessageReasoning{}
 	switch {
-	case e.Reasoning != "":
-		working.Field, working.Text = "reasoning", e.Reasoning
 	case e.ReasoningContent != "":
 		working.Field, working.Text = "reasoning_content", e.ReasoningContent
 	case e.ReasoningText != "":
 		working.Field, working.Text = "reasoning_text", e.ReasoningText
+	case e.Reasoning != "":
+		working.Text = e.Reasoning
 	}
 	if details := strings.TrimSpace(string(e.ReasoningDetails)); strings.HasPrefix(details, "[") && details != "[]" {
 		working.Details = append(json.RawMessage(nil), e.ReasoningDetails...)
@@ -454,10 +457,8 @@ func toolCalls(calls []ai.ToolCall, indexed bool) []wireToolCall {
 	return out
 }
 
-// message is the whole answer's assistant message. THE WORKING TRAVELS UNDER
-// THE FIELD IT ARRIVED ON, so a program that hands it back on its next call is
-// handing back exactly what the endpoint wrote (provider.ReasoningReplayPolicy):
-// OpenRouter's `reasoning`, or a direct endpoint's `reasoning_content`.
+// message is the whole answer's assistant message, the model's working on it
+// under the router's own `reasoning` ([captured.onto] says why).
 func (a answer) message() map[string]any {
 	message := map[string]any{"role": "assistant", "refusal": nil}
 	if a.text != "" || len(a.calls) == 0 {

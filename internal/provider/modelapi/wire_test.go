@@ -71,7 +71,9 @@ func TestTheWireCarriesEveryFieldTheFunnelHasAHomeFor(t *testing.T) {
 	if tool := decoded.messages[3]; tool.Role != "tool" || tool.ToolCallID != "call_1" || tool.Content[0].Text != "ok" {
 		t.Fatalf("tool result = %+v", tool)
 	}
-	if len(decoded.reasoning) != 4 || decoded.reasoning[2].Field != "reasoning" || decoded.reasoning[2].Text != "look first" ||
+	// The router's own `reasoning` is left unnamed here: the call names it
+	// from its thread (threads.name).
+	if len(decoded.reasoning) != 4 || decoded.reasoning[2].Field != "" || decoded.reasoning[2].Text != "look first" ||
 		!strings.Contains(string(decoded.reasoning[2].Details), "reasoning.text") || decoded.reasoning[0].Text != "" {
 		t.Fatalf("working sidecar = %+v, want the assistant's working aligned with its message", decoded.reasoning)
 	}
@@ -166,8 +168,10 @@ func TestAStreamedAnswerIsTheRoutersChunksInTheRoutersOrder(t *testing.T) {
 	if len(chunks) != 6 {
 		t.Fatalf("%d chunks, want working, words, two calls, finish and usage", len(chunks))
 	}
-	if chunks[0].Choices[0].Delta["reasoning_content"] != "thinking" || chunks[0].Choices[0].Delta["reasoning_details"] == nil {
-		t.Fatalf("working chunk = %+v, want the working under the field it arrived on", chunks[0].Choices[0].Delta)
+	// Working that arrived as a direct endpoint's reasoning_content is handed
+	// out under the router's own name, the one a program reads.
+	if working := chunks[0].Choices[0].Delta; working["reasoning"] != "thinking" || working["reasoning_details"] == nil || working["reasoning_content"] != nil {
+		t.Fatalf("working chunk = %+v, want the working under the router's own name", working)
 	}
 	if chunks[1].Choices[0].Delta["content"] != "done" {
 		t.Fatalf("words chunk = %+v", chunks[1].Choices[0].Delta)
@@ -235,6 +239,26 @@ func TestAThreadRecordsOnlyWhatItHadNotSaidBefore(t *testing.T) {
 	// Another thread has its own memory.
 	if sent, restarted = memory.delta("helper", []ai.Message{system, user}); restarted || len(sent) != 2 {
 		t.Fatalf("a second thread sent %+v restarted %v, want its own first call", sent, restarted)
+	}
+}
+
+// WORKING HANDED BACK UNDER THE ROUTER'S NAME GOES BACK UNDER THE FIELD IT
+// ARRIVED ON: a thread whose working came in as reasoning_content has it
+// replayed as reasoning_content; a thread that has not said is the router's;
+// a field the program named outright is kept; and the threads do not share.
+func TestHandedBackWorkingIsNamedByWhatItsThreadLastArrivedOn(t *testing.T) {
+	var memory threads
+	memory.arrived("coder", "reasoning_content")
+	memory.arrived("coder", "")
+	working := func() []provider.MessageReasoning {
+		return []provider.MessageReasoning{{}, {Text: "mine"}, {Field: "reasoning_text", Text: "named"}, {Details: json.RawMessage(`[{}]`)}}
+	}
+	named := memory.name("coder", working())
+	if named[1].Field != "reasoning_content" || named[2].Field != "reasoning_text" || named[0].Field != "" || named[3].Field != "" {
+		t.Fatalf("named on the coder's thread = %+v", named)
+	}
+	if other := memory.name("helper", working()); other[1].Field != "reasoning" {
+		t.Fatalf("a thread that has not said named its working %q, want the router's own", other[1].Field)
 	}
 }
 

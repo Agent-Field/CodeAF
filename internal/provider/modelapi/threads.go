@@ -28,12 +28,43 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
-// threads is every thread's previous request, as fingerprints. It is guarded by
-// the server's lock.
+// threads is every thread's previous request, as fingerprints, and the field
+// its model's working last arrived on. It is guarded by the server's lock.
 type threads struct {
 	previous map[string][]string
+	fields   map[string]string
+}
+
+// arrived remembers the field a thread's working came in on, so working the
+// program hands back under the router's name is replayed under the field the
+// endpoint wrote it with.
+func (t *threads) arrived(thread, field string) {
+	if field == "" {
+		return
+	}
+	if t.fields == nil {
+		t.fields = map[string]string{}
+	}
+	t.fields[thread] = field
+}
+
+// name gives every piece of handed-back working with no field of its own the
+// field its thread's working last arrived on — the router's `reasoning` when
+// the thread has not said — so no working reaches the encoder unnamed.
+func (t *threads) name(thread string, working []provider.MessageReasoning) []provider.MessageReasoning {
+	field := t.fields[thread]
+	if field == "" {
+		field = "reasoning"
+	}
+	for index := range working {
+		if working[index].Field == "" && working[index].Text != "" {
+			working[index].Field = field
+		}
+	}
+	return working
 }
 
 // delta answers what this request adds to the thread's previous one, and
