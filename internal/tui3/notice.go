@@ -365,8 +365,14 @@ var notices = []notice{
 	},
 	{
 		id: "standing-after-several-sessions", slot: slotHint,
-		armed:  func(a *app) bool { return len(a.welcome.recent) >= 3 },
-		text:   "/standing keeps something always true",
+		armed: func(a *app) bool { return len(a.welcome.recent) >= 3 },
+		// THE TWO "KEEPS" ROWS ARE TOLD APART SINCE 2026-09-22. This one and
+		// `/remember` both said "keeps", which taught a person that the two
+		// commands did the same thing in different words. They do not: a
+		// standing order is a CONDITION the work has to honour — it rides into
+		// a task's brief under its own heading and the worker reports when it
+		// cannot meet one — and a memory is a fact carried forward.
+		text:   "/standing turns a sentence into a rule work must follow",
 		retire: eventStandingOpened,
 	},
 	// ── starting work ───────────────────────────────────────────────────────
@@ -475,8 +481,9 @@ var notices = []notice{
 	// ── memory, accounts and the rest ───────────────────────────────────────
 	{
 		id: "remember-one-thing", slot: slotHint,
-		armed:  ready,
-		text:   "/remember keeps one thing across conversations",
+		armed: ready,
+		// The other half of the pair above: a fact, and the way back out of it.
+		text:   "/remember carries a fact forward, /forget drops it",
 		retire: eventRemembered,
 	},
 	{

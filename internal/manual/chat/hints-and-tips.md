@@ -112,7 +112,7 @@ build if the two disagree), so a tip you saw is on it word for word.
   when you run `/files`.
 - `/resume opens an earlier conversation` — when you start in a directory that already has
   a conversation. Retired when you run `/resume`.
-- `/standing keeps something always true` — once this directory has three or more earlier
+- `/standing turns a sentence into a rule work must follow` — once this directory has three or more earlier
   conversations. Retired when a standing order is made or the standing page opened.
 - `/task starts work you can walk away from` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
@@ -155,7 +155,10 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Memory, accounts and the rest**
 
-- `/remember keeps one thing across conversations` — retired when `/remember` is typed.
+- `/remember carries a fact forward, /forget drops it` — retired when `/remember` is typed.
+  It is the only row that names two commands as a pair, because the two rows about keeping
+  something used to be told apart by nothing: a standing order is a condition the work has
+  to honour and a memory is a fact carried forward.
 - `/connect links Notion, Slack and other services` — retired when the connect panel
   is reached for.
 - `/autonomy sets how questions are handled while you are away` — after the first
