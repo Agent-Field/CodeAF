@@ -17,6 +17,7 @@ func testProgram(body Body) Delegate {
 	}
 	return Delegate{
 		Name: "fake", Summary: "a fake program for the tests", Default: "run", Page: "fake",
+		Guide: "For the tests' fake work, with a brief that names what it touches.",
 		Commands: []Command{{
 			Name: "run", Usage: "[flags] -- <brief>", Summary: "does the whole task",
 			Bind: func(fs *flag.FlagSet) Body {
@@ -172,5 +173,32 @@ func TestValidateRefusesADefinitionThatCouldNotRun(t *testing.T) {
 	}}}
 	if err := shadow.Validate(); err == nil || !strings.Contains(err.Error(), "--dir") {
 		t.Fatalf("err = %v, want the shared flag named", err)
+	}
+}
+
+// A PROGRAM DESCRIBES ITSELF TO THE MODEL THAT HANDS IT WORK, in one paragraph
+// the conversation's fixed prefix can afford: a program with no guide would be
+// listed by its name alone, one with line breaks would break the list it is an
+// item of, and one past GuideMax would be paid for on every request of every
+// turn of every conversation that carries it.
+func TestValidateHoldsTheGuideToOneAffordableParagraph(t *testing.T) {
+	good := testProgram(nil)
+	for _, c := range []struct {
+		name, guide, want string
+	}{
+		{"empty", "  ", "the guide is empty"},
+		{"two paragraphs", "For one thing.\n\nAnd another.", "no line breaks"},
+		{"too long", strings.Repeat("x", GuideMax+1), "held to"},
+	} {
+		program := good
+		program.Guide = c.guide
+		if err := program.Validate(); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Fatalf("%s: err = %v, want it to say %q", c.name, err, c.want)
+		}
+	}
+	program := good
+	program.Guide = strings.Repeat("x", GuideMax)
+	if err := program.Validate(); err != nil {
+		t.Fatalf("a guide of exactly GuideMax bytes refused: %v", err)
 	}
 }

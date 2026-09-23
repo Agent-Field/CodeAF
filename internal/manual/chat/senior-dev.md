@@ -36,6 +36,24 @@ before the brief, and `--` ends them: `codeaf senior-dev run --variant high -- r
 config loader`. Everything from the first word that is not a flag onwards is the brief,
 so a flag written after the brief becomes part of it.
 
+## Running senior-dev on a repository you have not cloned — a benchmark task, another project
+
+senior-dev works in a copy of the folder it is handed, and only what it changes in that
+copy lands. So it has to be handed the repository the work belongs in.
+
+In the chat, ask for the work and name the repository, and the commit if the work names
+one. The model clones it first, into a new folder, onto a branch at that commit, and hands
+senior-dev that folder. A benchmark task works this way: senior-dev gets a copy of the
+project's own repository and not of the benchmark's, so the benchmark's files, its
+reference solution among them, are not in its copy.
+
+At a shell, clone the repository yourself, then run `codeaf senior-dev` inside it or pass
+the folder with `--dir`.
+
+A brief that tells senior-dev to make a checkout of its own somewhere else does not work.
+It has no copy of that folder, so nothing it does there lands, and it would be editing a
+folder of yours directly.
+
 ## What senior-dev cannot do — it cannot ask you anything, no step cap, no Windows
 
 **It cannot ask you anything.** Nobody is at its keyboard: a question its model tries to

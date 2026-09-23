@@ -11,10 +11,25 @@ program's own name.*
 
 A value in the build's list, `internal/delegate/builtin`, of type
 `delegate.Delegate`: a name (the chat command `/<name>` and the shell verb
-`codeaf <name>`), a one-line summary, what it lands (`tree` or `text`), its
-commands with their own flags, its default command, and the name of its page in
-the chat's manual. There is nothing to install. A program not in the list does
+`codeaf <name>`), a one-line summary, a guide, what it lands (`tree` or `text`),
+its commands with their own flags, its default command, and the name of its page
+in the chat's manual. There is nothing to install. A program not in the list does
 not exist anywhere; on Windows the list is empty.
+
+**The guide is the program describing itself to the model that hands it work:**
+one paragraph of at most 400 bytes (`delegate.GuideMax`) saying what it is for,
+what its brief must hold and what it needs of its folder. The conversation prints
+it under the program's name, beside `propose_task`'s `via`, and says nothing about
+the program of its own. It rides every request of every turn, which is why it is
+short and why the manual page carries the rest.
+
+**The program owns what is true of it; codeaf owns what is true of every
+program.** The copy a program that edits files works in, the rule that only that
+copy lands, and so the rule that it must be handed the repository the work
+belongs in (cloned first when the machine lacks it, and never briefed to work
+anywhere else) are codeaf's to say, once, beside the list; the rule is printed
+only when a program that lands a tree is carried. That nobody can be asked
+anything is `propose_task`'s own. A guide repeats none of it.
 
 A program cannot run on its own. Its entry point is a `Command` whose body takes
 a `delegate.Host`, and only codeaf makes one.
@@ -28,7 +43,8 @@ codeaf <name> <command> --json --dir <workspace> [--max-cost USD] [--max-hours H
 ```
 
 - **From the chat,** the engine's run (`internal/run`'s `DelegateWorker`) starts
-  that line in the run's working copy.
+  that line in the run's working copy, which is cut from the folder the proposal
+  names (`propose_task`'s `ground`) or else the conversation's own.
 - **From a shell,** `codeaf <name> <brief>` becomes the host: it serves the model
   API itself and starts the same child.
 

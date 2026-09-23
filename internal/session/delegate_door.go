@@ -80,20 +80,72 @@ func (c Config) mayDelegate() bool {
 
 // delegateFact is the hand-off page's one paragraph about these programs. It is
 // rendered only where [Config.mayDelegate] holds, and its `fill` writes the
-// names in, so the model is told the words it can put in `via` and never a name
-// this build does not carry.
+// programs in — each one's name and its own guide — so the model is told the
+// words it can put in `via` and never a name this build does not carry.
+//
+// THE PARAGRAPH SAYS WHAT CODEAF DOES, AND EACH PROGRAM SAYS WHAT IT IS. What
+// a program is for, what its brief must hold and what it needs of its folder
+// are the program's own [delegate.Delegate.Guide], printed under its name, so
+// nothing here names senior-dev. What is true of every program that edits
+// files — the copy it works in, what lands, and so which folder it must be
+// handed — is codeaf's mechanics, and is said here once ([delegateFolderRule]).
+// That nobody can be asked anything is `propose_task`'s own `brief`
+// description, and that small work is never handed off is this section's
+// own; neither is said a second time here.
 var delegateFact = beltFact{
 	tools: []string{"propose_task"},
 	holds: Config.mayDelegate,
-	present: "AND WORK BIG ENOUGH TO WANT ITS OWN AGENT FOR AN HOUR — one large change, specified\n" +
-		"well enough that nobody will be asked anything — can go to a PROGRAM BUILT INTO CODEAF\n" +
-		"that does the whole task on its own, in a copy of the folder, under the same dollar and\n" +
-		"time limits, landed when it ends. Name it in `propose_task`'s `via`. The programs here\n" +
-		"are: %s. It cannot ask the person anything, so its brief has to settle everything;\n" +
-		"a change you would do in a few steps is never worth one.",
+	present: "AND ONE LARGE TASK CAN GO TO A PROGRAM BUILT INTO CODEAF, named in `propose_task`'s\n" +
+		"`via`, which does the whole of it alone.%s The programs here:\n%s",
 	fill: func(config Config, text string) string {
-		return fmt.Sprintf(text, strings.Join(config.delegateNames(), ", "))
+		rule := ""
+		if config.carriesTreeProgram() {
+			rule = delegateFolderRule
+		}
+		return fmt.Sprintf(text, rule, config.delegateGuides())
 	},
+}
+
+// delegateFolderRule is codeaf's one sentence about the folder a program that
+// edits files is handed, and it is printed only when the build carries one.
+//
+// IT EXISTS BECAUSE A MODEL SENT SENIOR-DEV TO THE WRONG REPOSITORY. Asked to
+// solve a benchmark task whose code lived in a repository not on the machine,
+// the conversation handed senior-dev the one repository it knew — the
+// benchmark's, which holds the task's reference solution beside its statement —
+// and wrote a brief telling it to make a checkout of the real one. senior-dev
+// cloned it into the person's own projects folder and edited it there, outside
+// the copy codeaf lands from, and the task ended saying it had changed nothing.
+// The copy is cut from the folder the proposal names, so the folder is the one
+// thing the model has to get right, and fetching a repository that is not here
+// is its job, done before the proposal.
+const delegateFolderRule = "\nIt works in a copy of the task's folder and only that copy lands, so hand it the\n" +
+	"repository the work belongs in: clone one this machine lacks into a new folder, on a\n" +
+	"branch at the commit the work names, and pass it as `ground`. Never brief it to work\n" +
+	"elsewhere."
+
+// carriesTreeProgram says whether any program this conversation can hand work
+// to edits files, which is when [delegateFolderRule] is true of it.
+func (c Config) carriesTreeProgram() bool {
+	for _, program := range c.Delegates {
+		if program.LandsTree() {
+			return true
+		}
+	}
+	return false
+}
+
+// delegateGuides is the programs as the hand-off paragraph lists them: one item
+// each, sorted by name, the name as `via` takes it and then the program's own
+// guide.
+func (c Config) delegateGuides() string {
+	programs := append([]delegate.Delegate(nil), c.Delegates...)
+	sort.Slice(programs, func(i, j int) bool { return programs[i].Name < programs[j].Name })
+	items := make([]string, 0, len(programs))
+	for _, program := range programs {
+		items = append(items, "- `"+program.Name+"`: "+strings.TrimSpace(program.Guide))
+	}
+	return strings.Join(items, "\n")
 }
 
 // DelegateUnknownError is the refusal for a `via` or a command naming no

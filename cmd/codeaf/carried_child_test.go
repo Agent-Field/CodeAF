@@ -37,6 +37,7 @@ const fakeCarried = "fake-carried"
 func fakeCarriedProgram() delegate.Delegate {
 	return delegate.Delegate{
 		Name: fakeCarried, Summary: "a program the tests carry, which asks its model a question or two", Default: "run", Page: "delegates",
+		Guide: "For the tests' questions to a model, with a brief that is the question.",
 		Commands: []delegate.Command{{
 			Name: "run", Usage: "[flags] -- <brief>", Summary: "does the whole task",
 			Bind: func(fs *flag.FlagSet) delegate.Body {

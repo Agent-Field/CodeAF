@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
@@ -605,6 +606,15 @@ func widestPage() string {
 			widest := fact.present
 			if len(fact.shelved) > len(widest) {
 				widest = fact.shelved
+			}
+			// AND A FILLED FACT IS WEIGHED FILLED. The programs paragraph is a
+			// frame whose body is each carried program's own guide
+			// (delegate_door.go), and weighing the frame alone once let a
+			// paragraph of a few hundred bytes ride every request unseen. It is
+			// filled with the programs this build carries, as the chat door
+			// hands them over.
+			if fact.fill != nil {
+				widest = fact.fill(Config{Delegates: builtin.All()}, widest)
 			}
 			lines = append(lines, widest)
 		}

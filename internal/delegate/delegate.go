@@ -57,6 +57,23 @@ type Delegate struct {
 	// Summary is one sentence saying what it does, in a person's words: the
 	// command row's tail and its line in `codeaf --help`.
 	Summary string
+	// Guide is the program describing itself to the model that hands it work:
+	// what it is for, what its brief must hold, and what it needs of its
+	// folder. The conversation prints it under the program's name, where the
+	// model reads which programs it can name in `via`, and says nothing about
+	// the program of its own.
+	//
+	// THE PROGRAM OWNS WHAT IS TRUE OF IT, AND CODEAF OWNS WHAT IS TRUE OF
+	// EVERY PROGRAM. The copy a program works in, what lands from it and the
+	// fact that nobody can be asked anything are codeaf's mechanics, stated
+	// once beside the list; a guide that restated them would be one more copy
+	// to drift. A second program brings its own guide, and the conversation's
+	// page never has to learn its name.
+	//
+	// IT RIDES EVERY REQUEST OF EVERY TURN, because the paragraph is part of
+	// the conversation's fixed prefix (internal/session's prefixbudget_test.go
+	// weighs it), so it is one paragraph of at most [GuideMax] bytes.
+	Guide string
 	// Lands is LandsTree or LandsText. Empty reads as LandsTree, because a
 	// program that edits a tree is the one this was built for.
 	Lands string
@@ -101,6 +118,12 @@ type Body func(ctx context.Context, host Host, args []string) error
 // type without quoting.
 var nameShape = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 
+// GuideMax is the most bytes a program's [Delegate.Guide] may take. It is a
+// paragraph a model reads on every turn of every conversation that carries the
+// program, so it is held to what a model needs to choose the program and brief
+// it, and the program's manual page carries the rest.
+const GuideMax = 400
+
 // sharedFlags are the flags codeaf puts on every command's line. A command
 // declaring one of them again would panic inside the flag package at parse
 // time, so Validate refuses it by name first.
@@ -116,6 +139,14 @@ func (d Delegate) Validate() error {
 	}
 	if strings.TrimSpace(d.Summary) == "" {
 		return fmt.Errorf("%s: the summary is empty, and it is what the command row says", d.Name)
+	}
+	switch guide := strings.TrimSpace(d.Guide); {
+	case guide == "":
+		return fmt.Errorf("%s: the guide is empty, so the model that hands it work is told nothing but its name", d.Name)
+	case strings.Contains(guide, "\n"):
+		return fmt.Errorf("%s: the guide is one paragraph and has no line breaks, because it is printed as one item of a list", d.Name)
+	case len(guide) > GuideMax:
+		return fmt.Errorf("%s: the guide is %d bytes; it rides every request of every turn, so it is held to %d", d.Name, len(guide), GuideMax)
 	}
 	switch d.Lands {
 	case "", LandsTree, LandsText:

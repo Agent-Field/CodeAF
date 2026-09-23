@@ -35,12 +35,28 @@ That is `/task` with the worker chosen. A run starts at once in a copy of your f
 turn goes on, and the row appears on the rail.
 
 The model can choose one as well. `propose_task` takes `via` naming the program, and the
-card you answer says which program the work is going to. The model is told only the names
-your build carries.
+card you answer says which program the work is going to. The model is told the programs
+your build carries, each in the program's own words: what it is for, what its brief must
+say, and what it needs of its folder.
 
 At a shell, `codeaf <name> <brief>` runs the same program in the folder you are in, or the
 one `--dir` names. `--max-cost` and `--max-hours` set its ceilings, and `--json` prints its
 records instead of readable lines. `codeaf <name> --help` lists its own commands and flags.
+
+## Which folder a program works in — a repository I have not cloned, it edited files outside its copy
+
+A program that edits code works in a copy of one folder: the one this conversation works
+in, or the one the task names. **Only what it changes inside that copy lands.** Anything it
+changed anywhere else is not part of the task, and the task's ending does not see it.
+
+So when the work belongs in a repository that is not on this machine (a benchmark task
+that names a repository and a commit, or a project you have not cloned), the model clones
+it first, into a new folder, onto a branch at the commit the work names, and hands the
+program that folder. It is told never to write a brief that sends the program to work in
+another folder, because nothing the program did there could land.
+
+At a shell nobody does that for you: clone the repository, then run `codeaf <name>` inside
+it, or name the folder with `--dir`.
 
 ## What it cannot do — why it did not ask me, no questions, no step cap, why it was refused
 

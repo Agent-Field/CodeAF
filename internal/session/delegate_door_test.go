@@ -17,6 +17,7 @@ import (
 func testPrograms(name string) []delegate.Delegate {
 	return []delegate.Delegate{{
 		Name: name, Summary: "a fake program", Default: "run", Page: name,
+		Guide: "For work a fake does, with a brief that names the fake's files.",
 		Commands: []delegate.Command{{Name: "run", Bind: func(*flag.FlagSet) delegate.Body {
 			return func(context.Context, delegate.Host, []string) error { return nil }
 		}}},
@@ -160,13 +161,13 @@ func TestNothingJoinsADelegatedRunAndADelegateJoinsNothing(t *testing.T) {
 }
 
 // The prompt names the programs this build carries, and only where there are
-// some: a conversation with one reads its name under the hand-off facts, and
-// one without reads nothing about them at all.
+// some: a conversation with one reads its name and its own guide under the
+// hand-off facts, and one without reads nothing about them at all.
 func TestThePromptNamesTheDelegatesThisLaunchHasAndOnlyThose(t *testing.T) {
 	with := Config{Workspace: t.TempDir(), Delegates: testPrograms("fake")}
 	page := promptWithBeltFacts(with)
-	if !strings.Contains(page, "The programs here\nare: fake.") {
-		t.Fatalf("the page does not name the delegate:\n%s", page)
+	if !strings.Contains(page, "The programs here:\n- `fake`: "+with.Delegates[0].Guide) {
+		t.Fatalf("the page does not list the delegate with its own guide:\n%s", page)
 	}
 	if !strings.Contains(page, "`via`") {
 		t.Fatal("the page does not say how a delegate is named on a proposal")
@@ -178,5 +179,53 @@ func TestThePromptNamesTheDelegatesThisLaunchHasAndOnlyThose(t *testing.T) {
 	inTask := Config{Workspace: t.TempDir(), Delegates: with.Delegates, InTask: true}
 	if page := promptWithBeltFacts(inTask); strings.Contains(page, "The programs here") {
 		t.Fatal("a task node is told it may delegate")
+	}
+}
+
+// THE FOLDER A PROGRAM IS HANDED IS CODEAF'S TO EXPLAIN, and it is explained
+// only where it is true. A program that edits files works in a copy of the
+// proposal's folder and lands only from there, so the page tells the model to
+// hand it the repository the work belongs in — cloned first when this machine
+// lacks it — and never to brief it to work somewhere else: the failure this
+// sentence was written from is senior-dev cloning a repository into the
+// person's projects folder because its brief said to. A program that only
+// answers works in place and lands nothing, so a build carrying only those is
+// told nothing about copies.
+func TestTheFolderRuleIsSaidWhereAProgramEditsFilesAndOnlyThere(t *testing.T) {
+	tree := Config{Workspace: t.TempDir(), Delegates: testPrograms("fake")}
+	page := promptWithBeltFacts(tree)
+	for _, want := range []string{
+		"It works in a copy of the task's folder and only that copy lands",
+		"clone one this machine lacks into a new folder",
+		"branch at the commit the work names, and pass it as `ground`.",
+		"Never brief it to work\nelsewhere.",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("a build carrying a program that edits files is not told %q:\n%s", want, page)
+		}
+	}
+	textOnly := testPrograms("reader")
+	textOnly[0].Lands = delegate.LandsText
+	page = promptWithBeltFacts(Config{Workspace: t.TempDir(), Delegates: textOnly})
+	if !strings.Contains(page, "- `reader`: ") {
+		t.Fatalf("the program that answers is not listed:\n%s", page)
+	}
+	if strings.Contains(page, "copy of the task's folder") {
+		t.Fatalf("a build whose only program works in place is told about copies:\n%s", page)
+	}
+}
+
+// THE PAGE SAYS NOTHING ABOUT A PROGRAM THAT THE PROGRAM DOES NOT SAY. Two
+// programs are listed in name order, each with its own guide and nobody
+// else's, so a second program joins the page by bringing its guide and never
+// by an edit to the conversation's words.
+func TestEachProgramIsListedWithItsOwnGuideInNameOrder(t *testing.T) {
+	programs := append(testPrograms("zeta"), testPrograms("alpha")...)
+	programs[0].Guide = "For the zeta work."
+	programs[1].Guide = "For the alpha work."
+	page := promptWithBeltFacts(Config{Workspace: t.TempDir(), Delegates: programs})
+	want := "The programs here:\n- `alpha`: For the alpha work.\n- `zeta`: For the zeta work."
+	if !strings.Contains(page, want) {
+		t.Fatalf("the page does not list both programs with their own guides in order; want %q in:\n%s", want, page)
 	}
 }
