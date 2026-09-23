@@ -137,14 +137,21 @@ func (p *v3Process) ownCatalog(models *catalog.Catalog) {
 	if p == nil || models == nil {
 		return
 	}
-	p.mu.Lock()
-	if p.closed {
-		p.mu.Unlock()
+	if !p.keepCatalog(models) {
 		models.Close()
-		return
+	}
+}
+
+// keepCatalog files one catalog for closeAll, and answers false when the close
+// has already begun and nothing will come back for it.
+func (p *v3Process) keepCatalog(models *catalog.Catalog) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return false
 	}
 	p.catalogs = append(p.catalogs, models)
-	p.mu.Unlock()
+	return true
 }
 
 // takeCatalogs hands over every catalog [v3Process.ownCatalog] was given and

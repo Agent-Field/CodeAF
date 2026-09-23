@@ -157,8 +157,18 @@ func (f *engineFleet) own(shut func()) {
 		return
 	}
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.closers = append(f.closers, shut)
-	f.mu.Unlock()
+}
+
+// takeClosers hands over everything [engineFleet.own] was given and empties the
+// list, so the joins run after the lock is let go.
+func (f *engineFleet) takeClosers() []func() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	closers := f.closers
+	f.closers = nil
+	return closers
 }
 
 // machineReadings is the handful of per-window facts a beside conversation needs
@@ -320,11 +330,7 @@ func (f *engineFleet) closeAll() {
 	_ = f.boot.close()
 	// AND WHAT THE WINDOW OPENED BESIDE THEM, joined last: nothing it warmed may
 	// write after the door has let go.
-	f.mu.Lock()
-	closers := f.closers
-	f.closers = nil
-	f.mu.Unlock()
-	for _, shut := range closers {
+	for _, shut := range f.takeClosers() {
 		shut()
 	}
 }
