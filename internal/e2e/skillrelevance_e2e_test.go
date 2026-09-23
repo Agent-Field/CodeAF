@@ -26,6 +26,11 @@ import (
 // that carries the word is a reply that read the skill — and a reply that
 // carries the wrong one, or one where no skill applies, is a false pick.
 //
+// A PICK IS ALSO A SKILL THE RUN OPENED. The model does not always obey the
+// code-word rule after reading a skill — it may follow the procedure and drop
+// the ceremony — so a run whose printed steps read one skill's SKILL.md
+// counts as picking it too. The table says which way each pick was seen.
+//
 // IT EXISTS BECAUSE THE FIRST CHOICE WAS LITERAL. The skills a message carries
 // are picked by the words it shares with a description, and "sketch the deck
 // for the board" shares none with "PowerPoint presentations: slides". The
@@ -62,32 +67,44 @@ func TestSkillRelevanceEval(t *testing.T) {
 			"This procedure has one rule that proves it was followed: begin your reply with the line "+skill.code+
 				", then answer. Keep the answer under five lines and do not create or edit any files.")
 	}
-	ws := newWorkspace(t, "evalspace", false)
 
 	type row struct {
-		prompt, want, got string
-		shared            int
-		hit               bool
+		prompt, want, got, seen string
+		shared                  int
+		hit                     bool
 	}
 	rows := make([]row, 0, len(evalPrompts))
-	for _, prompt := range evalPrompts {
+	for index, prompt := range evalPrompts {
+		// EACH REQUEST IN A FOLDER OF ITS OWN. The headless door resumes the
+		// last conversation in a folder, so one shared folder would hand every
+		// request the skills the ones before it read, and the rows would stop
+		// being independent measurements.
+		ws := newWorkspace(t, fmt.Sprintf("evalspace%02d", index+1), false)
 		out := evalOnce(t, bin, home, ws, key, prompt.text)
-		got := ""
+		var got, seen []string
 		for _, skill := range evalSkills {
-			if strings.Contains(out, skill.code) {
-				got = strings.TrimSpace(got + " " + skill.name)
+			said := strings.Contains(out, skill.code)
+			opened := strings.Contains(out, filepath.Join(".claude", "skills", skill.name, "SKILL.md"))
+			switch {
+			case said && opened:
+				got, seen = append(got, skill.name), append(seen, "code+read")
+			case said:
+				got, seen = append(got, skill.name), append(seen, "code")
+			case opened:
+				got, seen = append(got, skill.name), append(seen, "read")
 			}
 		}
 		rows = append(rows, row{
-			prompt: prompt.text, want: prompt.skill, got: got,
+			prompt: prompt.text, want: prompt.skill,
+			got: strings.Join(got, " "), seen: strings.Join(seen, " "),
 			shared: sharedWords(prompt.text, prompt.skill),
-			hit:    got == prompt.skill,
+			hit:    strings.Join(got, " ") == prompt.skill,
 		})
 	}
 
 	var table strings.Builder
 	paraphraseHits, paraphrases, quietRight, quiet := 0, 0, 0, 0
-	fmt.Fprintf(&table, "\n| # | want | got | shared words | result | request |\n|---|---|---|---|---|---|\n")
+	fmt.Fprintf(&table, "\n| # | want | got | seen as | shared words | result | request |\n|---|---|---|---|---|---|---|\n")
 	for index, r := range rows {
 		want := r.want
 		if want == "" {
@@ -110,7 +127,11 @@ func TestSkillRelevanceEval(t *testing.T) {
 		if got == "" {
 			got = "(none)"
 		}
-		fmt.Fprintf(&table, "| %d | %s | %s | %d | %s | %s |\n", index+1, want, got, r.shared, result, r.prompt)
+		seen := r.seen
+		if seen == "" {
+			seen = "-"
+		}
+		fmt.Fprintf(&table, "| %d | %s | %s | %s | %d | %s | %s |\n", index+1, want, got, seen, r.shared, result, r.prompt)
 	}
 	fmt.Fprintf(&table, "\nparaphrases reaching their skill: %d/%d; requests with no skill left alone: %d/%d (memory %s)\n",
 		paraphraseHits, paraphrases, quietRight, quiet, memory)
