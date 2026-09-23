@@ -44,16 +44,27 @@ import (
 // keep correct while it is not drawing it, which is the expensive kind of
 // state; the test is "would a person notice it was gone", not "could we".
 type aside struct {
-	// draft is the unsent sentence with every parked message folded in after it,
-	// and chips are the pictures attached to it.
+	// openingPrompt survives a switch while the title and transcript arrive.
+	openingPrompt string
+	// draft is the unsent sentence in the box, and chips are the pictures
+	// attached to it. parks are the messages waiting for this conversation's
+	// running answer, kept in their send order with their own attachments.
 	//
-	// THE PARKS GO INTO THE BOX RATHER THAN BEING DROPPED. [app.dropParked] is
-	// what /new and /resume do — they say "2 waiting messages dropped" because
-	// the turn those messages were queued behind is about to stop existing. A
-	// switch is not a close: the turn is still running and the words are still
-	// the person's, so they go back where they can see them (leaving.go's
-	// [app.leavingDraft] assembles exactly this string for the same reason).
+	// THE PARKS STAY PARKED WHILE THIS PROCESS KEEPS THE CONVERSATION. Folding
+	// them into the box was correct only for quitting, where the draft file is
+	// the last place the words can survive. A switch leaves the turn alive, so
+	// its watcher can send these messages when that turn ends (keeper.go).
 	draft string
+	parks []parked
+	// parkSending is the narrow crossing where the oldest parked message has
+	// left for the held agent but the answer to that submit has not reached the
+	// surface yet. It follows the sidecar so returning mid-send cannot send the
+	// same message again when the stream closes.
+	parkSending bool
+	// parkNotes are failures from sends attempted while this conversation was
+	// held. They land in this conversation when it comes forward rather than in
+	// whichever unrelated conversation happened to be on screen at the time.
+	parkNotes []string
 	// draftCursor is optional for older sidecars assembled without a caret.
 	draftCursor *int
 	chips       []chip
@@ -253,25 +264,42 @@ func (a *app) front() Conversation {
 func (a *app) detachConversation() *aside {
 	main := a.mainComposer()
 	side := &aside{
-		// The box and the parked messages, in the order they would have been
-		// sent (leaving.go's [app.leavingDraft] is the same assembly the door
-		// out of the program makes, and for the same reason).
+		// The box and the parked messages are separate while this process can
+		// keep the conversation alive. The shared-handle exception below folds
+		// them because its engine ends the conversation during the swap.
 		//
 		// THE THREE ARE READ THROUGH MAIN AND NOT OFF THE SCREEN (recipient.go).
 		// A conversation can be put down while a task's page is in front, and the
 		// box then holds that page's steering line — which is not this
 		// conversation's unsent message and must not come back as one.
-		draft:  a.leavingDraft(),
-		chips:  main.chips,
-		pastes: main.pastes,
-		sends:  main.sends,
-		offset: a.offset,
-		stick:  a.stick,
-		since:  a.now(),
-		title:  a.title,
+		draft:         a.mainDraftText(),
+		parks:         a.parks,
+		parkSending:   a.parkSending,
+		chips:         main.chips,
+		pastes:        main.pastes,
+		sends:         main.sends,
+		offset:        a.offset,
+		stick:         a.stick,
+		since:         a.now(),
+		title:         a.title,
+		openingPrompt: a.openingPrompt,
 	}
-	// Appended parked messages are new text at the end; otherwise a switch
-	// restores the exact insertion point the person left in the main composer.
+	// A SHARED HANDLE CANNOT KEEP A WAITING TURN. Its engine interrupts and
+	// closes the old conversation during the swap, so the only honest fallback
+	// is quitting's one: put the waiting words back in the box and put every
+	// attachment back on its tray, after attachments already on the draft.
+	if a.shared {
+		side.draft = a.leavingDraft()
+		side.parks = nil
+		side.parkSending = false
+		for _, p := range a.parks {
+			side.chips = append(side.chips, p.chips...)
+			side.pastes = append(side.pastes, p.pastes...)
+		}
+	}
+	// Folded parked words are new text at the end only on the shared-handle
+	// fallback; otherwise every switch restores the exact insertion point the
+	// person left in the main composer.
 	cursor := main.box.cursor
 	if side.draft != main.box.String() {
 		cursor = len([]rune(side.draft))
@@ -320,6 +348,8 @@ func (a *app) detachConversation() *aside {
 // that was gone and a cut line through it. That was latent while switching was
 // rare. It is not latent here.
 func (a *app) clearConversation() {
+	a.discussionFeeds = nil
+	a.questionReplacement = nil
 	a.entries = nil
 	a.recordRows = 0
 	abandonLive(a.entries, &a.live)
@@ -425,6 +455,7 @@ func (a *app) clearConversation() {
 	a.pastes = nil
 	a.forgetComposers()
 	a.parks = nil
+	a.parkSending = false
 	a.touch()
 }
 
@@ -497,6 +528,10 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 		a.forgetQuestions()
 	}
 	agent := a.agent
+	a.openingPrompt = ""
+	if side != nil {
+		a.openingPrompt = side.openingPrompt
+	}
 	// WHEN THIS ONE CAME FORWARD, stamped on the way in so the switcher's own row
 	// can say how long you have been sitting here (hop.go). Every other row
 	// measures from the sidecar its detach left; this is that stamp's other half.
@@ -506,7 +541,10 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if agent != nil {
 		a.model = agent.Model()
 		a.title = strings.TrimSpace(agent.Title())
-		a.shortTitle = shortTitleOf(agent)
+		// A cached earned name survives an agent whose snapshot is still arriving.
+		if a.title == "" && side != nil {
+			a.title = side.title
+		}
 		// THE DIAL BELONGS TO THE AGENT, so what was held about the last one is
 		// dropped and this one's current model is asked about directly — the
 		// third of the three seeded moments (reasoninglevel.go).
@@ -687,6 +725,12 @@ func (a *app) restoreAside(side *aside) tea.Cmd {
 	a.chips = side.chips
 	a.pastes = side.pastes
 	a.sends = side.sends
+	a.parks, side.parks = side.parks, nil
+	a.parkSending = side.parkSending
+	for _, note := range side.parkNotes {
+		a.note(note)
+	}
+	side.parkNotes = nil
 	a.offset, a.stick = side.offset, side.stick
 	// THE COUNTDOWN IS HANDED BACK RATHER THAN RESTAMPED, and only to a question
 	// THE ENGINE STILL HOLDS. It is consumed by [app.startAskClock] when the
@@ -697,8 +741,16 @@ func (a *app) restoreAside(side *aside) tea.Cmd {
 	if side.askLeft > 0 && a.enginePending() {
 		a.askResume, a.askResumePaused = side.askLeft, side.askPaused
 	}
+	var parked tea.Cmd
+	if _, canReport := a.agent.(attachable); !canReport && a.state == stateIdle && len(a.parks) > 0 {
+		// A scripted or older agent with no Attach door cannot tell the keeper
+		// when its turn ended. Coming forward is the first reliable idle edge it
+		// offers, so the oldest waiting message goes through the ordinary front
+		// door here rather than remaining stranded forever.
+		parked = a.sendParked()
+	}
 	if side.room == 0 {
-		return nil
+		return parked
 	}
 	// A ROOM IS A PLACE RATHER THAN A MODE, which is why it is the one thing on
 	// this list that is not a reading. It is cheap to reopen from the node id
@@ -706,7 +758,7 @@ func (a *app) restoreAside(side *aside) tea.Cmd {
 	// conversation was away opens as its finished page, which is what opening it
 	// from the rail would do anyway (room.go).
 	a.openRoom(side.room, "")
-	return a.takeRoomPump()
+	return tea.Batch(parked, a.takeRoomPump())
 }
 
 // enginePending reports whether the agent is still holding an approval question.

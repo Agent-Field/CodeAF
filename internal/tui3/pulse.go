@@ -155,7 +155,7 @@ func (a *app) pulseLine(width int, pal palette, mode pulseMode) string {
 	// This line used to hold a second spelling of its own (`pulseName`), which is
 	// how the surface came to greet a fresh install with one name in the wordmark
 	// and another in the prose under it.
-	name := " " + pal.bold(pal.muted(product))
+	name := " " + pal.wordmark(width)
 	for _, tail := range a.pulseRungs(a.now(), pal, mode) {
 		if tail == "" {
 			break

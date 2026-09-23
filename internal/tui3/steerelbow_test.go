@@ -233,8 +233,16 @@ func TestTwoCorrectionsStayInTheOrderAndThePlacesTheyWereSaid(t *testing.T) {
 			first, work, second, strings.Join(plainRows(a), "\n"))
 	}
 	// AND NEITHER IS A SECOND `›`. A correction drawn as a question of its own is
-	// the other half of the defect this file exists to end.
-	if got := strings.Count(strings.Join(plainRows(a), "\n"), "› "); got != 1 {
+	// the other half of the defect this file exists to end. The working logo's
+	// paddle poses spell the same chevron (worklogo.go), so the activity row is
+	// left out of the count, or the answer depends on which pose the clock hit.
+	questions := 0
+	for _, r := range rows(a) {
+		if !r.activity {
+			questions += strings.Count(plain(r.text), "› ")
+		}
+	}
+	if got := questions; got != 1 {
 		t.Fatalf("a correction was drawn as a question of its own (%d `›` rows):\n%s",
 			got, strings.Join(plainRows(a), "\n"))
 	}

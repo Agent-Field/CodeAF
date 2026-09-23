@@ -18,6 +18,7 @@ func TestSnapshotReturnsTheFieldsSessionEndedNeeds(t *testing.T) {
 	CountTurn()
 	CountTurn()
 	CountModelCall(true, 0.25)
+	CountTokens(100, 25)
 	CountModelCall(false, 0)
 	CountToolCall(true)
 	CountToolCall(true)
@@ -33,6 +34,7 @@ func TestSnapshotReturnsTheFieldsSessionEndedNeeds(t *testing.T) {
 		ToolCalls:        3,
 		ToolCallsFailed:  1,
 		CostUSD:          0.25,
+		TotalTokens:      125,
 	}
 	if got != want {
 		t.Fatalf("Snapshot() = %+v, want %+v", got, want)

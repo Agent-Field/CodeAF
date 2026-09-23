@@ -176,6 +176,7 @@ func openChatV3Local(launch localLaunch) error {
 	// front of a path, and `another window` where a connection would name a
 	// host.
 	hello := remote.Hello{
+		Headless:  launch.once != "",
 		Workspace: launch.workspace,
 		Session:   launch.session,
 		Model:     launch.model,

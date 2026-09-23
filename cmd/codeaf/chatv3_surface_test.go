@@ -77,10 +77,12 @@ func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *tes
 	}
 	oldRun := runSurfaceProgram
 	oldClient, oldExecutable := surfaceUpdateClient, surfaceExecutable
+	oldRunningExecutable := surfaceRunningExecutable
 	oldRevision, oldArguments := surfaceRevision, surfaceArguments
 	t.Cleanup(func() {
 		runSurfaceProgram = oldRun
 		surfaceUpdateClient, surfaceExecutable = oldClient, oldExecutable
+		surfaceRunningExecutable = oldRunningExecutable
 		surfaceRevision, surfaceArguments = oldRevision, oldArguments
 	})
 	frame := &surfaceFrameWriter{ready: make(chan struct{})}
@@ -105,6 +107,7 @@ func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *tes
 		resolved++
 		return target, nil
 	}
+	surfaceRunningExecutable = func() (string, error) { return target, nil }
 	surfaceRevision = func() string { return "v0.1.1" }
 	surfaceArguments = func() []string { return []string{"chat", "--model", "x"} }
 	profile := t.TempDir()
@@ -122,9 +125,9 @@ func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *tes
 		t.Fatal("runSurface did not wire every update door")
 	}
 	restartArgs := codeupdate.RestartArgs(seen.UpdateArgs, seen.SessionFile)
-	if strings.Join(restartArgs, " ") != "chat --model x --session /tmp/this.jsonl" || seen.UpdateRunning != "v0.1.1" {
+	if strings.Join(restartArgs, " ") != "chat --model x --session /tmp/this.jsonl" || seen.UpdateRunning != "v0.1.1" || seen.UpdateCurl != codeupdate.CurlCommand {
 		cancel()
-		t.Fatalf("running %q restart args %q", seen.UpdateRunning, restartArgs)
+		t.Fatalf("running %q curl %q restart args %q", seen.UpdateRunning, seen.UpdateCurl, restartArgs)
 	}
 	select {
 	case <-requestStarted:

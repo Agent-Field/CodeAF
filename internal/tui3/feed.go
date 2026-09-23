@@ -935,6 +935,9 @@ func (f *feed) resolveUnfinished() {
 	now := f.now()
 	for i := range f.entries {
 		e := &f.entries[i]
+		if e.discussionID != "" {
+			continue
+		}
 		if e.kind != entryTool || !e.ended.IsZero() {
 			continue
 		}

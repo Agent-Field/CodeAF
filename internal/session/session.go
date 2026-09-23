@@ -627,6 +627,8 @@ const (
 	// in the middle renumbers every kind under it, and a window and an engine
 	// on two builds would then disagree about what each other's events were.
 	EventRowNews
+	// EventQuestionDiscussion carries a reply beside a pending decision.
+	EventQuestionDiscussion
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -663,6 +665,8 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
+	Discussion *QuestionDiscussion `json:",omitempty"`
+
 	Kind          EventKind
 	Text          string
 	ShortTitle    string `json:"ShortTitle,omitempty"`
@@ -1285,6 +1289,18 @@ type Config struct {
 	// written after New, which is what lets task_run.go copy the whole config
 	// without a lock.
 	ApprovalPolicy *approval.Policy
+
+	// ApprovalGate is the door onto the settings rows the gate is built from,
+	// so this conversation can move its own posture from inside itself
+	// (approvalposture.go). Nil is a session with no such dial — a test, a
+	// worker, a headless run — and the surface then draws no control for it.
+	ApprovalGate ApprovalGate
+	// ApprovalPosture is the posture the LAUNCH handed down — `--yolo` says
+	// [PostureAllow] here — for a conversation nobody has moved yet. It is in
+	// memory only and is never written to the folder, because a flag typed on
+	// a command line is a fact about this run; the moment a person moves the
+	// wheel the conversation's own word replaces it.
+	ApprovalPosture string
 
 	// completer is the request road this session is built on when the caller has
 	// already resolved one, and nil when [New] should build it from the settings
@@ -2207,6 +2223,19 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// Clarification streams and their deferred history share the agent lock.
+	// questionParent is installed before a child becomes reachable.
+	questionParent     func(Event)
+	approvalParent     *Agent
+	discussionEvents   []Event
+	discussionEventSeq uint64
+	discussionRecorded map[string]bool
+
+	discussions       map[string]*questionDiscussion
+	discussionSeq     uint64
+	discussionHistory []ai.Message
+	discussionPending []string
+
 	config Config
 	client Completer
 	// managedClient distinguishes the provider adapter built by New from a test
@@ -3311,7 +3340,6 @@ type Agent struct {
 
 	title      string
 	titleTried bool
-	shortTitle string
 
 	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
 	// that may be running. They are memoryCtx's bargain above, for the same
@@ -3344,6 +3372,14 @@ type Agent struct {
 	// and never again, which is what lets task_run.go copy the whole config
 	// without a lock and still be right.
 	approvalPolicy *approval.Policy
+	// approvalPosture is the posture THIS conversation was set to
+	// (approvalposture.go), kept in the session folder's meta.json so it
+	// survives a restart the way the rung below does. "" is nobody has set one.
+	approvalPosture string
+	// guardianOverride is whether the small model stands in, as the
+	// conversation's own posture decided it; nil leaves Config.Guardian to
+	// answer. It is set only by [Agent.SetApprovalPosture].
+	guardianOverride *bool
 
 	// attachedSkills is the ordered set of skill names a person has put in front
 	// of THIS conversation by hand, newest attachment last, guarded by mu

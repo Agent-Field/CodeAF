@@ -5,17 +5,16 @@ set -euo pipefail
 REPOSITORY="Agent-Field/codeaf"
 LEGACY_REPOSITORY="Agent-Field/aforge-v2" # Remove after the one-release repository fallback. # legacy-name
 CHANNEL="${CHANNEL:-stable}"
+INSTALL_NAME="${CODEAF_INSTALL_NAME:-codeaf}"
 VERSION="${VERSION:-}"
-# The telemetry notice, verbatim from docs/TELEMETRY.md.
-# The installer only writes a local install marker and prints this text; it
-# never sends telemetry, and it makes no request that the download steps did
-# not already make.
-TELEMETRY_NOTICE='codeaf sends anonymous usage counts to AgentField.
-  Sent:  version, OS, mode (chat or task), how many sessions, how many errors.
-  Never: anything about you or your work. No prompts, code, file names,
-         paths, repo names, keys, email, IP, or machine name.
-  See exactly what leaves:  codeaf telemetry show
-  Turn off:                 CODEAF_TELEMETRY=off'
+# The installer's three-line telemetry notice, verbatim from docs/TELEMETRY.md.
+# The binary prints the full notice before the first session's events leave;
+# the installer says the fact, the inspector and the switch. It writes a local
+# install marker and prints this text, never sends telemetry, and makes no
+# request that the download steps did not already make.
+TELEMETRY_NOTICE='codeaf shares anonymous performance data with AgentField
+codeaf does NOT share your prompts, code, files, or any private information
+see what is shared: codeaf telemetry info · turn off: CODEAF_TELEMETRY=off'
 VERBOSE="${VERBOSE:-0}"
 NO_MODIFY_PATH="${CODEAF_NO_MODIFY_PATH:-${AFORGE_NO_MODIFY_PATH:-0}}" # legacy-name
 INSTALL_DIR="${CODEAF_INSTALL_DIR:-${AFORGE_INSTALL_DIR:-${HOME}/.codeaf/bin}}" # legacy-name
@@ -31,7 +30,7 @@ Install codeaf from a GitHub release.
 
 Usage:
   install.sh [--stable|--rc|--dev|--staging] [--version TAG]
-             [--dir PATH] [--no-modify-path] [--verbose]
+             [--name WORD] [--dir PATH] [--no-modify-path] [--verbose]
 
 Channels:
   --stable   Latest stable release (default).
@@ -41,13 +40,15 @@ Channels:
 
 Flags:
   --version TAG       Install one named release tag.
+  --name WORD         Install the binary with this file name.
   --dir PATH          Install somewhere other than ~/.codeaf/bin.
   --no-modify-path    Print the PATH line without editing a shell file.
   --verbose           Print download details.
   --help              Show this help.
 
 Environment:
-  CHANNEL, VERSION, CODEAF_INSTALL_DIR, CODEAF_NO_MODIFY_PATH, VERBOSE
+  CHANNEL, VERSION, CODEAF_INSTALL_NAME, CODEAF_INSTALL_DIR
+  CODEAF_NO_MODIFY_PATH, VERBOSE
   GITHUB_TOKEN or GH_TOKEN: GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
   CODEAF_GITHUB_API and CODEAF_GITHUB_DOWNLOAD for mirrors and tests
   CODEAF_TELEMETRY=off, or DO_NOT_TRACK=1, turns the anonymous usage counts off
@@ -107,6 +108,22 @@ write_install_marker() {
 
 # Printed once, at the very end of a successful install. The binary repeats it
 # before the first session's counts are ever sent.
+# The one line a person still has to paste, printed last of all, between a
+# blank line above and a blank line below, bold green on a terminal. Bare
+# `export PATH=...` and nothing else, so it can be selected and pasted without
+# trimming a prefix. Colour is skipped when stdout is not a terminal or
+# NO_COLOR is set (https://no-color.org).
+print_path_hint() {
+  local hint="$1"
+  [[ -n "$hint" ]] || return 0
+  local on="" off=""
+  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    on=$'\033[1;32m'
+    off=$'\033[0m'
+  fi
+  printf '\n%s%s%s\n\n' "$on" "$hint" "$off"
+}
+
 print_telemetry_notice() {
   if telemetry_off; then
     printf 'codeaf: anonymous usage counts are off (CODEAF_TELEMETRY=off or DO_NOT_TRACK=1)\n' >&2
@@ -126,6 +143,11 @@ while [[ $# -gt 0 ]]; do
       VERSION="$2"
       shift 2
       ;;
+    --name)
+      [[ $# -ge 2 ]] || usage_error "--name needs a word"
+      INSTALL_NAME="$2"
+      shift 2
+      ;;
     --dir)
       [[ $# -ge 2 ]] || usage_error "--dir needs a path"
       INSTALL_DIR="$2"
@@ -142,6 +164,10 @@ case "$CHANNEL" in
   stable|rc|dev|staging) ;;
   *) usage_error "CHANNEL must be stable, rc, dev, or staging" ;;
 esac
+
+if [[ ! "$INSTALL_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  usage_error "--name / CODEAF_INSTALL_NAME must match ^[A-Za-z0-9][A-Za-z0-9._-]*$"
+fi
 
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
   fail "curl or wget is required"
@@ -396,10 +422,14 @@ download_release() {
 	download_asset "$repository" "checksums.txt" "$TMP_ROOT/checksums.txt"
 }
 
-if [[ -n "$DISPLAY_CHANNEL" ]]; then
-	printf 'codeaf: %s %s for %s/%s\n' "$DISPLAY_CHANNEL" "$TAG" "$OS" "$ARCH"
-else
-	printf 'codeaf: %s for %s/%s\n' "$TAG" "$OS" "$ARCH"
+# The channel and tag are not announced on a normal run: the installed
+# binary names itself at the end, and that one line is the whole receipt.
+if [[ "$VERBOSE" == "1" ]]; then
+	if [[ -n "$DISPLAY_CHANNEL" ]]; then
+		printf 'codeaf: %s %s for %s/%s\n' "$DISPLAY_CHANNEL" "$TAG" "$OS" "$ARCH" >&2
+	else
+		printf 'codeaf: %s for %s/%s\n' "$TAG" "$OS" "$ARCH" >&2
+	fi
 fi
 DOWNLOAD_REPOSITORY="$REPOSITORY"
 if ! download_release "$DOWNLOAD_REPOSITORY"; then
@@ -407,10 +437,10 @@ if ! download_release "$DOWNLOAD_REPOSITORY"; then
 		# Remove after the renamed repository has carried releases for one release.
 		DOWNLOAD_REPOSITORY="$LEGACY_REPOSITORY"
 		if ! download_release "$DOWNLOAD_REPOSITORY"; then
-			fail "could not download codeaf-${OS}-${ARCH}${extension}; check the tag on the Releases page"
+			fail "no codeaf-${OS}-${ARCH}${extension} in release ${TAG}; check the tag on the Releases page"
 		fi
 	else
-		fail "could not download codeaf-${OS}-${ARCH}${extension}; check the tag on the Releases page"
+		fail "no codeaf-${OS}-${ARCH}${extension} in release ${TAG}; check the tag on the Releases page"
 	fi
 fi
 
@@ -444,12 +474,14 @@ case "$INSTALL_DIR/" in
 esac
 
 mkdir -p "$INSTALL_DIR"
-INSTALL_TEMP="$INSTALL_DIR/.codeaf.tmp.$$"
+INSTALL_TEMP="$INSTALL_DIR/.$INSTALL_NAME.tmp.$$"
 cp "$TMP_ROOT/$ASSET" "$INSTALL_TEMP"
 chmod 0755 "$INSTALL_TEMP"
-mv -f "$INSTALL_TEMP" "$INSTALL_DIR/codeaf${extension}"
+mv -f "$INSTALL_TEMP" "$INSTALL_DIR/$INSTALL_NAME${extension}"
 INSTALL_TEMP=""
-printf 'codeaf: installed %s\n' "$INSTALL_DIR/codeaf${extension}"
+if [[ "$VERBOSE" == "1" ]]; then
+  printf 'codeaf: installed %s\n' "$INSTALL_DIR/$INSTALL_NAME${extension}" >&2
+fi
 
 path_has_dir() {
   case ":${PATH}:" in
@@ -476,9 +508,13 @@ append_path_line() {
   fi
 }
 
+# The PATH line is not printed here. It is the last thing the installer says,
+# after `codeaf version` and the telemetry notice, so the one line a person
+# has to paste sits at the bottom of the screen where their eye already is.
+PATH_HINT=""
 if [[ "$OS" != "windows" ]] && ! path_has_dir; then
   export_line="export PATH=\"$INSTALL_DIR:\$PATH\""
-  printf 'codeaf: add it to this shell with: %s\n' "$export_line"
+  PATH_HINT="$export_line"
   if [[ "$NO_MODIFY_PATH" != "1" ]]; then
     shell_name=$(basename "${SHELL:-/bin/bash}")
     case "$shell_name" in
@@ -498,11 +534,16 @@ if [[ "$OS" != "windows" ]] && ! path_has_dir; then
   fi
 fi
 
+# The receipt is the installed binary naming itself: `codeaf version` is one
+# line by law, so "installed " in front of it reads as one sentence. A file
+# installed under another name (devaf) still says codeaf here, because the
+# name is the file's and the product's is the sentence's.
 if [[ "$RUN_BOOT_ADOPTION" == "1" ]]; then
-  "$INSTALL_DIR/codeaf${extension}" version
+  version_line=$("$INSTALL_DIR/$INSTALL_NAME${extension}" version)
 else
-  CODEAF_HOME="$STATE_ROOT" "$INSTALL_DIR/codeaf${extension}" version
+  version_line=$(CODEAF_HOME="$STATE_ROOT" "$INSTALL_DIR/$INSTALL_NAME${extension}" version)
 fi
+printf 'installed %s\n' "$version_line"
 
 # The install marker lives under the state root, and a custom install outside
 # it must not create the login's state folders: the marker is written when the
@@ -512,3 +553,4 @@ if [[ "$RUN_BOOT_ADOPTION" == "1" || -d "$STATE_ROOT" ]]; then
   write_install_marker "$STATE_ROOT"
 fi
 print_telemetry_notice
+print_path_hint "$PATH_HINT"

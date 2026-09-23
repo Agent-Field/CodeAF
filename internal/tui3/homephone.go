@@ -37,7 +37,7 @@ package tui3
 //	     3 tasks · 2h
 //	 ▸ wisp                      6 · 2d
 //	 ─────────────────────────────────────
-//	 type to search or start something new
+//	 › type to search or start something new
 //	  open      new       ask here
 //
 // FOUR LAWS, AND EVERY ONE OF THEM IS ABOUT A THUMB.
@@ -50,9 +50,9 @@ package tui3
 //     open; the rest are one line each, exactly as the `elsewhere` block already
 //     draws them, without the rule line that costs a row nobody can spare.
 //
-//   - A ROW APPEARS ONCE. A conversation lifted into `waiting on you` is not
-//     drawn again under its project. The desktop can afford to say a thing twice
-//     because the eye takes both in at once; twelve rows of screen cannot.
+//   - OPEN TABS COME FIRST, with status bullets followed by bounded closed history.
+//     Waiting details may also have a triage row; project groups do not repeat
+//     conversations. Their standing items remain below the inbox.
 //
 //   - THREE, THEN A DOOR. Every section shows three rows and folds the rest into
 //     `▸ …N more`, which is the same fold mark, the same word and the same
@@ -60,7 +60,7 @@ package tui3
 //     with nothing in it is not drawn at all — the emptiness law applied to a
 //     whole heading.
 //
-//   - A ROW IS TWO LINES. The label on one, the dim tail under it, which is the
+//   - A TRIAGE ROW IS TWO LINES. The label on one, the dim tail under it, which is the
 //     two-line law this tier already keeps for every list ([overlayLines]).
 //
 // AND SEARCH IS UNTOUCHED. Typing filters exactly as it does at every other
@@ -81,7 +81,7 @@ import (
 )
 
 // The row kinds the inbox adds, declared HERE and given values far above the
-// iota block in home.go for [homeAskHere]'s reason: that block is being edited
+// iota block in home.go to keep its identity separate: that block is being edited
 // by other lanes in the same wave, and a constant appended to it would be a
 // conflict over a line that says nothing.
 const (
@@ -104,7 +104,7 @@ const (
 // and each is quoted in the manual exactly as it is spelled here.
 const (
 	homePhoneWaitingWord = "waiting on you"
-	homePhoneRunningWord = "running"
+	homePhoneRunningWord = sessionsWord
 	homePhoneNewsWord    = "since you left"
 )
 
@@ -180,8 +180,43 @@ func (h *homeView) buildPhone() {
 	// every wider frame and may not be handed a phone's bookkeeping. It is nil
 	// everywhere else, and nil is "nothing was lifted".
 	h.liftedItems = lifted.items
-	h.phoneSection(homePhoneWaitingWord, homePhoneWaitingKey, h.phoneWaiting(lifted))
-	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, h.phoneRunning(lifted))
+	in := h.gridInput()
+	in.errands = nil // The phone inbox places exchanges in its own triage sections.
+	conversations := (sessionsPanel{homePanelBase{panelSessions}}).rows(&in)
+	// The compact inbox represents live task questions through their conversation.
+	// Decorate that row before dropping the duplicate from the waiting rows.
+	questions := make(map[string]homeLine)
+	for _, item := range needsAsked(&in) {
+		questions[homeQuestionRowKey(item.line)] = item.line
+	}
+	for i := range conversations.lines {
+		line := &conversations.lines[i]
+		if question, ok := questions[homeQuestionRowKey(*line)]; ok && line.cell != nil {
+			homeDecorateQuestion(line, question)
+		}
+	}
+	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, conversations.lines)
+	for _, line := range conversations.lines {
+		lifted.rows[line.row.Transcript] = true
+	}
+	for _, ex := range h.exchanges {
+		if ex.working && !lifted.errands[ex] {
+			lifted.errands[ex] = true
+			h.lines = append(h.lines, homeLine{kind: homeExchangeRow, project: h.projectNameOf(ex.bucket), dir: ex.bucket, ex: ex})
+		}
+	}
+	waiting := h.phoneWaiting(lifted)
+	seen := make(map[string]bool)
+	for _, line := range conversations.lines {
+		seen[homeQuestionRowKey(line)] = true
+	}
+	remaining := waiting[:0]
+	for _, line := range waiting {
+		if !seen[homeQuestionRowKey(line)] {
+			remaining = append(remaining, line)
+		}
+	}
+	h.phoneSection(homePhoneWaitingWord, homePhoneWaitingKey, remaining)
 	h.phoneSection(homePhoneNewsWord, homePhoneNewsKey, h.phoneNews())
 	h.phoneProjects(lifted)
 }
@@ -194,16 +229,22 @@ func (h *homeView) phoneSection(word, key string, rows []homeLine) {
 		return
 	}
 	h.blank()
-	h.lines = append(h.lines, homeLine{kind: homePhoneSection, project: word, dir: key})
+	if word != "" && key != homePhoneWaitingKey {
+		h.lines = append(h.lines, homeLine{kind: homePhoneSection, project: word, dir: key})
+	}
+	limit := homePhoneShown
+	if key == homePhoneRunningKey {
+		limit = homeSessionsLimit
+	}
 	shown, hidden := rows, 0
-	if !h.sections[key] && len(rows) > homePhoneShown {
-		shown, hidden = rows[:homePhoneShown], len(rows)-homePhoneShown
+	if !h.sections[key] && len(rows) > limit {
+		shown, hidden = rows[:limit], len(rows)-limit
 	}
 	h.lines = append(h.lines, shown...)
-	if hidden > 0 || h.sections[key] && len(rows) > homePhoneShown {
+	if hidden > 0 || h.sections[key] && len(rows) > limit {
 		h.lines = append(h.lines, homeLine{
 			kind: homePhoneMore, project: word, dir: key,
-			quiet: len(rows) - homePhoneShown, folded: !h.sections[key],
+			quiet: len(rows) - limit, folded: !h.sections[key],
 		})
 	}
 }
@@ -273,37 +314,6 @@ func (h *homeView) everyProject() []session.Project {
 	return out
 }
 
-// phoneRunning is everything with work in flight. It is the second section for
-// the reason it is the second glyph: something moving is something you check
-// on, and something stopped is something you unblock.
-func (h *homeView) phoneRunning(lifted phoneLifted) []homeLine {
-	var out []homeLine
-	for _, ex := range h.exchanges {
-		if ex.working && !lifted.errands[ex] {
-			lifted.errands[ex] = true
-			out = append(out, homeLine{kind: homeExchangeRow, project: h.projectNameOf(ex.bucket), dir: ex.bucket, ex: ex})
-		}
-	}
-	for _, project := range h.everyProject() {
-		for _, view := range h.items[project.Dir] {
-			if view.Running && strings.TrimSpace(view.Item.NeedsPerson) == "" {
-				lifted.items[phoneItemKey(project, view)] = true
-				out = append(out, h.itemLine(project, view))
-			}
-		}
-		for _, row := range project.Sessions {
-			if row.NeedsPerson() || row.Tasks.Running == 0 {
-				continue
-			}
-			lifted.rows[row.Transcript] = true
-			out = append(out, homeLine{
-				kind: homeSession, project: project.Name, dir: project.Dir, row: row,
-			})
-		}
-	}
-	return out
-}
-
 // phoneNews is `since you left`, newest first.
 func (h *homeView) phoneNews() []homeLine {
 	notes := h.phoneNotes()
@@ -341,21 +351,6 @@ func (h *homeView) phoneProjects(lifted phoneLifted) {
 	var found []homeHit
 	for _, project := range h.world.Projects {
 		hit := homeHit{project: project, at: project.At()}
-		for _, row := range project.Sessions {
-			// A PUT-AWAY ROW IS NOT IN THE INBOX. The phone tier has no room
-			// for the archive's own fold; searching still finds the row, and
-			// the wide frame is where it is brought back (home.go's
-			// the ranked reading leaves them out, and typing a name is the way
-			// back to one).
-			if row.Archived {
-				continue
-			}
-			// A ROW APPEARS ONCE (this file's second law). What the sections
-			// lifted out is not drawn again down here.
-			if !lifted.rows[row.Transcript] {
-				hit.rows = append(hit.rows, row)
-			}
-		}
 		found = append(found, hit)
 	}
 	for _, bare := range h.bare {
@@ -473,9 +468,9 @@ func standNoteWords(note standing.Note) string {
 // the caret sits. It is [app.homeFrame]'s answer at this tier and it keeps that
 // function's contract, because the press and the hover index what it returned.
 //
-// It spends FIVE rows on chrome where the wide frame spends eight: a head, one
-// rule, the box, and the action bar. A phone frame has twelve rows of list in
-// it on a good day, and three of them cannot go on air.
+// At rest it spends five rows on chrome: the head, two rules, the box and the
+// action bar. The box grows only as lines are typed, up to the home draft cap,
+// so the compact frame spends no extra rows on an untouched draft.
 func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	if a.homeSheetShowing() {
 		return a.homeSheetFrame(width, height)
@@ -493,7 +488,10 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	add(a.homePhoneHead(width, pal), -1)
 	add(pal.dim(rule(width)), -1)
 
-	const foot = 3 // the rule, the box, the bar
+	// Use the same multiline layout as the wide frame, including blank lines
+	// and the caret's actual position rather than the end of the draft.
+	draft, draftX, draftY := draftBlock(&a.home.box, pal, width-2, homeDraftRows, placeRestWord, "")
+	foot := 2 + len(draft) // The rule, the draft rows, and the bar.
 	room := height - len(lines) - foot
 	if room < 1 {
 		room = 1
@@ -518,23 +516,12 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	// the one screen with the least room the one screen that never said where a
 	// sentence would land (homedraft.go's [app.targetPhoneRule]).
 	add(a.targetPhoneRule(width, pal), -1)
-	caretX, caretY := 0, 0
-	if a.home.box.empty() {
-		add(" "+pal.dim(hintFit(homeFootWord, width-2)), -1)
-		// Same as the wide frame: at rest there is nothing to type into, so the
-		// caret is hidden rather than blinking over the heading.
-		a.caret = false
-	} else {
-		text := a.home.box.String()
-		// THE PERSON'S OWN GLYPH IS STRUCTURE ON A PLACE, NOT AN ACCENT. It is
-		// the same cell on every frame home has ever drawn, and the design spends
-		// colour on the two live states alone (styles.go's THE ONE-ACCENT LAW),
-		// so the prompt takes the second tier and the words keep the first.
-		add(" "+pal.muted("› ")+pal.ink(fit(text, width-4)), -1)
-		caretX, caretY = 3+ansi.StringWidth(text), len(lines)-1
-		if caretX > width-1 {
-			caretX = width - 1
-		}
+	caretX, caretY := 1+draftX, len(lines)+draftY
+	for _, row := range draft {
+		add(" "+row, -1)
+	}
+	if caretX > width-1 {
+		caretX = width - 1
 	}
 	add(a.homeBar(width, a.homeInboxBar(), pal), -1)
 	a.home.barRow = len(lines) - 1
@@ -566,10 +553,8 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 // homePhoneHead is the one row at the top: what this is, and the way out.
 func (a *app) homePhoneHead(width int, pal palette) string {
 	head := " " + pal.bold(pal.ink("home"))
-	escape := pal.dim("esc close")
-	if ansi.StringWidth(head)+ansi.StringWidth(escape)+2 <= width {
-		gap := width - ansi.StringWidth(head) - ansi.StringWidth(escape) - 1
-		head += strings.Repeat(" ", gap) + escape
+	if gap := width - ansi.StringWidth(head) - 1; gap > 0 {
+		head += strings.Repeat(" ", gap)
 	}
 	return head
 }
@@ -586,6 +571,8 @@ func (a *app) homePhoneList(width, room int, pal palette) []homeDrawn {
 	if len(h.lines) == 0 {
 		word := homeEmptyWord
 		switch {
+		case h.cmd.open:
+			word = commandNoMatchWord
 		case h.searching():
 			word = homeNoMatchWord
 		case !h.known:
@@ -636,6 +623,9 @@ func headingKind(kind homeRowKind) bool {
 // band across both, and the pointer's lead are decided in one place for every
 // list on this surface (palette.go).
 func (a *app) homePhoneRow(line homeLine, at, width int, pal palette) []string {
+	if line.kind == homeSession && line.cell != nil && (line.cell.panel == panelRecent || line.cell.panel == panelSessions) {
+		return a.homeCellRow(line, at, width, pal, at == a.home.cursor)
+	}
 	h := &a.home
 	switch line.kind {
 	case homeBlank:
@@ -694,6 +684,8 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 			homeNote(line.row, a.homeHeld(line.row), "", a.takeoverRowWord(line.row), a.homeMark(line.row),
 				a.homeRowGone(line.row), a.homeFresh(line.row), h.world.Read),
 			homeNoteInk(line.row, a.homeHeld(line.row) || a.homeRowGone(line.row))
+	case homeCommand:
+		return line.cmd.typed(), line.cmd.note(a.chords), nil
 	case homeItem:
 		return standGlyph(line.view.Item, line.view.Running, line.view.News, pal.ascii) +
 				" " + strings.TrimSpace(line.view.Item.Words),
@@ -720,25 +712,6 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 	case homeProject:
 		return homeFoldMark(line.folded, pal) + " " + line.project,
 			h.projectNote(line.proj, h.world.Read, pal.ascii), h.projectInk(line.proj)
-	case homeAskHere:
-		label := homeAskHereWord
-		if text := strings.TrimSpace(h.box.String()); text != "" {
-			label += ": " + text
-		}
-		return homeAskHereGlyph + " " + label, "", nil
-	case homeAction:
-		label := homeStartWord
-		if text := strings.TrimSpace(h.box.String()); text != "" {
-			// A COMMAND IS SAID THE SAME WAY IN BOTH COLUMNS. Enter dispatches a
-			// "/" line here exactly as it does on a wide frame ([app.homeEnter] is
-			// the one router), so the clause comes from the one place it is
-			// spelled ([homeView.runLabel]) rather than being written again narrower.
-			if word := h.runLabel(text); word != "" {
-				return homeStartGlyph + " " + word, "", nil
-			}
-			label += ": " + text
-		}
-		return homeStartGlyph + " " + label, "", nil
 	}
 	return "", "", nil
 }
@@ -858,14 +831,17 @@ func phoneBar(width int, words []string, pal palette) (string, []hudSpan) {
 	return out.String(), spans
 }
 
-// homeInboxBar is the bar over the list: open what the cursor is on, start
-// something new, ask the box here.
+// homeInboxBar opens the selected result. Submission modes belong to the box.
 func (a *app) homeInboxBar() []homeBarTarget {
-	return []homeBarTarget{
-		{word: "open", do: func(a *app) tea.Cmd { return a.homeEnter() }},
-		{word: "new", do: func(a *app) tea.Cmd { return a.homeStart(strings.TrimSpace(a.home.box.String())) }},
-		{word: homeAskHereWord, do: func(a *app) tea.Cmd { return a.askHere(strings.TrimSpace(a.home.box.String())) }},
+	var targets []homeBarTarget
+	if a.home.box.empty() {
+		targets = append(targets, homeBarTarget{word: homeOptionsWord, do: func(a *app) tea.Cmd {
+			return a.homeKey(tea.KeyPressMsg{Code: tea.KeyRight})
+		}})
 	}
+	return append(targets, []homeBarTarget{
+		{word: "open", do: func(a *app) tea.Cmd { return a.homeEnter() }},
+	}...)
 }
 
 // homeBarPress resolves a press on the bar, and reports whether it took it.
@@ -918,6 +894,12 @@ func (a *app) homePhonePress(x, y int) tea.Cmd {
 	// resolved before the stop test below rather than after it — the pointer can
 	// reach a row the keyboard has no reason to walk onto.
 	if line.kind == homePhoneSection {
+		if line.dir == homePhoneNewsKey {
+			return a.showPage(pageMemory)
+		}
+		if line.dir == homePhoneRunningKey {
+			return a.showPage(pageTasks)
+		}
 		a.home.foldSection(line.dir)
 		a.touch()
 		return nil
@@ -926,9 +908,7 @@ func (a *app) homePhonePress(x, y int) tea.Cmd {
 		return nil
 	}
 	a.home.cursor = at
-	if line.kind != homeAction {
-		a.home.picked = true
-	}
+	a.home.picked = true
 	a.touch()
 	return a.homeEnter()
 }

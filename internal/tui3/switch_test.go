@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -157,23 +158,42 @@ func TestASwitchDoesNotBringBackAQuestionTheEngineHasResolved(t *testing.T) {
 	}
 }
 
-// The parked messages come back IN THE BOX rather than being dropped with a
-// note, because the turn they were queued behind is still running.
-func TestASwitchPutsParkedMessagesBackInTheBox(t *testing.T) {
+// A switch keeps the box and the waiting queue as two different things. The
+// turn is still running, so folding the queue into a draft would throw away its
+// pictures, paste bodies and standing mark and leave nothing to send at close.
+func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 	agent := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(agent)
-	a.parks = []parked{{text: "and check the tests"}, {text: "then push"}}
+	a.state = stateWorking
+	shot := chip{path: "/tmp/lab/shot.png"}
+	paste := pasteChip{n: 1, text: "one\ntwo\nthree"}
+	a.parks = []parked{
+		{text: "and check the tests", chips: []chip{shot}, pastes: []pasteChip{paste}},
+		{text: "then push", standing: true},
+	}
+	agent.running = true
 	typeChars(t, a, "one more thing")
 
 	conv, side := a.front(), a.detachConversation()
+	if side.draft != "one more thing" {
+		t.Fatalf("the box went into the sidecar as %q", side.draft)
+	}
+	if len(side.parks) != 2 || side.parks[0].text != "and check the tests" || len(side.parks[0].chips) != 1 || len(side.parks[0].pastes) != 1 || !side.parks[1].standing {
+		t.Fatalf("the structured queue went into the sidecar as %+v", side.parks)
+	}
 	drain(t, a, a.attachConversation(conv, side))
 
-	want := "one more thing\nand check the tests\nthen push"
-	if a.input.String() != want {
-		t.Fatalf("the box came back as %q, want %q", a.input.String(), want)
+	if a.input.String() != "one more thing" {
+		t.Fatalf("the box came back as %q", a.input.String())
 	}
-	if len(a.parks) != 0 {
-		t.Fatalf("%d messages are still parked against a conversation nobody is drawing", len(a.parks))
+	if len(a.parks) != 2 || len(a.parks[0].chips) != 1 || len(a.parks[0].pastes) != 1 || !a.parks[1].standing {
+		t.Fatalf("the structured queue came back as %+v", a.parks)
+	}
+	drawn := plain(strings.Join(a.parkedRows(120), "\n"))
+	for _, want := range []string{"and check the tests", "shot.png", "then push", "wait for this answer", "ctrl+c stops and drops"} {
+		if !strings.Contains(drawn, want) {
+			t.Fatalf("the waiting block is missing %q:\n%s", want, drawn)
+		}
 	}
 }
 

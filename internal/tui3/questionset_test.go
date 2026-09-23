@@ -473,7 +473,7 @@ func TestATabPartWayThroughTheWideningAnswerDrawsTheBeat(t *testing.T) {
 	lab.press("2")
 
 	drawn := lab.plain()
-	for _, want := range []string{"3 just this line", "1–3 shape", questionBeatBack} {
+	for _, want := range []string{"3 just this line", "esc " + questionBeatBack} {
 		if !strings.Contains(drawn, want) {
 			t.Fatalf("the tab does not draw the beat's %q:\n%s", want, drawn)
 		}

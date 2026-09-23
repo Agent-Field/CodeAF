@@ -1,9 +1,12 @@
 package tui3
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -12,11 +15,16 @@ import (
 // ── THE PANELS (docs/design/home-mission-control/DESIGN.md §1, §3 G2–G6) ────
 
 // homeLineAfter is the frame line under the first one holding a word.
-func homeLineAfter(frame, word string) string {
+func homeLineAfter(frame, word string) string { return homeLineBelow(frame, word, 1) }
+
+// homeLineBelow is the line n rows under the first line of home's body that
+// carries a word: a read row's thread title is one under it, and its sentence
+// with its answers three under it, past the blank.
+func homeLineBelow(frame, word string, n int) string {
 	lines := strings.Split(frame, "\n")
 	for y, line := range lines {
-		if y >= placeHeadRows && strings.Contains(line, word) && y+1 < len(lines) {
-			return lines[y+1]
+		if y >= placeHeadRows && strings.Contains(line, word) && y+n < len(lines) {
+			return lines[y+n]
 		}
 	}
 	return ""
@@ -26,10 +34,19 @@ func homeLineAfter(frame, word string) string {
 // line under it is what it asked, and the keys that answer it are drawn there.
 func TestNeedsYouCarriesTheQuestionAndItsAnswersOnTheRow(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
+	// The lab's cursor is on the row, which is when its question and answers
+	// are drawn under it; walked off, the row is its mark and title alone.
 	frame := homeText(lab.a)
-	under := homeLineAfter(frame, "Pricing Research")
+	if head := homeLineAfter(frame, "Pricing Research"); !strings.Contains(head, homeThreadWord+"Pricing Research") {
+		t.Fatalf("the read row's description does not open with its thread's title line:\n%s", frame)
+	}
+	under := homeLineBelow(frame, "Pricing Research", 3)
 	if !strings.Contains(under, "needs your ok to run bash") || !strings.Contains(under, "1 allow once") {
-		t.Fatalf("the row does not carry its question and answers:\n%s", frame)
+		t.Fatalf("the row does not carry its question and answers under the thread title:\n%s", frame)
+	}
+	lab.a.home.point(lab.a.file)
+	if under := homeLineAfter(homeText(lab.a), "Pricing Research"); strings.Contains(under, "needs your ok to run bash") {
+		t.Fatalf("the row draws its question with the cursor elsewhere:\n%s", homeText(lab.a))
 	}
 	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
 		t.Fatalf("the heading counts what is waiting, and it should be the word alone:\n%s", frame)
@@ -48,23 +65,6 @@ func TestADigitAnswersTheTopQuestionWithTheCursorElsewhere(t *testing.T) {
 	}
 	if typed := lab.a.home.box.String(); typed != "" {
 		t.Fatalf("the digit also typed %q", typed)
-	}
-}
-
-// RUNNING DRAWS ITS ROWS WITH ONE MOVING CELL, on the first, and the line under
-// each row says what it is doing. A presence row with no title of its own is
-// named from the project's record.
-func TestRunningDrawsTheWorkAndWhatItIsDoing(t *testing.T) {
-	a := newSwitchLab(t).open(120, 45)
-	frame := homeText(a)
-	if !strings.Contains(frame, "running · 1") || !strings.Contains(frame, "read 40 filings") {
-		t.Fatalf("running does not draw the work that is out:\n%s", frame)
-	}
-	if under := homeLineAfter(frame, "read 40 filings"); !strings.Contains(under, tabSignalWord(tabWorking)) {
-		t.Fatalf("the running row does not say what it is doing:\n%s", frame)
-	}
-	if spin := a.home.spinAt(); spin < 0 || a.home.lines[spin].cell.panel != panelRunning {
-		t.Fatalf("the one moving cell is not on the running panel's first row")
 	}
 }
 
@@ -114,16 +114,13 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	a.home.last[lab.mine] = session.Summary{LastUser: "explain open addressing vs chaining"}
 	a.home.build()
 	frame := homeText(a)
-	head, _ := homeRowOf(frame, "where you were")
-	own, _ := homeRowOf(frame, "Porting the Resume Picker")
-	if head < 0 || own != head+1 {
-		t.Fatalf("this window's own conversation is not the first row of where you were:\n%s", frame)
+	own, col := homeRowOf(frame, "Porting the Resume Picker")
+	if own != placeHeadRows+1 || col != homeGridMargin+homeGridLead || strings.Contains(frame, "threads") {
+		t.Fatalf("conversations do not start with bullets under Sessions:\n%s", frame)
 	}
 	lines := strings.Split(frame, "\n")
-	// (The rail beside it may say `here` in a whisper of its own, so the row is
-	// asked for its words rather than the screen line searched for the word.)
-	if mine := panelRows(a, panelRecent)[0]; mine.right == homeHereWord || !mine.bold || !strings.Contains(lines[own+1], "explain open addressing") {
-		t.Fatalf("the own row does not carry its last words under it, with nothing but a time at its right:\n%s", frame)
+	if mine := panelRows(a, panelSessions)[0]; !mine.bold || mine.sub != "" {
+		t.Fatalf("the narrow own row is not one bare bold line: %+v", mine)
 	}
 	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does
 	// not. The conversation mid-turn is here too: `running` lists the work a
@@ -132,7 +129,7 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 		t.Fatalf("a row from another folder wears its project on its own line:\n%s", frame)
 	}
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Bounty Reward Companies" })
-	if bounty := a.home.lines[a.home.cursor]; bounty.cell.sub != "beta" || !bounty.cell.grows {
+	if bounty := a.home.lines[a.home.cursor]; bounty.cell.sub != "" || bounty.cell.grows {
 		t.Fatalf("a row from another folder does not carry its project as its description: %+v", bounty.cell)
 	}
 	if quiet := lines[own+3]; !strings.Contains(quiet, "Quiet Chat a") {
@@ -154,7 +151,7 @@ func TestTheHereRowIsOneLineUntilItsSnippetArrives(t *testing.T) {
 	a.home.build()
 	frame := homeText(a)
 	own, _ := homeRowOf(frame, "Porting the Resume Picker")
-	if next := homeLineAfter(frame, "Porting the Resume Picker"); own < 0 || !strings.Contains(next, "Bounty Reward Companies") {
+	if next := homeLineAfter(frame, "Porting the Resume Picker"); own < 0 || !strings.Contains(next, "Swarm Task Splitting") {
 		t.Fatalf("the here row carries a line under it with nothing said:\n%s", frame)
 	}
 }
@@ -172,7 +169,8 @@ func TestHomePreselectsTheConversationThisWindowWasInBefore(t *testing.T) {
 			before = row.Transcript
 		}
 	}
-	a.prev = []string{before}
+	_ = a.tabsRow(a.width)
+	rememberUnheldTab(a, before, a.workspace, "Quiet Chat c")
 	a.openHome()
 	homeText(a)
 	if got := a.home.focused(); got.Transcript != before {
@@ -238,29 +236,42 @@ func TestProjectsListsThisFolderFirstWithItsCountsAndRepository(t *testing.T) {
 	}
 }
 
-// ENTER ON A PROJECT STARTS A CONVERSATION THERE, and home steps aside for it.
-func TestEnterOnAProjectStartsAConversationInThatFolder(t *testing.T) {
+// A PROJECT'S ROW IS READ AND NOT STOOD ON (owner, 2026-09-17): the cursor
+// steps over every row of `projects`, a press on one leaves home up and moves
+// nothing, and the panel offers no verbs — its heading opens nothing either.
+// `enter` used to start a conversation in the folder and `→` offered its chats
+// and its folder; both are gone with the rail's interactivity.
+func TestAProjectsRowIsReadAndNotStoodOn(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 45)
-	beta := lab.workspace("beta")
-	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.proj.Path == beta })
-	a.homeKey(key("enter"))
-	if a.at(pageHome) || a.workspace != beta {
-		t.Fatalf("enter on the beta project left home=%v in %q, want a conversation in %q", a.at(pageHome), a.workspace, beta)
+	placeFrameText(a)
+	rows := 0
+	for _, line := range a.home.lines {
+		if line.kind != homeProjectRow {
+			continue
+		}
+		rows++
+		if line.stop() {
+			t.Fatalf("a project's row is a cursor stop: %+v", line.cell)
+		}
 	}
-}
-
-// AND ITS VERBS ARE ITS CHATS AND ITS FOLDER.
-func TestAProjectOffersItsChatsAndItsFolder(t *testing.T) {
-	a := newSwitchLab(t).open(120, 45)
-	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.project == "beta" })
-	verbs := a.homeRowVerbs()
-	if len(verbs) != 2 || verbs[0].word != homeProjectChatsWord || verbs[1].word != homeProjectFolderWord {
-		t.Fatalf("a project offers %+v", verbs)
+	if rows == 0 {
+		t.Fatalf("no project rows on the frame:\n%s", homeText(a))
 	}
-	verbs[0].do()
-	if a.home.box.String() != "beta" || a.home.gridOn() {
-		t.Fatalf("its chats did not search the project: box %q", a.home.box.String())
+	x, y, ok := homeHeadingAt(a, "projects")
+	if !ok {
+		t.Fatalf("the projects heading is not on the frame:\n%s", homeText(a))
+	}
+	was := a.home.cursor
+	frame := strings.Split(homeText(a), "\n")
+	for dy := 0; dy <= rows; dy++ {
+		drive(t, a, tea.MouseClickMsg{X: x + homeGridLead, Y: y + dy, Button: tea.MouseLeft})
+		if a.page != pageHome || a.home.cursor != was || a.strip.open {
+			t.Fatalf("a press on %q (page %q, cursor %d→%d, strip %v) did something", strings.TrimSpace(frame[y+dy]), a.page.word(), was, a.home.cursor, a.strip.open)
+		}
+	}
+	if line, ok := a.home.previewLine(); ok && line.kind == homeProjectRow {
+		t.Fatal("a project's row is the row being read")
 	}
 }
 
@@ -279,21 +290,37 @@ func TestTheHomeDirectoryIsAPathOnTheProjectsPanel(t *testing.T) {
 	}
 }
 
-// A PROJECT ROW NEVER WRAPS: a long path is cut from the left, at a folder,
-// so its count and its repository stay on the row — `…/code/codeaf`.
-func TestALongProjectPathIsCutFromTheLeftAndKeepsItsFacts(t *testing.T) {
+// Project rows retain the absolute root or home prefix and cut on the right.
+func TestProjectPathsKeepTheirRootsAndTruncateOnTheRight(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	cell := &homeCell{panel: panelProjects, path: true, pad: homeProjectPad,
-		title: "~/Documents/agentfield/code/codeaf", note: "61 chats", right: "master, 3 files dirty"}
-	for _, width := range []int{56, 48} {
-		row := plain(homeCellBody(cell, width, a.pal, false))
-		if len([]rune(row)) > width || !strings.Contains(row, glyphMore+"/") || !strings.Contains(row, "/codeaf") ||
-			!strings.Contains(row, "61 chats") || !strings.Contains(row, "master, 3 files dirty") {
-			t.Fatalf("at %d cells the project row reads %q", width, row)
+	for _, path := range []string{"/tmp/landing-test", "/tmp/very-long-project-name/another-directory", "~/Documents/agentfield/code/codeaf"} {
+		cell := &homeCell{panel: panelProjects, path: true, pad: homeProjectPad,
+			title: path, note: "61 chats", right: "master, 3 files dirty"}
+		for _, width := range []int{56, 48, 32, 20} {
+			row := plain(homeCellBody(cell, width, a.pal, false))
+			prefix := "/tmp/"
+			if strings.HasPrefix(path, "~/") {
+				prefix = "~/"
+			}
+			if ansi.StringWidth(row) > width || !strings.HasPrefix(row, prefix) || strings.HasPrefix(row, "…") {
+				t.Fatalf("at %d cells the project path %q reads %q", width, path, row)
+			}
+			if width >= 48 && (!strings.Contains(row, "61 chats") || !strings.Contains(row, "master, 3 files dirty")) {
+				t.Fatalf("at %d cells the path displaced its facts: %q", width, row)
+			}
 		}
 	}
-	if got := homeFitPathLeft("~/Documents/agentfield/code/codeaf", 20); got != glyphMore+"/code/codeaf" {
-		t.Fatalf("the path is cut to %q, want it to start at a folder", got)
+	for _, tc := range []struct{ path, want string }{
+		{"/tmp/landing-test", "/tmp/landing-test"},
+		{"/home/pat", "~"},
+		{"/home/pat/src", "~/src"},
+		{"/home/patrick/src", "/home/patrick/src"},
+	} {
+		word := projectWord(session.Project{Path: tc.path}, "/home/pat")
+		row := plain(homeCellBody(&homeCell{panel: panelProjects, path: true, title: word}, 80, a.pal, false))
+		if row != tc.want {
+			t.Fatalf("project %q reads %q, want %q", tc.path, row, tc.want)
+		}
 	}
 }
 
@@ -398,15 +425,15 @@ func spendPanelText(a *app, width int) []string {
 		if got, ok := line.panelOf(); !ok || got != panelSpend {
 			continue
 		}
-		for _, row := range a.homeLineRows(line, at, width, a.pal, false) {
+		for _, row := range a.homeLineRows(line, at, width, a.pal, false, false) {
 			out = append(out, plain(row.text))
 		}
 	}
 	return out
 }
 
-// SPEND IS A SMALL HUD: today against the allowance spelled the pulse's way on
-// the heading, one thin meter, the fortnight in block cells with its total and
+// SPEND IS A SMALL HUD: a bare heading, one thin meter, the fortnight in
+// block cells with its total and
 // its loudest day, and the models beside what the day was spent on.
 func TestSpendIsASmallHudOfThreeLines(t *testing.T) {
 	a := homeSpendLab(t)
@@ -414,8 +441,8 @@ func TestSpendIsASmallHudOfThreeLines(t *testing.T) {
 	if len(rows) != 4 {
 		t.Fatalf("the spend panel is %d rows at 58 cells, want a heading and three lines:\n%s", len(rows), strings.Join(rows, "\n"))
 	}
-	if !strings.HasSuffix(rows[0], "today $170.00 of $500") || strings.Contains(rows[0], "$500.00") {
-		t.Fatalf("the heading does not say today against the allowance the pulse's way: %q", rows[0])
+	if strings.TrimSpace(rows[0]) != "spend" {
+		t.Fatalf("the heading repeats the top line's daily spend: %q", rows[0])
 	}
 	if !strings.Contains(rows[1], homeSpendRun+homeSpendRest) || !strings.HasSuffix(rows[1], " 34%") {
 		t.Fatalf("the meter is not one thin line with its share: %q", rows[1])
@@ -439,11 +466,41 @@ func TestSpendIsASmallHudOfThreeLines(t *testing.T) {
 			t.Fatalf("at 40 cells the panel draws %q", row)
 		}
 	}
-	// AND ENTER ON ANY OF ITS ROWS OPENS THE SPEND PLACE.
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.kind == cellFacts })
-	a.homeKey(key("enter"))
+	// AND NOTHING UNDER THE HEADING IS A STOP OR A DOOR (owner, 2026-09-17):
+	// the cursor steps over every one of the panel's lines, and a press on one
+	// leaves home up. The heading is still the door into the spend place.
+	for at, line := range a.home.lines {
+		if line.cell == nil || line.cell.panel != panelSpend || line.cell.kind == cellHead {
+			continue
+		}
+		if line.stop() {
+			t.Fatalf("line %d of the spend panel (%q) is a cursor stop", at, line.cell.title)
+		}
+		if line.kind != homeReadout {
+			t.Fatalf("line %d of the spend panel is a %v line, want a readout", at, line.kind)
+		}
+	}
+	// The rows are found under the painted heading, because a press resolves
+	// against the frame that was drawn and never against the list: the three
+	// lines under `spend` are the meter, the fortnight and the models.
+	placeFrameText(a)
+	x, y, ok := homeHeadingAt(a, "spend")
+	if !ok {
+		t.Fatalf("the spend heading is not on the frame:\n%s", homeText(a))
+	}
+	frame := strings.Split(homeText(a), "\n")
+	for dy := 1; dy <= 3; dy++ {
+		drive(t, a, tea.MouseClickMsg{X: x + homeGridLead, Y: y + dy, Button: tea.MouseLeft})
+		if a.page != pageHome {
+			t.Fatalf("a press on the spend row %q opened %q", strings.TrimSpace(frame[y+dy]), a.page.word())
+		}
+		if line, ok := a.home.focusedLine(); ok && line.cell != nil && line.cell.panel == panelSpend {
+			t.Fatalf("a press on the spend row %q put the cursor on it", strings.TrimSpace(frame[y+dy]))
+		}
+	}
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if !a.at(pageSpend) {
-		t.Fatal("enter on the spend panel's last line did not open the spend place")
+		t.Fatal("a press on the spend heading did not open the spend place")
 	}
 }
 
@@ -590,4 +647,15 @@ func TestScheduledSaysEachKindsTimeOneWayInItsDescription(t *testing.T) {
 			}
 		}
 	}
+}
+
+// headingOf is a panel's heading exactly as it is built — the bare word, or the
+// word with whatever clause the panel put after it.
+func headingOf(a *app, panel homePanelID) string {
+	for _, line := range a.home.lines {
+		if line.cell != nil && line.cell.panel == panel && line.cell.kind == cellHead {
+			return line.cell.title
+		}
+	}
+	return ""
 }

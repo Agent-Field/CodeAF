@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -164,6 +165,69 @@ func Kind(tag string) string {
 	default:
 		return "other"
 	}
+}
+
+// FollowedChannel names the release channel a build takes its updates from.
+// IT IS NOT ALWAYS THE CHANNEL THE TAG WAS CUT ON: a release candidate follows
+// STABLE, because its launch line, its bare /update and its bare `codeaf
+// update` all speak about the stable release its line is heading for. A build
+// from source follows stable too, so the road it is offered is the ordinary
+// one. Only dev and staging follow themselves. Every place that has to answer
+// "which channel is this build on" asks here, so the launch notice and the
+// curl line under it can never name two different roads.
+func FollowedChannel(running string) string {
+	switch Kind(running) {
+	case "dev", "staging":
+		return Kind(running)
+	default:
+		return "stable"
+	}
+}
+
+// ParseChannel returns the channel and calendar date carried by a dev or
+// staging tag. The date is kept as YYYYMMDD because that spelling sorts in the
+// same order as the days it names.
+func ParseChannel(tag string) (channel, date string, ok bool) {
+	channel = Kind(tag)
+	if channel != "dev" && channel != "staging" {
+		return "", "", false
+	}
+	parts := strings.Split(tag, "-")
+	if len(parts) != 3 {
+		return "", "", false
+	}
+	return channel, parts[1], true
+}
+
+// CompareChannelBuilds compares a running build with the release selected by
+// the API from the same channel. A negative result means the selected release
+// is newer; a positive result means the running build is ahead.
+func CompareChannelBuilds(running string, runningPublished time.Time, selected string, selectedPublished time.Time) (int, bool) {
+	if running == selected {
+		return 0, true
+	}
+	runningChannel, runningDate, runningOK := ParseChannel(running)
+	selectedChannel, selectedDate, selectedOK := ParseChannel(selected)
+	if !runningOK || !selectedOK || runningChannel != selectedChannel {
+		return 0, false
+	}
+	if !runningPublished.IsZero() && !selectedPublished.IsZero() {
+		switch {
+		case runningPublished.Before(selectedPublished):
+			return -1, true
+		case runningPublished.After(selectedPublished):
+			return 1, true
+		}
+	}
+	if runningDate < selectedDate {
+		return -1, true
+	}
+	if runningDate > selectedDate {
+		return 1, true
+	}
+	// THE API-NAMED RELEASE WINS A SAME-DAY TIE WHEN EITHER MOMENT IS
+	// UNKNOWN. It is the only remaining ordering fact the check has.
+	return -1, true
 }
 
 // ValidSHA reports whether a revision can form a channel tag.

@@ -86,7 +86,7 @@ const (
 	// most recent first. It is read off the entries this surface has already
 	// drawn (folderplace.go's [app.touchedRoots]) and never re-derived.
 	folderTouched
-	// folderProject is every project home knows about — the alt+w source
+	// folderProject is every project home knows about — the alt+p source
 	// ([app.composerDestinations]), which already leads with where this window
 	// stands.
 	folderProject
@@ -1531,7 +1531,7 @@ func (f *folderPick) hint() string {
 // The two sentences the action row falls back on.
 const (
 	folderListHintWord   = "type a path to browse · → opens the folder under the cursor"
-	folderBrowseHintWord = "←→ walk · alt+m chooses · alt+p hides the preview · ctrl+u searches"
+	folderBrowseHintWord = "←→ walk · alt+m chooses · alt+w hides the preview · ctrl+u searches"
 )
 
 // folderCell pads one painted cell to its column's width, measuring through the
@@ -1708,7 +1708,7 @@ var folderHintFields = []rowField{
 // them (rowfit.go), so the line never draws a key spelled `alt+…`.
 var folderBrowseHintFields = []rowField{
 	rowSay("search folders and files"), rowSay("or type a path"),
-	rowSay("alt+p preview"), rowSay("alt+h hidden"),
+	rowSay("alt+w preview"), rowSay("alt+h hidden"),
 }
 
 // folderWideHintFields is the legend with the preview alone on the sheet, where

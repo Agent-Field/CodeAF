@@ -88,7 +88,7 @@ func TestAResumedConversationOpensWithTheSpendItsJournalRecords(t *testing.T) {
 
 	// THE STATUS LINE IS THE SURFACE THE BUG WAS SEEN ON, so it is asserted as a
 	// person reads it rather than through the field behind it.
-	if line := plain(a.status(200)); !strings.Contains(line, "$0.44") {
+	if line := plain(a.legend(200)); !strings.Contains(line, "$0.44") {
 		t.Fatalf("the status line does not carry the conversation's spend:\n%q", line)
 	}
 
@@ -163,7 +163,7 @@ func TestSwitchingToAResumedConversationTakesUpItsSpend(t *testing.T) {
 	if got := a.spendShown(); !near(got, 0.44) {
 		t.Fatalf("after the switch the row shows %v, want the arriving conversation's own 0.44", got)
 	}
-	if line := plain(a.status(a.width)); !strings.Contains(line, "$0.44") || strings.Contains(line, "$50.00") {
+	if line := plain(a.legend(a.width)); !strings.Contains(line, "$0.44") || strings.Contains(line, "$50.00") {
 		t.Fatalf("the status line carries the conversation that was left:\n%s", line)
 	}
 	if a.inputTokens != 48786 || a.outputTokens != 3320 {
@@ -214,7 +214,7 @@ func TestSwitchingToAConversationWithWorkOutReadsItsTreeOnTheFirstFrame(t *testi
 	// AND THE ROW AND THE NOTE AGREE ON IT, which is the law the bleed broke:
 	// /cost recomputed the tree and the row did not, so for that moment the two
 	// said different things about the same money.
-	if line, note := plain(a.status(a.width)), plain(a.costText()); !strings.Contains(line, "$9.44") || !strings.Contains(note, "$9.44") {
+	if line, note := plain(a.legend(a.width)), plain(a.costText()); !strings.Contains(line, "$9.44") || !strings.Contains(note, "$9.44") {
 		t.Fatalf("the row and /cost do not agree:\nrow:  %s\nnote: %s", line, note)
 	}
 }

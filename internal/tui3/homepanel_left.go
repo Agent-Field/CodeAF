@@ -103,7 +103,7 @@ const (
 func ledgerLanded(world session.World, seen time.Time) []switcherRow {
 	var out []switcherRow
 	for _, landed := range session.LandedSince(&world, seen) {
-		if landed.Entry.Parent != "" {
+		if landed.Entry.Parent != "" || landed.Session.ArchivedTasks[landed.Entry.ID] {
 			continue
 		}
 		entry := landed.Entry
@@ -223,7 +223,7 @@ func (a *app) madeSince(seen time.Time) []session.Artifact {
 // ── the doors ───────────────────────────────────────────────────────────────
 
 // leftEnter is enter on a ledger line whose door is its own row: a task opens
-// its record, a file opens itself. It reports false for a line whose door is a
+// itself, a file opens itself. It reports false for a line whose door is a
 // place, which [app.homeLedgerEnter] then opens as it always has.
 func (a *app) leftEnter(line homeLine) (tea.Cmd, bool) {
 	if line.cell == nil || line.cell.row == nil {
@@ -232,7 +232,10 @@ func (a *app) leftEnter(line homeLine) (tea.Cmd, bool) {
 	row := line.cell.row
 	switch {
 	case row.task != nil:
-		return a.openTaskRecord(row.task), true
+		// THE TASK ITSELF, through the door the tasks place takes for the same
+		// row: its live room when this window is running it, its record
+		// otherwise (homepanel_running.go's [app.openTaskDoor]).
+		return a.openTaskDoor(row.task), true
 	case row.path != "" && a.hosted():
 		// A FILE THE FAR MACHINE MADE IS FETCHED BEFORE IT IS OPENED, by the
 		// same door `/open <path>` takes over a connection (remoteopen.go).

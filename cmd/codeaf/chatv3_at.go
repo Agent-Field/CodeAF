@@ -168,6 +168,7 @@ func openChatV3At(launch atLaunch) error {
 	defer func() { closeLink() }()
 
 	client, err := remote.Dial(tunnel, name, remote.Hello{
+		Headless:  launch.once != "",
 		Workspace: workspace,
 		Session:   launch.session,
 		Model:     launch.model,

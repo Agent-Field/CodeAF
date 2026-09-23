@@ -308,3 +308,41 @@ func TestSharedChatRoundTripRestoresEachDraftAndCaret(t *testing.T) {
 		t.Fatalf("B lost its composer: %q at %d", a.input.String(), a.input.cursor)
 	}
 }
+
+// C5: a shared handle cannot keep the old turn alive, so its waiting messages
+// return to the composer. The fallback keeps every attachment too, with the
+// draft's tray first and each waiting message following in queue order.
+func TestASharedHandleFoldsWaitingWordsPicturesAndPastesBackIntoTheComposer(t *testing.T) {
+	a, _, _ := sharedSurface(t)
+	a.input.setText("draft words")
+	a.chips = []chip{{path: "/tmp/lab/draft.png"}}
+	a.pastes = []pasteChip{{n: 1, text: "draft\npaste\nbody"}}
+	a.parks = []parked{
+		{text: "first waiting", chips: []chip{{path: "/tmp/lab/first.png"}}, pastes: []pasteChip{{n: 2, text: "first\npaste\nbody"}}},
+		{text: "second waiting", chips: []chip{{path: "/tmp/lab/second.png"}}, pastes: []pasteChip{{n: 3, text: "second\npaste\nbody"}}},
+	}
+
+	side := a.detachConversation()
+	if side.draft != "draft words\nfirst waiting\nsecond waiting" {
+		t.Fatalf("the shared fallback folded %q", side.draft)
+	}
+	if len(side.parks) != 0 {
+		t.Fatalf("the ended conversation retained structured parks: %+v", side.parks)
+	}
+	wantChips := []string{"draft.png", "first.png", "second.png"}
+	gotChips := make([]string, 0, len(side.chips))
+	for _, held := range side.chips {
+		gotChips = append(gotChips, held.name())
+	}
+	if strings.Join(gotChips, ",") != strings.Join(wantChips, ",") {
+		t.Fatalf("the shared tray is %v, want %v", gotChips, wantChips)
+	}
+	if len(side.pastes) != 3 || side.pastes[0].n != 1 || side.pastes[1].n != 2 || side.pastes[2].n != 3 {
+		t.Fatalf("the shared pastes are %+v", side.pastes)
+	}
+
+	a.restoreAside(side)
+	if a.input.String() != "draft words\nfirst waiting\nsecond waiting" || len(a.chips) != 3 || len(a.pastes) != 3 {
+		t.Fatalf("the shared composer came back as %q, chips=%v pastes=%+v", a.input.String(), chipNames(a), a.pastes)
+	}
+}

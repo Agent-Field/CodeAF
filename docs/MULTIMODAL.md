@@ -106,8 +106,11 @@ moment it is drawn (talk lists stay chat-only; the drawing slot sees image
 models). Silence gets ONE law everywhere: an unpublished modality list means
 text-in/text-out and NOTHING more — a media capability is never assumed,
 only published, with the id-word marks as the last resort for rows that
-publish nothing. Picker rows and `codeaf models` grow a dim modality tail
-("sees · draws") so a filtered list is explicable, and `/model <slug>` warns
+publish nothing. Picker rows and `codeaf models` grow dim modality
+cells so a filtered list is explicable — the catalog's own nouns under
+`inputs` and `outputs` (`inputs image file`), where this note first proposed
+capability verbs ("sees · draws"); those verbs shipped for two waves and were
+deleted in #1107 — and `/model <slug>` warns
 when a slug cannot hold a conversation instead of silently accepting a
 music model as the talk model.
 

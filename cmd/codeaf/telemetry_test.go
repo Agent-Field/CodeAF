@@ -1,15 +1,20 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/pool/outbox"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // telemetryHome is the clean room every telemetry-verb test runs in: a
@@ -84,17 +89,67 @@ func TestTelemetryStatusNamesTheReasonWhenOff(t *testing.T) {
 	}
 }
 
-func TestTelemetryShowPrintsTheSpool(t *testing.T) {
-	telemetryHome(t)
-	telemetrySink(t)
+// telemetryShowReport is `codeaf telemetry show`'s object as the tests read it back.
+type telemetryShowReport struct {
+	Usage     telemetryShowStream `json:"usage"`
+	ModelPool telemetryShowStream `json:"model_pool"`
+}
+
+type telemetryShowStream struct {
+	Destination string            `json:"destination"`
+	Off         string            `json:"off,omitempty"`
+	Waiting     []json.RawMessage `json:"waiting"`
+}
+
+// runShow runs the verb and parses its answer, failing on anything that is
+// not one JSON object indented by two — the shape the verb promises.
+func runTelemetryShowJSON(t *testing.T) (telemetryShowReport, string) {
+	t.Helper()
 	usageOut = &strings.Builder{}
 	defer func() { usageOut = os.Stdout }()
 	if err := runTelemetry([]string{"show"}); err != nil {
 		t.Fatal(err)
 	}
 	got := usageOut.(*strings.Builder).String()
-	if strings.TrimSpace(got) == "" {
-		t.Fatal("show printed nothing")
+	var report telemetryShowReport
+	if err := json.Unmarshal([]byte(got), &report); err != nil {
+		t.Fatalf("show should print one JSON object, got %v:\n%s", err, got)
+	}
+	// Re-encoding the parsed report the way the verb encodes it — two-space
+	// indent, HTML escaping off, usage before model_pool — must give the same
+	// bytes back.
+	var again strings.Builder
+	enc := json.NewEncoder(&again)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(report); err != nil {
+		t.Fatal(err)
+	}
+	if got != again.String() {
+		t.Errorf("show should be indented by two, got:\n%s\nwant:\n%s", got, again.String())
+	}
+	return report, got
+}
+
+func TestTelemetryShowIsOneObjectKeyedByDestination(t *testing.T) {
+	telemetryHome(t)
+	telemetrySink(t)
+	report, got := runTelemetryShowJSON(t)
+	if !strings.HasPrefix(got, "{\n  \"usage\": {") {
+		t.Errorf("show should open on the usage stream, got:\n%s", got)
+	}
+	if !strings.Contains(got, "\n  \"model_pool\": {") {
+		t.Errorf("show should carry the model_pool stream, got:\n%s", got)
+	}
+	if report.Usage.Destination == "" || report.ModelPool.Destination == "" {
+		t.Errorf("both streams should name a destination, got %+v", report)
+	}
+	// An empty queue is an empty list, never null.
+	if !strings.Contains(got, "\"waiting\": []") {
+		t.Errorf("an empty queue should print as [], got:\n%s", got)
+	}
+	if strings.Contains(got, "null") {
+		t.Errorf("show should never print null, got:\n%s", got)
 	}
 }
 
@@ -172,5 +227,224 @@ func TestTelemetryIsInUsageAndEnvironmentText(t *testing.T) {
 	}
 	if !strings.Contains(environmentText, "DO_NOT_TRACK") {
 		t.Error("the environment table should name DO_NOT_TRACK")
+	}
+}
+
+// seedPoolOutbox writes one judged row into the profile's pool outbox the way
+// a run would — through the outbox's own open and append, closed again — so
+// the show verb reads what stands on disk.
+func seedPoolOutbox(t *testing.T, root, payload string) {
+	t.Helper()
+	box, err := outbox.Open(filepath.Join(root, "pool", "outbox.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := box.Append([]byte(payload)); err != nil {
+		t.Fatal(err)
+	}
+	if err := box.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestTelemetryShowPrintsBothStreams is the promise behind the notice's "what
+// is collected": two streams leave this binary, under different switches, and
+// a show that printed only the usage-count spool let a person believe
+// CODEAF_TELEMETRY=off stopped everything. Both streams print under their own
+// key, and the pool row's bytes are the bytes the relay would receive.
+func TestTelemetryShowPrintsBothStreams(t *testing.T) {
+	root := telemetryHome(t)
+	telemetrySink(t)
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	seedPoolOutbox(t, root, `{"schema":1,"metric":"role_quality","role":"worker","model":"vendor/model-x","score":81}`)
+	report, got := runTelemetryShowJSON(t)
+	if !strings.HasPrefix(report.Usage.Destination, "http") {
+		t.Errorf("the usage stream should name its endpoint, got %+v", report.Usage)
+	}
+	// The suite's TestMain pins the relay at an unreachable local address so
+	// no test can post to the real one; the destination names whatever submit
+	// address is in force, and the path is the relay's own.
+	if !strings.HasPrefix(report.ModelPool.Destination, "http") || !strings.HasSuffix(report.ModelPool.Destination, "/v1/rows") {
+		t.Errorf("the pool stream should name the relay, got %+v", report.ModelPool)
+	}
+	if report.ModelPool.Off != "" {
+		t.Errorf("a pool on should not be off, got %q", report.ModelPool.Off)
+	}
+	if len(report.Usage.Waiting) != 0 {
+		t.Errorf("the usage spool is empty under go test, got %s", report.Usage.Waiting)
+	}
+	// The rows print indented inside the object; compacted, they are the
+	// outbox's own bytes: the envelope a relay receives, the row inside it.
+	if len(report.ModelPool.Waiting) != 1 {
+		t.Fatalf("the pool's one row should wait, got:\n%s", got)
+	}
+	row := compactWaitingRow(t, report.ModelPool.Waiting[0])
+	for _, want := range []string{`"payload":{`, `"model":"vendor/model-x"`, `"score":81`, `"nonce":"`} {
+		if !strings.Contains(row, want) {
+			t.Errorf("the pool row should carry %s as the relay would receive it, got %s", want, row)
+		}
+	}
+}
+
+// compactWaitingRow is one waiting row without the indent `show` prints it with,
+// so a test can compare it to the bytes the outbox or spool holds.
+func compactWaitingRow(t *testing.T, raw json.RawMessage) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := json.Compact(&out, raw); err != nil {
+		t.Fatalf("waiting row is not JSON: %v\n%s", err, raw)
+	}
+	return out.String()
+}
+
+// TestTelemetryShowSaysWhenThePoolSendsNothing pins the off reason for a pool
+// in `read`: the rows that wait are still printed, under a reason nothing is
+// sent, so the person is not told a destination that nothing goes to.
+func TestTelemetryShowSaysWhenThePoolSendsNothing(t *testing.T) {
+	root := telemetryHome(t)
+	telemetrySink(t)
+	t.Setenv("CODEAF_MODEL_POOL", "read")
+	seedPoolOutbox(t, root, `{"n":1}`)
+	report, _ := runTelemetryShowJSON(t)
+	if report.ModelPool.Off != "model_pool read" {
+		t.Errorf("a pool in read should say so, got %q", report.ModelPool.Off)
+	}
+	if len(report.ModelPool.Waiting) != 1 || !strings.Contains(compactWaitingRow(t, report.ModelPool.Waiting[0]), `"payload":{"n":1}`) {
+		t.Errorf("the waiting row should still print, got %s", report.ModelPool.Waiting)
+	}
+}
+
+// TestTelemetryShowDoesNotCreateThePoolOutbox is the reading-form law: a show
+// on a profile with no outbox prints `[]` for the pool and leaves no file
+// behind, because [outbox.Open] creates an absent outbox and a reader must not.
+func TestTelemetryShowDoesNotCreateThePoolOutbox(t *testing.T) {
+	root := telemetryHome(t)
+	telemetrySink(t)
+	report, _ := runTelemetryShowJSON(t)
+	if _, err := os.Stat(filepath.Join(root, "pool", "outbox.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("show must not create the pool outbox, stat: %v", err)
+	}
+	if len(report.Usage.Waiting) != 0 || len(report.ModelPool.Waiting) != 0 {
+		t.Fatalf("an empty machine should have nothing waiting for either stream, got %+v", report)
+	}
+}
+
+// TestTelemetryInfoNamesEveryFieldOnAnEmptyMachine is the notice's "what is
+// collected" read on the day a person installs: nothing has been sent yet,
+// and the verb shows the shape of every row — this machine's own values where
+// they are known before a run, one example row per event where they are not,
+// and the pool row in the relay's bytes. It lists only what is sent: no line
+// starts with "never", because a person reading a shape wants the shape and
+// the notice already carries the disclaimer; and it says nothing about what
+// is waiting, which is `show`'s answer.
+func TestTelemetryInfoNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
+	telemetryHome(t)
+	telemetrySink(t)
+	usageOut = &strings.Builder{}
+	defer func() { usageOut = os.Stdout }()
+	if err := runTelemetry([]string{"info"}); err != nil {
+		t.Fatal(err)
+	}
+	got := usageOut.(*strings.Builder).String()
+	// The first line is the fact a person came to check, before either stream.
+	if !strings.HasPrefix(got, "codeaf does NOT collect or share your chat.") {
+		t.Errorf("info should open on the chat-content fact, got:\n%s", got)
+	}
+	for _, want := range []string{
+		"No prompts, replies, code, file names,\npaths, repo names, keys, email, IP or machine name leave for AgentField.",
+		"1. Usage Counts (",
+		"every event, as this machine would send it now",
+		"os                   " + runtime.GOOS,
+		"arch                 " + runtime.GOARCH,
+		"install_method       unknown",
+		"install_id_hash      sha256 of a random id, minted on the first send",
+		"what each event adds, for example",
+		"first_run            nothing; sent once per install",
+		"session_started      mode=chat  resumed=false",
+		"session_ended        mode=chat  duration=5-30m  turns=6-20",
+		"total_tokens=12500  stop_reason=done",
+		"exit_code=0",
+		// No blank line between the last event and the stop reasons.
+		"fingerprint=3fa9c1e2b7d04e85\n    stop_reason          one of done · error · incomplete",
+		"2. Model Pool (",
+		"one row per judged seat, after a task lands, for example",
+		"    {\n      \"schema\": 1,\n      \"metric\": \"role_quality\",\n      \"role\": \"worker\",",
+		"\n      \"door\": \"task\",\n      \"size\": \"M\",\n      \"day\": \"",
+		"\n    }\n    nonce",
+		"nonce                16 random bytes as hex",
+		"X-Codeaf-Install",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("info should print %q, got:\n%s", want, got)
+		}
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "never") {
+			t.Errorf("info lists only what is sent; got a never line: %q", line)
+		}
+	}
+	// The bands are not spelled out: the example rows carry one of each and
+	// the doc lists the rest, so a listing of every count, dollar and
+	// duration band is text a person does not need here.
+	for _, absent := range []string{"bands ", "counts 0 ·", "dollars 0 ·", "duration <1m ·", "waiting"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("info should not print %q, got:\n%s", absent, got)
+		}
+	}
+	for _, name := range telemetry.CommonPropNames() {
+		if !strings.Contains(got, name) {
+			t.Errorf("info should name the every-event prop %q", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home.Dir(), "telemetry", "install_id")); !os.IsNotExist(err) {
+		t.Fatalf("info must not mint an install id, stat: %v", err)
+	}
+}
+
+// TestTelemetryOffQuietsThePoolFromTheEnvironment is the notice's promise read
+// end to end: with CODEAF_TELEMETRY=off and the pool explicitly on, the show
+// verb reports the pool sending nothing, from the telemetry switch.
+func TestTelemetryOffQuietsThePoolFromTheEnvironment(t *testing.T) {
+	telemetryHome(t)
+	telemetrySink(t)
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	report, _ := runTelemetryShowJSON(t)
+	if report.ModelPool.Off != "model_pool read (capped by the telemetry off switch)" {
+		t.Errorf("CODEAF_TELEMETRY=off should quiet the pool and say why, got %q", report.ModelPool.Off)
+	}
+	if report.Usage.Off != "CODEAF_TELEMETRY=off" {
+		t.Errorf("the counts should name the same rung, got %q", report.Usage.Off)
+	}
+}
+
+// TestTelemetryOffCommandQuietsThePool is the profile rung: `codeaf telemetry
+// off` writes a row no environment carries, and the pool's resolved config
+// reads it off the disk and sends nothing, whatever the pool setting says.
+func TestTelemetryOffCommandQuietsThePool(t *testing.T) {
+	root := telemetryHome(t)
+	usageOut = &strings.Builder{}
+	defer func() { usageOut = os.Stdout }()
+	poolOn := func(name string) (string, bool) {
+		if name == "CODEAF_MODEL_POOL" {
+			return "on", true
+		}
+		return "", false
+	}
+	if cfg := config.ModelPoolResolved(root, poolOn); !cfg.CanSend() {
+		t.Fatalf("before the command the pool should send, got mode %v from %q", cfg.Mode, cfg.Source.Mode)
+	}
+	if err := runTelemetry([]string{"off"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ModelPoolResolved(root, poolOn)
+	if cfg.CanSend() || cfg.Source.Mode != "telemetry" || !cfg.CanRead() {
+		t.Fatalf("after `telemetry off` the pool should read and not send, got mode %v from %q", cfg.Mode, cfg.Source.Mode)
+	}
+	if err := runTelemetry([]string{"on"}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := config.ModelPoolResolved(root, poolOn); !cfg.CanSend() {
+		t.Fatalf("`telemetry on` should hand the pool back, got mode %v from %q", cfg.Mode, cfg.Source.Mode)
 	}
 }
