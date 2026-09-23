@@ -102,9 +102,8 @@ func (a *app) placeTabPress(x, y int) (tea.Cmd, bool) {
 // hovered word look like the room a person is standing in, and a bar with two
 // grounds on it says nothing clearly.
 //
-// AND IT MOVES NOTHING. No cursor, no place, no window: the pointer previews and
-// the cursor selects, which is the law home wrote and every place inherited
-// (pages.go's [app.placeBodyHover]). Leaving the bar puts the ink back.
+// Hovering a tab changes no cursor, place or window. Clicking opens the place;
+// leaving the bar puts the ink back.
 func (a *app) placeTabHover(x, y int) bool {
 	if !a.pageShowing() || a.tabRow < 1 || y != a.tabRow {
 		// THE POINTER LEAVING THE ROW IS NEWS TOO, and it is the half that is easy
@@ -190,8 +189,8 @@ func placeTop(top, cursor, rows, room int) int {
 	return top
 }
 
-// placeHoverMoved records where the pointer is and reports whether that is
-// news, repainting only when it is.
+// placeHoverMoved selects the pointed row and records its pointer styling,
+// repainting only when either changes.
 //
 // MOTION IS THE CHEAPEST AND COMMONEST MESSAGE THIS SURFACE GETS — a pointer
 // crossing the window sends one per cell — so a hover that repainted on every
@@ -199,7 +198,8 @@ func placeTop(top, cursor, rows, room int) int {
 // not move (hover.go states the same rule for the conversation). The answer is
 // always true: the place TOOK the motion either way, and what is being reported
 // is whether anything has to be drawn again.
-func placeHoverMoved(at *int, next int, a *app) bool {
+func placeHoverMoved(at, cursor *int, next, row int, a *app) bool {
+	a.selectPlaceRow(cursor, row)
 	if *at == next {
 		return true
 	}
@@ -229,15 +229,17 @@ func (a *app) walkPage(back bool) tea.Cmd {
 
 // ── the pointer, on home's rule ─────────────────────────────────────────────
 
-// placeTargetPress is a press on one of the two doors home's rule carries: the
-// model, and the folder the next conversation opens in. It reports whether it
-// took the press.
+// placeTargetPress is a press on one of the four doors the draft's rule
+// carries: the folder the next conversation opens in, the model, the thinking
+// rung and the gate. It reports whether it took the press.
 //
 // EACH FACT IS EDITED ON THE LINE THAT SHOWS IT, which is the law the money
 // segment in the status line already follows and the reason there is no
-// settings page anywhere in this gesture: pressing the model is `alt+o` and
-// pressing the folder is `alt+w`, so the pointer and the keyboard reach the
-// same two doors by the same two names.
+// settings page anywhere in this gesture: pressing the model is `/model`,
+// pressing the folder is `alt+p`, and the rung and the gate walk one step on a
+// press exactly as the conversation's own cells do (`alt+e`, `alt+a`) — so
+// the pointer and the keyboard reach the same four doors by the same names,
+// on every place with a draft (boxseam.go).
 //
 // THE COLUMNS ARE THE ONES THE FRAME DREW (homedraft.go's [app.targetLegend]
 // writes them as the line is laid out) — never a second computation of where
@@ -246,7 +248,7 @@ func (a *app) placeTargetPress(x, y int) (tea.Cmd, bool) {
 	// A layer or a list that has taken the keyboard has taken the rule with it:
 	// the legend under the composer layer is that layer's, and the model list
 	// over the target is drawn where the body was.
-	if !a.at(pageHome) || a.composer.open || a.target.pick.open {
+	if !a.placeHasDraft() || a.composer.open || a.target.pick.open {
 		return nil, false
 	}
 	if a.targetRow < 1 || y != a.targetRow {
@@ -259,6 +261,10 @@ func (a *app) placeTargetPress(x, y int) (tea.Cmd, bool) {
 	case a.targetFolderSpan.holds(x):
 		a.moveTarget()
 		return nil, true
+	case a.targetEffortSpan.holds(x):
+		return a.cycleTargetEffort(), true
+	case a.targetApprovalSpan.holds(x):
+		return a.cycleTargetApproval(), true
 	}
 	return nil, false
 }
@@ -293,7 +299,7 @@ func (a *app) placeBoxPress(x, y int) bool {
 		return false
 	}
 	box := a.placeBox()
-	if box == nil || box.empty() {
+	if box == nil || len(box.value) == 0 {
 		return false
 	}
 	at := y - a.boxRow
@@ -304,6 +310,9 @@ func (a *app) placeBoxPress(x, y int) bool {
 	// AND THE PRESS ARMS THE SWEEP over this box, on the message box's own
 	// terms and for its reason (boxselect.go, draftclick.go).
 	a.boxPressed(box, true, x, y)
+	if box == &a.home.box {
+		a.home.build()
+	}
 	return true
 }
 

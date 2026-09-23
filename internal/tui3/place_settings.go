@@ -60,11 +60,22 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 	// whole of what separates the bar from the rows.
 	rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
 	rows = append(rows, placeRow{})
+	if s.sel == nil && s.edit == nil && s.conn.entry == nil {
+		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "type to search", "")
+		for _, line := range filter {
+			rows = append(rows, placeRow{text: " " + line})
+		}
+	}
 	room -= len(rows)
 	if room < 1 {
 		room = 1
 	}
 	if s.sel != nil {
+		filter, _, _ := draftBlock(&s.sel.pick.filter, pal, width-2, 1, "type to filter", "")
+		for _, line := range filter {
+			rows = append(rows, placeRow{text: " " + line})
+		}
+		room = max(1, room-len(filter))
 		body, at := s.selectLines(width, room, pal, a.reasoningFor)
 		for i, line := range body {
 			hit := sheetHit{}
@@ -169,7 +180,14 @@ func (placeSettings) note(a *app, width int) []string {
 	return []string{" " + pal.dim(noteFit(a.sheet.footNote(), width-2))}
 }
 
-func (placeSettings) hint(a *app) string { return a.sheet.keysLine() }
+func (placeSettings) hint(a *app) string {
+	hint := a.sheet.keysLine()
+	if !a.sheetLayerOwnsKeys() && !a.sheet.searching() &&
+		!(a.sheet.onConnections() && (a.sheet.conn.armed || a.sheet.conn.expanded != "")) {
+		hint = strings.ReplaceAll(hint, "esc close", homeDoorWord)
+	}
+	return hint
+}
 
 // key is the panel's own grammar (settings.go's [app.sheetKey]): the value being
 // edited, the model picker, the section bar, and the search across all of them.
@@ -219,7 +237,22 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
 	entry := a.sheet.conn.entry
 	if entry == nil {
-		return 0, 0, false
+		if a.sheet.edit != nil {
+			return 0, 0, false
+		}
+		box, placeholder := &a.sheet.query, "type to search"
+		if a.sheet.sel != nil {
+			box, placeholder = &a.sheet.sel.pick.filter, "type to filter"
+		}
+		block, column, at := draftBlock(box, a.pal, width-2, 1, placeholder, "")
+		if at >= 0 && at < len(block) {
+			for j, row := range rows {
+				if row.text == " "+block[at] {
+					return j, column + 1, true
+				}
+			}
+		}
+		return -1, 0, true
 	}
 	// THE LIST'S ROOM IS THE ROWS LESS THE SHEET'S OWN TWO — the tab bar and
 	// the blank under it ([placeSettings.body]) — so the window the box was

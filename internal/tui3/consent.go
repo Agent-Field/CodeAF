@@ -516,7 +516,7 @@ func consentKeyFor(allow bool, scope session.ConsentScope) string {
 func (a *app) dropAsks() {
 	kept, dropped := a.questions[:0], false
 	for _, open := range a.questions {
-		if open.question.Kind == session.QuestionConsent {
+		if open.question.Kind == session.QuestionConsent && open.question.ClarificationDepth == 0 {
 			delete(a.questionFolded, open.token())
 			dropped = true
 			continue

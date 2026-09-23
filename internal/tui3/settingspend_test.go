@@ -334,7 +334,7 @@ func TestEveryDoorLandsOnTheSameEditor(t *testing.T) {
 func TestTheMoneySegmentIsADoorOntoTheTab(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.cost = 0.14
-	a.statusRows(a.width)
+	a.legend(a.width)
 	if a.moneySpan.from == 0 && a.moneySpan.to == 0 {
 		t.Fatal("the layout never recorded where the money segment landed")
 	}

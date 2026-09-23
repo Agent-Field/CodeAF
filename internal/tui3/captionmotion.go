@@ -28,7 +28,7 @@ const (
 // bell reaches ordinary answer ink only at its crest. Measuring whole graphemes
 // in terminal cells keeps accents and joined emoji intact under the highlight.
 func (a *app) shimmer(text string) string {
-	if text == "" || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor {
+	if text == "" || a.anyWorkLogoVisible() || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor {
 		return a.pal.narr(text)
 	}
 	// A turn supplies a stable origin when it has one. Rooms can run while the
@@ -38,10 +38,19 @@ func (a *app) shimmer(text string) string {
 	if !a.turnBegan.IsZero() {
 		elapsed = a.now().Sub(a.turnBegan)
 	}
-	phase := (elapsed%shimmerPeriod + shimmerPeriod) % shimmerPeriod
+	return a.shimmerAt(text, elapsed, shimmerPeriod, 1)
+}
+
+// shimmerAt shares the same feather and palette ladder across caption owners.
+// Activity phrases use a separate decoding ripple instead of a light sweep.
+func (a *app) shimmerAt(text string, elapsed, period time.Duration, strength float64) string {
+	if text == "" || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor {
+		return a.pal.narr(text)
+	}
+	phase := (elapsed%period + period) % period
 	width := uniseg.StringWidth(text)
 	radius := math.Max(shimmerMinRadius, float64(width)*shimmerWidthRatio)
-	center := -radius + float64(phase)/float64(shimmerPeriod)*(float64(width)+2*radius)
+	center := -radius + float64(phase)/float64(period)*(float64(width)+2*radius)
 	var b strings.Builder
 	graphemes := uniseg.NewGraphemes(text)
 	cell := 0
@@ -54,7 +63,7 @@ func (a *app) shimmer(text string) string {
 		if distance < radius {
 			amount = (1 + math.Cos(math.Pi*distance/radius)) / 2
 		}
-		color := a.pal.shimmerHue(amount)
+		color := a.pal.shimmerHue(amount * strength)
 		// Adjacent clusters with the same colour share one escape pair. Most of
 		// the line is the quiet prefix or suffix, so per-character escapes there
 		// would spend terminal bandwidth on pixels that have not changed.

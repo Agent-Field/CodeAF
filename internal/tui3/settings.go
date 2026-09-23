@@ -2110,8 +2110,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if a.connEsc() {
 			return nil, true
 		}
-		a.closeSettings()
-		return nil, true
+		return a.openHome(), true
 
 	// ← AND → MOVE THIS PANEL'S OWN SECTIONS, and `tab` no longer does. `tab` is
 	// the way to the NEXT PLACE now (pages.go), and a key that meant "next
@@ -2575,10 +2574,11 @@ func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "esc":
 		s.sel = nil
+	// ENTER WRITES AND LEAVES THE LIST UP, which is /model's own rule and for
+	// its reason ([app.pickerKey]); esc is the way out and still changes
+	// nothing itself.
 	case "enter":
-		// ENTER INSIDE AN OPEN FOLD IS A LANE AND NOT A SLOT. It is read before
-		// anything else for [app.pickerKey]'s reason — closing the list is what
-		// forgets which row the cursor was on.
+		// ENTER INSIDE AN OPEN FOLD IS A LANE AND NOT A SLOT.
 		if lane, onLane := sel.pick.laneUnder(); onLane {
 			a.applyLaneFromSheet(sel, lane)
 			return
@@ -2586,10 +2586,10 @@ func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
 		chosen, ok := sel.choice()
 		row, found := s.registry.Row(sel.key)
 		role := sel.role
-		s.sel = nil
 		if !ok || !found {
 			return
 		}
+		a.restatePicker(&sel.pick, chosen)
 		// A role writes ONE PAIR of the row it shares with every other pin;
 		// everything else writes the row whole.
 		if role != "" {
@@ -2621,17 +2621,18 @@ func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
 func (a *app) applyLaneFromSheet(sel *sheetSelect, lane pickRow) {
 	s := &a.sheet
 	chosen, ok := sel.pick.choice()
-	lanes := sel.pick.lanes
 	key, role := sel.key, sel.role
-	s.sel = nil
 	if !ok || role != "" {
 		return
 	}
+	lanes := sel.pick.lanes
 	if row, found := s.registry.Row(key); found && row.Value() != chosen.ID {
 		meta, _ := settingMetaFor(row)
 		a.applySetting(sheetItem{row: row, meta: meta}, chosen.ID)
 	}
 	a.applyLaneChoice(chosen.ID, lane, lanes)
+	a.restatePicker(&sel.pick, chosen.ID)
+	sel.pick.showChoice(lane)
 	// THE PANEL RE-READS WHAT IT JUST WROTE. The lane row and the model row's
 	// own tail are two readings of this one fact ([sheet.laneWord]), and a
 	// panel that kept drawing the old word over a pin the person watched
@@ -3381,13 +3382,17 @@ func (s *sheet) keysLine() string {
 		// be the foot of the screen promising a gesture that does nothing.
 		// And INSIDE the fold it says the way back out, for the reason /model's
 		// hint slot does ([picker.keysHint]): the keys are the row's.
+		//
+		// AND THE SORT IS NAMED ON ALL THREE, because it is the LIST's key and
+		// not the row's: wherever this slot draws the headed table the chord
+		// moves it, so leaving it out made an arrow nobody could turn.
 		if s.sel.pick.laneSlot == "" {
-			return "↑↓ move · enter choose · esc cancel · type to filter"
+			return "↑↓ move · " + sortKeyWord + " · enter choose · esc cancel · type to filter"
 		}
 		if _, inside := s.sel.pick.laneUnder(); inside {
-			return "↑↓ move · ← or tab back · enter choose · esc cancel · type to filter"
+			return "↑↓ move · ← or tab back · " + sortKeyWord + " · enter choose · esc cancel · type to filter"
 		}
-		return "↑↓ move · → or tab providers · enter choose · esc cancel · type to filter"
+		return "↑↓ move · → or tab providers · " + sortKeyWord + " · enter choose · esc cancel · type to filter"
 	case s.conn.entry != nil:
 		return s.connKeysLine()
 	case s.onConnections():

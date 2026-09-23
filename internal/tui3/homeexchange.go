@@ -151,8 +151,7 @@ const (
 
 // homeExchangeRow is the row kind an exchange wears in the left column.
 //
-// IT IS DECLARED HERE FOR [homeAskHere]'S REASON and given the next value above
-// it, so neither can collide with the iota block another lane is editing. The
+// It is numbered outside the homeRowKind block to keep its identity separate. The
 // name carries `Row` because [homeExchange] is the thing itself and this is its
 // line on the screen — two names for two objects that must not be confused.
 const homeExchangeRow homeRowKind = 201
@@ -166,15 +165,6 @@ const homeExchangeRow homeRowKind = 201
 // because one shows a tool call and hides the reply growing under it, and three
 // starts to be a second transcript in a pane forty cells wide.
 const exchangeStripRows = 2
-
-// homeAskHere is the row kind of that second action row.
-//
-// IT IS DECLARED HERE AND NOT IN [homeRowKind]'s OWN BLOCK, on purpose: the
-// iota block in home.go is being edited by another lane in the same wave, and a
-// constant appended to it would be a conflict over a line that says nothing.
-// The value is far above the block's last member so the two can never collide,
-// and [homeLine.stop] and [app.homeEnter] name it the way they name the rest.
-const homeAskHere homeRowKind = 200
 
 // exchangeKind is what one drawn line of the exchange is.
 type exchangeKind uint8
@@ -1042,7 +1032,7 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 	// exchange and shown a preview of something else.
 	h.pointExchange(ex)
 	a.touch()
-	return errandSend(ex, text)
+	return tea.Batch(errandSend(ex, text), a.wake())
 }
 
 // errandSend is one Submit, off the update loop for the reason [app.submit] is:
@@ -1287,14 +1277,7 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "esc":
-		// ONE LAYER AT A TIME, home's own rule: a half-typed follow-up is
-		// cleared first and the second esc hands the keyboard back. NEITHER
-		// CLOSES THE EXCHANGE — it stands as a row on the column, which on a
-		// narrow frame is also how the list comes back over the stacked pane.
-		if !ex.box.empty() {
-			ex.box.reset()
-			return nil
-		}
+		// Leave the reply draft in place when returning to the list.
 		ex.focused, ex.onOffer, ex.changing = false, false, false
 		return nil
 
@@ -1326,6 +1309,11 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 			// the box would turn the next `1` into a correction instead of a yes.
 			return nil
 		}
+
+	case "shift+enter":
+		ex.box.insert("\n")
+		ex.onOffer = false
+		return nil
 
 	case "enter":
 		return a.exchangeEnter(ex)
@@ -1408,7 +1396,7 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
 	ex.said = a.now()
 	ex.startTurn(a.now())
-	return errandSend(ex, text)
+	return tea.Batch(errandSend(ex, text), a.wake())
 }
 
 // startTurn is the pane admitting that something is now happening, and it is
@@ -2007,7 +1995,7 @@ func (a *app) exchangeRowLine(line homeLine, at, width int, pal palette) string 
 	// so its tail turns only when this row is the one the page gave the spinner
 	// to and holds the still `●` otherwise (homespinner.go).
 	return overlayRowTinted(label, a.exchangeTail(line.ex, a.homeSpins(at)), exchangeTailInk(line.ex),
-		at == a.home.cursor, markNone, at == a.home.hover, width, pal)
+		at == a.home.cursor, markNone, at == a.home.hover && at == a.home.cursor, width, pal)
 }
 
 // exchangeTail is that trailing fact. spins is whether this row is the ONE the
@@ -2160,7 +2148,7 @@ func exchangeAnswerWords(q session.Question) string {
 // does, and `continue as a conversation` when the first reply has landed.
 func exchangeHint(ex *homeExchange) string {
 	if ex.changing {
-		return homeAskChangeWord + " · esc clear"
+		return homeAskChangeWord + " · esc back"
 	}
 	var parts []string
 	if ex.asking() {

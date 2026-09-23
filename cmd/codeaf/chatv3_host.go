@@ -494,7 +494,9 @@ func openChatV3Host(launch hostLaunch) error {
 	if launch.pick && launch.once != "" {
 		return fmt.Errorf(`codeaf resume opens the session picker; for one headless message use: codeaf chat --host %s --once "text"`, dest)
 	}
-	link, err := dialEngine(dest, workspace, launchHello(launch.session, launch.model, launch.level))
+	hello := launchHello(launch.session, launch.model, launch.level)
+	hello.Headless = launch.once != ""
+	link, err := dialEngine(dest, workspace, hello)
 	if err != nil {
 		return err
 	}
@@ -773,6 +775,12 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// panel wired to this machine's manager would offer rows that landed in
 		// the wrong place, so none is handed over and /connect says so in one
 		// sentence (internal/tui3's host.go).
+		//
+		// ConnectCodex: the same split for the Codex row — the sign-in's
+		// callback listener would be on this loopback and its tokens in this
+		// profile, while the session that needs them runs over there. The row
+		// says the sign-in is unavailable here, and the terminal door on that
+		// machine (`codeaf connect codex`) is the road that works.
 		//
 		// Harnesses: the registry the engine matches turns against is on the
 		// engine's machine. Listing this machine's under /harness would be

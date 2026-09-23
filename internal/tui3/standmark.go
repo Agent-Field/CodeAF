@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"strings"
 	"unicode"
 
@@ -244,5 +245,11 @@ func (a *app) submitStanding(text string) tea.Cmd {
 
 func (a *app) submitStandingShown(text, shown string) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
-	return a.submittingShown(text, shown, func() (<-chan session.Event, error) { return agent.SubmitStanding(ctx, text) })
+	return a.submittingShown(text, shown, standingStart(agent, ctx, text))
+}
+
+// standingStart is the marked-message call shared by the front and keeper.
+// The mark is a property of the message, not of which conversation is drawn.
+func standingStart(agent Agent, ctx context.Context, text string) func() (<-chan session.Event, error) {
+	return func() (<-chan session.Event, error) { return agent.SubmitStanding(ctx, text) }
 }

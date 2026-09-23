@@ -112,12 +112,12 @@ nothing — the whole reply is thrown away and asked again (see *A reply that ne
 finished*).
 
 `read` never asks your permission. `edit` and `write` follow whatever approval
-mode you are in, which asks by default.
+mode you are in, which defaults to **YOLO** (`allow`).
 
 There is **no tool that deletes, renames or moves a file**. Those happen through
 `bash`, by running `rm`, `mv` or `rename` like you would yourself — so they are
-governed by the shell rules rather than the file rules, they ask before running
-under the default approval mode, and the most destructive forms of `rm` are on
+governed by the shell rules rather than the file rules. YOLO runs them unless
+a more specific rule asks or refuses, and the most destructive forms of `rm` are on
 the short list of commands that always ask no matter what the settings say.
 
 ## Can you find a file or search the code?
@@ -211,7 +211,7 @@ interrupted one answers `Command aborted`. If the workspace directory is gone:
 Anything you already know is meant to keep running — a server, a dev watcher —
 is better started in the background from the start, where no clock runs at all.
 
-`bash` follows your approval mode, which asks by default.
+`bash` follows your approval mode, which defaults to **YOLO** (`allow`).
 
 ## The command took too long — is the work lost, or does it keep running?
 
@@ -250,7 +250,7 @@ not.
 
 Two things it does **not** do:
 
-- **A command you interrupted is interrupted.** Pressing `esc` cancels the turn,
+- **A command you interrupted is interrupted.** Pressing `ctrl+c` cancels the turn,
   and a cancelled command is never kept as a job: it dies, no job appears, and the
   answer is `Command aborted`. Stop means stop.
 - **It does not outlive the conversation.** A foreground command kept as a job is a job, so it is
@@ -845,7 +845,7 @@ absolute path**, however you spelled it in the call:
 **One look gets ten minutes**, and then the tool answers without it. A model that
 takes the picture and goes quiet used to leave the row running for the rest of
 the conversation; now the window runs out and you get the line above instead.
-Press esc and the look stops on the same beat everything else does.
+Press ctrl+c and the look stops on the same beat everything else does.
 
 **When no looking model can be reached, the tool is not there at all** — it is
 left off the toolbelt rather than offered and made to refuse. Ask for a picture
@@ -939,8 +939,8 @@ live belief is never dropped.
 
 **`commit`** closes one record by `id`, e.g. `p2`. A progress item becomes
 `done`; a belief becomes stale and leaves the block. It is the one hand that
-declares work finished, so unlike the others it follows your approval mode and
-asks by default.
+declares work finished, so unlike the others it follows your approval mode,
+which defaults to YOLO.
 
 **`recall`** shows the current block — beliefs first, then open items, then done,
 newest first inside each. Empty, it answers:

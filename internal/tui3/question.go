@@ -436,6 +436,9 @@ func (a *app) questionOpen() []questionShown {
 		out = append(out, q)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].question.ClarificationDepth != out[j].question.ClarificationDepth {
+			return out[i].question.ClarificationDepth > out[j].question.ClarificationDepth
+		}
 		if one, two := questionRaisedHere(out[i].question), questionRaisedHere(out[j].question); one != two {
 			return one
 		}
@@ -534,6 +537,11 @@ func (a *app) raiseQuestion(q questionShown) {
 	}
 	if q.question.Asked.IsZero() {
 		q.question.Asked = a.now()
+	}
+	// A clarification's prerequisite must also take the keyboard when the
+	// original decision is expanded. The original remains in the question list.
+	if a.qroom != nil && q.question.ClarificationDepth > a.qroom.head.question.ClarificationDepth {
+		a.closeQuestionRoom()
 	}
 	q.pick = questionPointerStart(q.question)
 	// THE WAY BACK IS THE ASKER'S OWN CLAIM AND NOT THIS SURFACE'S GUESS. A
@@ -1123,7 +1131,9 @@ func (a *app) questionRows(width int) []string {
 	// questionpanel.go's [app.questionPanelBody]. Agreed with lane A before
 	// either landed.)
 	if more := a.questionWaitingCount() - 1; more > 0 {
-		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
+		if _, panel := a.questionDialog(width); !panel {
+			out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
+		}
 	}
 	return out
 }
@@ -1797,11 +1807,7 @@ func (a *app) questionBeatKey(head questionShown, key string) (tea.Cmd, bool) {
 		a.setQuestionBeat(head, nil)
 		return nil, true
 	}
-	// THE SHAPES ARE WALKED AND TAKEN LIKE ANY OTHER ANSWERS, and they STOP at
-	// the ends rather than wrapping — this surface's law about a row of chips
-	// (subharness.go's [app.moveSubharnessAnswer] says why: a cursor that
-	// reappeared at the far end puts the widest shape under a key pressed to
-	// reach the narrowest).
+	// Shapes wrap like the options that opened this second choice.
 	switch key {
 	case "up", "left", "shift+tab":
 		a.moveQuestionBeat(head, head.beatAt-1)
@@ -1818,13 +1824,13 @@ func (a *app) questionBeatKey(head questionShown, key string) (tea.Cmd, bool) {
 	return nil, true
 }
 
-// moveQuestionBeat walks the beat's cursor, clamped to the shapes there are.
+// moveQuestionBeat wraps the cursor around the available shapes.
 func (a *app) moveQuestionBeat(head questionShown, to int) {
 	open := a.questionHeld(head.token())
-	if open == nil || to < 0 || to >= len(open.beat) {
+	if open == nil || len(open.beat) == 0 {
 		return
 	}
-	open.beatAt = to
+	open.beatAt = (to + len(open.beat)) % len(open.beat)
 	a.touch()
 }
 
@@ -2340,7 +2346,7 @@ func (a *app) questionReceiptLine(record questionRecord, width int) string {
 		change += session.DecisionSep + questionUndoKey + " undo"
 	}
 	if questionCanChange(record) {
-		change += session.DecisionSep + questionCommentKey + " change"
+		change += session.DecisionSep + questionNoteKey + " change"
 	}
 	// AND THE TAIL TURNS UNTIL THE MODEL SAYS SOMETHING, which is the other half
 	// of what a person wants from this row: the decision is taken, and the work
@@ -2508,7 +2514,7 @@ func (a *app) sendAnswers(all []questionAnswer) tea.Cmd {
 	for _, one := range all {
 		q := one.q
 		answer := a.dressAnswer(q, one.answer)
-		if q.answered != nil {
+		if q.answered != nil && !answer.Clarify {
 			// THE LANE'S OWN HAND, BEFORE THE DOOR. Whatever this PROGRAM does
 			// about an answer happens here — a rule written into the person's
 			// settings, the transcript row annotated with what was decided — and
@@ -2857,7 +2863,7 @@ func (a *app) questionPutOff() (questionShown, bool) {
 // THE RULE PRINTS THE KEY AND NOTHING ROUTED IT. `── ? which store · 3 answers ·
 // ◆ SQLite ──── space open ──` is what a folded question leaves behind, and
 // `internal/manual/chat/questions.md` says the same thing in a person's words —
-// and pressing space over the empty box did nothing at all. `alt+a` reopened it,
+// and pressing space over the empty box did nothing at all. `alt+y` reopened it,
 // so the way out existed; what was missing was the one the screen offered.
 //
 // THREE GUARDS, AND EACH IS A WAY THIS KEY COULD BE WRONG:
@@ -3131,7 +3137,9 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 	if cmd, taken := a.questionOptionKey(head, key); taken {
 		return cmd, true
 	}
-	if questionTextKey(key) && !a.questionHasTheHand(head.question) {
+	// The two advertised text doors work before navigation. Other letter
+	// commands still require intent, so an ordinary sentence cannot decide work.
+	if questionTextKey(key) && key != questionCommentKey && key != questionAskBackKey && !a.questionHasTheHand(head.question) {
 		// AND A VERB IS THE BOX'S UNTIL SOMEBODY AIMS AT THE BLOCK. The `d` at
 		// the head of "do the schema first" handed the call back to the asker and
 		// left the rest of the sentence in the box. Every key above this line
@@ -3271,9 +3279,9 @@ func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 		open.pick = max(questionOtherAt(open.question)-1, 0)
 		open.other.with = ""
 	case "down", "tab":
-		// THE LIST ENDS HERE AND NOTHING WRAPS, which is this block's own rule at
-		// both ends of every list it draws.
-		return nil, true
+		// The custom answer is the last row of the same circular list.
+		open.pick = 0
+		open.other.with = ""
 	case "left", "ctrl+b":
 		box.left()
 	case "right", "ctrl+f":
@@ -3337,50 +3345,18 @@ func (a *app) questionWritingKey(head questionShown, key string) (tea.Cmd, bool)
 		if writing == questionAskBackKey {
 			return a.askBack(*open, "", words), true
 		}
-		answer := session.Answer{Change: words}
-		if questionChangeCarriesThePointer(open.question) && open.pick >= 0 && open.pick < len(open.question.Options) {
-			answer.Key = strings.TrimSpace(open.question.Options[open.pick].Key)
-			answer.Picked = []string{answer.Key}
+		if writing == questionNoteKey {
+			return a.answerQuestion(*open, session.Answer{Change: words}), true
 		}
-		return a.answerQuestion(*open, answer), true
+		return a.replaceQuestion(*open, words), true
 	}
 	return nil, false
 }
 
-// askBack sends one sentence to the asker WITH THE QUESTION STILL OPEN, down
-// whichever of the two roads the question's own lane has.
-//
-// THE ENGINE'S DOOR IS THE ONE TO USE WHERE IT EXISTS. [session.Answer.AskedBack]
-// returns the parked call with the person's words and a lead that tells the
-// asker the question is still on their screen and not to ask it again
-// (tools_ask.go's `askedBackLead`), so the reply comes back knowing what it is
-// about. The old road sent the sentence as an ordinary new message, which
-// reached the model with none of that and left the call parked behind it.
-//
-// THE OPTION IS WHICH ANSWER THE QUESTION IS ABOUT, and "" is a question about
-// the question itself ([session.Exchange.Option]). The block asks about the
-// whole question; the page asks from whichever section the reader is standing
-// on, which is the one thing it knows that the block does not.
-//
-// AND WHICH LANES HAVE IT IS ASKED OF [session.AnswerResolves] RATHER THAN
-// LISTED HERE. That function is the one reading of "does this answer END the
-// question", at both ends of the wire, and today it says an ask-back leaves a
-// question open on the model's own lane and nowhere else. A consent or a task
-// answered with nothing but words asked back would be RESOLVED by that door —
-// approved with no key — so those keep the ordinary turn until their lane grows
-// the same seam. Asking the predicate means this function is already right on
-// the day one of them does.
+// askBack asks the engine for an independent clarification in context. It never
+// selects an answer, approves a tool, or releases the original decision.
 func (a *app) askBack(q questionShown, option, words string) tea.Cmd {
-	exchange := session.Exchange{Option: option, Asked: words, At: a.now()}
-	answer := session.Answer{AskedBack: []session.Exchange{exchange}}
-	// The two fields the predicate reads, dressed exactly as [app.answerQuestion]
-	// would dress them a moment later.
-	asked := answer
-	asked.Kind, asked.Ask = q.question.Kind, q.question.Ask
-	if session.AnswerResolves(asked) {
-		return a.submit(words)
-	}
-	return a.answerQuestion(q, answer)
+	return a.answerQuestion(q, session.Answer{Clarify: true, AskedBack: []session.Exchange{{Option: option, Asked: words, At: a.now()}}})
 }
 
 // questionWriting reports whether the box under the block is a question's
@@ -3406,6 +3382,9 @@ func (a *app) questionWriting() bool {
 // question that row instead, and the row says which answer the words go with
 // rather than a sentence three rows below the pointer.
 func (a *app) questionWritingRow(q questionShown) string {
+	if q.writing == questionNoteKey {
+		return "write your change, then enter" + questionWritingGap + "esc back"
+	}
 	if q.writing == questionCommentKey {
 		return questionCommentKeyWord + questionWritingGap + "esc back"
 	}
@@ -3427,8 +3406,8 @@ func questionChangeCarriesThePointer(q session.Question) bool {
 // one fact the row exists to carry is that the box's next enter is the
 // question's and not the conversation's.
 const (
-	questionCommentKeyWord = "change: say what you want different, then enter"
-	questionAskBackKeyWord = "ask back: type your question, then enter"
+	questionCommentKeyWord = "other: write an updated request, then enter"
+	questionAskBackKeyWord = "clarify: type your question, then enter"
 	questionWritingGap     = " · "
 )
 
@@ -3475,10 +3454,8 @@ func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) 
 		}
 	}
 	if walk != 0 && a.questionWalkCount(head) > 1 {
-		to := head.pick + walk
-		if to >= 0 && to < a.questionWalkCount(head) {
-			a.moveQuestionPick(head, to)
-		}
+		count := a.questionWalkCount(head)
+		a.moveQuestionPick(head, (head.pick+walk+count)%count)
 		return nil, true
 	}
 	for at, option := range head.question.Options {
@@ -3763,15 +3740,17 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 		return a.questionMakeRule(head), true
 	case questionUndoKey:
 		return a.questionUndo(head), true
+	case questionNoteKey:
+		// An already completed action keeps its correction lane; it has no
+		// pending request for Other to withdraw.
+		if open := a.questionHeld(head.token()); open != nil {
+			open.writing = questionNoteKey
+			a.touch()
+			return nil, true
+		}
+		return nil, false
 	case questionCommentKey:
-		// `c` IS A SHORTCUT TO THE ROW AND NOT A MODE. "I will take one of these,
-		// but not as it stands" is an answer with words, the panel's last row is
-		// where words are written, and this key moves the pointer there carrying
-		// the answer it was standing on — which the row then says out loud (`it
-		// goes with 1 SQLite`). Before the owner's ruling of 2026-09-11 it pointed
-		// the MESSAGE BOX at the question instead, which was a mode nothing on
-		// screen had named, and it was the reason a person could not find how to
-		// write an answer at all.
+		// Other collects a revised request without choosing the highlighted option.
 		open := a.questionHeld(head.token())
 		if open == nil {
 			return nil, false
@@ -3785,21 +3764,7 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 			a.touch()
 			return nil, true
 		}
-		if a.questionTakesOther(*open) {
-			if at := open.pick; at >= 0 && at < len(open.question.Options) {
-				open.other.with = questionOptionKeyAt(open.question, at)
-			}
-			open.pick = questionOtherAt(open.question)
-			a.touch()
-			return nil, true
-		}
-		// AND WHERE THE ANSWER IS ALREADY TYPED INTO THE MESSAGE BOX, `c` POINTS
-		// THAT BOX AT THE QUESTION. A question that asked for words
-		// ([session.InputText]) has no `something else…` row to move to — its own
-		// answer IS a sentence, the composer is where sentences are written on
-		// this surface, and the row above it says so while it is armed
-		// ([app.questionWritingRow]). One key, one meaning: "I am about to say
-		// this in my own words".
+
 		open.writing = questionCommentKey
 		a.touch()
 		return nil, true
@@ -4038,8 +4003,8 @@ func (a *app) questionRowMark(i int) chromeRow {
 
 // ── the chip ────────────────────────────────────────────────────────────────
 
-// questionSegment is the status line's chip: `? allow this? · alt+a`, and
-// `? 3 questions · alt+a` when there is more than one.
+// questionSegment is the status line's chip: `? allow this? · alt+y`, and
+// `? 3 questions · alt+y` when there is more than one.
 //
 // IT IS REACHABLE FROM EVERY PAGE, which is the whole reason it is on the
 // status row rather than in the block: the block is above the box in a
@@ -4066,7 +4031,7 @@ func (a *app) questionSegment() string {
 	// THE CHORD IS SPELLED FOR THIS KEYBOARD, through the one door every
 	// person-facing sentence about a chord goes through (chords.go's
 	// [chordSpelling.say]). It was drawn straight out of its constant, so a Mac
-	// that says `opt+1…opt+7` on the map and `opt+t` on the roster said `alt+a` on
+	// that says `opt+1…opt+7` on the map and `opt+t` on the roster said `alt+y` on
 	// this chip — one modifier under two names, on screens a person moves between
 	// in one keystroke.
 	key := a.chords.say(questionChipKey)
@@ -4117,7 +4082,7 @@ func (a *app) questionChipKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	a.closeExpand()
 	a.closeHome()
 	// The tasks place and the record card over it are places too, and the
-	// chip's promise held from neither ("5 questions · alt+a" on a page that
+	// chip's promise held from neither ("5 questions · alt+y" on a page that
 	// did nothing with the key).
 	a.closeTaskSheet()
 	a.raiseFolded()
@@ -4178,6 +4143,9 @@ func (a *app) questionEvent(ev session.Event) tea.Cmd {
 // FIRST ANSWER WINS, and the honest thing to draw is the receipt saying who
 // decided and what.
 func (a *app) questionFold(ev session.Event) tea.Cmd {
+	if ev.Kind == session.EventQuestionDiscussion {
+		return a.discussionEvent(ev.Discussion)
+	}
 	if ev.Question == nil {
 		return nil
 	}

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -34,6 +35,9 @@ func tasksConversationRows(world session.World, mine tasksMine, win session.Usag
 			if row.Title == "" {
 				row.Title = rows[i].Title
 			}
+			if row.At.IsZero() {
+				row.At = rows[i].At
+			}
 			if strings.TrimSpace(row.Title) == "" {
 				row.Title = homeName(row)
 			}
@@ -53,4 +57,30 @@ func tasksConversationRows(world session.World, mine tasksMine, win session.Usag
 	}
 	put(mine.row)
 	return rows
+}
+
+// Filtering hides rows without changing which section their conversation belongs in.
+func (t *tasksTree) keepConversationStates(full tasksTree) {
+	groups := make(map[tasksKey]tasksGroup, len(full.groups))
+	for _, group := range full.groups {
+		groups[group.chat.key] = group
+	}
+	for i := range t.groups {
+		group := &t.groups[i]
+		if original, ok := groups[group.chat.key]; ok {
+			group.section = original.section
+			group.chat.state = original.chat.state
+			group.chat.question = original.chat.question
+			group.chat.rank.at = original.chat.rank.at
+			for _, root := range group.roots {
+				t.under(root, func(item tasksItem, _ int) { t.filed[tasksKeyOf(item.entry)] = group.section })
+			}
+		}
+	}
+	sort.SliceStable(t.groups, func(i, j int) bool {
+		if t.groups[i].section != t.groups[j].section {
+			return t.groups[i].section < t.groups[j].section
+		}
+		return tasksByAge.less(t.groups[i].chat.rank, t.groups[j].chat.rank, t.sort.back)
+	})
 }

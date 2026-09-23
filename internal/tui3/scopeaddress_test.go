@@ -8,14 +8,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
-// THE CHIP SAYS AN ADDRESS OR IT SAYS THIS WINDOW'S.
+// THE RULE SAYS AN ADDRESS OR IT SAYS THIS WINDOW'S.
 //
-// `here` is where what you type will land, and a display name in that slot is
-// not somewhere: `here codeaf` cannot be told from a second checkout of the
-// same name, and the row above it says `here ~/codeaf` about the same
+// `new conversation in` is where what you type will land, and a display name
+// in that slot is not somewhere: `codeaf` cannot be told from a second checkout
+// of the same name, and the row above it says `~/codeaf` about the same
 // machine. The rule is one line: a row answers with a path or with nothing, and
 // nothing falls through to the workspace this window is standing in.
-func TestTheScopeChipTakesARowsAddressAndNeverItsName(t *testing.T) {
+func TestTheRuleTakesARowsAddressAndNeverItsName(t *testing.T) {
 	const project = "/work/codeaf"
 	for _, c := range []struct {
 		what string
@@ -34,16 +34,17 @@ func TestTheScopeChipTakesARowsAddressAndNeverItsName(t *testing.T) {
 	} {
 		got := scopeAddress(c.line)
 		if got != c.want {
-			t.Errorf("%s: the chip's address is %q, want %q", c.what, got, c.want)
+			t.Errorf("%s: the rule's address is %q, want %q", c.what, got, c.want)
 		}
 	}
 }
 
 // AND ON THE FRAME: two rows a keypress apart say `where` the same way.
 //
-// The chip is drawn from [app.scopeWorkspace], so the law above is only worth
-// having if the drawn line obeys it. This puts a conversation and a directoryless
-// standing item on one list and reads the chip on each.
+// The rule is drawn from [app.targetWhere], which with nothing pinned is
+// [app.scopeWorkspace], so the law above is only worth having if the drawn
+// answer obeys it. This puts a conversation and a directoryless standing item
+// on one list and reads the folder the rule would draw on each.
 func TestTwoHomeRowsSayWhereInTheSameWords(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 40)
@@ -58,23 +59,23 @@ func TestTwoHomeRowsSayWhereInTheSameWords(t *testing.T) {
 	}
 
 	a.home.cursor = 0
-	onChat := a.scopeChip()
+	onChat := a.targetWhere()
 	a.home.cursor = 1
-	onItem := a.scopeChip()
+	onItem := a.targetWhere()
 
 	if onChat == "" || onItem == "" {
-		t.Fatalf("the chip drew nothing: on the conversation %q, on the item %q", onChat, onItem)
+		t.Fatalf("the rule has nothing to draw: on the conversation %q, on the item %q", onChat, onItem)
 	}
 	// The conversation's row is the one that was always right, and it is the
 	// standard the item's row is held to.
-	if !strings.HasPrefix(onChat, placeScopeWord+" ") || !strings.Contains(onChat, "/") {
-		t.Fatalf("the conversation's chip reads %q, want %q and a path", onChat, placeScopeWord)
+	if !strings.Contains(onChat, "/") {
+		t.Fatalf("the conversation's rule reads %q, want a path", onChat)
 	}
 	if !strings.Contains(onItem, "/") {
-		t.Fatalf("the item's chip reads %q — a name in the slot that says where a task will land; the row above it reads %q",
+		t.Fatalf("the item's rule reads %q — a name in the slot that says where a sentence will land; the row above it reads %q",
 			onItem, onChat)
 	}
 	if strings.HasSuffix(onItem, " codeaf") {
-		t.Fatalf("the item's chip reads %q, which is a project's NAME and not an address", onItem)
+		t.Fatalf("the item's rule reads %q, which is a project's NAME and not an address", onItem)
 	}
 }

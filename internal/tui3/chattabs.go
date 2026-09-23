@@ -303,9 +303,8 @@ func (a *app) frontTabKey() string {
 // exactly that recency — without constructing an unbounded candidate list. The recency scan can still
 // walk older dismissed entries; only the candidate membership checks are bounded.
 //
-// It is called ONCE PER FRAME, by the draw. The geometry ([app.tabsHeight]) does
-// not ask it — there is always at least one tab, the conversation on screen — so
-// nothing else can observe the slice mid-refill.
+// The strip, Home and the chats menu all read this same membership and order.
+// A dismissed final tab stays absent while Home is showing.
 func (a *app) tabList() []chatTab {
 	front := a.frontTabKey()
 	tabs := a.chatTabs[:0]
@@ -324,7 +323,7 @@ func (a *app) tabList() []chatTab {
 		// makes it a close rather than a flicker: the conversation is still held,
 		// still running and still on the switcher, so every pass below would put
 		// its tab straight back the frame after it was taken off.
-		if tab.key != front && a.tabShut[tab.key] {
+		if a.tabShut[tab.key] {
 			continue
 		}
 		if tab = a.tabAs(tab, held, front); strings.TrimSpace(tab.word) == "" {
@@ -348,15 +347,15 @@ func (a *app) tabList() []chatTab {
 			// A tab that cannot be named is not drawn (see [chatTab.word]).
 			continue
 		}
-		tabs = append(tabs, a.tabAs(chatTab{key: key, file: held.conv.SessionFile}, held, front))
+		if tab := a.tabAs(chatTab{key: key, file: held.conv.SessionFile}, held, front); tab.word != "" {
+			tabs = append(tabs, tab)
+		}
 	}
-	// AND THE CONVERSATION ON SCREEN IS ALWAYS A TAB, including the one this
-	// window has no transcript for yet. A session gets its file when it is first
-	// written to, and a strip that waited for that would be a strip missing from
-	// the frame a person meets codeaf on — which is exactly the frame where being
-	// told what this window is holding is worth most.
-	if !tabsHold(tabs, front) {
-		tabs = append(tabs, a.tabAs(chatTab{key: front, file: a.file}, nil, front))
+	// An empty shell has no saved tab. A draft or submitted prompt gives it a name.
+	if !tabsHold(tabs, front) && !a.tabShut[front] {
+		if tab := a.tabAs(chatTab{key: front, file: a.file}, nil, front); tab.word != "" {
+			tabs = append(tabs, tab)
+		}
 	}
 	if work, ok := a.workTab(); ok {
 		tabs = append(tabs, work)
@@ -393,24 +392,19 @@ func (a *app) tabAs(tab chatTab, held *kept, front string) chatTab {
 	tab.held = held != nil
 	switch {
 	case tab.here:
-		// THE SURFACE'S OWN SPELLING FOR THE ONE ON SCREEN, which is the word the
-		// trail's root wears and the word the status line is showing this instant.
-		// Two names for one conversation on one screen is the defect this avoids.
-		//
-		// AND THE NAME IT WENT BY OUTLIVES A MOMENT WITH NO NAME AT ALL. A switch
-		// re-reads the title off the agent it just attached (detach.go), and an
-		// agent that has not published one yet would drop a named tab to `main` for
-		// as long as that takes — the tab flickering to a word that means "unnamed"
-		// about a conversation somebody named last week.
-		if name := a.sessionName(); name != "" || strings.TrimSpace(tab.word) == "" {
-			tab.word = a.chatTabDisplayName()
-		}
-		tab.full = a.chatDisplayName()
+		tab.word = a.conversationName()
+		tab.full = tab.word
 		tab.file, tab.where = a.file, a.workspace
 	case held != nil:
-		tab.word = chatTabName(shortTitleWithSide(held.conv.Agent, held.side))
-		tab.full = chatTabName(hopRawTitle(held.conv.Agent, held.side))
+		tab.word = readableName(hopRawTitle(held.conv.Agent, held.side))
+		tab.full = tab.word
 		tab.file, tab.where = held.conv.SessionFile, held.conv.Workspace
+	}
+	if !tab.here && held == nil && tab.full != "" {
+		tab.word = tab.full
+	}
+	if tab.word == unnamedConversationWord {
+		tab.word, tab.full = "", ""
 	}
 	if strings.TrimSpace(tab.file) == "" {
 		tab.file = tab.key
@@ -473,9 +467,8 @@ func tabsCapped(tabs []chatTab, prev []string) []chatTab {
 // head a different shape from every place's; the one head has no ladder of its
 // own to climb.
 //
-// IT ASKS NOTHING OF THE DISK, and nothing of the list either: there is always
-// at least one tab — the conversation on screen — so the answer is the two
-// floors and nothing else.
+// IT ASKS NOTHING OF THE DISK or the tab list. An empty conversation still
+// reserves this header row, even though it adds no tab to it.
 func (a *app) tabsHeight(width int) int {
 	if width < roomHeadFloor || a.breathingRows() < 2 {
 		return 0
@@ -541,10 +534,9 @@ func (a *app) tabsRow(width int) string {
 		for i := range tabs {
 			tabs[i].here = false
 		}
-		tabs = append(tabs, chatTab{word: "New chat", here: true, start: true})
-	}
-	if len(tabs) == 0 {
-		return ""
+		if name := promptName(a.input.String()); name != "" {
+			tabs = append(tabs, chatTab{word: name, full: name, here: true, start: true})
+		}
 	}
 	hot := -1
 	if a.hot.kind == hoverTab {
@@ -568,7 +560,8 @@ func (a *app) tabsRow(width int) string {
 		pieces = append([]tabPiece{{word: " Home ", kind: tabHome}, {word: "  ", quiet: true}}, pieces...)
 	}
 	if len(pieces) == 0 {
-		return ""
+		// An empty strip still occupies the header row charged to the layout.
+		return strings.Repeat(" ", max(width, 0))
 	}
 	a.chatTabHits = tabsAt(hits, headLabelAt)
 	line := strings.Repeat(" ", headLabelAt) + a.tabsPaint(pieces)
@@ -596,7 +589,13 @@ func (a *app) tabCloseWord() string { return a.linearMark(tabCloseMark, tabClose
 // Selection is revealed unless the person explicitly browsed away from it; the
 // hidden count and directional controls describe everything outside that window.
 func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
-	if room <= 0 || len(tabs) == 0 {
+	if room <= 0 {
+		return nil, nil
+	}
+	if len(tabs) == 0 {
+		if a.canStart() && room >= 3 {
+			return []tabPiece{{word: " + ", kind: tabNew}}, []tabHit{{span: hudSpan{from: 0, to: 3}, kind: tabNew}}
+		}
 		return nil, nil
 	}
 	fullRoom := room
@@ -637,9 +636,6 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 	widths := make([]int, len(tabs))
 	for at, tab := range tabs {
 		words[at] = a.tabName(tab, cell-tabCloseCells-tabInsetCells)
-		if tab.start {
-			words[at] = tabLabel(tab, min(10, budget-tabCloseCells-tabInsetCells-2*sepW))
-		}
 		widths[at] = ansi.StringWidth(words[at]) + tabInsetCells + tabCloseCells
 	}
 	from, to, scroll := a.tabWindow(tabs, widths, budget, active)
@@ -743,9 +739,9 @@ func (a *app) tabsFoldWord(hidden int) string {
 // conversation even with NO_COLOR, where both tint and underline are absent.
 func tabLabel(tab chatTab, width int) string {
 	if width < 2 {
-		return fit(tab.word, width)
+		return fitConversationTitle(tab.word, width)
 	}
-	word := fit(tab.word, width-2)
+	word := fitConversationTitle(tab.word, width-2)
 	if tab.here {
 		return "[" + word + "]"
 	}
@@ -1140,6 +1136,9 @@ func (a *app) tabShutKey(key string) {
 	}
 	a.chatTabs = kept
 	a.chatTabBar = tabBar{}
+	if a.at(pageHome) && a.home.tabs != nil {
+		a.home.build()
+	}
 }
 
 // tabActivePaint gives the chosen tab a full contrasting surface, including

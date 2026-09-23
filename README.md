@@ -63,8 +63,9 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 To build it yourself: `git clone`, `make build`, `bin/codeaf`
 ([guide](docs/GUIDE.md#install)).
 
-On first start it asks for a key: OpenRouter, DeepSeek, GLM, Kimi, MiniMax or
-Qwen. Ollama needs none.
+On first start it connects OpenRouter in your browser, or takes a key. Codex signs in
+a ChatGPT plan from `/connect` or `codeaf connect codex`; DeepSeek, GLM, Kimi, MiniMax
+and Qwen take keys; Ollama needs none.
 
 ## One window for every project
 
@@ -169,8 +170,8 @@ request goes to the provider that has been fastest for that kind of call.
 
 <img src="assets/readme/screens/models.webp" alt="The right model for each call: the spend page showing what ran it, by model and role: glm-5.3, deepseek-v4-flash and qwen3.8-27b with calls, tokens and dollars" width="100%">
 
-Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Ollama and
-any OpenAI-compatible endpoint.
+Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Codex through a
+ChatGPT plan, Ollama and any OpenAI-compatible endpoint.
 
 ## Model Pool
 
@@ -180,7 +181,8 @@ it ran (role, model, a number, which model judged, door, size bucket, day) under
 a per-install nonce, never code,
 prompts, paths or an identity, and `codeaf pool status` shows exactly what is
 waiting to go. Turn it off with `model_pool = off` on the settings sheet or
-`CODEAF_MODEL_POOL=off`; `read` uses the pool and sends nothing. The relay
+`CODEAF_MODEL_POOL=off`; `read` uses the pool and sends nothing, and
+`CODEAF_TELEMETRY=off` caps it at `read` along with the usage counts. The relay
 publishes a signed index the crew picker reads under `picked from = learn`. The index is mirrored on the `model-pool` branch at
 `pool/index.json`. The design is [Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf);
 the relay's code is under `relay/`, with a [runbook](docs/design/model-pool/RUNBOOK.md)
@@ -280,10 +282,10 @@ Harness, method and every table: [docs/benchmarks/performance](docs/benchmarks/p
 
 ```text
 codeaf sends anonymous usage counts to AgentField.
-  Sent:  version, OS, mode (chat or task), how many sessions, how many errors.
+  Sent:  version, OS, mode, session counts, errors, and total tokens used.
   Never: anything about you or your work. No prompts, code, file names,
          paths, repo names, keys, email, IP, or machine name.
-  See exactly what leaves:  codeaf telemetry show
+  What is collected:        codeaf telemetry info
   Turn off:                 CODEAF_TELEMETRY=off
 ```
 

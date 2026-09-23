@@ -559,7 +559,7 @@ func statesPastTheDoor(t *testing.T, r *rig) {
 	t.Helper()
 	r.skipSetup(t)
 	r.waitForAny(25*time.Second,
-		say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"),
+		say(t, "placeRestWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"),
 		say(t, "setupSkipWord"), say(t, "landingKeysWord"), say(t, "taskLookWord"),
 		say(t, "welcomeStarterKeysWord"))
 }
