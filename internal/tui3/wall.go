@@ -211,6 +211,8 @@ func (a *app) wallFrame(width, height int) []string {
 		spin:      wallSpin(now),
 		now:       now,
 		reduced:   reduced,
+		pointerOn: a.wall.ptrIn,
+		pointerY:  a.wall.ptrY - len(head),
 	}
 	if sp, ok := a.spaceActive(); ok {
 		view.space = sp.Name
@@ -726,7 +728,12 @@ func (a *app) wallHitAt(x, y int) (wallHit, bool) {
 // given last time (coalesce.go's still). Only a motion on a message that
 // changed nothing else may say so: a wheel folded into the same message has
 // moved the grid (stirred).
+//
+// ONE TARGET CAN SPAN TWO ROWS' MEANINGS: a waiting tile's Answer and its
+// open ↗ share one ref, and the painter lights the one on the pointer's row
+// (wallView.pointerY), so on that target a change of row is a change.
 func (a *app) wallMotion(x, y int) {
+	rowMoved := y != a.wall.ptrY
 	a.wall.ptrX, a.wall.ptrY, a.wall.ptrIn = x, y, y >= a.wall.headRows
 	if y < a.wall.headRows {
 		a.wallSetHover(wallHitRef{})
@@ -739,6 +746,11 @@ func (a *app) wallMotion(x, y int) {
 		a.wall.stirred = true
 	}
 	hit, _ := a.wallHitAt(x, y)
+	if a.wall.hover == hit.ref() && hit.kind == wallHitOpen && rowMoved {
+		a.wall.stirred = true
+		a.touch()
+		return
+	}
 	if a.wall.hover == hit.ref() && !a.wall.stirred {
 		a.ptr.still = true
 		return
