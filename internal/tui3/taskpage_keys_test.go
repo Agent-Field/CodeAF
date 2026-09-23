@@ -149,6 +149,28 @@ func TestKeysTypedWhileAPartsPageOpensAreTheNoteAndNothingElse(t *testing.T) {
 	}
 }
 
+// CTRL+O MEASURES THE BRIEF AT THE WIDTH THE PAGE DRAWS IT. It counted at the
+// conversation's body width, which is narrower by the rail, so a brief the
+// page drew whole in three rows still toggled a fold nobody could see (#1289).
+func TestCtrlOCountsTheBriefAtThePagesOwnWidth(t *testing.T) {
+	a, _ := railTaskPageApp(t, true)
+	clickRail(t, a, 0)
+	if !a.railTaskPlanOn {
+		t.Fatal("the rail row did not open its page")
+	}
+	desc := strings.TrimSpace(strings.Repeat("word ", 110))
+	drawn, narrow := planBriefRows(desc, a.taskPlanBodyWidth()), planBriefRows(desc, a.bodyWidth())
+	if len(drawn) > briefFoldLines || len(narrow) <= briefFoldLines {
+		t.Fatalf("fixture: the brief wraps to %d rows on the page and %d at the body width; want at most %d and more than %d",
+			len(drawn), len(narrow), briefFoldLines, briefFoldLines)
+	}
+	a.taskSheet.plan.Description = desc
+	drive(t, a, tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	if a.taskSheet.planBriefFull {
+		t.Fatal("ctrl+o toggled a fold on a brief the page draws whole")
+	}
+}
+
 // ── THE NOTE'S RECEIPT ──────────────────────────────────────────────────────
 
 // noteTwoPages is a list with two ordinary tasks, the first one's page open and
