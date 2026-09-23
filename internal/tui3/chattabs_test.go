@@ -306,7 +306,7 @@ func TestTheStripIsChargedToTheBodyRegionAndMovesTheHeaderUnderIt(t *testing.T) 
 	a := crumbApp(t)
 	a.title = "building the task navigation tree"
 	rows := strings.Split(frame(a), "\n")
-	if got := plain(rows[0]); !strings.HasPrefix(got, " "+product) {
+	if got := plain(rows[0]); !strings.HasPrefix(got, " "+plain(a.pal.wordmark(a.width))) {
 		t.Fatalf("the frame's first row is not the pulse: %q", got)
 	}
 	if got := plain(rows[placeTabRow]); !strings.Contains(got, a.chatDisplayName()) {
