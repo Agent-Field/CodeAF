@@ -139,6 +139,12 @@ type wallView struct {
 	made   string
 	madeN  int
 	madeAt time.Time
+	// pointerOn says pointerY holds the row the pointer is on, in the painter's
+	// own rows (the head's rows taken off). Two targets share a ref, a waiting
+	// tile's Answer and its open ↗, and the row says which one to light; left
+	// unset, both light.
+	pointerOn bool
+	pointerY  int
 }
 
 // wallHitKind is what a press on one hit does.
