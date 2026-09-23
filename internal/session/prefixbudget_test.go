@@ -482,9 +482,20 @@ const fixedPrefixTarget = 48_000
 // section paid for it by saying three things in fewer words. The page came out
 // four bytes lighter on both arms: fixed is 56,273 and lean is 47,887, so both
 // waivers fall by 4 and again sit exactly on the measurement.
+//
+// 2026-09-23, signing always on. The owner retired the `attribution` row:
+// codeaf signs every commit it writes, and the only choice left is whether the
+// `Assisted-by` line names the model. The law's commit sentence now spells both
+// trailer lines itself, so the page's second sentence spelling the block again
+// is gone: fixed is 56,146, and that waiver FALLS by 127. The lean arm RISES by
+// 927, and that is not new wording: the shipped shape had the row unset, so this
+// arm weighed a page with signing off, while every real conversation had it on
+// by default and paid those bytes all along. The arm now weighs the page people
+// were already reading, 48,814, and the raise carries this name so it can be
+// questioned.
 const (
-	fixedPrefixWaiver = 8_273
-	leanPrefixWaiver  = 16_387
+	fixedPrefixWaiver = 8_146
+	leanPrefixWaiver  = 17_314
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

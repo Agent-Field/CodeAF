@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // THE NOTICES: telling a person one thing at the moment it becomes true.
@@ -637,5 +638,19 @@ func (a *app) showUnreadProfileKeys(keys []string) {
 	a.notices.ledger.show(id)
 	a.notices.ledger.retire(id)
 	a.notices.save()
-	a.note("config.json keys are not read: " + strings.Join(keys, ", ") + "; anything set under them is ignored and defaults apply.")
+	// A KEY WHOSE ROW WAS RETIRED ON PURPOSE GETS ITS OWN SENTENCE. "Ignored and
+	// defaults apply" is true of it and says nothing a person can act on: the
+	// row's note says what is always true now and what can still be chosen
+	// (internal/config's RetiredRowNote).
+	var unknown []string
+	for _, key := range keys {
+		if note := config.RetiredRowNote(key); note != "" {
+			a.note(note)
+			continue
+		}
+		unknown = append(unknown, key)
+	}
+	if len(unknown) > 0 {
+		a.note("config.json keys are not read: " + strings.Join(unknown, ", ") + "; anything set under them is ignored and defaults apply.")
+	}
 }

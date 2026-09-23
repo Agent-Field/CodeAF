@@ -81,7 +81,6 @@ var complexityDebt = map[string]int{
 	"TaskGraph.runFrontier": 19,
 	"Agent.workTaskNode":    21,
 	"declaredInvalidations": 21,
-	"groundLint":            18,
 	"pathTokens":            21,
 	"auditDoor.admitsFile":  16,
 	"copyOriginal":          16,
@@ -120,8 +119,6 @@ var whyTheDebtIsStillThere = map[string]string{
 		"(taskoutside.go) — quotes, substitutions, separators. It is a lexer, and a lexer's " +
 		"decisions ARE its character classes; splitting it would move them rather than " +
 		"reduce them.",
-	"groundLint": "every reason a stand may not be the ground somebody meant " +
-		"(taskstands.go), read in an order that is itself the policy.",
 	"pathTokens": "one reading of what in a sentence is a path (taskstands.go). Twenty " +
 		"lines, and most of its number is the single `FieldsFunc` predicate naming every " +
 		"character that ends a token.",

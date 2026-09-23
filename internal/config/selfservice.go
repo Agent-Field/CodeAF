@@ -102,8 +102,10 @@ var selfServiceGuards = map[string]string{
 	KeyTaskMinFreeMB:       guardPressure,
 	KeyBashBackgroundAfter: guardPressure,
 
-	KeyTaskAudit:   guardProof,
-	KeyAttribution: guardSignature,
+	KeyTaskAudit: guardProof,
+	// The signature itself has no row; what is left of it is whether the
+	// `Assisted-by` line names the model, and that is the person's to decide.
+	KeyAttributionModel: guardSignature,
 
 	// The credential fields that are not [Setting.Secret] rows. Google's id is
 	// useless without the secret beside it; Slack's public application needs

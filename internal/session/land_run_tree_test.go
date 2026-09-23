@@ -22,7 +22,7 @@ func TestLandRunTreeCommitsTheTreesOwnWorkOntoItsBranch(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "second.txt"), "two\n")
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the changed line\n")
 
-	branch, changed, refusal, err := LandRunTree(repo, "do the thing", false)
+	branch, changed, refusal, err := LandRunTree(repo, "do the thing", "")
 	if err != nil {
 		t.Fatalf("LandRunTree: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestLandRunTreeRefusesATreeWithNothingToLand(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	repo := newTestRepo(t)
 
-	branch, changed, refusal, err := LandRunTree(repo, "only read", false)
+	branch, changed, refusal, err := LandRunTree(repo, "only read", "")
 	if err != nil {
 		t.Fatalf("LandRunTree: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestLandRunTreeLeavesTheTreeAloneWithTheFlagOff(t *testing.T) {
 	before := gitOut(t, repo, "rev-parse", "HEAD")
 	writeFile(t, filepath.Join(repo, "second.txt"), "two\n")
 
-	if _, _, _, err := LandRunTree(repo, "do the thing", false); err == nil {
+	if _, _, _, err := LandRunTree(repo, "do the thing", ""); err == nil {
 		t.Fatal("LandRunTree with the belt off returned no error, want a refusal")
 	}
 	if after := gitOut(t, repo, "rev-parse", "HEAD"); after != before {
