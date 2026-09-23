@@ -628,7 +628,7 @@ with 0.
 `codeaf do` works in the directory you hand it with `-w` / `--dir` (the current
 directory by default), **edited in place, on whatever branch is checked out there,
 and nothing is committed**. The run's files are left uncommitted for you to read,
-keep or throw away, exactly as the older engine left them.
+commit or throw away, exactly as the older engine left them.
 
 Your own work is never touched by the run's accounting: an edit you had not
 committed, or an untracked file such as a secrets file, is still yours after the
@@ -660,14 +660,14 @@ without stopping. The older engine asked the plan-price question before it bough
 anything; the run engine cannot price a run before its workers start, so the same
 figure is a ceiling instead.
 
-## codeaf do --db and --keep on the run engine
+## codeaf do --db on the run engine, and where a run's store is
 
 - **`--db` is refused**, with exit 1 and a sentence saying why: it names a store
-  only the older engine works in, and a run keeps its plan in `.codeaf/plandb.db`
+  only the older engine works in, and a run holds its plan in `.codeaf/plandb.db`
   inside the directory it works in. Drop the flag, or set `CODEAF_TASK_BELT=node`
   to run on the older engine, which takes it.
-- **`--keep` is honoured.** The run's store is never deleted, and with `--keep` the
-  run says where it is on the error stream: `record kept at <dir>/.codeaf/plandb.db`.
+- **That store is never deleted.** Pass `--keep` and the run names it on the error
+  stream: `record kept at <dir>/.codeaf/plandb.db`.
 
 ## How do I tell the check what to run?
 

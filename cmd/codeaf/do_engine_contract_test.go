@@ -88,7 +88,7 @@ func doGitIn(t *testing.T, dir string, args ...string) string {
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimRight(string(out), "\n")
 }
 
 // THE PERSON'S OWN WORK IS NEVER SWEPT INTO A COMMIT.

@@ -151,12 +151,12 @@ keyboard decides for itself and says on the record that it decided.
 
 | flag | what it does |
 | --- | --- |
-| `--db <path>` | work in this durable store instead of a private one — older engine only; the run engine, the default, refuses it in words |
-| `--keep` | keep the run's store instead of deleting it on the way out, and say where it is |
-| `-w <dir>` | the directory to work in, edited in place and never committed — the current directory by default |
+| `--db <path>` | work in this durable store instead of a private one (older engine only) |
+| `--keep` | keep the store instead of deleting it on the way out |
+| `-w <dir>` | the directory to work in, edited in place, never committed — the current directory by default |
 | `--timeout` | a hard wall on the whole run |
 | `--json` | print one machine-readable object instead of the deliverable |
-| `--yes-spend` | spend past today's limit and past the plan-price question, without stopping to ask. Without it a run stops at the plan price (`CODEAF_PLAN_CONSENT`, $100 out of the box) or at what is left of today's limit, whichever is nearer |
+| `--yes-spend` | spend past today's limit and the plan price without stopping |
 | `--slots <n>` | how many workers may run at once for this run; `0` is no limit. Unset, it is your `task.parallel` setting, which is no limit out of the box |
 | `--model <slug>` | the work model for this run |
 | `--plan-model <slug>` | the model that plans, when it should differ from the work model |
