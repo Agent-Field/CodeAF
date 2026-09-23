@@ -78,12 +78,22 @@ Over `--host`, the picker and its prices are this laptop's catalog, while the co
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
 
-## Sign in with ChatGPT and use my Codex plan — models, price, limits and expiry
+## Sign in with ChatGPT and use my Codex plan — models, context window, price, limits and expiry
 
 Open `/connect`, choose **Codex**, and finish the browser sign-in. This signs in the way
 the Codex CLI does; OpenAI's terms for a ChatGPT plan apply to what runs on it. The
 service reads the model list belonging to that account, and a new connection moves this
 conversation to `codex/gpt-5.5`. Every model from it is qualified as `codex/<slug>`.
+
+A Codex model's context window is the one that account's model list gives it — `272k` on
+every model it lists today — so the status line reads `…/272k` on `codex/gpt-5.5` and
+compaction fires from that figure. When the list cannot be reached at sign-in, the four
+models codeaf already knows (`gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`)
+carry that same `272k`. Over `--host` the far machine still compacts at `272k`, but
+this screen's meter reads this laptop's own list. When that list has no Codex rows, the
+meter keeps the figure of the model you switched from, or shows none if the conversation
+opened on Codex. The
+conversation file's `call` lines name `Codex` as the endpoint that served each request.
 
 A Codex call has no dollar price codeaf can know. The spend page therefore shows no
 invented `$0.00` or unknown-price label; when the backend reports usage, it still counts

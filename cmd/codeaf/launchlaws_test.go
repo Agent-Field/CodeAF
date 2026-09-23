@@ -56,7 +56,7 @@ func TestTheSubharnessWiringAsksTheCatalogNothingThatWaits(t *testing.T) {
 	proc := v3TestProcess(t)
 
 	before := proc.Models.BlockingReads()
-	v3Subharnesses(proc.Settings, proc.Models, "test/model", t.TempDir(), proc.Harnesses)
+	v3Subharnesses(proc.Settings, proc.Models, "test/model", 0, t.TempDir(), proc.Harnesses)
 	asked := proc.Models.BlockingReads() - before
 
 	if asked != v3SubharnessBlockingReads {

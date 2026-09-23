@@ -333,7 +333,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if err != nil {
 		return err
 	}
-	settings, models, harnesses := launch.Settings, launch.Models, launch.Harnesses
+	settings, harnesses := launch.Settings, launch.Harnesses
 	workspace, transcript, resumed := launch.Workspace, launch.SessionFile, launch.Resumed
 	chosen, cfg := launch.Model, launch.Config
 
@@ -423,7 +423,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// itself and is a no-op the second time it is called.
 	defer proc.closeAll()
 
-	proc.warmModels("chatv3/models", models, agent, chosen)
+	proc.warmModels("chatv3/models", agent, chosen)
 
 	// The two things this surface keeps on the person's behalf rather than the
 	// session's: what they have typed before, and what they have half-typed
@@ -904,7 +904,13 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// found in (chatv3_subharness.go). It is assembled BEFORE the config because
 	// all four seams below are fields of it, and the zero value is subharnesses
 	// off — so nothing here has to ask whether the wiring worked.
-	subharnesses := v3Subharnesses(settings, activeModels, chosen, workspace, harnesses)
+	//
+	// THERE IS ONE START WINDOW. It is read once and handed to both of its
+	// readers, the programs this conversation runs here and the session below, so
+	// a leaf on `codex/gpt-5.5` sizes itself from the same 272k the conversation
+	// does.
+	startWindow := v3StartWindow(proc.Shelf, activeModels, chosen, activeModel)
+	subharnesses := v3Subharnesses(settings, activeModels, chosen, startWindow, workspace, harnesses)
 	mediaSettings := settings
 	mediaSettings.Model = chosen
 	mediaSettings.Models = activeModels
@@ -980,10 +986,19 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		ProfileDir: settings.ProfileDir,
 		// The window the model this session STARTS on actually accepts, when
 		// anybody can say so without waiting. Zero keeps session's own
-		// conservative default, and [warmV3Models] corrects it in place the
-		// moment the catalog resolves.
-		ContextWindow:    v3Window(activeModels, activeModel),
-		ContextWindowFor: activeModels.ContextLength,
+		// conservative default, and for a model on the default service
+		// [warmV3Models] corrects it in place the moment the catalog resolves.
+		//
+		// NEITHER IS ASKED OF THE CATALOG ALONE (#1383). The catalog this
+		// conversation started on knows nothing about a model on another
+		// service, and Codex's is empty because Codex publishes no listing, so
+		// the shelf — which holds each connected service's remembered rows from
+		// the moment the process read the profile — answers what that catalog
+		// cannot. The start window asks the catalog first ([v3StartWindow]); the
+		// switch lookup asks the shelf first, because the catalog it would ask
+		// is the one the conversation STARTED on ([v3WindowFor]).
+		ContextWindow:    startWindow,
+		ContextWindowFor: v3WindowFor(proc.Shelf, activeModels),
 		// Whether the model in use can LOOK at a picture, from the catalog's
 		// published input modalities. It is a closure rather than a value
 		// because the answer is about the model the NEXT turn rides, and this
@@ -2453,6 +2468,27 @@ func v3NearestModels(models *catalog.Catalog) func(string) []string {
 // resolves.
 func v3Window(models v3Catalog, model string) int {
 	return v3ContextWindow(v3Models(models), model)
+}
+
+// v3StartWindow is [v3Window] for the model a conversation opens on, asked of
+// the conversation's own catalog first and of that model's service's rows on the
+// process shelf ([v3ModelShelf.contextWindow]) when the catalog cannot say.
+// chosen is the id as the person spelled it (`codex/gpt-5.5`); bare is the same
+// model as its service spells it, which is how the conversation's catalog knows
+// it.
+//
+// THE CONVERSATION'S OWN CATALOG ANSWERS FIRST because it is the fresher of the
+// two wherever it can answer at all: a direct service's catalog refreshes itself
+// on its own clock, while the shelf's compartment for that service is the
+// surface's model cache as it stood when the profile was read. The shelf is
+// here for what the catalog cannot say — Codex publishes no listing, so its
+// conversation's catalog is empty, and a row remembered by an older build is
+// healed only on the shelf ([config.CodexRememberedModels]).
+func v3StartWindow(shelf *v3ModelShelf, models v3Catalog, chosen, bare string) int {
+	if window := v3Window(models, bare); window > 0 {
+		return window
+	}
+	return shelf.contextWindow(chosen)
 }
 
 func v3ContextWindow(models []tui3.Model, model string) int {

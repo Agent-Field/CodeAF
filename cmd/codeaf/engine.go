@@ -720,7 +720,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		transcript, resumed = cfg.SessionFile, false
 	}
 
-	proc.warmModels("engine/models", launch.Models, agent, launch.Model)
+	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
 		Headless: hello.Headless,

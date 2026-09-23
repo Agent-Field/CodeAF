@@ -439,7 +439,16 @@ func (p *v3Process) takeForClose() (agents []*session.Agent, recall *history.Sto
 // closeAll's own promise — that nothing this process started is still writing
 // under its profile once it closes — true for this writer too. The context the
 // tracker hands the errand is what lets the warm's own wait end at the close.
-func (p *v3Process) warmModels(scope string, models *catalog.Catalog, agent *session.Agent, started string) {
+func (p *v3Process) warmModels(scope string, agent *session.Agent, started string) {
+	// THE WARM IS ALWAYS THE PROCESS'S OWN CATALOG, the default service's, and
+	// that is why no caller hands it one. It writes the default service's model
+	// cache from what it warmed ([warmV3Models]), so a caller that passed the
+	// catalog its conversation STARTED on — which is a direct service's the
+	// moment the conversation opens on `codex/gpt-5.5`, as every launch does once
+	// a Codex sign-in has saved that as the chat model — wrote Codex's bare ids
+	// into the OpenRouter list. Both the engine road and the in-process road
+	// handed it the launch's catalog until #1383.
+	models := p.Models
 	poolErrandGoCtx(p.ProfileDir, scope, func(ctx context.Context) {
 		warmV3Models(ctx, models, agent, started)
 	})
