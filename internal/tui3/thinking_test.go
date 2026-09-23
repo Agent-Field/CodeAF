@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -215,6 +217,91 @@ func TestTheThoughtTokenCounterAccumulatesAndSurvivesTheCollapse(t *testing.T) {
 	}
 	if !strings.Contains(got, glyphThought+" thought for ") {
 		t.Fatalf("the collapsed row lost its sentence:\n%s", got)
+	}
+}
+
+// ── the block inside the gutter ─────────────────────────────────────────────
+
+// thoughtProse is one paragraph with no break in it, so every row it wraps onto
+// runs right up to the edge it was wrapped at — which is the row a gutter that
+// was never paid for pushes off the frame.
+const thoughtProse = "The person wants the config printed, so I will run cat on both files and " +
+	"then list the directory to confirm nothing else is there. After that I should check " +
+	"whether the YAML nests the TLS block under server, because the listen address and the " +
+	"certificate paths both depend on it, and a wrong indent would silently drop them."
+
+// A THOUGHT IS WORK, SO IT PAYS FOR THE GUTTER IT IS GIVEN. THE INDENT LAW's pass
+// (render.go's [app.deckRows]) moves every work row two cells right, and a
+// thought's body carries a two-cell lead of its own under the header's glyph. A
+// body wrapped to the width it was handed, and not to that width less the
+// gutter, comes out two cells wider than the frame, and the frame cuts the end
+// off every full row — a live run drew "= 2, so" as "= 2, s". So every row of the
+// block, in the live window and opened, is measured against the column the frame
+// draws it in, at every tier, and then looked for, whole, on the drawn frame;
+// and the body hangs under
+// the header's words, two cells in from its glyph, the way a note's rows hang
+// under its lead.
+func TestAThoughtKeepsEveryWordInsideTheFrame(t *testing.T) {
+	for _, width := range []int{120, 100, 80, 64, 50} {
+		for _, opened := range []bool{false, true} {
+			name := itoa(width) + "/live"
+			if opened {
+				name = itoa(width) + "/opened"
+			}
+			t.Run(name, func(t *testing.T) {
+				_, a := wired([]session.Event{text(session.EventReasoning, thoughtProse)})
+				a.width, a.height = width, 60
+				typeLine(t, a, "think about it")
+				showLiveWork(t, a)
+				// The window reveals on the surface's clock (reveal.go), and this
+				// is a test of where the words land, not of the walk: catch up,
+				// then look.
+				catchUpReveal(a)
+				if a.entries[thoughtAt(t, a)].revealing() {
+					t.Fatal("the thought is still revealing after catching up")
+				}
+				a.touch()
+				if opened {
+					drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "done")})
+					if !a.toggleLatestThought() {
+						t.Fatal("the thought has no disclosure")
+					}
+				}
+				// THE ROWS ARE THE ONES THE FRAME DRAWS, at the width it draws them:
+				// from a hundred columns up the task column stands beside a begun
+				// conversation and takes its cells ([app.bodyWidth]), so the
+				// column the thought has to fit is narrower than the terminal.
+				cols := a.bodyWidth()
+				body, _ := a.bodyRows(cols, a.viewHeight())
+				at := thoughtAt(t, a)
+				var block []row
+				for _, r := range body {
+					if r.entry == at {
+						block = append(block, r)
+					}
+				}
+				if len(block) < 3 {
+					t.Fatalf("want a header and a wrapped body, got %d rows:\n%s",
+						len(block), strings.Join(plainRows(a), "\n"))
+				}
+				head := plain(block[0].text)
+				glyphAt := ansi.StringWidth(head[:strings.Index(head, glyphThought)])
+				drawn := plain(frame(a))
+				for _, r := range block[1:] {
+					line := plain(r.text)
+					if cells := ansi.StringWidth(line); cells > cols {
+						t.Fatalf("a row of the thought is %d cells in a %d-cell column: %q", cells, cols, line)
+					}
+					if lead := len(line) - len(strings.TrimLeft(line, " ")); lead != glyphAt+2 {
+						t.Fatalf("a row of the thought opens in column %d, want %d — two in from the header's glyph:\n%s\n%s",
+							lead, glyphAt+2, head, line)
+					}
+					if words := strings.TrimSpace(line); !strings.Contains(drawn, words) {
+						t.Fatalf("the frame did not draw the row whole — %q is not on it:\n%s", words, drawn)
+					}
+				}
+			})
+		}
 	}
 }
 

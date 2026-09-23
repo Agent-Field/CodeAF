@@ -160,7 +160,7 @@ func thoughtCount(e *entry) string {
 // brightening — the gradient says "this is where you are", not "this is how
 // much there is".
 func (a *app) thoughtLiveRows(e *entry, width int) []string {
-	body := trimBlanks(wrap(strings.TrimSpace(e.revealed()), width-2))
+	body := trimBlanks(wrap(strings.TrimSpace(e.revealed()), thoughtRoom(width)))
 	if len(body) == 0 {
 		return nil
 	}
@@ -174,6 +174,19 @@ func (a *app) thoughtLiveRows(e *entry, width int) []string {
 	}
 	return out
 }
+
+// thoughtRoom is how wide a line of the thought's body may run: the frame, less
+// the two-cell lead every body row carries under the header's glyph, less THE
+// INDENT LAW's gutter.
+//
+// A THOUGHT IS WORK, AND WORK PAYS FOR ITS GUTTER. render.go's pass moves every
+// work row two cells right after layout ([workIndentCols] says what that costs),
+// so a body wrapped to the width it was handed comes out two cells wider than
+// the frame, and [app.railJoin] cuts the end off every full row — a live run drew
+// "= 2, so" as "= 2, s". The pass once left these rows where they were, because
+// they open on two spaces, and that is the only reason the body fitted; it moves
+// them now, as it moves a note's rows, so the room is taken here.
+func thoughtRoom(width int) int { return width - 2 - workIndentCols(width) }
 
 // thoughtSeconds is the time between the FIRST and the LAST reasoning delta —
 // how long the model spent thinking, not how long the turn took.
@@ -198,7 +211,7 @@ func (a *app) thoughtBody(e *entry, width int) []string {
 	if text == "" {
 		return nil
 	}
-	body := wrap(text, width-2)
+	body := wrap(text, thoughtRoom(width))
 	more := 0
 	if len(body) > thoughtWindow {
 		more, body = len(body)-thoughtWindow, body[:thoughtWindow]
