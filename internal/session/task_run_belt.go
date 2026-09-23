@@ -502,9 +502,9 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 func (a *Agent) openBeltRunStore(g *TaskGraph, path, rootID, title, brief string, carryOn bool) (*planState, *plandb.Store, error) {
 	plan := &planState{path: path, chat: g.planChat()}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if carryOn {
-			return nil, nil, errRunStoreGone
-		}
+		// NO STORE AT ALL IS NOBODY ELSE'S RUN, on either road: the run is seeded
+		// under the root it was asked for, and a carried-on run reads its work
+		// from the copy it was written down as working in.
 		store, err := plandb.Open(path, title, rootID, title, brief, plan.chat)
 		return plan, store, err
 	} else if err != nil {
@@ -530,7 +530,8 @@ func (a *Agent) openBeltRunStore(g *TaskGraph, path, rootID, title, brief string
 }
 
 // errRunStoreGone is the carry-on door's refusal for a run whose store is no
-// longer the conversation's live one: a later request set it aside, or it ended.
+// longer the conversation's live one: a later request set it aside and another
+// run's store is at the path now, or the run's own task has ended.
 var errRunStoreGone = errors.New("this run's plan is no longer the conversation's live one, so there is nothing to carry on")
 
 // setAsideRunStore moves the store at path beside itself under the next archive
