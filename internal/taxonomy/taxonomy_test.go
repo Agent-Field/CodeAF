@@ -592,6 +592,26 @@ func TestTheWaitOnOneMachineClimbsToACeilingAndStaysThere(t *testing.T) {
 	}
 }
 
+// AND IT HOLDS FOR EVER, NOT FOR TWENTY ASKS (#1358). The ramp was a signed
+// shift, and past about thirty-five asks of a one-second base it wrapped to
+// zero or below, which the turn loop reads as no wait at all: the unbounded
+// wait turned back into a hot loop on its thirty-sixth ask. The test above
+// stopped at twenty and never saw it.
+func TestTheWaitOnOneMachineNeverWrapsToNothing(t *testing.T) {
+	cut := Evidence{Cut: true, OneMachine: true, Watched: true}
+	for ask := 5; ask <= 500; ask++ {
+		if wait := waitFor(cut, ask, time.Second); wait != OneMachineCutCeiling {
+			t.Fatalf("ask %d waits %s, want the %s ceiling", ask, wait, OneMachineCutCeiling)
+		}
+	}
+	// A refusal has no ceiling, and its doubling saturates rather than wraps.
+	for ask := 1; ask <= 500; ask++ {
+		if wait := waitFor(Evidence{}, ask, time.Second); wait <= 0 {
+			t.Fatalf("refusal %d waits %s, want a positive wait", ask, wait)
+		}
+	}
+}
+
 // AN ORDINARY FAILURE IS BOUNDED BY THE CALLER'S DEADLINE AND NOT BY A COUNT,
 // which is what [Verdict.Attempts] of zero has meant since the count was
 // removed. It is the reason the unbounded wait needs a field of its own: a
