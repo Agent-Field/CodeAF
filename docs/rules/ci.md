@@ -75,6 +75,12 @@ was neutral for a day, then off pull requests for a day (#499), and in that day
 before the job existed. The owner's ruling is that it runs on the pull request
 and `check` needs it.
 
+When the touched set contains `internal/tui3` or `internal/session`, `make test`
+compiles that heavy package once and runs its sorted top-level tests as
+round-robin concurrent shards. `SHARDS` defaults to at most eight and can be set
+to `1` to reproduce the serial outcome; the package's whole sharded run still
+holds the one-suite-per-box lock.
+
 **`check`** is the third job and the only required name: it needs the other two
 and is green only when both are, the same one-spellable-name shape `full tests`
 and `cross build` use in `ci-full.yml`. There is no branch protection on this
@@ -107,13 +113,16 @@ builds the shipped binary and enforces its size budget.
 `ci-full.yml`, seven jobs (three test shards and their one name, the six-target cross build and its one name, `remote`, `size`, and the page):
 
 - **`full tests`** — every package, minus the ledger below, split round-robin
-  across three runners. Not for speed first: the
+  across three runners. Within each runner, `make test` also runs
+  `internal/tui3` and `internal/session` as concurrent test-binary shards from
+  one compile; the outer three-way split still assigns each package to only one
+  runner. Not for speed first: the
   free-plan runner has seven gigabytes, this repository's test binaries are
   heavy, and the suite's first run was killed under the link load of its last
   eight packages. Three machines carrying a third each stay inside their memory.
-  It runs through `make test`, so the ledger it skips and the per-package
-  timeout it carries are the Makefile's and the same as a laptop's. The
-  timeout is measured, not guessed: `internal/tui3` takes about 485 seconds on
+  It runs through `make test`, so the ledger it skips and the per-shard timeout
+  it carries are the Makefile's and the same as a laptop's. The timeout is
+  measured, not guessed: `internal/tui3` once took about 485 seconds serial on
   this runner, and the old `8m` cut it off at the finish line and reported a
   test that had been running for two seconds as a hang (#372).
 - **`page on a red nightly`** — a scheduled run reports to nobody, and every
