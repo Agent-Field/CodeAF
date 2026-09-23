@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec"
@@ -164,29 +163,84 @@ func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
 // standing section is composed from.
 func (c Config) mayStand() bool { return c.standingStore() != nil }
 
-// signsGitWork says whether the attribution law belongs on this belt: the
-// person has the `attribution` row on ([Config.Attribution]). It used to carry
-// a second half — a fork's hand was told nothing because its `bash` was rebuilt
-// read-only — and that half went with `fork` itself: every shape this package
-// still builds carries a `bash` that could make a commit.
-func (c Config) signsGitWork() bool { return c.Attribution }
+// signsGitWork says whether the attribution law belongs on this belt, and the
+// answer is always yes. It used to be the person's `attribution` row, and that
+// row is gone (2026-09-23): codeaf signs every commit it writes. It used to
+// carry a second half too — a fork's hand was told nothing because its `bash`
+// was rebuilt read-only — and that half went with `fork` itself: every shape
+// this package still builds carries a `bash` that could make a commit. It stays
+// a predicate because the belt-fact table is written in predicates.
+func (c Config) signsGitWork() bool { return true }
 
-// signsGitWork is [Config.signsGitWork] asked of a live agent, so that the
-// harness's OWN commits and the sentence the model is told come off one
-// predicate. The commits a landing
-// writes are not on any belt — nobody is asked about them — and a build where
-// the model was told to sign while the landing quietly did not would be two
-// answers to one row (task_run.go's [signed]).
-func (a *Agent) signsGitWork() bool { return a.config.signsGitWork() }
+// assistedByModel is the model this belt's `Assisted-by` line names: the model
+// the page is rendered for, or nothing when the person turned the model's name
+// off ([Config.AttributionModelOff]), which leaves the line bare.
+func (c Config) assistedByModel() string {
+	if c.AttributionModelOff {
+		return ""
+	}
+	return c.Model
+}
 
-// attributionTrailer is [exec.AttributionTrailer] under a name the rest of this
-// package can say. The files where the harness writes its OWN commits —
-// task_run.go and task_branch_protection.go — both import os/exec as `exec`, so
-// neither can name internal/exec without an alias that reads as a second
-// package. This is a constant assignment and not a second copy: the bytes live
-// in one place, internal/exec's own test pins them, and a trailer reworded
-// there is reworded here by the compiler.
-const attributionTrailer = exec.AttributionTrailer
+// gitSignature is how the harness signs a commit it writes ITSELF — a node's
+// landing, a family's frozen world, a stopped run kept on its branch — and it
+// is the same two trailer lines the model is told to write
+// (internal/exec's [exec.AttributionTrailers]).
+//
+// ITS ZERO VALUE STILL SIGNS, with the bare `Assisted-by: CodeAF` line. There is
+// no value of this type that leaves a commit unsigned, because the signature has
+// no off; what it carries is only whether the line names a model and which.
+type gitSignature struct {
+	// named is the person's `attribution.model` row: whether the line names
+	// the model at all.
+	named bool
+	// model is the model the work ran on, as the router spells it. The line
+	// carries its bare name ([exec.BareModelName]).
+	model string
+}
+
+// ranOn is this signature for work a particular model did. A node that ran on
+// a model of its own names that one; an empty model — a node admitted before
+// anybody chose one — keeps the conversation's, which is what such a node ran
+// on (task_run.go's [TaskNode.model]).
+func (s gitSignature) ranOn(model string) gitSignature {
+	if model = strings.TrimSpace(model); model != "" {
+		s.model = model
+	}
+	return s
+}
+
+// signedModel is the model a node ran on, for the line its landing signs with,
+// and "" for a node that names none — which [gitSignature.ranOn] reads as the
+// conversation's own. A node held outside any graph names none.
+func signedModel(node *TaskNode) string {
+	if node == nil || node.graph == nil {
+		return ""
+	}
+	return node.model()
+}
+
+// sign is a commit message as the harness leaves it: one blank line, then the
+// two trailer lines. The files where the harness writes its OWN commits import
+// os/exec as `exec`, which is why they reach internal/exec's one spelling of
+// the block through here rather than by name.
+func (s gitSignature) sign(message string) string {
+	model := ""
+	if s.named {
+		model = s.model
+	}
+	return exec.SignCommitMessage(message, model)
+}
+
+// signsGitWork is the signature a live agent's own commits carry, off the same
+// two facts the sentence the model is told is rendered from — the model the
+// conversation is on NOW, and the person's model-name row — so that the
+// harness's commits and the model's own read the same. The commits a landing
+// writes are not on any belt; nobody is asked about them (task_run.go's
+// [signed]).
+func (a *Agent) signsGitWork() gitSignature {
+	return gitSignature{named: !a.config.AttributionModelOff, model: a.Model()}
+}
 
 // mayDesignHarness says whether the two harness hands belong on this belt
 // (tools_harness.go): a store to write the page into, a runner to run what was
@@ -389,24 +443,18 @@ var beltFacts = []beltFact{{
 	//
 	// IT NAMES `bash` BECAUSE `bash` IS WHERE IT HAPPENS. This is the only place
 	// the model can commit or open a pull request at all; the mechanical commit
-	// a landing writes is not the model's and carries the same trailer without
+	// a landing writes is not the model's and carries the same two lines without
 	// being told (task_run.go's [commitTaskWorkAs]).
 	//
-	// AND THE ABSENT CASE IS EMPTY ON PURPOSE. Attribution off is not a limit
-	// anybody needs told about — the ordinary commit with no trailer IS the
-	// answer — and a sentence saying "do not sign" would spend the prefix
-	// teaching the model to think about signing on every turn of a person who
-	// switched it off.
-	//
-	// AND THE ASSISTED-BY LINE IS THIS PAGE'S OWN, spelled above the co-author
-	// and filled with the model the session is running: the chat is the one
-	// surface that knows its model, so the line that names it is delivered here
-	// and not in the law the leaf loop also reads.
-	tools: []string{"bash"},
-	holds: Config.signsGitWork,
-	present: "- " + exec.AttributionLaw + " The trailer block is two lines, the co-author " +
-		"last: `" + exec.AttributionAssistedBy + "` and then `" + exec.AttributionTrailer + "`.",
-	absent: "",
+	// IT HAS NO ABSENT CASE, because signing has no off. The law's own commit
+	// sentence spells both trailer lines in their order, with the `Assisted-by`
+	// one left as a slot the render fills from the model this page is for
+	// ([Config.assistedByModel]) — so the law is the one place both lines are
+	// said, and the page does not say them a second time.
+	tools:   []string{"bash"},
+	holds:   Config.signsGitWork,
+	present: "- " + exec.AttributionLaw,
+	absent:  "",
 }}
 
 // handoffFacts is `## Work or words`: the ways work leaves this turn, composed
@@ -701,16 +749,11 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 		}
 		if text != "" {
 			// THE ASSISTED-BY LINE IS FILLED HERE because this is the one point
-			// that holds both the belt's bytes and the session's configured
-			// model: the attribution fact quotes [exec.AttributionAssistedBy],
-			// whose %s is the model id, and it is the only fact on any belt
-			// that carries a verb. The leaf loop's standing contract has no
-			// model id to fill it with — exec is handed facts about the model,
-			// never its name — which is why the line rides this page and not
-			// the law.
-			if strings.Contains(text, exec.AttributionAssistedBy) {
-				text = fmt.Sprintf(text, config.Model)
-			}
+			// that holds both the belt's bytes and the model the page is
+			// rendered for: the attribution fact carries the law's slot, and
+			// [exec.FillAttribution] puts the line there — named, or bare when
+			// the person turned the model's name off.
+			text = exec.FillAttribution(text, config.assistedByModel())
 			lines = append(lines, text)
 		}
 	}

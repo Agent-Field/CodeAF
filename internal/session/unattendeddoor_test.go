@@ -816,7 +816,7 @@ func TestACommitRefusedInAWritableTreeIsAboutTheWork(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(refs, 0o755) })
 
-	_, problem, _, refusal := tree.comeHome("add the parser", []string{"parser.py"}, false)
+	_, problem, _, refusal := tree.comeHome("add the parser", []string{"parser.py"}, gitSignature{})
 
 	if !strings.Contains(strings.ToLower(problem), "permission denied") {
 		t.Skipf("git refused the commit with %q, which is not the sentence this test is about", problem)
