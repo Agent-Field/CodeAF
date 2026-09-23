@@ -78,6 +78,32 @@ Over `--host`, the picker and its prices are this laptop's catalog, while the co
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
 
+## Sign in with ChatGPT and use my Codex plan — models, price, limits and expiry
+
+Open `/connect`, choose **Codex**, and finish the browser sign-in. This signs in the way
+the Codex CLI does; OpenAI's terms for a ChatGPT plan apply to what runs on it. The
+service reads the model list belonging to that account, and a new connection moves this
+conversation to `codex/gpt-5.5`. Every model from it is qualified as `codex/<slug>`.
+
+A Codex call has no dollar price codeaf can know. The spend page therefore shows no
+invented `$0.00` or unknown-price label; when the backend reports usage, it still counts
+the prompt, completion, cached-prompt and reasoning tokens. The plan is paid for outside
+codeaf. When its allowance is exhausted, the turn says exactly:
+
+```
+codex reached your chatgpt plan's usage limit · it resets on its own
+```
+
+An expired sign-in says:
+
+```
+codex sign-in has expired · /connect or codeaf connect codex signs in again
+```
+
+This sign-in does not add an OpenAI API key, cannot connect a custom endpoint, does not
+put Codex on first-run setup, and does not replace codeaf's own instructions with the
+Codex CLI's base instructions. Use the custom-service row for an OpenAI-compatible API.
+
 ## Can I switch models while it is replying — I changed the model in the middle of an answer, does it change now or wait?
 
 **Your word wins at the next request, within a second, and never at the next turn.**

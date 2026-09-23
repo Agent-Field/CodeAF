@@ -232,10 +232,13 @@ type cache struct {
 type Options struct {
 	// Source is the stable service identity. AN EMPTY SOURCE IS THE DEFAULT
 	// SERVICE, whose ids are the only ones the compiled fallbacks describe.
-	Source     string
-	BaseURL    string
-	APIKey     string
-	Dir        string
+	Source  string
+	BaseURL string
+	APIKey  string
+	Dir     string
+	// HTTPClient is the service-owned request road. Most OpenAI-compatible
+	// catalogs leave it nil; services whose listing needs rotating credentials
+	// or a wire translation supply the same client their model calls use.
 	HTTPClient *http.Client
 	Now        func() time.Time
 
@@ -334,6 +337,20 @@ func Remember(options Options, models []Model) error {
 	return writeCache(cachePath(options.Dir, source, base), cache{
 		FetchedAt: now().UTC(), Models: models, Source: source, Base: base,
 	})
+}
+
+// Recall reads only rows already remembered for one service and base. It never
+// reaches the network and never substitutes the default service's fallbacks, so
+// a launch can put a just-connected service on its picker without turning the
+// first frame into a catalog refresh.
+func Recall(options Options) *Catalog {
+	source := strings.TrimSpace(options.Source)
+	base := normalizeBase(options.BaseURL)
+	cached, ok := readCache(cachePath(options.Dir, source, base), source, base)
+	if !ok {
+		return &Catalog{ready: newRows(nil)}
+	}
+	return &Catalog{ready: newRowsAt(cached.Models, cached.FetchedAt)}
 }
 
 // errUnreadable is what a fault inside discovery is reported as. The fault
