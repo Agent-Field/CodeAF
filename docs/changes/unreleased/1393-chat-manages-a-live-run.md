@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: the chat's run digest leads with the live run in the side list's words, and every door the person speaks through carries it
+title: the chat's run digest leads with the live run, in the side list's words, on every message
 pr: 1393
 surface: [chat, engine, docs]
 invalidates:
