@@ -888,6 +888,66 @@ func underSiblingTree(trees, token string) bool {
 	return ok
 }
 
+// standsOutside reports whether a written path is a place on this machine that
+// the ground does not hold. The second result is the whole of what the lint
+// acts on, and it is false for the two shapes that are not a place at all: a
+// relative name, which is a name inside the project, and an absolute path with
+// no directory along it here. That second shape is a file the work will create
+// or a path on a host this one cannot see, which is how work handed to another
+// machine is written down — and judged as a place it could never fall inside the
+// ground, so a lint that counted it refused every honest deliverable.
+func standsOutside(ground, token string) (string, bool) {
+	if !strings.HasPrefix(token, "~") && !filepath.IsAbs(token) {
+		return "", false
+	}
+	if groundHolds(ground, token) {
+		return "", false
+	}
+	place, ok := placeOnThisMachine(token)
+	return place, ok
+}
+
+// repositoryHolding is the committed repository a written path stands in, when
+// the path is a place on this machine and that place is in one.
+func repositoryHolding(token string) (string, bool) {
+	place, ok := placeOnThisMachine(token)
+	if !ok {
+		return "", false
+	}
+	return repositoryRoot(place)
+}
+
+// placeOnThisMachine is the directory a written path really names HERE, and it
+// is the one question every reading of "where does this task stand" has to be
+// able to answer before it treats a path as a place.
+//
+// A name is a place on this machine only when a directory along it exists that
+// is not the root of the filesystem. The root is a directory on every machine,
+// so counting it would make the answer true of every absolute path and the
+// question would decide nothing. A file the work will create still has the
+// folder that will hold it, and a folder named in full has itself; either is a
+// place. A path with nothing but the root beneath it — one on another host, one
+// the contract merely quotes — names nothing this machine can stand in, and
+// reading it as a place is what turned every honest deliverable for remote work
+// into a refusal. The nearest existing directory is walked to rather than
+// trusted, because a path's own parent can be a directory everything shares:
+// /tmp holds /tmp/wisp-demo before that folder is ever made, and the home
+// directory holds every ~/name that was never created.
+func placeOnThisMachine(token string) (string, bool) {
+	dir := canonicalPath(groundDirOf(token, ""))
+	for dir != "" && dir != string(filepath.Separator) {
+		info, err := os.Stat(dir)
+		if err == nil && info.IsDir() {
+			return dir, true
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", false
+		}
+		dir = filepath.Dir(dir)
+	}
+	return "", false
+}
+
 // groundHolds reports whether one written path lands under the ground. An
 // absolute path is compared canonically; a relative one is a name inside the
 // project and counts when the file or the directory that would hold it is really
@@ -958,15 +1018,20 @@ func groundAnsweredByTheProposal(stand taskStand) bool {
 //     and the work re-grounds onto it. This is the shape the whole design came
 //     from: a brief that said `Repo: ~/…/agentfield · work in this repo
 //     directly` while the harness had cut a worktree somewhere else.
-//   - IT IS IN NO REPOSITORY, AND THE DELIVERABLE NAMES IT. Then the task is
-//     asking to leave its work somewhere it does not stand, and it is refused in
-//     one sentence rather than started and guarded to death.
+//   - IT IS IN NO REPOSITORY, AND THE DELIVERABLE NAMES IT, AND IT IS A PLACE ON
+//     THIS MACHINE. Then the task is asking to leave its work somewhere it does
+//     not stand, and it is refused in one sentence rather than started and
+//     guarded to death. A path is a place here only when a directory along it
+//     exists ([placeOnThisMachine]); a name whose whole chain is absent is a
+//     path on another host or one the contract merely quotes, and neither is a
+//     folder this task could stand in.
 //
 // A path only the BRIEF names, in no repository, is left alone: briefs quote
 // interpreters, log files and system directories constantly, and refusing work
 // over `/usr/bin/python3` would be a lint that people learn to write around.
 // What stops a write there is the guard, which is a different lane and a
-// different law.
+// different law, and it is the same lane that covers a deliverable path that
+// names nothing on this machine.
 //
 // A GROUND SOMEBODY SAID OUT LOUD IS NOT SECOND-GUESSED AT ALL — not moved, and
 // not refused either. A person who named a directory with `where`, or a model
@@ -987,21 +1052,13 @@ func groundLint(stand taskStand, spec taskSpec) (string, string) {
 	}
 	var outside []string
 	for _, token := range pathTokens(spec.brief + "\n" + spec.deliverable + "\n" + spec.acceptance) {
-		if !strings.HasPrefix(token, "~") && !filepath.IsAbs(token) {
-			continue
+		if _, outsideGround := standsOutside(stand.dir, token); outsideGround {
+			outside = append(outside, token)
 		}
-		if groundHolds(stand.dir, token) {
-			continue
-		}
-		outside = append(outside, token)
 	}
 	roots := map[string]bool{}
 	for _, token := range outside {
-		dir := groundDirOf(token, "")
-		if dir == "" {
-			continue
-		}
-		if root, ok := repositoryRoot(dir); ok {
+		if root, ok := repositoryHolding(token); ok {
 			roots[root] = true
 		}
 	}
@@ -1015,10 +1072,7 @@ func groundLint(stand taskStand, spec taskSpec) (string, string) {
 		return "", "this task names folders it does not stand in: " + strings.Join(sortedKeys(roots), ", ")
 	}
 	for _, token := range pathTokens(spec.deliverable + "\n" + spec.acceptance) {
-		if !strings.HasPrefix(token, "~") && !filepath.IsAbs(token) {
-			continue
-		}
-		if !groundHolds(stand.dir, token) {
+		if _, outsideGround := standsOutside(stand.dir, token); outsideGround {
 			return "", "this task names a folder it does not stand in: " + token
 		}
 	}
