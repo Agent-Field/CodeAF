@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── 1. the two commands exist, once ─────────────────────────────────────────
@@ -433,5 +434,76 @@ func TestStatusAnswersOnlyTheExactJSONFlagAndOtherwisePrintsTheText(t *testing.T
 	a.slash("/info --json")
 	if text := lastNote(t, a); !strings.HasPrefix(strings.TrimSpace(text), "{") {
 		t.Fatalf("/info --json did not print the object:\n%s", text)
+	}
+}
+
+// ── 7. the table keeps its columns through the gutter ───────────────────────
+
+// THE GUTTER MOVES EVERY ROW OF THE NOTE, OR THE COLUMNS BREAK. /cost is laid
+// out label-then-figure down a column ([labelledLines]), and a note wears a
+// two-cell lead on every row — "· " on the first, two blanks under it. THE
+// INDENT LAW's pass (render.go's [app.deckRows]) used to leave alone any work row
+// that already opened on two spaces, mistaking a continuation lead for its own
+// gutter: the first row moved two cells right and the rest stayed, so `· spend`
+// stood two columns off `tokens`, `model calls` and `time`, and the figures
+// beside them broke the same way. Every row is measured here after the whole
+// deck has drawn, which is the only place the pass can be seen at all.
+func TestCostRowsKeepTheirColumnsUnderTheGutter(t *testing.T) {
+	agent := &fakeAgent{model: "m", usage: session.Usage{
+		Input:    48_100,
+		Output:   3_200,
+		CostUSD:  0.42,
+		Turns:    9,
+		Calls:    14,
+		Duration: 3*time.Minute + 12*time.Second,
+	}}
+	a := newTestApp(agent)
+	a.slash("/cost")
+
+	labels := []string{"spend", "tokens", "model calls", "time"}
+	labelAt, figureAt := map[string]int{}, map[string]int{}
+	for _, line := range plainRows(a) {
+		for _, label := range labels {
+			at := strings.Index(line, label+" ")
+			if at < 0 {
+				continue
+			}
+			// The label's column is where its first letter sits; the figure's is
+			// the first cell past the padding that follows it. Both are measured
+			// in CELLS and not bytes: the note's "·" is two bytes wide and one cell.
+			labelAt[label] = ansi.StringWidth(line[:at])
+			rest := line[at+len(label):]
+			figureAt[label] = labelAt[label] + len(label) + (len(rest) - len(strings.TrimLeft(rest, " ")))
+		}
+	}
+	for _, label := range labels {
+		if _, ok := labelAt[label]; !ok {
+			t.Fatalf("the %q row is not on the frame:\n%s", label, strings.Join(plainRows(a), "\n"))
+		}
+	}
+	for _, label := range labels[1:] {
+		if labelAt[label] != labelAt["spend"] {
+			t.Fatalf("%q sits in column %d and spend in %d — the gutter moved one row and not the other:\n%s",
+				label, labelAt[label], labelAt["spend"], strings.Join(plainRows(a), "\n"))
+		}
+		if figureAt[label] != figureAt["spend"] {
+			t.Fatalf("the figure beside %q sits in column %d and spend's in %d:\n%s",
+				label, figureAt[label], figureAt["spend"], strings.Join(plainRows(a), "\n"))
+		}
+	}
+	// And the note's own marker leads the first row alone, in the gutter's column
+	// and not inside the table: the row before "spend" is the two-cell lead, and
+	// the rows under it open on blanks in the same two cells.
+	for _, line := range plainRows(a) {
+		switch {
+		case strings.Contains(line, "spend "):
+			if !strings.HasPrefix(line, "  · spend") {
+				t.Fatalf("the first row does not open on the gutter and the note's lead: %q", line)
+			}
+		case strings.Contains(line, "tokens "):
+			if !strings.HasPrefix(line, "    tokens") {
+				t.Fatalf("a continuation row does not sit under the first row's text: %q", line)
+			}
+		}
 	}
 }
