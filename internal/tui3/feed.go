@@ -1,9 +1,11 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -1408,6 +1410,9 @@ func (f *feed) retry(ev session.Event) {
 // person's, and a status number is the one part of that answer nobody can act
 // on.
 func (f *feed) failureNote(err error, service string) string {
+	if errors.Is(err, codexauth.ErrSignInExpired) {
+		return codexauth.ErrSignInExpired.Error()
+	}
 	if paused, ok := provider.PlanPauseFrom(err); ok {
 		return provider.PlanPauseSentence(paused.Reset, paused.OverflowDoor)
 	}

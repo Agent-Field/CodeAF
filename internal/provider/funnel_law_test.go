@@ -219,8 +219,8 @@ var funnelExemptTrees = map[string]string{
 	"harnesses": "harness fixtures, run by the harness and not by this build",
 }
 
-// funnelKnownSecondTransports are the two files that DO reach an endpoint from
-// outside this package, named one by one rather than exempted by directory.
+// funnelKnownSecondTransports are the files that DO name an endpoint outside
+// this package, named one by one rather than exempted by directory.
 //
 // A DIRECTORY EXEMPTION WOULD LET THE THIRD ONE IN SILENTLY, which is the
 // failure this whole law is about, so the debt is enumerated: any file not on
@@ -235,6 +235,10 @@ var funnelExemptTrees = map[string]string{
 //     should end up.
 var funnelKnownSecondTransports = map[string]string{
 	"cmd/harness-design/openrouter.go": "the harness-design rig's deliberate flat transport",
+	// This is not a second call path. It is the translating transport attached
+	// to provider.Client by config, and the provider funnel still owns the call,
+	// its lane, its watch and its record.
+	"internal/codexauth/transport.go": "the provider funnel's Codex wire adapter",
 }
 
 // TestNothingOutsideTheFunnelTalksToAModelEndpoint is law (a).

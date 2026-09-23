@@ -157,7 +157,8 @@ talk to it              chat · resume
 hand it work            do "<task>" · exec "<prompt>" · run <program>
 look at what happened   why self · why <task-id> · notebook · competence · services ·
                         logs · models · doctor · manual · version
-housekeeping            cache · cache clean · rebuild · wake · serve · devices · help env
+housekeeping            connect · disconnect · cache · cache clean · rebuild · wake ·
+                        serve · devices · help env
 plan work by hand       plan new "<goal>" · plan show <plan.json> ·
                         plan revise <plan.json> "…" · plan run <plan.json>
 ```
@@ -172,6 +173,30 @@ Two more exist and are deliberately kept out of the help text, because nothing t
 by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
 **`codeaf tick`** is the one bounded pass the background timer runs every five minutes.
 Neither draws anything or reads a key.
+
+## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
+
+`codeaf connect` lists every model service this profile knows, whether it is connected,
+and whether its door is a browser or a key. `codeaf connect codex` signs a ChatGPT plan
+in through the browser; `codeaf connect openrouter` uses OpenRouter's existing browser
+road. Add `--no-browser` to print the address without opening it. For Codex on another
+machine, the next line gives the tunnel to run before opening that address here:
+
+```
+ssh -L 1455:localhost:1455 <that machine>
+```
+
+If that sign-in chose port 1457 instead, the printed command uses 1457. DeepSeek and
+MiniMax take a key through the same checked connection as `/connect`; Ollama takes none.
+Z.ai, Moonshot and Qwen take a key and also need `--region intl` or `--region cn`. A key
+is read from stdin when it is piped, or asked for without echo on a terminal. A new custom
+service is created only in the chat: an unknown custom name says it is not a service this
+profile knows. Once the chat has created one, `codeaf connect <its name>` can reconnect
+that instance with a key.
+
+`codeaf disconnect <service>` forgets the connection and its key or sign-in. Neither
+command sends a prompt, calls a model or adds model spend. They do not print keys or
+tokens.
 
 ## The belt's hands from a shell — codeaf patch, codeaf doc, codeaf web fetch, codeaf web search, codeaf image
 
@@ -817,7 +842,14 @@ safe in a shell prompt, a CI step or a bug report.
 model catalog, but spends nothing of yours.
 
 **These spend**, because all of them call a model: `chat`, `do`, `exec`, `run`,
-`plan new`, `plan revise`, `plan run` and `wake`. Without a key each fails at the door with the same two lines:
+`plan new`, `plan revise`, `plan run` and `wake`. The door opens when the default
+service has a key or any connected service holds its credential — a Codex sign-in, an
+Ollama connection, a vendor key. So with no OpenRouter key a headless command still
+starts once another service is connected; point it at that service's model with
+`--model` or the profile's `model.talk`, because a call to a service that has no
+credential still fails when it is made, with `no API key: this session has not been
+given one yet`. With no credential anywhere, each fails at the door with the same two
+lines:
 
 ```
 codeaf needs a model to work with.
@@ -832,8 +864,10 @@ Each directly connected service may instead name its own environment variable, w
 stored with that service. `codeaf doctor`'s first row still reports only which default-service key answered — `key set · OPENROUTER_API_KEY`, or
 `key set · /home/you/.codeaf/config.json`, or `key none ·` and the two lines above.
 
-**These change state without spending**: `cache clean`, `rebuild`, `notebook
-retract|restore`, `services stop` and `devices revoke`. The two that destroy something ask
+**These change state without model spending**: `connect`, `disconnect`, `cache clean`,
+`rebuild`, `notebook retract|restore`, `services stop` and `devices revoke`. A browser
+connection may make authentication and model-list network requests, but sends no prompt.
+The two that destroy something ask
 first — `cache clean` wants the word `now` typed out, the same word `/cache clean now`
 wants in the chat, and `rebuild` wants `y` — and `--yes` skips the question on both. The other three act at once, and all three can be undone: a
 retracted belief restores, a stopped service starts again, a revoked device pairs again.

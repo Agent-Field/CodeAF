@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // The session file is JSONL: one header line, then one line per COMPLETED
@@ -3140,6 +3141,15 @@ func (s *sessionFile) writeLine(entry any) bool {
 	if err != nil {
 		return false
 	}
+	// THE JOURNAL IS AN OBSERVABLE SINK, AND IT IS ALSO THE CONVERSATION'S OWN
+	// MEMORY. The complete encoded entry is scrubbed here, after streamed text
+	// and tool arguments have been assembled, so a credential this process holds
+	// cannot be recreated in the file from pieces that crossed the wire apart.
+	// Only the REGISTERED credentials go: a key a person pasted into their own
+	// message is theirs to keep, and a resumed conversation must replay it to
+	// the model exactly as they wrote it. The broader shape scrub belongs to the
+	// records people share — the call log and the debug record — not here.
+	payload = trace.ScrubRegistered(payload)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
