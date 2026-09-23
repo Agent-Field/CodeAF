@@ -2684,6 +2684,16 @@ func (f *taskFake) TaskUpdates() <-chan session.Event { return f.updates }
 func (f *taskFake) PendingTasks() []uint64            { return f.pending }
 func (f *taskFake) WorkingNow() []session.WorkNode    { return f.work }
 
+// harnessWaiterQueue widens the base fake's registration with the standing
+// task lane. Tests fill this bounded queue on their own goroutine and there is
+// no writer behind it, so its current contents are a fact rather than a wait.
+func (f *taskFake) harnessWaiterQueue(family string, lanes []<-chan session.Event) (harnessQueueState, bool) {
+	if family == "waitTask" && len(lanes) == 1 {
+		return synchronousEventQueues(lanes), true
+	}
+	return f.fakeAgent.harnessWaiterQueue(family, lanes)
+}
+
 // taskApp is a surface with a tasker under it and a pinned clock over it: a
 // countdown cannot be tested by waiting four seconds.
 func taskApp(t *testing.T) (*app, *taskFake, func(time.Duration)) {
@@ -4178,6 +4188,20 @@ func (f *roomFake) WatchTask(id uint64) (<-chan session.Event, error) {
 			return out, nil
 		}
 	}
+}
+
+// harnessWaiterQueue widens the task fake's registration with its room and
+// pilot families. Every room door on this fake and its widenings fills the
+// returned fan-out channel before returning and starts no pump behind it, so
+// the current candidates are synchronous owner facts too.
+func (f *roomFake) harnessWaiterQueue(family string, lanes []<-chan session.Event) (harnessQueueState, bool) {
+	if family == "waitRoom" || family == "waitPilot" {
+		if len(lanes) == 0 {
+			return harnessQueueUnknown, false
+		}
+		return synchronousEventQueues(lanes), true
+	}
+	return f.taskFake.harnessWaiterQueue(family, lanes)
 }
 
 func (f *roomFake) SteerTask(id uint64, text string) (session.SteerReceipt, error) {
