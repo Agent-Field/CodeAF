@@ -159,7 +159,8 @@ func TestCtrlOCountsTheBriefAtThePagesOwnWidth(t *testing.T) {
 		t.Fatal("the rail row did not open its page")
 	}
 	desc := strings.TrimSpace(strings.Repeat("word ", 110))
-	drawn, narrow := planBriefRows(desc, a.taskPlanBodyWidth()), planBriefRows(desc, a.bodyWidth())
+	// THE PAGE DRAWS ITS BODY ONE CELL IN FROM EACH EDGE OF THE WHOLE FRAME.
+	drawn, narrow := planBriefRows(desc, a.width-2), planBriefRows(desc, a.bodyWidth())
 	if len(drawn) > briefFoldLines || len(narrow) <= briefFoldLines {
 		t.Fatalf("fixture: the brief wraps to %d rows on the page and %d at the body width; want at most %d and more than %d",
 			len(drawn), len(narrow), briefFoldLines, briefFoldLines)
