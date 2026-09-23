@@ -183,6 +183,10 @@ const (
 	tabHome
 	tabScrollLeft
 	tabScrollRight
+	// tabSpace is the chip at the row's left end naming the space the strip is
+	// narrowed to; a press opens the wall, where spaces are changed. It is kept
+	// out of the tabs' list for the toggle's reason, in [wallState.chip].
+	tabSpace
 )
 
 // tabHit is where one piece was drawn and what pressing it does. It is the
@@ -202,7 +206,7 @@ func (h tabHit) door(a *app) bool {
 	switch h.kind {
 	case tabHere:
 		return a.roomOpen() || a.startingChat()
-	case tabOther, tabClose, tabNew, tabHome, tabScrollLeft, tabScrollRight:
+	case tabOther, tabClose, tabNew, tabHome, tabScrollLeft, tabScrollRight, tabSpace:
 		return true
 	}
 	return false
@@ -237,6 +241,10 @@ func (h tabHit) lights() bool { return h.kind != tabFold }
 type tabBar struct {
 	width int
 	ink   uint64
+	// space is the chip's words, "" with no space shown, and chip where it
+	// was drawn.
+	space string
+	chip  hudSpan
 	// hot is the column of the piece the pointer was on, or -1.
 	hot     int
 	more    bool
@@ -522,6 +530,7 @@ func (a *app) roomFactsRow() int {
 // head's middle row, under the pulse, wherever it is drawn at all (head.go).
 func (a *app) tabsRow(width int) string {
 	a.chatTabHits = nil
+	a.wall.chip = hudSpan{}
 	if a.tabsHeight(width) == 0 {
 		return ""
 	}
@@ -530,6 +539,11 @@ func (a *app) tabsRow(width int) string {
 	// this one can still see and a later one may not (a shared handle ends the
 	// conversation it swaps away from, and its title goes with it).
 	a.chatTabs = tabs
+	// A SPACE NARROWS WHAT THE ROW DRAWS AND NEVER WHAT IT REMEMBERS: the list
+	// above is stored whole, and only the copy drawn is cut to the space.
+	if _, ok := a.spaceActive(); ok {
+		tabs = a.spaceStripTabs(append([]chatTab(nil), tabs...))
+	}
 	if a.startingChat() {
 		for i := range tabs {
 			tabs[i].here = false
@@ -544,11 +558,19 @@ func (a *app) tabsRow(width int) string {
 	}
 	more := a.hopAvailable()
 	home := a.homeDoorOpen() && width-headLabelAt >= len(" Home ")+2+tabWordFloor+tabCloseCells+tabInsetCells
-	if memo := a.chatTabBar; memo.home == home && memo.newChat == a.canStart() && memo.same(width, a.inkState, hot, more, tabs) {
+	chipWord := a.tabSpaceWord()
+	if memo := a.chatTabBar; memo.home == home && memo.newChat == a.canStart() && memo.space == chipWord && memo.same(width, a.inkState, hot, more, tabs) {
 		a.chatTabHits = memo.hits
+		a.wall.chip = memo.chip
 		return memo.line
 	}
 	room := max(width-headLabelAt, 0)
+	// The space chip's cells are taken first, so a tab is never drawn under it.
+	chipW := 0
+	if chipWord != "" && room >= 2*ansi.StringWidth(chipWord)+tabWordFloor+tabCloseCells+tabInsetCells+8 {
+		chipW = ansi.StringWidth(chipWord) + 1
+		room -= chipW
+	}
 	homeWidth := 0
 	if home {
 		homeWidth = len(" Home ") + 2
@@ -563,11 +585,55 @@ func (a *app) tabsRow(width int) string {
 		// An empty strip still occupies the header row charged to the layout.
 		return strings.Repeat(" ", max(width, 0))
 	}
-	a.chatTabHits = tabsAt(hits, headLabelAt)
-	line := strings.Repeat(" ", headLabelAt) + a.tabsPaint(pieces)
+	a.chatTabHits = tabsAt(hits, headLabelAt+chipW)
+	line := strings.Repeat(" ", headLabelAt)
+	if chipW > 0 {
+		line += a.tabSpacePaint(chipWord, headLabelAt) + " "
+	}
+	line += a.tabsPaint(pieces)
 	a.chatTabBar = tabBar{width: width, ink: a.inkState, hot: hot, more: more, newChat: a.canStart(), home: home, line: line, hits: a.chatTabHits,
-		tabs: append([]chatTab(nil), tabs...)}
+		tabs: append([]chatTab(nil), tabs...), space: chipWord, chip: a.wall.chip}
 	return line
+}
+
+// tabSpaceWord is the space chip's words, ` ● harbor ▾ `, or "" when no space
+// narrows the strip. The dot is the space's colour where there is one, and its
+// initial where there is not.
+func (a *app) tabSpaceWord() string {
+	sp, ok := a.spaceActive()
+	if !ok {
+		return ""
+	}
+	name := sp.Name
+	if ansi.StringWidth(name) > spaceNameCells {
+		name = ansi.Truncate(name, spaceNameCells, "…")
+	}
+	caret := a.linearMark("▾", "v")
+	if a.pal.ascii {
+		caret = "v"
+	}
+	return " " + a.tabSpaceDot(sp) + " " + name + " " + caret + " "
+}
+
+func (a *app) tabSpaceDot(sp space) string {
+	if ink := a.pal.spaceInk(sp.hueSpec()); ink != nil && !a.linear {
+		return ink("●")
+	}
+	if r := []rune(sp.Name); len(r) > 0 && ansi.StringWidth(string(r[0])) == 1 {
+		return a.pal.dim(strings.ToLower(string(r[0])))
+	}
+	return a.pal.dim("?")
+}
+
+// tabSpacePaint draws the chip at column at, on the cursor ground under the
+// pointer, and records where it landed.
+func (a *app) tabSpacePaint(word string, at int) string {
+	w := ansi.StringWidth(word)
+	a.wall.chip = hudSpan{from: at, to: at + w}
+	if a.hot.kind == hoverTab && a.hot.index == at {
+		return a.pal.cursor(a.pal.ink(word), 0)
+	}
+	return a.pal.selected(a.pal.muted(word), 0)
 }
 
 // tabPiece is one drawn segment of the strip: the word, and what it is.
@@ -775,7 +841,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 	hot, lit := a.hotTab()
 	line := ""
 	for _, piece := range pieces {
-		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight
+		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabSpace
 		switch {
 		case piece.quiet:
 			line += a.pal.dim(piece.word)
@@ -884,6 +950,9 @@ func (a *app) hotTab() (tabHit, bool) {
 	if a.hot.kind != hoverTab {
 		return tabHit{}, false
 	}
+	if a.wall.chip.pressable() && a.hot.index == a.wall.chip.from {
+		return tabHit{span: a.wall.chip, kind: tabSpace}, true
+	}
 	for _, hit := range a.chatTabHits {
 		if hit.span.from == a.hot.index && hit.lights() {
 			return hit, true
@@ -922,6 +991,9 @@ func (a *app) tabAt(x, y int) (tabHit, bool) {
 		if hit.span.holds(x) {
 			return hit, true
 		}
+	}
+	if a.wall.chip.pressable() && a.wall.chip.holds(x) {
+		return tabHit{span: a.wall.chip, kind: tabSpace}, true
 	}
 	return tabHit{}, false
 }
@@ -969,6 +1041,11 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 		return a.openHome(), true
 	case tabNew:
 		return a.openChatStart(), true
+	case tabSpace:
+		if a.wall.on {
+			return nil, true
+		}
+		return a.openWall(), true
 	case tabClose:
 		return a.tabDismiss(hit.tab), true
 	case tabHere:

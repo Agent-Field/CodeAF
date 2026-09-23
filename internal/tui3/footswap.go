@@ -221,8 +221,15 @@ func (a *app) seamTelemetryLabel(ledger, alive []hudPart) (string, string) {
 // in the payload grammar every hint on this surface is painted in. On a frame
 // with no seam the right edge's aliveness rides the same row's right, and the
 // keys give up their clauses before the state word gives up anything.
+//
+// THE DOCK IS LAID OUT LAST, in what the keys and the aliveness left
+// (walldock.go): it narrows to fewer cells, then goes, before either of them
+// loses a clause. While the pointer rests on it, the keys' own cells say what
+// is under the pointer instead, and the dock does not move, because it was
+// fitted against the keys and not against the words standing in for them.
 func (a *app) hintRow(width int) string {
 	a.homeDoor = hudSpan{}
+	a.dockClear()
 	hint := a.footHint(width)
 	right, rightPlain := "", ""
 	if !a.seamShowing() {
@@ -240,7 +247,18 @@ func (a *app) hintRow(width int) string {
 	} else {
 		hint = ""
 	}
-	if offset := strings.Index(hint, a.escapeDoorWord()); offset >= 0 {
+	// The dock finishes one cell short of the frame's edge, the keys' inset
+	// mirrored, or the aliveness's gap short of the aliveness.
+	end := width - 1
+	if rightPlain != "" {
+		end = width - ansi.StringWidth(rightPlain) - hudGap
+	}
+	dock, dockW := a.dockRow(width, end, ansi.StringWidth(hint))
+	paint := func(s string) string { return paintHint(s, a.pal, a.pal.dim) }
+	if words := a.dockHoverWords(); words != "" {
+		hint = fit(words, max(0, end-1-dockW-hudGap))
+		paint = a.pal.ink
+	} else if offset := strings.Index(hint, a.escapeDoorWord()); offset >= 0 {
 		from := 1 + ansi.StringWidth(hint[:offset])
 		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(a.escapeDoorWord())}
 	}
@@ -248,11 +266,15 @@ func (a *app) hintRow(width int) string {
 	// frame would leave the cells behind it to whatever the last frame drew.
 	line := ""
 	if hint != "" {
-		line = " " + paintHint(hint, a.pal, a.pal.dim)
+		line = " " + paint(hint)
 	}
 	used := ansi.StringWidth(hint)
 	if used > 0 {
 		used++
+	}
+	if dockW > 0 {
+		line += strings.Repeat(" ", max(0, end-dockW-used)) + dock
+		used = end
 	}
 	if rightPlain == "" {
 		return line + strings.Repeat(" ", max(0, width-used))

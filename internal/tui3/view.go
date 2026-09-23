@@ -286,6 +286,9 @@ func (a *app) frameBody() (string, int, int) {
 		lines, caretX, caretY := a.taskPlanFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
+	if a.wall.on {
+		return strings.Join(a.wallFrame(width, height), "\n"), 0, 0
+	}
 	if a.workTabOn {
 		lines := a.workTabFrame(width, height)
 		return strings.Join(lines, "\n"), 2, max(len(lines)-1, 0)

@@ -359,6 +359,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return cmd
 	}
+	if a.wall.on && !door {
+		return a.wallKey(msg)
+	}
+	if !door && wallOpenPressed(msg) {
+		return a.openWall()
+	}
 	if a.workTabOn {
 		return a.workTabKey(msg)
 	}
