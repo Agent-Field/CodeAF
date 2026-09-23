@@ -166,12 +166,12 @@ the `Stop this task?` card before anything ends, and `p pause` is not offered, b
 cannot be paused as a whole. On a task that has ended neither key is offered and neither acts:
 both are letters in the note.
 
-## Typing before a run task's page opens — where do the keys go
+## Typing while a task page is still loading — the letters land in its note box
 
-A run task's page can take a moment to arrive, most of all over `--host`. Everything you type
-between pressing its row and the page appearing is kept for the page and **typed into its note
-box, and nowhere else**: none of it reaches the conversation's box, and none of it is taken as
-one of the page's keys. So a note that happens to begin with `x` or `p` never stops or holds the
+A plan task's page can take a moment to arrive, most of all over `--host`. Everything you type
+between the press that asks for it and the page appearing is kept for the page and **typed into
+its note box, and nowhere else**: none of it reaches the conversation's box, and none of it is
+taken as one of the page's keys. So a note that happens to begin with `x` or `p` never stops or holds the
 task, and an `enter` pressed in that gap does not send anything — the words wait in the box,
 unsent, until you have seen the page they are going to and press `enter` there. `esc` in the gap
 withdraws the press and drops what was typed.

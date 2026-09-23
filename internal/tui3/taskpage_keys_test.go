@@ -220,6 +220,7 @@ func TestANoteReplyNeverOverwritesAnotherPage(t *testing.T) {
 	_, sent := a.Update(key("enter"))
 	// THE PERSON MOVES ON BEFORE THE STORE ANSWERS.
 	a.taskSheet.plan = fake.pages["t-beta"]
+	a.taskSheet.planNote.reset()
 	a.taskSheet.planNote.insert("for beta")
 	drain(t, a, sent)
 	if got := a.taskSheet.plan.Row.ID; got != rows[1].ID {
