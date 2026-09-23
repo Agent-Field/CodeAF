@@ -1343,6 +1343,12 @@ type app struct {
 	// THE KEY IS THE CANONICAL TRANSCRIPT PATH ([convKey]), because that is what
 	// home names a row by and what the flock is taken on.
 	behind map[string]*kept
+	// frontWaits is the engine's answer to whether the conversation in front is
+	// stopped on a person ([session.Agent.NeedsPerson]), asked once per message
+	// on the loop and read by every frame ([app.frontSignal]). It is the front
+	// tab's copy of the fact [behindWatch.waits] holds for every other tab, so
+	// the two sides of the strip read ONE predicate (tabsignal.go).
+	frontWaits bool
 	// homeGen is home's own clock generation. It belongs to the SURFACE rather
 	// than to any conversation, because there is one home — and it is bumped by
 	// every close, so a tick armed by a home that has since been closed cannot
@@ -3268,6 +3274,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ruler.noteModeReport(mode)
 	}
 	model, cmd := a.update(msg)
+	// THE ENGINE'S ONE QUESTION ABOUT A PERSON IS ASKED HERE, once per message,
+	// and never by a frame. It is what every held tab's watcher asks after every
+	// event its conversation produces (keeper.go), asked of the conversation in
+	// front at the same beat, so a `?` cannot stand on a tab beside this one and
+	// go away when that conversation comes forward (tabsignal.go). It is read
+	// BEFORE the title below, which is drawn from it.
+	a.frontWaits = needsPerson(a.agent)
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
 	// before the next frame draws (learned.go). `open` and `tick` may read the
 	// disk and `body` may not, so a frame that met a picture nobody had stat'd

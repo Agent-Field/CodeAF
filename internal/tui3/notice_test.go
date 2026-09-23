@@ -722,3 +722,18 @@ func TestUnreadProfileKeysNoticeTracksTheSet(t *testing.T) {
 		t.Fatal("previous unread set showed again")
 	}
 }
+
+// THE UNREAD-KEYS LINE IS NOT A TIP, so turning tips off does not silence it: it
+// says something the person wrote is being ignored, and they need to hear it once
+// whatever the hints row says.
+func TestUnreadProfileKeysNoticeShowsWithHintsOff(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.notices = newNoticeBoard(filepath.Join(t.TempDir(), noticeLedgerName), "", false)
+	a.showUnreadProfileKeys([]string{"models"})
+	for _, entry := range a.entries {
+		if entry.kind == entryNote && strings.Contains(entry.text, "config.json keys are not read: models") {
+			return
+		}
+	}
+	t.Fatal("with hints off, the unread config key was never named")
+}

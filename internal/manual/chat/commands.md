@@ -1643,6 +1643,24 @@ Refusals inside the panel, exactly as written:
 - A search that matches nothing says `nothing matches`. The `Connections` tab has its own
   sentences.
 
+## config.json keys are not read — why codeaf says a setting I wrote is ignored
+
+codeaf reads the top-level keys of your profile's `config.json` that a settings row or
+the model-service setup owns. A key nothing reads — a hand-written `models` object, a
+spelling from another tool — does nothing, and the defaults apply in its place. (A key
+codeaf itself retired is passed over quietly rather than named.) So the conversation says so once, as a note:
+
+```
+config.json keys are not read: models, tiers; anything set under them is ignored and defaults apply.
+```
+
+It names every unread key, sorted. It is said **once per profile for that set of keys**:
+the next launch with the same keys says nothing, and a set that changes — a key added
+or taken away — is said again. It is not a tip, so turning tips off in the Display
+tab's `hints` row does not hide it, and a conversation over `--host` says it about the
+profile on the machine running the work. Nothing is rewritten: to act on it, move the
+value to the key a settings row names (`settings` lists every one), or delete the key.
+
 ## The nine settings tabs
 
 The tabs, in order:

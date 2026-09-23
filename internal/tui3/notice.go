@@ -615,8 +615,14 @@ func buildStamp() string {
 // showUnreadProfileKeys uses the notice ledger for a profile-scoped, set-scoped
 // conversation note. The keys are the config loader's result; this layer only
 // identifies and renders that result.
+//
+// IT IS NOT A TIP, SO THE HINTS ROW DOES NOT SILENCE IT. The Display tab's
+// `hints` switch is for the one-line lessons in the border; this is a fact about
+// the person's own settings file — something they wrote is being ignored and a
+// default is in force instead — and a person who turned tips off still needs to
+// hear it once. The ledger is borrowed only for its once-per-set memory.
 func (a *app) showUnreadProfileKeys(keys []string) {
-	if len(keys) == 0 || !a.notices.enabled {
+	if len(keys) == 0 {
 		return
 	}
 	encoded, err := json.Marshal(keys)
