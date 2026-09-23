@@ -164,6 +164,26 @@ func Discover(opts Options) ([]Skill, error) {
 
 	result := make([]Skill, 0)
 	owner := make(map[string]int)
+	// take reads one skill folder into the result, settling its name against
+	// every skill collected before it.
+	take := func(dir, root, scope, plugin string) {
+		skill, state := readSkill(dir, root, scope)
+		skill.Plugin = plugin
+		switch state {
+		case stateNotASkill:
+		case stateSkipped:
+			result = append(result, skill)
+		case stateLoaded:
+			if _, seen := owner[skill.Name]; seen {
+				skill.Shadowed = true
+				result = append(result, skill)
+				return
+			}
+			owner[skill.Name] = len(result)
+			result = append(result, skill)
+		}
+	}
+	// collect reads every skill folder directly inside one folder.
 	collect := func(folder, root, scope, plugin string) {
 		entries, err := os.ReadDir(folder)
 		if err != nil {
@@ -171,25 +191,8 @@ func Discover(opts Options) ([]Skill, error) {
 			return
 		}
 		for _, entry := range entries {
-			if !isDirectory(folder, entry) {
-				continue
-			}
-			dir := filepath.Join(folder, entry.Name())
-			skill, state := readSkill(dir, root, scope)
-			skill.Plugin = plugin
-			switch state {
-			case stateNotASkill:
-				continue
-			case stateSkipped:
-				result = append(result, skill)
-			case stateLoaded:
-				if _, seen := owner[skill.Name]; seen {
-					skill.Shadowed = true
-					result = append(result, skill)
-					continue
-				}
-				owner[skill.Name] = len(result)
-				result = append(result, skill)
+			if isDirectory(folder, entry) {
+				take(filepath.Join(folder, entry.Name()), root, scope, plugin)
 			}
 		}
 	}
@@ -213,6 +216,12 @@ func Discover(opts Options) ([]Skill, error) {
 		}
 		for _, plugin := range plugins {
 			for _, folder := range plugin.skillFolders {
+				// A folder a plugin names may be one skill rather than a
+				// folder of them, and then it is read as the one skill.
+				if info, err := os.Stat(filepath.Join(folder, "SKILL.md")); err == nil && info.Mode().IsRegular() {
+					take(folder, RootClaudePlugins, scope, plugin.id)
+					continue
+				}
 				collect(folder, RootClaudePlugins, scope, plugin.id)
 			}
 		}

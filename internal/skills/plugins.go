@@ -17,7 +17,8 @@ const RootClaudePlugins = ".claude/plugins"
 // MOST OF THE CLAUDE CODE SKILLS A PERSON HAS ARRIVE INSIDE A PLUGIN, and a
 // plugin's skills never sit in ~/.claude/skills: Claude Code unpacks each
 // installed plugin into a versioned folder of its own and reads the skills out
-// of that folder's skills/ directory. So this file reads them the way Claude
+// of that folder's skills/ directory, or out of the folders the plugin names.
+// So this file reads them the way Claude
 // Code itself decides which ones are live, and in no other way.
 //
 // A PLUGIN SKILL IS LIVE ONLY WHEN ITS PLUGIN IS BOTH INSTALLED AND ENABLED.
@@ -59,7 +60,9 @@ var (
 		filepath.Join(".claude", "settings.json"),
 		filepath.Join(".claude", "settings.local.json"),
 	}
-	pluginManifestFile = filepath.Join(".claude-plugin", "plugin.json")
+	pluginManifestFile     = filepath.Join(".claude-plugin", "plugin.json")
+	marketplaceCatalogFile = filepath.Join(".claude-plugin", "marketplace.json")
+	knownMarketplacesFile  = filepath.Join(".claude", "plugins", "known_marketplaces.json")
 )
 
 // claudePlugin is one installed and enabled plugin: its registry key and the
@@ -113,10 +116,10 @@ func claudePlugins(homeDir, projectDir string) (user, project []claudePlugin) {
 			}
 			switch strings.TrimSpace(install.Scope) {
 			case "", "user":
-				userFolders = appendNew(userFolders, pluginSkillFolders(root)...)
+				userFolders = appendNew(userFolders, pluginSkillFolders(homeDir, id, root)...)
 			case "project", "local":
 				if projectDir != "" && samePlace(install.ProjectPath, projectDir) {
-					projectFolders = appendNew(projectFolders, pluginSkillFolders(root)...)
+					projectFolders = appendNew(projectFolders, pluginSkillFolders(homeDir, id, root)...)
 				}
 			}
 		}
@@ -175,31 +178,30 @@ func enabledPlugins(homeDir, projectDir string) map[string]bool {
 	return merged
 }
 
-// pluginSkillFolders is where one installed plugin keeps its skills: its own
-// skills/ folder, and after it any folder the plugin's manifest adds under
-// `skills` — a path or a list of paths, relative to the plugin, which Claude
-// Code reads beside the default rather than instead of it. A manifest path
-// that climbs out of the plugin is ignored: the registry vouches for the
+// pluginSkillFolders is where one installed plugin keeps its skills.
+//
+// A PLUGIN THAT NAMES ITS SKILLS IS READ FOR THOSE AND NO OTHERS. The names can
+// come from two places: the `skills` field of the plugin's own manifest, and
+// the `skills` field of the plugin's entry in its marketplace's catalog, which
+// is how one repository is split into several plugins that each load a part of
+// it. Either spells a path or a list of paths relative to the plugin, and each
+// path is a skill folder itself or a folder of skill folders. When either names
+// anything, the default skills/ folder is not read unless it is named too:
+// Claude Code's own inventory of such a plugin lists only the named folders,
+// and reading the rest would offer skills the person installed a different
+// plugin for, or none. A plugin that names nothing is read from skills/.
+//
+// A path that climbs out of the plugin is ignored: the registry vouches for the
 // plugin's folder and for nothing outside it.
-func pluginSkillFolders(root string) []string {
-	folders := []string{filepath.Join(root, "skills")}
-	data, err := os.ReadFile(filepath.Join(root, pluginManifestFile))
-	if err != nil {
-		return folders
+func pluginSkillFolders(homeDir, id, root string) []string {
+	paths := declaredSkillPaths(filepath.Join(root, pluginManifestFile), "")
+	if name, market, ok := strings.Cut(id, "@"); ok && name != "" && market != "" {
+		paths = append(paths, marketplaceSkillPaths(homeDir, market, name, root)...)
 	}
-	var manifest struct {
-		Skills json.RawMessage `json:"skills"`
+	if len(paths) == 0 {
+		return []string{filepath.Join(root, "skills")}
 	}
-	if json.Unmarshal(data, &manifest) != nil || len(manifest.Skills) == 0 {
-		return folders
-	}
-	var paths []string
-	var one string
-	if json.Unmarshal(manifest.Skills, &one) == nil {
-		paths = []string{one}
-	} else if json.Unmarshal(manifest.Skills, &paths) != nil {
-		return folders
-	}
+	var folders []string
 	for _, path := range paths {
 		path = strings.TrimSpace(path)
 		if path == "" || filepath.IsAbs(path) {
@@ -213,6 +215,86 @@ func pluginSkillFolders(root string) []string {
 		folders = appendNew(folders, folder)
 	}
 	return folders
+}
+
+// declaredSkillPaths reads the `skills` field of one JSON manifest: of the
+// document itself when entry is empty, or of the plugin called entry in the
+// document's `plugins` list, which is a marketplace catalog's shape. A file
+// that is absent or does not parse names nothing.
+func declaredSkillPaths(file, entry string) []string {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil
+	}
+	var field json.RawMessage
+	if entry == "" {
+		var manifest struct {
+			Skills json.RawMessage `json:"skills"`
+		}
+		if json.Unmarshal(data, &manifest) != nil {
+			return nil
+		}
+		field = manifest.Skills
+	} else {
+		var catalog struct {
+			Plugins []struct {
+				Name   string          `json:"name"`
+				Skills json.RawMessage `json:"skills"`
+			} `json:"plugins"`
+		}
+		if json.Unmarshal(data, &catalog) != nil {
+			return nil
+		}
+		for _, plugin := range catalog.Plugins {
+			if plugin.Name == entry {
+				field = plugin.Skills
+				break
+			}
+		}
+	}
+	if len(field) == 0 {
+		return nil
+	}
+	var one string
+	if json.Unmarshal(field, &one) == nil {
+		return []string{one}
+	}
+	var many []string
+	if json.Unmarshal(field, &many) == nil {
+		return many
+	}
+	return nil
+}
+
+// marketplaceSkillPaths answers what a marketplace's catalog says one of its
+// plugins' skills are. The catalog is looked for where Claude Code keeps it:
+// the location its marketplace record names, then the conventional folder
+// under the plugins directory, then the copy a plugin whose source is its
+// whole marketplace carries inside its own install. The first catalog found is
+// the one read.
+func marketplaceSkillPaths(homeDir, market, plugin, installPath string) []string {
+	var places []string
+	if data, err := os.ReadFile(filepath.Join(absolute(homeDir), knownMarketplacesFile)); err == nil {
+		var known map[string]struct {
+			InstallLocation string `json:"installLocation"`
+		}
+		if json.Unmarshal(data, &known) == nil {
+			if location := strings.TrimSpace(known[market].InstallLocation); filepath.IsAbs(location) {
+				places = append(places, location)
+			}
+		}
+	}
+	places = append(places,
+		filepath.Join(absolute(homeDir), ".claude", "plugins", "marketplaces", market),
+		installPath)
+	for _, place := range places {
+		file := filepath.Join(place, marketplaceCatalogFile)
+		if _, err := os.Stat(file); err != nil {
+			continue
+		}
+		return declaredSkillPaths(file, plugin)
+	}
+	return nil
 }
 
 // appendNew appends the paths not already held, so a manifest that names the

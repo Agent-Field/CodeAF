@@ -8,11 +8,13 @@ frontmatter has a `name` and a `description` — is read where it lives. Nothing
 is copied or reinstalled. Each launch reads the folders again before the first
 message, so a skill you add or edit shows up the next time you open codeaf.
 
-Once found, a skill is used two ways. Automatically: a message whose words
-match a skill's description carries that skill with it, and a dim
-`skills carried:` line under the message names it. By hand: `/skill` puts one
-in front of the conversation until you take it off. `use_skill` lists and
-reads them all.
+Once found, a skill is used two ways. Automatically: the model is shown every
+skill's name and what it is for, and when a request fits one it opens it with
+`use_skill` and follows it, even when your words share none with the skill's
+description. A message whose words do match a skill's description also carries
+that skill with it, and a dim `skills carried:` line under the message names
+it. By hand: `/skill` puts one in front of the conversation until you take it
+off.
 
 ## Which folders are read
 
@@ -37,6 +39,12 @@ plugin is listed in `~/.claude/plugins/installed_plugins.json`, and the
 `~/.claude/settings.json`, then the project's `.claude/settings.json`, then
 its `.claude/settings.local.json`, each overriding the one before. A plugin
 installed for one project is read only in that project.
+
+A plugin reads the skills its own manifest or its marketplace's catalog names
+for it, and only those; one that names none is read from its `skills` folder.
+So installing one plugin out of a repository that holds several gives you that
+plugin's skills, not the whole repository's — the same set Claude Code lists
+for it.
 
 So a plugin that is switched off, one you only browsed in a marketplace, and an
 older cached version of a plugin you updated are all left alone, on purpose.

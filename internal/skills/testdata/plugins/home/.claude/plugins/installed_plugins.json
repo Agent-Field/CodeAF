@@ -8,6 +8,13 @@
         "version": "1.0.0"
       }
     ],
+    "suite@split": [
+      {
+        "scope": "user",
+        "installPath": "@FIXTURE@/home/.claude/plugins/cache/split/suite/abc123",
+        "version": "abc123"
+      }
+    ],
     "dormant@market": [
       {
         "scope": "user",

@@ -95,19 +95,41 @@ func TestDiscoverIgnoresPluginsClaudeCodeWouldNotLoad(t *testing.T) {
 	if len(byName(found, "tidy-commits")) != 1 {
 		t.Fatalf("the live plugin's skill is missing, so the exclusions below prove nothing: %+v", found)
 	}
-	for _, name := range []string{"dormant-helper", "stale-version", "never-installed", "escaped", "project-helper"} {
+	for _, name := range []string{"dormant-helper", "stale-version", "never-installed", "escaped", "project-helper", "other-half"} {
 		if hits := byName(found, name); len(hits) > 0 {
 			t.Errorf("%s was discovered but its plugin is not live here: %+v", name, hits)
 		}
 	}
 }
 
-// A manifest's own `skills` path is read beside the default skills/ folder.
+// A manifest's own `skills` paths are the folders read; this one names the
+// default skills/ folder among them, which is why tidy-commits is still found.
 func TestDiscoverPluginManifestSkillFolder(t *testing.T) {
 	root := pluginFixture(t)
 	found := discover(t, filepath.Join(root, "elsewhere"), filepath.Join(root, "home"))
 	if _, ok := byDir(found, filepath.Join("tidy", "1.0.0", "extra", "extra-notes")); !ok {
 		t.Fatalf("the manifest's extra skill folder was not read: %+v", found)
+	}
+}
+
+// One repository split into several plugins by its marketplace's catalog: the
+// installed plugin carries the whole repository, and only the skill folders
+// its catalog entry names are its skills. The catalog is read where the
+// marketplace record says the marketplace lives.
+func TestDiscoverPluginSkillsTheMarketplaceEntryNames(t *testing.T) {
+	root := pluginFixture(t)
+	found := discover(t, filepath.Join(root, "elsewhere"), filepath.Join(root, "home"))
+	for _, name := range []string{"ledger-close", "sheet-merge"} {
+		hits := byName(found, name)
+		if len(hits) != 1 {
+			t.Fatalf("%s, which the catalog names for the installed plugin, was found %d times: %+v", name, len(hits), found)
+		}
+		if hits[0].Plugin != "suite@split" || hits[0].Shadowed {
+			t.Errorf("%s Plugin = %q, Shadowed = %v, want an unshadowed skill of suite@split", name, hits[0].Plugin, hits[0].Shadowed)
+		}
+	}
+	if hits := byName(found, "other-half"); len(hits) > 0 {
+		t.Errorf("other-half belongs to a plugin nobody installed, but was discovered: %+v", hits)
 	}
 }
 
