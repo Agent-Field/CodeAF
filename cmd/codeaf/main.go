@@ -26,6 +26,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -321,6 +322,10 @@ func run() error {
 			os.Args[2:], func(args []string) error { return runShow("plan show", args) })
 	case "models":
 		return runModels(os.Args[2:])
+	case "connect":
+		return runConnect(os.Args[2:])
+	case "disconnect":
+		return runDisconnect(os.Args[2:])
 	case "pool":
 		return runPool(os.Args[2:])
 	case "notebook":
@@ -508,6 +513,13 @@ Look at what happened — read-only, no key, nothing spent
   codeaf version
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
+  codeaf connect
+      list the model services this profile knows and which are connected
+  codeaf connect <service> [--no-browser] [--region intl|cn]
+      connect one: openrouter and codex sign in in your browser; the others
+      take a key on stdin, or ask for one without echo
+  codeaf disconnect <service>
+      forget a service and the key or sign-in behind it
   codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
       check or install a release; this build's own channel is the default
   codeaf cache
@@ -589,6 +601,10 @@ than fighting your shell.
                        kept in your profile. Any one of them is enough, so a
                        machine set up in the chat needs no variable at all;
                        ` + "`codeaf doctor`" + ` names the one that answered.
+  CODEAF_CODEX_ISSUER  ` + codexauth.DefaultIssuer + ` by default; the sign-in issuer
+                       used by ` + "`codeaf connect codex`" + `.
+  CODEAF_CODEX_BACKEND the backend used to list models and run codex turns.
+                       Default: ` + codexauth.DefaultBackend + `
   CODEAF_MODEL         default ` + config.DefaultModel + `
   CODEAF_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
                        replans, working methods and the delivery gate on a

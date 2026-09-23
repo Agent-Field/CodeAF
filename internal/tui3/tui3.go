@@ -48,6 +48,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/leave"
@@ -399,6 +400,15 @@ type TaskOwnerView struct {
 type OpenRouterFlow interface {
 	URL() string
 	Wait(context.Context) (string, error)
+	Cancel()
+}
+
+// CodexFlow is one browser sign-in that returns the ChatGPT-plan credentials
+// config keeps outside the surface. The loopback listener and token file both
+// belong to the door; the surface only shows, waits and cancels the attempt.
+type CodexFlow interface {
+	URL() string
+	Wait(context.Context) (codexauth.Tokens, error)
 	Cancel()
 }
 
@@ -1047,6 +1057,11 @@ type Options struct {
 	// honest path for a custom endpoint, a hosted surface, and a test with no
 	// browser behind it.
 	ConnectOpenRouter func(context.Context) (OpenRouterFlow, error)
+
+	// ConnectCodex starts the Codex CLI-compatible browser sign-in used by the
+	// Codex model-service row. Nil leaves that browser row without a local road,
+	// as on a hosted surface; the whole /connect panel already explains why.
+	ConnectCodex func(context.Context) (CodexFlow, error)
 
 	// Linear is the SCREEN-READER TIER: one column, no animation, no hover,
 	// ASCII markers instead of the pastel glyph set. Everything the surface says

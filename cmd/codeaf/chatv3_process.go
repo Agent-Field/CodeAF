@@ -181,6 +181,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	// answer without it.
 	discovery := catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+		HTTPClient: config.CatalogHTTPClient(settings.Sources.Default()),
 	}
 	processCtx, processStop := context.WithCancel(context.Background())
 	models := catalog.LoadLazy(processCtx, discovery)

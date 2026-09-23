@@ -2,14 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -34,6 +40,57 @@ func mediaCatalogFor(t *testing.T, rows string) *catalog.Catalog {
 	return catalog.Load(context.Background(), catalog.Options{
 		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(), HTTPClient: client,
 	})
+}
+
+func TestV3CatalogForCodexUsesTheAccountListingTransport(t *testing.T) {
+	// C12 and C18: this is the production v3CatalogForModel road that used to
+	// omit HTTPClient. The backend receives the rotating bearer and account
+	// headers, never the persisted sentinel or the generic catalog query.
+	var requests int
+	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		if request.URL.Path != "/models" || request.URL.Query().Get("client_version") == "" || request.URL.Query().Get("output_modalities") != "" {
+			t.Fatalf("catalog request = %s", request.URL.String())
+		}
+		if got := request.Header.Get("Authorization"); got != "Bearer media-catalog-access" || got == "Bearer "+codexauth.Sentinel {
+			t.Fatalf("catalog authorization = %q", got)
+		}
+		if request.Header.Get("chatgpt-account-id") != "media-catalog-account" ||
+			request.Header.Get("originator") != codexauth.Originator ||
+			request.Header.Get("User-Agent") != provider.DirectUserAgent {
+			t.Fatalf("catalog headers = %v", request.Header)
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{"models": []any{
+			map[string]any{"slug": "gpt-5.5", "visibility": "list"},
+			map[string]any{"slug": "hidden", "visibility": "hide"},
+		}})
+	}))
+	defer backend.Close()
+	t.Setenv("CODEAF_CODEX_BACKEND", backend.URL)
+	dir := t.TempDir()
+	if err := codexauth.Save(dir, codexauth.Tokens{
+		AccessToken: "media-catalog-access", RefreshToken: "media-catalog-refresh",
+		IDToken: "media-catalog-identity", AccountID: "media-catalog-account",
+		ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	listed := true
+	if err := config.WriteSources(dir, []config.PersistedSource{{
+		ID: "codex", Written: "codex", Key: codexauth.Sentinel, Listed: &listed,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	settings := config.Config{ProfileDir: dir, Sources: config.ResolveSources(dir, "", config.DefaultBaseURL)}
+	models, bare, servesMedia := v3CatalogForModel(context.Background(), settings, "codex/gpt-5.5", &catalog.Catalog{})
+	rows := models.ModelsNow()
+	if requests != 1 || bare != "gpt-5.5" || servesMedia || len(rows) != 1 || rows[0].ID != "gpt-5.5" {
+		t.Fatalf("requests=%d bare=%q media=%t rows=%+v", requests, bare, servesMedia, rows)
+	}
+	service, ok := settings.Sources.ByID("codex")
+	if !ok || service.Source.Listing != modelsource.ListingModels {
+		t.Fatalf("resolved codex service = %+v, found=%t", service, ok)
+	}
 }
 
 // mediaFixture is one row of every family, published the way OpenRouter

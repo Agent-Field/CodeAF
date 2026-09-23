@@ -283,10 +283,13 @@ after the conversation. Memory keeps person-, project-, or machine-scoped record
 
 ## Models, keys, and spending
 
-Key resolution is `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`, then `api_key` in the
-profile's `config.json`. With no key, an interactive local launch opens a two-page setup
-that offers to connect OpenRouter in a browser or take a pasted key. A non-interactive
-chat with no key stops instead, with `codeaf chat needs a model to talk with.`
+Key resolution for the default service is `OPENROUTER_API_KEY`, then
+`OPENAI_API_KEY`, then `api_key` in the profile's `config.json`. With no credential,
+an interactive local launch opens a two-page setup that offers to connect OpenRouter
+in a browser or take a pasted key. First run is unchanged and does not offer Codex.
+A non-interactive chat starts when the default service has a key or any connected
+service holds its credential; a call to a service without one still fails when it is
+made. With no credential anywhere it stops with `codeaf chat needs a model to talk with.`
 
 <details>
 <summary>The two first-run screens, word for word</summary>
@@ -307,7 +310,9 @@ The second page is `Daily limit`, `Chat model` and `Work crew`.
 The chat model resolves from `--model`, then saved `model.talk`, then `CODEAF_MODEL`,
 then `~deepseek/deepseek-v4-flash-latest`. The last value is a floating alias. Besides
 OpenRouter, the connection screen supports DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba
-Qwen, Ollama, and a custom OpenAI-compatible service; a qualified slug such as
+Qwen, Codex through a ChatGPT plan, Ollama, and a custom OpenAI-compatible service.
+The same supported services can be managed without opening the chat with `codeaf
+connect` and `codeaf disconnect`; a qualified slug such as
 `qwen/<model>` selects its service.
 
 Provider routing defaults to `simple`: an unpinned OpenRouter call carries no provider

@@ -399,7 +399,7 @@ func (c *Client) record(facts recordFacts) {
 		EmptyAtCeiling: c.emptyAtCeiling(facts.request, facts.response),
 	}
 	if facts.err != nil {
-		record.Error = calllog.ClipError(namedCancel(facts.ctx, facts.err))
+		record.Error = calllog.ClipError(string(trace.Scrub([]byte(namedCancel(facts.ctx, facts.err)))))
 	}
 	// ── A FAILURE IS PRICED LIKE AN ANSWER, BECAUSE IT WAS BILLED LIKE ONE
 	//
@@ -504,9 +504,9 @@ func (c *Client) record(facts recordFacts) {
 	}
 	if calllog.Bodies() && calllog.Path() != "" {
 		if facts.knobs.trace != nil {
-			record.RequestBody = string(facts.knobs.trace.body)
+			record.RequestBody = string(trace.Scrub(facts.knobs.trace.body))
 		}
-		record.ResponseBody = string(facts.responseBody)
+		record.ResponseBody = string(trace.Scrub(facts.responseBody))
 	}
 	record.Ended = facts.ended
 	facts.knobs.trace.track(facts, record.ID)

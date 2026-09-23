@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -73,6 +74,13 @@ func TestAPlanPauseEndingDrawsOnlyThePauseSentence(t *testing.T) {
 		t.Fatalf("pause ending = %q, want %q", note, want)
 	}
 	forbidden(t, note)
+}
+
+func TestConnectCodexExpiredSignInDrawsTheActionableSentence(t *testing.T) {
+	note := (&feed{}).failureNote(fmt.Errorf("request failed: %w", codexauth.ErrSignInExpired), "codex")
+	if note != codexauth.ErrSignInExpired.Error() {
+		t.Fatalf("expired sign-in note = %q, want %q", note, codexauth.ErrSignInExpired)
+	}
 }
 
 // forbidden is the vocabulary law for one line: a person-facing sentence may

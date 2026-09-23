@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 	"sync"
@@ -82,11 +83,30 @@ func Scrub(body []byte) []byte {
 	out := headerLike.ReplaceAll(body, []byte(`"credential":"`+redacted+`"`))
 	out = bearerLike.ReplaceAll(out, []byte("Bearer "+redacted))
 	out = keyLike.ReplaceAll(out, []byte(redacted))
+	return ScrubRegistered(out)
+}
+
+// ScrubRegistered removes only the exact credential bytes handed to Secret.
+// It exists beside Scrub because semantic ingress must preserve diagnostics
+// that merely resemble credentials, while records and other output sinks need
+// Scrub's broader defence against unregistered key and header shapes.
+func ScrubRegistered(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
 	secrets.mutex.Lock()
-	known := secrets.list
+	if len(secrets.list) == 0 {
+		secrets.mutex.Unlock()
+		return body
+	}
+	known := append([]string(nil), secrets.list...)
 	secrets.mutex.Unlock()
+	out := body
 	for _, secret := range known {
-		out = []byte(strings.ReplaceAll(string(out), secret, redacted))
+		literal := []byte(secret)
+		if bytes.Contains(out, literal) {
+			out = bytes.ReplaceAll(out, literal, []byte(redacted))
+		}
 	}
 	return out
 }

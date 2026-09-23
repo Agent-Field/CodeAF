@@ -125,9 +125,10 @@ func TestUnqualifiedIdsStayOnTheDefaultService(t *testing.T) {
 	}
 }
 
-func TestVendoredRowsAreTheDecidedSeven(t *testing.T) {
+func TestVendoredRowsCarryTheCodexServiceInItsDecidedPlace(t *testing.T) {
+	// C12: Codex is a model service whose models are qualified on every surface.
 	rows := Vendored()
-	want := []string{"deepseek", "z-ai", "moonshot", "minimax", "qwen", "ollama", "custom"}
+	want := []string{"deepseek", "z-ai", "moonshot", "minimax", "qwen", "codex", "ollama", "custom"}
 	if len(rows) != len(want) {
 		t.Fatalf("vendored rows = %d, want %d", len(rows), len(want))
 	}
@@ -135,15 +136,15 @@ func TestVendoredRowsAreTheDecidedSeven(t *testing.T) {
 		if rows[i].ID != want[i] {
 			t.Errorf("row %d = %q, want %q", i, rows[i].ID, want[i])
 		}
-		if rows[i].Probe.Timeout != ProbeTimeout {
+		if rows[i].ID != "codex" && rows[i].Probe.Timeout != ProbeTimeout {
 			t.Errorf("row %s probe timeout = %s, want %s", rows[i].ID, rows[i].Probe.Timeout, ProbeTimeout)
 		}
 	}
-	if !rows[5].KeyOptional {
+	if !rows[6].KeyOptional {
 		t.Fatal("only Ollama may omit its key")
 	}
 	for index, row := range rows {
-		if index != 5 && row.KeyOptional {
+		if index != 6 && row.KeyOptional {
 			t.Fatalf("%s unexpectedly accepts a blank key", row.ID)
 		}
 	}
@@ -179,6 +180,7 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 		{"moonshot", ListingNone, "kimi-k2.7-code", "kimi-k2.7-code"},
 		{"minimax", ListingNone, "MiniMax-M3", "MiniMax-M3"},
 		{"qwen", ListingNone, "qwen3.8-flash", "qwen3.7-plus"},
+		{"codex", ListingNone, "", "gpt-5.5"},
 		{"ollama", ListingModels, "", ""},
 		{"custom", ListingModels, "", ""},
 	}
@@ -190,7 +192,7 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 				index, row.ID, row.Listing, row.ProbeModel, row.Preferred,
 				expected.id, expected.listing, expected.probeModel, expected.preferred)
 		}
-		if row.Probe.Method != "GET" || row.Probe.Address != "/models" {
+		if row.ID != "codex" && (row.Probe.Method != "GET" || row.Probe.Address != "/models") {
 			t.Errorf("row %s does not try the listing first: %+v", row.ID, row.Probe)
 		}
 	}
