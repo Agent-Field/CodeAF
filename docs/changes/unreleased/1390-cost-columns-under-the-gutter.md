@@ -6,6 +6,7 @@ surface: [chat]
 invalidates:
   - "The indent law's pass in deckRows skipped any work row whose text already opened on two spaces, to keep the fold chip from being indented twice. It no longer looks at what a row begins with: every work row is moved, and the fold chip lays itself flush and takes its two cells from the pass like the rest."
   - "A note's continuation rows (two blanks under the first row's `· `) were left where they were while the first row moved, so /cost's `· spend` stood two cells right of `tokens`, `model calls` and `time`. All of a note's rows now shift together and the label and figure columns line up."
+  - "A thinking block's body, live or opened, sat in the column of its `⠿` marker, because the pass moved the header and skipped every body row. It now hangs two cells in, under the header's words, and is wrapped two cells narrower to pay for the gutter, so every line stays inside the frame instead of losing its last two cells to it."
 ---
 
 The `·` before `spend` is the note's own marker, the dim lane every answer this
