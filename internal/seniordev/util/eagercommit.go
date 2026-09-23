@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
-
-	"github.com/Agent-Field/codeaf/internal/seniordev/attribution"
 )
 
 // skipEagerCommit is read on every write and set from two places: the
@@ -51,10 +49,7 @@ func EagerCommit(ctx context.Context, options EagerCommitOptions) {
 	if rootResult.Code == 0 {
 		root = strings.TrimSpace(string(rootResult.Stdout))
 	}
-	relative, _ := filepath.Rel(root, options.FilePath)
-	if relative == "" {
-		relative = options.FilePath
-	}
+	relative := repositoryRelative(root, options.Cwd, options.FilePath)
 	add, _ := RunProcess(ctx, []string{"git", "add", "--", relative}, RunOptions{
 		ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true,
 	})
@@ -67,8 +62,44 @@ func EagerCommit(ctx context.Context, options EagerCommitOptions) {
 	if diff.Code == 0 {
 		return
 	}
-	message := attribution.AppendCommitTrailer("wip(" + options.Label + "): " + relative)
-	_, _ = RunProcess(ctx, attribution.GitArgv(
+	message := "wip(" + options.Label + "): " + relative
+	_, _ = RunProcess(ctx, GitArgv(
 		"commit", "-m", message, "--no-verify", "--only", "--", relative,
 	), RunOptions{ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true})
+}
+
+// repositoryRelative names a written file inside the repository whose top
+// level git reported as root.
+//
+// GIT REPORTS ITS TOP LEVEL WITH EVERY SYMLINK RESOLVED, and the path a tool
+// hands in need not be. On macOS every temporary folder is /var/folders/…,
+// which is a link to /private/var/folders/…, so a file under the one measured
+// against a root under the other walked out of the repository
+// ("../../../var/folders/…"), `git add` refused it, and every per-file commit
+// in such a workspace stopped without a word while the run went on believing
+// it was checkpointing. Both sides are resolved before they are compared.
+func repositoryRelative(root, cwd, path string) string {
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(cwd, path)
+	}
+	relative, err := filepath.Rel(resolveExisting(root), resolveExisting(path))
+	if err != nil || relative == "" {
+		return path
+	}
+	return relative
+}
+
+// resolveExisting resolves the symlinks in path, or in its nearest ancestor
+// that exists when the path itself does not (a file just deleted still has a
+// folder, and the folder is what carries the link).
+func resolveExisting(path string) string {
+	path = filepath.Clean(path)
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	parent := filepath.Dir(path)
+	if parent == path {
+		return path
+	}
+	return filepath.Join(resolveExisting(parent), filepath.Base(path))
 }

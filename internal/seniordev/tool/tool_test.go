@@ -410,3 +410,14 @@ func TestExecuteHonorsCanceledContext(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+// sameFolder answers whether two spellings name one folder once their
+// symlinks are resolved. A shell reports the folder it runs in as the kernel
+// resolved it, and on macOS every temporary folder is reached through one
+// (/var/folders is /private/var/folders), so a test that compared spellings
+// failed there while the command ran exactly where it should.
+func sameFolder(got, want string) bool {
+	resolvedGot, errGot := filepath.EvalSymlinks(got)
+	resolvedWant, errWant := filepath.EvalSymlinks(want)
+	return errGot == nil && errWant == nil && resolvedGot == resolvedWant
+}

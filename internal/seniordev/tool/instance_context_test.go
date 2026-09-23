@@ -60,7 +60,10 @@ func TestConcurrentLeafContextsResolveTheirOwnToolCWD(t *testing.T) {
 				errors <- err
 				return
 			}
-			if strings.TrimSpace(result.Output) != item.directory {
+			// The shell prints the folder the kernel resolved, and a temporary
+			// folder on macOS is reached through a symlink, so the same folder
+			// can come back spelled /private/var/…; it is compared resolved.
+			if !sameFolder(strings.TrimSpace(result.Output), item.directory) {
 				errors <- &cwdError{got: strings.TrimSpace(result.Output), want: item.directory}
 			}
 		}()

@@ -62,9 +62,22 @@ func TestSpawnerArgvEnvAndCwd(t *testing.T) {
 	if !reflect.DeepEqual(got.Args, []string{"space arg", "", "🙂"}) {
 		t.Fatalf("args: %#v", got.Args)
 	}
-	if got.Cwd != root || got.Env != "value" {
+	// The child reports its folder as the kernel resolves it, and a temporary
+	// folder on macOS is a symlink (/var/folders → /private/var/folders), so
+	// the two are compared resolved: the same folder spelled two ways is the
+	// same folder.
+	if resolvedPath(t, got.Cwd) != resolvedPath(t, root) || got.Env != "value" {
 		t.Fatalf("helper: %+v", got)
 	}
+}
+
+func resolvedPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatalf("resolve %s: %v", path, err)
+	}
+	return resolved
 }
 
 func TestSpawnerPipeline(t *testing.T) {

@@ -120,7 +120,7 @@ func TestBashWorkdirRunsThereAndRejectsEscapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(result.Output) != nested {
+	if !sameFolder(strings.TrimSpace(result.Output), nested) {
 		t.Fatalf("pwd output = %q, want %q", result.Output, nested)
 	}
 	_, err = execute(t, registry, "bash", map[string]any{"command": "pwd", "workdir": "../outside"})
