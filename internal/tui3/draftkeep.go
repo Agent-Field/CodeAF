@@ -1098,8 +1098,11 @@ func (a *app) stowDrafts(conv Conversation, side *aside) {
 		keepPath: path,
 		textPath: conv.DraftFile,
 		keep:     keep,
-		text:     side.draft,
-		rev:      claimDraftRev(path),
+		// The structured keep holds only the box. The compatibility draft is
+		// crash insurance for every word the person has typed, so waiting
+		// messages are folded into that text exactly as quitting folds them.
+		text: foldedParkedDraft(side.draft, side.parks),
+		rev:  claimDraftRev(path),
 	}
 	if err := save.commit(); err != nil {
 		a.noteDraftKeepFailed(err)
