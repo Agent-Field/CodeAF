@@ -916,6 +916,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't the delegate ask me anything", "delegates"},
 		{"why is there no command for my delegate", "delegates"},
 		{"where does a delegate's work go, does it squash the commits", "delegates"},
+		// senior-dev, the program codeaf carries, asked the ways somebody meets
+		// it: what the command does, whether it will stop to ask, where its
+		// commits went, what it cost, its flags, and why a Windows build has none.
+		{"what does /senior-dev do", "senior-dev"},
+		{"will senior-dev stop and ask me questions while it works", "senior-dev"},
+		{"where did senior-dev's commits go", "senior-dev"},
+		{"how much does a senior-dev run cost", "senior-dev"},
+		{"what flags does codeaf senior-dev take", "senior-dev"},
+		{"why is there no /senior-dev on windows", "senior-dev"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
 		// The card codeaf raises by itself, asked the three ways somebody meets
