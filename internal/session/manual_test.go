@@ -22,10 +22,10 @@ func TestTheManualMentionsEveryToolOnTheBelt(t *testing.T) {
 	// that built the belt without one would let a conditional tool ship with no
 	// page — green, and wrong in exactly the way this test exists to catch.
 	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir()}}
-	// AND THE SHELF IS REACHED THROUGH A STORE. `use_skill` is gated on a non-nil
-	// Memory (tools_skill.go) — without one the verb never lands on the belt and
-	// the gate would let it ship without a page. So a store is opened so the belt
-	// is the same one a real conversation carries.
+	// AND A STORE IS HANDED OVER TOO. Part of the belt is conditional on a
+	// non-nil Memory (tools_conversations.go), and a gate that built the belt
+	// without one would let such a verb ship with no page. So a store is opened
+	// and the belt is the same one a real conversation carries.
 	db, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {
 		t.Fatalf("open gate store: %v", err)

@@ -364,6 +364,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you search the web", "what-i-can-do"},
 		{"which search engine answered?", "what-i-can-do"},
 		{"I set a search key and nothing changed", "what-i-can-do"},
+		// Skills from other harnesses are coming and are not in this build. The
+		// question is asked in the harness's own words, and the answer has to
+		// say so rather than let the chat improvise a feature.
+		{"can you use my Claude skills", "what-i-can-do"},
+		{"can codeaf use SKILL.md folders from Codex", "what-i-can-do"},
+		{"do you support skills from other harnesses", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},
 		// A finished task's room after codeaf was closed and opened again: the
 		// blank page people met, asked the three ways they meet it.

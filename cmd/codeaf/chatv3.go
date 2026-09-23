@@ -29,7 +29,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/trace"
@@ -957,12 +956,6 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// memory row is on, which is what makes "memory off makes no calls" a
 		// fact about the wiring instead of a branch every caller has to keep.
 		Memory: proc.Memory,
-		// AND WHETHER THERE IS A SHELF THIS SESSION CANNOT REACH, which is
-		// only ever true with the line above nil. It is measured here, beside
-		// the decision that causes it, because the prompt cannot walk six
-		// folders on every render and because a sentence about a setting
-		// belongs to the door that read the setting.
-		SkillsAwaitMemory: skillsWaitingOnMemory(proc.Memory, workspace),
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
 		// than derived down there for the reason every other path is.
@@ -1137,16 +1130,13 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// needs is the line above.
 	subharnesses.UsePages(harnesses, cfg.RunHarness)
 
-	// THE SHELF IS IMPORTED BEFORE THE FIRST MESSAGE. A person's skills for
-	// other harnesses — Claude Code, Codex, any agentskills.io reader — reach
-	// the shelf when the graph opens, not when some later tick finds the time:
-	// this door claims no residency (runChatV3's header), so the pass the
-	// resident reconciler runs on its own clock is run here, synchronously,
-	// after [v3Memory]'s graph is open and before the first prompt is built.
-	// The pass is idempotent — an unchanged disk journals nothing — so an open
-	// costs one scan and no writes, and a skill edited since the last open is
-	// re-read before the model ever sees the shelf.
-	importForeignSkillsBeforeFirstMessage(proc.Memory, workspace)
+	// THE SHELF DROPS WHAT THE OLD FOREIGN-SKILL IMPORT LEFT ON IT. Skills from
+	// other harnesses are no longer imported into the store, and a store that
+	// ran the import still holds them as active facts, which a task brief would
+	// go on attaching. This door claims no residency (runChatV3's header), so
+	// the retirement the resident reconciler runs on its own clock is run here
+	// too, once per launch. It is idempotent and a nil store is a no-op.
+	resident.RetireImportedSkills(proc.Memory)
 
 	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
 	// lock and runs the pass; the OS timer is the backup for "no terminal open"
@@ -1181,64 +1171,6 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 // answers everything else about a folder: the rung is a convenience, and a
 // launch that refused to open because it could not read one would be the
 // convenience costing the thing it was meant to serve.
-// importForeignSkillsBeforeFirstMessage runs the foreign-skill import pass
-// against the conversation's own store, in place: every SKILL.md folder a
-// person already has for another harness becomes one active skill fact whose
-// artifact is the ORIGINAL directory, before the first message is built. The
-// resident reconciler keeps the same pass behind its gate for the processes
-// that tick; a launch runs it on the open itself, because a shelf that
-// arrives after the first message is a shelf the first conversation cannot
-// use.
-//
-// A launch with no store has no shelf and runs no pass — the same nil answer
-// the catalog already gives when memory is off — and a home that cannot be
-// resolved is skipped, never fatal: a scan that finds nothing must not be the
-// reason a conversation does not open.
-// skillsWaitingOnMemory reports whether this machine holds skills that this
-// session cannot reach, which is the case exactly when memory is off and a
-// scanned folder holds at least one skill that would have loaded.
-//
-// IT IS THE DIFFERENCE BETWEEN TWO SILENCES. With memory on the catalog speaks
-// for itself and this is false; with memory off and no folders it is false too,
-// because a person with no skills must not be told about a setting they have no
-// use for. It is true only in the case that produced the defect: a person with
-// skills on disk, told by the chat that codeaf has no such mechanism.
-//
-// A scan that fails is not a shelf. Discovery already answers a missing home,
-// an unreadable folder and a malformed SKILL.md as absence rather than as an
-// error, and a launch must not turn any of those into a sentence claiming a
-// shelf exists.
-func skillsWaitingOnMemory(memory *store.Store, workspace string) bool {
-	if memory != nil {
-		return false
-	}
-	homeDir, err := home.Login()
-	if err != nil {
-		return false
-	}
-	found, err := skills.Discover(skills.Options{ProjectDir: workspace, HomeDir: homeDir})
-	if err != nil {
-		return false
-	}
-	for _, skill := range found {
-		if skill.Name != "" && skill.Description != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func importForeignSkillsBeforeFirstMessage(memory *store.Store, workspace string) {
-	if memory == nil {
-		return
-	}
-	homeDir, err := home.Login()
-	if err != nil {
-		return
-	}
-	resident.ReconcileImportedSkills(memory, workspace, homeDir)
-}
-
 func v3SavedEffort(place session.Place) string {
 	dir := strings.TrimSpace(place.Dir)
 	if dir == "" {

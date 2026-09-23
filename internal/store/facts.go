@@ -765,9 +765,9 @@ func (s *Store) SupersedeFactWithReason(factSeq, bySeq int64, reason string) err
 
 // SkillName is the shelf name of a skill fact — the one spelling every reader
 // of the shelf matches on. It is the directory the artifact points at, or the
-// scope when the fact predates installation. use_skill answers names spelled
-// this way (tools_skill.go's get), so a reader matching anything else answers
-// a name the worker was never shown.
+// scope when the fact predates installation. A task brief names attached
+// skills this way, so a reader matching anything else answers a name the
+// worker was never shown.
 func (f Fact) SkillName() string {
 	if artifact := strings.TrimSpace(f.Artifact); artifact != "" {
 		if base := filepath.Base(artifact); base != "." && base != "/" {
