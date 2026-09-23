@@ -116,13 +116,18 @@ func askCarried(ctx context.Context, api delegate.ModelAPI, question string) (st
 	return answer.Choices[0].Message.Content, nil
 }
 
-// runAsCarriedChild runs the dispatch with the fake program carried, when this
-// binary was started as a shell run's child, and says whether it was.
+// runAsCarriedChild runs the dispatch when this binary was started as a shell
+// run's child, and says whether it was: with the fake program carried when
+// the mark is "1", and with the build's own list — senior-dev itself — when it
+// is "real".
 func runAsCarriedChild() (int, bool) {
-	if os.Getenv(carriedChildEnv) != "1" {
-		return 0, false
+	switch os.Getenv(carriedChildEnv) {
+	case "1":
+		restore := builtin.Override([]delegate.Delegate{fakeCarriedProgram()})
+		defer restore()
+		return execute(), true
+	case "real":
+		return execute(), true
 	}
-	restore := builtin.Override([]delegate.Delegate{fakeCarriedProgram()})
-	defer restore()
-	return execute(), true
+	return 0, false
 }

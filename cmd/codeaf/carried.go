@@ -279,8 +279,13 @@ const carriedStderrName = "delegate-stderr.log"
 // where a person can open them after the lines have scrolled away. It has no
 // task page to live beside, so it has a folder of its own, one per run.
 func carriedRecordDir(name string) string {
-	stamp := time.Now().Format("20060102-150405.000000")
-	return home.Join("v3", "carried", name, stamp)
+	return filepath.Join(carriedRecordRoot(name), time.Now().Format("20060102-150405.000000"))
+}
+
+// carriedRecordRoot is the folder every shell run of one program keeps its
+// record under, one folder per run.
+func carriedRecordRoot(name string) string {
+	return home.Join("v3", "carried", name)
 }
 
 // carriedChildLine is the line a shell run starts its child with: THE

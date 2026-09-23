@@ -16,7 +16,6 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
-	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -105,7 +104,7 @@ func ledgerRowsFor(t *testing.T, workspace string) []session.UsageLine {
 // newestRecord is the most recent shell run's record folder for the fake.
 func newestRecord(t *testing.T) string {
 	t.Helper()
-	matches, _ := filepath.Glob(filepath.Join(home.Join("v3", "carried", fakeCarried), "*"))
+	matches, _ := filepath.Glob(filepath.Join(carriedRecordRoot(fakeCarried), "*"))
 	if len(matches) == 0 {
 		t.Fatal("the shell run kept no record folder")
 	}
