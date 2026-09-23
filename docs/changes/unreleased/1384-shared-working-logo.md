@@ -18,6 +18,7 @@ All ten activity motions use 28 timed poses in a single fixed-width text row.
 The working line anchors beneath the latest question, before changing activity
 details. Its nine-column slot and two-column gap keep following content still.
 It scrolls with the question and leaves the input area clear.
+Copy mode freezes the page without the working row.
 
 Activity captions now compose short developer humor from compatible verb/object
 families, avoid eight recent opening phrases, and rotate through a shuffled deck

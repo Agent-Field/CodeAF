@@ -2558,6 +2558,13 @@ remote frame ceiling is unchanged; unchanged frames need no terminal writes.
 Screen-reader, ASCII, monochrome, copy and small-window modes keep the compact
 text treatment. No size or frame-interval budget changes.
 
+On 2026-09-22, during a 30 s tool wait on a 150×42 terminal, the surface
+process spent about 2.1% of one core with the row against about 1.0% without it
+(two paired runs: 2.17%/1.10% and 2.13%/1.00%), while the engine daemon stayed
+unchanged at 0.2–0.3%. The difference comes from `paint()` keeping
+`frameInterval` rather than `frameInterval × spinnerStep` while the row is visible
+(`app.go:5002-5017`).
+
 The activity caption deck is assembled and shuffled only at Start from bounded
 action/object recipes. Its first phrase excludes eight recent opening choices.
 Rendering selects a phrase by elapsed ten-second interval and samples the existing
