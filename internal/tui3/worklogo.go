@@ -15,27 +15,40 @@ import (
 func (a *app) workLogoVisible() bool {
 	return a.workActivity.Started() && !a.turnBegan.IsZero() && a.state == stateWorking &&
 		a.showing() == nil && len(a.questionOpen()) == 0 && !a.asking() && !a.copy.on && a.room == nil && !a.linear && !a.pal.linear &&
-		!a.pal.ascii && a.pal.profile >= tokens.ANSI256 && a.width >= 48 && a.height >= 20
+		!a.pal.ascii && a.pal.profile >= tokens.ANSI256 && a.width >= 48 && a.height >= 20 && a.turnAnchor() >= 0
 }
 
-// questionActivity anchors one indicator to the last submitted question, never
-// to a changing caption or to the transcript's growing tail.
-func (a *app) questionActivity(d deck) (tokens.WorkActivity, int, bool) {
-	var activity tokens.WorkActivity
-	switch {
-	case d.lens.clock && a.workLogoVisible():
-		activity = a.workActivity
-	case !d.lens.clock && a.roomWorkLogoVisible():
-		activity = a.room.workActivity
-	default:
-		return activity, -1, false
-	}
-	for i := len(d.entries) - 1; i >= 0; i-- {
-		if d.entries[i].kind == entryUser || d.entries[i].kind == entrySteer {
-			return activity, i, true
+// turnAnchor finds the last question or correction submitted in the running
+// turn. Work adopted without one keeps the waiting treatment instead of
+// attaching movement to a question that was already answered.
+func (a *app) turnAnchor() int {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		if a.entries[i].turn == a.turn && (a.entries[i].kind == entryUser || a.entries[i].kind == entrySteer) {
+			return i
 		}
 	}
-	return activity, -1, false
+	return -1
+}
+
+// questionActivity anchors one indicator to the submitted question being
+// worked, never to a changing caption or to the transcript's growing tail.
+func (a *app) questionActivity(d deck) (tokens.WorkActivity, int, bool) {
+	switch {
+	case d.lens.clock && a.workLogoVisible():
+		return a.workActivity, a.turnAnchor(), true
+	case !d.lens.clock && a.roomWorkLogoVisible():
+		// A TASK'S REQUEST IS THE THING BEING WORKED THROUGH EVERY RETRY, so
+		// its page keeps the latest request or correction without comparing the
+		// journal's original turn number with the room's current attempt.
+		for i := len(d.entries) - 1; i >= 0; i-- {
+			if d.entries[i].kind == entryUser || d.entries[i].kind == entrySteer {
+				return a.room.workActivity, i, true
+			}
+		}
+	default:
+		return tokens.WorkActivity{}, -1, false
+	}
+	return tokens.WorkActivity{}, -1, false
 }
 
 // activityLabelColumn is a terminal-cell contract, independent of the current

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,24 @@ func workLogoApp(t *testing.T) *app {
 	a.entries = []entry{{kind: entryUser, text: "Please inspect this project", turn: 1}}
 	a.turn = 1
 	return a
+}
+
+func workLogoRowTexts(rows []row) []string {
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.text)
+	}
+	return out
+}
+
+func workingActivityRows(rows []row) []int {
+	var out []int
+	for i, r := range rows {
+		if r.activity {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 func TestWorkingLogoFollowsChatAndKeepsItsChoice(t *testing.T) {
@@ -93,6 +112,191 @@ func TestWorkingLogoFallbacksAndTransientRows(t *testing.T) {
 		if strings.Contains(r.text, "38;2;") {
 			t.Fatal("256-color terminal received truecolor")
 		}
+	}
+}
+
+// C1 says a copy snapshot is the exact page without the transient working row
+// or the blank that row alone introduced, and thawing restores live movement.
+func TestCopyModeFreezesThePageWithoutTheWorkingLogo(t *testing.T) {
+	a := workLogoApp(t)
+	width := a.bodyWidth()
+	if got := workingActivityRows(a.visible(width)); len(got) != 1 {
+		t.Fatalf("live page has activity rows %v, want exactly one", got)
+	}
+	caption := a.workActivity.Caption()
+
+	wantApp := workLogoApp(t)
+	wantApp.workActivity = tokens.WorkActivity{}
+	want := workLogoRowTexts(wantApp.layout(width))
+
+	a.enterCopy()
+	if !a.copy.on {
+		t.Fatal("copy mode did not open")
+	}
+	plainCopy := ansi.Strip(strings.Join(a.copy.rows, "\n"))
+	if strings.Contains(plainCopy, caption) {
+		t.Fatalf("copy snapshot retained the activity caption %q", caption)
+	}
+	if strings.ContainsAny(plainCopy, "●•·˙") {
+		t.Fatalf("copy snapshot retained a working-logo mark:\n%s", plainCopy)
+	}
+	if !slices.Equal(a.copy.rows, want) {
+		t.Fatalf("copy snapshot differs from the page before activity:\n got %q\nwant %q", a.copy.rows, want)
+	}
+
+	a.exitCopy()
+	if got := workingActivityRows(a.visible(width)); len(got) != 1 {
+		t.Fatalf("thawed page has activity rows %v, want exactly one", got)
+	}
+}
+
+// C2 gives task and adaptive-run pages the same copy law through their shared
+// room freeze door.
+func TestCopyModeFreezesWorkPagesWithoutTheWorkingLogo(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		app  func(*testing.T) *app
+	}{
+		{name: "task", app: func(t *testing.T) *app {
+			a, _ := roomModelApp(t, "task-model")
+			a.width, a.height = 100, 40
+			a.pal = newPalette(tokens.TrueColor, false)
+			a.room.entries = []entry{{kind: entryUser, text: "Ship the parser fix", turn: 1}}
+			a.room.turn, a.room.readingRestored, a.room.dirty = 1, true, true
+			return a
+		}},
+		{name: "adaptive run", app: func(t *testing.T) *app {
+			a, _ := orchApp(t, orchestrate.Snapshot{})
+			a.width, a.height = 100, 40
+			a.pal = newPalette(tokens.TrueColor, false)
+			a.orchOf().known = true
+			a.room.dirty = true
+			return a
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := tc.app(t)
+			width := a.bodyWidth()
+			activity := a.room.workActivity
+			a.room.workActivity = tokens.WorkActivity{}
+			a.room.dirty = true
+			want := workLogoRowTexts(a.roomRows(width))
+			a.room.workActivity = activity
+			a.room.dirty = true
+			if got := workingActivityRows(a.roomRows(width)); len(got) != 1 {
+				t.Fatalf("live page has activity rows %v, want exactly one", got)
+			}
+
+			a.freezeRoom()
+			if !a.copy.on {
+				t.Fatal("copy mode did not open")
+			}
+			if !slices.Equal(a.copy.rows, want) {
+				t.Fatalf("copy snapshot differs from the page before activity:\n got %q\nwant %q", a.copy.rows, want)
+			}
+
+			a.exitCopy()
+			if got := workingActivityRows(a.roomRows(width)); len(got) != 1 {
+				t.Fatalf("thawed page has activity rows %v, want exactly one", got)
+			}
+		})
+	}
+}
+
+// C3 keeps adopted or self-started work on the compact waiting treatment until
+// its running turn has a question of its own to anchor.
+func TestAWorkingTurnWithoutItsOwnQuestionKeepsTheWaitingText(t *testing.T) {
+	a := workLogoApp(t)
+	a.entries = []entry{
+		{kind: entryUser, text: "The answered question", turn: 1},
+		{kind: entryAssistant, text: "The earlier answer", turn: 1},
+	}
+	a.turn = 2
+	a.turnBegan = time.Time{}
+	a.workActivity = tokens.WorkActivity{}
+	a.startClock()
+	began := a.turnBegan
+	a.clock = func() time.Time { return began.Add(11 * time.Second) }
+
+	if a.workLogoVisible() {
+		t.Fatal("a turn without its own question borrowed the previous turn's logo anchor")
+	}
+	rows, _ := a.deckRows(a.conversation(), 90)
+	if got := workingActivityRows(rows); len(got) != 0 {
+		t.Fatalf("a turn without its own question drew activity rows %v", got)
+	}
+	if tail, inline := a.compactWaitSuffix("answer", 90, a.conversation()); !inline || !strings.Contains(ansi.Strip(tail), "still working · 11s") {
+		t.Fatalf("compact waiting was suppressed: inline=%v tail=%q", inline, ansi.Strip(tail))
+	}
+
+	a.entries = append(a.entries, entry{kind: entryUser, text: "The running turn's question", turn: 2})
+	if !a.workLogoVisible() {
+		t.Fatal("the running turn's own question did not admit the logo")
+	}
+	rows, _ = a.deckRows(a.conversation(), 90)
+	activity := workingActivityRows(rows)
+	if len(activity) != 1 {
+		t.Fatalf("running turn has activity rows %v, want exactly one", activity)
+	}
+	lastQuestion := -1
+	for i, r := range rows {
+		if r.entry == len(a.entries)-1 {
+			lastQuestion = i
+		}
+	}
+	if lastQuestion < 0 || activity[0] != lastQuestion+2 || strings.TrimSpace(ansi.Strip(rows[lastQuestion+1].text)) != "" {
+		t.Fatalf("activity row %d did not follow the question row %d and its gap", activity[0], lastQuestion)
+	}
+}
+
+// C4 keeps one row under the latest correction when the running turn has both
+// its original question and a later steer.
+func TestTheWorkingLogoFollowsTheCurrentTurnsLatestSteer(t *testing.T) {
+	a := workLogoApp(t)
+	a.turn = 2
+	a.entries = []entry{
+		{kind: entryUser, text: "Inspect the parser", turn: 2},
+		{kind: entrySteer, turn: 2, steer: &steerElbow{words: "Also inspect its tests", consumed: true}},
+	}
+	rows, _ := a.deckRows(a.conversation(), 90)
+	activity := workingActivityRows(rows)
+	if len(activity) != 1 {
+		t.Fatalf("steered turn has activity rows %v, want exactly one", activity)
+	}
+	lastSteer := -1
+	for i, r := range rows {
+		if r.entry == 1 {
+			lastSteer = i
+		}
+	}
+	if lastSteer < 0 || activity[0] != lastSteer+2 {
+		t.Fatalf("activity row %d did not follow the steer row %d and its gap", activity[0], lastSteer)
+	}
+}
+
+// C5 keeps a task's original request as its anchor across later retry turn
+// numbers, because that request remains the work the page is carrying out.
+func TestATaskRetryKeepsTheWorkingLogoUnderItsRequest(t *testing.T) {
+	a, _ := roomModelApp(t, "task-model")
+	a.width, a.height = 100, 40
+	a.pal = newPalette(tokens.TrueColor, false)
+	a.room.entries = []entry{{kind: entryUser, text: "Ship the parser fix", turn: 1}}
+	a.room.turn, a.room.readingRestored, a.room.dirty = 3, true, true
+
+	_, anchor, visible := a.questionActivity(a.room.deck())
+	if !visible || anchor != 0 {
+		t.Fatalf("retry activity anchor = %d, visible=%v; want the turn-1 request", anchor, visible)
+	}
+	rows, _ := a.deckRows(a.room.deck(), 90)
+	activity := workingActivityRows(rows)
+	lastRequest := -1
+	for i, r := range rows {
+		if r.entry == 0 {
+			lastRequest = i
+		}
+	}
+	if len(activity) != 1 || lastRequest < 0 || activity[0] != lastRequest+2 {
+		t.Fatalf("retry activity rows %v did not follow request row %d and its gap", activity, lastRequest)
 	}
 }
 
