@@ -354,13 +354,11 @@ type Reconciler struct {
 	activeMemo    journalMemo[[]store.Node]
 	tasteMemo     journalMemo[[]store.TasteAnswer]
 	surpriseMemos map[int]*timedMemo[[]store.ScopeSurprise]
-	// The skill passes derive from the fact shelf and write to disk, so they
-	// are gated on the journal rather than shared (skills.go). The import pass
-	// watches the foreign disk the journal cannot see, and carries the same
-	// gate for the quiet-machine discipline alone.
+	// The skill passes derive from the fact shelf and write to it or to disk,
+	// so they are gated on the journal rather than shared (skills.go).
 	skillPromotionGate journalGate
 	skillBinGate       journalGate
-	skillImportGate    journalGate
+	skillRetireGate    journalGate
 }
 
 // unresolvedQuestionScan is how deep every read of the question shelf goes.
@@ -742,7 +740,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	r.flushLearningMoments()
 	r.postRetrospectiveDigest(retrospectiveAfter)
 	r.syncSkillBins()
-	r.importForeignSkills()
+	r.retireImportedSkills()
 	if err := r.practiceOnceLocked(ctx); err != nil {
 		return fmt.Errorf("resident tick: practice loop: %w", err)
 	}

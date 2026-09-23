@@ -1026,6 +1026,18 @@ same programs — a picker and a typed request instead of a list and a card. A
 harness you asked codeaf to design for you is on `/subharness` from the moment
 you approve its card. See *Saved shapes of work* for designing one.
 
+## Can you use my skills from Claude Code, Codex or another harness — SKILL.md folders?
+
+Not yet. Skills from other harnesses — the `SKILL.md` folders that Claude Code,
+Codex and other agents keep under their own skills directories — are coming to
+codeaf, and this build does not use them. Nothing here scans those folders,
+offers one to the model or runs one on your behalf, and there is no command for
+them yet.
+
+A skill folder is still ordinary files on disk. If you want one followed now,
+name its `SKILL.md` and ask for it to be read and followed, the same as any
+other file of instructions.
+
 ## Can you tell me how you work?
 
 Yes, and it does not answer from memory. codeaf has a `manual` tool that reads

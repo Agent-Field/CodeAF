@@ -675,24 +675,6 @@ type Event struct {
 	Err           error
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
-	// Skills is the ordered list of skill names this turn carried, on the
-	// notice that announces them (skillturn.go). IT IS THE FIELD AND NOT THE
-	// SENTENCE a surface reads: [Event.Text] says the same thing in words for
-	// a reader who draws notices as prose, and a surface that took the names
-	// back out of that sentence would break the first time somebody improved
-	// the wording or a skill name held a comma, and would break silently,
-	// because a test written against the same sentence agrees with it.
-	//
-	// AN ABSENT LIST MEANS UNKNOWN AND NOT NONE. The tag is omitempty because
-	// an event with no skills has to serialise as it did before this field
-	// existed, which is what keeps a new session and an older peer talking
-	// (internal/remote's wire tests). The cost is that a turn that carried
-	// nothing and a peer too old to send the field put the same bytes on the
-	// wire, so a surface may draw a non-empty list and must say nothing at all
-	// otherwise — a sentence like "no skills used" is a claim this field
-	// cannot support.
-	Skills []string `json:"Skills,omitempty"`
-
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
 	// other kind.
@@ -1250,22 +1232,6 @@ type Config struct {
 	// memory.enabled row is read. A door that turns memory off hands nothing
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
-	// SkillsAwaitMemory says this machine HAS skills and this session cannot
-	// reach them, because the shelf is read through the store and memory is
-	// off. The door measures it once at launch: the scan is a walk over six
-	// folders and a prompt prefix may not pay for one on every render.
-	//
-	// IT EXISTS BECAUSE ABSENT-AND-IMPOSSIBLE AND ABSENT-AND-UNBUILT ARE
-	// OTHERWISE THE SAME SILENCE. A model handed no shelf and no `use_skill`
-	// reasons from that silence and answers that codeaf has no skills at all,
-	// which is what a person with eighty-one of them on disk was told.
-	//
-	// FALSE IS NOT "NO SKILLS", it is "nothing to explain": either the store
-	// is there and the catalog speaks for itself, or the folders are empty too
-	// and a person with no skills must not pay for a sentence about a setting
-	// they have no use for.
-	SkillsAwaitMemory bool
-
 	// ConversationHistory grants only indexed history reads. Workers inherit
 	// this interface without receiving memory extraction, writes, or journaling.
 	// Nil falls back to Memory, so a memory-off root grants no history access.
@@ -3380,14 +3346,6 @@ type Agent struct {
 	// conversation's own posture decided it; nil leaves Config.Guardian to
 	// answer. It is set only by [Agent.SetApprovalPosture].
 	guardianOverride *bool
-
-	// attachedSkills is the ordered set of skill names a person has put in front
-	// of THIS conversation by hand, newest attachment last, guarded by mu
-	// (skillattach.go). It is names and not facts on purpose: the shelf is read
-	// at render time, so a skill attached before it was installed starts being
-	// carried the moment it exists, and a skill deleted from the shelf stops
-	// being carried without anybody having to tidy this list.
-	attachedSkills []string
 
 	// phase is the one stage this agent is holding open and the beat that keeps
 	// saying it while it lasts (phasenews.go). It has a lock of its own rather

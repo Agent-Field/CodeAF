@@ -16,8 +16,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
-	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -28,15 +26,15 @@ const (
 )
 
 // All three passes of the shelf are gated on the journal (memo.go), and for
-// the same reason: each of them exists to make the disk agree with the fact
-// shelf, the fact shelf only moves when something is journaled, and none of
-// them was cheap. Promotion walks every candidate's parent chain back to its
-// top-level job — one node read per generation, per candidate. The bin sync
-// stats and readlinks the whole shelf directory. The import scan stats the
-// foreign roots and reads every SKILL.md it finds. A tick that runs for a
+// the same reason: each of them exists to make the disk or the shelf agree
+// with the fact journal, the journal only moves when something is written, and
+// none of them was cheap. Promotion walks every candidate's parent chain back
+// to its top-level job — one node read per generation, per candidate. The bin
+// sync stats and readlinks the whole shelf directory. The retirement of the
+// old foreign-skill imports reads the active shelf. A tick that runs for a
 // reason unrelated to any of them — a clock deadline, the standing ceiling —
-// used to pay for them all anyway, twice a second, forever, which is what an idle
-// laptop heard as a disk that never spun down.
+// used to pay for them all anyway, twice a second, forever, which is what an
+// idle laptop heard as a disk that never spun down.
 //
 // The gates are separate because the passes do not run back to back and a
 // shared one would let whichever ran first suppress the others. They are in
@@ -44,14 +42,6 @@ const (
 // consolidator spends a model call, so a restart buying another one is
 // expensive, whereas a restart here costs one extra read of a shelf that is
 // almost always empty.
-//
-// The import pass has one more wrinkle than its siblings: it watches the
-// FOREIGN disk, which the journal cannot see at all. The journal gate is
-// therefore the quiet-machine discipline and nothing more — a skill dropped
-// into ~/.claude/skills while nothing is journaled is imported by the first
-// pass where anything was, which on a machine in use is minutes, and on a
-// machine that idle is a disk that stays quiet. That trade is the one the
-// other two passes already made.
 
 type skillRecurrence struct {
 	facts []store.Fact
@@ -550,159 +540,47 @@ func removeSkillBinLink(root, bin, artifact string) {
 	_ = os.Remove(link)
 }
 
-// importedSkillTrust is the tier every foreign skill is registered under. It
-// is the fence the whole import pass is built on: the sync touches ONLY facts
-// carrying exactly this tier, so a forged or authored skill — anything the
-// forge itself taught or a person wrote — is never superseded, rewritten or
-// otherwise disturbed by a folder it never heard of changing on disk.
+// importedSkillTrust is the tier the foreign-skill import registered every
+// SKILL.md folder under, back when another harness's skills were copied onto
+// this shelf by reference. That import is gone: skills from other harnesses
+// are read from their folders by the design that replaces it, and never
+// through this store. The tier is still the fence, because a store that ran
+// the import holds active facts carrying it, and those are the only facts the
+// retirement below may touch — a forged or authored skill is never disturbed.
 const importedSkillTrust = "imported-provisional"
 
-// importForeignSkills is the shelf's third pass: it registers skills a person
-// already has for another harness — Claude Code, Codex, any agentskills.io
-// reader — from where those harnesses keep them, in place, with no copy and
-// no reinstall.
-func (r *Reconciler) importForeignSkills() {
-	if !r.skillImportGate.due(r.store) {
+// importedSkillRetiredReason is what the journal says about each retired
+// import, so a person reading the shelf's history sees why it went.
+const importedSkillRetiredReason = "skills from other harnesses are no longer imported onto the shelf"
+
+// retireImportedSkills is the shelf's third pass: it takes the facts the
+// removed foreign-skill import left behind off the active shelf, so a task
+// brief built from the shelf carries only what this program forged itself.
+func (r *Reconciler) retireImportedSkills() {
+	if !r.skillRetireGate.due(r.store) {
 		return
 	}
-	// The project directory is the working directory, derived exactly the way
-	// the rest of the tree derives a surface's own ground: the head's
-	// workspaceRoot and the errand surface's errandWorkspace both fall back to
-	// it, so the resident reads the same directory and invents no new source.
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return
-	}
-	// The home directory is the one door internal/home owns: CODEAF_HOME
-	// moves it wholesale, and a test binary that named no home of its own is
-	// handed the quarantine rather than the home of whoever ran it, so the
-	// scan never imports a real person's skills into a throwaway store.
-	homeDir, err := home.Login()
-	if err != nil {
-		return
-	}
-	r.reconcileImportedSkills(projectDir, homeDir)
+	RetireImportedSkills(r.store)
 }
 
-// reconcileImportedSkills is the reconciler's own door into the import pass:
-// the gate and the working directory are the resident's, and the store-bound
-// work is shared with the v3 chat door, which runs the same pass on every
-// launch because it claims no residency of its own.
-func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
-	ReconcileImportedSkills(r.store, projectDir, homeDir)
-}
-
-// ReconcileImportedSkills makes the fact shelf agree with the foreign roots:
-// every discovered skill that is not shadowed gets one active fact whose
-// artifact is the ORIGINAL directory, and every previously imported fact
-// whose folder went away or stopped being readable is superseded with the
-// reason why. Both directories come in as arguments and the store is the
-// caller's, so the same pass serves the resident reconciler's gated tick and
-// a chat door that runs it once per launch — and it is idempotent: a second
-// run over an unchanged disk journals nothing.
-//
-// The pass never fails loudly. A folder that cannot be digested, a fact that
-// cannot be recorded: each is skipped and picked up by the next pass, because
-// half-imported is a state the next pass repairs and a failed pass is one
-// nothing repairs.
-func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
-	discovered, err := skills.Discover(skills.Options{ProjectDir: projectDir, HomeDir: homeDir})
-	if err != nil {
+// RetireImportedSkills supersedes every active fact the removed foreign-skill
+// import recorded, with the reason why. The store is the caller's, so the same
+// pass serves the resident reconciler's gated tick and the chat door, which
+// claims no residency and runs it once per launch. It is idempotent — a shelf
+// with nothing imported on it journals nothing — and it never fails loudly: a
+// fact that cannot be superseded now is picked up by the next pass.
+func RetireImportedSkills(st *store.Store) {
+	if st == nil {
 		return
 	}
 	active, err := st.SkillFacts(store.FactActive, skillCandidateScanLimit)
 	if err != nil {
 		return
 	}
-	// Only facts this pass itself recorded are its business. The map is
-	// keyed by the original directory because that is the skill's identity
-	// across runs — names, scopes and docs may change, the folder is what the
-	// person deleted or edited. SkillFacts is newest first, so the first fact
-	// seen for a directory is the one to keep; a second one can only exist
-	// when a crash landed between one import's activation and the supersede it
-	// was about to journal, and it retires here so the shelf keeps its
-	// one-active-fact-per-folder shape.
-	imported := make(map[string]store.Fact)
 	for _, fact := range active {
 		if fact.Trust != importedSkillTrust {
 			continue
 		}
-		dir := filepath.Clean(strings.TrimSpace(fact.Artifact))
-		if dir == "" {
-			continue
-		}
-		if existing, seen := imported[dir]; seen {
-			_ = st.SupersedeFactWithReason(fact.Seq, existing.Seq, "duplicate import record")
-			continue
-		}
-		imported[dir] = fact
+		_ = st.SupersedeFactWithReason(fact.Seq, 0, importedSkillRetiredReason)
 	}
-
-	// alive is every directory this scan still endorses — shadowed ones
-	// included, because a folder another root outranks has not gone away, and
-	// superseding a live folder because it lost a naming contest would retire
-	// a working skill for a cosmetic reason. A skill that LOADED endorses its
-	// folder even when it carries a soft warning — a name that does not match
-	// its folder is still a working skill, per the spec's client guide — while
-	// a skipped one (no name, no description, unparseable) endorses nothing.
-	alive := make(map[string]bool)
-	for _, skill := range discovered {
-		if skill.Name == "" || skill.Description == "" {
-			continue
-		}
-		dir := filepath.Clean(skill.Dir)
-		alive[dir] = true
-		if skill.Shadowed {
-			continue
-		}
-		digest, err := contentDigest(dir)
-		if err != nil {
-			continue
-		}
-		if existing, ok := imported[dir]; ok && existing.Digest == digest {
-			continue
-		}
-		candidate, err := st.RecordSkillCandidateFrom(store.FactWriterOther, store.RootID,
-			importedSkillScope(skill, projectDir), clipFactBody(skill.Description), dir, importedSkillTrust)
-		if err != nil {
-			continue
-		}
-		if err := st.ActivateSkill(candidate.Seq, dir, digest); err != nil {
-			continue
-		}
-		if existing, ok := imported[dir]; ok {
-			_ = st.SupersedeFactWithReason(existing.Seq, candidate.Seq,
-				"imported skill changed on disk")
-		}
-	}
-
-	// What the disk no longer endorses must retire: a deleted folder and a
-	// folder whose SKILL.md stopped parsing read the same from here, and the
-	// reason names the file because that is the thing a person goes looking
-	// for. A shadowed folder stays alive, so it never reaches this arm.
-	gone := make([]string, 0, len(imported))
-	for dir := range imported {
-		if !alive[dir] {
-			gone = append(gone, dir)
-		}
-	}
-	sort.Strings(gone)
-	for _, dir := range gone {
-		_ = st.SupersedeFactWithReason(imported[dir].Seq, 0,
-			"skill folder no longer holds a readable SKILL.md")
-	}
-}
-
-// importedSkillScope names where a discovered skill came from, in the tree's
-// kind:value convention (notebook.go builds "repo:"+dir and "tool:"+word the
-// same way). The rule is deterministic and read off the discovery, never the
-// clock: a project skill is scoped to its project directory, so the catalog's
-// scorer surfaces it exactly when the work is in that directory; a user skill
-// is scoped to the harness folder it was read from, which names its source
-// without naming any one machine's paths.
-func importedSkillScope(skill skills.Skill, projectDir string) string {
-	if skill.Scope == skills.ScopeProject {
-		return "repo:" + projectDir
-	}
-	return "harness:" + strings.TrimSuffix(strings.TrimPrefix(skill.Root, "."), "/skills")
 }

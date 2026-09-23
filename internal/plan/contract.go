@@ -582,9 +582,8 @@ outer:
 
 // RetrieveSkills returns the skills retrieval would attach to one leaf: those
 // whose scope or doc line cues against the leaf's own territory — its rendered
-// instruction, and the workspace it runs in. The shape is the chat catalog's
-// window scorer (skillcatalog.go): a scope naming something in front of the
-// leaf outweighs anything, a shared doc word is the weaker cue. One shared
+// instruction, and the workspace it runs in. A scope naming something in
+// front of the leaf outweighs anything, a shared doc word is the weaker cue. One shared
 // word is coincidence — "the" shares with every instruction there is — so only
 // scores a real cue produces come back, most relevant first, capped.
 func RetrieveSkills(text, workspace string, skills []store.Fact) []string {
@@ -631,9 +630,7 @@ func RetrieveSkills(text, workspace string, skills []store.Fact) []string {
 
 // docWords is the comparable words of one text: lowercase, split on everything
 // that is not a letter or a digit, and dropping the short words that match
-// everything. It is the chat catalog's own tokenizer (skillcatalog.go), held
-// at this spelling because the composition here has to agree with what the
-// shelf's one other reader scores with.
+// everything.
 func docWords(text string) []string {
 	fields := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
 		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')

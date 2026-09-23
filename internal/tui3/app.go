@@ -1758,12 +1758,8 @@ type app struct {
 	// and harnChip the name it was answered with — the one harness the next
 	// message will run, held in the tray above the box rather than in the draft
 	// (harnesspick.go).
-	harnPick harnessPick
-	harnChip string
-	// skillPick is the filtering list "/skill " opens over the shelf
-	// (skillpick.go). It holds no attachment state of its own: the names live
-	// in the session, and the tray chip reads them there.
-	skillPick skillPick
+	harnPick  harnessPick
+	harnChip  string
 	connNames map[string]string
 	connFlows map[string]*connect.Flow
 	// codexFlow is the model-service browser sign-in. Its result is tokens rather
@@ -4023,11 +4019,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// still typing, so a press anywhere else is a press on whatever is
 			// there (harnesspick.go).
 			if cmd, took := a.harnessPickPress(msg.Mouse().Y); took {
-				return a, cmd
-			}
-			// AND THE SKILL PICKER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
-			// ELSE, on exactly the harness picker terms (skillpick.go).
-			if cmd, took := a.skillPickPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE THINKING LADDER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
@@ -7192,19 +7183,6 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openHarness()
 		return nil
 
-	case "skill", "skills":
-		// THE SHELF, AS A PICKER. Bare, it opens the list on the whole shelf
-		// with the attached ones at the top, which is the same answer the
-		// space after the command gives (skillpick.go); the surface writes
-		// the command and its space into the box rather than opening the list
-		// from nowhere, because the list is synced off the draft and a draft
-		// with the command in it is a draft the query can be typed into.
-		a.input.reset()
-		a.input.insert("/skill ")
-		a.syncLists()
-		a.touch()
-		return a.edited()
-
 	case "subharness":
 		// THE PROGRAMS THIS CONVERSATION CAN RUN, as a filterable list, and the
 		// intake card behind each of them (subharness.go). Unlike /harness this
@@ -8428,14 +8406,6 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return cmd, true
 		}
 	}
-	// AND THE SKILL PICKER ANSWERS FOR ITSELF, beside the harness picker and
-	// for its reason: its enter is a toggle rather than a commit, so it cannot
-	// be handed to the lists below (skillpick.go).
-	if a.skillPick.open {
-		if cmd, taken := a.skillPickKey(msg); taken {
-			return cmd, true
-		}
-	}
 	if !a.menu.open && !a.comp.open {
 		return nil, false
 	}
@@ -8532,7 +8502,6 @@ func (a *app) syncLists() tea.Cmd {
 	if a.menu.open {
 		a.comp.close()
 		a.harnPick.close()
-		a.skillPick.close()
 		return nil
 	}
 	// AND THE HARNESS PICKER IS THE THIRD OF THEM, asked after the command list
@@ -8540,14 +8509,6 @@ func (a *app) syncLists() tea.Cmd {
 	// space ends the choosing of a command and begins its argument, and for this
 	// one command the argument has a list of its own (harnesspick.go).
 	if a.syncHarnessPick() {
-		a.comp.close()
-		a.skillPick.close()
-		return nil
-	}
-	// AND THE SKILL PICKER IS THE FOURTH OF THEM, on the harness picker own
-	// terms: the same space that begins an argument begins the shelf
-	// (skillpick.go).
-	if a.syncSkillPick() {
 		a.comp.close()
 		return nil
 	}
@@ -8566,7 +8527,6 @@ func (a *app) closeLists() {
 	a.menu.close()
 	a.comp.close()
 	a.harnPick.close()
-	a.skillPick.close()
 }
 
 // dismissLists is esc over a typed list, which is [app.closeLists] plus the one
