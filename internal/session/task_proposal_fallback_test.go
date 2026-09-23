@@ -7,13 +7,14 @@ import (
 	"testing"
 )
 
-// A HAND-OFF THE RUN ENGINE COULD NOT START SAYS WHICH ENGINE TOOK IT, AND WHY.
+// A HAND-OFF THE RUN ENGINE COULD NOT START SAYS SO, AND STARTS NOTHING ELSE.
 //
 // The run road's store will not open — a directory stands where the store file
-// goes — so the approved task falls back to the older engine. The work still
-// starts, but the receipt the conversation reads must not be the run road's
-// receipt word for word: it names the engine the work is on and the run road's
-// own reason, so the chat never describes a run that does not exist.
+// goes. The receipt the conversation reads must not be the run road's receipt
+// word for word, and the work must not quietly become a node of the older
+// engine's tree: an approved hand-off under the bash belt is a run or it is
+// nothing, and the receipt says which, with the run road's own reason
+// ([runDidNotStart]).
 func TestAnApprovedHandoffTheRunEngineCouldNotStartSaysSo(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("never reached")
@@ -30,12 +31,16 @@ func TestAnApprovedHandoffTheRunEngineCouldNotStartSaysSo(t *testing.T) {
 		config.TaskAutoApproveSeconds = 0
 	})
 	agent.graph().run = func(*TaskNode) {}
+	before := agent.graph().seq
 
 	answer, failed, err := approveBeltProposal(t, agent, beltProposalArgs("Change the fallback road", "the focused proof passes"))
-	if err != nil || failed {
-		t.Fatalf("propose_task: failed=%v err=%v answer=%q", failed, err, answer)
+	if err != nil {
+		t.Fatalf("propose_task errored the turn: %v", err)
 	}
-	if !strings.Contains(answer, "It runs on the older task engine, because the run engine could not start it:") {
-		t.Fatalf("the receipt hides that the run engine could not start the task:\n%s", answer)
+	if !failed || !strings.Contains(answer, "did not start") {
+		t.Fatalf("the receipt hides that the run engine could not start the task: failed=%v\n%s", failed, answer)
+	}
+	if agent.graph().node(before+1) != nil {
+		t.Fatal("the hand-off the run engine could not start became a node of the older tree")
 	}
 }

@@ -105,7 +105,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	agent, err := session.NewBeltWorker(session.Config{
 		Workspace: w.workspace,
 		Model:     w.model,
-	}, w.completer, &task, w.store.Path())
+	}, w.completer, &task, w.store.Path(), w.store.RootID())
 	if err != nil {
 		return Report{}, err
 	}

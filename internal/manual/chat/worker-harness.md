@@ -162,6 +162,40 @@ and the store is kept beside the new one, readable with the earlier runs. Its ro
 read `interrupted`, never `running`. Carrying an interrupted run on is not possible
 from any surface today.
 
+## I approved several tasks at once — are they one run? Why a task says it did not start
+
+**Yes: tasks approved together are one run.** When the chat proposes several tasks
+in one message and they are all approved at the same moment, the first one to start
+opens the run and every other waits the moment that takes, then joins it as a child
+of the run's own task, exactly as a task handed off a minute later would. A batch
+never opens a second run beside the first and never sets the first run's plan
+aside, and none of it starts on the older engine instead.
+
+**A task whose run could not start says so, and nothing else starts.** If the run's
+plan could not be opened or its copy could not be cut, the answer is
+`task N did not start: <the reason>. Nothing is running for it and nothing was
+started in its place; propose it again, or tell the person what stopped it.` A typed
+`/task` answers the same sentence. It reads as a failure, never as `task N started`,
+and the task is not quietly put on the older engine's tree. Only a build with no run
+engine at all, or a conversation with nowhere to keep a plan, uses the older engine,
+because there the run road was never there to take.
+
+**A worker writes only its own run's plan.** A run's worker is bound to its run, not
+only to where its plan was. If another run's plan is ever found in that place, the
+worker's `plandb` refuses it: `the plan store at <path> is another run's (t-<its
+task>), not this worker's run (t-<its own>), so nothing was read or written`.
+
+## Typing into a run's row, and a row nothing drives any more
+
+A message typed in the room of a run's row is left as a note on that task's page,
+and the room says `left on the task's page — its worker reads it between steps`.
+
+A run row that nothing drives any more, because its run is not the one this
+conversation is driving or its plan holds no such task, answers a message with
+`nothing is driving this task any more, so no worker can read a message; stop it to
+clear the row`. It never answers `no task N in this session` while the side list
+still draws it. *How do I stop a run?* says what clearing it does.
+
 ## Why is this task indented under that one?
 
 The pane draws the run's **plan as a tree, not a flat list**. A task sits under the
@@ -482,7 +516,9 @@ off, and no further model call is made for it. The row reads `stopped`. A second
 on a run that is already stopping answers that it is already stopping.
 
 `x` on one PART of a run ends that part only, at once and without a card, and the
-rest of the run carries on. A run cannot be paused as a whole, so under the run's own
+rest of the run carries on. A row nothing drives any more is cleared the same way:
+the stop settles it as `stopped` and answers `stopped task N (<title>) — nothing was
+driving it any more`. A run cannot be paused as a whole, so under the run's own
 task no `p pause` is named.
 
 Closing the window, `ctrl+c` and `/quit` do NOT stop a run: it carries on without the
@@ -815,9 +851,8 @@ admitted, and where `codeaf do` chooses its road — and **with one of those thr
 words set, not one byte of any prompt, belt or landing moves from the older
 road**.
 
-Everything behind the switch is a seam. A build with no run engine linked answers
-the older road, and a task the run road cannot start falls back to it — so a
-conversation the run road cannot serve gets exactly the door it always had. When a
-task you approved falls back that way, its receipt says so: `It runs on the older
-task engine, because the run engine could not start it:` and the run road's own
-reason.
+Everything behind the switch is a seam. A build with no run engine linked, or a
+conversation with nowhere to keep a plan, answers the older road — so a conversation
+the run road cannot serve at all gets exactly the door it always had. A run road
+that was there and failed does NOT fall back: the task answers `task N did not
+start: <the reason>` and nothing is started on the older engine in its place.
