@@ -423,7 +423,11 @@ func TestAPathOnAnotherMachineDoesNotRefuseTheTask(t *testing.T) {
 	// THE PATH THAT FAILED. It begins /home, and on macOS /home is a symlink to a
 	// directory that is really there, so a reading that walks up the path finds a
 	// place and refuses the task. The directory the path itself names is not here.
-	remote := "/home/santosh/src/af-dev2-probe/bin/codeaf"
+	//
+	// IT NAMES NOBODY'S REAL FOLDER. It spelled a real person's checkout once, and
+	// on the machine that holds that checkout the directory is there, so the test
+	// failed on the one box it was written about.
+	remote := "/home/remote-builder/src/codeaf-probe/bin/codeaf"
 	if _, ok := placeOnThisMachine(remote); ok {
 		t.Fatalf("%s resolves to a directory on this machine, so it cannot stand in for a remote path", remote)
 	}
