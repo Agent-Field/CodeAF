@@ -77,6 +77,16 @@ type PlanTaskRow struct {
 	// ending of its loop, so a task that is not running never claims a present.
 	Live      plandb.LiveStep
 	LiveParts []PlanCommandPart
+	// Program is the name of the program this task was handed to — senior-dev —
+	// read off the program record in the task's own record folder
+	// ([planProgramRecord]), and empty for every task a worker of this
+	// conversation's own drives. Stage is the stage that program says it is in
+	// right now, its live step read without its name in front
+	// ([planProgramStage]), and empty whenever nothing is live. The rail draws
+	// both under the run's own row, where a program's run used to wear only its
+	// clock.
+	Program string
+	Stage   string
 	// TrajectoryPath is the file the task's steps are recorded in, for a reader
 	// that wants the record itself and not only its length.
 	TrajectoryPath string
@@ -121,6 +131,12 @@ type PlanTaskPage struct {
 	// WaitRows feed the page's two-way waits reading: own dependencies first,
 	// then open tasks directly waiting on this task. Empty omits the section.
 	WaitRows []PlanTaskRow
+	// Program is the program this task was handed to and the conversation it
+	// has had with codeaf so far (plandb_program.go): nil for every task a worker
+	// of this conversation's own drives, which is every page but a program's.
+	// A page that carries one is drawn as that conversation rather than as a
+	// list of steps.
+	Program *PlanProgram
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and
@@ -202,6 +218,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	}
 	var rows []PlanTaskRow
 	copies := a.planDisplayRunCopy()
+	carried := a.planCarriedPrograms()
 	for _, store := range stores {
 		dir := filepath.Dir(store.Path())
 		spend := planSpendByTask(store.Path())
@@ -214,6 +231,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		root := store.RootID()
 		for _, task := range tasks {
 			row := planTaskRow(store, dir, task, spend, live)
+			planCarriedRow(&row, carried[task.ID])
 			row.Folder = a.planTaskRunCopy(task.ID)
 			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
 			rows = append(rows, row)
@@ -253,6 +271,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	spend := planSpendByTask(store.Path())
 	live := store.LiveSteps()
 	copies := a.planDisplayRunCopy()
+	carried := a.planCarriedPrograms()
 	// Walk admission order once; membership follows parent edges only.
 	all := store.Tasks(plandb.Filter{Chat: plan.chat})
 	rows := make(map[string]PlanTaskRow, len(all))
@@ -260,6 +279,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	depths := map[string]int{task.ID: -1}
 	for _, child := range all {
 		row := planTaskRow(store, dir, child, spend, live)
+		planCarriedRow(&row, carried[child.ID])
 		row.Folder = a.planTaskRunCopy(child.ID)
 		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
 		rows[child.ID] = row
@@ -304,8 +324,14 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Folder:      pageRow.Folder,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planStepDisplayFactsForPage(planTrajectory(dir, task.ID), copies.or(pageRow.Folder)),
-		Children:    children,
-		WaitRows:    waitRows,
+		// THE PAGE CARRIES ITS OWN LIVE STEP, lifted off its row. The field was
+		// declared for a surface to draw the step one step early and was never
+		// set, so the step in flight — and a program's stage, which is published
+		// as that same step — was drawn nowhere on the page.
+		Live:     pageRow.Live,
+		Children: children,
+		WaitRows: waitRows,
+		Program:  planProgramPage(dir, task.ID, carried[task.ID], copies.or(pageRow.Folder)),
 	}, true
 }
 
@@ -599,6 +625,13 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		Note:           planLastNote(store, task.ID),
 		TrajectoryPath: planTrajectoryPath(dir, task.ID),
 		Live:           live[task.ID],
+	}
+	// A PROGRAM'S ROW NAMES ITS PROGRAM AND THE STAGE IT IS IN, both off what is
+	// on disk beside the trajectory or already read: the record the worker wrote
+	// at the program's hello, and the live step the worker publishes the stage
+	// as. Every other row costs one look for a record that is not there.
+	if record, ok := planProgramRecord(dir, task.ID, ""); ok {
+		planProgramRow(&row, record.Name)
 	}
 	if task.ParentID != "" {
 		row.Parent = planStoreID(task.ParentID)

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -973,6 +974,8 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 		Depth: 2, Waits: []string{"t-a", "t-b"}, Steps: 7, USD: 1.25,
 		Started: started, Ended: ended, Note: "last note",
 		Live:           plandb.LiveStep{Step: 8, Command: "go test ./internal/remote", Since: started},
+		Program:        "senior-dev",
+		Stage:          "implement",
 		TrajectoryPath: "/tmp/trajectory.jsonl",
 	}
 	page := session.PlanTaskPage{
@@ -982,6 +985,21 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 		Live:     row.Live,
 		Children: []session.PlanTaskRow{row},
 		WaitRows: []session.PlanTaskRow{row},
+		// A PROGRAM'S CONVERSATION CROSSES WITH ITS PAGE, on the page's own call
+		// and in no call of its own: an answered turn with everything a turn can
+		// carry, a refused one, and the one still in flight.
+		Program: &session.PlanProgram{
+			Name: "senior-dev", Stages: []string{"intake", "implement"},
+			Turns: []delegate.Turn{
+				{Seq: 1, Thread: "main", Started: started, Ended: ended, Model: "deepseek/deepseek-v4-flash", Served: "deepseek/deepseek-v4-flash-0731",
+					Sent:  []delegate.Said{{Role: "user", Text: "rewrite the wire"}, {Role: "tool", Tool: "read", Text: "package remote"}},
+					Reply: "I'll read the wire first.", Calls: []delegate.ToolUse{{Name: "read", Args: `{"filePath":"wire.go"}`}},
+					TokensIn: 1200, TokensOut: 40, Cached: 800, CostUSD: 0.012},
+				{Seq: 2, Thread: "main", Started: started, Model: "deepseek/deepseek-v4-flash", Refused: "the run's dollar ceiling is reached"},
+				{Seq: 3, Thread: "main", Started: ended, Model: "deepseek/deepseek-v4-flash", Restarted: true},
+			},
+			Earlier: 4, Calls: 6, CeilingUSD: 5,
+		},
 	}
 	e.answers[MethodPlanTasks] = []session.PlanTaskRow{row}
 	e.answers[MethodPlanTaskPage] = PlanTaskPageResult{Page: page, OK: true}
