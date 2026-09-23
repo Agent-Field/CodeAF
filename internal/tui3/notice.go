@@ -342,9 +342,17 @@ var notices = []notice{
 	// [eventTaskPageOpened] are still fired at their seams: nothing in the
 	// table waits on either one now, and a later row may.
 	{
+		// BOTH DOORS, BECAUSE THEY ARE ONE THING. The row said `/rewind takes
+		// back an earlier message` until #1388 gave `esc esc` back and
+		// respelled it as the chord alone. Either spelling teaches half of it:
+		// the chord is the half nobody discovers, and the command is the half
+		// that makes the chord findable again tomorrow — a person who reads
+		// only `esc esc` has no word to type into `/` or to ask the manual
+		// about. One row names both and retires on either (eventRewound fires
+		// from both doors, rewind.go's [app.rewindLand]).
 		id: "rewind-after-long-answer", slot: slotHint,
 		armed:  func(a *app) bool { return a.lastAnswerRunes() >= longAnswerRunes },
-		text:   "esc esc takes back the last message",
+		text:   "esc esc or /rewind takes back an earlier message",
 		retire: eventRewound,
 	},
 	{

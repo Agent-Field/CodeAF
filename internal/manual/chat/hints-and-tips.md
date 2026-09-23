@@ -7,9 +7,9 @@ work right now: `esc interrupt` while an answer is coming, `y allow · n deny ·
 while codeaf is asking you something, `space space home` when there is a home to go to,
 `/ commands` when nothing else is true. Once you have used codeaf a little, that idle line
 sometimes carries a **tip** instead — one sentence naming a key or a command you have not
-used yet, and what it does, for example `esc esc takes back the last message` or `/files
-finds everything made for you`. It reads the way every hint on this surface does: the key
-or the command first, then what it does.
+used yet, and what it does, for example `esc esc or /rewind takes back an earlier message`
+or `/files finds everything made for you`. It reads the way every hint on this surface
+does: the key or the command first, then what it does.
 
 **In a conversation the tip is the keys row's lowest rung.** It takes that row from the
 rest state — the line a newcomer reads when nothing is happening — and every state with
@@ -108,10 +108,11 @@ build if the two disagree), so a tip you saw is on it word for word.
   context window. Retired when a `/compact` finishes.
 - `/cost says what this conversation has spent` — once the conversation has spent about
   ten cents. Retired when you run `/cost`.
-- `esc esc takes back the last message` — after an answer of about 1,500 characters or
-  more. Retired the first time a rewind lands, from `esc esc` or from `/rewind`. It named
-  `/rewind` instead until 2026-09-23, while `esc esc` was not a gesture; the chord is the
-  half you cannot discover, so the chord is what the row teaches.
+- `esc esc or /rewind takes back an earlier message` — after an answer of about 1,500
+  characters or more. Retired the first time a rewind lands, by either door. It is the one
+  row that names a chord and a command for the same thing, on purpose: `esc esc` is the
+  half nobody discovers, and `/rewind` is the half you can type into `/` or ask the manual
+  about a week later.
 - `/files finds everything made for you` — after the first export writes a file. Retired
   when you run `/files`.
 - `/resume opens an earlier conversation` — when you start in a directory that already has
