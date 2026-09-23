@@ -202,7 +202,7 @@ func TestTheLegendsChordReadsAboveItsExplanation(t *testing.T) {
 	a.state = stateWorking
 
 	line := a.hintRow(a.width)
-	if !lifted(a.pal, line, "ctrl+c") {
+	if !lifted(a.pal, line, "esc") {
 		t.Fatalf("the keys row draws its chord at the weight of its prose:\n%q", line)
 	}
 	if !dimmed(a.pal, line, " interrupt") {
@@ -308,7 +308,7 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 					want = append(want, "ctrl+g")
 				}
 				parts = append(parts, stop)
-				want = append(want, "ctrl+c")
+				want = append(want, "esc")
 				cases = append(cases, hintGrammarCase{hint: strings.Join(parts, hintSegment), want: want})
 			}
 		}
