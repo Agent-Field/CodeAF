@@ -135,7 +135,7 @@ func ChildArgs(program Delegate, workspace, brief string, ceilings Ceilings) []s
 // pages to it (internal/delegate/builtin).
 func Help(program Delegate, out io.Writer) {
 	fmt.Fprintf(out, "codeaf %s: %s\n\n", program.Name, program.Summary)
-	fmt.Fprintf(out, "usage:\n  codeaf %s [flags] <brief>          runs %s\n", program.Name, program.Default)
+	fmt.Fprintf(out, "usage:\n  codeaf %s [flags] <brief>          the same as %s\n", program.Name, program.Default)
 	for _, c := range program.Commands {
 		fmt.Fprintf(out, "  codeaf %s %s %s\n      %s\n", program.Name, c.Name, c.Usage, c.Summary)
 	}
