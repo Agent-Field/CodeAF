@@ -2,24 +2,28 @@ package tui3
 
 import "github.com/Agent-Field/codeaf/internal/tui2/tokens"
 
-// homeChatState reads only the foreground state and the keeper's cached events.
-// A task running in the conversation does not mean its answer is still streaming.
-func (a *app) homeChatState(cell *homeCell) (answering, unread bool) {
-	if cell == nil || cell.closed || cell.chatKey == "" {
+// homeChatState shares the tab's live reading so tasks that outlast an answer
+// keep their conversation working. Owned conversations use cached events;
+// another window's tasks use Home's latest presence reading.
+func (a *app) homeChatState(cell *homeCell) (working, unread bool) {
+	if cell == nil || cell.closed {
 		return false, false
 	}
 	key := cell.chatKey
-	if key == a.frontTabKey() {
-		return a.state == stateWorking, a.unreadChats[key]
+	if key != "" && key == a.frontTabKey() {
+		return a.frontSignal() == tabWorking, a.unreadChats[key]
 	}
 	if held := a.behind[key]; held != nil && held.watch != nil {
-		return held.watch.turning.Load(), a.unreadChats[key] || held.watch.landedSince() > 0
+		return held.watch.signal() == tabWorking, a.unreadChats[key] || held.watch.landedSince() > 0
 	}
-	return false, a.unreadChats[key]
+	if cell.row != nil {
+		_, working = homeMovingAt(homeLine{kind: homeSession, row: cell.row.session})
+	}
+	return working, a.unreadChats[key]
 }
 
-// The first answering conversation takes the spinner only if another panel has none.
-func (a *app) homeAnsweringLine() int {
+// The first working conversation takes the spinner only if another panel has none.
+func (a *app) homeWorkingLine() int {
 	for i, line := range a.home.lines {
 		if line.kind == homeSession && line.cell != nil && (line.cell.panel == panelRecent || line.cell.panel == panelSessions) {
 			if working, _ := a.homeChatState(line.cell); working {
@@ -32,12 +36,8 @@ func (a *app) homeAnsweringLine() int {
 
 func (a *app) homeConversationBullet(cell *homeCell, pal palette) string {
 	working, unread := a.homeChatState(cell)
-	if cell != nil && !cell.closed && cell.row != nil {
-		_, moving := homeMovingAt(homeLine{kind: homeSession, row: cell.row.session})
-		working = working || moving
-	}
 	mark := pal.glyph(tokens.GWorking)
-	first := a.homeAnsweringLine()
+	first := a.homeWorkingLine()
 	if working && !a.linear && ((a.home.spin >= 0 && a.home.lines[a.home.spin].cell == cell) ||
 		(a.home.spin < 0 && first >= 0 && a.home.lines[first].cell == cell)) {
 		mark = a.homeSpinGlyph()

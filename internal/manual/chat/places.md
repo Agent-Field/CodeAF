@@ -471,7 +471,7 @@ queued, waiting or unanswered work. Once that work settles, its whole tree moves
 completed; new work moves it back. Each task retains its own state word.
 
 Both sections default to newest activity first; click the age heading to reverse. Conversation titles match Home, and the same
-bullets mark answering, unread and unanswered states. Every conversation and nested task
+bullets mark running work, unread replies and unanswered questions. Every conversation and nested task
 starts expanded, with connecting tree lines and fold arrows immediately after titles in the left column. Projects
 have their own column. You can fold a branch yourself. `/history`, `ctrl+.` and `alt+2` open it.
 

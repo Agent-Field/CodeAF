@@ -106,3 +106,83 @@ func TestHomeConversationBulletsFollowAnswerAndUnreadState(t *testing.T) {
 		t.Fatal("closed conversation is not dim/idle")
 	}
 }
+
+func TestHomeConversationKeepsWorkingUntilItsLastTaskSettles(t *testing.T) {
+	for _, background := range []bool{false, true} {
+		name := "foreground"
+		if background {
+			name = "background"
+		}
+		t.Run(name, func(t *testing.T) {
+			a, files := homeTabsFixture(t)
+			open, _ := homeConversationLines(a)
+			cell := open[0].cell
+			watch := &behindWatch{}
+			if background {
+				key := a.convKey(files[1])
+				if a.behind == nil {
+					a.behind = make(map[string]*kept)
+				}
+				a.behind[key] = &kept{watch: watch}
+				for _, line := range open {
+					if line.cell.chatKey == key {
+						cell = line.cell
+					}
+				}
+			}
+			update := func(id uint64, state session.TaskState) {
+				event := signalSettled(id, state)
+				if background {
+					watch.noteTask(event.Task)
+				} else {
+					a.taskUpdate(event)
+				}
+			}
+			a.state = stateIdle
+			a.linear = true
+			update(21, session.TaskRunning)
+			update(22, session.TaskRunning)
+			if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GWorking) {
+				t.Fatalf("Home shows %q while tasks run after the answer ended", got)
+			}
+			a.linear = false
+			a.home.spin = homeNoLine
+			first := plain(a.homeConversationBullet(cell, a.pal))
+			a.paints += spinnerStep
+			if next := plain(a.homeConversationBullet(cell, a.pal)); next == first || !a.homeAnimating() {
+				t.Fatal("task-only conversation did not animate on Home")
+			}
+			a.linear = true
+			cell.mark = cellMarkNeeds
+			if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GNeedsHuman) {
+				t.Fatalf("running tasks hid an unanswered question: %q", got)
+			}
+			cell.mark = cellMarkNone
+			update(21, session.TaskDone)
+			if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GWorking) {
+				t.Fatalf("one finished task hid the other running task: %q", got)
+			}
+			update(22, session.TaskDone)
+			// A stale disk count must not overrule this window's completed tasks.
+			cell.row = &switcherRow{session: session.SessionRow{Tasks: session.TaskRollup{Running: 2}}}
+			if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GProseBullet) {
+				t.Fatalf("Home still shows work after the last task settled: %q", got)
+			}
+		})
+	}
+}
+
+func TestHomeConversationReadsAnotherWindowsRunningTasks(t *testing.T) {
+	a, _ := homeTabsFixture(t)
+	a.linear = true
+	cell := &homeCell{row: &switcherRow{session: session.SessionRow{
+		Live: true, Tasks: session.TaskRollup{Running: 1},
+	}}}
+	if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GWorking) {
+		t.Fatalf("another window's running task lost its working mark: %q", got)
+	}
+	cell.closed = true
+	if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GProseBullet) {
+		t.Fatalf("a closed conversation kept a working mark: %q", got)
+	}
+}

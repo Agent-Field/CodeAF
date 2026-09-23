@@ -165,7 +165,7 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 // twenty things out wakes it exactly as often — and costs the wire exactly as
 // much — as a machine with one.
 func (a *app) homeAnimating() bool {
-	return a.at(pageHome) && !a.linear && (a.homeSpins(a.home.spin) || a.homeAnsweringLine() >= 0)
+	return a.at(pageHome) && !a.linear && (a.homeSpins(a.home.spin) || a.homeWorkingLine() >= 0)
 }
 
 // homeGutter is the empty space between the two columns, and it is the ONLY

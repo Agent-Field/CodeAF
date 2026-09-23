@@ -106,7 +106,7 @@ Home has no `needs you` heading or empty attention panel. An amber `?` beside a
 conversation or task means it has an unanswered question. The question stays on
 that item's existing row instead of creating a duplicate. A task decision names
 the task when its question identifies it; other questions stay on the conversation.
-The question mark takes priority over the conversation's answering or unread mark.
+The question mark takes priority over the conversation's working or unread mark.
 
 The selected row's description shows the question and its available answers. The
 same digit keys answer it. Once the question is resolved and Home refreshes, the
@@ -297,9 +297,10 @@ The choice survives closing the app. Folder actions use the task's conversation 
 
 ## Why does only one row spin — the one spinner on home
 
-**The first answering conversation wears the one turning cell.** However much is happening, exactly one cell on the frame turns: the other
-running rows wear no mark at all, and the page stays a still page redrawn every three
-seconds. An `ask here` errand's row takes the spinner while its answer is coming, and so does
+**Only one working conversation animates.** The other running conversations keep a
+still working mark. Home's latest activity reading chooses the spinner; if it has none,
+the first conversation with live work takes it. The page refreshes its saved facts every
+three seconds. An `ask here` errand's row takes the spinner while its answer is coming, and so does
 a row on its way here from another window.
 
 Two reasons, and they are the same reason:
@@ -350,7 +351,7 @@ nothing.
 
 Home has **one bulleted conversation list under sessions**. It combines this window's
 open tabs and saved history, deduplicates them, and shows the fifteen most recent
-conversations, newest first. Bullets show answering and unread replies. The current
+conversations, newest first. Bullets show running work and unread replies. The current
 conversation is bold; its description can say `here` and show the last thing you wrote.
 Closed conversations keep their place in this same chronological list, dimmed.
 
@@ -1521,7 +1522,7 @@ show up without you doing anything. There is no file watcher: home reads, and cl
 screen stops the reading. (Standing items — reminders, watches, rules — are a different
 mechanism and do keep going; see the keeping-an-eye page.)
 
-The resting screen does not animate, except the one spinner on the first answering conversation row
+The resting screen does not animate, except the one spinner on the first working conversation row
 (*Why does only one row spin*); the ages simply change on the next reading. In screen-reader
 (linear) mode nothing ever animates.
 
@@ -2211,11 +2212,15 @@ which column each stands in is read off what it holds — a panel with rows is i
 the left, a quiet one in the rail at the right — so nothing about them is yours to set; only
 their heights and their sides move with the terminal and the day.
 
-## Conversation bullets — answering and unread replies
+## Conversation bullets — running tasks, answering and unread replies
 
 Every conversation in Home has a bullet. A dim bullet means there is no unread
-reply known to this window. A working mark means the conversation is answering;
-the first answering row animates when no other Home row owns the spinner. An amber `?` means there is an unanswered question and takes priority over those marks.
+reply known to this window. A working mark means the conversation is answering or has
+queued or running tasks or background commands, even after its answer ends. This applies
+to the conversation in front and those held in other tabs. The mark clears when the last
+work finishes; one completed task does not hide another that is still running.
+The first working row animates when no other Home row owns the spinner. An amber `?`
+means there is an unanswered question and takes priority over those marks.
 A bright filled bullet means a reply finished while you were away. Opening the conversation
 clears that unread state. Recently closed rows keep dim bullets. These indicators
 use this window’s live conversations; they do not infer unread history from other
