@@ -472,16 +472,16 @@ func TestTheWatcherFoldsTaskNoticesOffTheLaneItAlreadyDrains(t *testing.T) {
 
 // ── ONE PREDICATE ON BOTH SIDES OF THE STRIP (#1316) ─────────────────────────
 
-// askingAgent answers the engine's one question about a person from a flag a
+// frontAskAgent answers the engine's one question about a person from a flag a
 // test can move while a watcher is reading it, and counts every time it is
 // asked, which is how a frame that asks the agent is caught.
-type askingAgent struct {
+type frontAskAgent struct {
 	*fakeAgent
 	waits atomic.Bool
 	asked atomic.Int64
 }
 
-func (g *askingAgent) NeedsPerson() bool {
+func (g *frontAskAgent) NeedsPerson() bool {
 	g.asked.Add(1)
 	return g.waits.Load()
 }
@@ -495,7 +495,7 @@ func (g *askingAgent) NeedsPerson() bool {
 // This drives ONE agent in one state through both readings, and the answer is
 // the engine's on both sides, with the frame still asking the agent nothing.
 func TestOneConversationWearsTheSameMarkInFrontAndBehind(t *testing.T) {
-	agent := &askingAgent{fakeAgent: &fakeAgent{model: "m"}}
+	agent := &frontAskAgent{fakeAgent: &fakeAgent{model: "m"}}
 	agent.waits.Store(true)
 
 	out := make(chan behindStirMsg, stirDepth)
