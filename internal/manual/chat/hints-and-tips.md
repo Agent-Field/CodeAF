@@ -125,7 +125,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Files and context**
 
-- `type @ to quickly attach files in the current project` — retired when the `@` list
+- `type @ to find paths in the current project` — retired when the `@` list
   opens.
 - `/attach sends a file or folder with your message` — retired when a file or a folder goes
   on by path, or the browser opens.

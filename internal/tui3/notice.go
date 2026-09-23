@@ -403,7 +403,7 @@ var notices = []notice{
 	{
 		id: "at-completion", slot: slotHint,
 		armed:  ready,
-		text:   "type @ to quickly attach files in the current project",
+		text:   "type @ to find paths in the current project",
 		retire: eventAtOpened,
 	},
 	{
