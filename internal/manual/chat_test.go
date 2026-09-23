@@ -2731,6 +2731,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I add a note to a running task", "worker-harness"},
 		{"why did the task refuse my cancel", "worker-harness"},
 		{"how do I stop a run", "worker-harness"},
+		{"does codeaf do commit my changes", "worker-harness"},
+		{"how much can a codeaf do run spend without yes-spend", "worker-harness"},
 		{"stop it did nothing and the task kept running", "worker-harness"},
 		{"what happens to a run's branch after I stop it", "worker-harness"},
 		{"what can the task worker actually run", "worker-harness"},

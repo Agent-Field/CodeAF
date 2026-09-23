@@ -301,8 +301,10 @@ func (o headlessOutcome) status() exitStatus {
 
 func runDo(args []string) error {
 	flags := commandFlags("do")
-	database := flags.String("db", "", "work in this durable store instead of a private one")
-	keep := flags.Bool("keep", false, "keep the private store instead of deleting it on the way out")
+	database := flags.String("db", "", "work in this durable store instead of a private one "+
+		"(older engine only; the run engine refuses it)")
+	keep := flags.Bool("keep", false, "keep the run's store instead of deleting it on the way out, "+
+		"and say where it is")
 	workspace := flags.String("dir", "", "the directory to work in, edited in place (default: the current directory)")
 	shorthandFlag(flags, "w", "dir")
 	wall := wallFlag{wall: defaultDoWall}
@@ -550,11 +552,12 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	if err := applyContextLaw(request.contextFill, request.completionReserve); err != nil {
 		return headlessOutcome{}, err
 	}
-	// THE SECOND ROAD, BEHIND THE SAME SWITCH AS THE BASH BELT. When the belt is
-	// asked for, the errand is dispatched by the run engine over the project's
-	// own plan store — the same worker, the same store and the same exit ladder —
-	// rather than by the resident's reconciler below. Unset, not one byte of the
-	// road below moves, and the legacy errand stays the default.
+	// THE RUN ENGINE IS THE DEFAULT ROAD, BEHIND THE SAME SWITCH AS THE BASH
+	// BELT. With the belt on — every machine that has set nothing — the errand
+	// is dispatched by the run engine over the project's own plan store rather
+	// than by the resident's reconciler below. CODEAF_TASK_BELT set to one of
+	// the words that turn the belt off is the only way onto the road below, and
+	// with it set not one byte of that road moves.
 	if session.BashBeltAsked() {
 		return runErrand(request, seats)
 	}
@@ -3400,9 +3403,16 @@ func parseSlots(raw string) (*int, error) {
 // runErrand is `codeaf do` on the run engine: the same errand as the road above
 // — the same store, the same worker, the same exit ladder and the same JSON
 // envelope — dispatched by [internal/run]'s supervisor over the project's own
-// plan store instead of by the resident's reconciler. It is taken only when the
-// bash belt is asked for ([session.BashBeltAsked]), because the worker it
-// dispatches is the belt's and the landing it makes is the belt's.
+// plan store instead of by the resident's reconciler. It is taken whenever the
+// bash belt is on ([session.BashBeltAsked]), which it is unless the person set
+// CODEAF_TASK_BELT to one of the words that turn it off, because the worker it
+// dispatches is the belt's.
+//
+// IT KEEPS THE OLDER ROAD'S CONTRACT WITH THE DIRECTORY: the run edits it in
+// place and commits nothing. A landing here once staged the directory's whole
+// `git status` and committed it on the checked-out branch — the person's own
+// uncommitted edits and untracked files with it — which no `--dir` help line
+// ever promised. The files the envelope names are the ones this run changed.
 //
 // THE STORE'S OWN ROOT IS THE RUN. Its description is the ask, verbatim, and
 // its result is the answer: [runengine.Start] puts the brief on it and the root
@@ -3411,23 +3421,50 @@ func parseSlots(raw string) (*int, error) {
 // door was handed is the whole assignment, which is the same verbatim contract
 // the resident road keeps.
 func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
-	// A CEILING OF NOTHING IS A RUN THAT MAY SPEND NOTHING. Refused here, before
-	// anything is opened or built, because a limit of zero is not a limit that a
-	// worker crosses — it is a run that was stopped before one began, and the
-	// promise of exit 3 is that raising the limit and running it again is the
-	// remedy.
-	if request.costCap != nil && *request.costCap <= 0 {
+	// A FLAG THIS ROAD CANNOT HONOUR IS REFUSED IN WORDS, NEVER DROPPED. `--db`
+	// names a store the older engine works in; a run keeps its plan in the
+	// working copy's own store instead, and a run that quietly worked somewhere
+	// other than the store it was pointed at would leave the person reading an
+	// untouched file for the answer.
+	if strings.TrimSpace(request.database) != "" {
+		return headlessOutcome{}, errors.New(runRoadRefusesStore)
+	}
+	settings, err := config.Load()
+	if err != nil {
+		return headlessOutcome{}, err
+	}
+	applySeats(&settings, seats)
+	// THE SPENDING CONTRACT IS DECIDED BEFORE ANYTHING IS OPENED. A run nobody is
+	// watching is bounded unless the person said otherwise, the way the older
+	// road asked its plan-price question before it bought a step.
+	bound, err := runSpendBound(request, settings.ProfileDir, time.Now())
+	if err != nil {
+		return headlessOutcome{}, err
+	}
+	if bound.refused {
+		// A CEILING OF NOTHING IS A RUN THAT MAY SPEND NOTHING. Refused here,
+		// before anything is opened or built, because a limit of zero is not a
+		// limit that a worker crosses — it is a run that was stopped before one
+		// began, and the promise of exit 3 is that raising the limit and running
+		// it again is the remedy.
 		return headlessOutcome{
 			Artifacts: []string{},
 			Settled:   true,
-			stop:      stopBudget,
-			BlockedOn: fmt.Sprintf("this run's cost cap is $%.2f, so nothing was started", *request.costCap),
+			stop:      bound.stop,
+			BlockedOn: bound.words,
 		}, nil
 	}
 	workspace, err := errandWorkspace(request.workspace)
 	if err != nil {
 		return headlessOutcome{}, err
 	}
+	// THE RUN WORKS IN PLACE AND COMMITS NOTHING, which is what `--dir` has
+	// always promised: "the directory to work in, edited in place". The copy is
+	// read before the run starts so that, afterwards, the files this run names
+	// are the ones IT changed — the person's own uncommitted edits and untracked
+	// files were there first, still hold what they held, and are none of the
+	// run's business ([session.RunTreeSnapshot]).
+	before := session.SnapshotRunTree(workspace)
 	title := topicTitle(request.task)
 	store, err := session.OpenRunPlan(workspace, title, request.task)
 	if err != nil {
@@ -3435,11 +3472,6 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	}
 	defer store.Close()
 
-	settings, err := config.Load()
-	if err != nil {
-		return headlessOutcome{}, err
-	}
-	applySeats(&settings, seats)
 	completerFor := request.newBeltCompleter
 	if completerFor == nil {
 		newClient := request.newClient
@@ -3451,10 +3483,7 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	// THE REVIEW ROUND IS ON for every `do` run: a leaf that lands done is
 	// checked against its acceptance, and a check that does not hold becomes a
 	// fix task under the leaf's parent the run waits on.
-	limits := runengine.Limits{ReviewRound: true}
-	if request.costCap != nil {
-		limits.CostUSD = *request.costCap
-	}
+	limits := runengine.Limits{ReviewRound: true, CostUSD: bound.usd}
 	// AN INTERRUPT MUST LAND THE RUN, NOT VANISH IT, the same way it must on the
 	// resident road: routed through the context, the supervisor stops launching,
 	// drains what is in flight, and what it reached is composed and printed.
@@ -3486,8 +3515,11 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	case runengine.OutcomeDone:
 		errand.stop, errand.Settled, errand.Deliverable = stopDone, true, strings.TrimSpace(summary.Result)
 	case runengine.OutcomeLimit:
-		errand.stop, errand.Settled = stopBudget, true
-		errand.BlockedOn = runLimitWords(request.costCap)
+		// The only limit this road sets is the spending bound, so a run the
+		// engine stopped on a limit is one that reached it, and the sentence
+		// is the bound's own: the figure, and what to pass to go past it.
+		errand.stop, errand.Settled = bound.stop, true
+		errand.BlockedOn = bound.words
 	case runengine.OutcomeCannotRun:
 		errand.stop = stopError
 		errand.Error = "the run could not be started"
@@ -3502,38 +3534,112 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	if ctx.Err() == context.DeadlineExceeded {
 		errand.stop, errand.wall, errand.Settled = stopDeadline, true, false
 	}
-	// THE LANDING IS THE RUN'S OWN HALF. A run that finished commits its working
-	// copy onto its branch, and the branch, the paths it carried and its own
-	// sentence reach the caller: the paths are what the envelope calls artifacts,
-	// and the sentence names the branch where a person reads the answer. A run
-	// stopped short lands nothing, and a working copy that is not a repository
-	// says so on stderr without costing the work that did land on disk.
-	if summary.Outcome == runengine.OutcomeDone {
-		landing, err := runengine.Land(ctx, store, workspace, store.RootID())
-		switch {
-		case err != nil:
-			fmt.Fprintf(request.stderr, "the run's work is not on a branch: %v\n", err)
-		default:
-			errand.Artifacts = landedPaths(workspace, landing.Changed)
-			if landing.Branch != "" {
-				if errand.Deliverable != "" {
-					errand.Deliverable += "\n\n" + runengine.LandingNote(landing)
-				} else {
-					errand.Deliverable = runengine.LandingNote(landing)
-				}
-			}
-		}
+	// WHAT THE RUN CHANGED IS WHERE IT STANDS: in the directory it was handed,
+	// uncommitted, on whatever branch was checked out there. The envelope's
+	// files are those paths and no others, on every ending — a run stopped short
+	// still left its edits on disk, and a caller has to be able to find them.
+	errand.Artifacts = landedPaths(workspace, before.Changed())
+	// `--keep` ASKED FOR THE RECORD BY NAME. On this road the record is the
+	// working copy's own plan store, which is never deleted, so the flag's
+	// promise is kept by saying where it is.
+	if request.keep && request.stderr != nil {
+		fmt.Fprintf(request.stderr, "record kept at %s\n", session.PlanStorePath(workspace))
 	}
 	return errand, nil
 }
 
-// runLimitWords is the sentence a run stopped by its ceiling owes `blocked_on`:
-// the price it reached, so a caller knows what to raise.
-func runLimitWords(cap *float64) string {
-	if cap != nil {
-		return fmt.Sprintf("the run reached the cost cap of $%.2f", *cap)
+// runRoadRefusesStore is the sentence `codeaf do --db` answers on the run
+// engine. The flag names a store the older engine works in, and a run keeps its
+// plan in the directory it works in, so there is nothing for the flag to point
+// at; the sentence says where the plan is instead and how to reach the engine
+// that takes the flag.
+const runRoadRefusesStore = "--db names a store only the older engine works in; " +
+	"a run keeps its plan in .codeaf/plandb.db inside the directory it works in. " +
+	"Drop --db, or set CODEAF_TASK_BELT=node to run this on the older engine"
+
+// runSpend is the spending bound a run on this road is held to: the dollars
+// it may spend (0 is no bound), which rung of the exit ladder reaching it is,
+// the sentence `blocked_on` carries when it is reached, and whether the run
+// may not start at all.
+type runSpend struct {
+	usd     float64
+	stop    stopReason
+	words   string
+	refused bool
+}
+
+// runSpendBound is THE SPENDING CONTRACT `--yes-spend` promises
+// ([yesSpendFlagHelp]): without it, a run stops at the plan-price question's
+// figure and at what is left of today's limit, whichever is nearer; with it,
+// or with CODEAF_PREAUTHORIZE_SPEND=1, neither stops it.
+//
+// THE OLDER ROAD ASKED BEFORE IT BOUGHT, and this one cannot: a run has no
+// estimate before its workers start, because nothing plans the whole of it up
+// front. So the question becomes a ceiling. The run spends up to the figure
+// the person set as the point where codeaf asks first (CODEAF_PLAN_CONSENT, or
+// the profile's row for it), stops there with exit 3 and `stop` `price`, and
+// says what to pass to go further. A figure of 0 is "never ask", and that rung
+// does not bound the run.
+//
+// TODAY'S LIMIT IS THE SECOND RUNG, measured against the usage ledger the
+// workers write, so a run started late in an expensive day stops where the day
+// does. A day already spent starts nothing. A limit of 0 is no daily limit.
+//
+// A CAP HANDED IN BY A CALLER (request.costCap) is its own contract and wins
+// over both, which is how a test holds a run to a price.
+func runSpendBound(request doRequest, profileDir string, now time.Time) (runSpend, error) {
+	if request.costCap != nil {
+		limit := *request.costCap
+		if limit <= 0 {
+			return runSpend{refused: true, stop: stopBudget,
+				words: fmt.Sprintf("this run's cost cap is $%.2f, so nothing was started", limit)}, nil
+		}
+		return runSpend{usd: limit, stop: stopBudget,
+			words: fmt.Sprintf("the run reached the cost cap of $%.2f", limit)}, nil
 	}
-	return "a limit stopped the run"
+	if spendPreauthorized(request.yesSpend, env.Value) {
+		return runSpend{}, nil
+	}
+	consent, err := config.PlanConsentUSDAt(profileDir)
+	if err != nil {
+		return runSpend{}, err
+	}
+	daily, err := config.DailyBudgetUSDAt(profileDir)
+	if err != nil {
+		return runSpend{}, err
+	}
+	bound := runSpend{}
+	if consent > 0 {
+		bound = runSpend{usd: consent, stop: stopPrice, words: fmt.Sprintf(
+			"the run reached $%.2f, the price above which codeaf asks before it spends more; "+
+				"rerun with --yes-spend to let it go past that", consent)}
+	}
+	if daily > 0 {
+		left := daily - spentToday(now)
+		if left <= 0 {
+			return runSpend{refused: true, stop: stopBudget, words: fmt.Sprintf(
+				"today's spending limit of $%.2f is spent, so nothing was started; "+
+					"rerun with --yes-spend to spend past it", daily)}, nil
+		}
+		if bound.usd == 0 || left < bound.usd {
+			bound = runSpend{usd: left, stop: stopBudget, words: fmt.Sprintf(
+				"the run reached what was left of today's spending limit of $%.2f; "+
+					"rerun with --yes-spend to spend past it", daily)}
+		}
+	}
+	return bound, nil
+}
+
+// spentToday is what today has cost on this machine, read off the usage ledger
+// every conversation and every run worker writes ([session.SpendToday]). A
+// ledger that cannot be read is a day that has spent nothing as far as this
+// door can tell; the plan-price rung still bounds the run.
+func spentToday(now time.Time) float64 {
+	lines, err := session.ReadUsage(session.UsageLedgerPath(), now.Add(-48*time.Hour))
+	if err != nil {
+		return 0
+	}
+	return session.SpendToday(lines, now)
 }
 
 // crewCompleters turns the run road's provider seam into the per-model
