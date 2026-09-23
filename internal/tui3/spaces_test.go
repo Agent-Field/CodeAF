@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/codeaf/internal/config"
+
 	"os"
 	"path/filepath"
 	"reflect"
@@ -42,11 +44,19 @@ func TestSpaceMissingFileIsNoSpacesAndNoError(t *testing.T) {
 	if err != nil || got != nil {
 		t.Fatalf("missing file: %v, %v", got, err)
 	}
-	if got, err := loadSpaces(""); err != nil || got != nil {
-		t.Fatalf("empty profile: %v, %v", got, err)
+}
+
+// AN EMPTY PROFILE DIRECTORY IS THE ORDINARY LAUNCH, and the sets go to this
+// process's own profile in the state root rather than nowhere. The first build
+// read "" as "keep them in memory", so on a plain launch no space outlived the
+// window it was made in.
+func TestSpaceFileOnTheOrdinaryLaunchIsTheProfilesOwn(t *testing.T) {
+	got := spacesPath("")
+	if got == "" || got == spacesFile || !filepath.IsAbs(got) {
+		t.Fatalf("an empty profile directory put the sets at %q", got)
 	}
-	if err := saveSpaces("", []space{{Name: "x"}}); err != nil {
-		t.Fatalf("empty profile save: %v", err)
+	if want := config.ProfilePath("", spacesFile); got != want {
+		t.Fatalf("sets at %q, the profile keeps its files at %q", got, want)
 	}
 }
 
