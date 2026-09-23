@@ -50,6 +50,7 @@ const (
 	sendDoorNone sendDoor = iota
 	sendDoorStanding
 	sendDoorTask
+	sendDoorAsk
 )
 
 const (
@@ -150,11 +151,13 @@ func containsSegment(list []segment, want segment) bool {
 }
 
 // liveTags returns the actionable send-door words away from the head command.
-func (a *app) liveTags() []segment {
-	value := a.input.value
+func (a *app) liveTags() []segment { return a.input.liveTags() }
+
+func (b *editor) liveTags() []segment {
+	value := b.value
 	var out []segment
 	for _, s := range commandSpans(value, true) {
-		if s.from == 0 || containsSegment(a.input.demotedTags, s) {
+		if s.from == 0 || containsSegment(b.demotedTags, s) {
 			continue
 		}
 		if commandDoor(string(value[s.from+1:s.to])) != sendDoorNone {
@@ -210,6 +213,9 @@ func (a *app) slashTagHint() string {
 	word := string(a.input.value[tags[0].from+1 : tags[0].to])
 	if commandDoor(word) == sendDoorStanding {
 		return slashTagHintStanding
+	}
+	if commandDoor(word) == sendDoorAsk {
+		return ""
 	}
 	return slashTagHintTask
 }

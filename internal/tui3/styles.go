@@ -1280,6 +1280,10 @@ func (p palette) money(s string) string { return p.paint(s, p.ramp.money) }
 // KIND and not merely a loudness. See [hueData] for why ink could not do this.
 func (p palette) data(s string) string { return p.paint(s, p.ramp.data) }
 
+// seamModel makes the current model easy to find on both message-box seams.
+// It keeps the payload hue and adds weight even when the pointer is elsewhere.
+func (p palette) seamModel(s string) string { return p.bold(p.data(s)) }
+
 // violet is the shell operator's tier and nothing else on this surface — see
 // [hueViolet] for why it is not the question hue.
 func (p palette) violet(s string) string { return p.paint(s, p.ramp.violet) }
@@ -1627,16 +1631,34 @@ func (p palette) bold(s string) string {
 	return "\x1b[1m" + s + "\x1b[22m"
 }
 
-// italic is the second attribute, and it has exactly one job: the model's own
+// italic is the second attribute, and it has two jobs. The model's own
 // reasoning (thinking.go), which is text that has to read as a tier below the
-// answer even where the dim hue lands close to it. A terminal that ignores SGR 3
-// loses nothing — the block is dim and behind its own marker either way.
+// answer even where the dim hue lands close to it; and a table's column heads
+// ([palette.head]). A terminal that ignores SGR 3 loses nothing in either place
+// — the reasoning block is dim and behind its own marker, and a head is a
+// different hue from its cells as well as a different shape.
 func (p palette) italic(s string) string {
 	if p.profile == tokens.NoColor || s == "" {
 		return s
 	}
 	return "\x1b[3m" + s + "\x1b[23m"
 }
+
+// head is a table's column heading: the words that name what is under them,
+// rather than one more row of the thing.
+//
+// IT IS A DIFFERENT HUE AND A DIFFERENT SHAPE, and it needs both. The cells of
+// a picker row are dim, and a heading painted dim beside them was the same text
+// twice — a person reading down `first  t/s  $/M` had nothing telling them that
+// line was the labels and not a provider whose numbers had gone missing. The
+// hue does the work on a colour terminal and the italic does it on one whose
+// ramp lands the two close together.
+//
+// IT IS MUTED AND NOT INK, because a heading is read ONCE and the figures under
+// it are read every time. A head louder than its own column is a label shouting
+// over the thing it labels, which is the opposite of what the design language
+// asks of dim telemetry.
+func (p palette) head(s string) string { return p.italic(p.muted(s)) }
 
 // rail is the marker that opens a tool line: the elbow for the last call of a
 // cluster, the tee for every call above it, and one ASCII arrow for a terminal
@@ -1781,3 +1803,44 @@ const (
 	glyphHarness      = "◆"
 	glyphHarnessASCII = "#"
 )
+
+// The ball's brand gold, one spelling per kind of page. The bright gold sits at
+// about 2:1 against a white page, so a light page gets a deeper gold of its own
+// rather than the ball fading into the ground. WHICH page it is gets read from
+// the ladder's own ink rather than the theme setting, because a measured ground
+// replaces the ladder without touching that setting (adaptive.go): dark ink is
+// written on a light page, whichever ladder put it there.
+var (
+	hueWorkGold   = mustHue("#DAAC5C", heavy)
+	lightWorkGold = mustHue("#8C6420", heavy)
+)
+
+// workLogoCell uses foreground-only native glyphs. The ball has its own brand
+// gold rather than borrowing the question hue, whose meaning is actionable.
+func (p palette) workLogoCell(cell tokens.WorkLogoCell) string {
+	if cell.Glyph == 0 || cell.Glyph == ' ' {
+		return " "
+	}
+	h := p.ramp.ink
+	if cell.Gold {
+		h = hueWorkGold
+		if ink := p.ramp.ink; luminanceOf(ink.r, ink.g, ink.b) < 0.18 {
+			h = lightWorkGold
+		}
+	}
+	return p.paint(string(cell.Glyph), h)
+}
+
+// wordmark keeps the header recognizable without implying an idle app is busy.
+// Small and accessible terminals retain the plain product name.
+func (p palette) wordmark(width int) string {
+	name := p.bold(p.muted(product))
+	if width < 24 || p.ascii || p.linear || p.profile < tokens.ANSI256 {
+		return name
+	}
+	var mark strings.Builder
+	for _, cell := range tokens.WorkLogoMark() {
+		mark.WriteString(p.workLogoCell(cell))
+	}
+	return mark.String() + " " + name
+}

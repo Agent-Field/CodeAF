@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -30,6 +33,7 @@ func installModelServiceShelf(a *app, dir string) {
 		}
 		models, err := modelcatalog.Refresh(ctx, modelcatalog.Options{
 			Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key, Dir: dir,
+			HTTPClient: config.CatalogHTTPClient(service),
 		})
 		if err != nil {
 			return nil, err
@@ -40,6 +44,114 @@ func installModelServiceShelf(a *app, dir string) {
 			return nil, err
 		}
 		return rows, nil
+	}
+}
+
+type panelCodexFlow struct {
+	url       string
+	tokens    codexauth.Tokens
+	cancelled bool
+}
+
+func (f *panelCodexFlow) URL() string { return f.url }
+
+func (f *panelCodexFlow) Wait(context.Context) (codexauth.Tokens, error) {
+	return f.tokens, nil
+}
+
+func (f *panelCodexFlow) Cancel() { f.cancelled = true }
+
+func TestC12C18ConnectCodexBrowserRowUsesTheRealPanelAndMovesToTheListedModel(t *testing.T) {
+	// C12: the real /connect row adopts the account list and moves to codex/gpt-5.5.
+	// C18: the panel never asks for or displays a token; the backend sees only the real bearer.
+	dir := t.TempDir()
+	var authorization string
+	requests := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		authorization = request.Header.Get("Authorization")
+		if request.URL.Path != "/models" || request.URL.Query().Get("client_version") == "" {
+			t.Fatalf("panel listing request = %s", request.URL.String())
+		}
+		if authorization != "Bearer panel-access" || authorization == "Bearer "+codexauth.Sentinel {
+			t.Fatalf("panel listing authorization = %q", authorization)
+		}
+		if request.Header.Get("chatgpt-account-id") != "acct-panel" || request.Header.Get("originator") != codexauth.Originator {
+			t.Fatalf("panel listing account headers = %v", request.Header)
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{"models": []any{
+			map[string]any{"slug": "gpt-5.5", "visibility": "list"},
+			map[string]any{"slug": "hidden", "visibility": "hide"},
+		}})
+	}))
+	defer backend.Close()
+	t.Setenv("CODEAF_CODEX_BACKEND", backend.URL)
+
+	a := modelServiceTestApp(t, dir, "~deepseek/deepseek-v4-flash-latest",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")),
+		[]Model{{ID: "~deepseek/deepseek-v4-flash-latest"}})
+	flow := &panelCodexFlow{
+		url: "https://auth.example/authorize?state=panel",
+		tokens: codexauth.Tokens{
+			AccessToken: "panel-access", RefreshToken: "panel-refresh", IDToken: "panel-identity",
+			AccountID: "acct-panel", Email: "person@example.com", Plan: "pro", ExpiresAt: time.Now().Add(time.Hour),
+		},
+	}
+	a.codexConnect = func(context.Context) (CodexFlow, error) { return flow, nil }
+	opened := ""
+	wasOpener := processOpener
+	processOpener = func(target string) error { opened = target; return nil }
+	t.Cleanup(func() { processOpener = wasOpener })
+
+	a.openConnect()
+	rowAt := -1
+	var row connect.Status
+	for at := range a.connPanel.hits {
+		candidate, ok := a.connPanel.at(at)
+		if ok && candidate.ID == modelConnectionID("codex") {
+			rowAt, row = at, candidate
+			break
+		}
+	}
+	if rowAt < 0 || row.Name != "Codex" || modelServiceTag(row) != "browser" {
+		t.Fatalf("codex row = %+v at %d", row, rowAt)
+	}
+	begin := a.connectAct(rowAt)
+	if begin == nil || a.connPanel.open {
+		t.Fatal("enter on Codex did not leave the panel for the browser road")
+	}
+	_, wait := a.Update(begin())
+	if wait == nil || opened != flow.url || len(a.entries) == 0 || !a.connectLinkable(len(a.entries)-1) {
+		t.Fatalf("waiting card/opened = %v/%q entries=%d", wait != nil, opened, len(a.entries))
+	}
+	if _, ok := a.connectLinkPress(len(a.entries) - 1); !ok || !a.entries[len(a.entries)-1].conn.copied {
+		t.Fatal("the Codex waiting card did not expose the copy affordance")
+	}
+	if _, follow := a.Update(wait()); follow != nil {
+		t.Fatal("the settled Codex connection unexpectedly started another command")
+	}
+	if requests != 1 || authorization != "Bearer panel-access" {
+		t.Fatalf("panel listing requests/authorization = %d/%q", requests, authorization)
+	}
+	if a.model != "codex/gpt-5.5" || a.agent.Model() != "codex/gpt-5.5" {
+		t.Fatalf("panel left model at %q/%q", a.model, a.agent.Model())
+	}
+	var card *connectCard
+	var cardEntry *entry
+	for index := len(a.entries) - 1; index >= 0; index-- {
+		if a.entries[index].conn != nil && a.entries[index].conn.service == "codex" {
+			card, cardEntry = a.entries[index].conn, &a.entries[index]
+			break
+		}
+	}
+	if card == nil || card.state != connectConnected || card.result != "codex connected · person@example.com · pro plan" {
+		t.Fatalf("settled browser card = %+v", card)
+	}
+	if strings.Contains(plain(strings.Join(a.connectRows(cardEntry, 100), "\n")), codexauth.Sentinel) {
+		t.Fatal("the sentinel appeared on the settled panel card")
+	}
+	if !flow.cancelled {
+		t.Fatal("the settled browser road left its callback listener open")
 	}
 }
 
@@ -411,7 +523,7 @@ func TestAnUndocumentedListingGetsAListingServicesPickerAndCacheImmediately(t *t
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
 	installModelServiceShelf(a, dir)
-	source := modelsource.Vendored()[6]
+	source := testModelSource(t, modelsource.CustomID)
 	source.Listing = modelsource.ListingNone
 	draft := modelConnectDraft{source: source, row: config.PersistedSource{
 		ID: "custom", Written: "localhost", Address: server.URL(), Key: "a-custom-key", Order: 1,
@@ -446,7 +558,7 @@ func TestAPaymentRefusalConnectsTheAuthenticatedAccount(t *testing.T) {
 	dir := t.TempDir()
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
-	source := modelsource.Vendored()[6]
+	source := testModelSource(t, modelsource.CustomID)
 	source.Listing = modelsource.ListingNone
 	source.ProbeModel = "probe-model"
 	draft := modelConnectDraft{source: source, row: config.PersistedSource{
@@ -470,7 +582,7 @@ func TestARenameCarriesTheModelIdsAlreadyPicked(t *testing.T) {
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
 	installModelServiceShelf(a, dir)
-	source := modelsource.Vendored()[6]
+	source := testModelSource(t, modelsource.CustomID)
 	source.Listing = modelsource.ListingNone
 	draft := modelConnectDraft{source: source, row: config.PersistedSource{
 		ID: "custom", Written: "mybox", Address: server.URL(), Key: "a-custom-key", Order: 1,
@@ -585,7 +697,7 @@ func renamedRelistedApp(t *testing.T, model string) *app {
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
 	installModelServiceShelf(a, dir)
 
-	source := modelsource.Vendored()[6] // Custom OpenAI-compatible API
+	source := testModelSource(t, modelsource.CustomID)
 	first := modelConnectDraft{source: source, row: config.PersistedSource{
 		ID: "custom", Written: "homelab", Address: server.URL(), Key: "a-custom-key", Order: 1,
 	}}
@@ -667,7 +779,7 @@ func TestTwoConnectionsDoNotBorrowEachOthersPrefix(t *testing.T) {
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
 	installModelServiceShelf(a, dir)
 
-	template := modelsource.Vendored()[6] // Custom OpenAI-compatible API
+	template := testModelSource(t, modelsource.CustomID)
 	labSource := template
 	labSource.ID, labSource.Written = "custom", "lab"
 	a.adoptModelConnectResult(a.beginModelConnect(modelConnectDraft{source: labSource, row: config.PersistedSource{
@@ -711,7 +823,7 @@ func TestARenameWhileATurnIsWorkingCarriesThePendingMoveUnderTheNewName(t *testi
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
 	installModelServiceShelf(a, dir)
-	source := modelsource.Vendored()[6]
+	source := testModelSource(t, modelsource.CustomID)
 	source.Listing = modelsource.ListingNone
 	draft := modelConnectDraft{source: source, row: config.PersistedSource{
 		ID: "custom", Written: "homelab", Address: server.URL(), Key: "a-custom-key", Order: 1,
@@ -776,7 +888,7 @@ func TestARenameWhileATurnIsWorkingAndNoMoveIsPendingDefersTheRespelledLivePick(
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
 	installModelServiceShelf(a, dir)
-	source := modelsource.Vendored()[6]
+	source := testModelSource(t, modelsource.CustomID)
 	source.Listing = modelsource.ListingNone
 	draft := modelConnectDraft{source: source, row: config.PersistedSource{
 		ID: "custom", Written: "homelab", Address: server.URL(), Key: "a-custom-key", Order: 1,
@@ -839,7 +951,7 @@ func TestARenameDuringAWorkingTurnLeavesAPendingSwitchAlone(t *testing.T) {
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
 	installModelServiceShelf(a, dir)
-	source := modelsource.Vendored()[6]
+	source := testModelSource(t, modelsource.CustomID)
 	source.Listing = modelsource.ListingNone
 
 	// TWO CONNECTIONS, minted the way the surface mints them: the first keeps
@@ -946,8 +1058,11 @@ func TestOneServiceDrawsThePickerExactlyAsItDidBefore(t *testing.T) {
 	}
 	a.openPicker()
 	got := a.pick.rows(100, a.pick.height(100), pal, -1, func(string) string { return "" })
-	want := "› openai/gpt-4.1-mini                                                                             1M\n" +
-		"  gpt-5-classic"
+	// THE ROWS ARE ALPHABETICAL, which is every table's opening order on this
+	// surface (pickersort.go) — so `gpt-5-classic` stands above the model in use.
+	// The mark is still on the model in use, which is what this test is about.
+	want := "  gpt-5-classic\n" +
+		"› openai/gpt-4.1-mini                                                                             1M"
 	if rendered := plain(strings.Join(got, "\n")); rendered != want {
 		t.Fatalf("one-service picker changed:\ngot  %q\nwant %q", rendered, want)
 	}
@@ -994,7 +1109,7 @@ func TestAServiceWithNoListingDrawsNoCount(t *testing.T) {
 			break
 		}
 	}
-	if placeholder < 0 || a.pick.unfoldAt(placeholder, "", timeNow()) {
+	if placeholder < 0 || a.pick.unfoldAt(placeholder, timeNow()) {
 		t.Fatal("the empty-group notice reached the lane-sheet door")
 	}
 	rendered := plain(strings.Join(a.pick.rows(100, a.pick.height(100), a.pal, -1, a.reasoningFor), "\n"))
@@ -1060,7 +1175,7 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 		t.Errorf("engine variable word = %q", got)
 	}
 	words := strings.Repeat("word ", 30) + "tail"
-	got := truncateVendorWords(words, 120)
+	got := config.ConnectionDetailWords(words, 120)
 	if len(got) > 120 || strings.HasSuffix(got, "wor") {
 		t.Fatalf("vendor words were not cut at a word boundary: %q", got)
 	}
@@ -1295,7 +1410,7 @@ func TestACustomServiceUsesItsWrittenNameOnRefusalAndSuccess(t *testing.T) {
 	defer agent.Close()
 	a := modelServiceTestAppWithAgent(t, t.TempDir(), agent.Model(), modelsource.NewSet(base), []Model{{ID: agent.Model()}}, agent)
 	draft := modelConnectDraft{
-		source: modelsource.Vendored()[6],
+		source: testModelSource(t, modelsource.CustomID),
 		row:    config.PersistedSource{ID: "custom", Written: "localhost", Address: server.URL(), Key: "a-custom-key", Order: 1},
 	}
 	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)

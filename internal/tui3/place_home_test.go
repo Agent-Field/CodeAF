@@ -47,7 +47,9 @@ func (l *switchLab) open(width, height int) *app {
 	l.t.Helper()
 	a := l.app(l.mine)
 	a.width, a.height = width, height
+	openHomeFixtureTabs(a)
 	a.openHome()
+	a.home.point(a.file)
 	// AND ONE FRAME IS DRAWN, because the column's height reaches the list
 	// through the draw (place_home.go's [placeHome.body] hands the room to
 	// switcher.go's reading) and the list draws as many rows as the frame can
@@ -151,7 +153,7 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 		// them pressed into the wrong keyboard.
 		a.showPage(pageHome)
 	}
-	if !doors["standing"] || !doors["tasks"] {
+	if !doors["standing"] || !doors["sessions"] {
 		t.Fatalf("the ledger drew %v, and both the watch and the landed work happened", doors)
 	}
 }
@@ -284,13 +286,24 @@ func TestARowSaysWhenItsDoorWillRefuseWithoutACardToSayIt(t *testing.T) {
 		for _, v := range a.homeRowVerbs() {
 			words += string(v.key) + " " + v.word + " · "
 		}
-		if strings.Contains(words, "new chat here") || strings.Contains(words, "open folder") {
+		if strings.Contains(words, "new in project") || strings.Contains(words, "open folder") {
 			t.Fatalf("a gone row offered a door that cannot open: %s", words)
 		}
-		if !strings.Contains(words, "copy path") {
+		if !strings.Contains(words, "copy project") {
 			t.Fatalf("a gone row lost the door that asks nothing of the disk: %s", words)
 		}
 		return
 	}
 	t.Fatalf("the row with the missing folder is not on the list:\n%s", switchFrame(a))
+}
+
+// openHomeFixtureTabs makes the layout fixture's quiet conversations actual tabs.
+// Waiting conversations retain their needs-you row independently of this list.
+func openHomeFixtureTabs(a *app) {
+	_ = a.tabsRow(a.width)
+	for _, row := range a.readWorld().Sessions() {
+		if row.Transcript != a.file && !row.NeedsPerson() {
+			rememberUnheldTab(a, row.Transcript, row.Workspace, homeName(row))
+		}
+	}
 }

@@ -7,7 +7,7 @@ import "encoding/json"
 // internal/session holds the ladder and the dial (its effort.go), and until this
 // file a HOSTED conversation had neither: the surface asserts the dial on its
 // agent, *remote.Agent did not carry it, so `codeaf chat --host devbox` drew no
-// rung, answered `ctrl+v` with nothing, and said nowhere that the knob every
+// rung, answered `alt+e` with nothing, and said nowhere that the knob every
 // local conversation has was missing. The task's own rung crossed
 // (wire_task.go); the conversation's did not.
 //
@@ -40,6 +40,21 @@ type effortDoor interface {
 // dial at all: the surface draws the resolved rung and moves the stored one, so
 // an engine with one of the three would light a cell nothing could turn.
 func effortKnown(agent any) bool { _, ok := agent.(effortDoor); return ok }
+
+// installEffort is the far install's own `thinking` row, read once at the
+// door for [Welcome.DefaultEffort]; "" where the engine cannot say.
+func installEffort(agent any) string {
+	door, ok := agent.(interface{ DefaultEffort() string })
+	if !ok {
+		return ""
+	}
+	return door.DefaultEffort()
+}
+
+// DefaultEffort is the far install's row as the welcome carried it — a memory
+// read, for [Agent.ResolvedEffort]'s reason: the draft on home draws it on
+// every frame, and a View over --host issues zero far calls.
+func (a *Agent) DefaultEffort() string { return a.c.Welcome().DefaultEffort }
 
 // EffortSupported answers for THE MACHINE AT THE OTHER END, off what it said at
 // the door — a fact this end could not otherwise learn without setting a rung

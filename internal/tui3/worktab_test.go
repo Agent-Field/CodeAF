@@ -141,3 +141,23 @@ func TestTheWorkTabNeverAsksTheStoreFromAFrame(t *testing.T) {
 		t.Fatalf("drawing the tab strip read the store %d times", counted.reads)
 	}
 }
+
+func TestARunTabDoesNotDuplicateOrRenameItsConversationLists(t *testing.T) {
+	a, _ := workTabFixture(t)
+	if tabs := a.tabList(); len(tabs) != 2 || !tabs[1].work {
+		t.Fatal("the fixture must include the run tab beside its conversation")
+	}
+	home := homeView{tabs: a.tabList}
+	open, _ := home.conversationRows()
+	if len(open) != 1 || open[0].title != a.title || open[0].session.Transcript != a.file {
+		t.Fatalf("Home duplicated or renamed the conversation: %+v", open)
+	}
+	chats := a.openTabRows(a.now())
+	if len(chats) != 1 || chats[0].title != a.title || chats[0].file != a.file {
+		t.Fatalf("the chats menu duplicated or renamed the conversation: %+v", chats)
+	}
+	view := a.taskSheet.filtered(a).chatViews[a.file]
+	if view.title != a.title {
+		t.Fatalf("Sessions used the run title %q instead of %q", view.title, a.title)
+	}
+}

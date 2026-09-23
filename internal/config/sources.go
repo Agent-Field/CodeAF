@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
@@ -105,7 +108,34 @@ func SourceKeyAt(profileDir string, row PersistedSource, src modelsource.Source)
 	if strings.EqualFold(strings.TrimSpace(src.ID), modelsource.DefaultID) {
 		return APIKeyAt(profileDir)
 	}
+	if strings.EqualFold(strings.TrimSpace(src.ID), "codex") {
+		if codexauth.Connected(profileDir) {
+			return codexauth.Sentinel
+		}
+		return ""
+	}
 	return sourceKeyFromRow(row, src)
+}
+
+// CatalogHTTPClient is the one door onto a model service's listing transport.
+// Codex needs the profile's rotating bearer and account headers; every ordinary
+// OpenAI-compatible service keeps the catalog's default client by answering nil.
+func CatalogHTTPClient(service modelsource.Connected) *http.Client {
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
+		return codexauth.Client(service.Home)
+	}
+	return nil
+}
+
+// CatalogOptionsFor is the one construction door for a connected service's
+// catalog compartment. Keeping the source identity, address, key, profile and
+// account-aware client together makes it impossible for a new listing road to
+// send Codex's persisted sentinel through the generic HTTP client.
+func CatalogOptionsFor(service modelsource.Connected, profileDir string) catalog.Options {
+	return catalog.Options{
+		Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key,
+		Dir: profileDir, HTTPClient: CatalogHTTPClient(service),
+	}
 }
 
 func sourceKeyFromRow(row PersistedSource, src modelsource.Source) string {
@@ -115,9 +145,22 @@ func sourceKeyFromRow(row PersistedSource, src modelsource.Source) string {
 // ResolveSources builds the whole registry: the synthesised default service
 // first, then every persisted row this build still knows.
 func ResolveSources(profileDir, defaultKey, defaultBase string) modelsource.Set {
-	return resolveSources(defaultKey, defaultBase, PersistedSources(profileDir), func(row PersistedSource, source modelsource.Source) string {
+	set := resolveSources(defaultKey, defaultBase, PersistedSources(profileDir), func(row PersistedSource, source modelsource.Source) string {
 		return SourceKeyAt(profileDir, row, source)
 	})
+	return sourceHomes(set, profileDir)
+}
+
+func sourceHomes(set modelsource.Set, profileDir string) modelsource.Set {
+	services := set.All()
+	for index := range services {
+		services[index].Home = profileDir
+		if strings.EqualFold(services[index].Source.ID, "codex") {
+			services[index].Address = codexauth.Backend()
+			services[index].Source.Address = services[index].Address
+		}
+	}
+	return modelsource.NewSet(services...)
 }
 
 // resolveSources is the file-free half of ResolveSources. Load hands it the
@@ -178,6 +221,9 @@ func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyA
 }
 
 func resolvedSourceAddress(row PersistedSource, source modelsource.Source) string {
+	if strings.EqualFold(strings.TrimSpace(source.ID), "codex") {
+		return codexauth.Backend()
+	}
 	if modelsource.IsCustomID(source.ID) {
 		return strings.TrimRight(strings.TrimSpace(row.Address), "/")
 	}
@@ -185,6 +231,46 @@ func resolvedSourceAddress(row PersistedSource, source modelsource.Source) strin
 		return resolvedDoorAddress(row, source, door)
 	}
 	return resolvedRegionAddress(row, source)
+}
+
+// ConnectCodex keeps a completed browser sign-in, persists its service row and
+// seeds the picker from the account's own visible model list.
+func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Tokens) (modelsource.Outcome, error) {
+	if err := codexauth.Save(profileDir, tokens); err != nil {
+		return modelsource.Outcome{}, err
+	}
+	listed := true
+	row := PersistedSource{ID: "codex", Written: "codex", Key: codexauth.Sentinel, Listed: &listed}
+	if err := persistConnectedSource(profileDir, row); err != nil {
+		_ = codexauth.Remove(profileDir)
+		return modelsource.Outcome{}, err
+	}
+	models, listErr := codexauth.List(ctx, profileDir, codexauth.Options{})
+	refreshed := listErr == nil
+	if !refreshed {
+		models = append([]codexauth.Model(nil), codexauth.FallbackModels...)
+	}
+	outcome := modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Refreshed: refreshed}
+	for _, model := range models {
+		if id := strings.TrimSpace(model.ID); id != "" {
+			outcome.ModelIDs = append(outcome.ModelIDs, id)
+		}
+	}
+	outcome.Models = len(outcome.ModelIDs)
+	remembered := make([]catalog.Model, 0, len(outcome.ModelIDs))
+	for _, id := range outcome.ModelIDs {
+		remembered = append(remembered, catalog.Model{ID: id, PriceUnknown: true})
+	}
+	service, found := ResolveSources(profileDir, "", DefaultBaseURL).ByID("codex")
+	if !found {
+		_ = DisconnectService(profileDir, "codex")
+		return modelsource.Outcome{}, errors.New("codex connection was not saved")
+	}
+	if err := catalog.Remember(CatalogOptionsFor(service, profileDir), remembered); err != nil {
+		_ = DisconnectService(profileDir, "codex")
+		return modelsource.Outcome{}, err
+	}
+	return outcome, nil
 }
 
 func resolvedRegionAddress(row PersistedSource, source modelsource.Source) string {
@@ -555,7 +641,8 @@ func persistConnectedSource(profileDir string, row PersistedSource) error {
 	return WriteSources(profileDir, rows)
 }
 
-// DisconnectService removes one service row and its stored key atomically.
+// DisconnectService removes one service row and its stored credential. Codex's
+// rotating tokens live in their owner-only sibling file and leave with it.
 func DisconnectService(profileDir, id string) error {
 	rows := PersistedSources(profileDir)
 	kept := rows[:0]
@@ -564,5 +651,11 @@ func DisconnectService(profileDir, id string) error {
 			kept = append(kept, row)
 		}
 	}
-	return WriteSources(profileDir, kept)
+	if err := WriteSources(profileDir, kept); err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(id), "codex") {
+		return codexauth.Remove(profileDir)
+	}
+	return nil
 }

@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -54,7 +53,7 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 			break
 		}
 		c := min(h.grid.col[at], len(xs)-1)
-		columns[c] = append(columns[c], a.homeLineRows(line, at, widths[c], pal, h.marksPanel(at))...)
+		columns[c] = append(columns[c], a.homeLineRows(line, at, widths[c], pal, h.marksPanel(at), at == h.headHover)...)
 	}
 	if at := homeDescCol(h.grid.cols); at != homeNoLine && at < len(columns) {
 		columns[at] = a.homeDescLines(widths[at], room, pal, columns[0])
@@ -88,9 +87,9 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 // IT FOLLOWS THE POINTER TOO, through the same [homeView.previewLine] the card
 // beside the search has always used.
 //
-// NOTHING IN IT IS A STOP. The column holds no row a cursor may stand on, which
-// is what makes `→` step over it to the rail ([homeView.gridCrossTarget]) rather
-// than parking the cursor on a sentence about the row it just left.
+// NOTHING IN IT IS A STOP. The column holds no row a cursor may stand on, and
+// the arrows never leave the field in any case (homegrid.go, "the arrows stay
+// in their column").
 func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) []homeCellLine {
 	h := &a.home
 	if room <= 0 || width <= homeGridLead {
@@ -109,14 +108,16 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 	if rows := a.homeAskNote(field, width, room); rows != nil {
 		return rows
 	}
-	room = min(room, len(field))
+	// The selected description may outgrow a short field: its thread title
+	// and answer buttons still have the rest of the body available to them.
 	preview := h.previewAt()
+	withVerbs := a.homeStripInDescription(h.gridWidth, room)
 	type note struct {
 		y     int
 		words []string
 	}
 	var notes []note
-	for y := 0; y < room; y++ {
+	for y := 0; y < min(room, len(field)); y++ {
 		at := field[y].at
 		if at == homeNoLine || at < 0 || at >= len(h.lines) {
 			continue
@@ -127,10 +128,25 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 		}
 		said := strings.TrimSpace(line.cell.sub)
 		selected := at == preview
-		if said == "" || (!line.cell.alwaysSaid() && !selected) {
+		if !selected || (said == "" && !withVerbs) {
 			continue
 		}
-		notes = append(notes, note{y: y, words: a.homeDescNote(line, at, said, width, selected, pal)})
+		words := a.homeDescNote(line, at, said, width, selected, pal)
+		top := y
+		if withVerbs {
+			options := a.homeDescriptionVerbs(width, pal)
+			// Keep every option visible even when a long description or a row
+			// near the bottom would otherwise push the shortcuts off screen.
+			if keep := max(0, room-len(options)-1); len(words) > keep {
+				words = words[:keep]
+			}
+			if len(words) > 0 {
+				words = append(words, "")
+			}
+			words = append(words, options...)
+			top = min(top, max(0, room-len(words)))
+		}
+		notes = append(notes, note{y: top, words: words})
 	}
 	if len(notes) == 0 {
 		return nil
@@ -158,31 +174,49 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 	return out
 }
 
-// homeDescNote is one row's note as the lines it takes.
-//
-// THE KEYS ARE THE SELECTED ROW'S AND NOBODY ELSE'S. A permanent note — a
-// `needs you` question standing over rows the cursor is not on — is the sentence
-// alone: `enter` beside a row a person is not standing on is a key that would do
-// something else if they pressed it, and the surface may never advertise one of
-// those (law 7 draws a row's answers so the key is never a guess). The moment the
-// row IS the one being read, its keys join it at the right of its own line, in
-// the one place they have ever been.
-//
-// AND A PERMANENT NOTE IS ONE LINE, SELECTED OR NOT. It shares the column with
-// rows above and below it and may not grow into them; only a note that is there
-// BECAUSE it is selected has the column to itself and wraps.
+// homeStripInDescription is shared by the frame and the description painter:
+// exactly one of them draws the options, including during a resize.
+func (a *app) homeStripInDescription(width, room int) bool {
+	if !a.at(pageHome) || !a.strip.open || !a.home.gridOn() || !homeDescOn(homeGridCols(width)) || a.composer.open || a.hopShowing() {
+		return false
+	}
+	if _, stacked := a.homeStacked(); stacked {
+		return false
+	}
+	if _, asking := a.homeAsking(); asking {
+		return false
+	}
+	_, widths := homeGridGeometry(width, homeGridCols(width))
+	options := a.homeDescriptionVerbs(widths[homeDescCol(len(widths))], a.pal)
+	return len(options) > 0 && len(options) <= room
+}
+
+// homeDescriptionVerbs wraps whole choices within the description column.
+// It reads the same captured verbs as the inline strip, preserving their keys.
+func (a *app) homeDescriptionVerbs(width int, pal palette) []string {
+	return verbChoiceLines(a.strip.verbs, width, homeDescLeadBlank, pal)
+}
+
+// homeDescNote is one row's note as the lines it takes: the thread's title
+// line and a blank where the row names one ([homeCell.thread]), the sentence,
+// wrapped, and the row's answers under it. It is only ever asked for the row
+// being read ([homeView.previewAt]) — no note stands permanently in the column
+// since the `needs you` exception went (2026-09-17, [homeCell.grows]) — so the
+// note has the column to itself and may wrap.
 func (a *app) homeDescNote(line homeLine, at int, said string, width int, selected bool, pal palette) []string {
 	room := max(1, width-homeDescLeadCells)
 	answers := ""
 	if selected {
 		answers = strings.TrimSpace(a.homeRowAnswers(line, at))
 	}
-	if line.cell.alwaysSaid() {
-		return []string{a.homeDescLead(line.cell, pal) + switcherSides(room, said, answers, pal.dim, pal.muted)}
-	}
 	var out []string
-	for _, words := range wrap(said, room) {
-		out = append(out, homeDescLeadBlank+pal.dim(words))
+	if thread := strings.TrimSpace(line.cell.thread); thread != "" {
+		out = append(out, homeDescLeadBlank+homeThreadLine(thread, room, pal), "")
+	}
+	if said != "" {
+		for _, words := range wrap(said, room) {
+			out = append(out, homeDescLeadBlank+pal.dim(words))
+		}
 	}
 	if answers != "" {
 		out = append(out, "", homeDescLeadBlank+paintHint(answers, pal, pal.dim))
@@ -218,13 +252,13 @@ func homeGridZip(columns [][]homeCellLine, y int, xs []int) placeRow {
 }
 
 // homeLineRows paints one line of the list at one column's width.
-func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bool) []homeCellLine {
+func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading, hovered bool) []homeCellLine {
 	h := &a.home
 	hit := -1
 	if line.stop() {
 		hit = at
 	}
-	lit := at == h.cursor || at == h.hover
+	lit := at == h.cursor
 	if line.cell == nil {
 		if line.kind == homeExchangeRow {
 			return []homeCellLine{{text: a.exchangeRowLine(line, at, width, pal), at: hit, head: -1}}
@@ -236,7 +270,7 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bo
 	var texts []string
 	switch cell.kind {
 	case cellHead:
-		texts, head = []string{homeCellHead(cell, width, pal, heading)}, at
+		texts, head = []string{homeCellHead(cell, width, pal, heading, hovered)}, at
 	case cellWhisper, cellFold:
 		texts = []string{homeCellQuiet(cell, width, pal, lit)}
 	case cellGroup:
@@ -293,13 +327,57 @@ var homeDescLeadBlank = strings.Repeat(" ", homeDescLeadCells)
 // cursor step's ground on its heading, and the words stay where they were
 // (docs/DESIGN-LANGUAGE.md, "the section holding the cursor marks its own
 // heading") — one heading per frame, following the keyboard only.
-func homeCellHead(cell *homeCell, width int, pal palette, marked bool) string {
+//
+// A HEADING THAT IS A DOOR UNDERLINES UNDER THE POINTER, and that is the whole
+// of what the pointer does to a heading: the word keeps its ink and takes no
+// ground, so it cannot be mistaken for the cursor's mark, and the underline is
+// the one attribute every terminal has used to say "this opens somewhere"
+// ([palette.underline]). Only the word underlines — the explainer and the
+// clause at the right are not the door — and hovered is true only for a
+// heading that names a place ([app.homeHeadDoor]), so `projects` and
+// `threads` never wear it.
+//
+// A HEADING THAT OPENS NOTHING IS DIM, word and explainer alike — `projects`
+// and `threads` name their own panel and no place, and a heading painted like
+// the five that are doors read as a door that did not work (owner,
+// 2026-09-17: "make the non-clickable projects heading grey"). The ground the
+// cursor's panel wears still lands on it, because that fact is about where the
+// cursor is and not about what the heading opens.
+func homeCellHead(cell *homeCell, width int, pal palette, marked, hovered bool) string {
 	left := homeCellHeadLeft(cell, width)
-	text := switcherSides(width, left, cell.right, homeCellHeadInk(left, cell.note, pal), homeCellMoneyInk(cell.money, pal))
+	ink := homeCellHeadInk(left, cell.note, pal)
+	if !homeHeadOpens(cell.panel) {
+		ink = pal.dim
+	} else if hovered {
+		ink = homeCellHeadDoorInk(ink, cell.title, pal)
+	}
+	text := switcherSides(width, left, cell.right, ink, homeCellMoneyInk(cell.money, pal))
 	if marked {
 		return pal.cursor(text, width)
 	}
 	return text
+}
+
+// homeHeadOpens reports whether a panel's heading names a place — the order
+// table's head column, answered by the registry ([app.homeHeadDoor] asks the
+// same of a line).
+func homeHeadOpens(id homePanelID) bool {
+	return placeFor(homeSlotOf(id).head) != nil
+}
+
+// homeCellHeadDoorInk is a heading's left-side ink with the word underlined:
+// the panel's word at the front of the text, and nothing after it — not the
+// count a heading carries after its separator (`tasks · 3`), and not the
+// explainer. A left side that does not start with the word (which
+// [homeCellHeadLeft] never hands out) is painted as it was.
+func homeCellHeadDoorInk(ink func(string) string, title string, pal palette) func(string) string {
+	word, _, _ := strings.Cut(title, rowSep)
+	return func(s string) string {
+		if word == "" || !strings.HasPrefix(s, word) {
+			return ink(s)
+		}
+		return ink(pal.underline(word) + s[len(word):])
+	}
 }
 
 // homeCellHeadLeft is a heading's left side: its word, and its explainer beside
@@ -410,20 +488,42 @@ func homeCellBand(text string, width int, pal palette, lit bool) string {
 }
 
 // homeCellRow paints a row and the line under it.
-// A ROW THAT GROWS DRAWS ITS SECOND LINE ONLY UNDER THE CURSOR, and the band
-// covers both of them: the two lines are one row, and a ground that stopped
-// half way would read as two ([homeCell.grows]).
+// A ROW THAT GROWS DRAWS ITS SECOND LINE ONLY WHILE IT IS THE ROW BEING READ —
+// under the pointer, or under the cursor when nothing is pointed at
+// ([homeView.previewAt]) — and the band covers both of them: the two lines are
+// one row, and a ground that stopped half way would read as two
+// ([homeCell.grows]). ONE ROW OF A FRAME GROWS, which is the one line each
+// panel reserves for it ([homeGridPanel.height]).
 func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) []string {
 	cell := line.cell
-	body := homeCellBody(a.homeCellDoor(cell, at, width-homeGridLead), width-homeGridLead, pal, lit)
-	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
+	lead := a.homeCellLead(cell, at, pal)
+	leadWidth := homeGridLead
+	if (cell.panel == panelRecent || cell.panel == panelSessions) && line.kind == homeSession {
+		lead = a.homeConversationBullet(cell, pal) + " "
+	}
+	body := homeCellBody(a.homeCellDoor(cell, at, width-leadWidth), width-leadWidth, pal, lit)
+	rows := []string{homeCellBand(lead+body, width, pal, lit)}
 	// THE DESCRIPTION COLUMN HAS THIS LINE WHERE THERE IS ONE, so the row is one
 	// line and the panel above it is that much shorter ([homeDescCol]).
-	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.cursor) {
+	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.previewAt()) {
 		return rows
+	}
+	// THE THREAD'S TITLE LINE AND A BLANK COME FIRST where the row names one
+	// ([homeCell.thread]), and the band covers them with the rest.
+	if thread := strings.TrimSpace(cell.thread); thread != "" {
+		rows = append(rows,
+			homeCellBand(homeCellLeadBlank+homeThreadLine(thread, max(1, width-homeGridLead), pal), width, pal, lit && cell.grows),
+			homeCellBand("", width, pal, lit && cell.grows))
 	}
 	under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line, at), pal.dim, pal.muted)
 	return append(rows, homeCellBand(homeCellLeadBlank+under, width, pal, lit && cell.grows))
+}
+
+// homeThreadLine is a description's title line: the word dim and the thread's
+// name one shade up, cut whole to the room — `thread: Prime Sieve`.
+func homeThreadLine(thread string, room int, pal palette) string {
+	name := fit(thread, max(1, room-ansi.StringWidth(homeThreadWord)))
+	return pal.dim(homeThreadWord) + pal.muted(name)
 }
 
 // homeCellLead is the row's mark and the air after it, or two blank cells.
@@ -437,16 +537,11 @@ func (a *app) homeCellLead(cell *homeCell, at int, pal palette) string {
 	if spin := a.homeSpinCell(at); spin != "" && cell.mark != cellMarkNeeds {
 		return pal.accent(spin) + " "
 	}
-	// THE MARK LEADS THE QUESTION AND NOT THE ROW where the description column
-	// draws that question ([homeDescNote]). The `?` means "this has stopped and
-	// is waiting on you", and the thing it is true of is the QUESTION — so on a
-	// frame that draws the question, the mark belongs beside the words rather
-	// than beside the title of the conversation they came from (owner,
-	// 2026-09-15). The row keeps the two blank cells, so every title on the
-	// screen still starts in the same column.
-	if cell.mark == cellMarkNeeds && homeDescOn(a.home.grid.cols) && cell.alwaysSaid() {
-		return homeCellLeadBlank
-	}
+	// THE MARK LEADS THE ROW, ALWAYS. It used to move beside the question on a
+	// frame whose description column drew the question permanently (owner,
+	// 2026-09-15); the question is drawn only under the pointer or the cursor
+	// now, and the owner asked (2026-09-17) that the `?` always show — so it
+	// stands beside the title, where it is on every frame.
 	switch cell.mark {
 	case cellMarkNeeds:
 		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + " "
@@ -490,8 +585,8 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	}
 	if over := homeCellWidth(title, pad, note, tag, right) - width; over > 0 {
 		keep := max(1, ansi.StringWidth(title)-over)
-		if cell.path {
-			title = homeFitPathLeft(title, keep)
+		if cell.panel == panelRecent || cell.panel == panelSessions {
+			title = fitConversationTitle(title, keep)
 		} else {
 			title = fit(title, keep)
 		}
@@ -502,6 +597,9 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	}
 	if lit {
 		factInk = pal.ink
+	}
+	if cell.closed {
+		titleInk, factInk = pal.dim, pal.dim
 	}
 	line := titleInk(title)
 	used := ansi.StringWidth(title)
@@ -517,41 +615,18 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(tail))) + factInk(tail)
 }
 
-// homeCellPathTitle is a path title fitted into what its row's facts leave,
-// and the pad cut to match.
-//
-// A PATH GIVES WAY BEFORE ITS FACTS, from the left. `~/Documents/agentfield/
-// code/codeaf` pushed `61 chats` off its row in the owner's first binary,
-// and the part of a path that tells two folders apart is its end — so the path
-// is cut to `…/code/codeaf` while the count and the repository keep their
-// cells. It is cut to the panel's pad as well, so every path on the panel ends
-// at or before one column and the counts beside them stand in one line. Only
-// where even the folder's own name would not fit do the facts give way, in the
-// row's ordinary order.
+// homeCellPathTitle preserves the start of a project path: an absolute root
+// or the home-directory tilde. Facts keep their columns while the right end
+// of the path is cut; if even a useful prefix cannot fit, facts give way first.
 func homeCellPathTitle(cell *homeCell, width int) (string, int) {
 	room := width - homeCellWidth("", 0, cell.note, cell.tag, cell.right)
 	if cell.pad > 0 {
 		room = min(room, cell.pad)
 	}
-	if room < ansi.StringWidth(glyphMore+"/"+filepath.Base(cell.title)) {
+	if room < homeCellTitleFloor {
 		return cell.title, cell.pad
 	}
-	return homeFitPathLeft(cell.title, room), min(cell.pad, room)
-}
-
-// homeFitPathLeft is [fitLeft] for a path: cut from the left, and then on to
-// the next separator, so what is left starts at a folder — `…/code/codeaf`
-// and never `…ield/code/codeaf`.
-func homeFitPathLeft(path string, width int) string {
-	cut := fitLeft(path, width)
-	rest := strings.TrimPrefix(cut, glyphMore)
-	if rest == cut {
-		return cut
-	}
-	if at := strings.Index(rest, "/"); at > 0 && at < len(rest)-1 {
-		return glyphMore + rest[at:]
-	}
-	return cut
+	return fit(cell.title, room), min(cell.pad, room)
 }
 
 // homeCellDoor is the row UNDER THE CURSOR growing its held word into the door
@@ -664,16 +739,6 @@ func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine 
 		out[top+i] = homeCellLine{at: homeNoLine, head: -1, text: homeCellLeadBlank + words}
 	}
 	return out
-}
-
-// homeDescLead is what a note stands in: the row's own mark where the row gave
-// it up ([app.homeCellLead]), and the same two blank cells otherwise — so a note
-// with a mark and a note without one start their words in the same column.
-func (a *app) homeDescLead(cell *homeCell, pal palette) string {
-	if cell.mark == cellMarkNeeds {
-		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + strings.Repeat(" ", homeDescLeadCells-1)
-	}
-	return homeDescLeadBlank
 }
 
 // homeAskFitsColumn reports that a question home is holding can be drawn WHOLE

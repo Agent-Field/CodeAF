@@ -546,3 +546,55 @@ func TestTheWelcomeSaysWhetherThisConversationsNewsWillCross(t *testing.T) {
 		t.Fatal("an engine that cannot name its conversation claimed to send its news")
 	}
 }
+
+// A WINDOW THAT ARRIVES AFTER THE ANSWER IS STILL TOLD WHO ANSWERED. The host
+// keeps a conversation's last landed sighting and puts it first on every new
+// outbox ([Session.watchNews]), with its age on it — so a window opened an
+// hour later names the machine on its seam at once, and its sheet files the
+// sighting as the hour-old reading it is. Until 2026-09-17 such a window drew
+// the model and no machine until the next answer.
+func TestAWindowArrivingAfterTheAnswerIsToldWhoAnsweredLast(t *testing.T) {
+	sess := newsSession(t, &newsAgent{fakeAgent: &fakeAgent{}, key: "conversation-one"})
+	first := dialSession(t, sess)
+	first.hello(Hello{Version: Version, Surface: "macbook"})
+	newsWatching(t, sess, 1)
+
+	answered := time.Now().Add(-time.Hour)
+	session.TellLane(session.LaneNews{
+		Model: "deepseek/deepseek-v4.1-flash", Lane: "baidu", Role: lane.RoleTalk,
+		Session: "conversation-one", At: answered,
+	})
+	first.await(func(f Frame) bool { return f.Kind == "lane" })
+
+	later := dialSession(t, sess)
+	later.hello(Hello{Version: Version, Surface: "studio"})
+	frame := later.await(func(f Frame) bool { return f.Kind == "lane" })
+	var wire LaneWire
+	if err := json.Unmarshal(frame.Payload, &wire); err != nil {
+		t.Fatalf("the replayed lane frame did not parse: %v", err)
+	}
+	if wire.Lane != "baidu" || wire.Model != "deepseek/deepseek-v4.1-flash" {
+		t.Fatalf("the late window was told %+v, want the machine that answered last", wire)
+	}
+	// AND IT IS THE HOUR-OLD SIGHTING, NOT A FRESH ONE: the age crosses, and the
+	// surface stamps the sighting back to when the answer landed.
+	if got := laneNewsOf(wire, time.Now()); got.At.After(answered.Add(5*time.Second)) || got.At.Before(answered.Add(-5*time.Second)) {
+		t.Fatalf("the replayed sighting landed at %v, want about %v", got.At, answered)
+	}
+	// A RESCUE IN FLIGHT IS NOT WHAT A LATE WINDOW IS TOLD: it is a claim about
+	// a moment, and the answer that landed is still the last answer.
+	session.TellLane(session.LaneNews{
+		Model: "deepseek/deepseek-v4.1-flash", Alt: "coreweave", Trying: true, Role: lane.RoleTalk,
+		Session: "conversation-one", At: time.Now(),
+	})
+	later.await(func(f Frame) bool { return f.Kind == "lane" })
+	third := dialSession(t, sess)
+	third.hello(Hello{Version: Version, Surface: "phone"})
+	frame = third.await(func(f Frame) bool { return f.Kind == "lane" })
+	if err := json.Unmarshal(frame.Payload, &wire); err != nil {
+		t.Fatalf("the replayed lane frame did not parse: %v", err)
+	}
+	if wire.Trying || wire.Lane != "baidu" {
+		t.Fatalf("the third window was told %+v, want the landed answer and not the rescue", wire)
+	}
+}

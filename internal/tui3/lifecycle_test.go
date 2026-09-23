@@ -289,13 +289,10 @@ func TestTheConsentQuestionIsAmberEverywhereAtOnce(t *testing.T) {
 		t.Fatalf("the asked-about row is not marked: %q", row)
 	}
 
-	// And the status line says so in words as well as in colour.
-	status := a.status(a.width)
-	if !strings.Contains(plain(status), waitingWord) {
-		t.Fatalf("the status line does not say the surface is waiting: %q", plain(status))
-	}
-	if !strings.Contains(status, violet) {
-		t.Fatalf("the status line's state is not in the question hue: %q", status)
+	// The open decision owns the request for attention; the seam does not repeat it.
+	status := a.legend(a.width)
+	if strings.Contains(plain(status), waitingWord) {
+		t.Fatalf("the seam repeats the open decision: %q", plain(status))
 	}
 	if strings.Contains(plain(status), "working") {
 		t.Fatalf("a blocked turn still calls itself working: %q", plain(status))
@@ -318,7 +315,7 @@ func TestAnsweringTheQuestionEndsTheQuestionHue(t *testing.T) {
 	if got := frame(a); strings.Contains(got, amber) {
 		t.Fatalf("the question hue outlived the question:\n%q", got)
 	}
-	if plain(a.status(a.width)) == waitingWord {
+	if plain(a.legend(a.width)) == waitingWord {
 		t.Fatal("the status line is still waiting")
 	}
 }
@@ -758,7 +755,9 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 	a.touch()
 
 	lines := strings.Split(plain(frame(a)), "\n")
-	last := lines[len(lines)-1]
+	// THE NUMBERS ARE ON THE SEAM, two rows above the last (the box and the
+	// keys row are under it — footswap.go), since 2026-09-17.
+	last := lines[len(lines)-3]
 	// THE LEDGER LEFT AND THE STATE WORD LAST, on the one row a ninety-column
 	// frame keeps them on. The product name is not on this line, and since
 	// 2026-09-09 neither are the conversation's name and model: they are on the
@@ -768,24 +767,23 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 			t.Fatalf("the status line is missing %q:\n%q", want, last)
 		}
 	}
-	for _, gone := range []string{product, "porting the parser", "gpt-4.1-mini"} {
-		if strings.Contains(last, gone) {
-			t.Fatalf("the status line is still carrying %q: %q", gone, last)
+	// THE KEYS ROW UNDER THE BOX CARRIES NONE OF IT, and the seam carries no
+	// product name.
+	for _, gone := range []string{product, "porting the parser", "gpt-4.1-mini", "$0.14", "idle"} {
+		if strings.Contains(lines[len(lines)-1], gone) {
+			t.Fatalf("the keys row is carrying %q: %q", gone, lines[len(lines)-1])
 		}
 	}
-	// AND THE SEAM CARRIES BOTH, the model as its BASENAME — the vendor is a
-	// routing address, and it stays in the picker.
+	if strings.Contains(last, product) {
+		t.Fatalf("the seam is still carrying %q: %q", product, last)
+	}
+	// The seam carries the full model identifier; the title belongs to the tab.
 	seam := plain(a.legend(a.width))
-	for _, want := range []string{"porting the parser", "gpt-4.1-mini"} {
-		if !strings.Contains(seam, want) {
-			t.Fatalf("the seam is missing %q:\n%q", want, seam)
-		}
-	}
-	if strings.Contains(seam, "openai/") {
-		t.Fatalf("the vendor prefix is on the seam: %q", seam)
+	if !strings.Contains(seam, "openai/gpt-4.1-mini") || strings.Contains(seam, "porting the parser") {
+		t.Fatalf("the seam is not the model alone:\n%q", seam)
 	}
 	// NO TOP BAR. Nothing above the conversation says any of this.
-	for _, line := range lines[:len(lines)-1] {
+	for _, line := range lines[:len(lines)-3] {
 		if strings.Contains(line, "openai/gpt-4.1-mini") && !strings.Contains(line, "model ·") {
 			t.Fatalf("the model is still drawn above the conversation: %q", line)
 		}
@@ -795,15 +793,15 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 	}
 
 	// The four states, painted where the state is.
-	if !strings.Contains(a.status(a.width), a.pal.dim("idle")) {
+	if !strings.Contains(a.legend(a.width), a.pal.dim("idle")) {
 		t.Fatal("idle is not dim")
 	}
 	a.state = stateWorking
-	if !strings.Contains(a.status(a.width), a.pal.accent("working")) {
+	if !strings.Contains(a.legend(a.width), a.pal.accent("working")) {
 		t.Fatal("working is not the accent")
 	}
 	a.state = stateInterrupted
-	if !strings.Contains(a.status(a.width), a.pal.bad("interrupted")) {
+	if !strings.Contains(a.legend(a.width), a.pal.bad("interrupted")) {
 		t.Fatal("interrupted is not the soft red")
 	}
 }
@@ -815,9 +813,6 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 // is (view.go's [app.footClearance]).
 func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	// Named, because the border's label is the conversation's name and an
-	// unnamed session in a directory with no repository has nothing to put in it
-	// — which is the emptiness law, and is its own test (bundle_test.go).
 	a.title = "trimming the parser"
 	typeInto(t, a, "half a sentence")
 
@@ -837,15 +832,15 @@ func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	if strings.TrimSpace(lines[draft-2]) != "" {
 		t.Fatalf("the row above the rule is not blank: %q", lines[draft-2])
 	}
-	// The rule directly above the box is the LEGEND (render.go), and the
-	// conversation's name is written into it: the seam is where identity lives
-	// (foot.go's [app.seamIdentity]).
+	// The rule directly above the box is the LEGEND (render.go), and the model
+	// is written into it — never the conversation's name, which is the tab
+	// strip's (foot.go's [app.seamIdentity]).
 	rule := lines[draft-1]
 	if !strings.HasPrefix(rule, "─") || !strings.Contains(rule, "───") {
 		t.Fatalf("the row above the draft is not the input's legend border: %q", rule)
 	}
-	if !strings.Contains(rule, "trimming the parser") {
-		t.Fatalf("the seam is not carrying the conversation's name: %q", rule)
+	if !strings.Contains(rule, "─ m ") || strings.Contains(rule, "trimming the parser") {
+		t.Fatalf("the seam is not the model alone: %q", rule)
 	}
 	if draft != len(lines)-2 {
 		t.Fatalf("the draft is %d rows from the bottom, want 1 (the status line)",

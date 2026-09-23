@@ -197,13 +197,13 @@ func TestTitleLandsInTheFileAndOnTheStream(t *testing.T) {
 	}
 	// The quotes, the trailing stop and the surrounding space are the three
 	// things a model adds against the instruction.
-	if changed.Text != "tokenizer compatibility investigation" || changed.ShortTitle != "tokenizer bug" {
+	if changed.Text != "tokenizer compatibility investigation" || changed.ShortTitle != "" {
 		t.Fatalf("title = %q, want it cleaned up", changed.Text)
 	}
 	if got := agent.Title(); got != "tokenizer compatibility investigation" {
 		t.Fatalf("Title() = %q", got)
 	}
-	if got := agent.ShortTitle(); got != "tokenizer bug" {
+	if got := agent.ShortTitle(); got != "tokenizer compatibility investigation" {
 		t.Fatalf("ShortTitle() = %q", got)
 	}
 	if err := agent.Close(); err != nil {
@@ -215,7 +215,7 @@ func TestTitleLandsInTheFileAndOnTheStream(t *testing.T) {
 		if strings.Contains(line, `"type":"title"`) {
 			titles++
 			if !strings.Contains(line, `"title":"tokenizer compatibility investigation"`) ||
-				!strings.Contains(line, `"shortTitle":"tokenizer bug"`) {
+				strings.Contains(line, `"shortTitle"`) {
 				t.Fatalf("title line = %s", line)
 			}
 		}
@@ -227,7 +227,7 @@ func TestTitleLandsInTheFileAndOnTheStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay title pair: %v", err)
 	}
-	if replayed.title != "tokenizer compatibility investigation" || replayed.shortTitle != "tokenizer bug" {
+	if replayed.title != "tokenizer compatibility investigation" || replayed.shortTitle != "" {
 		t.Fatalf("replayed title pair = %q / %q", replayed.title, replayed.shortTitle)
 	}
 }
@@ -257,17 +257,17 @@ func TestASluggedTitleIsMintedAsWords(t *testing.T) {
 	}
 }
 
-func TestConversationTitleCarriesOneFullNameAndOneStableTabLabel(t *testing.T) {
+func TestConversationTitleKeepsOnlyTheFullName(t *testing.T) {
 	got := cleanConversationTitle("full: agentfield repository star growth analysis\ntab: star growth")
-	if got.full != "agentfield repository star growth analysis" || got.short != "star growth" {
+	if got.full != "agentfield repository star growth analysis" {
 		t.Fatalf("two-part title = %+v", got)
 	}
 	legacy := cleanConversationTitle("workspace inventory")
-	if legacy.full != "workspace inventory" || legacy.short != legacy.full {
+	if legacy.full != "workspace inventory" {
 		t.Fatalf("legacy title did not fall back for tabs: %+v", legacy)
 	}
 	for _, malformed := range []string{"tab: inventory", "full:\ntab: inventory", "full:"} {
-		if got := cleanConversationTitle(malformed); got.full != "" || got.short != "" {
+		if got := cleanConversationTitle(malformed); got.full != "" {
 			t.Errorf("malformed labeled title %q was accepted as %+v", malformed, got)
 		}
 	}
@@ -776,5 +776,21 @@ func TestCloseCancelsTheForegroundAndItsBlockedNamer(t *testing.T) {
 	}
 	if completer.asks() != 1 {
 		t.Fatal("closing started another naming attempt")
+	}
+}
+
+func TestModelControlTokensNeverBecomeConversationTitles(t *testing.T) {
+	for _, raw := range []string{"<｜DSML｜notice>", "full: <｜DSML｜notice>", "<|im_start|>assistant", "A useful title <|im_end|>"} {
+		if got := cleanConversationTitle(raw).full; got != "" {
+			t.Errorf("generated %q became %q", raw, got)
+		}
+		if got := healedTitle(raw); got != "" {
+			t.Errorf("saved %q became %q", raw, got)
+		}
+	}
+	for _, raw := range []string{"Understanding DeepSeek Control Token Leaks", "Comparing <div> and <span> Elements"} {
+		if cleanTitle(raw) != raw || healedTitle(raw) != raw {
+			t.Errorf("ordinary title rejected: %q", raw)
+		}
 	}
 }

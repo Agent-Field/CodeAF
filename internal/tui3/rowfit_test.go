@@ -49,46 +49,87 @@ func rowfitPicker(t *testing.T) *app {
 // band's padding taken back off.
 func rowfitRow(a *app, width int) string {
 	out := []string{}
-	for _, line := range a.pick.rows(width, overlayItemLines(width, "x"), a.pal, -1, a.reasoningFor) {
+	head := a.pick.headLines(width)
+	for _, line := range a.pick.rows(width, overlayItemLines(width, "x")+head, a.pal, -1, a.reasoningFor)[head:] {
 		out = append(out, strings.TrimRight(plain(line), " "))
 	}
 	return strings.Join(out, "\n")
+}
+
+// rowfitHead is the table's own heading at width, empty where this frame draws
+// no columns.
+func rowfitHead(a *app, width int) string {
+	head := a.pick.headLines(width)
+	if head == 0 {
+		return ""
+	}
+	return strings.TrimRight(plain(a.pick.rows(width, head, a.pal, -1, a.reasoningFor)[head-1]), " ")
 }
 
 // THE NAME IS WHOLE AT EVERY WIDTH AND THE FACTS ARE SPENT IN RANK ORDER. Six
 // frames, one catalog row, and the whole design readable down the column: the
 // machine that will answer outlives the price, the price outlives the window,
 // and the id is never touched.
+//
+// FROM SIXTY UP THE FACTS ARE COLUMNS (modeltable.go) and the ranking is the
+// same ranking — a narrow frame gives up the low-ranked column exactly as a
+// narrow tail gave up the low-ranked fact, and every row gives up the same one,
+// which is the whole reason for the shape.
 func TestThePickerRowKeepsItsNameAndSpendsFactsInRankOrder(t *testing.T) {
 	a := rowfitPicker(t)
 	for _, c := range []struct {
 		width int
 		want  string
+		head  string
 	}{
 		// UNDER SIXTY THE TAIL TAKES A LINE OF ITS OWN (the two-line law at
 		// tierPhone, palette.go) — so the name is whole with the whole frame to
 		// itself, and the fitter spends the line under it instead of the
-		// remainder of this one.
-		{40, "› deepseek/deepseek-v4-flash\n    via coreweave · ▲0.4s · $0.18/M · 1M"},
-		// AT SIXTY THE PRICE STEPS ONE RUNG DOWN ITS OWN LADDER — `$0.18/M` to
-		// `$0.18` — because [rowGutter] is two cells now and the row is one cell
-		// tighter than it was. That is law 2 working: a fact takes the longest
-		// spelling that fits, and the spelling it fell back to is one the row
-		// authored.
-		{60, "› deepseek/deepseek-v4-flash   via coreweave · ▲0.4s · $0.18"},
-		{80, "› deepseek/deepseek-v4-flash      via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M"},
-		{100, "› deepseek/deepseek-v4-flash       via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M · 24t/s · elo 1290"},
-		// AND FROM HERE UP THE ROW STOPS GROWING. Every fact is already said, so
-		// the only thing a wider frame could add is blank cells between the name
-		// and them — which is what [overlayMeasure] is for. 120 and 160 draw the
-		// same hundred-and-two cells and leave the rest of the frame empty.
-		{120, "› deepseek/deepseek-v4-flash         via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M · 24t/s · elo 1290"},
-		{160, "› deepseek/deepseek-v4-flash         via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M · 24t/s · elo 1290"},
+		// remainder of this one. A phone draws no table: one column of figures
+		// with its heading off the side of the frame is not a table.
+		{width: 40, want: "› deepseek/deepseek-v4-flash\n    via coreweave · ▲0.4s · $0.18/M · 1M"},
+		// AT SIXTY THE COLUMNS RUN OUT AFTER THE PRICE. The window, the
+		// throughput and the arena score are the three lowest-ranked things the
+		// row knows, and they go in that order — heads and all, so nothing on
+		// screen is a label over a blank.
+		{
+			width: 60,
+			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18",
+			head:  "  model \u2193                     via        first   in/M  out/M",
+		},
+		// AND AT EIGHTY EVERY FACT THE ROW KNOWS IS ON IT.
+		{
+			width: 80,
+			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18      1M   24  1290",
+			head:  "  model ↓                     via        first   in/M  out/M  window  t/s   elo",
+		},
+		// AND FROM HERE UP THE ROW STOPS GROWING. Every fact is already said and
+		// the columns sit against the names rather than against the frame, so a
+		// wider terminal adds blank to the right of the table and nothing to the
+		// row. 100, 120 and 160 draw the same cells in the same places.
+		{
+			width: 100,
+			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18      1M   24  1290",
+			head:  "  model ↓                     via        first   in/M  out/M  window  t/s   elo",
+		},
+		{
+			width: 120,
+			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18      1M   24  1290",
+			head:  "  model ↓                     via        first   in/M  out/M  window  t/s   elo",
+		},
+		{
+			width: 160,
+			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18      1M   24  1290",
+			head:  "  model ↓                     via        first   in/M  out/M  window  t/s   elo",
+		},
 	} {
 		if got := rowfitRow(a, c.width); got != c.want {
 			t.Fatalf("at %d columns the row is\n got %q\nwant %q", c.width, got, c.want)
 		}
-		for _, line := range strings.Split(c.want, "\n") {
+		if got := rowfitHead(a, c.width); got != c.head {
+			t.Fatalf("at %d columns the heading is\n got %q\nwant %q", c.width, got, c.head)
+		}
+		for _, line := range append(strings.Split(c.want, "\n"), c.head) {
 			if width := ansi.StringWidth(line); width > c.width {
 				t.Fatalf("at %d columns a line drew %d cells: %q", c.width, width, line)
 			}

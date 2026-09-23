@@ -34,29 +34,32 @@ func TestASessionStoppedOnASubharnessQuestionSaysItIsWaitingAndWhy(t *testing.T)
 		exec.Manifest{SubharnessInfo: exec.SubharnessInfo{Name: "upgrade-adapters"}}, "test/model")
 
 	const question = "which branch should the upgrade land on?"
+	events, stop := agent.WatchQuestions()
+	t.Cleanup(stop)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	asked := make(chan struct{})
+	finished := make(chan struct{})
 	go func() {
-		close(asked)
+		defer close(finished)
 		_, _ = env.Ask(ctx, question, exec.AskOptions{})
 	}()
-	<-asked
+	t.Cleanup(func() {
+		cancel()
+		<-finished
+	})
 
-	// The run is inside its question once the lane holds it.
-	deadline := time.After(2 * time.Second)
+	// The lane registers before publication. The event proves its presence row
+	// is banked too, so this assertion cannot race the publication goroutine.
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+waitingForQuestion:
 	for {
-		agent.mu.Lock()
-		standing := len(agent.subharnessAsks)
-		agent.mu.Unlock()
-		if standing > 0 {
-			break
-		}
 		select {
-		case <-deadline:
-			t.Fatal("the run never registered its question")
-		default:
-			time.Sleep(5 * time.Millisecond)
+		case event := <-events:
+			if event.Kind == EventQuestion && event.Question != nil && event.Question.Head == question {
+				break waitingForQuestion
+			}
+		case <-deadline.C:
+			t.Fatal("the run never published its question")
 		}
 	}
 
