@@ -419,7 +419,7 @@ path after it, it takes the path and opens nothing:
 
 ```
 /project                 the browser
-/project ~/src/parser    pinned at once · home says `project · ~/src/parser`
+/project ~/src/parser    pinned at once · the keys row says project: ~/src/parser
 ```
 
 A path that is not a directory on this machine is refused by name — `no folder there ·

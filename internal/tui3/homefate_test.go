@@ -161,14 +161,20 @@ func TestProjectWithAPathAtHomePinsItWithoutTheBrowser(t *testing.T) {
 	if !a.at(pageHome) {
 		t.Fatal("/project <path> left home")
 	}
-	if want := projectSetWord + tildePath(inner, a.tilde); a.home.msg != want {
-		t.Fatalf("home said %q, want %q", a.home.msg, want)
+	// AND IT SAYS NOTHING, because the row it would be drawn over is the row
+	// that answers. Home's sentence is drawn IN PLACE OF the keys row and
+	// stands until the next keystroke, so a success reported there hid the
+	// keys and said what `project: <path>` at their right end was already
+	// saying (projectcmd.go states the law).
+	if a.home.msg != "" {
+		t.Fatalf("a taken path wrote %q over home's keys row", a.home.msg)
 	}
-	if a.home.msgPath != inner {
-		t.Fatalf("the sentence hangs its door on %q, want %q", a.home.msgPath, inner)
-	}
-	if text := ansi.Strip(a.homeFootLine(400, a.pal)); !strings.Contains(text, targetPathWord(a)) {
+	text := ansi.Strip(a.homeFootLine(400, a.pal))
+	if !strings.Contains(text, targetPathWord(a)) {
 		t.Fatalf("the keys row does not name the folder that was just pinned:\n%s", text)
+	}
+	if !strings.Contains(text, homeOptionsWord) {
+		t.Fatalf("the keys are missing from the row that just pinned a folder:\n%s", text)
 	}
 }
 

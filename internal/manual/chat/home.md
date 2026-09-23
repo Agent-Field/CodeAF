@@ -1282,7 +1282,7 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | The words on the row | What you type | What happens |
 | --- | --- | --- |
 | **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; the pinned model appears on the rule above the box. Nothing behind home is touched. |
-| **`next conversation's folder`** | `/project` · `/project <path>` | Bare, opens the folder browser **aimed at the next conversation**; picking a folder pins it, with no duplicate footer message. With a path, pins that folder at once and opens nothing, saying `project · ~/src/parser`. Either way `project: ~/src/parser` at the right of the keys row shows the selection. |
+| **`next conversation's folder`** | `/project` · `/project <path>` | Bare, opens the folder browser **aimed at the next conversation**; picking a folder pins it, with no duplicate footer message. With a path, pins that folder at once, opens nothing and says nothing. Either way `project: ~/src/parser` at the right of the keys row shows the selection, and neither road writes a second sentence over the keys. |
 | **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
 | **`onto home's tray`** | `/attach <path>` | The file — or picture — rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` opens the browser aimed at the next conversation's folder, and a file chosen there lands on the tray. |
@@ -1394,8 +1394,9 @@ Typed bare on home it opens the folder browser with the title `the next conversa
 folder`. Its action row reads `open the next conversation in · ~/src/parser`, and `enter`
 there pins the target and drops you back on home with the rule already changed. Nothing on
 that sheet touches the conversation behind home. `/project ~/src/parser` skips the browser
-and pins the folder straight away, saying `project · ~/src/parser`; a path that is not a
-folder is refused as `no folder there · <path>` and nothing changes. This was `/folder` on
+and pins the folder straight away without a word — the keys row's own `project: <path>` is
+the answer; a path that is not a folder is refused as `no folder there · <path>` and
+nothing changes. This was `/folder` on
 home until 2026-09-22, when the pin became a command of its own.
 
 ## The dim sentence above the rule on home — what is that tip over the box, why did it change

@@ -30,12 +30,18 @@ import (
 // The sentences /project says. Each is quoted in the manual exactly as it is
 // spelled here.
 const (
-	// projectSetWord leads the line a taken path writes on home. The path is
-	// the whole of what a person cannot see anywhere else at that moment, so
-	// it is the ink and the label stays dim — which is how `folder ·`,
-	// `workspace ·` and `model ·` all say their answers (folderplace.go's
-	// [app.referPlace] states that law).
-	projectSetWord = "project · "
+	// A TAKEN PATH SAYS NOTHING HERE, and `project · <path>` stood in this spot
+	// until 2026-09-23. Home's sentence is the REFUSAL SLOT — it is drawn in
+	// place of the keys row and stands until the next keystroke takes it
+	// (homephone.go's [app.homeBar]) — so a success reported through it left
+	// the owner looking at a home whose keys row was gone, saying a thing the
+	// row it was covering already said: `project: <path>` at the right end,
+	// from the very next frame. Two sentences about one pin, one of them
+	// hiding the other. The browser road never said anything for the same
+	// reason (folderact.go's [app.targetFolderConfirm]), so the typed road was
+	// also the odd one out. A REFUSAL STILL SPEAKS: it is a fact about a door
+	// somebody just tried, and nothing else on the screen carries it.
+	//
 	// projectNoFolderWord is a path that is not a directory on this machine: a
 	// typo, a file, or somewhere that has been moved since. It names what was
 	// typed rather than what it resolved to, because the resolved form is not
@@ -80,7 +86,7 @@ func (a *app) runProjectCommand(rest string) tea.Cmd {
 	// [app.targetFolderConfirm] says why that matters): the keys row under the
 	// box says the new folder on the very next frame.
 	a.target.where = path
-	a.home.say(projectSetWord+tildePath(path, a.tilde), path)
+	// AND THE ROW IS LEFT ALONE TO SAY IT (the constants above say why).
 	a.touch()
 	return nil
 }

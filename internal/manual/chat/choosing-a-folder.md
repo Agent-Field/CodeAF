@@ -117,8 +117,10 @@ forms:
 ```
 
 A path that is not a folder on this machine is refused by name — `no folder there ·
-~/src/parsr` — and nothing is pinned. A folder that is there is taken at once: home says
-`project · ~/src/parser` and the keys row under the box changes on the very next frame.
+~/src/parsr` — and nothing is pinned. A folder that is there is taken at once, and **home says nothing about it**: the keys row
+under the box changes on the very next frame, and `project: ~/src/parser` at its right end
+is the answer. (It used to also write `project · ~/src/parser` over the keys themselves,
+which hid the row that was already saying it until the next keystroke.)
 Over `--host` neither form works: this machine's directory cannot be the far
 conversation's folder, so it says the refusal in the section above.
 
