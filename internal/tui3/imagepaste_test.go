@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -234,6 +235,148 @@ func TestPastedWordsMatchesTheShellsSeparators(t *testing.T) {
 			t.Errorf("pastedWords(%q) = %#v, want %#v", tc.text, got, tc.want)
 		}
 	}
+}
+
+// These readings were recorded from the old splitter before its word-boundary
+// work was bounded. Literals keep the optimization answerable to the exact old
+// bytes without retaining a second implementation as an oracle.
+func TestPastedWordsKeepsTheOldReadings(t *testing.T) {
+	type reading struct {
+		name    string
+		text    string
+		want    []string
+		repeats int
+	}
+	for _, tc := range []reading{
+		{
+			name: "plain lines",
+			text: "plain words\nsecond line",
+			want: []string{"plain", "words", "second", "line"},
+		},
+		{
+			name: "drive path",
+			text: `C:\Users\me\My Shot.png next`,
+			want: []string{`C:\Users\me\My`, "Shot.png", "next"},
+		},
+		{
+			name: "long WSL host",
+			text: `\\wsl.localhost\Ubuntu\home\me\My Shot.png next`,
+			want: []string{`\\wsl.localhost\Ubuntu\home\me\My`, "Shot.png", "next"},
+		},
+		{
+			name: "short WSL host",
+			text: `\\wsl$\Ubuntu\home\me\My Shot.png next`,
+			want: []string{`\\wsl$\Ubuntu\home\me\My`, "Shot.png", "next"},
+		},
+		{
+			name: "single quoted spaces",
+			text: `'/tmp/Single quoted shot.png' tail`,
+			want: []string{"/tmp/Single quoted shot.png", "tail"},
+		},
+		{
+			name: "double quoted spaces",
+			text: `"C:\Users\me\Double quoted shot.png" tail`,
+			want: []string{`C:\Users\me\Double quoted shot.png`, "tail"},
+		},
+		{
+			name: "backslash escapes",
+			text: `/tmp/Screen\ Shot.png one\ two three\\four`,
+			want: []string{"/tmp/Screen Shot.png", "one two", `three\four`},
+		},
+		{
+			name: "mixed lines",
+			text: "plain /tmp/Screen\\ Shot.png\nC:\\Users\\me\\one.txt '\\tmp\\quoted path'",
+			want: []string{"plain", "/tmp/Screen Shot.png", `C:\Users\me\one.txt`, `\tmp\quoted path`},
+		},
+		{
+			name:    "four thousand line stack trace",
+			text:    bigPaste(4000),
+			want:    []string{"goroutine", "42", "[running]:", "main.step(0x1400,", "0x2)"},
+			repeats: 4000,
+		},
+	} {
+		want := tc.want
+		if tc.repeats > 0 {
+			want = make([]string, 0, len(tc.want)*tc.repeats)
+			for range tc.repeats {
+				want = append(want, tc.want...)
+			}
+		}
+		got := pastedWords(tc.text)
+		if len(got) != len(want) {
+			t.Errorf("%s: pastedWords returned %d words, want %d", tc.name, len(got), len(want))
+			continue
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("%s: word %d is %q, want %q", tc.name, i, got[i], want[i])
+				break
+			}
+		}
+	}
+}
+
+// pasteLinearByteMultiple sits between the two answers a fourfold paste can get.
+// A linear parser's slices grow by doubling, so its bytes land anywhere up to
+// twice either side of fourfold (5.1 when this was measured, 2026-09-23); the
+// parser that copied the rest of the paste at every word took 15.3 times. Ten
+// refuses the second with room for the first. PERF.md carries the same figure.
+const pasteLinearByteMultiple = 10.0
+
+var (
+	pasteWorkWords []string
+	pasteWorkShape bool
+)
+
+// THE GATE COUNTS BYTES, NOT ALLOCATIONS. The regression this defends was one
+// copy of the rest of the paste at every word: one allocation per word, so an
+// allocation COUNT grows fourfold with a fourfold paste whether the copies are
+// four bytes or ninety kilobytes, and a count-based law passed against the
+// quadratic parser it was written for. What grew sixteenfold was the bytes, and
+// the runtime's running total says how many a call took without asking a clock.
+func TestPasteParsingWorkGrowsLinearly(t *testing.T) {
+	small, large := bigPaste(1000), bigPaste(4000)
+	for _, parser := range []struct {
+		name string
+		run  func(string)
+	}{
+		{
+			name: "pastedWords",
+			run:  func(text string) { pasteWorkWords = pastedWords(text) },
+		},
+		{
+			name: "droppedPathShape",
+			run:  func(text string) { pasteWorkShape = droppedPathShape(text) },
+		},
+	} {
+		t.Run(parser.name, func(t *testing.T) {
+			smallBytes := allocatedBytes(func() { parser.run(small) })
+			largeBytes := allocatedBytes(func() { parser.run(large) })
+			t.Logf("1,000 lines: %d bytes allocated; 4,000 lines: %d bytes allocated", smallBytes, largeBytes)
+			if float64(largeBytes) > float64(smallBytes)*pasteLinearByteMultiple {
+				t.Fatalf("four times the paste allocated %d bytes against %d for the smaller paste", largeBytes, smallBytes)
+			}
+		})
+	}
+}
+
+// allocatedBytes is the least heap any of three runs of one call allocated,
+// read from the runtime's running total. TotalAlloc only grows and a collection
+// does not reset it, so the difference is the call's own work; the least of
+// three drops a stray allocation by some other goroutine that happened to land
+// inside one reading.
+func allocatedBytes(run func()) uint64 {
+	var least uint64
+	for i := 0; i < 3; i++ {
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		run()
+		runtime.ReadMemStats(&after)
+		if took := after.TotalAlloc - before.TotalAlloc; i == 0 || took < least {
+			least = took
+		}
+	}
+	return least
 }
 
 // P7: alternate paste readings stay ordered and duplicate readings are removed.

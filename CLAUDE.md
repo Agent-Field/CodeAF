@@ -283,9 +283,11 @@ here is a proposal, and the template is for defects.
 ## Tests
 
 The 2026-09-08 constrained-runner baseline (`GOMAXPROCS=4`, `GOFLAGS=-p=2`) put
-`internal/tui3` at 563 seconds and `internal/session` at 210 seconds. Give tui3
-`-timeout 15m`, never `8m`, or the ceiling can report whichever test happened to
-be running as though it hung. Use the repository targets for shorter loops:
+`internal/tui3` at 563 seconds and `internal/session` at 210 seconds. Heavy
+packages run sharded through `make test`; use `SHARDS=1` to reproduce the serial
+outcome. Give each shard `-timeout 15m`, never `8m`, or the ceiling can report
+whichever test happened to be running as though it hung. Use the repository
+targets for shorter loops:
 
 ```sh
 make test-focus PKGS=./internal/tui3 RUN='^TestTheRegression$$' # one named test

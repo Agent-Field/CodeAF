@@ -54,9 +54,11 @@ type pulseWorldMsg struct {
 	known bool
 }
 
-// pulseTick schedules the next beat.
+// pulseTick schedules the next beat through the surface clock. Production's
+// clock is bubbletea's, while the test clock can decline this ten-second poll
+// without starting a timer the old harness could never receive.
 func pulseTick() tea.Cmd {
-	return tea.Tick(pulseEvery, func(time.Time) tea.Msg { return pulseTickMsg{} })
+	return surfaceTick(pulseEvery, func(time.Time) tea.Msg { return pulseTickMsg{} })
 }
 
 // pulseNow is the FIRST reading, asked the moment the window starts rather than
