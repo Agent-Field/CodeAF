@@ -114,8 +114,9 @@ build if the two disagree), so a tip you saw is on it word for word.
   conversations. Retired when a standing order is made or the standing page opened.
 - `/task starts work you can walk away from` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
-- `ctrl+enter sends your message as something to keep true` — retired when a standing
-  order is made or the standing page opened.
+- `ctrl+enter makes your message a rule instead of a request` — retired when a standing
+  order is made or the standing page opened. It teaches the same door as the `/standing`
+  row above and retires with it, so the two say a rule in the same words.
 - `/manual answers any question about codeaf` — retired when
   `/manual` is typed, bare or with a question.
 - `ctrl+shift+t reopens the last closed conversation tab` — retired the first time the chord is

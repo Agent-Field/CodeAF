@@ -385,9 +385,16 @@ var notices = []notice{
 		retire: eventTaskTyped,
 	},
 	{
+		// THE THIRD ROW ABOUT A STANDING ORDER, and it says the same thing as
+		// the one above in the same words since 2026-09-22. It read `sends your
+		// message as something to keep true` — which is exactly the spelling
+		// `/standing`'s row had just been taken off, for teaching that a rule
+		// and a memory were one thing (see `remember-one-thing`). The two rows
+		// retire on the SAME event, so they are one lesson told twice, and
+		// telling it twice in two vocabularies is the way to teach neither.
 		id: "standing-by-chord", slot: slotHint,
 		armed:  ready,
-		text:   "ctrl+enter sends your message as something to keep true",
+		text:   "ctrl+enter makes your message a rule instead of a request",
 		retire: eventStandingOpened,
 	},
 	{
