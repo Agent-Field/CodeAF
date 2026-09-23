@@ -14,10 +14,9 @@ import (
 // whole machine. Every row opens the standing place, where the orders are kept.
 type nextPanel struct{ homePanelBase }
 
-// homeScheduledWord is the panel's heading: one word, no explainer (owner,
-// 2026-09-15; it was `next up · reminders & routines`, which named two of the
-// four kinds of order that stand on it).
-const homeScheduledWord = "scheduled"
+// homeScheduledWord matches the standing place the heading opens. The panel
+// includes reminders, routines, watches and rules, not only scheduled work.
+const homeScheduledWord = "standing"
 
 func (nextPanel) rows(in *homeGridInput) homePanelRows {
 	views := nextActive(in)
@@ -129,7 +128,7 @@ func nextUpSaid(view StandingItemView, now time.Time) string {
 	return rowClauses(nextUpKindWord(item), words, next, last)
 }
 
-// The fixed words of a `scheduled` row's sentence, spelled once.
+// The fixed words of a `standing` row's sentence, spelled once.
 const (
 	nextUpGoesOffWord      = "goes off "
 	nextUpNextWord         = "next "

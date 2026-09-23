@@ -14,7 +14,8 @@ invalidates:
   - "/manual printed the manual's pages as written with no model call. It is a turn now: the question goes to the model, told to answer from the manual tool and name the page. The as-written reading is still `codeaf manual` at the terminal."
   - "The Workspace tab's row was `ui.hints` meaning shown. The row reads `disable hints`, off by default; the persisted key keeps its bytes and internal/config inverts once on the way in and out."
   - "A showing was every visible change of hands of a tip row. On home a showing is now a tip that stood twenty seconds where it could be seen; in a conversation it is one session, counted when the slot takes the tip. A ledger written under the old rule is read once with the rows that rule spent forgiven, and the tips a gesture retired stay retired."
-  - "Two spaces over an empty box opened home. The surface stopped doing that on 2026-09-17; esc is the door, and five passages in the manual that still taught the old gesture now say so."
+  - "The rewind tip read `/rewind takes back an earlier message`. It reads `esc esc takes back the last message`, because #1388 gave the chord back: the row teaches the half you cannot discover, and either door retires it."
+  - "For one day this branch taught esc as the door home, after the surface stopped treating two spaces that way on 2026-09-17. #1388 restored the gesture, so TWO SPACES IN AN EMPTY BOX open home and esc is the interrupt, the layer peel and the arming half of rewind. Every manual passage and every test here says so."
 ---
 There is one table of tips and there are two boxes, and the wave ends with the
 two boxes saying them by rules of their own, because a conversation is a screen

@@ -219,10 +219,7 @@ func TestProjectInAConversationSaysItIsHomes(t *testing.T) {
 func TestFolderAtHomeOpensAConversationAndBrowsesThere(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.door("")
-	a.key(key("esc"))
-	if !a.at(pageHome) {
-		t.Fatal("esc did not open home")
-	}
+	goHome(t, a)
 	if got := homeFate("folder", ""); got != fateNeedsChat {
 		t.Fatalf("the drop-up says /folder %q on home", got)
 	}

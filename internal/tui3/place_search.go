@@ -267,7 +267,8 @@ func (a *app) searchKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 			return a.searchAsked()
 		}
-		return a.openHome()
+		a.leavePlace()
+		return nil
 	case "up", "ctrl+p":
 		a.moveSearch(-1)
 		a.touch()

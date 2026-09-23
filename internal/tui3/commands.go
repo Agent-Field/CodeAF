@@ -156,7 +156,7 @@ var commands = []command{
 	// pick a point out of (rewindsheet.go) — and then the gesture that takes the
 	// last message back without opening anything (rewind.go). Two tiers, one row,
 	// in the order a person meets them.
-	{name: "rewind", desc: "go back to an earlier point", alias: []string{"undo", "back"}},
+	{name: "rewind", desc: "go back to an earlier point · esc esc takes back the last", alias: []string{"undo", "back"}},
 	// WHAT HAS ALREADY BEEN ANSWERED, and the way to take one back
 	// (permissions.go). It BELONGS beside /settings and /connect — those two are
 	// "what may this thing do" and "what may it reach", and this is "what has it
@@ -282,7 +282,6 @@ var commands = []command{
 	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
 		alias: []string{"think", "thinking"}},
 	{name: "effort", args: "<rung>", desc: "…set it outright · " + effortKey + " walks it, or press it on the seam"},
-	{name: "ask", args: "<question>", desc: "ask here on home", door: sendDoorAsk},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
@@ -989,7 +988,7 @@ func helpText(file string, chords chordSpelling) string {
 		// THE DOOR IS NAMED HERE BECAUSE ONE KEY CARRIES TWO MEANINGS
 		// (leaving.go): at rest it leaves, mid-turn it stops the model, and a
 		// person whose ctrl+c "only interrupted" looks here before anywhere else.
-		"ctrl+c         quits everything · mid-turn it interrupts instead",
+		"ctrl+c         quits everything · mid-turn it interrupts instead, like esc",
 		// tab is the seventeenth rung of the key router (input.go) and does
 		// nothing at all when this terminal holds one conversation — which is
 		// why the line says what it needs rather than promising it always works.
@@ -1092,7 +1091,7 @@ func helpText(file string, chords chordSpelling) string {
 		// the machine, and one word meaning two places on the same list is a
 		// person pressing ← ← to find out where they end up.
 		"← ←            out of a task room · the conversation, at the live edge",
-		"esc            back one layer · home when no layer remains · /home",
+		"space space    over an empty box: home · /home · esc back",
 		// THE WORD KILL IS NAMED BY THE KEYS THAT STILL REACH THE BOX. ctrl+w was
 		// on this row until it became the close-tab chord above, and a sheet that
 		// went on offering it would be teaching a keystroke that shuts the window

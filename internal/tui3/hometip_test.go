@@ -21,10 +21,7 @@ import (
 func TestHomeRowSaysATipOverAnEmptyBox(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.door("")
-	a.key(key("esc"))
-	if !a.at(pageHome) {
-		t.Fatal("esc did not open home")
-	}
+	goHome(t, a)
 	tip := a.noticeHomeHint()
 	if tip == "" {
 		t.Fatalf("home opened with nothing on its row; the slot holds %q", a.notices.current[slotHome])

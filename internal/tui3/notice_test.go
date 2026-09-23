@@ -559,6 +559,11 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	if got := a.noticeHint(); got != "" {
 		t.Fatalf("a tip drew over a running turn: %q", got)
 	}
+	// AND THE ROW SAYS THE ONE KEY THAT MATTERS WHILE A TURN IS RUNNING. esc is
+	// the interrupt again (#1388), and no tip outranks it.
+	if got := plain(a.footHint(a.width)); !strings.Contains(got, "esc interrupt") {
+		t.Fatalf("a running turn's keys row does not offer the interrupt: %q", got)
+	}
 	a.state = stateIdle
 	a.input.setText("half a sentence")
 	if got := a.noticeHint(); got != "" {

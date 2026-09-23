@@ -71,10 +71,7 @@ func TestABareManualAsksTheModelForTheTour(t *testing.T) {
 func TestManualOnHomeOpensAConversationAndAsksThere(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.door("")
-	a.key(key("esc"))
-	if !a.at(pageHome) {
-		t.Fatal("esc did not open home")
-	}
+	goHome(t, a)
 	if got := homeFate("manual", "how do I change the effort level"); got != fateNeedsChat {
 		t.Fatalf("the drop-up says /manual %q on home", got)
 	}

@@ -11,7 +11,7 @@ import (
 // Until 2026-09-17 the seam over the box carried the keys that work right now
 // on its right, and the row under the box carried the numbers:
 //
-//	─ porting the parser · glm-5.3-flash:high · ◇ asks ──── esc back · / commands ─
+//	─ porting the parser · glm-5.3-flash:high · ◇ asks ──── space space home · / commands ─
 //	 › your sentence
 //	 $0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%             38 tok/s · ⠹ working · 12s
 //
@@ -22,7 +22,7 @@ import (
 //
 //	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
-//	 alt+e effort · alt+a approvals · alt+k chats · / commands · esc back
+//	 alt+e effort · alt+a approvals · alt+k chats · / commands · space space home
 //
 //	─ glm-5.3-flash:auto · ◇ asks ───────────────── project: ~/codeaf ─
 //	 › type to search or start something new
@@ -249,9 +249,9 @@ func (a *app) hintRow(width int) string {
 	} else {
 		hint = ""
 	}
-	if offset := strings.Index(hint, a.escapeDoorWord()); offset >= 0 {
+	if offset := strings.Index(hint, homeDoorWord); offset >= 0 {
 		from := 1 + ansi.StringWidth(hint[:offset])
-		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(a.escapeDoorWord())}
+		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(homeDoorWord)}
 	}
 	// THE ROW FILLS THE FRAME, as every foot row does: a row shorter than the
 	// frame would leave the cells behind it to whatever the last frame drew.

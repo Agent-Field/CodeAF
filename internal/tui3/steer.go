@@ -463,7 +463,7 @@ func (a *app) runSendOffered() bool {
 func (a *app) runHint() string {
 	if a.questionWriting() {
 		// WHILE THE BOX IS A QUESTION'S, THE QUESTION'S ROW IS THE HINT.
-		// `enter steers it in · ctrl+c interrupt` over a box whose enter answers
+		// `enter steers it in · esc interrupt` over a box whose enter answers
 		// a card and whose esc gives the box back would be two keys named
 		// wrong on one screen ([app.questionWritingRow] says them right).
 		return ""
@@ -475,7 +475,7 @@ func (a *app) runHint() string {
 	if a.promotableRow() >= 0 {
 		parts = append(parts, "ctrl+g backgrounds")
 	}
-	stop := "ctrl+c interrupt"
+	stop := "esc interrupt"
 	if len(a.parks) > 0 && a.parking() {
 		stop = parkedHint[1]
 	}

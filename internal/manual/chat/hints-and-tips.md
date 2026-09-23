@@ -2,10 +2,14 @@
 
 ## What was that tip at the bottom of the screen — the one-line hint, the sentence under the message box
 
-The dim sentence at the very bottom of a conversation, where the keys usually are —
-`/files finds everything made for you` — is a **tip**: one line naming a key or a
-command you have not used yet, and what it does. It reads the way every hint on this
-surface does: the key or the command first, then what it does.
+The dim row under your message box — the last row of the frame — mostly names the keys that
+work right now: `esc interrupt` while an answer is coming, `y allow · n deny · a always`
+while codeaf is asking you something, `space space home` when there is a home to go to,
+`/ commands` when nothing else is true. Once you have used codeaf a little, that idle line
+sometimes carries a **tip** instead — one sentence naming a key or a command you have not
+used yet, and what it does, for example `esc esc takes back the last message` or `/files
+finds everything made for you`. It reads the way every hint on this surface does: the key
+or the command first, then what it does.
 
 **In a conversation the tip is the keys row's lowest rung.** It takes that row from the
 rest state — the line a newcomer reads when nothing is happening — and every state with
@@ -38,7 +42,7 @@ that separates the list from the rule, with one sentence written into its right 
 by a bulb: `💡 /project sets the project folder for the next conversation ✕`. It is drawn only
 while the box is empty and nothing else is up — a letter in the box, the `/` list, the `@`
 list or a reply being read all take the row back — and it moves on to the next tip that is
-true for you on every road home (`esc` from a conversation, `/home`, `alt+1`, `tab`), in a
+true for you on every road home (two spaces in an empty box, `/home`, `alt+1`, `tab`), in a
 fixed order, round and round. Left at rest, it moves on by itself after two minutes; a home
 nobody is looking at (the box being typed into, a list up) does not age, because what has
 not been read has not been shown. The cross at its end blanks the row for the rest of that
@@ -104,8 +108,10 @@ build if the two disagree), so a tip you saw is on it word for word.
   context window. Retired when a `/compact` finishes.
 - `/cost says what this conversation has spent` — once the conversation has spent about
   ten cents. Retired when you run `/cost`.
-- `/rewind takes back an earlier message` — after an answer of about 1,500 characters or
-  more. Retired the first time a rewind lands.
+- `esc esc takes back the last message` — after an answer of about 1,500 characters or
+  more. Retired the first time a rewind lands, from `esc esc` or from `/rewind`. It named
+  `/rewind` instead until 2026-09-23, while `esc esc` was not a gesture; the chord is the
+  half you cannot discover, so the chord is what the row teaches.
 - `/files finds everything made for you` — after the first export writes a file. Retired
   when you run `/files`.
 - `/resume opens an earlier conversation` — when you start in a directory that already has
@@ -174,9 +180,9 @@ of the commands they named still works** — only the tips about them are gone.
   you, which is the argument that kept `alt+p`, `alt+e` and `/` off the list in the first
   place.
 - `/ask answers right here without opening a conversation` came off ahead of the door it
-  taught: `/ask` is on its way out, and a tip is for something you will still have
-  tomorrow. It was the only tip that was true on home alone until `/project` took that
-  place.
+  taught, and the door followed: `/ask` is not a command any more, and asking from home is
+  the `ask here` row over home's box. It was the only tip true on home alone until
+  `/project` took that place.
 - `/folder picks the folder codeaf works in` came off because **it was not true**. `/folder`
   never moves the directory codeaf is standing in — that is fixed for the life of a
   conversation — it registers a directory the conversation is *about*, which is exactly
@@ -204,7 +210,7 @@ the **disable hints** row on. Enter or space toggles it; it is off by default, w
 the tips show. (Until 2026-09-22 it was a **hints** row on the Display tab, on by default.)
 The change lands at the end of the next turn. On silences the tips — over a conversation's
 box and over home's alike — and the what's-new lines together; it does not touch the keys
-row's own words for a live state — `ctrl+c interrupt` and the rest are not hints and cannot
+row's own words for a live state — `esc interrupt` and the rest are not hints and cannot
 be turned off. From the terminal, `codeaf config` shows the same row under the same name.
 
 Turning the row back off shows whatever is due. Tips you had already retired stay retired.
