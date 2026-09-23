@@ -343,11 +343,11 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 		width int
 		want  string
 	}{
-		{160, " " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500) + " · " + clock},
-		{60, " " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500)},
-		{47, " " + product + "   12 want you · 4 moving · $123.45"},
-		{40, " " + product + "   12 want you · 4 moving"},
-		{30, " " + product + "   12 want you"},
+		{160, " >● " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500) + " · " + clock},
+		{60, " >● " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500)},
+		{47, " >● " + product + "   12 want you · 4 moving · $123.45"},
+		{40, " >● " + product + "   12 want you · 4 moving"},
+		{30, " >● " + product + "   12 want you"},
 		{16, " " + product},
 	} {
 		line := plain(a.pulseLine(one.width, a.pal, pulseWhole))

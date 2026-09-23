@@ -69,7 +69,7 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 		a.width, a.height = size.w, size.h
 		a.touch()
 		head := headOf(t, a)
-		if !strings.HasPrefix(head[0], " "+product) || !strings.HasSuffix(head[0], headPulseWhole()) {
+		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], headPulseWhole()) {
 			t.Fatalf("at %dx%d the chat's first row is not the pulse with its counts and budget:\n%q", size.w, size.h, head[0])
 		}
 		if !strings.Contains(head[placeTabRow], "Home") || !strings.Contains(head[placeTabRow], a.chatDisplayName()) {
@@ -114,7 +114,7 @@ func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
 			}
 			f.a.touch()
 			head := headOf(t, f.a)
-			if !strings.HasPrefix(head[0], " "+product) || head[2] != strings.Repeat("─", size.w) || head[3] != "" {
+			if !strings.HasPrefix(head[0], " "+plain(f.a.pal.wordmark(f.a.width))) || head[2] != strings.Repeat("─", size.w) || head[3] != "" {
 				t.Fatalf("at %dx%d %s's head is not the pulse, a row, the rule and a blank:\n%s",
 					size.w, size.h, f.where, strings.Join(head, "\n"))
 			}

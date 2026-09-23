@@ -1131,6 +1131,7 @@ type app struct {
 	// writing. Both are cleared when the turn settles — a rate quoted over a
 	// finished turn is a rate nobody is watching.
 	turnBegan    time.Time
+	workActivity tokens.WorkActivity
 	turnOutStart int
 	// turnCostAt is what the session had spent when the turn now running
 	// started, and it is the other end of the subtraction a turn footer's price
@@ -5014,11 +5015,13 @@ func (a *app) paint() tea.Cmd {
 	// stream has stopped arriving does not need thirty frames a second: the
 	// clock steps at the spinner's own cadence, and the animations that count
 	// in paints (spinnerStep, pulseStep) land exactly where they would have at
-	// full cadence, one stride at a time. Any OTHER liveness term, or a stream
+	// full cadence, one stride at a time. A visible working logo also needs the
+	// full cadence because its geometry moves between spinner glyph changes.
+	// Any OTHER liveness term, or a stream
 	// still arriving ([app.streamFresh]), keeps the full cadence.
 	if waitLive || otherLive {
 		every := a.frameEvery()
-		if waitLive && !otherLive && !a.streamFresh() {
+		if waitLive && !otherLive && !a.streamFresh() && !a.workLogoVisible() {
 			every *= spinnerStep
 		}
 		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
@@ -6188,6 +6191,7 @@ func (a *app) startClock() {
 		return
 	}
 	a.turnBegan, a.turnOutStart, a.turnCostAt = a.now(), a.outputTokens, a.cost
+	a.workActivity.Start(a.turnBegan, tokens.WorkLogoRandom)
 	// AND THE COLUMN OPENS AT NOTHING, because the figures it chases are this
 	// turn's rather than the session's (tokencol.go's [tokenCol.open]).
 	a.col.open()
