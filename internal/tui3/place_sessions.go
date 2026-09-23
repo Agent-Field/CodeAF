@@ -51,6 +51,10 @@ type tasksPlace struct {
 	// rather than deleted, which is the whole reason this map is read as
 	// presence-and-value instead of as a set.
 	opened map[tasksKey]bool
+	// closed holds tasks put away during this search. A close must remove its
+	// row immediately even though searches can recover older archived tasks.
+	// Editing the query starts a new search and makes them discoverable again.
+	closed map[tasksKey]bool
 	// query is the type-to-filter box, and it is the [editor] every other box on
 	// this surface is rather than a string of its own: backspace, ctrl+u and
 	// ctrl+w are edits a person's hands already know, and a second implementation
@@ -383,10 +387,10 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	// ([tasksControlRow]) and a row cannot ask the surface anything. It is the
 	// untrimmed text, so a person who has typed a space sees the caret move.
 	r.query = p.query.String()
-	if needle == "" {
+	if needle == "" || len(p.closed) > 0 {
 		var kept []tasksItem
 		for i, item := range r.items {
-			if item.row.ArchivedTasks[item.entry.ID] {
+			if p.closed[tasksKeyOf(item.entry)] || (needle == "" && item.row.ArchivedTasks[item.entry.ID]) {
 				if kept == nil {
 					kept = make([]tasksItem, 0, len(r.items))
 					kept = append(kept, r.items[:i]...)
@@ -403,6 +407,8 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 			tree.keepConversationStates(p.reading.tree())
 			r.shape = &tree
 		}
+	}
+	if needle == "" {
 		return r
 	}
 	// A QUERY OPENS EVERY FOLD ON THE PAGE. A row that matched and is sitting
@@ -871,6 +877,7 @@ func (a *app) taskSheetReverseAge() {
 // the window with it. A cursor left at row forty of a list that now has three is
 // a page a person types one letter into and finds empty.
 func (a *app) taskSheetTyped() {
+	a.taskSheet.closed = nil
 	a.taskSheet.top = 0
 	a.taskSheet.cursor = a.tasksSettle(0)
 }
