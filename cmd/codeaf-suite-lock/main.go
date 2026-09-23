@@ -108,7 +108,7 @@ func run(path string, argv []string) int {
 	dirOurs := dirTaken
 	defer func() {
 		if dirOurs {
-			dropDirLock(dirPath)
+			dropDirLock(dirPath, os.Getpid())
 		}
 	}()
 	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
@@ -162,6 +162,25 @@ func run(path string, argv []string) int {
 	// whether the recorded pid is visible from this namespace, and what to run
 	// when it is not. Reporting the directory first would have replaced that
 	// diagnosis with a cruder one for the common case, to describe a rarer one.
+	//
+	// AND ONLY A LIVE OLD CHECKOUT IS A HOLDER (#1324). This run holds the
+	// flock, so no current tree is running; a directory whose pid is dead, or
+	// is not an old checkout at all, is what a SIGKILLed or OOM-killed holder
+	// leaves behind, and refusing on it locked the box for ever naming a pid
+	// that no longer existed. It is taken back here (dirlock.go's
+	// [reclaimDirLock]), and a live old checkout still turns this run away.
+	if dirPath != "" && !dirTaken {
+		reclaimed, heldNow, reclaimErr := reclaimDirLock(dirPath)
+		if reclaimErr != nil {
+			fmt.Fprintf(os.Stderr, "take back a dead heavy-suite directory lock: %v\n", reclaimErr)
+			return 2
+		}
+		if reclaimed {
+			dirTaken, dirOurs = true, true
+		} else {
+			dirHeldBy = heldNow
+		}
+	}
 	if dirPath != "" && !dirTaken {
 		fmt.Fprintf(os.Stderr, "another heavy suite is already running on this box (directory lock %s, pid %s).\n", dirPath, dirLockHolderName(dirHeldBy))
 		fmt.Fprintln(os.Stderr, "That is the lock a checkout behind #1264 takes. Its holder cannot see the file lock this run uses, and the file lock read free, so waiting on that alone would have started a second heavy suite beside it.")
@@ -215,11 +234,12 @@ func run(path string, argv []string) int {
 		fmt.Fprintf(os.Stderr, "write heavy-suite lock: %v\n", err)
 		return 2
 	}
-	// NAMED AFTER THE FILE LOCK IS, never before. Anything written between the
-	// suite starting and the lock being named widens the window in which a
-	// reader that waited for the suite to come up finds an empty lock file, and
-	// the acceptance arms read it exactly that way.
-	nameDirLockHolder(dirPath, cmd.Process.Pid)
+	// THE DIRECTORY IS NOT RENAMED HERE. The holder names itself in it the
+	// moment it starts (lock_unix.go's holdLock), because the holder is the
+	// process an old checkout must find alive and the one that drops it; this
+	// wrapper naming the SUITE here is what made the lock invisible to old
+	// readers (#1324), and a late write from here could land on a directory a
+	// later run has already taken.
 	if holderPID != 0 {
 		// Dropping our own descriptor is what makes the lock the suite's rather
 		// than this wrapper's: from here the holder's copy is the only one, so
