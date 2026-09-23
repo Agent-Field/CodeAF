@@ -734,10 +734,13 @@ that those files were not sent with the correction.
 ## How do I open a task under this one? — enter on its row, escape to come back
 
 The `under it` section is the whole subtree in store order, not only the direct
-children. Its indentation and connectors show the same parent tree as the rail,
-and a running row keeps its live `$ <command>` line beneath it.
+children, and every row in it is drawn exactly as the rail draws a task: the
+state mark (the spinner while it works), the name, its `#id` at the end, and the
+tree's own connectors (`├─`, `└─`). A part that is running says the command it is
+on, such as `bash go test ./...`, and under that how long it has run and what it
+has cost, each left out when the store has not got it.
 
 Select any row there and press `enter` to open that task's page. Press `esc` to
-return to the page you came from; the breadcrumb says `esc/← <parent title>` so
-you can see where it returns. This opens a page rather than changing the rail's
-fold.
+return to the page you came from; the trail at the top of the page reads
+`<conversation> ▸ <parent title> ▸ <this task>` so you can see where it returns.
+This opens a page rather than changing the rail's fold.

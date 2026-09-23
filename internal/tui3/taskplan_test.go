@@ -1030,7 +1030,9 @@ func TestThePlanPageShowsChildrenUnderItsSteps(t *testing.T) {
 	if !strings.Contains(text, "Alpha") {
 		t.Fatalf("the page does not draw the task's child:\n%s", text)
 	}
-	if !strings.Contains(text, "$ go test ./internal/api") {
+	// THE CHILD IS THE RAIL'S ROW, and the rail names a call in flight the way a
+	// node row names one.
+	if !strings.Contains(text, "bash go test ./internal/api") {
 		t.Fatalf("the page does not draw the child's live line:\n%s", text)
 	}
 	if !strings.Contains(text, taskPlanNoteWord) {
