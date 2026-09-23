@@ -171,7 +171,7 @@ only to where its plan was. If another run's plan is ever found in that place, t
 worker's `plandb` refuses it: `the plan store at <path> is another run's (t-<its
 task>), not this worker's run (t-<its own>), so nothing was read or written`.
 
-## A run's row says running but nothing answers — a message to a run's task, stopping a row nothing drives
+## Typing into a run's row, and a row nothing drives any more
 
 A message typed in the room of a run's row is left as a note on that task's page,
 and the room says `left on the task's page — its worker reads it between steps`.
