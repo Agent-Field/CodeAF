@@ -15,6 +15,13 @@ func (a *app) taskStatus(node *taskNode) session.TaskStatus {
 	if node == nil {
 		return session.TaskStatus{}
 	}
+	// A STORE TASK LENT A NODE IS READ IN THE STORE'S WORDS. It has none of the
+	// facts below — no merge, no branch, no pulse — and projecting a node state
+	// guessed from its status would be a second mapping of one row beside
+	// [planStatus], which the tasks place and the task's page already read.
+	if node.planRow != nil {
+		return planNodeStatus(*node.planRow)
+	}
 	facts := session.TaskFacts{
 		State:   node.state,
 		Ending:  node.ending,

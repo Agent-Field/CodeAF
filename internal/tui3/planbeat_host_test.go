@@ -377,9 +377,10 @@ func TestHostedTaskPageOmitsEngineEstablishedNotRunStep(t *testing.T) {
 	}
 	openHostedPage(t, a)
 	page := taskSheetText(a)
-	for _, want := range []string{"1  printf ran-one", "3  printf ran-three", "4  printf older-record"} {
+	shell := a.actionLead(session.ActionRun, true)
+	for _, want := range []string{shell + "printf ran-one", shell + "printf ran-three", shell + "printf older-record"} {
 		if !strings.Contains(page, want) {
-			t.Fatalf("hosted page lost %q or renumbered recorded steps:\n%s", want, page)
+			t.Fatalf("hosted page lost %q:\n%s", want, page)
 		}
 	}
 	for _, forbidden := range []string{"cat first second third", "[not run]", "no action executed", "this belt has one hand"} {
@@ -436,14 +437,15 @@ func TestHostedTaskPageDrawsARefusedActionAsOneLineAndACorrectionAsNone(t *testi
 	if len(drawn) != 1 || drawn[0] != refused {
 		t.Fatalf("a refused action draws as exactly one line, %q, with no number; drew %q:\n%s", refused, drawn, page)
 	}
-	for _, want := range []string{"1  printf ran-one", "4  printf ran-four", "4 steps"} {
+	shell := a.actionLead(session.ActionRun, true)
+	for _, want := range []string{shell + "printf ran-one", shell + "printf ran-four", "4 steps"} {
 		if !strings.Contains(page, want) {
-			t.Fatalf("the page lost %q: a recorded number moved:\n%s", want, page)
+			t.Fatalf("the page lost %q:\n%s", want, page)
 		}
 	}
-	for _, forbidden := range []string{doorSentence, formSentence, "cat first second third", "2  touch"} {
+	for _, forbidden := range []string{doorSentence, formSentence, "cat first second third", shell + "touch"} {
 		if strings.Contains(page, forbidden) {
-			t.Fatalf("the page drew %q, which is the worker's answer, a correction's row, or a number on a call that never ran:\n%s", forbidden, page)
+			t.Fatalf("the page drew %q, which is the worker's answer, a correction's row, or a shell mark on a call that never ran:\n%s", forbidden, page)
 		}
 	}
 }
@@ -475,13 +477,13 @@ func TestHostedPageDrawsContinuedTaskStepsOnceInOrder(t *testing.T) {
 	drive(t, a, cmd())
 
 	var got []string
+	shell := a.actionLead(session.ActionRun, true) + "printf "
 	for _, line := range strings.Split(taskSheetText(a), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && strings.HasPrefix(fields[1], "printf") {
-			got = append(got, fields[0])
+		if at := strings.Index(line, shell); at >= 0 {
+			got = append(got, strings.TrimSpace(line[at+len(shell):]))
 		}
 	}
-	if want := []string{"1", "2", "3", "4", "5"}; strings.Join(got, " ") != strings.Join(want, " ") {
+	if want := []string{"one", "two", "three", "four", "five"}; strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("drawn step rows = %q, want %q exactly once and in order:\n%s", got, want, taskSheetText(a))
 	}
 }
