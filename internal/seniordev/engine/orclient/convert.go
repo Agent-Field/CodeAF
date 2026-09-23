@@ -37,7 +37,7 @@ func getCacheControl(providerOptions json.RawMessage) json.RawMessage {
 	if err != nil {
 		return nil
 	}
-	for _, ns := range []string{"openrouter", "anthropic"} {
+	for _, ns := range []string{Service, "anthropic"} {
 		nsRaw, ok := obj.Get(ns)
 		if !ok {
 			continue
@@ -385,7 +385,7 @@ func convertUserPart(part any, cacheControl json.RawMessage) (jsonValue, error) 
 		}
 		fileName := ""
 		if opts, err := ParseObject(p.ProviderOptions); err == nil {
-			if nsRaw, ok := opts.Get("openrouter"); ok {
+			if nsRaw, ok := opts.Get(Service); ok {
 				if ns, err := ParseObject(nsRaw); err == nil {
 					if v, ok := ns.Get("filename"); ok {
 						fileName = textOf(rawJSONValue(v))
@@ -578,7 +578,7 @@ func openrouterNamespaceField(providerOptions json.RawMessage, field string) (js
 	if err != nil {
 		return nil, false
 	}
-	nsRaw, ok := obj.Get("openrouter")
+	nsRaw, ok := obj.Get(Service)
 	if !ok {
 		return nil, false
 	}

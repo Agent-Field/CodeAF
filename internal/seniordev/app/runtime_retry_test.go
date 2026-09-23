@@ -48,7 +48,7 @@ func TestModelCallNeverRetriesInsideTheEngine(t *testing.T) {
 				return recordedResponse(request, status, "application/json", string(encoded)), nil
 			})}
 
-			backend := &openRouterBackend{apiKey: "test", client: client}
+			backend := &modelAPIBackend{api: testModelAPI, client: client}
 			_, err := backend.Run(context.Background(), retryTurn())
 			if err == nil {
 				t.Fatal("provider failure returned nil")
@@ -73,7 +73,7 @@ func TestInBandProviderFailureReachesRunClassifierWithStatus(t *testing.T) {
 		requests++
 		return recordedResponse(request, http.StatusOK, "text/event-stream", body), nil
 	})}
-	backend := &openRouterBackend{apiKey: "test", client: client}
+	backend := &modelAPIBackend{api: testModelAPI, client: client}
 	_, err := backend.Run(context.Background(), retryTurn())
 	if err == nil || requests != 1 {
 		t.Fatalf("turn error=%v requests=%d, want one failed request", err, requests)
@@ -136,7 +136,7 @@ func TestFailureAfterToolCallDoesNotReplayRequestOrTool(t *testing.T) {
 			Request:    request,
 		}, nil
 	})}
-	backend := &openRouterBackend{apiKey: "test", client: client, chunkTimeoutMS: -1}
+	backend := &modelAPIBackend{api: testModelAPI, client: client, chunkTimeoutMS: -1}
 	var executions atomic.Int32
 	_, err := backend.Run(context.Background(), turn{
 		Agent: "coder", ModelID: "test/model", Prompt: "use the tool", Workspace: t.TempDir(),
@@ -208,8 +208,8 @@ func TestSoloRecoveryCrossesThePersistedEngineBoundaryWithoutReplayingToolEffect
 			Request: request,
 		}, nil
 	})}
-	backend := &openRouterBackend{
-		apiKey: "test", client: client, totalTimeoutMS: -1, chunkTimeoutMS: -1,
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: client, totalTimeoutMS: -1, chunkTimeoutMS: -1,
 	}
 	runner := newPipeline(cliArgs{High: "openrouter/test/model"}, workspace, pipelineDeps{
 		Backend: backend, Events: newEventWriter(&events), Notes: discardWriter{},

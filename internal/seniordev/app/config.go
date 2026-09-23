@@ -55,7 +55,7 @@ func newSeniorDevConfig(info configpkg.Info) (*seniorDevConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("permission config: %w", err)
 	}
-	if err := validateConfiguredRouting(info); err != nil {
+	if err := refuseRetiredModelKnobs(info); err != nil {
 		return nil, err
 	}
 	// The compaction block is parsed once here so a malformed block fails the
@@ -289,62 +289,37 @@ func (cfg *seniorDevConfig) options(agent, providerID, modelID string) *orclient
 	return result
 }
 
-// providerRouting resolves the OpenRouter `provider` routing block for one
-// turn: the provider-wide `providerRouting`, then the model's, then the
-// agent's, each level overriding only the fields it sets. Nil when nothing is
-// configured, so the request carries no `provider` key at all and OpenRouter
-// applies its own default routing.
-func (cfg *seniorDevConfig) providerRouting(agent, providerID, modelID string) (*orclient.ProviderRouting, error) {
-	if cfg == nil {
-		return nil, nil
-	}
-	var merged *orclient.ProviderRouting
-	for _, level := range []struct {
-		name  string
-		value any
-	}{
-		{"provider." + providerID, cfg.provider(providerID)["providerRouting"]},
-		{"provider." + providerID + ".models." + modelID, cfg.model(providerID, modelID)["providerRouting"]},
-		{"agent." + agent, cfg.agent(agent)["providerRouting"]},
-	} {
-		parsed, err := parseConfiguredRouting(level.value)
-		if err != nil {
-			return nil, fmt.Errorf("%s.providerRouting: %w", level.name, err)
-		}
-		merged = merged.Merge(parsed)
-	}
-	return merged, nil
-}
-
-func parseConfiguredRouting(value any) (*orclient.ProviderRouting, error) {
-	if value == nil {
-		return nil, nil
-	}
-	data, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	return orclient.ParseProviderRouting(data)
-}
-
-// validateConfiguredRouting parses every providerRouting block at load time
-// so a misspelled or out-of-range rule fails the run up front instead of
-// silently routing with OpenRouter's defaults.
-func validateConfiguredRouting(info configpkg.Info) error {
+// refuseRetiredModelKnobs refuses, by name, the three config keys that used
+// to decide how senior-dev reached a model and no longer can: a service's
+// `apiKey` and `baseURL`, and any `providerRouting` block.
+//
+// A REMOVED KNOB FAILS LOUDLY, which is senior-dev's rule for every knob it
+// retires. It reaches a model only through the model API codeaf serves the
+// run, which holds the key, the address and the routing itself; a config that
+// still set them and was quietly ignored would label a run with a behaviour it
+// did not have, and an apiKey or baseURL honoured would be a second road to a
+// model that codeaf could not meter, cap or show.
+func refuseRetiredModelKnobs(info configpkg.Info) error {
 	for providerID, rawProvider := range objectValue(info["provider"]) {
 		provider := objectValue(rawProvider)
-		if _, err := parseConfiguredRouting(provider["providerRouting"]); err != nil {
-			return fmt.Errorf("provider %q providerRouting: %w", providerID, err)
+		options := objectValue(provider["options"])
+		for _, key := range []string{"apiKey", "baseURL"} {
+			if _, set := options[key]; set && providerID == orclient.Service {
+				return fmt.Errorf("provider %q options.%s is not read: senior-dev reaches a model only through the model API codeaf serves it — remove the key", providerID, key)
+			}
+		}
+		if provider["providerRouting"] != nil {
+			return fmt.Errorf("provider %q providerRouting is not read: codeaf's model funnel decides which upstream serves a call — remove the block", providerID)
 		}
 		for modelID, rawModel := range objectValue(provider["models"]) {
-			if _, err := parseConfiguredRouting(objectValue(rawModel)["providerRouting"]); err != nil {
-				return fmt.Errorf("provider %q model %q providerRouting: %w", providerID, modelID, err)
+			if objectValue(rawModel)["providerRouting"] != nil {
+				return fmt.Errorf("provider %q model %q providerRouting is not read: codeaf's model funnel decides which upstream serves a call — remove the block", providerID, modelID)
 			}
 		}
 	}
 	for name, raw := range objectValue(info["agent"]) {
-		if _, err := parseConfiguredRouting(objectValue(raw)["providerRouting"]); err != nil {
-			return fmt.Errorf("agent %q providerRouting: %w", name, err)
+		if objectValue(raw)["providerRouting"] != nil {
+			return fmt.Errorf("agent %q providerRouting is not read: codeaf's model funnel decides which upstream serves a call — remove the block", name)
 		}
 	}
 	return nil
@@ -389,18 +364,12 @@ func (cfg *seniorDevConfig) headers(providerID, modelID string) []orclient.Heade
 	return result
 }
 
-func (cfg *seniorDevConfig) applyBackend(backend *openRouterBackend) {
+func (cfg *seniorDevConfig) applyBackend(backend *modelAPIBackend) {
 	if cfg == nil || backend == nil {
 		return
 	}
 	backend.config = cfg
-	options := objectValue(cfg.provider("openrouter")["options"])
-	if value, ok := options["apiKey"].(string); ok && value != "" {
-		backend.apiKey = value
-	}
-	if value, ok := options["baseURL"].(string); ok && value != "" {
-		backend.endpoint = openRouterEndpoint(value)
-	}
+	options := objectValue(cfg.provider(orclient.Service)["options"])
 	if value, exists := options["timeout"]; exists {
 		if disabled, ok := value.(bool); ok && !disabled {
 			backend.totalTimeoutMS = -1
@@ -453,7 +422,7 @@ func configNumber(value any) (float64, bool) {
 func splitConfiguredModel(value string) (string, string) {
 	providerID, modelID, found := strings.Cut(value, "/")
 	if !found {
-		return "openrouter", value
+		return orclient.Service, value
 	}
 	return providerID, modelID
 }

@@ -68,7 +68,7 @@ func TestCoderRequestSystemPromptOrderAndEnvironment(t *testing.T) {
 		}
 		return recordedResponse(request, http.StatusOK, "text/event-stream", chatReply("done", 10)), nil
 	})}
-	backend := &openRouterBackend{apiKey: "test", client: client}
+	backend := &modelAPIBackend{api: testModelAPI, client: client}
 	vcs := "git"
 	ctx := project.WithContext(context.Background(), project.InstanceContext{
 		Directory: active, Worktree: workspace,

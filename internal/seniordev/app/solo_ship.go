@@ -44,7 +44,7 @@ func (runner *pipeline) soloShip(
 	if reason, blocked := runner.verificationUnaffordable(ctx); blocked {
 		outcome.Status = "pass-unverified"
 		runner.soloTerminal(outcome, fmt.Sprintf(
-			"%s; shipping the submitted candidate unverified: %s",
+			"%s; shipping the submitted candidate, which nothing checked: %s",
 			reason, candidate.describe(),
 		))
 		runner.soloRestoreIfDiverged(state, outcome)
@@ -59,6 +59,16 @@ func (runner *pipeline) soloShip(
 	failing := countFailingEntrypoints(verification)
 
 	switch {
+	case verification.TimedOut && ctx.Err() != nil:
+		// The run was stopped while the check ran. What ships is the frozen
+		// candidate, and what the run can truthfully say is that it submitted
+		// and nothing finished checking it.
+		outcome.Status = "pass-unverified"
+		runner.soloTerminal(outcome, fmt.Sprintf(
+			"the run was stopped while the project's build and tests ran; "+
+				"shipping the submitted candidate, which nothing finished checking: %s",
+			candidate.describe(),
+		))
 	case verification.TimedOut:
 		// A hung entrypoint is an incomplete observation, not a verdict. The
 		// candidate stands.
@@ -75,7 +85,7 @@ func (runner *pipeline) soloShip(
 		// verified pass.
 		outcome.Status = "pass"
 		runner.soloTerminal(outcome, fmt.Sprintf(
-			"submitted and verified: %s (%s)", candidate.describe(), candidate.Reason,
+			"submitted, and its build and tests passed: %s (%s)", candidate.describe(), candidate.Reason,
 		))
 	default:
 		// The candidate does not verify. It is still what ships: it is the only
@@ -185,9 +195,17 @@ func (runner *pipeline) soloTerminal(outcome *soloOutcome, reason string) {
 		data["frozen_commit"] = candidate.CommitSHA
 	}
 	if verification := outcome.Verification; verification != nil {
-		data["verification_failing"] = countFailingEntrypoints(*verification)
+		failing := countFailingEntrypoints(*verification)
+		data["verification_failing"] = failing
 		data["verification_timed_out"] = verification.TimedOut
 		data["verification_commands"] = len(verification.Commands)
+		// Why the check failed, when it did, in the same words the run's own
+		// reason uses. A failure with no failing command (an expected build or
+		// test entrypoint nobody could find) is otherwise indistinguishable
+		// from a pass in the counts alone.
+		if verification.Failed != nil {
+			data["verification_failure"] = verificationFailureSummary(*verification, failing)
+		}
 	}
 	// Deliberately NOT emitted here. There is exactly one terminal event per
 	// run and the CLI layer emits it (persistTerminalResult), because that is

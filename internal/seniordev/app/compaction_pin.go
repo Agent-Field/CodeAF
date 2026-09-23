@@ -73,7 +73,7 @@ func overflowText(err error) string {
 }
 
 // pinnedCapacityFor is the session's pinned capacity, if a rejection set one.
-func (backend *openRouterBackend) pinnedCapacityFor(sessionID string) (float64, bool) {
+func (backend *modelAPIBackend) pinnedCapacityFor(sessionID string) (float64, bool) {
 	if backend == nil {
 		return 0, false
 	}
@@ -85,7 +85,7 @@ func (backend *openRouterBackend) pinnedCapacityFor(sessionID string) (float64, 
 
 // overflowConfigFor is the compaction config a session runs under: the project
 // config, with a pinned capacity folded in as a minimum.
-func (backend *openRouterBackend) overflowConfigFor(sessionID string) (overflow.Config, error) {
+func (backend *modelAPIBackend) overflowConfigFor(sessionID string) (overflow.Config, error) {
 	cfg, err := backend.config.overflowConfig()
 	if err != nil {
 		return cfg, err
@@ -95,7 +95,7 @@ func (backend *openRouterBackend) overflowConfigFor(sessionID string) (overflow.
 
 // withPinnedCapacity folds the session's pin into a compaction config as a
 // capacity_tokens minimum. Unpinned sessions get cfg back as is.
-func (backend *openRouterBackend) withPinnedCapacity(cfg overflow.Config, sessionID string) overflow.Config {
+func (backend *modelAPIBackend) withPinnedCapacity(cfg overflow.Config, sessionID string) overflow.Config {
 	pinned, ok := backend.pinnedCapacityFor(sessionID)
 	if !ok {
 		return cfg
@@ -116,7 +116,7 @@ func (backend *openRouterBackend) withPinnedCapacity(cfg overflow.Config, sessio
 // minus the output reservation; one that does not is recorded and pins
 // nothing. Every path emits an event, so a pinned run is visible in the
 // stream.
-func (backend *openRouterBackend) pinCapacityOnOverflow(
+func (backend *modelAPIBackend) pinCapacityOnOverflow(
 	sessionID, agent, providerID, modelID string, err error,
 ) {
 	if backend == nil || err == nil {
@@ -184,7 +184,7 @@ func (backend *openRouterBackend) pinCapacityOnOverflow(
 	backend.emitStage("compaction-capacity", "pinned", data)
 }
 
-func (backend *openRouterBackend) emitStage(stage, status string, data map[string]any) {
+func (backend *modelAPIBackend) emitStage(stage, status string, data map[string]any) {
 	if backend == nil || backend.events == nil {
 		return
 	}

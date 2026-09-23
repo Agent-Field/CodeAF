@@ -24,13 +24,12 @@ import (
 )
 
 type pipelineDeps struct {
-	Backend  backend
-	Config   *seniorDevConfig
-	Events   *eventWriter
-	Notes    io.Writer
-	CPBridge *cpBridge
-	Now      func() time.Time
-	Sleep    func(context.Context, time.Duration) error
+	Backend backend
+	Config  *seniorDevConfig
+	Events  *eventWriter
+	Notes   io.Writer
+	Now     func() time.Time
+	Sleep   func(context.Context, time.Duration) error
 }
 
 type pipeline struct {
@@ -41,9 +40,6 @@ type pipeline struct {
 	pool      poolResolver
 	events    *eventWriter
 	notes     io.Writer
-	cpBridge  *cpBridge
-	cpURL     string
-	cpEnabled bool
 	// recorder identifies, compares, freezes and restores the tree. Set in
 	// prepareWorkspace, once the workspace path is absolute.
 	recorder  workspaceRecorder
@@ -142,7 +138,7 @@ func newPipeline(args cliArgs, workspace string, deps pipelineDeps) *pipeline {
 			_, _ = io.WriteString(notes, message)
 		}),
 		sessionID: runtime.nextID("session"), runtime: runtime, pool: pool,
-		events: deps.Events, notes: notes, cpBridge: deps.CPBridge,
+		events: deps.Events, notes: notes,
 		now: now, sleep: sleep, wallStart: now(),
 		budget: runbudget.ResolveRunBudget(&runbudget.RunBudgetFlags{
 			MaxCost: args.MaxCost, MaxHours: args.MaxHours,
@@ -187,14 +183,6 @@ func (runner *pipeline) run(
 		"frontier_models":        runner.pool.values(baked.TierFrontier),
 		"entry_agent":            "coder",
 		"senior_dev_environment": safeSeniorDevEnvironment(),
-		// Whether this run mirrored onto a control plane, and the URL it
-		// probed to decide. A standalone run is a legitimate shape, so the
-		// contract says which one happened rather than leaving it inferable
-		// only from the absence of other evidence.
-		"control_plane": map[string]any{
-			"enabled": runner.cpEnabled,
-			"url":     runner.cpURL,
-		},
 		// Which promises the run is keeping about the tree, and how. A reader
 		// comparing two runs needs this before it compares anything else.
 		"workspace_recorder": runner.recorder.Kind(),

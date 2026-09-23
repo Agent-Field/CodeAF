@@ -3,6 +3,7 @@
 package app
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -116,4 +117,39 @@ func clipBytes(text string, max int) string {
 		clipped = clipped[:len(clipped)-1]
 	}
 	return clipped
+}
+
+// The payload readers below were the stderr trace's (trace.go, which stayed
+// behind with the rest of senior-dev's command line); a step is read out of
+// the same loosely typed bus payloads, so they came with it.
+
+// object reads a payload value as a JSON object, converting a typed value
+// through its JSON form when it is not already a map.
+func object(value any) map[string]any {
+	if mapped, ok := value.(map[string]any); ok {
+		return mapped
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var mapped map[string]any
+	if json.Unmarshal(raw, &mapped) != nil {
+		return nil
+	}
+	return mapped
+}
+
+func mapAt(value map[string]any, key string) map[string]any { return object(valueAt(value, key)) }
+
+func valueAt(value map[string]any, key string) any {
+	if value == nil {
+		return nil
+	}
+	return value[key]
+}
+
+func stringAt(value map[string]any, key string) string {
+	result, _ := valueAt(value, key).(string)
+	return result
 }

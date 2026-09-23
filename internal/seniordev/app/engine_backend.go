@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/seniordev/attribution"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
@@ -22,7 +21,7 @@ import (
 
 type turnToolExecutor struct{ request turn }
 
-func (backend *openRouterBackend) Run(
+func (backend *modelAPIBackend) Run(
 	ctx context.Context, request turn,
 ) (turnResult, error) {
 	return backend.runEngine(ctx, request)
@@ -34,12 +33,9 @@ func (executor turnToolExecutor) Execute(
 	return executeAdvertisedTool(ctx, executor.request, call)
 }
 
-func (backend *openRouterBackend) runEngine(
+func (backend *modelAPIBackend) runEngine(
 	ctx context.Context, request turn,
 ) (turnResult, error) {
-	if backend.apiKey == "" {
-		return turnResult{}, errors.New("OPENROUTER_API_KEY is not set in the environment")
-	}
 	sessionID := request.SessionID
 	if sessionID == "" {
 		sessionID = steploop.NewAscendingID("ses")
@@ -156,9 +152,6 @@ func composeTurnSystem(
 	// network instead of discovering it one failed command at a time.
 	parts = append(parts, netpolicy.Current().EnvironmentNotice())
 	parts = append(parts, instructions...)
-	if instruction := attribution.CommitPromptInstruction(); instruction != "" {
-		parts = append(parts, instruction)
-	}
 	return strings.Join(nonEmpty(parts...), "\n"), nil
 }
 

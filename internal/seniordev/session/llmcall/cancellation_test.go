@@ -29,7 +29,7 @@ func TestWorkDeadlineLeavesLandingRouteImmediatelyUsable(t *testing.T) {
 	workCause := errors.New("work budget exhausted")
 	fetches := 0
 	service := &Service{Router: router, Clients: ClientFactoryFunc(func(_ context.Context, _ Model, choice *adaptive.RouteChoice, r *adaptive.AdaptiveModelRouter) (StreamClient, error) {
-		return concreteClient{client: &orclient.Client{Router: r, RouteChoice: choice,
+		return concreteClient{client: &orclient.Client{BaseURL: "http://model-api.invalid/v1", Router: r, RouteChoice: choice,
 			Fetcher: func(request *http.Request) (*http.Response, error) {
 				fetches++
 				if fetches == 1 {

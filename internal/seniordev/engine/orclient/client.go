@@ -55,6 +55,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/calc"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/retrysched"
 	"github.com/Agent-Field/codeaf/internal/seniordev/router/adaptive"
@@ -69,6 +70,9 @@ const (
 	// DefaultChunkTimeoutMS is the reader watchdog's inactivity bound.
 	DefaultChunkTimeoutMS float64 = 120_000
 )
+
+// errNoModelAPI is a request made with no model API to send it to.
+var errNoModelAPI = errors.New("senior-dev has no model API to call: codeaf serves one to every run it starts")
 
 // Abort cause messages. Both are matched by `adaptive.IsLikelyTimeout` and
 // `retrysched.IsTimeoutError`, which is the whole reason they are literals.
@@ -178,9 +182,12 @@ type RouterRegistrar interface {
 
 // ── client ────────────────────────────────────────────────────────────────
 
-// Client is one configured OpenRouter endpoint.
+// Client is one configured model API: an endpoint that answers in
+// OpenRouter's chat-completions shape.
 type Client struct {
-	// BaseURL defaults to https://openrouter.ai/api/v1.
+	// BaseURL is the API's OpenAI-style base URL, the one codeaf serves this
+	// run. It has no default: a client with none has nowhere to send a request,
+	// and the only road senior-dev has to a model is the one codeaf hands it.
 	BaseURL string
 	// Headers is BuildHeaders' output.
 	Headers []HeaderPair
@@ -259,12 +266,6 @@ func (c *Client) DoStream(ctx context.Context, params RequestParams) (*Stream, e
 		return nil, err
 	}
 
-	base := c.BaseURL
-	if base == "" {
-		base = "https://openrouter.ai/api/v1"
-	}
-	base = strings.TrimRight(base, "/")
-
 	routeStart := currentNow()()
 	stream := &Stream{
 		translator: NewTranslator(),
@@ -299,7 +300,17 @@ func (c *Client) DoStream(ctx context.Context, params RequestParams) (*Stream, e
 	stream.ctx = ctxChunk
 	stream.cancel = cancel
 
-	req, err := http.NewRequestWithContext(ctxChunk, http.MethodPost, base+"/chat/completions", bytes.NewReader(body))
+	// THE ROUTE IS CODEAF'S TO SPELL (modelapi.ChatURL): internal/provider is
+	// the one package a model route may be written in, and senior-dev's calls
+	// go to the model API codeaf serves this run and nowhere else. A client
+	// with no API fails here rather than earlier, so the route lease the router
+	// took for this call is settled on the same path every other failure takes.
+	var req *http.Request
+	if strings.TrimSpace(c.BaseURL) == "" {
+		err = errNoModelAPI
+	} else {
+		req, err = http.NewRequestWithContext(ctxChunk, http.MethodPost, modelapi.ChatURL(c.BaseURL), bytes.NewReader(body))
+	}
 	if err != nil {
 		stream.teardown()
 		stream.registerOnce.Do(func() { stream.register(0, err) })

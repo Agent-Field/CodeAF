@@ -256,7 +256,7 @@ func TestClientDefaultHasNoTotalDeadlineAndKeepsProgressWatchdog(t *testing.T) {
 	})
 	defer restoreTimer()
 
-	client := &Client{Fetcher: func(req *http.Request) (*http.Response, error) {
+	client := &Client{BaseURL: testBaseURL, Fetcher: func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     make(http.Header),
@@ -294,7 +294,7 @@ func TestClientProgressWatchdogCoversResponseHeaders(t *testing.T) {
 	})
 	defer restoreTimer()
 
-	client := &Client{Fetcher: func(req *http.Request) (*http.Response, error) {
+	client := &Client{BaseURL: testBaseURL, Fetcher: func(req *http.Request) (*http.Response, error) {
 		if fire == nil {
 			t.Fatal("reader watchdog was not armed before request dispatch")
 		}
@@ -489,7 +489,7 @@ func TestWireCommentKeepalivesResetTheReadWatchdog(t *testing.T) {
 	})
 	defer restoreFetcher()
 
-	c := &Client{Compatibility: CompatibilityCompatible}
+	c := &Client{BaseURL: testBaseURL, Compatibility: CompatibilityCompatible}
 	c.ChunkTimeoutMS = 30
 	stream, err := c.DoStream(context.Background(), minimalParams())
 	if err != nil {
@@ -812,7 +812,7 @@ func TestWireErrorPartPreservesStatusForRouterCooldown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Client{Fetcher: func(request *http.Request) (*http.Response, error) {
+	c := &Client{BaseURL: testBaseURL, Fetcher: func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
@@ -1074,7 +1074,7 @@ func TestClientTotalTimeoutEmitsAbortWithoutSocket(t *testing.T) {
 	})
 	defer restore()
 
-	client := &Client{TotalTimeoutMS: 5, ChunkTimeoutMS: -1}
+	client := &Client{BaseURL: testBaseURL, TotalTimeoutMS: 5, ChunkTimeoutMS: -1}
 	stream, err := client.DoStream(context.Background(), minimalParams())
 	if err != nil {
 		t.Fatalf("DoStream: %v", err)
@@ -1102,7 +1102,7 @@ func TestClientCloseCancelsRequestContextWithoutSocket(t *testing.T) {
 	})
 	defer restore()
 
-	client := &Client{TotalTimeoutMS: -1, ChunkTimeoutMS: -1}
+	client := &Client{BaseURL: testBaseURL, TotalTimeoutMS: -1, ChunkTimeoutMS: -1}
 	stream, err := client.DoStream(context.Background(), minimalParams())
 	if err != nil {
 		t.Fatalf("DoStream: %v", err)

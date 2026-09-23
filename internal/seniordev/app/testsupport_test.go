@@ -7,12 +7,13 @@ package app
 import (
 	"context"
 	"fmt"
-
+	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/sessioncore"
 )
@@ -20,6 +21,62 @@ import (
 // testAgentPrompt stands in for a baked agent document in tests that drive
 // the engine directly: a turn must carry an agent prompt to be composed.
 const testAgentPrompt = "<Role>test agent</Role>"
+
+// roundTripFunc is an http.RoundTripper made of one function, the stand-in
+// transport the engine tests answer model requests with. (It lived beside the
+// control-plane bridge's tests, which stayed behind with the bridge.)
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (roundTrip roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return roundTrip(request)
+}
+
+// testHost is the codeaf a run reports to in these tests: it serves the
+// workspace, the ceilings and the model API it was given, and keeps every
+// record the run wrote, in order.
+type testHost struct {
+	mu        sync.Mutex
+	workspace string
+	ceilings  delegate.Ceilings
+	api       delegate.ModelAPI
+	hellos    [][]string
+	stages    []string
+	steps     []string
+	terminals []delegate.Ending
+}
+
+func (host *testHost) Workspace() string           { return host.workspace }
+func (host *testHost) Ceilings() delegate.Ceilings { return host.ceilings }
+func (host *testHost) Models() delegate.ModelAPI   { return host.api }
+
+func (host *testHost) Hello(stages []string) {
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	host.hellos = append(host.hellos, stages)
+}
+
+func (host *testHost) Stage(stage, status string) {
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	host.stages = append(host.stages, stage+"/"+status)
+}
+
+func (host *testHost) Step(command, observation string) {
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	host.steps = append(host.steps, command)
+}
+
+func (host *testHost) Terminal(end delegate.Ending) {
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	host.terminals = append(host.terminals, end)
+}
+
+// testModelAPI stands in for the model API codeaf serves a run. The tests that
+// use it answer every request through their own transport, so nothing is sent
+// to its address; a backend without one has nowhere to send a request at all.
+var testModelAPI = delegate.ModelAPI{BaseURL: "http://model-api.invalid/v1", Token: "test-token"}
 
 // backendFunc is the stub model backend the pipeline tests run against.
 type backendFunc func(context.Context, turn) (turnResult, error)

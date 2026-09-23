@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
 )
 
@@ -296,7 +297,7 @@ func TestBudgetExhaustedRunStillShipsAndReportsWhy(t *testing.T) {
 }
 
 // TestTerminalEventCarriesTheRunsAccount pins the contract at the boundary an
-// external reader sees: the type=="terminal" event -- not a stage named
+// external reader sees: the type=="terminal" record -- not a stage named
 // "terminal" -- has to answer whether the run submitted. A test that asserts
 // on the stage event alone passes while the terminal carries only a cost.
 func TestTerminalEventCarriesTheRunsAccount(t *testing.T) {
@@ -306,14 +307,9 @@ func TestTerminalEventCarriesTheRunsAccount(t *testing.T) {
 		Terminal: map[string]any{"submitted": false, "nudges": 2, "reason": "no submission"},
 	}
 	var out bytes.Buffer
-	invocation := &cliInvocation{
-		events: newEventWriter(&out),
-		runner: newPipeline(cliArgs{}, t.TempDir(), pipelineDeps{
-			Events: newEventWriter(io.Discard), Notes: io.Discard,
-		}),
+	if err := delegate.NewEmitter(&out).Terminal(endingOf(result)); err != nil {
+		t.Fatal(err)
 	}
-	defer invocation.runner.runtime.Close()
-	invocation.persistTerminalResult(result)
 
 	var terminals []map[string]any
 	for _, line := range bytes.Split(out.Bytes(), []byte("\n")) {

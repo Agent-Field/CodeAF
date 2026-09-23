@@ -403,6 +403,25 @@ func (o *Object) Clone() *Object {
 	return out
 }
 
+// Without is a copy of the object with the named keys left out, in the order
+// the rest were set.
+func (o *Object) Without(keys ...string) *Object {
+	drop := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		drop[key] = true
+	}
+	out := NewObject()
+	if o == nil {
+		return out
+	}
+	for _, m := range o.members {
+		if !drop[m.Key] {
+			out.set(m.Key, m.Value)
+		}
+	}
+	return out
+}
+
 // MergeOptions deep-merges source into target: target's keys come first in
 // their own order, source-only keys are appended in source order, and a key
 // whose value is an object on both sides is merged recursively in place.

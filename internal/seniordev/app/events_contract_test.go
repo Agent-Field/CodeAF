@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 
@@ -14,7 +13,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/sessioncore"
 )
 
-func TestQuestionToolEventsReachStdoutAsBusPayloads(t *testing.T) {
+// The bus payloads senior-dev used to print on stdout are still published
+// and still reach the run's log: a test's view of the run. In a run codeaf
+// hosts there is no log on stdout (TestAHostedRunReportsOnlyStagesAndSteps).
+func TestQuestionToolEventsReachTheLogAsBusPayloads(t *testing.T) {
 	workspace := testRepoWithEntrypoints(t)
 	var output bytes.Buffer
 	runner := newPipeline(cliArgs{High: "provider/high"}, workspace, pipelineDeps{
@@ -57,7 +59,7 @@ func TestQuestionToolEventsReachStdoutAsBusPayloads(t *testing.T) {
 	}
 }
 
-func TestPipelineStreamsBusEventsToStdout(t *testing.T) {
+func TestPipelineStreamsBusEventsToTheLog(t *testing.T) {
 	workspace := testRepoWithEntrypoints(t)
 	var output bytes.Buffer
 	runner := newPipeline(cliArgs{High: "provider/high"}, workspace, pipelineDeps{
@@ -95,53 +97,45 @@ func TestPipelineStreamsBusEventsToStdout(t *testing.T) {
 	}
 }
 
-func TestRunFormatAcceptsDefaultAndJSONOnly(t *testing.T) {
-	for _, format := range []string{"default", "json"} {
-		t.Run("accept_"+format, func(t *testing.T) {
-			args, err := parseArgs([]string{"run", "--format", format, "work"})
-			if err != nil {
-				t.Fatalf("parseArgs rejected format %q: %v", format, err)
-			}
-			if args.Format != format {
-				t.Fatalf("format = %q, want %q", args.Format, format)
-			}
-		})
-	}
-
-	for _, format := range []string{"ndjson", "text", "pretty", "yaml"} {
-		t.Run("reject_"+format, func(t *testing.T) {
-			_, err := parseArgs([]string{"run", "--format", format, "work"})
-			if err == nil || !strings.Contains(err.Error(), "default or json") {
-				t.Fatalf("parseArgs format %q error = %v, want default/json rejection", format, err)
-			}
-		})
-	}
-
-	args, err := parseArgs([]string{"run", "work"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if args.Format != "json" {
-		t.Fatalf("default format = %q, want json", args.Format)
-	}
+// recordedHost is the part of a delegate host the event writer reports to.
+type recordedHost struct {
+	stages []string
+	steps  []string
 }
 
-func TestTUIFailsLoudlyBeforePipelineStartup(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	err := runCLI(
-		context.Background(), []string{"run", "--tui", "work"}, nil,
-		&stdout, &stderr,
-	)
-	var exit *cliExitError
-	if !errors.As(err, &exit) || exit.code != 1 {
-		t.Fatalf("--tui error = %#v, want cli exit code 1", err)
+func (host *recordedHost) Stage(stage, status string) {
+	host.stages = append(host.stages, stage+"/"+status)
+}
+
+func (host *recordedHost) Step(command, observation string) {
+	host.steps = append(host.steps, command)
+}
+
+// STDOUT IS THE PROTOCOL'S. A run codeaf hosts reports its stages and its
+// finished steps and nothing else: no bus payload, no spend record, no second
+// copy of a step a republished part would have made. A stage's data goes to
+// the notes, which are stderr, for a person.
+func TestAHostedRunReportsOnlyStagesAndSteps(t *testing.T) {
+	host := &recordedHost{}
+	var notes bytes.Buffer
+	writer := newRecordWriter(host, &notes)
+
+	writer.stage("implement", "running", map[string]any{"attempt": 0})
+	writer.busEvent(toolPartPayload("c1", "bash", "running", map[string]any{"command": "go test ./..."}, "", ""))
+	writer.busEvent(toolPartPayload("c1", "bash", "completed", map[string]any{"command": "go test ./..."}, "ok", ""))
+	writer.busEvent(toolPartPayload("c1", "bash", "completed", map[string]any{"command": "go test ./..."}, "ok", ""))
+	writer.busEvent(assistantPayload("m1", "coder", 1, 2, 3, 0.01))
+
+	if len(host.stages) != 1 || host.stages[0] != "implement/running" {
+		t.Fatalf("stages = %v, want the one stage", host.stages)
 	}
-	if stdout.Len() != 0 {
-		t.Fatalf("--tui stdout = %q, want empty", stdout.String())
+	if len(host.steps) != 1 || host.steps[0] != "bash: go test ./..." {
+		t.Fatalf("steps = %v, want the one finished call, once", host.steps)
 	}
-	const message = "--tui is not supported"
-	if !strings.Contains(stderr.String(), message) ||
-		!strings.Contains(stderr.String(), "headless NDJSON event stream") {
-		t.Fatalf("--tui stderr = %q, want clear unsupported/headless message", stderr.String())
+	if !strings.Contains(notes.String(), `implement · running {"attempt":0}`) {
+		t.Fatalf("notes = %q, want the stage and its data for a person", notes.String())
+	}
+	if strings.Contains(notes.String(), "message.updated") || strings.Contains(notes.String(), "spend") {
+		t.Fatalf("notes carry bus traffic: %q", notes.String())
 	}
 }

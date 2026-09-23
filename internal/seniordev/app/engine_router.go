@@ -11,7 +11,7 @@ type adaptiveRouterBackend interface {
 	setAdaptiveRouter(*adaptive.AdaptiveModelRouter)
 }
 
-func (backend *openRouterBackend) setAdaptiveRouter(router *adaptive.AdaptiveModelRouter) {
+func (backend *modelAPIBackend) setAdaptiveRouter(router *adaptive.AdaptiveModelRouter) {
 	backend.router = router
 }
 

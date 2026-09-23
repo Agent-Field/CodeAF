@@ -58,7 +58,7 @@ func TestDurablePromptPersistsAndProjectsBeforeFirstModelCall(t *testing.T) {
 			request, http.StatusOK, "text/event-stream", chatReply("finished", 10),
 		), nil
 	})}
-	runtime = newRuntime(workspace, &openRouterBackend{apiKey: "test", client: client})
+	runtime = newRuntime(workspace, &modelAPIBackend{api: testModelAPI, client: client})
 	defer runtime.Close()
 	rootID, err := runtime.Create(context.Background(), "", "coder")
 	if err != nil {
@@ -727,8 +727,8 @@ func TestDurableHistoryPreservesInstructionDedup(t *testing.T) {
 	firstTransport := &scriptedRoundTripper{replies: []string{
 		toolCallReply("read", string(arguments)), chatReply("first done", 10),
 	}}
-	firstRuntime := newRuntime(workspace, &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: firstTransport},
+	firstRuntime := newRuntime(workspace, &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: firstTransport},
 	})
 	t.Cleanup(firstRuntime.Close)
 	rootID, err := firstRuntime.Create(context.Background(), "", "coder")
@@ -750,8 +750,8 @@ func TestDurableHistoryPreservesInstructionDedup(t *testing.T) {
 	secondTransport := &scriptedRoundTripper{replies: []string{
 		toolCallReply("read", string(arguments)), chatReply("second done", 10),
 	}}
-	secondRuntime := newRuntime(workspace, &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: secondTransport},
+	secondRuntime := newRuntime(workspace, &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: secondTransport},
 	})
 	defer secondRuntime.Close()
 	// The second runtime is a fresh process against the same session: that is

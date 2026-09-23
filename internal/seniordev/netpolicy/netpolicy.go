@@ -3,10 +3,9 @@
 // Package netpolicy makes senior-dev aware of runs where agent-initiated network
 // access is unavailable, so agents stop wasting cycles attempting it. It
 // governs the builtin web tools (webfetch, websearch) and the environment
-// handed to bash children. The model plane (the LLM client) and the
-// AgentField control-plane reporter are deliberately outside its scope: that
-// traffic is senior-dev's own infrastructure, not agent-initiated, and a run
-// cannot function without it.
+// handed to bash children. The model plane (the model API codeaf serves the
+// run) is deliberately outside its scope: that traffic is senior-dev's own
+// road to a model, not agent-initiated, and a run cannot function without it.
 //
 // The policy is read from the environment, following the pipeline's existing
 // SENIOR_DEV_* precedent:
@@ -16,13 +15,12 @@
 //
 // A value of SENIOR_DEV_NET that parses to neither fails CLOSED to off: a typo in
 // a flag that exists to forbid network access must not silently grant it. The
-// parse problem is preserved on the Policy so callers can surface it; the
-// senior-dev binary refuses to start on it, so a run is never silently degraded
-// by a typo either.
+// parse problem is preserved on the Policy so callers can surface it; a run
+// refuses to start on it, so a run is never silently degraded by a typo either.
 //
 // Containment is not this package's job - that belongs to the environment the
-// run executes in (for example a sandbox that only lets the LLM backend and
-// control plane through). What this package delivers under off is legibility
+// run executes in (for example a sandbox that only lets the model API
+// through). What this package delivers under off is legibility
 // and economy:
 // the web tools disappear from the model's tool list, in-process HTTP fails
 // instantly with an explicit no-retry policy error instead of a sandbox

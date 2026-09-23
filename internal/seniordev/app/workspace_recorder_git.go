@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/seniordev/attribution"
 	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
@@ -36,7 +35,7 @@ func (recorder *gitRecorder) CommitsOnWrite() bool { return true }
 
 // git runs a git command in the workspace and returns its trimmed output.
 func (recorder *gitRecorder) git(args ...string) (string, error) {
-	argv := attribution.GitArgv(args...)
+	argv := util.GitArgv(args...)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = recorder.workspace
 	out, err := cmd.CombinedOutput()

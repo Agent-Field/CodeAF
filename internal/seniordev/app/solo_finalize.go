@@ -126,7 +126,7 @@ func (runner *pipeline) soloCheckUnsubmitted(
 	runner.rememberVerifiedTree(result)
 	command, dead := verificationShowsDeadTree(result)
 	_, unsafe := verificationShowsSafetyRegression(result)
-	runner.events.stage("landing", "verified", map[string]any{
+	runner.events.stage("landing", "checked", map[string]any{
 		"phase": phase, "tree_sha": change.treeSHA,
 		"commands": len(result.Commands), "timed_out": result.TimedOut,
 		"failing": countFailingEntrypoints(result), "suite_dead": dead,

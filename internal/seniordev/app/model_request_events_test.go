@@ -149,7 +149,7 @@ func TestModelRequestTelemetryLeavesWireAndResultsUnchanged(t *testing.T) {
 				var body []byte
 				var header http.Header
 				var events []modelRequestEvent
-				backend := &openRouterBackend{apiKey: "not-a-real-key", variant: "high", client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				backend := &modelAPIBackend{api: testModelAPI, variant: "high", client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 					body, _ = io.ReadAll(r.Body)
 					header = r.Header.Clone()
 					// Metadata already in OpenRouter's supported stream format.
@@ -218,7 +218,7 @@ func TestModelRequestTelemetryLeavesWireAndResultsUnchanged(t *testing.T) {
 func TestModelRequestBeginFailureAndCancellation(t *testing.T) {
 	for _, failure := range []error{errors.New("PRIVATE HTTP FAILURE"), context.Canceled, context.DeadlineExceeded} {
 		var events []modelRequestEvent
-		backend := &openRouterBackend{apiKey: "test", client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, failure })}}
+		backend := &modelAPIBackend{api: testModelAPI, client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, failure })}}
 		client := newSeniorDevLLM(backend, "ses", "openrouter", "vendor/model", "coder", "", nil, &turnLedger{}, false)
 		client.modelRequests = func(e modelRequestEvent) { events = append(events, e) }
 		_, err := client.Stream(context.Background(), orclient.RequestParams{})
@@ -262,7 +262,7 @@ func TestModelRequestCanceledBeforeReadAndNilSinkClose(t *testing.T) {
 }
 
 func TestModelRequestRuntimeWiring(t *testing.T) {
-	backend := &openRouterBackend{apiKey: "test", client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	backend := &modelAPIBackend{api: testModelAPI, client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return recordedResponse(r, 200, "text/event-stream", chatReply("done", 10)), nil
 	})}}
 	runtime := newRuntime(t.TempDir(), backend)
@@ -294,7 +294,7 @@ func TestModelRequestBusSink(t *testing.T) {
 
 func TestModelRequestResolutionFailure(t *testing.T) {
 	var events []modelRequestEvent
-	backend := &openRouterBackend{catalog: seniorDevCatalogFixture(t)}
+	backend := &modelAPIBackend{catalog: seniorDevCatalogFixture(t)}
 	client := newSeniorDevLLM(backend, "ses", "openrouter", "missing/model", "coder", "", nil, &turnLedger{}, false)
 	client.modelRequests = func(e modelRequestEvent) { events = append(events, e) }
 	_, err := client.Stream(context.Background(), orclient.RequestParams{})

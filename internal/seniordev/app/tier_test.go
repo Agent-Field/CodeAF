@@ -85,7 +85,7 @@ func TestASingleHighPoolRoutesEveryTierIdentically(t *testing.T) {
 	// only a high pool had before tiers came back. Same seed, same pool, so
 	// every pick and every emitted event must agree field for field — the
 	// tier field itself excepted, since that is the field being added.
-	args := cliArgs{High: defaultHighModels}
+	args := cliArgs{High: DefaultHighModels}
 	tiered, flat := tierRouter(args), tierRouter(args)
 	for round := 0; round < 6; round++ {
 		for _, agent := range []string{"coder", "compaction"} {

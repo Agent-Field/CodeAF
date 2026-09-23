@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/codeaf/internal/seniordev/attribution"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/calc"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
@@ -22,7 +21,7 @@ import (
 )
 
 type seniorDevModels struct {
-	backend   *openRouterBackend
+	backend   *modelAPIBackend
 	sessionID string
 	agent     string
 	variant   string
@@ -41,14 +40,11 @@ func (models seniorDevModels) GetModel(
 		Model: projection, SessionID: models.sessionID,
 	})
 	options = orclient.MergeOptions(options, models.backend.config.options(models.agent, providerID, modelID))
-	routing, err := models.backend.config.providerRouting(models.agent, providerID, modelID)
-	if err != nil {
-		return llmcall.Model{}, err
-	}
-	if object := routing.Object(); object != nil {
-		// The typed block is authoritative over any ad-hoc `options.provider`.
-		options.SetObject("provider", object)
-	}
+	// NO ROUTING PREFERENCE LEAVES THIS PROGRAM. Which upstream serves a call
+	// is codeaf's model funnel's to decide — its router, its retries and its
+	// endpoint pins — so a `provider` block a config file spelled into the
+	// options is dropped here rather than sent for the API to trip over.
+	options = options.Without("provider")
 	effort := models.variant
 	if effort == "" {
 		effort = models.backend.variant
@@ -187,23 +183,26 @@ func (models seniorDevModels) catalogModel(providerID, modelID string) (calc.Mod
 	}, nil
 }
 
+// normalizeModelRef files a model under the service codeaf's model API speaks
+// for (orclient.Service) when it names none, and takes that service's own
+// prefix off the model's id, which is how the API is asked for it.
 func normalizeModelRef(providerID, modelID string) (string, string) {
 	if providerID == "" {
-		if before, after, ok := strings.Cut(modelID, "/"); ok && before == "openrouter" {
+		if before, after, ok := strings.Cut(modelID, "/"); ok && before == orclient.Service {
 			providerID, modelID = before, after
 		}
 	}
 	if providerID == "" {
-		providerID = "openrouter"
+		providerID = orclient.Service
 	}
-	if providerID == "openrouter" {
-		modelID = strings.TrimPrefix(modelID, "openrouter/")
+	if providerID == orclient.Service {
+		modelID = strings.TrimPrefix(modelID, orclient.Service+"/")
 	}
 	return providerID, modelID
 }
 
 type seniorDevClientFactory struct {
-	backend          *openRouterBackend
+	backend          *modelAPIBackend
 	sessionID        string
 	models           seniorDevModels
 	ledger           *turnLedger
@@ -223,19 +222,18 @@ func (factory seniorDevClientFactory) Client(
 	}
 	factory.ledger.setModel(model.ProviderID + "/" + model.ID)
 	client := &orclient.Client{
-		BaseURL: factory.backend.baseURL(),
-		Headers: seniorDevOpenRouterHeadersWithConfig(
-			factory.backend.apiKey, factory.sessionID,
-			factory.backend.config.headers(model.ProviderID, model.ID),
+		BaseURL: factory.backend.api.BaseURL,
+		Headers: seniorDevHeaders(
+			factory.sessionID, factory.backend.config.headers(model.ProviderID, model.ID),
 		),
 		Compatibility:  orclient.CompatibilityCompatible,
 		Router:         router,
 		RouteChoice:    choice,
 		TotalTimeoutMS: factory.backend.totalTimeoutMS,
 		ChunkTimeoutMS: factory.backend.chunkTimeoutMS,
-	}
-	if factory.backend.client != nil {
-		client.Fetcher = factory.backend.client.Do
+		// The one door (runtime.go's fetch): the model API's token goes on
+		// every request here, over the backend's one HTTP client.
+		Fetcher: factory.backend.fetch,
 	}
 	return seniorDevStreamClient{
 		client: client, model: projection, agent: factory.agent,
@@ -245,7 +243,7 @@ func (factory seniorDevClientFactory) Client(
 }
 
 type seniorDevStreamClient struct {
-	backend          *openRouterBackend
+	backend          *modelAPIBackend
 	sessionID        string
 	client           *orclient.Client
 	model            orclient.Model
@@ -292,16 +290,14 @@ func (client seniorDevStreamClient) visibleTools(tools []orclient.Tool) []orclie
 	return out
 }
 
-func seniorDevOpenRouterHeadersWithConfig(
-	apiKey, sessionID string, configured []orclient.HeaderPair,
-) []orclient.HeaderPair {
-	provider := []orclient.HeaderPair{{Name: "Authorization", Value: "Bearer " + apiKey}}
-	for _, pair := range attribution.OpenRouterHeaderPairs() {
-		provider = append(provider, orclient.HeaderPair{Name: pair[0], Value: pair[1]})
-	}
-	provider = append(provider, configured...)
+// seniorDevHeaders are the headers of one model request: any a config file
+// named, the session affinity that keeps one conversation on one warm cache,
+// and the composed user agent. The token is not among them; fetch sets it on
+// the way out, over whatever these say. Nor are a service's attribution
+// headers: the call is codeaf's to make and to attribute.
+func seniorDevHeaders(sessionID string, configured []orclient.HeaderPair) []orclient.HeaderPair {
 	return orclient.BuildHeaders(orclient.HeaderInputs{
-		Provider:                provider,
+		Provider:                configured,
 		ProviderUserAgentSuffix: "ai-sdk/openrouter/2.8.1",
 		Call: []orclient.HeaderPair{
 			{Name: "x-session-affinity", Value: sessionID},
@@ -360,7 +356,7 @@ func (ledger *turnLedger) snapshot() []turnCall {
 }
 
 type seniorDevLLM struct {
-	backend       *openRouterBackend
+	backend       *modelAPIBackend
 	models        seniorDevModels
 	service       *llmcall.Service
 	ledger        *turnLedger
@@ -373,7 +369,7 @@ type seniorDevLLM struct {
 }
 
 func newSeniorDevLLM(
-	backend *openRouterBackend,
+	backend *modelAPIBackend,
 	sessionID, providerID, modelID, agent, variant string,
 	system func(context.Context) string,
 	ledger *turnLedger,
@@ -498,15 +494,6 @@ func finishCost(finish orclient.FinishPart) float64 {
 		return 0
 	}
 	return cost
-}
-
-func (backend *openRouterBackend) baseURL() string {
-	endpoint := strings.TrimRight(backend.endpoint, "/")
-	if endpoint == "" {
-		return "https://openrouter.ai/api/v1"
-	}
-	endpoint = strings.TrimSuffix(endpoint, "/chat/completions")
-	return strings.TrimRight(endpoint, "/")
 }
 
 var _ llmcall.ModelResolver = seniorDevModels{}

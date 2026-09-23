@@ -408,7 +408,7 @@ func Options(input OptionsInput) *Object {
 		usage.SetBool("include", true)
 		result.SetObject("usage", usage)
 	}
-	if input.Model.ProviderID == "openrouter" {
+	if input.Model.ProviderID == Service {
 		result.SetString("prompt_cache_key", input.SessionID)
 	}
 	return result
@@ -425,11 +425,9 @@ func ProviderOptions(model Model, options *Object) *Object {
 	return out
 }
 
+// sdkKeyFor is the key a model's options are kept under. Every model this
+// client serves speaks OpenRouter's wire, whatever package name it came with,
+// so the answer is always the one service identity.
 func sdkKeyFor(npm string) string {
-	switch npm {
-	case "@openrouter/ai-sdk-provider":
-		return "openrouter"
-	}
-	// Every model this client serves is an OpenRouter model.
-	return "openrouter"
+	return Service
 }

@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/bus"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
@@ -138,13 +139,6 @@ func (runtime *runtimeAdapter) emitTurnProvenance(configured turn) {
 		if configured.Variant != "" {
 			data["reasoning_effort"] = configured.Variant
 		}
-		// Provider routing changes which upstream serves the turn, so a run
-		// that sets it must be readable from the stream alone. The block has
-		// already been validated at config load, so the error is spent.
-		routing, err := runtime.config.providerRouting(configured.Agent, configured.ProviderID, configured.ModelID)
-		if err == nil && !routing.IsZero() {
-			data["provider_routing"] = routing
-		}
 		data["compaction"] = runtime.compactionProvenance(configured)
 		runtime.events.stage("agent-runtime", "configured", data)
 	}
@@ -156,7 +150,7 @@ func (runtime *runtimeAdapter) emitTurnProvenance(configured turn) {
 // budget, so the budget a run used can be read back from the event stream.
 func (runtime *runtimeAdapter) compactionProvenance(configured turn) map[string]any {
 	cfg, err := runtime.config.overflowConfig()
-	if concrete, ok := runtime.backend.(*openRouterBackend); ok && concrete != nil && err == nil {
+	if concrete, ok := runtime.backend.(*modelAPIBackend); ok && concrete != nil && err == nil {
 		cfg = concrete.withPinnedCapacity(cfg, configured.SessionID)
 	}
 	// Config accepts only the window policy or an empty value, so the policy
@@ -177,7 +171,7 @@ func (runtime *runtimeAdapter) compactionProvenance(configured turn) map[string]
 			record["configured_preserve_recent_fraction"] = *cfg.Compaction.PreserveRecentFraction
 		}
 	}
-	concrete, ok := runtime.backend.(*openRouterBackend)
+	concrete, ok := runtime.backend.(*modelAPIBackend)
 	if !ok || concrete == nil {
 		return record
 	}
@@ -273,7 +267,7 @@ func (runtime *runtimeAdapter) runTurn(ctx context.Context, request turn) (turnR
 		return turnResult{}, errors.New("senior-dev runtime: backend is required")
 	}
 	if request.Variant == "" {
-		if concrete, ok := runtime.backend.(*openRouterBackend); ok {
+		if concrete, ok := runtime.backend.(*modelAPIBackend); ok {
 			request.Variant = concrete.variant
 		}
 	}
@@ -508,11 +502,18 @@ func (resolver poolResolver) values(tier baked.Tier) []string {
 	return append([]string{}, pool...)
 }
 
-type openRouterBackend struct {
-	apiKey         string
+// modelAPIBackend runs the model turns of one run against the model API codeaf
+// serves it: an endpoint that answers in OpenRouter's chat-completions shape,
+// opened by a token that opens nothing else.
+//
+// IT HOLDS NO KEY. senior-dev read a provider key and a base URL out of its
+// environment before codeaf carried it; both reads are gone, and so is every
+// check that a key was set. The API's address and token arrive through the
+// delegate.Host, and fetch is the one door every model request leaves by.
+type modelAPIBackend struct {
+	api            delegate.ModelAPI
 	variant        string
 	client         *http.Client
-	endpoint       string
 	contextLimit   float64
 	outputLimit    float64
 	totalTimeoutMS float64
@@ -550,14 +551,10 @@ func executeAdvertisedTool(
 	return steploop.ToolResult{}, errors.New(message)
 }
 
-func defaultBackend(variant string) backend {
-	endpoint := ""
-	if base := os.Getenv("OPENROUTER_BASE_URL"); base != "" {
-		endpoint = openRouterEndpoint(base)
-	}
-	return &openRouterBackend{
-		apiKey: os.Getenv("OPENROUTER_API_KEY"), variant: variant,
-		endpoint: endpoint,
+// newModelAPIBackend is the backend of a run whose model API is api.
+func newModelAPIBackend(api delegate.ModelAPI, variant string) *modelAPIBackend {
+	return &modelAPIBackend{
+		api: api, variant: variant,
 		// Streaming lifetime belongs to the caller context and the reader's
 		// inactivity watchdog. http.Client.Timeout measures total request age,
 		// including a healthy response body, so it must remain unset.
@@ -565,8 +562,18 @@ func defaultBackend(variant string) backend {
 	}
 }
 
-func openRouterEndpoint(base string) string {
-	base = strings.TrimRight(base, "/")
-	base = strings.TrimSuffix(base, "/api/v1")
-	return base + "/api/v1/chat/completions"
+// fetch sends one model request: the model API's token goes on here and
+// nowhere else, over the backend's one HTTP client.
+//
+// THIS IS THE ONE DOOR. The streaming client builds each request and hands it
+// here (orclient.Client.Fetcher), so no request can leave without the token,
+// and none can carry a credential of anybody else's: whatever a configured
+// header said, the Authorization header is the API's, set last.
+func (backend *modelAPIBackend) fetch(request *http.Request) (*http.Response, error) {
+	backend.api.Authorize(request)
+	client := backend.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return client.Do(request)
 }

@@ -1,11 +1,13 @@
 //go:build !windows
 
-// This file is the NDJSON event stream: the stage events senior-dev emits on
-// stdout and the bus payloads it forwards there unchanged.
+// This file is where the run's records go: the stage and step records the
+// run reports to codeaf, and the run's own log of every record and bus
+// payload for the tests that read one.
 package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -14,18 +16,13 @@ import (
 )
 
 type event struct {
-	Type       string         `json:"type"`
-	Stage      string         `json:"stage,omitempty"`
-	Status     string         `json:"status,omitempty"`
-	Message    string         `json:"message,omitempty"`
-	SessionID  string         `json:"session_id,omitempty"`
-	Data       map[string]any `json:"data,omitempty"`
-	Timestamp  int64          `json:"ts"`
-	TraceID    string         `json:"trace_id,omitempty"`
-	Step       uint64         `json:"step,omitempty"`
-	Occurrence uint64         `json:"occurrence,omitempty"`
-	Title      string         `json:"title,omitempty"`
-	ElapsedMS  int64          `json:"elapsed_ms,omitempty"`
+	Type      string         `json:"type"`
+	Stage     string         `json:"stage,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Message   string         `json:"message,omitempty"`
+	SessionID string         `json:"session_id,omitempty"`
+	Data      map[string]any `json:"data,omitempty"`
+	Timestamp int64          `json:"ts"`
 	// `spend` only. A pointer because a run that has cost nothing yet still
 	// reports a figure, and omitempty would drop a real zero.
 	CostUSD *float64 `json:"cost_usd,omitempty"`
@@ -34,17 +31,50 @@ type event struct {
 	Observation string `json:"observation,omitempty"`
 }
 
+// recordSink is where the run's protocol records go: codeaf, through the
+// delegate.Host the run command was handed. It takes the two records the run
+// writes as it goes; the first (hello) and the last (terminal) are the run
+// command's own, because it is the one place that sees every ending.
+type recordSink interface {
+	Stage(stage, status string)
+	Step(command, observation string)
+}
+
+// eventWriter is the run's one outlet for what it has to say.
+//
+// STDOUT CARRIES THE PROTOCOL'S RECORDS AND NOTHING ELSE (docs/design/delegate/
+// PROTOCOL.md), and it is codeaf's: a run codeaf hosts reports its stages and
+// its finished steps through the host, and those are the only two records it
+// writes as it goes. The instance bus's payloads — sessions, messages, parts,
+// questions, model requests — and the `spend` record stay inside the process.
+// The bus still carries them, and this writer still reads them: a finished
+// tool part is a step, and the assistant messages are what the agent summary
+// is added up from. Money is not reported here at all, because codeaf's model
+// API meters every call itself.
+//
+// A test that wants to read the run the way senior-dev's own stream used to
+// show it hands newEventWriter a writer instead, and gets every record and
+// every bus payload on it, one JSON object per line.
 type eventWriter struct {
-	mu      sync.Mutex
+	mu sync.Mutex
+	// records is the host, in a run codeaf started. Nil in the tests that read
+	// the log instead.
+	records recordSink
+	// encoder is the log: every record and bus payload, for a test. Nil in a
+	// run codeaf started, where nothing but the host's records may reach stdout.
 	encoder *json.Encoder
-	hook    func(event)
-	trace   *runTrace
+	// notes is where a stage's data goes for a person: one line per stage, on
+	// stderr, which codeaf keeps in a file beside the task. The protocol's
+	// stage record carries only the stage and its status.
+	notes   io.Writer
 	summary *agentSummary
 	// steps deduplicates `step` records: a tool part is republished as its
 	// state moves, so the same finished call arrives more than once.
 	steps map[string]struct{}
 }
 
+// newEventWriter is a writer whose only outlet is output: every record and
+// every bus payload, one JSON object per line. It is the tests' view of a run.
 func newEventWriter(output io.Writer) *eventWriter {
 	return &eventWriter{
 		encoder: json.NewEncoder(output),
@@ -53,68 +83,67 @@ func newEventWriter(output io.Writer) *eventWriter {
 	}
 }
 
-func (writer *eventWriter) setHook(hook func(event)) {
-	if writer == nil {
-		return
+// newRecordWriter is the writer of a run codeaf hosts: stages and steps to
+// records, and each stage's data as one line on notes.
+func newRecordWriter(records recordSink, notes io.Writer) *eventWriter {
+	return &eventWriter{
+		records: records,
+		notes:   notes,
+		summary: newAgentSummary(),
+		steps:   map[string]struct{}{},
 	}
-	writer.mu.Lock()
-	writer.hook = hook
-	writer.mu.Unlock()
-}
-
-// enableTrace mirrors semantic run events as structured records on notes.
-// stdout remains the exhaustive NDJSON event stream; notes is stderr in the
-// shipped binary, so the readable trace goes wherever stderr goes.
-func (writer *eventWriter) enableTrace(notes io.Writer, runID string) {
-	if writer == nil || notes == nil {
-		return
-	}
-	writer.mu.Lock()
-	writer.trace = newRunTrace(notes, runID)
-	writer.mu.Unlock()
 }
 
 func (writer *eventWriter) emit(value event) {
-	if writer == nil || writer.encoder == nil {
+	if writer == nil {
 		return
 	}
 	if value.Timestamp == 0 {
 		value.Timestamp = time.Now().UnixMilli()
 	}
+	// ONE LOCK, SO THE RECORDS KEEP THE ORDER THE RUN MADE THEM IN. Two
+	// goroutines of the run can report at once (a tool finishing while the
+	// stage machine moves on), and codeaf reads the order as the order things
+	// happened in.
 	writer.mu.Lock()
-	if writer.trace != nil {
-		value = writer.trace.event(value)
+	defer writer.mu.Unlock()
+	if writer.encoder != nil {
+		_ = writer.encoder.Encode(value)
 	}
-	_ = writer.encoder.Encode(value)
-	if writer.hook != nil {
-		writer.hook(value)
+	switch value.Type {
+	case "stage":
+		if writer.records != nil {
+			writer.records.Stage(value.Stage, value.Status)
+		}
+		writer.noteStage(value)
+	case "step":
+		if writer.records != nil {
+			writer.records.Step(value.Command, value.Observation)
+		}
 	}
-	writer.mu.Unlock()
 }
 
-// emitUntraced writes a record to stdout without mirroring it into the stderr
-// trace. `spend` and `step` exist for a reader consuming stdout; the trace
-// already carries its own tool and cost records, and duplicating them there
-// would bury the semantic trace under one entry per tool call.
-func (writer *eventWriter) emitUntraced(value event) {
-	if writer == nil || writer.encoder == nil {
+// noteStage writes a stage and its data as one line for a person reading the
+// run's stderr: what the protocol's record has no field for, which is most of
+// what senior-dev knows about why it did what it did.
+func (writer *eventWriter) noteStage(value event) {
+	if writer.notes == nil {
 		return
 	}
-	if value.Timestamp == 0 {
-		value.Timestamp = time.Now().UnixMilli()
+	line := "[senior-dev] " + value.Stage + " · " + value.Status
+	if len(value.Data) > 0 {
+		if data, err := json.Marshal(value.Data); err == nil {
+			line += " " + string(data)
+		}
 	}
-	writer.mu.Lock()
-	_ = writer.encoder.Encode(value)
-	if writer.hook != nil {
-		writer.hook(value)
-	}
-	writer.mu.Unlock()
+	_, _ = fmt.Fprintln(writer.notes, line)
 }
 
-// busEvent writes the instance-bus payload without wrapping or renaming it:
-// every such line has exactly the Bus.Payload shape {id,type,properties}.
+// busEvent reads one instance-bus payload for what the run reports from it: a
+// finished tool call is a step, and a completed assistant message moves the
+// agent summary. The payload itself reaches only the log.
 func (writer *eventWriter) busEvent(value bus.Payload) {
-	if writer == nil || writer.encoder == nil {
+	if writer == nil {
 		return
 	}
 	// Observed OUTSIDE the writer lock: the summary keeps its own mutex, so
@@ -122,9 +151,8 @@ func (writer *eventWriter) busEvent(value bus.Payload) {
 	spend, completed := writer.summary.observeBus(value)
 	step, isStep := toolStepRecord(value)
 	writer.mu.Lock()
-	_ = writer.encoder.Encode(value)
-	if writer.trace != nil {
-		writer.trace.busEvent(value)
+	if writer.encoder != nil {
+		_ = writer.encoder.Encode(value)
 	}
 	if isStep {
 		if _, seen := writer.steps[step.key]; seen {
@@ -136,18 +164,18 @@ func (writer *eventWriter) busEvent(value bus.Payload) {
 	writer.mu.Unlock()
 	// Both are emitted outside the lock, because emit takes the same one.
 	// Neither reaches the model: they are written after the fact, from state
-	// the stream already published.
+	// the bus already published.
 	if isStep {
-		writer.emitUntraced(event{
+		writer.emit(event{
 			Type: "step", Command: step.command, Observation: step.observation,
 		})
 	}
-	// The running total, after the message that moved it. A reader enforcing a
-	// dollar ceiling while the run is alive reads this and nothing else: the
-	// agent-summary and terminal totals arrive only once the run is over.
-	if completed {
+	// The running total, after the message that moved it, for the log only:
+	// codeaf's model API meters every call itself, so a run it hosts never
+	// reports money.
+	if completed && writer.encoder != nil {
 		total := spend
-		writer.emitUntraced(event{Type: "spend", CostUSD: &total})
+		writer.emit(event{Type: "spend", CostUSD: &total})
 	}
 }
 

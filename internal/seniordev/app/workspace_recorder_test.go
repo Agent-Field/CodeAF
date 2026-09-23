@@ -237,16 +237,14 @@ func TestInPlaceRunLeavesGitHistoryAlone(t *testing.T) {
 	before := gitOutput(context.Background(), workspace, "rev-parse", "HEAD")
 	beforeLog := gitOutput(context.Background(), workspace, "log", "--oneline")
 
-	t.Setenv("SENIOR_DEV_CP_URL", deadControlPlaneURL(t))
 	t.Setenv("SENIOR_DEV_SCRATCH_ROOT", t.TempDir())
-	args := []string{
-		"run", "--in-place", "--dir", workspace, "--high", "provider/high",
-		"Implement the thing.",
-	}
-	backend := &coderOnlyBackend{}
-	var stdout, stderr strings.Builder
-	if err := runCLI(context.Background(), args, backend, &stdout, &stderr); err != nil {
-		t.Fatalf("in-place run failed: %v\n%s", err, stderr.String())
+	host := &testHost{workspace: workspace}
+	var notes strings.Builder
+	ending := runWith(context.Background(), host, Options{
+		Goal: "Implement the thing.", High: "provider/high", InPlace: true,
+	}, &notes, &coderOnlyBackend{})
+	if ending.Status == "crashed" {
+		t.Fatalf("in-place run failed: %s\n%s", ending.Message, notes.String())
 	}
 
 	after := gitOutput(context.Background(), workspace, "rev-parse", "HEAD")
@@ -256,7 +254,7 @@ func TestInPlaceRunLeavesGitHistoryAlone(t *testing.T) {
 	if now := gitOutput(context.Background(), workspace, "log", "--oneline"); now != beforeLog {
 		t.Fatalf("the run wrote history:\nbefore:\n%s\nafter:\n%s", beforeLog, now)
 	}
-	if !strings.Contains(stdout.String(), `"workspace_recorder":"snapshot"`) {
+	if !strings.Contains(notes.String(), `"workspace_recorder":"snapshot"`) {
 		t.Fatal("the run contract does not record the snapshot recorder")
 	}
 }
@@ -276,16 +274,13 @@ func TestInPlaceRunNeedsNoRepository(t *testing.T) {
 		t.Fatal("the fixture is a repository; this test needs one that is not")
 	}
 
-	t.Setenv("SENIOR_DEV_CP_URL", deadControlPlaneURL(t))
 	t.Setenv("SENIOR_DEV_SCRATCH_ROOT", t.TempDir())
-	args := []string{
-		"run", "--in-place", "--dir", workspace, "--high", "provider/high",
-		"Implement the thing.",
-	}
-	backend := &coderOnlyBackend{}
-	var stdout, stderr strings.Builder
-	if err := runCLI(context.Background(), args, backend, &stdout, &stderr); err != nil {
-		t.Fatalf("run without a repository failed: %v\n%s", err, stderr.String())
+	var notes strings.Builder
+	ending := runWith(context.Background(), &testHost{workspace: workspace}, Options{
+		Goal: "Implement the thing.", High: "provider/high", InPlace: true,
+	}, &notes, &coderOnlyBackend{})
+	if ending.Status == "crashed" {
+		t.Fatalf("run without a repository failed: %s\n%s", ending.Message, notes.String())
 	}
 	if _, err := os.Stat(filepath.Join(workspace, ".git")); !os.IsNotExist(err) {
 		t.Fatal("the run created a repository in a workspace that had none")
@@ -296,16 +291,14 @@ func TestInPlaceRunNeedsNoRepository(t *testing.T) {
 // path is unchanged, and this is what says so.
 func TestDefaultRunStillRequiresARepository(t *testing.T) {
 	workspace := t.TempDir()
-	t.Setenv("SENIOR_DEV_CP_URL", deadControlPlaneURL(t))
-	args := []string{
-		"run", "--dir", workspace, "--high", "provider/high", "Implement the thing.",
+	ending := runWith(context.Background(), &testHost{workspace: workspace}, Options{
+		Goal: "Implement the thing.", High: "provider/high",
+	}, &strings.Builder{}, &coderOnlyBackend{})
+	if ending.Status != "crashed" {
+		t.Fatalf("a non-repository workspace was accepted without --in-place: %+v", ending)
 	}
-	err := runCLI(context.Background(), args, &coderOnlyBackend{}, &strings.Builder{}, &strings.Builder{})
-	if err == nil {
-		t.Fatal("a non-repository workspace was accepted without --in-place")
-	}
-	if !strings.Contains(err.Error(), "not a git repository") {
-		t.Fatalf("error does not name the cause: %v", err)
+	if !strings.Contains(ending.Message, "not a git repository") {
+		t.Fatalf("the ending does not name the cause: %q", ending.Message)
 	}
 }
 

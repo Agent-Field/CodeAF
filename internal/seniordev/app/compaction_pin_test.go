@@ -36,15 +36,15 @@ func TestParseContextLimitReadsTheNumberedOverflowMessages(t *testing.T) {
 
 // overflowBackend is a backend whose transport rejects every request with the
 // given body, so DoStream returns the provider error the pin logic inspects.
-func overflowBackend(t *testing.T, info configpkg.Info, status int, body string) (*openRouterBackend, *bytes.Buffer) {
+func overflowBackend(t *testing.T, info configpkg.Info, status int, body string) (*modelAPIBackend, *bytes.Buffer) {
 	t.Helper()
 	cfg, err := newSeniorDevConfig(info)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var events bytes.Buffer
-	backend := &openRouterBackend{
-		apiKey: "mock-only", catalog: seniorDevCatalogFixture(t), config: cfg,
+	backend := &modelAPIBackend{
+		api: testModelAPI, catalog: seniorDevCatalogFixture(t), config: cfg,
 		events: newEventWriter(&events),
 		client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return recordedResponse(request, status, "application/json", body), nil
@@ -53,7 +53,7 @@ func overflowBackend(t *testing.T, info configpkg.Info, status int, body string)
 	return backend, &events
 }
 
-func overflowStream(t *testing.T, backend *openRouterBackend, session string) error {
+func overflowStream(t *testing.T, backend *modelAPIBackend, session string) error {
 	t.Helper()
 	projection, _, err := (seniorDevModels{backend: backend, agent: "coder"}).projection("openrouter", "fixture/vendor-model")
 	if err != nil {
@@ -62,7 +62,8 @@ func overflowStream(t *testing.T, backend *openRouterBackend, session string) er
 	client := seniorDevStreamClient{
 		backend: backend, sessionID: session, agent: "coder", model: projection,
 		client: &orclient.Client{
-			Fetcher: backend.client.Do, Compatibility: orclient.CompatibilityCompatible,
+			BaseURL: backend.api.BaseURL, Fetcher: backend.fetch,
+			Compatibility: orclient.CompatibilityCompatible,
 		},
 	}
 	_, err = client.DoStream(context.Background(), orclient.RequestParams{

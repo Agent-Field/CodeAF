@@ -75,7 +75,7 @@ func TestConfiguredTurnProvenanceCarriesCompactionBudget(t *testing.T) {
 	}
 	// Fixture model: context 240,000, input 220,000, output 12,000. The
 	// reservation is min(12,000, 32,000) = 12,000, so raw = 208,000.
-	fixture := &openRouterBackend{catalog: seniorDevCatalogFixture(t)}
+	fixture := &modelAPIBackend{catalog: seniorDevCatalogFixture(t)}
 
 	t.Run("no backend records no budget", func(t *testing.T) {
 		record := emit(t, configpkg.Info{}, nil)

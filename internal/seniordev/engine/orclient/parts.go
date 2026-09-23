@@ -300,7 +300,7 @@ func (p SourcePart) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	outer := newObjectWriter()
-	outer.raw("openrouter", innerRaw)
+	outer.raw(Service, innerRaw)
 	outerRaw, err := outer.done()
 	if err != nil {
 		return nil, err
@@ -555,7 +555,7 @@ func (p FinishPart) MarshalJSON() ([]byte, error) {
 	w.marshal("finishReason", p.FinishReason)
 	w.marshal("usage", p.Usage)
 	inner := newObjectWriter()
-	inner.marshal("openrouter", p.Metadata)
+	inner.marshal(Service, p.Metadata)
 	innerRaw, err := inner.done()
 	if err != nil {
 		return nil, err

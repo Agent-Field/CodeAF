@@ -54,7 +54,7 @@ func TestSeniorDevEngineStreamsShapesAndRepairsMisCasedToolCall(t *testing.T) {
 			request, http.StatusOK, "text/event-stream", chatReply("done", 10),
 		), nil
 	})}
-	backend := &openRouterBackend{apiKey: "test", client: client, variant: "high"}
+	backend := &modelAPIBackend{api: testModelAPI, client: client, variant: "high"}
 	result, err := backend.Run(context.Background(), turn{
 		Agent: "coder", ProviderID: "openrouter", ModelID: "qwen/qwen3.6-plus",
 		Prompt: "repair the tool", Workspace: t.TempDir(), AgentMarkdown: testAgentPrompt,
@@ -146,7 +146,7 @@ func TestSeniorDevAdaptiveRouterFailsOverAndRegistersOutcomes(t *testing.T) {
 			request, http.StatusOK, "text/event-stream", chatReply("recovered", 10),
 		), nil
 	})}
-	backend := &openRouterBackend{apiKey: "test", client: client, router: router}
+	backend := &modelAPIBackend{api: testModelAPI, client: client, router: router}
 	request := turn{
 		Agent: "coder", ProviderID: "openrouter", ModelID: "qwen/qwen-primary",
 		Prompt: "fail over", Workspace: t.TempDir(), AgentMarkdown: testAgentPrompt,
@@ -185,7 +185,7 @@ func TestSeniorDevCostCapTripsFromEngineLedger(t *testing.T) {
 		responses = responses[1:]
 		return recordedResponse(request, http.StatusOK, "text/event-stream", response), nil
 	})}
-	runtime := newRuntime(t.TempDir(), &openRouterBackend{apiKey: "test", client: client})
+	runtime := newRuntime(t.TempDir(), &modelAPIBackend{api: testModelAPI, client: client})
 	t.Cleanup(runtime.Close)
 	result, err := runTestTurn(t, runtime, testTurn{
 		Agent: "coder", ProviderID: "openrouter",
@@ -229,7 +229,7 @@ func TestSeniorDevDeadlineCancelsMidStream(t *testing.T) {
 			Body:       body, Request: request,
 		}, nil
 	})}
-	backend := &openRouterBackend{apiKey: "test", client: client}
+	backend := &modelAPIBackend{api: testModelAPI, client: client}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	started := time.Now()

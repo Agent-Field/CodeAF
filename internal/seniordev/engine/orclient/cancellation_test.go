@@ -21,7 +21,7 @@ func TestCallerCancellationNeutralBeforeHeadersAndOnUndrainedClose(t *testing.T)
 			defer cancel(nil)
 			cause := errors.New("caller gave up")
 			router := &spyRouter{inflight: 1}
-			client := &Client{Router: router, RouteChoice: &adaptive.RouteChoice{}, Fetcher: func(req *http.Request) (*http.Response, error) {
+			client := &Client{BaseURL: testBaseURL, Router: router, RouteChoice: &adaptive.RouteChoice{}, Fetcher: func(req *http.Request) (*http.Response, error) {
 				if !closeOnly {
 					cancel(cause)
 					return nil, context.Cause(req.Context())
@@ -58,7 +58,7 @@ func TestProviderFailureIsNotHiddenByLaterCallerCancellation(t *testing.T) {
 			router := &spyRouter{inflight: 1}
 			var fire func()
 			t.Cleanup(SetTimerFactoryForTesting(func(_ float64, fn func()) Timer { fire = fn; return &cancellationTestTimer{} }))
-			client := &Client{Router: router, RouteChoice: &adaptive.RouteChoice{}, Fetcher: func(req *http.Request) (*http.Response, error) {
+			client := &Client{BaseURL: testBaseURL, Router: router, RouteChoice: &adaptive.RouteChoice{}, Fetcher: func(req *http.Request) (*http.Response, error) {
 				if watchdog {
 					fire()
 					cancel(errors.New("caller gave up"))
@@ -88,7 +88,7 @@ func TestCompletedSuccessWinsOverLaterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 	router := &spyRouter{inflight: 1}
-	client := &Client{Router: router, RouteChoice: &adaptive.RouteChoice{}, Fetcher: func(*http.Request) (*http.Response, error) {
+	client := &Client{BaseURL: testBaseURL, Router: router, RouteChoice: &adaptive.RouteChoice{}, Fetcher: func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("data: [DONE]\n\n"))}, nil
 	}}
 	stream, err := client.DoStream(ctx, RequestParams{ModelID: "test"})
@@ -116,7 +116,7 @@ func TestActualParentDeadlineAndMidstreamAbortAreNeutral(t *testing.T) {
 			ctx, cancel := context.WithTimeoutCause(context.Background(), 10*time.Millisecond, errors.New("caller deadline"))
 			defer cancel()
 			router := &spyRouter{inflight: 1}
-			client := &Client{Router: router, RouteChoice: &adaptive.RouteChoice{}, Fetcher: func(req *http.Request) (*http.Response, error) {
+			client := &Client{BaseURL: testBaseURL, Router: router, RouteChoice: &adaptive.RouteChoice{}, Fetcher: func(req *http.Request) (*http.Response, error) {
 				if midstream {
 					return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(""))}, nil
 				}

@@ -151,8 +151,8 @@ func TestOpenRouterRejectsToolOmittedFromRequestDefinitions(t *testing.T) {
 		toolCallReply("write", string(arguments)),
 		chatReply("continued after rejection", 10),
 	}}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 	}
 	runtime := newRuntime(workspace, backend)
 	t.Cleanup(runtime.Close)
@@ -217,8 +217,8 @@ func TestOpenRouterSystemIncludesRootInstructionsAndReadOnlyInjectsNestedRules(t
 		transport := &scriptedRoundTripper{replies: []string{
 			toolCallReply("read", string(arguments)), chatReply("done", 10),
 		}}
-		runtime := newRuntime(workspace, &openRouterBackend{
-			apiKey: "test", client: &http.Client{Transport: transport},
+		runtime := newRuntime(workspace, &modelAPIBackend{
+			api: testModelAPI, client: &http.Client{Transport: transport},
 		})
 		if _, err := runTestTurn(t, runtime, testTurn{
 			Agent: "coder", ModelID: "vendor/model",
@@ -253,8 +253,8 @@ func TestOpenRouterCompactsContextAndContinues(t *testing.T) {
 		chatReply(validCompactionSummary("anchored summary for the original task"), 10),
 		chatReply("finished after compaction", 10),
 	}}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 		contextLimit: 128_000, outputLimit: 32_768,
 	}
 	summaryPathConfig(t).applyBackend(backend)
@@ -346,8 +346,8 @@ func TestProjectConfigDisablesAutoCompactionOnLiveTurn(t *testing.T) {
 	transport := &scriptedRoundTripper{replies: []string{
 		chatReply("finished without compaction", 70_000),
 	}}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 	}
 	loaded.applyBackend(backend)
 	result, err := backend.Run(context.Background(), turn{
@@ -375,8 +375,8 @@ func TestOpenRouterCompactionHarvestsEvidenceByCodeAlone(t *testing.T) {
 		chatReply(validCompactionSummary("fix the widget"), 10),
 		chatReply("finished", 10),
 	}}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 		contextLimit: 128_000, outputLimit: 32_768,
 	}
 	summaryPathConfig(t).applyBackend(backend)
@@ -420,8 +420,8 @@ func TestOpenRouterCompactionResetsTheObservationWindow(t *testing.T) {
 		chatReply(validCompactionSummary("summary after rejected stale call"), 10),
 		chatReply("finished in fresh window", 10),
 	}}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 		contextLimit: 128_000, outputLimit: 32_768,
 	}
 	summaryPathConfig(t).applyBackend(backend)
@@ -466,8 +466,8 @@ func TestOpenRouterSummaryFailureInstallsRecordAndContinues(t *testing.T) {
 		},
 		statuses: []int{http.StatusOK, http.StatusBadGateway, http.StatusOK},
 	}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 		contextLimit: 128_000, outputLimit: 32_768,
 	}
 	summaryPathConfig(t).applyBackend(backend)
@@ -507,8 +507,8 @@ func TestOpenRouterHardOverflowCompactsAndRetries(t *testing.T) {
 		},
 		statuses: []int{http.StatusBadRequest, http.StatusOK, http.StatusOK},
 	}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 	}
 	summaryPathConfig(t).applyBackend(backend)
 	result, err := backend.Run(context.Background(), turn{
@@ -536,8 +536,8 @@ func TestOpenRouterAllowsMoreThanThreeSuccessfulCompactions(t *testing.T) {
 	}
 	replies = append(replies, chatReply("natural stop", 10))
 	transport := &scriptedRoundTripper{replies: replies}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 		contextLimit: 128_000, outputLimit: 32_768,
 	}
 	summaryPathConfig(t).applyBackend(backend)
@@ -574,8 +574,8 @@ func TestOpenRouterStopsWhenAuthoritativeTaskCannotFitAfterRebuild(t *testing.T)
 		chatReply("overflow", 70_000),
 		chatReply(validCompactionSummary("task"), 10),
 	}}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 		contextLimit: 128_000, outputLimit: 32_768,
 	}
 	summaryPathConfig(t).applyBackend(backend)
@@ -601,7 +601,7 @@ func TestOpenRouterEngineHasNoUnconditionalSixtyFourTurnCap(t *testing.T) {
 	}
 	replies = append(replies, chatReply("natural stop", 10))
 	transport := &scriptedRoundTripper{replies: replies}
-	backend := &openRouterBackend{apiKey: "test", client: &http.Client{Transport: transport}}
+	backend := &modelAPIBackend{api: testModelAPI, client: &http.Client{Transport: transport}}
 	result, err := backend.Run(context.Background(), turn{
 		Agent: "coder", ModelID: "vendor/model", Workspace: t.TempDir(), Prompt: "keep going",
 		AgentMarkdown: testAgentPrompt,
@@ -631,8 +631,8 @@ func TestOpenRouterReloadsRootInstructionsEachTurn(t *testing.T) {
 	transport := &scriptedRoundTripper{replies: []string{
 		toolCallReply("write", string(arguments)), chatReply("done", 10),
 	}}
-	runtime := newRuntime(workspace, &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	runtime := newRuntime(workspace, &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 	})
 	t.Cleanup(runtime.Close)
 	if _, err := runTestTurn(t, runtime, testTurn{
@@ -660,8 +660,8 @@ func TestOpenRouterEmptyBodyOverflowCompacts(t *testing.T) {
 		},
 		statuses: []int{http.StatusBadRequest, http.StatusOK, http.StatusOK},
 	}
-	backend := &openRouterBackend{
-		apiKey: "test", client: &http.Client{Transport: transport},
+	backend := &modelAPIBackend{
+		api: testModelAPI, client: &http.Client{Transport: transport},
 	}
 	summaryPathConfig(t).applyBackend(backend)
 	result, err := backend.Run(context.Background(), turn{

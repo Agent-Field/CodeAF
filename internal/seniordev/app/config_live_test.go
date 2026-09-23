@@ -51,8 +51,6 @@ func TestProjectConfigChangesLiveRuntimePermissionsAndInstructions(t *testing.T)
   "provider": {
     "openrouter": {
       "options": {
-        "apiKey": "configured-key",
-        "baseURL": "https://router.example/api/v1",
         "timeout": false,
         "chunkTimeout": 45000,
         "headers": {"X-Config": "provider", "X-Provider": "yes"}
@@ -128,7 +126,7 @@ func TestProjectConfigChangesLiveRuntimePermissionsAndInstructions(t *testing.T)
 		}
 	}
 
-	backend := &openRouterBackend{}
+	backend := &modelAPIBackend{}
 	cfg.applyBackend(backend)
 	model, err := (seniorDevModels{
 		backend: backend, sessionID: "ses", agent: "coder",
@@ -137,20 +135,74 @@ func TestProjectConfigChangesLiveRuntimePermissionsAndInstructions(t *testing.T)
 		t.Fatal(err)
 	}
 	options, _ := model.Params.OpenRouterOptions.MarshalJSON()
-	if backend.apiKey != "configured-key" || backend.baseURL() != "https://router.example/api/v1" ||
-		backend.totalTimeoutMS != -1 || backend.chunkTimeoutMS != 45000 ||
+	if backend.totalTimeoutMS != -1 || backend.chunkTimeoutMS != 45000 ||
 		!strings.Contains(string(options), `"model_option":"configured"`) ||
 		!strings.Contains(string(options), `"agent_option":true`) ||
 		model.Params.MaxOutputTokens == nil || *model.Params.MaxOutputTokens != 4096 {
 		t.Fatalf("provider/model config not consumed: backend=%+v options=%s model=%+v", backend, options, model)
 	}
-	headers := seniorDevOpenRouterHeadersWithConfig(
-		backend.apiKey, "ses", cfg.headers("openrouter", "vendor/configured-model"),
-	)
+	headers := seniorDevHeaders("ses", cfg.headers("openrouter", "vendor/configured-model"))
 	headerText, _ := json.Marshal(headers)
 	if !strings.Contains(string(headerText), `"name":"x-config","value":"model"`) ||
 		!strings.Contains(string(headerText), `"name":"x-provider","value":"yes"`) {
 		t.Fatalf("configured headers not consumed: %s", headerText)
+	}
+}
+
+// The three knobs that used to decide how senior-dev reached a model are
+// refused by name, never quietly ignored: a service's apiKey and baseURL,
+// which would be a second road to a model codeaf could not meter, and any
+// providerRouting block, which codeaf's model funnel now decides.
+func TestConfigRefusesTheRetiredModelKnobsByName(t *testing.T) {
+	for _, test := range []struct {
+		name, config, want string
+	}{
+		{"api key", `{"provider":{"openrouter":{"options":{"apiKey":"sk-anything"}}}}`, "options.apiKey is not read"},
+		{"base url", `{"provider":{"openrouter":{"options":{"baseURL":"https://elsewhere.example/v1"}}}}`, "options.baseURL is not read"},
+		{"provider routing", `{"provider":{"openrouter":{"providerRouting":{"sort":"price"}}}}`, "providerRouting is not read"},
+		{"model routing", `{"provider":{"openrouter":{"models":{"vendor/m":{"providerRouting":{"sort":"price"}}}}}}`, "providerRouting is not read"},
+		{"agent routing", `{"agent":{"coder":{"providerRouting":{"sort":"price"}}}}`, "providerRouting is not read"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			t.Setenv("SENIOR_DEV_CONFIG_DIR", t.TempDir())
+			t.Setenv("SENIOR_DEV_CONFIG", "")
+			t.Setenv("SENIOR_DEV_CONFIG_CONTENT", "")
+			t.Setenv("SENIOR_DEV_PERMISSION", "")
+			if err := os.WriteFile(filepath.Join(workspace, "senior-dev.json"), []byte(test.config), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := loadSeniorDevConfig(workspace)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("load error = %v, want one saying %q", err, test.want)
+			}
+		})
+	}
+}
+
+// A routing preference spelled as a plain request option never leaves the
+// program either: the `provider` key is taken out of the options every call
+// carries, whoever put it there, and the rest of the options survive.
+func TestAnAdHocProviderOptionIsDroppedFromTheRequest(t *testing.T) {
+	cfg, err := newSeniorDevConfig(map[string]any{
+		"agent": map[string]any{"coder": map[string]any{"options": map[string]any{
+			"provider":     map[string]any{"order": []any{"somewhere"}},
+			"agent_option": true,
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &modelAPIBackend{api: testModelAPI}
+	cfg.applyBackend(backend)
+	model, err := (seniorDevModels{backend: backend, sessionID: "ses", agent: "coder"}).
+		GetModel(context.Background(), "openrouter", "vendor/model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, _ := model.Params.OpenRouterOptions.MarshalJSON()
+	if strings.Contains(string(options), `"provider"`) || !strings.Contains(string(options), `"agent_option":true`) {
+		t.Fatalf("options = %s, want the agent's option without any provider routing", options)
 	}
 }
 

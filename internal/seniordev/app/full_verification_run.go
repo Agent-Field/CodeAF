@@ -137,6 +137,16 @@ func (run *projectVerificationRun) execute(observation *verificationObservation)
 	if err == nil {
 		observation.exitCode, observation.timedOut = verificationExit(toolResult.Metadata.Raw())
 	}
+	// A COMMAND CUT BY THE RUN'S OWN ENDING HAS NO EXIT STATUS. When the run's
+	// context ends while the project's commands run — codeaf's stop, or the
+	// wall clock — the command is killed half way, and what it left reads as a
+	// failure it never reported. It is recorded the way a hang is: an
+	// incomplete observation, never a red one, so neither is a submitted
+	// candidate failed nor an unsubmitted tree restored on its account. A
+	// command that had already exited clean before the stop keeps its pass.
+	if run.ctx.Err() != nil && observation.exitCode != 0 {
+		observation.exitCode, observation.timedOut = -1, true
+	}
 	output := toolResult.Output
 	if err != nil {
 		output = err.Error()

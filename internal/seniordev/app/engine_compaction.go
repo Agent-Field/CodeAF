@@ -11,13 +11,13 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/codeaf/internal/seniordev/attribution"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/calc"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/compaction"
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/overflow"
+	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
 type seniorDevCompactionModels struct {
@@ -129,7 +129,7 @@ func newSeniorDevCompactionController(
 	summaryClient steploop.LLMClient,
 	resolver steploop.ModelResolver,
 	workspace string,
-	backend *openRouterBackend,
+	backend *modelAPIBackend,
 	system func(context.Context) string,
 	tools []steploop.ToolDefinition,
 	decisions compaction.DecisionSink,
@@ -190,7 +190,7 @@ func seniorDevChangedFiles(ctx context.Context, workspace string) []string {
 		return nil
 	}
 	git := func(args ...string) ([]string, bool) {
-		argv := attribution.GitArgv(args...)
+		argv := util.GitArgv(args...)
 		command := exec.CommandContext(ctx, argv[0], argv[1:]...)
 		command.Dir = workspace
 		out, err := command.Output()

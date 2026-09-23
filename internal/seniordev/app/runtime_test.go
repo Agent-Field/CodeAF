@@ -4,8 +4,11 @@ package app
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
@@ -20,36 +23,36 @@ func (backend *capturingBackend) Run(_ context.Context, request turn) (turnResul
 	return turnResult{}, nil
 }
 
-func TestOpenRouterEndpoint(t *testing.T) {
-	// Both bare proxy roots and already-versioned roots produce one
-	// /api/v1 segment before chat/completions.
-	for _, test := range []struct {
-		input string
-		want  string
-	}{
-		{input: "http://proxy", want: "http://proxy/api/v1/chat/completions"},
-		{input: "http://proxy/", want: "http://proxy/api/v1/chat/completions"},
-		{input: "http://proxy/api/v1", want: "http://proxy/api/v1/chat/completions"},
-		{input: "http://proxy/api/v1/", want: "http://proxy/api/v1/chat/completions"},
-	} {
-		t.Run(test.input, func(t *testing.T) {
-			if got := openRouterEndpoint(test.input); got != test.want {
-				t.Fatalf("openRouterEndpoint(%q) = %q, want %q", test.input, got, test.want)
-			}
-		})
+func TestTheBackendHasNoHTTPClientWallClockTimeout(t *testing.T) {
+	configured := newModelAPIBackend(testModelAPI, "")
+	if configured.client == nil {
+		t.Fatal("the backend has no HTTP client")
+	}
+	if configured.client.Timeout != 0 {
+		t.Fatalf("HTTP client timeout = %s, want disabled", configured.client.Timeout)
 	}
 }
 
-func TestDefaultBackendHasNoHTTPClientWallClockTimeout(t *testing.T) {
-	configured, ok := defaultBackend("").(*openRouterBackend)
-	if !ok {
-		t.Fatalf("defaultBackend type = %T, want *openRouterBackend", defaultBackend(""))
+// fetch is the one door every model request leaves by, and it puts the model
+// API's token on whatever the request already said — a configured header
+// naming another credential included.
+func TestFetchCarriesTheModelAPIsTokenOverAnyOtherCredential(t *testing.T) {
+	var seen string
+	backend := newModelAPIBackend(testModelAPI, "")
+	backend.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		seen = request.Header.Get("Authorization")
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("")), Request: request}, nil
+	})}
+	request, err := http.NewRequest(http.MethodPost, testModelAPI.BaseURL, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if configured.client == nil {
-		t.Fatal("default backend has no HTTP client")
+	request.Header.Set("Authorization", "Bearer somebody-elses-key")
+	if _, err := backend.fetch(request); err != nil {
+		t.Fatal(err)
 	}
-	if configured.client.Timeout != 0 {
-		t.Fatalf("default HTTP client timeout = %s, want disabled", configured.client.Timeout)
+	if seen != "Bearer "+testModelAPI.Token {
+		t.Fatalf("Authorization = %q, want the model API's token", seen)
 	}
 }
 

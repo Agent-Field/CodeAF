@@ -13,7 +13,7 @@ import (
 func seniorDevCatalogFixture(t *testing.T) modelsdev.Catalog {
 	t.Helper()
 	client, err := modelsdev.New(modelsdev.Options{
-		CatalogPath:  "../../internal/modelsdev/testdata/catalog.json",
+		CatalogPath:  "../modelsdev/testdata/catalog.json",
 		CacheDir:     t.TempDir(),
 		DisableFetch: true,
 	})
@@ -29,7 +29,7 @@ func seniorDevCatalogFixture(t *testing.T) modelsdev.Catalog {
 
 func TestSeniorDevCatalogMetadataReachesSessionModel(t *testing.T) {
 	models := seniorDevModels{
-		backend:   &openRouterBackend{catalog: seniorDevCatalogFixture(t)},
+		backend:   &modelAPIBackend{catalog: seniorDevCatalogFixture(t)},
 		sessionID: "ses_catalog",
 		agent:     "coder",
 	}
