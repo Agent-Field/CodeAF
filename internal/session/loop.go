@@ -2290,11 +2290,28 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// not one anybody outside this process can act on ([endingWords]).
 			return nil, model, endingWords(err, verdict)
 		case verdict.Retries():
+			// A CUT IS SAID AT ONCE AND THEN PAYS THE VERDICT'S WAIT LIKE ANY
+			// OTHER FAILURE. Its junk is already gone from the page, so the
+			// discard is announced before the wait rather than after it, and the
+			// loop's own attempt number does not advance for it (a cut is not
+			// evidence the endpoint is failing).
+			//
+			// THIS BRANCH USED TO `continue` HERE, ABOVE THE WAIT (#1358). A pool
+			// cut asks for no wait, so nothing was lost there; but the one
+			// machine's unbounded retry carries a wait that climbs to
+			// [taxonomy.OneMachineCutCeiling], and skipping it re-asked a server
+			// that keeps cutting in a tight loop for ever — forty cuts were
+			// forty-one requests in a millisecond, with no status line, and the
+			// held-down attempt number kept the deadline from ever being read.
 			if isCut {
 				hub.send(Event{Kind: EventRetrying, Text: cutNotice(cut),
 					Retry: retryNews(model, cuts, verdict, cut, "")})
 				attempt--
-				continue
+				if wait <= 0 {
+					continue
+				}
+			} else {
+				unpaid = wait
 			}
 			// AND THE WAIT IS SAID OUT LOUD. This ladder is the longest silence
 			// in the whole request path — two seconds, then four, then eight,
@@ -2310,12 +2327,15 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// failure and keeps its arithmetic for a reply that came apart, which
 			// has a real allowance ([taxonomy.transportBudget]). Nothing is
 			// invented to fill the gap: unknown renders as nothing.
-			unpaid = wait
 			// AND AN UNBOUNDED WAIT SAYS HOW LONG IT HAS BEEN WAITING, because
 			// it is the one retry with no denominator to count towards, and a
 			// phase that says only `retrying` for ten minutes is a hang as far
-			// as the person can tell ([waitingOnOneMachine]).
+			// as the person can tell ([waitingOnOneMachine]). A bounded cut
+			// counts its own allowance, which is cuts and not attempts.
 			detail := retryOrdinal(attempt+2, verdict.Attempts)
+			if isCut {
+				detail = retryOrdinal(cuts+1, verdict.Attempts)
+			}
 			if verdict.Unbounded && cuts > 0 {
 				detail = waitingOnOneMachine(cuts, turnNow().Sub(waitingSince))
 			}
@@ -2333,8 +2353,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// resets partial, reasoning and forming before requesting a
 			// replacement; a phase-clock update alone cannot remove the old
 			// streamed answer. Say this only after the wait succeeds: a stop
-			// during backoff keeps its partial reply.
-			if hub != nil {
+			// during backoff keeps its partial reply. A cut said its own discard
+			// before the wait, so it is not said twice.
+			if hub != nil && !isCut {
 				hub.send(Event{Kind: EventRetrying, Text: retryNotice,
 					Retry: retryNews(model, attempt+1, verdict, nil, "")})
 			}

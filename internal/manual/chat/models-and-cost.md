@@ -1275,7 +1275,9 @@ good — and it does not wait for the stall to finish: name a model while nothin
 back and that request is let go of and asked again on yours.
 
 Only when there is nowhere to go — you are on `--one-model`, or no chain resolves, **and
-you have not named a model yourself** — does the turn end instead:
+you have not named a model yourself** — does the turn end instead. (The one exception is a
+conversation against **your own server**, which never ends this way while you watch it: see
+*My own server keeps going quiet* below.)
 
 ```
 error: nothing came back from the model in 1m30s, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
@@ -1299,6 +1301,31 @@ which endpoint served it, or you have set `routing` to `off` or `simple` on the 
 nothing is being routed around and the next attempt lands in exactly the same place — so
 codeaf stops asking and moves to the next model a try earlier. Setting `routing` to `off`
 or `simple` switches off **endpoint** steering; it does not switch off moving to another model.
+
+## My own server keeps going quiet — a local model or my own base url, and codeaf keeps asking instead of giving up
+
+When there is only one machine behind a request, a quiet reply is handled differently.
+That means your own base url or a local server with no router in front of it, a single
+connected service, or a model pinned by hand to one lane. Another endpoint and a pause
+cannot help there, and giving up would only hand you the retry to do by hand.
+
+So in a conversation you are watching, with no fallback model left to move to, **codeaf
+keeps asking that machine until it answers or you stop it**. It waits before every ask:
+1 second, then 2, 4 and 8, then every **10 seconds** from then on. The wait never grows
+past ten seconds, because what you are waiting for (weights loading, one busy slot)
+finishes at a moment nobody can predict. The give-up deadline does not end it either. The
+status line says how long it has been:
+
+```
+  ··· trying again · no answer 7 times in 2m · still asking · esc stops
+```
+
+`esc` stops the turn. `/model` moves it to another model at the next ask.
+
+A task running on its own, with nobody watching, does not wait like this. It asks the one
+machine at most **four** times, with the same waits between them, and then moves to a
+fallback or ends. So does a watched conversation that still has a fallback model to go to. A router's pool is **never** treated as one machine, whatever your `routing` row
+says: it keeps the short allowance above, because the next ask can land on another machine.
 
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 
