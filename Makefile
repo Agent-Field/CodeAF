@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/codeaf
 
-.PHONY: all build build-check build-cross debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check build-cross debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -111,22 +111,60 @@ debug: furrow embed
 KNOWN_RED := $(shell grep -v -e '^\#' -e '^[[:space:]]*$$' .github/known-red.txt 2>/dev/null | paste -sd'|' -)
 TEST_SKIP := $(if $(KNOWN_RED),-skip '^($(KNOWN_RED))$$')
 
-# THE PER-PACKAGE TIMEOUT IS MEASURED, NOT GUESSED. On 2026-09-08 internal/tui3
-# took 563 seconds on the constrained shared runner (GOMAXPROCS=4, -p=2), while
-# internal/session took 210 seconds. Fifteen minutes leaves headroom and still
-# makes a package that really hangs name itself. Lower it only from a new
-# uncached measurement, never from an expected optimization.
+# THE PER-SHARD TIMEOUT IS MEASURED, NOT GUESSED. On 2026-09-22 internal/tui3
+# took 65 seconds as eight shards on the eight-core WSL2 box, down from 341
+# seconds serial; the constrained runner's earlier serial measurement was 563
+# seconds. Fifteen minutes remains per shard because a busy runner or a changed
+# shard can still need the old headroom, and a real hang must name itself.
+# Lower it only from a new uncached measurement, never from an expected
+# optimization.
 TEST_TIMEOUT := 15m
 TEST_FLAGS ?=
 PKGS ?= ./...
+SHARDS ?= $(shell count=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1); if ! test "$$count" -ge 1 2>/dev/null; then count=1; elif test "$$count" -gt 8; then count=8; fi; echo "$$count")
 
 # A full run of the tree or either heavy package takes the box's one suite lock
-# (scripts/one-suite.sh says why). Focused and lighter runs stay independent.
-HEAVY_PKGS := ./... ./internal/tui3 ./internal/tui3/ ./internal/session ./internal/session/
-SUITE_LOCK := $(if $(filter $(HEAVY_PKGS),$(PKGS)),./scripts/one-suite.sh)
+# (scripts/one-suite.sh says why): each heavy package holds it for its whole
+# sharded run, and a `./...` run holds it for the rest of the tree as well, so
+# two sessions' tree runs still cannot stack. Focused and lighter runs stay
+# independent.
+HEAVY_PKGS := internal/tui3 internal/session
+LOCKED_PKGS := ./... $(addprefix ./,$(HEAVY_PKGS)) $(addsuffix /,$(addprefix ./,$(HEAVY_PKGS)))
+FRESH_FLAG := $(if $(filter $(LOCKED_PKGS),$(PKGS)),-count=1)
+SUITE_LOCK := ./scripts/one-suite.sh
+TREE_LOCK := $(if $(filter ./...,$(PKGS)),$(SUITE_LOCK))
 
 test:
-	$(SUITE_LOCK) go test -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) $(TEST_SKIP) $(PKGS)
+	@set -u; \
+	module="$$(go list -m)" || exit 1; \
+	packages="$$(go list $(PKGS))" || exit 1; \
+	is_heavy() { \
+		for heavy in $(HEAVY_PKGS); do \
+			if test "$$1" = "$$module/$$heavy"; then return 0; fi; \
+		done; \
+		return 1; \
+	}; \
+	has_heavy=; \
+	for package in $$packages; do \
+		if is_heavy "$$package"; then has_heavy=yes; fi; \
+	done; \
+	if test -z "$$has_heavy"; then \
+		exec go test -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) $(TEST_SKIP) $(PKGS); \
+	fi; \
+	nonheavy=; \
+	for package in $$packages; do \
+		if ! is_heavy "$$package"; then nonheavy="$$nonheavy $$package"; fi; \
+	done; \
+	status=0; \
+	if test -n "$$nonheavy"; then \
+		$(TREE_LOCK) go test -timeout $(TEST_TIMEOUT) $(FRESH_FLAG) $(TEST_FLAGS) $(TEST_SKIP) $$nonheavy || status=1; \
+	fi; \
+	for package in $$packages; do \
+		if is_heavy "$$package"; then \
+			SHARDS='$(SHARDS)' $(SUITE_LOCK) ./scripts/shard-test.sh -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) $(TEST_SKIP) "$$package" || status=1; \
+		fi; \
+	done; \
+	exit "$$status"
 
 # One named regression is the fastest trustworthy edit loop. RUN is required:
 # an omitted selector must not silently turn a focused command into a full
@@ -152,6 +190,15 @@ build-check:
 	go build ./...
 
 test-quick: build-check vet fmt-check test-packed-manual changelog-check manual-gates test-laws
+
+# The shell runners are executable infrastructure that Go's package walk cannot
+# discover, so their acceptance scripts are named here. They are touched-only,
+# like the Go packages: `pr-ready` runs them when the change touches scripts/ or
+# this Makefile, because together they take about forty seconds and most pull
+# requests never go near them.
+test-tooling:
+	bash scripts/one-suite_test.sh
+	bash scripts/shard-test_test.sh
 
 manual-gates:
 	go test ./internal/manual/
@@ -224,6 +271,9 @@ test-touched: test-touched-preflight
 # work, with `make check` as the full-tree laptop/Spark spelling.
 pr-ready: test-touched-preflight
 	$(MAKE) --no-print-directory test-quick
+	@if ! git diff --quiet "$${BASE:-origin/dev}" HEAD -- scripts Makefile; then \
+		$(MAKE) --no-print-directory test-tooling; \
+	fi
 	$(MAKE) --no-print-directory test-touched
 
 # The laws alone — every test that reads the tree itself — in under half a
