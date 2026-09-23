@@ -625,7 +625,9 @@ func (a *app) setupModelChoices() []Model {
 	// substring test found nothing for `ds v4`, which /model answers with
 	// deepseek/deepseek-v4-flash: the query is tokens, every one must match, and
 	// the best alignment ranks first, ties keeping the catalog's order (#1321).
-	terms := fuzzy.Terms(strings.ToLower(find))
+	// The words are folded and made into terms exactly as the picker makes them
+	// ([fuzzyTerms]), so a capital typed here means what it means there.
+	terms := fuzzyTerms(strings.Fields(strings.ToLower(find)))
 	type hit struct {
 		model Model
 		score int
