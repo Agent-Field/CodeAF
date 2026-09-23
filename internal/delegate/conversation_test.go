@@ -61,3 +61,17 @@ func TestReadTurnsOfARunThatCalledNothingIsEmpty(t *testing.T) {
 		t.Fatalf("turns %v err %v", turns, err)
 	}
 }
+
+func TestTheProgramRecordReadsBackAndIsAbsentBeforeTheHello(t *testing.T) {
+	dir := t.TempDir()
+	if _, ok := ReadProgram(dir); ok {
+		t.Fatal("a run with no hello read a program")
+	}
+	if err := WriteProgram(dir, ProgramRecord{Name: "senior-dev", Stages: []string{"implement", "submit"}}); err != nil {
+		t.Fatal(err)
+	}
+	record, ok := ReadProgram(dir)
+	if !ok || record.Name != "senior-dev" || len(record.Stages) != 2 {
+		t.Fatalf("record = %+v %v", record, ok)
+	}
+}

@@ -26,6 +26,49 @@ import (
 // ConversationFile is the log's name inside a task's record folder.
 const ConversationFile = "delegate-conversation.jsonl"
 
+// ProgramFile names, inside a task's record folder, which program the run
+// handed its task to and the stages it said it would move through (its
+// `hello`). The worker writes it when the hello arrives; the task page reads
+// it to say whose conversation it is drawing, after the run as well as during.
+const ProgramFile = "delegate-program.json"
+
+// ProgramRecord is ProgramFile's content.
+type ProgramRecord struct {
+	Name   string   `json:"name"`
+	Stages []string `json:"stages,omitempty"`
+}
+
+// WriteProgram writes the record, whole, making the folder when it is not
+// there.
+func WriteProgram(dir string, record ProgramRecord) error {
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	temp := filepath.Join(dir, ProgramFile+".tmp")
+	if err := os.WriteFile(temp, append(data, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(temp, filepath.Join(dir, ProgramFile))
+}
+
+// ReadProgram reads the record; ok is false for a run that handed its task to
+// no program, or whose program has not said hello yet.
+func ReadProgram(dir string) (ProgramRecord, bool) {
+	data, err := os.ReadFile(filepath.Join(dir, ProgramFile))
+	if err != nil {
+		return ProgramRecord{}, false
+	}
+	var record ProgramRecord
+	if json.Unmarshal(data, &record) != nil || record.Name == "" {
+		return ProgramRecord{}, false
+	}
+	return record, true
+}
+
 // MainThread is the thread a call belongs to when the program gave it no
 // other: its one long conversation.
 const MainThread = "main"
