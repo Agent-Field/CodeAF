@@ -482,9 +482,16 @@ const fixedPrefixTarget = 48_000
 // section paid for it by saying three things in fewer words. The page came out
 // four bytes lighter on both arms: fixed is 56,273 and lean is 47,887, so both
 // waivers fall by 4 and again sit exactly on the measurement.
+//
+// 2026-09-23, the first skills design comes out. The verb that reached the
+// store's shelf, its belt-fact bullet and the page's three lines about what a
+// skill is all went with it; the design that replaces them (#1409) reads skill
+// folders from disk and pays for its own bytes when it lands. The page and the
+// tool block came out 849 bytes lighter on both arms: fixed is 55,424 and lean
+// is 47,038, so both waivers fall by 849 and sit exactly on the measurement.
 const (
-	fixedPrefixWaiver = 8_273
-	leanPrefixWaiver  = 16_387
+	fixedPrefixWaiver = 7_424
+	leanPrefixWaiver  = 15_538
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
