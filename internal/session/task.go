@@ -811,10 +811,16 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// and its depends_on as the store's own dependencies, and takes the person's
 	// ask with it when this turn owes one (CHAT-ROLE.md, "A landing speaks only
 	// when an answer is owed"). A task about ANOTHER FOLDER than the work
-	// already underway is refused here ([standsElsewhereError]); any other
-	// failure of the run road falls through to the older engine, which cuts its
-	// own copy from the same stand, and the receipt says so and why
-	// ([runRoadFellBack]).
+	// already underway is refused here ([standsElsewhereError]).
+	//
+	// AND A RUN ROAD THAT FAILS IS SAID, NOT HIDDEN. Any other failure of the run
+	// road used to fall through to the older engine's tree, which is the one
+	// thing this comment's first line says an approved hand-off never becomes:
+	// a batch of eight approved at once raced to one store and six of them
+	// quietly became old-tree nodes. The receipt now says the task did not start
+	// and why ([runDidNotStart]), and reads as a failure. Only a run road that
+	// is not there at all (no engine linked, no place for a store) leaves this
+	// door for the older one.
 	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
 		a.mu.Lock()
 		question := questionAtTaskHandoff(a.owedAsks)
@@ -831,8 +837,12 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		// turn's cancellation here without either of those is what left a run's
 		// life belonging to the PROCESS, and a run whose room had closed went on
 		// spending with nobody able to read it or stop it.
-		joined := a.beltRunStandsOn(p.stand)
-		err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
+		//
+		// WHETHER IT JOINED is the start door's answer and not a look taken
+		// before it: in a batch committed at one moment none of the hand-offs
+		// could see a live run beforehand, and the one that opened the run is
+		// decided under the start lock ([Agent.startOrJoinTaskRun]).
+		joined, err := a.startOrJoinTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
 		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 			return refusal.Error(), true, nil
 		}
@@ -843,26 +853,13 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 			}
 			return receipt, false, nil
 		}
-		// THE FALLBACK IS SAID, NOT SILENT. The work still starts — on the older
-		// engine, which cuts its own copy from the same stand — but a receipt
-		// identical to the run road's hid which engine took it and why, so the
-		// conversation described a run that did not exist. The reason rides the
-		// receipt in the run road's own words.
-		state := graph.admit(p.id, spec)
-		admitted = true
-		return withReport(taskReceipt(p.id, spec, state, p.stand, elsewhere), runRoadFellBack(err)), false, nil
+		if !errors.Is(err, errRunRoadUnavailable) {
+			return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, nil
+		}
 	}
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
-}
-
-// runRoadFellBack is the line an approved hand-off's receipt carries when the
-// run engine could not start it and the older engine took it instead: which
-// engine the work is on, and the run road's own reason.
-func runRoadFellBack(err error) string {
-	return "It runs on the older task engine, because the run engine could not start it: " +
-		strings.TrimRight(strings.TrimSpace(err.Error()), ".") + "."
 }
 
 // taskReceipt is what an admitted proposal hands back to the model.

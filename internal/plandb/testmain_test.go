@@ -10,5 +10,6 @@ import (
 // behavior they mean to exercise; the ambient run store is never a fixture.
 func TestMain(m *testing.M) {
 	_ = os.Unsetenv("PLANDB_DB")
+	_ = os.Unsetenv("PLANDB_RUN")
 	os.Exit(m.Run())
 }

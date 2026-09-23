@@ -42,7 +42,12 @@ type planState struct {
 	// chat is the conversation's tag: the session folder's own name, stamped on
 	// every row the seed makes so the plan can be read back as this chat's
 	// (PlanTasks). It is settled with the path at the seed and never moves.
-	chat    string
+	chat string
+	// root is the run a worker's plan belongs to, set only on a run worker's
+	// own plan ([NewBeltWorker]) from the run's open handle. It is what the
+	// worker's `plandb` checks the store at path against ([plandb.RunEnv]), so
+	// a later store at the same path cannot take the worker's writes.
+	root    string
 	shimmed bool
 	// archives holds read handles for ended stores. Ended stores are immutable,
 	// so each is opened at most once for the life of this conversation.
@@ -733,7 +738,18 @@ func (g *TaskGraph) planBashPrefix() string {
 	if bin == "" {
 		return ""
 	}
-	return "export PATH=" + quoteShWord(bin) + ":$PATH PLANDB_DB=" + quoteShWord(plan.path) + "; "
+	prefix := "export PATH=" + quoteShWord(bin) + ":$PATH PLANDB_DB=" + quoteShWord(plan.path)
+	// AND THE RUN IS BOUND, NOT ONLY THE PATH. A path says where the run's store
+	// was when the run opened it; a later request can set that store aside and
+	// seed another at the same path, and a worker bound by the path alone then
+	// wrote its children and its `done`s into a run that was not its own
+	// (measured on the owner's session: four children and ten `done`s). The
+	// root names which run this is, and the CLI refuses a store at the path
+	// whose root is another's ([plandb.RunEnv]).
+	if plan.root != "" {
+		prefix += " " + plandb.RunEnv + "=" + quoteShWord(plan.root)
+	}
+	return prefix + "; "
 }
 
 // planCLIBinEnv is the resolver's one override: it names a binary that

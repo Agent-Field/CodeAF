@@ -19,7 +19,6 @@ package session
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 )
@@ -45,12 +44,15 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
-		return "", errors.New("the run road is unavailable")
+		return "", errRunRoadUnavailable
 	}
 
-	// A RUN ALREADY GOING IS NOT CARRIED ON. Read under the belt's own lock,
-	// because a run installed between this look and the work below would be a
-	// second run on one conversation's store.
+	// A RUN ALREADY GOING IS NOT CARRIED ON. Read under the start lock, held
+	// until the carried-on run is registered, because a run installed between
+	// this look and the work below would be a second run on one conversation's
+	// store ([Agent.lockBeltStart]).
+	a.lockBeltStart()
+	defer a.beltStartMu.Unlock()
 	a.beltMu.Lock()
 	live := a.beltRun
 	a.beltMu.Unlock()
