@@ -850,6 +850,8 @@ prints what is waiting to leave right now as one JSON object, a key per destinat
 (`usage`, `model_pool`) with its `destination`, an `off` reason when nothing is sent
 there, and `waiting`, the rows themselves, `[]` on the day you install; and `off` and
 `on` write the answer to your profile. `info` lists only what is sent, never a disclaimer.
+`session_ended` also carries `total_tokens`, the one exact number on it: the input and
+output tokens the provider reported across the session, never which model or what it read.
 `CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
 usage counts go quiet and the Model Pool is capped at `read`, so it still picks models
 from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or
