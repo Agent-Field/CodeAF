@@ -8,12 +8,13 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// wallHitFor is the first target of kind (and arg, when arg >= 0) on the wall
-// as it was last drawn.
+// wallHitFor is the first target of kind and arg on the wall as it was last
+// drawn. The arg is matched exactly: a negative one is a real target (the All
+// chip is -1, the popover's delete rows are below it), never a wildcard.
 func wallHitFor(t *testing.T, a *app, kind wallHitKind, arg int) wallHit {
 	t.Helper()
 	for _, hit := range a.wall.hits {
-		if hit.kind == kind && (arg < 0 || hit.arg == arg) {
+		if hit.kind == kind && hit.arg == arg {
 			return hit
 		}
 	}

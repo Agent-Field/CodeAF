@@ -476,3 +476,25 @@ func TestWallSpinnerCountsInTime(t *testing.T) {
 		t.Fatal("the linear tier is not reduced")
 	}
 }
+
+// A WAITING TILE'S ANSWER AND ITS OPEN ↗ SHARE A TARGET, and the painter is
+// told the pointer's row so it lights the one under it: moving between the
+// two rows on the same target is a new frame.
+func TestWallPointerRowReachesThePainter(t *testing.T) {
+	a, _, _ := tabApp(t)
+	_ = a.openWall()
+	_ = a.wallFrame(a.width, a.height)
+	body := wallHitFor(t, a, wallHitTile, 0)
+	a.wallMotion(body.x0+4, body.y0+3)
+	_ = a.wallFrame(a.width, a.height)
+	if !a.wall.ptrIn || a.wall.ptrY-a.wall.headRows != body.y0+3-a.wall.headRows {
+		t.Fatalf("the pointer's row is not kept: in %v y %d", a.wall.ptrIn, a.wall.ptrY)
+	}
+	a.wall.hover = wallHitRef{kind: wallHitOpen, arg: 0}
+	a.wall.hits = []wallHit{{x0: 0, y0: 0, x1: a.width, y1: a.height, kind: wallHitOpen, arg: 0}}
+	a.ptr.still = false
+	a.wallMotion(5, a.wall.ptrY+1)
+	if a.ptr.still || !a.wall.stirred {
+		t.Fatal("a new row on a shared target reused the old frame")
+	}
+}
