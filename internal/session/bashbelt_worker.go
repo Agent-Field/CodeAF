@@ -48,7 +48,13 @@ import (
 // conversation's account-aware view ([Agent.beltRunCompleter]) and a test hands
 // a scripted one; nil is the road where nobody handed one and [New] builds the
 // real client itself.
-func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storePath string) (*Agent, error) {
+//
+// rootID IS THE RUN THE WORKER BELONGS TO, read off the run's own open handle
+// and never off the file at storePath. The path is where the run's store WAS
+// when the run opened it; the root is which run it is, and a worker's
+// `plandb` refuses a store at that path whose root is another run's
+// ([plandb.RunEnv]). Empty binds the path alone.
+func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storePath, rootID string) (*Agent, error) {
 	if !bashBeltAsked() {
 		return nil, errors.New("the bash belt is off: CODEAF_TASK_BELT names the node belt")
 	}
@@ -105,7 +111,7 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// back — and a shim that never landed is a seat that cannot run, because
 	// every `plandb` its worker runs would resolve to whatever shares the
 	// machine's PATH and write a plan this run would never read.
-	plan := &planState{path: storePath}
+	plan := &planState{path: storePath, root: rootID}
 	if err := plan.armShim(); err != nil {
 		_ = agent.Close()
 		return nil, fmt.Errorf("arm the plandb shim: %w", err)

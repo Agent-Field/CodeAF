@@ -339,7 +339,7 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 			return err
 		}
 	}
-	tree, err := prepareTaskTreeOn(ctx, a.config.Place, a.config.Workspace, a.journalID(), id, title, stand)
+	tree, err := beltRunPrepare(ctx, a.config.Place, a.config.Workspace, a.journalID(), id, title, stand)
 	if err != nil {
 		_ = store.Close()
 		return err
@@ -377,6 +377,18 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
 	return nil
 }
+
+// beltRunPrepare cuts a run's working copy. It is [prepareTaskTreeOn] in the
+// product, and a variable only so a test can make the cut slow or make it fail:
+// the slow cut is the window a batch of simultaneous hand-offs used to race
+// through, and a failed cut is a run road that did not open.
+var beltRunPrepare = prepareTaskTreeOn
+
+// beltStartWaits is a test's observation point: it is called when a hand-off
+// finds another hand-off in the middle of starting the conversation's run and
+// is about to wait for it. Nil outside tests, and nothing in the product reads
+// it.
+var beltStartWaits func()
 
 // beltJoinWaits is a test's observation point: it is called when a hand-off has
 // met a run on its way out and is about to wait for it to be over. Nil outside

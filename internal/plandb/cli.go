@@ -228,6 +228,12 @@ func cliRefusal(p *cliParsed) (string, bool) {
 	return "", false
 }
 
+// RunEnv names the run a worker belongs to, by its root task's id. The door
+// that seats a run worker exports it beside PLANDB_DB, and a store found at
+// that path whose root is ANOTHER run's is refused rather than written: a path
+// says where a run's store was, and only the root says which run it is.
+const RunEnv = "PLANDB_RUN"
+
 // cliStore opens the run's store without being told where it is: --db, then
 // PLANDB_DB, then the first ancestor holding plandb.db or
 // .codeaf/plandb.db. One store per file; --project is accepted and checked

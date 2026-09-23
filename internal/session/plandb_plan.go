@@ -42,7 +42,12 @@ type planState struct {
 	// chat is the conversation's tag: the session folder's own name, stamped on
 	// every row the seed makes so the plan can be read back as this chat's
 	// (PlanTasks). It is settled with the path at the seed and never moves.
-	chat    string
+	chat string
+	// root is the run a worker's plan belongs to, set only on a run worker's
+	// own plan ([NewBeltWorker]) from the run's open handle. It is what the
+	// worker's `plandb` checks the store at path against ([plandb.RunEnv]), so
+	// a later store at the same path cannot take the worker's writes.
+	root    string
 	shimmed bool
 	// archives holds read handles for ended stores. Ended stores are immutable,
 	// so each is opened at most once for the life of this conversation.
