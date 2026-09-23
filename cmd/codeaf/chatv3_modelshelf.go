@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -65,6 +66,10 @@ func (s *v3ModelShelf) setSources(sources modelsource.Set) {
 			continue
 		}
 		rows := fixedDoorModels(service)
+		if len(rows) == 0 && strings.EqualFold(service.Source.ID, "codex") {
+			remembered := catalog.Recall(config.CatalogOptionsFor(service, s.options.Dir))
+			rows = v3Models(remembered)
+		}
 		if len(rows) == 0 && service.Source.Listing == modelsource.ListingModels {
 			rows = tui3.CachedModelsFor(service.Source.ID, service.Address)
 		}
@@ -142,10 +147,7 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 	if s == nil {
 		return nil, errors.New("there is no model shelf")
 	}
-	options := s.options
-	options.Source = service.Source.ID
-	options.BaseURL = service.Address
-	options.APIKey = service.Key
+	options := config.CatalogOptionsFor(service, s.options.Dir)
 	if len(seed) > 0 {
 		minimal := make([]catalog.Model, 0, len(seed))
 		for _, model := range seed {

@@ -2,18 +2,23 @@
 
 ## Can I set a reminder from home
 
-Yes. Type it on the home screen, press `↑` once — which lands on the row spelled
-`ask here: "…"` — and press `enter`.
+Yes. Type `/ask remind me at 6 to leave` on Home and press Enter. Choosing `/ask`
+from the command menu writes `/ask `, ready for your question, like `/task`. A bare
+`/ask` waits for your words. An inline `/ask` tag works too.
 
 ```
- ? ask here: "remind me at 6 to leave"
- + start a new conversation: "remind me at 6 to leave"
- ─ → new conversation in ~/codeaf · glm-5.3-flash ────────── alt+w folder · alt+o model ─
- › remind me at 6 to leave
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
+ ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
+ › /ask remind me at 6 to leave
+ alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
 ```
 
-What you get is **a row at the top of home's `where you were` panel and a pane holding the exchange**. The row
+Plain text followed by Enter starts a new conversation by default. Only search results
+appear above the seam; the old ask/new action rows and their footer hints are gone.
+One Up selects the best result. Down past the last result returns to composing.
+Removing `/ask` returns to ordinary submission. From a conversation, `/ask` opens
+Home and asks there. A refusal leaves the question editable.
+
+What you get is **a row at the top of home's `threads` panel and a pane holding the exchange**. The row
 stays there — with what the errand is doing written in its tail — until the errand is
 finished and you have read what it came to. The pane is the exchange itself: what you said,
 the reply as it streams, one line per tool call, and the card when one arrives. On an
@@ -42,11 +47,11 @@ Every `ask here` is one row, marked `?`, named with the first line of what you a
 - **`∙ answered`** — it finished and nothing standing came of it.
 
 The rows sort among themselves: **what wants you first, then what is moving, then what is
-done**. They sit at the very **top of home's `where you were` panel**, above every
+done**. They sit at the very **top of home's `threads` panel**, above every
 conversation — an errand is a thing you asked for a minute ago.
 
 `enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
-`↑↓ move · enter or tab answer this ask here · esc close`. (`tab` on the row was the way in
+`↑↓ move · enter or tab answer this ask here`. (`tab` on the row was the way in
 until the places arrived and took that key for the next place; `→` points at the column the
 pane is drawn in, which is where the gesture went.)
 
@@ -179,8 +184,8 @@ it:
   its own keys, which is why one half of the toggle stayed and the other moved to the arrow
   that points at the pane.) It works from
   `continue as a conversation` row, an open card. It never loses what is in the pane.
-- **`esc`** in the pane hands the keyboard to the list. One layer at a time: if you have
-  half a follow-up typed, the first `esc` clears that and the second one leaves.
+- **`esc`** in the pane hands the keyboard to the list, preserving any half-written
+  follow-up for when you return.
 - **`enter`** on the exchange's row in the list hands the keyboard to its pane.
 - **clicking** puts the keyboard where the pointer is. A click on a list row opens that
   row, as `enter` would, *and* takes the keyboard to the column; a click anywhere in the
@@ -199,8 +204,8 @@ the list`, with the card's own answers in front of it when a card is up and
 
 **The answers in that line are the ones the card actually drew, and never one more.** A
 card that offers all three reads
-`1 yes, set it up · 3 just once · 0 no · c change`; a one-off reminder's card,
-which has no `just once` to give, reads `1 yes, set it up · 0 no · c change`.
+`1 yes, set it up · 3 just once · 0 no · o other`; a one-off reminder's card,
+which has no `just once` to give, reads `1 yes, set it up · 0 no · o other`.
 The line is built from the question rather than written out, so it cannot name a digit that
 would do nothing.
 
@@ -275,7 +280,7 @@ window is in no project at all. A reminder belongs to no repository; a watch on 
 row is drawn at the top of the list whichever project it ended up in, and the project it
 belongs to is what the errand's own record says.
 
-## How do I answer the card, or say no to it — 1 yes, c change when or where, 3 just once, 0 no
+## How do I answer the card, or say no to it — 1 yes, o other when or where, 3 just once, 0 no
 
 When the exchange gets far enough to propose something that keeps working, a card appears in
 the pane with your own words, when it would wake, and what it would cost per run. Nothing is
@@ -294,7 +299,7 @@ created until you answer it:
   keyboard goes back to the list. **This is the only way to say no in this pane**: `esc` here
   hands the keyboard back to the list without answering anything, and a card left standing on
   the column is not an answer. It is the same key on home's answer row and in a conversation,
-  where `esc` also declines.
+  where `esc` also defers; `0` explicitly declines.
 
 Those four answers are the only four, and a card draws three of them where `3` is not one
 it can offer. Each answer is a row of its own and **a click anywhere along it takes that

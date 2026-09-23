@@ -964,7 +964,7 @@ func (a *app) phoneClock(e *entry) (plain, painted string) {
 		return "", ""
 	}
 	if e.status != toolRunning || e.began.IsZero() || !e.ended.IsZero() ||
-		a.state != stateWorking {
+		a.state != stateWorking && e.discussionID == "" {
 		return "", ""
 	}
 	if limit := a.toolLimit(e); limit > 0 {
@@ -1161,7 +1161,7 @@ func (a *app) mark(e *entry) string {
 		// settles them on sits under a conversation that may well still be working
 		// — so the state test below cannot be the only one, or a node that landed
 		// ten minutes ago spins for as long as the chat above it is busy.
-		if !e.ended.IsZero() || a.state != stateWorking {
+		if !e.ended.IsZero() || a.state != stateWorking && e.discussionID == "" {
 			// The turn ended with this call unresolved — interrupted, or the
 			// stream closed without a close event. A spinner frozen mid-turn
 			// would claim the call is still alive.
@@ -1312,7 +1312,7 @@ func (a *app) countClock(e *entry) (plain, painted string) {
 	// same words: an end stamped on a live row is the lane saying nothing more is
 	// coming, and a number climbing under it would be the row insisting otherwise.
 	if e.status != toolRunning || e.began.IsZero() || !e.ended.IsZero() ||
-		a.state != stateWorking {
+		a.state != stateWorking && e.discussionID == "" {
 		return "", ""
 	}
 	age := countUpWord(a.now().Sub(e.began))

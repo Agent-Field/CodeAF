@@ -322,6 +322,7 @@ const taskModelUnavailableWord = "changing a task's model is unavailable — thi
 // taskRoom is one node's page: what it has said, the lane carrying what it says
 // next, and where the reader is in it.
 type taskRoom struct {
+	workActivity tokens.WorkActivity
 	// detailsTop belongs to this page so scrolling its facts never moves the tree.
 	detailsTop int
 
@@ -491,7 +492,7 @@ const (
 	// already carrying that key while a room is open, and one row saying the same
 	// thing twice is the defect the rewind mode's empty hint exists to avoid.
 	roomRecallHint = "↑↓ history"
-	roomStopHint   = "/stop · x with empty input"
+	roomStopHint   = "/stop · x with empty input · esc main"
 	// roomGoneWord is the one line a landed node's room draws when there is
 	// NOTHING to replay: no lane, and no journal entries. The engine keeps the
 	// transcript's path across restarts and finds it by id when it was not
@@ -621,6 +622,7 @@ func (a *app) newRoom(id uint64, title string) *taskRoom {
 		stick:    true,
 		dirty:    true,
 	}
+	r.workActivity.Start(a.now(), tokens.WorkLogoRandom)
 	r.feed = newFeed(a.roomFeedHooks(r))
 	r.mdAt = a.now()
 	return r
@@ -1911,13 +1913,8 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	switch msg.String() {
 	case "esc":
-		// ESC IN HERE IS THE DOOR AND IT IS NEVER A STOP — stop.go's standing law,
-		// restated at the keystroke it is about. Out in the conversation esc
-		// interrupts the running turn; the analogous act in a room is ending the
-		// node, which is not reversible and is therefore always asked first (`x`,
-		// and the card). So the two surfaces do NOT converge on this key, and the
-		// legend says which of the two meanings is live: while a room is open the
-		// hint slot never reads "esc interrupt" (render.go's [app.hintWord]).
+		// Escape backs out without stopping work, as it does in the main
+		// conversation. Stopping a task remains an explicit x and confirmation.
 		//
 		// A recall walk is left first, for the reason input.go leaves it first: a
 		// state that could not be dismissed by the dismiss key is a trap, and the
@@ -1938,6 +1935,12 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// caret over a sentence.
 
 	case "enter":
+		if !a.roomIsGuest() && strings.TrimSpace(a.input.String()) == "" {
+			entry := a.roomRetryEntry()
+			if a.taskCanRetry(entry) {
+				return a.retryTask(entry), true
+			}
+		}
 		return a.steer(), true
 
 	case "alt+pgup":
@@ -1947,7 +1950,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.roomDetailsScroll(a.scrollPage())
 		return nil, true
 
-	case "ctrl+v":
+	case effortKey:
 		// HOW HARD THIS NODE THINKS, one step up the ladder — the same chord that
 		// moves the install's rung on home at rest and a standing item's on its
 		// own card, bound here to the node whose page this is (taskeffort.go).
@@ -2009,7 +2012,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // roomHint is the hint slot while a room is open (render.go's [app.hintWord]),
 // and it exists because that slot used to LIE in here: with a turn running out
-// in the conversation it drew "esc interrupt" over a page where esc leaves the
+// in the conversation it drew "ctrl+c interrupt" over a page where esc leaves the
 // room and interrupts nothing. A hint naming a key that does something else is
 // the one failure the slot exists to prevent.
 //
@@ -2018,6 +2021,15 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // would be the surface repeating itself in the one place a person reads for the
 // next keystroke.
 func (a *app) roomHint() string {
+	if a.room != nil && !a.roomIsGuest() && !a.guarding() && !a.asking() && !a.stopping() {
+		entry := a.roomRetryEntry()
+		if hint := a.taskRetryHint(entry); hint != "" {
+			return hint
+		}
+		if a.taskCanRetry(entry) && strings.TrimSpace(a.input.String()) == "" {
+			return taskRetryWord
+		}
+	}
 	switch {
 	case a.guarding() || a.stopping():
 		// Both draw their own answers on their own row, directly above the box
@@ -2028,10 +2040,10 @@ func (a *app) roomHint() string {
 		return roomRecallHint
 	case a.stopOffered():
 		if a.roomOrganized() {
-			return "/model · /stop"
+			return "/model · /stop · esc main"
 		}
 		// THE ROOM'S ANSWER TO "HOW DO I STOP THIS". It is the honest counterpart
-		// to the conversation's "esc interrupt": the work in here ends through a
+		// to the conversation's "ctrl+c interrupt": the work in here ends through a
 		// card and never through the dismiss key (stop.go), so this is the key a
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
@@ -2067,11 +2079,18 @@ func (a *app) freezeRoom() {
 	if a.copy.on || a.room == nil {
 		return
 	}
-	rows := a.roomRows(a.bodyWidth())
+	width := a.bodyWidth()
+	height := a.viewHeight()
+	// COPY OWNS THE PAGE BEFORE IT IS LAID OUT, so the room's transient
+	// activity and the blank belonging only to it never enter the snapshot.
+	a.copy.on = true
+	a.room.dirty = true
+	rows := a.roomRows(width)
 	if len(rows) == 0 {
+		a.copy.on = false
+		a.room.dirty = true
 		return
 	}
-	height := a.viewHeight()
 	snapshot := make([]string, 0, len(rows))
 	stripped := make([]string, 0, len(rows))
 	owner := make([]int, 0, len(rows))

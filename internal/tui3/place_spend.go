@@ -62,9 +62,8 @@ type spendPage struct {
 	// the pair is what turns a row of the terminal back into a line of the body
 	// for the pointer (pages.go's [app.placeBodyPress]).
 	top, shown int
-	// hover is the line of the reading the pointer is over, and -1 for none. THE
-	// POINTER PREVIEWS AND THE CURSOR SELECTS: it is drawn at the same rung as
-	// the cursor's own row and moves nothing.
+	// hover is the line of the reading the pointer is over, and -1 for none.
+	// Mouse navigation moves the shared cursor to this line.
 	hover int
 	// unfolded is whether the subjects' fold is open. It lasts while the place
 	// is up and a fresh visit starts it shut, as every fold on a place does.
@@ -513,8 +512,7 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 			return nil
 		}
-		a.leavePlace()
-		return nil
+		return a.openHome()
 	case "up", "ctrl+p":
 		a.moveSpend(-1)
 		a.touch()
@@ -539,17 +537,13 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.stepSpendSlice(step)
 		return nil
 	case "enter":
-		if cmd, opened := a.openSpendRow(); opened {
-			return cmd
-		}
-		// NO ROW UNDER THE CURSOR MEANS THE COMPOSER'S OWN ROAD: enter is what the
-		// hint line says it is — talk about it, in a conversation.
-		return a.placeTalk()
+		// A ROW OPENS, AND NOTHING ELSE HAPPENS: this place has no box, and only
+		// home starts things ([place.box]).
+		cmd, _ := a.openSpendRow()
+		return cmd
 	}
-	if box := a.placeBox(); box != nil {
-		listNavigate(msg, box, a.moveSpend, func() {}, memoryPlaceRows)
-		a.touch()
-	}
+	listNavigate(msg, nil, a.moveSpend, func() {}, memoryPlaceRows)
+	a.touch()
 	return nil
 }
 
@@ -813,7 +807,7 @@ func (placeSpend) body(a *app, width, room int) []placeRow {
 		rows := make([]placeRow, 0, room)
 		rows = append(rows, placeRow{text: a.spend.reading.windowHeaderRow(width, a.pal), hit: -1})
 		cut := len(rows)
-		on := cut == a.spend.cursor || cut == a.spend.hover
+		on := cut == a.spend.cursor
 		text := placeLead + a.spend.reading.sliceHeading(width-len(placeLead), on, a.pal)
 		if on {
 			text = placeBand(text, width, a.pal)
@@ -825,7 +819,7 @@ func (placeSpend) body(a *app, width, room int) []placeRow {
 		a.spend.top, a.spend.shown = 0, len(rows)
 		return rows
 	}
-	lit := func(i int) bool { return (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok }
+	lit := func(i int) bool { return i == a.spend.cursor && a.spendStopAt(i).ok }
 	body, stops := a.spend.reading.paint(width, a.pal, lit)
 	a.spend.stops = stops
 	// THE WINDOW FOLLOWS THE CURSOR. A body cut at the room and never moved
@@ -962,11 +956,11 @@ func (placeSpend) hint(a *app) string {
 	}
 	if len(parts) == 0 {
 		// A PAGE WITH NOTHING ON IT STILL HAS A WAY OUT, and that is all it has.
-		// [placeTailed] adds `tab next place`, so this is `esc` alone rather than
+		// [placeTailed] adds `tab next place`, so this is `esc home` rather than
 		// a foot naming three keys over an empty ledger.
-		return "esc"
+		return homeDoorWord
 	}
-	return strings.Join(parts, railSep) + railSep + "esc"
+	return strings.Join(parts, railSep) + railSep + homeDoorWord
 }
 
 func (placeSpend) press(a *app, y int) (tea.Cmd, bool) {
@@ -983,7 +977,7 @@ func (placeSpend) hover(a *app, y int) bool {
 	if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {
 		next = at
 	}
-	return placeHoverMoved(&a.spend.hover, next, a)
+	return placeHoverMoved(&a.spend.hover, &a.spend.cursor, next, next, a)
 }
 
 func (placeSpend) wheel(a *app, delta int) (tea.Cmd, bool) {

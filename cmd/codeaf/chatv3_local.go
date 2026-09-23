@@ -176,6 +176,7 @@ func openChatV3Local(launch localLaunch) error {
 	// front of a path, and `another window` where a connection would name a
 	// host.
 	hello := remote.Hello{
+		Headless:  launch.once != "",
 		Workspace: launch.workspace,
 		Session:   launch.session,
 		Model:     launch.model,
@@ -370,6 +371,17 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 	options.SaveModel = func(model string) error {
 		return config.WriteChatModel(profileDir, model)
 	}
+	// THE CODEX BROWSER DOOR IS THIS MACHINE'S TOO. The sign-in listens on this
+	// machine's loopback and writes its tokens into the profile named above —
+	// the engine's — which is exactly the pair --host cannot have. A launch that
+	// reaches this line is a person at a terminal: --once returned before the
+	// road opened a screen, and a screen is the only thing this road opens. It
+	// was set on the in-process door alone when /connect grew the Codex row,
+	// and on the ordinary launch the row answered `codex browser sign-in is
+	// unavailable here` — the same family as Landing above and the doors
+	// around it: a seam handed only to [openChatV3] is a seam the default road
+	// does not have.
+	options.ConnectCodex = v3CodexConnection(true)
 	if profileDir == settings.ProfileDir {
 		options.Sources = settings.Sources
 	} else {

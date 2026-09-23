@@ -54,7 +54,8 @@ func (m Mode) String() string {
 }
 
 // Sources records where each resolved value came from. Every field holds one
-// of four words: "default", "setting", "env" or "ci".
+// of four words: "default", "setting", "env" or "ci" — and Mode alone may hold
+// a fifth, "telemetry", when the telemetry off switch capped it at Read.
 type Sources struct {
 	Mode      string
 	RelayURL  string
@@ -86,16 +87,23 @@ type Config struct {
 	Source    Sources
 }
 
-// The eight names Resolve reads, and no others.
+// The eleven names Resolve reads, and no others. The first three are the
+// telemetry off switch's environment rungs, spelled exactly as
+// internal/telemetry's ladder spells them — the variable, the ecosystem's
+// word, and an endpoint set to nothing — so the one switch the notice names
+// turns off everything that leaves.
 const (
-	envMode   = "CODEAF_MODEL_POOL"
-	envCI     = "CI"
-	envRelay  = "CODEAF_MODEL_POOL_RELAY_URL"
-	envIndex  = "CODEAF_MODEL_POOL_URL"
-	envSubmit = "CODEAF_MODEL_POOL_SUBMIT_URL"
-	envMirror = "CODEAF_MODEL_POOL_MIRROR_URL"
-	envTTL    = "CODEAF_MODEL_POOL_TTL"
-	envKey    = "CODEAF_MODEL_POOL_PUBLIC_KEY"
+	envTelemetry  = "CODEAF_TELEMETRY"
+	envDoNotTrack = "DO_NOT_TRACK"
+	envEndpoint   = "CODEAF_TELEMETRY_ENDPOINT"
+	envMode       = "CODEAF_MODEL_POOL"
+	envCI         = "CI"
+	envRelay      = "CODEAF_MODEL_POOL_RELAY_URL"
+	envIndex      = "CODEAF_MODEL_POOL_URL"
+	envSubmit     = "CODEAF_MODEL_POOL_SUBMIT_URL"
+	envMirror     = "CODEAF_MODEL_POOL_MIRROR_URL"
+	envTTL        = "CODEAF_MODEL_POOL_TTL"
+	envKey        = "CODEAF_MODEL_POOL_PUBLIC_KEY"
 )
 
 // Where a resolved value came from.
@@ -104,6 +112,9 @@ const (
 	srcSetting = "setting"
 	srcEnv     = "env"
 	srcCI      = "ci"
+	// srcTelemetry is the Mode source when the telemetry off switch capped
+	// an On at Read: the pool still reads, and sends nothing.
+	srcTelemetry = "telemetry"
 )
 
 // TTL bounds, and the value held when no readable TTL is set.
@@ -124,7 +135,7 @@ const (
 // Config, it keeps nothing between calls, and many goroutines may call it at
 // once.
 func Resolve(setting, publicKey string, lookup func(name string) (value string, set bool)) Config {
-	// One injection for the whole environment: the eight names are read once,
+	// One injection for the whole environment: every name is read once,
 	// here, in this order, and each value is trimmed as it is read.
 	get := func(name string) (string, bool) {
 		if lookup == nil {
@@ -138,6 +149,9 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 	}
 	modeWord, _ := get(envMode)
 	ciWord, _ := get(envCI)
+	telemetryWord, _ := get(envTelemetry)
+	doNotTrackWord, _ := get(envDoNotTrack)
+	endpointWord, endpointSet := get(envEndpoint)
 	relayWord, _ := get(envRelay)
 	indexWord, _ := get(envIndex)
 	submitWord, submitSet := get(envSubmit)
@@ -156,6 +170,16 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 		mode, modeSrc = m, srcSetting
 	} else if ciSaysYes(ciWord) {
 		mode, modeSrc = Read, srcCI
+	}
+	// THE TELEMETRY OFF SWITCH WINS OVER EVERY ANSWER ABOVE, an explicit
+	// `on` included. The notice says "Turn off: CODEAF_TELEMETRY=off" without
+	// qualification, and the pool's rows are the other thing this binary
+	// sends; a switch that stopped one stream and not the other would make
+	// that sentence untrue. It caps rather than turns off: the pool is still
+	// read, the judge still scores into the install's own sheet, and nothing
+	// leaves.
+	if telemetrySaysOff(telemetryWord, doNotTrackWord, endpointWord, endpointSet) && mode == On {
+		mode, modeSrc = Read, srcTelemetry
 	}
 
 	// The relay is the base the other two addresses derive from, and its
@@ -258,6 +282,36 @@ func parseMode(word string) (Mode, bool) {
 		return Off, true
 	}
 	return On, false
+}
+
+// telemetrySaysOff reads the telemetry off switch the way internal/telemetry's
+// ladder reads it, spelling for spelling: CODEAF_TELEMETRY is off, 0 or false,
+// DO_NOT_TRACK is 1 or true, or CODEAF_TELEMETRY_ENDPOINT is set and empty —
+// docs/TELEMETRY.md's fifth rung, which stopped the counts and not the pool
+// until 2026-09-21. Two readers of one switch must agree, and this is the
+// second one.
+func telemetrySaysOff(telemetryWord, doNotTrackWord, endpointWord string, endpointSet bool) bool {
+	switch strings.ToLower(telemetryWord) {
+	case "off", "0", "false":
+		return true
+	}
+	switch strings.ToLower(doNotTrackWord) {
+	case "1", "true":
+		return true
+	}
+	return endpointSet && endpointWord == ""
+}
+
+// Quieted is the config with sending capped by the telemetry off switch's
+// other two rungs — the project file and the profile row — which the resolver
+// cannot see because it reads no disk. An On becomes Read from "telemetry";
+// a Read or an Off is already sending nothing and is answered unchanged.
+func (c Config) Quieted() Config {
+	if c.Mode == On {
+		c.Mode = Read
+		c.Source.Mode = srcTelemetry
+	}
+	return c
 }
 
 // ciSaysYes reads the CI word: one of true, 1 or yes, without regard to case.

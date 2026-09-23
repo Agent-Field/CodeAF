@@ -305,7 +305,7 @@ func TestTheOptionCharacterTableIsExactlyTheBoundChords(t *testing.T) {
 	}
 	// The seven places, the map, and the letters the composer and the two places
 	// that have a view actually take.
-	for _, chord := range []string{"alt+1", "alt+7", "alt+.", "alt+g", "alt+q", "alt+s", "alt+w", "alt+o", "alt+b", "alt+f"} {
+	for _, chord := range []string{"alt+1", "alt+7", "alt+.", "alt+g", "alt+q", "alt+s", "alt+w", "alt+p", "alt+y", "alt+o", "alt+b", "alt+f"} {
 		found := false
 		for _, have := range chordDeadKeys {
 			if have == chord {

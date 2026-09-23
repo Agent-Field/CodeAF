@@ -660,6 +660,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			if ctx.Err() != nil {
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
+			// A TRANSPORT MAY KNOW THE CREDENTIAL IT OWNS IS FINISHED. That is
+			// not a reachability fault and cannot improve under this dispatcher's
+			// machine walk; preserve the typed cause for the session's person-facing
+			// sentence and return after the one request that established it.
+			if terminalTransportFailureFrom(err) {
+				return nil, fmt.Errorf("execute request: %w", err)
+			}
 			lastErr = fmt.Errorf("execute request: %w", err)
 			// AND A FAULT IS NOT A CEILING, whatever an earlier attempt of this
 			// call learned: the bytes never reached anybody, so nothing has been
@@ -996,6 +1003,15 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// was bounded by: a patient call has no constant to name, and a fault that
 	// broke out after three attempts never had six.
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
+}
+
+// terminalTransportFailureFrom is a narrow structural seam for transports
+// that own credentials the provider package must not import. The exported
+// method lets the typed cause survive wrappers without coupling the dispatcher
+// to a particular account implementation.
+func terminalTransportFailureFrom(err error) bool {
+	var terminal interface{ TerminalTransportFailure() bool }
+	return errors.As(err, &terminal) && terminal.TerminalTransportFailure()
 }
 
 // PlanPauseError is the typed end of a request whose fixed-price window is

@@ -132,6 +132,9 @@ type WrappedAgent interface {
 // and the locked-file fallback; this package owns nothing about how an agent is
 // made and everything about how one is spoken to.
 type Engine struct {
+	// Headless records the approval context the agent was built for. Reusing an
+	// interactive agent must not silently give a headless caller its default gate.
+	Headless bool
 	// Agent is the conversation the surface starts on. Required.
 	Agent WrappedAgent
 	// RefreshModelSources updates the engine's own agents from its own profile
@@ -440,6 +443,17 @@ type Session struct {
 	// has nowhere else: the fan-out runs on a turn's own stream goroutine, and
 	// a status line may not be able to stall the turn it is measuring.
 	newsfeeds map[*server]*newsFeed
+
+	// lastLane is the last finished answer's sighting this conversation
+	// produced — which machine answered — kept so that a window arriving
+	// AFTER the answer is told who answered (news.go's [Session.watchNews]).
+	// Without it a window attached to a conversation the host had been
+	// holding for an hour drew the model and no machine until the next
+	// answer, which the owner read as the provider having gone missing
+	// (2026-09-17). Rescues in flight and withdrawals are not kept: they are
+	// claims about a moment, and only a landed answer is a fact about the
+	// conversation.
+	lastLane *session.LaneNews
 
 	// lanes is the same arrangement for the harness subscription version 11
 	// added, keyed by lane and then by the surface holding it
@@ -992,8 +1006,14 @@ func (r *ring) after(seq uint64) (uint64, []json.RawMessage) {
 // refusal at the door: nothing is numbered, nothing is added to the room, and
 // the keyboard is not touched, because a connection that is about to be told
 // "no" must not first take the keys off the window that owns the work.
+var errExecutionMode = errors.New("this conversation is already open in a different interactive or headless mode; close it before retrying")
+
 func (sess *Session) attach(s *server, hello Hello) error {
 	sess.mu.Lock()
+	if hello.Headless != sess.engine.Headless {
+		sess.mu.Unlock()
+		return errExecutionMode
+	}
 	if hello.Join && !sameTranscript(hello.Session, sess.engine.SessionFile) {
 		sess.mu.Unlock()
 		return joinRefusal(hello.Session)
@@ -1129,13 +1149,6 @@ func steerRepeatKnown(agent any) bool {
 	return ok && door.SteerRepeatKnown()
 }
 
-func shortTitleOf(agent any) string {
-	if named, ok := agent.(interface{ ShortTitle() string }); ok {
-		return named.ShortTitle()
-	}
-	return ""
-}
-
 func (sess *Session) welcomeLocked(s *server) Welcome {
 	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
 	// this reading in the welcome is what makes an old persistent engine say
@@ -1155,7 +1168,6 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Model:                      sess.agent.Model(),
 		Build:                      buildinfo.String(),
 		Title:                      sess.agent.Title(),
-		ShortTitle:                 shortTitleOf(sess.agent),
 		Note:                       note,
 		ApprovalMode:               sess.engine.ApprovalMode,
 		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,
@@ -1176,12 +1188,18 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
 		TaskSetup:  taskSetupKnown(sess.agent),
+		TaskRetry:  taskRetryKnown(sess.agent),
 		// Whether this engine has a dial on the conversation's own thinking,
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
 		// engine without a dial from a conversation whose dial is off.
-		Effort:     effortKnown(sess.agent),
-		TaskSettle: taskSettleKnown(sess.agent),
+		Effort:   effortKnown(sess.agent),
+		Approval: approvalKnown(sess.agent),
+		// AND THE TWO FACTS ABOUT THE INSTALL THE DRAFT READS, carried once
+		// (effort.go's [installEffort], approval.go's [standingApproval]).
+		DefaultEffort:    installEffort(sess.agent),
+		StandingApproval: standingApproval(sess.agent),
+		TaskSettle:       taskSettleKnown(sess.agent),
 		// Whether this conversation's news reaches the surface at all, asked the
 		// way the newsroom files it ([Session.fileNews]): an engine that cannot
 		// name its conversation fans nothing out, and says so here.
@@ -1816,7 +1834,7 @@ func (s *server) handshake(line []byte) error {
 		// connection's writer held — and the session is let go of first, because
 		// this connection never entered the room and [server.leave] must not take
 		// it out of one.
-		if errors.Is(arrived, ErrJoinedGone) {
+		if errors.Is(arrived, ErrJoinedGone) || errors.Is(arrived, errExecutionMode) {
 			s.session = nil
 			return s.refuse(arrived.Error())
 		}
@@ -1962,14 +1980,32 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmit, MethodFollowUp, MethodSteer, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop:
+	case MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
 	}
 
 	switch call.Method {
+	case MethodTaskRetry:
+		args, err := arg[TaskSetupArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		want, agreed := steerConversation(s.joined, args.Session)
+		if !agreed || want == "" {
+			return nil, session.ErrNotThatConversation
+		}
+		owner, mine := sess.agentOf(want)
+		if !mine {
+			return nil, session.ErrNotThatConversation
+		}
+		door, ok := owner.(taskRetryDoor)
+		if !ok {
+			return nil, errors.New("retrying tasks is unavailable in this engine")
+		}
+		return nil, door.RetryTask(args.ID)
 	case MethodTaskModel, MethodTaskEffort, MethodTaskSetEffort:
 		args, err := arg[TaskSetupArgs](call)
 		if err != nil {
@@ -2333,6 +2369,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		events, err := agent.Submit(context.Background(), args.Text)
 		return s.stream(MethodSubmit, args.Text, events, err)
 
+	case MethodQuestionReplace:
+		args, err := arg[QuestionArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			ReplaceQuestion(context.Context, session.Answer) (<-chan session.Event, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot replace a pending request")
+		}
+		events, err := door.ReplaceQuestion(context.Background(), args.Answer)
+		return s.stream(MethodQuestionReplace, args.Answer.Change, events, err)
 	case MethodFollowUp:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {
@@ -2523,6 +2572,30 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			s.session.announce()
 		}
 		return json.Marshal(took)
+
+	case MethodResolvedApproval, MethodSetApproval:
+		door, ok := agent.(approvalDoor)
+		if !ok || !door.ApprovalDial() {
+			// A surface reading [Welcome.Approval] never gets here, and one that
+			// asked anyway is told the fact (approval.go).
+			return nil, errors.New("engine: this conversation has no dial onto what runs without asking; update the engine and reconnect")
+		}
+		if call.Method == MethodResolvedApproval {
+			return json.Marshal(door.ResolvedApprovalPosture())
+		}
+		posture, err := arg[string](call)
+		if err != nil {
+			return nil, err
+		}
+		refusal := ""
+		if err := door.SetApprovalPosture(posture); err != nil {
+			refusal = err.Error()
+		} else {
+			// AND EVERY SURFACE IS TOLD, on [MethodSetEffort]'s terms: the posture
+			// rides the fact set every window on this conversation draws from.
+			s.session.announce()
+		}
+		return json.Marshal(refusal)
 
 	case MethodConsent:
 		args, err := arg[ConsentArgs](call)

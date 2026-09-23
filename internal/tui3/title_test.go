@@ -31,7 +31,7 @@ func TestTheTerminalTitleSaysWhereYouAre(t *testing.T) {
 		{"home, three waiting", func(t *testing.T) *app { return homeWanting(t, 3) }, "3 want you · codeaf"},
 		{"a conversation", func(t *testing.T) *app {
 			_, a := wired()
-			a.title, a.shortTitle = "counting the tokens in a transcript", "Token counter"
+			a.title = "Token counter"
 			return a
 		}, "Token counter · codeaf"},
 		{"a conversation with no name yet", func(t *testing.T) *app {
@@ -49,7 +49,7 @@ func TestTheTerminalTitleSaysWhereYouAre(t *testing.T) {
 		}, "Fix the nil-map crash · task · codeaf"},
 		{"over --host", func(t *testing.T) *app {
 			_, a := wired()
-			a.shortTitle, a.host = "Token counter", "devbox"
+			a.title, a.host = "Token counter", "devbox"
 			return a
 		}, "Token counter @ devbox · codeaf"},
 	}
@@ -70,7 +70,7 @@ func TestTheTerminalTitleSaysWhereYouAre(t *testing.T) {
 // here is a row this test names rather than one it silently skips.
 func TestEveryPlaceTitlesTheTabWithItsWord(t *testing.T) {
 	want := map[page]string{
-		pageTasks:    "tasks · codeaf",
+		pageTasks:    "sessions · codeaf",
 		pageStanding: "standing · codeaf",
 		pageMemory:   "memory · codeaf",
 		pageSpend:    "spend · codeaf",
@@ -99,7 +99,7 @@ func TestEveryPlaceTitlesTheTabWithItsWord(t *testing.T) {
 // codeaf tab from a shell's.
 func TestALongNameIsCutBeforeTheSuffix(t *testing.T) {
 	_, a := wired()
-	a.shortTitle = strings.Repeat("a very long conversation name ", 6)
+	a.title = strings.Repeat("a very long conversation name ", 6)
 	got := terminalTitle(a)
 	if !strings.HasSuffix(got, " · codeaf") {
 		t.Fatalf("the suffix was cut: %q", got)
@@ -129,7 +129,7 @@ func TestTheNeedsYouMarkIsASCIIOnARichTerminal(t *testing.T) {
 // eight-bit string terminator a C1 terminal would honour just the same.
 func TestANameCannotCarryAnEscapeIntoTheTitle(t *testing.T) {
 	_, a := wired()
-	a.shortTitle = "evil\x1b]2;pwned\a name tail"
+	a.title = "evil\x1b]2;pwned\a name tail"
 	got := terminalTitle(a)
 	titleIsPlainText(t, got)
 	if got != "evil]2pwned name tail · codeaf" {
@@ -147,7 +147,7 @@ func TestTheTitleIsSentAgainWhenTheNameArrives(t *testing.T) {
 	a.Update(titleEventMsg{gen: a.titleGen, ev: session.Event{
 		Kind: session.EventTitleChanged, Text: "counting the tokens in a transcript", ShortTitle: "Token counter",
 	}})
-	if a.titleSent != "Token counter · codeaf" {
+	if a.titleSent != "counting the tokens in a transcript · codeaf" {
 		t.Fatalf("after the name arrived the tab was sent %q", a.titleSent)
 	}
 	if got := a.View().WindowTitle; got != a.titleSent {
@@ -161,7 +161,7 @@ func TestTheTitleIsSentAgainWhenTheNameArrives(t *testing.T) {
 func TestAnUnchangedTitleIsNotSentTwice(t *testing.T) {
 	_, a := wired()
 	a.width, a.height = 100, 30
-	a.shortTitle = "Token counter"
+	a.title = "Token counter"
 
 	first := a.retitle()
 	if first == nil {
@@ -246,7 +246,7 @@ func titleAsking(t *testing.T) *app {
 		toolBegin("bash", "bash go test ./..."),
 		consentEvent(7, "bash", "bash go test ./...", `bash pattern "go test *"`),
 	})
-	a.shortTitle = "Token counter"
+	a.title = "Token counter"
 	typeLine(t, a, "run the tests")
 	if !a.asking() {
 		t.Fatal("the question never came up")

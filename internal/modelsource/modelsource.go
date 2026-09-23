@@ -148,6 +148,9 @@ type Connected struct {
 	Source  Source
 	Key     string
 	Address string
+	// Home is the profile directory whose rotating credentials belong to this
+	// connection. Empty keeps the ordinary codeaf state root.
+	Home string
 	// Door is the bound billing road. It is zero for a one-door service, so all
 	// older status and runtime behaviour remains byte-identical.
 	Door Door
@@ -414,7 +417,7 @@ const (
 	minimaxPreferredModel  = "MiniMax-M3"
 )
 
-// Vendored returns the seven service descriptions shipped by this phase.
+// Vendored returns the service descriptions shipped by this phase.
 func Vendored() []Source {
 	return []Source{
 		{
@@ -477,6 +480,12 @@ func Vendored() []Source {
 			},
 			Listing: ListingNone, ProbeModel: "qwen3.8-flash", Probe: listingProbe(),
 			Preferred: "qwen3.7-plus",
+		},
+		{
+			ID: "codex", Written: "codex", Name: "Codex",
+			Address:  "https://chatgpt.com/backend-api/codex",
+			KeyShape: func(key string) bool { return strings.TrimSpace(key) == "chatgpt" },
+			Listing:  ListingNone, Probe: Probe{}, Preferred: "gpt-5.5",
 		},
 		{
 			ID: "ollama", Written: "ollama", Name: "Ollama",
@@ -622,7 +631,10 @@ type Outcome struct {
 	// making a second catalog-shaped response the only road to the picker.
 	ModelIDs []string
 	Listed   bool
-	Door     Door
+	// Refreshed distinguishes an answered live list from the vendored fallback.
+	// It is meaningful only when Listed is true.
+	Refreshed bool
+	Door      Door
 	// PlanPaused records that the selected door proved the plan exists but its
 	// current usage window is spent. PlanReset is the vendor's readable reset
 	// time when it supplied one, and Overflow is the separately billed road the

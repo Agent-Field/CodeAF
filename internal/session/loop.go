@@ -81,12 +81,14 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -2288,7 +2290,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// (taxonomy_boundary.go's [providerCouldNotServe]) — and with the
 			// person's own words in front of it, because the router's sentence is
 			// not one anybody outside this process can act on ([endingWords]).
-			return nil, model, endingWords(err, verdict)
+			return nil, model, endingWords(err, verdict, a.failureServiceWord(model))
 		case verdict.Retries():
 			// A CUT IS SAID AT ONCE AND THEN PAYS THE VERDICT'S WAIT LIKE ANY
 			// OTHER FAILURE. Its junk is already gone from the page, so the
@@ -2371,7 +2373,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if isCut {
 			return nil, model, cutFailure(cut, cuts, hopped)
 		}
-		return nil, model, transportFailure(lastErr, verdict, origin, attempt+1, hopped)
+		return nil, model, transportFailure(lastErr, verdict, origin, attempt+1, hopped, a.failureServiceWord(model))
 	}
 	// AND THE LOOP FALLS OUT HERE ONLY WHEN THE DEADLINE WENT WITHOUT A FAILURE
 	// TO READ — every attempt cut short and re-asked until the give-up was gone.
@@ -2793,7 +2795,10 @@ func (e *cutGaveUp) Unwrap() error { return e.cut }
 // the one this build has always ended on — `after 3 retries: …` — which is not
 // prose anybody loves and IS what several layers out and a good deal of the
 // record already read, so it is left exactly as it was.
-func transportFailure(err error, verdict taxonomy.Verdict, origin string, attempts int, hopped []string) error {
+func transportFailure(err error, verdict taxonomy.Verdict, origin string, attempts int, hopped []string, service string) error {
+	if said, ok := terminalFailureWords(err, service); ok {
+		return &transportGaveUp{err: err, said: said}
+	}
 	if len(hopped) == 0 {
 		return fmt.Errorf("after %d retries: %w", attempts-1, err)
 	}
@@ -2819,15 +2824,51 @@ func transportFailure(err error, verdict taxonomy.Verdict, origin string, attemp
 // layer that decides anything about a provider failure decides it from the
 // error's TYPE, so the typed refusal stays reachable through Unwrap and only the
 // words on the front change.
-func endingWords(err error, verdict taxonomy.Verdict) error {
+func endingWords(err error, verdict taxonomy.Verdict, service string) error {
 	if err == nil {
 		return nil
+	}
+	if said, ok := terminalFailureWords(err, service); ok {
+		return &transportGaveUp{err: err, said: said}
 	}
 	said := strings.TrimSpace(transportWords(verdict))
 	if said == "" {
 		return err
 	}
 	return &transportGaveUp{err: err, said: said}
+}
+
+// terminalFailureWords preserves the three endings whose typed error carries
+// a more useful action than the generic transport taxonomy can. The service is
+// resolved by [Agent.failureServiceWord], from the same source set that built
+// the client, so a payment refusal names the connection the person chose.
+func terminalFailureWords(err error, service string) (string, bool) {
+	if errors.Is(err, codexauth.ErrSignInExpired) {
+		return codexauth.ErrSignInExpired.Error(), true
+	}
+	if paused, ok := provider.PlanPauseFrom(err); ok {
+		return provider.PlanPauseSentence(paused.Reset, paused.OverflowDoor), true
+	}
+	refusal, ok := provider.RefusalFrom(err)
+	if !ok || !refusal.AccountCannotPay() || strings.TrimSpace(service) == "" {
+		return "", false
+	}
+	said := strings.TrimSpace(refusal.Message)
+	if said == "" {
+		said = strings.TrimSpace(refusal.Body)
+	}
+	return config.ConnectionOutcomeWord(service, modelsource.Outcome{
+		Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: said,
+	}), true
+}
+
+// failureServiceWord is the written service name behind the model that failed.
+// It asks the source set rather than splitting the slug again, so custom names
+// and an unqualified default model are read exactly as the client door read them.
+func (a *Agent) failureServiceWord(model string) string {
+	sources := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
+	service, _ := sources.For(model)
+	return strings.TrimSpace(service.Source.Written)
 }
 
 // transportGaveUp is that sentence WITH the failure still reachable under it, on

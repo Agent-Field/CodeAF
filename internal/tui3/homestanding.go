@@ -787,7 +787,7 @@ func (a *app) homeItemEnter(line homeLine) tea.Cmd {
 	// reach. That reading was repealed for conversations and the word itself
 	// says so ([homeElsewhereWord]: "IT NO LONGER MARKS A ROW THIS WINDOW CANNOT
 	// OPEN, because there is no such row: enter opens any project on this
-	// screen"), and a `where you were` row in another project has opened from
+	// screen"), and a `threads` row in another project has opened from
 	// here ever since. Only this path kept the old guard, so a watch asked for in
 	// one project answered nothing at all from a window standing in another —
 	// which is every window that did not happen to be launched inside that
@@ -821,6 +821,21 @@ func standWhere(line homeLine) string {
 // the world is read again, and what the person sees is what the disk says. A row
 // that showed `paused` over a store that refused the write would be the screen
 // lying about the machine, which is the one thing this surface may not do.
+// standsForItem reports whether a line is a standing item's row — the item's
+// own [homeItem] line, or a ledger line that carries the item: a row of
+// `scheduled` (homepanel_next.go) or a firing's line on `since you left`.
+//
+// IT EXISTS BECAUSE A FIRING WATCH LEFT THE TASKS PANEL. Its row there was a
+// [homeItem] line, and the card, `ctrl+e`, `ctrl+x` and `alt+e` all knew the
+// item by that kind alone; the panel is the day's tasks now (owner,
+// 2026-09-17) and the watch keeps only its row on `scheduled`, whose door is
+// the standing place and whose kind is therefore the ledger's. The keys follow
+// the item and not the kind, so the watch is still one `ctrl+e` from paused
+// wherever its row stands.
+func (l homeLine) standsForItem() bool {
+	return l.kind == homeItem || (l.kind == homeLedger && strings.TrimSpace(l.item.ID) != "")
+}
+
 func (a *app) homeItemWrite(line homeLine, status standing.Status) tea.Cmd {
 	h := &a.home
 	if a.stands.Save == nil {

@@ -84,9 +84,9 @@ func withoutImageTokens(text string) string {
 // message carries. Every one of them carries a picture as content and an
 // ordinary file as a path (attach.go), so there is one rule and not three.
 //
-// It reports whether the text was files. When it was, they are on that tray and
-// the tokens are in that box; when it was not, nothing has happened and the
-// caller inserts the text as the text it plainly is.
+// It reports whether the text was attached. On success, files are on the tray
+// and picture tokens are in the box. A refused attachment may leave a notice,
+// but returns false so the caller still inserts the original text.
 func (a *app) pasteFilesInto(box *editor, chips *[]chip, text string) bool {
 	// A SLASH COMMAND'S ARGUMENT IS A PATH AND MUST STAY ONE. `/image ` followed
 	// by a dropped file is somebody using the command exactly as documented, and
@@ -117,7 +117,7 @@ func (a *app) pasteFilesInto(box *editor, chips *[]chip, text string) bool {
 		candidate, info := hit.path, hit.info
 		if info.IsDir() {
 			a.trayNote(filepath.Base(candidate) + " is a folder · attach a file")
-			return true
+			return false
 		}
 		if isImagePath(candidate) {
 			if info.Size() > maxAttachBytes {

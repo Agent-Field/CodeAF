@@ -177,31 +177,28 @@ func (a *app) stripPhonePress(width int) (tea.Cmd, bool) {
 // two-cell lead ([tasksBareLead]) already sits in front of.
 const taskSheetPhoneIndent = 2
 
-// taskSheetBar is the roster page's foot at [tierPhone]: a `‹ back` band a thumb
+// taskSheetBar is the roster page's foot at [tierPhone]: an `esc home` band a thumb
 // leaves by, in place of the key legend a keyboard reads ([tasksPlace.hint]).
 // It is the record card's own bar shape ([phoneBar]) — one target here, because
 // filtering the page is done by typing and there is no toggle to give a band to.
 func (a *app) taskSheetBar(width int) (string, []hudSpan) {
-	back := homeSheetBackWord
-	if a.pal.ascii {
-		back = homeSheetBackASCII
+	back := homeDoorWord
+	if a.taskSheetFiltering() {
+		back = tasksClearFilterWord
 	}
 	return phoneBar(width, []string{back}, a.pal)
 }
 
-// taskSheetBarPress resolves a press on that bar and reports whether it took it.
-// The one target closes the page, which drops a person back to the conversation.
-func (a *app) taskSheetBarPress(x int) bool {
+// taskSheetBarPress follows the same back action as Escape: clear a filter first,
+// then return to Home.
+func (a *app) taskSheetBarPress(x int) tea.Cmd {
 	width, _ := a.size()
 	_, spans := a.taskSheetBar(width)
-	for i, span := range spans {
-		if !span.holds(x) {
-			continue
+	for _, span := range spans {
+		if span.holds(x) {
+			cmd, _ := a.taskSheetKeyPress(tea.KeyPressMsg{Code: tea.KeyEscape})
+			return cmd
 		}
-		if i == 0 {
-			a.closeTaskSheet()
-		}
-		return true
 	}
-	return false
+	return nil
 }

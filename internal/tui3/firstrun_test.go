@@ -120,6 +120,19 @@ func TestTheSetupOpensOverAnEmptyProfileAndNotOverAConfiguredOne(t *testing.T) {
 	}
 }
 
+func TestC19FirstrunRendersOpenRouterAndNoCodexOffer(t *testing.T) {
+	// C19: this is the frame a person sees on a fresh profile, not merely a
+	// constructor seam. Codex belongs behind /connect and is absent here.
+	a, _, _ := setupApp(t, nil)
+	screen := setupScreen(a)
+	if !strings.Contains(screen, "openrouter") {
+		t.Fatalf("first-run setup lost its OpenRouter offer:\n%s", screen)
+	}
+	if strings.Contains(strings.ToLower(screen), "codex") {
+		t.Fatalf("first-run setup exposed Codex:\n%s", screen)
+	}
+}
+
 func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testing.T) {
 	a, dir, handed := setupApp(t, nil)
 	flow := &setupOpenRouterFlow{

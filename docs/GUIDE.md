@@ -101,6 +101,7 @@ Recognizing a channel does not mean a matching release exists.
 
 ```bash
 curl -fsSL https://agentfield.ai/get/codeaf/dev | bash
+curl -fsSL https://agentfield.ai/get/devaf | bash
 curl -fsSL https://agentfield.ai/get/codeaf/staging | bash
 curl -fsSL https://agentfield.ai/get/codeaf/rc | bash
 curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
@@ -112,6 +113,7 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 | `--dev` | Select the latest `dev-*` release. |
 | `--rc`, `--staging` | Select a matching channel build or stop if none has been published. |
 | `--version TAG` or `VERSION=<tag>` | Pin one release tag. |
+| `--name WORD` or `CODEAF_INSTALL_NAME=WORD` | Choose the installed binary's file name. |
 | `--dir PATH` | Install somewhere other than `~/.codeaf/bin`. |
 | `--no-modify-path` | Print the PATH line without editing a shell file. |
 | `--verbose` | Print each GET. |
@@ -119,9 +121,14 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 
 The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
 `checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it
-appends one `export PATH=… # codeaf installer` line to the applicable shell file. Its
-last action is `codeaf version`. Release builds cover darwin, linux, and windows on
-amd64 and arm64.
+appends one `export PATH=… # codeaf installer` line to the applicable shell file. On a
+normal run it prints three things and nothing else: `installed codeaf v… built … ·
+go… os/arch` (the installed file naming itself), the three-line telemetry notice, and,
+when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste into the
+current shell, bold green on a terminal, last, with a blank line above and below.
+`--verbose` also reports the channel, the tag and the install path on stderr. The
+`/get/devaf` line selects the dev channel and names the file `devaf`, installing it
+beside codeaf. Release builds cover darwin, linux, and windows on amd64 and arm64.
 
 </details>
 
@@ -276,10 +283,13 @@ after the conversation. Memory keeps person-, project-, or machine-scoped record
 
 ## Models, keys, and spending
 
-Key resolution is `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`, then `api_key` in the
-profile's `config.json`. With no key, an interactive local launch opens a two-page setup
-that offers to connect OpenRouter in a browser or take a pasted key. A non-interactive
-chat with no key stops instead, with `codeaf chat needs a model to talk with.`
+Key resolution for the default service is `OPENROUTER_API_KEY`, then
+`OPENAI_API_KEY`, then `api_key` in the profile's `config.json`. With no credential,
+an interactive local launch opens a two-page setup that offers to connect OpenRouter
+in a browser or take a pasted key. First run is unchanged and does not offer Codex.
+A non-interactive chat starts when the default service has a key or any connected
+service holds its credential; a call to a service without one still fails when it is
+made. With no credential anywhere it stops with `codeaf chat needs a model to talk with.`
 
 <details>
 <summary>The two first-run screens, word for word</summary>
@@ -300,7 +310,9 @@ The second page is `Daily limit`, `Chat model` and `Work crew`.
 The chat model resolves from `--model`, then saved `model.talk`, then `CODEAF_MODEL`,
 then `~deepseek/deepseek-v4-flash-latest`. The last value is a floating alias. Besides
 OpenRouter, the connection screen supports DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba
-Qwen, Ollama, and a custom OpenAI-compatible service; a qualified slug such as
+Qwen, Codex through a ChatGPT plan, Ollama, and a custom OpenAI-compatible service.
+The same supported services can be managed without opening the chat with `codeaf
+connect` and `codeaf disconnect`; a qualified slug such as
 `qwen/<model>` selects its service.
 
 Provider routing defaults to `simple`: an unpinned OpenRouter call carries no provider

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // railAgent is a [fakeAgent] that carries the standing task lane the real
@@ -154,6 +155,72 @@ func TestAHandStartedTaskReachesTheHostedRail(t *testing.T) {
 	far.land(taskEvent(id, "write hello", session.TaskDone))
 	if done := nextTask(t, lane); done.Task == nil || done.Task.State != session.TaskDone {
 		t.Fatalf("landing = %v", done.Task)
+	}
+}
+
+// A FIRING USES THE REAL SESSION LANE OVER THE REAL WIRE. The scripted rail
+// above proves that a task-shaped event can cross; this is the other producer
+// of that lane, whose event has no task payload and is raised outside a turn.
+func TestAStandingFiringReachesTheHostedConversation(t *testing.T) {
+	workspace := t.TempDir()
+	far, err := session.New(session.Config{
+		Workspace: workspace,
+		Model:     "stub/standing-wire",
+		APIKey:    "fixture",
+		BaseURL:   "http://127.0.0.1:1/v1",
+		System:    "Test only.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = far.Close() })
+
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: far, Workspace: workspace}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+
+	// THE LANE IS OPENED THE WAY WatchTaskUpdates OPENS IT, WITH THE ASK MADE
+	// ONCE AND IN THE TEST'S HAND. The door asks off the surface loop, so a
+	// test that wants a receipt before the firing used to repeat the ask
+	// synchronously — and the door's own ask could then reach the engine AFTER
+	// the firing, replace the far subscription the firing went down, and take
+	// the row with it. On a loaded box that order failed the test about one
+	// run in ten. One ask, answered before the firing, leaves no second
+	// subscription to race.
+	client := loop.Client
+	hosted := newStream()
+	client.mu.Lock()
+	client.tasks = hosted
+	client.mu.Unlock()
+	t.Cleanup(hosted.finish)
+	lane := hosted.events()
+	if _, err := client.call(context.Background(), MethodTaskWatch, nil); err != nil {
+		t.Fatalf("open the hosted standing lane: %v", err)
+	}
+
+	item := standing.Item{
+		ID:        "water",
+		Words:     "remind me in 1 minute to drink water",
+		Workspace: workspace,
+	}
+	runner := session.NewStandingRunner(session.Config{}, t.TempDir())
+	if _, err := runner.Say(context.Background(), item, "Time to drink water!"); err != nil {
+		t.Fatalf("fire the standing item: %v", err)
+	}
+
+	event := nextTask(t, lane)
+	if event.Kind != session.EventStandingUpdate || event.Standing == nil {
+		t.Fatalf("the lane carried %v, not a standing update", event.Kind)
+	}
+	if event.Standing.Item.ID != item.ID || event.Standing.Item.Words != item.Words {
+		t.Fatalf("the hosted row names %+v, want %+v", event.Standing.Item, item)
+	}
+	if event.Standing.Text != "Time to drink water!" {
+		t.Fatalf("the hosted row says %q", event.Standing.Text)
 	}
 }
 

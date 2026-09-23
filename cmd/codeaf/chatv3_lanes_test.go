@@ -100,7 +100,7 @@ func TestTheLanesOverAConnectionAreTheOnesTheWireSaysItCarries(t *testing.T) {
 // is built INTO the session rather than switched on after it opened.
 func TestTheEngineBuildsTheSessionWithTheShapeTheHelloCarried(t *testing.T) {
 	plain := engineLaunchOptions(remote.Hello{Workspace: "/srv/app"}, "/srv/app", "")
-	if plain.Yolo || plain.NoCompact || plain.OneModel || plain.Budget.Set() || plain.Interactive {
+	if plain.Yolo || plain.NoCompact || plain.OneModel || plain.Budget.Set() || !plain.Interactive {
 		t.Fatalf("a hello with no shape built %+v", plain)
 	}
 	shaped := engineLaunchOptions(remote.Hello{

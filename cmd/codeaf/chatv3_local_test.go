@@ -176,7 +176,7 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 
 	if local.Connections == nil || local.Harnesses == nil || local.SaveApproval == nil ||
 		local.SaveBashApproval == nil || local.SaveModel == nil || local.Sources.Empty() ||
-		local.ApplyModelSources == nil {
+		local.ApplyModelSources == nil || local.ConnectCodex == nil {
 		t.Fatalf("the plain launch was handed incomplete local doors: %+v", local)
 	}
 	if local.ApplyApprovals != nil {
@@ -229,7 +229,7 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 	hosted, _ := hostOptions(onePipeFleet("devbox", client), welcome, false)
 	if hosted.Connections != nil || hosted.Harnesses != nil || hosted.SaveApproval != nil ||
 		hosted.SaveBashApproval != nil || hosted.SaveModel != nil || !hosted.Sources.Empty() ||
-		hosted.ApplyModelSources != nil {
+		hosted.ApplyModelSources != nil || hosted.ConnectCodex != nil {
 		t.Fatalf("the --host builder grew this machine's doors: %+v", hosted)
 	}
 }
@@ -350,7 +350,7 @@ func TestAConnectedModelServiceIsLiveInTheRunningEngineConversation(t *testing.T
 // the answer releases the call. The next matching command therefore runs
 // without asking the person a second time.
 func TestABankedBashRuleReachesTheRunningEngineBeforeTheAnswer(t *testing.T) {
-	profileDir := t.TempDir()
+	profileDir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
 	workspace := t.TempDir()
 	command := "printf banked-rule-probe"
 	server := consentSource(t, command)

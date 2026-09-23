@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // The session file is JSONL: one header line, then one line per COMPLETED
@@ -259,7 +260,7 @@ type sessionEntry struct {
 	// answered. A line is also how a name can be rewritten later without any
 	// reader having to rewrite the file: the replay takes the LAST title line.
 	Title      string `json:"title,omitempty"`
-	ShortTitle string `json:"shortTitle,omitempty"`
+	ShortTitle string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 
 	// Usage is what one COMPLETED turn — or one auxiliary call beside it — cost,
 	// and it is on its own line rather than on the assistant message that ended
@@ -2169,7 +2170,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// written down under one.
 			if named := healedTitle(entry.Title); named != "" {
 				title = named
-				shortTitle = compactTitle(healedTitle(entry.ShortTitle))
+				shortTitle = ""
 			}
 		}
 	}
@@ -2860,15 +2861,15 @@ func (s *sessionFile) appendRewind(dropped int) {
 // appendTitle journals the session's name. It is one line, appended like any
 // other: a later name simply lands after this one, and the replay takes the
 // last. Nothing rewrites the file.
-func (s *sessionFile) appendTitle(title, short string) {
+func (s *sessionFile) appendTitle(title, _ string) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return
 	}
 	s.mu.Lock()
-	s.title, s.shortTitle = title, strings.TrimSpace(short)
+	s.title, s.shortTitle = title, ""
 	s.mu.Unlock()
-	s.writeLine(sessionEntry{Type: "title", Title: title, ShortTitle: strings.TrimSpace(short), Timestamp: stamp()})
+	s.writeLine(sessionEntry{Type: "title", Title: title, Timestamp: stamp()})
 }
 
 // appendUsage journals what one seal cost: the turn's own figures, or one
@@ -3140,6 +3141,15 @@ func (s *sessionFile) writeLine(entry any) bool {
 	if err != nil {
 		return false
 	}
+	// THE JOURNAL IS AN OBSERVABLE SINK, AND IT IS ALSO THE CONVERSATION'S OWN
+	// MEMORY. The complete encoded entry is scrubbed here, after streamed text
+	// and tool arguments have been assembled, so a credential this process holds
+	// cannot be recreated in the file from pieces that crossed the wire apart.
+	// Only the REGISTERED credentials go: a key a person pasted into their own
+	// message is theirs to keep, and a resumed conversation must replay it to
+	// the model exactly as they wrote it. The broader shape scrub belongs to the
+	// records people share — the call log and the debug record — not here.
+	payload = trace.ScrubRegistered(payload)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {

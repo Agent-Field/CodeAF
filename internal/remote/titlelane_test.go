@@ -54,7 +54,7 @@ func (a *titleLaneAgent) namedPair(title, short string) {
 	}
 }
 
-func TestHostedTitleCarriesItsCompactLabelWithoutAnotherRequest(t *testing.T) {
+func TestHostedTitleIgnoresLegacyCompactLabelWithoutAnotherRequest(t *testing.T) {
 	far := &titleLaneAgent{fakeAgent: &fakeAgent{}}
 	loop := laneLoop(t, far)
 	names, stop := loop.Client.Agent().WatchTitle()
@@ -63,7 +63,7 @@ func TestHostedTitleCarriesItsCompactLabelWithoutAnotherRequest(t *testing.T) {
 	asked := loop.CallsMade()
 	far.namedPair("agentfield repository star growth analysis", "star growth")
 	ev := nextLane(t, names)
-	if ev.ShortTitle != "star growth" || loop.Client.Agent().ShortTitle() != "star growth" || loop.Client.Agent().Title() != ev.Text {
+	if ev.ShortTitle != "" || loop.Client.Agent().ShortTitle() != ev.Text || loop.Client.Agent().Title() != ev.Text {
 		t.Fatalf("hosted title pair disagrees: %+v full=%q short=%q", ev, loop.Client.Agent().Title(), loop.Client.Agent().ShortTitle())
 	}
 	if loop.CallsMade() != asked {
@@ -103,15 +103,17 @@ func titlePayload(rev uint64, name string) []byte {
 	return mustClientJSON(FactsPush{Rev: rev, Facts: session.Facts{Title: name}})
 }
 
-func TestACompactTitleChangeWithTheSameFullTitleWakesTheVisibleTab(t *testing.T) {
+func TestALegacyCompactTitleChangeDoesNotRenameTheVisibleTab(t *testing.T) {
 	lane := newStream()
 	c := &Client{titles: lane}
 	c.facts.fill(&FactsPush{Rev: 1, Facts: session.Facts{Title: "repository star analysis", ShortTitle: "repository stars"}})
 	c.factsFrame(mustClientJSON(FactsPush{Rev: 2, Facts: session.Facts{Title: "repository star analysis", ShortTitle: "star growth"}}))
 	c.titles.finish()
-	ev := nextLane(t, lane.out)
-	if ev.Text != "repository star analysis" || ev.ShortTitle != "star growth" {
-		t.Fatalf("compact title update = %+v", ev)
+	for ev := range lane.events() {
+		t.Fatalf("legacy short label published a title update: %+v", ev)
+	}
+	if got := c.Agent().ShortTitle(); got != "repository star analysis" {
+		t.Fatalf("legacy alias = %q", got)
 	}
 }
 

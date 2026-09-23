@@ -175,21 +175,15 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	}
 	a.closeTaskSheet()
 
-	// Work behind it: the body draws rows and the note counts exactly them, and
-	// the teaching prose is gone.
+	// Work behind it: the body draws rows, the teaching prose is gone, and THE
+	// RULE STILL SAYS NOTHING — the counts are on the section headings the body
+	// draws, and the rule saying them again was one figure on one frame twice.
 	railRun(a)
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over this window's own work")
 	}
-	// TWO OF THE FOUR ARE RUNNING AND TWO ARE PARKED, and the note counts them
-	// apart: [railRun] starts two nodes and admits two behind them, and a foot
-	// that called all four `running` was the tasks place saying two workers were
-	// burning tokens on a machine where nothing was executing.
-	note := plain(strings.Join(a.placeNote(a.width), "\n"))
-	for _, want := range []string{"2 " + taskSheetNowHead, "2 " + railGroupWords[railParked]} {
-		if !strings.Contains(note, want) {
-			t.Fatalf("the note reads %q and does not count the rows the body drew (%q)", note, want)
-		}
+	if note := a.placeNote(a.width); len(note) != 0 {
+		t.Fatalf("the rule repeats the body's counts: %q", plain(strings.Join(note, "\n")))
 	}
 	if text := taskSheetText(a); strings.Contains(text, whisperOf(pageTasks)) {
 		t.Fatalf("a place with rows on it kept its whisper:\n%s", text)
@@ -199,7 +193,7 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	// the words hid it. The note says so and the body stays blank rather than
 	// teaching somebody who did not ask.
 	drive(t, a, key("z"), key("z"))
-	note = plain(strings.Join(a.placeNote(a.width), "\n"))
+	note := plain(strings.Join(a.placeNote(a.width), "\n"))
 	if !strings.Contains(note, taskSheetFilterNone) {
 		t.Fatalf("a query that matched nothing said nothing: %q", note)
 	}
@@ -289,48 +283,48 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 		t.Fatalf("a settled node of this session dropped off the page:\n%s", text)
 	}
 	// AND SO IS WORK ANOTHER CONVERSATION RAN, which the column cannot show at all.
-	for _, want := range []string{"Sweep the call sites", "Port the parser", taskSheetPastHead} {
+	for _, want := range []string{"Sweep the call sites", "Port the parser", "completed"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the page is missing %q:\n%s", want, text)
 		}
 	}
-	// THE GROUPING IS BY WHAT YOU DO NEXT AND NEVER BY WHOSE WORK IT IS: what is
-	// running leads, what landed today follows, and everything older is last.
+	// Completed work stays under its own conversation, and each conversation
+	// appears in only one of the two sections.
 	running := strings.Index(text, taskSheetNowHead)
-	today := strings.Index(text, "finished today")
-	earlier := strings.Index(text, taskSheetPastHead)
-	if running < 0 || today < running || earlier < today {
-		t.Fatalf("the sections are absent or out of order (%d/%d/%d):\n%s", running, today, earlier, text)
+	completed := strings.Index(text, "completed")
+	if running < 0 || completed < running {
+		t.Fatalf("sections out of order:\n%s", text)
 	}
-	if at := strings.Index(text, "Port the parser"); at < earlier {
-		t.Fatalf("work from forty hours ago is drawn above %q:\n%s", taskSheetPastHead, text)
-	}
-	if at := strings.Index(text, "Sweep the call sites"); at < today || at > earlier {
-		t.Fatalf("work that landed today is not under `finished today`:\n%s", text)
+	for _, title := range []string{"Port the parser", "Sweep the call sites"} {
+		if strings.Index(text, title) < completed {
+			t.Fatalf("completed conversation split: %s", text)
+		}
 	}
 	// The live graph's parent links survive the list conversion.
-	for _, connector := range []string{tasksKinCont, tasksKinLast} {
+	for _, connector := range []string{a.pal.glyph(tokens.GTreeBranch) + a.pal.glyph(tokens.GTreeDash), a.pal.glyph(tokens.GTreeLast) + a.pal.glyph(tokens.GTreeDash)} {
 		if !strings.Contains(text, connector) {
 			t.Fatalf("the expanded live family lost its connector %q:\n%s", connector, text)
 		}
 	}
-	// And the note counts every section it drew, in the same words they are
-	// headed with, with none of them written as a zero.
-	// `Read the law` is counted under `earlier` and not under `done today`: the
+	// And every section is on the page under its own heading — and NOT counted
+	// again on the rule: the tally came off it on 2026-09-17 because the body
+	// already says what it holds (place_tasks.go's [tasksPlace.note]).
+	// `Read the law` is filed under `earlier` and not under `done today`: the
 	// fixture announces it already settled, which is how a node replayed out of a
 	// checkpoint arrives, and nothing anywhere records when work like that landed
 	// — so the place will not claim it landed TODAY (place_tasks.go's
 	// [taskNodeEnded] carries the whole reasoning).
-	for _, want := range []string{
-		"2 " + taskSheetNowHead, "2 " + railGroupWords[railParked],
-		"1 finished today", "2 " + taskSheetPastHead,
-	} {
+	// (`waiting` is a state the tally named and the page draws no heading for —
+	// the sections file by where the CONVERSATION stands, tasksplace.go says why.)
+	for _, want := range []string{taskSheetNowHead, "completed"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("the note does not count what is on the page (%q):\n%s", want, text)
+			t.Fatalf("the page lost the %q section:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "0 "+taskSheetNowHead) || strings.Contains(text, "0 "+taskSheetPastHead) {
-		t.Fatalf("the note wrote a section as a zero:\n%s", text)
+	for _, counted := range []string{"2 " + taskSheetNowHead, "1 finished today", "2 " + taskSheetPastHead} {
+		if strings.Contains(text, counted) {
+			t.Fatalf("the rule still counts the page (%q):\n%s", counted, text)
+		}
 	}
 }
 
@@ -410,10 +404,7 @@ func TestTheTaskPageCursorNeverLandsOnASectionWord(t *testing.T) {
 
 	lines := a.tasksFiltered().lay(a.width)
 	for step := 0; step < len(lines)+4; step++ {
-		if _, ok := a.taskSheetCurrent(); !ok {
-			t.Fatalf("the cursor fell off the page after %d steps down", step)
-		}
-		if kind := lines[a.taskSheet.cursor].kind; kind != tasksLineTask {
+		if kind := lines[a.taskSheet.cursor].kind; kind != tasksLineTask && kind != tasksLineChat {
 			t.Fatalf("the cursor landed on a line of kind %v, which answers to nothing", kind)
 		}
 		drive(t, a, key("down"))
@@ -735,13 +726,11 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 		!strings.Contains(painted, a.pal.dim(" "+taskSheetPastHead)) {
 		t.Fatalf("the page door does not use the shared hint palette:\n%q", painted)
 	}
-	// IT SITS ABOVE THE COLUMN'S OWN DOOR. The way out of anything is the last
-	// line of it, and this one is a way further in.
-	lines := strings.Split(strings.TrimRight(rail, "\n"), "\n")
-	last := strings.TrimSpace(lines[len(lines)-1])
-	if !strings.Contains(last, railStowHint) {
-		t.Fatalf("the column's own door is no longer its last line: %q", last)
+	// The history door stays in the footer after the task actions and hide control.
+	if hide, history := strings.Index(rail, railStowHint), strings.Index(rail, taskSheetPastHint); hide < 0 || history <= hide {
+		t.Fatalf("history does not follow the hide control:\n%s", rail)
 	}
+
 }
 
 // A FOLDED FAMILY EARNS IT TOO, because a folded root is one row standing for
@@ -817,11 +806,8 @@ func railMoreLine(t *testing.T, a *app) int {
 
 // ── the column keeps what is running ────────────────────────────────────────
 
-// WORK THAT IS RUNNING IS NEVER SCROLLED OFF THE COLUMN. The families already
-// sort so that everything moving leads; this is the other half of it — a cursor
-// walked down through sixty landed nodes takes the window with it and leaves the
-// running head where it is.
-func TestRunningWorkStaysOnTheColumnHoweverFarTheCursorWalks(t *testing.T) {
+// The hide control stays pinned while all tasks scroll in creation order.
+func TestSidebarHeaderStaysWhileRunningWorkScrolls(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	for i := 2; i <= 60; i++ {
@@ -834,11 +820,13 @@ func TestRunningWorkStaysOnTheColumnHoweverFarTheCursorWalks(t *testing.T) {
 		drive(t, a, key("down"))
 	}
 	rail := rosterText(a, a.viewHeight())
-	if !strings.Contains(rail, "Ship the port") {
-		t.Fatalf("the running task scrolled off the column:\n%s", rail)
+	if strings.Contains(rail, "Ship the port") {
+		t.Fatalf("the running task did not scroll with the list:\n%s", rail)
 	}
-	// And the record under it did move, which is what the cursor was walking
-	// through: the pin is the head alone.
+	// The hide control remains the first row.
+	if !strings.Contains(railText(a, a.viewHeight())[0], railStowHint) {
+		t.Fatal("the hide control moved with the task list")
+	}
 	if strings.Contains(rail, "landed 2 ") {
 		t.Fatalf("nothing scrolled at all:\n%s", rail)
 	}
@@ -866,7 +854,7 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	text := taskSheetText(a)
 	for _, want := range []string{
 		taskSheetNowHead, "Ship the port",
-		"finished today", "Port the parser",
+		"completed", "Port the parser",
 		// AND THE WORDS ARE ON THE CONTROL ROW, at the top of the list, where the
 		// typing lands — not echoed on a note line under the rows they changed.
 		a.pal.glyph(tokens.GFilter) + " port",

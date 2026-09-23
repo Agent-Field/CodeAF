@@ -133,7 +133,10 @@ func TestTheFilterCarriesTheMatchedLettersInBold(t *testing.T) {
 	}
 }
 
-func TestEnterAppliesTheChoiceAndClosesThePicker(t *testing.T) {
+// ENTER APPLIES AND THE LIST STAYS UP. It used to close on the press, which
+// made every choice final and every comparison a round trip; the list is a
+// table now, and esc is the way out ([app.pickerKey]).
+func TestEnterAppliesTheChoiceAndLeavesTheListOpen(t *testing.T) {
 	agent := &fakeAgent{model: "moonshotai/kimi-k3"}
 	a := pickerApp(t, agent, pickerCatalog)
 	typeLine(t, a, "/model")
@@ -142,8 +145,17 @@ func TestEnterAppliesTheChoiceAndClosesThePicker(t *testing.T) {
 	drive(t, a, key("down")) // gpt-5-classic → openai/gpt-4.1-mini
 	drive(t, a, key("enter"))
 
+	if !a.pick.open {
+		t.Fatal("enter has to leave the picker open")
+	}
+	// AND THE MARK FOLLOWS THE CHOICE, because the row it used to sit on is no
+	// longer the model in use ([picker.restate]).
+	if a.pick.current != "openai/gpt-4.1-mini" {
+		t.Fatalf("the list still marks %q", a.pick.current)
+	}
+	drive(t, a, key("esc"))
 	if a.pick.open {
-		t.Fatal("enter has to close the picker")
+		t.Fatal("esc has to close the picker")
 	}
 	if agent.model != "openai/gpt-4.1-mini" {
 		t.Fatalf("model is %q, want openai/gpt-4.1-mini", agent.model)
@@ -203,9 +215,13 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	// has to be. The only thing below it is the status line, which is the last
 	// row of every frame as of the status-down wave (view.go).
 	tail := lines[len(lines)-1-len(pickerCatalog) : len(lines)-1]
-	for i, model := range pickerCatalog {
-		if !strings.Contains(tail[i], model.ID) {
-			t.Fatalf("row %d is %q, want %s", i, tail[i], model.ID)
+	// THE ROWS ARE IN THE LIST'S OWN ORDER, which is its first column — the name,
+	// ascending — because every table on this surface opens sorted (pickersort.go).
+	// This test is about WHERE the list sits and not what order it is in, so it
+	// asks the picker for the order rather than assuming the catalog's.
+	for i, id := range pickerIDs(a) {
+		if !strings.Contains(tail[i], id) {
+			t.Fatalf("row %d is %q, want %s", i, tail[i], id)
 		}
 	}
 	// The foot keeps no blank under the box (view.go's [app.footClearance]), so
@@ -214,21 +230,44 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	if !strings.Contains(box, rowAll(pickerHintFieldsBare)) {
 		t.Fatalf("the filter box is %q, want the hint", box)
 	}
-	if caretY != a.height-2-len(pickerCatalog) || caretX != len(inputPad)+2 {
-		t.Fatalf("the caret is at %d,%d — it belongs in the filter box", caretX, caretY)
+	// THE CARET SITS AFTER THE TACK, which is the one thing the sticky `/model`
+	// chip costs the text ([draftBlockTacked]): the chip is not editable, so the
+	// first character a person types goes to its right.
+	wantX := len(inputPad) + 2 + ansi.StringWidth(slashPickerTack) + 1
+	if caretY != a.height-2-len(pickerCatalog) || caretX != wantX {
+		t.Fatalf("the caret is at %d,%d — it belongs in the filter box after the tack (x=%d)",
+			caretX, caretY, wantX)
 	}
-	// Windows are shown where they are known and nowhere else.
-	if !strings.Contains(tail[1], "1M") || !strings.Contains(tail[0], "200k") {
+	// Windows are shown where they are known and nowhere else. The rows are looked
+	// up by NAME rather than by index, because what order the list is in is the
+	// sort's business (pickersort.go) and this assertion is about the cells.
+	rowOf := func(id string) string {
+		for at, drawn := range pickerIDs(a) {
+			if drawn == id {
+				return tail[at]
+			}
+		}
+		t.Fatalf("%s is not on the list at all", id)
+		return ""
+	}
+	if !strings.Contains(rowOf("openai/gpt-4.1-mini"), "1M") ||
+		!strings.Contains(rowOf("anthropic/claude-gpt-echo"), "200k") {
 		t.Fatalf("context lengths are missing:\n%s", strings.Join(tail, "\n"))
 	}
-	if strings.Contains(tail[3], "0") {
-		t.Fatalf("a model with no published window must show none: %q", tail[3])
+	if silent := rowOf("moonshotai/kimi-k3"); strings.Contains(silent, "0") {
+		t.Fatalf("a model with no published window must show none: %q", silent)
 	}
 
 	// The model in use is accent, wherever the cursor happens to be.
 	rows := a.pick.rows(a.width, a.overlayHeight(), a.pal, -1, a.reasoningFor)
-	if !strings.Contains(rows[1], a.pal.accent("openai/gpt-4.1-mini")) {
-		t.Fatalf("the current model is not marked:\n%s", rows[1])
+	marked := false
+	for _, row := range rows {
+		if strings.Contains(row, a.pal.accent("openai/gpt-4.1-mini")) {
+			marked = true
+		}
+	}
+	if !marked {
+		t.Fatalf("the current model is not marked:\n%s", strings.Join(rows, "\n"))
 	}
 }
 

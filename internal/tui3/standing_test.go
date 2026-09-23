@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -28,6 +29,7 @@ import (
 type standFake struct {
 	*fakeAgent
 	answered []standReply
+	replaced []session.Answer
 }
 
 type standReply struct {
@@ -37,6 +39,13 @@ type standReply struct {
 
 func (f *standFake) ResolveStanding(id uint64, answer session.StandingAnswer) {
 	f.answered = append(f.answered, standReply{id: id, answer: answer})
+}
+
+func (f *standFake) ReplaceQuestion(_ context.Context, answer session.Answer) (<-chan session.Event, error) {
+	f.replaced = append(f.replaced, answer)
+	events := make(chan session.Event)
+	close(events)
+	return events, nil
 }
 
 // ResolveQuestion is the engine's ONE DOOR in miniature: it reads the lane off
@@ -255,11 +264,11 @@ func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 		t.Fatalf("`c` was typed into the box instead of taken: %q", typed)
 	}
 	typeLine(t, a, "make it 8")
-	if len(agent.answered) != 1 || agent.answered[0].answer.Change != "make it 8" {
-		t.Fatalf("the correction did not travel: %+v", agent.answered)
+	if len(agent.replaced) != 1 || agent.replaced[0].Change != "make it 8" {
+		t.Fatalf("updated request did not travel: %+v", agent.replaced)
 	}
-	if agent.answered[0].answer.Approved {
-		t.Fatalf("a correction approved the item: %+v", agent.answered[0].answer)
+	if len(agent.answered) != 0 {
+		t.Fatalf("other approved or answered the old item: %+v", agent.answered)
 	}
 }
 
@@ -728,6 +737,63 @@ func TestAFiringOffTheStandingLaneIsDrawnInTheConversation(t *testing.T) {
 	want := standWaitGlyph + " every Monday at 9, post the · said: the standup note is in notes/standup.md"
 	if body := standText(a); !strings.Contains(body, want) {
 		t.Fatalf("the firing was never drawn.\nwant a row %q\ngot:\n%s", want, body)
+	}
+}
+
+// firingReplyAgent carries both lanes involved in a live firing: the standing
+// event that draws the news and the turn the session wakes to answer it.
+type firingReplyAgent struct {
+	*taskFake
+	wakes chan (<-chan session.Event)
+}
+
+func (f *firingReplyAgent) Wakes() <-chan (<-chan session.Event) { return f.wakes }
+
+// THE REPLY MAY FOLD ITS OWN WORK AND NEVER THE NEWS THAT WOKE IT. The row is
+// present before the first reply event and remains exactly once after the turn
+// settles, which pins both halves of the ordering contract.
+func TestAStandingFiringStaysDrawnAfterItsReply(t *testing.T) {
+	agent := &firingReplyAgent{
+		taskFake: &taskFake{
+			fakeAgent: &fakeAgent{model: "m"},
+			updates:   make(chan session.Event, 8),
+		},
+		wakes: make(chan (<-chan session.Event), 1),
+	}
+	a := newTestApp(agent)
+	a.width, a.height = 120, 24
+	tasks, wakes := a.watchTasks(), a.watchWakes()
+	if tasks == nil || wakes == nil {
+		t.Fatal("the surface did not open both standing firing lanes")
+	}
+
+	const words = "remind me in 1 minute to drink water"
+	row := standName(words) + " · said: Time to drink water!"
+	agent.updates <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
+		Item: standing.Item{
+			ID:    "water",
+			Words: words,
+		},
+		Update: "fired",
+		Text:   "Time to drink water!",
+	}}
+	drive(t, a, runCmd(tasks)...)
+	if body := standText(a); strings.Count(body, row) != 1 {
+		t.Fatalf("before the reply the firing row occurs %d times, want once:\n%s", strings.Count(body, row), body)
+	}
+
+	agent.wakes <- woken(
+		text(session.EventTextDelta, "Drink some water now."),
+		session.Event{Kind: session.EventTurnDone},
+	)
+	drive(t, a, runCmd(wakes)...)
+	drive(t, a, frameMsg{})
+	body := standText(a)
+	if !strings.Contains(body, "Drink some water now.") {
+		t.Fatalf("the firing's reply was not drawn:\n%s", body)
+	}
+	if got := strings.Count(body, row); got != 1 {
+		t.Fatalf("after the reply the firing row occurs %d times, want once:\n%s", got, body)
 	}
 }
 

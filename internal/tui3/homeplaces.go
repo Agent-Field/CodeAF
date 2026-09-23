@@ -134,5 +134,5 @@ func (a *app) homePlaceRow(line homeLine, at, width int, pal palette) string {
 	if says := strings.TrimSpace(line.says); says != "" {
 		margin += " · " + says
 	}
-	return overlayRow(label, margin, at == h.cursor, false, at == h.hover, width, pal)
+	return overlayRow(label, margin, at == h.cursor, false, at == h.hover && at == h.cursor, width, pal)
 }

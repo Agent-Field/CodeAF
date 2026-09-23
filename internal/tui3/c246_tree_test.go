@@ -37,7 +37,7 @@ func TestPlanTreeNestsByParentOnlyAcrossACousinWait(t *testing.T) {
 	}
 }
 
-func TestPlanRailFoldsOnlyFinishedFamiliesAndFoldEnterOpensThePage(t *testing.T) {
+func TestPlanFamiliesStartExpandedAndEnterOpensThePage(t *testing.T) {
 	t.Run("finished family", func(t *testing.T) {
 		root := session.PlanTaskRow{ID: "t-root", Title: "Finished family", Status: "done"}
 		child := session.PlanTaskRow{ID: "t-child", Title: "landed child", Parent: root.ID, Status: "done"}
@@ -48,8 +48,8 @@ func TestPlanRailFoldsOnlyFinishedFamiliesAndFoldEnterOpensThePage(t *testing.T)
 		}
 		text := taskSheetText(a)
 		line, ok := planLine(text, root.Title)
-		if !ok || !strings.Contains(line, "· 1 done") || strings.Contains(text, child.Title) {
-			t.Fatalf("the finished family did not fold to one counted line:\n%s", text)
+		if !ok || !strings.Contains(line, "done") || !strings.Contains(text, child.Title) {
+			t.Fatalf("the finished family did not show its child by default:\n%s", text)
 		}
 		drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
 		if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != root.ID {

@@ -75,7 +75,7 @@ func TestTheMoneySegmentReservesTheRoomItWillNeedAndNeverShovesTheCluster(t *tes
 			// figure would shove.
 			a.ctxWindow, a.ctxTokens = 128_000, 12_400
 			a.cost, a.shownCost = spent, spent
-			row := plain(a.status(width))
+			row := plain(a.legend(width))
 			end, after := billEdgesIn(t, row, dollars(spent))
 			if at == 0 {
 				firstEnd, firstAfter, firstBill, firstRow = end, after, spent, row

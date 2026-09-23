@@ -105,8 +105,8 @@ func TestNewChatHeaderTargetsFitAndStayStableAcrossStatusChanges(t *testing.T) {
 				}
 				prev = h.span.to
 			}
-			if starting && !strings.Contains(plain(line), "New chat") {
-				t.Fatalf("missing selected new chat at %d: %q", width, plain(line))
+			if starting && strings.Contains(plain(line), "New chat") {
+				t.Fatalf("empty start page added a tab at %d: %q", width, plain(line))
 			}
 			if starting {
 				a.cancelChatStart()
