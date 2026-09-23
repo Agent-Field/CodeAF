@@ -115,6 +115,12 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 	for _, name := range OperatorEnvPins {
 		registered[name] = true
 	}
+	// A RETIRED ROW'S VARIABLE IS READ ONLY TO BE TOLD IT IS GONE
+	// ([retiredRowEnv]), which is the opposite of a pin: nothing it says is
+	// obeyed, so it has no row to be.
+	for _, name := range retiredRowEnv {
+		registered[name] = true
+	}
 
 	pattern := regexp.MustCompile(`CODEAF_[A-Z0-9_]+`)
 	root := repositoryRoot(t)
