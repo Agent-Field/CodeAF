@@ -142,6 +142,69 @@ func live(p plan, o options, out io.Writer) error {
 	return os.WriteFile(filepath.Join(p.Out, "summary.md"), []byte(summary), 0o600)
 }
 
+// reread reads an earlier run's output root again from its records alone —
+// the plan store, the trajectories and the call log each invocation left —
+// and prints the table. It calls no model and starts no door: a reader that
+// improves is applied to rows already paid for. What only the live run could
+// see (the pass, the door's exit and envelope, the width polled while it ran)
+// is carried over from each invocation's own row.json.
+func reread(root string, cells []cell, arms []arm, out io.Writer) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	p := plan{Cells: cells, Arms: arms, Out: root}
+	var rows []row
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, entry.Name())
+		var old row
+		raw, err := os.ReadFile(filepath.Join(dir, "row.json"))
+		if err != nil || json.Unmarshal(raw, &old) != nil {
+			continue
+		}
+		c, okCell := findCell(cells, old.Cell)
+		var a arm
+		okArm := false
+		for _, candidate := range arms {
+			if candidate.Name == old.Arm {
+				a, okArm = candidate, true
+			}
+		}
+		if !okCell || !okArm {
+			continue
+		}
+		pristine, err := pristineFixture(c)
+		if err != nil {
+			return err
+		}
+		iv := invocation{Arm: a, Cell: c, Replicate: old.Replicate, RunDir: dir}
+		w := &watcher{peak: int(old.PeakParallel)}
+		r := readBack(iv, pristine, w)
+		r.PeakParallel, r.MeanParallel, r.MultiShare = old.PeakParallel, old.MeanParallel, old.MultiShare
+		r.Pass, r.GradeDetail, r.Exit, r.Ending = old.Pass, old.GradeDetail, old.Exit, old.Ending
+		r.USDEnvelope, r.WallSeconds = old.USDEnvelope, old.WallSeconds
+		rows = append(rows, r)
+	}
+	csvPath := filepath.Join(root, "replan-reread.csv")
+	_ = os.Remove(csvPath)
+	if err := writeCSVHeader(csvPath); err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if err := appendCSV(csvPath, r); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, r.oneLine())
+	}
+	summary := summarize(p, rows)
+	fmt.Fprintln(out)
+	fmt.Fprint(out, summary)
+	return os.WriteFile(filepath.Join(root, "summary-reread.md"), []byte(summary), 0o600)
+}
+
 // goCacheEnv pins the toolchain's caches to the ones this machine already
 // has. Every invocation moves HOME to its throwaway home, and without this the
 // workers' `go test` would rebuild the standard library in every cell.

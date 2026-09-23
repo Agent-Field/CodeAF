@@ -47,6 +47,7 @@ type options struct {
 	cellCap    float64
 	totalCap   float64
 	dry        bool
+	reread     string
 }
 
 func run(args []string, out, errOut io.Writer) error {
@@ -65,6 +66,7 @@ func run(args []string, out, errOut io.Writer) error {
 	fs.IntVar(&o.parallel, "parallel", 1, "how many invocations run at once; keep it at 1 or 2 on a shared machine")
 	fs.Float64Var(&o.cellCap, "cell-cap", 1.50, "dollars one invocation may spend before the driver interrupts it")
 	fs.Float64Var(&o.totalCap, "total-cap", 9.00, "dollars the whole run may spend; nothing new starts past it")
+	fs.StringVar(&o.reread, "reread", "", "read an earlier run's output root again, from its records alone, and print its table; calls no model")
 	fs.BoolVar(&o.dry, "dry-run", false, "compose every invocation, print them, execute nothing")
 	fs.BoolVar(&o.dry, "n", false, "shorthand for -dry-run")
 	if err := fs.Parse(args); err != nil {
@@ -89,6 +91,9 @@ func run(args []string, out, errOut io.Writer) error {
 	arms, err := chooseArms(o.arms)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(o.reread) != "" {
+		return reread(o.reread, cells, arms, out)
 	}
 	outRoot := strings.TrimSpace(o.out)
 	if outRoot == "" {
