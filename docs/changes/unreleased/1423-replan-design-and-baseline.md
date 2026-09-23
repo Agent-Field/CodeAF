@@ -1,6 +1,6 @@
 ---
 kind: internal
-title: a replanning design and a baseline bench of the run engine, with an off-by-default root-on-plan-seat switch
+title: a replanning design, a baseline bench of the run engine, and an off-by-default root seat switch
 pr: 1423
 surface: [engine, docs]
 invalidates:
