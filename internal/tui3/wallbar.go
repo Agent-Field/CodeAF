@@ -161,14 +161,32 @@ func wallPlural(n int, word string) string {
 
 // ── THE TOOLBAR ─────────────────────────────────────────────────────────────
 
-// wallBar is the toolbar along the bottom: the way back on the left, the acts
-// on the wall as a whole on the right. It never wraps: on a narrow frame the
-// least needed buttons leave first, and a button is drawn whole or not at all.
+// wallBar is the toolbar on row y of a frame width wide, ending a cell from
+// its right edge.
 func wallBar(pal palette, v wallView, width, y int) (string, []wallHit) {
+	return wallBarIn(pal, v, width, wallMargin, y)
+}
+
+// wallBarIn is the toolbar along the bottom: the way back on the left, the
+// acts on the wall as a whole on the right, ending inset cells from the right
+// edge so its last button lines up with the grid. It never wraps: on a narrow
+// frame the least needed buttons leave first, and a button is drawn whole or
+// not at all.
+//
+// BETWEEN THE TWO IS THE STATUS LINE. While the pointer rests on any control,
+// the toolbar says in one dim line what that control does and the key that
+// does the same, as a desktop program's status bar does: a glyph like ●+ is
+// learnt by pointing at it once, and nothing is drawn over the thing pointed
+// at.
+func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit) {
 	k := wallKeysFor(pal.ascii)
+	hint := wallHint(v, pal.ascii)
 	if v.naming {
 		n := wallMarked(v)
 		word := " Naming a space for " + strconv.Itoa(n) + " " + wallPlural(n, "conversation")
+		if hint != "" {
+			word = " " + hint
+		}
 		return pal.dim(ansi.Truncate(word, width, "")), nil
 	}
 	const gap = 2
@@ -190,7 +208,7 @@ func wallBar(pal palette, v wallView, width, y int) (string, []wallHit) {
 		if showCols {
 			w += gap + colsW
 		}
-		return w+1 <= width
+		return w+max(inset-1, 0) <= width
 	}
 	for !fits() {
 		switch {
@@ -212,8 +230,22 @@ func wallBar(pal palette, v wallView, width, y int) (string, []wallHit) {
 		}
 		rw += colsW
 	}
-	at := width - 1 - rw
-	row += strings.Repeat(" ", max(at-1-lw, 0))
+	// The last button's ground sits in the inset, as the title's last pill's
+	// does, so its word ends where the grid does.
+	at := width - max(inset-1, 0) - rw
+	used := 1 + lw
+	// The status line: three cells after the way back, and at least three
+	// before the first button on the right, cut with an ellipsis before it
+	// would crowd them.
+	const hintGap = 3
+	if room := at - used - 2*hintGap; hint != "" && room >= 8 {
+		if ansi.StringWidth(hint) > room {
+			hint = ansi.Truncate(hint, room, k.more)
+		}
+		row += strings.Repeat(" ", hintGap) + pal.dim(hint)
+		used += hintGap + ansi.StringWidth(hint)
+	}
+	row += strings.Repeat(" ", max(at-used, 0))
 	if len(right) > 0 {
 		rs, w, rh := wallLay(pal, right, v.hover, at, y, gap)
 		row += rs
@@ -233,6 +265,136 @@ func wallBar(pal palette, v wallView, width, y int) (string, []wallHit) {
 	return row, hits
 }
 
+// wallHint is what the control under the pointer does, and its key after a
+// dot when it has one; "" when the pointer is on no control. It is the
+// person's words, the same ones the buttons use.
+func wallHint(v wallView, ascii bool) string {
+	h := v.hover
+	sep, arrows := "·", "← →"
+	if ascii {
+		sep, arrows = "-", "left right"
+	}
+	name := func(i int) string {
+		if i >= 0 && i < len(v.tiles) {
+			return v.tiles[i].name
+		}
+		return "this conversation"
+	}
+	space := func(i int) string {
+		if i >= 0 && i < len(v.spaces) {
+			return v.spaces[i]
+		}
+		return "this space"
+	}
+	keyed := func(s, key string) string { return s + " " + sep + " " + key }
+	marked := wallMarked(v)
+	switch h.kind {
+	case wallHitTile:
+		if h.arg < 0 || h.arg >= len(v.tiles) {
+			return ""
+		}
+		switch {
+		case marked > 0 && v.tiles[h.arg].marked:
+			return keyed("Click to take out of the selection", "space")
+		case marked > 0:
+			return keyed("Click to add to the selection", "space")
+		case h.arg == min(max(v.focus, 0), len(v.tiles)-1):
+			return keyed("Click to open "+name(h.arg), "enter")
+		}
+		return "Click to focus, click again to open"
+	case wallHitSelect:
+		if h.arg >= 0 && h.arg < len(v.tiles) && v.tiles[h.arg].marked {
+			return keyed("Take out of the selection", "space")
+		}
+		return keyed("Select for a space", "space")
+	case wallHitSpaces:
+		return keyed("Add this conversation to spaces", "m")
+	case wallHitOpen:
+		if h.arg >= 0 && h.arg < len(v.tiles) && v.tiles[h.arg].signal == tabNeedsPerson {
+			return keyed("Open the conversation to answer it", "enter")
+		}
+		return keyed("Open conversation", "enter")
+	case wallHitClose:
+		return keyed("Close this view; the work keeps running", "x")
+	case wallHitChip:
+		// tab steps through the spaces rather than naming one, so no key is
+		// offered for a single segment.
+		if h.arg < 0 {
+			return "Show every conversation"
+		}
+		return "Show only the conversations in " + space(h.arg)
+	case wallHitChipMenu:
+		return "Rename, recolour or delete " + space(h.arg)
+	case wallHitAddSpace:
+		return keyed(wallNewSpaceHint(marked), "s")
+	case wallHitMini:
+		return "Go to " + name(h.arg)
+	case wallHitSwatch:
+		return keyed("Use this colour", arrows)
+	case wallHitPopRow:
+		switch h.arg {
+		case wallPopNew:
+			return "Make a new space with this conversation in it"
+		case wallPopDelete:
+			return "Delete this space; its conversations stay open"
+		case wallPopConfirm:
+			return "Delete the space now"
+		case wallPopKeep:
+			return keyed("Keep the space", "esc")
+		case wallPopDone:
+			return keyed("Keep the name and close", "enter")
+		}
+		return keyed("Put in or take out of "+space(h.arg), "space")
+	case wallHitAction:
+		switch wallAct(h.arg) {
+		case wallActBack:
+			switch {
+			case v.filter != "":
+				return keyed("Clear the filter", "esc")
+			case marked > 0:
+				return keyed("Clear the selection", "esc")
+			}
+			return keyed("Back to the conversation", "esc")
+		case wallActFilter:
+			return keyed("Filter conversations by name", "/")
+		case wallActNewSpace:
+			return keyed(wallNewSpaceHint(marked), "s")
+		case wallActNext:
+			return keyed("Go to the next conversation waiting on you", "?")
+		case wallActColsLess:
+			return keyed("Fewer columns", "-")
+		case wallActColsMore:
+			return keyed("More columns", "+")
+		case wallActMakeSpace:
+			return keyed("Make a space of the selection", "s")
+		case wallActAddTo:
+			return "Add the selection to spaces"
+		case wallActCloseViews:
+			return "Close these views; the work keeps running"
+		case wallActClear:
+			return keyed("Clear the selection", "esc")
+		case wallActFilterClear:
+			return keyed("Clear the filter", "esc")
+		case wallActSave:
+			return keyed("Make the space", "enter")
+		case wallActCancel:
+			return keyed("Put the card away", "esc")
+		case wallActShuffle:
+			return keyed("Suggest another name and colour", "ctrl+r")
+		}
+	}
+	return ""
+}
+
+// wallNewSpaceHint says what + New space will hold: the selection, or with
+// none the focused conversation, as [app.wallStartNaming] decides.
+func wallNewSpaceHint(marked int) string {
+	if marked > 0 {
+		return "Make a space of the " + strconv.Itoa(marked) + " selected"
+	}
+	return "Make a space, starting with the focused conversation"
+}
+
 // wallEmptyRow is the whisper an empty wall draws, with the way back beside it
 // as a button, centred.
 func wallEmptyRow(pal palette, v wallView, width, y int) (string, []wallHit) {
@@ -247,22 +409,58 @@ func wallEmptyRow(pal palette, v wallView, width, y int) (string, []wallHit) {
 	return strings.Repeat(" ", left) + pal.dim(wallEmptyWord) + "   " + s, hits
 }
 
+// wallNoneRow is what a narrowed grid with nothing in it says, centred on
+// row y, beside the one button that widens it again: a filter matching
+// nothing offers Clear, a space holding no open conversation offers All.
+//
+//	No conversations match "xyz"   Clear esc
+func wallNoneRow(pal palette, v wallView, width, y int) (string, []wallHit) {
+	word := "No open conversations in " + v.space
+	btn := wallButton{act: wallActFilterClear, label: "Clear", key: "esc"}
+	kind, arg := wallHitAction, int(wallActFilterClear)
+	if v.filter != "" {
+		word = "No conversations match \"" + v.filter + "\""
+	} else {
+		btn = wallButton{label: "Show all"}
+		kind, arg = wallHitChip, -1
+	}
+	const gap = 3
+	bw := wallButtonW(btn)
+	if room := width - 2 - gap - bw; ansi.StringWidth(word) > room {
+		if room < 8 {
+			return "", nil
+		}
+		word = ansi.Truncate(word, room, wallKeysFor(pal.ascii).more)
+	}
+	ww := ansi.StringWidth(word)
+	x := (width - ww - gap - bw) / 2
+	hot := v.hover.kind == kind && v.hover.arg == arg
+	row := strings.Repeat(" ", x) + pal.muted(word) + strings.Repeat(" ", gap) + wallButtonPaint(pal, btn, hot)
+	at := x + ww + gap
+	return row, []wallHit{{x0: at, y0: y, x1: at + bw, y1: y + 1, kind: kind, arg: arg}}
+}
+
 // ── THE SPACES ROW ──────────────────────────────────────────────────────────
 
 // wallChipCap is the widest a space's name is drawn on its segment.
 const wallChipCap = spaceNameCells
 
-// wallSpacesRow is the second row of the head: the Spaces control, a row of
-// segments, one per space and one for All, the one shown on the selected
-// ground; then + New space; and the minimap at the right end when there are
-// more conversations than the screen shows. While a filter narrows the grid
-// the row is the filter instead, so what narrowed it and the way to undo it
-// are both on screen.
+// wallSpacesRow is the second row of the head: the Spaces control, one
+// segmented row with a segment for All, one per space, and + New space last;
+// the one shown sits on the selected ground. The minimap stands at the right
+// end, inset cells from the edge, when there are more conversations than the
+// screen shows. While a filter narrows the grid the row is the filter instead,
+// so what narrowed it and the way to undo it are both on screen.
+//
+//	Spaces   All 6 │ ● port 3 │ ● infra 2 │ + New space                ▣▣ ▣▣ ▪▪
+//
+// EVERY SEGMENT IS PADDED ALIKE, one cell either side of its words, and parted
+// from the next by one rule, so the row reads as one control.
 //
 // A SEGMENT IS A DOOR TO ITS SPACE. Its dot opens the space's settings, and so
-// does the ⋯ that appears at its end under the pointer, drawn into two cells
-// the segment kept for it.
-func wallSpacesRow(pal palette, g wallGlyphs, v wallView, width, height, c, first, last, y int) (string, []wallHit) {
+// does the ⋯ the pointer brings up where the count was, the way a sidebar
+// trades a count for its menu under the pointer: nothing beside it moves.
+func wallSpacesRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c, first, last, y int) (string, []wallHit) {
 	var b strings.Builder
 	var hits []wallHit
 	x := 1
@@ -291,8 +489,8 @@ func wallSpacesRow(pal palette, g wallGlyphs, v wallView, width, height, c, firs
 		put(lead, ansi.StringWidth(lead))
 		count := "   " + pal.dim(strconv.Itoa(wallMarked(v))+" picked") + "  "
 		put(count, ansi.StringWidth(count))
-		button(wallButton{act: wallActSave, label: "Create", key: k.enter})
 		button(wallButton{act: wallActCancel, label: "Cancel", key: "esc"})
+		button(wallButton{act: wallActSave, label: "Create", key: k.enter})
 		return ansi.Truncate(b.String(), width, ""), wallHitsWithin(hits, width)
 	case v.filtering || v.filter != "":
 		put(pal.dim("Filter  "), 8)
@@ -306,30 +504,44 @@ func wallSpacesRow(pal palette, g wallGlyphs, v wallView, width, height, c, firs
 			hits = append(hits, wallHit{x0: x, y0: y, x1: x + w, y1: y + 1, kind: wallHitAction, arg: int(wallActFilter)})
 		}
 		put(paint, w)
-		put(" ", 1)
+		put("  ", 2)
+		if n := len(v.tiles); v.filter != "" {
+			word := "1 match"
+			if n != 1 {
+				word = strconv.Itoa(n) + " matches"
+			}
+			if fitsAt(len(word) + 2) {
+				put(pal.dim(word)+" ", len(word)+1)
+			}
+		}
 		button(wallButton{act: wallActFilterClear, label: "Clear", key: "esc"})
 	default:
-		put(pal.dim("Spaces  "), 8)
-		sep := pal.dim("|")
-		if !pal.ascii {
-			sep = pal.dim("│")
+		const label = "Spaces   "
+		put(pal.dim(label[:len(label)-1]), len(label)-1)
+		sep := pal.dim("│")
+		if pal.ascii {
+			sep = pal.dim("|")
 		}
+		addW := 2 + len("+ New space")
 		first := true
-		segment := func(at int, name string, count int, on bool) bool {
+		// segment draws one segment and reports whether it fit, keeping room
+		// for the + New space segment after it when keep is set.
+		segment := func(at int, name, count string, on, keep bool) bool {
 			dotted := at >= 0
-			nw := ansi.StringWidth(name)
-			cw := len(strconv.Itoa(count))
+			nw, cw := ansi.StringWidth(name), ansi.StringWidth(count)
 			w := 1 + nw + 1 + cw + 1
 			if dotted {
-				w += 2 + 2 // the dot and its space, and the kept tail
+				w += 2 // the dot and its blank
+			}
+			need := w + 1
+			if keep {
+				need += 1 + addW
+			}
+			if !fitsAt(need) {
+				return false
 			}
 			if !first {
-				if !fitsAt(1 + w + 1) {
-					return false
-				}
 				put(sep, 1)
-			} else if !fitsAt(w + 1) {
-				return false
 			}
 			first = false
 			hot := (v.hover.kind == wallHitChip || v.hover.kind == wallHitChipMenu) && v.hover.arg == at
@@ -346,35 +558,32 @@ func wallSpacesRow(pal palette, g wallGlyphs, v wallView, width, height, c, firs
 				nameInk = pal.ink
 			}
 			var parts []wallPart
-			x0 := x
+			x0, end := x, x+w
 			if dotted {
-				parts = append(parts, wallPart{s: " " + wallSpaceMark(pal, v, at, "●") + " ", hot: menuHot})
-				hits = append(hits, wallHit{x0: x0, y0: y, x1: x0 + 3, y1: y + 1, kind: wallHitChipMenu, arg: at})
-				x0 += 3
-				parts = append(parts, wallPart{s: nameInk(name) + " " + pal.dim(strconv.Itoa(count)) + " "})
-			} else {
-				parts = append(parts, wallPart{s: " " + nameInk(name) + " " + pal.dim(strconv.Itoa(count)) + " "})
+				// The dot, with the pad before it, is the settings door.
+				parts = append(parts, wallPart{s: " " + wallSpaceMark(pal, v, at, "●"), hot: menuHot})
+				hits = append(hits, wallHit{x0: x0, y0: y, x1: x0 + 2, y1: y + 1, kind: wallHitChipMenu, arg: at})
+				x0 += 2
 			}
-			end := x + w
-			switch {
-			case dotted && hot:
-				hits = append(hits, wallHit{x0: x0, y0: y, x1: end - 2, y1: y + 1, kind: wallHitChip, arg: at})
-				parts = append(parts, wallPart{s: pal.ink(k.menu) + " ", hot: menuHot})
-				hits = append(hits, wallHit{x0: end - 2, y0: y, x1: end, y1: y + 1, kind: wallHitChipMenu, arg: at})
-			case dotted:
-				// The kept cells are the segment's until the pointer is on it, so
-				// moving onto them is moving onto the segment.
-				hits = append(hits, wallHit{x0: x0, y0: y, x1: end, y1: y + 1, kind: wallHitChip, arg: at})
-				parts = append(parts, wallPart{s: "  "})
-			default:
+			parts = append(parts, wallPart{s: " " + nameInk(name) + " "})
+			tail := end - 1 - cw // the count's first cell
+			if dotted && hot {
+				menu := k.menu
+				if mw := ansi.StringWidth(menu); mw > cw {
+					menu = ansi.Truncate(menu, cw, "")
+				}
+				hits = append(hits, wallHit{x0: x0, y0: y, x1: tail, y1: y + 1, kind: wallHitChip, arg: at})
+				parts = append(parts, wallPart{s: wallFit(pal.ink(menu), cw) + " ", hot: menuHot})
+				hits = append(hits, wallHit{x0: tail, y0: y, x1: end, y1: y + 1, kind: wallHitChipMenu, arg: at})
+			} else {
+				parts = append(parts, wallPart{s: pal.dim(count) + " "})
 				hits = append(hits, wallHit{x0: x0, y0: y, x1: end, y1: y + 1, kind: wallHitChip, arg: at})
 			}
 			put(wallCompose(pal, parts, ground), w)
 			return true
 		}
-		segment(-1, "All", v.total, v.space == "")
+		segment(-1, "All", strconv.Itoa(v.total), v.space == "", true)
 		for i, name := range v.spaces {
-			on := name == v.space
 			if ansi.StringWidth(name) > wallChipCap {
 				name = ansi.Truncate(name, wallChipCap, g.more)
 			}
@@ -382,13 +591,17 @@ func wallSpacesRow(pal palette, g wallGlyphs, v wallView, width, height, c, firs
 			if i < len(v.counts) {
 				count = v.counts[i]
 			}
-			if !segment(i, name, count, on) {
+			if !segment(i, name, strconv.Itoa(count), name == v.space, true) {
 				break
 			}
 		}
+		// + New space is the control's last segment, drawn as an action: muted
+		// until the pointer lights it.
 		add := " + New space "
-		if fitsAt(2 + len(add)) {
-			put("  ", 2)
+		if fitsAt(1 + len(add)) {
+			if !first {
+				put(sep, 1)
+			}
 			s := pal.muted(add)
 			if v.hover.kind == wallHitAddSpace {
 				s = pal.cursor(pal.ink(add), 0)
@@ -412,18 +625,29 @@ func wallSpacesRow(pal palette, g wallGlyphs, v wallView, width, height, c, firs
 	if last-first >= len(v.tiles) {
 		return ansi.Truncate(left, width, ""), wallHitsWithin(hits, width)
 	}
-	mm, cells := wallMinimap(pal, g, v, c, first, last, width-lw-3)
+	mm, cells := wallMinimap(pal, g, v, c, first, last, width-lw-2-inset)
 	mw := ansi.StringWidth(mm)
-	if mm == "" || lw+1+mw+1 > width {
-		return ansi.Truncate(left, width, ""), wallHitsWithin(hits, width)
+	if mm == "" || lw+2+mw+inset > width || cells[len(cells)-1] < 0 {
+		// A minimap missing its last cells would say the wall is shorter
+		// than it is; the rows on screen are said in words instead.
+		dash := "–"
+		if pal.ascii {
+			dash = "-"
+		}
+		word := strconv.Itoa(first+1) + dash + strconv.Itoa(last) + " of " + strconv.Itoa(len(v.tiles))
+		ww := ansi.StringWidth(word)
+		if lw+2+ww+inset > width {
+			return ansi.Truncate(left, width, ""), wallHitsWithin(hits, width)
+		}
+		return left + strings.Repeat(" ", width-inset-ww-lw) + pal.dim(word) + strings.Repeat(" ", inset), wallHitsWithin(hits, width)
 	}
-	at := width - 1 - mw
+	at := width - inset - mw
 	for i, cx := range cells {
 		if cx >= 0 {
 			hits = append(hits, wallHit{x0: at + cx, y0: y, x1: at + cx + 1, y1: y + 1, kind: wallHitMini, arg: i})
 		}
 	}
-	return left + strings.Repeat(" ", at-lw) + mm + " ", hits
+	return left + strings.Repeat(" ", at-lw) + mm + strings.Repeat(" ", inset), hits
 }
 
 // wallHitsWithin keeps the hits that end inside the row.
@@ -550,13 +774,31 @@ func wallTileHits(pal palette, v wallView, t wallTile, i int, focused bool, x0, 
 		at = cx + cw
 	}
 	push(wallHitTile, at, x0+w)
-	hits := make([]wallHit, 0, len(segs)+1)
+	hits := make([]wallHit, 0, len(segs)+5)
 	for _, s := range segs {
 		hits = append(hits, wallHit{x0: s.x0, y0: y0, x1: s.x1, y1: y0 + 1, kind: s.kind, arg: i})
 	}
-	if h > 1 {
-		hits = append(hits, wallHit{x0: x0, y0: y0 + 1, x1: x0 + w, y1: y0 + h, kind: wallHitTile, arg: i})
+	if h <= 1 {
+		return hits
 	}
+	body := func(ya, yb, xa, xb int) {
+		if yb > ya && xb > xa {
+			hits = append(hits, wallHit{x0: xa, y0: ya, x1: xb, y1: yb, kind: wallHitTile, arg: i})
+		}
+	}
+	// A waiting tile's Answer is the tile's open, cut out of the body around
+	// it so the two never share a cell.
+	dx, dy, bw, ok := wallAnswerAt(pal.ascii, t, w, h)
+	if !ok {
+		body(y0+1, y0+h, x0, x0+w)
+		return hits
+	}
+	ay := y0 + dy
+	body(y0+1, ay, x0, x0+w)
+	body(ay, ay+1, x0, x0+dx)
+	hits = append(hits, wallHit{x0: x0 + dx, y0: ay, x1: x0 + dx + bw, y1: ay + 1, kind: wallHitOpen, arg: i})
+	body(ay, ay+1, x0+dx+bw, x0+w)
+	body(ay+1, y0+h, x0, x0+w)
 	return hits
 }
 
@@ -578,51 +820,75 @@ type wallCardLine struct {
 	s    string
 	hits []wallHit
 	rule bool
+	// bleed gives the line one cell of the padding either side, for a row of
+	// buttons: a button's ground sits outside its word, so its word lines up
+	// with the text above and its ground with nothing.
+	bleed bool
 }
 
 // wallCardBuild draws a card w wide at x,y: a title on the top border, then
-// the lines, each padded padX cells inside the border and cut to fit.
-func wallCardBuild(pal palette, title string, lines []wallCardLine, x, y, w, padX int) wallCard {
+// the lines, each padded padX cells inside the border and padY blank rows
+// above and below them, cut to fit.
+func wallCardBuild(pal palette, title string, lines []wallCardLine, x, y, w, padX, padY int) wallCard {
 	box := wallBoxLight
 	if pal.ascii {
 		box = wallBoxLightASCII
 	}
-	edge := pal.muted
+	border := pal.muted
 	inner := w - 2 - 2*padX
 	card := wallCard{x: x, y: y, w: w}
-	top := edge(box.tl + strings.Repeat(box.h, w-2) + box.tr)
+	top := border(box.tl + strings.Repeat(box.h, w-2) + box.tr)
 	if title != "" {
 		t := " " + title + " "
-		top = edge(box.tl+box.h) + pal.ink(t) + edge(strings.Repeat(box.h, max(w-3-ansi.StringWidth(t), 0))+box.tr)
+		top = border(box.tl+box.h) + pal.ink(t) + border(strings.Repeat(box.h, max(w-3-ansi.StringWidth(t), 0))+box.tr)
 	}
 	card.rows = append(card.rows, top)
 	pad := strings.Repeat(" ", padX)
-	for k, ln := range lines {
+	blank := border(box.v) + strings.Repeat(" ", max(w-2, 0)) + border(box.v)
+	for range padY {
+		card.rows = append(card.rows, blank)
+	}
+	for _, ln := range lines {
+		k := len(card.rows) - 1
 		if ln.rule {
-			card.rows = append(card.rows, edge(box.v)+pad+pal.dim(strings.Repeat(box.h, inner))+pad+edge(box.v))
+			card.rows = append(card.rows, border(box.v)+pad+pal.dim(strings.Repeat(box.h, inner))+pad+border(box.v))
 			continue
 		}
-		card.rows = append(card.rows, edge(box.v)+pad+wallFit(ln.s, inner)+pad+edge(box.v))
+		lw, lpad := inner, padX
+		if ln.bleed && padX > 0 {
+			lw, lpad = inner+2, padX-1
+		}
+		side := strings.Repeat(" ", lpad)
+		card.rows = append(card.rows, border(box.v)+side+wallFit(ln.s, lw)+side+border(box.v))
 		for _, h := range ln.hits {
-			if h.x1 > inner {
+			if h.x1 > lw {
 				continue
 			}
-			h.x0 += x + 1 + padX
-			h.x1 += x + 1 + padX
+			h.x0 += x + 1 + lpad
+			h.x1 += x + 1 + lpad
 			h.y0, h.y1 = y+1+k, y+2+k
 			card.hits = append(card.hits, h)
 		}
 	}
-	card.rows = append(card.rows, edge(box.bl+strings.Repeat(box.h, w-2)+box.br))
+	for range padY {
+		card.rows = append(card.rows, blank)
+	}
+	card.rows = append(card.rows, border(box.bl+strings.Repeat(box.h, w-2)+box.br))
 	return card
 }
 
-// wallCardPadX is the blank cells inside a card's border either side.
-const wallCardPadX = 2
+// A card's padding: two cells inside its border either side and one blank row
+// above and below, the same for every card and popover, so each reads as the
+// same kind of thing. The tray is a floating toolbar and keeps the toolbar's
+// single row.
+const (
+	wallCardPadX = 2
+	wallCardPadY = 1
+)
 
-// wallTray is the selection tray: while any conversation is picked, a card
-// just above the toolbar says how many, and holds everything that can be done
-// to them.
+// wallTray is the selection tray: while any conversation is picked, a floating
+// toolbar docked on the foot's rule says how many, and holds everything that
+// can be done to them, the most used first.
 func wallTray(pal palette, g wallGlyphs, v wallView, width, height int) wallCard {
 	n := wallMarked(v)
 	if n == 0 || height < 8 {
@@ -658,11 +924,15 @@ func wallTray(pal palette, g wallGlyphs, v wallView, width, height int) wallCard
 	s, bw, hits := wallLay(pal, bs, v.hover, leadW, 0, 1)
 	w := leadW + bw + 2 + 2*wallCardPadX
 	x := (width - w) / 2
-	return wallCardBuild(pal, "", []wallCardLine{{s: lead + s, hits: hits}}, x, height-1-3, w, wallCardPadX)
+	// Its bottom border lies on the foot's rule, so the tray reads as risen
+	// out of the foot and never covers the toolbar.
+	y := height - wallFootRows - 1
+	return wallCardBuild(pal, "", []wallCardLine{{s: lead + s, hits: hits}}, x, y, w, wallCardPadX, 0)
 }
 
-// wallNameCardRows is the new-space card's height: two borders and four lines.
-const wallNameCardRows = 6
+// wallNameCardRows is the new-space card's height: two borders, the padding
+// above and below, and four lines.
+const wallNameCardRows = 2 + 2*wallCardPadY + 4
 
 // wallNameCardFits reports whether the new-space card has room on a frame.
 func wallNameCardFits(width, height int) bool {
@@ -705,12 +975,14 @@ func wallSwatches(pal palette, v wallView, choices []spaceHueSpec, choice, x int
 
 // wallNameCard is the card a new space is named in:
 //
-//	╭─ New space ──────────────────────────────────╮
-//	│  Name    harbor▌                  ↻ Shuffle  │
-//	│  Colour  ◉ ● ● ● ● ●                         │
-//	│  3 · the tree walk, ship the port, relay au… │
-//	│                        Cancel esc   Create ↵ │
-//	╰──────────────────────────────────────────────╯
+//	╭─ New space ────────────────────────────────────╮
+//	│                                                │
+//	│  Name    harbor▌                    ↻ Shuffle  │
+//	│  Colour  ◉ ● ● ● ● ●                           │
+//	│  3 · the tree walk, ship the port, relay au…   │
+//	│                         Cancel esc   Create ↵  │
+//	│                                                │
+//	╰────────────────────────────────────────────────╯
 //
 // A name the wall filled in is drawn selected, as a text field draws a
 // suggestion: the first key typed replaces it.
@@ -740,8 +1012,10 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	}
 	field += pal.ink(g.cursor)
 	fieldW := labelW + ansi.StringWidth(name) + ansi.StringWidth(g.cursor)
-	s, _, sh := wallLay(pal, []wallButton{shuffle}, v.hover, inner-sw, 0, 1)
-	l1 := wallCardLine{s: pal.dim("Name    ") + field + strings.Repeat(" ", max(inner-sw-fieldW, 0)) + s, hits: sh}
+	// The Name row and the button row bleed (wallCardLine), so Shuffle and
+	// Create end on the text's right edge; the label takes the cell back.
+	s, _, sh := wallLay(pal, []wallButton{shuffle}, v.hover, inner+2-sw, 0, 1)
+	l1 := wallCardLine{s: " " + pal.dim("Name    ") + field + strings.Repeat(" ", max(inner+1-sw-fieldW, 0)) + s, hits: sh, bleed: true}
 
 	sws, _, swh := wallSwatches(pal, v, v.choices, v.choice, labelW)
 	l2 := wallCardLine{s: pal.dim("Colour  ") + sws, hits: swh}
@@ -763,23 +1037,21 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 		{act: wallActSave, label: "Create", key: k.enter},
 	}
 	bw := wallBarWidth(bs, 1)
-	bstr, _, bh := wallLay(pal, bs, v.hover, inner-bw, 0, 1)
-	l4 := wallCardLine{s: strings.Repeat(" ", max(inner-bw, 0)) + bstr, hits: bh}
+	bstr, _, bh := wallLay(pal, bs, v.hover, inner+2-bw, 0, 1)
+	l4 := wallCardLine{s: strings.Repeat(" ", max(inner+2-bw, 0)) + bstr, hits: bh, bleed: true}
 
 	x := (width - w) / 2
 	gridH := height - wallChromeRows
 	y := wallGridTop + max((gridH-wallNameCardRows)/2, 0)
-	return wallCardBuild(pal, "New space", []wallCardLine{l1, l2, l3, l4}, x, y, w, wallCardPadX)
+	return wallCardBuild(pal, "New space", []wallCardLine{l1, l2, l3, l4}, x, y, w, wallCardPadX, wallCardPadY)
 }
 
 // ── POPOVERS ────────────────────────────────────────────────────────────────
 
-// wallPopPadX is a popover's padding: one cell, since it is smaller than a
-// card and sits against the control that opened it.
-const wallPopPadX = 1
-
-// wallPopCard is the popover that is up, placed under its control, or over it
-// when there is no room below, and never past the frame's edges.
+// wallPopCard is the popover that is up, hung under the control that opened
+// it with its left border under the control's first cell, or over the
+// control when there is no room below. It stays a margin inside the frame's
+// sides, and never reaches the foot's rule or the toolbar under it.
 func wallPopCard(pal palette, g wallGlyphs, v wallView, width, height int) wallCard {
 	var title string
 	var lines []wallCardLine
@@ -792,18 +1064,19 @@ func wallPopCard(pal palette, g wallGlyphs, v wallView, width, height int) wallC
 	default:
 		return wallCard{}
 	}
-	w := inner + 2 + 2*wallPopPadX
-	h := len(lines) + 2
-	if w > width || h > height-1 {
+	w := inner + 2 + 2*wallCardPadX
+	h := len(lines) + 2 + 2*wallCardPadY
+	floor := height - wallFootRows + 1 // the first row a card may not cover
+	if w > width-2*wallMargin || h > floor {
 		return wallCard{}
 	}
-	x := min(max(v.pop.x, 0), width-w)
+	x := min(max(v.pop.x, wallMargin), width-wallMargin-w)
 	y := v.pop.y1
-	if y+h > height-1 {
+	if y+h > floor {
 		y = v.pop.y0 - h
 	}
-	y = min(max(y, 0), height-1-h)
-	return wallCardBuild(pal, title, lines, x, y, w, wallPopPadX)
+	y = min(max(y, 0), floor-h)
+	return wallCardBuild(pal, title, lines, x, y, w, wallCardPadX, wallCardPadY)
 }
 
 // wallPopRowPaint lays one popover row across the inner width, on the cursor
@@ -818,14 +1091,17 @@ func wallPopRowPaint(pal palette, s string, inner int, lit bool) string {
 
 // wallMembersLines is the spaces popover: every space with a box saying
 // whether the targets are in it (partly, when some are and some are not),
-// and a way to a new one.
+// and a way to a new one. It is a menu, so a box pressed is saved at once
+// and there is no button to confirm it.
 //
-//	╭─ Spaces ─────────────────╮
-//	│ ☑ ● harbor             3 │
-//	│ ☐ ● orbit              5 │
-//	│ ──────────────────────── │
-//	│ + New space…             │
-//	╰──────────────────────────╯
+//	╭─ Spaces ───────────────────╮
+//	│                            │
+//	│  ☑ ● harbor             3  │
+//	│  ☐ ● orbit              5  │
+//	│  ────────────────────────  │
+//	│  + New space…              │
+//	│                            │
+//	╰────────────────────────────╯
 func wallMembersLines(pal palette, g wallGlyphs, v wallView) (string, []wallCardLine, int) {
 	k := wallKeysFor(pal.ascii)
 	in := map[string][]int{}
@@ -879,10 +1155,91 @@ func wallMembersLines(pal palette, g wallGlyphs, v wallView) (string, []wallCard
 	return "Spaces", lines, inner
 }
 
+// wallPopButton is one button in a popover's last row, as a popover row: a
+// press is a wallHitPopRow with its code. danger draws the label in the
+// failure red, which is kept for the one act that cannot be undone.
+type wallPopButton struct {
+	label, key string
+	code       int
+	danger     bool
+}
+
+// wallPopButtons lays buttons one cell apart at the right, primary last, and
+// lead at the left when it is given. The row bleeds, so the words line up
+// with the text above on both sides.
+func wallPopButtons(pal palette, v wallView, inner int, lead *wallPopButton, bs ...wallPopButton) wallCardLine {
+	paint := func(b wallPopButton) (string, int) {
+		w := 2 + ansi.StringWidth(b.label)
+		ink := pal.ink
+		if b.danger {
+			ink = pal.bad
+		}
+		s := " " + ink(b.label)
+		if b.key != "" {
+			s += " " + pal.dim(b.key)
+			w += 1 + ansi.StringWidth(b.key)
+		}
+		s += " "
+		if v.hover.kind == wallHitPopRow && v.hover.arg == b.code {
+			s = pal.cursor(s, 0)
+		}
+		return s, w
+	}
+	ln := wallCardLine{bleed: true}
+	inner += 2 // the line bleeds into the padding (wallCardLine)
+	var b strings.Builder
+	x := 0
+	if lead != nil {
+		s, w := paint(*lead)
+		b.WriteString(s)
+		ln.hits = append(ln.hits, wallHit{x0: 0, x1: w, y1: 1, kind: wallHitPopRow, arg: lead.code})
+		x = w
+	}
+	rw := 0
+	for i, bt := range bs {
+		_, w := paint(bt)
+		if i > 0 {
+			rw++
+		}
+		rw += w
+	}
+	b.WriteString(strings.Repeat(" ", max(inner-x-rw, 1)))
+	x = max(inner-rw, x+1)
+	var right []wallHit
+	for i, bt := range bs {
+		if i > 0 {
+			b.WriteString(" ")
+			x++
+		}
+		s, w := paint(bt)
+		b.WriteString(s)
+		right = append(right, wallHit{x0: x, x1: x + w, y1: 1, kind: wallHitPopRow, arg: bt.code})
+		x += w
+	}
+	// The primary's target is listed first of the right-hand ones, so a
+	// search of the targets by kind alone meets the primary before the rest.
+	for i := len(right) - 1; i >= 0; i-- {
+		ln.hits = append(ln.hits, right[i])
+	}
+	ln.s = b.String()
+	return ln
+}
+
 // wallSettingsLines is a space's settings: its name, being edited as it is
-// typed, its colour among the others it could have, and its deletion, which
-// asks first and says the conversations stay open.
+// typed, its colour among the others it could have, and at the foot its
+// deletion on the left and Done on the right. The deletion asks first and
+// says the conversations stay open.
+//
+//	╭─ Space ──────────────────────────╮
+//	│                                  │
+//	│  Name    port▌                   │
+//	│  Colour  ◉ ● ● ● ● ●             │
+//	│  ──────────────────────────────  │
+//	│  Delete space           Done ↵   │
+//	│                                  │
+//	╰──────────────────────────────────╯
 func wallSettingsLines(pal palette, g wallGlyphs, v wallView) (string, []wallCardLine, int) {
+	k := wallKeysFor(pal.ascii)
 	i := v.pop.space
 	name := ""
 	if i >= 0 && i < len(v.spaces) {
@@ -898,33 +1255,22 @@ func wallSettingsLines(pal palette, g wallGlyphs, v wallView) (string, []wallCar
 	sws, _, swh := wallSwatches(pal, v, v.pop.choices, v.pop.choice, labelW)
 	l2 := wallCardLine{s: pal.dim("Colour  ") + sws, hits: swh}
 	lines := []wallCardLine{l1, l2, {rule: true}}
-	hit := func(code int) []wallHit {
-		return []wallHit{{x0: 0, y0: 0, x1: inner, y1: 1, kind: wallHitPopRow, arg: code}}
-	}
-	lit := func(code int) bool { return v.hover.kind == wallHitPopRow && v.hover.arg == code }
 	if !v.pop.confirm {
-		lines = append(lines, wallCardLine{s: wallPopRowPaint(pal, pal.bad("Delete space"), inner, lit(wallPopDelete)), hits: hit(wallPopDelete)})
-	} else {
-		ask := "Delete " + name + "?"
-		if ansi.StringWidth(ask) > inner {
-			ask = ansi.Truncate(ask, inner, g.more)
-		}
-		lines = append(lines,
-			wallCardLine{s: pal.ink(ask)},
-			wallCardLine{s: pal.dim("Its conversations stay open.")})
-		del, keep := " Delete ", " Keep "
-		ds, ks := pal.bad(del), pal.ink(keep)
-		if lit(wallPopConfirm) {
-			ds = pal.cursor(ds, 0)
-		}
-		if lit(wallPopKeep) {
-			ks = pal.cursor(ks, 0)
-		}
-		lines = append(lines, wallCardLine{s: ds + " " + ks, hits: []wallHit{
-			{x0: 0, y0: 0, x1: len(del), y1: 1, kind: wallHitPopRow, arg: wallPopConfirm},
-			{x0: len(del) + 1, y0: 0, x1: len(del) + 1 + len(keep), y1: 1, kind: wallHitPopRow, arg: wallPopKeep},
-		}})
+		del := wallPopButton{label: "Delete space", code: wallPopDelete, danger: true}
+		lines = append(lines, wallPopButtons(pal, v, inner, &del, wallPopButton{label: "Done", key: k.enter, code: wallPopDone}))
+		return "Space", lines, inner
 	}
+	ask := "Delete " + name + "?"
+	if ansi.StringWidth(ask) > inner {
+		ask = ansi.Truncate(ask, inner, g.more)
+	}
+	lines = append(lines,
+		wallCardLine{s: pal.ink(ask)},
+		wallCardLine{s: pal.dim("Its conversations stay open.")},
+		wallCardLine{},
+		wallPopButtons(pal, v, inner, nil,
+			wallPopButton{label: "Keep", key: "esc", code: wallPopKeep},
+			wallPopButton{label: "Delete", code: wallPopConfirm, danger: true}))
 	return "Space", lines, inner
 }
 

@@ -15,6 +15,11 @@ import (
 // of boxes, one per space, and a box pressed is saved at once: there is no
 // apply, because a grouping is cheap to change and cheap to change back.
 
+// wallPopDone is the settings popover's Done: the name kept, the popover put
+// away, what enter does. It is a row code beside wallcontract.go's, and is
+// kept here because this file is the only one that answers it.
+const wallPopDone = -5
+
 // wallLocal is a hit's cells as an anchor in the painter's own rows, which
 // start under the head.
 func (a *app) wallLocal(hit wallHit) wallPop {
@@ -176,6 +181,9 @@ func (a *app) wallPopPress(hit wallHit, tiles []wallTile) tea.Cmd {
 		p.confirm = false
 	case hit.arg == wallPopConfirm:
 		a.wallDeleteSpace(p.space)
+	case hit.arg == wallPopDone:
+		a.wallRenameFromPop()
+		a.wall.pop = wallPop{}
 	}
 	return nil
 }
