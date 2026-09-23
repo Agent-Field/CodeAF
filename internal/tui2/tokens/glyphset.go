@@ -189,6 +189,8 @@ const (
 	// was sent: the ring of them behind /drafts and the ↑ walk's dim end
 	// (internal/tui3's draftring.go, draftpage.go).
 	GDraftUnsent
+	// GRemove is an action on an attachment, not a work state.
+	GRemove
 	glyphIDCount
 )
 

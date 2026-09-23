@@ -452,9 +452,11 @@ here` — rather than opening the browser. `/folder` is the browser on local hom
 aimed at which folder the next conversation opens in (see "Choosing a folder"). Over
 `--host`, `/folder` says why this machine's folder cannot be that far conversation's folder.
 
-**The tray survives the walk.** Attach a file on home, go into a conversation, come back: it
-is still there. Home's tray row cannot be clicked; a chip comes off on a conversation's own
-tray, where the `✕` is.
+**Returning to Home detaches unsent conversation attachments.** Their picture tokens
+come out of the conversation draft too; the files themselves are untouched. Queued
+messages keep their own attachments. Attach on Home to include a file in a new
+conversation. Home's tray row cannot be clicked; on a conversation's tray, click the
+chip or its remove mark (`×`, or `x` in ASCII mode).
 
 A few refusals come from the far machine instead and arrive with `engine:` in front of
 them — the file arrived with no usable name, or with a name that was really a path:
@@ -512,7 +514,8 @@ and were told the file is not there, that is what happened.
 Three ways, all the same as for a picture:
 
 - **`backspace` over an empty message box** removes the last thing on the tray.
-- **Click a chip** and it comes off.
+- **Click a chip or its remove mark** on a conversation's tray and it comes off.
+  Its mark is `×` in plain mode, a circled cross with a rich font, and `x` in ASCII mode.
 - **Send the message** — the tray empties into it.
 
 Removing a picture also takes its `[image #n]` token out of your sentence and counts the

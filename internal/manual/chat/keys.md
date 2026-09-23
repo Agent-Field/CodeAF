@@ -1383,12 +1383,14 @@ answers every picture question here, whether you attached the file or not.
 Attaching is for a picture you are handing over as part of what you are saying.
 
 **The tray.** Attached pictures sit in a one-row tray directly above the message box,
-one dim chip each, drawn as `▣ #1 name.png` — `*` in place of the square on an ASCII
-terminal. The number is the picture's place in the message and the number `[image #1]`
+one dim chip each, drawn as `▣ #1 name.png ×` — `*` in place of the square and
+`x` for removal on an ASCII terminal. The number is the picture's place in the message and the number `[image #1]`
 in your sentence refers to. The message box stays the sentence. `backspace` over an
 empty box drops the last chip, and clicking a chip removes that one — and takes its
 `[image #n]` out of your sentence, counting the ones behind it down so the numbers
-stay true.
+stay true. Returning to Home detaches unsent attachments and removes their picture
+tokens; attach on Home to include them in a new conversation. Queued messages keep
+their own attachments.
 
 ## Dragging or pasting a screenshot in
 
