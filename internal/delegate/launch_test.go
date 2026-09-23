@@ -86,6 +86,45 @@ func TestRunDropsACeilingFlagWhoseValueIsUnset(t *testing.T) {
 	}
 }
 
+// THE BRIEF IS THE PERSON'S WORDS AND REACHES THE PROGRAM AS WRITTEN. A review
+// of a Go template says `{{ .Name }}`, which once refused the launch because
+// the unknown-placeholder check read the filled argv; and a brief that said
+// `{{key}}` or `{{workspace}}` was rewritten after it had been inserted, which
+// put the person's key on a command line. Found by the pr-af session.
+func TestRunHandsTheBriefOverVerbatimEvenWhenItSpellsAPlaceholder(t *testing.T) {
+	m := fakeProgram(t, terminalLine("pass", "done"))
+	args := filepath.Join(t.TempDir(), "args")
+	t.Setenv("FAKE_ARGS", args)
+	const secret = "sk-or-v1-not-for-argv"
+	for i := 0; i < 20; i++ { // map order once decided the outcome, so ask it more than once
+		// The second brief spells only placeholders this build knows, so the old
+		// refusal cannot hide the rewrite behind it.
+		brief := "https://github.com/o/r/pull/1 check {{ .Name }} escaping, and {{key}} in {{workspace}} under {{brief}}"
+		if i%2 == 1 {
+			brief = "https://github.com/o/r/pull/1 where does {{key}} go under {{workspace}}"
+		}
+		if _, err := Run(context.Background(), Launch{Manifest: m, Fills: Fills{Brief: brief, Workspace: t.TempDir(), Key: secret}}, nil); err != nil {
+			t.Fatalf("a brief spelling a placeholder refused the launch: %v", err)
+		}
+		got, _ := os.ReadFile(args)
+		lines := strings.Split(strings.TrimRight(string(got), "\n"), "\n")
+		if last := lines[len(lines)-1]; last != brief {
+			t.Fatalf("the brief reached the program as\n%q\nwant it verbatim", last)
+		}
+		if strings.Contains(string(got), secret) {
+			t.Fatal("the person's key was spliced into the command line")
+		}
+	}
+}
+
+// The check a filled brief no longer trips still holds for the manifest's own
+// text: a placeholder this build does not fill refuses the launch.
+func TestFillRefusesAnUnknownPlaceholderInTheManifest(t *testing.T) {
+	if _, err := fill([]string{"--x", "{{typo}}"}, Fills{Brief: "b"}, true); err == nil || !strings.Contains(err.Error(), "{{typo}}") {
+		t.Fatalf("err = %v, want the unknown placeholder named", err)
+	}
+}
+
 func TestRunAnswersNoTerminalWhenTheProgramExitsWithoutOne(t *testing.T) {
 	m := fakeProgram(t, "exit 3")
 	result, err := Run(context.Background(), Launch{Manifest: m, Fills: Fills{Brief: "b", Workspace: t.TempDir()}}, nil)

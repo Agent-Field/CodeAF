@@ -230,6 +230,15 @@ func (nopCloser) Close() error { return nil }
 // a program with no ceiling set is handed no `--max-cost` at all rather than a
 // zero it might read as "spend nothing". dropFlags is off for env values, where
 // there is no flag to drop and an empty fill leaves the variable unset.
+//
+// A FILLED VALUE IS NEVER READ AGAIN. Each element is substituted in one pass
+// ([strings.Replacer] does not rescan what it inserted), and the check for a
+// placeholder this build does not fill reads the manifest's own text, never the
+// result. Both are there because the brief is the person's words: a review of a
+// Go template or a Helm chart says `{{ .Name }}`, which must reach the program
+// as written rather than refuse the launch, and a brief that says `{{key}}`
+// must not have the person's key spliced into a command line every process on
+// the machine can read.
 func fill(argv []string, fills Fills, dropFlags bool) ([]string, error) {
 	values := map[string]string{
 		FillBrief:            fills.Brief,
@@ -247,6 +256,11 @@ func fill(argv []string, fills Fills, dropFlags bool) ([]string, error) {
 	} else {
 		values[FillHours] = ""
 	}
+	pairs := make([]string, 0, 2*len(values))
+	for placeholder, value := range values {
+		pairs = append(pairs, placeholder, value)
+	}
+	replacer := strings.NewReplacer(pairs...)
 	out := make([]string, 0, len(argv))
 	for _, arg := range argv {
 		if value, whole := values[arg]; whole && value == "" && (arg == FillCostUSD || arg == FillHours || arg == FillKey || arg == "{{key:openrouter}}") {
@@ -255,14 +269,12 @@ func fill(argv []string, fills Fills, dropFlags bool) ([]string, error) {
 			}
 			continue
 		}
-		filled := arg
-		for fill, value := range values {
-			filled = strings.ReplaceAll(filled, fill, value)
+		for _, placeholder := range fillShape.FindAllString(arg, -1) {
+			if _, known := values[placeholder]; !known {
+				return nil, fmt.Errorf("%s is not a placeholder this build fills", placeholder)
+			}
 		}
-		if rest := fillShape.FindString(filled); rest != "" {
-			return nil, fmt.Errorf("%s is not a placeholder this build fills", rest)
-		}
-		out = append(out, filled)
+		out = append(out, replacer.Replace(arg))
 	}
 	return out, nil
 }
