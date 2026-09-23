@@ -222,10 +222,13 @@ func TestEnterOnAttachInTheListOpensTheBrowserAtOnce(t *testing.T) {
 	}
 }
 
-// With no conversation store behind the window — memory off — the search place
-// matches conversations by their name and project, the way home's box does,
-// and says that is what it matched by.
-func TestWithNoIndexTheSearchPlaceMatchesConversationsByName(t *testing.T) {
+// WITH NO CONVERSATION STORE BEHIND THE WINDOW — memory off — THE PLACE
+// REFUSES, and says which silence this is. It matched conversations by their
+// name and project for one build on 2026-09-22, the way home's box does, and
+// the owner took that back on 2026-09-23: a place called `search` that
+// searches something narrower than it says is worse than one that refuses,
+// because half a search reads exactly like a whole one that found nothing.
+func TestWithNoIndexTheSearchPlaceSaysSoAndSearchesNothing(t *testing.T) {
 	a := placeApp(t)
 	a.searchStore = nil
 	a.searchArm = func(int) tea.Cmd { return nil }
@@ -233,34 +236,23 @@ func TestWithNoIndexTheSearchPlaceMatchesConversationsByName(t *testing.T) {
 	_, world := searchFixture()
 	a.search.world = world
 	a.rebuildSearch()
-	if text := placeFrameText(a); !strings.Contains(text, searchByNameWord) {
-		t.Fatalf("the empty place does not say it matches by name:\n%s", text)
+	if text := placeFrameText(a); !strings.Contains(text, "no index of this machine's conversations") {
+		t.Fatalf("the place does not say it has no index:\n%s", text)
 	}
+	// And typing does not send a read, nor draw a result under the words.
 	typeInto(t, a, "swarm")
 	if cmd := a.searchTick(searchTickMsg{gen: a.search.ask.gen}); cmd != nil {
-		t.Fatal("a search by name went out as a store read")
+		t.Fatal("a place with no index sent a store read")
 	}
-	// The row carries the name as home spells it ([homeName]).
-	text := strings.ToLower(placeFrameText(a))
-	if !strings.Contains(text, "swarm splitting") || strings.Contains(text, "lead research") {
-		t.Fatalf("the search by name did not find the conversation called that:\n%s", text)
+	text := placeFrameText(a)
+	if !strings.Contains(text, "no index of this machine's conversations") {
+		t.Fatalf("the refusal went away once words were typed:\n%s", text)
+	}
+	if strings.Contains(strings.ToLower(text), "swarm splitting") {
+		t.Fatalf("a place with no index drew a conversation it matched by name:\n%s", text)
 	}
 	if strings.Contains(text, searchNothingSaid("swarm")) {
-		t.Fatalf("a search by name claimed nothing was said:\n%s", text)
-	}
-	// A project name matches too.
-	a.search.query.reset()
-	typeInto(t, a, "leadgen")
-	a.searchTick(searchTickMsg{gen: a.search.ask.gen})
-	if text := strings.ToLower(placeFrameText(a)); !strings.Contains(text, "leadgen") || strings.Contains(text, "swarm splitting") {
-		t.Fatalf("the search by name did not match on the project:\n%s", text)
-	}
-	// And nothing named that says so, without claiming nothing was said.
-	a.search.query.reset()
-	typeInto(t, a, "zzz")
-	a.searchTick(searchTickMsg{gen: a.search.ask.gen})
-	if text := placeFrameText(a); !strings.Contains(text, "no conversation on this machine is named") {
-		t.Fatalf("a miss by name did not say so:\n%s", text)
+		t.Fatalf("a search that never happened claimed nothing was said:\n%s", text)
 	}
 }
 

@@ -9,7 +9,6 @@ package tui3
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -50,12 +49,15 @@ type searchReading struct {
 	hits   []searchHit
 	facets []searchFacet
 	now    time.Time
-	// byName says there is no conversation store behind this window, so the
-	// hits are conversations matched by their NAME and project rather than by
-	// what was said in them ([searchByName]) — and the page says so, because
-	// "nobody has said that" and "no conversation is called that" are two
-	// different sentences ([searchByNameWord], [searchNothingNamed]).
-	byName bool
+	// noIndex says there is no conversation store behind this window, and so
+	// nothing to search at all ([searchNoIndexWord]).
+	//
+	// THE PLACE MATCHED BY NAME HERE FOR ONE BUILD on 2026-09-22 — the way
+	// home's box does — and the owner took that back on 2026-09-23. A place
+	// called `search` that quietly searches something narrower than what it
+	// says is worse than one that refuses: the refusal is a fact a person can
+	// act on, and half a search reads like a whole one that found nothing.
+	noIndex bool
 	// unfolded is whether every result is drawn rather than the first
 	// [searchShown] and a fold line ([searchReading.unfolding]).
 	unfolded bool
@@ -171,24 +173,21 @@ func (r searchReading) paint(width int, pal palette, lit func(line int) bool) []
 	if room <= 0 {
 		return nil
 	}
+	if r.noIndex {
+		// AND A PLACE WITH NO INDEX BEHIND IT SAYS SO. Without this line a machine
+		// whose store was never wired answered `nothing on this machine says "x"`,
+		// which is a search that never happened reporting a result — the one
+		// sentence on this page that could make somebody believe a conversation
+		// does not exist.
+		return searchHung(placeTeachProse(searchNoIndexWord, width, pal))
+	}
 	if r.query == "" {
 		// NOTHING TYPED IS AN EMPTY PLACE, and it says what arrives here and the
 		// one thing that puts it there — the heading and the whisper every empty
-		// place draws (placeprose.go's [placeWhisper]). AND A PLACE WITH NO
-		// INDEX BEHIND IT SAYS SO, under the whisper: without that line a
-		// machine with memory off would answer `nothing on this machine says
-		// "x"` about words it never indexed — the one sentence on this page that
-		// could make somebody believe a conversation does not exist.
-		lines := placeWhisperLines(pageSearch, width, pal)
-		if r.byName && len(lines) > 0 {
-			lines = append(lines, placeWhisperLead+pal.dim(fit(searchByNameWord, width-len(placeWhisperLead))))
-		}
-		return lines
+		// place draws (placeprose.go's [placeWhisper]).
+		return placeWhisperLines(pageSearch, width, pal)
 	}
 	if len(r.hits) == 0 {
-		if r.byName {
-			return searchHung(placeTeachProse(searchNothingNamed(r.query), width, pal))
-		}
 		return searchHung(placeTeachProse(searchNothingSaid(r.query), width, pal))
 	}
 	var out []string
@@ -227,50 +226,10 @@ func searchNothingSaid(query string) string {
 	return fmt.Sprintf("nothing on this machine says %q · try fewer words, or a name", query)
 }
 
-// searchByNameWord is the line under the whisper on a surface with no
-// conversation store wired — memory off, on this machine. It says what the
-// place CAN match here, because a capability that is only half there has to
-// say which half (the emptiness law's cousin).
-const searchByNameWord = "what was said is not indexed while memory is off · conversations match by their name and project"
-
-// searchNothingNamed is [searchNothingSaid] said honestly on that surface:
-// no conversation is CALLED that, which says nothing about what was said.
-func searchNothingNamed(query string) string {
-	return fmt.Sprintf("no conversation on this machine is named %q · what was said is not indexed while memory is off", query)
-}
-
-// searchByName is the search this place runs with no store behind it: every
-// word typed has to appear in the conversation's name, its project's name or
-// its folder's name — the same three things home's box matches on — and the
-// matches come newest first, as the store's would. A hit carries no quoted
-// turn, so its row is the name, the project and the age.
-func searchByName(query string, world session.World) []store.ConversationHit {
-	words := strings.Fields(strings.ToLower(query))
-	if len(words) == 0 {
-		return nil
-	}
-	var hits []store.ConversationHit
-	for _, row := range world.Sessions() {
-		name := homeName(row)
-		hay := strings.ToLower(name + " " + row.Project + " " + filepath.Base(strings.TrimSpace(row.ProjectDir)))
-		all := true
-		for _, word := range words {
-			if !strings.Contains(hay, word) {
-				all = false
-				break
-			}
-		}
-		if !all {
-			continue
-		}
-		hits = append(hits, store.ConversationHit{MessageHit: store.MessageHit{SessionID: row.ID, Time: row.At}, Title: name})
-	}
-	sort.SliceStable(hits, func(i, j int) bool { return hits[i].Time.After(hits[j].Time) })
-	if len(hits) > searchFetch {
-		hits = hits[:searchFetch]
-	}
-	return hits
-}
+// searchNoIndexWord is the page over a surface with no conversation store
+// wired: A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, and this is the
+// sentence that says which of the two silences this one is.
+const searchNoIndexWord = "there is no index of this machine's conversations behind this window, so nothing can be searched from here."
 
 func (r searchReading) legend(width int, pal palette) string {
 	parts := make([]string, 0, len(r.facets))

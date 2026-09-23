@@ -759,8 +759,8 @@ and the note's leading `· `; strip those before feeding it to a parser.
 `/search` opens the **search place** — everything that has been said on this machine,
 found by the words you remember of it. It is the same place `alt+7` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
-searches. With the **memory** row off nothing said is indexed, and the place matches
-conversations by their name and project instead, saying so (see the *places* page).
+searches. With the **memory** row off nothing said is indexed, and the place says so and
+searches nothing — find the conversation from home's box instead (see the *places* page).
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
 and by what it was for. It is the same place `alt+3` opens.

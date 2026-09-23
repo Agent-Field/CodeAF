@@ -113,11 +113,10 @@ func (a *app) rebuildSearch() {
 	p.reading = next.unfolding(p.unfolded)
 	// AND WHETHER THERE IS AN INDEX AT ALL IS A FACT ABOUT THE SURFACE, not
 	// about the words: it is read here, where the reading is made, so the page
-	// can say what it matched by — what was said, or only what the
-	// conversations are called ([searchByNameWord]). The hosted case is
-	// answered further up by [placeSearch.remote], which says WHOSE index is
-	// missing and is the better sentence where it applies.
-	p.reading.byName = a.searchStore == nil
+	// can tell "nothing was said" from "nothing looked" ([searchNoIndexWord]).
+	// The hosted case is answered further up by [placeSearch.remote], which says
+	// WHOSE index is missing and is the better sentence where it applies.
+	p.reading.noIndex = a.searchStore == nil && !a.hosted()
 	p.cursor = a.nearestSearchStop(p.cursor)
 }
 
@@ -173,15 +172,15 @@ func (a *app) searchTick(msg searchTickMsg) tea.Cmd {
 		return nil
 	}
 	if a.searchStore == nil {
-		// WITH NO INDEX BEHIND IT, THE NAMES ARE SEARCHED. Memory off means no
-		// store and so no record of what was said (cmd/codeaf's v3Memory), and
-		// until 2026-09-22 this place answered that by refusing to search at
-		// all — while home's box, one `esc` away, found the same conversations
-		// by name. So the world this place already holds is read instead, the
-		// way home reads it: a conversation matches by what it is called and
-		// what project it is in ([searchByName]), and the page says that is
-		// what it matched by. The answer needs no round trip, so it lands now.
-		a.searchDone(searchDoneMsg{ask: a.search.ask, hits: searchByName(a.search.ask.query, a.search.world)})
+		// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. With no index
+		// behind it the place keeps saying what it is for rather than drawing an
+		// empty result list under somebody's words.
+		//
+		// It matched conversations by NAME here for one build on 2026-09-22,
+		// the way home's box does, and the owner took that back the next day:
+		// a place called `search` that searches something narrower than it says
+		// is worse than one that refuses.
+		a.search.waiting = false
 		return nil
 	}
 	return searchCmd(a.searchStore, a.search.ask)

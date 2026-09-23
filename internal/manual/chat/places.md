@@ -639,17 +639,16 @@ With nothing typed the place is its heading `search` over one line saying what t
 **A search that finds nothing says what to do about it**:
 `nothing on this machine says "amber rail" · try fewer words, or a name`.
 
-**With memory off, the place searches by name instead of refusing** (since 2026-09-22).
-What was said is indexed only while the **memory** row is on — memory off opens no store
-at all — so on such a machine the search place matches conversations the way home's box
-does: every word you type has to appear in the conversation's name, its project's name or
-its folder's name, and the matches come newest first with the project and the age but no
-quoted turn. The empty place says so under its whisper: `what was said is not indexed while
-memory is off · conversations match by their name and project`. A miss says
-`no conversation on this machine is named "amber rail" · what was said is not indexed while
-memory is off` — a different sentence from "nobody has said that", and the difference
-matters. (Until 2026-09-22 this window said `there is no index of this machine's
-conversations behind this window, so nothing can be searched from here.` and searched
+**With memory off the place refuses, and says which silence it is.** What was said is
+indexed only while the **memory** row is on — memory off opens no store at all — so this
+window says `there is no index of this machine's conversations behind this window, so
+nothing can be searched from here.` and searches nothing, whatever you type. That is
+deliberate: a search that never happened must not report a result, because
+`nothing on this machine says "amber rail"` would make you believe a conversation does not
+exist. **To find a conversation on such a machine, use home's box**, which matches names
+and projects and has never needed the index. (For one build on 2026-09-22 this place
+matched by name itself; that was taken back on 2026-09-23, because a place called `search`
+that searches something narrower than it says reads exactly like a whole search that found
 nothing.) Over `--host` a sentence at the top names the machine: the index is the one this
 machine's conversations were written into, and the conversation you are in was written on
 the other one.
