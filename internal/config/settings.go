@@ -1109,6 +1109,11 @@ var OperatorEnvPins = []string{
 	// The check seat has no editable profile row. Its environment rung is
 	// launch plumbing, listed read-only without changing the task.Role boundary.
 	"CODEAF_CHECK_MODEL",
+	// The replan baseline's experiment switch (internal/run's RootPlanSeatEnv):
+	// it seats a run's root on the plan seat from its first turn, so a bench arm
+	// can measure that shape beside today's. It is a measurement's plumbing and
+	// off by default, never a preference, so it gets no row.
+	"CODEAF_EXPERIMENT_ROOT_PLAN_SEAT",
 	// CODEAF_HOME moves the graph, workspace, craft repository and resident
 	// lease somewhere else in one word. It is plumbing rather than a setting
 	// for the plainest reason there is: it decides which store the sheet

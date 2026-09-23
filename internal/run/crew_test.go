@@ -376,3 +376,56 @@ func TestCrewFactorySeatsTheChatDoorsCheckOnTheCrewsChecker(t *testing.T) {
 		}
 	}
 }
+
+// TestRootPlanSeatSwitchSeatsOnlyTheChildlessRoot pins the replan baseline's
+// experiment switch. Unset, a childless root is a work leaf and rides the work
+// seat, which is what every run does today. Set, that same root rides the plan
+// seat from its first turn, and nothing else moves: a leaf under it keeps the
+// work seat and a check keeps the careful seat. Any word but the three that turn
+// it on leaves the root where it was.
+func TestRootPlanSeatSwitchSeatsOnlyTheChildlessRoot(t *testing.T) {
+	seats := run.Seats{Work: "vendor/worker", Plan: "vendor/planner", Check: "vendor/careful"}
+	dir := crewProfile(t, map[string]string{})
+	seatOf := func(store *plandb.Store, id string) string {
+		t.Helper()
+		recorder := &recordingCompleter{}
+		run.CrewFactory(store, t.TempDir(), dir, seats, recorder.forModel)(*store.Task(id))
+		if len(recorder.models) != 1 {
+			t.Fatalf("task %s asked for seats %v, want exactly one", id, recorder.models)
+		}
+		return recorder.models[0]
+	}
+
+	for _, word := range []string{"", "off", "0", "yes"} {
+		t.Setenv(run.RootPlanSeatEnv, word)
+		store := runOpenStore(t)
+		if got := seatOf(store, store.RootID()); got != "vendor/worker" {
+			t.Errorf("with the switch %q the childless root rode %q, want the work seat", word, got)
+		}
+	}
+	for _, word := range []string{"1", "on", "TRUE"} {
+		t.Setenv(run.RootPlanSeatEnv, word)
+		store := runOpenStore(t)
+		if got := seatOf(store, store.RootID()); got != "vendor/planner" {
+			t.Errorf("with the switch %q the childless root rode %q, want the plan seat", word, got)
+		}
+	}
+
+	t.Setenv(run.RootPlanSeatEnv, "1")
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "leaf", Title: "Leaf", ParentID: store.RootID()},
+		{ID: "review", Title: "Review", Role: plandb.RoleCheck},
+	}); err != nil {
+		t.Fatalf("add the leaf and the check: %v", err)
+	}
+	for id, want := range map[string]string{
+		store.RootID(): "vendor/planner",
+		"leaf":         "vendor/worker",
+		"review":       "vendor/careful",
+	} {
+		if got := seatOf(store, id); got != want {
+			t.Errorf("with the switch on task %s rode %q, want %q", id, got, want)
+		}
+	}
+}
