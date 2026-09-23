@@ -420,7 +420,10 @@ func TestAPathOnAnotherMachineDoesNotRefuseTheTask(t *testing.T) {
 		config.Workspace = repo
 	})
 
-	remote := filepath.Join(string(filepath.Separator), "no-such-host-"+t.Name(), "src", "probe", "bin", "codeaf")
+	// THE PATH THAT FAILED. It begins /home, and on macOS /home is a symlink to a
+	// directory that is really there, so a reading that walks up the path finds a
+	// place and refuses the task. The directory the path itself names is not here.
+	remote := "/home/santosh/src/af-dev2-probe/bin/codeaf"
 	if _, ok := placeOnThisMachine(remote); ok {
 		t.Fatalf("%s resolves to a directory on this machine, so it cannot stand in for a remote path", remote)
 	}
