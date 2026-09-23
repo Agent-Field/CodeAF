@@ -44,6 +44,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -91,19 +92,31 @@ func runRemoteEngine(args []string) error {
 	// the same stand-down as --stop, asked of every workspace this machine has a
 	// host directory for, one at a time and named as it goes.
 	stopAll := flags.Bool("stop-all", false, "stop every engine this machine is holding, in every workspace")
+	// --status IS THE QUESTION BEFORE THE STOP. On 2026-09-23 a two-day-old
+	// engine from another binary held a workspace, a fresh `--daemon` exited
+	// without a word, and the only way to see which process was answering was
+	// `ps`. This asks the socket instead and prints what is there.
+	status := flags.Bool("status", false, "say which engine is holding this workspace's conversations on this machine: pid, binary, build, windows")
+	statusAll := flags.Bool("status-all", false, "say which engine is holding each workspace on this machine")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		// --daemon is deliberately not named here. It is how a host is started
 		// and nothing a person accomplishes by typing it, so the usage line
-		// offers the two flags somebody might mean and stays quiet about the
-		// one they would only ever mean by accident.
-		return fmt.Errorf("usage: codeaf engine [--workspace path] [--session path] [--no-host] [--stop] [--stop-all]")
+		// offers the flags somebody might mean and stays quiet about the one
+		// they would only ever mean by accident.
+		return fmt.Errorf("usage: codeaf engine [--workspace path] [--session path] [--no-host] [--status] [--status-all] [--stop] [--stop-all]")
 	}
 
 	if *daemon {
 		return runEngineHost(*workspace, *file)
+	}
+	if *statusAll {
+		return runEngineStatusAll(os.Stdout)
+	}
+	if *status {
+		return runEngineStatus(os.Stdout, *workspace)
 	}
 	if *stopAll {
 		// THE TWO FLAGS ARE NOT COMBINED, they are ordered: --stop-all is a
@@ -219,93 +232,138 @@ func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 	})
 }
 
+// engineBuild is one build as the takeover rule measures it: which source it
+// is, when it was built, and which file it runs from.
+type engineBuild struct {
+	// Build is [buildinfo.Identity]: two builds of one clean source answer
+	// the same word.
+	Build string
+	// BuiltAt puts two builds in ORDER ([enginehost.BuildMoment]). Identity
+	// cannot: it says two builds differ and never which came first.
+	BuiltAt time.Time
+	// Binary is the file this process runs from, "" when the platform will
+	// not say.
+	Binary string
+}
+
+// thisEngineBuild is the build that is running, measured the way a host
+// measures itself when it answers the question.
+func thisEngineBuild() engineBuild {
+	return engineBuild{
+		Build:   buildinfo.Identity(),
+		BuiltAt: enginehost.BuildMoment(),
+		Binary:  enginehost.ThisBinary(),
+	}
+}
+
 // clearStaleEngineHost asks on behalf of the build that is running, which is the
 // only caller there has ever been. The yardstick is a parameter one layer down
 // because a test needs two builds of one source and a test binary is linked once.
 func clearStaleEngineHost(workspace string) (string, error) {
-	return clearStaleEngineHostFor(workspace, buildinfo.Identity())
+	return clearStaleEngineHostAs(workspace, thisEngineBuild())
 }
 
-// clearStaleEngineHostFor is the question and what is done with the answer. A nil
-// error means "go ahead and attach": either nothing is holding this workspace,
-// or what is holding it is this build, or what was holding it has gone — or it
-// is an older build of the SAME WIRE that would not let go, which is the one
-// case that answers with a sentence AND a nil error.
+// clearStaleEngineHostAs is the question and what is done with the answer. A nil
+// error means "go ahead and attach": nothing is holding this workspace, what is
+// holding it is this build or a newer one, or what was holding it was older and
+// has been replaced — in which case the string is the one line saying so.
 //
-// WHAT MAKES TWO BUILDS THE SAME ONE IS THE SOURCE THEY WERE BUILT FROM, and
-// [buildinfo.Identity] is where that is decided. Rebuilding a commit does not
-// make an older codeaf, and while the moment of the build was part of the answer
-// every window opened after a `make build` told somebody their own engine was
-// behind (#730).
+// ── THE RULE: THE OLDER ENGINE GIVES UP THE SLOT ─────────────────────────────
 //
-// ── A BUSY OLD HOST IS ATTACHED TO, NOT REFUSED ─────────────────────────────
+// On 2026-09-23 a new `codeaf engine --daemon` exited without a word because a
+// two-day-old engine, started from a different binary, held the workspace. The
+// windows went on talking to it, and conversations it had open refused the new
+// build with "open in another window". The file-replaced retirement
+// (internal/enginehost's binary.go) never fired, because nothing had replaced
+// ITS file: a different file was simply newer.
 //
-// It used to be the third refusal here: a host on yesterday's binary, holding a
-// turn or a task, was asked to go, said no, and the person was told to run
-// `codeaf engine --stop` — which would have ENDED the very work they were trying
-// to get back on screen. What they wanted was their running conversation, and it
-// was one socket away.
+// So an engine from an OLDER build is replaced whenever a newer one arrives,
+// busy or not, and the window says so in one line. It is not asked first: an
+// older engine is stale by definition, the conversations it holds are closed
+// properly on the way out (every journal flushed; a turn it catches stops where
+// it is and keeps its partial reply, as ctrl+c does), and the next connection —
+// this one — reopens them on the current build. Windows that were attached to it
+// see their connection end and redial onto the replacement.
 //
-// SO THE VERSION IS WHAT DECIDES AND THE BUILD IS NOT. A host answering the same
-// [remote.Version] speaks every frame this binary speaks; the difference between
-// the two builds is a difference in what happens NEXT TIME, and it settles
-// itself — a host whose binary has been replaced retires the moment it is
-// holding nothing (internal/enginehost's binary.go). So this attaches, and hands
-// back one line for the entry notice saying which state the machine is in. A
-// DIFFERENT wire version keeps the refusal it has always had, because there is
-// no attaching to a peer whose frames this build cannot read.
+// WHAT MAKES TWO BUILDS THE SAME ONE IS THE SOURCE AND THE FILE. A host of this
+// source running from this file (or one that does not say which file) is this
+// build's engine, whatever minute the two were linked in (#730), and is joined.
 //
-// AND THE NOTICE IS OWED WHENEVER THE OLDER BUILD IS THE ONE ANSWERING, not only
-// when it is holding work. It used to speak only for a busy host: a host whose
-// conversation had gone quiet — the turn finished, the person stepped away — was
-// asked to go, went, and the window opened on the fresh build WITHOUT A WORD, so
-// the person whose rebuild had not yet reached the conversation they were
-// reading was never told which build they had been talking to. That is the ghost
-// this line exists to name: whatever the older build was holding, the person is
-// told it was an older build, and told it is gone the moment it lets go.
-func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
-	host, err := enginehost.Ask(workspace, remote.WhoIs{})
-	switch {
-	case errors.Is(err, remote.ErrNoHostThere):
-		// The socket answered with a refusal, which is what EVERY BUILD FROM
-		// BEFORE THE EXCHANGE says to a question it has never heard of. It
-		// cannot be asked whether it is busy either, so it is never ended from
-		// here — a person is told, in words, what is true and what to type.
-		// NO ANSWER CARRIES NO WORKSPACE OF ITS OWN, so the one this process
-		// asked about is the one named: it is the workspace whose socket just
-		// refused, which is exactly what a person has to stop.
-		return "", &staleHost{reason: staleEngineHostSentence(false, workspace)}
-	case err != nil:
+// WHICH IS OLDER IS THE BUILD MOMENT AND NOTHING ELSE, and a tie is never a
+// replacement. That is what makes the rule converge: two windows on two builds
+// agree on which one is older, so the newer engine is never replaced by a window
+// of the older build, and two copies of one binary cannot take the slot from
+// each other forever. A host too old to answer the question at all is older than
+// everything.
+//
+// A NEWER ENGINE IS JOINED when it speaks this build's wire, and refused in words
+// when it does not — the older half of that pair is this binary, and the
+// sentence names it.
+func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
+	held, err := enginehost.Inspect(workspace)
+	if err != nil {
 		// Nothing answered at all: no host, or one that has stopped reading.
 		// Both are the ordinary road — Attach starts one.
 		return "", nil
-	case host.Version == remote.Version && host.Build == thisBuild:
+	}
+	host := held.Self
+	if held.Answered && sameEngineBuild(host, me) {
 		return "", nil
 	}
-	// Another build, and it is answering, so it can be asked to go.
-	if err := enginehost.Retire(workspace, false); err != nil {
-		if errors.Is(err, enginehost.ErrHostBusy) && host.Version == remote.Version {
-			return busyEngineHostSentence(host.Busy), nil
+	if held.Answered && !host.BuiltAt.Before(me.BuiltAt) {
+		// A NEWER BUILD (or a tie) IS NOT REPLACED FROM HERE. Same wire: join it.
+		if host.Version == remote.Version {
+			return "", nil
 		}
-		if errors.Is(err, enginehost.ErrHostBusy) {
-			return "", &staleHost{reason: staleEngineHostSentence(true, hostWorkspace(host, workspace))}
-		}
-		return "", &staleHost{reason: staleEngineHostSentence(false, hostWorkspace(host, workspace))}
+		return "", &staleHost{reason: newerEngineHostSentence(hostWorkspace(host, workspace))}
 	}
-	// IT WENT, and it went without a fight: whatever it was holding, it was
-	// holding nothing that could not be let go. The window opens on the fresh
-	// host either way — but it was the OLDER build answering until this moment,
-	// and a person whose rebuild had not reached the conversation they were
-	// reading deserves to be told so. A DIFFERENT wire keeps its silence: there
-	// the refusal above already said the machine was behind.
-	if host.Version == remote.Version {
-		return olderEngineHostSentence(host.Busy), nil
+	// OLDER: replaced. [enginehost.Stop] asks it to stand down regardless of
+	// what it holds, and ends a host too old to be asked with the signal every
+	// build of the host has answered by flushing and exiting.
+	went, err := enginehost.Stop(workspace)
+	if err != nil {
+		return "", &staleHost{reason: staleEngineHostSentence(host.Busy, hostWorkspace(host, workspace))}
 	}
-	return "", nil
+	if !went {
+		// It went on its own between the question and the stop.
+		return "", nil
+	}
+	return replacedEngineHostSentence(held), nil
 }
 
-// staleEngineHostSentence is what the person reads, and it is written on the
-// far machine because the far machine is the one with the problem.
+// sameEngineBuild is the host being this build: the same wire, the same source,
+// and — when the host names its file — the same file. A host that does not name
+// its file is judged on the source alone, which is every host from before the
+// field and exactly the rule #730 settled.
+func sameEngineBuild(host remote.HostSelf, me engineBuild) bool {
+	if host.Version != remote.Version || host.Build == "" || host.Build != me.Build {
+		return false
+	}
+	if strings.TrimSpace(host.Binary) == "" || strings.TrimSpace(me.Binary) == "" {
+		return true
+	}
+	return sameBinaryFile(host.Binary, me.Binary)
+}
+
+// sameBinaryFile is two paths naming one file: the same spelling after symlinks
+// are followed, or the same file on disk.
+func sameBinaryFile(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	if errA == nil && errB == nil && ra == rb {
+		return true
+	}
+	ia, errA := os.Stat(a)
+	ib, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(ia, ib)
+}
+
+// staleEngineHostSentence is what the person reads when an older engine would
+// not go, and it is written on the far machine because the far machine is the
+// one with the problem.
 //
 // IT NAMES THE MACHINE AND NOT "THE OTHER END". This sentence is printed on a
 // laptop by a surface that has three windows open onto three machines, and the
@@ -313,16 +371,13 @@ func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
 // being unable to say WHICH half was old. The name is this machine's own
 // hostname, the same one every window in a shared conversation is labelled with
 // ([remote.MachineName]).
-// IT NAMES THE WORKSPACE IN THE COMMAND, and that is the half this sentence was
-// missing. `codeaf engine --stop` with NO `--workspace` resolves to the HOME
-// directory ([engineWorkspace]), never to the workspace being complained about —
-// so a person reading this line inside a checkout, and typing it exactly as
-// written, stopped their healthy home host and left the offending one running.
-// The line then came back on the next launch, forever, which is how a stale host
-// on this machine outlived eight rebuilds and twenty-two hours.
-// [sessionHeldElsewhereSentence] in chatv3.go already spells the flag for this
-// exact reason and names this function as its voice; this is that voice saying
-// the same thing.
+//
+// IT NAMES THE WORKSPACE IN THE COMMAND. `codeaf engine --stop` with NO
+// `--workspace` resolves to the HOME directory ([engineWorkspace]), never to the
+// workspace being complained about — so a person reading this line inside a
+// checkout, and typing it exactly as written, stopped their healthy home host
+// and left the offending one running. [sessionHeldElsewhereSentence] in
+// chatv3.go spells the flag for the same reason.
 //
 // The workspace comes from the host's OWN answer ([remote.HostSelf.Workspace]),
 // not from what this process thinks it opened: the sentence is about the machine
@@ -344,6 +399,26 @@ func staleEngineHostSentence(busy bool, workspace string) string {
 	return fmt.Sprintf("engine: %s is still holding this conversation on an older codeaf — run %s on %s", name, stop, name)
 }
 
+// newerEngineHostSentence is the refusal the other way round: the engine holding
+// this workspace is a NEWER codeaf on a wire this binary cannot speak, so the
+// binary that is behind is this one. Nothing is stopped — the newer engine is
+// the one that should be there.
+func newerEngineHostSentence(workspace string) string {
+	name := remote.MachineName()
+	if strings.TrimSpace(name) == "" {
+		name = "that machine"
+	}
+	self := enginehost.ThisBinary()
+	if strings.TrimSpace(self) == "" {
+		self = "this codeaf"
+	}
+	stop := "codeaf engine --status"
+	if workspace = strings.TrimSpace(workspace); workspace != "" {
+		stop += " --workspace " + workspace
+	}
+	return fmt.Sprintf("engine: %s is holding this conversation on a newer codeaf than %s — use the newer binary (%s on %s shows which one it is)", name, self, stop, name)
+}
+
 // hostWorkspace is what the host says it is holding, and what this process asked
 // about when the host did not say. The host's own answer is preferred because
 // the sentence is about the machine that will not let go — but a build old
@@ -356,16 +431,11 @@ func hostWorkspace(host remote.HostSelf, asked string) string {
 	return asked
 }
 
-// busyEngineHostSentence is the one line a person reads when their conversation
-// comes back on a host that is one build behind and could not be let go of yet.
-// It is [staleEngineHostSentence]'s voice and its opposite in every other way:
-// nothing is wrong, nothing is owed, and the sentence exists so a surface never
-// quietly runs against a binary that is not the one on disk.
-//
-// IT NAMES WHAT IS ACTUALLY HELD. busy is the host's own answer, and it is the
-// difference between a turn still running and a conversation that is only being
-// kept warm — the two are not the same ghost, and the person being told deserves
-// to know which one is between them and the rebuild.
+// busyEngineHostSentence is the one line a window reads when it is attached to
+// an engine one build behind that could not be let go of. Under the takeover
+// rule this door no longer leaves such an engine in place; the sentence stays
+// because a window of THIS build can still meet it from an older build's door,
+// and the hosted surface quotes its voice (internal/tui3's newsSilenceNote).
 func busyEngineHostSentence(busy bool) string {
 	name := remote.MachineName()
 	if strings.TrimSpace(name) == "" {
@@ -377,27 +447,150 @@ func busyEngineHostSentence(busy bool) string {
 	return fmt.Sprintf("the engine on %s is an older codeaf — it is holding this conversation and picks up this build the moment you leave it", name)
 }
 
-// olderEngineHostSentence is the same notice for the host that went quietly: an
-// older build was answering until the moment this window arrived, and it has
-// already stepped aside. Nothing is owed and nothing is still pinned — the
-// sentence exists so a person whose rebuild had not yet reached the conversation
-// they were reading is told which build they had been talking to, rather than
-// finding it out by the fix not being there.
-func olderEngineHostSentence(busy bool) string {
+// replacedEngineHostSentence is the ONE LINE a takeover owes: which engine was
+// holding the workspace, and that this build holds it now. It names the process
+// by pid, build and file, because "an older codeaf" is exactly the sentence that
+// left a person reading `ps` on 2026-09-23.
+func replacedEngineHostSentence(held enginehost.Holder) string {
 	name := remote.MachineName()
 	if strings.TrimSpace(name) == "" {
 		name = "this machine"
 	}
-	if busy {
-		return fmt.Sprintf("the engine on %s was an older codeaf until just now — it has picked up this build", name)
+	return fmt.Sprintf("replaced the older engine on %s (%s) — this build holds the workspace now", name, holderClause(held))
+}
+
+// holderClause is one engine named the way every line about it names it: pid,
+// build, file — each only when it is known.
+func holderClause(held enginehost.Holder) string {
+	var parts []string
+	if held.Self.PID > 0 {
+		parts = append(parts, fmt.Sprintf("pid %d", held.Self.PID))
 	}
-	return fmt.Sprintf("the engine on %s was an older codeaf holding this conversation — it has picked up this build", name)
+	if rev := strings.TrimSpace(held.Self.Revision); rev != "" {
+		parts = append(parts, rev)
+	} else if !held.Answered {
+		parts = append(parts, "a build too old to say which")
+	}
+	if bin := strings.TrimSpace(held.Self.Binary); bin != "" {
+		parts = append(parts, bin)
+	}
+	if len(parts) == 0 {
+		return "an older build"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// runEngineStatus is `codeaf engine --status`: which engine holds this
+// workspace, in one screen, or "none".
+//
+// IT TALKS TO A PERSON, like --stop, which is why it prints. It asks the socket
+// and nothing else — no stand-down rides the question — so it is safe to type at
+// any moment, including in the middle of somebody's turn.
+func runEngineStatus(out io.Writer, workspaceFlag string) error {
+	workspace, err := engineWorkspace(workspaceFlag)
+	if err != nil {
+		return err
+	}
+	held, err := enginehost.Inspect(workspace)
+	if errors.Is(err, enginehost.ErrNothingHolding) {
+		fmt.Fprintf(out, "no engine is holding %s on this machine\n", workspace)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	writeEngineStatus(out, workspace, held, thisEngineBuild(), time.Now())
+	return nil
+}
+
+// runEngineStatusAll is --status for every workspace this machine has a host
+// directory for, found by the directories and their sockets and never by
+// matching process names.
+func runEngineStatusAll(out io.Writer) error {
+	places, err := enginehost.Held()
+	if err != nil {
+		return err
+	}
+	me, now := thisEngineBuild(), time.Now()
+	shown := 0
+	for _, workspace := range places {
+		held, err := enginehost.Inspect(workspace)
+		if err != nil {
+			continue
+		}
+		if shown > 0 {
+			fmt.Fprintln(out)
+		}
+		writeEngineStatus(out, workspace, held, me, now)
+		shown++
+	}
+	if shown == 0 {
+		fmt.Fprintln(out, "no engine is holding any workspace on this machine")
+	}
+	return nil
+}
+
+// writeEngineStatus is one engine's lines. THE FIRST LINE IS THE ANSWER and the
+// rest are the facts behind it, each left off when the engine did not say it
+// (the emptiness law): a build too old to answer is named by its pid and file
+// alone.
+func writeEngineStatus(out io.Writer, workspace string, held enginehost.Holder, me engineBuild, now time.Time) {
+	host := held.Self
+	verdict := "this build"
+	switch {
+	case !held.Answered:
+		verdict = "an older build — the next codeaf launched here replaces it"
+	case sameEngineBuild(host, me):
+	case host.BuiltAt.Before(me.BuiltAt):
+		verdict = "an older build — the next codeaf launched here replaces it"
+	default:
+		verdict = "a newer build than this binary"
+	}
+	fmt.Fprintf(out, "%s is held by an engine: %s\n", workspace, verdict)
+	if host.PID > 0 {
+		fmt.Fprintf(out, "  pid        %d\n", host.PID)
+	}
+	if bin := strings.TrimSpace(host.Binary); bin != "" {
+		fmt.Fprintf(out, "  binary     %s\n", bin)
+	}
+	if rev := strings.TrimSpace(host.Revision); rev != "" {
+		fmt.Fprintf(out, "  build      %s\n", rev)
+	}
+	if !host.Started.IsZero() {
+		fmt.Fprintf(out, "  started    %s (%s ago)\n", host.Started.Local().Format("2006-01-02 15:04"), roughAge(now.Sub(host.Started)))
+	}
+	if held.Answered {
+		fmt.Fprintf(out, "  windows    %d attached · %s open\n", host.Surfaces, countWord(host.Conversations, "conversation", "conversations"))
+		if host.Busy {
+			fmt.Fprintln(out, "  working    yes — a turn, a task or a question is in flight")
+		}
+	}
+	stop := "codeaf engine --stop"
+	if strings.TrimSpace(workspace) != "" {
+		stop += " --workspace " + workspace
+	}
+	fmt.Fprintf(out, "  stop it    %s\n", stop)
+}
+
+// roughAge is a duration the way a person reads one on a status line.
+func roughAge(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "under a minute"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d/time.Minute))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%dh%02dm", int(d/time.Hour), int(d%time.Hour/time.Minute))
+	default:
+		return fmt.Sprintf("%dd", int(d/(24*time.Hour)))
+	}
 }
 
 // runEngineStop is `codeaf engine --stop`: whatever is holding this workspace
-// on this machine, let go of.
+// on this machine, let go of — and named, so the person knows WHICH process that
+// was.
 //
-// IT TALKS TO A PERSON, WHICH IS WHY IT IS THE ONE DOOR IN THIS FILE THAT
+// IT TALKS TO A PERSON, WHICH IS WHY IT IS ONE OF THE DOORS IN THIS FILE THAT
 // PRINTS. Every other shape of `codeaf engine` owns stdout as the protocol and
 // a stray line there is a frame the surface cannot parse; this one is nobody's
 // engine, it is somebody typing on the machine itself and waiting to be told
@@ -407,12 +600,17 @@ func runEngineStop(workspaceFlag string) error {
 	if err != nil {
 		return err
 	}
+	held, inspectErr := enginehost.Inspect(workspace)
 	stopped, err := enginehost.Stop(workspace)
 	if err != nil {
 		return err
 	}
 	if !stopped {
 		fmt.Printf("nothing is holding %s here\n", workspace)
+		return nil
+	}
+	if inspectErr == nil {
+		fmt.Printf("stopped the engine holding %s (%s) — the next connection starts fresh from this build\n", workspace, holderClause(held))
 		return nil
 	}
 	fmt.Printf("stopped holding %s — the next connection starts fresh from this build\n", workspace)
@@ -428,13 +626,13 @@ func runEngineStop(workspaceFlag string) error {
 // state root names them by hash. On 2026-09-12 a host on an older wire held one
 // checkout for twenty-two hours and eight rebuilds, and clearing it took reading
 // a directory of hashes to find which one it was. This is that reading, done by
-// the program.
+// the program: the host directories and their sockets, never a process name.
 //
-// EVERY WORKSPACE IS NAMED AS IT GOES, and one that refuses does not stop the
-// sweep: the whole point is the workspace you did not know about, so a failure
-// on the third of five must not hide the fourth. The refusals are collected and
-// reported together at the end, and the exit code says whether any of them
-// happened.
+// EVERY WORKSPACE IS NAMED AS IT GOES, with the process that was holding it, and
+// one that refuses does not stop the sweep: the whole point is the workspace you
+// did not know about, so a failure on the third of five must not hide the
+// fourth. The refusals are collected and reported together at the end, and the
+// exit code says whether any of them happened.
 //
 // A DIRECTORY WHOSE HOST HAS GONE IS NOT A FAILURE. [enginehost.Stop] answers
 // false for a socket nobody is listening on, which is the ordinary state of
@@ -453,13 +651,18 @@ func runEngineStopAll() error {
 	var stopped, quiet int
 	var refused []string
 	for _, workspace := range held {
+		holder, inspectErr := enginehost.Inspect(workspace)
 		went, err := enginehost.Stop(workspace)
 		switch {
 		case err != nil:
 			refused = append(refused, fmt.Sprintf("%s: %v", workspace, err))
 		case went:
 			stopped++
-			fmt.Printf("stopped holding %s\n", workspace)
+			if inspectErr == nil {
+				fmt.Printf("stopped holding %s (%s)\n", workspace, holderClause(holder))
+			} else {
+				fmt.Printf("stopped holding %s\n", workspace)
+			}
 		default:
 			quiet++
 		}
@@ -499,6 +702,19 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 	if err != nil {
 		return err
 	}
+	// AN OLDER ENGINE IN THE SLOT IS REPLACED, NOT DEFERRED TO. This door used
+	// to find the lock taken and exit without a word, which is right when the
+	// holder is this build and was the whole defect when it was a two-day-old
+	// engine from another binary (the takeover rule: [clearStaleEngineHostAs]).
+	// Stderr is the person's terminal when they typed this, and the host's log
+	// when a window spawned it — the one line belongs in either.
+	note, err := clearStaleEngineHost(workspace)
+	if err != nil {
+		return err
+	}
+	if note != "" {
+		fmt.Fprintln(os.Stderr, "codeaf engine: "+note)
+	}
 	if err := os.Chdir(workspace); err != nil {
 		return fmt.Errorf("open %s: %w", workspace, err)
 	}
@@ -523,6 +739,13 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 	session.CloseUsage()
 	closeEngineProcess()
 	if errors.Is(err, enginehost.ErrHostRunning) {
+		// The slot is held by this build (or a newer one, or one that arrived
+		// in the instant since the question above): the machine is in the
+		// state that was asked for. A person who typed this is told which
+		// process that is; a spawned host's line lands in the host log.
+		if held, askErr := enginehost.Inspect(workspace); askErr == nil {
+			fmt.Fprintf(os.Stderr, "codeaf engine: %s is already held by an engine (%s)\n", workspace, holderClause(held))
+		}
 		return nil
 	}
 	return err
