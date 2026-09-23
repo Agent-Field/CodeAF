@@ -201,7 +201,11 @@ func (t *transport) translateCatalogResponse(response *http.Response) (*http.Res
 		data = append(data, map[string]any{
 			"id": id, "name": strings.TrimSpace(row.DisplayName), "context_length": row.ContextWindow,
 		})
-		model := Model{ID: id}
+		// THE SAVED ROW KEEPS THE WINDOW THE TRANSLATED ONE CARRIES. Both readers
+		// of the account's listing ([List] and this one) write the same file, and
+		// one that kept the window while the other dropped it would leave the
+		// answer to "how big is this model" depending on which of them ran last.
+		model := Model{ID: id, ContextLength: max(row.ContextWindow, 0)}
 		for _, level := range row.Levels {
 			if effort := strings.TrimSpace(level.Effort); effort != "" {
 				model.ReasoningLevels = append(model.ReasoningLevels, effort)

@@ -365,6 +365,9 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 		}
 		outcome, err := config.ConnectCodex(ctx, dir, tokens)
 		models := modelsFromListedIDs(outcome.ModelIDs)
+		if err == nil {
+			models = codexConnectedModels(dir, models)
+		}
 		word := config.CodexConnectionWord(tokens.Email, tokens.Plan, outcome)
 		if err != nil {
 			word = "codex did not connect · " + codexFailureReason(err)
@@ -374,6 +377,43 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 			models: models, err: err, browser: true, word: word,
 		}
 	}
+}
+
+// codexConnectedModels is the Codex rows this surface keeps once a sign-in
+// lands: the catalog [config.ConnectCodex] just remembered, WINDOWS INCLUDED,
+// and the same rows written to this service's model cache so the next launch
+// opens with them.
+//
+// THE OUTCOME CARRIES IDS AND NOTHING ELSE, which is right for the card and
+// wrong for this. Kept as bare ids, a surface with no process shelf behind it —
+// the engine road's, where the rows a model switch reads are this surface's
+// own — switched onto `codex/gpt-5.5` with no window to tell anyone, and the
+// status line went on showing the previous model's figure (#1383). It is the
+// same cache write a key service's connection makes on the way back
+// ([app.beginModelConnect]); the Codex road had simply never made it. When the
+// remembered catalog cannot be read, the ids are what there is.
+func codexConnectedModels(dir string, listed []Model) []Model {
+	connected, found := config.ResolveSources(dir, "", "").ByID("codex")
+	if !found {
+		return listed
+	}
+	models := listed
+	if remembered := codexCatalogModels(dir); len(remembered) > 0 {
+		models = remembered
+	}
+	_ = WriteModelCacheFor(connected.Source.ID, connected.Address, models)
+	return models
+}
+
+// codexCatalogModels is the Codex catalog this profile remembers, as the rows
+// this surface draws, each with its window ([config.CodexRememberedModels]);
+// nil when Codex is not connected here.
+func codexCatalogModels(dir string) []Model {
+	connected, found := config.ResolveSources(dir, "", "").ByID("codex")
+	if !found {
+		return nil
+	}
+	return surfaceModels(config.CodexRememberedModels(connected, dir))
 }
 
 func codexFailureReason(err error) string {

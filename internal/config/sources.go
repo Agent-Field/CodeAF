@@ -233,6 +233,33 @@ func resolvedSourceAddress(row PersistedSource, source modelsource.Source) strin
 	return resolvedRegionAddress(row, source)
 }
 
+// CodexRememberedModels is the Codex catalog this profile remembers for the
+// connected service, every row with the window it accepts.
+//
+// A ROW REMEMBERED BEFORE #1383 CARRIES NO WINDOW, because the connection that
+// wrote it dropped the listing's `context_window`. For a model the fallback list
+// names, the fallback's figure stands in: it is the same observation of the same
+// account listing that [ConnectCodex] remembers when the listing cannot be
+// reached, so it is a fact this build already holds about that id rather than a
+// guess about a model nobody has heard back from. Any other id keeps its zero,
+// which every reader already treats as "nobody can say". It is the one door both
+// readers of a Codex catalog take — the process shelf an engine's sessions ask
+// for a window, and the surface's own rows — so a profile connected by an older
+// build reads 272k the next time it opens, without connecting again.
+func CodexRememberedModels(service modelsource.Connected, profileDir string) []catalog.Model {
+	rows := catalog.Recall(CatalogOptionsFor(service, profileDir)).ModelsNow()
+	known := make(map[string]int, len(codexauth.FallbackModels))
+	for _, model := range codexauth.FallbackModels {
+		known[strings.ToLower(model.ID)] = model.ContextLength
+	}
+	for index := range rows {
+		if rows[index].ContextLength <= 0 {
+			rows[index].ContextLength = known[strings.ToLower(strings.TrimSpace(rows[index].ID))]
+		}
+	}
+	return rows
+}
+
 // ConnectCodex keeps a completed browser sign-in, persists its service row and
 // seeds the picker from the account's own visible model list.
 func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Tokens) (modelsource.Outcome, error) {
@@ -251,16 +278,20 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 		models = append([]codexauth.Model(nil), codexauth.FallbackModels...)
 	}
 	outcome := modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Refreshed: refreshed}
+	// EACH ROW KEEPS ITS WINDOW. The catalog remembered here is what the picker,
+	// the status line's meter and the session's compaction all read for a Codex
+	// model, and a row remembered without one left a conversation that moved onto
+	// it on its previous model's window (#1383). The figure is the account
+	// listing's own, or the fallback rows' one observed figure when the listing
+	// could not be reached.
+	remembered := make([]catalog.Model, 0, len(models))
 	for _, model := range models {
 		if id := strings.TrimSpace(model.ID); id != "" {
 			outcome.ModelIDs = append(outcome.ModelIDs, id)
+			remembered = append(remembered, catalog.Model{ID: id, ContextLength: model.ContextLength, PriceUnknown: true})
 		}
 	}
 	outcome.Models = len(outcome.ModelIDs)
-	remembered := make([]catalog.Model, 0, len(outcome.ModelIDs))
-	for _, id := range outcome.ModelIDs {
-		remembered = append(remembered, catalog.Model{ID: id, PriceUnknown: true})
-	}
 	service, found := ResolveSources(profileDir, "", DefaultBaseURL).ByID("codex")
 	if !found {
 		_ = DisconnectService(profileDir, "codex")

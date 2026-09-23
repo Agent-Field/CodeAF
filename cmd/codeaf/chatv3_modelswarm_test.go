@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -49,7 +50,7 @@ func TestTheLaunchesModelWarmStopsWhenTheProcessCloses(t *testing.T) {
 	t.Setenv("CODEAF_BASE_URL", server.URL)
 	proc := v3TestProcess(t)
 	agent := v3TrackedAgent(t, t.TempDir())
-	proc.warmModels("chatv3/models", proc.Models, agent, "test/model")
+	proc.warmModels("chatv3/models", agent, "test/model")
 
 	// THE NEXT TEST'S ROOT. A warm that outlives this process resolves
 	// CODEAF_HOME here and writes into a directory this test owns.
@@ -72,4 +73,34 @@ func TestTheLaunchesModelWarmStopsWhenTheProcessCloses(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// A WARM WRITES THE DEFAULT SERVICE'S LIST AND NOTHING ELSE (#1383). A
+// conversation that opens on `codex/gpt-5.5` — every launch, once a Codex
+// sign-in has saved it as the chat model — used to hand the warm the Codex
+// catalog it started on, and the warm wrote Codex's bare ids into the
+// OpenRouter model list. The warm now always warms the process's own catalog,
+// so the list it writes is the router's rows whatever the conversation is on.
+func TestAWarmForAConversationOnCodexWritesOnlyTheRoutersList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"id":"vendor/router-model","context_length":200000}]}`)
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("CODEAF_BASE_URL", server.URL)
+	proc := v3TestProcess(t)
+	agent := v3TrackedAgent(t, t.TempDir())
+	written := filepath.Join(os.Getenv("CODEAF_HOME"), "v3", "models.json")
+	proc.warmModels("chatv3/models", agent, "codex/gpt-5.5")
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if raw, err := os.ReadFile(written); err == nil {
+			if !strings.Contains(string(raw), "vendor/router-model") || strings.Contains(string(raw), `"gpt-5.5"`) {
+				t.Fatalf("the router's model list after a Codex conversation's warm = %s", raw)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("the warm wrote no router list at %s", written)
 }

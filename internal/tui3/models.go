@@ -222,8 +222,40 @@ func (a *app) cachedModels() []Model {
 func (a *app) learnModelLists() {
 	a.modelLists.learn(modelCacheNameFor("", modelcatalog.DefaultBaseURL))
 	for _, service := range a.sources.All() {
-		a.modelLists.learn(modelCacheNameFor(service.Source.ID, service.Address))
+		name := modelCacheNameFor(service.Source.ID, service.Address)
+		a.modelLists.learn(name)
+		if strings.EqualFold(service.Source.ID, "codex") {
+			// A CODEX LIST IS A COPY OF THE CATALOG, and it is brought back into
+			// step with the catalog on open whenever the two differ. A connection
+			// made before #1383 wrote no list for this surface and a catalog with
+			// no windows in it, so a surface with no process shelf behind it — the
+			// engine road's — had no row to read a Codex model's window from and
+			// kept the previous model's figure. And a list written from the
+			// fallback's figure must give way when a later listing, taken by any
+			// door, remembers a different one: the terminal's `codeaf connect`
+			// rewrites the catalog and never this surface's copy. A list already
+			// in step is left alone, so an ordinary open writes nothing.
+			if rows := codexCatalogModels(a.profileDir); len(rows) > 0 && !sameModelRows(rows, a.cachedModelsFor(service.Source.ID, service.Address)) {
+				_ = WriteModelCacheFor(service.Source.ID, service.Address, rows)
+				a.modelLists.forget(name)
+				a.modelLists.learn(name)
+			}
+		}
 	}
+}
+
+// sameModelRows reports whether two lists name the same models, in the same
+// order, with the same windows.
+func sameModelRows(left, right []Model) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index].ID != right[index].ID || left[index].ContextLength != right[index].ContextLength {
+			return false
+		}
+	}
+	return true
 }
 
 // forgetModelList is for the one caller who KNOWS the file under a pair just
