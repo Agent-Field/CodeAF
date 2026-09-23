@@ -9,6 +9,18 @@ helper="$tmp/codeaf-suite-lock"
 legacy="$root/scripts/testdata/pre-1264/one-suite.sh"
 go build -o "$helper" "$root/cmd/codeaf-suite-lock"
 
+# read_lock_line waits for the file lock's line and prints it.
+#
+# THE LOCK IS NAMED AFTER THE SUITE STARTS, never before (main.go), so a suite
+# that has said "ready" says nothing yet about the file. Reading it at once lost
+# that race on a loaded box and quoted an empty line; the Go test beside this
+# script reads until the line is there for the same reason, and so does this.
+read_lock_line() {
+	local waited=0
+	while [ ! -s "$1" ] && [ "$waited" -lt 100 ]; do sleep 0.1; waited=$((waited + 1)); done
+	cat "$1"
+}
+
 run_order() {
 	local first="$1" lock="$tmp/$1.lock" fifo="$tmp/$1.fifo"
 	mkfifo "$fifo"
@@ -23,7 +35,7 @@ run_order() {
 	read -r ready <"$fifo"
 	[ "$ready" = ready ]
 	local metadata output status suite_pid since
-	metadata="$(cat "$lock")"
+	metadata="$(read_lock_line "$lock")"
 	# The lock file records the suite's pid, when it started, and the pid of the
 	# holder that carries the lock beside it, so read the two the refusal quotes
 	# by field rather than by splitting the line in two.
@@ -71,7 +83,7 @@ run_host_b_after_cell() {
 	local holder_pid=$! ready
 	read -r ready <"$fifo"
 	[ "$ready" = ready ]
-	local metadata suite_pid since; metadata="$(cat "$lock")"
+	local metadata suite_pid since; metadata="$(read_lock_line "$lock")"
 	suite_pid="${metadata%% *}"
 	since="${metadata#* }"
 	since="${since%% *}"
