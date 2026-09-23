@@ -349,6 +349,9 @@ func testHomeShape(t *testing.T) {
 			t.Errorf("home has no %q panel:\n%s", say(t, name), screen)
 		}
 	}
+	if strings.Contains(screen, say(t, "homeRunningWhisper")) {
+		t.Errorf("populated sessions still show the empty-panel hint:\n%s", screen)
+	}
 	// THE BAR IS FOUR WORDS. Standing, memory and search are places reached by
 	// command and by alt+5…7, and a bar that still named them is the seven-word
 	// bar this wave retired.
