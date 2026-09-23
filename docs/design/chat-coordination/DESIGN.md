@@ -38,7 +38,7 @@ Each of these is a missing reader on a channel that is already written to.
 | one task's page | store | chat's `tasks #N` (brief, result, checks, last steps) | `planTaskText` |
 | **notes** | worker `plandb task note`, engine (`AddNote`) | **screen only** (`internal/tui3` via `PlanTaskPage.Notes`); `planTasksText` does not print them | `internal/session/plandb_tasks.go:672` |
 | steer into a running worker | engine only: the same-step sentence, carried by `noteOwed` so a race with the turn's end cannot drop it | the worker's next round | `internal/run/bashworker.go:140-160`, `sameStepNote` |
-| revise a task's brief | `revise_assignment`, written through with a version so a stale direction is refused | store; worker on its next read | `planReviseThrough`, `internal/session/plandb_plan.go:842` |
+| revise a task's brief | `revise_assignment`, written through with a version so a stale direction is refused. **A worker's verb only** (`Config.mayRevise` is `InTask && tasker != nil && taskID != 0`): the chat never carries it, so the chat has no door that revises a brief | store; worker on its next read | `planReviseThrough`, `internal/session/plandb_plan.go:842` |
 | dependencies | `propose_task depends_on` | supervisor; the dependent's brief is given its dependencies' reports | `internal/run` |
 | the run's money | `CostUSD` on the run spec; a dollar limit holds while a worker is working (#1268) | supervisor | `internal/session/task_run_belt.go:81` |
 | what a check reads | `"Acceptance: " + leaf.Description` plus the task's declared `Checks` | the check worker | `internal/run/run.go:799`, #1220 |
@@ -62,9 +62,12 @@ The chat's `tasks` tool prints each task's notes: the last one on the row, all
 of them (bounded) on the task's page. The data is already in `PlanTaskPage`.
 
 **Who may write.** The person, from the task sheet (exists). The chat, through
-`revise_assignment` for a redirection (exists) and through a plain note for
-information that is not a redirection (new: a `note` field on the unified door
-in change 4, or a small tool until then). Workers, through `plandb task note`
+a plain note for information that is not a redirection (new: a `note` field on
+the unified door in change 4, or a small tool until then). *Correction,
+2026-09-23:* this line first said the chat redirects through
+`revise_assignment` "(exists)". It does not exist for the chat — the verb is a
+worker's — and the chat's only answer to a row whose work is wrong is `tasks`
+with `stop` and a fresh hand-off. Workers, through `plandb task note`
 (exists). Sibling workers thereby reach each other, which is the case in
 problem 1.
 
@@ -120,14 +123,17 @@ without a card. The `needs you` count and the cards' wording are unchanged.
 
 ### 4. One door for the chat, light doors for workers
 
-**Today.** Four chat verbs over one store: `propose_task`, `revise_assignment`,
-`tasks`, cancel. Workers use `plandb add/split/note/done` through their shell.
+**Today.** Three chat verbs over one store: `propose_task`, `tasks` (which reads,
+stops and, on the plan road, notes a row) and cancel. `revise_assignment` is a
+worker's verb and is never on the chat's belt, so the chat cannot revise a
+brief today. Workers use `plandb add/split/note/done` through their shell.
 
 **Change.** A `plan` tool for the chat with actions `add`, `steer`, `note`,
 `stop`, `show`. `add` keeps `propose_task`'s five required fields (title,
 summary, brief, deliverable, acceptance) and its optional ones; that schema is
-what forces a good brief and it stays at the chat's door. `steer` is
-`revise_assignment`. `note` is change 1's writer. `show` is `tasks`. The old
+what forces a good brief and it stays at the chat's door. `steer` would be
+the chat's first door onto `revise_assignment`'s road — a new capability, not
+a rename, since the chat holds no such verb today. `note` is change 1's writer. `show` is `tasks`. The old
 names remain as aliases for one release and then go, with the manual and
 `system.md` updated in the same change.
 
