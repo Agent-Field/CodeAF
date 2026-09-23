@@ -902,7 +902,8 @@ The whole list, by settings key:
   clock and the countdown for the next session.
 - **Whether codeaf's own work is checked** — `task.audit`. A session that can
   switch off the check can call anything done.
-- **How work that leaves this machine is signed** — `attribution`.
+- **How work that leaves this machine is signed** — `attribution.model`, whether
+  the `Assisted-by` line names the model. The signature itself has no row.
 - **Your credentials** — `search.exaKey`, `search.firecrawlKey`, `search.jinaKey`,
   `google_oauth_secret`, and `google_oauth_client`, which is useless without the
   secret beside it. These restrain nothing; they are refused because a key
@@ -934,20 +935,28 @@ A row your environment has pinned refuses like it does everywhere else:
 
 ## Does codeaf sign my commits — why is there a co-author on my commit, who is agentfield-bot, how do I turn the trailer off
 
-Yes, unless you turn it off. There are three marks and no others, and this is
-exactly what each one looks like.
+Yes, always, and it cannot be turned off. There are three marks and no others,
+and this is exactly what each one looks like.
 
-**A commit** ends with a blank line and two trailer lines, the co-author last:
+**A commit** ends with one blank line and two trailer lines, `Assisted-by`
+first and the co-author last, and nothing after them:
 
 ```
-Assisted-by: CodeAF (z-ai/glm-5.3)
+Assisted-by: CodeAF (glm-5.3)
 Co-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>
 ```
 
-The parenthesised id on the first line is the model that wrote the commit —
-the model the conversation is talking to at that moment. Switch with `/model`
-and the next commit names the model you switched to, not the one the
-conversation started on.
+The name in brackets is the model that wrote the commit — the model the
+conversation is talking to at that moment — and only the model: the provider or
+company in front of it (`z-ai/`) and a routing suffix such as `:free` or
+`:nitro` come off, and the model's own version or date stays. Switch with
+`/model` and the next commit names the model you switched to. A commit a task
+lands names the model that task ran on.
+
+**The one part you can turn off is the model's name.** Switch the **model in
+commits** row (`attribution.model`) off in `/settings`, or set
+`CODEAF_ATTRIBUTION_MODEL=0`, and the first line is just `Assisted-by: CodeAF`.
+It is on by default.
 
 **A pull request or an issue** ends its body with a line holding an em dash, and
 then one sentence:
@@ -991,13 +1000,16 @@ worth reporting.
 forbids AI trailers or generated-by lines, codeaf leaves all three out and tells
 you it did.
 
-**To turn it off**, open `/settings` and switch the **attribution** row off, or
-set `CODEAF_ATTRIBUTION=0` in your environment. It is on by default. codeaf
-cannot change this row for you — ask it to and it says so and points you at
-`/settings` — because a signature is yours to decide. A change lands on the next
-piece of work handed off, and on the next codeaf you start.
+**There is no switch that stops the signing.** The `attribution` row and
+`CODEAF_ATTRIBUTION` are gone. A profile that still says `attribution: false`, or
+a shell that still sets the variable, is told so once when codeaf starts, with
+the sentence naming `attribution.model` as the part that can still be turned
+off. The only thing that takes the marks off is the repository's own policy
+above. codeaf cannot change the `attribution.model` row for you — ask it to and
+it says so and points you at `/settings`. A change lands on the next piece of
+work handed off, and on the next codeaf you start.
 
-The commit a task writes when its work lands carries the same trailer. Those
+The commit a task writes when its work lands carries the same two lines. Those
 commits are authored as `codeaf <agentfield-bot@users.noreply.github.com>`: codeaf
 reads that identity to tell its own commits from yours when it lands a branch.
 Older task commits authored as `codeaf <codeaf@localhost>` are still recognised

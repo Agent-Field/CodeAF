@@ -103,7 +103,7 @@ var selfServiceGuards = map[string]string{
 	KeyBashBackgroundAfter: guardPressure,
 
 	KeyTaskAudit:   guardProof,
-	KeyAttribution: guardSignature,
+	KeyAttributionModel: guardSignature,
 
 	// The credential fields that are not [Setting.Secret] rows. Google's id is
 	// useless without the secret beside it; Slack's public application needs

@@ -39,7 +39,7 @@ func heldTaskWorld(t *testing.T, agent *Agent, path, content string) (<-chan tas
 		writeFile(t, filepath.Join(tree.dir, path), content)
 		world <- tree
 		<-release
-		merge, changed := keptWork(tree, node.title(), []string{path}, false)
+		merge, changed := keptWork(tree, node.title(), []string{path}, gitSignature{})
 		node.finish("scripted run ended", changed, tree.branch, merge)
 		node.graph.complete(node, TaskFailed)
 	})
@@ -637,7 +637,7 @@ func TestAFolderGroundIsMirroredAndLandsByName(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "notes.md"), "the written line\n")
 	writeFile(t, filepath.Join(tree.dir, "build.log"), "noise\n")
 
-	merge, detail, _, _ := tree.comeHome("write it up", []string{"notes.md"}, false)
+	merge, detail, _, _ := tree.comeHome("write it up", []string{"notes.md"}, gitSignature{})
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("the mirror landed as %q: %s", merge, detail)
 	}

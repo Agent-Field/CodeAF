@@ -109,7 +109,7 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// internal/session does for the window it was handed. One question, one
 	// non-blocking answer, two readers.
 	linear := exec.NewLinear(client, space, web, 0, 0, 0).
-		WithAttribution(settings.Attribution).
+		WithAssistedBy(config.AssistedByModelAt(settings.ProfileDir, model)).
 		WithContextLength(v3Window(models, model))
 	registry := exec.NewRegistry(linear)
 	// THE GENERALIST IS WHAT THE DEOPTIMIZATION PATH FALLS BACK TO, so it is

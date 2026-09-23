@@ -1121,8 +1121,8 @@ naming the near misses. And there is no way around the tool: a value typed into
 to do it.
 
 **Some rows are refused on purpose** — the tool gate and the shell rules, the
-spend rails, the machine ceilings, the check on task work, the attribution
-trailer, and every credential row. The permissions page lists them exactly. A
+spend rails, the machine ceilings, the check on task work, the model name in the
+commit trailer, and every credential row. The permissions page lists them exactly. A
 model that could widen its own restraints would not have any.
 
 Both tools are absent inside a running task, along with `watch`. A task node

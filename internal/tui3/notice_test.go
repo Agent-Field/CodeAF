@@ -737,3 +737,30 @@ func TestUnreadProfileKeysNoticeShowsWithHintsOff(t *testing.T) {
 	}
 	t.Fatal("with hints off, the unread config key was never named")
 }
+
+// A RETIRED ROW IS TOLD IN ITS OWN WORDS. A profile still saying `attribution`
+// is told the row is gone and what can still be turned off — not the generic
+// "ignored and defaults apply", which says nothing a person can act on — and an
+// unknown key beside it still gets the generic line.
+func TestARetiredRowIsToldInItsOwnSentence(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.notices = newNoticeBoard(filepath.Join(t.TempDir(), noticeLedgerName), "", true)
+	a.showUnreadProfileKeys([]string{"attribution", "models"})
+	var told, generic bool
+	for _, entry := range a.entries {
+		if entry.kind != entryNote {
+			continue
+		}
+		told = told || entry.text == config.RetiredRowNote("attribution")
+		generic = generic || strings.Contains(entry.text, "config.json keys are not read: models;")
+		if strings.Contains(entry.text, "not read: attribution") {
+			t.Fatalf("the retired row was folded into the generic line: %q", entry.text)
+		}
+	}
+	if config.RetiredRowNote("attribution") == "" || !told {
+		t.Fatal("a profile still saying attribution was not told the row is gone")
+	}
+	if !generic {
+		t.Fatal("the unknown key beside it lost its own line")
+	}
+}

@@ -125,7 +125,7 @@ var settingReaders = map[string]string{
 	KeyTenureAfter:    "CODEAF_TENURE_AFTER",
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
-	KeyAttribution:    "Attribution",
+	KeyAttributionModel: "AssistedByModelAt",
 	// The pool row is read through [ModelPoolAt] since the telemetry off switch
 	// started capping the pool at read: `codeaf pool` and `codeaf telemetry`
 	// call [ModelPoolResolved] with their injected environment, and every
