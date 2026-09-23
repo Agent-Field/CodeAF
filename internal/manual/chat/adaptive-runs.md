@@ -151,12 +151,12 @@ keyboard decides for itself and says on the record that it decided.
 
 | flag | what it does |
 | --- | --- |
-| `--db <path>` | work in this durable store instead of a private one |
-| `--keep` | keep the private store instead of deleting it on the way out |
-| `-w <dir>` | the directory to work in, edited in place — the current directory by default |
+| `--db <path>` | work in this durable store instead of a private one — older engine only; the run engine, the default, refuses it in words |
+| `--keep` | keep the run's store instead of deleting it on the way out, and say where it is |
+| `-w <dir>` | the directory to work in, edited in place and never committed — the current directory by default |
 | `--timeout` | a hard wall on the whole run |
 | `--json` | print one machine-readable object instead of the deliverable |
-| `--yes-spend` | approve a plan whose price crosses the consent threshold |
+| `--yes-spend` | spend past today's limit and past the plan-price question, without stopping to ask. Without it a run stops at the plan price (`CODEAF_PLAN_CONSENT`, $100 out of the box) or at what is left of today's limit, whichever is nearer |
 | `--slots <n>` | how many workers may run at once for this run; `0` is no limit. Unset, it is your `task.parallel` setting, which is no limit out of the box |
 | `--model <slug>` | the work model for this run |
 | `--plan-model <slug>` | the model that plans, when it should differ from the work model |
@@ -727,8 +727,12 @@ check what it did, not a run that ran out of time.
 
 ## My headless run failed — where is its record, why is there a folder left behind after `codeaf do`, how do I keep the run's files with `--keep`
 
-`codeaf do` works in a private store of its own unless you point it somewhere durable with
-`--db`. What becomes of that store depends on how the run ended:
+**This is the older engine's store** (`CODEAF_TASK_BELT=node`). On the run engine, the
+default, a run keeps its plan in `.codeaf/plandb.db` inside the directory it works in, never
+deletes it, refuses `--db`, and with `--keep` says where the store is.
+
+On the older engine, `codeaf do` works in a private store of its own unless you point it
+somewhere durable with `--db`. What becomes of that store depends on how the run ended:
 
 - **It worked** — exit 0 — and the store is deleted on the way out. Nothing is left behind,
   which is the point of a one-shot.

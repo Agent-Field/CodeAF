@@ -246,7 +246,13 @@ func quotedFacts(t *testing.T) []quotedFact {
 	}, {
 		fact: "the figure a plan asks above", owner: "config.DefaultPlanConsentUSD",
 		value:  dollarsOwed(config.DefaultPlanConsentUSD),
-		quotes: []quotedIn{{"models-and-cost", "| **per plan** | `asks first above $%s` |"}},
+		quotes: []quotedIn{
+			{"models-and-cost", "| **per plan** | `asks first above $%s` |"},
+			// `codeaf do` on the run engine stops at the same figure unless
+			// --yes-spend said otherwise, and both pages that say so quote it.
+			{"worker-harness", "**$%s** out of the box"},
+			{"adaptive-runs", "`CODEAF_PLAN_CONSENT`, $%s out of the box"},
+		},
 	}, {
 		fact: "what one firing may spend", owner: "standing.DefaultPerRunUSD",
 		value:  dollarsOwed(standing.DefaultPerRunUSD),

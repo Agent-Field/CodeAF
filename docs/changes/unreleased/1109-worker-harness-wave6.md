@@ -1,25 +1,21 @@
 ---
 kind: changed
-title: A task is one worker and a plan store; the older node engine is deleted
+title: A task can run as one worker over a plan store, beside the node engine
 pr: 1109
 surface: [engine, chat, build]
 invalidates:
-  - "`propose_task`, `quick_task`, `divide_work` and `revise_assignment` were a task's and a worker's doors to the node engine. They are gone; a task splits and is steered through the plan store its worker reaches by running `plandb` through bash."
-  - "The `tasks` window read this session's own task graph. Its engine half is gone; a run is read from the plan store, and the rows a pane draws come from the store and the project index."
-  - "`CODEAF_TASK_BELT` chose between the shipped node belt and the bash belt, and `CODEAF_TASK_ENGINE=legacy` kept the node engine reachable. Neither exists; the run engine is the only task engine and it wears one belt."
-  - "`codeaf do` dispatched a task through the node engine's own door. It is a run with no chat attached over the same plan store, and its exit ladder, JSON envelope and usage ledger are unchanged."
-  - "A task node was judged by a second model that read its worktree and answered VERIFIED or REFUTED. There is no auditor call; a task cannot finish while a child or a dependency is open, and the action that asks to finish must exit 0."
-  - "A worker handed its parts to `divide_work` and each ran in a worktree of its own. Parts are `plandb split` tasks in the run's one working copy, and the run's landing is a single commit on its root."
+  - "A task always ran on the node engine: a `TaskNode` of the session's own tree, in a worktree of its own, judged by a second model. A task can also run on the run engine — `internal/run`'s supervisor over one `internal/plandb` store, one bash-belt worker per task in the run's one working copy — and the node engine is still in the binary beside it."
+  - "`CODEAF_TASK_BELT` is the switch between the two, not a word that stopped existing. Unset, it is the run engine; `node`, `legacy` and `off` reach the node engine (#1355 has the current reading)."
+  - "`propose_task`, `quick_task`, `divide_work` and `revise_assignment` are still the node engine's doors, and still on its belt. A worker on the run engine splits and steers its work through the plan store instead, by running `plandb` through bash."
   - "The belt refused `git clone` in a workspace that was not a repository. The task's git guard reads the workspace root now: where the folder is not inside a git work tree every git verb — clone, checkout, fetch, pull — passes, and inside a repository the refusals stand."
   - "A parent was not woken when its children landed: the plan pulse ran only after a bash call or a landing. It also fires at a bash-belt worker's turn end and when a fan slot goes back, so a task that became ready is dispatched instead of waiting on some worker's next bash call."
   - "The run's `plandb` was not on the worker's PATH. Every belt command is now prefixed with the run's armed shim directory, so the worker reaches the run's own plan CLI and the process environment is never touched."
 ---
 
-The node engine was `internal/session`'s `TaskGraph`: a frontier that admitted
-`TaskNode`s, a child agent per node in a `git worktree` of its own, an auditor,
-and the verbs that reached it. Its replacement is the run — `internal/run`'s
-supervisor over one `internal/plandb` store, one bash-belt worker per task, all
-in the run's one working copy, coordinated through the store. This entry lands
-with the deletion; `docs/design/worker-harness/LEGACY-INVENTORY.md` is the map
-of what went and what stayed, and the manual pages and prompts that named the
-old tools change in the same commit.
+This entry once said the node engine was deleted and `CODEAF_TASK_BELT` no
+longer existed. Neither happened: the node engine — `internal/session`'s
+`TaskGraph`, its frontier of `TaskNode`s, a child agent per node in a
+`git worktree` of its own, and the verbs that reach it — is in the binary, and
+`CODEAF_TASK_BELT` chooses between it and the run engine. What this wave added
+is the run engine beside it; #1340 and #1355 are where the default moved, and
+`docs/design/worker-harness/LEGACY-INVENTORY.md` maps the two.

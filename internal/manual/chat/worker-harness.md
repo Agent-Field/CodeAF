@@ -589,7 +589,8 @@ named on a door or in the profile:
   adds reads a finished leaf against. `codeaf do` resolves it from
   `--check-model`, then the `CODEAF_CHECK_MODEL` environment value, then a plan
   seat pinned by `--plan-model` or `CODEAF_PLAN_MODEL`. A run pinned to two models checks on
-  the plan seat and no third model appears from the profile. Without those pins,
+  the plan seat and no third model appears from the profile. A `/task` has no flags, so
+  its check reads `CODEAF_CHECK_MODEL` alone. Without those pins,
   the check takes the crew's careful row, the same row a conversation's checker rides. The
   **probe** seat is the one the profile's own `low` row answers alone: nothing
   on a door names it, so a probe runs on the crew you set in `/crew`.
@@ -621,6 +622,52 @@ when it could not be run at all.
 it was (`done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`,
 `deadline`, `price`, `question`), and `ok` is true on exactly the runs that leave
 with 0.
+
+## Does codeaf do commit my changes? It edits the folder in place and commits nothing
+
+`codeaf do` works in the directory you hand it with `-w` / `--dir` (the current
+directory by default), **edited in place, on whatever branch is checked out there,
+and nothing is committed**. The run's files are left uncommitted for you to read,
+keep or throw away, exactly as the older engine left them.
+
+Your own work is never touched by the run's accounting: an edit you had not
+committed, or an untracked file such as a secrets file, is still yours after the
+run, still uncommitted and still untracked. The files the run names — `files:` on
+standard output, `artifacts` in `--json` — are the ones **this run** changed, read
+by comparing the folder before and after: a file it wrote, a file of yours it edited
+further, and anything it committed itself. A folder that is not a git repository
+names no files, though the run's edits are still on disk.
+
+The run's plan is kept in `.codeaf/plandb.db` inside that directory, and that file
+is never named among the run's files.
+
+## How much can a codeaf do run spend — --yes-spend, the plan price and today's limit
+
+A `codeaf do` run has nobody watching, so **it stops at a price unless you said
+otherwise**. Without `--yes-spend` it may spend up to the nearer of two figures:
+
+- the **plan price** — `CODEAF_PLAN_CONSENT`, or the same row in `/settings`,
+  **$100** out of the box — the point above which codeaf asks before it spends.
+  Reaching it ends the run with exit **3**, `stop` `price`, and `blocked_on`
+  saying the figure and to rerun with `--yes-spend`. `0` means never ask, and then
+  this figure does not stop the run;
+- what is left of **today's spending limit** (`CODEAF_DAILY_BUDGET`, `0` for no
+  limit). Reaching it ends the run with exit **3** and `stop` `budget`; a day
+  already spent starts nothing.
+
+`--yes-spend`, or `CODEAF_PREAUTHORIZE_SPEND=1`, lets the run spend past both
+without stopping. The older engine asked the plan-price question before it bought
+anything; the run engine cannot price a run before its workers start, so the same
+figure is a ceiling instead.
+
+## codeaf do --db and --keep on the run engine
+
+- **`--db` is refused**, with exit 1 and a sentence saying why: it names a store
+  only the older engine works in, and a run keeps its plan in `.codeaf/plandb.db`
+  inside the directory it works in. Drop the flag, or set `CODEAF_TASK_BELT=node`
+  to run on the older engine, which takes it.
+- **`--keep` is honoured.** The run's store is never deleted, and with `--keep` the
+  run says where it is on the error stream: `record kept at <dir>/.codeaf/plandb.db`.
 
 ## How do I tell the check what to run?
 
@@ -685,6 +732,8 @@ words set, not one byte of any prompt, belt or landing moves from the older
 road**.
 
 Everything behind the switch is a seam. A build with no run engine linked answers
-the older road, and every refusal on the run road falls back to it rather than
-inventing a sentence of its own — so a conversation the run road cannot serve gets
-exactly the door it always had.
+the older road, and a task the run road cannot start falls back to it — so a
+conversation the run road cannot serve gets exactly the door it always had. When a
+task you approved falls back that way, its receipt says so: `It runs on the older
+task engine, because the run engine could not start it:` and the run road's own
+reason.
