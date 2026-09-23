@@ -50,8 +50,9 @@ func TestAHeldLandingOffersTheAnswerAndDemandsNothing(t *testing.T) {
 // test above from passing on a reading that simply stopped demanding anything.
 // Each of these has something on the other side of the answer: a conflict is
 // two versions of the person's own files and only they can say which survives,
-// a landing nobody could check is the third tier's whole content, and work
-// nothing is driving will not be picked up until somebody says to.
+// and a landing nobody could check is the third tier's whole content. Work
+// nothing is driving is not among them any more: nothing a person can press
+// carries it on yet, so it raises no mark (run_lifecycle_test.go).
 func TestTheRowsSomethingIsWaitingOnStillDemand(t *testing.T) {
 	for _, one := range []struct {
 		name  string
@@ -65,9 +66,6 @@ func TestTheRowsSomethingIsWaitingOnStillDemand(t *testing.T) {
 	}, {
 		name:  "a landing nobody could check",
 		facts: TaskFacts{State: TaskUnverified, Branch: "task/parser"},
-	}, {
-		name:  "work nothing is driving",
-		facts: TaskFacts{State: TaskInterrupted, Branch: "task/parser"},
 	}} {
 		t.Run(one.name, func(t *testing.T) {
 			if status := ProjectTask(one.facts); !status.Attention {

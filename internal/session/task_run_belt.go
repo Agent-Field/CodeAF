@@ -911,21 +911,24 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, ru
 				notice.Report = strings.TrimSpace(task.Error)
 			}
 		}
-		// A JOINED ROW THE RUN'S OWN ENDING CANCELLED BEFORE IT STARTED IS THE
-		// RUN'S ENDING TOO, not a fault. The store ends every task still open
-		// under the ending's own reason ([plandb.Store.EndRoot]), so work that was
-		// waiting for a slot when a limit fired carries that limit's sentence
-		// with no ending to read it by, and drew `a fault` over a bound its
-		// person set.
-		cancelledByRun := false
-		if task := run.store.Task(strconv.FormatUint(id, 10)); task != nil && task.Status == plandb.StatusCancelled && !planStopReason(task.Error) {
-			cancelledByRun = true
-		}
-		if notice.State != TaskDone && runEnding != "" && (cutRows[id] || cancelledByRun) {
+		if notice.State != TaskDone && runEnding != "" && (cutRows[id] || cancelledByRunEnding(run.store, id)) {
 			notice.Ending = runEnding
 		}
 		a.publishRunRow(g, notice)
 	}
+}
+
+// cancelledByRunEnding answers whether a joined row's task was cancelled by the
+// run's own ending rather than by a person.
+//
+// A JOINED ROW THE RUN'S OWN ENDING CANCELLED BEFORE IT STARTED IS THE RUN'S
+// ENDING TOO, not a fault. The store ends every task still open under the
+// ending's own reason ([plandb.Store.EndRoot]), so work that was waiting for a
+// slot when a limit fired carried that limit's sentence with no ending to read
+// it by, and drew `a fault` over a bound its person set.
+func cancelledByRunEnding(store *plandb.Store, id uint64) bool {
+	task := store.Task(strconv.FormatUint(id, 10))
+	return task != nil && task.Status == plandb.StatusCancelled && !planStopReason(task.Error)
 }
 
 // beltRunNotice is the run as a task notice: its row, its ending, the result the
