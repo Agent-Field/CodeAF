@@ -4,20 +4,93 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // shortBase makes a probe base with a short absolute path: macOS unix
 // sockets cap around 104 bytes and tmux -S fails on longer ones.
+//
+// IT ENDS EVERY TMUX SERVER A TEST STARTED UNDER IT, BY PID, BEFORE THE BASE
+// IS REMOVED. A probe `start` runs the binary inside a tmux server on
+// <base>/<root>/tmux.sock, and only `finish` ends that session. A journey that
+// fails before it finishes — TestFailingJourneyCannotPass does, on purpose —
+// used to leave the server, the stub `codeaf chat` and its /bin/sh wrapper
+// running; the RemoveAll below then deleted the socket, so nothing could ever
+// reach them again. About 280 of them were found on one machine. The server's
+// pid is read from the server itself and that one process is signalled; its
+// sessions go with it.
 func shortBase(t *testing.T) string {
 	t.Helper()
 	p, err := os.MkdirTemp("/tmp", "cbp-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(p) })
+	t.Cleanup(func() {
+		endTmuxServers(p)
+		os.RemoveAll(p)
+	})
 	return p
+}
+
+// endTmuxServers ends the tmux server behind every probe socket under base and
+// waits for each to be gone.
+func endTmuxServers(base string) {
+	sockets, _ := filepath.Glob(filepath.Join(base, "*", "tmux.sock"))
+	for _, socket := range sockets {
+		pid := tmuxServerPID(socket)
+		if pid <= 0 {
+			continue
+		}
+		_ = syscall.Kill(pid, syscall.SIGTERM)
+		deadline := time.Now().Add(5 * time.Second)
+		for syscall.Kill(pid, 0) == nil && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
+		if syscall.Kill(pid, 0) == nil {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	}
+}
+
+// tmuxServerPID is the pid of the server listening on one socket, asked of
+// the server itself; 0 when none answers.
+func tmuxServerPID(socket string) int {
+	out, err := exec.Command("tmux", "-S", socket, "display-message", "-p", "#{pid}").Output()
+	if err != nil {
+		return 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0
+	}
+	return pid
+}
+
+// TestAJourneyThatNeverFinishesLeavesNoProcessBehind is the leak, pinned: a
+// session is started and never finished, the way a failing journey leaves it,
+// and once its test is over the tmux server holding it is gone.
+func TestAJourneyThatNeverFinishesLeavesNoProcessBehind(t *testing.T) {
+	var server int
+	t.Run("journey", func(t *testing.T) {
+		base := shortBase(t)
+		bin := stubCodeaf(t)
+		if c, out := runCLI(t, base, "start", "--session", "left", "--profile", "reviewer", "--bin", bin); c != 0 {
+			t.Fatalf("start: exit %d\n%s", c, out)
+		}
+		server = tmuxServerPID(filepath.Join(base, "default", "tmux.sock"))
+		if server <= 0 {
+			t.Fatal("no tmux server is holding the started session")
+		}
+	})
+	if server > 0 && syscall.Kill(server, 0) == nil {
+		_ = syscall.Kill(server, syscall.SIGKILL)
+		t.Fatalf("tmux server %d outlived the test that started it", server)
+	}
 }
 
 // runCLI builds the probe binary once and runs one CLI invocation against a
@@ -102,7 +175,7 @@ func TestSharedPersistentSession(t *testing.T) {
 	var obs struct {
 		Revision int    `json:"revision"`
 		Snapshot string `json:"snapshot"`
-		Cursor struct {
+		Cursor   struct {
 			X int `json:"x"`
 			Y int `json:"y"`
 		} `json:"cursor"`
