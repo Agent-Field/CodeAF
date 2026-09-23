@@ -146,8 +146,8 @@ var tuiWords = map[string]tuiWord{
 	"skillsCarriedWord": {
 		screen: "skills · ",
 		pkg:    "internal/tui3",
-		why: "the dim note naming the skills a turn carried, folded into the turn's `▸ worked` chip once " +
-			"the answer lands — the only screen evidence that a skill from another tool's folder reached " +
+		why: "the dim note under a message naming the skills its turn carried, kept above the turn's " +
+			"`▸ worked` chip — the only screen evidence that a skill from another tool's folder reached " +
 			"a turn by itself or by /skill ([testForeignSkills]); the headless --once door prints the " +
 			"engine's own `skills carried: ` sentence instead",
 	},

@@ -96,7 +96,11 @@ func foreignSkillsRun(t *testing.T, memory string) {
 	r.keys("Escape")
 	r.keys("C-u")
 	time.Sleep(500 * time.Millisecond)
-	r.lit("In one short line, what is seven times six?")
+	// The question names no skill and shares no word with the orchard one, so
+	// the model can only find it through what the attachment carried with the
+	// message; the catalog lists every skill and says nothing about which one
+	// the person put in front.
+	r.lit("Following the skill attached to this conversation, answer in one short line: what is seven times six?")
 	r.keys("Enter")
 	carried = carriedAndFollowed(t, r, orchardSkill, orchardCode)
 	t.Logf("memory %s — the attached plugin skill carried and followed:\n%s", memory, carried)
@@ -114,23 +118,19 @@ func foreignSkillsRun(t *testing.T, memory string) {
 }
 
 // carriedAndFollowed waits for the answer to say the code word only the
-// skill's body holds and for the turn to land, then opens the turn's work fold
-// and waits for the dim line naming the skill the turn carried.
+// skill's body holds and for the turn to land, then asks for the dim line
+// naming the skill the turn carried on the settled screen.
 //
-// THE LINE IS LOOKED FOR INSIDE THE FOLD, NOT BESIDE THE ANSWER. It is a dim
-// note of the turn's own machinery, so once the answer lands the `▸ worked`
-// chip swallows it with the calls (tui3's workfold.go); only a line addressed
-// to the person stays out. ctrl+e with nothing typed opens the latest fold.
+// THE LINE IS LOOKED FOR AFTER THE TURN LANDS, because that is when it used to
+// vanish: the `▸ worked` chip swallowed it with the calls, and an opened chip
+// lists calls, not notes. It now sits under the question with the chip below
+// it (tui3's workfold.go, [entry.carried]), and this is the check that it
+// stays there.
 func carriedAndFollowed(t *testing.T, r *rig, skill, code string) string {
 	t.Helper()
 	r.waitFor(modelPatience, code)
 	r.waitFor(modelPatience, say(t, "idleWord"))
-	line := say(t, "skillsCarriedWord") + skill
-	if screen := r.capture(); strings.Contains(screen, line) {
-		return screen
-	}
-	r.keys("C-e")
-	return r.waitFor(20*time.Second, line, code)
+	return r.waitFor(10*time.Second, say(t, "skillsCarriedWord")+skill, code)
 }
 
 // skillsHome is a state root written from nothing, short enough for the

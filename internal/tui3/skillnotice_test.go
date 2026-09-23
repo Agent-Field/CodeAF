@@ -4,9 +4,64 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+// THE LINE NAMING WHAT A TURN CARRIED OUTLIVES THE TURN. It sits under the
+// question it belongs to and the work chip starts below it; before, the chip
+// swallowed it the moment the answer landed, and an opened chip lists calls,
+// not notes, so the one screen record that a skill reached the turn was gone
+// for good. It still does not hold the turn open the way a sentence addressed
+// to the person does: the calls fold as they always did.
+func TestTheCarriedSkillsLineStaysAboveTheWorkChip(t *testing.T) {
+	f := &feed{live: -1, think: -1}
+	f.ingest(session.Event{Kind: session.EventNotice, Text: "skills carried: tide-almanac", Skills: []string{"tide-almanac"}})
+	if len(f.entries) != 1 || !f.entries[0].carried {
+		t.Fatalf("the skills note is not marked as the carried record: %+v", f.entries)
+	}
+	f.ingest(session.Event{Kind: session.EventNotice, Text: "request adjusted and asked again"})
+	if f.entries[len(f.entries)-1].carried {
+		t.Fatalf("an ordinary notice was marked as carried skills: %+v", f.entries[len(f.entries)-1])
+	}
+
+	base := time.Unix(100, 0)
+	entries := []entry{
+		{kind: entryUser, text: "what does the almanac say about noon", turn: 1, began: base},
+		{kind: entryNote, text: "skills · tide-almanac", turn: 1, carried: true},
+		{kind: entryThinking, text: "checking", turn: 1, began: base, ended: base.Add(2 * time.Second), settled: true},
+		{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base.Add(2 * time.Second), ended: base.Add(3 * time.Second)},
+		{kind: entryAssistant, text: "high water at noon", turn: 1, settled: true},
+	}
+	folds := deriveWorkfolds(entries, 0)
+	if len(folds) != 1 {
+		t.Fatalf("the carried line stopped the chip forming: %#v", folds)
+	}
+	for start := range folds {
+		if start != 2 {
+			t.Fatalf("the chip starts at entry %d, want 2, below the carried line", start)
+		}
+	}
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries, a.workMode = entries, config.WorkFold
+	a.touch()
+	if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, "skills · tide-almanac") || !strings.Contains(got, "worked") {
+		t.Fatalf("want the carried line above a folded chip:\n%s", got)
+	}
+
+	// AND THE SAME NOTE WITHOUT THE MARK IS STILL SWALLOWED, so the test fails
+	// on a build that lost the mark rather than passing on one that stopped
+	// folding.
+	plain := append([]entry(nil), entries...)
+	plain[1].carried = false
+	a.entries = plain
+	a.touch()
+	if got := strings.Join(plainRows(a), "\n"); strings.Contains(got, "skills · tide-almanac") {
+		t.Fatalf("an unmarked note was not folded, so the control proves nothing:\n%s", got)
+	}
+}
 
 func TestSkillNoticeAbsentAndEmptyAreTheSameUnknown(t *testing.T) {
 	const ordinary = "request adjusted and asked again"

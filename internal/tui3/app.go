@@ -283,6 +283,15 @@ type entry struct {
 	// the explanation should have been (session's EventRowNews).
 	told bool
 
+	// carried marks the note naming the skills a turn carried (session's
+	// turnSkillsNotice). It is not addressed to the person, so it does not hold
+	// a turn open the way [entry.told] does; it is a record of what the
+	// person's message took with it, so it sits under that message and a chip
+	// starts below it rather than swallowing it ([countWork]). Folded, the line
+	// vanished for good: an opened chip lists calls, not notes, so the only
+	// screen evidence that a skill reached a turn lasted as long as the turn.
+	carried bool
+
 	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
 	// engine's own person-facing words (session's TaskNotice.Context) — and empty
 	// for every ordinary turn, which is nearly all of them. It is set on the
