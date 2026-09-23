@@ -465,8 +465,9 @@ func waitUntilParked(t *testing.T, rig *rig, stub *stopStub) {
 	for time.Now().Before(deadline) {
 		switch stub.kind {
 		case parkOnStream:
-			// The second request is out and its text is arriving.
-			if strings.Contains(rig.capture(), stopStubStreaming) {
+			// The live summary can omit the sentence-ending period. The same
+			// words still prove that the second request is streaming on screen.
+			if strings.Contains(rig.capture(), strings.TrimSuffix(stopStubStreaming, ".")) {
 				return
 			}
 		case parkOnPipe:

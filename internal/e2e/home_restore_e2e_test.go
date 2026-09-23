@@ -66,3 +66,41 @@ func TestHomeRestoredNavigationNoModel(t *testing.T) {
 		})
 	}
 }
+
+// Both submission rows cross the real surface-to-engine boundary, with a local
+// endpoint providing a fixed answer so no provider account is needed.
+func TestHomeRestoredSubmissionDoorsWithStub(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("no tmux on PATH")
+	}
+	stub := &stopStub{kind: parkOnStream}
+	base := serveStopStub(t, stub)
+	stub.stop()
+	home := newHome(t, map[string]any{"model.talk": "stub/bounded"})
+	seedProject(t, home, "alpha", 0, time.Minute)
+	ws := newWorkspace(t, "submission", false)
+	r := startWithEnv(t,
+		[]string{"OPENROUTER_API_KEY=stub-key", "CODEAF_BASE_URL=" + base, "CODEAF_PROFILE_DIR="},
+		"home_submission", home, ws, 180, 40, "chat", "--no-host", "--one-model")
+	r.skipSetup(t)
+	r.waitFor(20*time.Second, say(t, "placeRestWord"))
+	r.lit("answer in the home pane")
+	r.waitFor(10*time.Second, say(t, "homeStartWord"))
+	r.keys("Up")
+	r.waitFor(10*time.Second, "enter asks this here")
+	r.keys("Enter")
+	pane := r.waitFor(20*time.Second, stopStubDone, say(t, "exchangeBack"))
+	t.Logf("ask here received the endpoint's answer in its own pane:\n%s", pane)
+	r.keys("Escape")
+	r.waitFor(10*time.Second, say(t, "placeRestWord"))
+	r.lit("answer in a new conversation")
+	r.waitFor(10*time.Second, say(t, "homeStartWord"))
+	r.keys("Enter")
+	conversation := r.waitFor(20*time.Second, stopStubDone, "idle", "› answer in a new conversation")
+	if strings.Contains(conversation, say(t, "exchangeBack")) {
+		t.Fatalf("the new-conversation row left the answer in an ask pane:\n%s", conversation)
+	}
+	t.Logf("the default row opened a conversation and received the answer:\n%s", conversation)
+	r.keys("Space", "Space")
+	r.waitFor(10*time.Second, say(t, "placeRestWord"))
+}
