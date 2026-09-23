@@ -2079,11 +2079,18 @@ func (a *app) freezeRoom() {
 	if a.copy.on || a.room == nil {
 		return
 	}
-	rows := a.roomRows(a.bodyWidth())
+	width := a.bodyWidth()
+	height := a.viewHeight()
+	// COPY OWNS THE PAGE BEFORE IT IS LAID OUT, so the room's transient
+	// activity and the blank belonging only to it never enter the snapshot.
+	a.copy.on = true
+	a.room.dirty = true
+	rows := a.roomRows(width)
 	if len(rows) == 0 {
+		a.copy.on = false
+		a.room.dirty = true
 		return
 	}
-	height := a.viewHeight()
 	snapshot := make([]string, 0, len(rows))
 	stripped := make([]string, 0, len(rows))
 	owner := make([]int, 0, len(rows))
