@@ -406,6 +406,11 @@ func (a *app) wallTick() tea.Cmd {
 		}
 	}
 	next := tea.Tick(wallTickEvery, func(at time.Time) tea.Msg { return wallTickMsg{at: at} })
+	// A tile that started working since the paint clock last stopped wants it
+	// turning again for its spinner ([app.wallSpinning]); nil when it is.
+	if a.wallSpinning() {
+		next = tea.Batch(next, a.wake())
+	}
 	if read := a.wallReadCmd(keys...); read != nil {
 		return tea.Batch(read, next)
 	}

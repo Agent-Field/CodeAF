@@ -146,7 +146,7 @@ type wallHitKind uint8
 
 const (
 	wallHitNone     wallHitKind = iota
-	wallHitTile                 // a tile's body: focus it, open it when focused, pick it in selection mode; arg is the tile
+	wallHitTile                 // a tile's body: open it, or pick it in selection mode; arg is the tile
 	wallHitSelect               // a tile's ☐: pick it or put it back; arg is the tile
 	wallHitSpaces               // a tile's ●+: the spaces it is in; arg is the tile
 	wallHitOpen                 // a tile's open ↗; arg is the tile
@@ -310,6 +310,34 @@ type wallState struct {
 	made      string
 	madeN     int
 	madeAt    time.Time
+
+	// The motion and the pointer's memory (wall.go). revealAt is when the
+	// opening's row-by-row reveal began, zero once it is done; zoomAt and
+	// zoomFrom are an opened tile growing into the frame.
+	revealAt time.Time
+	zoomAt   time.Time
+	zoomFrom wallRect
+	// wheelAt and wheelDir are the last wheel step taken, so a trackpad's
+	// burst moves one row per settle rather than one per event.
+	wheelAt  time.Time
+	wheelDir int
+	// ptrX, ptrY and ptrIn are where the pointer last was over the wall, so a
+	// scroll can light what slid under it; rehover asks the next frame to.
+	ptrX, ptrY int
+	ptrIn      bool
+	rehover    bool
+	// stirred says something besides the hover changed since the last frame,
+	// so a pointer resting on the same target may not reuse that frame.
+	stirred bool
+	// places is each space's focus and scroll while the wall is up, by space
+	// index, -1 for All.
+	places map[int]wallPlace
+	// card is where the popover or the new-space card was drawn, in frame
+	// cells, empty when neither is up.
+	card wallRect
+	// spinning says the last frame drew a live working tile, whose spinner
+	// needs the paint clock turning.
+	spinning bool
 }
 
 // wallTail is one conversation's cached reading (walltail.go fills it).

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── THE WALL'S WIRING: KEYS, FRAME, POINTER AND STRIP ───────────────────────
@@ -18,6 +19,44 @@ import (
 // is [app.tabDismiss], so a tile can never do something its tab would not: a
 // held conversation is attached, a remembered one is opened, and closing a
 // tile takes a view off this window and never ends work.
+
+// THE KEY MAP, and the press that does the same thing. Every button is a key
+// and every act a key does is a press somewhere, except the few that are pure
+// navigation or have no control to hang from (marked "key only").
+//
+//	alt+v              open or close the wall        ▦ in the dock
+//	esc, q             back one layer: popover, card, selection, filter, wall
+//	                                                 ‹ Back, a press off a card
+//	arrows, hjkl       move the focus                (key only; hover never moves it)
+//	home g, end G      first and last tile           (key only)
+//	pgup, pgdown       a screen of rows              the wheel, one row a notch
+//	enter              open the focused tile         a press on any tile, or ↗
+//	space              pick the focused tile         its ☐; any tile once one is picked
+//	x                  close its view, or the picked  × on a tile, Close views
+//	m                  its spaces, or the picked'    ●+ on a tile, Add to…
+//	s                  new space of the picked       + New space, Make space
+//	e                  the shown space's settings    a segment's dot or ⋯
+//	tab, shift+tab     next or previous space        a Spaces segment
+//	1 to 9             that space, again for All     a Spaces segment
+//	D                  delete the shown space        settings, Delete
+//	/                  filter                        Filter /
+//	?                  next waiting on a person      the title's needs-you count
+//	-, + or =          fewer or more columns         Columns − +
+//	0                  columns back to automatic     (key only)
+//
+// A PRESS ON A TILE OPENS IT, as a window's thumbnail does in any overview:
+// one press, not a press to aim and another to go. Once any tile is picked a
+// press toggles instead, as a photo grid does in its selection mode. The
+// pointer resting on a tile lights it and shows its controls and changes
+// nothing; the keyboard's focus is its own and only the keys move it.
+//
+// THE MOTION IS SMALL AND NEVER HOLDS A KEY. The tiles come in row by row as
+// the wall opens (about 140ms in all), and an opened tile's rectangle grows
+// into the frame over three frames while the conversation is already live
+// behind it. Both run on the paint clock, both are cut short by any key or
+// press, and neither is drawn on the linear or ASCII tiers or over a remote
+// link, where a few frames of movement is a stutter rather than a gesture.
+// Hover is instant, as it is everywhere in a terminal, and esc is instant.
 
 // wallOpenKey opens and closes the wall. alt+g is home's regroup and alt+1..7
 // are the places, so the wall takes v, for view. Option+v composes to `√` on a
@@ -37,13 +76,17 @@ func wallOpenPressed(msg tea.KeyPressMsg) bool {
 // moment later and the tiles fill in.
 func (a *app) openWall() tea.Cmd {
 	a.spacesEnsure()
+	now := a.now()
 	a.wall.on = true
-	a.wall.openedAt = time.Now()
+	a.wall.openedAt = now
 	a.wall.naming, a.wall.filterOn = false, false
+	a.wall.places = nil
+	a.wall.zoomAt = time.Time{}
+	a.wall.ptrIn, a.wall.rehover = false, false
 	if a.wall.marked == nil {
 		a.wall.marked = map[string]bool{}
 	}
-	tiles := a.wallShown(time.Now())
+	tiles := a.wallShown(now)
 	a.wall.focus = 0
 	keys := make([]string, 0, len(tiles))
 	for i, tile := range tiles {
@@ -52,12 +95,20 @@ func (a *app) openWall() tea.Cmd {
 		}
 		keys = append(keys, tile.tab.key)
 	}
+	// The conversation in front is focused AND on screen from the first frame,
+	// so the eye lands where the keys are.
+	a.wall.scroll = 0
+	a.wallMove(a.wall.focus, len(tiles))
+	a.wall.revealAt = time.Time{}
+	if a.wallMotionOK() && len(tiles) > 0 {
+		a.wall.revealAt = now
+	}
 	a.touch()
 	var tick tea.Cmd
 	if !a.wall.ticking {
 		tick = a.wallTick()
 	}
-	return tea.Batch(a.wallReadCmd(keys...), tick)
+	return tea.Batch(a.wallReadCmd(keys...), tick, a.wake())
 }
 
 func (a *app) closeWall() {
@@ -65,6 +116,9 @@ func (a *app) closeWall() {
 	a.wall.naming, a.wall.filterOn = false, false
 	a.wall.hover = wallHitRef{}
 	a.wall.pop = wallPop{}
+	a.wall.revealAt = time.Time{}
+	a.wall.card = wallRect{}
+	a.wall.spinning = false
 	a.touch()
 }
 
@@ -104,14 +158,19 @@ func (a *app) wallFrame(width, height int) []string {
 	if room < 1 {
 		return head[:height]
 	}
-	now := time.Now()
+	now := a.now()
 	tiles := a.wallShown(now)
 	if a.wall.focus >= len(tiles) {
 		a.wall.focus = max(len(tiles)-1, 0)
 	}
+	a.wall.stirred = false
 	// The body is drawn with the chat's own pieces at the width the grid will
 	// give it (wallmini.go), kept per reading so a quiet frame redraws nothing.
-	_, tileW, _ := wallGrid(len(tiles), width, room, a.wall.cols)
+	cols, tileW, tileH := wallGrid(len(tiles), width, room, a.wall.cols)
+	// The scroll the painter will draw is the one kept, so the wheel steps
+	// from what is on screen and never from a number the frame overruled.
+	a.wall.scroll = wallScrollFor(a.wall.focus, a.wall.scroll, len(tiles), width, room, a.wall.cols)
+	a.wall.spinning = false
 	for i := range tiles {
 		tiles[i].marked = a.wall.marked[tiles[i].tab.key]
 		tiles[i].spaces = a.spacesOf(tiles[i].tab.key)
@@ -123,6 +182,13 @@ func (a *app) wallFrame(width, height int) []string {
 		} else {
 			tiles[i].doing = wallDoing(nil, tiles[i].signal)
 		}
+		if tiles[i].signal == tabWorking && tiles[i].live {
+			a.wall.spinning = true
+		}
+	}
+	reduced := a.wallReduced()
+	if reduced {
+		a.wall.spinning = false
 	}
 	view := wallView{
 		spaces:    a.spaceNames(),
@@ -142,17 +208,22 @@ func (a *app) wallFrame(width, height int) []string {
 		choices:   a.wall.choices,
 		choice:    a.wall.choice,
 		pop:       a.wall.pop,
-		spin:      a.paints / spinnerStep,
+		spin:      wallSpin(now),
 		now:       now,
+		reduced:   reduced,
 	}
 	if sp, ok := a.spaceActive(); ok {
 		view.space = sp.Name
 	}
-	// The counts are of open conversations: a space's members this window has
-	// no tab for are still members, but they are not on the wall.
+	// The counts are of open conversations, whatever a filter is hiding: a
+	// space's members this window has no tab for are still members, but they
+	// are not on the wall. They are read off the strip's list, not a second
+	// build of every tile.
 	open := map[string]bool{}
-	for _, tile := range a.wallTiles(now) {
-		open[tile.tab.key] = true
+	for _, tab := range a.tabList() {
+		if !tab.start && !tab.work {
+			open[tab.key] = true
+		}
 	}
 	view.total = len(open)
 	for _, sp := range a.wall.spaces {
@@ -166,6 +237,20 @@ func (a *app) wallFrame(width, height int) []string {
 		view.counts = append(view.counts, n)
 	}
 	rows, hits := renderWall(a.pal, view, width, room)
+	// A scroll moved the tiles under a pointer that did not move: the target
+	// under it now is lit, as a page lights the link that scrolled under the
+	// cursor. It costs a second paint only on the frame after a scroll.
+	if a.wall.rehover {
+		a.wall.rehover = false
+		if a.wall.ptrIn {
+			if ref := wallHitIn(hits, a.wall.ptrX, a.wall.ptrY-len(head)); ref != view.hover {
+				a.wall.hover, view.hover = ref, ref
+				rows, hits = renderWall(a.pal, view, width, room)
+			}
+		}
+	}
+	a.wall.card = a.wallCardRect(view, width, room, len(head))
+	a.wallRevealMask(rows, hits, len(tiles), cols, tileH, room, width, now)
 	for i := range hits {
 		hits[i].y0 += len(head)
 		hits[i].y1 += len(head)
@@ -174,12 +259,27 @@ func (a *app) wallFrame(width, height int) []string {
 	return append(head, rows...)
 }
 
-// wallGeometry is the room the grid has, for moving the focus by a row.
+// wallGeometry is the room the grid has, for moving the focus by a row. The
+// head's height is the last frame's when there was one, so a key does not lay
+// the tab strip out a second time to learn a number the frame already knew.
 func (a *app) wallGeometry(n int) (cols, room int) {
 	width, height := a.size()
-	room = height - len(a.wallHead(width))
+	head := a.wall.headRows
+	if head <= 0 {
+		head = len(a.wallHead(width))
+	}
+	room = height - head
 	cols, _, _ = wallGrid(n, width, room, a.wall.cols)
 	return max(cols, 1), room
+}
+
+// wallRowsOnScreen is how many tile rows the grid shows at once, never under
+// one.
+func (a *app) wallRowsOnScreen(n int) int {
+	width, _ := a.size()
+	_, room := a.wallGeometry(n)
+	_, _, tileH := wallGrid(n, width, room, a.wall.cols)
+	return max(wallVisibleRows(room, tileH), 1)
 }
 
 func (a *app) wallMove(to, n int) {
@@ -194,8 +294,11 @@ func (a *app) wallMove(to, n int) {
 }
 
 func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
+	// A key finishes whatever is still moving before it does anything, so no
+	// key ever lands on a picture that is not yet the whole wall.
+	a.wallSettle()
 	key := msg.String()
-	tiles := a.wallShown(time.Now())
+	tiles := a.wallShown(a.now())
 	n := len(tiles)
 
 	if a.wall.pop.kind != wallPopNone {
@@ -236,18 +339,31 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 	if a.wall.filterOn {
 		switch key {
 		case "esc":
-			a.wall.filterOn, a.wall.filter = false, ""
+			a.wallClearFilter(tiles)
+			return nil
 		case "enter":
+			// The typing is put down and the focus stays on the match it was
+			// on, the first unless the arrows moved it, so a second enter opens it.
 			a.wall.filterOn = false
+			return nil
+		case "left", "right", "up", "down":
+			// The arrows walk the matches while the box stays up, as they do
+			// in any type-to-find list.
+			a.wall.filterOn = false
+			cmd := a.wallKey(msg)
+			a.wall.filterOn = true
+			return cmd
 		case "backspace":
 			a.wall.filter = dropLastRune(a.wall.filter)
 		default:
-			if t := msg.Key().Text; t != "" {
-				a.wall.filter += t
+			t := msg.Key().Text
+			if t == "" {
+				return nil
 			}
+			a.wall.filter += t
 		}
-		a.wall.focus = 0
-		a.wall.scroll = 0
+		// What is typed changed the matches: the focus goes to the first.
+		a.wall.focus, a.wall.scroll = 0, 0
 		return nil
 	}
 	if wallOpenPressed(msg) {
@@ -257,6 +373,13 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch key {
 	case "esc", "q":
 		a.wallBack(tiles)
+	case "pgdown", "pgup":
+		step := a.wallRowsOnScreen(n)
+		if key == "pgup" {
+			step = -step
+		}
+		cols, _ := a.wallGeometry(n)
+		a.wallMove(min(max(a.wall.focus+step*cols, 0), n-1), n)
 	case "left", "h":
 		a.wallMove(a.wall.focus-1, n)
 	case "right", "l":
@@ -276,18 +399,45 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "space":
 		a.wallToggle(tiles, a.wall.focus)
 	case "m":
-		// The focused conversation's spaces, from the same control a press on
-		// its ●+ opens.
-		if n > 0 {
+		// The picked conversations' spaces, as the tray's Add to… opens them;
+		// with none picked, the focused one's, as a press on its ●+ does.
+		if marked := a.wallMarkedTabs(tiles); len(marked) > 0 {
+			keys := make([]string, 0, len(marked))
+			for _, tab := range marked {
+				keys = append(keys, tab.key)
+			}
+			a.wallOpenMembers(keys, a.wallAnchor(wallHitAction, int(wallActAddTo)))
+		} else if n > 0 {
 			a.wallOpenMembers([]string{tiles[a.wall.focus].tab.key}, a.wallAnchor(wallHitSpaces, a.wall.focus))
 		}
 	case "s":
 		a.wallStartNaming(tiles)
 	case "x":
+		// The picked views, as the tray's Close views does; with none picked,
+		// the focused one's, as its × does.
+		if len(a.wallMarkedTabs(tiles)) > 0 {
+			return a.wallCloseViews(tiles)
+		}
 		if n == 0 {
 			return nil
 		}
-		return a.tabDismiss(tiles[a.wall.focus].tab)
+		return a.wallDismissAt(tiles, a.wall.focus)
+	case "e":
+		// The shown space's settings, where its dot or ⋯ opens them.
+		if a.wall.active >= 0 {
+			a.wallOpenSettings(a.wall.active, a.wallAnchor(wallHitChipMenu, a.wall.active))
+		}
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		// A space by its place on the Spaces row; the digit of the space that
+		// is shown goes back to All, so the same key undoes itself.
+		i := int(key[0] - '1')
+		switch {
+		case i >= len(a.wall.spaces):
+		case i == a.wall.active:
+			a.wallSetSpace(-1)
+		default:
+			a.wallSetSpace(i)
+		}
 	case "/":
 		a.wall.filterOn = true
 	case "?":
@@ -311,24 +461,61 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// wallBack is esc: a filter goes first, then a selection, then the wall.
+// wallBack is esc once the popover and the card are down: it takes off the
+// innermost thing still on, the selection, then the filter, then the wall.
+// The selection goes before the filter because it is the newer and the
+// smaller of the two, and it may have been picked through the filter.
 func (a *app) wallBack(tiles []wallTile) {
 	switch {
-	case a.wall.filter != "":
-		a.wall.filter = ""
 	case len(a.wallMarkedTabs(tiles)) > 0:
 		a.wall.marked = map[string]bool{}
+	case a.wall.filter != "":
+		a.wallClearFilter(tiles)
 	default:
 		a.closeWall()
 	}
 }
 
+// wallClearFilter takes the filter off and keeps the focus on the conversation
+// it was on, now among all of them, so clearing a search is not losing your
+// place.
+func (a *app) wallClearFilter(tiles []wallTile) {
+	key := ""
+	if f := a.wall.focus; f >= 0 && f < len(tiles) {
+		key = tiles[f].tab.key
+	}
+	a.wall.filterOn, a.wall.filter = false, ""
+	a.wallFocusKey(key)
+}
+
+// wallFocusKey moves the focus to the tile with key, scrolled into view, or
+// to the first tile when it is not shown.
+func (a *app) wallFocusKey(key string) {
+	tiles := a.wallShown(a.now())
+	for i, tile := range tiles {
+		if tile.tab.key == key {
+			a.wallMove(i, len(tiles))
+			return
+		}
+	}
+	a.wall.scroll = 0
+	a.wallMove(0, len(tiles))
+}
+
+// wallOpen goes to tile i's conversation. The wall is down on the same
+// message, so the conversation is live before the first frame of the zoom is
+// drawn over it; the zoom only frames it (see [app.wallZoomed]).
 func (a *app) wallOpen(tiles []wallTile, i int) tea.Cmd {
 	if i < 0 || i >= len(tiles) {
 		return nil
 	}
 	tab := tiles[i].tab
+	from, ok := a.wallTileRect(i)
 	a.closeWall()
+	if ok && a.wallMotionOK() {
+		a.wall.zoomFrom, a.wall.zoomAt = from, a.now()
+		return tea.Batch(a.tabGo(tab), a.wake())
+	}
 	return a.tabGo(tab)
 }
 
@@ -437,14 +624,44 @@ func (a *app) wallMakeSpace(tiles []wallTile) tea.Cmd {
 	return nil
 }
 
+// wallPlace is where one space's grid was left: the focused conversation, by
+// key so a tile that moved is still found, and the row at the top.
+type wallPlace struct {
+	key    string
+	scroll int
+}
+
 // wallSetSpace narrows the wall and the strip to space i, or widens them for
 // i < 0. Like the chips' cycling it never switches the conversation in front.
+//
+// EACH SPACE KEEPS ITS PLACE WHILE THE WALL IS UP. Looking into harbor and
+// back to All returns to the tile and the row that were on screen, as a
+// browser's tabs each keep their own scroll; a space not visited yet starts
+// at its first tile.
 func (a *app) wallSetSpace(i int) {
 	if i >= len(a.wall.spaces) {
 		i = -1
 	}
+	if i == a.wall.active {
+		return
+	}
+	if a.wall.places == nil {
+		a.wall.places = map[int]wallPlace{}
+	}
+	tiles := a.wallShown(a.now())
+	if f := a.wall.focus; f >= 0 && f < len(tiles) {
+		a.wall.places[a.wall.active] = wallPlace{key: tiles[f].tab.key, scroll: a.wall.scroll}
+	}
 	a.wall.active = i
-	a.wall.focus, a.wall.scroll = 0, 0
+	a.wall.hover = wallHitRef{}
+	a.wall.rehover = true
+	place, ok := a.wall.places[i]
+	if !ok {
+		a.wall.focus, a.wall.scroll = 0, 0
+		return
+	}
+	a.wall.scroll = place.scroll
+	a.wallFocusKey(place.key)
 }
 
 // wallDeleteSpace forgets space i. Its conversations stay open: a space is a
@@ -458,6 +675,8 @@ func (a *app) wallDeleteSpace(i int) {
 	}
 	a.wall.hover = wallHitRef{}
 	a.wall.pop = wallPop{}
+	// The places are kept by index and the indices after i just moved down.
+	a.wall.places = nil
 }
 
 // wallCycleSpace walks all → each space → all. It only narrows what the wall
@@ -500,7 +719,15 @@ func (a *app) wallHitAt(x, y int) (wallHit, bool) {
 // wallMotion answers the pointer moving while the wall is up. Over the head
 // rows it is the strip's hover, as it is everywhere; over the wall it is the
 // wall's, and the frame is repainted only when the target under it changed.
+//
+// A POINTER MOVING INSIDE ONE TARGET DRAWS NOTHING. The hover is a target and
+// not a cell, so a hand wandering across a tile's body changes nothing the
+// frame reads, and the frame Bubble Tea is about to ask for is the one it was
+// given last time (coalesce.go's still). Only a motion on a message that
+// changed nothing else may say so: a wheel folded into the same message has
+// moved the grid (stirred).
 func (a *app) wallMotion(x, y int) {
+	a.wall.ptrX, a.wall.ptrY, a.wall.ptrIn = x, y, y >= a.wall.headRows
 	if y < a.wall.headRows {
 		a.wallSetHover(wallHitRef{})
 		a.setHover(x, y)
@@ -509,9 +736,24 @@ func (a *app) wallMotion(x, y int) {
 	if a.hot != (hoverAt{}) {
 		a.hot = hoverAt{}
 		a.touch()
+		a.wall.stirred = true
 	}
 	hit, _ := a.wallHitAt(x, y)
+	if a.wall.hover == hit.ref() && !a.wall.stirred {
+		a.ptr.still = true
+		return
+	}
 	a.wallSetHover(hit.ref())
+}
+
+// wallHitIn is the target under x,y among hits, the zero ref for none.
+func wallHitIn(hits []wallHit, x, y int) wallHitRef {
+	for _, hit := range hits {
+		if x >= hit.x0 && x < hit.x1 && y >= hit.y0 && y < hit.y1 {
+			return hit.ref()
+		}
+	}
+	return wallHitRef{}
 }
 
 func (a *app) wallSetHover(ref wallHitRef) {
@@ -543,17 +785,31 @@ func (a *app) wallPress(x, y int) (tea.Cmd, bool) {
 		a.closeWall()
 		return nil, false
 	}
+	a.wallSettle()
+	// A PRESS OFF A CARD PUTS THE CARD AWAY and does nothing else, as a menu
+	// or a sheet does anywhere: the popover, or the new-space card, which is
+	// the same as its Cancel. A press inside a card but on none of its
+	// controls is a press on the card, and does nothing.
+	if a.wall.card.w() > 0 && (a.wall.pop.kind != wallPopNone || a.wall.naming) {
+		if !a.wall.card.holds(x, y) {
+			a.wall.pop = wallPop{}
+			a.wall.naming = false
+			a.wall.stirred = true
+			return nil, true
+		}
+	}
 	hit, ok := a.wallHitAt(x, y)
 	if !ok {
 		return nil, true
 	}
+	a.wall.stirred = true
 	return a.wallDo(hit), true
 }
 
 // wallDo is what a press on one target does. Every button whose act has a key
 // does what that key does, by calling the same function.
 func (a *app) wallDo(hit wallHit) tea.Cmd {
-	tiles := a.wallShown(time.Now())
+	tiles := a.wallShown(a.now())
 	n := len(tiles)
 	// While a space is being named the card is modal: only its own buttons
 	// answer, as only its own keys do.
@@ -590,10 +846,9 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 			// The selection mode: a press anywhere on a tile picks it, the way a
 			// photo grid does once one photo is picked.
 			a.wallToggle(tiles, hit.arg)
-		case hit.arg == a.wall.focus:
-			return a.wallOpen(tiles, hit.arg)
 		default:
-			a.wallMove(hit.arg, n)
+			// One press opens, as a thumbnail does in any overview.
+			return a.wallOpen(tiles, hit.arg)
 		}
 	case wallHitSelect:
 		a.wallToggle(tiles, hit.arg)
@@ -604,9 +859,7 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 	case wallHitOpen:
 		return a.wallOpen(tiles, hit.arg)
 	case wallHitClose:
-		if hit.arg < n {
-			return a.wallDismiss(tiles[hit.arg].tab)
-		}
+		return a.wallDismissAt(tiles, hit.arg)
 	case wallHitChip:
 		a.wallSetSpace(hit.arg)
 	case wallHitChipMenu:
@@ -647,8 +900,7 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 	case wallActFilter:
 		a.wall.filterOn = true
 	case wallActFilterClear:
-		a.wall.filterOn, a.wall.filter = false, ""
-		a.wall.focus, a.wall.scroll = 0, 0
+		a.wallClearFilter(tiles)
 	case wallActNext:
 		a.wallNext(tiles)
 	case wallActColsLess:
@@ -656,9 +908,7 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 	case wallActColsMore:
 		a.wallCols(1, n)
 	case wallActClose:
-		if n > 0 {
-			return a.wallDismiss(tiles[a.wall.focus].tab)
-		}
+		return a.wallDismissAt(tiles, a.wall.focus)
 	case wallActCloseViews:
 		return a.wallCloseViews(tiles)
 	case wallActClear:
@@ -673,20 +923,78 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 	return nil
 }
 
-// wallDismiss is a tile's ×. A conversation with work in flight is asked about
-// first (tabclose.go), and that card is drawn on the conversation's page, so
-// the wall steps aside for it rather than hiding the question behind itself.
-func (a *app) wallDismiss(tab chatTab) tea.Cmd {
+// wallDismissAt is tile i's ×. A conversation with work in flight is asked
+// about first (tabclose.go), and that card is drawn on the conversation's
+// page, so the wall steps aside for it rather than hiding the question behind
+// itself.
+func (a *app) wallDismissAt(tiles []wallTile, i int) tea.Cmd {
+	if i < 0 || i >= len(tiles) {
+		return nil
+	}
+	tab := tiles[i].tab
 	if a.tabCloseAsks(tab) {
 		a.closeWall()
+		return a.tabDismiss(tab)
 	}
-	return a.tabDismiss(tab)
+	focused := a.wallFocusedKey(tiles)
+	cmd := a.tabDismiss(tab)
+	a.wallRefocus(tiles, focused)
+	return cmd
+}
+
+// wallFocusedKey is the focused tile's conversation, "" for none.
+func (a *app) wallFocusedKey(tiles []wallTile) string {
+	if f := a.wall.focus; f >= 0 && f < len(tiles) {
+		return tiles[f].tab.key
+	}
+	return ""
+}
+
+// wallRefocus puts the focus back after tiles left the wall. A focused tile
+// that is still there keeps it, wherever the closing moved it to. One that
+// went hands it to its nearest survivor on the right, which slides into the
+// place it left, and at the end of the list to the one on its left, as
+// closing a browser tab does: never back to the start.
+func (a *app) wallRefocus(before []wallTile, key string) {
+	if !a.wall.on {
+		return
+	}
+	after := a.wallShown(a.now())
+	at := make(map[string]int, len(after))
+	for i, tile := range after {
+		at[tile.tab.key] = i
+	}
+	if j, ok := at[key]; ok {
+		a.wallMove(j, len(after))
+		return
+	}
+	was := -1
+	for i, tile := range before {
+		if tile.tab.key == key {
+			was = i
+		}
+	}
+	for i := was + 1; was >= 0 && i < len(before); i++ {
+		if j, ok := at[before[i].tab.key]; ok {
+			a.wallMove(j, len(after))
+			return
+		}
+	}
+	for i := was - 1; i >= 0; i-- {
+		if j, ok := at[before[i].tab.key]; ok {
+			a.wallMove(j, len(after))
+			return
+		}
+	}
+	a.wallMove(0, len(after))
 }
 
 // wallCloseViews closes the view of every marked tile. The ones at rest go at
 // once; the first with work in flight is asked about, on its page, and any
 // others like it stay marked so nothing is closed that was not asked about.
 func (a *app) wallCloseViews(tiles []wallTile) tea.Cmd {
+	focused := a.wallFocusedKey(tiles)
+	defer a.wallRefocus(tiles, focused)
 	var cmds []tea.Cmd
 	var ask *chatTab
 	for _, tab := range a.wallMarkedTabs(tiles) {
@@ -709,14 +1017,271 @@ func (a *app) wallCloseViews(tiles []wallTile) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (a *app) wallWheel(down bool) {
-	n := len(a.wallShown(time.Now()))
-	cols, _ := a.wallGeometry(n)
+// wallWheelSettle is how long one wheel step holds before the next in the
+// same direction is taken. A tile row is a dozen lines or more, so a step per
+// event would throw a trackpad's burst of thirty straight to the end; one per
+// settle is a row per notch for a hand turning a wheel, and a few rows for a
+// flick.
+const wallWheelSettle = 90 * time.Millisecond
+
+// wallWheel is a wheel notch over the wall at x,y: the VIEW moves one tile row,
+// clamped to the list, as a page does, and the focus moves only when the
+// scroll would leave it off screen, onto the same column of the nearest row
+// that is on it. A notch the other way is taken at once: a hand reversing is
+// not a burst.
+func (a *app) wallWheel(x, y int, down bool) {
+	a.wallSettle()
+	a.wall.ptrX, a.wall.ptrY, a.wall.ptrIn = x, y, y >= a.wall.headRows
+	dir := -1
 	if down {
-		a.wallMove(a.wall.focus+cols, n)
-	} else {
-		a.wallMove(a.wall.focus-cols, n)
+		dir = 1
 	}
+	now := a.now()
+	if dir == a.wall.wheelDir && now.Sub(a.wall.wheelAt) < wallWheelSettle {
+		return
+	}
+	a.wall.wheelDir, a.wall.wheelAt = dir, now
+	// A popover hangs from a control that is about to move, so it goes, as a
+	// menu does when the page under it scrolls.
+	if a.wall.pop.kind != wallPopNone {
+		a.wall.pop = wallPop{}
+		a.wall.stirred = true
+		a.touch()
+	}
+	n := len(a.wallShown(now))
+	if n == 0 {
+		return
+	}
+	cols, _ := a.wallGeometry(n)
+	vis := a.wallRowsOnScreen(n)
+	top := max((n+cols-1)/cols-vis, 0)
+	scroll := min(max(a.wall.scroll+dir, 0), top)
+	if scroll == a.wall.scroll {
+		return
+	}
+	a.wall.scroll = scroll
+	row, col := a.wall.focus/cols, a.wall.focus%cols
+	row = min(max(row, scroll), scroll+vis-1)
+	a.wall.focus = min(row*cols+col, n-1)
+	a.wall.hover = wallHitRef{}
+	a.wall.rehover = true
+	a.wall.stirred = true
+	a.touch()
+}
+
+// ── THE MOTION ──────────────────────────────────────────────────────────────
+//
+// Two small movements, both on the paint clock (app.go's [app.paint] keeps it
+// turning while [app.wallAnimating] says so) and both functions of the time
+// since they began, so a slow link draws the same motion in fewer frames
+// rather than a slower one. Neither delays a key: every key and press settles
+// the reveal first, and the zoom is drawn over a conversation that is
+// already live.
+
+// wallRevealSpan is the most the opening's reveal takes from the first tile
+// row to the last, and wallRevealStep the most between two rows. Two rows
+// arrive 45ms apart; four take 135ms. Past that it would be waiting.
+const (
+	wallRevealSpan = 135 * time.Millisecond
+	wallRevealStep = 45 * time.Millisecond
+)
+
+// wallZoomFor is how long an opened tile takes to grow into the frame: three
+// frames at the local cadence, on an ease-out, so most of the growth is in
+// the first.
+const wallZoomFor = 100 * time.Millisecond
+
+// wallMotionOK says the wall may move at all. The linear tier is the
+// screen-reader tier and draws no motion anywhere; the ASCII tier is a
+// terminal that could not be trusted with the glyphs, and is not asked to
+// animate either; and over a remote link a frame is a third as frequent, so a
+// 140ms movement is one jump.
+func (a *app) wallMotionOK() bool {
+	return !a.wallReduced() && !a.remote
+}
+
+// wallReduced is the tiers that draw no motion at all, the working spinner
+// included: the painter is told so ([wallView.reduced]) and draws a still
+// mark. A remote link keeps its spinner, which already steps at the link's
+// own cadence everywhere else on this surface.
+func (a *app) wallReduced() bool {
+	return a.linear || a.pal.linear || a.pal.ascii
+}
+
+// wallAnimating reports whether the wall has motion in flight that the paint
+// clock must draw at its full cadence: the reveal or the zoom.
+// It reads the wall's own fields and nothing else, because it is asked on
+// every paint.
+func (a *app) wallAnimating() bool {
+	now := a.now()
+	if !a.wall.zoomAt.IsZero() && now.Sub(a.wall.zoomAt) < wallZoomFor {
+		return true
+	}
+	return a.wall.on && !a.wall.revealAt.IsZero()
+}
+
+// wallSpinning reports whether the wall is up with a live working tile, whose
+// spinner wants a frame each step and nothing more.
+func (a *app) wallSpinning() bool {
+	return a.wall.on && a.wall.spinning
+}
+
+// wallSettle ends whatever is still moving on the wall at once, which is what
+// any key or press does before it acts.
+func (a *app) wallSettle() {
+	if !a.wall.revealAt.IsZero() {
+		a.wall.revealAt = time.Time{}
+		a.touch()
+	}
+}
+
+// wallZoomDone ends an opened tile's zoom at once.
+func (a *app) wallZoomDone() {
+	if !a.wall.zoomAt.IsZero() {
+		a.wall.zoomAt = time.Time{}
+		a.touch()
+	}
+}
+
+// wallSpin is the working spinner's step for a frame drawn at now. It is
+// counted in time at the spinner's own cadence rather than in paints, so a
+// wall drawn on its half-second reading tick still shows the glyph the spinner
+// has reached, not the one it had when the clock last turned.
+func wallSpin(now time.Time) int {
+	return int(now.UnixMilli() / int64(spinnerStep*frameInterval/time.Millisecond))
+}
+
+// wallRect is a rectangle of frame cells, inclusive-exclusive.
+type wallRect struct{ x0, y0, x1, y1 int }
+
+func (r wallRect) w() int { return r.x1 - r.x0 }
+
+func (r wallRect) holds(x, y int) bool {
+	return x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1
+}
+
+// wallTileRect is where tile i was drawn on the last frame, from its own
+// targets, in frame cells.
+func (a *app) wallTileRect(i int) (wallRect, bool) {
+	return wallTileBounds(a.wall.hits, i)
+}
+
+func wallTileBounds(hits []wallHit, i int) (wallRect, bool) {
+	var r wallRect
+	ok := false
+	for _, hit := range hits {
+		if !hit.ref().onTile(i) {
+			continue
+		}
+		if !ok {
+			r, ok = wallRect{hit.x0, hit.y0, hit.x1, hit.y1}, true
+			continue
+		}
+		r.x0, r.y0 = min(r.x0, hit.x0), min(r.y0, hit.y0)
+		r.x1, r.y1 = max(r.x1, hit.x1), max(r.y1, hit.y1)
+	}
+	return r, ok
+}
+
+// wallCardRect is where the popover, or else the new-space card, lands on
+// this frame, so a press can be told to be on it or off it. It is laid out
+// only while one is up, and a card is a handful of short rows.
+func (a *app) wallCardRect(v wallView, width, room, head int) wallRect {
+	var card wallCard
+	g := wallGlyphsFor(a.pal.ascii)
+	switch {
+	case v.pop.kind != wallPopNone && !v.naming:
+		card = wallPopCard(a.pal, g, v, width, room)
+	case v.naming:
+		card = wallNameCard(a.pal, g, v, width, room)
+	}
+	if len(card.rows) == 0 {
+		return wallRect{}
+	}
+	return wallRect{card.x, card.y + head, card.x + card.w, card.y + head + len(card.rows)}
+}
+
+// wallRevealMask blanks the tiles whose row has not come in yet, in place,
+// and ends the reveal once the last row is due. The tiles were painted
+// whole, from their cached rows, so the reveal costs a blanking of cells for
+// a handful of frames and never a second drawing of a body. A card or the
+// tray over the grid ends it at once: a reveal is for the tiles alone, and a
+// half-blanked card would read as a fault.
+func (a *app) wallRevealMask(rows []string, hits []wallHit, n, cols, tileH, room, width int, now time.Time) {
+	if a.wall.revealAt.IsZero() {
+		return
+	}
+	if a.wall.naming || a.wall.pop.kind != wallPopNone || len(a.wall.marked) > 0 || n == 0 || cols < 1 {
+		a.wall.revealAt = time.Time{}
+		return
+	}
+	vis := max(wallVisibleRows(room, tileH), 1)
+	step := wallRevealStep
+	if vis > 1 && wallRevealSpan/time.Duration(vis-1) < step {
+		step = wallRevealSpan / time.Duration(vis-1)
+	}
+	gone := now.Sub(a.wall.revealAt)
+	if gone >= step*time.Duration(vis-1) {
+		a.wall.revealAt = time.Time{}
+		return
+	}
+	first := a.wall.scroll * cols
+	for i := first; i < min(first+vis*cols, n); i++ {
+		row := (i - first) / cols
+		if gone >= step*time.Duration(row) {
+			continue
+		}
+		r, ok := wallTileBounds(hits, i)
+		if !ok {
+			continue
+		}
+		blank := strings.Repeat(" ", r.w())
+		for y := max(r.y0, 0); y < min(r.y1, len(rows)); y++ {
+			rows[y] = wallSplice(rows[y], blank, r.x0, width)
+		}
+	}
+}
+
+// wallZoomed is the frame of the conversation a tile just opened, drawn
+// inside the tile's rectangle growing into the whole frame, with a quiet
+// border on its edge. The conversation is already in front: this only frames
+// its first few pictures, so a key typed on the first of them lands in its
+// box. It hands the frame back untouched once the zoom is over, and forgets
+// the zoom.
+func (a *app) wallZoomed(frame string) string {
+	if a.wall.zoomAt.IsZero() {
+		return frame
+	}
+	gone := a.now().Sub(a.wall.zoomAt)
+	if gone >= wallZoomFor || a.wall.on || !a.wallMotionOK() {
+		a.wall.zoomAt = time.Time{}
+		return frame
+	}
+	width, height := a.size()
+	t := float64(gone) / float64(wallZoomFor)
+	t = 1 - (1-t)*(1-t)
+	from := a.wall.zoomFrom
+	lerp := func(a, b int) int { return a + int(float64(b-a)*t+0.5) }
+	r := wallRect{lerp(from.x0, 0), lerp(from.y0, 0), lerp(from.x1, width), lerp(from.y1, height)}
+	if r.x1-r.x0 < 2 || r.y1-r.y0 < 2 {
+		return frame
+	}
+	rows := strings.Split(frame, "\n")
+	edge := a.pal.dim
+	inner := r.x1 - r.x0 - 2
+	for y := range rows {
+		switch {
+		case y < r.y0 || y >= r.y1:
+			rows[y] = ""
+		case y == r.y0:
+			rows[y] = strings.Repeat(" ", r.x0) + edge("╭"+strings.Repeat("─", inner)+"╮")
+		case y == r.y1-1:
+			rows[y] = strings.Repeat(" ", r.x0) + edge("╰"+strings.Repeat("─", inner)+"╯")
+		default:
+			rows[y] = strings.Repeat(" ", r.x0) + edge("│") + wallFit(ansi.Cut(rows[y], r.x0+1, r.x1-1), inner) + "\x1b[0m" + edge("│")
+		}
+	}
+	return strings.Join(rows, "\n")
 }
 
 func dropLastRune(s string) string {
