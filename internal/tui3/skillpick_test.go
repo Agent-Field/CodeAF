@@ -396,9 +396,13 @@ func TestTheTrayAnswersTheSkillChipForAPress(t *testing.T) {
 	if !ok || at != traySkillChip {
 		t.Fatalf("a press on the chip answered %d, want %d", at, traySkillChip)
 	}
-	if cmd, took := a.chipPress(len(inputPad), height-len(rows)+row); !took || cmd != nil {
+	// The press hands back the clearing door, asked off the update loop; the
+	// program loop's own job is to run it and fold the answer in.
+	cmd, took := a.chipPress(len(inputPad), height-len(rows)+row)
+	if !took || cmd == nil {
 		t.Fatalf("the press did not clear the chip")
 	}
+	drain(t, a, cmd)
 	if len(agent.held) != 0 {
 		t.Fatalf("the press left %v attached", agent.held)
 	}

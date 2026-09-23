@@ -1773,7 +1773,7 @@ type app struct {
 	// is on its way.
 	skillShelfSeen *skillShelfReading
 	connNames      map[string]string
-	connFlows map[string]*connect.Flow
+	connFlows      map[string]*connect.Flow
 	// codexFlow is the model-service browser sign-in. Its result is tokens rather
 	// than a connected-account status, so it cannot live in connFlows; it is held
 	// for the same reason, so replacing the conversation can cancel its listener.
