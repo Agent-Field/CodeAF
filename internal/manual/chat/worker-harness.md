@@ -127,23 +127,23 @@ nothing. Only the run that is underway takes those. A run that has finished is e
 from that moment, even while it is still the newest run on the rail and nothing has
 started after it: steering one of its tasks answers the same sentence.
 
-## Does a new task pick up a run that did not finish? The next /task starts fresh
+## Does a new task pick up a run that did not finish? A new /task starts fresh
 
-No. A new `/task`, or a new `codeaf do` in the same folder, runs its own words in a run
+No. A new `/task`, or a new `codeaf do` in the same place, runs its own words in a run
 of its own. It never carries on a run it did not start, and nothing runs an earlier
 run's brief again.
 
 Every way a run ends is written on the run's own task: done, your stop, a dollar or
 time limit, `codeaf do --timeout`, or the run's own worker failing. Two endings leave
-the run's own task open, because nobody decided anything about the work: the
-conversation itself closing (the engine ending it, or codeaf exiting) and an interrupt
-of `codeaf do`. When the conversation closes, nothing is landed and nothing is written
-on the run's record; every step it took is kept, and the run reads `interrupted` when
-the conversation is opened again. An interrupted `codeaf do` still lands what it
-reached, as it always has.
+the run's own task unfinished, because nobody decided anything about the work: codeaf
+itself closing while the run works (the engine ending it, or the program exiting) and
+an interrupt of `codeaf do`. When codeaf closes, nothing is landed and nothing is
+written on the run's record; every step it took is kept, and the run reads
+`interrupted` from then on. An interrupted `codeaf do` still lands what it reached, as
+it always has.
 
-When the next task finds such a run still open in its store, it sets it aside first:
-the run's own task and every part still open are ended with the word `interrupted`,
+When a later task finds such a run unfinished in its store, it sets it aside first:
+the run's own task and every part not yet ended are ended with the word `interrupted`,
 and the store is kept beside the new one, readable with the earlier runs. Its rows
 read `interrupted`, never `running`. Carrying an interrupted run on is not possible
 from any surface today.
