@@ -17,7 +17,8 @@ none of them runs on its own outside codeaf. Each is a command in the chat, `/<n
 Your key stays in codeaf and never reaches the program or any command it runs. Every
 call the program makes goes through codeaf's own model road, so it is priced into your
 spending, held to the run's dollar ceiling, and shown as one turn of a conversation on the
-run's task page.
+run's task page. When your services cannot serve the model the program asks for, the
+run's own work model answers, and the page names the model that did.
 
 This is different from a harness or a subharness, which are built out of codeaf's own
 parts. A program codeaf carries has an engine of its own.
@@ -49,8 +50,8 @@ it proposes one.
 
 **It has no step cap.** It is held to this conversation's dollar and time limits. It is
 given them when it starts, and codeaf enforces them from outside as well: a model call that
-would cross the dollar ceiling is refused before it is made. The step count on its task
-page is what the program reported, not a limit.
+would cross the dollar ceiling is refused before it is made, and the task then says
+`<name> reached the run's dollar ceiling of $…`.
 
 **It runs alone.** While one is running, no other task can join its copy, and it cannot be
 started under another run. Both are refused with the folder that is busy:

@@ -47,9 +47,15 @@ For each run codeaf serves an OpenAI-style chat-completions API at
 `CODEAF_MODEL_TOKEN` and by nothing else. It lives in `internal/provider`, the
 one package codeaf's funnel law lets spell a model route. Every call:
 
-1. is refused before it is made when the run's dollar ceiling is reached;
+1. is refused before it is made when the run's dollar ceiling is reached, with
+   HTTP 402 (a status senior-dev does not retry). A run a refusal ended is
+   reported as `<name> reached the run's dollar ceiling of $X: …`, whatever
+   status the program itself wrote, and ends on the run's cost limit;
 2. goes through codeaf's own model funnel, with its router, retries, caching and
-   billing;
+   billing, on the model the program asked for when one of the person's
+   services can serve it, and otherwise on the run's work seat, which the turn
+   names in `Served` (`modelapi.Resolve`; a call is never refused only because
+   the machine does not know the id);
 3. is answered in the OpenRouter shape, `usage.cost` included, streamed with
    keepalives while a long call is thinking, or as one body when it was not
    streamed (`response_format` carried);
@@ -57,7 +63,15 @@ one package codeaf's funnel law lets spell a model route. Every call:
    run's conversation log.
 
 The token dies with the run, so a grandchild that outlives its parent can no
-longer spend.
+longer spend. A call's thread is its `prompt_cache_key`, or its
+`x-session-affinity` header when the body carries no key; reasoning effort rides
+codeaf's own effort ladder.
+
+A shell run (`codeaf <name> …`) has no task folder, so its record — the
+conversation log, the program record and the program's stderr — goes to
+`~/.codeaf/v3/carried/<name>/<when>/`, one folder per run. Its child is started
+with the person's own line plus `--json`, so a command other than the default
+and the command's own flags survive.
 
 ## 4. The records — stdout, one JSON object per line
 
@@ -68,9 +82,9 @@ longer spend.
 | `step` | once per finished action | `command` (one line, 200 bytes at most), `observation` (2048 bytes at most) |
 | `terminal` | last, exactly once, on every path | `status` (`pass`, `fail`, `budget-exhausted`, `crashed`), `message`, `data`: `reason`, `claim`, `observed`, `deliverable`, and anything else |
 
-Any other line is ignored. `spend` is still read until the model API meters
-every call; after that it is redundant, because the API is the one source of
-truth for money.
+Any other line is ignored. There is no `spend` record: the model API meters
+every call as it is made, so money has one source of truth and it is not the
+program's word.
 
 A `hello` carrying another protocol number means the engine outlived a rebuild
 and started the new binary as its child. The run is stopped before it spends,

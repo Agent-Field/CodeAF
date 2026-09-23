@@ -79,7 +79,9 @@ Every model call senior-dev makes goes through codeaf, which serves each run its
 model API. So every call is priced like one of codeaf's own, shows in the conversation's
 total and in `/cost`, and is held to the run's dollar ceiling: **codeaf refuses the call
 that would cross it**, before it is made. A refused call ends senior-dev's turn; it runs
-the project's build and tests on the tree it has, and ends there.
+the project's build and tests on the tree it has, and ends there, and the task says
+`senior-dev reached the run's dollar ceiling of $5.00: …` with senior-dev's own words
+after it.
 
 The time ceiling is kept by senior-dev as well as by codeaf. It holds back the last part
 of its time to land: two fifteenths of the run, at least 45 seconds, at most 12 minutes,
@@ -88,7 +90,10 @@ submit.
 
 senior-dev picks its model call by call from its own list of open models, and avoids one
 for a while after it fails. `--high` replaces the list, and `--variant` sets the
-reasoning effort every call asks for.
+reasoning effort every call asks for. **When none of your model services can serve the
+model it asks for**, codeaf answers the call on the run's own work model — the one a
+task's own worker would use — and the conversation on the task page names the model that
+answered. A call is never refused only because this machine does not know a model's id.
 
 ## senior-dev's flags — run, --variant, --in-place, --high, --max-cost
 
@@ -119,7 +124,9 @@ A run ends in one of these ways, and the task's ending says which:
   tests did on the frozen tree;
 - `senior-dev did not finish: …` — it ended without submitting, or what it submitted fails
   the project's own build or tests;
-- `senior-dev stopped on its own ceiling: …` — it crossed the dollar or time ceiling;
+- `senior-dev reached the run's dollar ceiling of $5.00: …` — codeaf refused a model call
+  at the dollar ceiling; the words after are senior-dev's own ending;
+- `senior-dev stopped on its own ceiling: …` — it stopped itself at the time ceiling;
 - `senior-dev crashed: …` — the program itself broke, or could not start (no brief, a
   refused `senior-dev.json`, no git repository);
 - `stopped by the run: …` — you, or the run it belonged to, stopped it; what follows is
@@ -130,4 +137,6 @@ tests cannot even start there, the tree is put back to the last state whose buil
 tests could run, or to where it began.
 
 Everything senior-dev said while it worked (each stage and what it knew at the time)
-is kept in `delegate-stderr.log` in the task's record folder.
+is kept in `delegate-stderr.log` in the task's record folder. A run started at a shell has
+no task, so its record — that log, its conversation with codeaf and its stages — is kept
+in a folder of its own under `~/.codeaf/v3/carried/senior-dev/`, one per run.

@@ -65,7 +65,7 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 	fs := flag.NewFlagSet(program.Name+" "+command.Name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	dir := fs.String("dir", "", "the folder to work in (default: the current folder)")
-	cost := fs.Float64("max-cost", 0, "a ceiling in dollars; codeaf refuses the call that would cross it")
+	cost := fs.Float64("max-cost", 0, "a dollar ceiling; codeaf refuses the call that would cross it")
 	hours := fs.Float64("max-hours", 0, "a ceiling in hours of wall-clock time")
 	asJSON := fs.Bool("json", false, "write the records on stdout instead of readable lines")
 	body := command.Bind(fs)
@@ -121,6 +121,10 @@ func ChildArgs(program Delegate, workspace, brief string, ceilings Ceilings) []s
 
 // Help writes a program's help: what it is, its commands, and the flags every
 // command takes.
+//
+// EVERY LINE FITS EIGHTY CELLS, the width codeaf's own help pages are held to
+// (cmd/codeaf's helpwidth law); the build's list holds every carried program's
+// pages to it (internal/delegate/builtin).
 func Help(program Delegate, out io.Writer) {
 	fmt.Fprintf(out, "codeaf %s: %s\n\n", program.Name, program.Summary)
 	fmt.Fprintf(out, "usage:\n  codeaf %s [flags] <brief>          runs %s\n", program.Name, program.Default)
@@ -129,7 +133,7 @@ func Help(program Delegate, out io.Writer) {
 	}
 	fmt.Fprintf(out, "\nflags every command takes:\n")
 	fmt.Fprintf(out, "  --dir DIR        the folder to work in (default: the current folder)\n")
-	fmt.Fprintf(out, "  --max-cost USD   a ceiling in dollars; codeaf refuses the call that would cross it\n")
+	fmt.Fprintf(out, "  --max-cost USD   a dollar ceiling; codeaf refuses the call that would cross it\n")
 	fmt.Fprintf(out, "  --max-hours H    a ceiling in hours of wall-clock time\n")
 	fmt.Fprintf(out, "  --json           write the records on stdout instead of readable lines\n")
 	fmt.Fprintf(out, "\n`codeaf %s <command> --help` lists a command's own flags.\n", program.Name)
