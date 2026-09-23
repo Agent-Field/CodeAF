@@ -93,6 +93,12 @@ func TestParseWritesHelpAndSaysSo(t *testing.T) {
 	if !strings.Contains(out.String(), "--variant") {
 		t.Fatalf("a command's help lacks its own flag:\n%s", out.String())
 	}
+	// A bare ask is the program's own page, with every command on it.
+	out.Reset()
+	_, _ = Parse(testProgram(nil), []string{"--help"}, &out)
+	if !strings.Contains(out.String(), "flags every command takes") || !strings.Contains(out.String(), "codeaf fake check") {
+		t.Fatalf("a bare --help is not the program's own page:\n%s", out.String())
+	}
 }
 
 // EXACTLY ONE TERMINAL, ON EVERY PATH: a body that ends without one gets one,

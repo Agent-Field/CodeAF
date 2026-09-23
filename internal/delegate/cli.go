@@ -49,9 +49,17 @@ func (inv *Invocation) Brief() string { return strings.TrimSpace(strings.Join(in
 // as ErrHelp.
 func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) {
 	rest := line
-	if len(rest) > 0 && rest[0] == "help" {
-		Help(program, out)
-		return nil, ErrHelp
+	if len(rest) > 0 {
+		switch rest[0] {
+		case "help", "-h", "-help", "--help":
+			// THE PROGRAM'S OWN PAGE FOR A BARE ASK. `codeaf <name> --help` is
+			// asked before any command is named, so it answers with what the
+			// program is and every command it has; a command's own flags are
+			// one `codeaf <name> <command> --help` away, as the page ends by
+			// saying.
+			Help(program, out)
+			return nil, ErrHelp
+		}
 	}
 	command, named := program.Command(program.Default)
 	if len(rest) > 0 {
