@@ -10,7 +10,9 @@ by up to three brief bullets covering the changed behavior, checks and their res
 and any remaining issue. Empty categories are omitted. A command you need to run or
 an exact edit comes first in instructions. Failed or unrun checks must still be stated.
 
-Ask for an explanation, a walkthrough, or a particular format when you want more detail.
+Ask for a longer answer, an explanation, a walkthrough, or a particular format.
+Your requested length and format override the short defaults, including the coding
+report bullet limit.
 Requested code and other deliverables stay complete. This is guidance to the model,
 not a hard word limit; the wording and length can vary with the model and the task.
 
