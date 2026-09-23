@@ -228,7 +228,7 @@ func TestAHandoffWhoseRunRoadFailsIsNotASilentNode(t *testing.T) {
 	if !failed {
 		t.Errorf("the failed hand-off reads as a success: %q", answer)
 	}
-	if strings.Contains(answer, "started") || !strings.Contains(answer, "did not start") || !strings.Contains(answer, "disk I/O error") {
+	if strings.Contains(answer, fmt.Sprintf("task %d started", proposal.id)) || !strings.Contains(answer, "did not start") || !strings.Contains(answer, "disk I/O error") {
 		t.Errorf("the failed hand-off's receipt = %q, want it to say it did not start and why", answer)
 	}
 	if agent.graph().node(proposal.id) != nil {
