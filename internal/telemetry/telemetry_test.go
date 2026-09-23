@@ -357,7 +357,7 @@ func TestFirstRunIsEmittedOncePerInstallID(t *testing.T) {
 // The notice is the contract's text, byte for byte. The contract file itself
 // is not committed, so the expected text lives here.
 const contractNotice = `codeaf sends anonymous usage counts to AgentField.
-  Sent:  version, OS, mode (chat or task), how many sessions, how many errors.
+  Sent:  version, OS, mode, session counts, errors, and total tokens used.
   Never: anything about you or your work. No prompts, code, file names,
          paths, repo names, keys, email, IP, or machine name.
   What is collected:        codeaf telemetry info

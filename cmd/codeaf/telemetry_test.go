@@ -362,7 +362,8 @@ func TestTelemetryInfoNamesEveryFieldOnAnEmptyMachine(t *testing.T) {
 		"first_run            nothing; sent once per install",
 		"session_started      mode=chat  resumed=false",
 		"session_ended        mode=chat  duration=5-30m  turns=6-20",
-		"stop_reason=done  exit_code=0",
+		"total_tokens=12500  stop_reason=done",
+		"exit_code=0",
 		// No blank line between the last event and the stop reasons.
 		"fingerprint=3fa9c1e2b7d04e85\n    stop_reason          one of done · error · incomplete",
 		"2. Model Pool (",

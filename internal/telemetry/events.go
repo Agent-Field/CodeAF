@@ -229,6 +229,7 @@ type SessionStats struct {
 	ToolCalls        int
 	ToolCallsFailed  int
 	CostUSD          float64
+	TotalTokens      int
 	StopReason       string
 	ExitCode         int
 }
@@ -260,6 +261,7 @@ func SessionEnded(mode Mode, stats SessionStats, sessionID string, now time.Time
 	event.Props["tool_calls"] = BucketCount(stats.ToolCalls)
 	event.Props["tool_calls_failed"] = BucketCount(stats.ToolCallsFailed)
 	event.Props["cost_usd"] = BucketCost(stats.CostUSD)
+	event.Props["total_tokens"] = max(0, stats.TotalTokens)
 	event.Props["stop_reason"] = stop
 	event.Props["exit_code"] = exit
 	return event
@@ -303,7 +305,7 @@ var allowedProps = map[string]map[string]bool{
 	"session_started": merge(set(commonPropNames), set([]string{"mode", "resumed"})),
 	"session_ended": merge(set(commonPropNames), set([]string{
 		"mode", "duration", "turns", "model_calls", "model_calls_failed",
-		"tool_calls", "tool_calls_failed", "cost_usd", "stop_reason", "exit_code",
+		"tool_calls", "tool_calls_failed", "cost_usd", "total_tokens", "stop_reason", "exit_code",
 	})),
 	"fault": merge(set(commonPropNames), set([]string{"mode", "scope", "fingerprint"})),
 }
@@ -340,6 +342,7 @@ var propDocs = map[string]map[string]string{
 		"tool_calls":         "a count band",
 		"tool_calls_failed":  "a count band",
 		"cost_usd":           "a dollar band",
+		"total_tokens":       "total provider-reported input and output tokens in this session",
 		"stop_reason":        "done, error, incomplete, budget, turn-cap, deadline, price, question, interrupted, or unknown",
 		"exit_code":          "0 to 5",
 	},
@@ -362,7 +365,7 @@ func EventPropNames(event string) []string {
 		return []string{"mode", "resumed"}
 	case "session_ended":
 		return []string{"mode", "duration", "turns", "model_calls", "model_calls_failed",
-			"tool_calls", "tool_calls_failed", "cost_usd", "stop_reason", "exit_code"}
+			"tool_calls", "tool_calls_failed", "cost_usd", "total_tokens", "stop_reason", "exit_code"}
 	case "fault":
 		return []string{"mode", "scope", "fingerprint"}
 	}
@@ -410,6 +413,7 @@ var exampleProps = map[string]map[string]string{
 		"tool_calls":         BucketSix,
 		"tool_calls_failed":  BucketZero,
 		"cost_usd":           Cost10cTo1,
+		"total_tokens":       "12500",
 		"stop_reason":        StopDone,
 		"exit_code":          "0",
 	},

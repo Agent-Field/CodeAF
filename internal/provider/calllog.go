@@ -519,6 +519,7 @@ func (c *Client) record(facts recordFacts) {
 	// sentence is the failure verdict and its cost the spend, 0 when absent.
 	if record.Phase != calllog.PhaseStart {
 		telemetry.CountModelCall(record.Error == "", record.Cost)
+		telemetry.CountTokens(record.PromptTokens, record.CompletionTokens)
 	}
 	c.recordBodies(facts, record, model)
 }
