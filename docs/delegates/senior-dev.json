@@ -1,9 +1,0 @@
-{
-  "name": "senior-dev",
-  "description": "an autonomous coding agent for one large, well-specified change",
-  "bin": "senior-dev",
-  "argv": ["run", "--dir", "{{workspace}}", "--max-cost", "{{cost_usd}}", "--max-hours", "{{hours}}", "--", "{{brief}}"],
-  "env": { "OPENROUTER_API_KEY": "{{key}}" },
-  "lands": "tree",
-  "limits": { "cost": true, "elapsed": true, "steps": false, "questions": false }
-}

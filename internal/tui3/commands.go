@@ -231,12 +231,6 @@ var commands = []command{
 	{name: "subharness", desc: "the programs you can run · type to filter · enter opens its card",
 		alias: []string{"sub"}},
 	{name: "subharness", args: "<name>", desc: "…straight to that one's card"},
-	// THE DELEGATES: outside programs a whole task can be handed to. Each
-	// installed one is a row of its own — `/senior-dev <brief>` — generated at
-	// launch from its manifest (delegate.go), so this row is the list and the
-	// long form, never the only door.
-	{name: "delegate", desc: "the outside programs a task can be handed to whole", alias: []string{"delegates"}},
-	{name: "delegate", args: "<name> <brief>", desc: "…hands that brief to the named one"},
 	// WHAT IT KNOWS ABOUT YOU, and the two ways to change it. They sit beside
 	// /harness because they answer the neighbouring question — one is what this
 	// conversation has learned to DO, these are what it has been told about YOU

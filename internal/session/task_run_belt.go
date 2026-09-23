@@ -114,12 +114,11 @@ type RunSpec struct {
 	CompleterFor func(model string) Completer
 	// OnSpend observes the reconciled cumulative run spend while work is live.
 	OnSpend func(float64)
-	// Delegate, when set, is the outside program this run's root task is handed
-	// to instead of a bash worker (delegate_door.go). APIKey is the person's key
-	// the program is handed through its manifest's `{{key}}`. Nil is every run
-	// the conversation's own workers drive.
-	Delegate *delegate.Manifest
-	APIKey   string
+	// Delegate, when set, is the program this run's root task is handed to
+	// instead of a bash worker (delegate_door.go). No key goes with it: the
+	// program reaches a model only through the API codeaf serves the run. Nil is
+	// every run the conversation's own workers drive.
+	Delegate *delegate.Delegate
 }
 
 // RunLimit is which bound a person set ended a run. The engine's outcome word
@@ -235,11 +234,11 @@ type beltRun struct {
 	// It is the same reading the row published to the surface carries, so the
 	// tree and the row cannot disagree about when the work began.
 	born time.Time
-	// delegate is the outside program this run's root is handed to, nil for a
-	// run the conversation's own workers drive; startSha is the commit the copy
-	// stood on the moment the run began, the point a tree delegate's commits are
-	// squashed back to at landing (delegate_door.go).
-	delegate *delegate.Manifest
+	// delegate is the program this run's root is handed to, nil for a run the
+	// conversation's own workers drive; startSha is the commit the copy stood on
+	// the moment the run began, the point a tree program's commits are squashed
+	// back to at landing (delegate_door.go).
+	delegate *delegate.Delegate
 	startSha string
 }
 
@@ -289,11 +288,11 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 }
 
 // startKnownTaskRunVia is [Agent.startKnownTaskRun] with the worker named: nil
-// is the conversation's own bash worker, and a manifest is the outside program
-// the root task is handed to (delegate_door.go). One body serves both because a
+// is the conversation's own bash worker, and a program is the one the root task
+// is handed to (delegate_door.go). One body serves both because a
 // delegated run IS a run — the store, the copy, the row and the stop road are
 // the same — and a second body would be two roads that must stay in step.
-func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Manifest) error {
+func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Delegate) error {
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
@@ -366,10 +365,10 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 // task beside it would be a bash worker typing in the tree the program is
 // editing, and a delegate added under a live run would be a second program in
 // the same tree. Both are refused with what is underway.
-func (a *Agent) joinBeltRun(g *TaskGraph, live *beltRun, id uint64, title, brief string, dependencies []plandb.Dependency, stand taskStand, via *delegate.Manifest) error {
+func (a *Agent) joinBeltRun(g *TaskGraph, live *beltRun, id uint64, title, brief string, dependencies []plandb.Dependency, stand taskStand, via *delegate.Delegate) error {
 	if via != nil || live.delegate != nil {
 		return errors.New("work is already underway in a copy of " + live.ground +
-			"; a delegate runs alone, so propose it again when that work has ended")
+			"; " + aloneName(via, live.delegate) + " runs alone, so propose it again when that work has ended")
 	}
 	if canonicalPath(stand.dir) != live.ground {
 		return standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
@@ -386,12 +385,24 @@ func (a *Agent) joinBeltRun(g *TaskGraph, live *beltRun, id uint64, title, brief
 	return nil
 }
 
+// aloneName is the program a refused join is about: the one asked for, or the
+// one already running.
+func aloneName(via, running *delegate.Delegate) string {
+	if via != nil {
+		return via.Name
+	}
+	if running != nil {
+		return running.Name
+	}
+	return "it"
+}
+
 // delegateStartSha is the commit a tree delegate's copy stands on before the
 // program has written a byte — the point its commits are squashed back to at
 // landing (delegate_door.go). It is read NOW, off the copy itself: whatever the
 // ground ladder put under this copy is under this commit, and everything the
 // program commits is above it. Empty for every run that is not a tree delegate's.
-func delegateStartSha(tree taskTree, via *delegate.Manifest) string {
+func delegateStartSha(tree taskTree, via *delegate.Delegate) string {
 	if via == nil || !via.LandsTree() {
 		return ""
 	}
@@ -442,7 +453,6 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		PlanModel:    planSeat,
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 		Delegate:     run.delegate,
-		APIKey:       a.config.APIKey,
 	}
 }
 

@@ -80,18 +80,18 @@ func (a *Agent) manualTool() bare.Tool {
 			// back is bounded (tools_manual_bound.go says why), and a heading
 			// off the list that bound leaves behind returns that section whole.
 			if name != "" {
-				text, found := a.chatManual().Page(name)
+				text, found := manual.Chat().Page(name)
 				if !found {
 					return "There is no manual page named " + name + ". The pages are:" +
-						a.manualPageList(), true, nil
+						manualPageList(), true, nil
 				}
 				if heading == "" {
-					return boundedPage(a.manualHeadings(name), text), false, nil
+					return boundedPage(name, text), false, nil
 				}
-				section, found := a.chatManual().Section(name, heading)
+				section, found := manual.Chat().Section(name, heading)
 				if !found {
 					return "The page " + name + " has no section named " + heading +
-						". Its sections are:" + boundedList(a.manualHeadings(name)), true, nil
+						". Its sections are:" + boundedList(manualHeadings(name)), true, nil
 				}
 				return boundedSection(section.Body), false, nil
 			}
@@ -101,7 +101,7 @@ func (a *Agent) manualTool() bare.Tool {
 
 			query := strings.TrimSpace(parsed.Query)
 			if query == "" {
-				return "Give either a query or a page. The pages are:" + a.manualPageList(), true, nil
+				return "Give either a query or a page. The pages are:" + manualPageList(), true, nil
 			}
 			// AND THE PERSON'S OWN WORDS, taken here rather than asked of
 			// the model. The model composes a query of its own and this
@@ -120,7 +120,7 @@ func (a *Agent) manualTool() bare.Tool {
 			// the person's own words for every node of it, and a steer into a
 			// running node is a course correction rather than a question
 			// about codeaf.
-			sections := a.chatManual().SearchBoth(query, a.taskRequest(), manualSections)
+			sections := manual.Chat().SearchBoth(query, a.taskRequest(), manualSections)
 			if len(sections) == 0 {
 				// NOT AN ERROR, and the difference matters: the manual having
 				// nothing on a topic is a fact about codeaf worth reporting to
@@ -128,7 +128,7 @@ func (a *Agent) manualTool() bare.Tool {
 				// do that" — while an error would invite a retry with rephrased
 				// words that will find nothing either.
 				return "The manual has nothing on that, which usually means codeaf does not do it. The pages are:" +
-					a.manualPageList(), false, nil
+					manualPageList(), false, nil
 			}
 			return manual.Render(sections), false, nil
 		},
@@ -137,13 +137,13 @@ func (a *Agent) manualTool() bare.Tool {
 
 // manualPageList is the invitation every refusal ends with, built only where a
 // refusal is being written — a lookup that succeeds never pays for it.
-func (a *Agent) manualPageList() string { return boundedList(a.chatManual().Pages()) }
+func manualPageList() string { return boundedList(manual.Chat().Pages()) }
 
 // manualHeadings is one page's section titles, which is the whole of what a cut
 // page or a missed heading has to offer: the names of the parts it can be asked
 // for by.
-func (a *Agent) manualHeadings(page string) []string {
-	sections := a.chatManual().PageSections(page)
+func manualHeadings(page string) []string {
+	sections := manual.Chat().PageSections(page)
 	headings := make([]string, 0, len(sections))
 	for _, section := range sections {
 		headings = append(headings, section.Title)

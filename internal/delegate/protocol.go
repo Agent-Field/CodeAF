@@ -1,11 +1,16 @@
 package delegate
 
-// The protocol: one JSON object per line on the program's stdout, four record
-// types read, everything else ignored (docs/DELEGATE-PROTOCOL.md §2). Ignoring
-// the rest is what makes the reader generic — senior-dev's bus payloads and any
-// future program's own records pass straight through — and it is also why a
-// line that is not JSON at all is dropped and counted rather than failing the
-// run: a program that printed one stray line has not stopped being a delegate.
+// The records: one JSON object per line on the program's stdout, the types
+// below read, everything else ignored (docs/design/delegate/PROTOCOL.md).
+// Ignoring the rest is what makes the reader generic — a program's own records
+// pass straight through — and it is also why a line that is not JSON at all is
+// dropped and counted rather than failing the run: a program that printed one
+// stray line has not stopped being one codeaf can run.
+//
+// VERSION 2 IS INTERNAL. Both ends are compiled from this package into one
+// binary, so the Go types here are the specification and the number in `hello`
+// guards the one case where the two ends can still differ: an engine that
+// outlived a rebuild starting the NEW binary as its child.
 
 import (
 	"bufio"
@@ -18,11 +23,31 @@ import (
 
 // The record types.
 const (
-	RecordStage    = "stage"
+	// RecordHello is the first line a program writes: the protocol it speaks,
+	// its name, and the stages it will move through, in order.
+	RecordHello = "hello"
+	RecordStage = "stage"
+	// RecordSpend is v1's cumulative cost. It is still read until codeaf's
+	// model API meters every call itself, which makes it the one source of
+	// truth for money and this record redundant.
 	RecordSpend    = "spend"
 	RecordStep     = "step"
 	RecordTerminal = "terminal"
 )
+
+// ProtocolVersion is the version `hello` carries. Both ends are this package,
+// so it moves only when a record changes meaning, and a mismatch means the two
+// processes are two builds.
+const ProtocolVersion = 2
+
+// Hello is the first record: who is speaking, in which protocol, and the
+// stages it will move through, which is what lets a page draw the whole track
+// before the program has reached the end of it.
+type Hello struct {
+	Protocol int      `json:"protocol"`
+	Delegate string   `json:"delegate"`
+	Stages   []string `json:"stages,omitempty"`
+}
 
 // The terminal statuses. The set is closed and it is senior-dev's, because
 // senior-dev's projection of an ending onto four words was already the right one:
@@ -136,6 +161,8 @@ func KnownStatus(status string) bool {
 // the reader's goroutine, in stream order, and none may block on the program:
 // a sink that waits on the child is a deadlock with a pipe in the middle.
 type Sink interface {
+	// Hello is the program's first record, told once.
+	Hello(h Hello)
 	// Stage is a phase change: the live step.
 	Stage(stage, status string)
 	// Spend is the cumulative cost so far. The reader guarantees it never
@@ -155,6 +182,7 @@ type Sink interface {
 // stage, the high-water spend, how many steps, whether a terminal arrived, and
 // how many lines were not the protocol's (dropped, not failed).
 type Reading struct {
+	Hello      *Hello
 	LastStage  string
 	LastStatus string
 	SpendUSD   float64
@@ -183,6 +211,22 @@ func Read(r io.Reader, sink Sink) (Reading, error) {
 			continue
 		}
 		switch head.Type {
+		case RecordHello:
+			// ONE HELLO. A second is ignored for the reason a second terminal
+			// is: the first is the one the program wrote on purpose.
+			if reading.Hello != nil {
+				reading.Ignored++
+				continue
+			}
+			var rec Hello
+			if json.Unmarshal([]byte(line), &rec) != nil {
+				reading.Ignored++
+				continue
+			}
+			reading.Hello = &rec
+			if sink != nil {
+				sink.Hello(rec)
+			}
 		case RecordStage:
 			var rec struct {
 				Stage  string `json:"stage"`

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,31 +11,16 @@ import (
 	"github.com/Agent-Field/codeaf/internal/delegate"
 )
 
-// installTestDelegate writes one delegate — manifest, page and a program that
-// exists — under dir and loads the registry from it.
-func installTestDelegate(t *testing.T, name string) *delegate.Registry {
-	t.Helper()
-	dir := t.TempDir()
-	program := filepath.Join(dir, name+".sh")
-	if err := os.WriteFile(program, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	manifest := `{"name":"` + name + `","description":"a fake delegate","bin":"./` + name + `.sh",` +
-		`"argv":["run","--dir","{{workspace}}","--","{{brief}}"],"lands":"tree"}`
-	if err := os.WriteFile(filepath.Join(dir, name+".json"), []byte(manifest), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, name+".md"), []byte("# "+name+"\n\n## /"+name+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	registry, err := delegate.Load(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := registry.Find(name); !ok {
-		t.Fatalf("the test delegate did not load: %v %v", registry.Refusals(), registry.Absent())
-	}
-	return registry
+// testPrograms is a build that carries one program called name. The session
+// never starts its process — the run engine is a double here — so its command
+// is a body that is never called.
+func testPrograms(name string) []delegate.Delegate {
+	return []delegate.Delegate{{
+		Name: name, Summary: "a fake program", Default: "run", Page: name,
+		Commands: []delegate.Command{{Name: "run", Bind: func(*flag.FlagSet) delegate.Body {
+			return func(context.Context, delegate.Host, []string) error { return nil }
+		}}},
+	}}
 }
 
 // The whole road from the door to the branch: `/fake <brief>` starts a run
@@ -62,7 +48,7 @@ func TestADelegatedRunSquashesTheProgramsCommitsIntoOneAndLandsIt(t *testing.T) 
 	conversation := newTestRepo(t)
 	base := strings.TrimSpace(gitOut(t, conversation, "rev-parse", "HEAD"))
 	sessionDir := t.TempDir()
-	registry := installTestDelegate(t, "fake")
+	registry := testPrograms("fake")
 	agent, _ := newTestAgent(t, beltRunCompleter{text: result}, func(config *Config) {
 		config.Workspace = conversation
 		config.Place = Place{Dir: sessionDir}
@@ -121,26 +107,26 @@ func TestADelegatedRunSquashesTheProgramsCommitsIntoOneAndLandsIt(t *testing.T) 
 func TestStartDelegateRefusesANameThisMachineDoesNotHave(t *testing.T) {
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)
-	registry := installTestDelegate(t, "fake")
+	registry := testPrograms("fake")
 	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
 		config.Workspace = newTestRepo(t)
 		config.Place = Place{Dir: t.TempDir()}
 		config.Delegates = registry
 	})
 	_, _, _, err := agent.StartDelegate(context.Background(), "other", "do a thing")
-	if err == nil || err.Error() != "no delegate is called other; the delegates here are fake" {
+	if err == nil || err.Error() != "this codeaf carries no program called other; it carries fake" {
 		t.Fatalf("err = %v", err)
 	}
 	if double.didRun() {
 		t.Fatal("a refused delegate started a run")
 	}
-	// And on a machine with none at all, the sentence says how to get one.
+	// And a build that carries none says so plainly.
 	none, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
 		config.Workspace = newTestRepo(t)
 		config.Place = Place{Dir: t.TempDir()}
 	})
 	_, _, _, err = none.StartDelegate(context.Background(), "fake", "do a thing")
-	if err == nil || !strings.Contains(err.Error(), "this machine has no delegates") {
+	if err == nil || err.Error() != "this codeaf carries no program called fake" {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -154,7 +140,7 @@ func TestNothingJoinsADelegatedRunAndADelegateJoinsNothing(t *testing.T) {
 	double.honoursStop = true
 	registerBeltRunEngine(t, double)
 	conversation := newTestRepo(t)
-	registry := installTestDelegate(t, "fake")
+	registry := testPrograms("fake")
 	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
 		config.Workspace = conversation
 		config.Place = Place{Dir: t.TempDir()}
@@ -167,59 +153,30 @@ func TestNothingJoinsADelegatedRunAndADelegateJoinsNothing(t *testing.T) {
 	<-double.entered
 	stand := taskStand{dir: conversation, mode: TaskModeWorktree}
 	err := agent.startKnownTaskRun(context.Background(), 99, "a second piece", "brief", nil, stand, "")
-	if err == nil || !strings.Contains(err.Error(), "a delegate runs alone") {
+	if err == nil || !strings.Contains(err.Error(), "fake runs alone") {
 		t.Fatalf("a task joined a delegated run: %v", err)
 	}
 	endBeltRun(t, agent, double)
 }
 
-// The prompt names the delegates this launch has, and only where there are
-// some: a conversation with a registry reads their names under the hand-off
-// facts, and one without reads nothing about delegates at all.
+// The prompt names the programs this build carries, and only where there are
+// some: a conversation with one reads its name under the hand-off facts, and
+// one without reads nothing about them at all.
 func TestThePromptNamesTheDelegatesThisLaunchHasAndOnlyThose(t *testing.T) {
-	with := Config{Workspace: t.TempDir(), Delegates: installTestDelegate(t, "fake")}
+	with := Config{Workspace: t.TempDir(), Delegates: testPrograms("fake")}
 	page := promptWithBeltFacts(with)
-	if !strings.Contains(page, "The delegates here are: fake.") {
+	if !strings.Contains(page, "The programs here\nare: fake.") {
 		t.Fatalf("the page does not name the delegate:\n%s", page)
 	}
 	if !strings.Contains(page, "`via`") {
 		t.Fatal("the page does not say how a delegate is named on a proposal")
 	}
 	without := Config{Workspace: t.TempDir()}
-	if page := promptWithBeltFacts(without); strings.Contains(page, "The delegates here are") || strings.Contains(page, "can go to a DELEGATE") {
+	if page := promptWithBeltFacts(without); strings.Contains(page, "The programs here") || strings.Contains(page, "PROGRAM BUILT INTO CODEAF") {
 		t.Fatalf("a launch with no delegates still speaks of them:\n%s", page)
 	}
 	inTask := Config{Workspace: t.TempDir(), Delegates: with.Delegates, InTask: true}
-	if page := promptWithBeltFacts(inTask); strings.Contains(page, "The delegates here are") {
+	if page := promptWithBeltFacts(inTask); strings.Contains(page, "The programs here") {
 		t.Fatal("a task node is told it may delegate")
-	}
-}
-
-// The manual tool answers "what does /fake do" from the delegate's own page,
-// layered over the packed corpus under `delegate-<name>`, and lists it among
-// the pages; a conversation with no delegates answers from the packed corpus
-// alone.
-func TestTheManualToolAnswersFromADelegatesOwnPage(t *testing.T) {
-	registry := installTestDelegate(t, "fake")
-	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
-		config.Workspace = t.TempDir()
-		config.Delegates = registry
-	})
-	tool := agent.manualTool()
-	text, refused, err := tool.Execute(context.Background(), []byte(`{"page":"delegate-fake"}`))
-	if err != nil || refused {
-		t.Fatalf("the page read was refused: %v %v", refused, err)
-	}
-	if !strings.Contains(text, "## /fake") {
-		t.Fatalf("the page is not the delegate's own:\n%s", text)
-	}
-	if _, ok := agent.chatManual().Page("delegates"); !ok {
-		t.Fatal("the packed delegates page is gone from the layered corpus")
-	}
-	plain, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
-		config.Workspace = t.TempDir()
-	})
-	if _, refused, _ := plain.manualTool().Execute(context.Background(), []byte(`{"page":"delegate-fake"}`)); !refused {
-		t.Fatal("a conversation with no delegates read a delegate page")
 	}
 }

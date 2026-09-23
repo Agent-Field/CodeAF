@@ -1,23 +1,25 @@
 package run
 
-// A DELEGATE IS ONE MORE WORKER KIND. An outside program that does a whole
-// task on its own (docs/DELEGATE-PROTOCOL.md, docs/design/delegate/DESIGN.md)
-// is seated on a task exactly where the bash worker is: it reads the same
-// context for its limits, banks its dollars into the same account, publishes
-// the same live step, appends to the same trajectory, and comes home with the
-// same Report. Nothing above the factory knows which kind ran.
+// A PROGRAM CODEAF CARRIES IS ONE MORE WORKER KIND. A program that does a
+// whole task on its own — senior-dev first (internal/delegate,
+// docs/design/delegate/PROTOCOL.md) — is seated on a task exactly where the
+// bash worker is: it reads the same context for its limits, banks its dollars
+// into the same account, publishes the same live step, appends to the same
+// trajectory, and comes home with the same Report. Nothing above the factory
+// knows which kind ran.
 //
-// What differs is inside: there is no model turn here. The program is started
-// in the run's working copy (internal/delegate.Run), its stdout is the
-// protocol, and its terminal record is the ending. Its stages feed the live
-// step only; its `step` records are what enter the trajectory, so the task
-// page's step count is what the program said it did and not how many phases
-// it announced.
+// What differs is inside: there is no model turn here. The program runs as a
+// child process of codeaf's own executable (`codeaf <name> run --json …`) in
+// the run's working copy, its stdout is the records, and its terminal record is
+// the ending. Its stages feed the live step only; its `step` records are what
+// enter the trajectory, so the task page's step count is what the program said
+// it did and not how many phases it announced.
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -31,36 +33,43 @@ import (
 // says why it could not start and a person opening the task should find it.
 const delegateStderrName = "delegate-stderr.log"
 
-// DelegateWorker runs one delegate as the worker of one task.
+// DelegateWorker runs one program as the worker of one task.
 type DelegateWorker struct {
 	store     *plandb.Store
 	workspace string
-	manifest  delegate.Manifest
-	key       string
+	program   delegate.Delegate
+	setup     DelegateSetup
 	// cost and elapsed are the run's ceilings, handed to the program on its
 	// command line so it cuts itself before the run has to. They are the
 	// factory's copy of the run's Limits: the supervisor enforces the same two
 	// from outside whatever the program does with them.
 	cost    float64
 	elapsed time.Duration
-	// grace overrides the launch's SIGTERM grace, for a test.
-	grace time.Duration
 }
 
-// NewDelegateWorker builds the worker. key is the person's API key as the door
-// resolved it; cost and elapsed are the run's ceilings, zero for none.
-func NewDelegateWorker(store *plandb.Store, workspace string, m delegate.Manifest, key string, cost float64, elapsed time.Duration) *DelegateWorker {
-	return &DelegateWorker{store: store, workspace: workspace, manifest: m, key: key, cost: cost, elapsed: elapsed}
+// DelegateSetup is how a delegated run starts its program's process.
+type DelegateSetup struct {
+	// Exe is codeaf's own executable, which the program runs as. Empty is this
+	// process's own; a test names a script that speaks the records.
+	Exe string
+	// Grace overrides the launch's SIGTERM grace, for a test.
+	Grace time.Duration
+}
+
+// NewDelegateWorker builds the worker. cost and elapsed are the run's
+// ceilings, zero for none.
+func NewDelegateWorker(store *plandb.Store, workspace string, program delegate.Delegate, setup DelegateSetup, cost float64, elapsed time.Duration) *DelegateWorker {
+	return &DelegateWorker{store: store, workspace: workspace, program: program, setup: setup, cost: cost, elapsed: elapsed}
 }
 
 // DelegateFactory is the run's WorkerFactory for a delegated run: the root task
-// is the delegate's, and every other task the run seats — the review round's
+// is the program's, and every other task the run seats — the review round's
 // check, and nothing else, because a delegated run is a run of one task —
 // falls to the factory it wraps, which is the crew's.
-func DelegateFactory(store *plandb.Store, workspace string, m delegate.Manifest, key string, limits Limits, rest WorkerFactory) WorkerFactory {
+func DelegateFactory(store *plandb.Store, workspace string, program delegate.Delegate, setup DelegateSetup, limits Limits, rest WorkerFactory) WorkerFactory {
 	return func(task plandb.Task) Worker {
 		if task.ID == store.RootID() {
-			return NewDelegateWorker(store, workspace, m, key, limits.CostUSD, limits.Elapsed)
+			return NewDelegateWorker(store, workspace, program, setup, limits.CostUSD, limits.Elapsed)
 		}
 		if rest == nil {
 			return nil
@@ -83,6 +92,25 @@ type delegateSink struct {
 	usd      float64
 	lastErr  error
 	terminal *delegate.Terminal
+	// stop ends the program early, and mismatch says why: the child spoke
+	// another protocol than this build's, which means codeaf was rebuilt while
+	// this conversation's engine was running and its child is the new build.
+	stop     context.CancelFunc
+	mismatch string
+}
+
+func (s *delegateSink) Hello(h delegate.Hello) {
+	if h.Protocol == delegate.ProtocolVersion {
+		return
+	}
+	// TWO BUILDS, ONE RUN. Nothing a newer child writes can be trusted to mean
+	// what this parent reads it as, so the run is stopped before it spends and
+	// the person is told the one thing that fixes it.
+	s.mismatch = fmt.Sprintf("codeaf was rebuilt while this conversation was open (its %s speaks version %d of the records, this one reads %d); restart codeaf to run %s",
+		s.name, h.Protocol, delegate.ProtocolVersion, s.name)
+	if s.stop != nil {
+		s.stop()
+	}
 }
 
 func (s *delegateSink) Stage(stage, status string) {
@@ -125,22 +153,30 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryBeginKind, ExitsRecorded: true}); err != nil {
 		return Report{}, fmt.Errorf("stamp the trajectory opening line: %w", err)
 	}
-	sink := &delegateSink{worker: w, ctx: ctx, taskID: task.ID, storeDir: storeDir, name: w.manifest.Name}
+	launchCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	sink := &delegateSink{worker: w, ctx: ctx, taskID: task.ID, storeDir: storeDir, name: w.program.Name, stop: stop}
 	brief := strings.TrimSpace(task.Description)
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
 	}
-	result, err := delegate.Run(ctx, delegate.Launch{
-		Manifest: w.manifest,
-		Fills: delegate.Fills{
-			Brief:     brief,
-			Workspace: w.workspace,
-			CostUSD:   w.cost,
-			Hours:     w.elapsed.Hours(),
-			Key:       w.key,
-		},
+	exe := w.setup.Exe
+	if exe == "" {
+		self, err := os.Executable()
+		if err != nil {
+			return Report{}, fmt.Errorf("find codeaf's own executable to run %s: %w", w.program.Name, err)
+		}
+		exe = self
+	}
+	result, err := delegate.Run(launchCtx, delegate.Launch{
+		Name: w.program.Name,
+		Bin:  exe,
+		Args: delegate.ChildArgs(w.program, w.workspace, brief, delegate.Ceilings{CostUSD: w.cost, Hours: w.elapsed.Hours()}),
+		// NO KEY REACHES THE PROGRAM (delegate.ChildEnv).
+		Env:        delegate.ChildEnv(delegate.ModelAPI{}),
+		Dir:        w.workspace,
 		StderrPath: filepath.Join(plandb.TaskDir(storeDir, task.ID), delegateStderrName),
-		Grace:      w.grace,
+		Grace:      w.setup.Grace,
 	}, sink)
 	// THE LIVE STEP GOES WITH THE PROCESS, whatever the ending: a row that still
 	// read "implement · running" after the program was gone would be a claim
@@ -161,7 +197,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		if err != nil {
 			role = plandb.RoleWork
 		}
-		_ = w.store.AddSpend(task.ID, "delegate/"+w.manifest.Name, role, usd, 0, 0)
+		_ = w.store.AddSpend(task.ID, "delegate/"+w.program.Name, role, usd, 0, 0)
 	}
 	report := Report{Steps: sink.steps, USD: usd}
 
@@ -172,19 +208,23 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		end("the record failed: "+sink.lastErr.Error(), "")
 		return report, sink.lastErr
 	}
+	if sink.mismatch != "" && ctx.Err() == nil {
+		end(sink.mismatch, "")
+		return report, errors.New(sink.mismatch)
+	}
 	if result.Stopped {
 		// THE RUN'S OWN ENDING CUT THIS PROGRAM: the context is what ended it, so
 		// the error is the context's own and the supervisor records the cut. A
 		// terminal the program wrote inside the grace still names the reason.
 		reason := "stopped by the run"
 		if t := result.Reading.Terminal; t != nil && t.Message != "" {
-			reason += ": " + w.manifest.Name + " said " + t.Message
+			reason += ": " + w.program.Name + " said " + t.Message
 		}
 		end(reason, "")
 		return report, err
 	}
 	if errors.Is(err, delegate.ErrNoTerminal) {
-		reason := fmt.Sprintf("%s exited %d without a terminal record", w.manifest.Name, result.ExitCode)
+		reason := fmt.Sprintf("%s exited %d without a terminal record", w.program.Name, result.ExitCode)
 		if result.Reading.LastStage != "" {
 			reason += "; its last stage was " + result.Reading.LastStage
 		}
@@ -196,33 +236,33 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		return report, err
 	}
 	t := *result.Reading.Terminal
-	report.Result = delegateResult(w.manifest, t)
+	report.Result = delegateResult(w.program, t)
 	switch t.Status {
 	case delegate.StatusPass:
 		end("finished: "+t.Message, report.Result)
 		return report, nil
 	case delegate.StatusBudget:
-		reason := w.manifest.Name + " stopped on its own ceiling: " + t.Message
+		reason := w.program.Name + " stopped on its own ceiling: " + t.Message
 		end(reason, report.Result)
 		return report, errors.New(reason)
 	case delegate.StatusCrashed:
-		reason := w.manifest.Name + " crashed: " + t.Message
+		reason := w.program.Name + " crashed: " + t.Message
 		end(reason, report.Result)
 		return report, errors.New(reason)
 	default:
 		// `fail`, and any word this build does not know, is work that does not
 		// stand: the run reads it as incomplete.
-		reason := w.manifest.Name + " did not finish: " + t.Message
+		reason := w.program.Name + " did not finish: " + t.Message
 		end(reason, report.Result)
 		return report, errors.New(reason)
 	}
 }
 
-// delegateResult is the ending in words: the deliverable for a delegate that
+// delegateResult is the ending in words: the deliverable for a program that
 // lands text, and for one that lands a tree the program's message with the
 // claim and the observation as two sentences, kept apart because the
 // program's model and the program itself are two witnesses.
-func delegateResult(m delegate.Manifest, t delegate.Terminal) string {
+func delegateResult(m delegate.Delegate, t delegate.Terminal) string {
 	if !m.LandsTree() {
 		if deliverable := t.Deliverable(); deliverable != "" {
 			return deliverable

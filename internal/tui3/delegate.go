@@ -1,15 +1,15 @@
 package tui3
 
-// DELEGATES ON THE SURFACE: one command row per installed delegate, generated at
-// launch from the registry the conversation holds, and `/delegate`, the list of
-// them (docs/design/delegate/DESIGN.md). A delegate row runs like `/task`: the
-// words after it are the brief, the same door opens, a run starts, the turn
-// goes on.
+// THE PROGRAMS CODEAF CARRIES, ON THE SURFACE: one command row per program the
+// engine's build carries — `/senior-dev <brief>` — generated at launch from the
+// list the conversation holds (internal/delegate/builtin, handed in by the
+// launch). A program's row runs like `/task`: the words after it are the
+// brief, the same door opens, a run starts, the turn goes on.
 //
 // THE ROWS ARE APPENDED TO THE LIVE TABLE AND NEVER TO THE LITERAL. The static
-// table keeps its static gate (manual_test.go walks it); the rows here exist
-// only while their delegate does, and the manual law for them is checked where
-// the row comes into existence, by the loader, against the delegate's own page.
+// table keeps its static gate (manual_test.go walks it); these rows exist only
+// in a build that carries their program, and over `--host` only when the FAR
+// machine's build does — which is right, because the program runs there.
 
 import (
 	"context"
@@ -22,8 +22,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// delegateAgent is what this surface asks a conversation about delegates: the
-// list, and the door.
+// delegateAgent is what this surface asks a conversation about the programs:
+// the list, and the door.
 type delegateAgent interface {
 	Delegates() session.DelegateReport
 	StartDelegate(context.Context, string, string) (uint64, string, string, error)
@@ -37,11 +37,8 @@ func (a *app) delegateSeam() (delegateAgent, bool) {
 	return agent, ok
 }
 
-// The words `/delegate` says when there is nothing to list.
-const (
-	delegateNothingWord   = "no delegates here — a delegate is an outside program codeaf can hand a whole task to; a manifest under ~/.codeaf/delegates adds one"
-	delegateUsageWordTail = " <brief> · hands the whole task to that program"
-)
+// delegateUsageWordTail is what a program's row says under a bare `/<name>`.
+const delegateUsageWordTail = " <brief> · hands the whole task to that program"
 
 // baseCommands is the literal table as this file found it, so the live table
 // can be rebuilt from it however many times a surface installs rows: a second
@@ -50,16 +47,14 @@ var (
 	baseCommands   = append([]command(nil), commands...)
 	delegateRowsMu sync.Mutex
 	delegateRows   map[string]bool
-	// delegateCollisions is every delegate the last install left off the table
-	// for wearing a built-in command's name, in the sentence `/delegate` draws.
-	delegateCollisions []string
 )
 
 // installDelegateCommands rebuilds the live command table as the literal plus
-// one row per delegate. A name that collides with a built-in row or alias is
-// left out — the loader refused nothing, so the collision is said here, in the
-// note the caller draws — because [checkCommands]'s law holds for generated
-// rows too: a word may not mean two things.
+// one row per program. A name that collides with a row or alias of the literal
+// table is left out and answered back, because [checkCommands]'s law holds for
+// generated rows too: a word may not mean two things. The build's own test
+// keeps any program from being named that way (cmd/codeaf), so this is the
+// guard a far engine of another build would need.
 func installDelegateCommands(rows []session.DelegateRow) []string {
 	delegateRowsMu.Lock()
 	defer delegateRowsMu.Unlock()
@@ -81,15 +76,7 @@ func installDelegateCommands(rows []session.DelegateRow) []string {
 	}
 	commands = table
 	delegateRows = installed
-	delegateCollisions = refused
 	return refused
-}
-
-// collisions is what the last install would not seat.
-func delegateCollisionLines() []string {
-	delegateRowsMu.Lock()
-	defer delegateRowsMu.Unlock()
-	return append([]string(nil), delegateCollisions...)
 }
 
 // baseNames is every word the literal table answers to: names and aliases.
@@ -111,10 +98,10 @@ func isDelegateCommand(name string) bool {
 	return delegateRows[name]
 }
 
-// installDelegates asks the conversation for its delegates OFF THE LOOP and,
+// installDelegates asks the conversation for its programs OFF THE LOOP and,
 // when the answer comes back, puts their rows on the table. It is asked at the
-// launch and again when the conversation in front changes, because the registry
-// is the conversation's — and over `--host` it is the far machine's, which is
+// launch and again when the conversation in front changes, because the list is
+// the engine's — and over `--host` it is the far machine's build, which is
 // right: the program and the run are there, and the door crosses the wire
 // (internal/remote's Delegate.List). It rides [app.besideLine] because nobody
 // pressed for it: a read that waited in the door line behind a person's gesture
@@ -128,8 +115,6 @@ func (a *app) installDelegates() tea.Cmd {
 	return a.besideLine(func() func(here bool) tea.Cmd {
 		report := agent.Delegates()
 		return func(here bool) tea.Cmd {
-			// A collision is not said here — it is said where the person will
-			// look for the missing row, on `/delegate`.
 			if here {
 				installDelegateCommands(report.Rows)
 			}
@@ -138,7 +123,7 @@ func (a *app) installDelegates() tea.Cmd {
 	})
 }
 
-// runDelegateCommand is `/<name> <brief>`: the brief goes to that delegate
+// runDelegateCommand is `/<name> <brief>`: the brief goes to that program
 // through a door of its own — asked off the loop like every door — and the
 // answer lands as a task start, on the message `/task` lands on.
 func (a *app) runDelegateCommand(name, brief string) tea.Cmd {
@@ -149,7 +134,7 @@ func (a *app) runDelegateCommand(name, brief string) tea.Cmd {
 	}
 	agent, ok := a.delegateSeam()
 	if !ok {
-		a.note("could not start the task · this session has no delegate door")
+		a.note("could not start the task · this session cannot hand work to /" + name)
 		return nil
 	}
 	ctx := a.ctx
@@ -165,61 +150,4 @@ func (a *app) runDelegateCommand(name, brief string) tea.Cmd {
 			}
 		}
 	})
-}
-
-// openDelegate is `/delegate`: bare, the list; with a name and words, the
-// delegate's own row run on those words. The list is a door, so it is asked off
-// the loop and said when it comes back.
-func (a *app) openDelegate(rest string) tea.Cmd {
-	if name, brief, _ := strings.Cut(strings.TrimSpace(rest), " "); name != "" {
-		if !isDelegateCommand(name) {
-			a.note(delegateUnknownWord(name))
-			return nil
-		}
-		return a.runDelegateCommand(name, brief)
-	}
-	agent, ok := a.delegateSeam()
-	if !ok {
-		a.note(delegateNothingWord)
-		return nil
-	}
-	return a.offLoop(func() func(here bool) tea.Cmd {
-		report := agent.Delegates()
-		return func(here bool) tea.Cmd {
-			if here {
-				a.note(delegateListNote(report))
-			}
-			return nil
-		}
-	})
-}
-
-// delegateListNote is what `/delegate` says: one line per delegate that can
-// run, then the ones whose program is not there, then the manifests that were
-// not added and why — the loader's and this surface's own collisions alike.
-func delegateListNote(report session.DelegateReport) string {
-	report.Refused = append(report.Refused, delegateCollisionLines()...)
-	if len(report.Rows) == 0 && len(report.Absent) == 0 && len(report.Refused) == 0 {
-		return delegateNothingWord
-	}
-	lines := make([]string, 0, len(report.Rows)+len(report.Absent)+len(report.Refused))
-	for _, row := range report.Rows {
-		lands := "lands its work on your branch"
-		if row.Lands == "text" {
-			lands = "answers in the conversation"
-		}
-		lines = append(lines, "/"+row.Name+" <brief> · "+row.Description+" · "+lands+" · "+row.Bin)
-	}
-	for _, absent := range report.Absent {
-		lines = append(lines, "not here: "+absent)
-	}
-	for _, refusal := range report.Refused {
-		lines = append(lines, "not added: "+refusal)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// delegateUnknownWord answers `/delegate <name>` for a name no row carries.
-func delegateUnknownWord(name string) string {
-	return "no delegate is called " + name + " · /delegate lists the ones here"
 }

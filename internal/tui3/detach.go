@@ -645,7 +645,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// generation (watching.go's [followingMsg]).
 	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.watchQuestions(), a.loadTasks(),
 		a.askHeld(), a.watchDriving(), a.watchFollowing(),
-		// The delegate rows are the conversation's, so they follow it (delegate.go).
+		// The program rows are the engine's, so they follow the conversation (delegate.go).
 		a.installDelegates()}
 
 	if side != nil {

@@ -1,9 +1,11 @@
 package delegate
 
-// The launch: one delegate as a child process, in its own process group, its
-// stdout read as the protocol and its stderr kept in a file for a person, ended
+// The launch: one program as a child process, in its own process group, its
+// stdout read as the records and its stderr kept in a file for a person, ended
 // by SIGTERM with a grace and then SIGKILL when the caller's context ends
-// (docs/DELEGATE-PROTOCOL.md §1 and §4).
+// (docs/design/delegate/PROTOCOL.md). The process is codeaf's own executable
+// running the program's verb ([ChildArgs]); what it is started with is the
+// caller's to say, so a test can start a script that speaks the records.
 
 import (
 	"context"
@@ -13,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -28,24 +29,19 @@ import (
 // whole protocol exists for.
 const DefaultGrace = 15 * time.Second
 
-// Fills is what the launch puts in the manifest's placeholders.
-type Fills struct {
-	Brief     string
-	Workspace string
-	// CostUSD and Hours are the ceilings handed to the program. Zero means
-	// none, and a placeholder with no value is DROPPED together with the flag
-	// before it (see fill), because a program handed `--max-cost 0` may read
-	// that as a ceiling of nothing.
-	CostUSD float64
-	Hours   float64
-	// Key is the person's API key, resolved by the caller.
-	Key string
-}
-
-// Launch is one run of one delegate.
+// Launch is one run of one program.
 type Launch struct {
-	Manifest Manifest
-	Fills    Fills
+	// Name is the program's name, for the errors this launch writes.
+	Name string
+	// Bin and Args are the process: codeaf's own executable and the program's
+	// line ([ChildArgs]).
+	Bin  string
+	Args []string
+	// Env is the child's whole environment ([ChildEnv]). Nil inherits this
+	// process's, which only a test wants: it would hand a program every key.
+	Env []string
+	// Dir is the folder the process starts in.
+	Dir string
 	// StderrPath is the file the program's stderr is appended to. Empty
 	// discards it, which no real caller wants: stderr is where a program says
 	// why it could not start.
@@ -86,32 +82,9 @@ var ErrNoTerminal = errors.New("the program exited without a terminal record")
 // terminal. The error answered is the context's own, so a run supervisor that
 // reads `context.Canceled` off a worker knows its own ending cut the task.
 func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
-	m := launch.Manifest
-	bin := m.BinPath
-	if bin == "" {
-		bin = m.Bin
-	}
-	argv, err := fill(m.Argv, launch.Fills, true)
-	if err != nil {
-		return Result{ExitCode: -1}, err
-	}
-	env := os.Environ()
-	for key, value := range m.Env {
-		filled, err := fill([]string{value}, launch.Fills, false)
-		if err != nil {
-			return Result{ExitCode: -1}, err
-		}
-		if len(filled) == 0 {
-			// A variable whose whole value was an empty fill is not set at all,
-			// so a program that reads "is it set" reads the truth.
-			continue
-		}
-		env = append(env, key+"="+filled[0])
-	}
-
-	cmd := exec.Command(bin, argv...)
-	cmd.Env = env
-	cmd.Dir = launch.Fills.Workspace
+	cmd := exec.Command(launch.Bin, launch.Args...)
+	cmd.Env = launch.Env
+	cmd.Dir = launch.Dir
 	cmd.Stdin = nil
 	processgroup.Configure(cmd)
 	stderr, err := openStderr(launch.StderrPath)
@@ -134,7 +107,7 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	if err := cmd.Start(); err != nil {
 		_ = stdoutRead.Close()
 		_ = stdoutWrite.Close()
-		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", m.Name, err)
+		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)
 	}
 	_ = stdoutWrite.Close()
 	group := processgroup.CaptureGroup(cmd.Process.Pid)
@@ -200,7 +173,7 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 		return result, ctx.Err()
 	}
 	if r.err != nil {
-		return result, fmt.Errorf("read %s's stdout: %w", m.Name, r.err)
+		return result, fmt.Errorf("read %s's stdout: %w", launch.Name, r.err)
 	}
 	if result.Reading.Terminal == nil {
 		return result, ErrNoTerminal
@@ -223,58 +196,3 @@ func openStderr(path string) (io.WriteCloser, error) {
 type nopCloser struct{ io.Writer }
 
 func (nopCloser) Close() error { return nil }
-
-// fill replaces placeholders in argv. AN EMPTY CEILING DROPS ITS FLAG: an
-// element that is exactly a ceiling placeholder with no value is removed, and
-// so is the element before it when that element is a flag (`--max-cost`), so
-// a program with no ceiling set is handed no `--max-cost` at all rather than a
-// zero it might read as "spend nothing". dropFlags is off for env values, where
-// there is no flag to drop and an empty fill leaves the variable unset.
-//
-// A FILLED VALUE IS NEVER READ AGAIN. Each element is substituted in one pass
-// ([strings.Replacer] does not rescan what it inserted), and the check for a
-// placeholder this build does not fill reads the manifest's own text, never the
-// result. Both are there because the brief is the person's words: a review of a
-// Go template or a Helm chart says `{{ .Name }}`, which must reach the program
-// as written rather than refuse the launch, and a brief that says `{{key}}`
-// must not have the person's key spliced into a command line every process on
-// the machine can read.
-func fill(argv []string, fills Fills, dropFlags bool) ([]string, error) {
-	values := map[string]string{
-		FillBrief:            fills.Brief,
-		FillWorkspace:        fills.Workspace,
-		FillKey:              fills.Key,
-		"{{key:openrouter}}": fills.Key,
-	}
-	if fills.CostUSD > 0 {
-		values[FillCostUSD] = strconv.FormatFloat(fills.CostUSD, 'f', -1, 64)
-	} else {
-		values[FillCostUSD] = ""
-	}
-	if fills.Hours > 0 {
-		values[FillHours] = strconv.FormatFloat(fills.Hours, 'f', -1, 64)
-	} else {
-		values[FillHours] = ""
-	}
-	pairs := make([]string, 0, 2*len(values))
-	for placeholder, value := range values {
-		pairs = append(pairs, placeholder, value)
-	}
-	replacer := strings.NewReplacer(pairs...)
-	out := make([]string, 0, len(argv))
-	for _, arg := range argv {
-		if value, whole := values[arg]; whole && value == "" && (arg == FillCostUSD || arg == FillHours || arg == FillKey || arg == "{{key:openrouter}}") {
-			if dropFlags && len(out) > 0 && strings.HasPrefix(out[len(out)-1], "-") {
-				out = out[:len(out)-1]
-			}
-			continue
-		}
-		for _, placeholder := range fillShape.FindAllString(arg, -1) {
-			if _, known := values[placeholder]; !known {
-				return nil, fmt.Errorf("%s is not a placeholder this build fills", placeholder)
-			}
-		}
-		out = append(out, replacer.Replace(arg))
-	}
-	return out, nil
-}

@@ -1,0 +1,112 @@
+# The protocol, version 2 (internal)
+
+*2026-09-23. What a program codeaf carries does, and what codeaf does for it. It
+replaces the public, manifest-based v1 (`docs/DELEGATE-PROTOCOL.md`, kept on the
+tag `delegate-manifest-v1`). The owner's plan is the "Built-in delegates plan"
+doc; the Go types in `internal/delegate` are the specification, and this page
+says what they mean. "Delegate" is a working title: a person only ever reads the
+program's own name.*
+
+## 1. What a program is
+
+A value in the build's list, `internal/delegate/builtin`, of type
+`delegate.Delegate`: a name (the chat command `/<name>` and the shell verb
+`codeaf <name>`), a one-line summary, what it lands (`tree` or `text`), its
+commands with their own flags, its default command, and the name of its page in
+the chat's manual. There is nothing to install. A program not in the list does
+not exist anywhere; on Windows the list is empty.
+
+A program cannot run on its own. Its entry point is a `Command` whose body takes
+a `delegate.Host`, and only codeaf makes one.
+
+## 2. How it runs
+
+Always as a child process of codeaf's own executable:
+
+```
+codeaf <name> <command> --json --dir <workspace> [--max-cost USD] [--max-hours H] -- <brief>
+```
+
+- **From the chat,** the engine's run (`internal/run`'s `DelegateWorker`) starts
+  that line in the run's working copy.
+- **From a shell,** `codeaf <name> <brief>` becomes the host: it serves the model
+  API itself and starts the same child.
+
+The two are told apart by the environment. A child of a host has
+`CODEAF_MODEL_API` and `CODEAF_MODEL_TOKEN`; a person's shell has neither.
+
+The child's environment is the parent's with every provider key and model
+redirection codeaf knows of removed (`delegate.ChildEnv`). The program passes its
+environment on to every command its model runs, so a key left there would be one
+any model-written shell line could print.
+
+## 3. The model API — the only road to a model
+
+For each run codeaf serves an OpenAI-style chat-completions API at
+`CODEAF_MODEL_API` (a base URL), opened by the bearer token in
+`CODEAF_MODEL_TOKEN` and by nothing else. It lives in `internal/provider`, the
+one package codeaf's funnel law lets spell a model route. Every call:
+
+1. is refused before it is made when the run's dollar ceiling is reached;
+2. goes through codeaf's own model funnel, with its router, retries, caching and
+   billing;
+3. is answered in the OpenRouter shape, `usage.cost` included, streamed with
+   keepalives while a long call is thinking, or as one body when it was not
+   streamed (`response_format` carried);
+4. is banked to the task's spend and the spending ledger, and written to the
+   run's conversation log.
+
+The token dies with the run, so a grandchild that outlives its parent can no
+longer spend.
+
+## 4. The records — stdout, one JSON object per line
+
+| record | when | fields |
+| --- | --- | --- |
+| `hello` | first | `protocol` (2), `delegate`, `stages` (the whole list, in order) |
+| `stage` | on every phase change | `stage`, `status` |
+| `step` | once per finished action | `command` (one line, 200 bytes at most), `observation` (2048 bytes at most) |
+| `terminal` | last, exactly once, on every path | `status` (`pass`, `fail`, `budget-exhausted`, `crashed`), `message`, `data`: `reason`, `claim`, `observed`, `deliverable`, and anything else |
+
+Any other line is ignored. `spend` is still read until the model API meters
+every call; after that it is redundant, because the API is the one source of
+truth for money.
+
+A `hello` carrying another protocol number means the engine outlived a rebuild
+and started the new binary as its child. The run is stopped before it spends,
+with the reason `codeaf was rebuilt while this conversation was open …; restart
+codeaf to run <name>`.
+
+## 5. Stop
+
+SIGTERM to the process group, a 15-second grace, then SIGKILL. On SIGTERM the
+program stops starting new work, writes its terminal, and exits. A body that
+returns without writing a terminal gets one written for it (`delegate.RunChild`).
+
+## 6. The conversation log
+
+`delegate-conversation.jsonl` in the task's record folder, one `delegate.Turn`
+per model call: the thread, the model asked for and the one that answered, what
+the program sent that the thread's previous call had not, the reply and the tool
+calls, tokens and cost, and codeaf's refusal or the model's failure. A call is
+written when it starts and again when it ends, and a reader keeps the later
+record, so the task page shows the call in flight. The page draws the turns as
+the conversation between the program and codeaf.
+
+## 7. What a program may not do
+
+- Ask a person anything. Nobody is at its keyboard. (Later: a tool codeaf runs
+  inside the model API.)
+- Read stdin.
+- Reach a model any way but the model API.
+- Write anything on stdout that is not a record on its own line.
+- For `tree`: touch files outside its workspace, or leave anything in it that is
+  not its work (its own state git-excluded).
+
+## 8. Built in now for later programs
+
+pr-af and sec-af, looked at on 2026-09-23, would need: plain structured calls
+with `response_format`, many conversations at once (kept apart by thread),
+grandchildren inheriting the API's address and token, quiet stretches of up to
+30 minutes, and text landings with attachments. The first four are in v2 from
+the start; attachments come with the first text program.

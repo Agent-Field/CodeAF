@@ -1,5 +1,17 @@
 # Delegates — handing a task to an outside program — DESIGN (draft)
 
+> **Superseded in part on 2026-09-23.** The owner moved the first release to
+> programs BUILT INTO codeaf: no manifests, no `~/.codeaf/delegates`, no install,
+> no `/delegate`; senior-dev copied into `internal/seniordev` from swe-pro-go at
+> the tag `codeaf-absorb` (`6103488`); its CLI is `codeaf senior-dev`; every
+> model call goes through a per-run model API codeaf serves; and the task page
+> shows the program's conversation with codeaf. The protocol is now internal,
+> version 2: [PROTOCOL.md](PROTOCOL.md). What follows is the v1 design as it was
+> built; the manifest road is kept on the tag `delegate-manifest-v1`. The run
+> road, the landing (one squashed commit for a tree, the answer folded in for
+> text), the stop and the reader below all carry over.
+
+
 *2026-09-21, revised 2026-09-23. Written against `dev @ 17ae56d34` and
 `swe-pro-go @ 6103488` (branch `zeropoint95/improvements`, PR #30). Waves 1 to
 4 are built on this branch; every senior-dev change this asked for has landed.*

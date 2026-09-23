@@ -16,9 +16,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/run"
 )
 
-// fakeDelegate writes a shell program that speaks the protocol — a stage, a
-// spend, two steps, then body — and answers its manifest.
-func fakeDelegate(t *testing.T, body string) delegate.Manifest {
+// fakeDelegate writes a shell program that stands in for codeaf running a
+// program — a stage, a spend, two steps, then body — and answers the program's
+// definition and the setup that starts the script in codeaf's place.
+func fakeDelegate(t *testing.T, body string) (delegate.Delegate, run.DelegateSetup) {
 	t.Helper()
 	script := filepath.Join(t.TempDir(), "fake.sh")
 	program := "#!/bin/sh\n" + strings.Join([]string{
@@ -33,13 +34,7 @@ func fakeDelegate(t *testing.T, body string) delegate.Manifest {
 	if err := os.WriteFile(script, []byte(program), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return delegate.Manifest{
-		Name:        "fake",
-		Description: "a fake delegate",
-		Bin:         script,
-		BinPath:     script,
-		Argv:        []string{"run", "--dir", delegate.FillWorkspace, "--max-cost", delegate.FillCostUSD, "--", delegate.FillBrief},
-	}
+	return delegate.Delegate{Name: "fake", Summary: "a fake program", Default: "run"}, run.DelegateSetup{Exe: script}
 }
 
 func passLine(claim string) string {
@@ -52,8 +47,8 @@ func TestDelegateWorkerRecordsStepsBanksSpendAndReportsTheEnding(t *testing.T) {
 	args := filepath.Join(t.TempDir(), "args")
 	t.Setenv("FAKE_ARGS", args)
 	workspace := t.TempDir()
-	m := fakeDelegate(t, passLine("tests are green"))
-	worker := run.NewDelegateWorker(store, workspace, m, "sk-test", 2.5, 0)
+	m, setup := fakeDelegate(t, passLine("tests are green"))
+	worker := run.NewDelegateWorker(store, workspace, m, setup, 2.5, 0)
 
 	var banked []float64
 	ctx := run.WithSpendBank(runContext(t), func(usd float64) { banked = append(banked, usd) })
@@ -78,7 +73,7 @@ func TestDelegateWorkerRecordsStepsBanksSpendAndReportsTheEnding(t *testing.T) {
 	// The brief the program was handed is the task's description, and the
 	// ceiling is the run's.
 	got, _ := os.ReadFile(args)
-	if want := "run\n--dir\n" + workspace + "\n--max-cost\n2.5\n--\ndrive the plan to the ground\n"; string(got) != want {
+	if want := "fake\nrun\n--json\n--dir\n" + workspace + "\n--max-cost\n2.5\n--\ndrive the plan to the ground\n"; string(got) != want {
 		t.Fatalf("argv =\n%s\nwant\n%s", got, want)
 	}
 	// The trajectory: the opening line, two steps, the ending.
@@ -113,8 +108,8 @@ func TestDelegateWorkerRecordsStepsBanksSpendAndReportsTheEnding(t *testing.T) {
 
 func TestDelegateWorkerReportsAFailedEndingAsAnError(t *testing.T) {
 	store := runOpenStore(t)
-	m := fakeDelegate(t, `echo '{"type":"terminal","status":"fail","message":"unsubmitted","data":{"cost_usd":0.2,"status":"unsubmitted"}}'`)
-	worker := run.NewDelegateWorker(store, t.TempDir(), m, "", 0, 0)
+	m, setup := fakeDelegate(t, `echo '{"type":"terminal","status":"fail","message":"unsubmitted","data":{"cost_usd":0.2,"status":"unsubmitted"}}'`)
+	worker := run.NewDelegateWorker(store, t.TempDir(), m, setup, 0, 0)
 	report, err := worker.Run(runContext(t), *store.Task(store.RootID()))
 	if err == nil || !strings.Contains(err.Error(), "fake did not finish: unsubmitted") {
 		t.Fatalf("err = %v", err)
@@ -126,8 +121,8 @@ func TestDelegateWorkerReportsAFailedEndingAsAnError(t *testing.T) {
 
 func TestDelegateWorkerNamesAnExitWithoutATerminal(t *testing.T) {
 	store := runOpenStore(t)
-	m := fakeDelegate(t, "exit 7")
-	worker := run.NewDelegateWorker(store, t.TempDir(), m, "", 0, 0)
+	m, setup := fakeDelegate(t, "exit 7")
+	worker := run.NewDelegateWorker(store, t.TempDir(), m, setup, 0, 0)
 	_, err := worker.Run(runContext(t), *store.Task(store.RootID()))
 	if err == nil || err.Error() != "fake exited 7 without a terminal record; its last stage was implement" {
 		t.Fatalf("err = %v", err)
@@ -136,12 +131,12 @@ func TestDelegateWorkerNamesAnExitWithoutATerminal(t *testing.T) {
 
 func TestDelegateWorkerComesHomeWithTheContextsEndingWhenTheRunStopsIt(t *testing.T) {
 	store := runOpenStore(t)
-	m := fakeDelegate(t, strings.Join([]string{
+	m, setup := fakeDelegate(t, strings.Join([]string{
 		`trap 'echo "{\"type\":\"terminal\",\"status\":\"budget-exhausted\",\"message\":\"told to stop\",\"data\":{\"cost_usd\":0.11}}"; exit 0' TERM`,
 		`sleep 30 &`,
 		`wait $!`,
 	}, "\n"))
-	worker := run.NewDelegateWorker(store, t.TempDir(), m, "", 0, 0)
+	worker := run.NewDelegateWorker(store, t.TempDir(), m, setup, 0, 0)
 	ctx, cancel := context.WithCancel(runContext(t))
 	go func() {
 		// Once the store has the program's live step, the program is past its
@@ -174,8 +169,8 @@ func TestDelegateWorkerComesHomeWithTheContextsEndingWhenTheRunStopsIt(t *testin
 // supervisor to done, with the delegate's words as the run's result.
 func TestARunSeatsTheDelegateOnItsRootAndEndsDone(t *testing.T) {
 	store := runOpenStore(t)
-	m := fakeDelegate(t, passLine("all green"))
-	factory := run.DelegateFactory(store, t.TempDir(), m, "", run.Limits{CostUSD: 5}, nil)
+	m, setup := fakeDelegate(t, passLine("all green"))
+	factory := run.DelegateFactory(store, t.TempDir(), m, setup, run.Limits{CostUSD: 5}, nil)
 	outcome, summary := run.Start(runContext(t), run.Spec{
 		Store:     store,
 		Workspace: t.TempDir(),
@@ -204,12 +199,12 @@ func TestARunSeatsTheDelegateOnItsRootAndEndsDone(t *testing.T) {
 // kept.
 func TestARunEndsADelegateThatCrossesTheCostCeiling(t *testing.T) {
 	store := runOpenStore(t)
-	m := fakeDelegate(t, strings.Join([]string{
+	m, setup := fakeDelegate(t, strings.Join([]string{
 		`trap 'echo "{\"type\":\"terminal\",\"status\":\"budget-exhausted\",\"message\":\"stopped\",\"data\":{\"cost_usd\":0.11}}"; exit 0' TERM`,
 		`sleep 30 &`,
 		`wait $!`,
 	}, "\n"))
-	factory := run.DelegateFactory(store, t.TempDir(), m, "", run.Limits{CostUSD: 0.10}, nil)
+	factory := run.DelegateFactory(store, t.TempDir(), m, setup, run.Limits{CostUSD: 0.10}, nil)
 	outcome, summary := run.Start(runContext(t), run.Spec{
 		Store: store, Workspace: t.TempDir(), Slots: 1,
 		Limits:  run.Limits{CostUSD: 0.10},
@@ -220,5 +215,30 @@ func TestARunEndsADelegateThatCrossesTheCostCeiling(t *testing.T) {
 	}
 	if len(summary.Cut) != 1 {
 		t.Fatalf("cut = %v, want the root cut by the run's own ending", summary.Cut)
+	}
+}
+
+// TWO BUILDS, ONE RUN: a child that says another protocol version than this
+// build reads is stopped before it spends, and the reason names the fix.
+func TestDelegateWorkerStopsAChildOfAnotherBuild(t *testing.T) {
+	store := runOpenStore(t)
+	script := filepath.Join(t.TempDir(), "newer.sh")
+	program := "#!/bin/sh\n" + strings.Join([]string{
+		`echo '{"type":"hello","protocol":99,"delegate":"fake"}'`,
+		`trap 'exit 0' TERM`,
+		`sleep 30 &`,
+		`wait $!`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(script, []byte(program), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	worker := run.NewDelegateWorker(store, t.TempDir(), delegate.Delegate{Name: "fake", Default: "run"}, run.DelegateSetup{Exe: script, Grace: time.Second}, 0, 0)
+	started := time.Now()
+	_, err := worker.Run(runContext(t), *store.Task(store.RootID()))
+	if err == nil || !strings.Contains(err.Error(), "restart codeaf to run fake") || errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want the rebuild named and not the run's own ending", err)
+	}
+	if time.Since(started) > 10*time.Second {
+		t.Fatal("the mismatched child was not stopped")
 	}
 }

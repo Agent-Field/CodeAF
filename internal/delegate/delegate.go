@@ -1,170 +1,175 @@
-// Package delegate is the half of a delegate that everything else in the
-// binary needs: what one IS (a manifest beside its manual page), how the
-// installed ones are found, the stdout protocol every delegate speaks and the
-// one reader over it, and the launch of the program as a child process that
-// streams, stops on SIGTERM and ends with one terminal record.
+// Package delegate is what codeaf needs of the programs it carries and can hand
+// a whole task to — senior-dev first (docs/design/delegate/PROTOCOL.md): what
+// one IS (a Go value in the build's list, internal/delegate/builtin), the
+// command line every one of them answers (`codeaf <name> …`), the records a
+// running one writes on its stdout and the one reader over them, the model API
+// that is its only road to a model, the log of the conversation it holds over
+// that road, and the launch of it as a child process that streams, stops on
+// SIGTERM and ends with one terminal record.
 //
-// A DELEGATE IS AN OUTSIDE PROGRAM CODEAF HANDS A WHOLE TASK TO. codeaf designs
-// nothing about it and cannot see inside it; it starts it in a working copy,
-// reads its stdout, stops it when a limit is reached and takes its result. The
-// contract is docs/DELEGATE-PROTOCOL.md, and this package is its
-// implementation. What runs a delegate AS A WORKER of a run — the live step,
-// the trajectory, the spend bank — is internal/run's, which builds on this
-// package; nothing here knows what a task is.
+// "DELEGATE" IS A WORKING TITLE. Everything a person reads names the program
+// itself — `/senior-dev`, `codeaf senior-dev`, its own manual page — and only
+// code says delegate, where a later rename is one package move.
 //
-// THIS PACKAGE IS A LEAF ON PURPOSE. The session door lists delegates and
-// checks a name; the run engine seats one; neither may import the other, so
-// what they share lives here and imports neither.
+// A PROGRAM CODEAF CARRIES IS STILL A PROGRAM APART. It is compiled into this
+// binary, but it runs as a child process of it (`codeaf <name> run --json …`),
+// so a crash in its engine cannot take the chat down, and it reaches a model
+// only through the API codeaf serves it for that one run, so it never holds a
+// key. What runs one AS A WORKER of a run — the live step, the trajectory, the
+// spend bank — is internal/run's; nothing here knows what a task is.
+//
+// THIS PACKAGE IS A LEAF ON PURPOSE. The session door lists the programs and
+// checks a name; the run engine seats one; the command line runs one; none of
+// them may import the others, so what they share lives here and imports none
+// of them.
 package delegate
 
 import (
+	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"regexp"
 	"strings"
 )
 
-// The two things a delegate can leave behind, named on its manifest.
+// The two things a program can leave behind.
 const (
-	// LandsTree is a delegate that works in the working copy it is given and
+	// LandsTree is a program that works in the working copy it is given and
 	// leaves its changes there: codeaf squashes them into one commit and merges
 	// that home the way every task lands.
 	LandsTree = "tree"
-	// LandsText is a delegate that changes nothing in the copy and puts its
+	// LandsText is a program that changes nothing in the folder and puts its
 	// answer in the terminal record's deliverable: codeaf folds the text into
 	// the conversation the way a quick task's answer arrives.
 	LandsText = "text"
 )
 
-// The placeholders a manifest's argv and env may carry, filled at launch. They
-// are spelled here once so the loader can refuse one this build does not know
-// rather than hand a program a literal `{{typo}}`.
-const (
-	FillBrief     = "{{brief}}"
-	FillWorkspace = "{{workspace}}"
-	FillCostUSD   = "{{cost_usd}}"
-	FillHours     = "{{hours}}"
-	// FillKey is the person's API key, resolved by the caller through the same
-	// door every lane resolves one (config.APIKeyAt). `{{key:openrouter}}` is
-	// accepted as the same thing, because that is how the protocol page spells
-	// it and a manifest copied from there must load.
-	FillKey = "{{key}}"
-)
-
-// Manifest is one delegate as its manifest file states it. Every field a
-// person writes is here; nothing is inferred from the binary.
-type Manifest struct {
-	// Name is one lowercase word: the file's name, the command a person types
-	// (`/<name> <brief>`) and the word every row says out loud.
-	Name string `json:"name"`
-	// Description is one sentence saying what the delegate does, in a person's
-	// words. It is the command row's tail and the offer's second line.
-	Description string `json:"description"`
-	// Bin is the program: a bare name resolved on PATH or a path.
-	Bin string `json:"bin"`
-	// Argv is the argument list, with placeholders. It never includes the
-	// program itself.
-	Argv []string `json:"argv"`
-	// Env is what is added to the child's environment, with placeholders. The
-	// child also inherits the parent's environment.
-	Env map[string]string `json:"env,omitempty"`
+// Delegate is one program this build carries. It is a value in the build's
+// list (internal/delegate/builtin), never a file on the machine: there is
+// nothing to install, and no version of it that differs from the codeaf it
+// ships in.
+type Delegate struct {
+	// Name is one lowercase word with single hyphens: the chat command
+	// (`/<name> <brief>`), the command line's verb (`codeaf <name>`) and the
+	// word every row says out loud.
+	Name string
+	// Summary is one sentence saying what it does, in a person's words: the
+	// command row's tail and its line in `codeaf --help`.
+	Summary string
 	// Lands is LandsTree or LandsText. Empty reads as LandsTree, because a
-	// delegate that edits a tree is the one this was built for.
-	Lands string `json:"lands,omitempty"`
-	// Limits says which bounds the program honours itself. They are recorded
-	// for the manual page and the offer; codeaf enforces cost and time from
-	// outside whatever they say.
-	Limits Limits `json:"limits,omitempty"`
-
-	// Path is the manifest file this was read from, and ManualPath the page
-	// beside it; Manual is that page's text, kept so the chat's manual can
-	// layer it over the packed corpus (internal/manual's overlay). All three
-	// are the loader's, never the file's.
-	Path       string `json:"-"`
-	ManualPath string `json:"-"`
-	Manual     string `json:"-"`
-	// BinPath is the program as it resolved at load time. The loader fills it;
-	// a manifest whose Bin is not found is not in the registry at all.
-	BinPath string `json:"-"`
+	// program that edits a tree is the one this was built for.
+	Lands string
+	// Default is the command a bare brief runs: `/<name> <brief>` in the chat
+	// and `codeaf <name> <brief>` in a shell. It names one of Commands.
+	Default string
+	// Commands is the program's own verbs, each with its own flags. codeaf owns
+	// the dispatch and the flags every program shares; the program owns these.
+	Commands []Command
+	// Page is the name of its page in the chat's manual (internal/manual/chat):
+	// what it does, how to ask it, what a run costs, where the work lands. It is
+	// compiled in with the rest of the manual, so the manual law's own gates
+	// hold it to that.
+	Page string
 }
 
-// Limits is the manifest's own account of which bounds the program keeps.
-type Limits struct {
-	Cost      bool `json:"cost"`
-	Elapsed   bool `json:"elapsed"`
-	Steps     bool `json:"steps"`
-	Questions bool `json:"questions"`
+// Command is one verb a program answers to:
+// `codeaf <name> <command> [flags] -- <brief>`.
+type Command struct {
+	Name string
+	// Usage is the shape of the line after the command's name, for its help:
+	// `[flags] -- <brief>`.
+	Usage   string
+	Summary string
+	// Bind declares the command's own flags on fs and answers its body, which
+	// reads them once the line has been parsed. It is called once per
+	// invocation, so the values live in the closure and never in package
+	// state. codeaf's shared flags (--dir, --max-cost, --max-hours, --json) are
+	// already on fs; a command may not declare them again.
+	Bind func(fs *flag.FlagSet) Body
 }
+
+// Body is a command's work. It runs to its ending and reports through the host
+// — the ending included, as one [Host.Terminal] — and answers an error only
+// for a failure it could not put into that record itself. args is what the
+// flags left on the line: the brief's words.
+type Body func(ctx context.Context, host Host, args []string) error
 
 // nameShape is the one shape a name may have: lowercase letters, digits and
-// single hyphens, starting with a letter. It is a command word, so it has to be
-// something a person can type after a slash without quoting.
+// single hyphens, starting with a letter. It is a command word twice over — a
+// slash command and a shell verb — so it has to be something a person can
+// type without quoting.
 var nameShape = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 
-// knownFills is every placeholder the launch fills. A manifest naming any
-// other `{{…}}` is refused at load, so a typo is a sentence to the person and
-// not a literal handed to the program.
-var knownFills = map[string]bool{
-	FillBrief: true, FillWorkspace: true, FillCostUSD: true, FillHours: true, FillKey: true, "{{key:openrouter}}": true,
-}
+// sharedFlags are the flags codeaf puts on every command's line. A command
+// declaring one of them again would panic inside the flag package at parse
+// time, so Validate refuses it by name first.
+var sharedFlags = []string{"dir", "max-cost", "max-hours", "json"}
 
-var fillShape = regexp.MustCompile(`\{\{[^}]*\}\}`)
-
-// Validate says whether a manifest is one the launch can run, naming the first
-// thing wrong with it in a sentence a person can act on. It does not touch the
-// disk: whether the binary exists and whether the page is there are the
-// loader's readings, made beside this one.
-func (m Manifest) Validate() error {
-	if strings.TrimSpace(m.Name) == "" {
-		return errors.New("the manifest names no delegate: `name` is empty")
+// Validate names the first thing wrong with a program's definition in a
+// sentence the person who wrote it can act on. The build's own test runs it on
+// every program the list carries (internal/delegate/builtin), so a definition
+// that could not run never reaches a person.
+func (d Delegate) Validate() error {
+	if !nameShape.MatchString(d.Name) {
+		return fmt.Errorf("%q is not a program name: one lowercase word, letters, digits and single hyphens", d.Name)
 	}
-	if !nameShape.MatchString(m.Name) {
-		return fmt.Errorf("%q is not a delegate name: one lowercase word, letters, digits and hyphens", m.Name)
+	if strings.TrimSpace(d.Summary) == "" {
+		return fmt.Errorf("%s: the summary is empty, and it is what the command row says", d.Name)
 	}
-	if strings.TrimSpace(m.Description) == "" {
-		return fmt.Errorf("%s: `description` is empty, and it is what the command row says", m.Name)
-	}
-	if strings.TrimSpace(m.Bin) == "" {
-		return fmt.Errorf("%s: `bin` is empty, so there is nothing to run", m.Name)
-	}
-	if len(m.Argv) == 0 {
-		return fmt.Errorf("%s: `argv` is empty; it must at least carry %s", m.Name, FillBrief)
-	}
-	if !strings.Contains(strings.Join(m.Argv, "\x00"), FillBrief) {
-		return fmt.Errorf("%s: `argv` never says %s, so the task would never reach the program", m.Name, FillBrief)
-	}
-	switch m.Lands {
+	switch d.Lands {
 	case "", LandsTree, LandsText:
 	default:
-		return fmt.Errorf("%s: `lands` is %q; it is %q or %q", m.Name, m.Lands, LandsTree, LandsText)
+		return fmt.Errorf("%s: lands is %q; it is %q or %q", d.Name, d.Lands, LandsTree, LandsText)
 	}
-	for _, arg := range m.Argv {
-		if err := checkFills(m.Name, arg); err != nil {
-			return err
+	if strings.TrimSpace(d.Page) == "" {
+		return fmt.Errorf("%s: it names no manual page, and the chat can only say what a page says", d.Name)
+	}
+	if len(d.Commands) == 0 {
+		return fmt.Errorf("%s: it has no commands, so there is nothing to run", d.Name)
+	}
+	seen := map[string]bool{}
+	for _, c := range d.Commands {
+		if !nameShape.MatchString(c.Name) {
+			return fmt.Errorf("%s: %q is not a command name", d.Name, c.Name)
+		}
+		if seen[c.Name] {
+			return fmt.Errorf("%s: the command %q is defined twice", d.Name, c.Name)
+		}
+		seen[c.Name] = true
+		if c.Bind == nil {
+			return fmt.Errorf("%s %s: the command has no body", d.Name, c.Name)
+		}
+		fs := flag.NewFlagSet(d.Name+" "+c.Name, flag.ContinueOnError)
+		if c.Bind(fs) == nil {
+			return fmt.Errorf("%s %s: binding the command answered no body", d.Name, c.Name)
+		}
+		for _, shared := range sharedFlags {
+			if fs.Lookup(shared) != nil {
+				return fmt.Errorf("%s %s: --%s is codeaf's own flag and may not be declared again", d.Name, c.Name, shared)
+			}
 		}
 	}
-	for key, value := range m.Env {
-		if strings.TrimSpace(key) == "" {
-			return fmt.Errorf("%s: `env` carries an empty variable name", m.Name)
-		}
-		if err := checkFills(m.Name, value); err != nil {
-			return err
-		}
+	if !seen[d.Default] {
+		return fmt.Errorf("%s: the default command %q is not one of its commands", d.Name, d.Default)
 	}
 	return nil
 }
 
-// checkFills refuses a placeholder the launch does not fill.
-func checkFills(name, text string) error {
-	for _, fill := range fillShape.FindAllString(text, -1) {
-		if !knownFills[fill] {
-			return fmt.Errorf("%s: %s is not a placeholder this build fills (they are %s, %s, %s, %s and %s)",
-				name, fill, FillBrief, FillWorkspace, FillCostUSD, FillHours, FillKey)
-		}
-	}
-	return nil
-}
-
-// LandsTree answers whether this delegate's work is a tree to land, which is
+// LandsTree answers whether this program's work is a tree to land, which is
 // the reading of an empty Lands too.
-func (m Manifest) LandsTree() bool { return m.Lands == "" || m.Lands == LandsTree }
+func (d Delegate) LandsTree() bool { return d.Lands == "" || d.Lands == LandsTree }
+
+// Command finds one of the program's commands by name.
+func (d Delegate) Command(name string) (Command, bool) {
+	for _, c := range d.Commands {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return Command{}, false
+}
+
+// errNoBody is what binding a command without a body answers, so a definition
+// Validate never saw still fails in words rather than with a nil call.
+var errNoBody = errors.New("the command has no body")

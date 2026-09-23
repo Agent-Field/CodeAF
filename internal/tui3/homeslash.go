@@ -181,8 +181,8 @@ const (
 // always did — `there is no command called /x · / lists them`, on home's line.
 func homeFate(word, rest string) string {
 	rest = strings.TrimSpace(rest)
-	// AN INSTALLED DELEGATE'S ROW IS `/task` WITH THE WORKER CHOSEN (delegate.go),
-	// and it needs what a /task with a brief needs: a conversation to start in.
+	// A PROGRAM'S ROW IS `/task` WITH THE WORKER CHOSEN (delegate.go), and it
+	// needs what a /task with a brief needs: a conversation to start in.
 	if isDelegateCommand(strings.ToLower(strings.TrimPrefix(word, "/"))) {
 		return fateNeedsChat
 	}
@@ -205,7 +205,7 @@ func homeFate(word, rest string) string {
 		return fateFresh
 	case "land", "workspace":
 		return fateBehind
-	case "files", "permissions", "connect", "harness", "subharness", "delegate", "autonomy",
+	case "files", "permissions", "connect", "harness", "subharness", "autonomy",
 		"copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":
 		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
 		// turn of a conversation now (manualcmd.go), and a turn needs one. As

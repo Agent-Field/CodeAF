@@ -44,7 +44,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// have left off, and the program's own verification is what its
 		// terminal record reports ([DelegateWorker]).
 		limits.ReviewRound = false
-		factory = DelegateFactory(spec.Store, spec.Workspace, *spec.Delegate, spec.APIKey, limits, factory)
+		factory = DelegateFactory(spec.Store, spec.Workspace, *spec.Delegate, DelegateSetup{}, limits, factory)
 	}
 	outcome, summary := Start(ctx, Spec{
 		Store:     spec.Store,

@@ -3269,9 +3269,9 @@ func (a *app) Init() tea.Cmd {
 			standing = append(standing, a.wake())
 		}
 	}
-	// THE DELEGATE ROWS ARE ASKED FOR AT THE LAUNCH, off the loop, so the picker
+	// THE PROGRAM ROWS ARE ASKED FOR AT THE LAUNCH, off the loop, so the picker
 	// and /help list them from the first answer rather than the first keystroke
-	// (delegate.go). The registry is the conversation's, so a switch asks again
+	// (delegate.go). The list is the engine's, so a switch asks again
 	// ([app.attachConversation]).
 	standing = append(standing, a.installDelegates())
 	return tea.Batch(standing...)
@@ -7230,13 +7230,6 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openHarness()
 		return nil
 
-	case "delegate":
-		// THE OUTSIDE PROGRAMS A TASK CAN BE HANDED TO WHOLE, listed, or one of
-		// them run on the words after its name (delegate.go). The installed rows
-		// are also commands in their own right and dispatch below, under the
-		// default arm, because they are not in this switch's literal table.
-		return a.openDelegate(rest)
-
 	case "subharness":
 		a.noticeEvent(eventSubharnessOpened)
 		// THE PROGRAMS THIS CONVERSATION CAN RUN, as a filterable list, and the
@@ -7425,8 +7418,8 @@ func (a *app) slash(line string) tea.Cmd {
 		if a.droppedLine(line) {
 			return a.edited()
 		}
-		// AN INSTALLED DELEGATE IS A COMMAND OF ITS OWN (delegate.go). It is
-		// asked for last, after the literal table, so nothing a delegate is
+		// A PROGRAM CODEAF CARRIES IS A COMMAND OF ITS OWN (delegate.go). It is
+		// asked for last, after the literal table, so nothing a program is
 		// called can shadow a word this surface already answers to.
 		if isDelegateCommand(name) {
 			return a.runDelegateCommand(name, rest)

@@ -178,9 +178,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
 | `/subharness` | `/sub` | — | lists the programs you can run; type to filter, enter opens that one's card |
 | `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
-| `/delegate` | `/delegates` | — | lists the outside programs a task can be handed to whole, and what each leaves behind |
-| `/delegate` | `/delegates` | `<name> <brief>` | hands that brief to the named delegate; `/<name> <brief>` is the same door |
-| `/<delegate>` | — | `<brief>` | one row per installed delegate, spelled as its manifest names it: starts a task that program does on its own |
+| `/<program>` | — | `<brief>` | one row per program this build carries: starts a task that program does on its own |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
 | `/memories` | — | — | prints every memory into the conversation |
@@ -1263,27 +1261,16 @@ launch on this machine and `--no-host` both wire this machine's registry and ope
 panel. The second is drawn as the panel's only row, and it is also what a registry that
 cannot be read at all shows, rather than an error.
 
-## /delegate — the outside programs a task can be handed to, and the command each one adds
+## /<program> — a program codeaf carries, handed a whole task
 
-`/delegate` (or `/delegates`) lists the delegates on this machine, one line each: the
-command to type, what it does, whether it lands its work on your branch or answers in the
-conversation, and the program it resolved to. Under those, dimly, any manifest whose program
-is not here and any that was not added, with the reason.
-
-Every installed delegate is also a command of its own: `/<name> <brief>` hands the brief
+Every program your build carries is a command of its own: `/<name> <brief>` hands the brief
 to that program and starts a task at once, exactly as `/task <brief>` does with codeaf's own
-worker. `/delegate <name> <brief>` is the same door written long. The rows come from the
-manifests under `~/.codeaf/delegates/` and exist only where the program does; a machine
-without the program has no row for it.
+worker. The rows come from the build itself, so there is nothing to install and a build that
+carries no program has no such row. With no brief it says its usage:
+`usage: /<name> <brief> · hands the whole task to that program`.
 
-With nothing installed it says, exactly:
-
-```
-no delegates here — a delegate is an outside program codeaf can hand a whole task to; a manifest under ~/.codeaf/delegates adds one
-```
-
-Over `--host` it lists the far machine's delegates, and a row you run starts the work there.
-The *Delegates* page says what one is, what it cannot do, and where its work goes.
+Over `--host` the rows are the far machine's build's, and a row you run starts the work there.
+The *Programs codeaf carries* page says what one is, what it cannot do, and where its work goes.
 
 ## /subharness — the command's two forms, bare and with a name after it
 

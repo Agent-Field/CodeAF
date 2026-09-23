@@ -15,6 +15,7 @@ type recorder struct {
 	mu       sync.Mutex
 	once     sync.Once
 	spoke    chan struct{}
+	hello    *Hello
 	stages   []string
 	spend    []float64
 	steps    []string
@@ -22,6 +23,12 @@ type recorder struct {
 }
 
 func newRecorder() *recorder { return &recorder{spoke: make(chan struct{})} }
+
+func (r *recorder) Hello(h Hello) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hello = &h
+}
 
 func (r *recorder) Stage(stage, status string) {
 	r.mu.Lock()
@@ -151,5 +158,29 @@ func TestObservedReadsSeniorDevsVerificationCount(t *testing.T) {
 	}
 	if got := sink.terminal.Observed(); got != "fail, verification failed 2 of 5 commands" {
 		t.Fatalf("observed = %q", got)
+	}
+}
+
+// THE FIRST HELLO IS THE ONE READ: it carries the protocol, the name and the
+// stages, and a second is ignored for the reason a second terminal is.
+func TestTheReaderTakesOneHelloWithItsStages(t *testing.T) {
+	stream := strings.Join([]string{
+		`{"type":"hello","protocol":2,"delegate":"senior-dev","stages":["bootstrap","implement","submit"]}`,
+		`{"type":"hello","protocol":9,"delegate":"other"}`,
+		`{"type":"stage","stage":"implement","status":"running"}`,
+	}, "\n")
+	sink := &recorder{}
+	reading, err := Read(strings.NewReader(stream), sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reading.Hello == nil || reading.Hello.Protocol != ProtocolVersion || reading.Hello.Delegate != "senior-dev" {
+		t.Fatalf("hello = %+v, want the first one", reading.Hello)
+	}
+	if sink.hello == nil || strings.Join(sink.hello.Stages, ",") != "bootstrap,implement,submit" {
+		t.Fatalf("hello told = %+v", sink.hello)
+	}
+	if reading.Ignored != 1 {
+		t.Fatalf("ignored = %d, want the second hello", reading.Ignored)
 	}
 }

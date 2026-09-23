@@ -6,12 +6,12 @@ import "time"
 // machine. The surface sends intent; sizing, shaping, admission and spending
 // remain with the session agent that owns the conversation.
 const (
-	// MethodDelegateList and MethodDelegateStart are the delegate door
-	// (internal/session's delegate_door.go): the outside programs installed on
-	// the ENGINE machine, and handing a brief to one. They belong to the engine
-	// side for the reason the task door does — the registry is that machine's
-	// disk and the run spends that machine's money — so a hosted surface lists
-	// the far machine's delegates and its `/<name> <brief>` starts work there.
+	// MethodDelegateList and MethodDelegateStart are the program door
+	// (internal/session's delegate_door.go): the programs the ENGINE machine's
+	// build carries, and handing a brief to one. They belong to the engine side
+	// for the reason the task door does — the program runs on that machine and
+	// the run spends that machine's money — so a hosted surface lists the far
+	// build's programs and its `/<name> <brief>` starts work there.
 	MethodDelegateList  = "Delegate.List"
 	MethodDelegateStart = "Delegate.Start"
 	MethodTaskStart     = "Task.Start"
@@ -165,8 +165,8 @@ type TaskStartArgs struct {
 	Solo  bool   `json:"solo,omitempty"`
 }
 
-// DelegateStartArgs carries the delegate's name and the person's brief, both
-// as typed: the name is resolved against the engine machine's registry there.
+// DelegateStartArgs carries the program's name and the person's brief, both
+// as typed: the name is resolved against the engine machine's build there.
 type DelegateStartArgs struct {
 	Name  string `json:"name"`
 	Brief string `json:"brief"`

@@ -45,11 +45,11 @@ const (
 // with the cut saying so and naming the sections the rest is in. The headings
 // are collected only when there is a cut to explain, so the common read pays
 // nothing for them.
-func boundedPage(headings []string, text string) string {
+func boundedPage(name, text string) string {
 	if len(text) <= manualPageCap {
 		return text
 	}
-	sections := boundedList(headings)
+	sections := boundedList(manualHeadings(name))
 	return bounded(text, func(shown, total int) string { return pageCutNotice(shown, total, sections) })
 }
 

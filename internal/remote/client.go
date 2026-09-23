@@ -1559,11 +1559,10 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	return started.ID, started.Title, started.Note, nil
 }
 
-// Delegates is the engine machine's delegate registry as the surface lists it:
-// the rows that can run there, the manifests whose program is not there, and
-// the files its loader would not admit (internal/session's delegate_door.go).
-// A failed read is the zero report, which the surface draws as one sentence,
-// because a list is a reading and never worth a refusal at the door.
+// Delegates is the programs the engine machine's build carries, as the surface
+// draws its rows from them (internal/session's delegate_door.go). A failed read
+// is the zero report — no rows — because a list is a reading and never worth a
+// refusal at the door.
 func (a *Agent) Delegates() session.DelegateReport {
 	payload, err := a.c.call(context.Background(), MethodDelegateList, nil)
 	if err != nil {
@@ -1576,7 +1575,7 @@ func (a *Agent) Delegates() session.DelegateReport {
 	return report
 }
 
-// StartDelegate hands the brief to the named delegate on the engine machine
+// StartDelegate hands the brief to the named program on the engine machine
 // and returns the same receipt StartTask does. It is an ordinary call with the
 // ordinary deadline: the engine admits the run at once.
 func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {

@@ -435,7 +435,7 @@ var doorsBesideTheLine = map[string]string{
 	"PlanRunSummary":    "reads the run's stored summary for a refresh nobody pressed for",
 	"PlanTasks":         "reads the run's rows for the side list after a message; nobody pressed for it, and a verb's own read is asked only once the verb has landed",
 	"RefreshRunSummary": "asks a model for the run's summary under a budget of seconds; nobody pressed for it and no gesture depends on it",
-	"Delegates":         "reads the engine machine's delegate registry to generate the command rows at the launch and on a switch (delegate.go); nobody pressed for it, and the /delegate a person types asks the same door in the line",
+	"Delegates":         "reads the programs the engine machine's build carries to generate their command rows at the launch and on a switch (delegate.go); nobody pressed for it",
 }
 
 func TestOnlyReadsNobodyPressedForAreAskedBesideTheLine(t *testing.T) {

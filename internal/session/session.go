@@ -32,7 +32,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
-	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -1572,13 +1571,13 @@ type Config struct {
 	// the "absent, not broken" law arriving at a door that was never wired.
 	Subharnesses *exec.Registry
 
-	// Delegates is this machine's delegate registry: the outside programs a
-	// task can be handed to whole (delegate_door.go, docs/DELEGATE-PROTOCOL.md).
-	// The surface reads it at launch from ~/.codeaf/delegates and hands it in,
-	// for the reason Subharnesses is a registry and not a path. NIL IS DELEGATES
-	// OFF: the door lists nothing, `via` refuses every name, and the prompt says
-	// nothing about them.
-	Delegates *delegate.Registry
+	// Delegates is the programs this build carries that a task can be handed to
+	// whole — senior-dev first (delegate_door.go, internal/delegate). The
+	// surface hands in the build's list (internal/delegate/builtin) rather than
+	// this package importing it, so a test of this package never carries a
+	// program's whole engine. EMPTY IS NONE: the door lists nothing, `via`
+	// refuses every name, and the prompt says nothing about them.
+	Delegates []delegate.Delegate
 
 	// SubharnessMemory is where a running subharness keeps what it has learned
 	// about its OWN domain — its file in its own bundle, never this
@@ -3197,11 +3196,6 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
-	// manualCorpus is the manual this conversation answers from — the packed
-	// corpus with the installed delegates' pages over it — built once on first
-	// use ([Agent.chatManual]).
-	manualOnce   sync.Once
-	manualCorpus *manual.Corpus
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active

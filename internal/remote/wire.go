@@ -351,7 +351,7 @@ import (
 // money, so a version-17 engine answering "no such method" would leave a person
 // told their work was under way while nothing had started. The list rides the
 // same number because a surface generates its command rows from it before its
-// first frame, and a row for a delegate the engine cannot start is a command
+// first frame, and a row for a program the engine cannot start is a command
 // that lies.
 const Version = 18
 
