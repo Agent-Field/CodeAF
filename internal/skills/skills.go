@@ -59,6 +59,8 @@ var skillRoots = []string{
 	".codex/skills",
 	".cursor/skills",
 	".gemini/skills",
+	".opencode/skills",
+	".goose/skills",
 }
 
 // Options names where to look: the project's own directory and the login home
