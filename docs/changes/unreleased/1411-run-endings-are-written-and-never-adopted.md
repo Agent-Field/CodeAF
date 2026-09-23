@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a new task never picks up an earlier run, and every way a run ends is written where the next request reads it
+title: a new task never picks up an earlier run, and every run ending is written on its record
 pr: 1411
 surface: [chat, engine]
 invalidates:
