@@ -1,12 +1,12 @@
 package main
 
-// run.go — the live half: seed, launch, watch the spend, read back, grade.
+// run.go: the live half. Seed, launch, watch the spend, read back, grade.
 //
 // One invocation is one `codeaf do` subprocess over a fresh copy of the cell's
 // fixture, in a throwaway home, with the arm's switch in its environment. The
-// driver watches two things while it runs — the plan store, for how many
+// driver watches two things while it runs (the plan store, for how many
 // workers are going at once, and the home's model-call log, for what has been
-// spent — and interrupts ONLY the process it started when a spending cap is
+// spent) and interrupts ONLY the process it started when a spending cap is
 // reached. Nothing here ever signals a process it did not start itself.
 
 import (
@@ -142,9 +142,9 @@ func live(p plan, o options, out io.Writer) error {
 	return os.WriteFile(filepath.Join(p.Out, "summary.md"), []byte(summary), 0o600)
 }
 
-// reread reads an earlier run's output root again from its records alone —
-// the plan store, the trajectories and the call log each invocation left —
-// and prints the table. It calls no model and starts no door: a reader that
+// reread reads an earlier run's output root again from its records alone (the
+// plan store, the trajectories and the call log each invocation left) and
+// prints the table. It calls no model and starts no door: a reader that
 // improves is applied to rows already paid for. What only the live run could
 // see (the pass, the door's exit and envelope, the width polled while it ran)
 // is carried over from each invocation's own row.json.

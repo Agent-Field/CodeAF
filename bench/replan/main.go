@@ -1,6 +1,6 @@
 package main
 
-// command replan — the baseline bench for the task engine's replanning
+// command replan: the baseline bench for the task engine's replanning
 // question (docs/design/replan/DESIGN.md).
 //
 // Four cells with hidden structure, two arms, n replicates, run through the

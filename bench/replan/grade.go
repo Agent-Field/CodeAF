@@ -1,6 +1,6 @@
 package main
 
-// grade.go — the verdicts, taken by code. The fixture's own suite is the
+// grade.go: the verdicts, taken by code. The fixture's own suite is the
 // judge, every test file must still hold its seed bytes, and each cell adds
 // one mechanical check of its own. No model judges anything.
 
