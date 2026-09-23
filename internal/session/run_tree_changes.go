@@ -142,20 +142,14 @@ func harnessWrote(path string) bool {
 }
 
 // runTreeRoot is the canonical top of the work tree dir sits in, and false
-// when dir is not inside one.
+// when dir is not inside one. It asks through [repositoryRoot], the one asker
+// of that question, so a scratch folder that happens to sit inside somebody
+// else's checkout reads as no repository rather than as theirs.
 func runTreeRoot(dir string) (string, bool) {
 	if strings.TrimSpace(dir) == "" {
 		return "", false
 	}
-	out, err := git(dir, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return "", false
-	}
-	root := strings.TrimSpace(out)
-	if root == "" {
-		return "", false
-	}
-	return canonicalPath(root), true
+	return repositoryRoot(dir)
 }
 
 // runTreeHead is the commit the copy stands on, and empty on a repository with
