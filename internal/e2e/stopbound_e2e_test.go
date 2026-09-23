@@ -310,23 +310,24 @@ func runRealModelBoundedStop(t *testing.T) {
 	})
 	rig := start(t, "stopreal", home, workspace, 120, 40)
 
-	rig.lit("use the read tool on " + pipe + " and tell me what is in it")
+	// Explain the deliberate wait: a model otherwise correctly refuses to
+	// open a FIFO, so the test never reaches the stop it is supposed to time.
+	rig.lit("This is a controlled cancellation test. Use the read tool directly on " + pipe +
+		". It is an intentional FIFO with no writer. Blocking is expected: I will press Escape to cancel it. Do not inspect it with bash or avoid the read; start that read now.")
 	rig.keys("Enter")
 
-	// THE TURN HAS TO BE GENUINELY INSIDE THE CALL BEFORE THE KEY IS PRESSED.
-	// Waiting for the word `read` is not enough — it is in the sentence the person
-	// typed, so it is on screen before the model has decided anything, and a run
-	// that pressed esc there would be timing the stop of a turn that was between
-	// steps. The status line's own phase clause is the honest evidence: it reads
-	// `running read · Ns` only while the call is executing (internal/tui3's
-	// phase segment), and a call parked on a pipe with no writer never leaves it.
-	rig.waitFor(modelPatience, "running read")
-	// And it is STILL there several seconds later, which is what tells a call that
-	// is stuck apart from one that is merely slow.
+	// The journal identifies the exact read and its completion. The live
+	// footer can summarize it as "working" after briefly saying "running read".
+	deadline := time.Now().Add(modelPatience)
+	for !pendingPipeRead(t, home, pipe) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the model never started the requested pipe read:\n%s", rig.capture())
+		}
+		time.Sleep(pollEvery)
+	}
 	time.Sleep(6 * time.Second)
-	screen := rig.capture()
-	if !strings.Contains(screen, "running read") {
-		t.Fatalf("the read call came back, so this run is not about an uncancellable wait:\n%s", screen)
+	if !pendingPipeRead(t, home, pipe) {
+		t.Fatalf("the read completed, so this run is not about an uncancellable wait:\n%s", rig.capture())
 	}
 
 	pressed := time.Now()
@@ -352,6 +353,47 @@ func runRealModelBoundedStop(t *testing.T) {
 	rig.lit("say the word ready and nothing else")
 	rig.keys("Enter")
 	rig.waitFor(modelPatience, "ready")
+}
+
+// pendingPipeRead checks the journal rather than a transient status label, so
+// the path in the user's prompt cannot satisfy the wait.
+func pendingPipeRead(t *testing.T, home, pipe string) bool {
+	t.Helper()
+	for _, transcript := range sessionTranscripts(t, home) {
+		pending := map[string]bool{}
+		for _, line := range strings.Split(transcript, "\n") {
+			var entry struct {
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"toolCalls"`
+				Took struct {
+					CallID string `json:"callId"`
+				} `json:"took"`
+				ToolCallID string `json:"toolCallId"`
+			}
+			if json.Unmarshal([]byte(line), &entry) != nil {
+				continue
+			}
+			for _, call := range entry.ToolCalls {
+				var args struct {
+					Path string `json:"path"`
+				}
+				if call.Function.Name == "read" && json.Unmarshal([]byte(call.Function.Arguments), &args) == nil && args.Path == pipe {
+					pending[call.ID] = true
+				}
+			}
+			delete(pending, entry.Took.CallID)
+			delete(pending, entry.ToolCallID)
+		}
+		if len(pending) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // runStoppedInTime is the scenario where the engine DOES let go: the surface's

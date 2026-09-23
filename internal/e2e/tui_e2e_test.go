@@ -96,7 +96,7 @@ const tuiShortRows = 14
 func TestTUIE2E(t *testing.T) {
 	requireTmuxAndKey(t)
 
-	t.Run("home_opens_on_launch_as_seven_panels", testHomeShape)
+	t.Run("home_opens_on_launch_with_recent_sessions", testHomeShape)
 	t.Run("a_real_conversation_on_the_panels_and_its_search_card", testRealConversation)
 	t.Run("ask_here_end_to_end", testAskHere)
 	t.Run("the_firing_reaches_the_person", testFiringReachesThePerson)
@@ -327,16 +327,8 @@ func testRefusedLanding(t *testing.T) {
 
 // ── 1 ───────────────────────────────────────────────────────────────────────
 
-// testHomeShape opens the product with five projects on the machine and reads
-// the shape home has TODAY (docs/design/home-mission-control/DESIGN.md): seven
-// panels under a four-word bar, every seeded conversation on `threads`,
-// an empty panel keeping its heading and its whisper, the foot's three verbs, and
-// the two doors in and out of the screen.
-//
-// WHAT THIS SUBTEST USED TO ASSERT AND NO LONGER CAN. It read one flat ranked
-// list with a `what wants you first` section line and a fold at its foot, and
-// before that a tree of projects under an `─ elsewhere` rule. Both went: what a
-// person has at a glance now is one panel per question, so that is what is read.
+// testHomeShape reads Home's current sessions, projects, spend, activity and
+// scheduled panels, then drives the command and double-space routes back to it.
 func testHomeShape(t *testing.T) {
 	home := newHome(t, nil)
 	for i, name := range []string{"alpha", "beta", "gamma", "delta", "epsilon"} {
@@ -348,20 +340,14 @@ func testHomeShape(t *testing.T) {
 	screen := r.waitFor(20*time.Second, say(t, "placeRestWord"), say(t, "homePanelProjects"))
 	t.Logf("home greeted on launch:\n%s", screen)
 
-	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all seven at their
+	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all five at their
 	// floors in two columns, so a heading missing here is a panel the grid lost
 	// rather than one a short frame squeezed out.
-	for _, name := range []string{"homeNeedsHeading", "homePanelProjects",
+	for _, name := range []string{"homePanelProjects",
 		"homePanelRunning", "switcherSinceLeft", "homePanelSpend", "homePanelNext"} {
 		if !strings.Contains(screen, say(t, name)) {
 			t.Errorf("home has no %q panel:\n%s", say(t, name), screen)
 		}
-	}
-	// AN EMPTY PANEL WHISPERS. Nothing runs on a machine of seeded transcripts,
-	// so `running` keeps its heading and says what arrives there — never that it
-	// is empty.
-	if !strings.Contains(screen, say(t, "homeRunningWhisper")) {
-		t.Errorf("the empty `running` panel does not whisper %q:\n%s", say(t, "homeRunningWhisper"), screen)
 	}
 	// THE BAR IS FOUR WORDS. Standing, memory and search are places reached by
 	// command and by alt+5…7, and a bar that still named them is the seven-word
@@ -371,10 +357,10 @@ func testHomeShape(t *testing.T) {
 		t.Errorf("the tab bar reads %q, want %q:\n%s", got, want, screen)
 	}
 
-	// Saved history is searchable but is not an open tab on this launch.
+	// Home includes recent saved conversations, even before a tab opens them.
 	for _, title := range []string{"Seed Alpha", "Seed Beta", "Seed Gamma", "Seed Delta", "Seed Epsilon"} {
-		if strings.Contains(screen, title) {
-			t.Errorf("unopened history appeared as a tab: %q", title)
+		if !strings.Contains(screen, title) {
+			t.Errorf("recent history is missing from Home: %q", title)
 		}
 	}
 	// Home keeps the command door but omits the ordinary navigation hints.
@@ -641,7 +627,8 @@ func testAskHere(t *testing.T) {
 	// IS THE ORACLE for where the cursor is standing: the switcher's rows carry
 	// no `›` lead of their own, and the one line that changes with the cursor is
 	// the hint (internal/tui3's homeHint).
-	if !walkTo(r, say(t, "homeAnswerHint"), "Up") {
+	// The exchange follows the conversation row selected when Home opens.
+	if !walkTo(r, say(t, "homeAnswerHint"), "Down") {
 		t.Fatalf("could not put the cursor back on the exchange row:\n%s", r.capture())
 	}
 	r.keys("Enter")

@@ -30,7 +30,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -559,7 +561,30 @@ func (r *rig) kill() {
 		return
 	}
 	r.dead = true
+	// Killing the tmux session sends a hangup but does not wait for codeaf.
+	// Its final writes must finish before testing removes the fixture home.
+	raw, _ := exec.Command("tmux", "display-message", "-p", "-t", r.name, "#{pane_pid}").Output()
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
 	_ = exec.Command("tmux", "kill-session", "-t", r.name).Run()
+	if pid <= 0 {
+		return
+	}
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+		if syscall.Kill(pid, 0) != nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// A failed scenario may have left an intentional uninterruptible tool
+	// wait. This PID belongs to the test's own pane, never to another rig.
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		if syscall.Kill(pid, 0) != nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	r.t.Errorf("the test terminal process %d did not exit before cleanup", pid)
 }
 
 // dump is the transcript this suite owes anybody reading a failure: the screen,
