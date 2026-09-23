@@ -18,6 +18,7 @@ package skills
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -194,10 +195,21 @@ const (
 	stateLoaded
 )
 
+const maxSkillFileBytes = 64 * 1024
+
+func readSkillFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, maxSkillFileBytes))
+}
+
 // readSkill reads one direct child directory of a skills root.
 func readSkill(dir, root, scope string) (Skill, skillState) {
 	skill := Skill{Dir: dir, Scope: scope, Root: root}
-	data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	data, err := readSkillFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {
 		return Skill{}, stateNotASkill
 	}

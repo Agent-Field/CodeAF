@@ -324,6 +324,31 @@ func TestSupervisorWritesAFailedWorkersErrorAndEndsIncomplete(t *testing.T) {
 	}
 }
 
+func TestSupervisorRecoversWorkerPanicAndEndsIncomplete(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = splitRoot(t, store,
+		plandb.TaskSpec{ID: "l1", Title: "panicking leaf"},
+	)
+	seat.actions["l1"] = func(_ context.Context, _ plandb.Task) (run.Report, error) {
+		panic("deliberate worker panic test")
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 8, run.Limits{}, seat.workerFor)
+
+	outcome := supervisor.Run(ctx)
+	if outcome != run.OutcomeIncomplete {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeIncomplete)
+	}
+	failed := store.Task("l1")
+	if failed.Status != plandb.StatusFailed {
+		t.Fatalf("leaf l1 status = %s, want failed", failed.Status)
+	}
+	if !strings.Contains(failed.Error, "deliberate worker panic test") {
+		t.Fatalf("leaf l1 failure = %q, want panic message", failed.Error)
+	}
+}
+
 func TestSupervisorEndsAWorkerWhoseTaskTheStoreCancelled(t *testing.T) {
 	store := runOpenStore(t)
 	ctx := runContext(t)
