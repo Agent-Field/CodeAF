@@ -207,3 +207,41 @@ func TestDockLayoutCapsAndKeepsTheFront(t *testing.T) {
 		t.Fatal("one conversation made a dock")
 	}
 }
+
+// A PRESS ON THE CONVERSATION ALREADY IN FRONT DOES NOTHING: no switch, no
+// wall, nothing to redraw.
+func TestDockPressOnTheOneInFrontDoesNothing(t *testing.T) {
+	a, _, _ := tabApp(t)
+	_ = frame(a)
+	y := dockRowY(t, a)
+	front := a.frontTabKey()
+	for _, cell := range a.dock.cells {
+		if !cell.tab.here {
+			continue
+		}
+		cmd, took := a.dockPress(cell.span.from, y)
+		if !took || cmd != nil || a.frontTabKey() != front || a.wall.on {
+			t.Fatalf("a press on the front: took %v cmd %v front %q wall %v", took, cmd != nil, a.frontTabKey(), a.wall.on)
+		}
+		return
+	}
+	t.Fatal("no cell for the conversation in front")
+}
+
+// THE DOCK'S HOVER IS THE WALL'S HOVER: the cell under the pointer sits on
+// the same cursor ground a tile and a wall button wear under it.
+func TestDockHoverWearsTheWallsHoverGround(t *testing.T) {
+	a, _, _ := tabApp(t)
+	_ = frame(a)
+	y := dockRowY(t, a)
+	cell := a.dock.cells[0]
+	a.setHover(cell.span.from, y)
+	lines := strings.Split(frame(a), "\n")
+	ground := a.pal.cursor(a.pal.ink(a.dockGlyph(cell.tab)), 0)
+	if !strings.Contains(lines[y], ground) {
+		t.Fatalf("the hovered cell is not on the cursor ground: %q", lines[y])
+	}
+	if wall := wallButtonPaint(a.pal, wallButton{label: "x"}, true); !strings.Contains(wall, a.pal.cursor(" ", 0)[:strings.Index(a.pal.cursor(" ", 0), " ")]) {
+		t.Fatalf("the wall's hover is not the cursor ground: %q", wall)
+	}
+}

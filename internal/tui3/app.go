@@ -3627,8 +3627,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		// A notch, a press and a release are never a still frame, even when the
+		// motion spent ahead of them in the same message was one (wall.go's
+		// [app.wallMotion]).
+		a.ptr.still = false
 		if a.wall.on {
-			a.wallWheel(msg.Mouse().Button == tea.MouseWheelDown)
+			a.wallWheel(msg.Mouse().X, msg.Mouse().Y, msg.Mouse().Button == tea.MouseWheelDown)
 			return a, nil
 		}
 		a.clearPlaceRowHover()
@@ -3836,6 +3840,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		a.ptr.still = false
 		a.clearPlaceRowHover()
 		a.sawAPerson()
 		if a.wall.on && msg.Mouse().Button == tea.MouseLeft {
@@ -4184,6 +4189,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseReleaseMsg:
+		a.ptr.still = false
 		// A RELEASE UNDER THE CHOOSER ENDS NOTHING, because nothing under it was
 		// started: the press it would close was taken by the sheet, and letting
 		// this one through would end a sweep of a transcript nobody swept
@@ -5062,6 +5068,10 @@ func (a *app) paint() tea.Cmd {
 		// paragraph would freeze mid-word until something unrelated asked
 		// for a frame (reveal.go).
 		a.liveRevealing() ||
+		// AND THE WALL'S MOTION IS THE EIGHTEENTH: its tiles coming in row by
+		// row, an opened tile growing into the frame, and a working tile's
+		// spinner, each a function of this clock's time (wall.go).
+		a.wallAnimating() ||
 		// AND A PLAN PAGE ON A RUNNING TASK IS THE SEVENTEENTH, and it is the
 		// fourth that can be the whole of what is happening: the page follows a
 		// live edge the store writes from another process, and no turn of ours
@@ -5083,6 +5093,13 @@ func (a *app) paint() tea.Cmd {
 			every *= spinnerStep
 		}
 		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
+	}
+	// A WORKING TILE ON THE WALL turns its spinner at the spinner's own
+	// cadence and no faster: the glyph changes once a step, and a whole wall
+	// drawn thirty times a second to move one glyph a quarter as often would be
+	// the costliest frame on this surface spent on nothing (wall.go).
+	if a.wallSpinning() {
+		return tea.Batch(kick, surfaceTick(a.frameEvery()*spinnerStep, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
 	a.painting = false
 	return kick

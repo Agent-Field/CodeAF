@@ -267,6 +267,9 @@ func (a *app) View() tea.View {
 // is the one somebody reaches for — fails rather than quietly costing a frame.
 func (a *app) frame() (string, int, int) {
 	body, caretX, caretY := a.frameBody()
+	// A tile just opened from the wall frames the conversation's first few
+	// pictures as it grows into the frame (wall.go); a string compare when not.
+	body = a.wallZoomed(body)
 	return norm.NFC.String(body), caretX, caretY
 }
 

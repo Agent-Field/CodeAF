@@ -359,6 +359,8 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return cmd
 	}
+	// A key ends an opened tile's zoom, so what it types is drawn whole.
+	a.wallZoomDone()
 	if a.wall.on && !door {
 		return a.wallKey(msg)
 	}
