@@ -205,8 +205,8 @@ it. Then codeaf leaves the way a `kill` asks it to: the unsent sentence kept, ev
 conversation closed and its transcript flushed. If that has not finished thirty seconds
 later, it exits at once.
 
-It used to stop the work and then wait on the message box for a person. A window with
-nobody at it — a script, a test rig, a terminal left in the background — stayed open for
+It used to stop the work and then sit on the message box for a person. A window with
+nobody at it — a script, a benchmark, a terminal left in the background — stayed open for
 days: three `--max-hours 0.15` windows were found alive forty-three hours later.
 
 `--max-cost` does not close the window; it stops the work and leaves the conversation open.

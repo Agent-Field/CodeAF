@@ -892,7 +892,7 @@ enter stops that window
 go of every conversation it holds — and the cursor on `keep waiting`. Press `1`, then
 `enter`, to `stop it`. The foot says `asked pid <n> to stop — the conversation comes here as
 it lets go`: that window leaves the way a `kill` asks it to, closing its conversations and
-keeping their transcripts, and the row opens here the moment it lets go. A window stuck
+keeping their transcripts, and the row opens here the moment it lets go. A window held up
 behind its own work may not finish leaving; asking a second time says
 `told pid <n> to stop now — it exits without finishing`, and it exits at once.
 
