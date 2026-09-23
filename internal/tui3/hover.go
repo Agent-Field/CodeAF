@@ -628,7 +628,7 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// inside a room (roomseam.go). The home door at the other end of the
 			// same line lights through its own reading (home.go's
 			// [app.hoverHomeDoor]).
-			if a.pick.open {
+			if a.copy.on || a.pick.open {
 				return hoverAt{}
 			}
 			// THE PROJECT IS ON THIS ROW ONLY AT THE PHONE TIER; everywhere else
@@ -662,7 +662,7 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// identity's own row, then the columns the render recorded for the model.
 			// Any of them answering differently here would be a name that brightens
 			// and then does nothing.
-			if a.at(pageSettings) || a.pick.open {
+			if a.copy.on || a.at(pageSettings) || a.pick.open {
 				return hoverAt{}
 			}
 			// AT PHONE WIDTH THE ROW IS A DECK AND THE DECK ANSWERS FOR BOTH OF ITS

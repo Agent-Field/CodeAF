@@ -17,9 +17,7 @@ package tui3
 //
 // ── THE KEY, AND WHY THIS ONE ──
 //
-// esc is the interrupt and is not for sale — ctrl+b, which used to be copy
-// mode and was named here beside it, is bound to nothing now (clipboard.go).
-// ctrl+g
+// ctrl+b is copy mode and esc is the interrupt, and neither is for sale. ctrl+g
 // already closes and restores the task column; while a foreground command can
 // be kept, this reading wins, and with none the column keeps the key. It is
 // plain BEL so every terminal on every platform delivers it, and it needs no

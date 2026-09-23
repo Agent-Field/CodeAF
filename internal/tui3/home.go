@@ -4039,7 +4039,7 @@ func (a *app) homeDoorOpen() bool {
 // character typed, because it is a door and not chrome — the space it takes is
 // the keys row's, which the frame already has (render.go's [app.footHint]).
 func (a *app) homeDoorShowing() bool {
-	return a.homeDoorOpen() && a.input.empty() && !a.rew.on
+	return a.homeDoorOpen() && a.input.empty() && !a.copy.on && !a.rew.on
 }
 
 // homeDoorPress is a click on that advertisement.

@@ -56,6 +56,11 @@ func TestTaskFooterKeepsPhaseAndKeyboardFeedback(t *testing.T) {
 	if got, _ := a.stateSegment(); got != "awaiting your look" {
 		t.Fatalf("task phase lost: %q", got)
 	}
+	a.copy.on = true
+	if got, _ := a.stateSegment(); got != a.copyWord() {
+		t.Fatalf("copy keyboard feedback lost: %q", got)
+	}
+	a.copy.on = false
 	a.roomNode().stopped = true
 	if got, _ := a.stateSegment(); got != stoppingWord {
 		t.Fatalf("stopped task still claims work: %q", got)

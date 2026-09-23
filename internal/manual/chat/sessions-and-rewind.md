@@ -226,14 +226,14 @@ Files, commands and git state are untouched by all of this. Only the conversatio
 when neither tier can open at all — the session has no rewind ability, or there is no legal
 place to cut. `/rewind` will not raise an empty timeline.
 
-**`/rewind` opens nothing at all** in five states, silently: the timeline is already open, the
-inline mode is already on, a task room is open, the settings panel is open,
+**`/rewind` opens nothing at all** in six states, silently: the timeline is already open, the
+inline mode is already on, copy mode is on, a task room is open, the settings panel is open,
 or the task rail is full. The commands page lists them.
 
 **`esc` `esc` does nothing.** `esc` will not arm rewind when something else on the surface
 holds the keyboard. That is: the settings sheet, the deck, the expand view, the model
 picker, the resume roster, the connections panel, the command menu, the completion list, the
-welcome box, a recall walk, an open room, the rail hold, fullscreen rail, an
+welcome box, copy mode, a recall walk, an open room, the rail hold, fullscreen rail, an
 approval question, an awaited task proposal, an active guard, any pending connect ask, and a
 pending harness offer. Close or answer that thing first.
 
@@ -865,7 +865,7 @@ not several terminals. These come back with it:
   left.
 
 These are forgotten, and each is something you were in the *middle* of or a door onto
-something the whole terminal shares: an inline rewind or an open rewind timeline,
+something the whole terminal shares: copy mode, an inline rewind or an open rewind timeline,
 the expand sheet, the deliverables shelf, every picker and panel, the settings panel, the
 status deck, the task page, and the task column's focus.
 

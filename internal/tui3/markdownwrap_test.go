@@ -385,3 +385,45 @@ func TestAWrappedCodeRowIsMarkedAndAnUnwrappedOneIsNot(t *testing.T) {
 			strings.Join(renderMarkdown("```go\n"+long+"\n```", 120), "\n"))
 	}
 }
+
+// AND COPY MODE STILL SEES ONE BLOCK. `a` selects the run of code rows around
+// the cursor, and it read that run off the gutter alone — so a wrapped line
+// ENDED the run and the yank took the top half of the block. The paste carries
+// the source and neither the hairline nor the marker.
+func TestCopyModeTakesAWrappedFenceWholeAndPastesNoMarkers(t *testing.T) {
+	long := "x := " + strings.Repeat("aVeryLongIdentifier + ", 12) + "1"
+	rows := renderMarkdown("```go\n"+long+"\ny := 2\n```", 120)
+	text := make([]string, len(rows))
+	for i, row := range rows {
+		text[i] = plain(row)
+	}
+	c := &copyMode{text: text}
+
+	at := -1
+	for i, row := range text {
+		if strings.Contains(row, mdContMark) {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("nothing wrapped, so this case tests nothing:\n%s", strings.Join(text, "\n"))
+	}
+	from, to, ok := c.fenceAt(at)
+	if !ok {
+		t.Fatalf("a wrapped code row is not read as part of a fence: %q", text[at])
+	}
+	if !strings.Contains(text[to], "y := 2") {
+		t.Fatalf("the block was cut at the wrapped row: rows %d-%d end on %q", from, to, text[to])
+	}
+	var pasted []string
+	for _, row := range text[from : to+1] {
+		// These rows came straight from [renderMarkdown] and never went through
+		// the transcript's pass, so there is no reading gutter on them to lift.
+		pasted = append(pasted, copyClean(row, 0))
+	}
+	joined := strings.Join(pasted, "")
+	if strings.Contains(joined, mdContMark) || strings.Contains(joined, tokens.GlyphCodeGutter) {
+		t.Fatalf("the paste carries the frame's own marks:\n%q", joined)
+	}
+}

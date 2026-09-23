@@ -395,19 +395,128 @@ func TestTheNotificationSanitizesItsFields(t *testing.T) {
 	}
 }
 
-// ── 6. THE CLIPBOARD WIRE ──────────────────────────────────────────────────
+// ── 6. COPY MODE ────────────────────────────────────────────────────────────
 
-// A copy leaves in band, and inside tmux it goes wrapped in the passthrough
-// with every ESC doubled — the bare form is silently eaten there.
-func TestACopyTakesTheTmuxPassthroughInsideTmux(t *testing.T) {
+// copyApp is a surface with a known transcript, in copy mode.
+func copyApp(t *testing.T) *app {
+	t.Helper()
+	a := newTestApp(&fakeAgent{model: "m"})
+	for _, line := range []string{"alpha", "bravo", "charlie", "delta", "echo"} {
+		a.entries = append(a.entries, entry{kind: entryNote, text: line})
+	}
+	a.touch()
+	drive(t, a, ctrlKey('b'))
+	if !a.copy.on {
+		t.Fatal("ctrl+b did not enter copy mode")
+	}
+	return a
+}
+
+// ctrl+b freezes, ↑ moves, esc leaves — and the status line says which of those
+// is happening.
+func TestCopyModeFreezesScrollsAndExits(t *testing.T) {
+	a := copyApp(t)
+	frozen := append([]string(nil), a.copy.rows...)
+
+	word, _ := a.stateWord()
+	if word != "COPY" {
+		t.Fatalf("the status line says %q", word)
+	}
+	// The whole frame draws, and it says so where a person is already looking.
+	screen := plain(frame(a))
+	if !strings.Contains(screen, "COPY") {
+		t.Fatalf("the frame does not say COPY:\n%s", screen)
+	}
+	if !strings.Contains(screen, "alpha") {
+		t.Fatalf("the frozen conversation is not on screen:\n%s", screen)
+	}
+
+	// The conversation keeps going underneath and the frozen rows do not move.
+	a.note("this arrived after the freeze")
+	if len(a.copy.rows) != len(frozen) {
+		t.Fatalf("the snapshot grew from %d to %d rows", len(frozen), len(a.copy.rows))
+	}
+	body, _ := a.bodyRows(a.width, a.viewHeight())
+	for _, r := range body {
+		if strings.Contains(plain(r.text), "after the freeze") {
+			t.Fatal("the frozen viewport drew a row that arrived after it froze")
+		}
+	}
+
+	at := a.copy.at
+	drive(t, a, key("up"))
+	if a.copy.at != at-1 {
+		t.Fatalf("↑ moved the cursor from %d to %d", at, a.copy.at)
+	}
+	drive(t, a, key("down"))
+	if a.copy.at != at {
+		t.Fatalf("↓ did not come back: %d", a.copy.at)
+	}
+	// The cursor cannot walk off either end.
+	for i := 0; i < len(a.copy.rows)+5; i++ {
+		a.copyScroll(-1)
+	}
+	if a.copy.at != 0 {
+		t.Fatalf("the cursor walked past the top: %d", a.copy.at)
+	}
+
+	drive(t, a, key("esc"))
+	if a.copy.on {
+		t.Fatal("esc did not leave copy mode")
+	}
+	if !a.stick {
+		t.Fatal("leaving copy mode did not rejoin the live edge")
+	}
+	if word, _ := a.stateWord(); word == "COPY" {
+		t.Fatal("the status line still says COPY")
+	}
+}
+
+// v marks, y yanks the span, and what reaches the terminal is an OSC 52 write
+// carrying the plain text of the marked rows.
+func TestCopyModeYanksTheMarkedSpan(t *testing.T) {
+	a := copyApp(t)
+	// Park on a row whose text is known, then mark two rows.
+	a.copy.at = rowWith(t, a, "charlie")
+	drive(t, a, key("v"))
+	if a.copy.mark < 0 {
+		t.Fatal("v did not drop a mark")
+	}
+	drive(t, a, key("up"))
+	from, to := a.copySpan()
+	if to-from != 1 {
+		t.Fatalf("the span is %d rows", to-from+1)
+	}
+	if word, _ := a.stateWord(); word != "COPY · 2 lines" {
+		t.Fatalf("the status line does not count the span: %q", word)
+	}
+
+	payload := yank(t, a)
+	if payload != "  · bravo\n  · charlie" {
+		t.Fatalf("the yank carried %q", payload)
+	}
+	if a.copy.mark >= 0 {
+		t.Fatal("the mark survived the yank")
+	}
+	// v again with no mark set copies the cursor's line alone.
+	a.copy.at = rowWith(t, a, "delta")
+	if got := yank(t, a); got != "  · delta" {
+		t.Fatalf("an unmarked yank carried %q", got)
+	}
+}
+
+// Inside tmux the same write goes out wrapped in the passthrough, with every
+// ESC doubled — the bare form is silently eaten there.
+func TestTheYankTakesTheTmuxPassthroughInsideTmux(t *testing.T) {
 	bare := osc52("hi", false)
 	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("hi")) + "\a"; bare != want {
-		t.Fatalf("the bare write is %q", bare)
+		t.Fatalf("the bare form is %q", bare)
 	}
 	wrapped := osc52("hi", true)
-	if !strings.HasPrefix(wrapped, "\x1bPtmux;\x1b\x1b]52;c;") || !strings.HasSuffix(wrapped, "\a\x1b\\") {
-		t.Fatalf("the tmux write is not a passthrough with its ESCs doubled: %q", wrapped)
+	if !strings.HasPrefix(wrapped, "\x1bPtmux;\x1b\x1b]52;c;") || !strings.HasSuffix(wrapped, "\x1b\\") {
+		t.Fatalf("the tmux form is %q", wrapped)
 	}
+
 	for term, want := range map[string]bool{
 		"tmux-256color": true, "screen-256color": true, "screen": true,
 		"xterm-256color": false, "": false, "alacritty": false,
@@ -415,6 +524,100 @@ func TestACopyTakesTheTmuxPassthroughInsideTmux(t *testing.T) {
 		if got := tmuxTerm(func(string) string { return term }); got != want {
 			t.Fatalf("TERM=%q read as tmux=%v", term, got)
 		}
+	}
+}
+
+// yank presses y and returns the text the clipboard write carries.
+func yank(t *testing.T, a *app) string {
+	t.Helper()
+	cmd, taken := a.copyKey(key("y"))
+	if !taken || cmd == nil {
+		t.Fatal("y did not yank")
+	}
+	raw, ok := cmd().(tea.RawMsg)
+	if !ok {
+		t.Fatalf("the yank is a %T, not a raw write", cmd())
+	}
+	seq, _ := raw.Msg.(string)
+	body := strings.TrimSuffix(strings.TrimPrefix(seq, "\x1b]52;c;"), "\a")
+	decoded, err := base64.StdEncoding.DecodeString(body)
+	if err != nil {
+		t.Fatalf("the payload is not base64: %q", seq)
+	}
+	return string(decoded)
+}
+
+// "a" takes the whole thing under the cursor rather than a range of lines a
+// person had to count out, and what comes back is pasteable: the column the
+// frame draws down the left of a block is the frame speaking, not the text.
+func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.pal = newPalette(tokens.TrueColor, false)
+	// THE CALL COMES BEFORE THE ANSWER, which is the order a turn actually runs
+	// in and the order THE ANSWER HIERARCHY reads (hierarchy.go): prose with more
+	// work under it in the same turn is narration and is drawn at the working
+	// tier, so an answer written above its own tool call would be demoted here —
+	// and this test is about copying the ANSWER's fence.
+	a.entries = append(a.entries,
+		entry{kind: entryUser, text: "how do I print?"},
+		entry{kind: entryTool, tool: "read", text: "main.go", status: toolOK, open: true,
+			detail: toolDetail{Output: "line one\nline two"}},
+		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
+	)
+	// Copying a result starts with that result on screen, so open both the
+	// completed turn and its caption before freezing the copy view.
+	a.openWorkfold(0)
+	a.setCapOpen(a.conversation(), 1, true)
+	a.touch()
+	drive(t, a, ctrlKey('b'))
+
+	// On a code row, "a" takes the fence — and only the fence, without the
+	// hairline the renderer draws beside it.
+	a.copy.at = rowWith(t, a, "println(1)")
+	drive(t, a, key("a"))
+	if got := yank(t, a); got != "fmt.Println(\"hi\")\nif ok {\n    println(1)\n}" {
+		t.Fatalf("the code block came out as %q", got)
+	}
+
+	// Pressing it again on the same row widens to the answer the fence lives in,
+	// which is the block the code row also belongs to.
+	a.copy.at = rowWith(t, a, "println(1)")
+	drive(t, a, key("a"))
+	drive(t, a, key("a"))
+	got := yank(t, a)
+	// Flush at both ends: this is the turn's ANSWER, so it carries no work
+	// gutter for the yank to have to strip (hierarchy.go).
+	if !strings.HasPrefix(strings.TrimLeft(got, " "), "Use fmt:") || !strings.HasSuffix(got, "That is all.") {
+		t.Fatalf("the second press did not widen to the answer: %q", got)
+	}
+	if strings.Contains(got, tokens.GlyphCodeGutter) {
+		t.Fatalf("the answer carried the code hairline: %q", got)
+	}
+
+	// A tool's output is a block too, and its stem is chrome the same way.
+	a.copy.at = rowWith(t, a, "line two")
+	drive(t, a, key("a"))
+	if got := yank(t, a); !strings.Contains(got, "line one\nline two") {
+		t.Fatalf("the tool result came out as %q", got)
+	} else if strings.Contains(got, "│") {
+		t.Fatalf("the tool result carried its stem: %q", got)
+	}
+
+	// A blank belongs to nothing, so "a" there guesses at nothing.
+	blank := -1
+	for i, line := range a.copy.text {
+		if strings.TrimSpace(line) == "" && a.copy.owner[i] < 0 {
+			blank = i
+			break
+		}
+	}
+	if blank < 0 {
+		t.Fatal("the layout emitted no blank between the blocks")
+	}
+	a.copy.at, a.copy.mark = blank, -1
+	drive(t, a, key("a"))
+	if a.copy.mark >= 0 {
+		t.Fatal("a blank row was taken as a block")
 	}
 }
 
@@ -530,6 +733,18 @@ func TestTheSelectCommandAnswersWhenThereIsNothingToHandOver(t *testing.T) {
 	if !strings.Contains(plain(frame(a)), "already has the pointer") {
 		t.Fatalf("/select said nothing:\n%s", plain(frame(a)))
 	}
+}
+
+// rowWith is the frozen row holding a word.
+func rowWith(t *testing.T, a *app, word string) int {
+	t.Helper()
+	for i, line := range a.copy.text {
+		if strings.Contains(line, word) {
+			return i
+		}
+	}
+	t.Fatalf("no frozen row holds %q:\n%s", word, strings.Join(a.copy.text, "\n"))
+	return -1
 }
 
 // ── 7. THE LIGHT LADDER ─────────────────────────────────────────────────────

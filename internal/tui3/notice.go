@@ -113,6 +113,8 @@ const (
 	// eventRewound is a rewind that landed, from either surface (rewind.go's
 	// [app.rewindLand]).
 	eventRewound = "rewound"
+	// eventCopyEntered is copy mode freezing the viewport (copymode.go).
+	eventCopyEntered = "copy-entered"
 	// eventModelSwitched is the conversation's model changing by any door
 	// (palette.go's [app.switchModel]).
 	eventModelSwitched = "model-switched"
@@ -192,7 +194,7 @@ const (
 // refuse a retire rule that names a word nobody fires.
 var noticeEvents = []string{
 	eventBoot, eventTurnEnded, eventTaskStarted, eventTaskPageOpened,
-	eventMenuOpened, eventRewound, eventModelSwitched,
+	eventMenuOpened, eventRewound, eventCopyEntered, eventModelSwitched,
 	eventCompacted, eventFilesOpened, eventResumeOpened, eventCostShown,
 	eventStandingOpened, eventDeliverableMade,
 	eventAsked, eventTaskTyped, eventManualAsked, eventTabReopened, eventAtOpened, eventAttached,
@@ -500,10 +502,15 @@ var notices = []notice{
 		// The seat `ask for a picture, a voiceover, music or a video` held
 		// until 2026-09-22, and `ctrl+b freezes the screen so you can read
 		// and copy from it` for one build the same day, both the owner's
-		// call: copy mode was judged no use, and the rule for what happens
-		// to a question while nobody is at the keyboard is the one setting a
-		// person cannot guess exists until it has already decided something
-		// for them (autonomysheet.go).
+		// call: the rule for what happens to a question while nobody is at
+		// the keyboard is the one setting a person cannot guess exists until
+		// it has already decided something for them (autonomysheet.go).
+		//
+		// COPY MODE ITSELF IS NOT GONE, and this row is the only reason to
+		// think it might be. It was taken out on 2026-09-22 and put back on
+		// 2026-09-23 at the owner's word — "we don't need a hint, but don't
+		// remove the feature" — so `ctrl+b`, `/copy` and the frozen viewport
+		// all work and simply have no row here.
 		id: "autonomy-rule", slot: slotHint,
 		armed:  spoken,
 		text:   "/autonomy sets how questions are handled while you are away",
@@ -1177,7 +1184,7 @@ func (a *app) noticeHint() string {
 // noticeQuiet is whether nothing on the frame outranks a tip.
 func (a *app) noticeQuiet() bool {
 	return a.input.empty() && a.state != stateWorking && a.showing() == nil &&
-		!a.rew.on && !a.rewSheet.open && !a.menu.open && !a.comp.open &&
+		!a.rew.on && !a.rewSheet.open && !a.copy.on && !a.menu.open && !a.comp.open &&
 		!a.pick.open && !a.roster.open && !a.asking() && !a.roomOpen()
 }
 

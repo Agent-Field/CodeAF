@@ -552,10 +552,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// nothing, and by the one who wants a title off the list.
 		{"ctrl+b on home does nothing", "keys"},
 		{"can I copy text off the home screen", "keys"},
-		// Copy mode went on 2026-09-22; these are the person who remembers it.
+		// Copy mode, asked by somebody who wants to get words off the screen.
+		// It was taken out on 2026-09-22 and put back on 2026-09-23 — the owner
+		// wanted the feature kept and only its tip dropped — so these have to
+		// reach the pages that describe it working.
 		{"how do I copy text out of the conversation", "keys"},
 		{"is there a copy mode", "keys"},
-		{"what happened to /copy", "commands"},
+		{"what does /copy do", "commands"},
 		// The cross on a tip row, asked by somebody who pressed it and watched
 		// the row answer with a different sentence.
 		{"what does the x on the hint row do", "hints-and-tips"},

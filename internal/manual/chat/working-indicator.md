@@ -18,14 +18,10 @@ cradle, ripple, accordion and infinity all mean the same thing: work is ongoing.
 
 The indicator disappears when the work finishes, is interrupted, or needs your
 answer. A task that is paused, finished, failed, or no longer being read through
-a working connection does not animate. The logo draws under a question or steer
-you sent in this turn; a turn that started on its own shows the usual waiting
-text instead.
-
-It used to step aside in copy mode as well, so that a frozen page never held a
-row that was about to move. There is no copy mode to step aside for since
-2026-09-22 — `ctrl+b` and `/copy` are gone, and copying is the mouse (see the
-*keys* page).
+a working connection does not animate. It also steps aside in copy mode, so that a
+frozen page never holds a row that was about to move. The logo draws under a
+question or steer you sent in this turn; a turn that started on its own shows
+the usual waiting text instead.
 
 Screen-reader mode, monochrome or ASCII terminals, and windows too small for the
 single-line mark keep the existing text and compact status indicators. The mark

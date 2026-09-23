@@ -66,7 +66,7 @@ disk?" below for what comes back and what it costs.
 Over `--host`, `read`, `write`, `edit` and `ls` run on the other machine, inside the
 workspace shown for the session. A path in a task brief is read there too. A path the
 model names in its reply can be opened here: codeaf confirms it on the far disk and
-fetches it through a short-lived local file door. `ctrl+s`, mouse drag-copy
+fetches it through a short-lived local file door. Copy mode, `ctrl+s`, mouse drag-copy
 and `m puts it in your message` only copy or compose words on this screen, so they work
 the same way over a connection and do not move a file.
 

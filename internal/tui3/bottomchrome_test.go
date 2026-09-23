@@ -242,6 +242,28 @@ func TestTheJumpKeyReturnsToTheLiveEdgeWithADraftInTheBox(t *testing.T) {
 	}
 }
 
+// A FROZEN VIEWPORT MANAGES ITS OWN EDGE (copymode.go), so the chip stays off
+// while it is up rather than offering to scroll a snapshot.
+func TestTheJumpChipStaysOffInCopyMode(t *testing.T) {
+	a := scrolledApp(t, 24)
+	a.scroll(-6)
+	if !a.jumpShowing() {
+		t.Fatal("the chip was never up to begin with")
+	}
+	a.enterCopy()
+	if a.jumpShowing() {
+		t.Fatal("the chip is up over a frozen viewport")
+	}
+	if got := chipAtRow(strings.Split(frame(a), "\n")); got >= 0 {
+		t.Fatalf("copy mode drew the chip on row %d", got)
+	}
+	// Leaving copy mode rejoins the edge on its own, so the chip stays off.
+	a.exitCopy()
+	if a.jumpShowing() {
+		t.Fatal("thawing left the reader off the live edge")
+	}
+}
+
 // THE POINTER HAS TO BE ON THE CHIP, not merely on its row: it is the one target
 // on this surface narrower than the line it is drawn on.
 func TestTheJumpChipBrightensUnderThePointerAndNowhereElse(t *testing.T) {

@@ -45,7 +45,7 @@ A partial path such as `/tmp` is still indistinguishable from an unknown command
 it shows `no commands match` until another slash or path punctuation makes the intent
 clear. Pasting a complete path never needs those intermediate states.
 
-Panels such as settings, the model picker and resume keep their own keyboard
+Panels such as settings, the model picker, resume and copy mode keep their own keyboard
 handling; typing `/` there does not open this composer list.
 
 ## Slash commands are drawn as chips
@@ -202,6 +202,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
 | `/update` | `/upgrade` | — | installs the newest stable release and restarts this conversation on it |
 | `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag, then restarts this conversation on it |
+| `/copy` | — | — | enters copy mode (also ctrl+b) |
 | `/select` | — | — | hands the pointer back to the terminal (also ctrl+s) |
 | `/export` | `/save` | — | writes the whole conversation to a file |
 | `/export` | `/save` | `<path>` | …and writes it there; tab completes the path |
@@ -378,17 +379,18 @@ second `enter` on that same point does the rewind, `esc` clears the search and t
 closes the page. The head reads `⟲ rewind — pick where the conversation goes back to`
 and the foot reads `⟲ drops 2 turns — everything below the pick is let go`.
 
-**Be warned: `/rewind` silently does nothing in five states.** No message, no page,
+**Be warned: `/rewind` silently does nothing in six states.** No message, no page,
 nothing at all happens when:
 
 - the rewind timeline is already open,
 - the inline rewind mode is already on,
+- copy mode is on,
 - a task room is open,
 - the settings panel is open,
 - the task rail is full.
 
 Each of those already owns the frame or the row the rewind needs, so the command is
-dropped rather than half-drawn. If `/rewind` seems to do nothing, one of those five is why.
+dropped rather than half-drawn. If `/rewind` seems to do nothing, one of those six is why.
 
 With no rewind points, or no agent that can rewind, it does answer, exactly:
 
@@ -396,13 +398,17 @@ With no rewind points, or no agent that can rewind, it does answer, exactly:
 nothing to rewind
 ```
 
-## /copy — what happened to /copy, there is no /copy any more, copy mode was removed, how do I copy from the conversation
+## /copy — read the conversation back and copy from it
 
-`/copy` is not a command. It entered copy mode — the frozen conversation `ctrl+b` also
-opened, read with ↑↓, `v`, `a` and `y` — until 2026-09-22, when copy mode was removed
-whole. Typing it now answers `there is no command called /copy · / lists them`. To copy
-text out of the conversation, drag across it with the mouse, or press `ctrl+s` and let
-your terminal select (the keys page, *Selecting text with your mouse*).
+`/copy` freezes the visible conversation and enters copy mode. It is the same thing
+ctrl+b does. In copy mode ↑↓ move, `v` marks, `a` takes the block, `y` yanks.
+
+**`/copy` silently does nothing in two states**, with no message either way:
+
+- copy mode is already on,
+- there are no visible rows to freeze.
+
+If you type `/copy` and the screen does not change, one of those two is why.
 
 ## /project — set the project on home, which folder will my next conversation open in, change the project
 

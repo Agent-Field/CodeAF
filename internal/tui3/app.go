@@ -2435,6 +2435,9 @@ type app struct {
 	// all; closed, it costs the frame nothing.
 	subPage subPage
 
+	// copy is the frozen viewport a person reads and yanks out of (copymode.go).
+	// Closed, it costs the frame nothing.
+	copy copyMode
 	// rew is the rewind mode: the cut line through the transcript, the points it
 	// can sit on, and the draft it is holding (rewind.go). Closed, it costs the
 	// frame nothing.
@@ -2841,6 +2844,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// the memo for any of them (models.go's [app.learnModelLists]).
 	a.learnModelLists()
 	a.prepareModelServices()
+	a.copy.mark = -1
 	// AND THE REDUCER IS BUILT WITH WHAT THIS PAGE IS, which is the whole of the
 	// difference between a chat's transcript and any other (feed.go states the
 	// law the hooks exist to keep). It is built here and not in the literal above
@@ -3638,6 +3642,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
+		// COPY MODE OWNS THE WHEEL while it is up, because the viewport it froze
+		// is the thing the wheel would otherwise move (copymode.go).
+		if a.copy.on {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.copyScroll(-3)
+			case tea.MouseWheelDown:
+				a.copyScroll(3)
+			}
+			return a, nil
+		}
 		if a.questionDialogWheel(msg) {
 			return a, nil
 		}
@@ -3836,8 +3851,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.pasteEdit.open {
 			return a, nil
 		}
-		if a.setup.open {
-			// A CLICK THROUGH THE SETUP SCREEN LANDS ON NOTHING: it is three
+		if a.copy.on || a.setup.open {
+			// A click in copy mode acts on nothing: the rows under the pointer are
+			// a FROZEN snapshot, and expanding a call in it would be expanding a
+			// row that is no longer where the conversation says it is. The setup
+			// screen is the same for the pointer's own reason: it is three
 			// keystrokes, and a press through it would land on a frame that is
 			// not being drawn (firstrun.go).
 			return a, nil
@@ -4210,9 +4228,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// pointer crossing the window sends one per cell — so [app.setHover]
 		// repaints only when the row under it actually changed (hover.go).
 		//
-		// The linear tier has no hover at all — there is no pointer — and drops
-		// it here rather than paying for a hit-test per cell.
-		if a.linear {
+		// Two surfaces have no hover at all and drop it here rather than paying
+		// for a hit-test per cell: the frozen viewport (nothing under the pointer
+		// is actionable) and the linear tier (there is no pointer).
+		if a.copy.on || a.linear {
 			return a, nil
 		}
 		// A MOVE WITH THE LEFT BUTTON DOWN IS THE SWEEP, read before every hover:
@@ -6733,7 +6752,7 @@ func (a *app) linkHoverAt(x int, r row) int {
 // the mouse turned off (config's ui.mouse): /model with no argument opens the
 // same picker, and the help sheet says so.
 func (a *app) statusPress(x, y int) bool {
-	if a.at(pageSettings) || a.pick.open {
+	if a.copy.on || a.at(pageSettings) || a.pick.open {
 		return false
 	}
 	// THE ROW IS RESOLVED BEFORE THE COLUMN, and that order is load-bearing:
@@ -6889,6 +6908,10 @@ func (a *app) slash(line string) tea.Cmd {
 		// writes through, so there is no second answer to what the limit is
 		// (budget.go).
 		return a.budget(rest)
+
+	case "copy":
+		a.enterCopy()
+		return nil
 
 	case "select":
 		// It ANSWERS when there is nothing to hand over, because this one was
@@ -8203,6 +8226,14 @@ func (a *app) pasteKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // it, and the draft debounce is armed by it.
 func (a *app) paste(text string) tea.Cmd {
 	if text == "" {
+		return nil
+	}
+	// COPY MODE IS A READER, and it is modal for the clipboard exactly as it is
+	// for the keyboard (copymode.go): the box a paste would land in is off
+	// screen behind a frozen viewport, so the text would go somewhere nobody can
+	// see it. The clipboard still holds it, which is the difference between
+	// declining a paste and losing one.
+	if a.copy.on {
 		return nil
 	}
 	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the

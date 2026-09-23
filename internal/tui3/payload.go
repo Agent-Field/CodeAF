@@ -44,7 +44,7 @@ import (
 // thing wearing it is a mark that has to be read twice to learn which one it
 // is. A chord steps to the data hue instead, which is the same one-step move
 // every other datum makes and costs the budget nothing. So `/help` is chipped
-// wherever it is written, `ctrl+s` wears the data hue wherever it is written,
+// wherever it is written, `ctrl+b` wears the data hue wherever it is written,
 // and neither rule has an exception.
 //
 // ── STRATEGY OVER DECORATION ────────────────────────────────────────────────

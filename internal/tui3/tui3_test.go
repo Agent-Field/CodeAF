@@ -825,7 +825,7 @@ func newTestAppWithProfile(profileDir string, agent Agent) *app {
 		// AND IT PINS THE TERMINAL, which is the second and third pin in one
 		// table, for exactly the reason the palette is pinned below: [newApp]
 		// reads the environment to decide whether a clipboard write needs the
-		// multiplexer's passthrough wrapper (clipboard.go), how often the frame
+		// multiplexer's passthrough wrapper (copymode.go), how often the frame
 		// clock turns over a link (link.go), and whether a path may be written
 		// as an OSC 8 link at all (pathlink.go) — so a suite run inside tmux got
 		// the wrapped yank, a suite run over ssh stepped every animation three

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -114,11 +115,94 @@ func TestWorkingLogoFallbacksAndTransientRows(t *testing.T) {
 	}
 }
 
-// C1 AND C2 WENT WITH COPY MODE. They said a frozen snapshot holds the page
-// without the transient activity row, and there is no frozen snapshot any
-// more: `ctrl+b`, the copy keys, `/copy` and `freezeRoom` are all deleted, and
-// copying is the mouse (clipboard.go). Everything else about the activity row
-// is unchanged, and the tests below still hold it.
+// C1 says a copy snapshot is the exact page without the transient working row
+// or the blank that row alone introduced, and thawing restores live movement.
+func TestCopyModeFreezesThePageWithoutTheWorkingLogo(t *testing.T) {
+	a := workLogoApp(t)
+	width := a.bodyWidth()
+	if got := workingActivityRows(a.visible(width)); len(got) != 1 {
+		t.Fatalf("live page has activity rows %v, want exactly one", got)
+	}
+	caption := a.workActivity.Caption()
+
+	wantApp := workLogoApp(t)
+	wantApp.workActivity = tokens.WorkActivity{}
+	want := workLogoRowTexts(wantApp.layout(width))
+
+	a.enterCopy()
+	if !a.copy.on {
+		t.Fatal("copy mode did not open")
+	}
+	plainCopy := ansi.Strip(strings.Join(a.copy.rows, "\n"))
+	if strings.Contains(plainCopy, caption) {
+		t.Fatalf("copy snapshot retained the activity caption %q", caption)
+	}
+	if strings.ContainsAny(plainCopy, "●•·˙") {
+		t.Fatalf("copy snapshot retained a working-logo mark:\n%s", plainCopy)
+	}
+	if !slices.Equal(a.copy.rows, want) {
+		t.Fatalf("copy snapshot differs from the page before activity:\n got %q\nwant %q", a.copy.rows, want)
+	}
+
+	a.exitCopy()
+	if got := workingActivityRows(a.visible(width)); len(got) != 1 {
+		t.Fatalf("thawed page has activity rows %v, want exactly one", got)
+	}
+}
+
+// C2 gives task and adaptive-run pages the same copy law through their shared
+// room freeze door.
+func TestCopyModeFreezesWorkPagesWithoutTheWorkingLogo(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		app  func(*testing.T) *app
+	}{
+		{name: "task", app: func(t *testing.T) *app {
+			a, _ := roomModelApp(t, "task-model")
+			a.width, a.height = 100, 40
+			a.pal = newPalette(tokens.TrueColor, false)
+			a.room.entries = []entry{{kind: entryUser, text: "Ship the parser fix", turn: 1}}
+			a.room.turn, a.room.readingRestored, a.room.dirty = 1, true, true
+			return a
+		}},
+		{name: "adaptive run", app: func(t *testing.T) *app {
+			a, _ := orchApp(t, orchestrate.Snapshot{})
+			a.width, a.height = 100, 40
+			a.pal = newPalette(tokens.TrueColor, false)
+			a.orchOf().known = true
+			a.room.dirty = true
+			return a
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := tc.app(t)
+			width := a.bodyWidth()
+			activity := a.room.workActivity
+			a.room.workActivity = tokens.WorkActivity{}
+			a.room.dirty = true
+			want := workLogoRowTexts(a.roomRows(width))
+			a.room.workActivity = activity
+			a.room.dirty = true
+			if got := workingActivityRows(a.roomRows(width)); len(got) != 1 {
+				t.Fatalf("live page has activity rows %v, want exactly one", got)
+			}
+
+			a.freezeRoom()
+			if !a.copy.on {
+				t.Fatal("copy mode did not open")
+			}
+			if !slices.Equal(a.copy.rows, want) {
+				t.Fatalf("copy snapshot differs from the page before activity:\n got %q\nwant %q", a.copy.rows, want)
+			}
+
+			a.exitCopy()
+			if got := workingActivityRows(a.roomRows(width)); len(got) != 1 {
+				t.Fatalf("thawed page has activity rows %v, want exactly one", got)
+			}
+		})
+	}
+}
+
 // C3 keeps adopted or self-started work on the compact waiting treatment until
 // its running turn has a question of its own to anchor.
 func TestAWorkingTurnWithoutItsOwnQuestionKeepsTheWaitingText(t *testing.T) {

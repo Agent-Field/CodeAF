@@ -169,7 +169,9 @@ build if the two disagree), so a tip you saw is on it word for word.
 - `/autonomy sets how questions are handled while you are away` — after the first
   exchange. Retired when `/autonomy` is typed, bare or with a rule. (It took the seat
   `ctrl+b freezes the screen so you can read and copy from it` held for one build on
-  2026-09-22, and `ask for a picture, a voiceover, music or a video` before that.)
+  2026-09-22, and `ask for a picture, a voiceover, music or a video` before that.
+  **Copy mode itself still works** — `ctrl+b`, `/copy`, the whole frozen viewport — it
+  just has no tip on this list any more.)
 
 **Eight rows came off on 2026-09-22**, over three reads of the whole list, and **every one
 of the commands they named still works** — only the tips about them are gone.

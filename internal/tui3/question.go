@@ -3959,7 +3959,7 @@ func (a *app) openQuestionRoom(head questionShown) tea.Cmd {
 // through to whatever is under it, exactly as a key does.
 func (a *app) questionPress(x, y int) (tea.Cmd, bool) {
 	head, ok := a.questionHead()
-	if !ok {
+	if !ok || a.copy.on {
 		return nil, false
 	}
 	set := a.questionSet()

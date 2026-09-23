@@ -399,9 +399,10 @@ func (a *app) clearConversation() {
 	// else.
 	a.workOpen = map[int]bool{}
 	a.dropHover()
-	// A cut line is a mode a person is in the middle of, and there is no honest
-	// way to be in the middle of one in a conversation nobody is looking at
-	// (rewind.go).
+	// A frozen viewport and a cut line are modes a person is in the middle of,
+	// and there is no honest way to be in the middle of one in a conversation
+	// nobody is looking at (copymode.go, rewind.go).
+	a.copy = copyMode{mark: -1}
 	a.rew = rewindMode{}
 	a.rewSay, a.rewSayAt = "", time.Time{}
 	// The rail goes with its nodes, its rooms and its pilots (task.go).

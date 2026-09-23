@@ -241,3 +241,54 @@ func TestAShorterFrameFoldsARoomToItsNewHeight(t *testing.T) {
 			calls, shorter)
 	}
 }
+
+// FREEZING A FOLDED ROOM STAYS IN BOUNDS. ctrl+b snapshots the room-sized rows,
+// and every cursor the copy keys move lands inside them.
+func TestFreezingAFoldedRoomKeepsTheCopyCursorInBounds(t *testing.T) {
+	a, _ := callsRoom(t)
+	width, height := a.bodyWidth(), a.viewHeight()
+	rows := a.roomRows(width)
+
+	a.freezeRoom()
+	if !a.copy.on {
+		t.Fatal("ctrl+b did not freeze the room")
+	}
+	// THE FREEZE HOLDS EVERY ROW BUT THE SIGN OF LIFE. A running room's
+	// activity row and the one blank that exists only for it are laid out
+	// while the page is live and never while it is frozen (worklogo.go), so the
+	// copy is the page as copy mode draws it, and that is what the cursor must
+	// stay inside.
+	transient := 0
+	for _, r := range rows {
+		if r.activity {
+			transient += 1 + spacingBlockRows
+		}
+	}
+	if len(a.copy.rows) != len(rows)-transient {
+		t.Fatalf("the freeze holds %d rows of a %d-row page whose %d rows are transient",
+			len(a.copy.rows), len(rows), transient)
+	}
+	inBounds := func(when string) {
+		t.Helper()
+		if a.copy.at < 0 || a.copy.at >= len(a.copy.rows) {
+			t.Fatalf("%s: the copy cursor is at %d of %d rows", when, a.copy.at, len(a.copy.rows))
+		}
+		if a.copy.top < 0 || a.copy.top > max(len(a.copy.rows)-height, 0) {
+			t.Fatalf("%s: the copy window starts at %d of %d rows", when, a.copy.top, len(a.copy.rows))
+		}
+	}
+	inBounds("on freeze")
+	// The room was stuck at its live edge, and so is the freeze: its window
+	// ends on the last frozen row, with the transient rows no longer counted.
+	if edge := max(len(a.copy.rows)-height, 0); a.copy.top != edge {
+		t.Fatalf("the freeze starts at %d, the live edge of its %d rows is %d", a.copy.top, len(a.copy.rows), edge)
+	}
+	for _, k := range []string{"home", "a", "end", "v", "pgup", "pgdown"} {
+		drive(t, a, key(k))
+		inBounds("after " + k)
+	}
+	drive(t, a, key("esc"))
+	if a.copy.on {
+		t.Fatal("esc did not leave copy mode")
+	}
+}

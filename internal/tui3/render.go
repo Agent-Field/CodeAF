@@ -2961,7 +2961,7 @@ func (a *app) stateSegment() (string, string) {
 	if a.room != nil && !a.orchOpen() {
 		return word, painted
 	}
-	if a.state != stateWorking || a.asking() {
+	if a.state != stateWorking || a.asking() || a.copy.on {
 		return word, painted
 	}
 	mark := tokens.Spinner(a.paints / spinnerStep)
@@ -3094,6 +3094,16 @@ func (a *app) warmSegmentShort() string {
 // it is waiting for them. "your call" rather than "your answer" because it is
 // shorter and because it is what it is.
 func (a *app) stateWord() (string, string) {
+	// COPY OUTRANKS EVERYTHING, because it is the only state on this line that is
+	// about the KEYBOARD rather than about the turn. While the viewport is frozen
+	// the keys do something else entirely (copymode.go), and a status line that
+	// said "idle" would be describing the session correctly and the screen
+	// wrongly. The turn underneath keeps running; the row it would have claimed
+	// is back the moment esc is pressed.
+	if a.copy.on {
+		word := a.copyWord()
+		return word, a.pal.accent(word)
+	}
 	// A sweep's receipt outranks the run state for the seconds it stands: the
 	// person's eye is on the status line asking exactly one question — did the
 	// copy land — and the turn's own word is back the moment it expires
@@ -3846,6 +3856,8 @@ func (a *app) hintWord() string {
 		// one line saying "enter" for both would be teaching nobody
 		// (subharness.go).
 		return a.subVerbs()
+	case a.copy.on:
+		return copyKeysWord
 	case a.rew.on:
 		// The rewind mode prints its own keys in the bar that replaced the draft
 		// box (rewind.go), and a slot repeating them would be the surface saying

@@ -200,7 +200,7 @@ func (a *app) steerAvailable() bool {
 	// the keyboard outright, and the rail holds it while the roster is up. Every
 	// one of these is read above the plain switch in [app.key], so the guard is
 	// here for the HINT's sake as much as the key's.
-	return !a.roomOpen() && !a.rew.on && !a.railHold
+	return !a.roomOpen() && !a.copy.on && !a.rew.on && !a.railHold
 }
 
 // steerOffered reports whether plain enter may be named as a steer — which is
@@ -453,7 +453,7 @@ func (a *app) runSendOffered() bool {
 	if a.state != stateWorking || a.input.empty() && len(a.chips) == 0 {
 		return false
 	}
-	return !a.roomOpen() && !a.rew.on && !a.railHold
+	return !a.roomOpen() && !a.copy.on && !a.rew.on && !a.railHold
 }
 
 // runHint is the one line while a turn runs. Its order follows the hand across

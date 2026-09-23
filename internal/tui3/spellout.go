@@ -197,7 +197,7 @@ func (a *app) spellOffered() bool {
 	if a.spellShowing() {
 		return false
 	}
-	if a.rew.on || a.roomOpen() {
+	if a.copy.on || a.rew.on || a.roomOpen() {
 		return false
 	}
 	if _, ok := a.spellDoor(); !ok {

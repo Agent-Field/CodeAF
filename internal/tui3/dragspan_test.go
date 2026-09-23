@@ -63,7 +63,7 @@ func TestASweepAcrossRowsTakesTailWholeAndHead(t *testing.T) {
 		t.Fatalf("the ends are wrong:\n%q", got)
 	}
 	// The middle row keeps the indent it is drawn with, as copy mode keeps it:
-	// an inset is the block's own and pastes as such (clipboard.go's copyClean).
+	// an inset is the block's own and pastes as such (copymode.go's copyClean).
 	if !strings.Contains(got, "the person wants fmt\n") {
 		t.Fatalf("the middle row is not taken whole:\n%q", got)
 	}

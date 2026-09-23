@@ -50,7 +50,7 @@ func (a *app) paintSeamProject(text string, span hudSpan, hovered bool) string {
 // ([app.hintRowKind]) — and it opens the folder chooser, which is what the
 // word is a door onto: the same sheet `/folder` opens.
 func (a *app) seamProjectPress(x, y int) (tea.Cmd, bool) {
-	if a.pick.open || a.roomOpen() || !a.seamProjectSpan.holds(x) {
+	if a.copy.on || a.pick.open || a.roomOpen() || !a.seamProjectSpan.holds(x) {
 		return nil, false
 	}
 	mark, ok := a.chromeAt(y)

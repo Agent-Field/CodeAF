@@ -353,17 +353,18 @@ var commands = []command{
 	// be the most expensive pun on the surface.
 	{name: "cache", desc: "the shared build cache — how big, and where"},
 	{name: "cache", args: "clean", desc: "…delete it to free disk · asks before anything is removed"},
-	// THE TWO DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
-	// that is where a person goes with the question they answer. The key behind
-	// the first is the least discoverable on the surface — nothing on the screen
-	// says it exists — and "why can I not copy this" is the first question this
-	// surface gets asked. /select is the mouse's way (clipboard.go); /copy, the
-	// keyboard's, was copy mode and went with it on 2026-09-22.
+	// THE THREE DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
+	// that is where a person goes with the question they answer. The keys behind
+	// the first two are the least discoverable on the surface — nothing on the
+	// screen says either exists — and "why can I not copy this" is the first
+	// question this surface gets asked. /copy is the keyboard's way, /select the
+	// mouse's (copymode.go).
 	//
-	// /export is the second and it is a different KIND of answer: that one hands
+	// /export is the third and it is a different KIND of answer: those two hand
 	// over what is on the screen, and this one writes the whole conversation to a
-	// file somebody can send (export.go). It is last of the two because it is
+	// file somebody can send (export.go). It is last of the three because it is
 	// the one a person reaches for once, at the end.
+	{name: "copy", desc: "read the conversation back and copy from it · ctrl+b"},
 	{name: "select", desc: "drag to select with your mouse · ctrl+s"},
 	// TWO ROWS FOR ONE COMMAND, the way /model has two. A single row carrying
 	// <path> would make the bare form — which is the one nearly everybody wants —
@@ -1034,6 +1035,7 @@ func helpText(file string, chords chordSpelling) string {
 		// rows at the foot of this list already use.
 		helpKeyRow(spellOutKey, "over a draft: spell it out · what it means · enter adds it to yours"),
 		"ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too",
+		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
 		"enter          mid-answer: stops the current reply and steers these words in",
 		// AND THE THIRD THING TO DO WITH A SENTENCE TYPED OVER A RUNNING ANSWER

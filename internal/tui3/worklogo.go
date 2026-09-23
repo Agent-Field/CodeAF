@@ -14,7 +14,7 @@ import (
 // and an approval never wears movement that implies work can continue unaided.
 func (a *app) workLogoVisible() bool {
 	return a.workActivity.Started() && !a.turnBegan.IsZero() && a.state == stateWorking &&
-		a.showing() == nil && len(a.questionOpen()) == 0 && !a.asking() && a.room == nil && !a.linear && !a.pal.linear &&
+		a.showing() == nil && len(a.questionOpen()) == 0 && !a.asking() && !a.copy.on && a.room == nil && !a.linear && !a.pal.linear &&
 		!a.pal.ascii && a.pal.profile >= tokens.ANSI256 && a.width >= 48 && a.height >= 20 && a.turnAnchor() >= 0
 }
 
@@ -82,7 +82,7 @@ func (a *app) activityMark(activity tokens.WorkActivity) string {
 // A held, finished, failed or disconnected task cannot advertise progress.
 func (a *app) roomWorkLogoVisible() bool {
 	if a.room == nil || !a.room.running() || !a.room.workActivity.Started() || a.showing() != nil || len(a.questionOpen()) > 0 ||
-		a.linear || a.pal.linear || a.pal.ascii || a.pal.profile < tokens.ANSI256 ||
+		a.copy.on || a.linear || a.pal.linear || a.pal.ascii || a.pal.profile < tokens.ANSI256 ||
 		a.width < 48 || a.height < 20 {
 		return false
 	}

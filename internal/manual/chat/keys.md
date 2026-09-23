@@ -589,7 +589,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | Chord | What it does |
 |---|---|
 | `ctrl+o` | Selected landed card: open its output. Selected proposal: open its brief. Inside a task's page: open or fold the long instruction at the top. Otherwise: open or fold the live caption's tool rows; before a live caption exists, open or fold the `N earlier tool calls` fallback. It never opens a `▸ worked` chip — that is `ctrl+e` |
-| `ctrl+b` | Nothing in a conversation — copy mode was removed on 2026-09-22. On home it moves the caret one cell left |
+| `ctrl+b` | Enter copy mode — freeze the view so you can read and copy. Not on home, where it moves the caret |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `alt+e` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam |
@@ -933,6 +933,9 @@ newline, `tab` becomes a tab, everything else contributes its text. Nothing betw
 the brackets can submit, interrupt, or answer a question. `ctrl+c` is the one
 exception and still works — it leaves codeaf without closing the bracket. A bracket that goes quiet for 2 seconds is treated as
 abandoned, flushed, and the keyboard handed back.
+
+A paste while copy mode is up is **declined** — nothing happens, and your clipboard
+still holds the text.
 
 ## Make my prompt better — spell it out with `ctrl+r`
 
@@ -2456,7 +2459,8 @@ back (*The empty screen* page).
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node (see *What steering a task looks like on its
-page* below) · `pgup`/`pgdown` page · `up`/`down` walk your history,
+page* below) · `ctrl+b` freezes the room's own rows for
+copying, not the conversation's · `pgup`/`pgdown` page · `up`/`down` walk your history,
 and scroll the page one row only when there is no history to walk. `left` is
 deliberately **not** taken here — it falls through to the message box's
 back-navigation.
@@ -2609,7 +2613,7 @@ and failing, and its letter is absent with it.
 
 **They are held to the same rule `x` is.** The card must be the **selected** one — walk to
 it with `↑`/`↓`, which steps through tool calls, proposals and landed cards — and the
-message box must be **empty**, with no panel or picker up. A letter typed into a
+message box must be **empty**, with no panel, picker or copy mode up. A letter typed into a
 sentence stays a letter, always.
 
 Once answered the letters go away and the receipt every question leaves takes their place,
@@ -2712,7 +2716,8 @@ terminals open one and what is deliberately not linked.
 **A click on empty space does nothing, anywhere** — there is no empty-space gesture on
 this surface, and that includes inside a room: a press on a blank row of a task's page
 is not the way out and never closes it. The way out of a room is `esc`, `←`, or a press
-on the pinned header that names them.
+on the pinned header that names them. **A click in copy mode acts on nothing**, because
+the rows there are a frozen snapshot.
 
 **Hover** lights whatever the pointer is on, at the size of the thing rather than the size
 of its row: a row that is one target — a tool call, a roster row, a parked message, a
@@ -2721,14 +2726,14 @@ line — a strip chip, a picture on the tray, one answer of a card, a task refer
 reply — lights only its own cells, leaving its neighbours dark. Anything that answers to
 nothing does not react. On home it does one thing more: the preview on the right becomes
 the row you are pointing at, and returns to the cursor's row when you point somewhere else
-(see the home page). There is no hover on the linear/screen-reader tier, or in the phone
-tool sheet. The screen page says what lights, under "When a row brightens
+(see the home page). There is no hover in copy mode, on the linear/screen-reader tier, or
+in the phone tool sheet. The screen page says what lights, under "When a row brightens
 under the pointer".
 
 ## Scrolling
 
 The wheel moves three rows per notch, on whichever surface owns the frame. It is
-routed to the settings panel, then the task page, then home, then the
+routed to copy mode, then the settings panel, then the task page, then home, then the
 rewind timeline, then the status deck, then the phone tool sheet, then the fullscreen
 roster, then **the task column** when the pointer is over it, then an open room, and
 otherwise the conversation.
@@ -2753,8 +2758,8 @@ away from the live edge. It is drawn into the first row of the frame's existing
 breathing gap, so it never takes a row of its own; on a window too short to have a
 gap it is not drawn at all, though `ctrl+l` still works. It is dim normally and
 accent-coloured under the pointer. Clicking it, or pressing `ctrl+l`, rejoins the live
-edge — the room's edge if a room is open. It is not shown while a room or the
-fullscreen roster is up.
+edge — the room's edge if a room is open. It is not shown while copy mode, a room, or
+the fullscreen roster is up.
 
 ## Selecting text with your mouse — drag to copy, select a word with the mouse, why did copying take the whole line instead of the words I dragged over
 
@@ -2762,8 +2767,8 @@ fullscreen roster is up.
 down, and the cells between them highlight — from where you pressed to the end of
 that line, every line between in full, and the last line up to where you are, exactly
 as your terminal would select it. The moment you release, that text is **on your
-clipboard** — stripped of colours and the drawn left rails, so a paste carries only
-the words. There is nothing further to press: no ctrl+c, no key at all —
+clipboard** — stripped of colours and the drawn left rails, exactly as copy mode
+strips a yank. There is nothing further to press: no ctrl+c, no key at all —
 releasing the button IS the copy. The highlight stays lit for the few seconds the
 status line says what landed — `copied · 14 chars` for a span inside one line,
 `copied · 3 lines` across several — so you can see exactly what you got. The write
@@ -2794,8 +2799,8 @@ place. The one difference is that a selection there is live — you can type ove
 so it stays lit until you move the caret rather than fading with the status line. See
 "how do I select text in the message box" above.
 
-The sweep is drawn in **the selection background** — the strongest of the three this
-screen draws, a shade above the one under the pointer. It is the same
+The sweep is drawn in **the same background copy mode's selection wears** — the strongest
+of the three this screen draws, a shade above the one under the pointer. It is the same
 claim ("these rows are what a copy would take"), so it is the same paint; it used to be
 drawn at the pointer's own quieter step, which said a sweep in progress was a shadow
 rather than a selection.
@@ -2871,7 +2876,8 @@ your mouse" above.
 
 **There is nothing under the pointer.** A click on empty space does nothing anywhere on
 this surface, including the gap between two words of the tab bar and the blank rows of a
-task's page.
+task's page. A click in copy mode acts on nothing at all, because those rows are a frozen
+snapshot.
 
 **The terminal is too narrow for the word you are aiming at.** The tab bar gives up words
 as the frame narrows, and at its narrowest it carries only the place you are standing in —
@@ -2881,23 +2887,79 @@ and `alt+1`…`alt+7` still go everywhere.
 **A file path is your terminal's click, not codeaf's** — usually **cmd+click**
 (ctrl+click on Linux). If a plain click on a path does nothing, that is why.
 
-## Copy mode is gone — ctrl+b does nothing, there is no /copy, how do I copy text out of the conversation
+## Copy mode: taking text out of the conversation — ctrl+b, freeze the screen, esc to leave, and ctrl+b on home does nothing of the kind
 
-**There is no copy mode.** Until 2026-09-22 `ctrl+b` (and `/copy`) froze the conversation
-and handed the keyboard to a reader — `v` marked, `a` took a block, `y` yanked, `esc`
-left, and the status line read `COPY`. It was removed whole that day, on the judgement
-that it was no use beside the mouse. `ctrl+b` is bound to **nothing** in a conversation
-and in a task's room; on home it still moves the caret in the box one cell left, as
-`←` does. `/copy` is not a command, and typing it answers
-`there is no command called /copy · / lists them`.
+`ctrl+b` freezes the view and hands the keyboard to a reader, so you can pull text out
+of a surface that runs in the alternate screen where your terminal's own selection is
+gone. The `/copy` command does the same. Inside a room, `ctrl+b` freezes **the room's
+rows** rather than the conversation's.
 
-**To copy text out of the conversation, use the mouse.** Drag across the rows and the
-text is on your clipboard the moment you release — see *Selecting text with your mouse*
-below. If you would rather your terminal did the selecting, `ctrl+s` hands it the pointer
-until your next key. Both leave through the same in-band clipboard write, so they work
-over ssh and inside tmux; a paste from either carries the words with the drawn rails
-lifted, and a code block comes out as its source without the hairline or the `↳` wrap
-mark. Inside a room the drag works the same way over the room's own rows.
+**On home `ctrl+b` is not copy mode.** It moves the caret in home's box one cell to the
+left, as `←` does, and home's rows are never frozen. Nothing can be copied off the home
+screen this way: a title or a path on home is on a row `enter` opens, and inside that
+conversation the rows can be frozen. (For one build on 2026-09-22 the key froze home's
+own screen; it was taken out the same day.)
+
+Freezing looks like nothing when nothing is moving — the rows stay where they are on
+purpose. What tells you the freeze is on is the keys row, which reads exactly
+`v select · a block · y yank · esc`, the highlighted cursor row, and the status word
+`COPY`. `esc` always leaves.
+
+| Chord | What it does |
+|---|---|
+| `up`/`k`, `down`/`j` | Move |
+| `pgup`, `pgdown` | Page |
+| `home`, `end` | Jump to top or bottom |
+| `v` | Drop or lift the mark |
+| `a` | Take the block under the cursor |
+| `y` | Yank the selection |
+| `esc`, `ctrl+b`, `q` | Leave |
+
+Copy mode takes **every other key too**, and does nothing with them.
+
+`a` asks the narrower question first — a run of fenced **code** rows. Press `a` again
+to widen to the whole answer around it. A blank row belongs to nothing, and `a` there
+does nothing.
+
+`y` **stays** in copy mode and lifts the mark, so a second `y` cannot copy the same
+span by accident.
+
+The status line reads exactly `COPY`, or `COPY · N lines` when more than one line is
+selected. The row under the box reads `v select · a block · y yank · esc`.
+
+## What copy mode copies, and what it refuses
+
+Freezing snapshots the rows both painted and plain. The conversation underneath keeps
+streaming, and none of it moves the rows you are reading. Leaving rejoins the live
+edge — the room's edge if a room was frozen.
+
+**What comes out** is the plain text with the left rail lifted — the stem under an
+expanded tool call, the hairline beside a fenced block or a blockquote — along with
+the indent in front of it and any trailing padding. The one-off marks `› ` and `· `
+are deliberately **kept**, because they say who was speaking.
+
+**How it reaches your clipboard:** OSC 52, written in band, so it works over ssh and
+inside a container with no display. When `TERM` starts with `screen` or `tmux` it is
+wrapped in tmux's DCS passthrough with every ESC doubled. It uses the clipboard
+selection, not the primary one.
+
+**Refusals while copy mode is up:**
+
+- A click does nothing.
+- A paste is declined, and your clipboard keeps the text.
+- There is no hover.
+- The selection highlight is a background, and a terminal below ANSI256 gets no
+  highlight at all. Read the span off the `COPY · N lines` count instead. It is the
+  strongest of the three backgrounds this screen draws — a shade above the one under
+  the pointer and the one under a chosen row — because a selection is held open and
+  runs across many lines at once, and you are looking for both of its ends.
+
+**An image drawn in an expansion copies as what it is on screen** — rows of `▀`, with
+the colour stripped, which is no use to anybody. Take the dim line under it instead:
+it is the picture's whole absolute path. It is also a link you can click, the same as
+every other real file path on this screen — see "click a file path to open it" on the
+"what is on the screen" page. What copy mode gives you is the plain path, with the link
+stripped off it.
 
 ## Chords that mean more than one thing
 
@@ -2955,8 +3017,8 @@ sentence in the box and go on typing into the same words.
 
 Two more chords surprise people:
 
-- **`ctrl+b` does nothing.** It was copy mode until 2026-09-22 and is bound to nothing
-  now; copying is the mouse's — drag, or `ctrl+s`.
+- **`ctrl+b` is copy mode, not emacs "left".** The alternate screen took your
+  terminal's selection away, and copy mode is what buys it back.
 - **`ctrl+e` means two things** depending on whether the box is empty: end of line
   when there is text, open the most recent thinking block when there is not.
 - **`ctrl+w` closes a tab wherever you press it**: in a conversation the tab in front,
@@ -3080,8 +3142,7 @@ been running longest**, which is the one you are waiting on.
 
 While a command can be kept, this meaning takes precedence over hiding or restoring the
 task column, so the column stays where it was. With no such command the key belongs to
-the column as described above. `esc` interrupts and does not change; `ctrl+b`, which was
-copy mode beside it, is bound to nothing at all now.
+the column as described above. `ctrl+b` is copy mode and `esc` interrupts; neither changes.
 
 ## When a settings change lands
 

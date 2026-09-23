@@ -1868,7 +1868,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch key := msg.String(); {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
 		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.deckShowing(), a.pick.open,
-		a.roster.open, a.welcome.open, a.menu.open, a.comp.open,
+		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open,
 		a.effPick.open:
 		return nil, false
 	}
@@ -1962,6 +1962,13 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// Everything that outranks the room outranks it, because it is read from
 		// inside the room's own switch and never above it.
 		a.cycleTaskEffort()
+		return nil, true
+
+	case "ctrl+b":
+		// FREEZE THE ROOM, not the conversation. copymode.go snapshots the
+		// transcript's rows, which while a room is open are not the rows on
+		// screen — so the snapshot is taken here, from what is actually drawn.
+		a.freezeRoom()
 		return nil, true
 
 	case "pgup":
@@ -2059,6 +2066,54 @@ func (a *app) roomHint() string {
 		return a.landingHintAt(a.room.id, a.width, "")
 	}
 	return ""
+}
+
+// freezeRoom hands copy mode the room's own rows. It is the same frozen viewport
+// [app.enterCopy] builds — same struct, same cursor, same yank — over a
+// different list, because what a person freezes must be what a person is
+// reading.
+//
+// ONE WRINKLE, KNOWN AND SMALL: leaving copy mode rejoins the CONVERSATION's
+// live edge ([app.exitCopy] sets stick), so a person who froze a room while the
+// transcript was scrolled up loses that scroll. It is the one seam where the
+// room does not leave the conversation untouched, and it is left alone because
+// the alternative — a room-shaped exception inside copy mode — would put a
+// second definition of "what is frozen" in a file whose whole point is that
+// there is one.
+func (a *app) freezeRoom() {
+	if a.copy.on || a.room == nil {
+		return
+	}
+	width := a.bodyWidth()
+	height := a.viewHeight()
+	// COPY OWNS THE PAGE BEFORE IT IS LAID OUT, so the room's transient
+	// activity and the blank belonging only to it never enter the snapshot
+	// (worklogo.go, #1384).
+	a.copy.on = true
+	a.room.dirty = true
+	rows := a.roomRows(width)
+	if len(rows) == 0 {
+		a.copy.on = false
+		a.room.dirty = true
+		return
+	}
+	snapshot := make([]string, 0, len(rows))
+	stripped := make([]string, 0, len(rows))
+	owner := make([]int, 0, len(rows))
+	for _, r := range rows {
+		snapshot = append(snapshot, r.text)
+		stripped = append(stripped, ansi.Strip(r.text))
+		// The index is into the ROOM's own list, which is the list this snapshot
+		// was taken from — that is all "a" needs it to be, since it only ever
+		// compares two rows of the same freeze (copymode.go's [app.copyBlock]).
+		owner = append(owner, r.entry)
+	}
+	top := a.roomOffsetFor(len(rows), height)
+	a.copy = copyMode{
+		on: true, rows: snapshot, text: stripped, owner: owner,
+		at: min(top+height-1, len(rows)-1), top: top, mark: -1,
+	}
+	a.touch()
 }
 
 // ── moving between the conversation and the work ────────────────────────────

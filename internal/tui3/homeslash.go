@@ -201,7 +201,7 @@ func homeFate(word, rest string) string {
 	case "land", "workspace":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "autonomy",
-		"select", "rewind", "compact", "export", "drafts", "manual", "folder":
+		"copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":
 		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
 		// turn of a conversation now (manualcmd.go), and a turn needs one. As
 		// an answer it printed the pages into the conversation BEHIND home,

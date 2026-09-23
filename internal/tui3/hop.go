@@ -341,7 +341,7 @@ func (a *app) hopAvailable() bool {
 // that opened over either would be drawn over a gesture somebody is in the
 // middle of. They are asked HERE because this claim is read above the place
 // router and so does not pass through either of their own arbitration.
-func (a *app) hopMayOpen() bool { return !a.composer.open }
+func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 
 // THERE USED TO BE A SECOND DOOR HERE, `hopOpenAll`: the card raised with its
 // fold already open, which is what the `Chats ▾` control at the right end of the

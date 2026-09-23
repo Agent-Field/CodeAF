@@ -637,6 +637,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// COPY MODE is modal, and it is modal one rung below ctrl+c for the same
+	// reason everything else here is: leaving is never modal. While it is up the
+	// surface is a reader, and a key that fell through to the draft would type
+	// into a box whose effect is off screen (copymode.go).
+	if cmd, taken := a.copyKey(msg); taken {
+		return cmd
+	}
+
 	// REWIND MODE IS MODAL AT THE SAME RUNG AND FOR THE SAME REASON (rewind.go):
 	// while it is up the draft box is not on the frame at all — a mode bar stands
 	// in its position — so a key that fell through to the editor would type into a
@@ -936,11 +944,20 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 
+	case "ctrl+b":
+		// FREEZE AND READ (copymode.go). ctrl+b used to be the emacs `left` here,
+		// alongside the arrow key that everybody actually presses, and it is spent
+		// on this instead: the alt screen took the terminal's own selection away,
+		// and getting text out of the conversation is a thing this surface could
+		// not do at all. ← is untouched.
+		a.enterCopy()
+		return nil
+
 	case selectKey:
-		// DRAG THE WAY YOU DRAG EVERYWHERE ELSE (clipboard.go). With the pointer
+		// DRAG THE WAY YOU DRAG EVERYWHERE ELSE (copymode.go). It is the mouse's
+		// half of ctrl+b and it sits beside it for that reason. With the pointer
 		// already the terminal's it does nothing, because the drag it offers is
-		// one the person can already make. ctrl+b, which was copy mode's key
-		// beside this one until 2026-09-22, is bound to nothing now.
+		// one the person can already make.
 		a.releaseMouse()
 		return nil
 
