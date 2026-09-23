@@ -501,6 +501,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// still streaming. It belongs to the turn and is emptied per attempt — see
 	// [warmBatch] for the law that decides what may start early at all.
 	warm := &warmBatch{}
+	// The turn's read sweep ledger (readhandoff.go): same lifetime as the warm
+	// batch, consulted at the one seam every batch passes through below.
+	sweep := &readSweep{}
 
 	// forming holds the calls this turn has watched ARRIVE but not yet finish
 	// (toolhint.go). It has the warm batch's lifetime and is emptied in the same
@@ -1336,7 +1339,22 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			continue
 		}
 
-		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+		// A SWEEP THE MODEL WILL NOT HAND OFF IS HANDED OFF HERE (readhandoff.go).
+		// The prompt taught the judgement and the models recited it without acting,
+		// so the loop — the one place the reading's cost is a fact rather than an
+		// instruction — spends the hand-off itself. Conversations only: a task
+		// worker's own reads are its work, not a sweep.
+		var results []toolResult
+		if !a.config.InTask && chatRunEngine != nil && sweep.due(calls) {
+			if handed := a.handoffReadSweep(toolCtx, episode, hub, user, calls, sweep, warm); handed != nil {
+				results = handed
+			} else {
+				results = a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+			}
+		} else {
+			results = a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+			sweep.count(calls)
+		}
 		// THE GAP THE LAW IS ABOUT STARTS HERE. Everything between this line and
 		// the next request leaving is the turn's own work — recording the results,
 		// the fold, the readings that ride beside it — and the law says it is
