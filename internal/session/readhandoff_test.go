@@ -65,6 +65,19 @@ func TestReadSweepSameTargetTwiceIsOne(t *testing.T) {
 	}
 }
 
+// TestReadSweepWhitespaceNormalizedInKey pins JSON whitespace normalization in
+// the sweep key: formatting variations for the same read are the same target.
+func TestReadSweepWhitespaceNormalizedInKey(t *testing.T) {
+	sweep := &readSweep{}
+	call1 := readCall("read", `{"path": "a.go"}`)
+	call2 := readCall("read", `{"path":"a.go"}`)
+	sweep.count([]ai.ToolCall{call1})
+	sweep.count([]ai.ToolCall{call2})
+	if len(sweep.keys()) != 1 {
+		t.Fatalf("expected 1 target after whitespace variation, got %d", len(sweep.keys()))
+	}
+}
+
 // TestReadSweepMixedBatchHandsOffItsReaders pins the mixed-batch rule: a bash
 // or a write riding beside the readers changes nothing — the calls in one
 // batch are emitted blind to each other's results, so the sweep a model sizes

@@ -36,12 +36,15 @@ package session
 // the sweep is disabled for the rest of the turn so a failure is paid once.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // readSweepTargets is the number of distinct read-only targets at which a turn
@@ -71,9 +74,15 @@ type readSweep struct {
 
 // sweepKey identifies one read-only call by what it reads, not by its id: the
 // same read issued twice is one target, and a re-read of a file the turn
-// already holds never moves the count.
+// already holds never moves the count. Arguments are JSON-compacted so
+// whitespace variations do not register as distinct targets.
 func sweepKey(call ai.ToolCall) string {
-	return call.Function.Name + "\x00" + string(call.Function.Arguments)
+	raw := strings.TrimSpace(call.Function.Arguments)
+	var compacted bytes.Buffer
+	if err := json.Compact(&compacted, []byte(raw)); err == nil {
+		raw = compacted.String()
+	}
+	return call.Function.Name + "\x00" + raw
 }
 
 // count folds one EXECUTED batch into the ledger. A batch with anything but
@@ -152,6 +161,11 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 		return nil
 	}
 
+	if len(calls) > 0 {
+		a.tellPhase(provider.PhaseRunning, calls[0].Function.Name, time.Now())
+		defer a.endPhase()
+	}
+
 	// THE ROWS THE PERSON SEES SAY WHERE THE READING WENT. The intercepted
 	// calls are announced with the hand-off as their hint and finished when
 	// the answer lands; the rest of the batch draws its own rows in
@@ -175,6 +189,32 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 		restResults = a.runToolsWarm(ctx, ep, rest, hub, warm)
 	}
 	answer, ok := a.awaitQuickAnswer(ctx, id)
+	if !ok || strings.TrimSpace(answer) == "" {
+		// FALLBACK: The quick task failed, timed out, or returned an empty answer.
+		// Clean up the task node so it does not linger in the graph consuming resources.
+		a.cancelTask(id, "read handoff failed; running inline")
+
+		// Any non-reader calls in the batch already ran in restResults and must NOT
+		// be run a second time. Run the readers inline and stitch the results back together.
+		readerResults := a.runToolsWarm(ctx, ep, readers, hub, warm)
+		byID := map[string]toolResult{}
+		for index, call := range readers {
+			byID[call.ID] = readerResults[index]
+		}
+		for index, call := range rest {
+			byID[call.ID] = restResults[index]
+		}
+		results := make([]toolResult, len(calls))
+		for index, call := range calls {
+			results[index] = byID[call.ID]
+		}
+		sweep.targets = nil
+		sweep.glosses = nil
+		// Keep sweep.disabled = true so failure is paid once this turn.
+		a.noteCallOutcomes(calls, results)
+		return results
+	}
+
 	took := time.Since(started)
 	for index, call := range readers {
 		a.file.appendTook(call.ID, took)
@@ -187,9 +227,6 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 				Took:   took,
 			})
 		}
-	}
-	if !ok || strings.TrimSpace(answer) == "" {
-		return nil
 	}
 
 	sweep.targets = nil
@@ -211,6 +248,7 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 	for index, call := range calls {
 		results[index] = byID[call.ID]
 	}
+	a.noteCallOutcomes(calls, results)
 	return results
 }
 
@@ -218,13 +256,14 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 // every landing closes — and returns the kept answer. Two clocks bound it, not
 // one: a node that has not STARTED inside [readSweepStartWait] is a node the
 // governor is holding, and a conversation does not freeze for a held node —
-// the batch runs inline and the task, when it finally runs, lands as an
-// ordinary note. Once started, the wait is the conversation's patience and the
-// turn's own context: a stopped turn abandons the wait.
+// the batch runs inline and the task is cancelled. Once started, the wait is
+// the conversation's patience and the turn's own context: a stopped turn
+// abandons the wait.
 func (a *Agent) awaitQuickAnswer(ctx context.Context, id uint64) (string, bool) {
 	timer := time.NewTimer(readSweepWait)
 	defer timer.Stop()
-	startBy := time.Now().Add(readSweepStartWait)
+	startTimer := time.NewTimer(readSweepStartWait)
+	defer startTimer.Stop()
 	for {
 		node := a.graph().node(id)
 		if node == nil {
@@ -236,9 +275,7 @@ func (a *Agent) awaitQuickAnswer(ctx context.Context, id uint64) (string, bool) 
 		case TaskFailed:
 			return "", false
 		case TaskQueued:
-			if time.Now().After(startBy) {
-				return "", false
-			}
+			// Verified via startTimer below.
 		}
 		select {
 		case <-node.done:
@@ -246,6 +283,10 @@ func (a *Agent) awaitQuickAnswer(ctx context.Context, id uint64) (string, bool) 
 			// is a reason to look at the state again, never a verdict.
 		case <-ctx.Done():
 			return "", false
+		case <-startTimer.C:
+			if node.stateNow() == TaskQueued {
+				return "", false
+			}
 		case <-timer.C:
 			return "", false
 		}
@@ -257,10 +298,12 @@ func (a *Agent) awaitQuickAnswer(ctx context.Context, id uint64) (string, bool) 
 // cold — no transcript, no inherit — so the question travels in the brief or
 // not at all.
 func sweepBrief(user userMessage, glosses []string, calls []ai.ToolCall) string {
-	question := clip(strings.TrimSpace(messageTextValue(user.message)), 400)
+	question := clip(strings.TrimSpace(messageTextValue(user.message)), briefAskLimit)
 	var b strings.Builder
 	b.WriteString("A conversation began a reading it should not finish in its own context. ")
-	b.WriteString("The person asked: " + question + "\n\n")
+	if question != "" {
+		b.WriteString("The person asked: " + question + "\n\n")
+	}
 	if len(glosses) > 0 {
 		b.WriteString("The chat already ran these read-only calls; their results are in the conversation, so do not repeat them unless you must:\n")
 		for _, g := range glosses {
