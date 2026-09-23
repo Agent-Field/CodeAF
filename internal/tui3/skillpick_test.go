@@ -511,7 +511,9 @@ func TestTheSkillPickerSaysWhyARowCannotBeAttachedWithNoShelf(t *testing.T) {
 	if !strings.Contains(screen, "alpha-flake") {
 		t.Fatalf("the picker stopped listing the skills on disk:\n%s", screen)
 	}
-	if !strings.Contains(screen, skillNoShelfWarning) {
+	// The row is clipped at the overlay's width, so the check is on the words
+	// that carry the reason rather than on the whole sentence.
+	if reason, _, _ := strings.Cut(skillNoShelfWarning, ","); !strings.Contains(screen, reason) {
 		t.Fatalf("the row does not say why choosing it does nothing:\n%s", screen)
 	}
 }
