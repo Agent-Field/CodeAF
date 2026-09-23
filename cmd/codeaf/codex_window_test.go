@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // codexWindowShelf is a process shelf for a profile with the default service
@@ -92,6 +93,43 @@ func TestW5AConversationThatOpensOnCodexStartsWithItsWindow(t *testing.T) {
 	// "keep your own conservative default".
 	if got := v3StartWindow(shelf, coldCatalog{}, "codex/not-listed", "not-listed"); got != 0 {
 		t.Fatalf("opening window on an unlisted model = %d, want 0", got)
+	}
+}
+
+func TestW8ADirectServicesOwnCatalogSizesTheConversationItOpens(t *testing.T) {
+	// W8 (#1383 review): a conversation that opens on a direct service's model is
+	// sized from that service's own catalog whenever the catalog can say, as it
+	// was before the shelf was consulted at all. The shelf's copy of that
+	// service's list is the surface's model cache as it stood when the profile
+	// was read, and the catalog refreshes itself on its own clock, so the two can
+	// disagree about one model: a start window taken from the older copy compacts
+	// at the wrong figure, early or, if the figure shrank, too late.
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	profile := t.TempDir()
+	address := "https://box.invalid/v1"
+	service := modelsource.Connected{
+		Source:  modelsource.Source{ID: "custom", Written: "mybox", Listing: modelsource.ListingModels},
+		Address: address,
+	}
+	if err := tui3.WriteModelCacheFor("custom", address, []tui3.Model{{ID: "box-model", ContextLength: 272000}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Remember(config.CatalogOptionsFor(service, profile), []catalog.Model{{ID: "box-model", ContextLength: 400000}}); err != nil {
+		t.Fatal(err)
+	}
+	shelf := newV3ModelShelf(&catalog.Catalog{}, catalog.Options{Dir: profile})
+	shelf.setSources(modelsource.NewSet(
+		modelsource.Connected{Source: modelsource.DefaultSource(config.DefaultBaseURL), Address: config.DefaultBaseURL},
+		service,
+	))
+	own := catalog.Recall(config.CatalogOptionsFor(service, profile))
+	if got := v3StartWindow(shelf, own, "mybox/box-model", "box-model"); got != 400000 {
+		t.Fatalf("opening window = %d, want the service's own catalog's 400000 over the older 272000 copy", got)
+	}
+	// And the shelf still answers what that catalog cannot: before the catalog
+	// has any rows, the surface's copy is the best figure there is.
+	if got := v3StartWindow(shelf, coldCatalog{}, "mybox/box-model", "box-model"); got != 272000 {
+		t.Fatalf("opening window with a cold catalog = %d, want the shelf's 272000", got)
 	}
 }
 
