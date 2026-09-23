@@ -28,6 +28,11 @@ import (
 // or at the suite's, does not take the lock down with it.
 func startHolder(self, path string, lock *os.File, suite int) (*os.Process, error) {
 	holder := exec.Command(self, holdFlag, strconv.Itoa(suite), procStartToken(suite))
+	// AND IT CARRIES THE ONE MARK AN OLD CHECKOUT READS AS ALIVE. The holder is
+	// the pid the directory lock names (dirlock.go's [legacyReaderMark]), and an
+	// old reader accepts a live pid only when its command line says
+	// one-suite.sh. argv[0] is only a name; the binary run is still `self`.
+	holder.Args[0] = legacyReaderMark + " heavy-suite lock holder"
 	// Position 3 in the holder, the first descriptor after standard input,
 	// output and error: the holder reads it back with os.NewFile(3, ...).
 	holder.ExtraFiles = []*os.File{lock}
@@ -57,7 +62,15 @@ func holdLock(suite int, token string) int {
 	// process whose lifetime is the suite's, so it is the only honest place to
 	// free the second lock: freeing it in the wrapper would open the box to a
 	// stale reader while the suite still ran and still held the flock.
-	defer dropDirLock(dirLockPath())
+	//
+	// AND THE HOLDER NAMES ITSELF IN IT, first, because it is the process whose
+	// lifetime the lock has. It used to be named with the SUITE's pid, which an
+	// old checkout's liveness test cannot accept (dirlock.go's
+	// [legacyReaderMark]), and the release below drops the directory only while
+	// it still names this process.
+	me := os.Getpid()
+	nameDirLockHolder(dirLockPath(), me)
+	defer dropDirLock(dirLockPath(), me)
 	for {
 		if !pidVisibleHere(suite) {
 			return 0
@@ -87,6 +100,20 @@ func procStartToken(pid int) string {
 		return ""
 	}
 	return fields[19]
+}
+
+// commandLine is a pid's command line with its arguments joined by spaces,
+// empty when it cannot be read. It answers exactly as the old checkout's
+// `holder_alive` does: /proc where there is one, and ps elsewhere.
+func commandLine(pid int) string {
+	if raw, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cmdline"); err == nil {
+		return strings.ReplaceAll(string(raw), "\x00", " ")
+	}
+	out, err := exec.Command("ps", "-o", "args=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // pidVisibleHere reports whether a process with this pid exists in THIS pid

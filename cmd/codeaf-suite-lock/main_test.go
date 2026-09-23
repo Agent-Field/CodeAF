@@ -360,7 +360,7 @@ func TestTheDirectoryLockNamesItsHolderAsSoonAsItIsClaimed(t *testing.T) {
 	if !taken {
 		t.Fatalf("a fresh path reported the lock already held by %q", held)
 	}
-	defer dropDirLock(dir)
+	defer dropDirLock(dir, os.Getpid())
 
 	raw, err := os.ReadFile(filepath.Join(dir, "pid"))
 	if err != nil {

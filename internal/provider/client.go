@@ -1307,11 +1307,54 @@ func (c *Client) stampCut(ctx context.Context, cut *StreamCut, served string, be
 	cut.Ran = c.clock().Sub(began)
 	cut.Tokens = tokens
 	// AND WHETHER THERE WAS ANYWHERE ELSE TO GO, which is this layer's fact and
-	// nobody else's: a request that named no machine and was served by none has
-	// no endpoint diversity to try ([askedFor] returns empty exactly when the
-	// request expressed no preference at all). The layer that decides how many
-	// times to ask again cannot see it ([StreamCut.OneMachine]).
-	cut.OneMachine = cut.Provider == "" && strings.TrimSpace(askedFor(ctx)) == ""
+	// nobody else's. The layer that decides how many times to ask again cannot
+	// see it ([StreamCut.OneMachine], [Client.cutHadOneMachine]).
+	cut.OneMachine = c.cutHadOneMachine(ctx, cut.Provider)
+}
+
+// cutHadOneMachine says whether a cut request had NO POOL AT ALL behind it, so
+// that the next ask can only land on the same machine.
+//
+// A REQUEST THAT EXPRESSED NO PREFERENCE IS NOT THAT (#1343). This read
+// `served == "" && askedFor(ctx) == ""` until 2026-09-23, and [askedFor] is
+// empty whenever no lane choice was drawn — which is the shipped router under
+// its default `routing simple` with no pin, under `routing off`, under a talk
+// lane that names the router itself, and under `auto` while the gate holds the
+// model. Every one of those is a POOL: the router answers the next ask from
+// whichever of the model's machines it likes. So an ordinary pool user whose
+// stream died before naming its server was told they were on one machine, and
+// once no model was left to move to, that was the wait with no end.
+//
+// ONE MACHINE IS NOW POSITIVE EVIDENCE OF ONE, and there are exactly three:
+//
+//   - A PIN TO ONE LANE. A person named one machine by hand and nothing may
+//     route around it, so the next ask lands there whatever else is behind the
+//     model ([lanes.Choice.Pinned]).
+//   - A CONNECTED DIRECT SERVICE, which has one road ([Config.Direct]).
+//   - A BASE WITH NO ROUTER BEHIND IT — a person's own base url, a local
+//     server — that named no machine and was asked for none. A base is a router
+//     when it is the shipped one ([LaneSheetCertain]) or has handed back an
+//     endpoints page ([Client.baseServesLanes]); either is a pool whatever the
+//     routing row says, because the row steers the router and does not remove it.
+//
+// ANY DOUBT READS AS A POOL. The pool's answer is the short allowance a cut had
+// before #1343; the one machine's answer is a wait that may not end. The first
+// is wrong by a turn given up a little early, the second by a person waiting on
+// a pool that will never be declared down.
+func (c *Client) cutHadOneMachine(ctx context.Context, served string) bool {
+	if choice, made := laneChoiceFromContext(ctx); made && choice.Pinned && len(choice.Only) == 1 {
+		return true
+	}
+	if strings.TrimSpace(served) != "" {
+		return false
+	}
+	if c.config.Direct {
+		return true
+	}
+	if LaneSheetCertain(c.config.BaseURL) || c.baseServesLanes() {
+		return false
+	}
+	return strings.TrimSpace(askedFor(ctx)) == ""
 }
 
 // machineryCut reads a COMPLETE answer for the fourth failure plane — the
