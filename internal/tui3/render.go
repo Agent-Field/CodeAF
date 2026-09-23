@@ -733,15 +733,28 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// the rest. The chip now lays itself flush and takes its cells here, and
 	// nothing else in the deck bakes the indent in, so there is nothing left to
 	// guard against.
+	//
+	// AND EVERY SPAN A CLICK IS RESOLVED BY MOVES WITH THE WORDS, as gutter.go's
+	// [gutterPass] moves them. The link pass has already measured a task link's
+	// columns on the row as it was built, so a pass that moved the text and not
+	// the span left `task 8` in the work's own prose two cells to the right of
+	// the cells that open it — a press on its number landed in the sentence
+	// beside it. That was true of every moved row with a link in it before this
+	// pass moved every row; it is not true of any row now.
 	if workIndent(width) != "" {
+		cols := workIndentCols(width)
 		for i := range out {
 			if rowIsWork(out[i], es, folds) {
 				out[i].text = "  " + out[i].text
-				out[i].pictureOpen = out[i].pictureOpen.shift(workIndentCols(width))
+				out[i].pictureOpen = out[i].pictureOpen.shift(cols)
 				if out[i].keep.pressable() {
-					out[i].keep.from += workIndentCols(width)
-					out[i].keep.to += workIndentCols(width)
+					out[i].keep.from += cols
+					out[i].keep.to += cols
 				}
+				for j := range out[i].links {
+					out[i].links[j].span = out[i].links[j].span.shift(cols)
+				}
+				out[i].foot.span = out[i].foot.span.shift(cols)
 			}
 		}
 	}

@@ -288,3 +288,51 @@ func TestOnlyTheModelsProseGrowsTaskLinks(t *testing.T) {
 		t.Fatalf("a block that is not the model's answer grew a link: %+v", r.links)
 	}
 }
+
+// A LINK IN THE WORK OPENS UNDER ITS OWN WORDS. Prose the model wrote on its way
+// to a tool is work, and THE INDENT LAW's pass (render.go's [app.deckRows]) moves
+// every work row two cells right after the link pass has measured its columns —
+// so a pass that moved the words and not the spans left every link two cells to
+// the left of what it says, and a press on the task's number fell into the
+// prose beside it. Whether the line opens on blanks of its own must not matter:
+// the pass moves both kinds now. Each line is pressed where a person presses it,
+// on the last character of the words they can see.
+func TestATaskLinkInTheWorkOpensUnderItsOwnWords(t *testing.T) {
+	for _, said := range []string{
+		"Holding the loader until task 8 has finished writing.",
+		"  task 8 is still writing while I read the loader.",
+	} {
+		t.Run(strings.TrimSpace(said)[:6], func(t *testing.T) {
+			a, _, _ := roomApp(t)
+			a.width, a.height = 200, 24
+			drive(t, a, streamEventMsg{gen: a.gen, ev: update(8, "Write the auth tests",
+				session.TaskRunning, session.TaskNotice{})})
+			// A CUT turn promotes nothing (hierarchy.go), so its prose is work
+			// however it ends; the fold is opened so the row is on the frame.
+			a.entries = append(a.entries,
+				entry{kind: entryUser, text: "read the loader", turn: 1},
+				entry{kind: entryAssistant, text: said, turn: 1, settled: true, cut: true},
+			)
+			a.openWorkfold(1)
+			a.touch()
+			r, y, ok := linkedRow(a)
+			if !ok {
+				t.Fatalf("the work's prose grew no link:\n%s", strings.Join(plainRows(a), "\n"))
+			}
+			flat := plain(r.text)
+			at := strings.Index(flat, "task 8")
+			if at < 0 {
+				t.Fatalf("the linked row does not say task 8: %q", flat)
+			}
+			if got := cellsOf(r.text, r.links[0].span.from, r.links[0].span.to); got != "task 8" {
+				t.Fatalf("the link covers %q, not the words it names: %q", got, flat)
+			}
+			x := ansi.StringWidth(flat[:at]) + len("task 8") - 1
+			drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
+			if !a.roomOpen() || a.room.id != 8 {
+				t.Fatalf("a press on the 8 of %q did not open node 8: open=%v", flat, a.roomOpen())
+			}
+		})
+	}
+}
