@@ -1,7 +1,7 @@
 ---
-name: A skill the plugin manifest adds from its own extra folder
-description: 
+name: extra-notes
+description: A skill the plugin manifest adds from its own extra folder
 ---
-# A skill the plugin manifest adds from its own extra folder
+# extra-notes
 
-A skill the plugin manifest adds from its own extra folder body.
+A skill the plugin manifest adds from its own extra folder.

@@ -1,7 +1,7 @@
 ---
-name: A skill only an older cached version of the plugin had
-description: 
+name: stale-version
+description: A skill only an older cached version of the plugin had
 ---
-# A skill only an older cached version of the plugin had
+# stale-version
 
-A skill only an older cached version of the plugin had body.
+A skill only an older cached version of the plugin had.

@@ -1,7 +1,7 @@
 ---
-name: A skill from a marketplace plugin nobody installed
-description: 
+name: never-installed
+description: A skill from a marketplace plugin nobody installed
 ---
-# A skill from a marketplace plugin nobody installed
+# never-installed
 
-A skill from a marketplace plugin nobody installed body.
+A skill from a marketplace plugin nobody installed.

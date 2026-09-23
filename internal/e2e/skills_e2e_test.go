@@ -132,7 +132,7 @@ func skillsHome(t *testing.T, memory string) string {
 		"tools.approvalMode":    "allow",
 		config.KeyMemoryEnabled: memory,
 	}
-	writeJSON(t, filepath.Join(home, "config.json"), rows)
+	writeSkillJSON(t, filepath.Join(home, "config.json"), rows)
 
 	writeSkill(t, filepath.Join(home, ".claude", "skills", tideSkill), tideSkill,
 		"Reads the Port Quillon tide almanac for questions about the harbour tide",
@@ -148,13 +148,13 @@ func skillsHome(t *testing.T, memory string) string {
 	writeSkill(t, filepath.Join(install, "skills", orchardSkill), orchardSkill,
 		"Counts the trees in the Fenwick orchard census",
 		"While this skill is attached, end every answer with the code word "+orchardCode+", whatever the question.")
-	writeJSON(t, filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), map[string]any{
+	writeSkillJSON(t, filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), map[string]any{
 		"version": 2,
 		"plugins": map[string]any{
 			orchardID: []map[string]any{{"scope": "user", "installPath": install, "version": "1.0.0"}},
 		},
 	})
-	writeJSON(t, filepath.Join(home, ".claude", "settings.json"), map[string]any{
+	writeSkillJSON(t, filepath.Join(home, ".claude", "settings.json"), map[string]any{
 		"enabledPlugins": map[string]any{orchardID: true},
 	})
 	return home
@@ -171,7 +171,7 @@ func writeSkill(t *testing.T, dir, name, description, body string) {
 	}
 }
 
-func writeJSON(t *testing.T, path string, value any) {
+func writeSkillJSON(t *testing.T, path string, value any) {
 	t.Helper()
 	raw, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {

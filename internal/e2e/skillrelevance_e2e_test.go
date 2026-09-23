@@ -52,7 +52,7 @@ func TestSkillRelevanceEval(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
-	writeJSON(t, filepath.Join(home, "config.json"), map[string]any{
+	writeSkillJSON(t, filepath.Join(home, "config.json"), map[string]any{
 		"model.talk":            "deepseek/deepseek-v4-flash",
 		"tools.approvalMode":    "allow",
 		config.KeyMemoryEnabled: memory,

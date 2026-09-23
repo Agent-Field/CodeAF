@@ -1,7 +1,7 @@
 ---
-name: Codex's bundled PDF skill
-description: 
+name: pdf
+description: Codex's bundled PDF skill
 ---
-# Codex's bundled PDF skill
+# pdf
 
-Codex's bundled PDF skill body.
+Codex's bundled PDF skill.

@@ -1,7 +1,7 @@
 ---
-name: Codex's bundled image skill
-description: 
+name: image-lite
+description: Codex's bundled image skill
 ---
-# Codex's bundled image skill
+# image-lite
 
-Codex's bundled image skill body.
+Codex's bundled image skill.

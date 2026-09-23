@@ -1,7 +1,7 @@
 ---
-name: The PDF skill a plugin ships
-description: 
+name: pdf
+description: The PDF skill a plugin ships
 ---
-# The PDF skill a plugin ships
+# pdf
 
-The PDF skill a plugin ships body.
+The PDF skill a plugin ships.

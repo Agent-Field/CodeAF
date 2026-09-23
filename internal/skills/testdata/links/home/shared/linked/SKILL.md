@@ -1,7 +1,7 @@
 ---
-name: A skill one installer keeps once and links into a harness folder
-description: 
+name: linked
+description: A skill one installer keeps once and links into a harness folder
 ---
-# A skill one installer keeps once and links into a harness folder
+# linked
 
-A skill one installer keeps once and links into a harness folder body.
+A skill one installer keeps once and links into a harness folder.
