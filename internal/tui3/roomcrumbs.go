@@ -440,9 +440,16 @@ func (a *app) paintCrumbs(label string, at int, paint func(string) string) strin
 		return paint(label)
 	}
 	hot, hovering := a.hotCrumb()
+	return a.paintCrumbHits(label, at, a.crumbs, hot, hovering)
+}
+
+// paintCrumbHits is [app.paintCrumbs] over a trail the caller laid out, so a
+// page that draws the room's trail shape without being a room — a store task's
+// page ([app.taskPlanTrail]) — paints its crumbs in the same inks.
+func (a *app) paintCrumbHits(label string, at int, hits []crumbHit, hot crumbHit, hovering bool) string {
 	width, cursor := ansi.StringWidth(label), 0
 	var out strings.Builder
-	for _, hit := range a.crumbs {
+	for _, hit := range hits {
 		from, to := hit.span.from-at, hit.span.to-at
 		if from < cursor || to > width {
 			continue

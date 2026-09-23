@@ -47,93 +47,6 @@ func c266RowWith(t *testing.T, rows []string, word string) (int, string) {
 	return 0, ""
 }
 
-// THE RAIL DRAWS ONE LINE PER PLAN TASK. The tasks page's row is a card at this
-// tier and its stats wrapped under the title, and a second copy of the same
-// figures followed the live command — so a run of four tasks spent eleven of
-// the rail's rows. The rail's own row is the connector, the state mark, the
-// title, and the state's tail at the end of the line; the steps and the money
-// are the page's own rows, which have the room for them.
-func TestTheRailGivesEveryPlanTaskOneLine(t *testing.T) {
-	_, rows := c266Rail(t, c266PlanRows(), 120, true)
-	paint := plain(strings.Join(rows, "\n"))
-	for _, word := range []string{"rewrite the auth flow", "write the handler", "the gate", "write the tests"} {
-		if !strings.Contains(paint, word) {
-			t.Fatalf("a plan task is missing from the rail:\n%s", paint)
-		}
-	}
-	if strings.Contains(paint, "steps") || strings.Contains(paint, "$0.") {
-		t.Fatalf("the rail drew a plan row's figures, which are the page's own rows:\n%s", paint)
-	}
-	// A HELD ROW SAYS WHAT IT WAITS ON, at the end of its own line — never cut
-	// short of the name of the work it is held behind.
-	at, held := c266RowWith(t, rows, "write the tests")
-	if !strings.HasSuffix(held, "waits: the gate") {
-		t.Fatalf("the held row does not end in what it waits on:\n%s", held)
-	}
-	// UNDER A ROW WITH A STEP IN FLIGHT, ONE LIVE LINE AND NEVER A STATS ONE.
-	i, live := c266RowWith(t, rows, "write the handler")
-	if strings.Contains(live, "$") {
-		t.Fatalf("the live command rode the task's own row:\n%s", live)
-	}
-	if i+1 >= len(rows) {
-		t.Fatalf("the running row has no line under it:\n%s", paint)
-	}
-	under := plain(rows[i+1])
-	if !strings.Contains(under, "$ git grep") {
-		t.Fatalf("the one line under a running row is not its live command:\n%s", under)
-	}
-	if strings.Contains(under, "steps") {
-		t.Fatalf("a stats line followed the live command:\n%s", under)
-	}
-	if i+2 >= len(rows) || !strings.Contains(plain(rows[i+2]), "the gate") {
-		t.Fatalf("a second under-line followed the live command:\n%s", paint)
-	}
-	_ = at
-}
-
-// A FAMILY'S FINISHED ROWS ARE ONE LINE: the settled mark from the vocabulary
-// and the count — never the finished rows themselves, which is the fold that
-// keeps a ten-task run's live rows on screen.
-func TestTheRailFoldsAFinishedFamilyToOneLine(t *testing.T) {
-	a, rows := c266Rail(t, c266PlanRows(), 120, true)
-	paint := plain(strings.Join(rows, "\n"))
-	if strings.Contains(paint, "old fixture") || strings.Contains(paint, "old helper") {
-		t.Fatalf("the rail drew a finished family's own rows:\n%s", paint)
-	}
-	_, folded := c266RowWith(t, rows, "2 done")
-	mark := plain(a.pal.glyph(tokens.GSettled))
-	if !strings.Contains(folded, mark+" 2 done") {
-		t.Fatalf("the folded line is not the vocabulary's own mark beside its count:\n%s", folded)
-	}
-}
-
-// THE RUN'S ROW ENDS IN THE DOT ROW, at the rail's own width tier: five cells
-// and `N/M` on the widened column, `N/M` alone under 40 columns — and a run of
-// one task shows no dots at all, because one task is not a series.
-func TestTheRunsRowOnTheRailWearsTheDotRow(t *testing.T) {
-	a, rows := c266Rail(t, c266PlanRows(), 120, true)
-	_, run := c266RowWith(t, rows, "rewrite the auth flow")
-	if !strings.HasSuffix(run, "2/4") {
-		t.Fatalf("the run's row does not end in its count:\n%s", run)
-	}
-	if !strings.Contains(run, plain(a.pal.glyph(tokens.GEmptyCell))) {
-		t.Fatalf("the run's row wears no dot row:\n%s", run)
-	}
-	// ON THE NARROW RAIL THE DOT ROW TAKES THE LINE UNDER THE TITLE. The cells are
-	// the thing seen without reading, so where they cannot share the title's
-	// line they stand under it, and the title keeps its line whole (the owner,
-	// 2026-09-18: "i also thought we had like multiple circles for progress").
-	narrow, short := c266Rail(t, c266PlanRows(), 150, false)
-	at, slim := c266RowWith(t, short, "rewrite the auth flow")
-	if strings.Contains(slim, "2/4") {
-		t.Fatalf("the narrow rail's run row still carries the count the dot line carries:\n%s", slim)
-	}
-	under := plain(short[at+1])
-	if !strings.HasSuffix(under, "2/4") || !strings.Contains(under, plain(narrow.pal.glyph(tokens.GEmptyCell))) {
-		t.Fatalf("the line under the narrow rail's run row is not its dot row:\n%s\n%s", slim, under)
-	}
-}
-
 // A RUN OF ONE TASK SHOWS NO DOTS: the store's row carries no series, and a
 // dot row on it would say there was one.
 func TestARunOfOneTaskOnTheRailWearsNoDots(t *testing.T) {
@@ -175,7 +88,7 @@ func TestTheRailIndentsATaskUnderItsParentTask(t *testing.T) {
 	rows = append(rows, session.PlanTaskRow{ID: "kid", Parent: "held", Title: "write the fixtures", Status: "pending"})
 	_, rail := c266Rail(t, rows, 150, false)
 	_, parent := c266RowWith(t, rail, "write the tests")
-	_, child := c266RowWith(t, rail, "write the fixtures")
+	_, child := c266RowWith(t, rail, "write the fi")
 	if strings.Index(child, "write") <= strings.Index(parent, "write") {
 		t.Fatalf("the task under a task is not indented under it:\n%s\n%s", parent, child)
 	}
@@ -197,7 +110,7 @@ func TestTheFamilysLineRunsThroughTheLinesUnderARow(t *testing.T) {
 	if live := plain(rail[at+1]); !strings.HasPrefix(live[column:], "│") {
 		t.Fatalf("the live line breaks the family's stroke:\n%s\n%s", handler, live)
 	}
-	_, kid := c266RowWith(t, rail, "write the fixtures")
+	_, kid := c266RowWith(t, rail, "write the fi")
 	if !strings.HasPrefix(kid[column:], "│") {
 		t.Fatalf("the task under a task breaks its parent's family stroke:\n%s", kid)
 	}

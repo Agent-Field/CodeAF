@@ -553,209 +553,6 @@ func planSpendField(item tasksItem) rowField {
 	return rowSay()
 }
 
-// planRailGap is the least room a plan row keeps between its title and the
-// tail at the end of its line, and planRailMinTitle the least the title itself
-// keeps once the tail has taken the rest ([planRailRow] says which yields
-// first, and why).
-const (
-	planRailGap      = 2
-	planRailMinTitle = 2
-	// planRailMinTail is the least a held row's tail is worth drawing: `waits: `
-	// and enough of a name to tell one task from another.
-	planRailMinTail = 14
-	// planRailKeepTitle is the least a title keeps beside a whole tail before
-	// the title is laid first instead: enough cells to tell two tasks apart.
-	planRailKeepTitle = 10
-	// planRailLevels is how deep the rail's tree is drawn before deeper work
-	// shares an indent: a task, the task under it, and no further.
-	planRailLevels = 2
-	// planRailLead is the one cell between the rail's seam and a plan row, the
-	// same edge the rail's own rows keep. The page's lead is four cells, a
-	// seventh of a rail this narrow.
-	planRailLead = " "
-)
-
-// planRailRow is one plan task on the rail: the connector, the state mark from
-// the vocabulary, the fitted title, and the state's own tail at the end of the
-// line. It is the rail's row and not the page's — the page has the width for
-// the steps and the money under the title, and the rail, which is read beside
-// a conversation somebody is typing into, has one line ([tasksReading.planRows]).
-//
-// THE TITLE YIELDS BEFORE THE TAIL DOES. The tail is the one fact the row
-// exists to carry at its end — what a held row waits on, where a run stands —
-// and the narrow rail used to spend the tail's cells on the title first, so a
-// row held behind `write the handler` read `queued · w…` and answered nothing.
-// So the title is fitted into what is left beside the whole tail, and only
-// when even a two-cell title cannot stand beside it does the tail give up its
-// own end — never the name of the work it names.
-//
-// THE TASKS PLACE'S OWN PAGE ROWS ARE NOT THIS ROW. The page keeps its card
-// and its figures; this is the projection the rail draws out of the same
-// reading, and the two meet only in the layout that owns their tree
-// ([tasksReading.lay]).
-func planRailRow(line tasksLine, width int, pal palette, now time.Time) string {
-	item := line.item
-	glyph, ink := tasksGlyph(item, pal)
-	lead := planRailLead + pal.dim(line.kin) + ink(glyph) + " "
-	room := width - ansi.StringWidth(planRailLead+line.kin) - ansi.StringWidth(glyph) - 1
-	if room < 1 {
-		room = 1
-	}
-	tail := planRailTail(item, width, pal, now)
-	if tail == "" {
-		return lead + placeSubject(fit(planRailLabel(item), room), false, pal)
-	}
-	label := planRailLabel(item)
-	tailWidth := ansi.StringWidth(tail)
-	titleRoom := room - tailWidth - planRailGap
-	// THE RUN'S ROW KEEPS ITS PROGRESS AND EVERY OTHER ROW KEEPS ITS NAME. The
-	// dot row is short and is the one thing the run's row is read for, so its
-	// title is fitted beside it. A held row's tail is a sentence (`waits: <the
-	// task>`), and on a rail of under thirty cells it took the line and left the
-	// title one letter, `w…  waits: write the…`, a row naming neither task. So
-	// there the title is laid first, the tail is fitted into what is left, and a
-	// remainder too short to name anything ([planRailMinTail]) draws no tail at
-	// all: the row's mark already says it is held, and its page says behind what.
-	if item.plan == nil || item.plan.Total == 0 {
-		// A title that still reads beside the whole tail ([planRailKeepTitle])
-		// yields to it, because the name of what a row waits on is worth more
-		// than the last word of its own.
-		if want := ansi.StringWidth(label); titleRoom < want && titleRoom < planRailKeepTitle {
-			left := room - want - planRailGap
-			if left < planRailMinTail {
-				return lead + placeSubject(fit(label, room), false, pal)
-			}
-			tail = fit(tail, left)
-			tailWidth = ansi.StringWidth(tail)
-			titleRoom = room - tailWidth - planRailGap
-		}
-	}
-	if tailWidth < 1 || titleRoom < planRailMinTitle {
-		return lead + placeSubject(fit(label, room), false, pal)
-	}
-	title, titleWidth := fitWidth(label, titleRoom)
-	return lead + placeSubject(title, false, pal) +
-		strings.Repeat(" ", room-titleWidth-tailWidth) + pal.dim(tail)
-}
-
-// planRailDotsUnder is the rail width under which the run's dot row stands on a
-// line of its own: the width tier at which [planProgress] stops drawing cells.
-const planRailDotsUnder = 40
-
-// planRailDots is the run's dot row on a line of its own, under the run's title,
-// on a rail too narrow to carry it at the title's end.
-//
-// THE PICTURE IS THE POINT OF THE ROW. At the rail's ordinary width the tiers
-// leave the run's row a bare `8/14`, which is a figure somebody has to read; the
-// cells are the thing seen without reading, so where they cannot share the
-// title's line they take the next one, all ten of them, and the title keeps its
-// own line whole.
-func planRailDots(line tasksLine, width int, pal palette) string {
-	plan := line.item.plan
-	if plan == nil || plan.Total <= 1 || width >= planRailDotsUnder || planRailFolded(line.item) {
-		return ""
-	}
-	if plan.Done == plan.Total && plan.Failed == 0 {
-		return ""
-	}
-	pad := line.underKin
-	if pad == "" {
-		pad = strings.Repeat(" ", ansi.StringWidth(line.kin))
-	}
-	lead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
-	room := width - ansi.StringWidth(planRailLead+pad) - taskSheetPhoneIndent
-	// The sixty-column tier is ten cells and `N/M`; the forty-column one is five.
-	for _, tier := range []int{60, 40} {
-		if dots := planProgress(*plan, tier, pal); ansi.StringWidth(dots) <= room {
-			return lead + pal.dim(dots)
-		}
-	}
-	return ""
-}
-
-// planRailLive is the one line a plan row with a step in flight spends under
-// its own: the running glyph, the shell lead and the command — and nothing
-// else. The steps and the money that stand under it on the tasks page
-// ([planUnderRows]) are that page's own rows; on the rail they were drawn a
-// second time beside the live command, a frame saying one fact twice.
-func planRailLive(line tasksLine, width int, pal palette) string {
-	if line.item.plan == nil || line.item.plan.Live.Step <= 0 {
-		return ""
-	}
-	// THE UNDER-LINE WEARS THE PAD KIN AND NOT THE CONNECTOR, which is the same
-	// choice the page's own under-block made ([tasksReading.lay]): a connector
-	// says another row of the tree, and this line belongs to the one above it.
-	pad := line.underKin
-	if pad == "" {
-		pad = strings.Repeat(" ", ansi.StringWidth(line.kin))
-	}
-	lead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
-	room := width - ansi.StringWidth(planRailLead+line.kin) - taskSheetPhoneIndent
-	if room < 1 {
-		return ""
-	}
-	if live := planLiveRow(line.item.plan.Live.Command, line.item.plan.LiveParts, room, pal); live != "" {
-		return lead + live
-	}
-	return ""
-}
-
-// planRailLabel is the words a plan row's one line carries. A family's
-// finished rows fold to their count — [tasksReading.lay] builds the folded row
-// out of them, titled `done` with `N done` as its activity — and the rail draws
-// the count AS the line, `✓ 2 done`, rather than a row titled `done` wearing
-// its count as a state.
-func planRailLabel(item tasksItem) string {
-	if planRailFolded(item) {
-		return strings.TrimSpace(item.entry.Activity)
-	}
-	return tasksLabel(item.entry)
-}
-
-// planRailFolded reports whether this row is the one line a family's finished
-// rows folded to — the row [tasksReading.lay] built out of them, titled `done`
-// with their count as its activity.
-func planRailFolded(item tasksItem) bool {
-	return item.plan != nil &&
-		strings.TrimSpace(item.entry.Title) == "done" &&
-		strings.TrimSpace(item.entry.Activity) != ""
-}
-
-// planRailTail is the one fact a plan row's line ends in, and nothing more.
-//
-// A HELD ROW SAYS WHAT IT WAITS ON — the reason the reading already carries
-// ([planItem] parks it there off [planWaits]) — and a running row carries
-// nothing, because its mark and the live line under it are the whole of what
-// it has to say. The run's row ends in [planProgress] at the rail's own
-// width, which is where the dot row's tiers live; a row that has landed ends
-// in how long ago it did, which is the last fact anybody watching a rail
-// still wants.
-func planRailTail(item tasksItem, width int, pal palette, now time.Time) string {
-	if item.plan == nil || planRailFolded(item) {
-		return ""
-	}
-	switch strings.TrimSpace(item.plan.Status) {
-	case "done", "failed", "cancelled":
-		if !item.entry.EndedAt.IsZero() {
-			return sinceAt(item.entry.EndedAt, now)
-		}
-		return ""
-	}
-	var parts []string
-	if item.plan.Total > 0 && width >= planRailDotsUnder {
-		if progress := planProgress(*item.plan, width, pal); progress != "" {
-			parts = append(parts, progress)
-		}
-	}
-	if reason := item.status().Reason; reason != "" {
-		parts = append(parts, reason)
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return strings.Join(parts, "  ")
-}
-
 // planTitleFor returns the title the store and a plan-born node share.
 func planTitleFor(title string) string { return strings.ToLower(strings.TrimSpace(title)) }
 
@@ -1382,8 +1179,9 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// taskPlanHead is what the page spends above its body: the task's title, the
-// air under it and the rule — three rows, the card's own head.
+// taskPlanHead is what the page spends above its body: the trail, the facts
+// rule and the air under it — three rows, the task room's own head
+// ([app.taskPlanTrail], [app.taskPlanFacts]).
 const taskPlanHead = 3
 
 // taskPlanFoot is what the page spends under its body: the closing rule, the
@@ -1489,9 +1287,13 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 	lines := make([]string, 0, height)
 	add := func(text string) { lines = append(lines, text) }
 
-	add(fit(pal.bold(pal.ink(a.taskSheet.plan.Row.Title)), width))
+	// THE HEAD IS THE TASK ROOM'S HEAD: the trail with the way back at its end,
+	// and under it the facts rule that leads with the state's own mark. A run's
+	// task and a task of the old road are one kind of thing, and a person who
+	// opened one of each used to meet two different pages.
+	add(a.taskPlanTrail(width))
+	add(a.taskPlanFacts(width))
 	add("")
-	add(pal.dim(rule(width)))
 	// THE FOOT IS THE LAST FOUR ROWS, and a frame too short for the body under
 	// it gives the body up rather than the way out — the page's own trim, and the
 	// one [app.taskPlanWindow] resolves so the draw and the scroll agree ([app.taskPlanScroll]).
@@ -1590,12 +1392,10 @@ func (a *app) taskPlanBody(width int) []string {
 		add(pal.dim(word))
 	}
 
-	if n := len(a.taskSheet.planBack); n > 0 {
-		add(pal.dim("esc/← " + a.taskSheet.planBack[n-1].Row.Title))
-	}
-	if row := planPageTelemetryLine(page); row != "" {
-		add(pal.dim(row))
-	}
+	// THE WAY BACK AND THE FIGURES ARE THE HEAD'S NOW. The task a step into a
+	// part came from is on the trail ([app.taskPlanTrail]), and the state, the
+	// clock, the steps and the money are on the facts rule ([app.taskPlanFacts]),
+	// where the task room has always said them.
 	if waits := page.WaitRows; len(waits) > 0 {
 		section("waits")
 		own := map[string]bool{}
@@ -1669,6 +1469,13 @@ func (a *app) taskPlanBody(width int) []string {
 	}
 	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
+		// THE STEPS ARE DRAWN AS THE TASK ROOM DRAWS A TASK'S WORK: one row per
+		// command, led by the still mark of its family — the shell's, through the
+		// vocabulary's one door ([app.actionLead]) — with what came back dim under
+		// it in the same gutter. The mark never moves and never says how a step
+		// went; the facts rule above says whether the task is running.
+		lead := a.actionLead(session.ActionRun, true)
+		under := a.actionLead(session.ActionRun, false)
 		for _, step := range page.Steps {
 			// A CALL THE ENGINE SAYS DID NOT RUN IS ONE OF TWO THINGS, and the
 			// engine says which. A correction about the FORM of the worker's reply
@@ -1677,90 +1484,69 @@ func (a *app) taskPlanBody(width int) []string {
 			// WORKER ATTEMPTED AND A DOOR REFUSED is something a person steering
 			// the run wants to see, so it draws as one dim line in the step's
 			// place: the word the permissions page already uses for a refused call
-			// and what was tried. It carries NO NUMBER, because a number on this
-			// page is a step that ran, and the rows around it keep the numbers the
-			// record gave them. Both facts are fields set where the event is known;
-			// this surface never reads the answer's sentence, which was written for
-			// the worker, and a record without the fields draws as before.
+			// and what was tried, with no shell mark, because nothing ran. Both
+			// facts are fields set where the event is known; this surface never
+			// reads the answer's sentence, which was written for the worker, and a
+			// record without the fields draws as before.
 			if step.NotRun {
 				if tried := planDisplayCommand(step.Command, step.Parts); step.Refused && tried != "" {
-					add(pal.dim("   " + taskPlanRefusedWord + railSep + tried))
+					add(pal.dim(under + taskPlanRefusedWord + railSep + tried))
 				}
 				continue
 			}
-			// A STEP WITH NOTHING OF THE WORK IN IT HAS NO ROW, AND EVERY OTHER ROW
-			// KEEPS THE NUMBER THE RECORD GAVE IT. The head counts the steps that
-			// ran, the live step is called by its number elsewhere, and a row
-			// renumbered to close the gap would make both of them wrong about it.
+			// A STEP WITH NOTHING OF THE WORK IN IT HAS NO ROW.
 			command := planDisplayCommand(step.Command, step.Parts)
 			if command == "" {
 				continue
 			}
-			add(pal.ink(itoa(step.Step) + "  " + command))
+			add(pal.muted(lead) + pal.ink(command))
 			// THE HEAD IS THE ROW'S OWN OR IT IS NOT DRAWN. The engine says when
 			// the row left out a part that could have written it
 			// ([session.PlanStep.ObservationHeadWithheld]); this surface reads
 			// that fact and never the words that came back.
 			if !step.ObservationHeadWithheld {
 				if head := planObservationHead(step.Observation); head != "" {
-					add(pal.dim("   " + head))
+					add(pal.dim(under + head))
 				}
 			}
 		}
 		// THE LIVE STEP IS DRAWN ONE STEP EARLY: the command whose end line has
-		// not reached the trajectory yet, led by the running glyph through
-		// [palette.glyph] in place of the number the record will give it, with the
-		// call's own clock — the same ten-second clock the rail counts ([taskToolFloor]) —
-		// dim under it. It stands below the recorded steps because it is the
-		// newest of them; the moment its command ends the store clears the live row
+		// not reached the trajectory yet, as the newest row, with the call's own
+		// clock — the same ten-second clock the rail counts ([taskToolFloor]) —
+		// dim under it. The moment its command ends the store clears the live row
 		// and the next re-read draws it as an ordinary step (internal/plandb's
 		// live.go states the law, and a live step's zero value draws nothing).
 		if live := page.Live; !live.Empty() {
 			if command := planDisplayCommand(live.Command, page.Row.LiveParts); command != "" {
-				add(pal.ink(pal.glyph(tokens.GStepRunning) + "  $ " + command))
-			}
-			if !live.Since.IsZero() {
-				if age := a.now().Sub(live.Since); age >= taskToolFloor {
-					add(pal.dim("   running " + countUpWord(age)))
+				add(pal.muted(lead) + pal.ink(command))
+				if !live.Since.IsZero() {
+					if age := a.now().Sub(live.Since); age >= taskToolFloor {
+						add(pal.dim(under + "running " + countUpWord(age)))
+					}
 				}
 			}
 		}
 	}
-	// A TASK WITH CHILDREN SHOWS THEM UNDER ITS STEPS, the way the rail draws a
-	// family: each child on its own line, indented under the parent with the tasks
-	// place's own connector ([tasksKin]), and carrying its live step under it when
-	// one is in flight. It is the same plan tree the list draws ([planAnchor]), and
-	// no new word: a child's line is its state word and its title. The note
-	// composer and its receipt below are untouched by the tree.
+	// A TASK WITH CHILDREN SHOWS THEM UNDER ITS STEPS, AND EACH ONE IS DRAWN AS
+	// THE RAIL DRAWS A TASK: through the node renderer, with the running spinner,
+	// its `#id`, the old tree's connectors and — while it runs — its call and
+	// its clock and money line under it ([app.planRailLines]). One kind of row for
+	// one kind of thing, on the column and on the page alike. The note composer
+	// and its receipt below are untouched by the tree.
 	if kids := page.Children; len(kids) > 0 {
 		section("under it")
-		kin := planKinOf(kids)
-		reverse := map[string]int{}
-		for _, kid := range kids {
-			if planRunning(kid.Status) {
-				for _, id := range kid.Waits {
-					reverse[id]++
-				}
-			}
-		}
-		for at, kid := range kids {
-			mark := tasksKinCont
-			if at == len(kids)-1 || kids[at+1].Depth <= kid.Depth {
-				mark = tasksKinLast
-			}
-			lead := tasksKin(kid.Depth, tasksKinRoom(width), mark)
-			word := planChildWordWithKin(kid, kin)
-			if n := reverse[kid.ID]; n > 0 {
-				word += railSep + itoa(n) + " queued behind it"
-			}
-			add(pal.ink(lead + word))
-			if line := planLiveRow(kid.Live.Command, kid.LiveParts, width-ansi.StringWidth(lead)-2, pal); line != "" {
-				add(lead + "  " + line)
-			}
+		for _, line := range a.planRailLines(planTwigsOf(kids), nil, false, min(width, planPageKinWidth)) {
+			add(line.text)
 		}
 	}
 	return out
 }
+
+// planPageKinWidth is the most a task's page spends on one row of its parts. A
+// part's row is the rail's row, whose handle stands at the row's far end; on a
+// page the width of the terminal that handle would sit a screen away from the
+// title it belongs to, so the rows are drawn at a width a column could have.
+const planPageKinWidth = 64
 
 func planBriefLines(text string, width int) []string {
 	var lines []string
@@ -1782,20 +1568,6 @@ func planBriefLines(text string, width int) []string {
 // as it was always wrapped.
 func planBriefRows(desc string, width int) []string {
 	return planBriefLines(requestDisplayFor(strings.TrimSpace(desc)), width)
-}
-
-// planChildWord is one child's own line on the task's page: its state word and
-// its title, joined the way the page's own telemetry line joins two facts. The
-// word is the same [planStateWord] every row on this surface wears.
-func planChildWord(row session.PlanTaskRow) string {
-	word, title := planStateWord(row), strings.TrimSpace(row.Title)
-	switch {
-	case word != "" && title != "":
-		return word + railSep + title
-	case word != "":
-		return word
-	}
-	return title
 }
 
 // taskPlanFollow re-reads the page while it stands on a task that is still
@@ -1883,23 +1655,6 @@ func (a *app) taskPlanRunning() bool {
 	return planStateWord(a.taskSheet.plan.Row) == "running"
 }
 
-// planTelemetryLine is a plan task's own figures as one dim line: whether the
-// work is running, how many steps its worker has taken, and what it has cost —
-// each clause omitted when it has nothing behind it.
-func planTelemetryLine(row session.PlanTaskRow) string {
-	var segs []string
-	if word := planStateWord(row); word != "" {
-		segs = append(segs, word)
-	}
-	if steps := planStepWords(row.Steps); steps != "" {
-		segs = append(segs, steps)
-	}
-	if usd := planSpendWord(row.USD); usd != "" {
-		segs = append(segs, usd)
-	}
-	return strings.Join(segs, railSep)
-}
-
 // planObservationHead is the head of one step's observation: the first line that
 // says anything, which is as much of what came back as a step line can carry.
 // The whole of it is on disk behind the row's trajectory ([PlanTaskRow.TrajectoryPath]).
@@ -1912,20 +1667,6 @@ func planObservationHead(observation string) string {
 	return ""
 }
 
-func planChildWordWithKin(row session.PlanTaskRow, kin planKin) string {
-	item := planItem(row, "", kin)
-	word, title := item.status().RowWord(), strings.TrimSpace(row.Title)
-	if word != "" && title != "" {
-		return word + railSep + title
-	}
-	if word != "" {
-		return word
-	}
-	return title
-}
-
-// planPageTelemetryLine adds the two subtree figures to the task's own header
-// reading. Running and queued are separate facts and each disappears at zero.
 // planWaitFigure is the related row's state cell and useful figure on a waits
 // sentence. Active work carries its recorded step count; a row without one
 // carries its state word, so the relationship never drops the row's state.
@@ -1935,57 +1676,6 @@ func planWaitFigure(pal palette, row session.PlanTaskRow) string {
 		figure = planStateWord(row)
 	}
 	return strings.TrimSpace(tierGlyph(pal, planStatus(row)) + " " + figure)
-}
-
-func planPageTelemetryLine(page session.PlanTaskPage) string {
-	segs := []string{}
-	if own := planTelemetryLine(page.Row); own != "" {
-		segs = append(segs, own)
-	}
-	running, queued := 0, 0
-	for _, row := range page.Children {
-		switch strings.TrimSpace(row.Status) {
-		case "ready", "claimed", "running":
-			running++
-		case "pending":
-			queued++
-		}
-	}
-	if running > 0 {
-		segs = append(segs, itoa(running)+" running")
-	}
-	if queued > 0 {
-		segs = append(segs, itoa(queued)+" queued")
-	}
-	return strings.Join(segs, railSep)
-}
-
-// planRailNow draws the stored now sentence beneath the root's dot row. It is
-// pure frame work: wrapping plain data already carried by the reading.
-func planRailNow(line tasksLine, width int, pal palette, sentence string) []string {
-	sentence = strings.TrimSpace(sentence)
-	if sentence == "" || width >= planRailDotsUnder {
-		return nil
-	}
-	pad := line.underKin
-	if pad == "" {
-		pad = strings.Repeat(" ", ansi.StringWidth(line.kin))
-	}
-	lead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
-	room := width - ansi.StringWidth(planRailLead+pad) - taskSheetPhoneIndent
-	if room < 4 {
-		return nil
-	}
-	lines := wrap(sentence, room)
-	if len(lines) > 2 {
-		lines[1] = fit(strings.Join(lines[1:], " "), room)
-		lines = lines[:2]
-	}
-	out := make([]string, 0, len(lines))
-	for _, text := range lines {
-		out = append(out, lead+pal.dim(text))
-	}
-	return out
 }
 
 // planDisplayCommand is the one display rule for a task step on the page, rail,

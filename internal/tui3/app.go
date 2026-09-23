@@ -3573,7 +3573,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.ok {
 			a.runSummaryNow = strings.TrimSpace(msg.summary.Now)
 			a.taskSheet.mine.now = a.runSummaryNow
-			a.taskSheet.reading.summaryNow = a.runSummaryNow
 			a.touch()
 		}
 		return a, nil

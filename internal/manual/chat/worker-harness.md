@@ -77,15 +77,22 @@ Beside the word a row may carry the steps its worker recorded and the dollars it
 spend rows hold — each left out when it is nothing.
 
 **`enter` opens the task's page.** It is built from the store's own read and is the
-same full frame, the same `esc`, and the same way back as a record row's card. It
-shows, in order, each section left out when nothing is behind it:
+same full frame, the same `esc`, and the same way back as a record row's card. Its
+head is a task room's head: the trail, `<conversation> ▸ <task>` with `esc back` at
+its far end, and under it the rule that leads with the task's state mark and word —
+the spinner while it runs — then how long it has run, its steps and how many of its
+parts are running or queued, with what it has cost at the far end. Each figure is
+left out when it is nothing. Under the head it shows, in order, each section left
+out when nothing is behind it:
 
 - `description` — the work order the worker was given;
 - `notes` — every note left on the task, with its moment. A note you left reads
   `you`. A note a worker or the run left names no author: the store knows those
   only by ids of its own, and an id is never drawn on this page;
-- `steps` — the trajectory its worker recorded: each command that ran with the head
-  of what came back, the whole observation on disk behind the row. A call known not to
+- `steps` — the trajectory its worker recorded: each command that ran, led by the
+  shell's mark (`$`) as a task room leads a command, with the head of what came back
+  dim under it, the whole observation on disk behind the row. The step in flight is
+  the newest row, with `running <clock>` under it once it has run ten seconds. A call known not to
   have run stays in the record and its count and is never drawn as a step: a command the
   worker tried and was refused is one dim line, `refused` and the command, and any other
   has no row.
@@ -96,7 +103,14 @@ one whose store has gone — is not opened; the list stays where it was.
 ## Open a run's task from the side list — click its row, or one of its parts
 
 With the switch on, a run is drawn in the conversation's side list as its own row,
-`#N`, with its parts and their checks hanging under it. Every one of those rows is a
+`#N`, with its parts and their checks hanging under it. **Every one of those rows
+looks exactly like any other task row**: the state mark (the spinner while it
+works), the name, its `#id` at the far end — a part's id is the store's own, such
+as `#k3x9qa` — and, under a row that is running, the command it is on and a
+`4m · $0.02` line of how long it has run and what it has cost, each figure left
+out when the store has not got it. Tokens and the model are not in the store, so
+a run's rows never show them. The parts hang in the tree's own connectors, one
+row each, the finished ones included. Every one of those rows is a
 door: click the run's row, or select it and press `enter`, and its page opens over the
 conversation; click a part's row or a check's row and THAT task's page opens. The page
 is the one the tasks place opens: what the task was asked, its notes, its steps, and the
@@ -159,9 +173,10 @@ A dependency never changes that family. `pending` means admitted and not started
 the row stays under the task that requested it and wears
 `queued · waits: <that task>` to name the separate dependency.
 
-A task's **page** shows its children under its steps the same way, each with its
-live step while its worker is on one. Notes, pause, cancel and the rest of steering
-are unchanged by the tree.
+A task's **page** shows its children under its steps the same way, in `under it`,
+each drawn as the side list draws a task — mark, name, `#id`, the tree's `├─`/`└─`
+— with the command it is on while its worker is on one. Notes, pause, cancel and the
+rest of steering are unchanged by the tree.
 
 ## What step is a run task on?
 
@@ -193,24 +208,26 @@ its newest step: it re-reads itself on the clock and stays stuck to the bottom �
 step in view — until you scroll up, which releases it. Scrolling back to the bottom takes the
 follow up again without your pressing anything.
 
-The step being run right now is drawn **one step early**, in the page's `steps` section: the
-running glyph beside `$ <command>` in place of the number the record will give it, and, once
-the call has been open ten seconds, its own clock dim under it:
+The step being run right now is drawn **one step early**, as the newest row of the page's
+`steps` section, and, once the call has been open ten seconds, its own clock dim under it.
+The page's head says the task is running with the spinner, as a task room's head does:
 
 ```
-running · 12 steps · $0.11
-description
-  Add a per-IP rate limiter to the upload handler; …
+  the chat ▸ Add rate limiter to /api/upload                  esc back
+─ ⠋ running   6m · 12 steps ──────────────────────────────── $0.11 ─
+
+brief
+Add a per-IP rate limiter to the upload handler; …
 steps
-  11  $ sed -n 40,120p internal/api/upload.go
-  12  $ git grep -n RateLimit internal/api
-      3 hits
-  ◐  $ go test ./internal/api/...
-      running 41s
+$ sed -n 40,120p internal/api/upload.go
+$ git grep -n RateLimit internal/api
+  3 hits
+$ go test ./internal/api/...
+  running 41s
 ```
 
 When the command ends the store clears the live step and the next read draws it as an ordinary
-step, with its number and the head of what came back.
+step, with the head of what came back.
 
 ## Why is a step missing, the step numbers skip, the cd at the front of a command is gone
 
@@ -231,10 +248,10 @@ Everything that is kept is drawn exactly as it was typed, spacing included. A co
 nothing left out is drawn whole. A part inside `$( )` or a bracketed group is never left out,
 and neither is work that is piped into something else.
 
-**A step with nothing of the work in it has no row, and the numbers skip over it.** Every
-row keeps the number the step ran as, so a page whose head says `12 steps` may draw rows
-`1` to `4`, then `9`. The missing numbers are the run's own bookkeeping and calls that never ran. What the last of
-them said is the task's result, which is in the notes above the steps.
+**A step with nothing of the work in it has no row.** The rows carry no numbers, as a task
+room's rows carry none, so a page whose head says `12 steps` may draw fewer rows than that:
+the rest are the run's own bookkeeping and calls that never ran. What the last of them said
+is the task's result, which is in the notes above the steps.
 
 ## Why is there no output under a step, the dim line under a command is missing
 
