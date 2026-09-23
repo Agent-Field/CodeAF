@@ -72,6 +72,7 @@ var vocabulary = []GlyphBinding{
 	{
 		ID: GRemove, Name: "Remove", Meaning: "detach an unsent attachment",
 		Plain: GlyphRemove, NerdFont: "\uF057", NFName: "nf-fa-times_circle",
+		// Multiplication signs in prose must remain text; the tray resolves this slot explicitly.
 		ASCII: "x", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: false,
 	},
 	{

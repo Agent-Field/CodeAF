@@ -438,6 +438,7 @@ func Glyphs() []GlyphInfo {
 		{"Working", GlyphWorking, '◐', true},
 		{"Settled", GlyphSettled, '✓', false},
 		{"Failed", GlyphFailed, '✕', false},
+		{"Remove", GlyphRemove, '×', true},
 		{"Stopped", GlyphStopped, '■', true},
 		{"Paused", GlyphPaused, '=', false},
 		{"NeedsHuman", GlyphNeedsHuman, '?', false},
