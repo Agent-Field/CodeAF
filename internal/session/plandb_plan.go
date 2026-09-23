@@ -132,12 +132,20 @@ func PlanStorePath(dir string) string {
 }
 
 // OpenRunPlan opens the plan store a headless door outside a session runs over:
-// the working copy's own .codeaf/plandb.db, seeded with the run's words when it
-// is not there, adopted when it holds a live run, and replaced by a fresh one
-// when the run it holds has finished — the same three roads [planSeed] takes,
-// because a finished plan is not a live one and a door that ran on a done root
-// would report the previous run's result as its own. The store is the caller's
-// to close.
+// the working copy's own .codeaf/plandb.db, seeded with the run's words. A store
+// already at that path is SET ASIDE beside it first ([setAsideRunStore]) — a
+// finished one as it ended, and one nothing is driving as interrupted — and a
+// fresh one is seeded, so a second errand in one project is a second run rather
+// than a reader of the first one's ending. The store is the caller's to close.
+//
+// A NEW ERRAND NEVER ADOPTS A RUN IT DID NOT START. This door used to adopt a
+// store whose root was still open, on the reading that an open root was a live
+// run to resume. Nothing resumes through this door: every call carries a new
+// request's words, and a store left open by a run that was interrupted — a
+// timeout, an interrupt, a process that died — was run again under its old
+// title and brief while the new request was dropped. Measured on this door: a
+// directory holding a left-open store answered `status=running title="rename
+// the logger"` for a request about something else entirely.
 func OpenRunPlan(dir, title, brief string) (*plandb.Store, error) {
 	path := PlanStorePath(dir)
 	if _, err := os.Stat(path); err != nil {
@@ -149,30 +157,8 @@ func OpenRunPlan(dir, title, brief string) (*plandb.Store, error) {
 		}
 		return plandb.Open(path, title, planRootID, title, brief)
 	}
-	// ADOPT: the store under this name is the run's, and its own root says
-	// whether there is still work in it. The title and the brief are the store's
-	// own on this road — a resumed run reads the words it was seeded with — which
-	// is why the adopt demands the root id and nothing else.
-	adopted, err := plandb.Open(path, "", planRootID, "", "")
-	if err != nil {
+	if err := setAsideRunStore(path); err != nil {
 		return nil, err
-	}
-	if root := adopted.Task(planRootID); root != nil && !terminalStoreStatus(root.Status) {
-		return adopted, nil
-	}
-	_ = adopted.Close()
-	// A FINISHED PLAN IS NOT A LIVE ONE. The finished store is archived beside
-	// the run with its own number and a fresh one is seeded, the way planSeed
-	// archives it, so a second errand in one project is a second run rather than
-	// a reader of the first one's ending.
-	for suffix := 1; ; suffix++ {
-		archived := fmt.Sprintf("%s.%d", path, suffix)
-		if _, err := os.Stat(archived); os.IsNotExist(err) {
-			if err := os.Rename(path, archived); err != nil {
-				return nil, err
-			}
-			break
-		}
 	}
 	return plandb.Open(path, title, planRootID, title, brief)
 }

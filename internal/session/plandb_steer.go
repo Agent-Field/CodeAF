@@ -64,6 +64,15 @@ func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) err
 		if task.Chat != plan.chat {
 			return errPlanOtherChat
 		}
+		// THE NEWEST RUN IS NOT A LIVE ONE ONCE ITS OWN TASK HAS ENDED. A run's
+		// store is set aside only when the NEXT request arrives, so the run that
+		// finished last is still the live file, and this road used to take a
+		// note, a hold, an amendment or a priority on it as though somebody were
+		// there to read them: the write landed and nothing ever read it. An ended
+		// run answers the one sentence every earlier run answers.
+		if root := live.Task(live.RootID()); root != nil && terminalStoreStatus(root.Status) {
+			return errPlanEndedRun
+		}
 		return write(live, task)
 	}
 	for _, store := range stores[:len(stores)-1] {
@@ -132,8 +141,13 @@ func (a *Agent) PlanResume(id string) error {
 }
 
 // PlanCancel ends a task, its descendants and the work hard-depending on it.
-// The cascade is the store's own law; the person's cancel carries no reason,
-// because the store records the ending and the surface reads the word.
+// The cascade is the store's own law.
+//
+// THE CANCEL CARRIES THE STOP'S OWN WORD, because a person pressed it. The
+// store keeps the reason with the ending and a row reads `stopped` only off
+// that word ([planTaskStopped]); this cancel used to carry none, so a part a
+// person stopped — and everything its cascade took down — read `incomplete`,
+// the word for work that ran and came up short on its own.
 //
 // THE RUN'S OWN TASK IS STOPPED AS THE RUN. The store refuses every verb on it,
 // because no worker may end the run it is part of; a person may, and the stop
@@ -152,7 +166,7 @@ func (a *Agent) PlanCancel(id string) error {
 			// is open under it end, and the next hand-off starts fresh.
 			return store.StopRoot(taskStoppedWord)
 		}
-		_, err := store.Cancel(task.ID, "")
+		_, err := store.Cancel(task.ID, taskStoppedWord)
 		return err
 	})
 }

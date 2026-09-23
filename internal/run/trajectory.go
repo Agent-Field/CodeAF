@@ -32,6 +32,12 @@ const (
 	trajectoryStepKind  = "step"
 	trajectoryEndKind   = "end"
 	trajectoryBeginKind = "begin"
+	// trajectoryNotesKind is the line that says which of the task's notes a
+	// worker of it has already had: handed over at a step boundary, or written
+	// by that worker itself. It is not a step and every step reader skips it,
+	// because it records what a worker KNOWS rather than anything it did
+	// ([notesAlreadyHad] is its one reader).
+	trajectoryNotesKind = "notes"
 )
 
 // observationHeadBytes is how much of one step's observation the record
@@ -103,6 +109,38 @@ type Step struct {
 	// before exits were recorded: the first refuses a holds verdict that never
 	// ran its checks, the second falls back to reading.
 	ExitsRecorded bool `json:"exits_recorded,omitempty"`
+
+	// Notes is the notes line's one field: the ids of the task's notes a worker
+	// of it has had, handed over or written itself ([trajectoryNotesKind]).
+	Notes []string `json:"notes,omitempty"`
+}
+
+// notesAlreadyHad reads back every note id a worker of this task has already
+// had, across every launch of it, so a worker woken for the same task starts
+// with them marked.
+//
+// A NOTE IS HANDED TO A TASK ONCE, NOT ONCE PER LAUNCH. The mark that stops a
+// second delivery lived in one worker's memory, so a parent woken to integrate
+// its children, or a task parked and woken, was handed the same older notes
+// again at its first boundaries — up to a delivery's worth of words it had
+// already been told, crowding out the one note that was new. The record is
+// where a task's history lives, so that is where the mark is kept.
+func notesAlreadyHad(storeDir, id string) map[string]bool {
+	had := map[string]bool{}
+	data, err := os.ReadFile(filepath.Join(plandb.TaskDir(storeDir, id), trajectoryName))
+	if err != nil {
+		return had
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		var step Step
+		if json.Unmarshal([]byte(strings.TrimSpace(line)), &step) != nil || step.Kind != trajectoryNotesKind {
+			continue
+		}
+		for _, note := range step.Notes {
+			had[note] = true
+		}
+	}
+	return had
 }
 
 // Trajectory reads one task's recorded steps back, in the order they were
