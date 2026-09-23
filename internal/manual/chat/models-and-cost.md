@@ -90,7 +90,9 @@ every model it lists today — so the status line reads `…/272k` on `codex/gpt
 compaction fires from that figure. When the list cannot be reached at sign-in, the four
 models codeaf already knows (`gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`)
 carry that same `272k`. Over `--host` the far machine still compacts at `272k`, but
-this screen's meter reads this laptop's own list, which has no Codex rows. The
+this screen's meter reads this laptop's own list. When that list has no Codex rows, the
+meter keeps the figure of the model you switched from, or shows none if the conversation
+opened on Codex. The
 conversation file's `call` lines name `Codex` as the endpoint that served each request.
 
 A Codex call has no dollar price codeaf can know. The spend page therefore shows no
