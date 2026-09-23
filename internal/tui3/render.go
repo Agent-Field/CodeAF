@@ -1980,6 +1980,7 @@ func (a *app) statusRows(width int) []string {
 	// where they landed (foot.go). The ledger's doors are the seam's now and
 	// are cleared there; the deck records its own.
 	a.modelSpan = hudSpan{}
+	a.dockClear()
 	if a.startingChat() {
 		return []string{a.pal.dim(fit("New chat · first message starts the conversation", width))}
 	}

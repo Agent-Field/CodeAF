@@ -315,6 +315,13 @@ const (
 	// the person's own notes, and a paragraph that brightened would be
 	// promising a door on every sentence of it.
 	hoverQuestionOption
+	// hoverDockWall is the `▦` at the left of the dock under the box, and
+	// hoverDockCell one conversation's cell after it, held by the
+	// conversation's key rather than by its column (walldock.go): the dock
+	// narrows as the keys beside it change, and a hover stored as a column
+	// would follow the packing instead of the conversation.
+	hoverDockWall
+	hoverDockCell
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -671,9 +678,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
 			}
-			// THE LAST ROW IS THE KEYS and lights nothing: the home door on it
-			// answers through its own reading (home.go's [app.homeDoorPress]),
-			// and the numbers' doors are on the seam (footswap.go).
+			// THE LAST ROW IS THE KEYS and lights nothing but the dock at its
+			// right end, whose cells were recorded where the row drew them
+			// (walldock.go): the home door on it answers through its own
+			// reading (home.go's [app.homeDoorPress]), and the numbers' doors
+			// are on the seam (footswap.go).
+			if at, ok := a.dockAt(x); ok && !a.wall.on && !a.rew.on {
+				return at
+			}
 		}
 	}
 	return hoverAt{}

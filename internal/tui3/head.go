@@ -38,5 +38,13 @@ func (a *app) headRows(width int, middle string, pal palette) []string {
 	if a.at(pageHome) {
 		mode = pulseBudget
 	}
-	return []string{a.pulseLine(width, pal, mode), middle, pal.dim(rule(width)), ""}
+	// WHILE A SPACE IS SHOWN THE RULE IS DRAWN IN ITS COLOUR, so every frame
+	// says the strip above it is narrowed (spaces.go).
+	ruleInk := pal.dim
+	if sp, ok := a.spaceActive(); ok {
+		if ink := pal.spaceInk(sp.hueSpec()); ink != nil {
+			ruleInk = ink
+		}
+	}
+	return []string{a.pulseLine(width, pal, mode), middle, ruleInk(rule(width)), ""}
 }

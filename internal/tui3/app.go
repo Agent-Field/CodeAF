@@ -1323,6 +1323,8 @@ type app struct {
 	// THE KEY IS THE CANONICAL TRANSCRIPT PATH ([convKey]), because that is what
 	// home names a row by and what the flock is taken on.
 	behind map[string]*kept
+	// wall is the grid of every open conversation and the spaces (wallcontract.go).
+	wall wallState
 	// homeGen is home's own clock generation. It belongs to the SURFACE rather
 	// than to any conversation, because there is one home — and it is bumped by
 	// every close, so a tick armed by a home that has since been closed cannot
@@ -2258,6 +2260,11 @@ type app struct {
 	// pointer — the same arrangement the model segment and the jump chip use
 	// (render.go's [hudSpan]).
 	homeDoor hudSpan
+	// dock is where the row under the box drew its map of every open
+	// conversation on the last frame, and dockList the list it drew from,
+	// kept so the next frame refills it rather than allocating (walldock.go).
+	dock     dockMap
+	dockList []chatTab
 	// echoHome is raised around the one dispatch home makes on its own behalf
 	// ([app.homeSlash]), and it is what tells a command's answer apart from every
 	// other note this surface writes ([app.noteWritten] holds the argument).
@@ -3572,7 +3579,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// window to let go of (takeover.go).
 		return a, a.takeoverTick(msg)
 
+	case wallReadMsg:
+		a.wallTakeRead(msg)
+		return a, nil
+
+	case wallTickMsg:
+		return a, a.wallTick()
+
 	case behindStirMsg:
+		if a.wall.on {
+			return a, tea.Batch(a.behindStir(msg), a.wallStir(msg.key))
+		}
 		// A conversation this process holds and is not drawing has something to
 		// say about itself. The message carries no content — the surface reads
 		// the agent it already has a pointer to (keeper.go).
@@ -3610,6 +3627,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		if a.wall.on {
+			a.wallWheel(msg.Mouse().Button == tea.MouseWheelDown)
+			return a, nil
+		}
 		a.clearPlaceRowHover()
 		a.placePointer.suspended = true
 		// THE CONTEXT CHOOSER OWNS THE WHEEL WHILE IT IS UP, and it owns it over
@@ -3817,6 +3838,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseClickMsg:
 		a.clearPlaceRowHover()
 		a.sawAPerson()
+		if a.wall.on && msg.Mouse().Button == tea.MouseLeft {
+			if cmd, took := a.wallPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+		}
 		// AND IT OWNS THE PRESS, on the same terms and for a sharper reason: a
 		// press that fell through a modal would switch a tab, open a tool call or
 		// answer a question behind a sheet somebody is looking at
@@ -4014,6 +4040,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.homeDoorPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE DOCK AT THE OTHER END OF THAT ROW, column-aware for the
+			// same reason: `▦` opens the wall and each cell goes to its
+			// conversation, and the blank between them and the keys is nothing
+			// (walldock.go).
+			if cmd, took := a.dockPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE MODEL'S NAME IS THE FOURTH, at the left end of the same
 			// legend: the conversation's model is written on the seam and pressing
 			// it opens the picker (foot.go's [app.legendModelPress]).
@@ -4186,6 +4219,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMotionMsg:
 		a.sawAPerson()
+		// THE WALL OWNS MOTION WHILE IT IS UP, as it owns the press: its own
+		// targets light under the pointer, and the strip above it still does
+		// (wall.go).
+		if a.wall.on {
+			a.wallMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
 		// AND THE CHOOSER OWNS MOTION TOO, ahead of the sweep and ahead of every
 		// place: [app.hoverTarget] already answers for the whole screen while the
 		// sheet is up, and this branch is what keeps a drag started under it from
@@ -7077,6 +7117,10 @@ func (a *app) slash(line string) tea.Cmd {
 		// same question that could rank its answers differently from the one the
 		// person then keeps typing into.
 		return a.showPage(pageSearch)
+
+	case "wall":
+		// EVERY OPEN CONVERSATION AT ONCE, as a grid of live tiles (wall.go).
+		return a.openWall()
 
 	case "spend":
 		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word
