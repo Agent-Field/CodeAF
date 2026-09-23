@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -32,6 +33,9 @@ type v3ModelShelf struct {
 	options catalog.Options
 	mu      sync.RWMutex
 	direct  map[string]serviceCompartment
+	// sources is the service set the compartments were last aligned with, kept
+	// so a model id can be taken to ITS service's rows ([v3ModelShelf.contextWindow]).
+	sources modelsource.Set
 }
 
 type serviceCompartment struct {
@@ -57,18 +61,24 @@ func (s *v3ModelShelf) setSources(sources modelsource.Set) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.sources = sources
 	keep := make(map[string]bool)
 	for _, service := range sources.All()[1:] {
 		id := strings.ToLower(strings.TrimSpace(service.Source.ID))
 		keep[id] = true
 		address, door := serviceCompartmentIdentity(service)
-		if held, ok := s.direct[id]; ok && held.address == address && held.door == door {
+		codex := strings.EqualFold(service.Source.ID, "codex")
+		// A CODEX COMPARTMENT IS RE-READ EVERY TIME. Its rows come from the
+		// catalog the sign-in remembered and nothing else writes them, so a
+		// reconnect on the same address — which is every reconnect — rewrote
+		// that catalog underneath a compartment the rule below would keep, and
+		// a running engine went on answering the old rows. It is one small file.
+		if held, ok := s.direct[id]; ok && held.address == address && held.door == door && !codex {
 			continue
 		}
 		rows := fixedDoorModels(service)
-		if len(rows) == 0 && strings.EqualFold(service.Source.ID, "codex") {
-			remembered := catalog.Recall(config.CatalogOptionsFor(service, s.options.Dir))
-			rows = v3Models(remembered)
+		if len(rows) == 0 && codex {
+			rows = v3Models(v3Rows(config.CodexRememberedModels(service, s.options.Dir)))
 		}
 		if len(rows) == 0 && service.Source.Listing == modelsource.ListingModels {
 			rows = tui3.CachedModelsFor(service.Source.ID, service.Address)
@@ -121,6 +131,68 @@ func (s *v3ModelShelf) modelsForService(service modelsource.Connected) []tui3.Mo
 	return rows
 }
 
+// contextWindow is how many tokens a model accepts according to ITS OWN
+// service's rows, zero when those rows cannot say. It never waits: the default
+// service answers from the rows the shelf already holds, and every other service
+// from its compartment.
+//
+// IT EXISTS BECAUSE A SESSION'S WINDOW WAS ASKED OF THE WRONG CATALOG. A
+// conversation is handed the catalog of the service it STARTED on, and a model
+// it later moves to on another service is a model that catalog has never heard
+// of: a conversation that started on an OpenRouter model and moved to
+// `codex/gpt-5.5` asked OpenRouter's rows for a Codex id, got zero, and went on
+// compacting at the old model's figure (#1383). Over an engine host that was the
+// whole story, because the engine ignores the window a surface sends and
+// resolves its own on the switch.
+//
+// It is read under the session's own lock ([session.Config.ContextWindowFor] is
+// called from inside SetModel), so it takes the shelf's lock and no other: the
+// process takes its own lock and then each session's when a profile moves
+// ([v3Process.setModelSources]), and a reader here that reached for the
+// process's would be the other half of a deadlock.
+func (s *v3ModelShelf) contextWindow(model string) int {
+	if s == nil {
+		return 0
+	}
+	// A THINKING LEVEL IS NOT PART OF THE ID the rows are filed under
+	// (config.ClientConfigFor splits it off the same way), so `codex/gpt-5.5:high`
+	// is asked about as `codex/gpt-5.5`.
+	model, _ = roles.SplitEffort(model)
+	sources := s.sourcesNow()
+	if sources.Empty() {
+		return v3ContextWindow(v3Models(s), model)
+	}
+	service, bare := sources.For(model)
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID) {
+		return v3ContextWindow(v3Models(s), bare)
+	}
+	return v3ContextWindow(s.modelsForService(service), bare)
+}
+
+// sourcesNow is the service set the shelf was last aligned with.
+func (s *v3ModelShelf) sourcesNow() modelsource.Set {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.sources
+}
+
+// v3WindowFor is the session's answer to "how big is this model": its own
+// service's rows first ([v3ModelShelf.contextWindow]), and the catalog the
+// conversation started on when those cannot say — which is the answer this door
+// gave before, kept so a model the shelf has no row for yet answers exactly as
+// it always did.
+func v3WindowFor(shelf *v3ModelShelf, launch *catalog.Catalog) func(string) int {
+	return func(model string) int {
+		if window := shelf.contextWindow(model); window > 0 {
+			return window
+		}
+		if launch == nil {
+			return 0
+		}
+		return launch.ContextLength(model)
+	}
+}
+
 // compartment is one service's compartment as it stands, with the rows already
 // copied so the caller walks its own list after the lock is let go.
 func (s *v3ModelShelf) compartment(id string) (serviceCompartment, []tui3.Model, bool) {
@@ -149,9 +221,12 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 	}
 	options := config.CatalogOptionsFor(service, s.options.Dir)
 	if len(seed) > 0 {
+		// The seed keeps each row's window: a refresh that fails leaves these rows
+		// standing, and a row remembered without its window is a model whose
+		// conversation keeps compacting at the previous model's figure (#1383).
 		minimal := make([]catalog.Model, 0, len(seed))
 		for _, model := range seed {
-			minimal = append(minimal, catalog.Model{ID: model.ID})
+			minimal = append(minimal, catalog.Model{ID: model.ID, ContextLength: model.ContextLength})
 		}
 		if err := catalog.Remember(options, minimal); err != nil {
 			return nil, err
@@ -177,6 +252,13 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 	_ = tui3.WriteModelCacheFor(service.Source.ID, service.Address, rows)
 	return rows, nil
 }
+
+// v3Rows is a list of catalog rows already in hand, asked the one question
+// [v3Models] asks of a catalog.
+type v3Rows []catalog.Model
+
+// ModelsNow is the rows themselves.
+func (rows v3Rows) ModelsNow() []catalog.Model { return rows }
 
 func serviceCompartmentIdentity(service modelsource.Connected) (address, door string) {
 	return strings.TrimRight(strings.TrimSpace(service.Address), "/"), strings.ToLower(strings.TrimSpace(service.Door.ID))

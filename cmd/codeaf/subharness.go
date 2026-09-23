@@ -52,6 +52,12 @@ type leafBuild struct {
 	// this leaf's window is. Only the surface has the catalog, so it is threaded
 	// rather than looked up in exec.
 	models *catalog.Catalog
+	// window is how many tokens the model accepts when the builder already knows
+	// it; zero asks [leafBuild.models]. It exists for a model on another service
+	// than the catalog's: a conversation on `codex/gpt-5.5` carries the Codex
+	// catalog, whose rows are spelled `gpt-5.5`, so asking it about the qualified
+	// id answered zero for every leaf the conversation ran (#1383).
+	window int
 	// fanIn is what actually landed into this leaf, measured once at claim time.
 	// Zero is the honest value for a leaf nothing fed, and it is what every
 	// budget below reduces to for such a leaf — so a node that gathers nothing
@@ -105,7 +111,7 @@ const (
 func (b leafBuild) dependencyPot() int {
 	// A nil catalog answers zero, which is the same answer as an unlisted model
 	// and wants the same handling: fall back, never guess small.
-	return ctxbudget.For(b.models.ContextLength(b.model)).WithFloor(leafPromptFloorTokens).
+	return ctxbudget.For(b.contextLength()).WithFloor(leafPromptFloorTokens).
 		WithCompletionReserve(gatheringReserve(b.fanIn)).
 		Share(leafDependencyShare, leafPromptShares, store.MaxDigestBytes)
 }
@@ -271,7 +277,16 @@ func buildLinear(build leafBuild) exec.Executor {
 		// on AND the surface holding this leaf can act on what it asks for.
 		// See leafBuild.swarm.
 		WithSwarm(build.swarm && build.settings.Swarm).
-		WithContextLength(build.models.ContextLength(build.model))
+		WithContextLength(build.contextLength())
+}
+
+// contextLength is this leaf's window: the one the builder was handed, and the
+// catalog's answer about the model when it was handed none.
+func (b leafBuild) contextLength() int {
+	if b.window > 0 {
+		return b.window
+	}
+	return b.models.ContextLength(b.model)
 }
 
 // executorFor builds the worker one leaf was promised. There is one worker, so

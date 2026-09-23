@@ -145,7 +145,7 @@ func runV3SubharnessClientDoor(t *testing.T, server *v3ClientDoorServer, model, 
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	wiring := v3Subharnesses(config.Config{APIKey: key, BaseURL: server.URL}, nil, model, t.TempDir(), nil)
+	wiring := v3Subharnesses(config.Config{APIKey: key, BaseURL: server.URL}, nil, model, 0, t.TempDir(), nil)
 	if wiring.Registry == nil {
 		t.Fatal("the subharness registry was not built")
 	}
@@ -187,7 +187,7 @@ func TestTheSubharnessReachesTheSourceThatServesItsModel(t *testing.T) {
 	server := newV3ClientDoorServer(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	wiring := v3Subharnesses(v3DirectServiceSettings(server, "direct-subharness-key"), nil, "direct/stub/subharness", t.TempDir(), nil)
+	wiring := v3Subharnesses(v3DirectServiceSettings(server, "direct-subharness-key"), nil, "direct/stub/subharness", 0, t.TempDir(), nil)
 	runner, err := wiring.Registry.Subharness(exec.LinearSubharness)
 	if err != nil {
 		t.Fatal(err)
