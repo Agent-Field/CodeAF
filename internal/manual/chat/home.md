@@ -1402,7 +1402,7 @@ home until 2026-09-22, when the pin became a command of its own.
 
 The one dim line directly above the rule over home's box is a **tip**: one sentence naming a
 key or a command you have not used yet, and what it does — `/project sets the project folder
-for the next conversation`, `ctrl+t starts a fresh chat in this project`. It is drawn only while
+for a new conversation`, `ctrl+t starts a fresh chat in this project`. It is drawn only while
 the box is empty and nothing else is up, it moves on to the next tip every time you come to
 home and every two minutes at rest, and each tip goes away for good the first time you do
 what it names. It sits at the right, led by a bulb and closed by a small cross: clicking it

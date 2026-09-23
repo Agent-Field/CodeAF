@@ -198,7 +198,7 @@ The line over home's box is the same shape as the line over a conversation's own
 box:
 
 ```
-                        💡 /project sets the project folder for the next conversation ✕
+                        💡 /project sets the project folder for a new conversation ✕
 ─ glm-5.3-flash:auto · ◇ asks ──────────────────────────────────────────────────────
 › type to search or start something new
 alt+p project · alt+e effort · alt+a approvals · / commands        project: ~/src/parser

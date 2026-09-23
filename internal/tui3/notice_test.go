@@ -515,7 +515,7 @@ func startTask(t *testing.T, a *app) {
 // retired by a different gesture — so they need a row with an event on both
 // ends. It was `ctrl+. sees every task this project has run` until 2026-09-22,
 // when the owner took that row off the table.
-const deliverTip = "/files finds everything made for you"
+const deliverTip = "/files finds files codeaf wrote for you"
 
 // makeDeliverable is an export landing on disk, as the loop sees it: the first
 // thing written for the person, which is what arms [deliverTip].

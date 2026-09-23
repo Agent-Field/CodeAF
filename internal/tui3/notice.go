@@ -17,8 +17,8 @@ import (
 // A surface learns you by what you have already done, and this file is where it
 // keeps what it has told you. Two kinds of thing live here at launch:
 //
-//   - EARNED HINTS. One dim line beside the box — `/files finds everything
-//     made for you` — on the row directly above the rule over home's box, and
+//   - EARNED HINTS. One dim line beside the box — `/files finds files codeaf
+//     wrote for you` — on the row directly above the rule over home's box, and
 //     on the lowest rung of a conversation's keys row. A tip RETIRES FOR GOOD
 //     the first time the gesture it teaches is used (the files place opened),
 //     or after it has been shown [noticeShownDefault] times without being
@@ -358,7 +358,7 @@ var notices = []notice{
 	{
 		id: "files-after-first-deliverable", slot: slotHint,
 		armed:  func(a *app) bool { return a.notices.seen[eventDeliverableMade] },
-		text:   "/files finds everything made for you",
+		text:   "/files finds files codeaf wrote for you",
 		retire: eventFilesOpened,
 	},
 	{
@@ -379,7 +379,7 @@ var notices = []notice{
 		// standing order is a CONDITION the work has to honour — it rides into
 		// a task's brief under its own heading and the worker reports when it
 		// cannot meet one — and a memory is a fact carried forward.
-		text:   "/standing turns a sentence into a rule work must follow",
+		text:   "/standing turns a message into a rule work must follow",
 		retire: eventStandingOpened,
 	},
 	// ── starting work ───────────────────────────────────────────────────────
@@ -391,7 +391,7 @@ var notices = []notice{
 	{
 		id: "task-in-chat", slot: slotHint,
 		armed:  spoken,
-		text:   "/task starts work you can walk away from",
+		text:   "/task starts a single-shot task on the side",
 		retire: eventTaskTyped,
 	},
 	{
@@ -416,7 +416,7 @@ var notices = []notice{
 	{
 		id: "reopen-tab", slot: slotHint,
 		armed:  ready,
-		text:   "ctrl+shift+t reopens the last closed conversation tab",
+		text:   "ctrl+shift+t reopens the last conversation tab",
 		retire: eventTabReopened,
 	},
 	// ── files and context ───────────────────────────────────────────────────
@@ -445,7 +445,7 @@ var notices = []notice{
 		// there by pointing back at home.
 		id: "pick-a-project", slot: slotHint,
 		armed:  onHome,
-		text:   "/project sets the project folder for the next conversation",
+		text:   "/project sets the project folder for a new conversation",
 		retire: eventProjectSet,
 	},
 	{
@@ -458,7 +458,7 @@ var notices = []notice{
 	{
 		id: "model-list", slot: slotHint,
 		armed:  ready,
-		text:   "/model lists every model, /model <slug> switches at once",
+		text:   "/model lets you see and choose models and providers",
 		retire: eventModelListOpened,
 	},
 	{
@@ -482,7 +482,7 @@ var notices = []notice{
 		// not been told the other half ([notice.id]).
 		id: "steer-and-queue", slot: slotHint,
 		armed:  spoken,
-		text:   "using enter steers conversations · use ctrl+q to queue",
+		text:   "using enter steers conversations · use ctrl+q to queue messages",
 		retire: eventQueued,
 	},
 	// ── moving around ───────────────────────────────────────────────────────

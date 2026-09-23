@@ -8,7 +8,7 @@ while codeaf is asking you something, `space space home` when there is a home to
 `/ commands` when nothing else is true. Once you have used codeaf a little, that idle line
 sometimes carries a **tip** instead — one sentence naming a key or a command you have not
 used yet, and what it does, for example `esc esc or /rewind takes back an earlier message`
-or `/files finds everything made for you`. It reads the way every hint on this surface
+or `/files finds files codeaf wrote for you`. It reads the way every hint on this surface
 does: the key or the command first, then what it does.
 
 **In a conversation the tip is the keys row's lowest rung.** It takes that row from the
@@ -39,7 +39,7 @@ On a Mac the row says `opt` where the table below says `alt`, exactly as the key
 
 On home the tip is the dim row **directly above the rule** over the message box — the blank
 that separates the list from the rule, with one sentence written into its right end, led
-by a bulb: `💡 /project sets the project folder for the next conversation ✕`. It is drawn only
+by a bulb: `💡 /project sets the project folder for a new conversation ✕`. It is drawn only
 while the box is empty and nothing else is up — a letter in the box, the `/` list, the `@`
 list or a reply being read all take the row back — and it moves on to the next tip that is
 true for you on every road home (two spaces in an empty box, `/home`, `alt+1`, `tab`), in a
@@ -54,10 +54,10 @@ put away nothing.
 Every tip is earned and then spent. It appears the first time it becomes relevant — the
 first task you start, the first long answer, the first time a conversation passes half its
 context window, or simply the first time home is open — and it goes away for good the first
-time you do the thing it names. Run `/files` once and `/files finds everything made for
+time you do the thing it names. Run `/files` once and `/files finds files codeaf wrote for
 you` never comes back; run `/compact` once and the compact tip is retired. A tip
 retired from either box is retired from both: opening the model list on home retires
-`/model lists every model` in every conversation as well.
+`/model lets you see and choose models and providers` in every conversation as well.
 
 A tip you never act on is not shown forever either. Once a tip has been **shown six times**
 it is taken as read and retires by itself — and the two rows count a showing differently,
@@ -113,20 +113,20 @@ build if the two disagree), so a tip you saw is on it word for word.
   row that names a chord and a command for the same thing, on purpose: `esc esc` is the
   half nobody discovers, and `/rewind` is the half you can type into `/` or ask the manual
   about a week later.
-- `/files finds everything made for you` — after the first export writes a file. Retired
+- `/files finds files codeaf wrote for you` — after the first export writes a file. Retired
   when you run `/files`.
 - `/resume opens an earlier conversation` — when you start in a directory that already has
   a conversation. Retired when you run `/resume`.
-- `/standing turns a sentence into a rule work must follow` — once this directory has three or more earlier
+- `/standing turns a message into a rule work must follow` — once this directory has three or more earlier
   conversations. Retired when a standing order is made or the standing page opened.
-- `/task starts work you can walk away from` — after the first exchange. Retired when
+- `/task starts a single-shot task on the side` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
 - `ctrl+enter makes your message a rule instead of a request` — retired when a standing
   order is made or the standing page opened. It teaches the same door as the `/standing`
   row above and retires with it, so the two say a rule in the same words.
 - `/manual answers any question about codeaf` — retired when
   `/manual` is typed, bare or with a question.
-- `ctrl+shift+t reopens the last closed conversation tab` — retired the first time the chord is
+- `ctrl+shift+t reopens the last conversation tab` — retired the first time the chord is
   pressed, on a terminal that can send it.
 
 **Files and context**
@@ -135,7 +135,7 @@ build if the two disagree), so a tip you saw is on it word for word.
   opens.
 - `/attach sends a file or folder with your message` — retired when a file or a folder goes
   on by path, or the browser opens.
-- `/project sets the project folder for the next conversation` — on home only, since that is
+- `/project sets the project folder for a new conversation` — on home only, since that is
   the only screen `/project` works on. Retired when `/project` takes a folder, by a path
   after it or on the browser it opens.
 - `/export writes the current conversation to a file` — after two exchanges. Retired when
@@ -143,7 +143,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Models, thinking and cost**
 
-- `/model lists every model, /model <slug> switches at once` — retired when the model list
+- `/model lets you see and choose models and providers` — retired when the model list
   opens, over a conversation or over home's draft.
 - `/crew sets the models codeaf uses on its own behalf` — retired when `/crew` answers,
   bare or with a preset.
@@ -151,7 +151,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Steering a running answer**
 
-- `using enter steers conversations · use ctrl+q to queue` — after the first
+- `using enter steers conversations · use ctrl+q to queue messages` — after the first
   exchange. Retired the first time you queue a message. It was two rows until 2026-09-22
   — one for the steer and one for the queue — and the owner folded them into one.
 
