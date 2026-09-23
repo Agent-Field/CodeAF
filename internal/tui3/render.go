@@ -382,7 +382,12 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			if wasUser || wasBlock {
 				gap()
 			}
-			out = append(out, row{text: workIndent(width) + a.pal.dim(a.workfoldLabel(d, f)), entry: -1, hit: hitWorkFold, turn: f.key})
+			// The chip is laid flush and takes its two cells from THE INDENT LAW's
+			// pass below like every other work row, rather than baking them in:
+			// the pass used to sniff for a row that already began with two spaces
+			// so as not to move this one twice, and the sniff caught every other
+			// row that happened to open on two spaces as well (see the pass).
+			out = append(out, row{text: a.pal.dim(a.workfoldLabel(d, f)), entry: -1, hit: hitWorkFold, turn: f.key})
 			if !open {
 				i = f.answer - 1
 				wasCluster, wasBlock, wasUser, wasNote = false, false, false, false
@@ -714,9 +719,23 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// clock went, leaving `0…` at the frame's edge. [app.toolLine] and
 	// [app.formingLine] subtract [workIndentCols] for exactly that reason, AFTER
 	// they have chosen their tier from the frame's own width.
+	//
+	// EVERY WORK ROW MOVES, WITHOUT LOOKING AT WHAT IT BEGINS WITH. This pass
+	// used to leave alone any row whose text already opened on two spaces, so
+	// that the fold chip above — which once carried its own indent — would not
+	// be moved twice. But two leading spaces are not a mark of this pass: they
+	// are a note's continuation lead (render.go's entryNote, "· " on the first
+	// row and two blanks under it), a live window's, an indented line inside a
+	// tool's result, a list inside streaming prose. Every one of those was
+	// skipped while the row above it was moved, so /cost's table came out with
+	// `· spend` two cells right of `tokens`, `model calls` and `time` under it —
+	// the first row alone wearing the gutter, and its columns broken against
+	// the rest. The chip now lays itself flush and takes its cells here, and
+	// nothing else in the deck bakes the indent in, so there is nothing left to
+	// guard against.
 	if workIndent(width) != "" {
 		for i := range out {
-			if rowIsWork(out[i], es, folds) && !strings.HasPrefix(ansi.Strip(out[i].text), "  ") {
+			if rowIsWork(out[i], es, folds) {
 				out[i].text = "  " + out[i].text
 				out[i].pictureOpen = out[i].pictureOpen.shift(workIndentCols(width))
 				if out[i].keep.pressable() {
