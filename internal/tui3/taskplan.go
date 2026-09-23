@@ -2132,6 +2132,9 @@ func (a *app) railPlanReplay(key tea.KeyPressMsg) {
 	case "ctrl+u":
 		note.killToStart()
 		return
+	case "ctrl+k":
+		note.killToEnd()
+		return
 	}
 	if text := key.Key().Text; text != "" {
 		note.insert(text)
