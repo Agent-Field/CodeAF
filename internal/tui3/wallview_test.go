@@ -253,7 +253,7 @@ func TestWallRenderStates(t *testing.T) {
 	for _, want := range []string{
 		"▦ Conversations", "the conversations in port", "⠿ 2 running", "? 1 needs you", "6 open",
 		"Spaces", "All 6", "port 3", "+ New space",
-		"open to answer", "seen 6m ago", "running bash " + wallGlyphsFor(false).sep + " 2m", "? waiting on you",
+		"Answer ↵", "seen 6m ago", "running bash " + wallGlyphsFor(false).sep + " 2m", "? waiting on you",
 		"updated 5m ago", "☑", "▌", tokens.Spinner(v.spin),
 	} {
 		if !strings.Contains(frame, want) {
@@ -338,6 +338,32 @@ func TestWallRenderPrintsFrame(t *testing.T) {
 		v.hover = wallHitRef{kind: wallHitAction, arg: int(wallActSave)}
 		rows, _ = renderWall(pal, v, 120, 40)
 		t.Logf("%s 120x40, naming a space:\n%s", pname, wallPlainFrame(rows))
+
+		v = wallUnmarked(base)
+		v.hover = wallHitRef{kind: wallHitSpaces, arg: 0}
+		rows, _ = renderWall(pal, v, 120, 40)
+		t.Logf("%s 120x40, tile 0's spaces control hovered, the toolbar saying what it does:\n%s", pname, wallPlainFrame(rows))
+
+		v = wallUnmarked(base)
+		v.focus, v.hover = 1, wallHitRef{kind: wallHitOpen, arg: 1}
+		v.pointerOn, v.pointerY = true, wallAnswerHit(t, pal, v, 120, 40).y0
+		rows, _ = renderWall(pal, v, 120, 40)
+		t.Logf("%s 120x40, the waiting tile focused, its Answer hovered:\n%s", pname, wallPlainFrame(rows))
+
+		v = wallUnmarked(base)
+		v.pop = wallPop{kind: wallPopSettings, x: 20, y0: 1, y1: 2, space: 1, name: "infra",
+			choices: spaceHueChoices(v.hues, spaceReservedFrom(darkRamp), 6)}
+		rows, _ = renderWall(pal, v, 120, 40)
+		t.Logf("%s 120x40, a space's settings:\n%s", pname, wallPlainFrame(rows))
+
+		for _, sz := range [][2]int{{80, 24}, {180, 50}} {
+			rows, _ = renderWall(pal, wallUnmarked(wallFixture(13)), sz[0], sz[1])
+			t.Logf("%s %dx%d, 13 conversations:\n%s", pname, sz[0], sz[1], wallPlainFrame(rows))
+		}
+		v = wallUnmarked(base)
+		v.tiles, v.filter = nil, "xyz"
+		rows, _ = renderWall(pal, v, 120, 40)
+		t.Logf("%s 120x40, a filter matching nothing:\n%s", pname, wallPlainFrame(rows))
 	}
 }
 
@@ -480,10 +506,10 @@ func TestWallClickTileControlsReserveCells(t *testing.T) {
 			_, tileW, tileH := wallGrid(len(v.tiles), sz[0], sz[1], 0)
 			g := wallGlyphsFor(pal.ascii)
 			for _, i := range []int{3, 5} { // no spaces, and one
-				rest := wallPaintTile(pal, g, v, v.tiles[i], i, false, tileW, tileH)
+				rest := wallPaintTile(pal, g, v, v.tiles[i], i, false, tileW, tileH, wallGridTop)
 				hv := v
 				hv.hover = wallHitRef{kind: wallHitTile, arg: i}
-				hover := wallPaintTile(pal, g, hv, v.tiles[i], i, false, tileW, tileH)
+				hover := wallPaintTile(pal, g, hv, v.tiles[i], i, false, tileW, tileH, wallGridTop)
 				if len(rest) != tileH || len(hover) != tileH {
 					t.Fatalf("%s %dx%d: %d rows at rest, %d hovered, tile is %d", pname, sz[0], sz[1], len(rest), len(hover), tileH)
 				}
@@ -509,7 +535,7 @@ func TestWallClickTileControlsReserveCells(t *testing.T) {
 				}
 			}
 			// And the focused tile shows its controls with no pointer at all.
-			focused := ansi.Strip(wallPaintTile(pal, g, v, v.tiles[0], 0, true, tileW, tileH)[0])
+			focused := ansi.Strip(wallPaintTile(pal, g, v, v.tiles[0], 0, true, tileW, tileH, wallGridTop)[0])
 			if !strings.Contains(focused, wallCloseMark(pal.ascii)) {
 				t.Fatalf("%s %dx%d: the focused tile hides its controls: %q", pname, sz[0], sz[1], focused)
 			}
@@ -525,7 +551,7 @@ func TestWallTileDotsName(t *testing.T) {
 	g := wallGlyphsFor(false)
 	_, tileW, tileH := wallGrid(6, 120, 40, 0)
 	top := func(p palette, t wallTile, i int) string {
-		return ansi.Strip(wallPaintTile(p, g, v, t, i, false, tileW, tileH)[0])
+		return ansi.Strip(wallPaintTile(p, g, v, t, i, false, tileW, tileH, wallGridTop)[0])
 	}
 	if got := top(pal, v.tiles[2], 2); !strings.Contains(got, "●●● ship the port") {
 		t.Fatalf("three spaces: %q", got)
@@ -551,7 +577,7 @@ func TestWallClickSelectionModeShowsEveryBox(t *testing.T) {
 	_, tileW, tileH := wallGrid(4, 180, 50, 0)
 	g := wallGlyphsFor(false)
 	for i, tile := range v.tiles {
-		top := ansi.Strip(wallPaintTile(pal, g, v, tile, i, false, tileW, tileH)[0])
+		top := ansi.Strip(wallPaintTile(pal, g, v, tile, i, false, tileW, tileH, wallGridTop)[0])
 		want := wallSelGlyph(false, tile.marked)
 		if !strings.HasPrefix(top, "╭─ "+want) {
 			t.Fatalf("tile %d in selection mode: %q, want the box %q", i, top, want)
@@ -599,7 +625,7 @@ func TestWallClickSpacesAndMinimap(t *testing.T) {
 	v := wallUnmarked(wallFixture(6))
 	v.hover = wallHitRef{kind: wallHitChip, arg: 1}
 	rows, hits := renderWall(pal, v, 120, 40)
-	if !strings.Contains(ansi.Strip(rows[1]), "infra 2 ⋯") {
+	if !strings.Contains(ansi.Strip(rows[1]), "infra ⋯ │") {
 		t.Fatalf("the hovered segment shows no ⋯: %q", ansi.Strip(rows[1]))
 	}
 	tails := 0
@@ -679,5 +705,265 @@ func TestSpaceAddAndRemoveKeepOrderAndSave(t *testing.T) {
 	got, _ = loadSpaces(dir)
 	if len(got[0].Members) != 1 || got[0].Members[0].Key != "k2" {
 		t.Fatalf("after remove: %+v", got)
+	}
+}
+
+// wallAnswerHit is where tile 1's Answer button landed: the open target that
+// is not on the tile's top border.
+func wallAnswerHit(t *testing.T, pal palette, v wallView, w, h int) wallHit {
+	t.Helper()
+	rows, hits := renderWall(pal, v, w, h)
+	for _, hit := range hits {
+		if hit.kind == wallHitOpen && hit.arg == 1 && strings.Contains(ansi.Strip(ansi.Cut(rows[hit.y0], hit.x0, hit.x1)), "Answer") {
+			return hit
+		}
+	}
+	t.Fatalf("no Answer button on the waiting tile:\n%s", wallPlainFrame(rows))
+	return wallHit{}
+}
+
+// EVERY TILE KEEPS ONE RHYTHM: its state line, exactly one blank row, then the
+// body from the top, whatever the body's length.
+func TestWallTileBodyHangsFromTheTop(t *testing.T) {
+	for pname, pal := range wallTestPalettes() {
+		for _, sz := range wallTestSizes {
+			v := wallUnmarked(wallFixture(6))
+			// Tile 3 has a tail far shorter than its room.
+			v.tiles[3].lines = v.tiles[3].lines[:1]
+			_, tileW, tileH := wallGrid(len(v.tiles), sz[0], sz[1], 0)
+			g := wallGlyphsFor(pal.ascii)
+			padY, meta, _ := wallTileRoom(tileH)
+			if !meta {
+				continue
+			}
+			for i, tile := range v.tiles {
+				rows := wallPaintTile(pal, g, v, tile, i, false, tileW, tileH, wallGridTop)
+				inner := func(y int) string { return strings.TrimSpace(ansi.Strip(ansi.Cut(rows[y], 1, tileW-1))) }
+				state, gap, first := 1+padY, 2+padY, 3+padY
+				if inner(gap) != "" || inner(first) == "" {
+					t.Fatalf("%s %dx%d tile %d: state %q, then %q, then %q", pname, sz[0], sz[1], i, inner(state), inner(gap), inner(first))
+				}
+			}
+		}
+	}
+}
+
+// A WAITING TILE ENDS IN A BUTTON: the question, a blank row, and Answer,
+// which is the tile's open and sits on its own label.
+func TestWallNeedsYouTileAnswers(t *testing.T) {
+	for pname, pal := range wallTestPalettes() {
+		v := wallUnmarked(wallFixture(6))
+		hit := wallAnswerHit(t, pal, v, 120, 40)
+		rows, _ := renderWall(pal, v, 120, 40)
+		above := strings.TrimSpace(ansi.Strip(ansi.Cut(rows[hit.y0-1], hit.x0, hit.x0+50)))
+		question := ansi.Strip(rows[hit.y0-2])
+		if above != "" || !strings.Contains(question, "needs your ok") {
+			t.Fatalf("%s: over the button %q, then %q", pname, question, above)
+		}
+		// The label starts on the text's column, its ground in the padding.
+		if got := ansi.Strip(ansi.Cut(rows[hit.y0], hit.x0+1, hit.x0+7)); got != "Answer" {
+			t.Fatalf("%s: the label is %q one cell into the button", pname, got)
+		}
+		if col := ansi.StringWidth(question[:strings.Index(question, "needs")]); col != hit.x0+1 {
+			t.Fatalf("%s: the question and the button's label do not share a column: %q at %d", pname, question, hit.x0+1)
+		}
+		// With the pointer's row known, the Answer lights and the corner's
+		// open does not, though both answer to the same target.
+		v.hover = hit.ref()
+		v.pointerOn, v.pointerY = true, hit.y0
+		lit, _ := renderWall(pal, v, 120, 40)
+		if lit[hit.y0] == rows[hit.y0] {
+			t.Fatalf("%s: the hovered Answer is drawn as at rest", pname)
+		}
+	}
+}
+
+// THE TOOLBAR SAYS WHAT THE CONTROL UNDER THE POINTER DOES, and says nothing
+// with the pointer on no control.
+func TestWallToolbarExplainsTheHover(t *testing.T) {
+	pal := newPalette(tokens.TrueColor, false)
+	v := wallUnmarked(wallFixture(6))
+	bar := func(v wallView) string {
+		rows, _ := renderWall(pal, v, 120, 40)
+		return ansi.Strip(rows[len(rows)-1])
+	}
+	rest := bar(v)
+	for ref, want := range map[wallHitRef]string{
+		{kind: wallHitSpaces, arg: 0}:                    "Add this conversation to spaces · m",
+		{kind: wallHitOpen, arg: 0}:                      "Open conversation · enter",
+		{kind: wallHitClose, arg: 0}:                     "Close this view; the work keeps running · x",
+		{kind: wallHitSelect, arg: 0}:                    "Select for a space · space",
+		{kind: wallHitChip, arg: 1}:                      "Show only the conversations in infra",
+		{kind: wallHitAction, arg: int(wallActColsMore)}: "More columns · +",
+	} {
+		hv := v
+		hv.hover = ref
+		got := bar(hv)
+		if !strings.Contains(got, want) {
+			t.Fatalf("hover %+v: toolbar %q, want %q", ref, got, want)
+		}
+		// The status line moves no button.
+		col := func(s string) int { return ansi.StringWidth(s[:strings.Index(s, "Filter /")]) }
+		if col(got) != col(rest) {
+			t.Fatalf("hover %+v moved the toolbar's buttons:\n%q\n%q", ref, rest, got)
+		}
+	}
+	if strings.Contains(rest, " · ") {
+		t.Fatalf("the toolbar explains a hover with none: %q", rest)
+	}
+}
+
+// THE SPACES ROW IS ONE SEGMENTED CONTROL: every separator has one blank cell
+// either side, and + New space is its last segment.
+func TestWallSpacesRowIsEvenlyPadded(t *testing.T) {
+	for pname, pal := range wallTestPalettes() {
+		for _, hover := range []wallHitRef{{}, {kind: wallHitChip, arg: 1}} {
+			v := wallUnmarked(wallFixture(6))
+			v.hover = hover
+			rows, _ := renderWall(pal, v, 120, 40)
+			row := ansi.Strip(rows[1])
+			sep := "│"
+			if pal.ascii {
+				sep = "|"
+			}
+			parts := strings.Split(row, sep)
+			if len(parts) != 5 {
+				t.Fatalf("%s: %d segments in %q", pname, len(parts), row)
+			}
+			for i, p := range parts {
+				if i > 0 && (!strings.HasPrefix(p, " ") || strings.HasPrefix(p, "  ")) {
+					t.Fatalf("%s: segment %d is %q", pname, i, p)
+				}
+				if i < len(parts)-1 && (!strings.HasSuffix(p, " ") || strings.HasSuffix(p, "  ")) {
+					t.Fatalf("%s: segment %d is %q", pname, i, p)
+				}
+			}
+			if !strings.HasPrefix(parts[4], " + New space ") {
+				t.Fatalf("%s: + New space is not the last segment: %q", pname, row)
+			}
+		}
+	}
+}
+
+// THE HEAD AND THE FOOT END WHERE THE GRID ENDS, and a count growing a digit
+// moves nothing to its right.
+func TestWallChromeAlignsWithTheGrid(t *testing.T) {
+	pal := newPalette(tokens.TrueColor, false)
+	for _, sz := range wallTestSizes {
+		var ends []int
+		for _, n := range []int{6, 13} {
+			v := wallUnmarked(wallFixture(n))
+			rows, _ := renderWall(pal, v, sz[0], sz[1])
+			c, tileW, _ := wallGrid(n, sz[0], sz[1], 0)
+			edge := wallMargin + c*tileW + (c-1)*wallGutter
+			title := strings.TrimRight(ansi.Strip(rows[0]), " ")
+			bar := strings.TrimRight(ansi.Strip(rows[len(rows)-1]), " ")
+			if ansi.StringWidth(title) != edge || ansi.StringWidth(bar) != edge {
+				t.Fatalf("%dx%d n%d: title ends at %d, toolbar at %d, the grid at %d", sz[0], sz[1], n, ansi.StringWidth(title), ansi.StringWidth(bar), edge)
+			}
+			ends = append(ends, ansi.StringWidth(title))
+			// The foot mirrors the head: a blank row over a rule over the toolbar.
+			if strings.TrimSpace(ansi.Strip(rows[len(rows)-3])) != "" || !strings.HasPrefix(ansi.Strip(rows[len(rows)-2]), "───") {
+				t.Fatalf("%dx%d n%d: the foot is not a blank row and a rule:\n%s", sz[0], sz[1], n, wallPlainFrame(rows))
+			}
+		}
+		if ends[0] != ends[1] {
+			t.Fatalf("%dx%d: the counts end at %d, then %d", sz[0], sz[1], ends[0], ends[1])
+		}
+	}
+}
+
+// A LONG TITLE IS CUT WITH AN ELLIPSIS AND KEEPS TWO RULE CELLS BEFORE THE
+// CONTROLS' CELLS, at rest and hovered alike.
+func TestWallLongTitleKeepsItsDistance(t *testing.T) {
+	pal := newPalette(tokens.TrueColor, false)
+	g := wallGlyphsFor(false)
+	v := wallUnmarked(wallFixture(6))
+	v.tiles[3].name = strings.Repeat("a very long title ", 8)
+	for _, sz := range wallTestSizes {
+		_, tileW, tileH := wallGrid(6, sz[0], sz[1], 0)
+		_, ctlW := wallTileCtls(false, tileW)
+		for _, hover := range []bool{false, true} {
+			hv := v
+			if hover {
+				hv.hover = wallHitRef{kind: wallHitTile, arg: 3}
+			}
+			top := ansi.Strip(wallPaintTile(pal, g, hv, hv.tiles[3], 3, false, tileW, tileH, wallGridTop)[0])
+			cut := strings.Index(top, "…")
+			if cut < 0 {
+				t.Fatalf("%dx%d: the long title is not cut: %q", sz[0], sz[1], top)
+			}
+			runes := []rune(top)
+			at := len([]rune(top[:cut]))
+			gap := runes[at+2 : len(runes)-2-ctlW]
+			if len(gap) < wallTitleGap || strings.Trim(string(gap), "─") != "" && !hover {
+				t.Fatalf("%dx%d hover=%v: %d rule cells between the title and the controls: %q", sz[0], sz[1], hover, len(gap), top)
+			}
+		}
+	}
+}
+
+// A POPOVER STAYS INSIDE THE FRAME AND OFF THE FOOT, and flips over its
+// control when there is no room under it.
+func TestWallPopoverStaysInTheFrame(t *testing.T) {
+	pal := newPalette(tokens.TrueColor, false)
+	for _, sz := range wallTestSizes {
+		w, h := sz[0], sz[1]
+		for _, at := range []wallPop{{x: w - 3, y0: 4, y1: 5}, {x: 0, y0: h - 5, y1: h - 4}} {
+			v := wallUnmarked(wallFixture(6))
+			at.kind, at.targets, at.cursor = wallPopMembers, []string{"k0"}, -1
+			v.pop = at
+			card := wallPopCard(pal, wallGlyphsFor(false), v, w, h)
+			if len(card.rows) == 0 {
+				t.Fatalf("%dx%d: no popover", w, h)
+			}
+			bottom := card.y + len(card.rows)
+			if card.x < wallMargin || card.x+card.w > w-wallMargin || bottom > h-wallFootRows+1 {
+				t.Fatalf("%dx%d anchor %+v: popover at %d,%d %dx%d", w, h, at, card.x, card.y, card.w, len(card.rows))
+			}
+			if at.y1 > h/2 && bottom > at.y0 {
+				t.Fatalf("%dx%d: a popover with no room below did not flip over its control: rows %d..%d, control on %d", w, h, card.y, bottom, at.y0)
+			}
+			// One blank row and two blank cells inside the border.
+			if got := ansi.Strip(card.rows[1]); strings.Trim(got, "│ ") != "" {
+				t.Fatalf("%dx%d: the popover's first inner row is %q", w, h, got)
+			}
+			if got := ansi.Strip(card.rows[2]); !strings.HasPrefix(got, "│  ") {
+				t.Fatalf("%dx%d: the popover's first line is %q", w, h, got)
+			}
+		}
+	}
+}
+
+// A NARROWED GRID WITH NOTHING IN IT KEEPS ITS HEAD AND SAYS SO, beside the
+// one button that undoes the narrowing.
+func TestWallNarrowedToNothing(t *testing.T) {
+	for pname, pal := range wallTestPalettes() {
+		for _, sz := range wallTestSizes {
+			v := wallUnmarked(wallFixture(6))
+			v.tiles, v.filter = nil, "xyz"
+			rows, hits := renderWall(pal, v, sz[0], sz[1])
+			name := fmt.Sprintf("%s %dx%d", pname, sz[0], sz[1])
+			wallCheckRows(t, name, rows, sz[0], sz[1])
+			wallCheckHits(t, name, hits, sz[0], sz[1])
+			frame := wallPlainFrame(rows)
+			if !strings.Contains(frame, `No conversations match "xyz"`) || !strings.Contains(ansi.Strip(rows[1]), "/ xyz") {
+				t.Fatalf("%s: the empty filter:\n%s", name, frame)
+			}
+			clears := 0
+			for _, hit := range hits {
+				if hit.kind == wallHitAction && hit.arg == int(wallActFilterClear) {
+					clears++
+				}
+			}
+			if clears != 2 {
+				t.Fatalf("%s: %d Clear buttons, want the filter row's and the message's", name, clears)
+			}
+			v.filter = ""
+			rows, _ = renderWall(pal, v, sz[0], sz[1])
+			if !strings.Contains(wallPlainFrame(rows), "No open conversations in port") {
+				t.Fatalf("%s: the empty space:\n%s", name, wallPlainFrame(rows))
+			}
+		}
 	}
 }
