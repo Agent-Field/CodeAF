@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: skills from Claude Code plugins and Codex reach the chat, with memory off too, and the model picks them by what they are for
+title: Claude Code plugin and Codex skills reach the chat, memory off included
 pr: 1396
 surface: [chat, engine, remote]
 invalidates:
@@ -11,6 +11,7 @@ invalidates:
   - "The skill catalog in the system prompt listed at most fifty skills, ordered by recent use, and a skill reached a message only when the message shared words with its description. The catalog now lists every skill in a stable order with its description clipped to 160 characters, up to 12 KiB, then the remaining names up to 2 KiB, and the model opens the one that fits with use_skill. The per-message word match still runs as a first pass."
   - "The /skill picker read skill folders from disk while the conversation read the shelf, so a row could look attachable and not be. The picker now reads the conversation's own shelf, and on the default launch through the local session host the attach, detach and list calls cross the host connection instead of being missing from it."
   - "The skill shelf held at most 100 skills. It holds 400."
+  - "The manual said a dim `skills carried:` line sits under the message. On the chat surface the line reads `skills · <names>` and folds into the turn's `▸ worked` chip once the answer lands; only the headless --once door prints `skills carried:`. The pages say so now."
 ---
 A person asked their own codeaf to use a skill and it used none. Three things
 stood in the way, each correct from the inside. Memory was off, and the shelf

@@ -12,8 +12,7 @@ Once found, a skill is used two ways. Automatically: the model is shown every
 skill's name and what it is for, and when a request fits one it opens it with
 `use_skill` and follows it, even when your words share none with the skill's
 description. A message whose words do match a skill's description also carries
-that skill with it, and a dim `skills carried:` line under the message names
-it. By hand: `/skill` puts one in front of the conversation until you take it
+that skill with it, and a dim `skills ·` line in the turn names it. By hand: `/skill` puts one in front of the conversation until you take it
 off.
 
 ## Which folders are read

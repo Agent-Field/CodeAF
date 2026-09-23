@@ -31,10 +31,10 @@ name the shelf actually holds. An empty shelf says so in one plain line.
 
 ## Why it exists
 
-A skill that suits a message is already carried with it (the `skills carried:`
-line), and the prompt names a few of the shelf's skills. `use_skill` is the
-door onto the rest: mid-run discovery of the whole shelf, rather than only
-what the prompt happened to carry.
+A skill whose description shares words with a message is already carried with
+it (the dim `skills ·` line), and the prompt lists every skill on the shelf
+with what it is for. `use_skill` is the door onto their bodies: the model
+opens the one a request fits, even when the request shares no words with it.
 
 ## Can you use skills with memory off
 

@@ -144,10 +144,12 @@ var tuiWords = map[string]tuiWord{
 	},
 	// ── the skills a person already has ──────────────────────────────────────
 	"skillsCarriedWord": {
-		screen: "skills carried: ",
-		pkg:    "internal/session",
-		why: "the dim line under a message naming the skills its turn carried — the only screen evidence " +
-			"that a skill from another tool's folder reached a turn by itself or by /skill ([testForeignSkills])",
+		screen: "skills · ",
+		pkg:    "internal/tui3",
+		why: "the dim note naming the skills a turn carried, folded into the turn's `▸ worked` chip once " +
+			"the answer lands — the only screen evidence that a skill from another tool's folder reached " +
+			"a turn by itself or by /skill ([testForeignSkills]); the headless --once door prints the " +
+			"engine's own `skills carried: ` sentence instead",
 	},
 	"skillNoShelfWord": {
 		screen: "this conversation has no skill shelf",

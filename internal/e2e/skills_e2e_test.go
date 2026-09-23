@@ -69,16 +69,14 @@ func foreignSkillsRun(t *testing.T, memory string) {
 	// the answer carries the word only its body holds.
 	r.lit("What does the Port Quillon tide almanac say about the harbour tide at noon? Keep it to one line.")
 	r.keys("Enter")
-	carried := r.waitFor(modelPatience, say(t, "skillsCarriedWord")+tideSkill, tideCode)
+	carried := carriedAndFollowed(t, r, tideSkill, tideCode)
 	t.Logf("memory %s — the tide skill carried and followed:\n%s", memory, carried)
-	r.waitFor(modelPatience, say(t, "idleWord"))
 
 	// And the Codex skill the same way, which is the other harness's folder.
 	r.lit("What does the Brassmoor lantern ledger record for entry nine? Keep it to one line.")
 	r.keys("Enter")
-	carried = r.waitFor(modelPatience, say(t, "skillsCarriedWord")+ledgerSkill, ledgerCode)
+	carried = carriedAndFollowed(t, r, ledgerSkill, ledgerCode)
 	t.Logf("memory %s — the Codex skill carried and followed:\n%s", memory, carried)
-	r.waitFor(modelPatience, say(t, "idleWord"))
 
 	// (b) BY HAND. The plugin skill's description has nothing to do with the
 	// question asked next, so only the attachment can carry it. The list opens
@@ -100,9 +98,8 @@ func foreignSkillsRun(t *testing.T, memory string) {
 	time.Sleep(500 * time.Millisecond)
 	r.lit("In one short line, what is seven times six?")
 	r.keys("Enter")
-	carried = r.waitFor(modelPatience, say(t, "skillsCarriedWord")+orchardSkill, orchardCode)
+	carried = carriedAndFollowed(t, r, orchardSkill, orchardCode)
 	t.Logf("memory %s — the attached plugin skill carried and followed:\n%s", memory, carried)
-	r.waitFor(modelPatience, say(t, "idleWord"))
 
 	// (c) use_skill, both modes, read off the conversation's own record
 	// rather than guessed from the answer's wording.
@@ -114,6 +111,26 @@ func foreignSkillsRun(t *testing.T, memory string) {
 		t.Fatalf("memory %s — the conversation's record holds use_skill list=%v get=%v", memory, list, get)
 	}
 	r.quit()
+}
+
+// carriedAndFollowed waits for the answer to say the code word only the
+// skill's body holds and for the turn to land, then opens the turn's work fold
+// and waits for the dim line naming the skill the turn carried.
+//
+// THE LINE IS LOOKED FOR INSIDE THE FOLD, NOT BESIDE THE ANSWER. It is a dim
+// note of the turn's own machinery, so once the answer lands the `▸ worked`
+// chip swallows it with the calls (tui3's workfold.go); only a line addressed
+// to the person stays out. ctrl+e with nothing typed opens the latest fold.
+func carriedAndFollowed(t *testing.T, r *rig, skill, code string) string {
+	t.Helper()
+	r.waitFor(modelPatience, code)
+	r.waitFor(modelPatience, say(t, "idleWord"))
+	line := say(t, "skillsCarriedWord") + skill
+	if screen := r.capture(); strings.Contains(screen, line) {
+		return screen
+	}
+	r.keys("C-e")
+	return r.waitFor(20*time.Second, line, code)
 }
 
 // skillsHome is a state root written from nothing, short enough for the
