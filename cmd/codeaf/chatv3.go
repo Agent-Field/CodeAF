@@ -110,7 +110,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// posture this build has always had. They mean nothing without --yolo, and
 	// the check below says so rather than letting a flag do nothing in silence.
 	maxHours := flags.Float64("max-hours", envFloat("CODEAF_MAX_HOURS"),
-		"how many hours an unattended --yolo session may carry its own work on (env CODEAF_MAX_HOURS)")
+		"how many hours an unattended --yolo session may carry its own work on; the window closes itself "+
+			strconv.Itoa(int(launchWallGrace/time.Minute))+" minutes after (env CODEAF_MAX_HOURS)")
 	maxCost := flags.Float64("max-cost", envFloat("CODEAF_MAX_COST"),
 		"how many dollars an unattended --yolo session may carry its own work on (env CODEAF_MAX_COST)")
 	debug := flags.Bool("debug", false,
@@ -187,6 +188,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// said here — before a session file is opened — instead of being ignored.
 	if pickSession && strings.TrimSpace(*once) != "" {
 		return fmt.Errorf(`codeaf resume opens the session picker; for one headless message use: codeaf chat --once "text"`)
+	}
+	// --max-hours ENDS THE PROCESS, a grace after the wall (chatwall.go). The
+	// session's own reader stops its work AT the wall; this is what closes the
+	// window afterwards, because a window nobody is watching was found alive
+	// forty hours past a nine-minute cap.
+	if wall := chatBudget(*maxHours, *maxCost).Wall; wall > 0 && *yolo {
+		defer armLaunchWall(wall, time.AfterFunc, leaveThisProcess)()
 	}
 	// The level is validated HERE, before anything is opened, so a typo is a
 	// usage error and not a knob that silently did nothing for a whole session.
@@ -1511,6 +1519,34 @@ const sessionHeldElsewhereOpening = "this conversation is open in another window
 // looks after a trip over a socket.
 func hostHeldRefusal(err error) bool {
 	return err != nil && strings.Contains(err.Error(), sessionHeldElsewhereOpening)
+}
+
+// engineHeldRefusal is that refusal given its identity back: the sentence the
+// engine wrote, which still reads exactly as it did, and
+// [session.ErrSessionLocked], which is what every surface door tests for.
+//
+// WITHOUT IT, MOVE-IT-HERE COULD NOT WORK AGAINST A WINDOW. On 2026-09-23 a
+// window on today's build met a conversation held by an older in-process
+// window, pressed enter on the row, and was shown the engine's sentence — "open
+// codeaf here and press enter on it to move it here" — which is the instruction
+// it had just followed. Home reads a held conversation's refusal as
+// [session.ErrSessionLocked] and takes the asking road on it (internal/tui3's
+// homeHeldEnter); a bare string over the socket was not that, so the request
+// was never written, and the only way out was killing the other window by hand.
+type engineHeldRefusal struct{ said error }
+
+func (e *engineHeldRefusal) Error() string { return e.said.Error() }
+func (e *engineHeldRefusal) Unwrap() []error {
+	return []error{e.said, session.ErrSessionLocked}
+}
+
+// asHeldRefusal is [engineHeldRefusal] applied where it belongs, and the error
+// unchanged everywhere else.
+func asHeldRefusal(err error) error {
+	if err == nil || errors.Is(err, session.ErrSessionLocked) || !hostHeldRefusal(err) {
+		return err
+	}
+	return &engineHeldRefusal{said: err}
 }
 
 // ── governance: what a session may do, on whose models, for how much ────────

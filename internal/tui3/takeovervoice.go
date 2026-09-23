@@ -48,6 +48,7 @@ package tui3
 // another page used to arrive as nothing at all.
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -269,6 +270,12 @@ func (a *app) takeoverCard(row session.SessionRow, width int, pal palette) []str
 		// keys are the ones every other question on this surface takes.
 		return a.homeAskRows(width)
 	case takeoverMoving, takeoverHolding:
+		// THE STOP QUESTION IS THE CARD WHILE IT IS UP, the way the move
+		// question is in the armed state: one decision, drawn by the block's
+		// own renderer (homeconfirm.go).
+		if ask, up := a.homeAsking(); up && ask.question.Kind == takeoverStopKind {
+			return a.homeAskRows(width)
+		}
 		dim(a.takeoverHeadWord())
 		switch {
 		case phase == takeoverHolding:
@@ -280,9 +287,19 @@ func (a *app) takeoverCard(row session.SessionRow, width int, pal palette) []str
 			// that the fact is news (see [takeoverPatience]).
 			ink(takeoverQuietWord)
 		}
+		// AND ONCE THE WAIT IS NEWS, THE WINDOW IS NAMED: its pid, its
+		// terminal and its build, from its own presence record — and enter
+		// offers to stop it. Nothing is left for a person to dig out of `ps`.
+		if a.takeoverCanStop() {
+			ink(takeoverHolderWord(a.takeover.holder))
+			dim(takeoverStopOfferWord)
+		}
 		dim(takeoverStopWord)
 	case takeoverUnanswered:
 		ink(takeoverUnansweredWord)
+		if a.takeover.holder.PID > 0 {
+			ink(takeoverHolderWord(a.takeover.holder))
+		}
 		dim(takeoverRetryWord)
 	case takeoverCameFree:
 		ink(takeoverFreeWord)
@@ -290,6 +307,28 @@ func (a *app) takeoverCard(row session.SessionRow, width int, pal palette) []str
 		return nil
 	}
 	return rows
+}
+
+// takeoverHolderWord names the window holding the conversation, from its own
+// presence record: `held by pid 58673 · ttys004 · a1b2c3d4 built …`.
+func takeoverHolderWord(holder session.Holder) string {
+	words := holder.Words()
+	if words == "" {
+		return ""
+	}
+	return "held by " + words
+}
+
+// takeoverStopOfferWord is the key that stops it, said under the name.
+const takeoverStopOfferWord = "enter stops that window"
+
+// takeoverStoppingWord is what the foot says once the stop was sent, and the
+// second time says what the second signal does.
+func takeoverStoppingWord(pid, times int) string {
+	if times > 1 {
+		return fmt.Sprintf("told pid %d to stop now — it exits without finishing", pid)
+	}
+	return fmt.Sprintf("asked pid %d to stop — the conversation comes here as it lets go", pid)
 }
 
 // takeoverHeadWord is the headline of a claim that is out, with how long it has

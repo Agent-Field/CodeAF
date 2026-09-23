@@ -32,7 +32,12 @@ package enginehost
 // that could not learn its own path never claims to have been replaced, so the
 // capability is absent rather than present and guessing.
 
-import "os"
+import (
+	"os"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+)
 
 // hostBinary is the file this host was started from, as it was at the moment it
 // started.
@@ -73,3 +78,28 @@ func (b hostBinary) replaced() bool {
 		!now.ModTime().Equal(b.was.ModTime()) ||
 		now.Size() != b.was.Size()
 }
+
+// builtAt is the moment this binary was built, which is what puts two builds in
+// order: the stamp `make build` links in when there is one, and otherwise the
+// file's own modification time as it was when the process started. A process
+// that could not learn its own file and carries no stamp answers the zero time,
+// and zero reads as OLDER than everything — a host that cannot say when it was
+// built is never the one kept over a build that can.
+func (b hostBinary) builtAt() time.Time {
+	if stamp := buildinfo.BuiltAt(); !stamp.IsZero() {
+		return stamp
+	}
+	if b.was == nil {
+		return time.Time{}
+	}
+	return b.was.ModTime()
+}
+
+// BuildMoment is [hostBinary.builtAt] for the process asking: the same rule on
+// both sides of the comparison, so a host and the window deciding whether to
+// replace it are measured with one ruler.
+func BuildMoment() time.Time { return thisBinary().builtAt() }
+
+// ThisBinary is the file this process was started from, "" when the platform
+// cannot say.
+func ThisBinary() string { return thisBinary().path }
