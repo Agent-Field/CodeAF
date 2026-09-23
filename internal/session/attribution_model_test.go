@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -30,22 +29,22 @@ func pageNow(agent *Agent) string {
 func TestAssistedByFollowsTheModelAfterASwitch(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.System = ""
-		config.Attribution = true
+		config.Model = "deepseek/deepseek-v4-flash"
 	})
-	launched := fmt.Sprintf(exec.AttributionAssistedBy, "test/model")
-	switched := fmt.Sprintf(exec.AttributionAssistedBy, "other/model")
+	launched := exec.AssistedBy("deepseek/deepseek-v4-flash")
+	switched := exec.AssistedBy("qwen/qwen3-coder")
 
 	first := pageNow(agent)
 	if !strings.Contains(first, launched) {
 		t.Fatalf("the launch page does not name the launch model in %q", launched)
 	}
 
-	agent.SetModel("other/model")
+	agent.SetModel("qwen/qwen3-coder")
 	page := pageNow(agent)
 	if !strings.Contains(page, switched) || strings.Contains(page, launched) {
 		t.Fatalf("after /model the page still credits the launch model; want %q", switched)
 	}
-	if want := strings.ReplaceAll(first, "test/model", "other/model"); page != want {
+	if want := strings.ReplaceAll(first, launched, switched); page != want {
 		t.Fatal("the switch moved more of the page than the model's name, so the old model's cached prefix cannot come back")
 	}
 
@@ -56,28 +55,35 @@ func TestAssistedByFollowsTheModelAfterASwitch(t *testing.T) {
 	if page := pageNow(agent); !strings.Contains(page, switched) {
 		t.Fatalf("a clock refresh after /model went back to the launch model; want %q", switched)
 	}
+
+	// AND THE HARNESS'S OWN COMMITS FOLLOW THE SAME SWITCH.
+	if got := agent.signsGitWork().sign("task: x"); !strings.Contains(got, switched+"\n") {
+		t.Fatalf("after /model the landing still signs as %q", got)
+	}
 }
 
 // SWITCHING BACK IS THE PAGE THE OLD MODEL ALREADY HAS, and a page that does not
-// name the model is not touched by a switch at all.
+// name the model — the person turned the name off — is not touched by a switch
+// at all.
 func TestASwitchBackRestoresThePageByteForByte(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.System = ""
-		config.Attribution = true
+		config.Model = "deepseek/deepseek-v4-flash"
 	})
 	first := pageNow(agent)
-	agent.SetModel("other/model")
-	agent.SetModel("test/model")
+	agent.SetModel("qwen/qwen3-coder")
+	agent.SetModel("deepseek/deepseek-v4-flash")
 	if pageNow(agent) != first {
 		t.Fatal("switching back did not restore the page the launch model already had")
 	}
 
-	unsigned, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	unnamed, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.System = ""
+		config.AttributionModelOff = true
 	})
-	before := pageNow(unsigned)
-	unsigned.SetModel("other/model")
-	if pageNow(unsigned) != before {
+	before := pageNow(unnamed)
+	unnamed.SetModel("qwen/qwen3-coder")
+	if pageNow(unnamed) != before {
 		t.Fatal("a page that names no model was re-rendered by a switch")
 	}
 }

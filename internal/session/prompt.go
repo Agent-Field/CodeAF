@@ -590,7 +590,7 @@ func (a *Agent) liveModelConfigLocked() Config {
 //     that follow the model. Switching back to the model before is then the
 //     page that model already has cached, byte for byte, rather than a second
 //     cold write for a newer minute.
-//   - A PAGE THAT DOES NOT NAME THE MODEL IS LEFT ALONE. With attribution off
+//   - A PAGE THAT DOES NOT NAME THE MODEL IS LEFT ALONE. With the model's name off
 //     the render comes back identical and message[0] is not touched at all.
 //
 // A prompt this agent did not write is never re-rendered ([Agent.systemOwn]).

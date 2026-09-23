@@ -63,7 +63,7 @@ func TestLegacyRegisteredWorktreeResumesLandsAndCleansUp(t *testing.T) {
 	if !ok || resumed.dir != canonicalPath(legacyDir) {
 		t.Fatalf("resume = %q %v, want former registered tree", resumed.dir, ok)
 	}
-	merge, problem, _, refusal := resumed.comeHome("resume former worktree", []string{"restored.txt"}, false)
+	merge, problem, _, refusal := resumed.comeHome("resume former worktree", []string{"restored.txt"}, gitSignature{})
 	if merge != mergeMerged || problem != "" || refusal != refusedNothing {
 		t.Fatalf("landing = %q %q %v", merge, problem, refusal)
 	}

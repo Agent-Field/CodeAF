@@ -127,7 +127,7 @@ func (d *beltRunDouble) Land(_ context.Context, _ *plandb.Store, workspace, _ st
 	d.landCalls++
 	d.mu.Unlock()
 	if d.real {
-		branch, changed, refusal, err := LandRunTree(workspace, "the run", false)
+		branch, changed, refusal, err := LandRunTree(workspace, "the run", "")
 		return RunLanding{Branch: branch, Changed: changed, Refused: refusal}, err
 	}
 	return d.landing, nil

@@ -87,9 +87,16 @@ deleted your own copy. Your file is read once and never written to.
 
 ## Attribution: how codeaf signs git work
 
-When a worker makes git commits for you, it ends the message with two
-trailer lines — `Assisted-by: CodeAF` naming the model, then
-`Co-Authored-By: CodeAF` — and nothing in the subject or the body. When it
+Every commit codeaf writes for you — a worker's own, and the one the harness
+writes when work lands — ends the message with one blank line and the same two
+trailer lines, in this order and nothing after them:
+
+    Assisted-by: CodeAF (deepseek-v4-flash)
+    Co-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>
+
+The name in brackets is the model alone, without the provider or company in
+front of it and without a routing suffix like `:free`. Nothing goes in the
+subject or the body. When it
 opens a pull request or an issue, it ends the body with an
 em-dash line and one sentence: *Drafted with CodeAF · reviewed and owned
 by the author*, linking to `agentfield.ai/github/codeaf`.
@@ -100,8 +107,11 @@ deliverable like a deck or a report. A repository that forbids AI trailers wins
 — its CONTRIBUTING or policy is honoured and the worker tells you it left the
 signature out.
 
-Turn it off in the settings sheet under **sharing**, or pin it from your shell
-with `CODEAF_ATTRIBUTION`. Off means the worker is never told to sign at all.
+It cannot be turned off: the `attribution` setting and `CODEAF_ATTRIBUTION`
+are gone, and a profile still holding either is told so when codeaf starts. The
+one part you can turn off is the model's name — the **model in commits** row
+(`attribution.model`) under **sharing**, or `CODEAF_ATTRIBUTION_MODEL` from your
+shell — and then the first line is just `Assisted-by: CodeAF`.
 
 ## Where a coding worker actually works, and what happens to work that was not brought back
 

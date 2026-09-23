@@ -1708,7 +1708,7 @@ the conversation already open.
 
 **Workspace** — this machine and this project: what codeaf does with its own time here, and
 what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
-"tenure after", "background checks", "attribution", "google sign-in id", "google sign-in
+"tenure after", "background checks", "model in commits", "google sign-in id", "google sign-in
 secret", "slack sign-in id", and the four ssh rows — "ssh reuse", "ssh heartbeat", "ssh
 missed heartbeats", "ssh traffic". **It holds no money row at all** — every one of those
 moved to Spending.

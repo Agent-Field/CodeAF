@@ -579,10 +579,12 @@ var settingUI = map[string]settingMeta{
 			everyWord(standing.Interval) + " with no window open. " +
 			"Off checks only while one is.",
 	},
-	config.KeyAttribution: {
-		tab: tabWorkspace, label: "attribution", widget: widgetToggle,
-		about: "signs the commits and PRs codeaf writes for you — one trailer, " +
-			"one footer line.",
+	// THE SIGNATURE HAS NO ROW, only the model's name inside it: codeaf always
+	// signs the commits and pull requests it writes, and what a person may
+	// choose is whether the `Assisted-by` line says which model it was.
+	config.KeyAttributionModel: {
+		tab: tabWorkspace, label: "model in commits", widget: widgetToggle,
+		about: config.AttributionModelHint,
 	},
 	// The three rows Google and Slack connections are signed with. They belong on this tab
 	// and not under Providers because they are not about which model answers
