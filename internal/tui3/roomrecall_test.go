@@ -157,13 +157,13 @@ func TestUpScrollsTheRoomWhenThereIsNoHistory(t *testing.T) {
 	}
 }
 
-// THE HINT SLOT MUST NOT SAY "ctrl+c interrupt" IN A ROOM, because esc in here
+// THE HINT SLOT MUST NOT SAY "esc interrupt" IN A ROOM, because esc in here
 // leaves the page and interrupts nothing (room.go's [app.roomHint]).
 func TestTheHintSlotInARoomNeverPromisesAnInterrupt(t *testing.T) {
 	a, _ := roomRecallApp(t)
 	a.state = stateWorking
 
-	if hint := a.hintWord(); hint == "ctrl+c interrupt" {
+	if hint := a.hintWord(); hint == "esc interrupt" {
 		t.Fatal("the hint slot promised an interrupt from inside a room")
 	}
 	// What it says instead is the key that actually ends the work in here.
@@ -171,7 +171,7 @@ func TestTheHintSlotInARoomNeverPromisesAnInterrupt(t *testing.T) {
 		t.Fatalf("the room's hint reads %q, want %q", hint, roomStopHint)
 	}
 	drive(t, a, key("esc"))
-	if hint := a.hintWord(); hint != "ctrl+c interrupt" {
+	if hint := a.hintWord(); hint != "esc interrupt" {
 		t.Fatalf("back in the conversation the hint reads %q", hint)
 	}
 }

@@ -1535,7 +1535,7 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 // homePreselect puts the cursor on THE CONVERSATION THIS WINDOW WAS IN BEFORE
 // THIS ONE (law 6): the most recent key on this window's own stack that is not
 // the one in front and is on the grid. Enter is then a switch in two keys, and
-// repeated Escape presses stay on Home.
+// Escape returns to the conversation behind Home.
 func (a *app) homePreselect() {
 	if !a.home.gridOn() {
 		return

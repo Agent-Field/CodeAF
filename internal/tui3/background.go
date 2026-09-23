@@ -4,7 +4,7 @@ package tui3
 //
 // Watching `go test ./...` grind through minute three used to leave a person
 // two choices, and both of them threw the work away: keep watching until the
-// harness's own timeout killed it, or press ctrl+c, which killed it sooner. There
+// harness's own timeout killed it, or press esc, which killed it sooner. There
 // was no third answer, because there was nothing under the surface that could
 // take a running process and keep it.
 //
@@ -17,7 +17,7 @@ package tui3
 //
 // ── THE KEY, AND WHY THIS ONE ──
 //
-// ctrl+b is copy mode and ctrl+c is the interrupt, and neither is for sale. ctrl+g
+// ctrl+b is copy mode and esc is the interrupt, and neither is for sale. ctrl+g
 // already closes and restores the task column; while a foreground command can
 // be kept, this reading wins, and with none the column keeps the key. It is
 // plain BEL so every terminal on every platform delivers it, and it needs no

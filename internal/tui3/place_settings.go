@@ -180,14 +180,7 @@ func (placeSettings) note(a *app, width int) []string {
 	return []string{" " + pal.dim(noteFit(a.sheet.footNote(), width-2))}
 }
 
-func (placeSettings) hint(a *app) string {
-	hint := a.sheet.keysLine()
-	if !a.sheetLayerOwnsKeys() && !a.sheet.searching() &&
-		!(a.sheet.onConnections() && (a.sheet.conn.armed || a.sheet.conn.expanded != "")) {
-		hint = strings.ReplaceAll(hint, "esc close", homeDoorWord)
-	}
-	return hint
-}
+func (placeSettings) hint(a *app) string { return a.sheet.keysLine() }
 
 // key is the panel's own grammar (settings.go's [app.sheetKey]): the value being
 // edited, the model picker, the section bar, and the search across all of them.
