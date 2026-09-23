@@ -945,7 +945,9 @@ Co-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>
 ```
 
 The parenthesised id on the first line is the model that wrote the commit —
-the session's configured model, whatever it is that day.
+the model the conversation is talking to at that moment. Switch with `/model`
+and the next commit names the model you switched to, not the one the
+conversation started on.
 
 **A pull request or an issue** ends its body with a line holding an em dash, and
 then one sentence:

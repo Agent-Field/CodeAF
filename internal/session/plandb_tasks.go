@@ -83,6 +83,48 @@ type PlanTaskRow struct {
 	// Folder is the run copy this row works in. A surface says it once in the
 	// page head and may omit only a leading change into this exact directory.
 	Folder string
+	// Archived is true for a row read from an ENDED run's store, one of the
+	// runs this conversation finished before the one it holds now. The rows
+	// arrive oldest run first, so a reader that wants the live run first — the
+	// digest in front of the person's sentence — has to be able to tell them
+	// apart without reopening a store ([planDigestOrder]).
+	Archived bool `json:",omitempty"`
+}
+
+// planWordRunning is the rail's word for a row whose work is under way. It is
+// not [taskWordWorking], and that is the rail's own ruling rather than a slip:
+// the plan list has always said `running` for a claimed row, and the word the
+// conversation reads about a row is the word the person reads beside it.
+const planWordRunning = "running"
+
+// StateWord is the row's state IN THE WORDS THE RAIL DRAWS: queued, running,
+// done, stopped, incomplete, your call. It is the ONE mapping from the store's
+// own words (pending, ready, claimed, failed, cancelled, paused) to the ones a
+// person reads, and it lives beside the row so every reader of a row — the
+// side list, the `tasks` listing, the digest in front of the person's sentence
+// — says the same word about the same row. Two readings of one row were two
+// states to the model: the digest said `cancelled` and `claimed` of rows the
+// person saw as `stopped` and `running`.
+//
+// A status this build has never heard of reads as NOTHING rather than a word
+// invented for it — the emptiness law, applied to a vocabulary that may grow.
+func (row PlanTaskRow) StateWord() string {
+	if row.Stopped {
+		return taskWordStopped
+	}
+	switch strings.TrimSpace(row.Status) {
+	case string(plandb.StatusPending):
+		return taskWordQueued
+	case string(plandb.StatusReady), string(plandb.StatusClaimed), string(plandb.StatusRunning):
+		return planWordRunning
+	case string(plandb.StatusDone):
+		return taskWordDone
+	case string(plandb.StatusFailed), string(plandb.StatusCancelled):
+		return taskWordIncomplete
+	case "paused":
+		return taskWordYourCall
+	}
+	return ""
 }
 
 // PlanTaskNote is one note on a task's page: what was said, who said it, and
@@ -204,6 +246,9 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	copies := a.planDisplayRunCopy()
 	for _, store := range stores {
 		dir := filepath.Dir(store.Path())
+		// AN ENDED RUN'S STORE IS NAMED FOR ITS PLACE IN THE LINE (`plan.db.1`,
+		// [planArchivePaths]); the live run's is the plan's own path.
+		archived := filepath.Clean(store.Path()) != filepath.Clean(plan.path)
 		spend := planSpendByTask(store.Path())
 		live := store.LiveSteps()
 		tasks := store.Tasks(plandb.Filter{Chat: plan.chat})
@@ -216,6 +261,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 			row := planTaskRow(store, dir, task, spend, live)
 			row.Folder = a.planTaskRunCopy(task.ID)
 			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
+			row.Archived = archived
 			rows = append(rows, row)
 			if task.ID == root {
 				applyPlanRootProgress(&rows[len(rows)-1], tasks, root)

@@ -27,6 +27,7 @@ google_oauth_secret
 history.enabled
 lane.guard
 lane.talk
+lane.talk.borrow
 linear_mode
 memory.consolidation
 memory.enabled

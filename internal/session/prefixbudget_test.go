@@ -476,9 +476,15 @@ const fixedPrefixTarget = 48_000
 // lines and the belt-fact row were tightened in the same commit and paid part
 // of the bill. Fixed is 56,277, over by 94, and lean is 47,891, over by 81;
 // both waivers rise by that figure here, in this diff, on purpose.
+//
+// 2026-09-23, #1393. The answer section got back the rule #1209's rewording had
+// dropped without saying so — "done" is never half-solved work — and the same
+// section paid for it by saying three things in fewer words. The page came out
+// four bytes lighter on both arms: fixed is 56,273 and lean is 47,887, so both
+// waivers fall by 4 and again sit exactly on the measurement.
 const (
-	fixedPrefixWaiver = 8_277
-	leanPrefixWaiver  = 16_391
+	fixedPrefixWaiver = 8_273
+	leanPrefixWaiver  = 16_387
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
