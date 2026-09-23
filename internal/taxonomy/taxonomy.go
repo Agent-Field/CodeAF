@@ -189,6 +189,12 @@ type Evidence struct {
 	// or hopping models would turn a spending boundary into ordinary pacing.
 	PlanPaused bool
 
+	// TerminalTransport says the transport has already exhausted the only
+	// recovery it owns and the person must act. It is still transport evidence
+	// rather than a finding about the model or the work, but its one verdict is
+	// a report: another endpoint, request shape, or model cannot change it.
+	TerminalTransport bool
+
 	// Upstream is the provider the router NAMED as the one that refused, empty
 	// when the router refused on its own account. The emptiness is the fact: a
 	// 4xx that named nobody is our own bytes being read and rejected, and every
@@ -617,7 +623,7 @@ func classOf(e Evidence) Class {
 	if e.Overflow {
 		return Shape
 	}
-	if e.Empty || e.Malformed || e.Timeout || e.Idle || e.Cut || e.Degenerate || e.Wire {
+	if e.TerminalTransport || e.Empty || e.Malformed || e.Timeout || e.Idle || e.Cut || e.Degenerate || e.Wire {
 		return Transport
 	}
 	// A WITHDRAWN MODEL IS THE WIRE WITH ONE MOVE, and it is asked before the

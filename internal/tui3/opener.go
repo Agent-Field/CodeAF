@@ -1,15 +1,11 @@
 package tui3
 
 import (
-	"errors"
-	"os/exec"
-	"runtime"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/opener"
 )
 
 // THE TWO WAYS A LINK LEAVES THIS SURFACE.
@@ -36,19 +32,17 @@ import (
 // so a test can watch what would have been opened without a browser appearing
 // on the machine running it — the same seam, and the same reason, as
 // internal/tui's.
-var processOpener = startOpener
+var processOpener = opener.Start
+
+// setupBrowserWord shares the terminal connection command's recovery line, so
+// a browser start failure has one spelling wherever the visible link lives.
+const setupBrowserWord = opener.BrowserFailureWord
 
 // openerCommand is what this platform calls "open this". An empty name is a
 // platform with no answer, which is a fact the caller reports rather than
 // papers over.
 func openerCommand() (string, []string) {
-	switch runtime.GOOS {
-	case "darwin":
-		return "open", nil
-	case "linux":
-		return "xdg-open", nil
-	}
-	return "", nil
+	return opener.Command()
 }
 
 // startOpener hands the target to the platform and does not wait for whatever
@@ -59,36 +53,13 @@ func openerCommand() (string, []string) {
 // the first-run sign-in, /files — and every one of them chooses its sentence from
 // the error on the frame that needs it. exec.Command looks the opener up on PATH
 // and records a miss in command.Err WITHOUT STARTING ANYTHING, and that miss is
-// the answer those doors act on: no `xdg-open` on a headless box. The fork itself
-// is handed to a goroutine, so the loop never starts a process of its own
-// (framedisk_law_test.go). A fork that then fails is a link that did not open,
-// which is the case the link written under every handoff exists for.
+// the answer those doors act on: no `xdg-open` on a headless box. Start forks
+// synchronously so a browser that would not start is reported on that frame,
+// then waits for the child off the loop. A child that later fails is a link that
+// did not open, which is the case the link written under every handoff exists
+// for.
 func startOpener(target string) error {
-	name, args := openerCommand()
-	if name == "" {
-		return errors.New("this machine has no way to open a browser")
-	}
-	// AN EMPTY TARGET IS NOTHING TO OPEN, and it is refused HERE so that all six
-	// doors are refused by one line. `open ""` on a Mac does not fail: the
-	// platform resolves the empty path to the process's own working directory
-	// and puts a Finder window on screen — so a sign-in event that arrived with
-	// no URL opened a file manager on whatever folder codeaf was started in,
-	// which is the one outcome a handoff must never have. The sentence is the
-	// one a miss already says, because a person is owed the same answer either
-	// way: the link under the block is still the way through.
-	if strings.TrimSpace(target) == "" {
-		return errors.New("the browser did not open")
-	}
-	command := exec.Command(name, append(append([]string(nil), args...), target)...)
-	if command.Err != nil {
-		return errors.New("the browser did not open")
-	}
-	guard.Go("tui3/open", func() {
-		if command.Start() == nil {
-			_ = command.Wait()
-		}
-	})
-	return nil
+	return opener.Start(target)
 }
 
 // ── the link, as text ───────────────────────────────────────────────────────

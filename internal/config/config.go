@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -453,9 +454,20 @@ func load(requireKey bool) (Config, error) {
 		Swarm:             DefaultSwarm,
 		ProfileDir:        profileDir,
 	}
-	config.Sources = resolveSources(config.APIKey, config.BaseURL, persistedSourcesFrom(profileValues), sourceKeyFromRow)
+	config.Sources = sourceHomes(resolveSources(config.APIKey, config.BaseURL, persistedSourcesFrom(profileValues), func(row PersistedSource, source modelsource.Source) string {
+		return SourceKeyAt(profileDir, row, source)
+	}), profileDir)
 	if config.APIKey == "" && requireKey {
-		return Config{}, ErrNoAPIKey
+		hasService := false
+		for _, service := range config.Sources.All() {
+			if !strings.EqualFold(service.Source.ID, modelsource.DefaultID) && (strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional) {
+				hasService = true
+				break
+			}
+		}
+		if !hasService {
+			return Config{}, ErrNoAPIKey
+		}
 	}
 	// Every user-tunable knob below resolves through the settings registry's
 	// one order — environment, then the profile's config.json, then the
@@ -935,6 +947,12 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		BillingDoor: service.Door.Name,
 		Effort:      effort,
 	}
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
+		configured.APIKey = codexauth.Sentinel
+		configured.HTTPClient = codexauth.Client(service.Home)
+		configured.BillingDoor = ""
+		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
+	}
 	if service.Overflow != nil {
 		configured.PlanOverflow = service.Overflow.Address
 		configured.PlanOverflowDoor = service.Overflow.Name
@@ -976,7 +994,9 @@ func (c Config) ClientConfig(model string) provider.Config {
 	// And the model's own list price, which is what the adapter bounds a
 	// latency-sorted request against. Same contract: never blocks, and
 	// "nobody published one" sends no ceiling at all.
-	configured.ModelPrice = c.Models.PriceNow
+	if configured.ModelPrice == nil {
+		configured.ModelPrice = c.Models.PriceNow
+	}
 	return configured
 }
 

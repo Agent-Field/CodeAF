@@ -85,10 +85,7 @@ func v3CatalogForModel(ctx context.Context, settings config.Config, model string
 	if service.Source.Listing == modelsource.ListingNone {
 		return &catalog.Catalog{}, bare, false
 	}
-	direct := catalog.LoadLazy(ctx, catalog.Options{
-		Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key,
-		Dir: settings.ProfileDir,
-	})
+	direct := catalog.LoadLazy(ctx, config.CatalogOptionsFor(service, settings.ProfileDir))
 	return direct, bare, v3ServesMedia(direct)
 }
 

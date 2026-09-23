@@ -1102,6 +1102,10 @@ var ModelPoolChoices = []string{"on", "read", "off"}
 // footer and never become editable rows.
 var OperatorEnvPins = []string{
 	"CODEAF_BASE_URL",
+	// These two addresses make the real Codex browser and backend roads
+	// reproducible against a local fixture. They are plumbing, not preferences.
+	"CODEAF_CODEX_ISSUER",
+	"CODEAF_CODEX_BACKEND",
 	// The check seat has no editable profile row. Its environment rung is
 	// launch plumbing, listed read-only without changing the task.Role boundary.
 	"CODEAF_CHECK_MODEL",

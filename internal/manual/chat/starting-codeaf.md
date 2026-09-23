@@ -71,7 +71,8 @@ OpenRouter step returns on any later local interactive launch while no key exist
 including a named or resumed conversation using the default service, and `enter` on an
 unsent message brings it back without clearing the draft. A conversation on a connected
 direct service's model sends without an OpenRouter key and does not open that step. The
-getting-started page has the whole flow.
+getting-started page has the whole flow. First run does not offer Codex; connect a
+ChatGPT plan later from the Codex row in `/connect` or with `codeaf connect codex`.
 
 A `--once` or piped run cannot open a browser. When its model uses the keyless default
 service it stops at the door with `codeaf chat needs a model to talk with.` Its next line

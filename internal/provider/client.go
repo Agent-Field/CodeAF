@@ -109,7 +109,8 @@ type Config struct {
 	// reason to wait on the one path where somebody is already watching a failure.
 	NearestModels func(model string) []string
 
-	// HTTPClient is optional and exists for deterministic tests.
+	// HTTPClient is optional. Connected services may use it to adapt their wire
+	// protocol, and tests use the same seam to keep requests deterministic.
 	HTTPClient *http.Client
 }
 
@@ -2657,6 +2658,11 @@ type errorBody struct {
 // of any real provider error and is bounded enough to sit on every failed call.
 const maxRawClip = 2 << 10
 
+// maxAPIErrorScrubBody bounds exact-secret work at semantic ingress. The Codex
+// transport's error bodies are small; larger bodies belong to media roads and
+// are scrubbed by each output sink if somebody elects to write them.
+const maxAPIErrorScrubBody = 8 << 20
+
 // maxSentenceClip bounds the ONE SENTENCE a person is shown. It is a line in a
 // terminal beside a status code, not a report.
 const maxSentenceClip = 160
@@ -2667,6 +2673,13 @@ const maxSentenceClip = 160
 // nothing until it says which provider and what they said, and both are in the
 // metadata OpenRouter already sends (see [APIError]).
 func apiError(status int, payload []byte) error {
+	// SEMANTIC INGRESS REMOVES ONLY CREDENTIALS THIS PROCESS KNOWS. A diagnostic
+	// that happens to resemble an sk-key or a bearer remains byte-for-byte what
+	// the provider said; the call log, debug record and other output sinks keep
+	// the broader shape scrub that protects files a person may share.
+	if len(payload) <= maxAPIErrorScrubBody {
+		payload = trace.ScrubRegistered(payload)
+	}
 	failure := &APIError{Status: status, Body: string(payload)}
 	var decoded errorBody
 	if err := json.Unmarshal(payload, &decoded); err == nil {

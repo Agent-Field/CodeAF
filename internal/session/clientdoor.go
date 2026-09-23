@@ -622,7 +622,9 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 	// only when explicit and nobody invents a price or a reasoning shape.
 	configured.SupportsParameter = c.SupportsParameter
 	configured.ReasoningProfile = c.ReasoningProfile
-	configured.ModelPrice = c.ModelPrice
+	if configured.ModelPrice == nil {
+		configured.ModelPrice = c.ModelPrice
+	}
 	return configured
 }
 

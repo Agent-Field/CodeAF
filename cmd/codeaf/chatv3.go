@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/effort"
@@ -68,6 +69,18 @@ func v3OpenRouterConnection(settings config.Config, interactive bool) func(conte
 	}
 	return func(ctx context.Context) (tui3.OpenRouterFlow, error) {
 		return openrouterauth.Begin(ctx, openrouterauth.Options{})
+	}
+}
+
+// v3CodexConnection is the local browser door for the Codex model-service row.
+// A hosted surface gets no seam because its profile and callback listener live
+// on different machines; /connect already says how to sign in on that machine.
+func v3CodexConnection(interactive bool) func(context.Context) (tui3.CodexFlow, error) {
+	if !interactive {
+		return nil
+	}
+	return func(ctx context.Context) (tui3.CodexFlow, error) {
+		return codexauth.Begin(ctx, codexauth.Options{})
 	}
 }
 
@@ -603,6 +616,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// no OpenRouter offer, and a non-interactive launch has nobody to finish
 		// one, so both honestly leave this seam absent.
 		ConnectOpenRouter: v3OpenRouterConnection(settings, interactive),
+		ConnectCodex:      v3CodexConnection(interactive),
 		// The accounts panel, and the sign-in a pressed row starts. It is the
 		// SAME manager the belt reaches through (cfg.Connect), so an account
 		// connected on the panel is connected for the model in the same breath

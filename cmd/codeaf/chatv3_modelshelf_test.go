@@ -6,12 +6,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
@@ -43,7 +46,7 @@ func TestAConnectedServiceRefreshLandsOnTheProcessShelf(t *testing.T) {
 	discovery := catalog.Options{BaseURL: defaultHost.URL(), APIKey: defaultService.Key, Dir: dir}
 	launch := catalog.Load(t.Context(), discovery)
 	shelf := newV3ModelShelf(launch, discovery)
-	custom := modelsource.Vendored()[6]
+	custom := shelfModelSource(t, modelsource.CustomID)
 	outcome, err := config.ConnectService(t.Context(), dir, config.PersistedSource{
 		ID: custom.ID, Written: "localhost", Address: directHost.URL(), Key: "direct-key", Order: 1,
 	}, custom, nil)
@@ -112,6 +115,51 @@ func TestAConnectedServiceRefreshLandsOnTheProcessShelf(t *testing.T) {
 		if request.Method == http.MethodPost {
 			t.Fatalf("the default host received the direct turn: %+v", defaultHost.Requests())
 		}
+	}
+}
+
+func shelfModelSource(t *testing.T, id string) modelsource.Source {
+	t.Helper()
+	for _, source := range modelsource.Vendored() {
+		if source.ID == id {
+			return source
+		}
+	}
+	t.Fatalf("there is no vendored model service %q", id)
+	return modelsource.Source{}
+}
+
+func TestC12CommandLineCodexConnectionSeedsTheNextPickersShelf(t *testing.T) {
+	// C12: codeaf connect codex leaves the account list ready for /model before any refresh.
+	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_ = json.NewEncoder(writer).Encode(map[string]any{"models": []any{
+			map[string]any{"slug": "gpt-5.5", "visibility": "list"},
+			map[string]any{"slug": "hidden", "visibility": "hide"},
+		}})
+	}))
+	defer backend.Close()
+	t.Setenv("CODEAF_CODEX_BACKEND", backend.URL)
+	dir := t.TempDir()
+	_, err := config.ConnectCodex(t.Context(), dir, codexauth.Tokens{
+		AccessToken: "shelf-access", RefreshToken: "shelf-refresh", IDToken: "shelf-identity",
+		AccountID: "acct-shelf", ExpiresAt: time.Now().Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources := config.ResolveSources(dir, "", config.DefaultBaseURL)
+	service, ok := sources.ByID("codex")
+	if !ok {
+		t.Fatal("the command-line connection did not resolve codex")
+	}
+	launch := catalog.Load(t.Context(), catalog.Options{
+		BaseURL: config.DefaultBaseURL, Dir: dir,
+		HTTPClient: shelfRouter("", errors.New("default catalog is offline")),
+	})
+	shelf := newV3ModelShelf(launch, catalog.Options{BaseURL: config.DefaultBaseURL, Dir: dir})
+	shelf.setSources(sources)
+	if rows := shelf.modelsForService(service); len(rows) != 1 || rows[0].ID != "gpt-5.5" {
+		t.Fatalf("seeded Codex shelf = %+v", rows)
 	}
 }
 

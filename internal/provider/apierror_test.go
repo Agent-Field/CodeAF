@@ -1,9 +1,13 @@
 package provider
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // A refusal is a value now, and the two things about it that are facts rather
@@ -77,5 +81,37 @@ func TestAPIErrorKeepsAnUndecodableBodyWhole(t *testing.T) {
 	}
 	if refused.Body != "upstream is unavailable" {
 		t.Fatalf("body = %q", refused.Body)
+	}
+}
+
+func TestAPIErrorIngressScrubsOnlyRegisteredSecretsWithinItsBodyBound(t *testing.T) {
+	shaped := []byte(`{"error":{"message":"sk-diagnostic-shape-not-a-secret and Bearer diagnostic-token"}}`)
+	var refused *APIError
+	if err := apiError(400, shaped); !errors.As(err, &refused) {
+		t.Fatal("a provider refusal is not recoverable as a value")
+	}
+	if refused.Body != string(shaped) {
+		t.Fatalf("an empty secret registry changed ingress bytes:\ngot  %q\nwant %q", refused.Body, shaped)
+	}
+
+	const secret = "registered-provider-secret-4096"
+	trace.Secret(secret)
+	registered := []byte(`{"error":{"message":"vendor echoed ` + secret + `"}}`)
+	refused = nil
+	if err := apiError(400, registered); !errors.As(err, &refused) {
+		t.Fatal("a provider refusal is not recoverable as a value")
+	}
+	if strings.Contains(refused.Body, secret) || !strings.Contains(refused.Body, "[redacted]") {
+		t.Fatalf("registered secret reached APIError.Body: %q", refused.Body)
+	}
+
+	large := bytes.Repeat([]byte{'x'}, 9<<20)
+	copy(large[1024:], secret)
+	refused = nil
+	if err := apiError(502, large); !errors.As(err, &refused) {
+		t.Fatal("a provider refusal is not recoverable as a value")
+	}
+	if !bytes.Equal([]byte(refused.Body), large) {
+		t.Fatal("a 9 MiB media body was changed at API error ingress")
 	}
 }

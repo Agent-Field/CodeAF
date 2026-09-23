@@ -88,11 +88,11 @@ func TestAReasoningReplayRefusalIsLearnedForOnlyThatModel(t *testing.T) {
 	}
 }
 
-// A /model switch mid-conversation. The transcript carries the old model's
+// C15: a /model switch mid-conversation. The transcript carries the old model's
 // working, and OpenRouter answers a replay of it to anyone else with a 404 —
 // "encrypted payloads can only be replayed to the endpoint that created them".
 // The words go to the new model; the thinking stays home.
-func TestAnotherModelsReasoningStaysHome(t *testing.T) {
+func TestC15AnotherModelsReasoningStaysHome(t *testing.T) {
 	client, recorded := newCachingClient(t, "http://provider.test", "reasoning/replay")
 	own := WithMessageReasoning(context.Background(), []MessageReasoning{
 		{}, {Field: "reasoning_content", Text: "mine", Model: "reasoning/replay"}, {},
