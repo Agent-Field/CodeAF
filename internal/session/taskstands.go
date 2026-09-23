@@ -921,31 +921,28 @@ func repositoryHolding(token string) (string, bool) {
 // is the one question every reading of "where does this task stand" has to be
 // able to answer before it treats a path as a place.
 //
-// A name is a place on this machine only when a directory along it exists that
-// is not the root of the filesystem. The root is a directory on every machine,
-// so counting it would make the answer true of every absolute path and the
-// question would decide nothing. A file the work will create still has the
-// folder that will hold it, and a folder named in full has itself; either is a
-// place. A path with nothing but the root beneath it — one on another host, one
-// the contract merely quotes — names nothing this machine can stand in, and
-// reading it as a place is what turned every honest deliverable for remote work
-// into a refusal. The nearest existing directory is walked to rather than
-// trusted, because a path's own parent can be a directory everything shares:
-// /tmp holds /tmp/wisp-demo before that folder is ever made, and the home
-// directory holds every ~/name that was never created.
+// A name is a place on this machine only when the directory it names is a
+// directory here. Not a directory somewhere along it: every absolute path has
+// the root of the filesystem beneath it, and on macOS the foreign prefix a path
+// from another host begins with is itself a directory — /home is a symlink to
+// /System/Volumes/Data/home — so walking up answers yes of a path that names
+// nothing anyone keeps on this machine. The directory, and only the directory,
+// is what the task would stand in, so it is the only thing asked about.
+//
+// A path whose directory is not here is a file the work will create or a path on
+// a host this one cannot see, which is how work handed to another machine is
+// written down. Read as a place it could never fall inside the ground, and a
+// lint that counted it refused every honest deliverable.
 func placeOnThisMachine(token string) (string, bool) {
 	dir := canonicalPath(groundDirOf(token, ""))
-	for dir != "" && dir != string(filepath.Separator) {
-		info, err := os.Stat(dir)
-		if err == nil && info.IsDir() {
-			return dir, true
-		}
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return "", false
-		}
-		dir = filepath.Dir(dir)
+	if dir == "" || dir == string(filepath.Separator) {
+		return "", false
 	}
-	return "", false
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	return dir, true
 }
 
 // groundHolds reports whether one written path lands under the ground. An
