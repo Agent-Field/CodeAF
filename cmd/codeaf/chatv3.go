@@ -331,7 +331,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if err != nil {
 		return err
 	}
-	settings, models, harnesses := launch.Settings, launch.Models, launch.Harnesses
+	settings, harnesses := launch.Settings, launch.Harnesses
 	workspace, transcript, resumed := launch.Workspace, launch.SessionFile, launch.Resumed
 	chosen, cfg := launch.Model, launch.Config
 
@@ -421,7 +421,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// itself and is a no-op the second time it is called.
 	defer proc.closeAll()
 
-	proc.warmModels("chatv3/models", models, agent, chosen)
+	proc.warmModels("chatv3/models", agent, chosen)
 
 	// The two things this surface keeps on the person's behalf rather than the
 	// session's: what they have typed before, and what they have half-typed
