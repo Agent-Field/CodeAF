@@ -214,7 +214,7 @@ it asked for behind that tool's mark. A call codeaf refused is one line from `co
 line, `◐`, the model and its seconds, gone when the call returns.
 
 Only the first line of each message is drawn, and a long run shows its newest calls under a
-line such as `…142 earlier calls`; the whole of every call is kept in the task's own record.
+line such as `…142 earlier calls`; the task's own record keeps more of every call.
 The page has no note box: a program reads no note, so nothing typed there would reach it. While
 the run goes, `x` stops it. On the side list the run's row says the stage and the spend so far.
 
