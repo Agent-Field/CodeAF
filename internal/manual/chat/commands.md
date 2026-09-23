@@ -1081,7 +1081,7 @@ other place.
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
 always in one order: an unheaded list of open tabs followed by up to three dimmed
 closed conversations, `needs you` (every question waiting on you, a digit answers the
-top one from anywhere), `projects` (folders, read-only),
+top one from anywhere), `projects` (click a folder to select it for the next message),
 `tasks` (the last day's tasks, running or landed, newest first), `since you left` (what landed while you were
 away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
 Which column a panel stands in follows what it holds: the panels with rows fill the **field**
