@@ -44,7 +44,16 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// have left off, and the program's own verification is what its
 		// terminal record reports ([DelegateWorker]).
 		limits.ReviewRound = false
-		factory = DelegateFactory(spec.Store, spec.Workspace, *spec.Delegate, DelegateSetup{}, limits, factory)
+		// AND ITS MODEL API RIDES THE CONVERSATION'S OWN ROAD: the completer the
+		// door handed the run, the services the conversation can reach, and the
+		// work seat a leaf of this run would sit on — which is where a call on
+		// a model nothing here can reach is answered instead.
+		setup := DelegateSetup{
+			CompleterFor: spec.CompleterFor,
+			Serves:       spec.Serves,
+			Seat:         WorkSeat(spec.ProfileDir, spec.WorkModel),
+		}
+		factory = DelegateFactory(spec.Store, spec.Workspace, *spec.Delegate, setup, limits, factory)
 	}
 	outcome, summary := Start(ctx, Spec{
 		Store:     spec.Store,

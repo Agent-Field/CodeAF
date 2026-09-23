@@ -14,7 +14,8 @@ import (
 
 // fakeProgram is a shell script that stands in for codeaf running a program:
 // it writes its argv to the file FAKE_ARGS names, emits a hello, a stage, a
-// spend and a step, then runs the body it was given.
+// v1 spend line (which the reader no longer knows, and ignores) and a step,
+// then runs the body it was given.
 func fakeProgram(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -74,8 +75,13 @@ func TestRunStartsTheProgramsLineAndReadsTheTerminal(t *testing.T) {
 	if log, _ := os.ReadFile(stderr); !strings.Contains(string(log), "a note for a person") {
 		t.Fatalf("stderr file = %q, want the program's note kept", log)
 	}
-	if sink.hello == nil || sink.hello.Delegate != "fake" || sink.spend[0] != 0.01 || sink.steps[0] != "bash: true→ok" {
+	if sink.hello == nil || sink.hello.Delegate != "fake" || sink.steps[0] != "bash: true→ok" {
 		t.Fatalf("sink = %+v", sink)
+	}
+	// The program's own word about money is not a record any more: the spend
+	// line is the one line the reader dropped.
+	if result.Reading.Ignored != 1 {
+		t.Fatalf("ignored = %d, want the v1 spend line and nothing else", result.Reading.Ignored)
 	}
 }
 

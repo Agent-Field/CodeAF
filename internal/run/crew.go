@@ -114,30 +114,47 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		// role, so RoleOf's error needs no reader here.
 		role, _ := store.RoleOf(task.ID)
 		tier := SeatFor(role)
-		// THE DOOR'S SEAT WINS WHERE IT NAMED ONE. A planner (the run's root or
-		// a task that has children) rides the plan seat. A check rides the careful
-		// work seat. A leaf and every task an unknown role falls to the work seat. The probe tier is named by nobody, so it
-		// keeps the profile's row below.
-		var model string
-		switch tier {
-		case config.ModelTierMastermind:
-			model = seats.Plan
-		case config.ModelTierWorker:
-			model = seats.Work
-		case config.ModelTierHigh:
-			model = seats.Check
-		}
+		model := seatModel(profileDir, tier, seats)
 		if model == "" {
-			model = config.TierSeatAt(profileDir, tier).Model
-		}
-		if model == "" {
-			model = config.TierSeatAt(profileDir, config.ModelTierWorker).Model
-			if model == "" {
-				return seatlessWorker{tier: tier}
-			}
+			return seatlessWorker{tier: tier}
 		}
 		return NewBashWorker(store, workspace, model, completerFor(model))
 	}
+}
+
+// seatModel is the model a task riding tier is seated on, and the one answer
+// both the crew's workers and a delegated program's model API read.
+//
+// THE DOOR'S SEAT WINS WHERE IT NAMED ONE. A planner (the run's root or a task
+// that has children) rides the plan seat. A check rides the careful work seat.
+// A leaf and every task an unknown role falls to the work seat. The probe tier
+// is named by nobody, so it keeps the profile's row. A tier with no model
+// falls to the worker row, and empty is a seat no model can fill.
+func seatModel(profileDir, tier string, seats Seats) string {
+	var model string
+	switch tier {
+	case config.ModelTierMastermind:
+		model = seats.Plan
+	case config.ModelTierWorker:
+		model = seats.Work
+	case config.ModelTierHigh:
+		model = seats.Check
+	}
+	if model == "" {
+		model = config.TierSeatAt(profileDir, tier).Model
+	}
+	if model == "" {
+		model = config.TierSeatAt(profileDir, config.ModelTierWorker).Model
+	}
+	return model
+}
+
+// WorkSeat is the model this run's own work seat holds: the door's work seat
+// where it named one, the profile's worker row otherwise — exactly the seat a
+// leaf of the run is built on ([CrewFactory]). A delegated program's model API
+// answers on it whatever the program asks for that nothing here can reach.
+func WorkSeat(profileDir, work string) string {
+	return seatModel(profileDir, config.ModelTierWorker, Seats{Work: work})
 }
 
 // seatlessWorker is the seat a task gets when the crew holds no model for its

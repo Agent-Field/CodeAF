@@ -17,7 +17,6 @@ type recorder struct {
 	spoke    chan struct{}
 	hello    *Hello
 	stages   []string
-	spend    []float64
 	steps    []string
 	terminal *Terminal
 }
@@ -38,11 +37,6 @@ func (r *recorder) Stage(stage, status string) {
 		r.once.Do(func() { close(r.spoke) })
 	}
 }
-func (r *recorder) Spend(usd float64) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.spend = append(r.spend, usd)
-}
 func (r *recorder) Step(command, observation string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -55,9 +49,11 @@ func (r *recorder) Terminal(t Terminal) {
 }
 
 // A recorded senior-dev stream, taken from EVENTS-CONTRACT.md's shapes, read
-// through the one generic reader: the stages reach the live step, the spend
-// reaches the bank, the steps reach the page, the terminal is the result, and
-// every bus payload passes through untouched.
+// through the one generic reader: the stages reach the live step, the steps
+// reach the page, the terminal is the result, and every bus payload passes
+// through untouched. The stream was recorded while the program still reported
+// its own `spend`; those lines are read now as what they are — lines this
+// reader does not know — because the model API meters money itself.
 func TestTheReaderReplaysASeniorDevStream(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("testdata", "senior-dev-stream.ndjson"))
 	if err != nil {
@@ -74,25 +70,22 @@ func TestTheReaderReplaysASeniorDevStream(t *testing.T) {
 	if reading.LastStage != "agent-summary" {
 		t.Fatalf("last stage = %q, want agent-summary, the stage before the terminal", reading.LastStage)
 	}
-	if reading.SpendUSD != 0.0213 || reading.Steps != 2 {
-		t.Fatalf("spend %.4f steps %d, want 0.0213 and 2", reading.SpendUSD, reading.Steps)
+	if reading.Steps != 2 {
+		t.Fatalf("steps %d, want 2", reading.Steps)
 	}
-	// Three bus payloads are on the stream; they are ignored, not failed.
-	if reading.Ignored != 3 {
-		t.Fatalf("ignored = %d, want the three bus payloads", reading.Ignored)
+	// Three bus payloads and three v1 spend lines are on the stream; all six
+	// are ignored, not failed.
+	if reading.Ignored != 6 {
+		t.Fatalf("ignored = %d, want the three bus payloads and the three spend lines", reading.Ignored)
 	}
 	if got := strings.Join(sink.stages, " "); !strings.Contains(got, "implement·running") || !strings.Contains(got, "verification·pass") {
 		t.Fatalf("stages = %q", got)
 	}
-	// The spend is told three times and never goes down; the repeat is told
-	// again at the same figure, which a bank reads as no delta.
-	if len(sink.spend) != 3 || sink.spend[0] != 0.0101 || sink.spend[2] != 0.0213 {
-		t.Fatalf("spend told = %v", sink.spend)
-	}
 	if sink.steps[0] != "bash: go test ./...→ok  \tpkg\t0.3s" || sink.steps[1] != "edit: internal/auth/middleware.go→" {
 		t.Fatalf("steps told = %q", sink.steps)
 	}
-	// The terminal's optional keys read in senior-dev's spelling.
+	// The terminal's optional keys read in senior-dev's spelling. Its cost is
+	// the program's own reading, kept on the record and never banked.
 	cost, ok := sink.terminal.CostUSD()
 	if !ok || cost != 0.0213 {
 		t.Fatalf("terminal cost = %v %v", cost, ok)
@@ -105,7 +98,11 @@ func TestTheReaderReplaysASeniorDevStream(t *testing.T) {
 	}
 }
 
-func TestTheReaderKeepsSpendFromFallingAndTakesOneTerminal(t *testing.T) {
+// ONE TERMINAL, AND NO WORD OF THE PROGRAM'S ABOUT MONEY. A second terminal
+// is dropped, and a v1 `spend` record is a line this reader does not know: the
+// model API is where a run's money is metered, so nothing the program says
+// about its own spending reaches a sink.
+func TestTheReaderTakesOneTerminalAndNoSpendRecord(t *testing.T) {
 	stream := strings.Join([]string{
 		`{"type":"spend","cost_usd":0.5}`,
 		`{"type":"spend","cost_usd":0.2}`,
@@ -120,16 +117,13 @@ func TestTheReaderKeepsSpendFromFallingAndTakesOneTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sink.spend) != 2 || sink.spend[1] != 0.5 {
-		t.Fatalf("spend told = %v, want the second reading held at the first's high water", sink.spend)
-	}
 	if sink.terminal == nil || sink.terminal.Message != "first" {
 		t.Fatalf("terminal = %+v, want the first one only", sink.terminal)
 	}
-	// The second terminal, the stray line and the unknown type are the three
-	// ignored lines; the empty line is nothing.
-	if reading.Ignored != 3 {
-		t.Fatalf("ignored = %d", reading.Ignored)
+	// The two spend lines, the second terminal, the stray line and the unknown
+	// type are the five ignored lines; the empty line is nothing.
+	if reading.Ignored != 5 {
+		t.Fatalf("ignored = %d, want the two spend lines, the second terminal, the stray line and the unknown type", reading.Ignored)
 	}
 }
 

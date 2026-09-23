@@ -7,6 +7,12 @@ package delegate
 // dropped and counted rather than failing the run: a program that printed one
 // stray line has not stopped being one codeaf can run.
 //
+// THERE IS NO SPEND RECORD. Version 1 read a cumulative `spend` the program
+// reported about itself; the model API (internal/provider/modelapi) meters
+// every call the program makes as it is made, so money has one source of truth
+// and it is not the program's word. A `spend` line a program still writes is
+// one more line this reader does not know, ignored and counted like any other.
+//
 // VERSION 2 IS INTERNAL. Both ends are compiled from this package into one
 // binary, so the Go types here are the specification and the number in `hello`
 // guards the one case where the two ends can still differ: an engine that
@@ -25,12 +31,8 @@ import (
 const (
 	// RecordHello is the first line a program writes: the protocol it speaks,
 	// its name, and the stages it will move through, in order.
-	RecordHello = "hello"
-	RecordStage = "stage"
-	// RecordSpend is v1's cumulative cost. It is still read until codeaf's
-	// model API meters every call itself, which makes it the one source of
-	// truth for money and this record redundant.
-	RecordSpend    = "spend"
+	RecordHello    = "hello"
+	RecordStage    = "stage"
 	RecordStep     = "step"
 	RecordTerminal = "terminal"
 )
@@ -165,10 +167,6 @@ type Sink interface {
 	Hello(h Hello)
 	// Stage is a phase change: the live step.
 	Stage(stage, status string)
-	// Spend is the cumulative cost so far. The reader guarantees it never
-	// goes down: a program that sends a lower figure is answered with the
-	// last high one, because the bank behind this reads deltas.
-	Spend(usd float64)
 	// Step is one finished action: command and the observation head, both
 	// already capped.
 	Step(command, observation string)
@@ -179,13 +177,14 @@ type Sink interface {
 }
 
 // Reading is what a reader saw, for the record the launch keeps: the last
-// stage, the high-water spend, how many steps, whether a terminal arrived, and
-// how many lines were not the protocol's (dropped, not failed).
+// stage, how many steps, whether a terminal arrived, and how many lines were
+// not the protocol's (dropped, not failed). What the run spent is not here:
+// the model API metered it call by call, and a reading of the program's
+// stdout is not where money is learned.
 type Reading struct {
 	Hello      *Hello
 	LastStage  string
 	LastStatus string
-	SpendUSD   float64
 	Steps      int
 	Terminal   *Terminal
 	Ignored    int
@@ -239,22 +238,6 @@ func Read(r io.Reader, sink Sink) (Reading, error) {
 			reading.LastStage, reading.LastStatus = rec.Stage, rec.Status
 			if sink != nil {
 				sink.Stage(rec.Stage, rec.Status)
-			}
-		case RecordSpend:
-			var rec struct {
-				CostUSD *float64 `json:"cost_usd"`
-			}
-			if json.Unmarshal([]byte(line), &rec) != nil || rec.CostUSD == nil {
-				reading.Ignored++
-				continue
-			}
-			// NEVER DOWN. The bank behind the sink adds deltas, and a figure
-			// that fell would be a refund nobody issued.
-			if *rec.CostUSD > reading.SpendUSD {
-				reading.SpendUSD = *rec.CostUSD
-			}
-			if sink != nil {
-				sink.Spend(reading.SpendUSD)
 			}
 		case RecordStep:
 			var rec struct {
