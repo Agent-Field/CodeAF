@@ -841,7 +841,10 @@ func (s *Store) SkillFactAccessors(seq int64) (artifact, doc, digest, trust stri
 	}
 	// Record consumption through existing telemetry.
 	now := formatTime(time.Now())
-	_, _ = s.db.Exec(`UPDATE facts SET uses = uses + 1, last_used = ? WHERE seq = ?`, now, seq)
+	if tx, txErr := s.beginWrite(); txErr == nil {
+		_, _ = tx.Exec(`UPDATE facts SET uses = uses + 1, last_used = ? WHERE seq = ?`, now, seq)
+		_ = tx.Commit()
+	}
 	return artifact, doc, digest, trust, nil
 }
 

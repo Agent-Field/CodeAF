@@ -137,6 +137,17 @@ func TestH7SkillCheckExportsBothDirectorySpellings(t *testing.T) {
 	}
 }
 
+func TestSkillCheckStripsSensitiveEnvVars(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-secret-test-value")
+	t.Setenv("SLACK_BOT_TOKEN", "xoxb-secret-test-value")
+	dir := writeSkillArtifact(t, "strip-secrets", "#!/bin/sh\nset -eu\n"+
+		"test -z \"${ANTHROPIC_API_KEY:-}\"\n"+
+		"test -z \"${SLACK_BOT_TOKEN:-}\"\n")
+	if err := runSkillCheck(context.Background(), dir); err != nil {
+		t.Fatalf("runSkillCheck leaked sensitive env vars: %v", err)
+	}
+}
+
 func TestRecurringSkillRedCheckSupersedesCandidates(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

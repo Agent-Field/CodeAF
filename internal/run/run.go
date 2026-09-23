@@ -473,6 +473,12 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 	go func() {
 		defer s.workers.Done()
 		report, err := Report{}, error(nil)
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("worker panic on task %s: %v", task.ID, r)
+				s.finished <- workerReturn{task: task, report: report, err: err}
+			}
+		}()
 		if worker == nil {
 			err = errors.New("no worker for task " + task.ID)
 		} else {

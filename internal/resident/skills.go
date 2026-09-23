@@ -350,8 +350,7 @@ func runSkillCheck(ctx context.Context, skillDir string) error {
 	defer cancel()
 	cmd := exec.CommandContext(trialCtx, filepath.Join(skillDir, "check.sh"))
 	cmd.Dir = clean
-	const skillDirEnv = "CODEAF_SKILL_DIR"
-	cmd.Env = append(os.Environ(), skillDirEnv+"="+skillDir, env.Legacy(skillDirEnv)+"="+skillDir)
+	cmd.Env = safeSkillCheckEnv(skillDir)
 	cmd.WaitDelay = time.Second
 	output, runErr := cmd.CombinedOutput()
 	if trialCtx.Err() == context.DeadlineExceeded {
@@ -369,6 +368,54 @@ func boundedSkillOutput(output []byte) string {
 		return text
 	}
 	return clipBlock(text, skillFailureBytes)
+}
+
+func safeSkillCheckEnv(skillDir string) []string {
+	safeKeys := map[string]bool{
+		"PATH":        true,
+		"HOME":        true,
+		"TMPDIR":      true,
+		"USER":        true,
+		"LOGNAME":     true,
+		"SHELL":       true,
+		"LANG":        true,
+		"LC_ALL":      true,
+		"TERM":        true,
+		"GOROOT":      true,
+		"GOPATH":      true,
+		"CARGO_HOME":  true,
+		"RUSTUP_HOME": true,
+	}
+	var envs []string
+	for _, kv := range os.Environ() {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		k := parts[0]
+		upper := strings.ToUpper(k)
+		if strings.Contains(upper, "KEY") ||
+			strings.Contains(upper, "TOKEN") ||
+			strings.Contains(upper, "SECRET") ||
+			strings.Contains(upper, "AUTH") ||
+			strings.Contains(upper, "PASSWORD") ||
+			strings.Contains(upper, "CREDENTIAL") ||
+			strings.HasPrefix(upper, "ANTHROPIC_") ||
+			strings.HasPrefix(upper, "OPENAI_") ||
+			strings.HasPrefix(upper, "GEMINI_") ||
+			strings.HasPrefix(upper, "DEEPSEEK_") ||
+			strings.HasPrefix(upper, "SLACK_") ||
+			strings.HasPrefix(upper, "GITHUB_") ||
+			strings.HasPrefix(upper, "AWS_") {
+			continue
+		}
+		if safeKeys[k] || strings.HasPrefix(k, "LC_") {
+			envs = append(envs, kv)
+		}
+	}
+	const skillDirEnv = "CODEAF_SKILL_DIR"
+	envs = append(envs, skillDirEnv+"="+skillDir, env.Legacy(skillDirEnv)+"="+skillDir)
+	return envs
 }
 
 func skillFailureReason(err error) string {

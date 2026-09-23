@@ -40,3 +40,4 @@ internal/manual/pages.pack.gz
 # committed that way on #1173 and had to be taken back out.
 .furrow/
 bench/idle-surface/runs/
+work/

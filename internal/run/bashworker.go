@@ -74,7 +74,12 @@ func NewBashWorker(store *plandb.Store, workspace, model string, completer sessi
 // loop the cap stopped reports the steps it took and an error, because a task
 // that ran out of steps did not finish; and a wall or a provider ending the
 // turn ends the task with that reason.
-func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) {
+func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, runErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			runErr = fmt.Errorf("worker panic on task %s: %v", task.ID, r)
+		}
+	}()
 	capSteps := StepsPerTask(ctx)
 	storeDir := filepath.Dir(w.store.Path())
 	// THE RESUME READING COMES FIRST, because the opening message carries the

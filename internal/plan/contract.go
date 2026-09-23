@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -606,7 +607,7 @@ func RetrieveSkills(text, workspace string, skills []store.Fact) []string {
 			continue
 		}
 		score := 0
-		if scopeWords(fact.Scope, cues) {
+		if scopeWords(fact.Scope, workspace, cues) {
 			score += 100
 		}
 		for _, word := range docWords(fact.Body) {
@@ -661,15 +662,46 @@ func cueWords(text string) map[string]bool {
 }
 
 // scopeWords asks whether a skill's scope names something the cue words hold.
-// A scope is `kind:value` ("repo:/path", "tool:git", "domain:x"), so its parts
-// are compared against the words the way the catalog's scope match does it:
-// a scope of `repo:/…/codeaf` matches a workspace that ends in `codeaf`, and
-// `tool:git` matches nothing unless the territory happens to say `git`.
-func scopeWords(scope string, cues map[string]bool) bool {
+// A scope is `kind:value` ("repo:/path", "tool:git", "domain:x"). For a repository
+// scope, it matches if the workspace path matches or contains the repo, if the
+// workspace base name matches the repo base name, or if the repo base name appears
+// in the cue words. Path segments like "users", "home", or "work" do not cause a
+// spurious match. Other scopes compare their tokens against cue words.
+func scopeWords(scope, workspace string, cues map[string]bool) bool {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(scope), "repo:") {
+		repoPath := strings.TrimSpace(scope[len("repo:"):])
+		repoClean := filepath.Clean(repoPath)
+		if workspace != "" {
+			wsClean := filepath.Clean(workspace)
+			if wsClean == repoClean ||
+				strings.HasPrefix(wsClean+string(filepath.Separator), repoClean+string(filepath.Separator)) ||
+				strings.HasPrefix(repoClean+string(filepath.Separator), wsClean+string(filepath.Separator)) {
+				return true
+			}
+			repoBase := strings.ToLower(filepath.Base(repoClean))
+			if repoBase != "." && repoBase != "/" && repoBase != "\\" {
+				if strings.EqualFold(filepath.Base(wsClean), repoBase) {
+					return true
+				}
+			}
+		}
+		repoBase := strings.ToLower(filepath.Base(repoClean))
+		if repoBase != "." && repoBase != "/" && repoBase != "\\" && len(repoBase) >= 3 && !attachmentStopwords[repoBase] {
+			if cues[repoBase] {
+				return true
+			}
+		}
+		return false
+	}
+
 	for _, part := range strings.FieldsFunc(strings.ToLower(scope), func(r rune) bool {
 		return r == ':' || r == '/' || r == '\\' || r == '.' || r == '-' || r == '_' || r == ' '
 	}) {
-		if part != "" && cues[part] {
+		if part != "" && !attachmentStopwords[part] && cues[part] {
 			return true
 		}
 	}

@@ -120,6 +120,23 @@ func TestSkillCatalogSurfacesRelevantSkills(t *testing.T) {
 	}
 }
 
+func TestSkillCatalogDoesNotFalselyMatchRepoScopePaths(t *testing.T) {
+	brain := openTestBrain(t)
+	activeSkill(t, brain, "repo:/Users/bob/backend", "backend procedures", "/shelf/backend-skill")
+
+	facts, err := brain.SkillFacts(store.FactActive, 10)
+	if err != nil {
+		t.Fatalf("SkillFacts: %v", err)
+	}
+	scored := scoreSkills(facts, "/Users/alice/frontend")
+	if len(scored) != 1 {
+		t.Fatalf("expected 1 scored skill, got %d", len(scored))
+	}
+	if scored[0].score >= 100 {
+		t.Errorf("expected score < 100 for unrelated repo path, got %d", scored[0].score)
+	}
+}
+
 // TestSkillCatalogAlwaysCarriesItsHeader: whenever there is anything to show,
 // the section heading and the routing sentence are present — the model is told
 // this is the shelf, that skills suited to a message are attached to it, and
