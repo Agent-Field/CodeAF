@@ -891,6 +891,12 @@ func (a *app) openHome() tea.Cmd { return a.showPage(pageHome) }
 // their conversation is actually running on, and the head says which machine
 // that is ([app.placeHostWord]).
 func (a *app) raiseHome() tea.Cmd {
+	// HOME STARTS A DIFFERENT MESSAGE. Detach unsent cargo at the shared
+	// navigation door, including its picture tokens in the conversation draft.
+	// Parked messages already own their attachments and are left alone.
+	for a.dropChip() {
+	}
+
 	a.closeLists()
 	a.dismissWelcome()
 	world, known := a.readWorldKnown()

@@ -592,6 +592,16 @@ func chipLabels(chips []chip, pal palette) []string {
 	return out
 }
 
+// removableChipLabels adds the action only where a press can remove a chip.
+// Drawing and hit-testing share these labels so the remove mark is clickable.
+func removableChipLabels(chips []chip, pal palette) []string {
+	labels := chipLabels(chips, pal)
+	for i := range labels {
+		labels[i] += " " + pal.glyph(tokens.GRemove)
+	}
+	return labels
+}
+
 // chipStrip is the tray as one row, dim: the attachments are a fact about the
 // message being written, not a thing being said, and the surface says what it
 // is doing in the same voice it says everything else about itself.
@@ -612,7 +622,7 @@ func (a *app) chipStrip(width int) string {
 	// something every next message carries besides its words — and this is the
 	// one place on the surface those are kept.
 	places := a.placeTrayCells()
-	labels := chipLabels(a.chips, a.pal)
+	labels := removableChipLabels(a.chips, a.pal)
 	if len(cells) == 0 && len(places) == 0 && len(labels) == 0 {
 		return ""
 	}
@@ -785,7 +795,7 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 		}
 		column -= placeTrayWidth(places)
 	}
-	i := chipAt(chipLabels(a.chips, a.pal), column)
+	i := chipAt(removableChipLabels(a.chips, a.pal), column)
 	if i < 0 {
 		return 0, false
 	}

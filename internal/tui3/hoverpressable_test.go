@@ -218,7 +218,7 @@ func TestATrayChipLightsOnItsOwnCells(t *testing.T) {
 	// moved under the box on 2026-09-09 and a count would be a row out
 	// (attach.go's [app.chipTrayTarget] says the whole of it).
 	y := trayRow(a)
-	labels := chipLabels(a.chips, a.pal)
+	labels := removableChipLabels(a.chips, a.pal)
 	x := len(inputPad) + ansi.StringWidth(labels[0]) + len(chipGap) + 1
 
 	drive(t, a, motionTo(x, y))

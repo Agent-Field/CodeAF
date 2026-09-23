@@ -69,6 +69,9 @@ const (
 	// the distinction the one-glyph-one-meaning gate exists to keep.
 	GlyphAssumed = "≈"
 
+	// GlyphRemove offers to detach an unsent attachment; it reports no failure.
+	GlyphRemove = "×"
+
 	// Disclosure and navigation.
 	GlyphCollapsed = "▸"
 	GlyphExpanded  = "▾"
@@ -435,6 +438,7 @@ func Glyphs() []GlyphInfo {
 		{"Working", GlyphWorking, '◐', true},
 		{"Settled", GlyphSettled, '✓', false},
 		{"Failed", GlyphFailed, '✕', false},
+		{"Remove", GlyphRemove, '×', true},
 		{"Stopped", GlyphStopped, '■', true},
 		{"Paused", GlyphPaused, '=', false},
 		{"NeedsHuman", GlyphNeedsHuman, '?', false},
