@@ -1,6 +1,7 @@
 package taxonomy
 
 import (
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -340,7 +341,16 @@ func waitFor(e Evidence, attempt int, base time.Duration) time.Duration {
 	if base <= 0 || attempt < 1 {
 		return 0
 	}
-	wait := base << (attempt - 1)
+	// THE DOUBLING SATURATES RATHER THAN WRAPS. `base << (attempt-1)` is a
+	// signed shift, and past about thirty-five asks of a one-second base it
+	// runs off the top of an int64 into zero or a negative duration, which a
+	// caller reads as "no wait" — so the unbounded wait on one machine went
+	// back to asking as fast as the machine could fail after its thirty-fifth
+	// ask (#1358's hot loop, one level down).
+	wait := time.Duration(math.MaxInt64)
+	if shift := attempt - 1; shift < 63 && base <= time.Duration(math.MaxInt64)>>shift {
+		wait = base << shift
+	}
 	// AND A WAIT ON ONE MACHINE CLIMBS TO A CEILING AND STAYS THERE, which is
 	// the difference between polling and doubling away.
 	//
