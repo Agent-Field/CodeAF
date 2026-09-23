@@ -2991,13 +2991,11 @@ func TestPuttingARowAwayTakesItOffTheListAndItsNameFindsItAgain(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the junk row is not on home:\n%s", homeText(a))
 	}
+	closedFile := a.home.lines[at].row.Transcript
 	a.home.cursor, a.home.picked = at, true
 	drive(t, a, key("ctrl+e"))
 
-	_, closed := homeConversationLines(a)
-	if len(closed) != 1 || !closed[0].cell.closed {
-		t.Fatal("closed conversation did not become a dimmed row")
-	}
+	assertHomeConversationAbsent(t, a, closedFile)
 	// AND THE SCREEN SAYS WHERE IT WENT. A row that vanished with no sentence
 	// would be the surface hiding something on a keystroke.
 	if !strings.Contains(a.home.msg, homeClosedWord) {
@@ -3021,7 +3019,7 @@ func TestPuttingARowAwayTakesItOffTheListAndItsNameFindsItAgain(t *testing.T) {
 	drive(t, a, key("ctrl+e"))
 	drain(t, a, a.openHome())
 	assertHomeTabParity(t, a)
-	if a.file != closed[0].row.Transcript || a.tabShut[a.convKey(a.file)] {
+	if a.file != closedFile || a.tabShut[a.convKey(a.file)] {
 		t.Fatal("ctrl+e did not reopen the saved conversation's tab")
 	}
 }

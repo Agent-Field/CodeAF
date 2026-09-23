@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -278,6 +279,11 @@ func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
 		key = a.frontTabKey()
 	}
 	a.tabShutKey(key)
+	if a.home.hiddenAfterClose == nil {
+		a.home.hiddenAfterClose = make(map[string]bool)
+	}
+	a.home.hiddenAfterClose[filepath.Clean(row.Transcript)] = true
+	a.home.closeQuery = a.home.query()
 	a.home.say(homeClosedWord, "")
 	a.refreshHome()
 	return nil

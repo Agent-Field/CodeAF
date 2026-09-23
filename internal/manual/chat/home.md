@@ -279,9 +279,9 @@ conversation trees under running and completed. The running section shows work i
 flight across projects. Short frames show fewer rows with a
 fold for the remainder of these fifteen. The heading leads to the full history.
 
-There is exactly one conversation list on Home, under **sessions**. Open tabs,
-recently closed conversations and saved history are combined by conversation identity
-before choosing the fifteen most recent, so each conversation appears once.
+There is exactly one conversation list on Home, under **sessions**. Open tabs and
+unarchived saved history are combined by conversation identity before choosing the
+fifteen most recent. Closed conversations leave this list but remain searchable.
 The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
 updates the tab and the row in Sessions together.
 
@@ -349,10 +349,10 @@ nothing.
 ## Threads, open conversations and recently closed chats — the Home list
 
 Home has **one bulleted conversation list under sessions**. It combines this window's
-open tabs and saved history, deduplicates them, and shows the fifteen most recent
-conversations, newest first. Bullets show answering and unread replies. The current
+open tabs and unarchived saved history, deduplicates them, and shows the fifteen most
+recent conversations, newest first. Bullets show answering and unread replies. The current
 conversation is bold; its description can say `here` and show the last thing you wrote.
-Closed conversations keep their place in this same chronological list, dimmed.
+Closed conversations leave this resting list; typing searches the saved history.
 
 Enter opens or reopens a conversation and restores its tab. A short terminal folds
 rows that do not fit behind `N more`. The Sessions heading opens the full Sessions tab;
@@ -458,7 +458,9 @@ every conversation in it, and `ctrl+t` on one of them starts a new one there.
 
 **You cannot any more, and `alt+q` does nothing.** The panels already keep the quiet
 ones out of the way: `needs you` and `sessions` hold what wants you or is moving, and
-the conversation list shows the fifteen most recent conversations, with closed ones dimmed. A short frame folds what does not fit behind `N more`. Typing finds any conversation on the machine.
+the conversation list shows the fifteen most recent unarchived conversations and
+open tabs. A short frame folds what does not fit behind `N more`. Typing finds saved
+conversations too, including closed ones.
 
 ## Which column am I in — move between the columns on home: ↑↓ walk a panel, ←→ cross columns
 
@@ -683,17 +685,18 @@ machine with one conversation and on one with none (see *Why is the home screen 
 ## Close or archive a conversation — put junk away and clean up home
 
 Select a conversation, press `→`, then **`x close`**. `ctrl+e` does the same.
-Its tab closes and it leaves the default `alt+k chats` list immediately. Home keeps closed conversations dimmed in the same Sessions list while they are
-among the fifteen most recent. The
-foot says `closed · type its name to find it again`.
+Its tab closes and its row leaves Home and the default `alt+k chats` list immediately.
+The foot says `closed · type its name to find it again`. If you close a result while
+searching, it stays hidden through refreshes until you change the search text.
 
 Nothing is deleted: its transcript, tasks, running work and draft remain. Closing
-from Home also saves its archived status, so the bounded closed list can find it
-after a restart. Closing a tab with `ctrl+w` retains it in this window's close stack
+from Home also saves its archived status, so it stays off the resting list after a
+restart and remains searchable. Closing a tab with `ctrl+w` retains it in this window's close stack
 without archiving it on disk.
 
-**Enter on a dimmed row reopens the conversation and its tab.** `→`, then `x reopen`,
-or `ctrl+e`, does the same. Older closed conversations remain searchable by name.
+**Type its name to find it, then Enter reopens the conversation and its tab.**
+`ctrl+e` on the closed search result does the same. Change or clear your current
+search first if you just closed that result.
 On a phone-width terminal, Enter first opens the row's sheet; use its open action.
 
 ## Why did the list jump to the bottom when I typed — home's two shapes
@@ -2119,8 +2122,8 @@ that line opens it in place. A section with nothing in it is not drawn at all. *
 appears once**: a conversation carrying a question is not repeated in the additional
 question rows or under its project.
 
-Sessions uses single conversation lines with status bullets; closed history is dimmed
-in the same chronological list. Other inbox rows are **two lines** — the label, and its dim tail
+Sessions uses single conversation lines with status bullets; closed history is
+found by typing its name instead of remaining in the resting list. Other inbox rows are **two lines** — the label, and its dim tail
 indented under it. A tab with a pending question carries an amber `?` on its existing row,
 including when the question belongs to a task inside that conversation.
 
@@ -2217,7 +2220,7 @@ Every conversation in Home has a bullet. A dim bullet means there is no unread
 reply known to this window. A working mark means the conversation is answering;
 the first answering row animates when no other Home row owns the spinner. An amber `?` means there is an unanswered question and takes priority over those marks.
 A bright filled bullet means a reply finished while you were away. Opening the conversation
-clears that unread state. Recently closed rows keep dim bullets. These indicators
+clears that unread state. Closed conversations leave the resting list. These indicators
 use this window’s live conversations; they do not infer unread history from other
 windows or persist read status across restarts.
 

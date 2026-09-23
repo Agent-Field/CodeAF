@@ -449,7 +449,8 @@ being held down — it only reports what arrived.
 The first place, and the one codeaf opens on. Everything on this machine, from every
 project, in one, two or three columns — one `sessions` list of the fifteen most recent
 conversations, then question rows, `projects`, `since you left`, `spend`, and `scheduled`.
-Open tabs and saved history share that list, with closed conversations dimmed. Which
+Open tabs and unarchived saved history share that list. Closed conversations leave
+Home’s resting list and can still be found by typing their names. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
 them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
