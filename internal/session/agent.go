@@ -435,6 +435,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// the frontier, but no ending or notice may run before the caller can hold
 	// the agent and a surface can subscribe to its standing lane.
 	agent.armWallClock()
+	// AND A CONVERSATION A TEAM'S MANAGER STARTED TAKES ITS FIRST TURN ON ITS
+	// OWN, once the interface has made it a member (team_wake.go).
+	agent.watchTeamStart()
 	return agent, nil
 }
 

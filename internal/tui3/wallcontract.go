@@ -163,7 +163,10 @@ type wallView struct {
 	// in the team shown: 0 for none, and otherwise one of wallManagerMake and
 	// wallManagerRemove (teammanager.go). mark is the manager's glyph.
 	popManager int
-	mark       string
+	// popManagerWord is that row's words (teammanager.go's
+	// [app.teamManagerMenuWord]).
+	popManagerWord string
+	mark           string
 }
 
 // The teams popover's manager row, as [wallView.popManager] says it.

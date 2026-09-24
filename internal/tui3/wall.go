@@ -244,6 +244,11 @@ func (a *app) wallFrame(width, height int) []string {
 		view.team = t.ID
 	}
 	view.popManager, view.mark = a.wallPopManagerRow(), a.teamManagerMark()
+	if view.popManager != 0 {
+		if t, ok := a.teamActive(); ok && len(a.wall.pop.targets) == 1 {
+			view.popManagerWord = a.teamManagerMenuWord(t, a.wall.pop.targets[0])
+		}
+	}
 	// The counts are of open conversations, whatever a filter is hiding: a
 	// team's members this window has no tab for are still members, but they
 	// are not on the wall. They are read off the strip's list, not a second

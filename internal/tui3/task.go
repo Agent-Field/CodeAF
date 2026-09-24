@@ -2924,7 +2924,7 @@ func (a *app) railCanWiden() bool {
 // gets instead is one dim line at the foot of the column naming the page that
 // holds it ([taskSheetPastHint]).
 func (a *app) railShowing() bool {
-	if a.railAway || a.railQuiet() {
+	if a.railAway || a.railQuiet() || a.trafficHoldsRail() {
 		return false
 	}
 	width, _ := a.size()
@@ -3026,7 +3026,11 @@ func (a *app) railRoom() int {
 // positive — so the right-hand strip of the frame always belongs to the roster
 // in one of its two shapes, and never to nobody.
 func (a *app) railStowed() bool {
-	if !a.railAway || a.railQuiet() {
+	// AND WHILE THE MANAGER'S TRAFFIC HOLDS THE RIGHT, the column is folded to
+	// this edge without being put away: the person's own answer in railAway is
+	// untouched, and putting the Traffic away gives the column back
+	// (teamrail.go).
+	if (!a.railAway && !a.trafficHoldsRail()) || a.railQuiet() {
 		return false
 	}
 	width, _ := a.size()
@@ -3883,10 +3887,10 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// alt+t does. A keystroke that silently moved a state nothing is drawing is a
 		// keystroke a person cannot tell they pressed, and this one would move it into
 		// the NEXT session as well.
-		if !(a.railStanding() || a.railAway) {
+		if !(a.railStanding() || a.railAway || a.railStowed()) {
 			return nil, false
 		}
-		a.railStow(!a.railAway)
+		a.railStow(!a.railStowed())
 		return nil, true
 	}
 	if key == railHoldChord {
@@ -4188,6 +4192,15 @@ func (a *app) railWiden(wide bool) {
 // session opens where the last one was told to, which is the behaviour of a
 // session that has never been told anything.
 func (a *app) railStow(away bool) {
+	// THE TASKS BACK WHILE THE TRAFFIC HOLDS THE RIGHT is the Traffic put away:
+	// the two share the one column, and asking for one is asking the other to
+	// step aside (teamrail.go).
+	if !away && a.trafficHoldsRail() {
+		a.trafficShow(false)
+		if !a.railAway {
+			return
+		}
+	}
 	if a.railAway == away {
 		return
 	}

@@ -173,6 +173,10 @@ const (
 	// records, and rather than a note because a note is a static sentence where
 	// this opens as a question with a clock on it.
 	entryStanding
+	// entryTeam is ONE NOTE A CONVERSATION'S TEAM SENT IT, drawn as the quoted
+	// cards it is (teamcard.go) rather than as the session's dim lane or the
+	// person's own line.
+	entryTeam
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -3418,6 +3422,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, tea.Batch(flushed, cmd)
 			}
 		}
+		// THE TRAFFIC'S KEYS READ NEXT (teamrailpointer.go): esc while its card
+		// is over the body, and the two chords that show it and go to the
+		// manager, which carry no text and take nothing from the box.
+		if cmd, took := a.trafficKeyPress(msg); took {
+			return a, tea.Batch(flushed, cmd)
+		}
 		// THE ROSTER READS NEXT, and only ever once it has been HANDED the
 		// keyboard (alt+t, task.go). Explicit focus outranks ambient place: a room
 		// is where a person is, the roster is what they just asked for, and esc
@@ -3604,7 +3614,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.wallTick()
 
 	case trafficTickMsg:
-		return a, a.trafficTick()
+		// A TURN THAT FOUND NOTHING DRAWS NOTHING: the frame before it stands
+		// (teamtraffic.go), which is what a quiet second over ssh costs.
+		cmd, quiet := a.trafficTick(msg)
+		if quiet {
+			a.ptr.still = a.drawn
+		}
+		return a, cmd
 
 	case wallNameTimeMsg:
 		a.wallNameTimedOut(msg.gen)

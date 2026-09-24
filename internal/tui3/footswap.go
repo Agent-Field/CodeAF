@@ -255,9 +255,11 @@ func (a *app) hintRow(width int) string {
 	}
 	dock, dockW := a.dockRow(width, end, ansi.StringWidth(hint))
 	paint := func(s string) string { return paintHint(s, a.pal, a.pal.dim) }
+	// THE WORDS UNDER THE POINTER ARE THE HINT LINE'S OWN DIM, with the key
+	// they name stepped up as every key on this line is: they stand in for the
+	// keys, so they are painted as the keys are rather than louder than them.
 	if words := a.dockHoverWords(); words != "" {
 		hint = fit(words, max(0, end-1-dockW-hudGap))
-		paint = a.pal.ink
 	} else if offset := strings.Index(hint, a.escapeDoorWord()); offset >= 0 {
 		from := 1 + ansi.StringWidth(hint[:offset])
 		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(a.escapeDoorWord())}

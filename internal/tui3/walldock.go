@@ -216,6 +216,12 @@ func (a *app) dockPaint(tabs []chatTab, from, count, hidden, at int) string {
 // and a conversation's name and what it is doing over its cell. The strip's
 // own door to the wall (chattabs.go) is explained here too, in the same words.
 func (a *app) dockHoverWords() string {
+	// THE TEAM'S OWN DOORS EXPLAIN THEMSELVES HERE TOO: the manager's place on
+	// the strip, the team chip, and every row and word of the Traffic
+	// (teammanager.go, teamrailpointer.go).
+	if words := a.teamHoverWords(); words != "" {
+		return words
+	}
 	switch a.hot.kind {
 	case hoverTab:
 		if a.wall.door.pressable() && a.hot.index == a.wall.door.from {

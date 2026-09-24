@@ -1,0 +1,122 @@
+package tui3
+
+import (
+	"strings"
+)
+
+// ── WHAT A TEAM SAID TO A CONVERSATION, AS A QUOTED CARD ────────────────────
+//
+// A line the manager or a teammate addressed to a conversation reaches it
+// through the Traffic, at a step boundary, as ONE note the session wrote
+// (internal/session's team.go): a sentence saying these are the team's words
+// and not the person's, the lines, and the authority rule under them. The
+// journal keeps it as the session's own line, and a page opened on the
+// conversation draws it here instead of in the dim lane every other session
+// line takes: as the card it is, headed by who said it to whom,
+//
+//	◆ manager → @lexer  do
+//	│ rewrite the lexer so string escapes are handled in one pass
+//
+// and never with the person's `›`, because the person did not say it. A member
+// the manager started opens on this card: the brief is its first thing, and
+// the card is how a person opening that tab sees why it is working.
+//
+// The shape parsed is the session's, and only the lines are drawn: the
+// sentence above them and the rule under them are for the model.
+
+// teamAsideLead is how the session's team note begins.
+const teamAsideLead = "Team traffic in "
+
+// teamCard is one line of a team note: who said it, to whom, whether it was a
+// directive, and what was said.
+type teamCard struct {
+	from, to, tag, text string
+}
+
+// teamAsideCards reads a session's team note into its lines, and reports
+// whether text was one.
+func teamAsideCards(text string, mark string) ([]teamCard, bool) {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	if len(lines) < 2 || !strings.HasPrefix(lines[0], teamAsideLead) {
+		return nil, false
+	}
+	self := mark + " manager"
+	if at := strings.Index(lines[0], "(@"); at >= 0 {
+		if end := strings.Index(lines[0][at:], ")"); end > 0 {
+			self = lines[0][at+1 : at+end]
+		}
+	}
+	var cards []teamCard
+	for _, line := range lines[1:] {
+		if strings.HasPrefix(line, "(") {
+			break
+		}
+		if strings.HasPrefix(line, " ") && len(cards) > 0 {
+			cards[len(cards)-1].text += "\n" + strings.TrimSpace(line)
+			continue
+		}
+		speaker, said, ok := strings.Cut(line, ": ")
+		if !ok {
+			continue
+		}
+		card := teamCard{to: self, text: strings.TrimSpace(said)}
+		if who, aim, aimed := strings.Cut(speaker, " to "); aimed {
+			speaker = who
+			switch aim {
+			case "the room":
+				card.to = "room"
+			case "everyone":
+				card.to = "all"
+			case "the manager":
+				card.to = mark + " manager"
+			default:
+				card.to = aim
+			}
+		}
+		speaker = strings.TrimSpace(strings.TrimPrefix(speaker, "◆"))
+		switch {
+		case strings.HasPrefix(speaker, "directive from manager"):
+			card.from, card.tag = mark+" manager", "do"
+		case strings.HasPrefix(speaker, "from manager"):
+			card.from = mark + " manager"
+		case strings.HasPrefix(speaker, "from "):
+			card.from = strings.TrimPrefix(speaker, "from ")
+		default:
+			card.from = speaker
+		}
+		cards = append(cards, card)
+	}
+	return cards, len(cards) > 0
+}
+
+// teamCardRows draws one team note's lines as quoted cards, width wide.
+func (a *app) teamCardRows(e entry, width int) []string {
+	cards, ok := teamAsideCards(e.text, a.teamManagerMark())
+	if !ok {
+		return []string{a.pal.dim("· " + firstLine(e.text))}
+	}
+	pal := a.pal
+	arrow := a.linearMark("→", "->")
+	bar := a.linearMark("│", "|")
+	var out []string
+	for i, c := range cards {
+		if i > 0 {
+			out = append(out, "")
+		}
+		head := pal.muted(c.from) + pal.dim(" "+arrow+" ") + pal.muted(c.to)
+		if strings.HasPrefix(c.from, a.teamManagerMark()) {
+			head = pal.accent(a.teamManagerMark()) + pal.muted(strings.TrimPrefix(c.from, a.teamManagerMark())) +
+				pal.dim(" "+arrow+" ") + pal.muted(c.to)
+		}
+		if c.tag != "" {
+			head += "  " + pal.dim(c.tag)
+		}
+		out = append(out, fit(head, width))
+		for _, para := range strings.Split(c.text, "\n") {
+			for _, line := range wrap(para, max(width-2, 8)) {
+				out = append(out, pal.dim(bar+" ")+pal.ink(line))
+			}
+		}
+	}
+	return out
+}

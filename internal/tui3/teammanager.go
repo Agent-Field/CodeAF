@@ -40,8 +40,24 @@ const (
 	teamManagerGlyphASCII = "*"
 )
 
-// teamManagerSlotWord is the manager's place while the team has none.
-const teamManagerSlotWord = "+ Manager"
+// teamManagerSlotWord is the manager's place while the team has none, and
+// teamManagerWord what it says once there is one: `+ Manager` becomes
+// `◆ Manager`, and the place never changes shape. It is named for what it is
+// rather than for the team, because the chip beside it already names the team
+// and `● harbor ▾  ◆ harbor` read as two harbors.
+const (
+	teamManagerSlotWord = "+ Manager"
+	teamManagerWord     = "Manager"
+)
+
+// teamManagerSlotFloor is the narrowest strip that offers `+ Manager`; under
+// it the offer is the team switcher's alone.
+const teamManagerSlotFloor = 100
+
+// teamHostedWord is what the manager's doors say over --host. The team's
+// Traffic is written where the session runs, and this window's profile is not
+// that one, so a manager made from here would talk into a log nobody reads.
+const teamHostedWord = "managers are not available over --host yet"
 
 // teamManagerMark is the manager's mark in this terminal's glyphs.
 func (a *app) teamManagerMark() string {
@@ -83,6 +99,10 @@ func (a *app) teamFrontManaged() (team, bool) {
 // back to being an ordinary member.
 func (a *app) teamMakeManager(id string, tab chatTab) error {
 	if tab.key == "" || tab.start || tab.work {
+		return nil
+	}
+	if a.hosted() {
+		a.note(teamHostedWord)
 		return nil
 	}
 	if _, err := a.teamAt(id); err != nil {
@@ -173,17 +193,51 @@ func (a *app) teamManagerStart() tea.Cmd {
 	if !ok || t.Manager != "" {
 		return nil
 	}
-	cmd, refusal := a.teamStartIn(t)
-	if refusal != "" {
-		a.note(refusal)
+	if a.hosted() {
+		a.note(teamHostedWord)
 		return nil
 	}
+	// THE CONVERSATION IS OPENED ON THE DOOR LINE, off the loop, because
+	// opening one is a call to the engine; a window whose engine holds one
+	// conversation at a time, or that has no door beside, takes the one road it
+	// has, in place.
+	if a.start == nil || a.shared {
+		cmd, refusal := a.teamStartIn(t)
+		if refusal != "" {
+			a.note(refusal)
+			return nil
+		}
+		return tea.Batch(cmd, a.teamManagerTake(t.ID))
+	}
+	if !a.canStart() {
+		a.note(newUnavailableWord)
+		return nil
+	}
+	start, where, id := a.start, a.teamWhere(t), t.ID
+	return a.besideLine(func() func(bool) tea.Cmd {
+		conv, err := start(where)
+		return func(bool) tea.Cmd {
+			if err != nil || conv.Agent == nil {
+				why := newUnavailableWord
+				if err != nil {
+					why = err.Error()
+				}
+				a.note(why)
+				return nil
+			}
+			return tea.Batch(a.takeBeside(conv), a.teamManagerTake(id))
+		}
+	})
+}
+
+// teamManagerTake makes the conversation now in front team id's manager.
+func (a *app) teamManagerTake(id string) tea.Cmd {
 	tab := chatTab{key: a.convKey(a.file), file: a.file, where: a.workspace}
-	if err := a.teamMakeManager(t.ID, tab); err != nil {
+	if err := a.teamMakeManager(id, tab); err != nil {
 		a.note("the manager is set for this window, but " + err.Error())
 	}
 	a.touch()
-	return cmd
+	return nil
 }
 
 // teamStripManager is t's members as the strip draws them, with the manager's
@@ -192,15 +246,16 @@ func (a *app) teamManagerStart() tea.Cmd {
 // place and returned. Frame-safe: memory only.
 func (a *app) teamStripManager(t team, tabs []chatTab) []chatTab {
 	if t.Manager == "" {
-		slot := chatTab{word: teamManagerSlotWord, full: teamManagerSlotWord, slot: true}
+		slot := chatTab{word: teamManagerSlotWord, full: teamManagerSlotWord, slot: true, pinned: true}
 		return append([]chatTab{slot}, tabs...)
 	}
-	word := a.teamManagerMark() + " " + t.Name
+	word := a.teamManagerMark() + " " + teamManagerWord
 	for i, tab := range tabs {
 		if tab.key != t.Manager {
 			continue
 		}
-		tab.word, tab.full = word, word
+		tab.full = tab.word
+		tab.word, tab.pinned = word, true
 		copy(tabs[1:i+1], tabs[:i])
 		tabs[0] = tab
 		return tabs
@@ -215,9 +270,89 @@ func (a *app) teamStripManager(t team, tabs []chatTab) []chatTab {
 	if !here && m.File == "" {
 		return tabs
 	}
-	tab := chatTab{key: t.Manager, file: m.File, where: m.Where, word: word, full: word, here: here}
+	tab := chatTab{key: t.Manager, file: m.File, where: m.Where, word: word, full: m.Word, here: here, pinned: true}
 	if here {
 		tab.file, tab.where = a.file, a.workspace
 	}
 	return append([]chatTab{tab}, tabs...)
+}
+
+// teamManagerTitle is what team t's manager is called, "" with none: its tab's
+// title where this window has one, else what the team kept.
+func (a *app) teamManagerTitle(t team) string {
+	if t.Manager == "" {
+		return ""
+	}
+	for _, tab := range a.chatTabs {
+		if tab.key == t.Manager && strings.TrimSpace(tab.word) != "" {
+			return tab.word
+		}
+	}
+	if t.Manager == a.frontTabKey() {
+		if name := a.conversationName(); name != unnamedConversationWord {
+			return name
+		}
+	}
+	if m, ok := t.Member(t.Manager); ok {
+		return m.Word
+	}
+	return ""
+}
+
+// teamManagerMenuWord is the switcher's and the Teams popover's row for making
+// or unmaking a manager, which says which team it acts on and what it replaces:
+// `◆ Make this harbor's manager (replaces Shipping the parser)`, and on the
+// manager itself `◇ Make an ordinary member`.
+func (a *app) teamManagerMenuWord(t team, key string) string {
+	if t.Manager != "" && t.Manager == key {
+		mark := a.linearMark("◇", "o")
+		if a.pal.ascii {
+			mark = "o"
+		}
+		return mark + " Make an ordinary member"
+	}
+	word := a.teamManagerMark() + " Make this " + t.Name + "'s manager"
+	if title := a.teamManagerTitle(t); title != "" {
+		word += " (replaces " + fitConversationTitle(title, 24) + ")"
+	}
+	if a.hosted() {
+		word += " · not over --host"
+	}
+	return word
+}
+
+// teamHoverWords is what the hint line says with the pointer on one of a
+// team's doors: the manager's place on the strip, the team chip, and the
+// Traffic's rows and words. "" anywhere else.
+func (a *app) teamHoverWords() string {
+	if words := a.trafficHoverWords(); words != "" {
+		return words
+	}
+	hit, ok := a.hotTab()
+	if !ok {
+		return ""
+	}
+	t, shown := a.teamActive()
+	switch {
+	case hit.kind == tabTeam:
+		if !shown {
+			return "Show one team's conversations" + hintSegment + "click"
+		}
+		return "Switch team, add this conversation, or make a manager" + hintSegment + "click"
+	case hit.kind == tabManager:
+		if a.hosted() {
+			return teamHostedWord
+		}
+		return "Start a manager: a chat that runs " + t.Name + " for you" + hintSegment + "also in the " + a.linearMark("▾", "v") + " menu"
+	case hit.tab.pinned && shown && hit.tab.key == t.Manager && (hit.kind == tabHere || hit.kind == tabOther):
+		words := t.Name + "'s manager"
+		if title := a.teamManagerTitle(t); title != "" {
+			words += hintSegment + title
+		}
+		if hit.kind == tabOther {
+			words += hintSegment + teamManagerKey
+		}
+		return words
+	}
+	return ""
 }
