@@ -290,6 +290,14 @@ func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit)
 	return row, hits
 }
 
+// wallMembersWord is a team's size in words: `1 member`, `3 members`.
+func wallMembersWord(n int) string {
+	if n == 1 {
+		return "1 member"
+	}
+	return strconv.Itoa(n) + " members"
+}
+
 // wallHint is what the control under the pointer does, and its key after a
 // dot when it has one; "" when the pointer is on no control. It is the
 // person's words, the same ones the buttons use.
@@ -345,7 +353,13 @@ func wallHint(v wallView, ascii bool) string {
 		// tab steps through the teams rather than naming one, so no key is
 		// offered for a single segment.
 		if h.id == "" {
-			return "Show every conversation"
+			return "Show every conversation open in this window"
+		}
+		// The team's segment counts what is open here, and the hint says what
+		// the team is beside it, so the two numbers are never read as one.
+		if i := v.teamRow(h.id); i >= 0 {
+			row := v.teams[i]
+			return row.name + " " + sep + " " + strconv.Itoa(row.count) + " open here " + sep + " " + wallMembersWord(row.members)
 		}
 		return "Show only the conversations in " + team(h.id)
 	case wallHitChipMenu:
@@ -391,6 +405,12 @@ func wallHint(v wallView, ascii bool) string {
 			return keyed(wallNewTeamHint(marked), "s")
 		case wallActNext:
 			return keyed("Go to the next conversation waiting on you", "n")
+		case wallActResume:
+			them := "the " + strconv.Itoa(v.away) + " conversations"
+			if v.away == 1 {
+				them = "the conversation"
+			}
+			return keyed("Resume "+them+" of "+team(v.team)+" not open here; nothing in front moves", "r")
 		case wallActColsLess:
 			return keyed("Fewer columns", "-")
 		case wallActColsMore:

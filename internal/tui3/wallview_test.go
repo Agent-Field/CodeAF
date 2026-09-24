@@ -37,7 +37,7 @@ func wallFixture(n int) wallView {
 	for i, name := range []string{"port", "infra", "research"} {
 		hue := nextTeamHue(hues, reserved)
 		hues = append(hues, hue)
-		v.teams = append(v.teams, wallTeamRow{id: wallTestIDs[i], name: name, hue: hue, count: 3 - i})
+		v.teams = append(v.teams, wallTeamRow{id: wallTestIDs[i], name: name, hue: hue, count: 3 - i, members: 4 - i})
 	}
 	v.total = n
 	for i := 0; i < n; i++ {
@@ -266,7 +266,7 @@ func TestWallRenderStates(t *testing.T) {
 	rows, _ := renderWall(pal, v, 180, 50)
 	frame := wallPlainFrame(rows)
 	for _, want := range []string{
-		"▦ Conversations", "the conversations in port", "⠿ 2 running", "? 1 needs you", "6 open",
+		"▦ Conversations", "open in this window · in port", "⠿ 2 running", "? 1 needs you", "6 open",
 		"Teams", "All 6", "port 3", "+ New team",
 		"Answer ↵", "seen 6m ago", "running bash " + wallGlyphsFor(false).sep + " 2m", "? waiting on you",
 		"updated 5m ago", "☑", "▌", tokens.Spinner(v.spin),
@@ -901,7 +901,7 @@ func TestWallToolbarExplainsTheHover(t *testing.T) {
 		{kind: wallHitOpen, arg: 0}:                      "Open conversation · enter",
 		{kind: wallHitClose, arg: 0}:                     "Close this view; the work keeps running · x",
 		{kind: wallHitSelect, arg: 0}:                    "Select for a team · space",
-		{kind: wallHitChip, id: wallTestIDs[1]}:          "Show only the conversations in infra",
+		{kind: wallHitChip, id: wallTestIDs[1]}:          "infra · 2 open here · 3 members",
 		{kind: wallHitAction, arg: int(wallActColsMore)}: "More columns · +",
 	} {
 		hv := v
@@ -1076,5 +1076,54 @@ func TestWallNarrowedToNothing(t *testing.T) {
 				t.Fatalf("%s: the empty team:\n%s", name, wallPlainFrame(rows))
 			}
 		}
+	}
+}
+
+// THE WALL IS WHAT IS OPEN IN THIS WINDOW, and a team's members that are not
+// open here are one quiet word button on the title, never tiles: `2 more in
+// port · Open them`, with its key on the hint line, and no mark at all when
+// every member is open (the emptiness law).
+func TestWallTitleOffersTheTeamsMembersNotOpenHere(t *testing.T) {
+	pal := newPalette(tokens.TrueColor, false)
+	v := wallUnmarked(wallFixture(6))
+	v.away = 2
+	rows, hits := renderWall(pal, v, 180, 50)
+	title := ansi.Strip(rows[0])
+	for _, want := range []string{"open in this window · in port", "2 more in port · Open them", "6 open"} {
+		if !strings.Contains(title, want) {
+			t.Fatalf("title %q lacks %q", title, want)
+		}
+	}
+	var hit *wallHit
+	for i := range hits {
+		if hits[i].kind == wallHitAction && hits[i].arg == int(wallActResume) {
+			hit = &hits[i]
+		}
+	}
+	if hit == nil || hit.y0 != 0 {
+		t.Fatalf("Open them is not a target on the title: %+v", hits)
+	}
+	if got := ansi.Strip(ansi.Cut(rows[0], hit.x0, hit.x1)); strings.TrimSpace(got) != "2 more in port · Open them" {
+		t.Fatalf("the target covers %q", got)
+	}
+	hv := v
+	hv.hover = hit.ref()
+	hrows, _ := renderWall(pal, hv, 180, 50)
+	if hrows[0] == rows[0] {
+		t.Fatal("the button takes no ground under the pointer")
+	}
+	if bar := ansi.Strip(hrows[len(hrows)-1]); !strings.Contains(bar, "Resume the 2 conversations of port not open here; nothing in front moves · r") {
+		t.Fatalf("hint line %q", bar)
+	}
+	v.away = 0
+	rows, _ = renderWall(pal, v, 180, 50)
+	if title := ansi.Strip(rows[0]); strings.Contains(title, "more") || strings.Contains(title, wallResumeWord) {
+		t.Fatalf("every member open, yet the title offers more: %q", title)
+	}
+	// Narrow, the name goes from the button before the button goes.
+	v.away = 2
+	rows, _ = renderWall(pal, v, 80, 30)
+	if title := ansi.Strip(rows[0]); strings.Contains(title, "in port · Open") {
+		t.Fatalf("80 wide keeps the long button: %q", title)
 	}
 }
