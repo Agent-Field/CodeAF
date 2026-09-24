@@ -700,12 +700,41 @@ func (a *app) crewToggleProvider(at int) tea.Cmd {
 
 // crewConnect is the `+`: the panel goes and /connect opens in its place —
 // the one door a provider is added through, never a second copy of it here.
-// A provider connected there is on the next time this panel is read.
+// A provider connected there is on the next time this panel is read, and
+// backing out of /connect comes back here, to the providers row
+// ([app.dismissConnect]), because that is where the person asked from.
 func (a *app) crewConnect() tea.Cmd {
-	a.crewUI.close()
+	p := &a.crewUI
+	back := &crewReturn{back: p.back, tab: p.backTab, cursor: p.backCursor}
+	p.close()
 	a.openConnect()
+	if a.connPanel.open {
+		a.connPanel.crew = back
+	}
 	a.touch()
 	return nil
+}
+
+// crewReturn is where the crew panel stood when its `+` handed over to
+// /connect: the place it was opened from, which its own esc goes back to.
+type crewReturn struct {
+	back        page
+	tab, cursor int
+}
+
+// dismissConnect is backing out of /connect — esc on the list, or a press off
+// it. Opened from the crew panel's `+`, it stands the crew panel back up on
+// the providers row, cursor on the `+`; opened any other way it just closes.
+func (a *app) dismissConnect() {
+	back := a.connPanel.crew
+	a.connPanel.close()
+	if back == nil {
+		return
+	}
+	a.crewUI = crewPanel{open: true, back: back.back, backTab: back.tab, backCursor: back.cursor,
+		saved: -1, step: -1, chipLine: -1, provSaved: -1, cursor: crewProviders}
+	a.crewUI.read(a.profileDir)
+	a.crewUI.chip = len(a.crewUI.providers)
 }
 
 // crewOpenProv opens the providers list on the provider the row's cursor was
@@ -1801,6 +1830,14 @@ func (p *crewPanel) crewServedWord(provider config.CrewProvider) string {
 	return strconv.Itoa(n) + " models"
 }
 
+// crewDayWord is what one provider carried today, as the providers list says it.
+func (p *crewPanel) crewDayWord(provider config.CrewProvider) string {
+	if usd := p.log.ProviderUSD[provider.ID]; usd > 0 {
+		return "today " + crewroute.Money(usd)
+	}
+	return "nothing today"
+}
+
 // crewProvRows is the providers list: one provider a line — on or off, its
 // name, how it bills, how many models it serves and what it carried today,
 // the day's share laid on it by the seats it carried (internal/router's
@@ -1810,14 +1847,35 @@ func (a *app) crewProvRows(width, hover int) ([]string, []int) {
 	if len(p.providers) == 0 {
 		return []string{a.pal.dim(fit("  "+crewNoProviderWord, width))}, []int{-1}
 	}
-	nameW, kindW, servedW := 0, 0, 0
+	nameW, kindW, servedW, dayW := 0, 0, 0, 0
 	for _, provider := range p.providers {
 		name, _ := crewChipWords(provider, false)
 		nameW = max(nameW, ansi.StringWidth(name))
 		kindW = max(kindW, ansi.StringWidth(crewKindWord(provider)))
 		servedW = max(servedW, ansi.StringWidth(p.crewServedWord(provider)))
+		dayW = max(dayW, ansi.StringWidth(p.crewDayWord(provider)))
 	}
+	// THE STATE WORD NEVER GOES. A line is the mark, the name and `on` or `off`
+	// first; the facts between them give way when the frame is narrow, the day's
+	// spend first, then how many models, then how it bills — the order a person
+	// deciding whether to switch a provider off needs them least.
 	pad := func(word string, w int) string { return word + strings.Repeat(" ", max(0, w-ansi.StringWidth(word))) }
+	room := width - ansi.StringWidth(overlayLead(false, false, a.pal)) - crewChipRoom
+	fixed := 2 + nameW + 2 + 3
+	facts := 0
+	for _, n := range []int{3, 2, 1} {
+		w := fixed + kindW + 2
+		if n >= 2 {
+			w += servedW
+		}
+		if n >= 3 {
+			w += 3 + dayW
+		}
+		if w <= room {
+			facts = n
+			break
+		}
+	}
 	var rows []string
 	var owner []int
 	now := a.now()
@@ -1827,11 +1885,20 @@ func (a *app) crewProvRows(width, hover int) ([]string, []int) {
 		if !provider.On {
 			mark, ink, state = a.icon(tokens.GQueued), a.pal.dim, "off"
 		}
-		day := "nothing today"
-		if usd := p.log.ProviderUSD[provider.ID]; usd > 0 {
-			day = "today " + crewroute.Money(usd)
+		var fact string
+		switch facts {
+		case 3:
+			fact = pad(crewKindWord(provider), kindW) + "  " + pad(p.crewServedWord(provider), servedW) + " · " + pad(p.crewDayWord(provider), dayW)
+		case 2:
+			fact = pad(crewKindWord(provider), kindW) + "  " + pad(p.crewServedWord(provider), servedW)
+		case 1:
+			fact = pad(crewKindWord(provider), kindW)
 		}
-		text := ink(mark) + " " + ink(pad(name, nameW)) + "  " + a.pal.dim(pad(crewKindWord(provider), kindW)+"  "+pad(p.crewServedWord(provider), servedW)+" · "+pad(day, 13)) + "  " + ink(state)
+		text := ink(mark) + " " + ink(pad(name, nameW)) + "  "
+		if fact != "" {
+			text += a.pal.dim(fact) + "  "
+		}
+		text += ink(state)
 		if p.live(now) && p.saved == crewProviders && p.provSaved == i {
 			text += "  " + a.pal.add(a.icon(tokens.GSettled))
 		}
@@ -1871,7 +1938,10 @@ func (a *app) crewTodayWord() string {
 	}
 	day := "today " + crewroute.Money(log.SpentUSD)
 	if log.Tasks > 0 {
-		day += " · " + strconv.Itoa(log.Tasks) + " tasks"
+		day += " · " + strconv.Itoa(log.Tasks) + " task"
+		if log.Tasks != 1 {
+			day += "s"
+		}
 		if log.OnPlan > 0 {
 			day += ", " + strconv.Itoa(log.OnPlan) + " on a plan"
 		}
@@ -1897,6 +1967,14 @@ func (a *app) crewWarnings() []string {
 	if len(p.providers) == 0 {
 		out = append(out, crewNoProviderWord)
 		return out
+	}
+	// A SEAT NOTHING ALLOWED CAN SIT ALREADY SAYS SO ON ITS ROW, and that is the
+	// larger trouble: a warning that the checker will be weak beside a seat that
+	// cannot be sat at all is the smaller half of the same sentence.
+	for _, seat := range crewroute.Seats {
+		if _, pinned := p.pins[seat]; !pinned && p.usual[seat] == "" {
+			return out
+		}
 	}
 	for _, gap := range p.gaps {
 		out = append(out, gap.Line)

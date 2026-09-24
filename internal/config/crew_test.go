@@ -469,3 +469,26 @@ func TestCrewProvidersTurnedOff(t *testing.T) {
 		t.Fatal("every provider on left the row written")
 	}
 }
+
+// THE GUARD IS ON ROUTING, NOT ON COUNTING: a custom endpoint left on alone
+// routes no seat, so turning OpenRouter off beside it is refused — unless
+// every seat is pinned to a provider still on.
+func TestCrewProvidersKeepOneThatRoutes(t *testing.T) {
+	dir := crewProfile(t)
+	custom := PrepareCustomSource(dir, "http://127.0.0.1:9001/v1", "my-vllm")
+	custom.Key, custom.Order = "sk-my-vllm-0123456789", 1
+	if err := WriteSources(dir, []PersistedSource{custom}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewProviderOn(dir, "openrouter", false); !errors.Is(err, ErrCrewNoRoutableProvider) {
+		t.Fatalf("turning off the one provider that routes beside a custom endpoint: %v", err)
+	}
+	for _, seat := range crewroute.Seats {
+		if err := SetCrewPin(dir, seat, "my-vllm/qwen-coder"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := SetCrewProviderOn(dir, "openrouter", false); err != nil {
+		t.Fatalf("every seat pinned to the custom endpoint, and still refused: %v", err)
+	}
+}

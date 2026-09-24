@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -171,6 +172,83 @@ func TestCrewProvidersPlusOpensConnect(t *testing.T) {
 	drive(t, a, key(" "))
 	if a.crewUI.open || !a.connPanel.open {
 		t.Fatalf("the + left crew open %v, connect open %v", a.crewUI.open, a.connPanel.open)
+	}
+	// ESC ON /connect COMES BACK to the crew panel, on the providers row.
+	drive(t, a, key("esc"))
+	if a.connPanel.open || !a.crewUI.open || a.crewUI.cursor != crewProviders || a.crewUI.chip != len(a.crewUI.providers) {
+		t.Fatalf("esc on /connect left connect %v, crew %v, cursor %d, chip %d",
+			a.connPanel.open, a.crewUI.open, a.crewUI.cursor, a.crewUI.chip)
+	}
+	// AND /connect opened on its own still just closes.
+	drive(t, a, key("esc"))
+	a.openConnect()
+	drive(t, a, key("esc"))
+	if a.connPanel.open || a.crewUI.open {
+		t.Fatal("esc on a /connect the crew panel did not open brought the crew panel up")
+	}
+}
+
+// A NARROW PROVIDERS LIST KEEPS THE STATE WORD: the day goes first, then the
+// model count, then the kind, and nothing is cut.
+func TestCrewProvidersListNarrow(t *testing.T) {
+	for _, width := range []int{60, 44, 34} {
+		a, _ := crewProvidersLab(t)
+		a.width = width
+		crewToProviders(t, a)
+		drive(t, a, key("enter"))
+		screen := crewScreen(a)
+		for _, id := range []string{"openrouter", "z-ai", "ollama", "my-vllm"} {
+			line := crewLineWith(t, screen, " "+id+" ")
+			if strings.Contains(line, "…") || !(strings.Contains(line, " on ") || strings.Contains(line, " off ")) {
+				t.Errorf("at %d columns the %s line reads %q", width, id, line)
+			}
+		}
+		if width == 60 && (strings.Contains(screen, "nothing today") || !strings.Contains(screen, "subscription")) {
+			t.Errorf("at 60 columns the day should go first and the kind stay:\n%s", screen)
+		}
+	}
+}
+
+// A SEAT NOTHING ALLOWED CAN SIT IS THE ONE WARNING: the weak-checker gap
+// beside it would be the smaller half of the same trouble. And a day of one
+// task says `1 task`.
+func TestCrewWarningsAndTheDay(t *testing.T) {
+	a, dir := crewLab(t)
+	if err := config.SetCrewAllowed(dir, "vendor/nothing-here"); err != nil {
+		t.Fatal(err)
+	}
+	record := router.CrewRecord{TaskClass: "bugfix", Seats: map[string]string{"worker": "z-ai/glm-5.3-flash"}}
+	router.LogCrewDecision(config.ProfilePath(dir, ""), "crew:one", record, nil)
+	router.LogCrewOutcome(config.ProfilePath(dir, ""), "crew:one", record, router.CrewAccepted, 0.01)
+	typeLine(t, a, "/crew")
+	screen := crewScreen(a)
+	if !strings.Contains(screen, "nothing allowed can sit this seat") {
+		t.Fatalf("the empty rule is not said on a seat:\n%s", screen)
+	}
+	if strings.Contains(screen, "strong checker") {
+		t.Fatalf("the gap warning stands beside nothing allowed:\n%s", screen)
+	}
+	if !strings.Contains(screen, "· 1 task") || strings.Contains(screen, "1 tasks") {
+		t.Fatalf("one task is not said as one:\n%s", screen)
+	}
+}
+
+// ENTER ON THE MODELS ROW STEPS IT, as → does, until price or custom, where
+// it opens what that answer holds.
+func TestCrewEnterStepsTheModelsRow(t *testing.T) {
+	a, dir := crewLab(t)
+	typeLine(t, a, "/crew")
+	drive(t, a, key("down"), key("down"), key("down"), key("enter"))
+	if got := config.CrewAllowedAt(dir).String(); got != "open" {
+		t.Fatalf("enter on all stepped to %q", got)
+	}
+	drive(t, a, key("enter"))
+	if got := config.CrewAllowedAt(dir).String(); got != "≤1/5" {
+		t.Fatalf("enter on open stepped to %q", got)
+	}
+	drive(t, a, key("enter"))
+	if a.crewUI.edit == nil {
+		t.Fatal("enter on price did not open its ceiling")
 	}
 }
 

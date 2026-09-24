@@ -1457,6 +1457,8 @@ a tick `✓` at its end, and the frame's bottom edge offers `z undo` for five se
 What gives way when the window narrows, in order: the seats drop their
 `usually <model>` hint, the provider chips drop their `local` word, and then the chips fold
 into one count — `providers 3 of 4 on` — where `space` and `enter` open the list instead.
+The list itself drops the day's spend first, then the model count, then how a provider
+bills, and always keeps `on` or `off`.
 Nothing on the panel is cut with `…`: a row that does not fit is said shorter.
 
 ## The two-row status deck at phone width

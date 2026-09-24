@@ -365,6 +365,12 @@ func SetCrewFreeRoutes(profileDir string, on bool) error {
 // way to say "none of these" is to disconnect them, which /connect does.
 var ErrCrewLastProvider = errors.New("at least one provider must stay on")
 
+// ErrCrewNoRoutableProvider is the same refusal one step wider: the providers
+// left on would route no seat — only a custom endpoint, say, which a pin
+// reaches and the router never picks — while every seat is not pinned to a
+// provider still on.
+var ErrCrewNoRoutableProvider = errors.New("at least one provider that can route a seat must stay on")
+
 // CrewProvidersOffAt is the providers turned off for the crew. A row that does
 // not read — a hand edit — reads as none off, the way a rule that does not
 // parse reads as the default.
@@ -416,10 +422,56 @@ func SetCrewProviderOn(profileDir, id string, on bool) error {
 	if still == 0 {
 		return ErrCrewLastProvider
 	}
+	if !on && !crewStillRoutes(profileDir, providers, provider.ID) {
+		return ErrCrewNoRoutableProvider
+	}
 	if len(ids) == 0 {
 		return writeProfileValues(profileDir, map[string]any{KeyCrewProvidersOff: removeProfileKey})
 	}
 	return writeProfileValue(profileDir, KeyCrewProvidersOff, ids)
+}
+
+// crewStillRoutes is whether turning one more provider off leaves the crew
+// able to seat every seat: some allowed model a seat can sit is reached by a
+// provider still on, or every seat is pinned to a provider still on. A
+// profile that could route nothing before the change is not refused for
+// routing nothing after it — the refusal is about THIS change.
+func crewStillRoutes(profileDir string, providers []CrewProvider, id string) bool {
+	rule := CrewAllowedAt(profileDir)
+	all := crewCandidates(rule, providers)
+	before, after := crewroute.ProvidersOff{}, crewroute.ProvidersOff{}
+	for _, p := range providers {
+		if !p.On {
+			before[p.ID], after[p.ID] = true, true
+		}
+	}
+	after[id] = true
+	if !crewSeatable(before.Candidates(all)) || crewSeatable(after.Candidates(all)) {
+		return true
+	}
+	pins := CrewPinsAt(profileDir)
+	for _, seat := range crewroute.Seats {
+		pin, ok := pins[seat]
+		if !ok {
+			return false
+		}
+		route := resolveCrewPin(pin, providers)
+		if _, connected := crewProviderByID(providers, route.Provider); !connected || !after.On(route.Provider) {
+			return false
+		}
+	}
+	return true
+}
+
+// crewSeatable is whether any candidate can sit a seat: a model that takes
+// tools, on at least one route.
+func crewSeatable(candidates []crewroute.Candidate) bool {
+	for _, c := range candidates {
+		if c.Model.Tools && len(c.Routes) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // ── what the router may pick from ───────────────────────────────────────────

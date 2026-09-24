@@ -531,7 +531,11 @@ serves stays allowed on that route, and the crew's routing and its route costs o
 use providers that are on. Which providers are off is saved beside the rule, not inside it,
 so walking the models row to a new answer never turns a provider back on. A provider you
 connect later is on the day you connect it. **At least one provider must stay on**: turning
-off the last one is refused under the rows with `at least one provider must stay on`. A
+off the last one is refused under the rows with `at least one provider must stay on`, and
+turning off the last one that can route a seat — leaving on only a custom endpoint, which a
+pin reaches and the crew never picks — is refused with
+`at least one provider that can route a seat must stay on`, unless every seat is pinned to
+a provider still on. A
 pinned seat whose only provider is off says `provider off` on its row.
 
 With nothing connected the panel says `no providers connected — /connect adds one`; a pin
@@ -555,7 +559,9 @@ which puts things back exactly as they were.
 - **A model outside your allowed models** is on the list marked `not allowed`. `enter` on it
   says `<model> is not in your allowed models (<rule>) — enter to allow it`; a second
   `enter` adds the model to the rule and pins it.
-- **models row**: `←`/`→` step between `all`, `open`, `price` and `custom`, saving each.
+- **models row**: `←`/`→` step between `all`, `open`, `price` and `custom`, saving each;
+  `enter` steps forward too, the way `→` does, until `price` or `custom`, where it opens
+  what that answer holds.
   On `price` the row becomes two boxes, `≤ $[ 1 ] in / $[ 5 ] out`; `enter` edits the
   first, `enter` (or `tab`) moves to the second, `enter` saves. On `custom`, `enter` opens
   a checklist of every model your providers reach — models only; providers are the
@@ -564,10 +570,12 @@ which puts things back exactly as they were.
   (`open -deepseek`, `all -moonshotai/kimi-k3`).
 - **providers row**: `←`/`→` walk the chips, `space` turns the one under the cursor off or
   on (the bottom edge says `space toggle` only on this row), and `space` on `+` opens
-  `/connect`. `enter` opens the providers list: one line per provider with how it bills
+  `/connect` — `esc` there brings you back to this row. `enter` opens the providers list: one line per provider with how it bills
   (`api key`, `subscription`, `local`, `custom endpoint`), how many models it serves, what it
   carried today and `on` or `off`; `space` or `enter` toggles the line under the cursor, `z`
-  undoes, `esc` goes back to the row. The list's last line is
+  undoes, `esc` goes back to the row. On a narrow window the list drops what it carried
+  today first, then the model count, then how it bills; `on` or `off` always stays. The
+  list's last line is
   `free routes  off · rate-limited, may log prompts`: turned on, the crew may also use a
   model's free `:free` route, which is rate-limited and may log what it is sent. It is off
   until you turn it on, and it is on the list only, never on the panel's rows.
