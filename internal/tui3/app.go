@@ -1927,6 +1927,10 @@ type app struct {
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
 	// once per window, because it is a fact about a machine and not about a turn.
 	newsSilenceSaid bool
+	// watchSpaces counts the run of spaces a WATCHER has typed, which is how the
+	// door home is reached from a register with no box on the frame
+	// (watching.go's [app.watchKey]). It is zero everywhere else.
+	watchSpaces int
 	// linkLatency is the hosted connection's rolling round trip, and
 	// linkPingAsking keeps its slow clock to one call at a time. Both are zero on
 	// every local session and before the first hosted answer, which the
@@ -2030,6 +2034,7 @@ type app struct {
 	// so it is refreshed on the paint clock while something on screen is drawing
 	// it and held between times.
 	away elsewhereCache
+
 	// pilots are the watchers on the nodes that are running right now, keyed by
 	// id, and pilotGen the counter each one takes its generation from (task.go).
 	// Empty is the ordinary state: nothing is running, so nothing is watched.
@@ -2249,6 +2254,10 @@ type app struct {
 	// not now that a conversation draws it too (pulsebeat.go). Every figure in it
 	// is read from the MACHINE, never from what a screen was holding (#525).
 	machine machineFacts
+	// placeSpaceArmed is the first of the two spaces that open home from a
+	// place with no box — spend, standing — held until the second lands or any
+	// other key disarms it (placekeys.go's [app.placeHomeGesture]).
+	placeSpaceArmed bool
 	// pageMsg is the one refusal a place that is not home has to say, drawn where
 	// the hint would be. It is one field for [homeView.msg]'s reason: pressing a
 	// door twice says the same thing once.
@@ -2321,6 +2330,14 @@ type app struct {
 	targetHover      hoverKind
 	targetFolderSpan hudSpan
 	targetModelSpan  hudSpan
+	// footRow is which row of the frame home's keys row was drawn on — the
+	// row [targetFolderSpan] is on since the project moved down to it
+	// (hometip.go) — and tipRow is the tip row above the rule, with
+	// tipCloseSpan the columns of its cross. Both are -1 on a frame that
+	// drew neither.
+	footRow      int
+	tipRow       int
+	tipCloseSpan hudSpan
 	// targetEffortSpan and targetApprovalSpan are the rung's and the gate's
 	// columns on that same line — the draft's twins of [app.seamEffortSpan] and
 	// [app.seamApprovalSpan] (boxseam.go), recorded on the same bargain.
@@ -2483,7 +2500,11 @@ type app struct {
 	// can sit on, and the draft it is holding (rewind.go). Closed, it costs the
 	// frame nothing.
 	//
-	// rewSay and rewSayAt hold a temporary rewind refusal on the frame clock.
+	// escArm is when the first esc landed, or zero — the door's other half, which
+	// lives out here rather than inside the mode because it is a fact about the
+	// mode being DOWN. rewSay is one sentence the mode could not act on
+	// ("nothing to rewind") and rewSayAt when it was said; both run down on the
+	// frame clock ([app.rewindSweep]), because this surface has one clock.
 	rew rewindMode
 	// rewSheet is the DELIBERATE rewind: the whole conversation as a full-frame
 	// timeline, with a search, a preview of the pick and a two-stage enter
@@ -2491,6 +2512,7 @@ type app struct {
 	// whole, and it is built from the session's own transcript rather than from
 	// the drawn blocks — which is why it can reach turns the inline mode cannot.
 	rewSheet rewindSheet
+	escArm   time.Time
 	rewSay   string
 	rewSayAt time.Time
 	// tmux says this surface is inside a multiplexer, so a clipboard write has
@@ -2743,7 +2765,7 @@ func (a *app) noteKilled() {
 // opens with, which is already about the keys nothing else names, is where it is
 // written down. It is the third and last clause because the two in front of it
 // are about the session a person is in and this one is about the program.
-const landingKeysWord = "esc back · ctrl+c interrupts or quits · ? for help"
+const landingKeysWord = "esc interrupts · ctrl+c quits · ? for help"
 
 func newApp(ctx context.Context, opts Options) *app {
 	// THE ENVIRONMENT IS READ THROUGH THE SEAM AND NOWHERE ELSE, so the four
@@ -3031,8 +3053,8 @@ func newApp(ctx context.Context, opts Options) *app {
 	// IT HAS TO BE TRUE IN EVERY STATE, and the line it replaced was not: it
 	// promised an interrupt on the first frame of a session where nothing was
 	// running, and at that moment ctrl+c was the door rather than a stop. The
-	// clauses distinguish back navigation from the stop-or-quit key: Escape
-	// goes back, while Ctrl+C stops a running turn or leaves at rest (leaving.go).
+	// two clauses here are each true whatever is happening — esc stops the turn
+	// when there is one, and ctrl+c at rest always leaves (leaving.go).
 	//
 	// AND IT WAITS FOR THE GREETING TO GO. On an empty session the line lands
 	// when the conversation begins rather than above a screen that is asking for
@@ -3405,7 +3427,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		a.sawAPerson()
-		// AND THE HAND IS STAMPED HERE, for the same reason the line above is:
+		// AND THE HAND IS STAMPED HERE, because this is the only line every
+		// keypress passes through, and what the question block needs to know
+		// is whether somebody is at the keyboard at all:
 		// this is the only line every keypress passes through, and what the
 		// question block needs to know is whether somebody is at the keyboard
 		// at all (question.go's [app.questionQuieted]).
@@ -3574,6 +3598,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(text)
 
 	case filesLoadedMsg:
+		if msg.home {
+			a.homeFilesLoaded(msg.paths)
+			return a, nil
+		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
 		a.comp.rank()
 		a.touch()
@@ -4086,6 +4114,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.legendApprovalPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE PROJECT AT THE RIGHT END OF THE KEYS ROW IS THE SEVENTH:
+			// pressing it opens the folder chooser, the door `/folder` is
+			// (projectseam.go's [app.seamProjectPress]).
+			if cmd, took := a.seamProjectPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
 			// the right end of the room's pinned header with a hit box three rows
@@ -4584,6 +4618,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// one (placecounts.go).
 		if a.at(pageHome) {
 			a.refreshPlaceCounts(a.now())
+			// AND THE TIP ON HOME'S ROW AGES ON THE SAME BEAT (notice.go).
+			a.noticeHomeBeat()
 		}
 		return a, a.homeBeat(msg.gen)
 
@@ -5003,7 +5039,10 @@ func (a *app) paint() tea.Cmd {
 		// update wakes this clock, and the clock keeps turning while the store
 		// says the run is still out (homestanding.go, standing.go).
 		a.standingAnimating() ||
-		// Rewind refusals expire on the shared frame clock.
+		// AND THE REWIND ARM IS THE SEVENTH, and the only one of them that turns
+		// with nothing on screen moving at all: the hint slot says "esc again to
+		// rewind" for half a second, and something has to be drawing the frame
+		// that takes it away again (rewind.go).
 		a.rewindTicking() ||
 		// AND A STOP BEING LET GO OF IS THE TENTH, and it is the third that turns
 		// with nothing on screen moving at all — a stopped turn draws nothing new
@@ -5812,7 +5851,7 @@ func (a *app) settle() tea.Cmd {
 	a.notices.enabled = config.HintsAt(a.profileDir)
 	// A turn ending is the moment most hints become true — the answer was long,
 	// the window is half full, the money is real — so it is the event they are
-	// decided on (notice.go).
+	// decided on, and it is the turn [noticeGap] is counted in (notice.go).
 	a.noticeEvent(eventTurnEnded)
 	a.follow()
 	a.touch()
@@ -6914,6 +6953,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runUpdateCommand(rest)
 
 	case "autonomy":
+		a.noticeEvent(eventAutonomyAsked)
 		if rest != "" {
 			return a.changeAutonomy(rest)
 		}
@@ -7091,23 +7131,26 @@ func (a *app) slash(line string) tea.Cmd {
 		// where it starts.
 		return a.openFolderPick(rest)
 
+	case "project":
+		// AND THE OTHER HALF OF THE WORD IS HOME'S (projectcmd.go). A pin about
+		// the NEXT conversation means nothing inside one, and the two acts are
+		// one keystroke apart in spelling — so this says which screen it lives
+		// on and which command does the neighbouring job here, rather than
+		// quietly doing the neighbouring job.
+		a.note(projectIsHomesWord)
+		return nil
+
 	case "land":
 		// The other end of choosing a folder: what was written for a folder this
 		// conversation only refers to, put into it. Shown first and done second
 		// (landcmd.go), and the landing itself runs off the loop.
 		return a.runLandCommand(rest)
 
-	case "image":
-		// The other door onto the tray, for a picture that is not under this
-		// directory or not in the walk: a path, attached (attach.go).
-		a.attachPath(rest)
-		return nil
-
 	case "attach":
-		// The same tray, for everything that is not a picture: a log, a CSV, a
-		// stack trace saved to a file. The model is handed the PATH rather than
-		// the contents, because an attached file is a file and the session
-		// already has a `read` tool (attach.go).
+		// THE tray, for anything: a log, a CSV, a stack trace saved to a file —
+		// and a picture, which the tray tells apart by its name (attach.go). A
+		// file is handed to the model as a PATH rather than its contents, because
+		// the session already has a `read` tool; a picture travels as the picture.
 		//
 		// AND WITH NO PATH AFTER IT, THE BROWSER — the same sheet /folder opens,
 		// with file intent (folderplace.go's [app.openContextPick]). It used to
@@ -7115,6 +7158,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// answer: somebody who typed the word without the path is somebody who
 		// does not know the path, and a browser is the thing they asked for.
 		if strings.TrimSpace(rest) == "" {
+			a.noticeEvent(eventAttached)
 			return a.openContextPick("", false)
 		}
 		a.attachFilePath(rest)
@@ -7219,6 +7263,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.edited()
 
 	case "subharness":
+		a.noticeEvent(eventSubharnessOpened)
 		// THE PROGRAMS THIS CONVERSATION CAN RUN, as a filterable list, and the
 		// intake card behind each of them (subharness.go). Unlike /harness this
 		// one DOES take a name: a subharness's name is its identity across the
@@ -7276,9 +7321,6 @@ func (a *app) slash(line string) tea.Cmd {
 		// outright. An unknown word shows the five and changes nothing, which is
 		// the shape every choice row on this surface refuses in.
 		return a.runEffort(rest)
-
-	case "ask":
-		return a.runAskCommand(rest)
 
 	case "task":
 		return a.runTaskCommand(rest)
@@ -7341,13 +7383,13 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runCacheCommand(rest)
 
 	case "manual":
-		// codeaf's own manual, in the conversation, AS WRITTEN (manualcmd.go).
-		// It is an answer rather than a place for /status' reason — a person who
-		// asked a question about the product wants it where they can scroll back
-		// to it — and it is a lookup rather than a turn, so it makes no model
-		// call and spends nothing.
-		a.runManualCommand(rest)
-		return nil
+		a.noticeEvent(eventManualAsked)
+		// codeaf's own manual, ASKED OF THE MODEL (manualcmd.go): the words go
+		// out as a turn of this conversation, told to answer from the manual and
+		// to name the page. It has been a turn and not a lookup since
+		// 2026-09-22, so the answer lands where every other answer lands, and
+		// it spends what a turn spends.
+		return a.runManualCommand(rest)
 
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
@@ -7378,7 +7420,7 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "rewind":
 		// THE COMMAND IS THE DELIBERATE DOOR AND IT OPENS THE TIMELINE
-		// (rewindsheet.go). Escape remains back navigation
+		// (rewindsheet.go), while esc esc keeps the quick inline gesture
 		// (rewind.go). Somebody who typed six letters to get here has already told
 		// this surface that the answer is not the message they just sent — it is
 		// somewhere back in the conversation, and finding it wants the whole of the
@@ -7560,7 +7602,7 @@ func (a *app) freshAndEmpty() bool {
 		return false
 	}
 	// A NOTE IS NOT A CONVERSATION. Every surface opens with the surface's own
-	// lines on it — `esc back · ctrl+c interrupts or quits`, a door's notice, a
+	// lines on it — `esc interrupts · ctrl+c quits`, a door's notice, a
 	// refusal somebody read — and counting those would make "fresh and empty"
 	// false on the very first frame of every session, which is the one state
 	// this test exists to recognise.
@@ -7847,7 +7889,7 @@ func (a *app) quit() tea.Cmd {
 	return tea.Quit
 }
 
-// interrupt is ctrl+c: stop the turn, keep what it said.
+// interrupt is esc: stop the turn, keep what it said.
 //
 // EVERYTHING A STOP OWES THE SCREEN IS PAID AT THE KEY, and that is the whole of
 // what this function changed when the interruption wave went through it. The
@@ -7860,7 +7902,7 @@ func (a *app) quit() tea.Cmd {
 // disagreeing with the one fact the person is certain of — they pressed the key.
 func (a *app) interrupt() {
 	a.interruptTurn()
-	// CTRL+C STOPS EVERYTHING, including both ways a later turn can already be
+	// ESC STOPS EVERYTHING, including both ways a later turn can already be
 	// waiting. The session drops its follow-up queue on interrupt; the surface
 	// drops that mirror and its editable parked queue in the same keypress so the
 	// stream close cannot orphan or unexpectedly send either one.
@@ -7870,7 +7912,7 @@ func (a *app) interrupt() {
 
 // interruptForBarge stops the current turn but preserves the draft
 // [app.bargeIn] just parked. ctrl+shift+enter promises stop-and-send; it shares the
-// stop machinery with ctrl+c without sharing ctrl+c's queue-clearing decision.
+// stop machinery with esc without sharing esc's queue-clearing decision.
 func (a *app) interruptForBarge() {
 	a.interruptTurn()
 	a.dropFollows()
@@ -7932,7 +7974,7 @@ func (a *app) interruptTurn() {
 	a.note("stopped")
 	// AND THIS TURN PROMOTES NOTHING (hierarchy.go's [app.cutTurn]). The mark goes
 	// on the blocks at the keypress so the demotion is on screen the moment the
-	// person presses ctrl+c, and again when the stream finally closes ([app.settle]),
+	// person presses esc, and again when the stream finally closes ([app.settle]),
 	// because events in flight land between the two.
 	a.cutTurn(a.turn)
 }
@@ -7944,9 +7986,25 @@ func (a *app) interruptTurn() {
 // it are still true and the second one is what dictated how this was built. What
 // changed is that the thing it said did not exist now does.
 //
-// The stop bound is a clock, not a second key: Ctrl+C already asked the turn
-// to stop, and Escape must remain navigation. The deadline starts on that
-// first stop and releases a turn that will not finish letting go.
+// WHAT THE ARGUMENT GOT RIGHT, FIRST HALF: THERE IS NO KEY LEFT. esc's grammar
+// in the conversation is read in a fixed order (input.go, rewind.go): a recall
+// walk takes it, then [app.escRewind] — where the first esc ARMS the rewind on
+// its way past and a second one inside [rewindArmWindow] OPENS it — and only
+// then [app.interrupt]. So every esc that lands within half a second of another
+// esc already belongs to rewind, and THE INTERRUPT IS NOT FOR SALE cuts the
+// other way just as hard. Putting a hard stop AFTER the window does not save it
+// either, because an esc past the window is a FIRST esc again, so the key would
+// mean "stop harder" or "open the rewind" depending on what the person did half
+// a second later — one keypress with two readings, which is the one thing this
+// keyboard cannot have. ctrl+c is spoken for on both sides of the same moment:
+// mid-turn it is the interrupt, and at rest — which is what winding down IS —
+// it is the door (leaving.go).
+//
+// THAT REMAINS TRUE, SO THE SECOND STAGE TAKES NO KEY AT ALL. It is a CLOCK,
+// started by the esc the person already pressed, and it needs no grammar because
+// it asks for no gesture. A person who wants a turn to stop has said so once;
+// making them say it twice, harder, into a surface that already heard them is
+// the exact experience issue #265 was filed about.
 //
 // WHAT THE ARGUMENT GOT RIGHT, SECOND HALF, AND WHY IT DICTATED THE ORDER OF
 // WORK: A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A deadline whose
@@ -8567,6 +8625,8 @@ func (a *app) syncLists() tea.Cmd {
 	was := a.comp.open
 	a.comp.sync(&a.input)
 	if a.comp.open && !was {
+		// The list coming up is the proof that `@` has been found (notice.go).
+		a.noticeEvent(eventAtOpened)
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the
 		// walk lands when it lands (taskmention.go, files.go).

@@ -51,6 +51,16 @@ type tasksPlace struct {
 	// rather than deleted, which is the whole reason this map is read as
 	// presence-and-value instead of as a set.
 	opened map[tasksKey]bool
+	// closed holds tasks put away during this search. A close must remove its
+	// row immediately even though searches can recover older archived tasks.
+	// Editing the query starts a new search and makes them discoverable again.
+	closed map[tasksKey]bool
+	// closedQuery is the search text [tasksPlace.closed] was put away under.
+	// AN EDIT THAT CHANGES NOTHING IS NOT A NEW SEARCH: ctrl+k at the end of the
+	// box, or backspace with the caret at its start, takes no rune, and a task
+	// that came back on a keystroke that left the text as it was would read as a
+	// close that did not hold.
+	closedQuery string
 	// query is the type-to-filter box, and it is the [editor] every other box on
 	// this surface is rather than a string of its own: backspace, ctrl+u and
 	// ctrl+w are edits a person's hands already know, and a second implementation
@@ -388,10 +398,10 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	// ([tasksControlRow]) and a row cannot ask the surface anything. It is the
 	// untrimmed text, so a person who has typed a space sees the caret move.
 	r.query = p.query.String()
-	if needle == "" {
+	if needle == "" || len(p.closed) > 0 {
 		var kept []tasksItem
 		for i, item := range r.items {
-			if item.row.ArchivedTasks[item.entry.ID] {
+			if p.closed[tasksKeyOf(item.entry)] || (needle == "" && item.row.ArchivedTasks[item.entry.ID]) {
 				if kept == nil {
 					kept = make([]tasksItem, 0, len(r.items))
 					kept = append(kept, r.items[:i]...)
@@ -408,6 +418,8 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 			tree.keepConversationStates(p.reading.tree())
 			r.shape = &tree
 		}
+	}
+	if needle == "" {
 		return r
 	}
 	// A QUERY OPENS EVERY FOLD ON THE PAGE. A row that matched and is sitting
@@ -880,6 +892,9 @@ func (a *app) taskSheetReverseAge() {
 // the window with it. A cursor left at row forty of a list that now has three is
 // a page a person types one letter into and finds empty.
 func (a *app) taskSheetTyped() {
+	if a.taskSheet.query.String() != a.taskSheet.closedQuery {
+		a.taskSheet.closed = nil
+	}
 	a.taskSheet.top = 0
 	a.taskSheet.cursor = a.tasksSettle(0)
 }
@@ -970,7 +985,8 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			a.taskSheetTyped()
 			return nil, true
 		}
-		return a.openHome(), true
+		a.leavePlace()
+		return nil, true
 	case taskSheetKey:
 		// The chord that opened this is the chord that closes it — the roster's own
 		// bargain with alt+t — and it closes it from inside a filter as well,
@@ -1249,7 +1265,7 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	if y < 0 || y >= len(hits) {
 		return nil
 	}
-	// On a compact frame the foot is an `esc home` band, so a press
+	// On a compact frame the foot is an `esc close` band, so a press
 	// on it is the way out (taskphone.go).
 	if hits[y].kind == taskSheetHitBar {
 		return a.taskSheetBarPress(x)
@@ -1591,7 +1607,7 @@ func (p *tasksPlace) hint(a *app) string {
 	// press. What is true there is the way out, and [placeTailed] puts `tab next
 	// place` in front of it.
 	if !p.detailOn && a.tasksFiltered().held == 0 {
-		return homeDoorWord
+		return mapCloseWords
 	}
 	var parts []string
 	// THE CONVERSATION'S OWN CLAUSE, and it is the word this surface already uses
@@ -1657,7 +1673,7 @@ func (a *app) tasksPageKeys(parts []string) []string {
 	if a.taskSheetFiltering() {
 		return append(parts, tasksClearFilterWord)
 	}
-	return append(parts, tasksFilterHint, homeDoorWord)
+	return append(parts, tasksFilterHint, mapCloseWords)
 }
 
 func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }

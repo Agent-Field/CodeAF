@@ -72,7 +72,7 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], headPulseWhole()) {
 			t.Fatalf("at %dx%d the chat's first row is not the pulse with its counts and budget:\n%q", size.w, size.h, head[0])
 		}
-		if !strings.Contains(head[placeTabRow], "Home") || !strings.Contains(head[placeTabRow], a.chatDisplayName()) {
+		if !strings.Contains(head[placeTabRow], "home") || !strings.Contains(head[placeTabRow], a.chatDisplayName()) {
 			t.Fatalf("at %dx%d the strip is not under the pulse:\n%q", size.w, size.h, head[placeTabRow])
 		}
 		if head[2] != strings.Repeat("─", size.w) || head[3] != "" {
@@ -188,7 +188,11 @@ func TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot(t *testing.T) {
 			}
 			a.touch()
 			rows := strings.Split(plain(frame(a)), "\n")
-			if got := footOf(rows); got != want || strings.TrimSpace(rows[want.rule-1]) != "" {
+			// THE CLEARANCE OVER HOME'S RULE IS THE TIP ROW since 2026-09-22
+			// (hometip.go): the same row, so the foot stands where it stood, and
+			// it is blank everywhere else.
+			clear := strings.TrimSpace(rows[want.rule-1]) == "" || (to == pageHome && a.tipRow == want.rule-1)
+			if got := footOf(rows); got != want || !clear {
 				t.Fatalf("at %dx%d %s puts its foot at %+v, and every frame puts it at %+v under a blank:\n%s",
 					size.w, size.h, pageName(to), got, want, strings.Join(rows[len(rows)-placeFootRowsAt(size.h)-1:], "\n"))
 			}

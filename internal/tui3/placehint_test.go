@@ -159,9 +159,9 @@ func TestTheSpendFootNamesTheKeysAPersonWouldPress(t *testing.T) {
 	if strings.Contains(bare, spendEnterWord) {
 		t.Errorf("the spend foot promises %q over a ledger with no rows: %q", spendEnterWord, bare)
 	}
-	if bare != placeHintTail+" · esc home" {
+	if bare != placeHintTail+" · esc close" {
 		t.Errorf("the spend foot over an empty ledger drew %q, want %q — the way out is said last and said once",
-			bare, placeHintTail+" · esc home")
+			bare, placeHintTail+" · esc close")
 	}
 
 	// A row that opens something: enter, the one verb, and the window.

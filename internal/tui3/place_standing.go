@@ -697,7 +697,8 @@ func (a *app) standingPlaceKey(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	switch msg.String() {
 	case "esc":
-		return a.openHome()
+		a.leavePlace()
+		return nil
 	// THE CURSOR WALKS THE ROWS THE BODY WAS PAINTED FROM, and there is one such
 	// list ([app.standingPageRows]). Three arithmetics over three lists — one
 	// clamping into the orders, one resolving against a shorter fold, one

@@ -126,6 +126,11 @@ func (a *app) takeMouseBack() bool {
 	return true
 }
 
+// copyKeysWord is the keys row while the viewport is frozen, under either box:
+// the reader's keys are the only keys that work, so they are the only keys the
+// row may name.
+const copyKeysWord = "v select · a block · y yank · esc"
+
 // copyMode is the frozen viewport's whole state. The zero value is off, except
 // for mark, which [newApp] sets to -1 — nothing is marked.
 type copyMode struct {
@@ -159,6 +164,9 @@ func (a *app) enterCopy() {
 	}
 	width := a.bodyWidth()
 	height := a.viewHeight()
+	// COPY OWNS THE PAGE BEFORE IT IS LAID OUT, so a transient sign of life and
+	// the blank that belongs to it cannot become transcript (worklogo.go,
+	// #1384).
 	a.copy.on = true
 	rows := a.layout(width)
 	if len(rows) == 0 {

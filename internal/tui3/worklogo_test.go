@@ -94,7 +94,7 @@ func TestWorkingLogoFallbacksAndTransientRows(t *testing.T) {
 	for _, change := range []func(*app){
 		func(a *app) { a.linear = true }, func(a *app) { a.pal.ascii = true },
 		func(a *app) { a.pal = newPalette(tokens.NoColor, false) }, func(a *app) { a.width = 40 },
-		func(a *app) { a.height = 16 }, func(a *app) { a.copy.on = true },
+		func(a *app) { a.height = 16 },
 		func(a *app) { a.state = stateInterrupted }, func(a *app) { a.page = pageHome },
 	} {
 		a := workLogoApp(t)
