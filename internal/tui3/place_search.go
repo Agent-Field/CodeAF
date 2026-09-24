@@ -175,6 +175,11 @@ func (a *app) searchTick(msg searchTickMsg) tea.Cmd {
 		// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. With no index
 		// behind it the place keeps saying what it is for rather than drawing an
 		// empty result list under somebody's words.
+		//
+		// It matched conversations by NAME here for one build on 2026-09-22,
+		// the way home's box does, and the owner took that back the next day:
+		// a place called `search` that searches something narrower than it says
+		// is worse than one that refuses.
 		a.search.waiting = false
 		return nil
 	}

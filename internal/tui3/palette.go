@@ -2668,6 +2668,7 @@ func (p *picker) keysParts() (string, string, string) {
 // any other, and every slot says which models may answer it (settings.go's
 // [filterFor]).
 func (a *app) openPicker() {
+	a.noticeEvent(eventModelListOpened)
 	a.pick.startFor(a.modelList(), a.model, chatModel)
 	// THE PIN IS A SNAPSHOT, exactly as the model in use is: it is what marks a
 	// row inside an open fold, and what the row in use says `via`, and neither

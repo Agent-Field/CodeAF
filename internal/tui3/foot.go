@@ -528,7 +528,7 @@ func (a *app) seamPieces(width int) seamPieces {
 	// one place the pin is written on the chrome: the status row and the phone
 	// deck take the same word from the same function.
 	pieces := seamPieces{host: a.host, model: a.modelWord(),
-		project: a.hostedPath(a.placeWord(tildePath(a.workspace, a.tilde)))}
+		project: a.seamProjectWord()}
 	if pieces.model != "" {
 		// A rung with no model beside it has nothing to be about, and the ladder
 		// it belongs to is reached by name (`/effort`) rather than from a cell

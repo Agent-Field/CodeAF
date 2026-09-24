@@ -8,9 +8,9 @@ Yes. Type it on the home screen, press `↑` once — which lands on the row spe
 ```
  ? ask here: "remind me at 6 to leave"
  + start a new conversation: "remind me at 6 to leave"
- ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
+ ─ glm-5.3-flash:auto · ◇ asks ──────────────────────────────────────────────
  › remind me at 6 to leave
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+p project · alt+e effort · alt+a approvals · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · esc clear   project: ~/codeaf
 ```
 
 What you get is **a row in home's conversation list and a pane holding the exchange**. The row

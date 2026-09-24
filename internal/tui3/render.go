@@ -3353,10 +3353,12 @@ func (a *app) legend(width int) string {
 			ledger, alive = a.seamRungParts(parts, rung.steps)
 			painted, right = a.seamTelemetryLabel(ledger, alive)
 		}
-		// The project is the final right-hand field, after the numbers. Its
-		// extra columns never move the ledger's doors relative to that label.
+		// THE PROJECT IS THE KEYS ROW'S NOW (footswap.go's [app.hintRow]), and
+		// it stays on the seam only at the phone tier, where the seam IS the
+		// keys row and the last row is the deck. Its extra columns never move
+		// the ledger's doors relative to that label.
 		projectSpan := hudSpan{}
-		if !a.roomOpen() {
+		if !a.roomOpen() && !telemetry {
 			original := right
 			right, projectSpan = seamProjectRight(left, right, pieces.project, width)
 			if projectSpan.pressable() {
@@ -3725,11 +3727,16 @@ func (a *app) footHint(width int) string {
 	if a.chordLost && a.chords.meta == chordMetaWord {
 		return a.chords.chordShortWords()
 	}
-	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED HINT (notice.go). It is the
+	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED TIP (notice.go). It is the
 	// lowest rung there is — a tip about a gesture the person has not used yet,
 	// drawn only over an idle box — and it takes the slot from the rest state
 	// below because that is what the rest state is for: the one line a newcomer
 	// reads when nothing is happening.
+	//
+	// IT LEFT THIS ROW FOR ONE BUILD ON 2026-09-22, for a row of its own over
+	// the rule with a clock and a cross, and the owner put it back here. Home's
+	// row keeps that newer shape; the two boxes are read differently and are
+	// allowed to differ (notice.go's [noticeBoard.pick]).
 	if tip := a.noticeHint(); tip != "" {
 		return tip
 	}
@@ -3882,7 +3889,7 @@ func (a *app) hintWord() string {
 		// (subharness.go).
 		return a.subVerbs()
 	case a.copy.on:
-		return "v select · a block · y yank · esc"
+		return copyKeysWord
 	case a.rew.on:
 		// The rewind mode prints its own keys in the bar that replaced the draft
 		// box (rewind.go), and a slot repeating them would be the surface saying

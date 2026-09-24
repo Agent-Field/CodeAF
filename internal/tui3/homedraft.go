@@ -226,9 +226,10 @@ func (a *app) targetProject() string {
 	return a.hostedPath(a.placeWord(tildePath(a.targetWhere(), a.tilde)))
 }
 
-// targetLegend keeps model, effort and approvals at the left, with the
-// project at the right. A long project gives up its right end first.
-// Its click span is measured from that same layout, so it follows the text.
+// targetLegend keeps model, effort and approvals at the left. The project
+// used to stand at its right and is on the keys row under the box now
+// (hometip.go); the three doors' click spans are measured from this layout,
+// so they follow the text.
 func (a *app) targetLegend(width int, pal palette) (string, bool) {
 	a.clearTargetSpans()
 	if width < 1 {
@@ -238,17 +239,16 @@ func (a *app) targetLegend(width int, pal palette) (string, bool) {
 		return a.draftNoteRule(width, pal, note)
 	}
 	left, model, rung, gate := a.draftSeamLeft(legendRoom(width, ""))
-	right, project := seamProjectRight(left, "", a.targetProject(), width)
-	painted := a.paintSeamProject(right, project, a.targetHover == hoverSeamProject)
-	line, at, ok := a.legendLinePainted(left, right, painted, width, a.draftSeamPaint(pal, model, rung, gate))
+	// THE PROJECT LEFT THE RULE FOR THE KEYS ROW on 2026-09-22 (hometip.go's
+	// [app.homeFootLine]), so the right of home's rule is bare and its door
+	// is recorded where the path is drawn now. A conversation's seam still
+	// names its workspace at the right (foot.go).
+	line, _, ok := a.legendLinePainted(left, "", "", width, a.draftSeamPaint(pal, model, rung, gate))
 	if !ok {
 		return "", false
 	}
 	a.targetModelSpan = shiftIntoBorder(model)
 	a.targetEffortSpan, a.targetApprovalSpan = shiftIntoBorder(rung), shiftIntoBorder(gate)
-	if project.pressable() {
-		a.targetFolderSpan = hudSpan{from: at + project.from, to: at + project.to}
-	}
 	return line, true
 }
 
@@ -365,6 +365,7 @@ func (a *app) pinTargetProject(path string) bool {
 // It opens on the target's own model for [picker.start]'s stated reason: the
 // cursor sits on what you are on, so enter confirms rather than changes.
 func (a *app) openTargetPicker() {
+	a.noticeEvent(eventModelListOpened)
 	a.target.pick.startFor(a.modelsFor(chatModel), a.targetModel(), chatModel)
 	// AND THE PROVIDERS OPEN HERE TOO. The box under this list has always named
 	// `→ providers`, and for one wave the key did nothing at all, because the

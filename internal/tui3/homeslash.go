@@ -184,13 +184,15 @@ func homeFate(word, rest string) string {
 	switch canonicalCommand(strings.ToLower(strings.TrimPrefix(word, "/"))) {
 	case "model":
 		return fateTargetModel
-	case "folder":
+	case "project":
+		// /project IS THE PIN AND /folder IS NOT, since 2026-09-22
+		// (projectcmd.go says what the two used to share).
 		return fateTargetFolder
 	case "settings", "search", "spend", "history", "home":
 		return fatePlace
 	case "resume":
 		return fateResume
-	case "attach", "image":
+	case "attach":
 		return fateTray
 	case "quit":
 		return fateQuit
@@ -199,7 +201,16 @@ func homeFate(word, rest string) string {
 	case "land", "workspace":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "autonomy",
-		"copy", "select", "rewind", "compact", "export", "drafts":
+		"copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":
+		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
+		// turn of a conversation now (manualcmd.go), and a turn needs one. As
+		// an answer it printed the pages into the conversation BEHIND home,
+		// where the person who typed it could see nothing happen.
+		//
+		// AND /folder JOINED IT THE SAME DAY. It means one thing everywhere
+		// now — give THIS conversation a folder — so on home it needs one,
+		// exactly like /files. The pin it used to be here is /project
+		// (projectcmd.go).
 		return fateNeedsChat
 	case "standing":
 		// Bare it is the standing place; with words it is a card raised in a
@@ -238,7 +249,7 @@ func homeFate(word, rest string) string {
 			return fatePlace
 		}
 		return fateAnswers
-	case "help", "manual", "status", "cost", "budget", "cache", "debug", "update",
+	case "help", "status", "cost", "budget", "cache", "debug", "update",
 		"stop", "remember", "forget":
 		return fateAnswers
 	}
@@ -253,10 +264,6 @@ const (
 	// than refusing, because the thing the person asked for is already in front
 	// of them.
 	homeIsTheResumeWord = "this list is /resume · enter opens a row"
-	// homeTypeThePathWord is a bare /attach. The browser is /folder's door and
-	// this command's own is a path, so the line says the two ways a file gets
-	// onto home's tray rather than opening a sheet nobody asked for.
-	homeTypeThePathWord = "type the path after /attach · or drop the file here"
 	// homeRidesWord is the tail of the line a file attached at home leaves: the
 	// tray belongs to the person and travels into the conversation home opens
 	// next (home.go's [app.homeStart] carries it there).
@@ -285,13 +292,12 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		return a.homeModelCommand(rest)
 
 	case fateTargetFolder:
-		// THE BROWSER, AIMED AT THE TARGET (folderplace.go). Bare it opens where
-		// the next conversation would; with a path it opens on that path. Both
-		// forms answer one question — which folder does the next conversation open
-		// in — so both open the one surface that answers it, and picking a row
-		// pins the rule above home's box rather than moving the conversation
-		// behind the screen.
-		return a.openTargetFolderPick(rest)
+		// /project (projectcmd.go). With a path it takes that path; bare it is
+		// the browser, opened where the next conversation would open. Both
+		// forms answer one question — which folder does the next conversation
+		// open in — and either way the rule above home's box changes rather
+		// than the conversation behind the screen.
+		return a.runProjectCommand(rest)
 
 	case fateResume:
 		h.say(homeIsTheResumeWord, "")
@@ -359,15 +365,11 @@ func (a *app) homeSlash(line string) tea.Cmd {
 // `/folder` makes, said in the same words.
 func (a *app) homeTrayCommand(word, rest string) tea.Cmd {
 	if rest == "" {
-		if word == "image" {
-			// The dispatcher's own usage line, said where it was typed rather than
-			// in a conversation opened to hold it.
-			a.echoHome = true
-			defer func() { a.echoHome = false }()
-			return a.slash("/image")
-		}
-		a.home.say(homeTypeThePathWord, "")
-		return nil
+		// A BARE /attach IS THE BROWSER, aimed at the next conversation's folder
+		// the way a bare /folder is (folderplace.go's [app.openTargetContextPick]):
+		// a file chosen there lands on home's tray. It used to answer `type the
+		// path after /attach`, which is a correction rather than an answer.
+		return a.openTargetContextPick("", true)
 	}
 	// AND ONLY ON THIS MACHINE'S OWN DISK. Over a connection the directory this
 	// process can stat is the laptop's and the next conversation is on the other

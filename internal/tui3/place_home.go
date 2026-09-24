@@ -527,7 +527,8 @@ func (placeHome) wheel(a *app, delta int) (tea.Cmd, bool) { return nil, false }
 // nothing, which is what it costs to never be stale.
 func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 	answered := a.homeKey(msg)
-	return tea.Batch(answered, a.refreshHomeCard(a.now()))
+	// AND THE `@` LIST'S WALK STARTS THE KEY THAT OPENED IT (homeat.go).
+	return tea.Batch(answered, a.loadHomeFiles(), a.refreshHomeCard(a.now()))
 }
 
 // owns is the two layers of home that take the WHOLE keyboard, `tab` included,

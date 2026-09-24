@@ -39,7 +39,7 @@ The same token rules apply on home and in conversations:
   list; moving the caret back into the command word opens it again.
 - The entire token must contain command-name characters. A further slash, a dot or a
   backslash makes it a path rather than a command token, even with the caret midway
-  through it. `/tmp/project` and `/image.png` therefore leave the list closed.
+  through it. `/tmp/project` and `/shot.png` therefore leave the list closed.
 
 A partial path such as `/tmp` is still indistinguishable from an unknown command word:
 it shows `no commands match` until another slash or path punctuation makes the intent
@@ -156,16 +156,17 @@ Canonical word, the other words it answers to, its argument form, and what it do
 |---|---|---|---|
 | `/model` | — | — | opens the model picker |
 | `/model` | — | `<slug>` | switches the model to that slug |
-| `/image` | — | `<path>` | attaches a picture; tab completes the path |
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
 | `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
-| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet; over `--host` says the folder chooser is unavailable |
+| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet for THIS conversation; on home it opens a conversation first; over `--host` says the folder chooser is unavailable |
 | `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
-| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
+| `/project` | — | — | on home: the browser, opened where the next conversation would open; in a conversation it says it is home's |
+| `/project` | — | `<path>` | on home: sets the folder the next conversation opens in, with no browser |
+| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host`; enter on this row of the `/` list opens it at once |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
@@ -208,9 +209,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
 | `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
 | `/help` | `/?` | — | prints this list |
-| `/manual` | — | — | every page of codeaf's own manual, one per line |
-| `/manual` | — | `<page>` | prints that page as it is written |
-| `/manual` | — | `<question>` | prints the sections that answer it, labelled with page and heading |
+| `/manual` | — | — | asks the model what codeaf can do, answered from codeaf's own manual |
+| `/manual` | — | `<question>` | puts that question to the model, answered from codeaf's own manual, naming the page |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
 ## /help, /?, /quit, /exit, /q — how do I close just this chat, does closing one conversation quit codeaf
@@ -410,6 +410,36 @@ ctrl+b does. In copy mode ↑↓ move, `v` marks, `a` takes the block, `y` yanks
 
 If you type `/copy` and the screen does not change, one of those two is why.
 
+## /project — set the project on home, which folder will my next conversation open in, change the project
+
+`/project` is **home's** command, and it sets the folder the conversation you start next
+will open in — the `project: ~/src/parser` at the right end of the keys row under home's
+box. Bare, it opens the folder browser where that next conversation would open. With a
+path after it, it takes the path and opens nothing:
+
+```
+/project                 the browser
+/project ~/src/parser    pinned at once · the keys row says project: ~/src/parser
+```
+
+A path that is not a directory on this machine is refused by name — `no folder there ·
+~/src/parsr` — and nothing changes. Over `--host` it refuses: the folders this program can
+read are the laptop's and the conversation would be on the other machine.
+
+**In a conversation it does nothing but say where it lives**, exactly:
+
+```
+/project is home's · it sets the folder the next conversation opens in · /folder gives this conversation one
+```
+
+The two commands are one word apart and do different jobs, so the answer names both.
+
+**It was the home half of `/folder` until 2026-09-22.** `/folder` meant "give this
+conversation a folder" in a conversation and "pin the next conversation's folder" on home,
+which is two acts behind one word. The pin is `/project` now, and `/folder` means the one
+thing on every screen — on home it opens a conversation first and browses there. `alt+p`
+is the same pin without a browser, walking the projects this machine knows.
+
 ## /select — drag to select with your mouse
 
 You usually do not need this any more: **dragging over the conversation already
@@ -437,30 +467,29 @@ answers out loud, exactly:
 your terminal already has the pointer — drag to select.
 ```
 
-## /image — attach a picture
+## /image — attach a picture, and why there is no /image command any more
 
-`/image <path>` attaches a picture to your next message. Use it for a picture that is not
-under this directory, or one the `@` completion walk does not reach.
+There is no `/image` command. Until 2026-09-22 it was a second word for `/attach` that
+took only a picture and refused everything else; `/attach <path>` does the whole job now.
+A picture handed to it lands on the tray as `▣ #1 name.png` and **its `[image #1]` token
+is appended to your sentence when you press `enter`**, so you can refer to it by number the
+same way you would one you dragged in. Anything else lands as a file. Typing `/image` is
+answered the way every unknown word is: `there is no command called /image · / lists them`.
 
 Path rules: `~` is your home directory, a bare name is under the directory this
-conversation is about, and an absolute path is left alone. Over `--host` the path is
-anchored to **this** machine — the picture is on the laptop you are sitting at, and its
-bytes travel with the message.
+conversation is about, an absolute path is left alone, and **a path in quotes, or with
+its spaces backslashed** — the shape Finder and a terminal drop hand you — is read as the
+one path it is. Over `--host` the path is anchored to **this** machine — the picture is on
+the laptop you are sitting at, and its bytes travel with the message.
 
-A full attachment tray does not stop the command: `/image` adds a second picture rather
-than sending the first.
+A full attachment tray does not stop the command: a second picture is a second chip rather
+than a send. Dragging or pasting a file over a line that already starts with `/` leaves
+the path as text, so `/attach ` still takes the path you dropped on it.
 
-The picture lands on the tray as `▣ #1 name.png` and **its `[image #1]` token is appended
-to your sentence when you press `enter`**, so you can refer to it by number the same way
-you would one you dragged in. Dragging or pasting a file over a line that already starts
-with `/` leaves the path as text, so `/image ` still takes the path you dropped on it.
-
-Refusals, exactly as written:
+Refusals, exactly as written on the attaching-files page:
 
 ```
-/image takes a path · try /image shot.png
-<name> is not a picture · png, jpeg, webp and gif are
-no such picture: <what you typed>
+no such file: <what you typed>
 <name> is already attached
 ```
 
@@ -730,7 +759,8 @@ and the note's leading `· `; strip those before feeding it to a parser.
 `/search` opens the **search place** — everything that has been said on this machine,
 found by the words you remember of it. It is the same place `alt+7` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
-searches.
+searches. With the **memory** row off nothing said is indexed, and the place says so and
+searches nothing — find the conversation from home's box instead (see the *places* page).
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
 and by what it was for. It is the same place `alt+3` opens.
@@ -1759,8 +1789,7 @@ after" are written the way you would say them — `20m`, `4h`, `1h30m` — and `
 off.
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
-"input history", "keep drafts", "task column", "hints" — the one-line tips above the
-message box, and the what's-new lines with them (see *Hints and tips*) — "chat width",
+"input history", "keep drafts", "task column", "chat width",
 "mouse", "timestamps", "turn work". There is no "nerd font" or "linear mode" row: icons
 need no patched font anywhere on this surface, and the accessible single-column rendering
 is the `--linear` flag at launch rather than a persisted setting.
@@ -1941,28 +1970,36 @@ list can do it, that ability is simply absent rather than present and failing.
 
 A change here lands on the **next** picture, sentence or film — not on the next launch.
 
-## /manual — how do I read the manual, is there a help page, show me the page about X
+## /manual — how do I read the manual, is there a help page, show me the page about a command, ask codeaf about itself
 
-`/manual` is codeaf's own manual, printed into the conversation. It is the same writing
-the chat reads to answer questions about itself, and it arrives **as it is written** —
-nothing is retold, summarized or shortened on the way to you.
+`/manual` puts a question about codeaf to the model **with the manual open**. The words
+after it go out as a turn of the conversation, told to answer out of codeaf's own manual —
+the same pages the chat reads whenever you ask what a key or a command does — and to say
+which page the answer came from, so you can go on and read that page yourself.
 
-Three forms, and which one you get is decided by what you type after the word:
-
-| Typed | What comes back |
+| Typed | What happens |
 |---|---|
-| `/manual` | every page, one per line: the name you type to open it, then what that page is about |
-| `/manual permissions` | that page, whole, exactly as written |
-| `/manual who can see my files` | the sections that answer it, each one labelled with the page and the heading it came from |
+| `/manual` | asks what codeaf can do, and which pages are worth reading first |
+| `/manual how do I change the effort level` | puts that question; the answer names the page it came from |
 
-A single word is read as a page **name**. More than one word is read as a **question**, and
-the question is answered out of every page at once, so you do not have to know which page
-a thing is written on before you can ask about it. The label over each answer — like
-`[permissions · What runs without asking]` — is the page you can open next with
-`/manual <name>`.
+Your line in the transcript is what you typed — `/manual how do I change the effort level`
+— and the answer lands under it the way every answer does. **It is a turn**: it goes to the
+model this conversation is on and costs what a turn costs. While an answer is already
+coming it steers that turn, exactly as a plain `enter` does.
 
-Nothing here costs anything. The pages are inside codeaf; reading them makes no model
-call, so `/manual` spends nothing and works with no key set up and with no connection.
+**On home it opens a conversation first.** Home is not a conversation, so `/manual` there
+is one of the commands that *opens a conversation here first* (see the home page): a
+conversation opens at the folder named at the right of the keys row and the model on the
+rule above the box, home closes,
+and the question is sent there. Until 2026-09-22 `/manual` on home printed its answer into
+the conversation *behind* home, where nothing could be seen of it — typing it looked like
+nothing happening.
+
+**To read a page as it is written, with no model call**, use the terminal: `codeaf manual`
+lists every page and `codeaf manual <page>` prints one whole (next section). Until
+2026-09-22 `/manual` did that in the conversation too — a bare `/manual` listed the pages,
+`/manual <page>` printed one and `/manual <question>` printed the sections that answered
+it, spending nothing — and that reading now lives at the terminal alone.
 
 ## codeaf manual — reading the manual from the terminal, without a key and without spending anything
 
@@ -2017,13 +2054,13 @@ The usage one command prints is **read out of the table** `codeaf --help` prints
 typed out a second time beside the flags, so the two can never disagree about what a
 command takes or what its codes mean.
 
-## What /manual refuses — a page name that does not exist, and a question with no answer
+## What codeaf manual refuses at the terminal — a page name that does not exist, and a question with no answer
 
-A **name** you type is an exact request, so it gets an exact answer or an exact refusal —
-never a near miss quietly shown as though you had asked for it. `/manual no-such-page`
-says there is no page by that name and prints the list of pages there are, and changes
-nothing. From the terminal `codeaf manual no-such-page` does the same and **exits
-non-zero**, so a script can tell a missing page from a page it just read.
+A **name** you type at the terminal is an exact request, so it gets an exact answer or an
+exact refusal — never a near miss quietly shown as though you had asked for it.
+`codeaf manual no-such-page` says there is no page by that name, prints the list of pages
+there are, changes nothing, and **exits non-zero**, so a script can tell a missing page
+from a page it just read.
 
 A **question** the manual has nothing on is a different thing, and it is an answer rather
 than a failure: you are told
@@ -2032,11 +2069,13 @@ than a failure: you are told
 the manual has nothing on that, which usually means codeaf does not do it
 ```
 
-followed by the list of pages. From the terminal that exits **0** — the manual saying "no,
-codeaf does not do that" is a fact about codeaf, not a broken command.
+followed by the list of pages, and the command exits **0** — the manual saying "no, codeaf
+does not do that" is a fact about codeaf, not a broken command.
 
-The manual describes **this** conversation surface. It has no pages about anything else,
-and it will not answer out of what the model remembers about other programs.
+In a conversation `/manual` refuses nothing: the words go to the model, and a question the
+manual has no page for is answered by the model saying so. The manual describes **this**
+conversation surface. It has no pages about anything else, and the model is told to answer
+questions about codeaf out of it rather than out of what it remembers about other programs.
 
 ## codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
 

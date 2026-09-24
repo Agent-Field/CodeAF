@@ -68,7 +68,6 @@ var commands = []command{
 	// not where they learn its grammar; the manual's model page has the four
 	// forms in a table ([modelArg] at the foot of this file).
 	{name: "model", args: "<slug>", desc: "switch the model for the conversation or open task"},
-	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
 	// /set and /config were already answered by the dispatch before aliases
 	// existed, and /connections and /sessions with them. They are written here
 	// now because the table is the one place: a word the surface accepts and the
@@ -108,6 +107,13 @@ var commands = []command{
 	// three should have to find out which one this build chose.
 	{name: "folder", desc: "choose a folder to work in · type a path to browse", alias: []string{"place", "dir"}},
 	{name: "folder", args: "<path>", desc: "…open it already pointed at that path"},
+	// AND THE OTHER HALF OF THE WORD, SPLIT OFF ON 2026-09-22. /folder gives
+	// THIS conversation a folder; this sets the one the next conversation
+	// opens in, and home is the only screen that has a next conversation
+	// (projectcmd.go). They sit together because a person who types either
+	// one meant one of the two and reads both rows on the way past.
+	{name: "project", desc: "the folder your next conversation opens in · on home"},
+	{name: "project", args: "<path>", desc: "…that folder, without opening the browser"},
 	// AND ITS OTHER END. Choosing a folder is where work aimed somewhere else
 	// starts; this is where it arrives. It sits directly under /folder because
 	// nobody reaches for it who has not already done the first — and because
@@ -415,21 +421,28 @@ var commands = []command{
 	// they have used. /file is deliberately NOT an alias: it shares four
 	// characters with /files one row above, and a word that narrowed the list to
 	// both errands at once is the near-miss /history was named to avoid.
-	{name: "attach", args: "<path>", desc: "attach a file · tab completes the path", alias: []string{"upload"}},
+	//
+	// TWO ROWS, /folder'S REASON EXACTLY: the bare form is the browser and
+	// enter on its row opens it at once, where one row with a placeholder
+	// left `/attach ` in the box waiting for a path nobody had — a second
+	// enter to reach the sheet the word already meant (the owner met it,
+	// 2026-09-22).
+	{name: "attach", desc: "choose a file to attach · the browser opens", alias: []string{"upload"}},
+	{name: "attach", args: "<path>", desc: "…attach that file · tab completes the path"},
 	// AND DIRECTLY ABOVE /help, THE OTHER QUESTION SOMEBODY HAS WHEN THEY ARE
 	// LOST. /help is what you can TYPE; this is what codeaf DOES, in the writing
 	// codeaf is built from (manualcmd.go). They sit together because a person who
 	// has just read a list of commands and still does not know what one of them
 	// means is one row away from the page that says.
 	//
-	// Three rows for one command, /export's reason exactly: the bare form is the
-	// listing nearly everybody wants and is the only one that can be RUN from
-	// this list, since [app.runMenu] puts a row that TAKES something into the
-	// draft instead of running it. The two that take something ride under it
-	// wearing the "…".
-	{name: "manual", desc: "codeaf's own manual · every page, one per line"},
-	{name: "manual", args: "<page>", desc: "…that page, as it is written"},
-	{name: "manual", args: "<question>", desc: "…the sections that answer it, page and heading named"},
+	// Two rows for one command, /export's reason exactly: the bare form is the
+	// only one that can be RUN from this list, since [app.runMenu] puts a row
+	// that TAKES something into the draft instead of running it. The one that
+	// takes something rides under it wearing the "…". Both are turns since
+	// 2026-09-22 — the question goes to the model with the manual open — where
+	// three rows used to print the pages as written.
+	{name: "manual", desc: "asks the model what codeaf can do, from its own manual"},
+	{name: "manual", args: "<question>", desc: "…puts that question to the model, answered from the manual"},
 	// AND THE ROW FOR THE DAY SOMETHING GOES WRONG, directly above /help for the
 	// reason /manual sits there: it is the third thing a person reaches for when
 	// they are stuck, after the list of commands and the page that explains one.

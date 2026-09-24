@@ -1194,18 +1194,22 @@ quoted back — sitting directly above the box you are typing into.
 
  ? ask here: "pricing"
  + start a new conversation: "pricing"
- ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
+ ─ glm-5.3-flash:auto · ◇ asks ───────────────────────────────────────
  › pricing
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+p project · alt+e effort · alt+a approvals · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · esc clear   project: ~/codeaf
 ```
 
 **The cursor rests on the action row by default.** So typing and pressing `enter` starts a
-fresh conversation and sends what you typed, however many matches are on screen.
+fresh conversation and sends what you typed, however many matches are on screen. One `↑`
+reaches `ask here`, which sits directly on top of it, and a second reaches the matches.
 
-**Where it opens is on the rule above the box, and `enter` honours it.** That line reads
-`glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`: the model, effort and approvals
-start at the left, with `project: <path>` at the far right naming where the conversation will open.
-The effort word follows a colon with no badge. A long project path is cut on the right.
+**Where it opens is at the right end of the keys row under the box, and `enter` honours it.**
+The rule reads `glm-5.3-flash:auto · ◇ asks`: the model, effort and approvals start at the
+left, and the keys row under the box ends with `project: <path>`, right-justified, naming
+where the conversation will open (until 2026-09-22 the path stood at the rule's right).
+The effort word follows a colon with no badge. The keys keep their room: a long project
+path is cut on the right, one ellipsis, and goes entirely where the keys leave it less
+than a word.
 With nothing pinned the folder **follows the row your cursor is on** — walk onto another
 project's row and the rule re-points — and with nothing under the cursor it is this window's
 own project. `alt+p` pins it, `/model` pins the model, `alt+e` walks the rung and `alt+a`
@@ -1232,7 +1236,7 @@ The complete paste must name one existing local directory. The action row reads
 conversation there without sending the path as a message. Any other key — including
 space, an arrow, Backspace, a shortcut or Shift+Enter — cancels the offer and keeps normal
 editing behavior. A second paste also cancels it. The remaining text is an ordinary
-message for the project selected on the seam; returning to the same path does not rearm
+message for the project selected at the right of the keys row; returning to the same path does not rearm
 it. Clear the box and paste the folder path again to get a fresh offer.
 
 Pasting into existing text, including whitespace or a newline, never activates the offer.
@@ -1281,12 +1285,12 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | The words on the row | What you type | What happens |
 | --- | --- | --- |
 | **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; the pinned model appears on the rule above the box. Nothing behind home is touched. |
-| **`next conversation's folder`** | `/folder` `/place` `/dir` · `/folder <path>` | Opens the folder browser, **aimed at the next conversation**. Picking a folder pins it — `project: ~/src/parser` on the seam above the box shows the selection, with no duplicate footer message. |
+| **`next conversation's folder`** | `/project` · `/project <path>` | Bare, opens the folder browser **aimed at the next conversation**; picking a folder pins it, with no duplicate footer message. With a path, pins that folder at once, opens nothing and says nothing. Either way `project: ~/src/parser` at the right of the keys row shows the selection, and neither road writes a second sentence over the keys. |
 | **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
-| **`onto home's tray`** | `/attach <path>` · `/image <path>` | The file rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` says `type the path after /attach · or drop the file here`. |
-| **`opens a conversation here first`** | `/files` · `/crew` (bare) · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder and model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. |
-| **`answers here`** | `/help` · `/manual` · `/status` · `/cost` · `/cache` · `/budget` · `/crew <preset>` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
+| **`onto home's tray`** | `/attach <path>` | The file — or picture — rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` opens the browser aimed at the next conversation's folder, and a file chosen there lands on the tray. |
+| **`opens a conversation here first`** | `/files` · `/folder` `/place` `/dir` · `/manual` · `/crew` (bare) · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder at the right of the keys row and the model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. `/manual` is on this road since 2026-09-22: it is a question put to the model, so it needs a conversation to be asked in. `/folder` joined it the same day — it gives THIS conversation a folder, and home has no this; the pin it used to be here is `/project`. |
+| **`answers here`** | `/help` · `/status` · `/cost` · `/cache` · `/budget` · `/crew <preset>` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
 | **`runs on the conversation behind home`** | `/land` · `/land <folder>` · `/workspace <path>` | Acts on the conversation this window is holding behind the screen — not on the one `enter` would open — and its answer is echoed onto home's line. |
 | **`a fresh conversation behind home`** | `/new` `/clear` `/clean` `/reset` | Replaces the conversation behind the screen and says `started a fresh conversation behind home`. It is not the same act as `enter`, which opens a conversation at the target. |
 | **`closes the conversation behind home`** | `/quit` `/exit` `/q` | Closes it and says `closed · <its name>`. When it was the last conversation this terminal was holding, codeaf leaves. |
@@ -1300,18 +1304,20 @@ description gives way first, whole, and what `enter` will do stays on the row.
 conversation.** The chip appears on the row above home's box, and the line under it says
 `attached · server.log · rides with the next conversation`. When you then type a sentence and
 press `enter`, the conversation that opens has the file already attached to its first
-message. `/image ~/shots/shot.png` is the same road for a picture.
+message. `/attach ~/shots/shot.png` is the same road for a picture.
 
 **A drop does the same thing without a command.** Drag a file onto the window while home is
 up and it lands on the same tray. So does a paste.
 
-**A bare `/attach` asks for the path where you typed it**: `type the path after /attach · or
-drop the file here`. If what you want is to *browse* for something, `/folder` opens the
-browser — see *Change the model before starting* for what that sheet does on home.
+**A bare `/attach` opens the browser** (since 2026-09-22) — the same sheet a bare
+`/project` opens, aimed at the folder the next conversation opens in; a file chosen there
+lands on home's tray. Choosing `/attach` on the `/` list with `enter` opens it at once; the
+`/attach <path>` row under it is for a typed path. (It used to answer `type the path after
+/attach · or drop the file here`.)
 
 **A folder after `/attach` is not a file.** `/attach ~/src/parser` on home pins the next
-conversation's folder — the same decision `/folder` makes — and updates the project
-path on the seam.
+conversation's folder — the same decision `/project` makes — and updates the project
+path at the right end of the keys row.
 
 **The tray belongs to you, not to a conversation.** It survives walking into a conversation
 and back out to home, and the chips you put on it here are the chips the next conversation
@@ -1322,10 +1328,10 @@ files are still there, and the conversation you open shows them.
 ## Change the model before starting — /model on home, the seam above the box
 
 **The model the next conversation will answer on is written on the rule above home's box**,
-at the left: `z-ai/glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`.
+at the left: `z-ai/glm-5.3-flash:auto · ◇ asks`.
 Home and conversation seams both keep the complete model identifier, including the
 organization before `/`, for the current model or a model pinned for the next conversation.
-The project sits at the right edge of the seam. A long path
+The project sits at the right edge of the keys row under the box. A long path
 truncates at its right end before the project field disappears on narrow frames.
 With nothing pinned that is this window's own model. Two doors change it, and they are the
 same door:
@@ -1360,10 +1366,11 @@ on the pin — at which point it is an ordinary model switch, note and all.
 conversation, returning home, moving the cursor or clearing the box does not reset the
 selected project. A new window starts with its own default.
 
-**`alt+p` is the same gesture for the folder** — press it, or press the path on the rule, and
+**`alt+p` is the same gesture for the folder** — press it, or press the path at the right of
+the keys row, and
 the target walks through the projects in the panel's order, including projects with only
 standing work, and wraps after the last. Clicking a project name in the panel selects it directly. All three controls share one
-selection, shown only as `project: <path>` on the seam. If `/folder` selected a destination outside the panel,
+selection, shown only as `project: <path>` at the right of the keys row. If `/project` selected a destination outside the panel,
 the next cycle starts at its first project. With just one destination already selected,
 `alt+p project` is absent.
 
@@ -1385,12 +1392,45 @@ standing choice. The selected project remains pinned. Neither cell is drawn on a
 Other full-screen places have no general conversation message box; return Home
 with `space` `space` (or `alt+1`) to start a conversation.
 
-**`/folder` is the third door onto the same pin, and it is the one that shows you the disk.**
-Typed on home — bare, or with a path after it — it opens the folder browser with the title
-`the next conversation's folder`. Its action row reads `open the next conversation in ·
-~/src/parser`, and `enter` there pins the target and drops you back on home with the rule
-already changed. `/place` and `/dir` are the same command. Nothing on that sheet touches the
-conversation behind home.
+**`/project` is the third door onto the same pin, and it is the one that shows you the disk.**
+Typed bare on home it opens the folder browser with the title `the next conversation's
+folder`. Its action row reads `open the next conversation in · ~/src/parser`, and `enter`
+there pins the target and drops you back on home with the rule already changed. Nothing on
+that sheet touches the conversation behind home. `/project ~/src/parser` skips the browser
+and pins the folder straight away without a word — the keys row's own `project: <path>` is
+the answer; a path that is not a folder is refused as `no folder there · <path>` and
+nothing changes. This was `/folder` on
+home until 2026-09-22, when the pin became a command of its own.
+
+## The dim sentence above the rule on home — what is that tip over the box, why did it change
+
+The one dim line directly above the rule over home's box is a **tip**: one sentence naming a
+key or a command you have not used yet, and what it does — `/project sets the project folder
+for a new conversation`, `ctrl+t starts a fresh chat in this project`. It is drawn only while
+the box is empty and nothing else is up, it moves on to the next tip every time you come to
+home and every two minutes at rest, and each tip goes away for good the first time you do
+what it names. It sits at the right, led by a bulb and closed by a small cross: clicking it
+means ENOUGH FOR NOW, and the row stays blank until you leave home and come back, when a
+different tip is there. The tip you put away keeps its whole allowance and comes round
+again. **A conversation says its tips differently**: there the tip is the lowest rung of
+the keys row at the very foot, with no bulb, no cross and no clock — it is simply there
+whenever nothing else is happening. Both rows draw from the same one list. The whole list,
+what makes each one appear and disappear, and the **disable hints** row on the Workspace
+tab that turns them off, are on the *hints and tips* page.
+
+## Typing @ on home — does the @ file list work on home, complete a path into home's box
+
+Yes, since 2026-09-22. Type `@` and a letter or two into home's box and the same list a
+conversation's box opens appears in home's column: files and folders under the folder the
+next conversation opens in (the one at the right of the keys row), ranked as you type,
+`folder` and `img` tags on the right. `↑`/`↓` pick, `enter` puts the path into your sentence
+after the `@`, and choosing a picture takes the half-typed token out and puts the picture on
+home's tray instead, saying `attached · shot.png · rides with the next conversation`. `esc`
+closes the list and leaves the word alone — and it is the innermost layer of the three esc
+walks through on home, so the first `esc` takes the list and a later one leaves home. Tasks
+are not on this list — a task pointer is minted when a conversation sends, and home has none
+yet. While the walk is still running the column reads `looking…`; with no match it reads
+`no file matches`.
 
 ## How do I get back to the dashboard or the home screen from any page — press space twice
 

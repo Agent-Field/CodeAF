@@ -290,12 +290,17 @@ func TestHomesRuleShortensTheProjectAfterItsRoot(t *testing.T) {
 	if !strings.Contains(a.homeHint(), targetFolderKeyWord) {
 		t.Fatalf("the foot does not carry the folder chord:\n%s", a.homeHint())
 	}
-	// A long path keeps its root and yields its tail before the model.
+	// A long path keeps its root on the keys row and yields its tail to the
+	// keys; the rule carries the model and never the path (hometip.go).
 	a.target.where = "/tmp/" + strings.Repeat("nested/", 20)
 	narrow, drew := a.targetLegend(80, a.pal)
 	stripped := ansi.Strip(narrow)
-	if !drew || !strings.HasPrefix(stripped, "─ "+a.modelIdentity(a.model)) || !strings.Contains(stripped, "project: /tmp/") || !strings.Contains(stripped, "… ─") {
-		t.Fatalf("the model or project root was lost: %q", stripped)
+	if !drew || !strings.HasPrefix(stripped, "─ "+a.modelIdentity(a.model)) || strings.Contains(stripped, targetProjectLead) {
+		t.Fatalf("the model was lost or the project is still on the rule: %q", stripped)
+	}
+	foot := ansi.Strip(a.homeFootLine(80, a.pal))
+	if !strings.Contains(foot, "project: /tmp/") || !strings.HasSuffix(foot, "…") {
+		t.Fatalf("the keys row lost the project root or its ellipsis: %q", foot)
 	}
 }
 
@@ -502,7 +507,7 @@ func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 			runCmd(a.key(key("alt+p")))
 		} else {
 			homeText(a)
-			if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.targetRow); !took {
+			if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.footRow); !took {
 				t.Fatal("the seam project did not accept the click")
 			}
 		}
@@ -538,14 +543,17 @@ func TestResumeAnswersOnHomesOwnLineAndFolderOpensTheBrowser(t *testing.T) {
 		t.Fatalf("/resume said %q, want %q", a.home.msg, homeIsTheResumeWord)
 	}
 
-	// /folder is the other half of this test's original claim and it moved: it
-	// used to answer in one line — `alt+p moves the next conversation · or type
-	// a path` — which named two gestures and drew neither. It opens the browser
-	// now, aimed at the target (folderplace.go), and the browser takes the frame.
-	typeHome(a, "/folder")
+	// /project is the other half of this test's original claim and it moved
+	// twice: home's answer to "which folder" used to be one line — `alt+p moves
+	// the next conversation · or type a path` — which named two gestures and
+	// drew neither; then it was a bare /folder, which meant one thing here and
+	// another in a conversation. It is /project since 2026-09-22
+	// (projectcmd.go), it opens the browser aimed at the target, and the
+	// browser takes the frame.
+	typeHome(a, "/project")
 	runCmd(a.key(key("enter")))
 	if !a.folder.open {
-		t.Fatal("/folder at home did not open the folder browser")
+		t.Fatal("/project at home did not open the folder browser")
 	}
 	if !a.folder.forTarget {
 		t.Fatal("the browser home opened is not aimed at the target")

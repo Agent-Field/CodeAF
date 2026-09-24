@@ -2286,6 +2286,14 @@ type app struct {
 	targetHover      hoverKind
 	targetFolderSpan hudSpan
 	targetModelSpan  hudSpan
+	// footRow is which row of the frame home's keys row was drawn on — the
+	// row [targetFolderSpan] is on since the project moved down to it
+	// (hometip.go) — and tipRow is the tip row above the rule, with
+	// tipCloseSpan the columns of its cross. Both are -1 on a frame that
+	// drew neither.
+	footRow      int
+	tipRow       int
+	tipCloseSpan hudSpan
 	// targetEffortSpan and targetApprovalSpan are the rung's and the gate's
 	// columns on that same line — the draft's twins of [app.seamEffortSpan] and
 	// [app.seamApprovalSpan] (boxseam.go), recorded on the same bargain.
@@ -3368,7 +3376,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		a.sawAPerson()
-		// AND THE HAND IS STAMPED HERE, for the same reason the line above is:
+		// AND THE HAND IS STAMPED HERE, because this is the only line every
+		// keypress passes through, and what the question block needs to know
+		// is whether somebody is at the keyboard at all:
 		// this is the only line every keypress passes through, and what the
 		// question block needs to know is whether somebody is at the keyboard
 		// at all (question.go's [app.questionQuieted]).
@@ -3537,6 +3547,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(text)
 
 	case filesLoadedMsg:
+		if msg.home {
+			a.homeFilesLoaded(msg.paths)
+			return a, nil
+		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
 		a.comp.rank()
 		a.touch()
@@ -4045,6 +4059,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.legendApprovalPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE PROJECT AT THE RIGHT END OF THE KEYS ROW IS THE SEVENTH:
+			// pressing it opens the folder chooser, the door `/folder` is
+			// (projectseam.go's [app.seamProjectPress]).
+			if cmd, took := a.seamProjectPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
 			// the right end of the room's pinned header with a hit box three rows
@@ -4543,6 +4563,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// one (placecounts.go).
 		if a.at(pageHome) {
 			a.refreshPlaceCounts(a.now())
+			// AND THE TIP ON HOME'S ROW AGES ON THE SAME BEAT (notice.go).
+			a.noticeHomeBeat()
 		}
 		return a, a.homeBeat(msg.gen)
 
@@ -5764,7 +5786,7 @@ func (a *app) settle() tea.Cmd {
 	a.notices.enabled = config.HintsAt(a.profileDir)
 	// A turn ending is the moment most hints become true — the answer was long,
 	// the window is half full, the money is real — so it is the event they are
-	// decided on (notice.go).
+	// decided on, and it is the turn [noticeGap] is counted in (notice.go).
 	a.noticeEvent(eventTurnEnded)
 	a.follow()
 	a.touch()
@@ -6866,6 +6888,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runUpdateCommand(rest)
 
 	case "autonomy":
+		a.noticeEvent(eventAutonomyAsked)
 		if rest != "" {
 			return a.changeAutonomy(rest)
 		}
@@ -7043,23 +7066,26 @@ func (a *app) slash(line string) tea.Cmd {
 		// where it starts.
 		return a.openFolderPick(rest)
 
+	case "project":
+		// AND THE OTHER HALF OF THE WORD IS HOME'S (projectcmd.go). A pin about
+		// the NEXT conversation means nothing inside one, and the two acts are
+		// one keystroke apart in spelling — so this says which screen it lives
+		// on and which command does the neighbouring job here, rather than
+		// quietly doing the neighbouring job.
+		a.note(projectIsHomesWord)
+		return nil
+
 	case "land":
 		// The other end of choosing a folder: what was written for a folder this
 		// conversation only refers to, put into it. Shown first and done second
 		// (landcmd.go), and the landing itself runs off the loop.
 		return a.runLandCommand(rest)
 
-	case "image":
-		// The other door onto the tray, for a picture that is not under this
-		// directory or not in the walk: a path, attached (attach.go).
-		a.attachPath(rest)
-		return nil
-
 	case "attach":
-		// The same tray, for everything that is not a picture: a log, a CSV, a
-		// stack trace saved to a file. The model is handed the PATH rather than
-		// the contents, because an attached file is a file and the session
-		// already has a `read` tool (attach.go).
+		// THE tray, for anything: a log, a CSV, a stack trace saved to a file —
+		// and a picture, which the tray tells apart by its name (attach.go). A
+		// file is handed to the model as a PATH rather than its contents, because
+		// the session already has a `read` tool; a picture travels as the picture.
 		//
 		// AND WITH NO PATH AFTER IT, THE BROWSER — the same sheet /folder opens,
 		// with file intent (folderplace.go's [app.openContextPick]). It used to
@@ -7067,6 +7093,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// answer: somebody who typed the word without the path is somebody who
 		// does not know the path, and a browser is the thing they asked for.
 		if strings.TrimSpace(rest) == "" {
+			a.noticeEvent(eventAttached)
 			return a.openContextPick("", false)
 		}
 		a.attachFilePath(rest)
@@ -7158,6 +7185,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "subharness":
+		a.noticeEvent(eventSubharnessOpened)
 		// THE PROGRAMS THIS CONVERSATION CAN RUN, as a filterable list, and the
 		// intake card behind each of them (subharness.go). Unlike /harness this
 		// one DOES take a name: a subharness's name is its identity across the
@@ -7277,13 +7305,13 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runCacheCommand(rest)
 
 	case "manual":
-		// codeaf's own manual, in the conversation, AS WRITTEN (manualcmd.go).
-		// It is an answer rather than a place for /status' reason — a person who
-		// asked a question about the product wants it where they can scroll back
-		// to it — and it is a lookup rather than a turn, so it makes no model
-		// call and spends nothing.
-		a.runManualCommand(rest)
-		return nil
+		a.noticeEvent(eventManualAsked)
+		// codeaf's own manual, ASKED OF THE MODEL (manualcmd.go): the words go
+		// out as a turn of this conversation, told to answer from the manual and
+		// to name the page. It has been a turn and not a lookup since
+		// 2026-09-22, so the answer lands where every other answer lands, and
+		// it spends what a turn spends.
+		return a.runManualCommand(rest)
 
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
@@ -8502,6 +8530,8 @@ func (a *app) syncLists() tea.Cmd {
 	was := a.comp.open
 	a.comp.sync(&a.input)
 	if a.comp.open && !was {
+		// The list coming up is the proof that `@` has been found (notice.go).
+		a.noticeEvent(eventAtOpened)
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the
 		// walk lands when it lands (taskmention.go, files.go).
