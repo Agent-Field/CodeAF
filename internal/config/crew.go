@@ -344,10 +344,10 @@ func SetCrewCap(profileDir, raw string) error {
 // Absent is off.
 //
 // A FREE ROUTE IS A ROUTE, NOT A MODEL. On, a model's free pool joins its other
-// routes and is weighed at what it is expected to cost — its refusals
-// included — and a seat on it falls through to the same model's paid route
-// before any other model. Off, the free pools are not routes at all; a person
-// can still pin one by name.
+// routes ([crewroute.Free]) and is weighed at what it is expected to cost —
+// its refusals included — and a seat on it falls through to the same model's
+// paid route before any other model. Off, the free pools are not routes at
+// all; a person can still pin one by name.
 func CrewFreeRoutesAt(profileDir string) bool {
 	on, _ := persistedBool(profileDir, KeyCrewFreeRoutes)
 	return on
@@ -498,8 +498,21 @@ func crewModelOf(row catalog.Model) crewroute.Model {
 		ID: row.ID, Open: row.OpenWeights,
 		PromptPrice: row.PromptPrice, CompletionPrice: row.CompletionPrice, CacheReadPrice: row.CacheReadPrice,
 		Intelligence: row.IntelligenceIndex, Coding: row.CodingIndex, Agentic: row.AgenticIndex,
-		Context: row.ContextLength, Tools: len(row.Parameters) == 0 || listHolds(row.Parameters, "tools"),
+		Context: row.ContextLength, Tools: crewTakesTools(row),
 	}
+}
+
+// crewTakesTools is whether a catalog row says the model takes tool calls.
+//
+// A ROW THAT LISTS NO PARAMETERS HAS SAID NOTHING, and a crew seat is an agent
+// loop: a model whose tool support is unknown is not sent to find out in the
+// middle of somebody's task. Only a model the evidence table measured — which
+// was watched calling tools — is let through on silence.
+func crewTakesTools(row catalog.Model) bool {
+	if len(row.Parameters) > 0 {
+		return listHolds(row.Parameters, "tools")
+	}
+	return crewroute.IsMeasured(row.ID)
 }
 
 // crewCatalogModel is one model as the router would read it, from the
@@ -678,19 +691,57 @@ func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewr
 // ([crewroute.ProvidersOff]), so a model only it reached is no candidate
 // either — the route cost the router weighs is always a route it may take.
 func CrewCandidatesAt(profileDir string) []crewroute.Candidate {
-	return CrewProvidersOffAt(profileDir).Candidates(crewCandidates(CrewAllowedAt(profileDir), CrewProvidersAt(profileDir)))
+	candidates, _ := crewCandidatesNoticed(profileDir, crewHealthAt(profileDir))
+	return candidates
 }
 
 // crewCandidates is [CrewCandidatesAt] over a rule and a set of providers
 // already read, which is how [CrewOffersAt] asks the same question under `all`.
+// It is asked with no free routes.
 func crewCandidates(rule crewroute.Allowed, providers []CrewProvider) []crewroute.Candidate {
+	return crewCandidatesWith(rule, providers, crewRouteFacts{})
+}
+
+// crewCandidatesWith is [crewCandidates] with the profile's route facts.
+//
+// ONE MODEL IS ONE CANDIDATE, WHATEVER IT IS SPELLED. Catalog rows are grouped
+// by their canonical identity ([crewroute.Canonical]), so a model's free pool
+// (`…:free`) is not a second, free model beside it but one more route of the
+// same one — kept only when free routes are on ([CrewFreeRoutesAt]). A free
+// pool whose paid model the catalog does not list is a model with that one
+// route, weighed at what the route is expected to cost, never at zero.
+func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts crewRouteFacts) []crewroute.Candidate {
 	var models []crewroute.Model
+	var free map[string]string // canonical id → the free row's id
 	if rows := crewCatalogRows(); len(rows) > 0 {
+		paid := map[string]bool{}
 		for _, row := range rows {
-			if row.PriceUnknown || strings.HasPrefix(row.ID, "~") {
+			if row.PriceUnknown || strings.HasPrefix(row.ID, "~") || crewroute.IsFree(row.ID) {
 				continue
 			}
+			if paid[crewroute.Lineage(row.ID)] {
+				// The same model again — a dated snapshot beside its name —
+				// is one candidate, read from the first row that lists it.
+				continue
+			}
+			paid[crewroute.Lineage(row.ID)] = true
 			models = append(models, crewModelOf(row))
+		}
+		if facts.free {
+			free = map[string]string{}
+			for _, row := range rows {
+				if !crewroute.IsFree(row.ID) || strings.HasPrefix(row.ID, "~") {
+					continue
+				}
+				key := crewroute.Lineage(row.ID)
+				free[key] = row.ID
+				if !paid[key] {
+					paid[key] = true
+					m := crewModelOf(row)
+					m.ID = strings.TrimSuffix(m.ID, ":free")
+					models = append(models, m)
+				}
+			}
 		}
 	} else {
 		for _, id := range crewroute.Measured() {
@@ -721,11 +772,41 @@ func crewCandidates(rule crewroute.Allowed, providers []CrewProvider) []crewrout
 				direct = append(direct, r)
 			}
 		}
-		routes := append(append(plans, direct...), fallback...)
+		if send, ok := free[crewroute.Lineage(m.ID)]; ok {
+			for _, p := range providers {
+				if p.ID == modelsource.DefaultID && rule.AdmitsRoute(p.ID) {
+					plans = append(plans, crewroute.Route{Provider: p.ID, Send: send, Kind: crewroute.Free})
+				}
+			}
+		}
+		// Only a free pool: the model is reachable on nothing else.
+		fallback = withoutPaidPool(fallback, free[crewroute.Lineage(m.ID)], m)
+		// AND ONLY THE ROUTES THAT ARE HEALTHY: a route quarantined, cooling
+		// down, on a disconnected provider, or paid on an account out of
+		// credit is not offered, and the rest carry their learned failure
+		// rate ([crewHealth.usable]).
+		routes := facts.health.usable(append(append(plans, direct...), fallback...))
 		if len(routes) == 0 {
 			continue
 		}
 		out = append(out, crewroute.Candidate{Model: m, Routes: routes})
+	}
+	return out
+}
+
+// withoutPaidPool drops the default service's metered route for a model the
+// catalog lists ONLY as a free pool: there is no paid route to it, and a
+// metered route at the free row's zero prices would be the free pool again
+// under another kind.
+func withoutPaidPool(routes []crewroute.Route, freeSend string, m crewroute.Model) []crewroute.Route {
+	if freeSend == "" || m.PromptPrice > 0 || m.CompletionPrice > 0 {
+		return routes
+	}
+	out := routes[:0]
+	for _, r := range routes {
+		if r.Provider != modelsource.DefaultID {
+			out = append(out, r)
+		}
 	}
 	return out
 }
@@ -761,7 +842,17 @@ func CrewOffersAt(profileDir string) []CrewOffer {
 	off := CrewProvidersOffAt(profileDir)
 	providers := CrewProvidersAt(profileDir)
 	var out []CrewOffer
-	for _, c := range crewCandidates(crewroute.Allowed{Base: crewroute.BaseAll}, providers) {
+	facts := crewRouteFacts{free: CrewFreeRoutesAt(profileDir), health: crewHealthAt(profileDir)}
+	for _, c := range crewCandidatesWith(crewroute.Allowed{Base: crewroute.BaseAll}, providers, facts) {
+		// ── ONLY WHAT A SEAT CAN RUN ──
+		// A picker offers exactly what the router could seat: a model that takes
+		// tool calls and holds a seat's context — not an embedding, image or
+		// video model — on a route that is healthy (quarantined and cooling
+		// routes were left out above).
+		if !crewroute.Seatable(crewroute.Planner, c) {
+			continue
+		}
+		// ── end of the seat check ──
 		offer := CrewOffer{Model: c.Model, Routes: c.Routes}
 		offer.Served = len(off.Routes(c.Routes)) > 0
 		if rule.AdmitsModel(c.Model) {
@@ -852,6 +943,12 @@ type CrewAsk struct {
 	Sends map[crewroute.Seat]string
 	// Stronger is the crew that ran, for a redo that asks for a stronger one.
 	Stronger *crewroute.Decision
+	// Again is the crew that ran and never started, for a redo of it: the
+	// next-best models at the same cost, not a stronger crew.
+	Again *crewroute.Decision
+	// ChatModel is the model the person is talking to — proven reachable —
+	// the last rung of a seat's ladder when nothing routed can start.
+	ChatModel string
 	// Repo keys the learned offset: a repository whose work of one class was
 	// redone stronger starts that class a step higher.
 	Repo string
@@ -954,17 +1051,31 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 		day = CrewHistory(profileDir)
 	}
 	pace, atCap := crewroute.Pace(day.SpentUSD, CrewCapAt(profileDir))
-	d, err := crewroute.Decide(crewroute.Request{
+	health := crewHealthAt(profileDir)
+	candidates, notice := crewCandidatesNoticed(profileDir, health)
+	req := crewroute.Request{
 		Class:      reading.Class,
-		Candidates: CrewCandidatesAt(profileDir),
+		Candidates: candidates,
 		Pins:       pins,
 		Effort:     ask.Effort,
 		Steps:      day.Offsets[OffsetKey(ask.Repo, reading.Class)],
 		Pace:       pace,
 		Stronger:   ask.Stronger,
-	})
+		Again:      ask.Again,
+		Avoid:      health.demoted,
+	}
+	d, err := crewroute.Decide(req)
+	if err != nil && !errors.Is(err, crewroute.ErrStrongest) {
+		// NO CREW CAN BE FORMED: the seat nothing can sit goes down the rest of
+		// the ladder — the last crew that worked here, the person's own model
+		// — and with nothing left the answer is the one thing to do.
+		d, err = crewRescued(profileDir, req, health, ask.ChatModel, err)
+	}
 	if err != nil {
 		return crewroute.Decision{}, err
+	}
+	if notice != "" {
+		d.Note = strings.TrimSpace(strings.TrimPrefix(d.Note+" · "+notice, " · "))
 	}
 	d.Why, d.Sure = reading.Why, reading.Sure
 	if atCap {

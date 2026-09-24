@@ -59,6 +59,17 @@ type CrewRecord struct {
 	Kinds     map[string]string `json:"kinds,omitempty"`
 	Pinned    []string          `json:"pinned,omitempty"`
 	EstUSD    float64           `json:"est_usd,omitempty"`
+	// Failed is seat → the id that failed to start on it, on a row written
+	// when a seat's first call was refused ([LogCrewRoute]), with the kind of
+	// failure, the provider of the route and when it said it may be asked
+	// again. Started is seat → the id whose first call answered. Both are
+	// ROUTE outcomes — did the call work — and never the task's.
+	Failed      map[string]string `json:"failed,omitempty"`
+	FailKind    string            `json:"fail_kind,omitempty"`
+	FailRoute   string            `json:"fail_route,omitempty"`
+	FailUntil   time.Time         `json:"fail_until,omitempty"`
+	Started     map[string]string `json:"started,omitempty"`
+	StartedPaid bool              `json:"started_paid,omitempty"`
 }
 
 // LogCrewDecision appends a crew's decision row. Best-effort by construction:
@@ -83,6 +94,45 @@ func LogCrewOutcome(dir, call string, record CrewRecord, outcome string, costUSD
 	events.Append(Event{Call: call, Run: record.Repo, Class: CrewClass, Shape: record.TaskClass,
 		Model: record.Seats["worker"], Crew: &record, Final: true, Outcome: outcome, Cost: costUSD})
 }
+
+// CrewRouteOutcome is one seat's first call on one route, as the log keeps it:
+// the route answered (Kind empty), or it failed with a kind of failure
+// (internal/provider's RouteFailure words), on a provider, until a time it
+// may be asked again.
+type CrewRouteOutcome struct {
+	At       time.Time
+	Seat     string
+	Send     string
+	Provider string
+	// Paid is whether the route bills per token — a success on a paid route is
+	// what clears an account's payment failure.
+	Paid  bool
+	Kind  string
+	Until time.Time
+}
+
+// LogCrewRoute appends one route outcome for a task's crew. It is not the
+// task's ending, so it is written as a decision row, never a final one.
+func LogCrewRoute(dir, call string, record CrewRecord, outcome CrewRouteOutcome) {
+	events, err := OpenEvents(dir)
+	if err != nil {
+		return
+	}
+	defer events.Close()
+	if outcome.Kind == "" {
+		record.Started = map[string]string{outcome.Seat: outcome.Send}
+		record.StartedPaid = outcome.Paid
+	} else {
+		record.Failed = map[string]string{outcome.Seat: outcome.Send}
+		record.FailKind, record.FailRoute, record.FailUntil = outcome.Kind, outcome.Provider, outcome.Until
+	}
+	events.Append(Event{Call: call, Run: record.Repo, Class: CrewClass, Shape: record.TaskClass,
+		Model: outcome.Send, Crew: &record})
+}
+
+// crewOutcomesFor is how far back route outcomes are read: longer than the
+// longest quarantine any of them sets.
+const crewOutcomesFor = 14 * 24 * time.Hour
 
 // CrewTask is one task as the log remembers it.
 type CrewTask struct {
@@ -111,6 +161,13 @@ type CrewLog struct {
 	// Offsets is the learned escalation offset per repository and class,
 	// keyed repo + "\x00" + class.
 	Offsets map[string]int
+	// LastGood is the crew of the newest task whose result was kept — the
+	// crew known to work on this install, a seat's last resort before the
+	// person's own model when nothing routed can start.
+	LastGood *CrewRecord
+	// Routes are the recent first-call outcomes of every route a crew seat
+	// was sent on, oldest first — what route health is read from.
+	Routes []CrewRouteOutcome
 }
 
 // The learning rule's two numbers. A redo raises its repository and class by
@@ -119,7 +176,7 @@ type CrewLog struct {
 // not overpaid for ever.
 const (
 	redoOffsetCeiling = 3
-	redoDecayAfter    = 5
+	redoDecayAfter    = 1
 	// crewRecent is how many tasks the panel lists.
 	crewRecent = 8
 	// crewTailBytes is how much of the log is read: the crew rows are a few
@@ -160,6 +217,21 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 		if json.Unmarshal(line, &row) != nil || row.Class != CrewClass || row.Crew == nil {
 			continue
 		}
+		if len(row.Crew.Failed) > 0 || len(row.Crew.Started) > 0 {
+			// A ROUTE OUTCOME is a lesson about a route, not a new state of the
+			// task: the task's own rows stay as they were.
+			if now.Sub(row.At) < crewOutcomesFor {
+				for seat, send := range row.Crew.Failed {
+					out.Routes = append(out.Routes, CrewRouteOutcome{At: row.At, Seat: seat, Send: send,
+						Provider: row.Crew.FailRoute, Kind: row.Crew.FailKind, Until: row.Crew.FailUntil})
+				}
+				for seat, send := range row.Crew.Started {
+					out.Routes = append(out.Routes, CrewRouteOutcome{At: row.At, Seat: seat, Send: send,
+						Provider: row.Crew.Providers[seat], Paid: row.Crew.StartedPaid})
+				}
+			}
+			continue
+		}
 		task, seen := tasks[row.Call]
 		if !seen {
 			task = &CrewTask{At: row.At, Call: row.Call}
@@ -185,6 +257,8 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 			}
 			accepted[key] = 0
 		case CrewAccepted:
+			record := task.Record
+			out.LastGood = &record
 			accepted[key]++
 			if accepted[key] >= redoDecayAfter && out.Offsets[key] > 0 {
 				out.Offsets[key]--

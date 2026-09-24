@@ -10,6 +10,7 @@ func TestTheCrewLogKeepsTodayAndLearnsFromRedos(t *testing.T) {
 	fix := CrewRecord{TaskClass: "bugfix", Repo: "repo", Seats: map[string]string{"worker": "z-ai/glm-5.3-flash"},
 		Kinds: map[string]string{"worker": "metered"}}
 	onPlan := fix
+	onPlan.Repo = "other"
 	onPlan.Kinds = map[string]string{"worker": "plan"}
 	LogCrewDecision(dir, "crew:a", fix, []string{"z-ai/glm-5.3-flash"})
 	LogCrewOutcome(dir, "crew:a", fix, CrewRedone, 0.02)
