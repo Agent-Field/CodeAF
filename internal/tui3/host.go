@@ -64,15 +64,20 @@ import (
 //	                  waits on a loopback port, and the browser is here while the
 //	                  port is there. See [app.hostedBrowserSignIn] for why that is
 //	                  the exact line.
-//	a team's manager  says [teamHostedWord]: `+ Manager`, the switcher's row
-//	                  and the Teams popover's row say it and do nothing, and
-//	                  there is no Traffic rail and no Traffic clock. A manager
-//	                  talks to its members through a log in the profile of the
-//	                  machine the SESSION runs on, and this window reads and
-//	                  writes its own; a rail drawn from here would be an empty
-//	                  log drawn as the team's, and a start answered from here
-//	                  would open a conversation the manager never hears from.
-//	                  Teams themselves stay this window's own grouping.
+//	teams and a team's manager
+//	                  WORK, against the FAR machine's store. The teams file and
+//	                  each team's Traffic live in the profile of the machine the
+//	                  SESSION runs on, because its team tools write them there,
+//	                  and the door hands a seam that reads and writes those over
+//	                  the wire (teamseam.go, internal/remote's wire_teams.go):
+//	                  the rail is the team's own log, a manager made here is the
+//	                  one the far session follows, and this machine's teams.json
+//	                  is never read or written. An engine from before those
+//	                  doors (its welcome has no Teams) gets no seam, and then
+//	                  the writes, `+ Manager`, the switcher's row and the Teams
+//	                  popover's row say [teamHostedWord] and do nothing, and
+//	                  there is no Traffic rail and no clock, rather than a list
+//	                  kept here that the far session would never see.
 //	a key sign-in     WORKS, unchanged. The person pastes a secret into a box on
 //	                  this screen and it travels on the wire like every other
 //	                  answer; nothing about it needs a browser or a port.

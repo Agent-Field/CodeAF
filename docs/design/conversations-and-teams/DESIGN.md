@@ -190,6 +190,32 @@ the team id is its channel. The store is `internal/teams`, shared by the UI and 
 every write is a read-modify-write under a file lock (`Update`), so neither side overwrites
 what the other wrote.
 
+**Whose profile.** The store is the one in the profile of the machine the SESSION runs on,
+because that is where the team tools write it. The UI never opens it directly: it asks
+through a seam (`tui3.TeamsSeam`: `Load`, `ReadSince`, `Update`, `Traffic`). Locally the
+seam wraps `internal/teams` at the profile directory. Over `--host` the door hands a seam
+that asks the engine over three wire methods, answered from the engine's own profile
+(`internal/remote`'s `wire_teams.go`):
+
+- `Teams.Read(stamp)` answers the file, or `same` when it is still at the stamp the window
+  holds. A stamp is one stat (size and modification time; every write moves the time
+  forward), so an unchanged answer is a few bytes.
+- `Teams.Update(base, teams)` writes the whole list only while the file is still at `base`
+  (`teams.ChangeIf`), and answers `stale` otherwise; the window reads again, makes its change
+  again on the fresh list, and retries up to three times. A manager or handle the far session
+  wrote in between is kept.
+- `Teams.Traffic(team, after, limit)` is one log after a cursor, a page at most. The engine
+  stats the log before it reads (`teams.Watch`), so a quiet log costs a stat and an empty
+  answer.
+
+Every seam call that can wait is made off the update loop: an edit changes what the window
+holds at once and is queued, and the queue is written after the message on the door line; the
+Traffic clock's turn reads through the seam beside it. The one call on the loop is `Load`, at
+an opening, which must not block: locally one small file, over `--host` what is held (the
+first read is asked off the loop). The welcome's `Teams` flag says an engine has the doors; an
+engine without it gets no seam, and the window turns teams and the manager off with the line
+it has always said rather than reading the laptop's file, which the far session never sees.
+
 **Traffic is the only channel between the UI and the session.** A conversation's identity in
 a team is its transcript path, the same key the tab strip uses. The session side writes
 messages, stops and starts as Traffic entries and delivers what is addressed to it before
@@ -202,8 +228,9 @@ entry. Neither package calls the other for team features.
 conversations. A member waiting on a permission prompt shows as running, because the prompt is
 not in its session file, until its own asking event says so. A message never wakes an idle
 conversation; it is read when that conversation next runs; the one exception is a member's
-own start. Over `--host` the manager is off: the store is in the engine's profile and this
-window can read only its own, so the doors say so and no rail is drawn.
+own start. Over `--host` against an engine older than the teams doors, teams and the manager
+are off and say so. An unreadable teams file on the engine is not moved aside from a window over
+`--host`; the window holds no teams until it can be read.
 
 **Not in v1.** Waking on team events by itself (with a budget and an off switch), collision
 flags when two members touch the same files, nested managers (a sub-team's manager is a member
@@ -221,6 +248,6 @@ of the parent team; reports flow up, directives down), and dispatch of whole pla
 ## 7. Later, each needing its own go
 
 - Agent tools for teams from any chat ("put the nvda chats in a team"), through the same
-  store, refused over `--host` until profiles are reconciled.
+  store, which over `--host` is the engine's (section 5, "Whose profile").
 - A Teams place on home showing the tree; nesting in the UI; drag a tile onto a team.
 - The manager waking on events, collision flags, nested managers, dispatch.

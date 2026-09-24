@@ -63,8 +63,11 @@ rail is only that edge. Pressing it, or `alt+l`, lays the Traffic over the lower
 conversation as a card with `Close esc` in its foot; the top of the conversation stays in view.
 `esc` closes it.
 
-Over `--host` there is no manager: the Traffic is kept on the machine the session runs on, and
-this window reads its own. `+ Manager` and the menus say so, and there is no rail.
+Over `--host` teams and the manager work as they do locally. The teams and their Traffic are
+kept on the machine the conversations run on, and the window reads and writes them there, so
+the rail is the team's own and a manager set from the laptop is the one the far session
+follows. Against a far machine running an older codeaf, `+ Manager` and the menus say managers
+are not available over `--host`, and there is no rail.
 
 When the manager starts a member with `team_start`, you are asked first, on a card that reads
 `◆ manager wants to start @lexer`, with the brief under it and the clause `a new conversation;
@@ -130,5 +133,5 @@ that command returns, which is what `team_stop` is for. Nothing is delivered twi
 conversation that joins a team is not handed the team's earlier history. A conversation
 reopened later is handed what was said to it while it was closed.
 
-The traffic itself is kept in your profile, in `teams/<id>/traffic.jsonl`, one line per
-message, only ever added to.
+The traffic itself is kept in the profile of the machine the conversations run on, in
+`teams/<id>/traffic.jsonl`, one line per message, only ever added to.
