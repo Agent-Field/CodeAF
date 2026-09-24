@@ -50,6 +50,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -432,6 +433,13 @@ type Options struct {
 	// a command rather than an opening read so the first frame never waits for
 	// the network. Nil leaves the capability absent.
 	UpdateCheck func(context.Context) (codeupdate.Available, bool)
+	// ReadCredits and PaymentRefusals are the local default-service balance
+	// doors. Nil leaves hosted and test surfaces without a balance reader.
+	ReadCredits     func(context.Context) (credits.Reading, error)
+	PaymentRefusals func(func()) func()
+	// ImplicitTalk says no flag, environment value, or saved talk row chose the
+	// current model, so a first-run low reading may swap its untouched default.
+	ImplicitTalk bool
 	// ResolveUpdate and InstallUpdate are the two off-frame halves of /update.
 	// Keeping selection separate lets the surface name the tag before the
 	// download begins. Nil leaves the command with an honest refusal.

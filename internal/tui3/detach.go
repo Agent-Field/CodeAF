@@ -551,6 +551,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 		a.forgetLevels()
 		a.learnLevel(a.model)
 	}
+	a.refreshCreditWarnings()
 	a.hudStale = true
 	// THE SCREEN IS REBUILT FROM THE AGENT'S OWN RECORD. This is the one moment
 	// a person can tell that this is not several terminals, and it is paid on

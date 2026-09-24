@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -467,6 +468,10 @@ func (a *app) pinTargetModel(id string) {
 		return
 	}
 	a.target.model = id
+	a.refreshCreditWarnings()
+	if a.homeCreditWarning != "" {
+		a.askCredits(credits.PaidSwitch)
+	}
 	// NO NOTE. This used to say `model · <name> · for the next conversation you
 	// start here` on the line under the box, and the line it was answering —
 	// "did that change the conversation behind home?" — is answered better by the
