@@ -543,28 +543,32 @@ func (a *app) tabsRow(width int) string {
 		hot = a.hot.index
 	}
 	more := a.hopAvailable()
-	home := a.homeDoorOpen() && width-headLabelAt >= len(" Home ")+2+tabWordFloor+tabCloseCells+tabInsetCells
+	// Home shares the places bar's word, padding and left margin so crossing
+	// between the dashboard and a conversation never shifts its label or target.
+	homeChip := tabPad + pageHome.word() + tabPad
+	homeCols := ansi.StringWidth(homeChip)
+	home := a.homeDoorOpen() && width-tabLead >= homeCols+2+tabWordFloor+tabCloseCells+tabInsetCells
 	if memo := a.chatTabBar; memo.home == home && memo.newChat == a.canStart() && memo.same(width, a.inkState, hot, more, tabs) {
 		a.chatTabHits = memo.hits
 		return memo.line
 	}
-	room := max(width-headLabelAt, 0)
+	room := max(width-tabLead, 0)
 	homeWidth := 0
 	if home {
-		homeWidth = len(" Home ") + 2
+		homeWidth = homeCols + 2
 	}
 	pieces, hits := a.tabsFit(tabs, room-homeWidth)
 	if home {
 		hits = tabsAt(hits, homeWidth)
-		hits = append([]tabHit{{span: hudSpan{from: 0, to: len(" Home ")}, kind: tabHome}}, hits...)
-		pieces = append([]tabPiece{{word: " Home ", kind: tabHome}, {word: "  ", quiet: true}}, pieces...)
+		hits = append([]tabHit{{span: hudSpan{from: 0, to: homeCols}, kind: tabHome}}, hits...)
+		pieces = append([]tabPiece{{word: homeChip, kind: tabHome}, {word: "  ", quiet: true}}, pieces...)
 	}
 	if len(pieces) == 0 {
 		// An empty strip still occupies the header row charged to the layout.
 		return strings.Repeat(" ", max(width, 0))
 	}
-	a.chatTabHits = tabsAt(hits, headLabelAt)
-	line := strings.Repeat(" ", headLabelAt) + a.tabsPaint(pieces)
+	a.chatTabHits = tabsAt(hits, tabLead)
+	line := strings.Repeat(" ", tabLead) + a.tabsPaint(pieces)
 	a.chatTabBar = tabBar{width: width, ink: a.inkState, hot: hot, more: more, newChat: a.canStart(), home: home, line: line, hits: a.chatTabHits,
 		tabs: append([]chatTab(nil), tabs...)}
 	return line
@@ -793,7 +797,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 				if a.pal.profile < tokens.ANSI256 {
 					switch piece.kind {
 					case tabHome:
-						word = a.linearMark("·", ".") + "Home "
+						word = a.linearMark("·", ".") + pageHome.word() + tabPad
 					case tabNew:
 						word = a.linearMark("·", ".") + "+ "
 					case tabScrollLeft, tabScrollRight:

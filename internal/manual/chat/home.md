@@ -589,7 +589,7 @@ under it.
 
 The top line is the program's name and, right-aligned, what is true of the **whole
 machine** right now. It is the first row of **every** frame — home, every place, and the
-chat itself, where it sits over the tab strip (` Home  <your chats>`), a rule and a blank:
+chat itself, where it sits over the tab strip (` home  <your chats>`), a rule and a blank:
 the same four rows at the top wherever you are standing. **Inside a chat** and on every
 place but home it reads:
 
