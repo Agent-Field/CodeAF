@@ -36,17 +36,6 @@ type taskCrewEffortAgent interface {
 	StartTaskEffort(context.Context, string, bool, string) (uint64, string, string, error)
 }
 
-// taskCrewEffortDoor is the effort door wearing the ordinary door's shape, so the
-// one road that opens a task ([app.startTaskDoor]) serves both.
-type taskCrewEffortDoor struct {
-	agent  taskCrewEffortAgent
-	effort string
-}
-
-func (d taskCrewEffortDoor) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
-	return d.agent.StartTaskEffort(ctx, brief, solo, d.effort)
-}
-
 // redoAgent is the session's door for `/redo stronger`.
 type redoAgent interface {
 	RedoStronger(context.Context, uint64) (uint64, string, error)
@@ -67,9 +56,18 @@ func (a *app) runRedo(arg string) tea.Cmd {
 		return nil
 	}
 	ctx, conv := a.ctx, a.taskBriefConv()
-	return func() tea.Msg {
+	return a.offLoop(func() func(bool) tea.Cmd {
 		id, title, err := door.RedoStronger(ctx, 0)
-		return taskStartedMsg{kind: "single", id: strconv.FormatUint(id, 10), title: title, err: err, conv: conv}
+		started := taskStartedMsg{kind: "single", id: strconv.FormatUint(id, 10), title: title, err: err, conv: conv}
+		return foldTaskStarted(started)
+	})
+}
+
+// foldTaskStarted hands a start's receipt to the ordinary task-start handling,
+// wherever the window is standing: the receipt carries its own conversation.
+func foldTaskStarted(started taskStartedMsg) func(bool) tea.Cmd {
+	return func(bool) tea.Cmd {
+		return func() tea.Msg { return started }
 	}
 }
 
@@ -158,7 +156,15 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 			a.note("this session cannot choose a task's crew · the brief starts on the crew it would have had")
 		} else {
 			solo = solo || config.TaskStartAt(a.profileDir) == config.TaskStartSingle
-			return a.startTaskDoor(taskCrewEffortDoor{door, effort}, brief, solo)
+			a.noteBeforeTaskStart(brief)
+			ctx, conv := a.ctx, a.taskBriefConv()
+			return a.offLoop(func() func(bool) tea.Cmd {
+				id, title, note, err := door.StartTaskEffort(ctx, brief, solo, effort)
+				return foldTaskStarted(taskStartedMsg{
+					kind: "single", id: strconv.FormatUint(id, 10), title: title,
+					err: err, note: note, brief: brief, conv: conv,
+				})
+			})
 		}
 	}
 	// ONE WORKER'S WORK IS SAID TWO WAYS, and both are the person's own word:
@@ -193,6 +199,19 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.
 	// lands: the door is opened on a goroutine and the window may have moved on
 	// by the time it answers ([app.adoptTypedBrief] is where that matters).
 	conv := a.taskBriefConv()
+	a.noteBeforeTaskStart(brief)
+	return func() tea.Msg {
+		id, title, note, err := door.StartTask(ctx, brief, solo)
+		return taskStartedMsg{
+			kind: "single", id: strconv.FormatUint(id, 10), title: title,
+			err: err, note: note, brief: brief, conv: conv,
+		}
+	}
+}
+
+// noteBeforeTaskStart says the two lines a person is owed in the last moment
+// before a typed task is handed over and paid for — whichever door opens it.
+func (a *app) noteBeforeTaskStart(brief string) {
 	// WHO ELSE IS ALREADY IN THESE FILES, SAID BEFORE THE SPEND. `/task` shows no
 	// proposal card — the person typed the brief, so there is nothing to consent
 	// to — which means this note is the only place the fact can reach them, and
@@ -222,13 +241,6 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.
 	// silent on a clean tree (internal/session's taskpreflight.go).
 	if line := session.UnsavedEditsNote(a.workspace); line != "" {
 		a.note(line)
-	}
-	return func() tea.Msg {
-		id, title, note, err := door.StartTask(ctx, brief, solo)
-		return taskStartedMsg{
-			kind: "single", id: strconv.FormatUint(id, 10), title: title,
-			err: err, note: note, brief: brief, conv: conv,
-		}
 	}
 }
 

@@ -103,7 +103,6 @@ var prices = map[string]Price{
 	"google/gemini-2.5-flash":         {In: 0.30, Out: 2.50},
 	"mistralai/mistral-nemo":          {In: 0.02, Out: 0.03},
 	"deepseek/deepseek-v4-flash-0731": {In: 0.06, Out: 0.12},
-	"deepseek/deepseek-v4-flash":      {In: 0.08246, Out: 0.16492},
 	"z-ai/glm-5.3-flash":              {In: 0.09, Out: 0.30},
 	"z-ai/glm-5.3":                    {In: 1.40, Out: 4.40},
 	"moonshotai/kimi-k3":              {In: 3.00, Out: 15.00},

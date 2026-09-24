@@ -919,6 +919,7 @@ func TestJSONPrintsAnObjectWhenTheErrandCannotEvenStart(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
 		task: "write the release note", database: filepath.Join(blocked, "graph.db"),
+		model: "test/model", planModel: "test/model", checkModel: "test/model",
 		asJSON: true, timeout: 10 * time.Second,
 		stdout: &stdout, stderr: &stderr,
 	})
@@ -964,6 +965,7 @@ func TestAFailedErrandWithoutJSONStillJustReturnsTheError(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
 		task: "write the release note", database: filepath.Join(blocked, "graph.db"),
+		model: "test/model", planModel: "test/model", checkModel: "test/model",
 		timeout: 10 * time.Second, stdout: &stdout, stderr: &stderr,
 	})
 	if err == nil || !strings.Contains(err.Error(), "store directory") {

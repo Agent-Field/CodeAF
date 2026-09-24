@@ -331,7 +331,7 @@ func runDo(args []string) error {
 	best := flags.Bool("best", false, "run this task on the strongest crew your allowed models make")
 	cheap := flags.Bool("cheap", false, "run this task on the cheapest crew your allowed models make")
 	var pins pinFlags
-	flags.Var(&pins, "pin", "pin one seat for this run only: worker=model[@provider], planner=… or checker=… (repeatable)")
+	flags.Var(&pins, "pin", "use one model for this run only: worker=model[@provider], planner=… or checker=… (repeatable)")
 	// A FLAG IS DOCUMENTED BY WHAT IT DOES, NOT BY WHAT IT SETS. These two said
 	// "…; sets CODEAF_CONTEXT_FILL_PCT for this run", which is the
 	// implementation, and hard-coded their defaults in prose while their own

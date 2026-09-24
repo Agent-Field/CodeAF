@@ -12,6 +12,7 @@ invalidates:
   - "The onboarding controls screen asked for a crew. It asks for the daily limit and the chat model; the crew asks nothing up front."
   - "The settings rows for the careful and planning tiers are labelled `checker` and `planner`; empty is auto. The `crew`, `model family` and `picked from` rows are gone."
   - "`codeaf do`'s `model_source`/`plan_model_source` read `crew <preset>` or `default`. They read `--model`, the variable, `pinned` or `routed`, and `-json` also carries `class`, `crew`, `est_usd`, `check_model` and `check_model_source`."
+  - "Remote protocol version 17 is replaced by 18: `Task.Start` carries the one-task effort word and `Task.RedoStronger` runs a task again on a stronger crew. An older engine refuses at the handshake rather than starting the task on the crew the person asked it not to use."
 ---
 A task's crew — the worker that does the work, the planner that structures it
 and the checker that reads the result — is picked for that task. The router

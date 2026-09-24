@@ -173,7 +173,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	modelCatalog := catalog.LoadLazy(context.Background(), catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
-	config.CrewCatalog = modelCatalog.ModelsNow
+	seatCrewRows(modelCatalog.ModelsNow)
 	wirePoolIndex(settings.ProfileDir)
 	if opts.seats != nil {
 		applySeats(&settings, *opts.seats)

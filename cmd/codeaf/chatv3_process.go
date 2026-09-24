@@ -235,7 +235,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	models := catalog.LoadLazy(processCtx, discovery)
 	// The crew router picks its seats from this catalog (config.CrewCatalog):
 	// the same non-blocking read, never a fetch, and set once at start-up.
-	config.CrewCatalog = models.ModelsNow
+	seatCrewRows(models.ModelsNow)
 	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)

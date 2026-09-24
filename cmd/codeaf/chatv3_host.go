@@ -622,7 +622,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	fleet.own(models.Close)
 	// The crew router picks its seats from this catalog (config.CrewCatalog):
 	// the same non-blocking read, never a fetch, and set once at start-up.
-	config.CrewCatalog = models.ModelsNow
+	seatCrewRows(models.ModelsNow)
 	// The pool's errands start beside it, against the same profile the catalog
 	// was read from.
 	wirePoolIndex(profileDir)

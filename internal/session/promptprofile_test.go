@@ -20,6 +20,7 @@ import (
 	"time"
 
 	configpkg "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
@@ -75,14 +76,16 @@ func TestTheCatalogsWindowOutranksTheConfiguredOne(t *testing.T) {
 
 // THE CREW'S WORKER SEAT IS NOT A TRIGGER, AND A BIG WINDOW ON IT GETS THE WHOLE
 // PAGE. An earlier draft went lean whenever the conversation rode the crew's
-// `worker` model, which is `z-ai/glm-5.3-flash` through the balanced preset and
-// `z-ai/glm-5.3` at max — models served with a hundred and
-// twenty-eight thousand tokens of room. That would have dropped sections, shelved
-// `propose_task` and turned saved memories off for anybody who picked a preset and
-// then chose that same model in chat, with nothing on screen saying so. Open
-// weights are a licence, not a size.
+// `worker` model — open-weight models like `z-ai/glm-5.3-flash`, served with a
+// hundred and twenty-eight thousand tokens of room. That would have dropped
+// sections, shelved `propose_task` and turned saved memories off for anybody who
+// pinned such a worker and then chose that same model in chat, with nothing on
+// screen saying so. Open weights are a licence, not a size.
 func TestTheWorkerSeatWithALargeWindowGetsTheFullPageByteForByte(t *testing.T) {
 	profileDir := t.TempDir()
+	if err := configpkg.SetCrewPin(profileDir, crewroute.Worker, "z-ai/glm-5.3-flash"); err != nil {
+		t.Fatal(err)
+	}
 	seat := configpkg.TierModelAt(profileDir, configpkg.ModelTierWorker)
 	if strings.TrimSpace(seat) == "" {
 		t.Fatal("the crew has no worker model, so this test is asserting against nothing")

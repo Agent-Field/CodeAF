@@ -189,10 +189,10 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"acceptance":{"type":"string","description":"Done when: the observable condition somebody else could check without taking the task's word for it"},` +
 	expectsSchemaJSON + `,` +
 	checksSchemaJSON + `,` +
-	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
-	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
-	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
-	`"effort":{"type":"string","enum":["best","cheap"],"description":"Optional, only when the person said how hard to try THIS task: best for the strongest crew allowed, cheap for the cheapest. Omit it otherwise"},` +
+	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
+	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands; a wrong true costs nothing"},` +
+	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word. A word fitting several is shown to the person to settle"},` +
+	`"effort":{"type":"string","enum":["best","cheap"],"description":"Only when the person asked"},` +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
 	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
