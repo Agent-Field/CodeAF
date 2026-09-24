@@ -143,6 +143,7 @@ type Registry struct {
 	npm               *core.Npm
 	instructionConfig instruction.Config
 	allowExternal     bool
+	confineWrites     bool
 	hardConfineShell  bool
 	question          *question.Service
 	questionEnabled   bool
@@ -179,6 +180,11 @@ type RegistryOptions struct {
 	Instructions             []string
 	Config                   *config.Service
 	AllowExternalDirectories bool
+	// ConfineWrites refuses every file write outside the workspace, whatever
+	// AllowExternalDirectories says of reads: codeaf lands only the copy a
+	// program works in, so a write anywhere else is work that can never come
+	// back and a change made to somebody's folder directly (path.go).
+	ConfineWrites bool
 	// HardConfineShellPaths rejects parsed external shell operands instead of
 	// asking permission, for an embedder that must not prompt. senior-dev leaves it
 	// disabled and asks.
@@ -271,6 +277,7 @@ func NewWithOptions(workDir string, options RegistryOptions) *Registry {
 		rules:            rules,
 		config:           configService,
 		allowExternal:    options.AllowExternalDirectories,
+		confineWrites:    options.ConfineWrites,
 		hardConfineShell: options.HardConfineShellPaths,
 		question:         questionService,
 		questionEnabled:  clientIdentity == "app" || clientIdentity == "cli" || clientIdentity == "desktop" || env.Enabled("SENIOR_DEV_ENABLE_QUESTION_TOOL"),

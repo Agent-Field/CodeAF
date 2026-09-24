@@ -52,7 +52,10 @@ The workspace is a git repository. Your tools are the ones declared with this
 turn: a shell, file reading, editing, search, web access, and submit.
 
 .senior-dev/ and git-ignored paths are excluded from the answer. Everything else in
-the working tree, committed or not, is part of what you submit.`
+the working tree, committed or not, is part of what you submit.
+
+Only the workspace is handed back. The file tools refuse to write outside it, and
+anything a shell command changes outside it is lost: do the work here.`
 
 // soloConformanceSection names the checklist file. soloFreeze refuses a
 // submission when it is missing and records its item and tick counts when it is

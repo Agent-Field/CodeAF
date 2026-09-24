@@ -76,7 +76,7 @@ func (r *Registry) executeApplyPatch(ctx context.Context, call steploop.ToolCall
 		if err := ctx.Err(); err != nil {
 			return steploop.ToolResult{}, err
 		}
-		filePath, err := r.resolvePath(hunk.Path)
+		filePath, err := r.resolveWritePath(hunk.Path)
 		if err != nil {
 			return steploop.ToolResult{}, err
 		}
@@ -124,7 +124,7 @@ func (r *Registry) executeApplyPatch(ctx context.Context, call steploop.ToolCall
 			}
 			movePath := ""
 			if hunk.MovePath != "" {
-				movePath, err = r.resolvePath(hunk.MovePath)
+				movePath, err = r.resolveWritePath(hunk.MovePath)
 				if err != nil {
 					return steploop.ToolResult{}, err
 				}

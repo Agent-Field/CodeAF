@@ -131,7 +131,11 @@ the conversation between the program and codeaf.
 - Reach a model any way but the model API.
 - Write anything on stdout that is not a record on its own line.
 - For `tree`: touch files outside its workspace, or leave anything in it that is
-  not its work (its own state git-excluded).
+  not its work (its own state git-excluded). senior-dev enforces the first for its
+  file tools: `write`, `edit` and `apply_patch` refuse a path outside the
+  workspace, links resolved (`tool.RegistryOptions.ConfineWrites`), while reads
+  stay open. Its shell is not fenced; its prompt says that nothing a shell
+  command changes outside the workspace comes back.
 
 ## 8. Built in now for later programs
 

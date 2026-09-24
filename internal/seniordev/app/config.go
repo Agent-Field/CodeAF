@@ -157,6 +157,9 @@ func (cfg *seniorDevConfig) registryOptions() tool.RegistryOptions {
 		Instructions:             cfg.instructions(),
 		Config:                   cfg.service,
 		AllowExternalDirectories: true,
+		// Reads may leave the workspace; writes may not (tool/path.go's
+		// resolveWritePath says why).
+		ConfineWrites: true,
 		PermissionRules: func(_ context.Context, call steploop.ToolCall) permission.Ruleset {
 			return cfg.rulesForAgent(call.Agent)
 		},

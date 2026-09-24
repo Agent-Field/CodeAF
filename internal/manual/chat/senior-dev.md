@@ -51,8 +51,8 @@ At a shell, clone the repository yourself, then run `codeaf senior-dev` inside i
 the folder with `--dir`.
 
 A brief that tells senior-dev to make a checkout of its own somewhere else does not work.
-It has no copy of that folder, so nothing it does there lands, and it would be editing a
-folder of yours directly.
+It has no copy of that folder, so nothing it does there lands: its file tools refuse to
+write outside its copy, and what a shell command changes out there stays where it is.
 
 ## What senior-dev cannot do — it cannot ask you anything, no step cap, no Windows
 
@@ -66,6 +66,11 @@ and codeaf enforces both from outside whatever it does.
 **It reaches a model only through codeaf.** It holds no key and reads none; a
 `senior-dev.json` in your folder that sets `apiKey`, `baseURL` or `providerRouting` is
 refused by name, because codeaf decides which model service serves each call.
+
+**It writes only inside its copy.** Its file tools (`write`, `edit`, `apply_patch`)
+refuse any path outside the folder it was handed, including one reached through a link,
+and say so to its model; it can still read files elsewhere. Its shell is not fenced the
+same way, and nothing a shell command changes outside the copy lands.
 
 **It needs a git repository with at least one commit**, unless it runs `--in-place`, which
 edits a plain folder without committing anything.
