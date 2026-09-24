@@ -285,16 +285,16 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
 updates the tab and the row in Sessions together.
 
-## Close or put away a task from home — task row options, new in project, open folder, copy project
+## Stop or delete a task from home — task row options, new in project, open folder, copy project
 
-**`→` offers task options just as it does for threads:** `x close`,
-`n new in project`, `o open folder`, and `p copy project` when the corresponding local
-folder and action are available. On a wide home these appear beneath the description
-in the middle column. Putting a task away hides that task from home and the unfiltered
-Sessions list; it does not stop it, delete its record, or put away its conversation.
-Find it again by typing its name in Sessions, then press Enter to reopen.
-After Close, `→ x delete` asks for permanent deletion with `y` or cancellation with `n`.
-The choice survives closing the app. Folder actions use the task's conversation project.
+**Tasks have no Close action.** `→` offers `x stop` while the task or any descendant
+is active, including queued or waiting work. Stop preserves the task records and the
+conversation. Once the entire subtree has stopped, the action is `x delete`.
+Deletion asks `delete is permanent, are you sure?`: `y` deletes the selected task and
+all descendants; `n` or Escape restores the four actions. Enter never confirms deletion.
+A Stop action remains Stop even if the task finishes while its menu is open.
+The other actions are `n new in project`, `o open folder`, and `p copy project`.
+Previously hidden tasks are visible again; conversation Close is unchanged.
 
 ## Why does only one row spin — the one spinner on home
 
@@ -700,7 +700,8 @@ the closed status everywhere.
 Home and Sessions use the same four actions: **`x close`**, **`n new in project`**,
 **`o open folder`**, **`p copy project`**. After Close, `x` becomes **delete**;
 Enter already reopens. In Sessions, `→` opens a collapsed family first; another `→`
-opens its actions. Nested task rows have the same actions.
+opens its actions. Nested tasks use `x stop` while active and `x delete` once their
+whole subtree has stopped; they have no Close action.
 
 Delete asks **`delete is permanent, are you sure?`**. Press **`y`** to confirm or
 **`n`** to cancel and return to the four actions. Escape also cancels. Enter does not
@@ -711,8 +712,8 @@ and all its task records. Its owned workspace is part of that folder; a borrowed
 project stays. It leaves Home, Sessions, search and the reopen stack. There is no undo.
 Deleting the current conversation prepares a fresh conversation first.
 
-Deleting a nested task removes only its saved record and journal. Its conversation
-and sibling tasks remain. It does not cancel their work or erase references already
+Deleting a nested task removes its saved record and all descendant task records and
+journals. Its conversation and unrelated sibling tasks remain. It does not cancel their work or erase references already
 written into the conversation's messages. A deleted record cannot be reopened or
 recreated by a late completion. Closing alone never deletes or stops work.
 

@@ -37,13 +37,12 @@ func (a *app) openTaskDoor(entry *session.TaskIndexEntry) tea.Cmd {
 
 // ── stopping one ────────────────────────────────────────────────────────────
 
-// runningVerbs combines task row options with the stop action when this window
-// holds the running task. Putting work away changes visibility, never execution;
-// stopping still uses the existing confirmation card.
+// runningVerbs gives task rows the same Stop/Delete actions as Sessions.
+// Other running work retains its existing stop confirmation.
 func (a *app) runningVerbs(line homeLine) []verb {
 	var verbs []verb
 	if line.cell != nil && line.cell.row != nil && line.cell.row.task != nil {
-		verbs = a.taskRowVerbs(line.cell.row.session, *line.cell.row.task)
+		return a.taskRowVerbs(line.cell.row.session, *line.cell.row.task)
 	}
 	target := a.runningStopTarget(line)
 	if target.empty() {

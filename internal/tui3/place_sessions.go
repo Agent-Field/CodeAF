@@ -393,27 +393,9 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	// untrimmed text, so a person who has typed a space sees the caret move.
 	r.query = p.query.String()
 	if needle == "" {
-		var kept []tasksItem
-		for i, item := range r.items {
-			if item.row.ArchivedTasks[item.entry.ID] {
-				if kept == nil {
-					kept = make([]tasksItem, 0, len(r.items))
-					kept = append(kept, r.items[:i]...)
-				}
-				continue
-			}
-			if kept != nil {
-				kept = append(kept, item)
-			}
-		}
-		if kept != nil {
-			r.items = kept
-			tree := tasksTreeOf(kept, r.now, r.order, r.chats...)
-			tree.keepConversationStates(p.reading.tree())
-			r.shape = &tree
-		}
 		return r
 	}
+
 	// A QUERY OPENS EVERY FOLD ON THE PAGE. A row that matched and is sitting
 	// behind a shut fold is a row the query appears not to have found, and the
 	// fold somebody left shut is not a decision they made about a list they had
@@ -1102,12 +1084,7 @@ func (p *tasksPlace) enter(a *app) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if item.row.ArchivedTasks[item.entry.ID] {
-		if err := session.SetTaskArchived(item.row.Dir, item.entry.SessionID, item.entry.ID, false); err != nil {
-			a.taskRowNotice("could not reopen task: " + err.Error())
-			return nil
-		}
-	}
+
 	// A PLAN ROW OPENS ITS OWN PAGE — the description, the notes and the
 	// trajectory the store carries — through the sheet's own machinery and the
 	// same key a record row opens its card with ([app.taskSheetPlan]).
@@ -1674,8 +1651,8 @@ func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }
 // of the foot's second clause: the strip draws exactly what the foot named, and
 // the foot names exactly what the strip will do.
 //
-// Conversations and nested tasks share Home's four actions. Stopping work is
-// still available from its room; deleting a record is a separate confirmed act.
+// Conversations and nested tasks share Home's four actions. Tasks stop while
+// active and offer confirmed subtree deletion once all their work has stopped.
 func (p *tasksPlace) verbs(a *app) []verb {
 	if chat, ok := a.taskSheetChat(); ok {
 		return a.conversationRowVerbs(chat.row)
@@ -1738,7 +1715,7 @@ func (p *tasksPlace) changed(a *app, since time.Time) int {
 	for _, project := range world.Projects {
 		for _, row := range project.Sessions {
 			for _, entry := range row.Tasks.Rows {
-				if !row.ArchivedTasks[entry.ID] && !entry.EndedAt.IsZero() && entry.EndedAt.After(since) {
+				if !entry.EndedAt.IsZero() && entry.EndedAt.After(since) {
 					count++
 				}
 			}

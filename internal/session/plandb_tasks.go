@@ -195,6 +195,7 @@ const planTrajectoryFile = "trajectory.jsonl"
 // ever seeded — and an empty slice (not nil) is a plan that holds only other
 // chats' work: the store is there and this chat's part of it is not.
 func (a *Agent) PlanTasks() []PlanTaskRow {
+	deleted := a.deletedPlanTasks()
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	if len(stores) == 0 {
@@ -213,6 +214,9 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		// counted nothing on any real run and its row wore no progress.
 		root := store.RootID()
 		for _, task := range tasks {
+			if deleted[planStoreID(task.ID)] || deleted[planStoreID(task.ParentID)] {
+				continue
+			}
 			row := planTaskRow(store, dir, task, spend, live)
 			row.Folder = a.planTaskRunCopy(task.ID)
 			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
@@ -233,6 +237,10 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 // task this chat did not spawn, whether it is another conversation's or no
 // task at all: the page is the chat's own reading of its own plan.
 func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
+	deleted := a.deletedPlanTasks()
+	if deleted[planStoreID(planTaskID(id))] {
+		return PlanTaskPage{}, false
+	}
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	if len(stores) == 0 {
@@ -259,6 +267,9 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	var children []PlanTaskRow
 	depths := map[string]int{task.ID: -1}
 	for _, child := range all {
+		if deleted[planStoreID(child.ID)] || deleted[planStoreID(child.ParentID)] {
+			continue
+		}
 		row := planTaskRow(store, dir, child, spend, live)
 		row.Folder = a.planTaskRunCopy(child.ID)
 		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
@@ -901,4 +912,17 @@ func planStepDisplayFactsForPage(steps []PlanStep, copies planRunCopies) []PlanS
 		steps[i] = planStepDisplayFacts(steps[i], copies, planShimFilename)
 	}
 	return steps
+}
+
+// deletedPlanTasks shares the permanent record tombstones with plan listings,
+// so a cached store cannot bring a deleted task back after a restart.
+func (a *Agent) deletedPlanTasks() map[string]bool {
+	a.mu.Lock()
+	file := a.config.SessionFile
+	a.mu.Unlock()
+	if file == "" {
+		return nil
+	}
+	meta, _ := LoadMeta(filepath.Dir(file))
+	return meta.DeletedTasks
 }

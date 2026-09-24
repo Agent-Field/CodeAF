@@ -30,7 +30,7 @@ func deletionFixture(t *testing.T) (string, string) {
 			if err := os.WriteFile(journal, []byte("task report"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			appendTaskIndex(filepath.Join(bucket, taskIndexName), TaskIndexEntry{ID: task, SessionID: id, Title: task, TranscriptURI: taskURI(journal)})
+			appendTaskIndex(filepath.Join(bucket, taskIndexName), TaskIndexEntry{ID: task, SessionID: id, Status: string(TaskDone), Title: task, TranscriptURI: taskURI(journal)})
 		}
 	}
 	return filepath.Join(bucket, "one"), filepath.Join(bucket, taskIndexName)
@@ -41,7 +41,7 @@ func TestDeleteTaskRecordPermanentlyRemovesOnlyItsRecord(t *testing.T) {
 	if err := DeleteTaskRecord(dir, "one", "1"); err != nil {
 		t.Fatal(err)
 	}
-	appendTaskIndex(index, TaskIndexEntry{ID: "1", SessionID: "one", Title: "late completion"})
+	appendTaskIndex(index, TaskIndexEntry{ID: "1", SessionID: "one", Status: string(TaskDone), Title: "late completion"})
 	rows := ReadTaskIndex(index)
 	if len(rows) != 3 {
 		t.Fatalf("rows=%+v", rows)
@@ -111,7 +111,7 @@ func TestDeleteTaskRecordNeverFollowsACitationIntoProjectFiles(t *testing.T) {
 	if err := os.WriteFile(project, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	appendTaskIndex(index, TaskIndexEntry{ID: "1", SessionID: "one", Title: "untrusted citation", TranscriptURI: taskURI(project)})
+	appendTaskIndex(index, TaskIndexEntry{ID: "1", SessionID: "one", Status: string(TaskDone), Title: "untrusted citation", TranscriptURI: taskURI(project)})
 	if err := DeleteTaskRecord(dir, "one", "1"); err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestDeleteTaskRecordRemovesEarlierJournalsForTheSameTask(t *testing.T) {
 	if err := os.WriteFile(newer, []byte("retry"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	appendTaskIndex(index, TaskIndexEntry{ID: "1", SessionID: "one", Title: "retry", TranscriptURI: taskURI(newer)})
+	appendTaskIndex(index, TaskIndexEntry{ID: "1", SessionID: "one", Status: string(TaskDone), Title: "retry", TranscriptURI: taskURI(newer)})
 	if err := DeleteTaskRecord(dir, "one", "1"); err != nil {
 		t.Fatal(err)
 	}
@@ -164,8 +164,8 @@ func TestDeleteTaskRecordKeepsConcurrentAppends(t *testing.T) {
 		writers.Add(1)
 		go func(i int) {
 			defer writers.Done()
-			appendTaskIndex(index, TaskIndexEntry{SessionID: "two", ID: "new-" + strconv.Itoa(i), Title: "concurrent"})
-			appendTaskIndex(index, TaskIndexEntry{SessionID: "one", ID: "1", Title: "late completion"})
+			appendTaskIndex(index, TaskIndexEntry{SessionID: "two", ID: "new-" + strconv.Itoa(i), Status: string(TaskDone), Title: "concurrent"})
+			appendTaskIndex(index, TaskIndexEntry{SessionID: "one", ID: "1", Status: string(TaskDone), Title: "late completion"})
 		}(i)
 	}
 	if err := DeleteTaskRecord(dir, "one", "1"); err != nil {
@@ -180,5 +180,93 @@ func TestDeleteTaskRecordKeepsConcurrentAppends(t *testing.T) {
 		if row.SessionID == "one" && row.ID == "1" {
 			t.Fatal("deleted task returned")
 		}
+	}
+}
+
+func TestDeleteTaskTreeRejectsActiveDescendantsAndDeletesOnlyItsSubtree(t *testing.T) {
+	dir, index := deletionFixture(t)
+	for _, state := range []string{string(TaskRunning), string(TaskQueued), "paused", "pending", ""} {
+		appendTaskIndex(index, TaskIndexEntry{ID: "child", Parent: "1", SessionID: "one", Title: "Child", Status: state})
+		if err := DeleteTaskRecord(dir, "one", "1"); err == nil {
+			t.Fatalf("deleted subtree with %q child", state)
+		}
+		meta, _ := LoadMeta(dir)
+		if meta.DeletedTasks["1"] {
+			t.Fatal("refused deletion published a tombstone")
+		}
+	}
+	appendTaskIndex(index, TaskIndexEntry{ID: "child", Parent: "1", SessionID: "one", Title: "Child", Status: string(TaskDone)})
+	appendTaskIndex(index, TaskIndexEntry{ID: "grandchild", Parent: "child", SessionID: "one", Title: "Grandchild", Status: string(TaskFailed)})
+	ids, err := DeleteTaskTree(dir, "one", "1", nil)
+	if err != nil || len(ids) != 3 {
+		t.Fatalf("subtree=%v err=%v", ids, err)
+	}
+	appendTaskIndex(index, TaskIndexEntry{ID: "late-child", Parent: "1", SessionID: "one", Title: "late", Status: string(TaskDone)})
+	for _, row := range ReadTaskIndex(index) {
+		if row.SessionID == "one" && row.ID != "2" {
+			t.Fatalf("deleted descendant survived: %+v", row)
+		}
+	}
+	meta, _ := LoadMeta(dir)
+	for _, id := range []string{"1", "child", "grandchild"} {
+		if !meta.DeletedTasks[id] {
+			t.Fatalf("missing tombstone %s", id)
+		}
+	}
+	if meta.DeletedTasks["2"] {
+		t.Fatal("sibling deleted")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "transcript.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeleteTaskTreeRechecksDiskAndLiveWork(t *testing.T) {
+	for _, where := range []string{"disk", "live"} {
+		t.Run(where, func(t *testing.T) {
+			dir, index := deletionFixture(t)
+			stale := TaskIndexEntry{ID: "1", SessionID: "one", Title: "Root", Status: string(TaskDone)}
+			active := TaskIndexEntry{ID: "child", Parent: "1", SessionID: "one", Title: "Child", Status: string(TaskRunning)}
+			rows := []TaskIndexEntry{stale}
+			if where == "disk" {
+				appendTaskIndex(index, active)
+			} else {
+				rows = append(rows, active)
+			}
+			if _, err := DeleteTaskTree(dir, "one", "1", rows); err == nil {
+				t.Fatal("stale confirmation deleted active work")
+			}
+		})
+	}
+}
+
+func TestDeleteTaskTreeHasNoSearchIndexLimit(t *testing.T) {
+	dir, index := deletionFixture(t)
+	for i := 0; i < taskIndexRows+1; i++ {
+		appendTaskIndex(index, TaskIndexEntry{ID: strconv.Itoa(i + 10), Parent: "1", SessionID: "one", Title: "child", Status: string(TaskDone)})
+	}
+	ids, err := DeleteTaskTree(dir, "one", "1", nil)
+	if err != nil || len(ids) != taskIndexRows+2 {
+		t.Fatalf("deleted=%d err=%v", len(ids), err)
+	}
+	if len(ReadTaskIndex(index)) != 3 {
+		t.Fatal("old descendants escaped deletion")
+	}
+}
+
+func TestDeleteTaskTreeIncludesPlanIdentityAndDescendants(t *testing.T) {
+	dir, index := deletionFixture(t)
+	appendTaskIndex(index, TaskIndexEntry{ID: "1", PlanID: "t-root", SessionID: "one", Title: "Root", Status: string(TaskDone)})
+	live := []TaskIndexEntry{
+		{ID: "t-root", SessionID: "one", Title: "Renamed root", Status: "done"},
+		{ID: "t-child", Parent: "t-root", SessionID: "one", Title: "Child", Status: "done"},
+	}
+	ids, err := DeleteTaskTree(dir, "one", "1", live)
+	if err != nil || len(ids) != 3 {
+		t.Fatalf("ids=%v err=%v", ids, err)
+	}
+	meta, _ := LoadMeta(dir)
+	if !meta.DeletedTasks["t-child"] || !meta.DeletedTasks["t-root"] {
+		t.Fatal("plan copy survived")
 	}
 }
