@@ -6179,6 +6179,10 @@ func (a *app) dropTasks() {
 	a.closeRoom()
 	a.task = nil
 	a.tasks = nil
+	// THE CREW LINES GO WITH THEIR TASKS. They are keyed by task number, and
+	// the next conversation numbers its tasks from 1 again: a line remembered
+	// as landed would silence that conversation's own task 1.
+	a.crewSaid = nil
 	a.typedTaskBriefs = nil
 	a.taskOrder = nil
 	a.taskSeen = nil

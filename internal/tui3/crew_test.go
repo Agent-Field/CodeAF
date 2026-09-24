@@ -213,3 +213,40 @@ func TestRedoStrongerReachesTheSession(t *testing.T) {
 		t.Fatalf("/redo harder said %q", note)
 	}
 }
+
+// A TASK THAT STOPPED ON A CAUSE A PERSON CAN FIX LEADS WITH THE FIX: the one
+// action, first, no "/redo stronger" (a stronger crew meets the same wall),
+// and no $0.000 for a run that spent nothing.
+func TestAStoppedTaskLeadsWithItsOneAction(t *testing.T) {
+	a, _ := sheetApp(t)
+	crew := &crewroute.Decision{Class: crewroute.Bugfix, EstUSD: 0.02, Stopped: "add credit on openrouter to continue", Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+		{Seat: crewroute.Planner, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+		{Seat: crewroute.Checker, Model: "moonshotai/kimi-k3", Provider: "openrouter"},
+	}}
+	a.sayTaskCrew(session.TaskNotice{ID: 3, State: session.TaskFailed, Crew: crew})
+	line := lastNote(t, a)
+	if !strings.HasPrefix(line, "task 3 crew · failed — add credit on openrouter to continue · ") {
+		t.Errorf("the stopped line reads %q", line)
+	}
+	if strings.Contains(line, "/redo stronger") || strings.Contains(line, "$0.000") {
+		t.Errorf("the stopped line offers a redo or a free success: %q", line)
+	}
+}
+
+// A NEW CONVERSATION'S TASK 1 SAYS ITS CREW, though the last conversation's
+// task 1 had landed: the lines are the conversation's, and go with it.
+func TestANewConversationsTaskSaysItsCrew(t *testing.T) {
+	a, _ := sheetApp(t)
+	crew := &crewroute.Decision{Class: crewroute.Bugfix, EstUSD: 0.02, Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+		{Seat: crewroute.Planner, Model: "z-ai/glm-5.3-flash"}, {Seat: crewroute.Checker, Model: "moonshotai/kimi-k3"},
+	}}
+	a.sayTaskCrew(session.TaskNotice{ID: 1, State: session.TaskDone, Crew: crew, CostUSD: 0.01})
+	a.dropTasks()
+	before := len(a.entries)
+	a.sayTaskCrew(session.TaskNotice{ID: 1, State: session.TaskRunning, Crew: crew})
+	if len(a.entries) == before || !strings.Contains(lastNote(t, a), "task 1 crew · bugfix") {
+		t.Fatalf("the new conversation's task 1 said no crew line")
+	}
+}

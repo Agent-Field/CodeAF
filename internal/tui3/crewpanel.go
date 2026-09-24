@@ -1208,7 +1208,13 @@ func (a *app) crewPickEnter() tea.Cmd {
 	raw := row.offer.Model.ID
 	provider := ""
 	if line.route > 0 && line.route-1 < len(row.offer.Routes) {
-		provider = row.offer.Routes[line.route-1].Provider
+		route := row.offer.Routes[line.route-1]
+		provider = route.Provider
+		if route.Kind == crewroute.Free && !crewroute.IsFree(raw) {
+			// THE FREE POOL IS THE CHOICE: the pin names it, or it would run on
+			// the paid route of the same provider.
+			raw += ":free"
+		}
 		raw += "@" + provider
 	}
 	if k.refuse == k.cursor {

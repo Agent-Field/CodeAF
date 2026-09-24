@@ -264,8 +264,20 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 	case session.TaskFailed:
 		// A TASK THAT FAILED ASKS FOR THE NEXT STEP BY NAME: the stronger crew
 		// is the one thing on this line a person can do about it.
-		text = lead + a.crewLine(notice.Crew, notice.CostUSD) + " · " + crewFailedWord
-		facts = []string{crewroute.Money(notice.CostUSD)}
+		// AND THE FAILURE IS SAID FIRST, before any figure: a stopped seat's
+		// one action where the cause is known — no stronger crew would get
+		// past it — and the stronger crew otherwise. Nothing spent names no
+		// money, never a $0.000 that reads as a free success.
+		failed := crewFailedWord
+		if stop := notice.Crew.Stopped; stop != "" {
+			failed = crewStoppedWord + stop
+		}
+		actual := notice.CostUSD
+		if actual <= 0 {
+			actual = crewroute.Unspent
+		}
+		text = lead + failed + " · " + a.crewLine(notice.Crew, actual)
+		facts = []string{failed}
 		said.landed = true
 	case session.TaskDone, session.TaskUnverified:
 		text = lead + a.crewLine(notice.Crew, notice.CostUSD) + " · not right? /redo stronger"
@@ -312,6 +324,10 @@ type crewLineSaid struct {
 
 // crewFailedWord ends a failed task's crew line.
 const crewFailedWord = "failed — /redo stronger runs it again on a stronger crew"
+
+// crewStoppedWord leads a failed line whose seat stopped on a cause a person
+// can fix; the action follows it.
+const crewStoppedWord = "failed — "
 
 // ── the one reading every crew surface answers from ─────────────────────────
 
