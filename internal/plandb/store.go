@@ -1562,12 +1562,37 @@ func (s *Store) StopRoot(reason string) error {
 // adopted the dead run's store as live work ([Store.StopRoot] says why an open
 // run is adopted). A run that already ended is left as it ended.
 func (s *Store) FailRoot(reason string) error {
+	return s.FailRootAt(reason, time.Time{})
+}
+
+// FailRootAt is [Store.FailRoot] with the instant the run ended named rather
+// than read off the clock: the zero time is now, which is FailRoot itself.
+//
+// A RUN WHOSE PROCESS WENT AWAY ENDED WHEN IT WAS LAST SEEN, NOT WHEN SOMEBODY
+// NOTICED. A program's run that codeaf was closed under is ended by the next
+// process that finds its store open, which can be hours later; written at that
+// moment, the run's page counted every hour the machine sat idle as time the
+// program had worked. The caller names the run's last evidence of life instead
+// (its last model call, its last charge, the store's own last write), and the
+// ending is written there.
+//
+// The instant is held inside what can be true of the run: never before its own
+// task was made, because a run cannot end before it began, and never after
+// now, because an ending in the future would read as a run still going.
+func (s *Store) FailRootAt(reason string, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.transact(func(next *state, now time.Time) error {
 		root := next.Tasks[next.RootID]
 		if root == nil || terminal(root.Status) {
 			return errNoChange
+		}
+		ended := now
+		if !at.IsZero() && at.Before(now) {
+			ended = at.UTC()
+		}
+		if ended.Before(root.CreatedAt) {
+			ended = root.CreatedAt
 		}
 		reason = strings.TrimSpace(reason)
 		for _, task := range next.Tasks {
@@ -1576,12 +1601,15 @@ func (s *Store) FailRoot(reason string) error {
 			}
 			task.Status, task.Error, task.ClaimedBy = StatusCancelled, reason, ""
 			task.Owner, task.SeenAt = "", time.Time{}
-			task.UpdatedAt, task.CompletedAt = now, now
+			task.UpdatedAt, task.CompletedAt = ended, ended
+			if ended.Before(task.CreatedAt) {
+				task.UpdatedAt, task.CompletedAt = task.CreatedAt, task.CreatedAt
+			}
 		}
 		root.Status, root.Error, root.ClaimedBy = StatusFailed, reason, ""
 		root.Owner, root.SeenAt = "", time.Time{}
-		root.UpdatedAt, root.CompletedAt = now, now
-		promote(next, now)
+		root.UpdatedAt, root.CompletedAt = ended, ended
+		promote(next, ended)
 		return nil
 	})
 }
@@ -2966,6 +2994,43 @@ func (s *Store) SpendBy(axis string, since time.Time) []SpendLine {
 		return lines[i].Key < lines[j].Key
 	})
 	return lines
+}
+
+// LastSpendAt answers when the ledger's latest charge was written, and the
+// zero time for a ledger with none or a store that is closed. It is one of the
+// three readings a run's last evidence of life is taken from, beside its last
+// model call and the store's own last write ([Store.FailRootAt] says why that
+// instant matters): a charge is written the moment a call was paid for, so it
+// is the latest moment the run was certainly still spending.
+//
+// THE LATEST IS FOUND IN GO, not with MAX() in the query, for the reason
+// SpendBy gives: `at` is RFC3339Nano text, whose fractional digits vary, so a
+// text comparison would misorder a whole second against its own fraction.
+func (s *Store) LastSpendAt() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return time.Time{}
+	}
+	rows, err := s.rdb.Query(`SELECT at FROM spend`)
+	if err != nil {
+		return time.Time{}
+	}
+	defer rows.Close()
+	var latest time.Time
+	for rows.Next() {
+		var at string
+		if err := rows.Scan(&at); err != nil {
+			return time.Time{}
+		}
+		if moment, err := parseTime(at); err == nil && moment.After(latest) {
+			latest = moment
+		}
+	}
+	if rows.Err() != nil {
+		return time.Time{}
+	}
+	return latest
 }
 
 func cloneTask(task *Task) *Task {
