@@ -302,22 +302,29 @@ type receiptsOwed struct {
 // owe counts one receipt in and answers the function that counts it out,
 // which does so once however often it is called.
 func (o *receiptsOwed) owe() func() {
+	o.add()
+	var once sync.Once
+	return func() { once.Do(o.settle) }
+}
+
+// add counts one receipt in, making the idle channel anew when the count
+// leaves zero.
+func (o *receiptsOwed) add() {
 	o.mu.Lock()
+	defer o.mu.Unlock()
 	if o.n == 0 {
 		o.idle = make(chan struct{})
 	}
 	o.n++
-	o.mu.Unlock()
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			o.mu.Lock()
-			defer o.mu.Unlock()
-			o.n--
-			if o.n == 0 {
-				close(o.idle)
-			}
-		})
+}
+
+// settle counts one receipt out, closing the idle channel when none is left.
+func (o *receiptsOwed) settle() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.n--
+	if o.n == 0 {
+		close(o.idle)
 	}
 }
 
@@ -328,18 +335,26 @@ func (o *receiptsOwed) count() int {
 	return o.n
 }
 
+// owing answers the channel that closes when nothing is owed, or nil when
+// nothing is owed now.
+func (o *receiptsOwed) owing() chan struct{} {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.n == 0 {
+		return nil
+	}
+	return o.idle
+}
+
 // wait returns when nothing is owed, or when bound has passed; it answers
 // whether everything owed came in.
 func (o *receiptsOwed) wait(bound time.Duration) bool {
 	deadline := time.Now().Add(bound)
 	for {
-		o.mu.Lock()
-		if o.n == 0 {
-			o.mu.Unlock()
+		idle := o.owing()
+		if idle == nil {
 			return true
 		}
-		idle := o.idle
-		o.mu.Unlock()
 		left := time.Until(deadline)
 		if left <= 0 {
 			return false
