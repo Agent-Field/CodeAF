@@ -160,35 +160,283 @@ func AppendTraffic(profileDir, teamID string, e Entry) error {
 // skips one. A limit of 0 or less is every entry. A log that does not exist is
 // no entries and no error. It takes no lock; a line still being written is
 // skipped and read next time.
+//
+// IT READS WHAT IT RETURNS AND LITTLE ELSE. A log is up to two files of
+// [trafficRotateBytes], and a reader asking at every step of a turn must not
+// parse megabytes to learn that nothing is new. So a tail is read backwards
+// from the end in windows until it holds limit entries ([tailTraffic]), and a
+// page forward first asks each file for its last id (one window at its end,
+// [lastIDIn]): a file with nothing past the cursor is not read at all, and one
+// with something is entered where the cursor is, found by a binary search over
+// byte offsets on the ids, which are in file order ([forwardTraffic]). Only a
+// limit of 0 or less reads the files whole.
 func ReadTraffic(profileDir, teamID string, after string, limit int) ([]Entry, error) {
 	if err := safeTeamID(teamID); err != nil {
 		return nil, err
 	}
 	path := TrafficPath(profileDir, teamID)
-	var all []Entry
-	seen := map[string]bool{}
-	for _, p := range []string{trafficRotated(path), path} {
-		got, err := readTrafficFile(p)
+	files := []string{trafficRotated(path), path}
+	var (
+		all []Entry
+		err error
+	)
+	switch {
+	case limit <= 0:
+		for _, p := range files {
+			got, err := readTrafficFile(p)
+			if err != nil {
+				return nil, err
+			}
+			all = append(all, got...)
+		}
+	case after == "":
+		all, err = tailTraffic(files, limit)
+	default:
+		all, err = forwardTraffic(files, after, limit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Entry
+	seen := make(map[string]bool, len(all))
+	for _, e := range all {
+		if seen[e.ID] || (after != "" && e.ID <= after) {
+			continue
+		}
+		seen[e.ID] = true
+		out = append(out, e)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	if limit > 0 && len(out) > limit {
+		if after == "" {
+			out = out[len(out)-limit:]
+		} else {
+			out = out[:limit]
+		}
+	}
+	return out, nil
+}
+
+// trafficWindow is how much of a file one backwards step reads.
+var trafficWindow int64 = 64 << 10
+
+// tailTraffic is at least the last limit entries of files (oldest file first),
+// read backwards from the end of the newest in [trafficWindow] steps.
+func tailTraffic(files []string, limit int) ([]Entry, error) {
+	var out []Entry
+	for index := len(files) - 1; index >= 0 && len(out) < limit; index-- {
+		got, err := tailTrafficFile(files[index], limit-len(out))
 		if err != nil {
 			return nil, err
 		}
-		for _, e := range got {
-			if seen[e.ID] || (after != "" && e.ID <= after) {
+		out = append(got, out...)
+	}
+	return out, nil
+}
+
+// tailTrafficFile is at least the last want entries of one file, or all of it.
+// Only complete lines count; a line still being written has no newline yet.
+func tailTrafficFile(path string, want int) ([]Entry, error) {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	end := info.Size()
+	var carry []byte // the head of a line cut by the window, joined next step
+	var out []Entry
+	for end > 0 && len(out) < want {
+		start := max(end-trafficWindow, 0)
+		buf := make([]byte, end-start, end-start+int64(len(carry)))
+		if _, err := file.ReadAt(buf, start); err != nil && err != io.EOF {
+			return nil, err
+		}
+		buf = append(buf, carry...)
+		cut := 0
+		if start > 0 {
+			// The first line may begin before this window; keep it for the next.
+			nl := bytes.IndexByte(buf, '\n')
+			if nl < 0 {
+				carry, end = buf, start
 				continue
 			}
-			seen[e.ID] = true
-			all = append(all, e)
+			cut = nl + 1
+		}
+		carry = append([]byte(nil), buf[:cut]...)
+		var got []Entry
+		for _, line := range completeLines(buf[cut:]) {
+			if e, ok := parseTrafficLine(line); ok {
+				got = append(got, e)
+			}
+		}
+		out = append(got, out...)
+		end = start
+	}
+	return out, nil
+}
+
+// forwardTraffic is the first limit entries after the id after, from files in
+// order (the rotated file holds only ids below the current file's).
+func forwardTraffic(files []string, after string, limit int) ([]Entry, error) {
+	var out []Entry
+	for _, path := range files {
+		if len(out) >= limit {
+			break
+		}
+		got, err := forwardTrafficFile(path, after, limit-len(out))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, got...)
+	}
+	return out, nil
+}
+
+// forwardTrafficFile is up to want entries of one file with ids past after.
+func forwardTrafficFile(path, after string, want int) ([]Entry, error) {
+	last, found, err := lastIDIn(path)
+	if err != nil || !found {
+		return nil, err
+	}
+	if fmt.Sprintf("%0*d", trafficIDWidth, last) <= after {
+		return nil, nil
+	}
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	start, err := trafficOffsetAfter(file, info.Size(), after)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		return nil, err
+	}
+	var out []Entry
+	r := bufio.NewReader(file)
+	for len(out) < want {
+		line, err := r.ReadBytes('\n')
+		if len(line) > 0 && line[len(line)-1] == '\n' {
+			if e, ok := parseTrafficLine(line); ok && e.ID > after {
+				out = append(out, e)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
-	sort.SliceStable(all, func(i, j int) bool { return all[i].ID < all[j].ID })
-	if limit > 0 && len(all) > limit {
-		if after == "" {
-			all = all[len(all)-limit:]
+	return out, nil
+}
+
+// trafficOffsetAfter is the byte offset of the first line whose id is past
+// after, found by a binary search over offsets: the id of the first whole line
+// at or after an offset only grows with the offset. A line that does not parse
+// is read as past, which can only move the answer earlier; the caller filters
+// by id, so earlier costs a few lines read and never an entry skipped.
+func trafficOffsetAfter(file *os.File, size int64, after string) (int64, error) {
+	lo, hi := int64(0), size
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		_, id, ok, err := trafficLineAt(file, size, mid)
+		if err != nil {
+			return 0, err
+		}
+		if !ok || id > after {
+			hi = mid
 		} else {
-			all = all[:limit]
+			lo = mid + 1
 		}
 	}
-	return all, nil
+	start, _, _, err := trafficLineAt(file, size, lo)
+	return start, err
+}
+
+// trafficLineAt is the first whole line starting at or after offset: where it
+// starts and its id. ok is false when there is none or it does not parse.
+func trafficLineAt(file *os.File, size, offset int64) (int64, string, bool, error) {
+	start := offset
+	if offset > 0 {
+		// A line starts after a newline; find the first one at or after offset-1.
+		at, err := nextNewline(file, size, offset-1)
+		if err != nil || at < 0 {
+			return size, "", false, err
+		}
+		start = at + 1
+	}
+	if start >= size {
+		return size, "", false, nil
+	}
+	end, err := nextNewline(file, size, start)
+	if err != nil || end < 0 {
+		return start, "", false, err
+	}
+	buf := make([]byte, end-start)
+	if _, err := file.ReadAt(buf, start); err != nil && err != io.EOF {
+		return start, "", false, err
+	}
+	var e struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(buf, &e) != nil || e.ID == "" {
+		return start, "", false, nil
+	}
+	return start, e.ID, true, nil
+}
+
+// nextNewline is the offset of the first newline at or after from, -1 for none.
+func nextNewline(file *os.File, size, from int64) (int64, error) {
+	const step = 4 << 10
+	buf := make([]byte, step)
+	for at := from; at < size; at += step {
+		n, err := file.ReadAt(buf[:min(step, size-at)], at)
+		if i := bytes.IndexByte(buf[:n], '\n'); i >= 0 {
+			return at + int64(i), nil
+		}
+		if err != nil && err != io.EOF {
+			return -1, err
+		}
+	}
+	return -1, nil
+}
+
+// completeLines is the newline-ended lines of buf, without their newlines.
+func completeLines(buf []byte) [][]byte {
+	var lines [][]byte
+	for {
+		nl := bytes.IndexByte(buf, '\n')
+		if nl < 0 {
+			return lines
+		}
+		lines = append(lines, buf[:nl])
+		buf = buf[nl+1:]
+	}
+}
+
+// parseTrafficLine is one line as an entry, false for one that is not.
+func parseTrafficLine(line []byte) (Entry, bool) {
+	var e Entry
+	if json.Unmarshal(line, &e) != nil || e.ID == "" {
+		return Entry{}, false
+	}
+	return e, true
 }
 
 // readTrafficFile is every entry in one file that parses; a missing file is
@@ -207,8 +455,7 @@ func readTrafficFile(path string) ([]Entry, error) {
 	for {
 		line, err := r.ReadBytes('\n')
 		if len(line) > 0 && line[len(line)-1] == '\n' {
-			var e Entry
-			if json.Unmarshal(line, &e) == nil && e.ID != "" {
+			if e, ok := parseTrafficLine(line); ok {
 				out = append(out, e)
 			}
 		}
@@ -254,20 +501,26 @@ func lastIDIn(path string) (int64, bool, error) {
 		if _, err := file.ReadAt(buf, start); err != nil && err != io.EOF {
 			return 0, false, err
 		}
-		best, found := int64(0), false
-		for _, line := range bytes.Split(buf, []byte{'\n'}) {
+		// FROM THE END BACKWARDS, stopping at the first line with an id: ids
+		// only grow down a file, so the last one that parses is the highest, and
+		// a reader asking "is there anything new" decodes one line, not a window.
+		lines := bytes.Split(buf, []byte{'\n'})
+		for index := len(lines) - 1; index >= 0; index-- {
+			if start > 0 && index == 0 {
+				break // cut by the window
+			}
 			var e struct {
 				ID string `json:"id"`
 			}
-			if json.Unmarshal(line, &e) != nil {
+			if json.Unmarshal(lines[index], &e) != nil {
 				continue
 			}
-			if n, err := strconv.ParseInt(e.ID, 10, 64); err == nil && (!found || n > best) {
-				best, found = n, true
+			if n, err := strconv.ParseInt(e.ID, 10, 64); err == nil {
+				return n, true, nil
 			}
 		}
-		if found || start == 0 {
-			return best, found, nil
+		if start == 0 {
+			return 0, false, nil
 		}
 	}
 	return 0, false, nil
