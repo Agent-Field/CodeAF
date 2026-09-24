@@ -45,6 +45,11 @@ func TestTaskClosePersistsAndCanBeRestoredFromTheTasksFilter(t *testing.T) {
 	if err != nil || !meta.ArchivedTasks["t1"] || meta.Archived {
 		t.Fatalf("task archive was not independent of its conversation: %+v, %v", meta, err)
 	}
+	for _, item := range a.tasksFiltered().items {
+		if item.entry.ID == "t1" && item.entry.SessionID == owner.ID {
+			t.Fatal("the open Sessions list still contains the task immediately after close")
+		}
+	}
 	b := lab.open(180, 40)
 	for _, line := range b.home.lines {
 		if line.cell != nil && line.cell.row != nil && line.cell.row.task != nil && line.cell.row.task.ID == "t1" {
@@ -180,5 +185,68 @@ func TestTaskOptionsSuspendTheLandingAnswerHints(t *testing.T) {
 	drive(t, a, key("left"))
 	if len(a.taskPaneVerbs(item)) < 2 {
 		t.Fatal("closing options did not restore the landing answers")
+	}
+}
+
+func TestClosingAFilteredTaskRemovesItUntilTheFilterChanges(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(180, 40)
+	owner := selectHomeTask(t, a, "t1")
+	a.taskSheet.query.setText("read 40 filings")
+	a.taskSheetTyped()
+	for _, at := range a.taskSheet.stops(a) {
+		a.taskSheet.cursor = at
+		if item, ok := a.taskSheetCurrent(); ok && item.entry.ID == "t1" && item.entry.SessionID == owner.ID {
+			break
+		}
+	}
+	drive(t, a, key("right"), key("x"))
+	if a.taskSheet.query.String() != "read 40 filings" {
+		t.Fatal("closing a task discarded the filter")
+	}
+	for _, item := range a.tasksFiltered().items {
+		if item.entry.ID == "t1" && item.entry.SessionID == owner.ID {
+			t.Fatal("the filtered Sessions list still contains the task immediately after close")
+		}
+	}
+	// A live update must not restore a row closed in the current search.
+	a.railStamp++
+	for _, item := range a.tasksFiltered().items {
+		if item.entry.ID == "t1" && item.entry.SessionID == owner.ID {
+			t.Fatal("a refresh restored the closed task")
+		}
+	}
+	// An edit that leaves the search text as it was is not a new search: ctrl+k
+	// with the caret already at the end of the box takes nothing.
+	drive(t, a, key("ctrl+k"))
+	if a.taskSheet.query.String() != "read 40 filings" {
+		t.Fatalf("ctrl+k at the end changed the filter to %q", a.taskSheet.query.String())
+	}
+	for _, item := range a.tasksFiltered().items {
+		if item.entry.ID == "t1" && item.entry.SessionID == owner.ID {
+			t.Fatal("an edit that left the search text unchanged restored the closed task")
+		}
+	}
+	a.taskSheet.query.setText("filings")
+	a.taskSheetTyped()
+	found := false
+	for _, at := range a.taskSheet.stops(a) {
+		a.taskSheet.cursor = at
+		if item, ok := a.taskSheetCurrent(); ok && item.entry.ID == "t1" && item.entry.SessionID == owner.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("a new search did not recover the closed task")
+	}
+	drive(t, a, key("right"))
+	if !strings.Contains(taskSheetText(a), "x reopen") {
+		t.Fatal("the recovered task did not offer reopen")
+	}
+	drive(t, a, key("x"))
+	meta, err := session.LoadMeta(owner.Dir)
+	if err != nil || meta.ArchivedTasks["t1"] {
+		t.Fatalf("reopening the recovered task failed: %+v, %v", meta, err)
 	}
 }

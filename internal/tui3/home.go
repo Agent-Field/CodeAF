@@ -5323,7 +5323,7 @@ func (a *app) homeSubject() (bandSubject, bool) {
 	case homeItem:
 		return bandSubject{kind: bandKindItem, item: line.view, project: line.project, dir: strings.TrimSpace(line.item.Workspace), world: a.home.world}, true
 	case homeLedger:
-		// A STANDING ITEM'S ROW ON `scheduled` IS THE ITEM'S SUBJECT, as its row
+		// A STANDING ITEM'S ROW ON `standing` IS THE ITEM'S SUBJECT, as its row
 		// on the tasks panel was ([homeLine.standsForItem]).
 		if line.standsForItem() {
 			return bandSubject{kind: bandKindItem, item: line.view, project: line.project, dir: strings.TrimSpace(line.item.Workspace), world: a.home.world}, true

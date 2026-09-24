@@ -14,10 +14,10 @@
 # THE LOCK IS A KERNEL LOCK HELD BY AN OPEN FILE. Its lifetime does not depend
 # on one pid namespace seeing another, and the kernel drops it if the holder
 # dies. The file contents retain the holder pid and start time for a refusal.
-# The Makefile invokes this wrapper for a full `make test` or `test-report` when
-# PKGS contains `./...`, `./internal/tui3` or `./internal/session`. A
-# `test-focus` selector and lighter packages do not take it, so cheap,
-# independent proofs remain independent.
+# The Makefile invokes this wrapper around each heavy package's complete
+# sharded run from `make test` or `test-report`, and around the rest of the
+# tree when PKGS is `./...`. A `test-focus` selector and lighter
+# packages do not take it, so cheap, independent proofs remain independent.
 #
 # The file is per box and per user, under /tmp rather than the session's own
 # TMPDIR, because the point is to see the other session's run and a TMPDIR is

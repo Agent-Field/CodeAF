@@ -448,7 +448,7 @@ being held down — it only reports what arrived.
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
 project, in one, two or three columns — one `sessions` list of the fifteen most recent
-conversations, then question rows, `projects`, `since you left`, `spend`, and `scheduled`.
+conversations, then question rows, `projects`, `since you left`, `spend`, and `standing`.
 Open tabs and saved history share that list, with closed conversations dimmed. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
@@ -493,12 +493,13 @@ page — and the foot names only what is true of the row you are on: `enter open
 ## Close or put away a task, find an archived task, or reopen it
 
 On home or the Sessions list, select the task, press `→`, then `x close`.
-This hides only that task from home's panels and the unfiltered Sessions list. Its work
-continues if it is running; its record, conversation, and other tasks are unchanged.
-The choice is saved with the conversation and survives reopening the app.
+The task disappears immediately from the Sessions list, including the current filter
+results, and from home's panels. Its work continues if it is running; its record,
+conversation, and other tasks are unchanged. The choice is saved with the conversation
+and survives reopening the app.
 
-To recover it, type its name in the Tasks filter. Search includes put-away tasks within
-the selected time window; expand that window if the task is older. Select the matching
+To recover it, change the Sessions filter or reopen the page and type its name. Search
+includes put-away tasks within the selected time window; expand that window if the task is older. Select the matching
 task and use `→`, then `x reopen`. `enter` can still open its record.
 
 `n new in project`, `o open folder`, and `p copy project` use the project of the conversation

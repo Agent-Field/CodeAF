@@ -593,7 +593,7 @@ func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
 	}
 }
 
-// A `scheduled` ROW SAYS ITS TIME ONCE, IN ITS DESCRIPTION, IN THE ONE SHAPE
+// A `standing` ROW SAYS ITS TIME ONCE, IN ITS DESCRIPTION, IN THE ONE SHAPE
 // ITS KIND HAS (owner, 2026-09-15): a reminder the moment it goes off, a routine
 // its cadence, its next and its last outcome, a watch how often it looks, when
 // it last looked and what it found, a rule its own words. Nothing at the
@@ -660,7 +660,7 @@ func TestScheduledSaysEachKindsTimeOneWayInItsDescription(t *testing.T) {
 		if homeDescOn(a.home.cols) {
 			t.Fatalf("%d columns has a description column; the test wants a frame without one", width)
 		}
-		// A narrow frame squeezes `scheduled` first (law 5), so the claim is
+		// A narrow frame squeezes `standing` first (law 5), so the claim is
 		// about every row it still draws and not about how many those are.
 		sentence := map[string]string{}
 		for _, w := range want {

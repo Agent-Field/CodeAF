@@ -28,6 +28,11 @@ import (
 	"time"
 )
 
+// dialWithin is replaceable by the dead-relay test because WSL2 mirrored
+// networking can leave a closed loopback port hanging until the dial timeout;
+// `curl -m 25 http://127.0.0.1:1` timed out on the machine that exposed it.
+var dialWithin = HandshakeWithin
+
 // The facts a caller above has to be able to tell apart.
 var (
 	// ErrUnreachable is the relay itself not answering.
@@ -140,7 +145,7 @@ func upgrade(ctx context.Context, service, path string, header http.Header) (net
 		return nil, fmt.Errorf("%q is not a relay address — it looks like https://relay.example.com", service)
 	}
 
-	dialer := &net.Dialer{Timeout: HandshakeWithin}
+	dialer := &net.Dialer{Timeout: dialWithin}
 	conn, err := dialer.DialContext(ctx, "tcp", hostPort(address))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)

@@ -227,10 +227,24 @@ run_suite_does_not_inherit_the_lock_name() {
 	[ ! -d "$dir" ] || { printf 'the directory lock outlived a suite that had already ended\n' >&2; return 1; }
 }
 
-run_order namespace-first
-run_order host-first
-run_host_b_after_cell
+# The namespace arms need bubblewrap to make one host PID have two different
+# views. The lock's other acceptance remains meaningful without that fixture,
+# so a missing tool skips only these arms rather than blocking on a readiness
+# pipe whose holder could never start.
+if command -v bwrap >/dev/null 2>&1; then
+	namespace_ran=yes
+	run_order namespace-first
+	run_order host-first
+	run_host_b_after_cell
+else
+	namespace_ran=
+	printf 'one-suite namespace acceptance: SKIP (bwrap is not installed)\n'
+fi
 run_both_locks
 run_refused_by_directory
 run_suite_does_not_inherit_the_lock_name
-printf 'one-suite namespace and dual-lock acceptance: ok\n'
+if [ -n "$namespace_ran" ]; then
+	printf 'one-suite namespace and dual-lock acceptance: ok\n'
+else
+	printf 'one-suite dual-lock acceptance: ok (namespace skipped)\n'
+fi

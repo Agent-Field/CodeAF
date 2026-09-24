@@ -178,7 +178,7 @@ var homePanelOrder = []homePanelSlot{
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageMemory},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
-	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
+	{panel: nextPanel{homePanelBase{panelNext}}, word: (placeStanding{}).word(), keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
 
 // homeNeedsTaskFresh is how long a task's call stays a row of `needs you` after
@@ -1089,7 +1089,7 @@ func (p homeGridPanel) lines() []homeLine {
 // and a line that named a place `enter` did not go to would be a door drawn on
 // a wall (review of #1046). The way to the rest is the panel's HEADING, which
 // opens the place that owns the panel (law 10): tasks for `needs you`,
-// `tasks` and `since you left`, standing for `scheduled`. `threads` has no
+// `tasks` and `since you left`, standing for `standing`. `threads` has no
 // place of its own to open (the search place was its door until 2026-09-17;
 // the box under home is the search now), so its heading names only the panel.
 // It used to be the other way round: law 9 said the fold IS the door, `N more

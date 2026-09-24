@@ -51,10 +51,10 @@ func TestMain(m *testing.M) {
 	surfaceTick = harnessTick
 	code := runTests(m)
 	writeCmdProfile()
-	// EVERY DROPPED COMMAND LEAVES A GOROUTINE PARKED on a channel nobody will
-	// write to, so the count at the end is the running total of what the harness
-	// gave up on — the measure that took #399 from a guess to a number. It is
-	// printed rather than asserted: it moves with which tests ran.
+	// A DEADLINE-DROPPED COMMAND LEAVES A GOROUTINE PARKED on a channel nobody
+	// will write to; an owner-proven empty waiter is never started. The count is
+	// therefore the old-road residue rather than every drop, and remains a useful
+	// measurement rather than an assertion because it moves with which tests ran.
 	fmt.Fprintf(os.Stderr, "tui3: %d goroutines still parked at the end of the run\n", runtime.NumGoroutine())
 	os.Exit(code)
 }
@@ -271,6 +271,19 @@ func (f *fakeAgent) finish() {
 	}
 }
 
+// harnessWaiterQueue registers the turn stream family owned by this fake and
+// its synchronous widenings. [Submit] and every derived fake event door fill
+// their channels on the test goroutine; a grep for their writers is part of the
+// harness change that established this seam, and none starts a goroutine. A new
+// fake with an asynchronous writer must override this method and leave that
+// family unregistered.
+func (f *fakeAgent) harnessWaiterQueue(family string, lanes []<-chan session.Event) (harnessQueueState, bool) {
+	if family != "waitEvent" || len(lanes) != 1 {
+		return harnessQueueUnknown, false
+	}
+	return synchronousEventQueues(lanes), true
+}
+
 func (f *fakeAgent) Interrupt() { f.stops++ }
 func (f *fakeAgent) InterruptFor(door session.StopDoor) {
 	f.stopDoor = door
@@ -430,43 +443,36 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 	return out
 }
 
-// THE LAW: A HARNESS PAYS NOTHING FOR A TICK THAT CANNOT REACH IT, AND IT KNOWS
-// BY NAME WHICH OF ITS COMMANDS WILL NEVER ANSWER. The budget above was one
-// number for every command, and three quarters of this package's wall clock was
-// spent running it out: 2415 commands were dropped at 150ms each over a full
-// run, 362s of the 478s the package took, and each drop left one goroutine
-// blocked on a channel nobody would ever write to (806 of the 886 alive at the
-// end). CI's per-binary ceiling is eight minutes and the package reached it
-// (#399).
+// THE LAW: A HARNESS PAYS NOTHING FOR A TICK OR AN OWNER-PROVEN WAITER THAT
+// CANNOT REACH IT, AND IT KNOWS BY NAME WHICH COMMANDS MAY NEVER ANSWER. The
+// budget above was once paid serially for every command, and three quarters of
+// this package's wall clock was spent running it out (#399). Overlapping the
+// named waiters removed the multiplication but left one 150ms settle on nearly
+// every drive step whose fake-owned channel was empty.
 //
-// WHAT WAS BELIEVED, AND WHAT IS TRUE. The reading that opened #399 was that the
-// fakes never feed the surface's wait channels, so a waiter could be answered
-// with nil the moment it was recognised, spawning nothing. That is false, and
-// measurably so: over one subset of this package [waitEvent] returned a real
-// event on 28 of 118 calls and bubbletea's tick fired on 451 of 593. Dropping
-// the recognised names outright fails better than thirty tests. These commands
-// DO answer; the fakes hand back a buffered channel and the events in it are
-// what the streaming tests assert on.
+// WHAT WAS BELIEVED, AND WHAT IS TRUE. The reading that opened #399 was that all
+// recognised waiters could be dropped immediately. #463 disproved that: these
+// commands DO answer, usually from a buffered channel, and the events in it are
+// what the streaming tests assert on. The harness therefore never drops a
+// waiter merely because its runtime name is in [blockingCommands].
 //
 // SO THE WAITERS KEEP THE FULL [cmdBudget], and this file deliberately holds no
-// knob to shorten it. When a waiter answers it answers from a channel that
-// already holds the value, in microseconds — but "in microseconds" is a claim
-// about the scheduler, not about the code, and this suite runs beside others on
-// a loaded machine. A budget tuned to that claim turns a delivered event into a
-// drop the day the box is busy, which is a load-shaped red on dev for nobody's
-// change: the exact failure #399 exists to remove. Ordinary work gets
+// knob to shorten it. "Answered in microseconds" is a claim about the scheduler,
+// not about the code, and tuning a budget to it recreates the load-shaped red
+// #399 exists to remove. harnessdriver_test.go instead asks an exact registered
+// owner, on the test goroutine, whether its queue is open and empty and whether
+// any goroutine can write it. That fact permits an immediate drop; an unknown
+// owner, a queued value and a close all keep the old road. Ordinary work gets
 // [workBudget] instead: it always answers, so a healthy run never pays that
 // ceiling, and crossing it names a stuck command rather than pretending the
 // command returned nothing.
 //
-// AND THE SEAM THE WAITERS ARE NAMED FOR IS BUILT: harnessdriver_test.go. It
-// does not shorten anything. It takes the wait out of the COUNT instead — the
-// named waiters are started and left running while the harness gets on with the
-// next message, so a call that parks five of them pays one budget rather than
-// five, and each of the five still has the whole of its own. That is why the
-// table below must stay complete: a waiter missing from it is one the harness
-// goes on waiting for on its own, and the package gets slower by 150ms a call
-// with nothing failing.
+// THE DEFAULT STILL OVERLAPS. A named waiter without that owner fact is started
+// and left running while the harness gets on with the next message, so a call
+// that parks five of them pays one budget rather than five, and each still has
+// the whole of its own. That is why the table below must stay complete: a waiter
+// missing from it is one the harness waits for on its own, and the package gets
+// slower with nothing failing.
 //
 // WHAT IS CHEAPENED IS THE TICK, where the question needs no scheduler at all.
 // [surfaceTick] is replaced by [harnessTick] for this binary, so the surface's
@@ -507,12 +513,13 @@ const harnessTickSymbol = "github.com/Agent-Field/codeaf/internal/tui3.harnessTi
 // blockingCommands is THE ONE TABLE. It names every command in this package that
 // parks on a channel a test's fakes usually never write to and never close.
 //
-// IT HAS TWO READERS AND ONE MEANING: these are the commands that may never
-// answer. [budgetFor] gives them [cmdBudget], while harnessdriver_test.go's
-// [harnessDriver.overlappable] starts every safe one and leaves it running
-// rather than standing over it. The two overlap exceptions still get the short
-// budget; they are exceptional only because running them beside another command
-// would call code supplied by the test. Two tests hold the table in place —
+// IT HAS THREE READERS AND ONE MEANING: these are the commands that may never
+// answer. [budgetFor] gives them [cmdBudget], [harnessDriver.overlappable]
+// starts every safe one on the default road, and [harnessDriver.ownedEmpty]
+// uses the same family name when asking a registered owner about its queue. The
+// two overlap exceptions still get the short budget; they are exceptional only
+// because running them beside another command would call code supplied by the
+// test. Two tests hold the table in place —
 // [TestTheHarnessKnowsEveryCommandThatCannotAnswer] against the surface's own
 // source, so a new waiter cannot be added without landing here, and
 // [TestTheHarnessOverlapsEveryWaiterItNames] against real built commands, so a
@@ -572,15 +579,22 @@ func cmdSymbol(cmd tea.Cmd) string {
 // commands park just like every other waiter and differ only in whether it is
 // safe for the harness to run them beside another command.
 func waiterSymbol(symbol string) bool {
+	return waiterName(symbol) != ""
+}
+
+// waiterName returns the row of [blockingCommands] named in a runtime symbol.
+// Keeping the extraction beside [waiterSymbol] makes the table the one source
+// both the budget and the owner seam read.
+func waiterName(symbol string) string {
 	if symbol == "" {
-		return false
+		return ""
 	}
 	for _, name := range blockingCommands {
 		if strings.Contains(symbol, "."+name+".func") {
-			return true
+			return name
 		}
 	}
-	return false
+	return ""
 }
 
 // TestTheHarnessKnowsEveryCommandThatCannotAnswer reads the surface's own source
