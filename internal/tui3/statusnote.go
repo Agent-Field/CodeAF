@@ -6,7 +6,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -198,8 +197,8 @@ func (a *app) statusFacts(text string) []string {
 			// already the lifted fact one row above. So the row keeps its sentence
 			// and stays in the dim tier, which is what a row whose answer is a
 			// sentence should do (#444).
-			if !a.oneModel {
-				out = append(out, config.CrewClassModels(a.profileDir)...)
+			if reading, ok := a.crewReading(); ok && !a.oneModel {
+				out = append(out, reading.models...)
 			}
 			continue
 		}

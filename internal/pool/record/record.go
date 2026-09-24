@@ -4,16 +4,16 @@
 //
 // THE MECHANISM. [Recorder.Record] takes the scores [judge.Judge] answered and
 // does two things with them. Every valid one is observed into the sheet the
-// recorder holds, under the role_quality metric the crew picker reads seat
-// quality from, and one row is appended to the recorder's outbox when it holds
+// recorder holds, under the role_quality metric, and one row is appended to
+// the recorder's outbox when it holds
 // one. A score whose role is not one of the judged seats, or that is not on
 // the 0-100 scale, is skipped and named in the error; the others are recorded
 // however the round went, and the sheet is observed whatever the outbox does.
 // A nil outbox records locally only.
 //
 // The sheet an install keeps of its own scores is its own evidence: it is
-// saved under the pool directory ([OwnSheetName]) and read back as the cells
-// the crew picker's prior blends in beside an index's ([Cells]).
+// saved under the pool directory ([OwnSheetName]) and read back as cells
+// ([Cells]) — which `codeaf pool` lists beside the index's.
 package record
 
 import (
@@ -26,14 +26,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/tally"
 )
 
-// Metric is the sheet metric a judged seat score is observed under: the word
-// the crew picker reads a measured seat quality from.
+// Metric is the sheet metric a judged seat score is observed under.
 const Metric = "role_quality"
 
 // OwnSheetName is the file the install's own sheet is kept as, under the pool
@@ -225,21 +223,29 @@ func (r *Recorder) Record(scores []judge.Score, judgeModel, door, size, day stri
 	return errors.Join(errs...)
 }
 
+// Cell is one seat's measured quality on a sheet: the seat, the model, the
+// mean of its 0-100 scores and how many stand behind it.
+type Cell struct {
+	Role  string
+	Model string
+	Mean  float64
+	N     int
+}
+
 // Cells reads the sheet's own role_quality cells — the ones recorded with no
-// dim labels — as the cells a prior reads: the seat, the model, the mean of
-// the scores and the count behind them, sorted by seat then model, so the
-// answer is a property of the sheet and never of the order it was observed
-// in. A nil sheet answers no cells.
-func Cells(s *tally.Sheet) []crewpick.Cell {
+// dim labels — sorted by seat then model, so the answer is a property of the
+// sheet and never of the order it was observed in. A nil sheet answers no
+// cells.
+func Cells(s *tally.Sheet) []Cell {
 	if s == nil {
 		return nil
 	}
-	var cells []crewpick.Cell
+	var cells []Cell
 	s.Each(Metric, func(role, model string, dims map[string]string, c tally.Cell) {
 		if dims != nil {
 			return
 		}
-		cells = append(cells, crewpick.Cell{Role: role, Model: model, Mean: c.Mean(), N: int(c.N)})
+		cells = append(cells, Cell{Role: role, Model: model, Mean: c.Mean(), N: int(c.N)})
 	})
 	return cells
 }

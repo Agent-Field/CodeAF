@@ -21,6 +21,8 @@ package session
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1454,6 +1456,13 @@ type Config struct {
 	// settings file, and every auxiliary call then rides the session's own
 	// model — roles.Resolve's floor, not a failure.
 	RolesSource func(key string) (string, bool)
+
+	// RouteCrew picks one task's crew — worker, planner and checker — for the
+	// task in the ask (internal/config's RouteCrew over this profile, wired by
+	// the surface). NIL IS NO ROUTER: the run's seats are then the role
+	// ladder's, as they were before crews were routed, and no crew row is
+	// logged. It is never a model this package chooses (taskcrew.go).
+	RouteCrew func(config.CrewAsk) (crewroute.Decision, error)
 
 	// SupportsImages reports whether a model can read image content parts. It
 	// gates [Agent.SubmitImage] and NIL IS FALSE — the opposite of every other
@@ -3242,6 +3251,9 @@ type Agent struct {
 	// one store ([Agent.lockBeltStart]). It is never taken while beltMu is
 	// held; beltMu is taken inside it.
 	beltStartMu sync.Mutex
+	// crews is every task's crew this conversation routed, by row: what its
+	// log row settles with and what `/redo stronger` escalates (taskcrew.go).
+	crews crewBook
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active

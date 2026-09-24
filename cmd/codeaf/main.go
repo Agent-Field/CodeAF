@@ -9,6 +9,7 @@
 package main
 
 import (
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"context"
 	"errors"
 	"flag"
@@ -800,7 +801,7 @@ func runPlanNew(name string, args []string) error {
 		return err
 	}
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, goal)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
 	if err != nil {
@@ -980,7 +981,7 @@ func runRevise(name string, args []string) error {
 		return err
 	}
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, graph.Goal+"\n\n"+event)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
 	if err != nil {
@@ -1294,6 +1295,32 @@ func debugRecordRoot() string {
 // environment reading underneath. One assignment per seat, so the models a
 // door's receipt names and the clients it then builds cannot be different
 // models.
+// doorSeats is the crew every headless door that is not `codeaf do` runs on:
+// the flags as one-task pins, and every seat nothing named routed for the task
+// text the door has (empty reads as open-ended work, the router's safe
+// default). A profile written before crews were routed is migrated first, with
+// its one line.
+//
+// AT THE DAILY CAP THESE DOORS WARN AND GO ON. `codeaf do` refuses there
+// unless told -yes-spend, because it is the door campaigns run through; these
+// are a person at a terminal running one plan step or one program, and the
+// line on stderr is said before anything is spent. A seat nothing allowed can
+// sit is said too, and the seat is left for the door's own model to fill.
+func doorSeats(settings config.Config, model, planModel, task string) config.Seats {
+	if line, _ := config.MigrateCrew(settings.ProfileDir); line != "" {
+		fmt.Fprintln(os.Stderr, line)
+	}
+	seats, err := config.ResolveSeats(settings.ProfileDir, config.SeatFlags{Model: model, PlanModel: planModel},
+		config.CrewAsk{Task: crewroute.Task{Text: task}})
+	switch {
+	case errors.Is(err, config.ErrCrewAtCap):
+		fmt.Fprintln(os.Stderr, "note: today's crew spend has reached the daily cap · this run goes ahead; `codeaf do` would have stopped")
+	case err != nil:
+		fmt.Fprintln(os.Stderr, "note: "+err.Error())
+	}
+	return seats
+}
+
 func applySeats(settings *config.Config, seats config.Seats) {
 	settings.Model = seats.Work.Model
 	settings.PlanModel = seats.Plan.Model

@@ -345,68 +345,28 @@ var settingUI = map[string]settingMeta{
 		about: "the model a task runs on when you have not asked for another. " +
 			"Blank runs it on the model you are talking to.",
 	},
-	// THE CREW LIVES ON THE PROVIDERS TAB, with the model it answers under.
-	//
-	// It was on Session for four waves, one tab away from the row that says which
-	// model the conversation is on — so "which model does the planning" and
-	// "which model am I talking to" were two errands on two screens, and a person
-	// comparing them had to remember one while they walked to the other. They are
-	// one question: which model answers what (docs/CHAT-V3.md Decision 6 gives
-	// this tab exactly that job, per-role models included). [modelsSection] is
-	// the order they read in.
-	//
-	// EVERY ONE OF THEM IS A MODEL CHOICE AND IS ANSWERED AS ONE. The tier rows
-	// were a text box for four waves, which meant the only way to name the cheap
-	// model was to type its id from memory — in a panel that already knows every
-	// id, what each one holds, what it costs and how it scores.
-	config.KeyCrew: {
-		tab: tabProviders, label: "crew", widget: widgetCycle,
-		// The one line under this row NAMES ALL THREE OPTIONS AND WHAT EACH ONE IS,
-		// and it is built in [init] from the preset table rather than written here:
-		// a cycle row walks its choices in place, so there is no moment at which a
-		// person is shown three rows to compare — the only place the comparison can
-		// happen is the line they are reading while they press the key.
-	},
+	// THE CREW'S THREE SEATS LIVE ON THE PROVIDERS TAB, with the model they
+	// answer under: which model answers what is one question (docs/CHAT-V3.md
+	// Decision 6). Each seat row is empty for AUTO — codeaf routes that seat per
+	// task — and a model id written there is a PIN, the same pin `/crew pin`
+	// writes (internal/config's crew.go). The panel of the whole crew, with its
+	// allowed models and its daily cap, is /crew.
 	config.KeyTierReflexModel: {
 		tab: tabProviders, label: "reflex", widget: widgetSelect,
 		about: "near-free · reads every turn — memory, titles, safety",
 	},
 
-	// The row is placed by build(), not by this map, and it sits directly under
-	// the crew word because it changes what that word means rather than pinning a
-	// model of its own: the three presets answer from open weights or from the
-	// whole catalog, and this is the switch.
-	config.KeyCrewSource: {
-		tab: tabProviders, label: "model family", widget: widgetCycle,
-		about: "which models the crew word draws from: open weights, or the whole " +
-			"catalog with closed and frontier models in it. All is the default.",
-	},
-	// WHERE THE CREW'S MODELS COME FROM, beside the crew word itself. The crew
-	// row says how much to spend and this says where the models for that money
-	// are read from when a class row does not hold a person's own id: the rows
-	// this build measured, or the same budgets recomputed off the catalog on
-	// every read, with or without what the Model Pool and the person's own
-	// judged runs measured. The about is the registry's own hint whole, not its
-	// first sentence, because the three words are the answer and the first
-	// sentence alone would send a person hunting for what catalog means.
-	config.KeyCrewPick: {
-		tab: tabProviders, label: "picked from", widget: widgetCycle,
-		about: "where the crew's models come from. table: the rows we measured. " +
-			"catalog: recomputed from today's published prices and scores at your " +
-			"crew's budget. learn: catalog plus the Model Pool's measurements and " +
-			"your own judged runs.",
-	},
 	config.KeyTierLowModel: {
 		tab: tabProviders, label: "small work", widget: widgetSelect,
 		about: "cheap · the small calls — names, digests, the safety gate",
 	},
 	config.KeyTierWorkerModel: {
 		tab: tabProviders, label: "worker", widget: widgetSelect,
-		about: "does the work · every task, its parts, every run node — most of the bill",
+		about: "does the work · every task, its parts, every run node — most of the bill. Empty is auto: routed per task",
 	},
 	config.KeyTierHighModel: {
-		tab: tabProviders, label: "careful work", widget: widgetSelect,
-		about: "careful · checks what must not be wrong — audits, briefs, vision",
+		tab: tabProviders, label: "checker", widget: widgetSelect,
+		about: "reads finished work and checks what must not be wrong. Empty is auto: routed per task",
 	},
 	// The fourth class is the one whose value may name a LEVEL as well as a
 	// model, so it is a TEXT box and not a picker: the picker returns an id, and
@@ -414,8 +374,8 @@ var settingUI = map[string]settingMeta{
 	// picker dials the CONVERSATION's effort and lives on the session; this one is
 	// written down and outlives it.
 	config.KeyTierMastermindModel: {
-		tab: tabProviders, label: "mastermind", widget: widgetText,
-		about: "thinks · plans runs and designs harnesses — add :low, :medium or :high",
+		tab: tabProviders, label: "planner", widget: widgetText,
+		about: "plans runs and designs harnesses — add :low, :medium or :high. Empty is auto: routed per task",
 	},
 	config.KeyModelRoles: {
 		tab: tabProviders, label: "pinned roles", widget: widgetText,
@@ -778,33 +738,11 @@ func init() {
 	// list of models codeaf uses and wants to know which one is theirs. It is the
 	// same row, the same write, the same live seam onto [app.switchModel] — only
 	// the word above the Models section changed.
-	crew := settingUI[config.KeyCrew]
-	crew.about = crewAbout(config.DefaultCrewSource)
-	settingUI[config.KeyCrew] = crew
-
 	talk := settingUI[config.ModelSettingKey(talkSlot)]
 	talk.label = "your model"
 	talk.about = "the model you are talking to. Everything below it is a model codeaf " +
 		"uses on your behalf."
 	settingUI[config.ModelSettingKey(talkSlot)] = talk
-}
-
-// crewAbout is the crew row's one line: the five rows it writes, then each preset
-// with its own sentence, then what makes the row read custom. The sentences are
-// [config.CrewLineFor]'s IN THE FAMILY ON SCREEN, so the panel and /crew say the
-// same words about the same thing and neither names an open model above frontier
-// ids. The init-time value is the default family; [sheet.metaFor] re-says it from
-// the profile, which is where a family that is not the default comes from.
-func crewAbout(source string) string {
-	said := make([]string, 0, len(config.CrewPresets))
-	for _, preset := range config.CrewPresets {
-		said = append(said, preset+" — "+config.CrewLineFor(source, preset))
-	}
-	// The three options lead, because they are what the keypress chooses between
-	// and the panel gives a row's line the width it has: what gets cut on a narrow
-	// terminal should be the footnote, not the choice.
-	return "the five below, chosen as one word: " + strings.Join(said, "; ") +
-		". Answer one yourself and this reads custom."
 }
 
 // modelsSection is the order the Models rows LEAD the Providers tab in: your
@@ -840,11 +778,6 @@ func modelsSectionOrder() []string {
 		config.KeyLaneGuard,
 		config.KeyRouting,
 		config.KeyPromptProfile,
-		config.KeyCrew,
-		// THE PICK ANSWERS THE CREW WORD'S OWN QUESTION ONE LEVEL DOWN — where
-		// the models for that budget come from — so it reads directly under the
-		// crew word, before the classes it seats.
-		config.KeyCrewPick,
 	}
 	for _, tier := range roles.Tiers {
 		order = append(order, tierSettingKey(tier))
@@ -1527,11 +1460,6 @@ func (s *sheet) metaFor(row config.Setting) (settingMeta, bool) {
 	meta, ok := settingMetaFor(row)
 	if ok && row.Key == config.KeySearchProvider {
 		meta.about = config.SearchProviderHintAt(s.profileDir)
-	}
-	// The crew row names three presets in whichever family the profile is on, so
-	// its sentence is read from the profile for the same reason.
-	if ok && row.Key == config.KeyCrew {
-		meta.about = crewAbout(config.CrewSourceAt(s.profileDir))
 	}
 	// AND THE `lane` ROW IS EXPLAINED BY THE ROUTING IN FORCE, because `auto` is
 	// a different promise under `simple` than under the row codeaf ships with —

@@ -60,14 +60,14 @@ func APIKeyConfigured(profileDir string) bool {
 	return APIKeyAt(profileDir) != ""
 }
 
-// CrewConfigured is whether a person has ever answered the crew: any of the
-// tier rows, or the family row above them, is in the profile file. It is any
-// rather than all because [ApplyCrew] writes the tier rows together, and a
-// person who pinned one tier by hand, or chose a family, has an opinion the
-// setup must not paper over with a preset.
+// CrewConfigured is whether a person has ever answered the crew: a seat
+// pinned, the allowed models or the daily cap written — or, on a profile from
+// before the crew was routed, any of the rows the retired presets wrote.
 func CrewConfigured(profileDir string) bool {
-	if _, ok := persistedString(profileDir, KeyCrewSource); ok {
-		return true
+	for _, key := range []string{KeyCrewAllowed, KeyCrewCap, legacyKeyCrew, legacyKeyCrewSource, legacyKeyCrewPick} {
+		if _, ok := persistedValue(profileDir, key); ok {
+			return true
+		}
 	}
 	for _, tier := range ModelTiers {
 		if _, ok := persistedString(profileDir, tierKeyFor(tier)); ok {

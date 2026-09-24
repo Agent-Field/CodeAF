@@ -1532,9 +1532,6 @@ type app struct {
 	// pick is the model overlay (palette.go). Closed, it costs the frame
 	// nothing; open, it owns the keyboard and the bottom of the screen.
 	pick picker
-	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
-	// model picker because it has no filter and every item always takes two lines.
-	crewPick crewPicker
 	// effPick is the five-row thinking chooser `/effort` opens (effortchip.go).
 	// It is the crew chooser's shape for the crew chooser's reason: a fixed
 	// ladder is a thing you read rather than a thing you search.
@@ -2405,13 +2402,10 @@ type app struct {
 	// call on the conversation's own model and the crew on disk seats nothing,
 	// so the readings built from it name the flag ([Options.OneModel], #444).
 	oneModel bool
-	// workSeatSaid is whether this session has already asked whether its work
-	// seat was inherited (crew.go's [app.sayWorkSeat]). It is a fact about the
-	// SESSION and not about the profile: the line is a receipt for work that is
-	// starting now, said once where a person is already looking, and a surface
-	// that said it again per task — or per node of one task — would be the
-	// warning-on-every-call this whole mechanism refused headless (#311, #312).
-	workSeatSaid bool
+	// crewSaid is which routed tasks this session has already said the crew
+	// line for, and at which end — started or landed (crew.go's
+	// [app.sayTaskCrew]) — so a row that updates twenty times says it twice.
+	crewSaid map[uint64]string
 	// notices is what this surface has told the person and may tell them next —
 	// the earned hints and the news line, over the profile's ledger (notice.go).
 	notices noticeBoard
@@ -3003,6 +2997,16 @@ func newApp(ctx context.Context, opts Options) *app {
 	// directory having an earlier conversation can see the welcome's list.
 	a.noticeEvent(eventBoot)
 	a.showUnreadProfileKeys(opts.UnreadProfileKeys)
+	// A PROFILE WRITTEN BEFORE CREWS WERE ROUTED IS MIGRATED ONCE, here on the
+	// first frame, and says so in one line: its preset words became auto, the
+	// ids a person wrote stayed pinned (internal/config's crewmigrate.go). A
+	// hosted window's profile is the far machine's, and is not this one's to
+	// migrate.
+	if !a.hosted() {
+		if line, _ := config.MigrateCrew(a.profileDir); line != "" {
+			a.note(line)
+		}
+	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
 	}
@@ -7249,10 +7253,8 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "crew":
-		// The four models codeaf uses on your own behalf, as one word (crew.go).
-		// The bare form is the three presets with yours marked; a word applies
-		// one. An unknown word shows the three and changes nothing, which is the
-		// shape every choice row on this surface refuses in.
+		// The crew panel and its four shortcuts (crew.go): what is allowed and
+		// what is pinned, which persists; nothing else about a crew sticks.
 		a.runCrew(rest)
 		return nil
 
@@ -7268,6 +7270,11 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "task":
 		return a.runTaskCommand(rest)
+
+	case "redo":
+		// `/redo stronger` — the last task again on a stronger crew (crew.go,
+		// taskcommand.go's [app.runRedo]).
+		return a.runRedo(rest)
 
 	case "history":
 		// The place onto every task this MACHINE has run, this session's and every

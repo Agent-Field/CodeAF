@@ -117,6 +117,17 @@ func writeProfileValue(profileDir, key string, value any) error {
 // still exactly one place that knows how a setting reaches the disk.
 var profileWriteMu sync.Mutex
 
+// removeProfileKey, as a value in [writeProfileValues], takes the key OUT of
+// the file rather than writing it. It exists for the rows whose absence is an
+// answer of its own — an unpinned crew seat is a row that is not there, and
+// writing an empty string would be the different answer "cleared" — so the
+// same one transaction can remove one row while it writes another.
+var removeProfileKey = profileKeyRemoval{}
+
+// profileKeyRemoval is [removeProfileKey]'s type, unexported so no caller can
+// spell a removal any other way.
+type profileKeyRemoval struct{}
+
 func writeProfileValues(profileDir string, updates map[string]any) error {
 	if len(updates) == 0 {
 		return nil
@@ -126,7 +137,12 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	// failure nobody could search for.
 	key := errorKey(updates)
 	encodedUpdates := make(map[string]json.RawMessage, len(updates))
+	var removed []string
 	for name, value := range updates {
+		if _, remove := value.(profileKeyRemoval); remove {
+			removed = append(removed, name)
+			continue
+		}
 		encodedValue, err := json.Marshal(value)
 		if err != nil {
 			return fmt.Errorf("write config %s: %w", name, err)
@@ -164,6 +180,9 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	maps.Copy(values, held)
 	for name, encodedValue := range encodedUpdates {
 		values[name] = encodedValue
+	}
+	for _, name := range removed {
+		delete(values, name)
 	}
 	encoded, err := json.MarshalIndent(values, "", "  ")
 	if err != nil {

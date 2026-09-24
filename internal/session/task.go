@@ -73,6 +73,7 @@ package session
 // consent.go refuses for the same reason.
 
 import (
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"context"
 	"encoding/json"
 	"errors"
@@ -191,6 +192,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
 	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
+	`"effort":{"type":"string","enum":["best","cheap"],"description":"Optional, only when the person said how hard to try THIS task: best for the strongest crew allowed, cheap for the cheapest. Omit it otherwise"},` +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
 	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
@@ -215,6 +217,9 @@ type taskArguments struct {
 	DependsOn  []uint64 `json:"depends_on"`
 	Wide       bool     `json:"wide"`
 	Model      string   `json:"model"`
+	// Effort is the person's one-task word for how hard to try — best or
+	// cheap — which moves this task's crew and nothing after it (taskcrew.go).
+	Effort     string   `json:"effort"`
 	MaxSteps   int      `json:"max_steps"`
 	NoProgress int      `json:"no_progress"`
 }
@@ -338,6 +343,10 @@ type taskSpec struct {
 	modelWord    string
 	model        string
 	modelOptions []string
+	// crewEffort is the one-task crew word the proposal carried — best, cheap,
+	// or empty for the router's own knee (taskcrew.go). It is not `effort`
+	// below, which is how hard the model thinks, not which models the crew is.
+	crewEffort crewroute.Effort
 	// effort is the rung this node's workers ask the model for, empty when
 	// nobody has set one and the ladder's next rung down decides
 	// (internal/effort). It travels the same road `model` travels — set at
@@ -842,7 +851,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		// before it: in a batch committed at one moment none of the hand-offs
 		// could see a live run beforehand, and the one that opened the run is
 		// decided under the start lock ([Agent.startOrJoinTaskRun]).
-		joined, err := a.startOrJoinTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, p.stand, question)
+		joined, err := a.startOrJoinTaskRun(withCrewWish(context.WithoutCancel(ctx), crewWish{effort: spec.crewEffort}), p.id, spec.title, description, spec.dependsOn, p.stand, question)
 		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 			return refusal.Error(), true, nil
 		}
@@ -990,6 +999,13 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		modelWord:  strings.TrimSpace(parsed.Model),
 		maxSteps:   parsed.MaxSteps,
 		noProgress: parsed.NoProgress,
+	}
+	if word := strings.TrimSpace(parsed.Effort); word != "" {
+		effort, ok := crewroute.ParseEffort(word)
+		if !ok {
+			return spec, "Invalid arguments: effort is best or cheap, or left out"
+		}
+		spec.crewEffort = effort
 	}
 	// A NEGATIVE THRESHOLD IS A MISTAKE WORTH SAYING OUT LOUD, where an absent
 	// one is not: omitting the field means "use the default" and is the ordinary

@@ -2268,7 +2268,6 @@ func (a *app) closeModals() {
 	a.roster.close()
 	a.folder.close()
 	a.shelf.close()
-	a.crewPick.close()
 	a.effPick.close()
 	a.connPanel.close()
 	a.harnPanel.close()

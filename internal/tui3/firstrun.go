@@ -91,11 +91,6 @@ type setupFlow struct {
 	//     viewport and a filter over the WHOLE catalog rather than a truncation
 	//     of it, because a form with five rows must still reach two hundred
 	//     models.
-	//   - crewOpen and crewAt are the crew chooser's cursor, which is
-	//     PROVISIONAL; crewPick is the preset a person actually accepted with
-	//     enter, and is empty until they do. That is what makes esc out of the
-	//     chooser choose nothing, and what stops `Start a conversation` writing a
-	//     preset over somebody's hand-pinned tiers.
 	//   - reviewOpen is the optional reading of the settings this screen
 	//     deliberately does not ask about, example is which illustration the
 	//     right-hand column is showing, and seeded says the screen has already
@@ -109,10 +104,6 @@ type setupFlow struct {
 	modelAt    int
 	modelTop   int
 	modelFind  string
-	crewOpen   bool
-	crewAt     int
-	crewPick   string
-	crewSource string
 	reviewOpen bool
 	example    int
 	seeded     bool

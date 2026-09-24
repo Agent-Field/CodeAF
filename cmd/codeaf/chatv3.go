@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"context"
 	"errors"
 	"fmt"
@@ -934,7 +935,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// engine's own nothing. The ask is built once and a client is made from it
 	// per call, each billed to the judge's own seat.
 	taskLanded := poolJudgeHook(settings, settings.ProfileDir, workspace,
-		config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now, "task")
+		config.CrewCatalog, poolJudgeAsk(settings, settings.ProfileDir), time.Now, "task")
 	// The runs a live process would have judged but a process death left unjudged,
 	// and the headless doors that never had this hook: at start, on a goroutine
 	// nobody waits on, judge the resumed session's own final-state nodes and the
@@ -942,7 +943,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// process tracker cancels and joins it at close.
 	poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
 		poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
-			config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
+			config.CrewCatalog, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
 	})
 
 	cfg := session.Config{
@@ -1612,6 +1613,16 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	cfg.ApprovalPolicy = policy
 	cfg.RolesSource = source
 	cfg.OneModel = oneModel
+	// EVERY TASK THIS CONVERSATION STARTS IS ROUTED ITS OWN CREW — worker,
+	// planner, checker picked for that task from the profile's allowed models
+	// and pins (internal/config's RouteCrew, internal/session's taskcrew.go).
+	// Under `--one-model` there is no crew: every call rides the conversation's
+	// model, which is what the flag says, so no router is handed over.
+	if !oneModel {
+		cfg.RouteCrew = func(ask config.CrewAsk) (crewroute.Decision, error) {
+			return config.RouteCrew(profileDir, ask)
+		}
+	}
 	cfg.SpendRailUSD = rail
 	// The fallback chain reads PROFILE-ONLY, like the search keys below and
 	// unlike the three rows above it. A repository that could answer this could

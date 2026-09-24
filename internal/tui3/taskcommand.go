@@ -28,6 +28,51 @@ type taskCommandAgent interface {
 	StartTask(context.Context, string, bool) (uint64, string, string, error)
 }
 
+// taskCrewEffortAgent is the session's door for a task with a one-task effort
+// word said: best or cheap (session's taskcrew.go). It is a second interface
+// rather than a wider first one, so a surface or a test double that has only
+// the ordinary door still starts ordinary tasks.
+type taskCrewEffortAgent interface {
+	StartTaskEffort(context.Context, string, bool, string) (uint64, string, string, error)
+}
+
+// taskCrewEffortDoor is the effort door wearing the ordinary door's shape, so the
+// one road that opens a task ([app.startTaskDoor]) serves both.
+type taskCrewEffortDoor struct {
+	agent  taskCrewEffortAgent
+	effort string
+}
+
+func (d taskCrewEffortDoor) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
+	return d.agent.StartTaskEffort(ctx, brief, solo, d.effort)
+}
+
+// redoAgent is the session's door for `/redo stronger`.
+type redoAgent interface {
+	RedoStronger(context.Context, uint64) (uint64, string, error)
+}
+
+// runRedo is `/redo stronger`: the newest task this conversation started, run
+// again with every seat nobody pinned one step stronger. The router's log is
+// told the first crew under-served this kind of work here, so the next task
+// like it starts a step higher until enough accepted work decays it back.
+func (a *app) runRedo(arg string) tea.Cmd {
+	if strings.ToLower(strings.TrimSpace(arg)) != "stronger" {
+		a.note("usage: /redo stronger")
+		return nil
+	}
+	door, ok := a.agent.(redoAgent)
+	if !ok {
+		a.note("could not redo · this session has no task door")
+		return nil
+	}
+	ctx, conv := a.ctx, a.taskBriefConv()
+	return func() tea.Msg {
+		id, title, err := door.RedoStronger(ctx, 0)
+		return taskStartedMsg{kind: "single", id: strconv.FormatUint(id, 10), title: title, err: err, conv: conv}
+	}
+}
+
 type taskStartedMsg struct {
 	kind, id, title string
 	err             error
@@ -71,6 +116,13 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	// THE WHOLE VOCABULARY IS TWO FORMS: a brief, or `solo` and a brief. A first
 	// word that is neither of those is simply the beginning of the brief, so the
 	// split is taken once here and the brief defaults to everything typed.
+	// HOW HARD TO TRY THIS ONE TASK comes first when it is said at all —
+	// `/task --best …`, `/task --cheap …` — and moves this task's crew and
+	// nothing after it (crew.go). A flag that is neither is part of the brief.
+	effort := ""
+	if flag, after, _ := strings.Cut(arg, " "); flag == "--best" || flag == "--cheap" {
+		effort, arg = strings.TrimPrefix(flag, "--"), strings.TrimSpace(after)
+	}
 	word, rest, _ := strings.Cut(arg, " ")
 	rest = strings.TrimSpace(rest)
 	brief, solo := arg, false
@@ -97,8 +149,17 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 		}
 	}
 	if brief == "" {
-		a.note("usage: /task <brief> · /task solo <brief>")
+		a.note("usage: /task <brief> · /task solo <brief> · /task --best <brief> · /task --cheap <brief>")
 		return nil
+	}
+	if effort != "" {
+		door, ok := a.agent.(taskCrewEffortAgent)
+		if !ok {
+			a.note("this session cannot choose a task's crew · the brief starts on the crew it would have had")
+		} else {
+			solo = solo || config.TaskStartAt(a.profileDir) == config.TaskStartSingle
+			return a.startTaskDoor(taskCrewEffortDoor{door, effort}, brief, solo)
+		}
 	}
 	// ONE WORKER'S WORK IS SAID TWO WAYS, and both are the person's own word:
 	// `/task solo` says it outright for this brief, and a standing `single` in

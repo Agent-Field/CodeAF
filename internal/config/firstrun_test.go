@@ -19,16 +19,16 @@ func TestAFreshProfileIsMissingAllThreeAndAnAnsweredOneIsNot(t *testing.T) {
 	if APIKeyConfigured(dir) || CrewConfigured(dir) || DailyBudgetConfigured(dir) {
 		t.Fatal("a profile nobody has touched must read as unanswered on all three")
 	}
-	// The crew and the ceiling both RESOLVE on that profile — to the defaults —
-	// and that is exactly what must not count.
-	if CrewAt(dir) != DefaultCrew {
-		t.Fatalf("crew resolves to %q, want the default", CrewAt(dir))
+	// The crew RESOLVES on that profile — every seat auto — and that is
+	// exactly what must not count.
+	if pins := CrewPinsAt(dir); len(pins) != 0 {
+		t.Fatalf("an untouched profile has pins %v", pins)
 	}
 
 	if err := WriteAPIKey(dir, " sk-or-v1-abc "); err != nil {
 		t.Fatal(err)
 	}
-	if err := ApplyCrew(dir, CrewMax); err != nil {
+	if err := SetCrewCap(dir, "5"); err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteDailyBudgetUSD(dir, 7); err != nil {
@@ -149,25 +149,21 @@ func TestTheAPIKeyRowMasksReadsTheShellFirstAndWritesTheProfile(t *testing.T) {
 	}
 }
 
-// THE FAMILY IS AN OPINION TOO. A person who chose a family and never pinned a
-// tier has still answered the crew, so the setup must not paper over it with a
-// preset: the law the tier rows already carry, extended to the row above them.
-// And a family nobody chose is the default, which is NOT an answer.
-func TestTheFamilyRowCountsAsAnAnsweredCrew(t *testing.T) {
+// THE ALLOWED MODELS ARE AN OPINION TOO. A person who narrowed them and never
+// pinned a seat has still answered the crew, so the setup must not paper over
+// it; and the rule nobody wrote is the default, which is NOT an answer.
+func TestTheAllowedRuleCountsAsAnAnsweredCrew(t *testing.T) {
 	dir := t.TempDir()
 	if CrewConfigured(dir) {
 		t.Fatal("a profile nobody has touched must read as unanswered")
 	}
-	if got := CrewSourceAt(dir); got != DefaultCrewSource {
-		t.Fatalf("an untouched profile reads the family as %q, want the default", got)
+	if got := CrewAllowedAt(dir).String(); got != "all" {
+		t.Fatalf("an untouched profile allows %q, want all", got)
 	}
-	if err := SetCrewSource(dir, CrewSourceAll); err != nil {
+	if err := SetCrewAllowed(dir, "open"); err != nil {
 		t.Fatal(err)
 	}
 	if !CrewConfigured(dir) {
-		t.Fatal("a profile whose family was chosen must read as answered")
-	}
-	if got := CrewSourceAt(dir); got != CrewSourceAll {
-		t.Fatalf("the family row reads %q after it was written", got)
+		t.Fatal("a profile whose allowed models were narrowed must read as answered")
 	}
 }

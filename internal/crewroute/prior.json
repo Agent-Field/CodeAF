@@ -1,0 +1,31 @@
+{
+  "measured": "2026-09-24",
+  "source": "22 real GitHub issues (14 narrow fixes, 8 open-ended), every crew scored blind by two reviewers on a 0-10 mergeability scale; docs/design/model-pool/",
+  "knee_per_usd": 5,
+  "shapes": {
+    "worker": {"prompt": 15000, "cached": 250000, "completion": 4000},
+    "planner": {"prompt": 4000, "cached": 10000, "completion": 1500},
+    "checker": {"prompt": 12000, "cached": 80000, "completion": 2200}
+  },
+  "models": [
+    {"id": "z-ai/glm-5.3-flash", "open": true, "prompt": 1.5e-7, "completion": 5e-7, "cache_read": 5e-8,
+     "intelligence": 41.8, "coding": 71.5, "agentic": 50.9, "context": 1310720},
+    {"id": "moonshotai/kimi-k3", "open": true, "prompt": 3e-6, "completion": 1.5e-5, "cache_read": 3e-7,
+     "intelligence": 43.6, "coding": 76.2, "agentic": 50.0, "context": 1048576},
+    {"id": "deepseek/deepseek-v4-flash", "open": true, "prompt": 8.246e-8, "completion": 1.6492e-7, "cache_read": 1.6492e-8,
+     "intelligence": 24.2, "coding": 56.2, "agentic": 22.2, "context": 1048576}
+  ],
+  "cells": [
+    {"class": "bugfix", "seat": "worker", "model": "z-ai/glm-5.3-flash", "quality": 4.00, "n": 14},
+    {"class": "bugfix", "seat": "planner", "model": "z-ai/glm-5.3-flash", "quality": 1.00, "n": 14},
+    {"class": "bugfix", "seat": "checker", "model": "z-ai/glm-5.3-flash", "quality": 1.57, "n": 14},
+    {"class": "bugfix", "seat": "worker", "model": "moonshotai/kimi-k3", "quality": 4.20, "n": 14},
+    {"class": "bugfix", "seat": "planner", "model": "moonshotai/kimi-k3", "quality": 1.09, "n": 14},
+    {"class": "bugfix", "seat": "checker", "model": "moonshotai/kimi-k3", "quality": 1.57, "n": 14},
+    {"class": "openended", "seat": "worker", "model": "z-ai/glm-5.3-flash", "quality": 2.00, "n": 8},
+    {"class": "openended", "seat": "planner", "model": "z-ai/glm-5.3-flash", "quality": 0.60, "n": 8},
+    {"class": "openended", "seat": "checker", "model": "z-ai/glm-5.3-flash", "quality": 1.00, "n": 8},
+    {"class": "openended", "seat": "checker", "model": "moonshotai/kimi-k3", "quality": 5.00, "n": 8},
+    {"class": "openended", "seat": "checker", "model": "deepseek/deepseek-v4-flash", "quality": 3.10, "n": 8}
+  ]
+}

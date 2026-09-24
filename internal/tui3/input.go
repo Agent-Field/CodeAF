@@ -514,10 +514,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.pick.open && msg.String() != "ctrl+c" {
 		return a.pickerKey(msg)
 	}
-	if a.crewPick.open && msg.String() != "ctrl+c" {
-		a.crewPickerKey(msg)
-		return nil
-	}
 	// AND THE THINKING CHOOSER IS MODAL ON THE CREW CHOOSER'S TERMS AND FOR ITS
 	// REASON (effortchip.go): it is five fixed words with no filter under them, so
 	// a plain letter falling through to the box would be a letter typed into a

@@ -31,6 +31,8 @@ package session
 // no request ever runs under another run's words ([Agent.openBeltRunStore]).
 
 import (
+	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"context"
 	"errors"
 	"fmt"
@@ -108,6 +110,11 @@ type RunSpec struct {
 	// probe rides are named by no door and stay the profile's.
 	WorkModel string
 	PlanModel string
+	// CheckModel is the checker the task's crew was routed to, and empty when
+	// the run was not routed — the engine then reads the check seat's own
+	// environment rung and the profile's checker row, and never the plan
+	// seat's model.
+	CheckModel string
 	// CompleterFor answers the provider a worker is seated on. The door hands
 	// the conversation's own — a run worker's calls go out the way the
 	// conversation's do — and a nil one lets the engine build each worker's
@@ -240,6 +247,10 @@ type beltRun struct {
 	// It is the same reading the row published to the surface carries, so the
 	// tree and the row cannot disagree about when the work began.
 	born time.Time
+	// crew is the crew the router picked for this run, nil when this session
+	// has no router or the run was carried on from an earlier launch
+	// (taskcrew.go). It seats the run's spec and rides its rows.
+	crew *taskCrew
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -387,6 +398,13 @@ func (a *Agent) startOrJoinTaskRun(ctx context.Context, id uint64, title, brief 
 		return true, nil
 	}
 
+	// THE CREW IS PICKED BEFORE ANYTHING IS OPENED, so a task the router
+	// refuses — the daily cap, a seat nothing allowed can sit — leaves no store
+	// and no copy behind it (taskcrew.go).
+	crew, err := a.routeTaskCrew(ctx, id, title, brief)
+	if err != nil {
+		return false, err
+	}
 	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief, false)
 	if err != nil {
 		return false, err
@@ -414,7 +432,7 @@ func (a *Agent) startOrJoinTaskRun(ctx context.Context, id uint64, title, brief 
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
 		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
-		born: born, over: make(chan struct{}),
+		born: born, over: make(chan struct{}), crew: crew,
 	}
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
@@ -430,6 +448,8 @@ func (a *Agent) startOrJoinTaskRun(ctx context.Context, id uint64, title, brief 
 		// twice rather than two pieces of work ([TaskNotice.PlanTask]). In
 		// [planStoreID]'s spelling, which is the one the plan read answers under.
 		PlanTask: planStoreID(storeID),
+		Crew:     run.crewDecision(),
+		Model:    run.crewWorker(),
 	})
 
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
@@ -557,6 +577,15 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	source := roles.Source(a.config.RolesSource)
 	workSeat, _ := roles.TierModel(source, roles.TierWorker)
 	planSeat, _ := roles.TierModel(source, roles.TierMastermind)
+	checkSeat := ""
+	// A ROUTED RUN IS SEATED ON ITS OWN CREW, all three seats, and the check
+	// seat is the checker the router picked for this task — never the plan
+	// seat's model by inheritance (taskcrew.go).
+	if d := run.crewDecision(); d != nil {
+		workSeat = d.Seat(crewroute.Worker).Send
+		planSeat = d.Seat(crewroute.Planner).Send
+		checkSeat = d.Seat(crewroute.Checker).Send
+	}
 
 	wallLeft, _ := a.config.Budget.Left()
 	if a.config.Budget.Wall > 0 && !a.startedAt.IsZero() {
@@ -579,6 +608,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		ProfileDir:   a.config.ProfileDir,
 		WorkModel:    workSeat,
 		PlanModel:    planSeat,
+		CheckModel:   checkSeat,
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 	}
 }
@@ -706,7 +736,7 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // halfway through would send the place back to guessing by title exactly when
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
-	if notice.Copy == nil || notice.PlanTask == "" {
+	if notice.Copy == nil || notice.PlanTask == "" || notice.Crew == nil {
 		for _, kept := range g.runRows(notice.ID) {
 			if kept.ID != notice.ID {
 				continue
@@ -716,6 +746,9 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 			}
 			if notice.PlanTask == "" && kept.PlanTask != "" {
 				notice.PlanTask = kept.PlanTask
+			}
+			if notice.Crew == nil && kept.Crew != nil {
+				notice.Crew = kept.Crew
 			}
 			break
 		}
@@ -791,6 +824,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		// A RUN A PERSON STOPPED IS NOT LANDED. Its work is kept where the stop's
 		// own sentence said it would be, and the ending is the stop's (stoprun.go).
 		a.settleStoppedBeltRun(run, why, summary.Cut)
+		a.settleTaskCrew(run.row, router.CrewNotKept, summary.USD)
 		return
 	}
 	if closing && summary.Outcome != beltRunOutcomeDone {
@@ -825,6 +859,13 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	}
 	a.deliverBeltRunLanding(run, summary, landing)
 	a.settleBeltRun(run, summary, landing)
+	// THE CREW'S OUTCOME: accepted when the work came home whole, not kept
+	// otherwise. A later `/redo stronger` overwrites it (taskcrew.go).
+	outcome := router.CrewNotKept
+	if summary.Outcome == beltRunOutcomeDone && landing.Refused == "" && (landing.Home == mergeMerged || landing.Home == mergeInPlace) {
+		outcome = router.CrewAccepted
+	}
+	a.settleTaskCrew(run.row, outcome, summary.USD)
 }
 
 // releaseBeltRun is the last thing every run does: it is cleared off the Agent,
@@ -1069,6 +1110,9 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		Ending: beltRunLimitEnding(summary.Limit),
 		Report: report, Result: summary.Result,
 		Changed: landing.Changed,
+		// THE CREW THAT DID IT AND WHAT IT COST, beside the estimate it was
+		// picked under, for the card's crew line.
+		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: summary.USD,
 	}
 	if landing.Branch != "" {
 		notice.Branch = landing.Branch
@@ -1165,4 +1209,22 @@ func planArchivePaths(path string) []string {
 		paths = append(paths, archived)
 	}
 	return paths
+}
+
+// crewDecision is the run's routed crew, nil when it was not routed.
+func (run *beltRun) crewDecision() *crewroute.Decision {
+	if run == nil || run.crew == nil {
+		return nil
+	}
+	decision := run.crew.decision
+	return &decision
+}
+
+// crewWorker is the routed worker's id, the model the run's row names; empty
+// when the run was not routed.
+func (run *beltRun) crewWorker() string {
+	if d := run.crewDecision(); d != nil {
+		return d.Seat(crewroute.Worker).Model
+	}
+	return ""
 }

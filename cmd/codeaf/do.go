@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/router"
 	"io"
 	"log"
 	"os"
@@ -176,6 +178,14 @@ type headlessOutcome struct {
 	PlanModel       string `json:"plan_model"`
 	ModelSource     string `json:"model_source"`
 	PlanModelSource string `json:"plan_model_source"`
+	// crew is the router's decision for this run — the class it read the task
+	// as, every seat's pick and the estimate — and nil when nothing routed.
+	// The envelope carries it as `class`, `crew`, `est_usd` beside `spend`,
+	// which is the actual (envelope.go's [legacyErrandFields]).
+	crew *crewroute.Decision
+	// checkModel and checkModelSource are the third seat, beside the two
+	// above.
+	checkModel, checkModelSource string
 	// Subharness is the worker that took the deliverable, read back from the
 	// durable row rather than from what was asked for. It is always present and
 	// never empty, because an absent key is indistinguishable from an older
@@ -314,6 +324,14 @@ func runDo(args []string) error {
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", planModelFlagHelp)
 	checkModel := flags.String("check-model", "", checkModelFlagHelp)
+	// HOW HARD TO TRY THIS ONE TASK, said on the command line and sticking to
+	// nothing: --best puts the strongest crew the allowed models make on it,
+	// --cheap the cheapest, and --pin seats one seat for this run alone. The
+	// three seat flags above are one-task pins too (config.ResolveSeats).
+	best := flags.Bool("best", false, "run this task on the strongest crew your allowed models make")
+	cheap := flags.Bool("cheap", false, "run this task on the cheapest crew your allowed models make")
+	var pins pinFlags
+	flags.Var(&pins, "pin", "pin one seat for this run only: worker=model[@provider], planner=… or checker=… (repeatable)")
 	// A FLAG IS DOCUMENTED BY WHAT IT DOES, NOT BY WHAT IT SETS. These two said
 	// "…; sets CODEAF_CONTEXT_FILL_PCT for this run", which is the
 	// implementation, and hard-coded their defaults in prose while their own
@@ -356,7 +374,18 @@ func runDo(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *best && *cheap {
+		return fmt.Errorf("--best and --cheap ask for two different crews · say one")
+	}
+	effort := crewroute.EffortKnee
+	switch {
+	case *best:
+		effort = crewroute.EffortBest
+	case *cheap:
+		effort = crewroute.EffortCheap
+	}
 	return doErrand(doRequest{
+		effort: effort, pins: pins.pins,
 		task: task, run: run, database: *database, keep: *keep, workspace: *workspace,
 		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel, checkModel: *checkModel,
@@ -382,6 +411,10 @@ type doRequest struct {
 	model      string
 	planModel  string
 	checkModel string
+	// effort and pins are the one-task crew words: --best or --cheap, and
+	// every --pin. They move this run's crew and nothing after it.
+	effort crewroute.Effort
+	pins   map[crewroute.Seat]config.CrewPin
 	// contextFill and completionReserve are this run's two dials on the window
 	// law (internal/ctxbudget). They are integers rather than a struct because
 	// zero has to mean "not asked for": the law's own defaults are the answer
@@ -491,19 +524,79 @@ func doErrand(request doRequest) error {
 	if err == nil {
 		useAutoSeats(settings)
 	}
-	seats := config.ResolveSeats(config.ProfileDir(), request.model, request.planModel)
-	// THE CHECK SEAT RESOLVES AT THE DOOR: its flag, its environment, a plan
-	// seat pinned by flag or environment, then the crew's careful row.
-	seats.Check = config.CheckSeat(request.checkModel, seats.Plan)
+	profileDir := config.ProfileDir()
+	// A PROFILE WRITTEN BEFORE CREWS WERE ROUTED IS MIGRATED ONCE, and the one
+	// line saying so is said here, on stderr, where a person reads the models
+	// line (internal/config's crewmigrate.go).
+	if line, _ := config.MigrateCrew(profileDir); line != "" {
+		fmt.Fprintln(request.stderr, line)
+	}
+	// THE CREW IS ROUTED FOR THIS TASK: the flags and the environment are
+	// one-task pins, a --pin is one too, and every seat nothing named is picked
+	// for what the task reads as (config.ResolveSeats). THE CHECK SEAT IS ITS
+	// OWN SEAT and never inherits the planner's model.
+	repo := request.workspace
+	if repo == "" {
+		repo, _ = os.Getwd()
+	}
+	if abs, err := filepath.Abs(repo); err == nil {
+		repo = abs
+	}
+	seats, err := config.ResolveSeats(profileDir, config.SeatFlags{
+		Model: request.model, PlanModel: request.planModel, CheckModel: request.checkModel,
+	}, config.CrewAsk{
+		Task: crewroute.Task{Text: request.task}, Effort: request.effort, Pins: request.pins, Repo: repo,
+	})
+	if err != nil && !errors.Is(err, config.ErrCrewAtCap) {
+		// A SEAT NOTHING ALLOWED CAN SIT, or a pin that will not route, is said
+		// before anything is opened: there is no crew to run on.
+		if !request.asJSON {
+			return err
+		}
+		outcome := failedErrand(err, started)
+		outcome.run = request.run
+		return reportErrand(request, outcome)
+	}
+	if errors.Is(err, config.ErrCrewAtCap) && !request.yesSpend {
+		// AT THE DAILY CAP A HEADLESS RUN REFUSES: nobody is there to ask, and a
+		// cap that spends anyway is not a cap. -yes-spend is the one way past.
+		capErr := fmt.Errorf("today's crew spend has reached the daily cap of %s · raise it with `/crew cap`, run with --cheap, or pass -yes-spend",
+			crewroute.Money(config.CrewCapAt(profileDir)))
+		if !request.asJSON {
+			return capErr
+		}
+		outcome := failedErrand(capErr, started)
+		outcome.seated(seats)
+		outcome.run = request.run
+		return reportErrand(request, outcome)
+	}
 	fmt.Fprintln(request.stderr, seats.Report())
+	call := router.CrewCallID(request.run)
+	if seats.Crew != nil {
+		config.LogCrewDecision(profileDir, call, *seats.Crew, repo, crewTitle(request.task))
+	}
 	outcome, err := errandRun(request, seats, started)
 	if err != nil {
 		if !request.asJSON {
+			if seats.Crew != nil {
+				config.LogCrewOutcome(profileDir, call, *seats.Crew, repo, crewTitle(request.task), router.CrewNotKept, 0)
+			}
 			return err
 		}
 		outcome = failedErrand(err, started)
 	}
 	outcome.seated(seats)
+	// THE CREW'S OUTCOME, beside its decision in the router's log: accepted
+	// when the run came home done, not kept otherwise — and the summary line
+	// with the actual beside the estimate.
+	if seats.Crew != nil {
+		settled := router.CrewNotKept
+		if outcome.resolvedStop() == stopDone {
+			settled = router.CrewAccepted
+		}
+		config.LogCrewOutcome(profileDir, call, *seats.Crew, repo, crewTitle(request.task), settled, outcome.Spend)
+		fmt.Fprintln(request.stderr, "crew: "+seats.Crew.Line(config.PinMark, outcome.Spend))
+	}
 	// THE RUN NAMES ITSELF ON EVERY PATH, including the one where nothing
 	// worked: the id is what joins this object to the rows the model-call log
 	// wrote and to the debug record's folder, and a run that fell over after
@@ -542,6 +635,56 @@ func (o *headlessOutcome) seated(seats config.Seats) {
 	o.PlanModel = seats.Plan.Model
 	o.ModelSource = seats.Work.Rung()
 	o.PlanModelSource = seats.Plan.Rung()
+	o.checkModel, o.checkModelSource = seats.Check.Model, seats.Check.Rung()
+	o.crew = seats.Crew
+}
+
+// crewTitle is the first line of a task, cut short: what the router's log
+// names a headless task by.
+func crewTitle(task string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(task), "\n")
+	if runes := []rune(line); len(runes) > 80 {
+		line = string(runes[:80]) + "…"
+	}
+	return line
+}
+
+// pinFlags is the repeatable --pin: seat=model[@provider], one per flag.
+type pinFlags struct {
+	pins map[crewroute.Seat]config.CrewPin
+}
+
+func (p *pinFlags) String() string {
+	if p == nil || len(p.pins) == 0 {
+		return ""
+	}
+	var said []string
+	for _, seat := range crewroute.Seats {
+		if pin, ok := p.pins[seat]; ok {
+			said = append(said, string(seat)+"="+pin.String())
+		}
+	}
+	return strings.Join(said, ",")
+}
+
+func (p *pinFlags) Set(raw string) error {
+	seatWord, value, ok := strings.Cut(raw, "=")
+	seat, known := config.ParseCrewSeat(seatWord)
+	if !ok || !known {
+		return fmt.Errorf("--pin takes seat=model[@provider], and the seat is worker, planner or checker")
+	}
+	pin, auto, err := config.ParseCrewPin(value)
+	if err != nil {
+		return err
+	}
+	if auto {
+		return fmt.Errorf("--pin %s=auto pins nothing · leave the flag off to have the seat routed", seat)
+	}
+	if p.pins == nil {
+		p.pins = map[crewroute.Seat]config.CrewPin{}
+	}
+	p.pins[seat] = pin
+	return nil
 }
 
 // errandRun is the errand itself: everything from opening a store to composing
