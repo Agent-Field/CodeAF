@@ -470,8 +470,8 @@ func TestTheFilterReachesAnotherWindowsWork(t *testing.T) {
 	if !strings.Contains(page, "Port the parser") {
 		t.Fatalf("the filter lost the row it matched:\n%s", page)
 	}
-	if strings.Contains(page, "Sweep the call sites") {
-		t.Fatalf("the filter did not reach another window's rows:\n%s", page)
+	if !strings.Contains(page, "Sweep the call sites") {
+		t.Fatalf("the filter split another window's matching conversation:\n%s", page)
 	}
 }
 
