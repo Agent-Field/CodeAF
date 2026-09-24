@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -149,7 +150,7 @@ func TestAMemberIsOfferedThePostAndNoManagersVerb(t *testing.T) {
 	}
 }
 
-func TestNoTeamNoManagerNoProfileAndATaskAreOfferedNothing(t *testing.T) {
+func TestNoTeamNoManagerAnEmptyProfileAndATaskAreOfferedNothing(t *testing.T) {
 	cases := map[string]func(t *testing.T) *Agent{
 		"a conversation in no team": func(t *testing.T) *Agent {
 			fixture := newTeamFixture(t, true)
@@ -161,7 +162,12 @@ func TestNoTeamNoManagerNoProfileAndATaskAreOfferedNothing(t *testing.T) {
 			fixture := newTeamFixture(t, false)
 			return teamAgent(t, fixture, fixture.web, nil, nil)
 		},
-		"a conversation handed no profile": func(t *testing.T) *Agent {
+		// AN EMPTY PROFILE IS THE ORDINARY LAUNCH AND READS THE STATE ROOT'S
+		// teams.json, which here is a root of this test's own holding no team.
+		// The fixture's team is in another directory, so the manager's journal
+		// is nobody's manager on this launch.
+		"a conversation whose own profile holds no team": func(t *testing.T) *Agent {
+			t.Setenv(home.EnvVar, t.TempDir())
 			fixture := newTeamFixture(t, true)
 			return teamAgent(t, fixture, fixture.manager, nil, func(config *Config) { config.ProfileDir = "" })
 		},
