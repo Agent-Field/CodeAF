@@ -221,37 +221,97 @@ func (a *app) crewLine(d *crewroute.Decision, actual float64) string {
 	if d == nil {
 		return ""
 	}
-	return d.Line(a.icon(tokens.GPinned), actual)
+	return d.Line(crewPinMark(a.linear), actual)
 }
 
-// sayTaskCrew puts a routed task's crew line in the thread twice: when the
-// task starts, with the estimate, and when it lands, with what it cost beside
-// the estimate and the one door to asking again harder. Each is said once per
-// task, whatever number of updates the row goes through.
+// crewPinMark is the pin in a crew line: the plain glyph, ⌖, and never the
+// rich tier's. The line is TEXT kept in the transcript — read back tomorrow,
+// copied out, drawn in a terminal whose font was never asked — and a private-
+// use codepoint there is a blank cell, which is how a pinned checker read as
+// "checker  kimi-k3". Under the linear reading there is no glyph, and the line
+// says the word instead (crewroute's seatModel).
+func crewPinMark(linear bool) string {
+	if linear {
+		return ""
+	}
+	return tokens.Plain.Glyph(tokens.GPinned)
+}
+
+// sayTaskCrew keeps a routed task's crew line in the thread: ONE line, said
+// when the task starts with the estimate, and REWRITTEN IN PLACE as the task
+// goes — a seat that failed to start and moved to its fallback, and at the end
+// what it cost beside the estimate and the one door to asking again harder.
+// Two lines for one crew read as two crews; the second said nothing the first
+// could not carry.
 func (a *app) sayTaskCrew(notice session.TaskNotice) {
 	if notice.Crew == nil {
 		return
 	}
 	if a.crewSaid == nil {
-		a.crewSaid = map[uint64]string{}
+		a.crewSaid = map[uint64]crewLineSaid{}
+	}
+	said := a.crewSaid[notice.ID]
+	if said.landed {
+		return
 	}
 	lead := "task " + strconv.FormatUint(notice.ID, 10) + " crew · "
+	var text string
+	var facts []string
 	switch notice.State {
 	case session.TaskRunning:
-		if a.crewSaid[notice.ID] != "" {
-			return
-		}
-		a.crewSaid[notice.ID] = "started"
-		a.noteFacts(lead+a.crewLine(notice.Crew, -1), crewroute.ShortModel(notice.Crew.Seat(crewroute.Worker).Model))
-	case session.TaskDone, session.TaskFailed, session.TaskUnverified:
-		if a.crewSaid[notice.ID] == "landed" {
-			return
-		}
-		a.crewSaid[notice.ID] = "landed"
-		a.noteFacts(lead+a.crewLine(notice.Crew, notice.CostUSD)+" · not right? /redo stronger",
-			crewroute.Money(notice.CostUSD))
+		text = lead + a.crewLine(notice.Crew, -1)
+		facts = []string{crewroute.ShortModel(notice.Crew.Seat(crewroute.Worker).Model)}
+	case session.TaskFailed:
+		// A TASK THAT FAILED ASKS FOR THE NEXT STEP BY NAME: the stronger crew
+		// is the one thing on this line a person can do about it.
+		text = lead + a.crewLine(notice.Crew, notice.CostUSD) + " · " + crewFailedWord
+		facts = []string{crewroute.Money(notice.CostUSD)}
+		said.landed = true
+	case session.TaskDone, session.TaskUnverified:
+		text = lead + a.crewLine(notice.Crew, notice.CostUSD) + " · not right? /redo stronger"
+		facts = []string{crewroute.Money(notice.CostUSD)}
+		said.landed = true
+	default:
+		return
 	}
+	if text == said.text {
+		return
+	}
+	if said.text == "" || !a.feed.renote(said.text, text, facts) {
+		a.noteFacts(text, facts...)
+	}
+	said.text, said.facts = text, facts
+	a.crewSaid[notice.ID] = said
 }
+
+// crewAfterStarted keeps a task's two lines in one order: `started` first,
+// then its crew. The two arrive on different roads — the start answer from
+// the command, the crew on the task's first row — and either can come first;
+// when the crew line is already in the thread, it is rewritten into the
+// started line and said again after it, so the thread reads the same every
+// time. It answers whether it wrote the started line.
+func (a *app) crewAfterStarted(id string, started string, startedFacts []string) bool {
+	n, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return false
+	}
+	said, ok := a.crewSaid[n]
+	if !ok || said.text == "" || !a.feed.renote(said.text, started, startedFacts) {
+		return false
+	}
+	a.noteFacts(said.text, said.facts...)
+	return true
+}
+
+// crewLineSaid is one task's crew line as the thread holds it.
+type crewLineSaid struct {
+	text   string
+	facts  []string
+	landed bool
+}
+
+// crewFailedWord ends a failed task's crew line.
+const crewFailedWord = "failed — /redo stronger runs it again on a stronger crew"
 
 // ── the one reading every crew surface answers from ─────────────────────────
 

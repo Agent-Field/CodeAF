@@ -2405,10 +2405,11 @@ type app struct {
 	// call on the conversation's own model and the crew on disk seats nothing,
 	// so the readings built from it name the flag ([Options.OneModel], #444).
 	oneModel bool
-	// crewSaid is which routed tasks this session has already said the crew
-	// line for, and at which end — started or landed (crew.go's
-	// [app.sayTaskCrew]) — so a row that updates twenty times says it twice.
-	crewSaid map[uint64]string
+	// crewSaid is the crew line this session has said for each routed task,
+	// and whether the task has landed (crew.go's [app.sayTaskCrew]): the line
+	// is said once and rewritten in place, so a row that updates twenty times
+	// is one line in the thread.
+	crewSaid map[uint64]crewLineSaid
 	// notices is what this surface has told the person and may tell them next —
 	// the earned hints and the news line, over the profile's ledger (notice.go).
 	notices noticeBoard
@@ -4764,7 +4765,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// person names this node to any other command on the surface and the
 			// title is how they recognize it in the roster, so those two step up
 			// while the mode word and `started` stay in the note's own dim.
-			a.noteFacts(msg.kind+" task "+msg.id+" started · "+msg.title, msg.id, msg.title)
+			started := msg.kind + " task " + msg.id + " started · " + msg.title
+			if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
+				a.noteFacts(started, msg.id, msg.title)
+			}
 			// AND WHERE THE WORK STANDS, when the engine had something to say
 			// about it: the ground ladder's redirect, said when the work goes
 			// somewhere other than where it was asked to go. Its own dim line

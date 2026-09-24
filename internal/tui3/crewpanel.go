@@ -338,6 +338,18 @@ func (p *crewPanel) read(dir string) {
 		}
 	}
 	p.usual, p.usualSeen = crewUsual(p.log, p.suggest)
+	// "USUALLY" NAMES ONLY WHAT A SEAT COULD BE GIVEN TODAY: a model the recent
+	// tasks ran that is no longer offered — its route quarantined, its model
+	// demoted, never seatable — gives way to what the router would pick now.
+	offered := map[string]bool{}
+	for _, offer := range p.offers {
+		offered[crewroute.ShortModel(offer.Model.ID)] = true
+	}
+	for seat, model := range p.usual {
+		if !offered[model] {
+			p.usual[seat], p.usualSeen[seat] = crewroute.ShortModel(p.suggest[seat]), false
+		}
+	}
 	if p.rule.Base == crewroute.BasePrice {
 		p.priceIn, p.priceOut = p.rule.MaxIn, p.rule.MaxOut
 	}
