@@ -685,22 +685,27 @@ task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-
 
 The first word is the kind of work the task was read as. The worker's provider is named
 because it is where the money goes; the planner is named when it is another model than the
-worker; a seat you pinned wears the pin mark `⌖`. A task that failed ends its line on
-`failed — /redo stronger runs it again on a stronger crew`. `/task --best` that changes
+worker; a seat you pinned wears the pin mark `⌖`. A task that failed leads its line with
+`failed — /redo stronger runs it again on a stronger crew`, and one that spent nothing
+names no money. `/task --best` that changes
 nothing says `best · already the strongest measured crew`, and one that does names the rung
 (`worker glm-5.3-flash → kimi-k3`).
 
 **A seat whose model cannot start moves, inside the task.** When a seat's first call is
 refused, the seat goes down its ladder: the same model on its next route, then the next
 model for the seat at a similar cost, then the model the last good crew here used, then the
-model you are talking to. The line says so — `running on fallback crew · worker
+model you are talking to — never a rung on an account that has just said it is out of
+credit or refused its key. The line says so first — `running on fallback crew · worker
 glm-5.3-flash → deepseek-v4-flash (credit unavailable on openrouter)` — and with nothing left
-the task stops on the one thing to do: `add credit on openrouter to continue`, `reconnect
-openrouter with /connect`, or when the limit resets. What each route did is kept: a route
+the task stops on the one thing to do, which leads its line in place of `/redo stronger`
+(a stronger crew would meet the same wall): `failed — add credit on openrouter to
+continue`, `reconnect openrouter with /connect`, or when the limit resets. What each route did is kept: a route
 that refused a model is left out for a week, one at its limit rests until its reset, an
 account out of credit is skipped until a paid call on it answers again. Free routes are
 off unless you turn them on; when every paid route is out of reach they are used anyway,
-and the line says `free routes may log prompts`.
+and the line says `free routes may log prompts`. A free pool can be pinned by name —
+`/crew pin worker vendor/model:free` — and picking a model's `free` route in a seat's
+list pins that pool, not the paid route beside it.
 
 ### Redo stronger
 
