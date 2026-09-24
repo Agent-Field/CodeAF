@@ -314,7 +314,7 @@ func TestTheArgumentTokenAnswersEveryPathCommand(t *testing.T) {
 		query string
 		ok    bool
 	}{
-		{"/image shot.png", 7, "shot.png", true},
+		{"/attach shot.png", 8, "shot.png", true},
 		{"/export notes/today.md", 8, "notes/today.md", true},
 		{"/EXPORT notes.md", 8, "notes.md", true},
 		{"/export ", 8, "", true},

@@ -17,7 +17,7 @@ import (
 // loop lets go, which for a `bash` holding a leaked pipe or a `jobs` kill is
 // three or four seconds, and for the whole of that window the surface went on
 // drawing what arrived. What is pinned here is the law that closed it: the frame
-// after ctrl+c shows no motion, claims "working" nowhere, and draws nothing new
+// after esc shows no motion, claims "working" nowhere, and draws nothing new
 // until the turn is over ([app.windingDown], [keptAfterStop], [stoppingWord]).
 
 // stoppingApp is a turn caught mid-flight, with the two things on screen that a
@@ -83,20 +83,20 @@ func TestTheFrameStillsOnTheKeyAndClaimsWorkingNowhere(t *testing.T) {
 		t.Fatalf("the turn was not working before the key:\n%s", before)
 	}
 
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 	if agent.stops != 1 {
 		t.Fatalf("esc did not stop the turn (%d)", agent.stops)
 	}
 	after := plain(frame(a))
 	if strings.Contains(after, stateWorking.String()) {
-		t.Fatalf("the frame after ctrl+c still says working:\n%s", after)
+		t.Fatalf("the frame after esc still says working:\n%s", after)
 	}
 	// THE SPINNER IS THE MOTION, and there are two of it on this frame — the
 	// status line's and the tool row's. Neither cell may survive the key: a still
 	// frame with one thing turning in it is the surface insisting on something
 	// the person has just ended.
 	if strings.ContainsAny(after, spinnerFrames()) {
-		t.Fatalf("a spinner is still turning after ctrl+c:\n%s", after)
+		t.Fatalf("a spinner is still turning after esc:\n%s", after)
 	}
 	// AND THE ROW CARRIES ITS OWN END, rather than merely being drawn quietly
 	// because the session happens not to be working.
@@ -110,10 +110,10 @@ func TestTheFrameStillsOnTheKeyAndClaimsWorkingNowhere(t *testing.T) {
 // takes, and gives the word up for the fact the moment the stream closes.
 func TestTheStatusLineSaysStoppingUntilTheStreamCloses(t *testing.T) {
 	a, _ := stoppingApp(t)
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 
 	if !a.windingDown() {
-		t.Fatal("the surface is not winding down after ctrl+c")
+		t.Fatal("the surface is not winding down after esc")
 	}
 	word, painted := a.stateWord()
 	if word != stoppingWord {
@@ -146,7 +146,7 @@ func TestTheStatusLineSaysStoppingUntilTheStreamCloses(t *testing.T) {
 // drew a fresh tool row in the same place, for work that was never going to run.
 func TestNothingArrivingAfterTheStopIsDrawn(t *testing.T) {
 	a, _ := stoppingApp(t)
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 	was := len(a.entries)
 	said := stoppedFrame(a)
 
@@ -238,7 +238,7 @@ func TestTheStoppedFramesComparisonStillCoversTheHead(t *testing.T) {
 // of ([keptAfterStop]).
 func TestALateToolCloseStillLandsOnTheRowItBelongsTo(t *testing.T) {
 	a, _ := stoppingApp(t)
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 	was := len(a.entries)
 
 	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventToolEnd,
@@ -259,7 +259,7 @@ func TestALateToolCloseStillLandsOnTheRowItBelongsTo(t *testing.T) {
 // and the usage rides on the two events that end one.
 func TestTheStoppedTurnStillTakesItsUsage(t *testing.T) {
 	a, _ := stoppingApp(t)
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 
 	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTurnDone,
 		Usage: session.Usage{Input: 900, Output: 100, CostUSD: 0.25}}})
@@ -271,6 +271,97 @@ func TestTheStoppedTurnStillTakesItsUsage(t *testing.T) {
 	}
 }
 
+// ── 3. the esc mash ─────────────────────────────────────────────────────────
+
+// THE EVERYDAY GESTURE: a person mashes esc at a turn they want stopped. The
+// first one stops it; the second, inside [rewindArmWindow], opens the rewind
+// over a conversation they were not thinking about cutting; the third leaves.
+//
+// NOTHING DESTRUCTIVE CAN COME OF IT. The mode does nothing without enter, esc
+// puts the sentence they were typing back exactly as it was, and the engine is
+// never asked to cut anything.
+func TestMashingEscStopsTheTurnAndLeavesTheConversationWhole(t *testing.T) {
+	a, agent := newRewindApp(t, rewindPast())
+	drive(t, a, submittedMsg{ch: make(chan session.Event)})
+	a.state = stateWorking
+	for _, r := range "half a thought" {
+		drive(t, a, key(string(r)))
+	}
+
+	drive(t, a, key("esc"))
+	if agent.stops != 1 {
+		t.Fatalf("the first esc did not stop the turn (%d)", agent.stops)
+	}
+	// Counted AFTER the stop, because the stop writes its own `interrupted` line
+	// and that line is the one thing a mash is supposed to leave behind.
+	before := len(a.entries)
+	drive(t, a, key("esc"))
+	if !a.rew.on {
+		t.Fatal("the second esc did not open the rewind")
+	}
+	// THE MODE OPENS CALM. Nothing has been cut, and the draft is being held
+	// rather than spent.
+	if len(agent.cuts) != 0 {
+		t.Fatalf("opening the mode cut the conversation at %v", agent.cuts)
+	}
+	if got := string(a.rew.draft); got != "half a thought" {
+		t.Fatalf("the mode is holding %q, want the sentence in the box", got)
+	}
+
+	drive(t, a, key("esc"))
+	if a.rew.on {
+		t.Fatal("the third esc did not leave the mode")
+	}
+	if len(agent.cuts) != 0 {
+		t.Fatalf("mashing esc cut the conversation at %v", agent.cuts)
+	}
+	if got := string(a.input.value); got != "half a thought" {
+		t.Fatalf("the sentence came back as %q", got)
+	}
+	if len(a.entries) != before {
+		t.Fatalf("mashing esc changed the conversation: %d blocks, was %d", len(a.entries), before)
+	}
+	// AND THE STOP IS STILL THE STOP. The rewind rode on top of it and took
+	// nothing from it.
+	if agent.stops != 1 {
+		t.Fatalf("the mash stopped the turn %d times", agent.stops)
+	}
+}
+
+// A MASH THAT KEEPS GOING IS STILL SAFE. Past the third key the pair starts over
+// — arm, open, leave — and the sentence survives every round of it.
+func TestAnEndlessEscMashNeverCutsAnything(t *testing.T) {
+	a, agent := newRewindApp(t, rewindPast())
+	drive(t, a, submittedMsg{ch: make(chan session.Event)})
+	a.state = stateWorking
+	for _, r := range "keep me" {
+		drive(t, a, key(string(r)))
+	}
+
+	for range 9 {
+		drive(t, a, key("esc"))
+	}
+	if len(agent.cuts) != 0 {
+		t.Fatalf("nine escs cut the conversation at %v", agent.cuts)
+	}
+	// The mode is either up holding the sentence or down with it back in the
+	// box; both are the same promise, and one of the two is always true.
+	held := string(a.input.value)
+	if a.rew.on {
+		held = string(a.rew.draft)
+	}
+	if held != "keep me" {
+		t.Fatalf("the sentence is %q after nine escs", held)
+	}
+}
+
+// ── 4. the same law in a task's room ────────────────────────────────────────
+
+// THE ROOM SAYS THE SAME WORD. Stopping a node is not esc — in a room esc is the
+// door and never a stop (stop.go) — but the window after the answer is the
+// conversation's window exactly: the child's context is cut and the child is
+// winding up, and for the whole of it this header used to read "working" about
+// work the person had just ended.
 func TestAStoppedNodesRoomSaysStoppingRatherThanWorking(t *testing.T) {
 	a, _ := stopApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash",

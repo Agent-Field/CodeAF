@@ -512,7 +512,8 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 			return nil
 		}
-		return a.openHome()
+		a.leavePlace()
+		return nil
 	case "up", "ctrl+p":
 		a.moveSpend(-1)
 		a.touch()
@@ -956,11 +957,11 @@ func (placeSpend) hint(a *app) string {
 	}
 	if len(parts) == 0 {
 		// A PAGE WITH NOTHING ON IT STILL HAS A WAY OUT, and that is all it has.
-		// [placeTailed] adds `tab next place`, so this is `esc home` rather than
+		// [placeTailed] adds `tab next place`, so this is `esc close` rather than
 		// a foot naming three keys over an empty ledger.
-		return homeDoorWord
+		return mapCloseWords
 	}
-	return strings.Join(parts, railSep) + railSep + homeDoorWord
+	return strings.Join(parts, railSep) + railSep + mapCloseWords
 }
 
 func (placeSpend) press(a *app, y int) (tea.Cmd, bool) {

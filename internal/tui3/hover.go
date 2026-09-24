@@ -631,7 +631,9 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if a.copy.on || a.pick.open {
 				return hoverAt{}
 			}
-			if a.seamProjectSpan.holds(x) {
+			// THE PROJECT IS ON THIS ROW ONLY AT THE PHONE TIER; everywhere else
+			// it is the keys row's (footswap.go's [app.hintRow]), read below.
+			if !a.seamCarriesTelemetry() && a.seamProjectSpan.holds(x) {
 				return hoverAt{kind: hoverSeamProject}
 			}
 			if a.seamModelSpan.holds(x) {
@@ -670,6 +672,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// (statusdeck.go's [app.deckPress]).
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
+			}
+			// THE PROJECT AT THE ROW'S RIGHT END IS A DOOR (footswap.go's
+			// [app.hintRow] records it; [app.seamProjectPress] answers it).
+			if a.seamProjectSpan.holds(x) {
+				return hoverAt{kind: hoverSeamProject}
 			}
 			// THE LAST ROW IS THE KEYS and lights nothing: the home door on it
 			// answers through its own reading (home.go's [app.homeDoorPress]),

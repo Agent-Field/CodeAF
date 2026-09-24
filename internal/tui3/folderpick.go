@@ -204,7 +204,7 @@ type folderPick struct {
 	// A FOLDER IS NEVER `held` ON THIS SHEET. `held` means "the conversation is
 	// already about this", and the conversation this sheet is about does not
 	// exist yet — so every folder on it is one that can be chosen, and the row
-	// never offers to remove one ([app.openTargetFolderPick] leaves the map
+	// never offers to remove one ([app.openTargetContextPick] leaves the map
 	// empty for exactly that reason).
 	forTarget bool
 

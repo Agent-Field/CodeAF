@@ -675,7 +675,9 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	chip := a.jumpChip(width)
 	jumped := false
 	// addGap spends one row of the ladder, and hands it to the chip if the chip
-	// has not been placed yet.
+	// has not been placed yet. THE TIP DOES NOT RIDE THIS ROW: it is the keys
+	// row's lowest rung at the foot (render.go's [app.footHint]), which is
+	// where it was before 2026-09-22 and where the owner put it back.
 	addGap := func() {
 		if chip != "" && !jumped {
 			jumped = true

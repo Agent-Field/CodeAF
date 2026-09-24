@@ -15,7 +15,7 @@ before each further try. A response proves endpoint reachability, not that every
 internet service is healthy. No separate public ping service is involved.
 
 Connection recovery waits up to two minutes, or less if that call already had
-a shorter deadline. Ctrl+C or Stop work cancels your call immediately; other calls
+a shorter deadline. Esc or Stop work cancels your call immediately; other calls
 still waiting keep their shared check. If the connection does not return, codeaf
 says `connection is still unavailable; try again when connected`.
 
