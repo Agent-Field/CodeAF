@@ -261,3 +261,46 @@ func TestAHostedSeamThatHoldsNothingYetIsReadOffTheLoop(t *testing.T) {
 		t.Fatalf("the read off the loop: loaded %v, %+v, %d reads", a.wall.loaded, a.wall.teams, far.reads)
 	}
 }
+
+// THE LOCAL SEAM CARRIES THE DELEGATION DOORS ONTO THIS PROFILE, and a seam
+// handed without them says so. A packet raised through the local seam is read
+// back through it, a second read at the stamp is same, and the spend of a team
+// nobody has spent in is zero with a stamp that answers same.
+func TestTheLocalTeamsSeamCarriesTheDelegationDoors(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	var watch teamstore.Watch
+	seam := localTeams(dir, &watch)
+	if !seam.delegation() {
+		t.Fatal("the local seam has no delegation doors")
+	}
+	if (TeamsSeam{Load: seam.Load, Update: seam.Update}).delegation() {
+		t.Fatal("a seam without the doors says it has them")
+	}
+	if err := teamstore.Save(dir, []teamstore.Team{{ID: "0a0a0a0a0a0a", Name: "harbor", Manager: "hm",
+		Members: []teamstore.Member{{Key: "hm", Handle: "boss"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := seam.Defaults(); err != nil || d.DepthLimit != 3 {
+		t.Fatalf("defaults %+v %v", d, err)
+	}
+	p, err := seam.Raise(teamstore.Packet{Team: teamstore.Person, Origin: "0a0a0a0a0a0a",
+		Kind: teamstore.PacketQuestion, RaisedBy: "boss", Question: "Friday or Monday?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine, stamp, same, err := seam.Packets(teamstore.Person, "")
+	if err != nil || same || len(mine) != 1 || mine[0].ID != p.ID {
+		t.Fatalf("the person's packets %+v %v %v", mine, same, err)
+	}
+	if _, _, same, _ := seam.Packets(teamstore.Person, stamp); !same {
+		t.Fatal("a quiet read was not same")
+	}
+	spend, at, same, err := seam.Spend("0a0a0a0a0a0a", "", "")
+	if err != nil || same || spend.USD != 0 {
+		t.Fatalf("spend %+v %v %v", spend, same, err)
+	}
+	if _, _, same, _ := seam.Spend("0a0a0a0a0a0a", "", at); !same {
+		t.Fatal("a quiet spend was not same")
+	}
+}

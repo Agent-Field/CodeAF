@@ -169,6 +169,11 @@ var frameForbidden = map[string]map[string]bool{
 	"teamstore": {
 		"Load": true, "LoadHued": true, "Save": true, "Update": true, "SetAside": true,
 		"AppendTraffic": true, "ReadTraffic": true,
+		// The delegation store's doors (DESIGN.md section 8), every one a read
+		// or a write of a file.
+		"DefaultsAt": true, "Raise": true, "Decide": true, "Escalate": true,
+		"OpenPackets": true, "Packets": true, "PacketByID": true, "PacketsStamp": true,
+		"TeamSpend": true, "TeamSpendIn": true, "TeamSpendStamp": true, "Delete": true,
 	},
 }
 
