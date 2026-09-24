@@ -32,6 +32,7 @@ func trafficApp(t *testing.T) (a *app, harbor string, older, newer *fakeAgent) {
 			}
 		}
 	}
+	teamsFlush(t, a)
 	if got := mustTeam(t, a, harbor); got.Manager != front {
 		t.Fatalf("the fixture's manager is %q", got.Manager)
 	}
@@ -66,8 +67,10 @@ func trafficAppend(t *testing.T, a *app, id string, entries ...teamstore.Entry) 
 // trafficReadNow is one turn of the Traffic read, run and folded in.
 func trafficReadNow(t *testing.T, a *app) {
 	t.Helper()
+	teamsFlush(t, a)
 	a.traffic.reading = false
 	spend(t, a, a.trafficRead())
+	teamsFlush(t, a)
 }
 
 // THE RAIL IS THE CACHE, BESIDE THE MANAGER, AND IT HOLDS THE RIGHT. With the
@@ -263,23 +266,38 @@ func TestTrafficRailNarrowIsACard(t *testing.T) {
 	}
 }
 
-// A QUIET TURN OF THE CLOCK READS NOTHING AND DRAWS NOTHING. The stamps it
-// took match the ones kept, so no read starts and the frame before stands;
-// a log that moved is read.
+// A QUIET TURN OF THE CLOCK READS NOTHING AND DRAWS NOTHING. The turn asks the
+// seam, which answers a log that has not moved and a teams file at its stamp
+// with nothing; the fold changes nothing, the frame before stands, and the
+// clock counts the quiet turn. A log that moved is read on the next turn.
 func TestTrafficQuietTickReadsNothing(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	trafficReadNow(t, a)
 	a.traffic.ticking = true
-	stamp := trafficStat(teamstore.TrafficPath(a.profileDir, harbor))
-	a.traffic.logs = map[string]trafficStamp{harbor: stamp}
-	a.traffic.teamsAt = trafficStat(teamstore.Path(a.profileDir))
-	msg := trafficTickMsg{teams: a.traffic.teamsAt, ids: []string{harbor}, logs: []trafficStamp{stamp}}
-	if _, quiet := a.trafficTick(msg); !quiet || a.traffic.reading {
-		t.Fatalf("a quiet turn started a read (quiet %v, reading %v)", quiet, a.traffic.reading)
+	turn := func() {
+		t.Helper()
+		cmd, quiet := a.trafficTick(trafficTickMsg{})
+		if !quiet || cmd == nil {
+			t.Fatalf("a turn of the clock drew (quiet %v) or asked nothing", quiet)
+		}
+		door, ok := cmd().(doorMsg)
+		if !ok {
+			t.Fatal("the turn's read is not a door beside the line")
+		}
+		if next := door.fold(true); next == nil {
+			t.Fatal("the turn did not set the next one")
+		}
 	}
-	msg.logs = []trafficStamp{{size: stamp.size + 10, ok: true}}
-	if _, quiet := a.trafficTick(msg); quiet || !a.traffic.reading {
-		t.Fatal("a log that moved was not read")
+	rows, idle := len(a.traffic.rows[harbor]), a.traffic.idle
+	a.drawn, a.ptr.still = true, false
+	turn()
+	if len(a.traffic.rows[harbor]) != rows || a.traffic.idle != idle+1 || !a.ptr.still || a.traffic.reading {
+		t.Fatalf("a quiet turn changed something (rows %d, idle %d, still %v)", len(a.traffic.rows[harbor]), a.traffic.idle, a.ptr.still)
+	}
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: teamstore.FromManager, To: teamstore.ToRoom, Text: "moved"})
+	turn()
+	if got := a.traffic.rows[harbor]; len(got) != rows+1 || got[len(got)-1].Text != "moved" || a.traffic.idle != 0 {
+		t.Fatalf("a log that moved was not read: %+v (idle %d)", got, a.traffic.idle)
 	}
 	// No manager, no clock.
 	b, _, _, _ := trafficApp(t)
@@ -315,7 +333,7 @@ func TestTrafficStopAndStartAreDoneOnceAndNeverReplayed(t *testing.T) {
 	}
 	// A read that hands the same entries back again changes nothing.
 	entries, _ := teamstore.ReadTraffic(a.profileDir, harbor, trafficFromStart, 0)
-	a.trafficTake([]trafficGot{{trafficJob: trafficJob{id: harbor, after: a.traffic.cursor[harbor]}, entries: entries}}, nil, a.traffic.stamp, a.traffic.edits)
+	a.trafficTake([]trafficGot{{trafficJob: trafficJob{id: harbor, after: a.traffic.cursor[harbor]}, entries: entries}}, nil, a.traffic.stamp, a.traffic.edits, false)
 	if older.stops != 1 {
 		t.Fatalf("a replayed read stopped the member again: %d", older.stops)
 	}
@@ -353,6 +371,7 @@ func TestTrafficStopAndStartAreDoneOnceAndNeverReplayed(t *testing.T) {
 	if row := plain(a.tabsRow(a.width)); !strings.Contains(row, "@lexer") {
 		t.Fatalf("the new member's tab does not read @lexer: %q", row)
 	}
+	teamsFlush(t, a)
 	disk, _ := loadTeams(a.profileDir, nil)
 	if got, ok := disk[0].ByHandle("lexer"); !ok || got.Key != m.Key {
 		t.Fatalf("the new member did not reach the disk: %+v", disk[0].Members)
@@ -452,6 +471,7 @@ func TestTrafficReadTitlesAMemberThatJoinedUntitled(t *testing.T) {
 	if m, _ := mustTeam(t, a, harbor).Member("/tmp/lab/late.jsonl"); m.Handle != "benchmark" {
 		t.Fatalf("the read left the member as %+v", m)
 	}
+	teamsFlush(t, a)
 	disk, _ := loadTeams(a.profileDir, nil)
 	if m, _ := disk[0].Member("/tmp/lab/late.jsonl"); m.Handle != "benchmark" {
 		t.Fatalf("the title did not reach the disk: %+v", m)

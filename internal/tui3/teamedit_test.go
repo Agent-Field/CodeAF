@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
@@ -23,6 +24,7 @@ func TestTeamEditKeepsWhatAnotherProcessWrote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	teamsFlush(t, a)
 
 	// Another process, through the store's own door.
 	if err := teamstore.Update(dir, func(f *teamstore.File) error {
@@ -44,6 +46,7 @@ func TestTeamEditKeepsWhatAnotherProcessWrote(t *testing.T) {
 	if err := a.teamAdd(id, []chatTab{{key: "k4", file: "f4", where: "/w", word: "lexer rewrite"}}); err != nil {
 		t.Fatal(err)
 	}
+	teamsFlush(t, a)
 
 	check := func(where string, got team) {
 		t.Helper()
@@ -95,6 +98,7 @@ func TestTeamUntitledMemberTakesAHandleOnceItHasATitle(t *testing.T) {
 	if err := a.teamRecolor(id, teamHueSpec{Hue: 40, Tier: 1}); err != nil {
 		t.Fatal(err)
 	}
+	teamsFlush(t, a)
 	disk, _ := loadTeams(dir, nil)
 	if m, _ := disk[0].Member("k2"); m.Handle != "lexer" || m.Word != "lexer rewrite" {
 		t.Fatalf("the titled member was saved as %+v", m)
@@ -104,6 +108,7 @@ func TestTeamUntitledMemberTakesAHandleOnceItHasATitle(t *testing.T) {
 	if err := a.teamRename(id, "dock"); err != nil {
 		t.Fatal(err)
 	}
+	teamsFlush(t, a)
 	disk, _ = loadTeams(dir, nil)
 	if m, _ := disk[0].Member("k2"); m.Handle != "lexer" {
 		t.Fatalf("a new title moved the handle to %q", m.Handle)
@@ -111,8 +116,9 @@ func TestTeamUntitledMemberTakesAHandleOnceItHasATitle(t *testing.T) {
 }
 
 // A DISK THAT REFUSES LEAVES THE EDIT IN THE WINDOW. The change is made to what
-// the window holds before the store is asked, so the error says the disk did
-// not take it and the person still sees what they did.
+// the window holds before the store is asked, and the store is asked off the
+// loop; its refusal comes back as a note saying the change is kept for this
+// window, and the person still sees what they did.
 func TestTeamEditKeptInTheWindowWhenTheDiskRefuses(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestAppWithProfile(dir, nil)
@@ -120,6 +126,7 @@ func TestTeamEditKeptInTheWindowWhenTheDiskRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	teamsFlush(t, a)
 	refused := errors.New("refused")
 	calls := 0
 	err = a.teamEdit(func(f *teamstore.File) error {
@@ -131,8 +138,12 @@ func TestTeamEditKeptInTheWindowWhenTheDiskRefuses(t *testing.T) {
 		f.Teams[i].Name = "dock"
 		return nil
 	})
-	if !errors.Is(err, refused) {
-		t.Fatalf("the refusal came back as %v", err)
+	if err != nil {
+		t.Fatalf("the window's own change was refused: %v", err)
+	}
+	teamsFlush(t, a)
+	if got := lastNote(t, a); !strings.Contains(got, "kept for this window") || !strings.Contains(got, "refused") {
+		t.Fatalf("the refusal was said as %q", got)
 	}
 	if got, _ := a.teamByID(id); got.Name != "dock" {
 		t.Fatalf("the window lost the edit: %q", got.Name)

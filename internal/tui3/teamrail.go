@@ -123,10 +123,10 @@ func trafficColsFor(room int) int {
 }
 
 // trafficOn reports whether the frame has a rail in any shape: the manager in
-// front, on a window whose profile is the engine's. Frame-safe, allocation
+// front, on a window that can read the engine's teams. Frame-safe, allocation
 // free: it is asked wherever [app.bodyWidth] is.
 func (a *app) trafficOn() bool {
-	if a.hosted() {
+	if a.teamsOff() {
 		return false
 	}
 	_, ok := a.teamFrontManaged()

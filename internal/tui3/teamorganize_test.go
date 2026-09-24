@@ -201,6 +201,7 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 		t.Fatal(err)
 	}
 	prior := teamsClone(a.wall.teams)
+	teamsFlush(t, a)
 	before, err := os.ReadFile(teamsPath(a.profileDir))
 	if err != nil {
 		t.Fatal(err)
@@ -225,6 +226,7 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 	if !reflect.DeepEqual(a.wall.teams, prior) {
 		t.Fatalf("Undo left %+v\nwant %+v", a.wall.teams, prior)
 	}
+	teamsFlush(t, a)
 	after, err := os.ReadFile(teamsPath(a.profileDir))
 	if err != nil {
 		t.Fatal(err)

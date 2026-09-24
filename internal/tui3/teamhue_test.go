@@ -222,6 +222,7 @@ func TestTeamColourAndEditsPersist(t *testing.T) {
 	if err := a.teamToggleMember(ids[1], tab); err != nil {
 		t.Fatal(err)
 	}
+	teamsFlush(t, a)
 	got, _ := loadTeams(dir, nil)
 	if got[0].Name != "renamed" || got[0].Hue != 123 || got[0].Tier != 1 || !teamHolds(got[0], "k9") || teamHolds(got[1], "k9") {
 		t.Fatalf("on disk: %+v", got[:2])

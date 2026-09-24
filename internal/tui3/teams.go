@@ -36,10 +36,11 @@ import (
 // team, how a team is named on the card, what the strip shows.
 //
 // EVERY EDIT HERE IS THE STORE'S READ-MODIFY-WRITE ([app.teamEdit], over
-// [teamstore.Update]). The change is made to what this window loaded, so the
-// person sees it at once and keeps it even when the disk refuses, and then made
-// again, under the lock, to the file as it is on disk now; what that wrote is
-// what the window holds afterwards. A manager, a handle or a member another
+// [TeamsSeam.Update]). The change is made to what this window loaded, so the
+// person sees it at once and keeps it even when the store refuses, and then
+// made again, off the loop and under the store's lock, to the file as it is
+// now, on whichever machine the session keeps it (teamseam.go); what that wrote
+// is what the window holds afterwards. A manager, a handle or a member another
 // process wrote since the opening is therefore kept, where saving the whole
 // loaded list would have put the old list back over it.
 //
@@ -56,28 +57,6 @@ const (
 
 // teamNameCells is the widest a suggested name may be, in cells.
 const teamNameCells = 16
-
-// teamsPath is where the sets live ([teamstore.Path]); an empty profile
-// directory is the ordinary launch and resolves to this process's profile.
-func teamsPath(profileDir string) string { return teamstore.Path(profileDir) }
-
-// loadTeams reads the sets from profileDir, repaired and coloured around the
-// reserved hues ([teamstore.LoadHued]). A missing file is no teams and no
-// error; an unreadable one is an error and is left as it was.
-func loadTeams(profileDir string, reserved []float64) ([]team, error) {
-	f, err := teamstore.LoadHued(profileDir, reserved)
-	if err != nil {
-		return nil, err
-	}
-	return f.Teams, nil
-}
-
-// saveTeams writes the sets to profileDir as the whole file
-// ([teamstore.Save]). THE INTERFACE NO LONGER CALLS IT: a whole-list save puts
-// back what this window loaded over whatever another process wrote since, and
-// every edit goes through [app.teamEdit] instead. It stays for the tests, which
-// write a file as a fixture.
-func saveTeams(profileDir string, s []team) error { return teamstore.Save(profileDir, s) }
 
 // newTeamID is a fresh random id ([teamstore.NewID]).
 func newTeamID() string { return teamstore.NewID() }
@@ -259,28 +238,38 @@ func teamTabs(t team, live []chatTab) []chatTab {
 
 // ── THE APP'S SETS ──────────────────────────────────────────────────────────
 
-// teamsEnsure loads the sets the first time anything needs them. It reads
-// disk, so it is called on an opening and never from a frame.
+// teamsEnsure loads the sets the first time anything needs them, through the
+// seam's [TeamsSeam.Load], which answers without blocking: locally one small
+// file read at an opening, over a connection what is held. It is called on an
+// opening and never from a frame.
 //
-// AN UNREADABLE FILE IS MOVED ASIDE, NOT OVERWRITTEN. Starting empty is the
-// only way the person can go on making teams, but the next save would then
-// replace a file that may hold every set they made; renamed to
-// teams.json.unreadable-<nanos> it survives for a person to recover.
+// A SEAM THAT HOLDS NOTHING YET IS ASKED OFF THE LOOP. Over a connection the
+// first opening may come before the engine's answer; the window then holds no
+// teams and asks [TeamsSeam.ReadSince] beside the loop ([app.teamsWrite]), and the
+// answer is folded in when it comes ([app.teamsTake]).
 func (a *app) teamsEnsure() {
 	if a.wall.loaded {
 		return
 	}
+	// A window with no teams it can keep holds none, and reads nothing: this
+	// machine's own file is not the session's ([app.teamsOff]).
+	if a.teamsOff() {
+		a.wall.loaded, a.wall.activeID, a.wall.teams = true, "", nil
+		return
+	}
+	teams, stamp, known := a.teamsSeam().Load(teamReservedHues(a.pal))
+	if !known {
+		a.teamsDisk.fetch = true
+		return
+	}
 	a.wall.loaded = true
 	a.wall.activeID = ""
-	teams, err := loadTeams(a.profileDir, teamReservedHues(a.pal))
-	if err != nil {
-		_, _ = teamstore.SetAside(a.profileDir)
-		teams = nil
-	}
 	a.wall.teams = teams
+	a.traffic.stamp = stamp
 }
 
-// errTeamsHosted is [app.teamEdit]'s refusal over --host.
+// errTeamsHosted is [app.teamEdit]'s refusal over --host when the engine has
+// no teams doors ([app.teamsOff]).
 var errTeamsHosted = errors.New("teams are not kept over --host yet")
 
 // teamEdit makes one change to the teams, and it is the only way the
@@ -288,27 +277,29 @@ var errTeamsHosted = errors.New("teams are not kept over --host yet")
 //
 // THE CHANGE IS MADE TWICE, AND THAT IS THE POINT. First to what this window
 // holds, so the strip and the wall show it on this frame and keep it when the
-// disk refuses (the error says the disk did not take it, and the change stays
-// "for this window"). Then again inside [teamstore.Update], to the file as it
-// is on disk under the lock, so a manager, a handle, a member or a whole team
-// another process wrote since this window loaded is kept rather than replaced.
-// What that second pass wrote, tidied and coloured, is what the window holds
-// afterwards. So change must depend only on the file it is handed and on
-// values its caller chose beforehand: an id minted inside it would be two ids.
+// store refuses (the note says the store did not take it, and the change stays
+// "for this window"). Then again, off the loop, inside the store's
+// read-modify-write ([app.teamsWrite], [TeamsSeam.Update]), to the file as it
+// is now, so a manager, a handle, a member or a whole team another process
+// wrote since this window loaded is kept rather than replaced. What that
+// second pass wrote, tidied and coloured, is what the window holds afterwards
+// ([app.teamsTake]). So change must depend only on the file it is handed and
+// on values its caller chose beforehand: an id minted inside it would be two
+// ids, and over a connection it may be made a third time.
 //
 // Each member this window has an open tab for takes the tab's current name on
 // the way ([app.teamRefreshWords]), which is how a conversation that joined
 // before it had a title gets one, and with it a handle ([teamstore.DeriveHandle]
 // through the store's tidy).
 //
-// It reads and writes the disk, so it is called from an update and never from a
-// frame (framedisk_law_test.go).
+// It touches no disk and no wire: the error it returns is the change refusing
+// what this window holds, and a refusal from the store arrives later, as a note.
 func (a *app) teamEdit(change func(f *teamstore.File) error) error {
-	// OVER --host NOTHING IS WRITTEN. This window's teams file is this
-	// machine's, and the conversations are the far machine's: a member kept
-	// here would be a path that means nothing on this disk, and the far
-	// session, which reads its own profile, would never see it (host.go).
-	if a.hosted() {
+	// A WINDOW WITH NO TEAMS IT CAN KEEP WRITES NOTHING. Over --host facing an
+	// engine without the teams doors, this window's own file is not the
+	// session's, and a member kept here would be a path the far session never
+	// sees (host.go).
+	if a.teamsOff() {
 		return errTeamsHosted
 	}
 	a.teamsEnsure()
@@ -318,34 +309,13 @@ func (a *app) teamEdit(change func(f *teamstore.File) error) error {
 	}
 	a.teamRefreshWords(mine.Teams)
 	a.wall.teams = mine.Teams
+	// A window still waiting on its first read over a connection holds only
+	// this edit; the write brings the whole list back ([app.teamsTake]).
+	a.wall.loaded = true
 	// A Traffic read already out may carry the file from before this write;
-	// counting the write keeps it from being put back (teamtraffic.go).
+	// counting the edit keeps it from being put back (teamtraffic.go).
 	a.traffic.edits++
-	reserved := teamReservedHues(a.pal)
-	var wrote *teamstore.File
-	err := teamstore.Update(a.profileDir, func(f *teamstore.File) error {
-		if err := change(f); err != nil {
-			return err
-		}
-		a.teamRefreshWords(f.Teams)
-		f.Colour(reserved)
-		// The store tidies the list in place after this returns and before it
-		// writes (ids, handles, the manager), so the pointer kept here reads
-		// what was written once Update is done.
-		wrote = f
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if wrote != nil {
-		a.teamAdopt(teamsClone(wrote.Teams))
-	}
-	// AND THE FILE AS THIS WRITE LEFT IT IS THE ONE THE TRAFFIC CLOCK HAS SEEN,
-	// so its next turn does not read back what this window just wrote
-	// (teamtraffic.go). It is one stat, beside the write it follows.
-	a.traffic.teamsAt = trafficStat(teamstore.Path(a.profileDir))
-	a.traffic.stamp = a.traffic.teamsAt.mod
+	a.teamsDisk.queue = append(a.teamsDisk.queue, change)
 	return nil
 }
 

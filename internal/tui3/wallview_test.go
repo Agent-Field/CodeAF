@@ -801,6 +801,7 @@ func TestTeamAddAndRemoveKeepOrderAndSave(t *testing.T) {
 	if err := a.teamAdd(i, []chatTab{{key: "k1"}, {key: "k2", word: "two"}, {key: "k3", word: "three"}}); err != nil {
 		t.Fatal(err)
 	}
+	teamsFlush(t, a)
 	got, _ := loadTeams(dir, nil)
 	if len(got) != 1 || len(got[0].Members) != 3 || got[0].Members[1].Key != "k2" {
 		t.Fatalf("after add: %+v", got)
@@ -808,6 +809,7 @@ func TestTeamAddAndRemoveKeepOrderAndSave(t *testing.T) {
 	if err := a.teamRemove(i, []string{"k1", "k3"}); err != nil {
 		t.Fatal(err)
 	}
+	teamsFlush(t, a)
 	got, _ = loadTeams(dir, nil)
 	if len(got[0].Members) != 1 || got[0].Members[0].Key != "k2" {
 		t.Fatalf("after remove: %+v", got)
