@@ -26,7 +26,7 @@ package session
 //	                  home after that finds its task already ended and writes
 //	                  nothing over it, so no part of a stopped run reads as a
 //	                  failure with a cut call's error for its reason. And a store
-//	                  whose run is over is one the next hand-off cannot adopt.
+//	                  whose run is over reads as over on its page.
 //	the context next  every worker and every call a worker has out was handed
 //	                  this context, so the spend ends here and not at the next
 //	                  pass of anybody's loop.

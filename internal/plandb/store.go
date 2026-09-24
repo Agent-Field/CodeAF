@@ -1520,11 +1520,12 @@ func (s *Store) CompleteRoot(result string) error {
 // a cascade that follows cancelled parents stops at a parent that ended earlier
 // and would leave the open work under it to be offered to the next worker.
 //
-// A RUN LEFT OPEN IS A RUN THE NEXT HAND-OFF ADOPTS, which is why a stop has to
-// be written here and cannot only be a context somebody cut: a store whose run
-// task is still open is picked up again by the next run over it, stopped work
-// included. Two presses are one stop, and a run that ended by itself is left as
-// it ended.
+// A RUN LEFT OPEN READS AS RUNNING, which is why a stop has to be written here
+// and cannot only be a context somebody cut: a store whose run task is still
+// open is drawn as work going, and a door that adopts open stores (the
+// headless errand's, the carry-on door) picks it up again, stopped work
+// included. Two presses are one stop, and a run that ended by itself is left
+// as it ended.
 func (s *Store) StopRoot(reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1558,9 +1559,9 @@ func (s *Store) StopRoot(reason string) error {
 // A FAILED RUN WAS LEFT OPEN, AND AN OPEN RUN READS AS RUNNING. Nothing wrote
 // the ending of a run whose own worker failed, so its store said `running` for
 // ever: the task's page drew `running` and offered `stop it` over a program
-// that had ended forty minutes earlier, and the next hand-off would have
-// adopted the dead run's store as live work ([Store.StopRoot] says why an open
-// run is adopted). A run that already ended is left as it ended.
+// that had ended forty minutes earlier, and a door that adopts open stores
+// would have taken the dead run up as live work ([Store.StopRoot]). A run that
+// already ended is left as it ended.
 func (s *Store) FailRoot(reason string) error {
 	return s.FailRootAt(reason, time.Time{})
 }
