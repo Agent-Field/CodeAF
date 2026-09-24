@@ -2218,7 +2218,9 @@ Every conversation in Home has a bullet. A dim bullet means there is no unread
 reply known to this window. A working mark means the conversation is answering or has
 queued or running tasks or background commands, even after its answer ends. This applies
 to the conversation in front and those held in other tabs. The mark clears when the last
-work finishes; one completed task does not hide another that is still running.
+work finishes; one completed task does not hide another that is still running, and a
+task waiting for your decision carries its `?` on the task's own row without hiding the
+conversation's other work.
 The first working row animates when no other Home row owns the spinner. An amber `?`
 means there is an unanswered question and takes priority over those marks.
 A bright filled bullet means a reply finished while you were away. Opening the conversation
