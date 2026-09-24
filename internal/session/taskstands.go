@@ -156,6 +156,22 @@ func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 	if program, err := a.delegateFor(spec.via); err == nil {
 		return programGround(spec, workspace, program)
 	}
+	stand := a.ordinaryTaskGround(spec, workspace)
+	// AND NOTHING ELSE OF CODEAF'S WORKS IN A FOLDER A PROGRAM'S RUN HOLDS
+	// (programhold.go), so the card is never shown for work that could only
+	// be cut from the program's unfinished branch or land under it.
+	if stand.ask == "" && stand.refusal == "" {
+		if refusal := standHeldRefusal(stand, workspace); refusal != "" {
+			return taskStand{refusal: refusal}
+		}
+	}
+	return stand
+}
+
+// ordinaryTaskGround is [Agent.resolveTaskGround] for work no program is handed:
+// the placement a model asked for, the ladder, the brief's last word, and the
+// mode.
+func (a *Agent) ordinaryTaskGround(spec taskSpec, workspace string) taskStand {
 	redirect := ""
 	// A MODEL'S PLACEMENT IS EVIDENCE, NOT AUTHORITY, INSIDE A REPOSITORY. A
 	// branch is the repository's isolation boundary even when `where` asked for

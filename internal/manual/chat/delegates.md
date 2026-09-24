@@ -109,7 +109,8 @@ names as its `ground`, or this conversation's own folder when it names none (a t
 where the conversation has been working — and the task's receipt names the folder.
 Inside a git repository it is the repository's root. A `ground` that is not there yet is
 made, empty, when the run starts, as long as the folder it would be made in is there.
-Only what it changes there is part of the task.
+Only what it changes there is part of the task. While it runs the folder is the
+program's: codeaf's own file tools and tasks keep out of it (senior-dev's page says how).
 
 **It is never handed your home folder**, or a folder above it: that is not a project. A
 conversation opened in your home folder names the project's folder (making one first when

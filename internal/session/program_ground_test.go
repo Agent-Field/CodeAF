@@ -90,10 +90,10 @@ func TestAProgramsReceiptNamesItsFolder(t *testing.T) {
 	repo := newTestRepo(t)
 	plain := t.TempDir()
 	record := &TaskCopyRecord{Dir: repo, Branch: "task/pong-abc123", Home: "work"}
-	if got, want := delegateReceipt(repo, tree, record), "It is fake's: it works alone in "+repo+" itself, on a new branch task/pong-abc123; your branch work does not move, and when it ends task/pong-abc123 stays checked out there with its work."; got != want {
+	if got, want := delegateReceipt(repo, tree, record), "It is fake's: it works alone in "+repo+" itself, on a new branch task/pong-abc123; your branch work does not move, and when it ends task/pong-abc123 stays checked out there with its work. Until it ends, codeaf's own tools write nothing in "+repo+"."; got != want {
 		t.Fatalf("the receipt for a repository = %q, want %q", got, want)
 	}
-	if got, want := delegateReceipt(plain, tree, &TaskCopyRecord{Dir: plain}), "It is fake's: it works alone in "+plain+" itself, which has no git history, so its changes are there as it makes them."; got != want {
+	if got, want := delegateReceipt(plain, tree, &TaskCopyRecord{Dir: plain}), "It is fake's: it works alone in "+plain+" itself, which has no git history, so its changes are there as it makes them. Until it ends, codeaf's own tools write nothing in "+plain+"."; got != want {
 		t.Fatalf("the receipt for a plain folder = %q, want %q", got, want)
 	}
 	got := delegateStartedReceipt(3, "Pong", "", delegateReceipt(plain, tree, nil), "")

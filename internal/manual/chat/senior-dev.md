@@ -211,7 +211,7 @@ which holds your home folder, so codeaf cut no branch there and committed nothin
 
 It works in your folder itself, so leave that folder alone while it runs: once it has
 submitted, anything changed there is put back to what it submitted, and a file added
-there is removed.
+there is removed. codeaf's own file tools and tasks keep out of it until then.
 
 **A folder or file in it that senior-dev may not read is skipped**, not a reason to stop:
 it is in none of its checkpoints, and nothing of it is changed or removed. senior-dev
@@ -223,6 +223,28 @@ and your home folder is not one project.
 A shell run used to stop at once there with `workspace is not a git repository:
 <folder>; run with --in-place to work in a plain folder`. It no longer does: `--in-place`
 is passed for you.
+
+## Why can't codeaf edit files while senior-dev is working — the folder is senior-dev's while it runs, a write or a task refused, bash, your own editor
+
+senior-dev works in your folder itself, so **the folder is senior-dev's until the run
+ends**: once it has submitted, anything changed there is put back to what it submitted
+and a file added there is removed, and what is left over is committed as its work. So
+nothing else of codeaf's writes there meanwhile, from any conversation, window or shell:
+
+- the chat's `write` and `edit`, `edit_video`, and a picture, music, video or speech
+  saved at a path there are refused: `<file> is in <folder>, where senior-dev, task 4
+  (Fix the parser), is working, so nothing was written; wait for that run to end, or stop
+  it, then write there`. Reading stays open.
+- a task on that folder, inside it or around it — proposed, typed with `/task`, a quick
+  task, or one whose turn to start comes — is refused before it starts: `<folder> is
+  busy: senior-dev, task 4 (Fix the parser), is working in it, and nothing else of
+  codeaf's works there until that run has ended; wait for it, or stop it, then ask again`.
+- a task already running when it started lands beside it: `its branch <branch> was kept:
+  senior-dev, task 4 (…), is working in it — bring it in when that run has ended`. A
+  `/land` of the chat's changes there is refused the same way, and waits.
+
+**`bash` is not fenced**: codeaf cannot know what a command writes. **Neither is your
+own editor**: what you save there while it runs joins its work, or is put back.
 
 ## Its notes — .senior-dev, its checklist, its session database, moved out when it ends
 

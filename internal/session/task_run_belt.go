@@ -386,6 +386,13 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 	// changes that are not committed, another program's run in it — refuses
 	// before a store is seeded or a row is published.
 	var folder *ProgramFolder
+	if via == nil {
+		// AN ORDINARY RUN IS REFUSED A FOLDER A PROGRAM'S RUN HOLDS
+		// (programhold.go), before a store is seeded or a copy cut from it.
+		if refusal := standHeldRefusal(stand, a.config.Workspace); refusal != "" {
+			return errors.New(refusal)
+		}
+	}
 	if via != nil && via.LandsTree() {
 		prepared, err := PrepareProgramFolder(ProgramFolderOrder{
 			Program: *via, Dir: stand.dir, Title: title, Holder: taskStopName(id, title),

@@ -189,10 +189,21 @@ func (c Config) delegateGuides() string {
 // IT NAMES THE FOLDER. A receipt that said "a copy" and "the folder itself"
 // without saying which let a model that had named ~/Desktop/pong read that its
 // program was there while it had been handed the person's home folder.
+//
+// AND IT SAYS THE FOLDER IS THE PROGRAM'S UNTIL IT ENDS ([programHoldGuard]).
+// The receipt's next sentence invites the model to carry on with other work,
+// and a model that did it by writing into the program's folder was refused one
+// file at a time; told once here, it works elsewhere or waits.
 func delegateReceipt(ground string, via delegate.Delegate, record *TaskCopyRecord) string {
 	if !via.LandsTree() {
 		return "It is " + via.Name + "'s: it works alone, and its answer arrives when it ends."
 	}
+	return delegateFolderReceipt(ground, via, record) + " Until it ends, codeaf's own tools write nothing in " + ground + "."
+}
+
+// delegateFolderReceipt is where a program that edits files works, as its
+// receipt says it ([delegateReceipt]).
+func delegateFolderReceipt(ground string, via delegate.Delegate, record *TaskCopyRecord) string {
 	if record == nil || record.Branch == "" {
 		return "It is " + via.Name + "'s: it works alone in " + ground + " itself, which has no git history, so its changes are there as it makes them."
 	}

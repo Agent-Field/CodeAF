@@ -175,14 +175,14 @@ func TestAProgramsReceiptSaysWhereTheWorkWillBeAndPromisesNoMerge(t *testing.T) 
 	tree := testPrograms("fake")[0]
 	repo, plain := "/r/repo", "/r/plain"
 	record := &TaskCopyRecord{Dir: repo, Branch: "task/pong-abc123", Home: "main", HomeSha: "0123456789abcdef"}
-	if got, want := delegateReceipt(repo, tree, record), "It is fake's: it works alone in /r/repo itself, on a new branch task/pong-abc123; your branch main does not move, and when it ends task/pong-abc123 stays checked out there with its work."; got != want {
+	if got, want := delegateReceipt(repo, tree, record), "It is fake's: it works alone in /r/repo itself, on a new branch task/pong-abc123; your branch main does not move, and when it ends task/pong-abc123 stays checked out there with its work. Until it ends, codeaf's own tools write nothing in /r/repo."; got != want {
 		t.Fatalf("the receipt for a repository = %q, want %q", got, want)
 	}
 	detached := &TaskCopyRecord{Dir: repo, Branch: "task/pong-abc123", HomeSha: "0123456789abcdef"}
 	if got := delegateReceipt(repo, tree, detached); !strings.Contains(got, "; the commit 0123456789ab does not move") {
 		t.Fatalf("the receipt for a detached checkout = %q", got)
 	}
-	if got := delegateReceipt(plain, tree, &TaskCopyRecord{Dir: plain}); got != "It is fake's: it works alone in /r/plain itself, which has no git history, so its changes are there as it makes them." {
+	if got := delegateReceipt(plain, tree, &TaskCopyRecord{Dir: plain}); got != "It is fake's: it works alone in /r/plain itself, which has no git history, so its changes are there as it makes them. Until it ends, codeaf's own tools write nothing in /r/plain." {
 		t.Fatalf("the receipt for a plain folder = %q", got)
 	}
 	reader := tree

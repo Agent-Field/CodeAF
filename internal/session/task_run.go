@@ -8775,6 +8775,14 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 // gives the person a durable result and gives the working copy back without
 // changing a byte of the checkout they are using.
 func (t taskTree) keptInsteadOfMerged() string {
+	// NOR ONE A PROGRAM'S RUN IS WORKING IN (programhold.go). A merge there
+	// lands under the program — stashing its unfinished edits, or put back by
+	// its own restore once it has submitted — while this row says it landed;
+	// kept, the work waits on its own branch for the run to end.
+	if hold, busy := programHoldNear(canonicalPath(t.root), ""); busy {
+		return "its branch " + t.branch + " was kept: " + hold.holder + ", is working in " + hold.where(t.root) +
+			" — bring it in when that run has ended"
+	}
 	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT.
 	if t.landsInThePersonsRepository() {
 		return t.keptLandingSentence()
@@ -8800,6 +8808,14 @@ func (t taskTree) keptInsteadOfMerged() string {
 func (t taskTree) landMirror(wrote []string) (string, string, []string, landingRefusal) {
 	if strings.TrimSpace(t.ground) == "" || strings.TrimSpace(t.dir) == "" {
 		return mergeInPlace, "", nil, refusedNothing
+	}
+	// A FOLDER A PROGRAM'S RUN HOLDS IS NOT LAID INTO (programhold.go): the
+	// program would count the files as its own, or put them back once it has
+	// submitted. Nothing is laid and the copy stays whole, a refusal a second
+	// answer gets past once that run has ended.
+	if refusal := programHoldRefusal(t.ground); refusal != "" {
+		return mergeAborted, "its work was not laid into " + t.ground + " and is kept in " + t.dir + ": " + refusal,
+			nil, refusedByTheWork
 	}
 	// AND IT DOES NOT WRITE OVER A FILE THAT CHANGED UNDER IT
 	// (task_mirror_manners.go). The mark is [mergeConflicted] because that is what

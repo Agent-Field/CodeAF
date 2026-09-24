@@ -179,7 +179,7 @@ func TestTheReceiptSaysWhenThePersonsBranchHasAlreadyMoved(t *testing.T) {
 	moved := moveBranch(t, repo, "work")
 	record := &TaskCopyRecord{Dir: repo, Branch: "task/pong-abc123", Home: "work", HomeSha: start}
 	want := "It is fake's: it works alone in " + repo + " itself, on a new branch task/pong-abc123; your branch work has already moved, from " +
-		shortSha(start) + " to " + shortSha(moved) + ", and codeaf does not move it, and when it ends task/pong-abc123 stays checked out there with its work."
+		shortSha(start) + " to " + shortSha(moved) + ", and codeaf does not move it, and when it ends task/pong-abc123 stays checked out there with its work. Until it ends, codeaf's own tools write nothing in " + repo + "."
 	if got := delegateReceipt(repo, testPrograms("fake")[0], record); got != want {
 		t.Fatalf("the receipt = %q, want %q", got, want)
 	}

@@ -234,6 +234,12 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// left to say about who is holding the tree — and it is a no-op in every
 	// session that has never groomed a task, which is most of them.
 	plane.register(treeClaimGuard{agent: a})
+	// AND WHETHER A PROGRAM'S RUN IS WORKING THERE, which is the same question
+	// asked of a different holder (programhold.go): not a node of this
+	// conversation's graph, but a run that holds the person's folder itself,
+	// from this conversation or any other window or shell. It asks no graph, so
+	// it binds a session that never groomed a task as much as one that did.
+	plane.register(programHoldGuard{agent: a})
 	// AND WHERE A TASK IS STANDING, which is the path half of the same question
 	// (taskoutside.go): not whose work a command would take, but which directory
 	// it is aimed at. It is registered BEFORE the git guard below and the order

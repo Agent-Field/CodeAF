@@ -388,7 +388,8 @@ clear by hand.
 
 **Two tasks cannot both run in place in one directory.** Whichever started first has it;
 the second is refused its writes and told which task to wait for. When the first lands, the
-second gets the directory.
+second gets the directory. A program's run (senior-dev) holds its folder the same way, and
+a task is refused that folder before it starts: senior-dev's page has the words.
 
 ## A task that has written a file holds that file — I cannot edit a file while a task runs, chat edit blocked, single writer
 

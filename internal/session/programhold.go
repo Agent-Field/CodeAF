@@ -19,10 +19,14 @@ package session
 // hold says it holds.
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -211,4 +215,123 @@ func (h programHold) where(dir string) string {
 		return h.dir + ", which is inside it"
 	}
 	return h.dir + ", which holds it"
+}
+
+// ── nothing else of codeaf's writes in a held folder ────────────────────────
+//
+// WITHOUT THE COPY, A PROGRAM WORKS IN THE PERSON'S LIVE FOLDER, and what
+// anything else writes there meanwhile becomes the program's to act on. Once
+// senior-dev has submitted it checks its frozen tree, and a tree that moved is
+// put back — `checkout --force`, `reset`, `clean -fd` — which reverts a file
+// the chat edited and deletes one it wrote, with no copy kept; an ordinary
+// task merged into it mid-run is undone the same way while its row says it
+// landed; and whatever survives is swept into the run's finishing commit as
+// the program's work. So while a program holds a folder, from any conversation,
+// window or shell:
+//
+//   - the chat's own file tools refuse a path inside it ([programHoldGuard]),
+//     and reading stays open;
+//   - an ordinary task — a proposal's card, a typed `/task`, a quick task, a
+//     node starting on the session's own graph or on the run road — whose
+//     folder is inside it, or holds it, is refused before it starts
+//     ([programHoldRefusal]);
+//   - a task that was already running lands beside it rather than into it: its
+//     branch kept, its copy not laid, a `/land` refused.
+//
+// `bash` IS NOT FENCED, and neither is the person's own editor: a command's
+// effects are whatever it did, and a guard that pattern-matched commands would
+// promise what it cannot keep ([treeClaimGuard] says the same). The manual says
+// so plainly (senior-dev.md), and that edits made there join the run's work.
+
+// programHoldGuard refuses a write by one of codeaf's own file tools into a
+// folder a program's run holds. It is a pre-action citizen for the reason
+// every guard here is one: [Agent.executeTool] is the single door every call
+// passes through (hooks.go).
+//
+// IT BINDS EVERY HAND THAT PUTS A FILE ON THE PERSON'S DISK AT A PATH THE CALL
+// NAMES ([savingPath]): write and edit, edit_video's writing actions, and the
+// generated picture, music, video and speech a path was given for. A
+// generation that names no path lands in this session's own folders, which no
+// program holds.
+type programHoldGuard struct{ agent *Agent }
+
+func (programHoldGuard) Name() string { return "program-hold" }
+
+func (g programHoldGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, call ai.ToolCall) (ai.ToolCall, toolResult, bool) {
+	path, shown, ok := g.agent.savingPath(call)
+	if !ok {
+		return call, toolResult{}, true
+	}
+	hold, busy := programHoldOver(canonicalPath(path), "")
+	if !busy {
+		return call, toolResult{}, true
+	}
+	return call, toolResult{text: programHoldWriteRefusal(shown, hold), isError: true}, false
+}
+
+// programHoldWriteRefusal is what the model reads instead of a write into a
+// held folder: the file, the folder, whose run holds it, that nothing was
+// written, and the two things that work.
+func programHoldWriteRefusal(shown string, hold programHold) string {
+	return shown + " is in " + hold.dir + ", where " + hold.holder +
+		", is working, so nothing was written; wait for that run to end, or stop it, then write there"
+}
+
+// savingPath is the absolute path one call is about to put a file at, and the
+// same path as a person reads it, for every hand in [savingTools] whose call
+// both writes ([producedAFile]) and names where. It resolves a relative path
+// against the workspace the way [Agent.mutatingPath] does, which answers for
+// the hands it knows.
+func (a *Agent) savingPath(call ai.ToolCall) (string, string, bool) {
+	if path, shown, ok := a.mutatingPath(call); ok {
+		return path, shown, true
+	}
+	name := call.Function.Name
+	if _, known := mutatingTools[name]; known || !producedAFile(name, call.Function.Arguments) {
+		return "", "", false
+	}
+	var args struct {
+		Path string `json:"path"`
+	}
+	if err := decodeToolArguments(json.RawMessage(call.Function.Arguments), &args); err != nil {
+		return "", "", false
+	}
+	path, workspace := strings.TrimSpace(args.Path), strings.TrimSpace(a.config.Workspace)
+	if path == "" || (workspace == "" && !filepath.IsAbs(path)) {
+		return "", "", false
+	}
+	if !filepath.IsAbs(path) {
+		return filepath.Clean(filepath.Join(workspace, path)), filepath.ToSlash(filepath.Clean(path)), true
+	}
+	return filepath.Clean(path), filepath.Clean(path), true
+}
+
+// programHoldRefusal is why an ordinary task may not work in dir now — a
+// program's run holds it, a folder around it, or a folder inside it — in one
+// sentence naming the run and saying what to do; "" when nothing holds it.
+func programHoldRefusal(dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return ""
+	}
+	hold, busy := programHoldNear(canonicalPath(dir), "")
+	if !busy {
+		return ""
+	}
+	return dir + " is busy: " + hold.holder + ", is working in " + hold.where(dir) +
+		", and nothing else of codeaf's works there until that run has ended; wait for it, or stop it, then ask again"
+}
+
+// standHeldRefusal is [programHoldRefusal] for where a task would stand, and ""
+// for a stand that only reads its ground: a REFERENCE works in a folder of its
+// own and writes nothing where it looks.
+func standHeldRefusal(stand taskStand, workspace string) string {
+	if stand.mode == TaskModeReference {
+		return ""
+	}
+	dir := stand.dir
+	if strings.TrimSpace(dir) == "" {
+		dir = workspace
+	}
+	return programHoldRefusal(dir)
 }

@@ -44,9 +44,11 @@ You start one by typing its name as a command:
 /senior-dev rewrite the auth middleware to use the new session store
 ```
 
-That starts an ordinary **task**. It runs in its own working copy, under your
-dollar and time limits, shows on the rail, can be stopped, and lands on your
-branch when it ends. The chat is not blocked while it runs. Inside codeaf, a
+That starts an ordinary **task**. It runs in the folder itself, on a branch of
+its own in a repository, under your dollar and time limits, shows on the rail,
+can be stopped, and leaves its branch checked out when it ends. The chat is not
+blocked while it runs, but nothing else of codeaf's writes in that folder until
+it ends (internal/session's programhold.go). Inside codeaf, a
 delegate is one more **worker kind** behind the existing run supervisor. It is
 not a second engine.
 

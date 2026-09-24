@@ -974,6 +974,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't I run senior-dev in a folder inside the one another run is working in", "senior-dev"},
 		{"can I run senior-dev in a folder that is not a git repo", "senior-dev"},
 		{"where do senior-dev's notes go", "senior-dev"},
+		{"why can't codeaf edit files while senior-dev is working", "senior-dev"},
+		{"my task was refused because senior-dev is working in the folder", "senior-dev"},
 		{"the delegate was refused because of uncommitted changes", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
