@@ -497,6 +497,8 @@ Sessions, the conversation tab or the chats menu saves the same state: the tab a
 its default `alt+k` entry disappear. The menu's `→ show closed` fold can still find it.
 Enter reopens it and restores its normal name and tab. Confirmed permanent deletion
 removes the conversation from Home, Sessions, tabs, the chats menu and reopen history.
+This also works for the current conversation: its saved folder and ownership survive
+live-status updates, and deletion prepares a fresh conversation before stopping it.
 
 ## Close or put away a task, find an archived task, or reopen it
 
