@@ -88,7 +88,7 @@ func (a *app) refreshPlanRows() tea.Cmd {
 			if !here || front != a.frontGen {
 				return nil
 			}
-			a.planRows, a.planRowsRead, a.planRowsFront = rows, true, front
+			a.planRows, a.planRowsRead, a.planRowsFront = a.keepPlanTaskRecords(rows), true, front
 			a.planRowsStamp, a.planRowsAt = stamp, a.now()
 			a.planRowsGen++
 			a.touch()

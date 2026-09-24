@@ -153,7 +153,7 @@ func (a *app) recordDeleted(msg recordDeletedMsg) tea.Cmd {
 		for _, taskID := range msg.taskIDs {
 			a.deletedRecords[tasksKey{session: msg.row.ID, id: taskID}] = true
 		}
-		a.comp.tasks = a.keepTaskRecords(a.comp.tasks)
+		a.reconcileDeletedTasks()
 	}
 	if msg.task == nil && (msg.stopped || msg.err == nil) {
 		key := msg.key
@@ -227,7 +227,7 @@ func (a *app) keepTaskRecords(rows []session.TaskIndexEntry) []session.TaskIndex
 	}
 	kept := make([]session.TaskIndexEntry, 0, len(rows))
 	for _, row := range rows {
-		if !a.deletedRecords[tasksKey{session: row.SessionID}] && !a.deletedRecords[tasksKeyOf(row)] && !a.deletedRecords[tasksKey{session: row.SessionID, id: row.Parent}] && !a.deletedRecords[tasksKey{session: row.SessionID, id: row.PlanID}] {
+		if !a.taskRecordDeleted(row.SessionID, row.ID, row.Parent, row.PlanID) {
 			kept = append(kept, row)
 		}
 	}
@@ -238,6 +238,19 @@ func (a *app) keepTaskRecords(rows []session.TaskIndexEntry) []session.TaskIndex
 // including an engine snapshot captured before the delete finished. Copying the
 // lists keeps the engine's shared cache immutable while both pages update now.
 func (a *app) withoutDeletedConversations(world session.World) session.World {
+	for _, project := range world.Projects {
+		for _, row := range project.Sessions {
+			for id, gone := range row.DeletedTasks {
+				if gone {
+					if a.deletedRecords == nil {
+						a.deletedRecords = make(map[tasksKey]bool)
+					}
+					a.deletedRecords[tasksKey{session: row.ID, id: id}] = true
+				}
+			}
+		}
+	}
+	a.reconcileDeletedTasks()
 	if len(a.deletedRecords) == 0 {
 		return world
 	}

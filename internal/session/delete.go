@@ -246,7 +246,7 @@ func taskRecordDeleted(index string, entry TaskIndexEntry) bool {
 		return false
 	}
 	meta, _ := LoadMeta(filepath.Join(filepath.Dir(index), entry.SessionID))
-	return meta.DeletedTasks[entry.ID] || meta.DeletedTasks[entry.Parent] || meta.DeletedTasks[entry.PlanID]
+	return TaskRecordDeleted(meta.DeletedTasks, entry.ID, entry.Parent, entry.PlanID)
 }
 
 // removeTaskIndexRows retains every unrelated line, including unknown older
@@ -316,9 +316,33 @@ func keepTaskRecords(index string, rows []TaskIndexEntry) []TaskIndexEntry {
 			deleted = meta.DeletedTasks
 			byOwner[row.SessionID] = deleted
 		}
-		if !deleted[row.ID] && !deleted[row.Parent] && !deleted[row.PlanID] {
+		if !TaskRecordDeleted(deleted, row.ID, row.Parent, row.PlanID) {
 			kept = append(kept, row)
 		}
 	}
 	return kept
+}
+
+// TaskRecordDeleted is the shared visibility rule for indexes, live notices,
+// and their surface caches. The metadata tombstone outlives every projection.
+func TaskRecordDeleted(deleted map[string]bool, ids ...string) bool {
+	for _, id := range ids {
+		if id != "" && deleted[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// deletedTaskRecords reads the shared authority for graph, index and plan views.
+// Reading metadata also observes deletion by another attached window.
+func (a *Agent) deletedTaskRecords() map[string]bool {
+	a.mu.Lock()
+	file := a.config.SessionFile
+	a.mu.Unlock()
+	if file == "" {
+		return nil
+	}
+	meta, _ := LoadMeta(filepath.Dir(file))
+	return meta.DeletedTasks
 }
