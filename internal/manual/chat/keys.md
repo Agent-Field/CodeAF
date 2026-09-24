@@ -597,6 +597,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+.` | Open the sessions place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
+| `alt+v` (`opt+v`) | Open the **conversations view** (`/wall`): every open conversation as a live tile, and the teams you group them into. Press again or `esc` to close it. Its own keys are on the *Conversations and teams* page |
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, the same door as `enter` on a `projects` row |
 | `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
 | `alt+t` (`opt+t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
@@ -1676,6 +1677,13 @@ running — refused mid-check, or while its work lands — the guard offers no `
 reads `[m] send to main · [esc] cancel`, because reviving live work would duplicate it.
 
 ## Keys in the settings panel and the other panels
+
+**Conversations view** (`alt+v`, `/wall`, `▦` under the box or `▦ All` on the strip): the
+arrows move the focus · `enter` opens · `space` picks · `x` closes a view (the work keeps
+running) · `m` its teams · `s` a new team · `e` the shown team's settings · `tab` or `1` to
+`9` show a team · `/` filters · `?` lists every key, and each of its rows is a button. The
+**team switcher** under the strip's team chip takes `↑` `↓` `enter` `esc`. The whole map is on
+the *Conversations and teams* page.
 
 **Settings panel** (`ctrl+,`): `esc` backs out one layer at a time — search, then an
 open account, then the panel · `left`/`shift+tab` and `right`/`tab` change tab ·
