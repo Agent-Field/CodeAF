@@ -57,10 +57,29 @@ const (
 
 // stepProgress is what the step classifier knows about the run so far: whether
 // an edit tool has changed a project file, and whether a submit was accepted.
-// It only ever moves forward.
+// It only ever moves forward. A finished tool call moves the first (stepOf);
+// only the freeze's own stage record moves the second (afterStage).
 type stepProgress struct {
 	changed   bool
 	submitted bool
+}
+
+// The stage record the freeze writes once it has captured the tree, and at no
+// other time (solo.go's soloFreezeWithContext): the one record that says a
+// submit was accepted.
+const (
+	frozenStage  = "submit"
+	frozenStatus = "frozen"
+)
+
+// afterStage is the run's progress after a stage record. Only the freeze's
+// record moves it: from then on the tree is frozen, and everything is the
+// submit step.
+func (progress stepProgress) afterStage(stage, status string) stepProgress {
+	if stage == frozenStage && status == frozenStatus {
+		progress.submitted = true
+	}
+	return progress
 }
 
 // stepAction is one finished tool call as the classifier reads it: the tool,
@@ -83,7 +102,11 @@ var editTools = map[string]bool{"edit": true, "write": true, "apply_patch": true
 //
 //   - Once a submit has been accepted, everything is the submit step: the
 //     tree is frozen and the run is handing in.
-//   - The submit tool is the submit step, accepted or refused.
+//   - The submit tool is the submit step, accepted or refused, and it moves
+//     nothing. A refused submit tells its model why and lets it keep working,
+//     so it settles as a completed call exactly as an accepted one does
+//     (tool/submit.go): the call cannot say which it was, and the freeze's
+//     own stage record, which comes first, does (afterStage).
 //   - An action on one of senior-dev's own records is that record's step: the
 //     spec (brief), the pinned check (pin), the checklist.
 //   - A successful edit to a project file is the first change, and it and
@@ -97,9 +120,6 @@ func stepOf(action stepAction, progress stepProgress) (string, stepProgress) {
 		return StepSubmit, progress
 	}
 	if action.tool == "submit" {
-		if !action.failed {
-			progress.submitted = true
-		}
 		return StepSubmit, progress
 	}
 	if record := seniorDevRecordStep(action); record != "" {

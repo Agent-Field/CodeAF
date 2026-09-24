@@ -79,7 +79,8 @@ type eventWriter struct {
 	steps map[string]struct{}
 	// progress is what the step classifier knows of the run so far
 	// (step_ids.go): whether a project file has changed, whether a submit was
-	// accepted. It is read and moved under mu, in the order the calls finish.
+	// accepted. It is read and moved under mu, in the order the calls finish
+	// and the freeze's stage record is written.
 	progress stepProgress
 }
 
@@ -122,6 +123,11 @@ func (writer *eventWriter) emit(value event) {
 	}
 	switch value.Type {
 	case "stage":
+		// The freeze's stage record is what says a submit was accepted, so it
+		// moves the step classifier's progress here, under the same lock as the
+		// steps and in the order the run wrote them: it is written inside the
+		// submit call, before that call's own step.
+		writer.progress = writer.progress.afterStage(value.Stage, value.Status)
 		if writer.records != nil {
 			writer.records.Stage(delegate.StageRecord{
 				Stage: value.Stage, Status: value.Status, Data: stageRecordData(value.Data),

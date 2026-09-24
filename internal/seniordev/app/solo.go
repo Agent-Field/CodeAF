@@ -646,7 +646,7 @@ func (runner *pipeline) soloFreezeWithContext(
 	// reconciled: models routinely claim satisfaction without ticking a box, so
 	// gating on the ticks would refuse most submissions. The one refusal with
 	// evidence behind it is no checklist at all.
-	runner.events.stage("submit", "frozen", map[string]any{
+	runner.events.stage(frozenStage, frozenStatus, map[string]any{
 		"reason": submission.Reason, "evidence": submission.Evidence,
 		"checklist_satisfied": submission.ChecklistSatisfied,
 		"checklist_items":     checklist.items,
