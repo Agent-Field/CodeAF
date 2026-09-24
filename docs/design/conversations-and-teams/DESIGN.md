@@ -251,3 +251,415 @@ of the parent team; reports flow up, directives down), and dispatch of whole pla
   store, which over `--host` is the engine's (section 5, "Whose profile").
 - A Teams place on home showing the tree; nesting in the UI; drag a tile onto a team.
 - The manager waking on events, collision flags, nested managers, dispatch.
+
+## 8. Delegation (ruled 2026-09-24; store and contract built, session and screens next)
+
+**The goal.** The person talks to the top manager and steps away. Work is handed down a tree
+of teams; questions and decisions travel up it; only what no manager may or can decide reaches
+the person, and it reaches them as a card they can answer without reading a transcript.
+
+This section is the contract two builders work from at once: the session side (the team
+tools, delivery, caps and wrap-up, in `internal/session`) and the interface side (the teams
+page, the settings tab, the cards, in `internal/tui3`). Both meet only in `internal/teams`
+and its Traffic, as section 5 already requires; everything named here exists at the
+foundation commit and is tested.
+
+### 8.1 The rulings, as built
+
+- **Home and links.** Every conversation that sits in a team with a manager somewhere above
+  it reports to exactly one manager, its **home**. The home is auto-picked, stored, never asked
+  and never moved by itself: nearest manager up the chain first, else the membership the
+  manager's `team_start` made, else the first managed team it joined. Every other manager it
+  can be reached by is a **link**: it may read the conversation and send it an fyi, nothing
+  else. The person can move the home (`Reports to ◆ harbor ▾`).
+- **Questions go up.** With `questions_up` on (the default), a member's clarifying question
+  goes to its home manager first, logged in Traffic; the manager answers it or sends it up.
+  Permission prompts never go up: they are the person's, always (section 5, "What it may not
+  do").
+- **Decision packets.** Everything that must be decided above the conversation that met it
+  travels as one self-contained packet (question, parties and each side's context, options
+  each with its consequence, a recommendation with its reason). The same packet is answered
+  by a manager or by the person.
+- **Conflicts go to the LCA of all n parties**, in one hop: the lowest open team above every
+  party that has a manager who is not one of them. No such team: the person. Parties declare
+  a conflict (`team_raise`); nothing detects one.
+- **Orders go one level down, reports one level up.** A manager directs its own team's members,
+  a sub-team's manager among them; it does not reach past them. Managers of different teams
+  talk only through the tree.
+- **The optional global manager is the manager of the root.** With several top-level teams
+  there is no top manager until the person makes one on the `All teams` row (8.2, "The root").
+- **Caps.** A team may have a daily cap; reaching it raises a cap packet to the person.
+- **Lifecycle (c-9).** A team is open or closed. Closing is a card (8.5); a closed team is
+  folded away, can be reopened, and only a closed team can be deleted.
+
+### 8.2 The store: the exact API
+
+Everything below is `internal/teams` unless named otherwise.
+
+**Per-team settings** (`teamsettings.go`). Four optional overrides, stored flat on the team in
+`teams.json`, each unset meaning inherit:
+
+| teams.json field | Go | Meaning | Band |
+|---|---|---|---|
+| `questions_up` | `*bool` | members' questions go to the home manager first | |
+| `cap_usd_day` | `*float64` | dollars per local day for the team and everything under it; `0` is an explicit no cap | `>= 0` |
+| `depth_limit` | `*int` | levels of teams, the top counting as one | 1 to 10 |
+| `sub_share` | `*float64` | fraction of this team's cap a new sub-team is made with | (0, 1] |
+
+- `type Settings struct{ QuestionsUp *bool; CapUSDDay *float64; DepthLimit *int; SubShare *float64 }`,
+  `Team.Settings`, `(Settings).Empty()`.
+- `(*File).SetSettings(id, func(*Settings)) error`: set a field to override, nil it to
+  reset; out of band is `ErrSetting` and nothing changes. tidy drops an out-of-band value in a
+  hand-edited file (it reads as inherit).
+- `type Defaults struct{ QuestionsUp bool; CapUSDDay float64; DepthLimit int; SubShare float64 }`
+  and `DefaultsAt(profileDir) Defaults`, from config.json in one read.
+- `(*File).Effective(id, Defaults) Effective`: each value with its `Origin`
+  (`QuestionsUpFrom`, `CapFrom`, `DepthFrom`, `SubShareFrom`). `Origin{Kind, Team, Name}`,
+  Kind one of `OriginTeam`, `OriginAncestor`, `OriginSettings`, `OriginClosed`;
+  `(Origin).Inherited()`, `(Origin).Words()` = `""`, `from Settings`, `from harbor`,
+  `closed`. The walk skips closed ancestors; a closed team's own cap is none.
+- `(*File).Depth(id) int` (the root is 0, top level 1), `(*File).CanNest(parent, Defaults) bool`
+  (parent open and one more level inside its effective limit), `(*File).SubTeamCap(parent,
+  Defaults) float64` (parent's effective cap times its share, to the cent; 0 when the parent
+  has none). The session writes that figure on the new sub-team with `SetSettings`, so a later
+  change of the share moves no team that exists.
+
+**A cap is a pool.** A team's spend counts every team under it, so an inherited cap is the
+ancestor's one pool, shared, never a second allowance of the same size. `Effective.CapFrom.Team`
+names the pool's owner; when the cap comes from Settings, the owner is the top of the chain
+(the root when there is one). The spend drawn beside a cap is always the owner's.
+
+**Config keys** (`internal/config/teamdefaults.go`, flat dotted keys, category `teams`, one
+settings tab `Teams`, each a row with a named reader `TeamDefaultsAt` and a ledger line):
+
+| key | kind | default | registry label |
+|---|---|---|---|
+| `teams.questions_up` | on/off | on | questions go to the manager |
+| `teams.cap_usd_day` | dollars, `no cap` at 0 | 0 | team daily cap |
+| `teams.sub_share_pct` | whole %, 1 to 100 | 50 | sub-team share |
+| `teams.depth_limit` | levels, 1 to 10 | 3 | team depth |
+
+All four are guarded from model self-service (`selfservice.go`): a manager is a model, and
+each is a rail on managers (money, pressure, consent).
+
+**Home and links** (`home.go`).
+
+- `Member.Home bool` (`home`): the one membership whose chain names the manager the
+  conversation reports to. `Member.Started bool` (`started`): the membership a manager's
+  `team_start` made; the interface sets it when it carries out a `KindStart`.
+- `(*File).Home(key) (Report, bool)`, `(*File).Links(key) []Report`,
+  `(*File).SetHome(key, teamID) error` (`ErrNoManagerAbove` for a chain with no manager).
+  `Report{Via, Team, Manager, Distance}`: the membership's team, the managed team, its
+  manager's key, levels between.
+- tidy (every load and write) gives every conversation with something to report to exactly
+  one flag and takes it from any other; a valid flag is never moved. The pick order: nearest
+  manager (own team before one a level up, then the deeper team), then `Started`, then file
+  order (which is join order at the first write that gives a conversation a manager).
+- A manager is never its own home: a sub-team's manager reports one level up.
+- The flag is stable; the manager at the end of its chain is whoever the person made manager
+  there. A conversation in an unmanaged sub-team reports to the manager above; when the
+  person gives that sub-team a manager, the same flag resolves to it. That is the person's
+  act, not a home changing by itself, and a sub-team manager nobody reported to would manage
+  nothing.
+
+**LCA** (`home.go`). `(*File).LCA(keys...) (Team, bool)`: the deepest open team at or above
+some membership of every key, with a manager who is not one of the keys (a party never judges
+its own case). false is the person. One key gives its nearest manager.
+
+**Lifecycle** (`lifecycle.go`).
+
+- `Team.State` (`state`: `TeamOpen` or `TeamClosed`; empty reads open), `Team.ClosedAt`
+  (`closed_at`), `Team.ClosedWith` (`closed_with`: the team whose close closed it),
+  `Team.Report` (`report`: the closing report's packet id). `(Team).Closed()`.
+- `(*File).Close(id, at, reportID) error`: closes the team and every open team under it;
+  a sub-team closed earlier on its own keeps its own close. Closing the root is `ErrRoot`.
+- `(*File).Reopen(id) error`: reopens the team and exactly the teams its own close closed;
+  under a closed parent it is `ErrParentClosed`.
+- `(*File).Open() []Team`, `(*File).ClosedTeams() []Team` (newest close first),
+  `(*File).Descendants(id) []Team`.
+- `Delete(profileDir, id) ([]string, error)`: only a closed team (else `ErrOpen`), with every
+  team under it; the file first, then `TeamDir(profileDir, id)` (Traffic and packets).
+  Conversations are never touched.
+- `Quiet(profileDir, f, now, idle) ([]string, error)`, `QuietAfter` (7 days): open teams with
+  no Traffic, packet or member-transcript activity for idle and no packet waiting on or raised
+  from them. Organize's input; it closes nothing.
+- A closed team is outside every walk: never a home, never found by `managerUp`, never an LCA,
+  skipped by `Effective`, no cap. A conversation whose home closes is given the next home on the
+  same write, or none (it is then an ordinary chat).
+
+**The root** (`root.go`). `Team.Root` (`root`), `RootName` (`All teams`),
+`(*File).Root() (Team, bool)`, `(*File).MakeRoot(at) string` (moves every top-level team under
+it; then `AddMember` and `SetManager` in the same write), `(*File).DissolveRoot()`. tidy keeps one
+open root at the top and puts any later top-level team under it. The root is not a level
+(`Depth`), cannot close or move (`ErrRoot`). Its override is what `from All teams` means.
+
+**Decision packets** (`decision.go`). One file per team, `<profile>/teams/<id>/decisions.jsonl`,
+append-only JSON events (`raise` with the whole packet, then `decide` and `escalate` naming it by
+id), folded by id. A packet lives in the file of the team it was raised from and never moves;
+escalating changes who decides and adds a hop. Writes are under the file's lock and re-check the
+fold under it; reads are stat-first and read only the bytes appended since the last read.
+
+```go
+type Packet struct {
+    ID       string          // "p" + 12 hex, minted by Raise
+    Team     string          // who decides now: a team id (its manager), or Person ("you")
+    Origin   string          // the team it was raised from; its file holds it
+    Kind     string          // question | conflict | cap | judgement | closing
+    RaisedBy string          // raiser's handle, "manager", or "you"
+    Parties  []Party         // {Key, Handle, Team, Context}: each side in its own words
+    Question string
+    Options  []Option        // {ID, Label, Consequence}; ID defaults to "1", "2", ...
+    Recommendation *Recommendation // {Option, Reason}, optional
+    Report   *ClosingReport  // {Done, Left, Files, SpendUSD, Incomplete}, closing only
+    State    string          // open | decided | escalated (escalated still waits, at Team)
+    DecidedBy string         // the deciding manager's handle, or "you"
+    Decision string          // an option id, or the person's own words
+    Reason   string          // the decider's, or the last escalation's
+    Trail    []Hop           // {From, To, By, Reason, At}, oldest first
+    Raised, At time.Time
+}
+```
+
+- `Raise(profileDir, Packet) (Packet, error)`. Required: a kind, the question, the raiser, and
+  on every option a label and a consequence; a question may have no options, every other kind
+  needs one; a recommendation names an option and gives a reason. `Team` is found by the caller
+  (`LCA` for parties, `Home` for a member's question) and must be open; `Origin` defaults to
+  `Team` and must be `Team` or under it (`ErrSideways` otherwise).
+- `Decide(profileDir, id, by, decision, reason) (Packet, error)`. `by` is the handle of the
+  manager the packet waits on (or `"manager"`, recorded as the handle), or `Person`, who may
+  decide any packet. `ErrNotDecider`, `ErrDecided`, `ErrNoPacket`.
+- `Escalate(profileDir, id, by, to, reason) (Packet, error)`. `to` is an open team strictly
+  above the one it waits on, or `Person`; down, sideways, closed or past the person is
+  `ErrSideways`.
+- `OpenPackets(profileDir, scope) ([]Packet, stamp, error)`: waiting packets for a team id,
+  `Person`, or `ScopeAll` (`""`). `Packets(profileDir, teamID)`: a team's whole history,
+  decided included (the closed view and its reports). `PacketByID`. `PacketsStamp(profileDir)`:
+  one stamp over every packet file (a directory listing and a stat per team).
+  `DecisionsPath(profileDir, teamID)`.
+- Option ids the two sides act on: `OptionClose` (`close`), `OptionCloseNow` (`close-now`),
+  `OptionKeepGoing` (`keep-going`), `OptionRaiseCap` (`raise`), `OptionStopToday` (`stop`).
+- Every raise, decision and escalation also appends a `KindPacket` Traffic entry to the origin's
+  log and to every team asked to decide it, so a window tailing Traffic learns of it without
+  polling, and a manager's session is handed it by ordinary delivery.
+
+**Spend** (`spend.go`). The usage ledger (`<home>/v3/usage.jsonl`, internal/session's
+`usage_ledger.go`) already records every call's local day, cost, conversation id (`session`)
+and, for work a conversation started, that conversation's id again (`root`). A member's id is
+its transcript folder's name. So:
+
+- `TeamSpend(profileDir, teamID, day) (Spend, error)`: the day's lines whose session or root
+  is a member of the team or any team under it, each line once, each conversation once.
+  `Spend{Team, Day, USD, Calls, ByMember map[key]float64}`. `TeamSpendIn(profileDir, ledger,
+  ...)` for tests. `Today()`, `UsageLedgerPath()`, `SpendStamp(profileDir, ledger)`,
+  `TeamSpendStamp(profileDir, teamID, day)`.
+- The ledger is folded once per process into totals by day and (session, root), then only
+  appended bytes are read; a quiet ledger costs a stat. `internal/session`'s
+  `TestTeamSpendReadsTheSessionsLedger` pins the path and field names.
+- A sub-team closed today still counts toward its parent's day: the money was spent.
+- Nothing here enforces a cap.
+
+**Traffic kinds added** (`traffic.go`):
+
+| Kind | From → To | Meaning |
+|---|---|---|
+| `question` | member handle → `manager` | a clarifying question to the home manager |
+| `answer` | `manager` → member handle | the answer; `Entry.Reply` is the question's entry id |
+| `packet` | `system` → `manager` | a packet was raised, decided or escalated; `Entry.Packet` is its id, `Entry.State` its new state |
+| `close` | `you`, `manager` or `system` → `everyone` | the team was closed |
+| `reopen` | `you` → `everyone` | the team was reopened |
+
+`ToYou` (`you`) is added as an address for the person.
+
+**Over `--host`** (`internal/remote`'s `wire_delegation.go`, `delegation.go`). Seven additive
+methods, answered from the engine's profile and ledger: `Teams.Defaults`, `Teams.Packets(scope,
+stamp)` (answers `same` in a few bytes), `Teams.Raise`, `Teams.Decide`, `Teams.Escalate`,
+`Teams.Spend(team, day, stamp)` (answers `same`), `Teams.Delete(team)`. `Welcome.Delegation`
+says the engine has them. Close, reopen, overrides, homes and the root are edits to the teams
+file and cross by `Teams.Update` like every other edit.
+
+**The seam** (`tui3.TeamsSeam`). Beside `Load`, `ReadSince`, `Update` and `Traffic`:
+`Defaults`, `Packets(scope, since)`, `Raise`, `Decide`, `Escalate`, `Spend(team, day, since)`,
+`Delete(team)`, every one asked off the loop. `localTeams` wires all of them to this profile;
+cmd/codeaf's `hostTeams` wires them to the wire only when the welcome says `Delegation`, and an
+engine with the teams doors and not these gets a seam whose delegation doors are nil
+(`TeamsSeam.delegation()` false). The interface then says the inbox and the spend are not
+available over that connection; it never reads the laptop's packet files. The frame law
+forbids every new store door in a frame (`framedisk_law_test.go`).
+
+### 8.3 What the session side builds on this (d1)
+
+- **Identity** is section 5's: a session's key is its transcript path; its home is
+  `Home(key)`; it manages team T where `T.Manager == key`.
+- **Questions up.** When `Effective(team).QuestionsUp` and `Home(key)` exists, a member's
+  clarifying question is a `KindQuestion` entry to `manager` in the home team's log. The manager
+  answers with `KindAnswer` (`Reply` set), delivered like any message. A manager that cannot
+  answer raises a `question` packet to its own home's team, or to `Person` when it has none
+  (the top manager's own questions reach the person). Permission prompts never take this road.
+- **Conflicts.** `team_raise` takes the parties' handles, finds `LCA(keys...)`, and raises a
+  `conflict` packet there (or to `Person`). The LCA manager is woken by the `packet` entry, may
+  read and ask the parties, rules with `Decide` and directives to every party (logged in each
+  involved team's Traffic), or `Escalate`s up. Never sideways.
+- **One level.** `team_send`, `team_stop` and `team_start` reach only the manager's own team's
+  members (a sub-team's manager is one). Links may send fyi notes (`KindNote`) and nothing else.
+- **Caps.** Before each model request of a member, the session compares
+  `TeamSpend(owner, Today())` with the pool owner's effective cap (`Effective.CapFrom.Team`, or
+  the top of the chain). Reached: it raises one `cap` packet to `Person` for that team and day
+  (not one per request; look for an open one first) with options `raise` (`Raise to $10`,
+  twice the cap) and `stop` (`Stop for today`) and a recommendation, and holds new member turns
+  in that pool until it is decided. Managers never raise a cap: money is the person's.
+- **Sub-teams** (nesting step): `CanNest(parent)` gates `team_start` of a team; the new team
+  gets `SubTeamCap(parent)` written as its own `cap_usd_day`, and its manager is a member of the
+  parent.
+- **Wrap-up** (c-9): when the person picks `Wrap up first`, the manager tells members to finish
+  and commit, answers what it can, and raises a `closing` packet to `Person` with a
+  `ClosingReport` and options `close` / `keep-going`, bounded by time and spend; out of bound, it
+  raises it with `Incomplete` and the option `close-now`. The interface closes the team only when
+  the person picks close.
+- **Closed** teams spend nothing: a session whose only teams closed takes no team turns.
+
+### 8.4 The interface (d2)
+
+The house rules hold everywhere below: every clickable thing grounds on hover; actions are
+word buttons with a dim hint line and a key; one accent on the screen; padding around every
+block; nothing moves the person's focus; every panel closes (`esc` and a word); everything is
+findable from `?`. Amber is used for one thing only: something needs the person (a packet
+waiting on them, a member's permission prompt). A packet waiting on a manager is not amber:
+somebody is on it.
+
+**The settings tab `Teams`** (built at the foundation commit, between `Tasks` and `Providers`).
+Four rows, in this order, each with the registry's hint:
+
+```
+  questions go to the manager   on
+  daily cap per team            no cap
+  sub-team share                50%
+  team depth                    3 levels
+```
+
+The tab is titled `Teams` and is the one-to-one reading of the `teams` category, like
+Spending, Safety and Tasks. A line under the rows, dim: `a team can override any of these on
+its card`.
+
+**The teams page.** A main tab `teams`, right after `home` (the digits after it shift by one).
+
+- **Left rail: the tree.** One row per open team, indented by level, each with its colour dot,
+  its name, and at most one mark: `●` working (dim, a member is running), `◆ needs you`
+  (amber, a packet or a prompt waits on the person). Above the teams, the `All teams` row: with
+  no root team it is the whole list and carries `+ Manager` (the optional global manager; the
+  click makes the root, 8.2); with one it is the root team and selects like any team. Below
+  them: `+ New team` and `Organize`, word buttons. At the bottom, folded: `Closed · N`
+  (8.5). `↑↓` walks the rail, `enter` selects; the selection never moves focus out of the
+  composer on its own.
+- **Right pane: the selected team's REAL manager conversation** (the full chat of section 5:
+  typing steers it, its prompts are approved here), under a compact header:
+
+  ```
+  ◆ harbor   @web ● running  @api idle  @docs ◆ asking        $1.20 of $5 today   Settings   Open ▦
+  ```
+
+  members with their states (each clickable, opening the member), today's spend against the
+  effective cap (`$1.20 today` with no cap; the pool owner's figure with `· harbor's cap` when
+  the cap is inherited), `Settings` (the team card), `Open ▦` (the team on the wall). A member's
+  permission prompt shows as a needs-you row in the header with `Allow once` / `Always` /
+  `Deny`, the person's own gate (a manager never answers it).
+- **The inbox.** Above the conversation, the packets waiting on the person or on this team's
+  manager, one card each, newest last, folded to one line each beyond three:
+
+  ```
+  ◆ conflict · raised by @web                              waiting on you
+  which shape does the signup form send?
+    @web   the form posts JSON
+    @api   the endpoint takes form data
+  [ JSON ]  @api changes the handler; the form stays          recommended: matches the rest
+  [ form data ]  @web rewrites the submit; the handler stays
+  [ Your own answer… ]   [ Send up ▴ ]
+  ```
+
+  Options are word buttons with their consequence as the dim line; the recommended one says
+  so beside it; `Your own answer…` opens a one-line box (`enter` decides with the words);
+  `Send up ▴` escalates to the next manager up, or to the person (shown only when the viewer is
+  a manager's page and there is somewhere up to go). A packet waiting on a manager is shown
+  dim with `waiting on ◆ dock`, and the person may still decide it (authority: person first).
+  Decided packets leave the inbox and stay in the team's history.
+- **No manager:** the right pane is the members (states, open) and one `+ Manager` button with
+  the line `a manager takes your messages to the team and asks you only what it cannot decide`.
+- **No teams at all:** an explainer (two sentences: what a team is, what a manager does) and
+  `Organize` / `New team`.
+- **A cap reached** is a `cap` packet, drawn like any card:
+
+  ```
+  ◆ harbor reached its $5 cap today                         waiting on you
+  [ Raise to $10 ]   harbor and its sub-teams go on until $10 today
+  [ Stop for today ] members finish their current turn and start no new one  recommended: …
+  ```
+
+  The team's rail row carries `◆ needs you` until it is decided.
+
+**The team settings card** (from `Settings` in the header). Overrides only: each of the four
+values on its own row, the effective value in ink when the team overrides it, with `reset`
+beside it; an inherited value dim with its origin, `$5/day · from Settings`,
+`on · from harbor`, `3 levels · from All teams` (`Origin.Words()`). Editing a dim value makes
+it an override. Below the four: `Reports to` for a selected member (its home and `▾` to move
+it), and `Close team…`. Closable with `esc`.
+
+### 8.5 Closing, reopening, deleting (c-9)
+
+- **`Close team…`** (card from the team settings card, the rail's context menu, and `?`):
+  - with work running: `Wrap up first` (default, the accent), `Close now`, `Cancel`. The hint
+    under `Wrap up first`: `the manager asks everyone to finish and commit, then brings you a
+    closing report`. The team closes only when the person picks `Close` on the report.
+  - `Close now` stops every member turn (the person's own Stop), ends the manager's turn,
+    closes the team's tabs and moves it to Closed, in one step with `Undo` on the notice line.
+  - with nothing running: one `Close` with `Undo`.
+  - Closing a team closes its sub-teams; their reports roll up into the parent's. A sub-team
+    closing alone reports to its parent's manager.
+  - A conversation that is also in another open team is never stopped; its home moves by the
+    auto rule, or it becomes an ordinary chat.
+- **The closing report** is a `closing` packet: `done`, `left`, where the files are, what it
+  spent, and `Close` / `Keep going` (or `Close now` when the wrap-up ran out of time or money,
+  marked `wrap-up incomplete`).
+- **`Closed · N`**, folded at the bottom of the rail and of the team switcher, never on the
+  strip or the wall. Opening a closed team shows its closing report, members, spend, opened and
+  closed dates, and `Reopen` (tabs reopen, the manager resumes) and `Delete…` (confirm; it
+  forgets the grouping, the Traffic and the packets; conversations stay in history). Delete
+  exists only here.
+- **Organize** adds one proposal kind: `Close N quiet teams` (`Quiet`, 7 days without activity
+  and no open packet), each named, with `Undo`, never applied without the person.
+
+### 8.6 Where this departs from the brief, and why
+
+- **The home flag resolves to the nearest manager up its chain**, so giving an unmanaged
+  sub-team a manager takes its members with it. The alternative (store the manager's team,
+  never move) leaves a new sub-team manager managing nobody; making a manager is the person's
+  act, so this is not a home "changing by itself".
+- **`decided_by` is `you`, not `person`**, because Traffic already spells the person `you`
+  (`FromYou`, now `ToYou`); one word for one party.
+- **The settings group is its own tab, `Teams`.** The settings tabs are one-to-one with their
+  categories for the four newer tabs; a group inside Tasks would be a row filed under one
+  category and drawn under another.
+- **A cap is a pool, and the header says whose.** `$1.20 of $5 today · from harbor` beside a
+  sub-team would read as a second $5; the header shows the pool owner's spend and says
+  `harbor's cap`. The settings card still says `from harbor`, which is true of the value.
+- **Cap packets always go to the person.** A manager that could raise its own cap would make
+  the cap advice. Managers may stop their own team early; they may not spend more.
+- **The global manager is a real root team**, not a special case beside the tree, so every
+  rule above holds for it unchanged; the root is not a level and cannot close.
+- **Team defaults are rails**, refused to model self-service like the spending and consent
+  rows. A team's own overrides are written only by the interface for the person; the team
+  tools must not write them (d1).
+- **Packets waiting on a manager are not amber**, only those waiting on the person. The brief
+  said "amber only for needs-you"; this is that rule applied to packets.
+
+### 8.7 Open questions
+
+- Over `--host` the settings tab writes this laptop's config.json, while the engine reads its
+  own `teams.` defaults (`Teams.Defaults`). Until settings cross the wire, the `Teams` tab over
+  `--host` should show the engine's values read-only with `on <host>`; the other tabs have the
+  same gap today.
+- Spend over `--host` is the engine machine's ledger only. A conversation whose model calls
+  were made on another machine (a laptop-run member of a far team) is not counted; no such
+  arrangement exists today.
+- A packet file is never rotated. A team that raises thousands of packets grows it without
+  bound; if that happens, rotate like Traffic and keep undecided packets in the new file.
+- The ruling does not say who may reopen a team whose parent is closed; the store refuses it
+  (`ErrParentClosed`) and the card should offer `Reopen harbor` instead.
