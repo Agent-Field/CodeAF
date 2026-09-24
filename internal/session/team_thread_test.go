@@ -127,3 +127,20 @@ func TestTeamThreadADeliveredNumberReadsBack(t *testing.T) {
 		t.Errorf("the old line read as %+v", l)
 	}
 }
+
+// A NOTE THAT WOKE A TURN CARRIES ITS DELIVERY UNDER A SENTENCE OF ITS OWN, and
+// the delivery still reads back line by line, so a surface draws the woken
+// member's directive as the manager's card.
+func TestTeamThreadAWakeNotesDeliveryReadsBack(t *testing.T) {
+	text := "Your manager's directive started this turn; the person did not speak.\n\n" +
+		"Team traffic in \"harbor\" for you (@web). These are the team's messages, not the person's words:\n" +
+		"◆ directive from manager #7: fix the header\n" +
+		"(The person's own words in this conversation outrank the manager.)"
+	lines := teamNewsLines(text)
+	if len(lines) != 1 || lines[0].Thread != "000000000007" || lines[0].Text != "fix the header" {
+		t.Fatalf("the wake's delivery read as %+v", lines)
+	}
+	if teamNewsLines("Your team's replies started this turn.\n\nWhat your members did:\n@web finished its turn") != nil {
+		t.Error("a wake note with no delivery read as one")
+	}
+}

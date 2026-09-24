@@ -331,6 +331,9 @@ const (
 	// the narrow frame's card's `Close esc` (teamrail.go).
 	hoverTrafficHide
 	hoverTrafficClose
+	// hoverThread is a line of a thread card in the conversation, held by its
+	// entry and the message it shows (teamthreadcard.go).
+	hoverThread
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -575,6 +578,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{kind: hoverPictures, entry: r.entry, index: r.pictureIndex}
 		case r.hit == hitBrief:
 			return hoverAt{kind: hoverBrief, entry: r.entry}
+		case r.hit == hitThread:
+			return hoverAt{kind: hoverThread, entry: r.entry, key: r.open}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
 			r.hit == hitHarness:
 			// THE ONES THAT WERE MISSING FROM THIS LIST, and every one of them is
