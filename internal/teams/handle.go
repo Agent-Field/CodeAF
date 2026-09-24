@@ -82,10 +82,56 @@ func handleProblem(t Team, key, h string) error {
 	return nil
 }
 
+// fillerWords are words a title is made of that name no piece of work: the
+// verbs a person opens a request with (checking, review, fix), and the words
+// nearly every title on one machine shares (codeaf, repo, agent). A handle made
+// of one of them says nothing about which conversation it is, which is what the
+// first handles made from real titles were: @checking, @review, @agent.
+var fillerWords = map[string]bool{
+	"check": true, "checking": true, "checked": true, "checks": true,
+	"review": true, "reviewing": true, "reviewed": true, "reviews": true,
+	"look": true, "looking": true, "see": true, "tell": true, "show": true,
+	"help": true, "helping": true, "try": true, "trying": true, "want": true, "need": true,
+	"make": true, "making": true, "get": true, "getting": true, "do": true, "doing": true,
+	"run": true, "running": true, "find": true, "finding": true, "add": true, "adding": true,
+	"fix": true, "fixing": true, "refactor": true, "refactoring": true,
+	"update": true, "updating": true, "write": true, "writing": true,
+	"explain": true, "explaining": true, "investigate": true, "investigating": true,
+	"debug": true, "debugging": true, "happening": true, "going": true,
+	"agent": true, "agents": true, "chat": true, "conversation": true, "question": true,
+	"codeaf": true, "code": true, "repo": true, "repository": true, "project": true,
+	"thing": true, "things": true, "stuff": true, "work": true, "task": true,
+	"new": true, "hey": true, "hi": true, "hello": true, "whats": true,
+	"here": true, "there": true, "now": true, "just": true, "also": true, "again": true,
+}
+
+// genericHeads are nouns that end a title without saying what it is about: in
+// "Fix the login bug" the bug is not the subject, the login is, and in "lexer
+// rewrite" the rewrite is what is done to the lexer.
+var genericHeads = map[string]bool{
+	"bug": true, "bugs": true, "issue": true, "issues": true, "problem": true,
+	"problems": true, "error": true, "errors": true, "support": true,
+	"rewrite": true, "sweep": true, "cleanup": true, "pass": true, "audit": true,
+	"change": true, "changes": true, "plan": true, "notes": true, "draft": true,
+	"overview": true, "summary": true, "polish": true, "tweaks": true, "wip": true,
+}
+
+// handleWordMin is the shortest word a handle is made of on its own. A shorter
+// one is a fragment ("can you te" gave @te) or a qualifier, and a qualifier
+// only ever rides in front of the word it qualifies (@qa-binary, @api-docs).
+const handleWordMin = 3
+
 // DeriveHandle is the handle a title suggests, before collisions and reserved
-// words are taken into account: its first meaningful word, joined to the
-// second when the first is short, lowercased and cut to HandleMax. A title
-// with no usable word gives "chat"; an empty title gives "".
+// words are taken into account.
+//
+// IT IS THE TITLE'S HEAD NOUN, as nearly as a word list can find it: the last
+// word that is not a function word, a filler word ([fillerWords]) or a
+// fragment, because an English title names its subject last ("checking codeaf
+// branches for qa binary" is about the binary). A generic last word ("bug",
+// "support") gives way to the one before it. A short qualifier right in front
+// of the head rides with it when both fit (@qa-binary, @api-docs). The result
+// is lowercased and cut to HandleMax. A title with no usable word gives "chat";
+// an empty title gives "".
 func DeriveHandle(title string) string {
 	if strings.TrimSpace(title) == "" {
 		return ""
@@ -93,21 +139,32 @@ func DeriveHandle(title string) string {
 	words := strings.FieldsFunc(strings.ToLower(title), func(r rune) bool {
 		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
 	})
-	var meaningful []string
-	for _, w := range words {
-		if !stopWords[w] {
-			meaningful = append(meaningful, w)
+	usable := func(w string) bool {
+		return !stopWords[w] && !fillerWords[w] && strings.Trim(w, "0123456789") != ""
+	}
+	head := -1
+	for i := len(words) - 1; i >= 0; i-- {
+		w := words[i]
+		if len(w) < handleWordMin || !usable(w) {
+			continue
+		}
+		if head < 0 {
+			head = i
+		}
+		if !genericHeads[w] {
+			head = i
+			break
 		}
 	}
-	if len(meaningful) == 0 {
-		meaningful = words
-	}
-	if len(meaningful) == 0 {
+	if head < 0 {
 		return "chat"
 	}
-	base := meaningful[0]
-	if len(base) < 4 && len(meaningful) > 1 && len(base)+1+len(meaningful[1]) <= HandleMax {
-		base += "-" + meaningful[1]
+	base := words[head]
+	if head > 0 {
+		prev := words[head-1]
+		if len(prev) >= HandleMin && len(prev) <= handleWordMin && usable(prev) && len(prev)+1+len(base) <= HandleMax {
+			base = prev + "-" + base
+		}
 	}
 	base = cutHandle(base, HandleMax)
 	if handleShape(base) != nil {
