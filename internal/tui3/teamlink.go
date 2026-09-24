@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -301,18 +300,7 @@ func (a *app) teamLinkHint() string {
 	if !ok {
 		return ""
 	}
-	verb := "Resume"
-	if tabsHold(a.tabList(), m.Key) || a.teamHeldOpen(m.Key) {
-		verb = "Open"
-	}
-	words := verb + " @" + m.Handle
-	if title := strings.TrimSpace(m.Word); title != "" {
-		if ansi.StringWidth(title) > teamLinkHintTitle {
-			title = strings.TrimRight(ansi.Truncate(title, teamLinkHintTitle-1, ""), " ") + a.linearMark("…", "...")
-		}
-		words += hintSegment + title
-	}
-	return words + hintSegment + "click"
+	return a.teamMemberHint(m)
 }
 
 // teamLinkHintTitle is the most cells of a member's title the hint line spends.
