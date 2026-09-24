@@ -17,17 +17,17 @@ import (
 // the reading half.
 //
 // The frame reads top to bottom as one hierarchy. A title bar says what this
-// is and what the conversations on it are doing; under it the Spaces control
+// is and what the conversations on it are doing; under it the Teams control
 // says which set is shown; a rule and a blank row close the head. Then the
 // grid, and last the foot, the head mirrored: a blank row, a rule, and the
 // toolbar (wallbar.go), whose free middle says what the control under the
 // pointer does. The head and the foot end where the grid ends. Two cards can
 // float over the grid: the selection tray while conversations are picked, and
-// the new-space card while one is named; and the help sheet (wallhelp.go)
+// the new-team card while one is named; and the help sheet (wallhelp.go)
 // floats over everything while it is up.
 //
 // The words on screen are the person's words: a Conversation is a tile, a
-// Space is a named set of them. "wall" and "tab" are this code's names and are
+// Team is a named set of them. "wall" and "tab" are this code's names and are
 // never drawn.
 //
 // A TILE READS TITLE, STATE, NOW, HISTORY. The title is the brightest thing
@@ -54,7 +54,7 @@ import (
 // mode, on every tile, where the mode itself says what a box is for.
 
 // wallChromeRows is what the frame spends outside the grid. The head is the
-// title bar, the Spaces row, a rule and a blank row; the foot mirrors it, a
+// title bar, the Teams row, a rule and a blank row; the foot mirrors it, a
 // blank row, a rule and the toolbar, so the grid sits between two matching
 // edges and no tile touches a control.
 const wallChromeRows = 7
@@ -106,7 +106,7 @@ const (
 // wallFreshSettle is how long newly arrived lines stay lifted to ink.
 const wallFreshSettle = 600 * time.Millisecond
 
-// wallMadeFor is how long the chip row says a space was just made.
+// wallMadeFor is how long the chip row says a team was just made.
 const wallMadeFor = 2 * time.Second
 
 // wallEmptyWord is the whisper an empty wall draws beside its way back.
@@ -268,7 +268,7 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 	}
 	rows := make([]string, height)
 	g := wallGlyphsFor(pal.ascii)
-	if len(v.tiles) == 0 && v.filter == "" && v.space == "" {
+	if len(v.tiles) == 0 && v.filter == "" && v.team == "" {
 		// Nothing is open at all: there is nothing to title, narrow or lay out,
 		// so the frame is the one sentence and the way back.
 		y := (height - 1) / 2
@@ -290,7 +290,7 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 	rows[0] = row
 	hits = append(hits, h...)
 	if height > 1 {
-		row, h := wallSpacesRow(pal, g, v, width, height, inset, c, first, last, 1)
+		row, h := wallTeamsRow(pal, g, v, width, height, inset, c, first, last, 1)
 		rows[1] = row
 		hits = append(hits, h...)
 	}
@@ -300,7 +300,7 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 
 	gridEnd := height - wallFootRows // the blank row over the foot's rule
 	if n == 0 {
-		// A filter or a space with nothing in it keeps the whole frame, so
+		// A filter or a team with nothing in it keeps the whole frame, so
 		// what narrowed it stays on screen beside the way to undo it.
 		if gridEnd > wallGridTop {
 			y := wallGridTop + (gridEnd-wallGridTop-1)/2
@@ -410,8 +410,8 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		mark, run = "#", "*"
 	}
 	sub := "every open conversation, live"
-	if v.space != "" {
-		sub = "the conversations in " + v.space
+	if v.team != "" {
+		sub = "the conversations in " + v.team
 	}
 	left := " " + pal.bold(pal.ink(mark+" Conversations")) + pal.dim(" "+g.sep+" "+sub)
 	working, needs := 0, 0
@@ -490,12 +490,12 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 	return b.String(), hits
 }
 
-// wallRule closes the head: dim, or, while a space is shown, in that space's
+// wallRule closes the head: dim, or, while a team is shown, in that team's
 // colour, so the whole frame says which set it is showing.
 func wallRule(pal palette, v wallView, width int) string {
-	for i, name := range v.spaces {
-		if name == v.space && v.space != "" && i < len(v.hues) {
-			if ink := pal.spaceInk(v.hues[i]); ink != nil {
+	for i, name := range v.teams {
+		if name == v.team && v.team != "" && i < len(v.hues) {
+			if ink := pal.teamInk(v.hues[i]); ink != nil {
 				return ink(wallRuleLine(pal, width))
 			}
 		}
@@ -504,8 +504,8 @@ func wallRule(pal palette, v wallView, width int) string {
 }
 
 // wallFootRule opens the foot, the head's rule mirrored. It is always dim:
-// the head already says which space is shown, and saying it twice would make
-// the space's colour a frame rather than a mark.
+// the head already says which team is shown, and saying it twice would make
+// the team's colour a frame rather than a mark.
 func wallFootRule(pal palette, width int) string {
 	return pal.dim(wallRuleLine(pal, width))
 }
@@ -722,7 +722,7 @@ func wallRowHot(v wallView, kind wallHitKind, i, y int) bool {
 //
 // and under the pointer or the focus its bottom border is the action row:
 //
-//	╰─ Open ↵ ── Select ␣ ── Spaces m ── Close x ──╯
+//	╰─ Open ↵ ── Select ␣ ── Teams m ── Close x ──╯
 func wallPaintTile(pal palette, g wallGlyphs, v wallView, t wallTile, i int, focused bool, w, h, y0 int) []string {
 	look := wallLookFor(pal, v, t, i, focused)
 	box, border, ground := look.box, look.border, look.ground
@@ -825,7 +825,7 @@ func wallSelFits(w int) bool { return w >= 20 }
 // a long title reads as cut and never as touching it.
 const wallTitleGap = 2
 
-// wallTopBorder is the space's dots and the title, and in the selection mode
+// wallTopBorder is the team's dots and the title, and in the selection mode
 // the box before them:
 //
 //	╭─ ●● the tree walk ───────────────────────────────╮

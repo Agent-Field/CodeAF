@@ -138,9 +138,9 @@ func TestWallHelpRowsDoWhatTheirKeysDo(t *testing.T) {
 		t.Fatalf("Filter: help %v filtering %v", a.wall.help, a.wall.filterOn)
 	}
 	a = open()
-	wallClick(t, a, wallHitFor(t, a, wallHitHelp, index("Add to spaces")))
+	wallClick(t, a, wallHitFor(t, a, wallHitHelp, index("Add to teams")))
 	if a.wall.help || a.wall.pop.kind != wallPopMembers {
-		t.Fatalf("Add to spaces: help %v pop %+v", a.wall.help, a.wall.pop)
+		t.Fatalf("Add to teams: help %v pop %+v", a.wall.help, a.wall.pop)
 	}
 	a = open()
 	wallClick(t, a, wallHitFor(t, a, wallHitHelp, index("Back")))

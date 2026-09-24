@@ -9,15 +9,15 @@ import (
 // ── THE WALL AND ITS SPACES: THE SHAPES THE THREE HALVES AGREE ON ──────────
 //
 // The wall is a full-frame grid of every conversation this window has a tab
-// for, each drawn as a tile holding the live tail of its transcript. A space is
+// for, each drawn as a tile holding the live tail of its transcript. A team is
 // a named set of those conversations that the tab strip can be narrowed to.
 //
 // The wall is built in three halves that meet only through the types in this
 // file: the reading (walltail.go) turns what this process holds into tiles,
-// the painting (wallview.go) turns tiles into rows, and the spaces
-// (spaces.go, spacehue.go) keep the named sets and their colours on disk. The
+// the painting (wallview.go) turns tiles into rows, and the teams
+// (teams.go, teamhue.go) keep the named sets and their colours on disk. The
 // wiring (wall.go, wallpop.go) is the only part that touches the app's keys,
-// frame and pointer; the strip draws the wall's toggle and the shown space's
+// frame and pointer; the strip draws the wall's toggle and the shown team's
 // chip itself (chattabs.go).
 //
 // THE FRAME LAW HOLDS HERE AS EVERYWHERE (framedisk_law_test.go): nothing a
@@ -74,7 +74,7 @@ type wallTile struct {
 	spark []uint8
 	// question is the one-line ask when signal is tabNeedsPerson, "" otherwise.
 	question string
-	// marked is picked for a new space.
+	// marked is picked for a new team.
 	marked bool
 	// rows is the tail drawn the way the conversation itself draws it
 	// (wallmini.go), already painted and fit to the body's width. When it is
@@ -86,9 +86,9 @@ type wallTile struct {
 	// moved is when the conversation last grew; zero when this window has not
 	// seen it move.
 	moved time.Time
-	// spaces is every space this conversation is in, by index into
-	// wallView.spaces. A conversation may be in several.
-	spaces []int
+	// teams is every team this conversation is in, by index into
+	// wallView.teams. A conversation may be in several.
+	teams []int
 }
 
 // wallTailCap is the most logical lines a reading keeps per conversation.
@@ -96,11 +96,11 @@ const wallTailCap = 40
 
 // wallView is everything the painter needs, and nothing it may go and get.
 type wallView struct {
-	// space is the active space's name, "" for all.
-	space  string
-	spaces []string
-	tiles  []wallTile
-	focus  int
+	// team is the active team's name, "" for all.
+	team  string
+	teams []string
+	tiles []wallTile
+	focus int
 	// scroll is the first tile ROW on screen.
 	scroll int
 	// cols forces the column count; 0 lets the frame decide.
@@ -108,7 +108,7 @@ type wallView struct {
 	// filter is what the person has typed after `/`; filtering says the box is up.
 	filter    string
 	filtering bool
-	// naming is the new-space prompt; name is what is typed in it.
+	// naming is the new-team prompt; name is what is typed in it.
 	naming bool
 	name   string
 	// spin is the frame's pulse step, for the working mark.
@@ -120,21 +120,21 @@ type wallView struct {
 	// it; the zero ref is no hover. It lights a button and reveals a tile's own
 	// controls, and it never moves a cell.
 	hover wallHitRef
-	// hues is each space's colour, counts how many open conversations each
+	// hues is each team's colour, counts how many open conversations each
 	// holds, and total how many are open in all.
-	hues   []spaceHueSpec
+	hues   []teamHueSpec
 	counts []int
 	total  int
-	// choices is the colours the new-space card offers and choice the one
+	// choices is the colours the new-team card offers and choice the one
 	// taken.
-	choices []spaceHueSpec
+	choices []teamHueSpec
 	choice  int
 	// pop is the popover that is up, if one is.
 	pop wallPop
-	// nameFresh says the name in the new-space card is one the wall filled in,
+	// nameFresh says the name in the new-team card is one the wall filled in,
 	// drawn selected so the first key typed replaces it.
 	nameFresh bool
-	// made is the space just made and how many it holds, said on the chip row
+	// made is the team just made and how many it holds, said on the chip row
 	// until madeAt is wallMadeFor old.
 	made   string
 	madeN  int
@@ -162,23 +162,23 @@ const (
 	wallHitNone     wallHitKind = iota
 	wallHitTile                 // a tile's body: open it, or pick it in selection mode; arg is the tile
 	wallHitSelect               // a tile's Select, or its ☐ in selection mode: pick it or put it back; arg is the tile
-	wallHitSpaces               // a tile's Spaces: the spaces it is in; arg is the tile
+	wallHitTeams                // a tile's Teams: the teams it is in; arg is the tile
 	wallHitOpen                 // a tile's Open, or its Answer; arg is the tile
 	wallHitClose                // a tile's Close, which closes the view; arg is the tile
-	wallHitChip                 // a Spaces segment; arg is the space, -1 for All
-	wallHitChipMenu             // a segment's dot or its ⋯: the space's settings; arg is the space
-	wallHitAddSpace             // the + New space segment
+	wallHitChip                 // a Teams segment; arg is the team, -1 for All
+	wallHitChipMenu             // a segment's dot or its ⋯: the team's settings; arg is the team
+	wallHitAddTeam              // the + New team segment
 	wallHitAction               // a button; arg is a wallAct
 	wallHitMini                 // one minimap cell; arg is the tile
-	wallHitPopRow               // a popover row; arg is a space, or a wallPop row code
+	wallHitPopRow               // a popover row; arg is a team, or a wallPop row code
 	wallHitSwatch               // a colour swatch; arg is its index among the choices
 	wallHitHelp                 // a row of the help sheet; arg is its place in [wallHelpList]
 )
 
-// The popover rows that are not a space.
+// The popover rows that are not a team.
 const (
-	wallPopNew     = -1 // + New space…
-	wallPopDelete  = -2 // Delete space
+	wallPopNew     = -1 // + New team…
+	wallPopDelete  = -2 // Delete team
 	wallPopConfirm = -3 // Delete, confirmed
 	wallPopKeep    = -4 // Keep, the delete undone
 )
@@ -188,8 +188,8 @@ type wallPopKind uint8
 
 const (
 	wallPopNone     wallPopKind = iota
-	wallPopMembers              // which spaces the targets are in
-	wallPopSettings             // one space's name, colour and deletion
+	wallPopMembers              // which teams the targets are in
+	wallPopSettings             // one team's name, colour and deletion
 )
 
 // wallPop is a small card anchored to the control that opened it. It is the
@@ -204,11 +204,11 @@ type wallPop struct {
 	targets []string
 	// cursor is the row the keyboard is on.
 	cursor int
-	// space, name, choices and choice are the settings popover's: the space,
+	// team, name, choices and choice are the settings popover's: the team,
 	// its name as being edited, the colours offered and the one it has.
-	space   int
+	team    int
 	name    string
-	choices []spaceHueSpec
+	choices []teamHueSpec
 	choice  int
 	// confirm says the delete has been asked for and waits on its answer.
 	confirm bool
@@ -221,15 +221,15 @@ type wallAct int
 const (
 	wallActBack        wallAct = iota // esc
 	wallActOpen                       // enter
-	wallActSelect                     // space
-	wallActNewSpace                   // s
+	wallActSelect                     // team
+	wallActNewTeam                    // s
 	wallActFilter                     // /
 	wallActNext                       // n
 	wallActColsLess                   // -
 	wallActColsMore                   // + or =
 	wallActClose                      // x
-	wallActMakeSpace                  // s, from the tray
-	wallActAddTo                      // the spaces popover for every picked tile, from the tray
+	wallActMakeTeam                   // s, from the tray
+	wallActAddTo                      // the teams popover for every picked tile, from the tray
 	wallActCloseViews                 // x on every marked tile
 	wallActClear                      // unmark all
 	wallActSave                       // enter, naming
@@ -250,7 +250,7 @@ type wallHitRef struct {
 type wallHit struct {
 	x0, y0, x1, y1 int // inclusive-exclusive cell rectangle
 	kind           wallHitKind
-	arg            int // the tile, the space or the act, by kind
+	arg            int // the tile, the team or the act, by kind
 }
 
 func (h wallHit) ref() wallHitRef { return wallHitRef{kind: h.kind, arg: h.arg} }
@@ -260,30 +260,30 @@ func (r wallHitRef) onTile(i int) bool {
 	return r.kind >= wallHitTile && r.kind <= wallHitClose && r.arg == i
 }
 
-// spaceMember is one conversation a space holds, with enough to reopen it
+// teamMember is one conversation a team holds, with enough to reopen it
 // when this window no longer has a tab for it.
-type spaceMember struct {
+type teamMember struct {
 	Key   string `json:"key"`
 	File  string `json:"file"`
 	Where string `json:"where"`
 	Word  string `json:"word"`
 }
 
-// space is one named set of conversations. A conversation may be in any
-// number of them: a space is a grouping, not a place a conversation lives.
-type space struct {
-	Name    string        `json:"name"`
-	Members []spaceMember `json:"members"`
-	Made    time.Time     `json:"made"`
-	// Hue and Tier are the space's colour (spacehue.go). A file written before
-	// spaces had colours has neither, and is given them on load, the same ones
+// team is one named set of conversations. A conversation may be in any
+// number of them: a team is a grouping, not a place a conversation lives.
+type team struct {
+	Name    string       `json:"name"`
+	Members []teamMember `json:"members"`
+	Made    time.Time    `json:"made"`
+	// Hue and Tier are the team's colour (teamhue.go). A file written before
+	// teams had colours has neither, and is given them on load, the same ones
 	// every time.
 	Hue  float64 `json:"hue"`
 	Tier int     `json:"tier"`
 }
 
-// hueSpec is the space's colour as the generator speaks it.
-func (sp space) hueSpec() spaceHueSpec { return spaceHueSpec{Hue: sp.Hue, Tier: sp.Tier} }
+// hueSpec is the team's colour as the generator speaks it.
+func (sp team) hueSpec() teamHueSpec { return teamHueSpec{Hue: sp.Hue, Tier: sp.Tier} }
 
 // wallState is the wall's whole footprint on the app: one field.
 type wallState struct {
@@ -300,9 +300,9 @@ type wallState struct {
 	hits     []wallHit
 	// tails is the reading cache, by chatTab.key (walltail.go owns it).
 	tails map[string]*wallTail
-	// spaces is the loaded set and active is the index of the one the strip is
-	// narrowed to, -1 for none (spaces.go owns both).
-	spaces []space
+	// teams is the loaded set and active is the index of the one the strip is
+	// narrowed to, -1 for none (teams.go owns both).
+	teams  []team
 	active int
 	loaded bool
 	// ticking says a wallTickMsg is already on its way, so an opening never
@@ -313,12 +313,12 @@ type wallState struct {
 	// headRows is how many rows the last frame spent above the grid, so a
 	// pointer can be told apart from the strip without laying the strip out.
 	headRows int
-	// pop is the popover that is up; choices and choice are the new-space
+	// pop is the popover that is up; choices and choice are the new-team
 	// card's colours and the one taken.
 	pop     wallPop
-	choices []spaceHueSpec
+	choices []teamHueSpec
 	choice  int
-	// chip is where the strip drew its space chip, empty when it was not
+	// chip is where the strip drew its team chip, empty when it was not
 	// drawn.
 	chip hudSpan
 	// nameFresh, made, madeN and madeAt are the view's fields of those names.
@@ -345,10 +345,10 @@ type wallState struct {
 	// stirred says something besides the hover changed since the last frame,
 	// so a pointer resting on the same target may not reuse that frame.
 	stirred bool
-	// places is each space's focus and scroll while the wall is up, by space
+	// places is each team's focus and scroll while the wall is up, by team
 	// index, -1 for All.
 	places map[int]wallPlace
-	// card is where the popover or the new-space card was drawn, in frame
+	// card is where the popover or the new-team card was drawn, in frame
 	// cells, empty when neither is up.
 	card wallRect
 	// spinning says the last frame drew a live working tile, whose spinner

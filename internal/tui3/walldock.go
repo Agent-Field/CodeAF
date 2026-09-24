@@ -168,8 +168,8 @@ func (a *app) dockWallGlyph() string {
 }
 
 // dockPaint draws the dock with its first cell at column at, and records where
-// every piece of it landed. The wall's mark wears the active space's colour,
-// so the dock also says which space this window is in.
+// every piece of it landed. The wall's mark wears the active team's colour,
+// so the dock also says which team this window is in.
 func (a *app) dockPaint(tabs []chatTab, from, count, hidden, at int) string {
 	a.dock.wall = hudSpan{from: at, to: at + 1}
 	var b strings.Builder
@@ -179,8 +179,8 @@ func (a *app) dockPaint(tabs []chatTab, from, count, hidden, at int) string {
 		b.WriteString(a.pal.cursor(a.pal.ink(wall), 0))
 	default:
 		ink := a.pal.dim
-		if sp, ok := a.spaceActive(); ok {
-			if pen := a.pal.spaceInk(sp.hueSpec()); pen != nil && !a.linear {
+		if sp, ok := a.teamActive(); ok {
+			if pen := a.pal.teamInk(sp.hueSpec()); pen != nil && !a.linear {
 				ink = pen
 			}
 		}

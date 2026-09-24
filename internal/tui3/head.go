@@ -39,10 +39,10 @@ func (a *app) headRows(width int, middle string, pal palette) []string {
 		mode = pulseBudget
 	}
 	// WHILE A SPACE IS SHOWN THE RULE IS DRAWN IN ITS COLOUR, so every frame
-	// says the strip above it is narrowed (spaces.go).
+	// says the strip above it is narrowed (teams.go).
 	ruleInk := pal.dim
-	if sp, ok := a.spaceActive(); ok {
-		if ink := pal.spaceInk(sp.hueSpec()); ink != nil {
+	if sp, ok := a.teamActive(); ok {
+		if ink := pal.teamInk(sp.hueSpec()); ink != nil {
 			ruleInk = ink
 		}
 	}

@@ -140,7 +140,7 @@ var commands = []command{
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
 	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
-	{name: "wall", desc: "every open conversation, live · alt+v or ▦ below the box"},
+	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is

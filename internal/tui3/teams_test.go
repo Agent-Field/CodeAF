@@ -11,17 +11,17 @@ import (
 	"time"
 )
 
-func TestSpaceSaveLoadRoundTrip(t *testing.T) {
+func TestTeamSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	made := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
-	want := []space{
-		{Name: "port", Made: made, Members: []spaceMember{{Key: "k1", File: "f1", Where: "/w/a", Word: "one"}}},
-		{Name: "docs", Made: made, Members: []spaceMember{{Key: "k2", File: "f2", Where: "/w/b", Word: "two"}}},
+	want := []team{
+		{Name: "port", Made: made, Members: []teamMember{{Key: "k1", File: "f1", Where: "/w/a", Word: "one"}}},
+		{Name: "docs", Made: made, Members: []teamMember{{Key: "k2", File: "f2", Where: "/w/b", Word: "two"}}},
 	}
-	if err := saveSpaces(dir, want); err != nil {
+	if err := saveTeams(dir, want); err != nil {
 		t.Fatal(err)
 	}
-	got, err := loadSpaces(dir)
+	got, err := loadTeams(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,17 +30,17 @@ func TestSpaceSaveLoadRoundTrip(t *testing.T) {
 	}
 	// The write is a rename, so nothing temporary is left beside the file.
 	entries, _ := os.ReadDir(dir)
-	if len(entries) != 1 || entries[0].Name() != spacesFile {
-		t.Fatalf("profile holds %v, want only %s", entries, spacesFile)
+	if len(entries) != 1 || entries[0].Name() != teamsFile {
+		t.Fatalf("profile holds %v, want only %s", entries, teamsFile)
 	}
 	// And it is never config.json.
 	if _, err := os.Stat(filepath.Join(dir, "config.json")); err == nil {
-		t.Fatal("spaces wrote config.json")
+		t.Fatal("teams wrote config.json")
 	}
 }
 
-func TestSpaceMissingFileIsNoSpacesAndNoError(t *testing.T) {
-	got, err := loadSpaces(t.TempDir())
+func TestTeamMissingFileIsNoTeamsAndNoError(t *testing.T) {
+	got, err := loadTeams(t.TempDir())
 	if err != nil || got != nil {
 		t.Fatalf("missing file: %v, %v", got, err)
 	}
@@ -48,26 +48,26 @@ func TestSpaceMissingFileIsNoSpacesAndNoError(t *testing.T) {
 
 // AN EMPTY PROFILE DIRECTORY IS THE ORDINARY LAUNCH, and the sets go to this
 // process's own profile in the state root rather than nowhere. The first build
-// read "" as "keep them in memory", so on a plain launch no space outlived the
+// read "" as "keep them in memory", so on a plain launch no team outlived the
 // window it was made in.
-func TestSpaceFileOnTheOrdinaryLaunchIsTheProfilesOwn(t *testing.T) {
-	got := spacesPath("")
-	if got == "" || got == spacesFile || !filepath.IsAbs(got) {
+func TestTeamFileOnTheOrdinaryLaunchIsTheProfilesOwn(t *testing.T) {
+	got := teamsPath("")
+	if got == "" || got == teamsFile || !filepath.IsAbs(got) {
 		t.Fatalf("an empty profile directory put the sets at %q", got)
 	}
-	if want := config.ProfilePath("", spacesFile); got != want {
+	if want := config.ProfilePath("", teamsFile); got != want {
 		t.Fatalf("sets at %q, the profile keeps its files at %q", got, want)
 	}
 }
 
-func TestSpaceCorruptFileErrorsAndIsNotClobbered(t *testing.T) {
+func TestTeamCorruptFileErrorsAndIsNotClobbered(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, spacesFile)
+	path := filepath.Join(dir, teamsFile)
 	bad := []byte("{not json")
 	if err := os.WriteFile(path, bad, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadSpaces(dir); err == nil {
+	if _, err := loadTeams(dir); err == nil {
 		t.Fatal("corrupt file loaded without error")
 	}
 	if raw, _ := os.ReadFile(path); string(raw) != string(bad) {
@@ -76,11 +76,11 @@ func TestSpaceCorruptFileErrorsAndIsNotClobbered(t *testing.T) {
 
 	// The app's first load moves it aside, so a later save cannot overwrite it.
 	a := &app{profileDir: dir}
-	a.spacesEnsure()
-	if !a.wall.loaded || a.wall.active != -1 || len(a.wall.spaces) != 0 {
+	a.teamsEnsure()
+	if !a.wall.loaded || a.wall.active != -1 || len(a.wall.teams) != 0 {
 		t.Fatalf("ensure on corrupt file: %+v", a.wall)
 	}
-	if _, err := a.spaceMake("new", []chatTab{{key: "k", word: "w"}}); err != nil {
+	if _, err := a.teamMake("new", []chatTab{{key: "k", word: "w"}}); err != nil {
 		t.Fatal(err)
 	}
 	aside, _ := filepath.Glob(path + ".unreadable-*")
@@ -92,9 +92,9 @@ func TestSpaceCorruptFileErrorsAndIsNotClobbered(t *testing.T) {
 	}
 }
 
-func TestSpaceFromTabsSkipsPagesAndKeyless(t *testing.T) {
+func TestTeamFromTabsSkipsPagesAndKeyless(t *testing.T) {
 	now := time.Now()
-	sp := spaceFromTabs("s", []chatTab{
+	sp := teamFromTabs("s", []chatTab{
 		{key: "start", word: "Home", start: true},
 		{key: "work", word: "Work", work: true},
 		{key: "", word: "nameless"},
@@ -102,13 +102,13 @@ func TestSpaceFromTabsSkipsPagesAndKeyless(t *testing.T) {
 		{key: "a", file: "fa", where: "/w", word: "alpha again"},
 		{key: "b", file: "fb", where: "/v", word: "beta"},
 	}, now)
-	want := []spaceMember{{Key: "a", File: "fa", Where: "/w", Word: "alpha"}, {Key: "b", File: "fb", Where: "/v", Word: "beta"}}
+	want := []teamMember{{Key: "a", File: "fa", Where: "/w", Word: "alpha"}, {Key: "b", File: "fb", Where: "/v", Word: "beta"}}
 	if !reflect.DeepEqual(sp.Members, want) || sp.Name != "s" || !sp.Made.Equal(now) {
 		t.Fatalf("got %+v", sp)
 	}
 }
 
-func TestSpaceSuggestName(t *testing.T) {
+func TestTeamSuggestName(t *testing.T) {
 	cases := []struct {
 		name string
 		tabs []chatTab
@@ -122,14 +122,14 @@ func TestSpaceSuggestName(t *testing.T) {
 		{"nothing", nil, ""},
 	}
 	for _, c := range cases {
-		if got := spaceSuggestName(c.tabs); got != c.want {
+		if got := teamSuggestName(c.tabs); got != c.want {
 			t.Errorf("%s: got %q want %q", c.name, got, c.want)
 		}
 	}
 }
 
-func TestSpaceTabsMergeLiveAndKeepStoredOrder(t *testing.T) {
-	sp := space{Name: "s", Members: []spaceMember{
+func TestTeamTabsMergeLiveAndKeepStoredOrder(t *testing.T) {
+	sp := team{Name: "s", Members: []teamMember{
 		{Key: "c", File: "fc", Where: "/w", Word: "gamma"},
 		{Key: "a", File: "fa", Where: "/w", Word: "alpha"},
 	}}
@@ -137,7 +137,7 @@ func TestSpaceTabsMergeLiveAndKeepStoredOrder(t *testing.T) {
 		{key: "a", file: "fa", word: "alpha now", here: true, held: true, signal: tabSignal(1)},
 		{key: "b", file: "fb", word: "beta"},
 	}
-	got := spaceTabs(sp, live)
+	got := teamTabs(sp, live)
 	if len(got) != 2 || got[0].key != "c" || got[1].key != "a" {
 		t.Fatalf("order: %+v", got)
 	}
@@ -149,18 +149,18 @@ func TestSpaceTabsMergeLiveAndKeepStoredOrder(t *testing.T) {
 	}
 }
 
-func TestSpaceStripTabsKeepsTheFrontTab(t *testing.T) {
+func TestTeamStripTabsKeepsTheFrontTab(t *testing.T) {
 	a := &app{}
-	a.spacesEnsure()
+	a.teamsEnsure()
 	tabs := []chatTab{{key: "a", word: "alpha"}, {key: "b", word: "beta", here: true}, {key: "c", word: "gamma"}}
-	if got := a.spaceStripTabs(tabs); !reflect.DeepEqual(got, tabs) {
-		t.Fatalf("no space active changed the strip: %+v", got)
+	if got := a.teamStripTabs(tabs); !reflect.DeepEqual(got, tabs) {
+		t.Fatalf("no team active changed the strip: %+v", got)
 	}
-	if _, err := a.spaceMake("s", []chatTab{{key: "c", word: "gamma"}, {key: "a", word: "alpha"}}); err != nil {
+	if _, err := a.teamMake("s", []chatTab{{key: "c", word: "gamma"}, {key: "a", word: "alpha"}}); err != nil {
 		t.Fatal(err)
 	}
 	a.wall.active = 0
-	got := a.spaceStripTabs(tabs)
+	got := a.teamStripTabs(tabs)
 	var keys []string
 	for _, tab := range got {
 		keys = append(keys, tab.key)
@@ -170,50 +170,50 @@ func TestSpaceStripTabsKeepsTheFrontTab(t *testing.T) {
 	}
 	// A front tab that is a member is not drawn twice.
 	tabs[1].here, tabs[0].here = false, true
-	if got := a.spaceStripTabs(tabs); len(got) != 2 {
+	if got := a.teamStripTabs(tabs); len(got) != 2 {
 		t.Fatalf("member front tab doubled: %+v", got)
 	}
 }
 
-func TestSpaceNotActiveBeforeLoad(t *testing.T) {
+func TestTeamNotActiveBeforeLoad(t *testing.T) {
 	a := &app{}
-	a.wall.spaces = []space{{Name: "s", Members: []spaceMember{{Key: "a"}}}}
-	if _, ok := a.spaceActive(); ok {
-		t.Fatal("zero-value active read as a space before any load")
+	a.wall.teams = []team{{Name: "s", Members: []teamMember{{Key: "a"}}}}
+	if _, ok := a.teamActive(); ok {
+		t.Fatal("zero-value active read as a team before any load")
 	}
 }
 
-func TestSpaceMakeReplacesByNameAndDeleteFollowsActive(t *testing.T) {
+func TestTeamMakeReplacesByNameAndDeleteFollowsActive(t *testing.T) {
 	dir := t.TempDir()
 	a := &app{profileDir: dir}
-	i0, err := a.spaceMake("Port", []chatTab{{key: "a", word: "alpha"}})
+	i0, err := a.teamMake("Port", []chatTab{{key: "a", word: "alpha"}})
 	if err != nil || i0 != 0 {
 		t.Fatalf("make: %d %v", i0, err)
 	}
-	i1, _ := a.spaceMake("docs", []chatTab{{key: "b", word: "beta"}})
-	again, _ := a.spaceMake("port", []chatTab{{key: "c", word: "gamma"}})
-	if again != 0 || len(a.wall.spaces) != 2 || a.wall.spaces[0].Members[0].Key != "c" {
-		t.Fatalf("same name did not replace: %+v", a.wall.spaces)
+	i1, _ := a.teamMake("docs", []chatTab{{key: "b", word: "beta"}})
+	again, _ := a.teamMake("port", []chatTab{{key: "c", word: "gamma"}})
+	if again != 0 || len(a.wall.teams) != 2 || a.wall.teams[0].Members[0].Key != "c" {
+		t.Fatalf("same name did not replace: %+v", a.wall.teams)
 	}
-	if _, err := a.spaceMake("  ", []chatTab{{key: "a"}}); err == nil {
+	if _, err := a.teamMake("  ", []chatTab{{key: "a"}}); err == nil {
 		t.Fatal("blank name accepted")
 	}
 	a.wall.active = i1
-	if err := a.spaceDelete(0); err != nil {
+	if err := a.teamDelete(0); err != nil {
 		t.Fatal(err)
 	}
-	if sp, ok := a.spaceActive(); !ok || sp.Name != "docs" {
+	if sp, ok := a.teamActive(); !ok || sp.Name != "docs" {
 		t.Fatalf("active did not follow: %+v %v", sp, ok)
 	}
 	b := &app{profileDir: dir}
-	b.spacesEnsure()
-	if names := b.spaceNames(); !reflect.DeepEqual(names, []string{"docs"}) {
+	b.teamsEnsure()
+	if names := b.teamNames(); !reflect.DeepEqual(names, []string{"docs"}) {
 		t.Fatalf("reloaded names %v", names)
 	}
-	if err := a.spaceDelete(0); err != nil {
+	if err := a.teamDelete(0); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := a.spaceActive(); ok {
-		t.Fatal("deleted space still active")
+	if _, ok := a.teamActive(); ok {
+		t.Fatal("deleted team still active")
 	}
 }

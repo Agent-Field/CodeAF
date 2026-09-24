@@ -15,13 +15,13 @@ var wallTestNow = time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
 
 // wallFixture is n tiles cycling through every state the painter draws:
 // working, waiting on a person, idle, frozen, marked, and one with no spark;
-// in three spaces, some tiles in several.
+// in three teams, some tiles in several.
 func wallFixture(n int) wallView {
 	names := []string{"the tree walk", "cut the goldens", "ship the port", "relay audit", "footprint table", "crew reprice", "suite lock"}
-	v := wallView{space: "port", spaces: []string{"port", "infra", "research"}, now: wallTestNow, spin: 3}
-	reserved := spaceReservedFrom(darkRamp)
-	for range v.spaces {
-		v.hues = append(v.hues, nextSpaceHue(v.hues, reserved))
+	v := wallView{team: "port", teams: []string{"port", "infra", "research"}, now: wallTestNow, spin: 3}
+	reserved := teamReservedFrom(darkRamp)
+	for range v.teams {
+		v.hues = append(v.hues, nextTeamHue(v.hues, reserved))
 	}
 	v.counts = []int{3, 2, 1}
 	v.total = n
@@ -47,17 +47,17 @@ func wallFixture(n int) wallView {
 			t.signal = tabWorking
 			t.doing = "running bash"
 			t.fresh, t.freshAt = 2, wallTestNow.Add(-200*time.Millisecond)
-			t.spaces = []int{0, 1}
+			t.teams = []int{0, 1}
 		case 1:
 			t.signal = tabNeedsPerson
 			t.doing = "waiting on you"
 			t.question = "needs your ok to run bash: go test ./internal/tui3"
-			t.spaces = []int{0}
+			t.teams = []int{0}
 		case 2:
 			t.signal = tabWorking
 			t.doing = "writing"
 			t.marked = true
-			t.spaces = []int{0, 1, 2}
+			t.teams = []int{0, 1, 2}
 		case 3:
 			t.signal = tabIdle
 			t.spark = nil
@@ -68,7 +68,7 @@ func wallFixture(n int) wallView {
 			t.signal = tabIdle
 			t.marked = true
 			t.spark = []uint8{0, 0, 0}
-			t.spaces = []int{2}
+			t.teams = []int{2}
 		}
 		v.tiles = append(v.tiles, t)
 	}
@@ -252,7 +252,7 @@ func TestWallRenderStates(t *testing.T) {
 	frame := wallPlainFrame(rows)
 	for _, want := range []string{
 		"▦ Conversations", "the conversations in port", "⠿ 2 running", "? 1 needs you", "6 open",
-		"Spaces", "All 6", "port 3", "+ New space",
+		"Teams", "All 6", "port 3", "+ New team",
 		"Answer ↵", "seen 6m ago", "running bash " + wallGlyphsFor(false).sep + " 2m", "? waiting on you",
 		"updated 5m ago", "☑", "▌", tokens.Spinner(v.spin),
 	} {
@@ -293,17 +293,17 @@ func TestWallRenderStates(t *testing.T) {
 		t.Errorf("filter row: %q", got)
 	}
 	v.filtering, v.filter, v.naming, v.name = false, "", true, "night"
-	v.choices = spaceHueChoices(v.hues, spaceReservedFrom(darkRamp), 6)
+	v.choices = teamHueChoices(v.hues, teamReservedFrom(darkRamp), 6)
 	rows, _ = renderWall(pal, v, 120, 40)
 	card := wallPlainFrame(rows)
-	for _, want := range []string{"─ New space ─", "Name    night▌", "Colour  ◉ ● ● ● ● ●", "2 · ship the port, crew reprice", "Cancel esc", "Create ↵", "Shuffle"} {
+	for _, want := range []string{"─ New team ─", "Name    night▌", "Colour  ◉ ● ● ● ● ●", "2 · ship the port, crew reprice", "Cancel esc", "Create ↵", "Shuffle"} {
 		if !strings.Contains(card, want) {
-			t.Errorf("the new-space card lacks %q\n%s", want, card)
+			t.Errorf("the new-team card lacks %q\n%s", want, card)
 		}
 	}
-	// Too short for the card, the prompt falls back to the Spaces row.
+	// Too short for the card, the prompt falls back to the Teams row.
 	rows, _ = renderWall(pal, v, 120, 9)
-	if got := ansi.Strip(rows[1]); !strings.Contains(got, "New space › night▌") || !strings.Contains(got, "2 picked") {
+	if got := ansi.Strip(rows[1]); !strings.Contains(got, "New team › night▌") || !strings.Contains(got, "2 picked") {
 		t.Errorf("naming row: %q", got)
 	}
 }
@@ -315,7 +315,7 @@ func TestWallRenderPrintsFrame(t *testing.T) {
 
 		v := wallUnmarked(base)
 		rows, _ := renderWall(pal, v, 120, 40)
-		t.Logf("%s 120x40, at rest, tiles dotted by their spaces:\n%s", pname, wallPlainFrame(rows))
+		t.Logf("%s 120x40, at rest, tiles dotted by their teams:\n%s", pname, wallPlainFrame(rows))
 
 		v.hover = wallHitRef{kind: wallHitTile, arg: 1}
 		rows, _ = renderWall(pal, v, 120, 40)
@@ -346,19 +346,19 @@ func TestWallRenderPrintsFrame(t *testing.T) {
 		v.pop = wallPop{kind: wallPopMembers, x: 90, y0: 4, y1: 5, targets: []string{"k1"}, cursor: -1}
 		v.hover = wallHitRef{kind: wallHitPopRow, arg: 1}
 		rows, _ = renderWall(pal, v, 120, 40)
-		t.Logf("%s 120x40, the spaces popover of tile 1:\n%s", pname, wallPlainFrame(rows))
+		t.Logf("%s 120x40, the teams popover of tile 1:\n%s", pname, wallPlainFrame(rows))
 
 		v = base
 		v.naming, v.name, v.nameFresh = true, "harbor", true
-		v.choices = spaceHueChoices(v.hues, spaceReservedFrom(darkRamp), 6)
+		v.choices = teamHueChoices(v.hues, teamReservedFrom(darkRamp), 6)
 		v.hover = wallHitRef{kind: wallHitAction, arg: int(wallActSave)}
 		rows, _ = renderWall(pal, v, 120, 40)
-		t.Logf("%s 120x40, naming a space:\n%s", pname, wallPlainFrame(rows))
+		t.Logf("%s 120x40, naming a team:\n%s", pname, wallPlainFrame(rows))
 
 		v = wallUnmarked(base)
-		v.hover = wallHitRef{kind: wallHitSpaces, arg: 0}
+		v.hover = wallHitRef{kind: wallHitTeams, arg: 0}
 		rows, _ = renderWall(pal, v, 120, 40)
-		t.Logf("%s 120x40, tile 0's spaces control hovered, the toolbar saying what it does:\n%s", pname, wallPlainFrame(rows))
+		t.Logf("%s 120x40, tile 0's teams control hovered, the toolbar saying what it does:\n%s", pname, wallPlainFrame(rows))
 
 		v = wallUnmarked(base)
 		v.focus, v.hover = 1, wallHitRef{kind: wallHitOpen, arg: 1}
@@ -367,10 +367,10 @@ func TestWallRenderPrintsFrame(t *testing.T) {
 		t.Logf("%s 120x40, the waiting tile focused, its Answer hovered:\n%s", pname, wallPlainFrame(rows))
 
 		v = wallUnmarked(base)
-		v.pop = wallPop{kind: wallPopSettings, x: 20, y0: 1, y1: 2, space: 1, name: "infra",
-			choices: spaceHueChoices(v.hues, spaceReservedFrom(darkRamp), 6)}
+		v.pop = wallPop{kind: wallPopSettings, x: 20, y0: 1, y1: 2, team: 1, name: "infra",
+			choices: teamHueChoices(v.hues, teamReservedFrom(darkRamp), 6)}
 		rows, _ = renderWall(pal, v, 120, 40)
-		t.Logf("%s 120x40, a space's settings:\n%s", pname, wallPlainFrame(rows))
+		t.Logf("%s 120x40, a team's settings:\n%s", pname, wallPlainFrame(rows))
 
 		for _, sz := range [][2]int{{80, 24}, {180, 50}} {
 			rows, _ = renderWall(pal, wallUnmarked(wallFixture(13)), sz[0], sz[1])
@@ -395,11 +395,11 @@ func wallFrameVariants(t *testing.T, pal palette, n, w, h int, each func(name st
 	base := wallFixture(n)
 	naming := base
 	naming.naming, naming.name = true, "harbor"
-	naming.choices = spaceHueChoices(base.hues, spaceReservedFrom(darkRamp), 6)
+	naming.choices = teamHueChoices(base.hues, teamReservedFrom(darkRamp), 6)
 	members := wallUnmarked(base)
 	members.pop = wallPop{kind: wallPopMembers, x: w / 2, y0: 5, y1: 6, targets: []string{"k0", "k1"}, cursor: -1}
 	settings := wallUnmarked(base)
-	settings.pop = wallPop{kind: wallPopSettings, x: 10, y0: 1, y1: 2, space: 1, name: "infra", choices: naming.choices}
+	settings.pop = wallPop{kind: wallPopSettings, x: 10, y0: 1, y1: 2, team: 1, name: "infra", choices: naming.choices}
 	confirm := settings
 	confirm.pop.confirm = true
 	help := wallUnmarked(base)
@@ -429,8 +429,8 @@ func wallFrameVariants(t *testing.T, pal palette, n, w, h int, each func(name st
 // state the pointer can put the frame in.
 func TestWallClickHitsSitOnTheirLabels(t *testing.T) {
 	labels := map[wallAct]string{
-		wallActBack: "Back", wallActNewSpace: "New space", wallActFilter: "Filter", wallActNext: "needs you",
-		wallActColsLess: "−", wallActColsMore: "+", wallActMakeSpace: "Make space", wallActAddTo: "Add to",
+		wallActBack: "Back", wallActNewTeam: "New team", wallActFilter: "Filter", wallActNext: "needs you",
+		wallActColsLess: "−", wallActColsMore: "+", wallActMakeTeam: "Make team", wallActAddTo: "Add to",
 		wallActCloseViews: "Close views", wallActClear: "Clear", wallActSave: "Create", wallActCancel: "Cancel",
 		wallActFilterClear: "Clear", wallActShuffle: "Shuffle", wallActHelp: "Help",
 	}
@@ -477,7 +477,7 @@ func TestWallBarTrayIffMarked(t *testing.T) {
 			}
 			makes, adds := false, false
 			for _, hit := range hits {
-				if hit.kind == wallHitAction && hit.arg == int(wallActMakeSpace) {
+				if hit.kind == wallHitAction && hit.arg == int(wallActMakeTeam) {
 					makes = true
 				}
 				if hit.kind == wallHitAction && hit.arg == int(wallActAddTo) {
@@ -485,7 +485,7 @@ func TestWallBarTrayIffMarked(t *testing.T) {
 				}
 			}
 			if makes != marks || (marks && !adds) {
-				t.Fatalf("%dx%d marks=%v: make space=%v add to=%v\n%s", sz[0], sz[1], marks, makes, adds, frame)
+				t.Fatalf("%dx%d marks=%v: make team=%v add to=%v\n%s", sz[0], sz[1], marks, makes, adds, frame)
 			}
 			if bar := ansi.Strip(rows[len(rows)-1]); !strings.Contains(bar, "Back esc") {
 				t.Fatalf("%dx%d: the toolbar lost its way back: %q", sz[0], sz[1], bar)
@@ -529,7 +529,7 @@ func TestWallTileActionRowReservesCells(t *testing.T) {
 			g := wallGlyphsFor(pal.ascii)
 			k := wallKeysFor(pal.ascii)
 			name := fmt.Sprintf("%s %dx%d", pname, sz[0], sz[1])
-			for _, i := range []int{1, 3, 5} { // waiting, no spaces, one space
+			for _, i := range []int{1, 3, 5} { // waiting, no teams, one team
 				rest := wallPaintTile(pal, g, v, v.tiles[i], i, false, tileW, tileH, wallGridTop)
 				hv := v
 				hv.hover = wallHitRef{kind: wallHitTile, arg: i}
@@ -622,7 +622,7 @@ func TestWallTileActionRowDropsFromTheRight(t *testing.T) {
 }
 
 // A TILE CARRIES ITS SPACES AS DOTS: up to three, then a count, and no cells at
-// all for a tile in none. Colourless, a dot is the space's initial.
+// all for a tile in none. Colourless, a dot is the team's initial.
 func TestWallTileDotsName(t *testing.T) {
 	pal := newPalette(tokens.TrueColor, false)
 	v := wallUnmarked(wallFixture(6))
@@ -632,15 +632,15 @@ func TestWallTileDotsName(t *testing.T) {
 		return ansi.Strip(wallPaintTile(p, g, v, t, i, false, tileW, tileH, wallGridTop)[0])
 	}
 	if got := top(pal, v.tiles[2], 2); !strings.Contains(got, "●●● ship the port") {
-		t.Fatalf("three spaces: %q", got)
+		t.Fatalf("three teams: %q", got)
 	}
 	four := v.tiles[2]
-	four.spaces = []int{0, 1, 2, 0}
+	four.teams = []int{0, 1, 2, 0}
 	if got := top(pal, four, 2); !strings.Contains(got, "●●●+1 ship the port") {
-		t.Fatalf("four spaces: %q", got)
+		t.Fatalf("four teams: %q", got)
 	}
 	if got := top(pal, v.tiles[3], 3); strings.Contains(got, "●") || !strings.HasPrefix(got, "╭─ relay audit") {
-		t.Fatalf("no spaces: %q", got)
+		t.Fatalf("no teams: %q", got)
 	}
 	plain := newPalette(tokens.ANSI16, false)
 	if got := top(plain, v.tiles[2], 2); !strings.Contains(got, "pir ship the port") {
@@ -682,10 +682,10 @@ func TestWallClickSelectionModeShowsEveryBox(t *testing.T) {
 	}
 }
 
-// THE SPACES ROW IS A ROW OF DOORS: All, each space and + New space; a
+// THE SPACES ROW IS A ROW OF DOORS: All, each team and + New team; a
 // segment's dot and, under the pointer, its ⋯ open its settings. The minimap
 // is there only when the conversations do not all fit.
-func TestWallClickSpacesAndMinimap(t *testing.T) {
+func TestWallClickTeamsAndMinimap(t *testing.T) {
 	pal := newPalette(tokens.TrueColor, false)
 	for _, n := range []int{6, 13} {
 		v := wallUnmarked(wallFixture(n))
@@ -699,14 +699,14 @@ func TestWallClickSpacesAndMinimap(t *testing.T) {
 				menus++
 			case wallHitMini:
 				minis++
-			case wallHitAddSpace:
+			case wallHitAddTeam:
 				add = true
 			}
 		}
 		c, _, tileH := wallGrid(n, 120, 40, 0)
 		overflow := (n+c-1)/c > wallVisibleRows(40, tileH)
 		if len(chips) != 4 || !add || menus != 3 || (minis > 0) != overflow {
-			t.Fatalf("n%d: chips %v, + New space %v, %d dots, %d minimap cells\n%s", n, chips, add, menus, minis, ansi.Strip(rows[1]))
+			t.Fatalf("n%d: chips %v, + New team %v, %d dots, %d minimap cells\n%s", n, chips, add, menus, minis, ansi.Strip(rows[1]))
 		}
 	}
 	v := wallUnmarked(wallFixture(6))
@@ -735,7 +735,7 @@ func TestWallPopoverBoxesAreTriState(t *testing.T) {
 	v.pop = wallPop{kind: wallPopMembers, x: 60, y0: 4, y1: 5, targets: []string{"k0", "k1"}, cursor: -1}
 	rows, hits := renderWall(pal, v, 120, 40)
 	frame := wallPlainFrame(rows)
-	for _, want := range []string{"─ Spaces ─", "☑ ● port", "▣ ● infra", "☐ ● research", "+ New space…"} {
+	for _, want := range []string{"─ Teams ─", "☑ ● port", "▣ ● infra", "☐ ● research", "+ New team…"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the popover lacks %q\n%s", want, frame)
 		}
@@ -751,45 +751,45 @@ func TestWallPopoverBoxesAreTriState(t *testing.T) {
 	}
 }
 
-func TestSpaceFreshNameAvoidsTakenNames(t *testing.T) {
+func TestTeamFreshNameAvoidsTakenNames(t *testing.T) {
 	first := func(int) int { return 0 }
 	shared := []chatTab{{key: "a", where: "/w/harbor-app"}, {key: "b", where: "/w/harbor-app"}}
-	if got := spaceFreshName(shared, nil, "", first); got != "harbor-app" {
+	if got := teamFreshName(shared, nil, "", first); got != "harbor-app" {
 		t.Fatalf("shared folder: %q", got)
 	}
-	if got := spaceFreshName(shared, []string{"Harbor-App"}, "", first); got != "harbor" {
+	if got := teamFreshName(shared, []string{"Harbor-App"}, "", first); got != "harbor" {
 		t.Fatalf("a taken folder name should fall to a word: %q", got)
 	}
 	apart := []chatTab{{key: "a", where: "/w/one"}, {key: "b", where: "/w/two"}}
-	if got := spaceFreshName(apart, []string{"harbor", "orbit"}, "", first); got != "lumen" {
-		t.Fatalf("a word already a space's name was offered: %q", got)
+	if got := teamFreshName(apart, []string{"harbor", "orbit"}, "", first); got != "lumen" {
+		t.Fatalf("a word already a team's name was offered: %q", got)
 	}
-	if got := spaceFreshName(shared, nil, "harbor-app", first); got != "harbor" {
+	if got := teamFreshName(shared, nil, "harbor-app", first); got != "harbor" {
 		t.Fatalf("a shuffle should leave the folder and the current name: %q", got)
 	}
-	if got := spaceFreshName(apart, spaceWords, "", first); got != "harbor2" {
+	if got := teamFreshName(apart, teamWords, "", first); got != "harbor2" {
 		t.Fatalf("every word taken: %q", got)
 	}
 }
 
-func TestSpaceAddAndRemoveKeepOrderAndSave(t *testing.T) {
+func TestTeamAddAndRemoveKeepOrderAndSave(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestAppWithProfile(dir, nil)
-	i, err := a.spaceMake("port", []chatTab{{key: "k1", word: "one"}})
+	i, err := a.teamMake("port", []chatTab{{key: "k1", word: "one"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.spaceAdd(i, []chatTab{{key: "k1"}, {key: "k2", word: "two"}, {key: "k3", word: "three"}}); err != nil {
+	if err := a.teamAdd(i, []chatTab{{key: "k1"}, {key: "k2", word: "two"}, {key: "k3", word: "three"}}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := loadSpaces(dir)
+	got, _ := loadTeams(dir)
 	if len(got) != 1 || len(got[0].Members) != 3 || got[0].Members[1].Key != "k2" {
 		t.Fatalf("after add: %+v", got)
 	}
-	if err := a.spaceRemove(i, []string{"k1", "k3"}); err != nil {
+	if err := a.teamRemove(i, []string{"k1", "k3"}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = loadSpaces(dir)
+	got, _ = loadTeams(dir)
 	if len(got[0].Members) != 1 || got[0].Members[0].Key != "k2" {
 		t.Fatalf("after remove: %+v", got)
 	}
@@ -876,10 +876,10 @@ func TestWallToolbarExplainsTheHover(t *testing.T) {
 	}
 	rest := bar(v)
 	for ref, want := range map[wallHitRef]string{
-		{kind: wallHitSpaces, arg: 0}:                    "Add this conversation to spaces · m",
+		{kind: wallHitTeams, arg: 0}:                     "Add this conversation to teams · m",
 		{kind: wallHitOpen, arg: 0}:                      "Open conversation · enter",
 		{kind: wallHitClose, arg: 0}:                     "Close this view; the work keeps running · x",
-		{kind: wallHitSelect, arg: 0}:                    "Select for a space · space",
+		{kind: wallHitSelect, arg: 0}:                    "Select for a team · space",
 		{kind: wallHitChip, arg: 1}:                      "Show only the conversations in infra",
 		{kind: wallHitAction, arg: int(wallActColsMore)}: "More columns · +",
 	} {
@@ -901,8 +901,8 @@ func TestWallToolbarExplainsTheHover(t *testing.T) {
 }
 
 // THE SPACES ROW IS ONE SEGMENTED CONTROL: every separator has one blank cell
-// either side, and + New space is its last segment.
-func TestWallSpacesRowIsEvenlyPadded(t *testing.T) {
+// either side, and + New team is its last segment.
+func TestWallTeamsRowIsEvenlyPadded(t *testing.T) {
 	for pname, pal := range wallTestPalettes() {
 		for _, hover := range []wallHitRef{{}, {kind: wallHitChip, arg: 1}} {
 			v := wallUnmarked(wallFixture(6))
@@ -925,8 +925,8 @@ func TestWallSpacesRowIsEvenlyPadded(t *testing.T) {
 					t.Fatalf("%s: segment %d is %q", pname, i, p)
 				}
 			}
-			if !strings.HasPrefix(parts[4], " + New space ") {
-				t.Fatalf("%s: + New space is not the last segment: %q", pname, row)
+			if !strings.HasPrefix(parts[4], " + New team ") {
+				t.Fatalf("%s: + New team is not the last segment: %q", pname, row)
 			}
 		}
 	}
@@ -1052,7 +1052,7 @@ func TestWallNarrowedToNothing(t *testing.T) {
 			v.filter = ""
 			rows, _ = renderWall(pal, v, sz[0], sz[1])
 			if !strings.Contains(wallPlainFrame(rows), "No open conversations in port") {
-				t.Fatalf("%s: the empty space:\n%s", name, wallPlainFrame(rows))
+				t.Fatalf("%s: the empty team:\n%s", name, wallPlainFrame(rows))
 			}
 		}
 	}
