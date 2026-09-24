@@ -111,7 +111,9 @@ A task handed to senior-dev wears its name as a badge wherever a task is named:
   room for the whole badge and the number.
 - **The card you answer** asks `wants to start a [senior-dev] task: <title>`, and the
   card's top line wears the badge beside the task's name.
-- **The task's own page** wears it beside the title.
+- **The task's own page** wears it beside the title — a page onto another
+  conversation's task too, with that task's own badge and never the one a task of the
+  same number in this conversation wears.
 - **The task strip**, the row of chips that stands in for the side list under 100
   columns, wears `[sd]`.
 - **The `@` list, the tasks place and home's list of work** wear `[senior-dev]`.
