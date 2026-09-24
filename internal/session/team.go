@@ -36,11 +36,18 @@ package session
 // WHO IS NEVER IN A TEAM. A task node, a worker and an auditor are not
 // conversations anybody put in a team: their keys are not in the file, and a
 // node's brief is its whole world by contract. They are answered no before any
-// disk is read ([Config.teamProfile]). So is a session with no profile
-// directory, on the absence law [Config.ProfileDir] states for the settings
-// pair: every door that is a conversation resolves the profile before it builds
-// a session, and a package that resolved ~/.codeaf itself would read the
-// person's real teams from a test.
+// disk is read ([Config.teamProfile]).
+//
+// AN EMPTY PROFILE DIRECTORY IS NOT ONE OF THEM. It is the ordinary launch:
+// CODEAF_PROFILE_DIR is what nearly nobody exports, so the engine daemon that
+// builds a conversation hands it "" and means the profile where it always is
+// ([config.ProfilePath] is the one place that says so). This file once read
+// "" as "no team", and that made every team feature, the verbs, the brief,
+// delivery, events and the wake, dead for everybody while every test here
+// passed, because every test set the directory. A test keeps off the person's
+// real teams the way this package's tests keep off every other file under the
+// state root: hermetic_test.go moves HOME for the run, and internal/home
+// refuses a test binary the root it inherited.
 
 import (
 	"context"
@@ -56,6 +63,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -155,6 +163,12 @@ const teamEntryText = 4000
 
 // teamProfile is the profile directory this session's teams are read from, and
 // "" for a session that is never in a team (see the file comment).
+//
+// THE ANSWER IS RESOLVED, NEVER THE RAW FIELD. "" is this function's word for
+// "never in a team", and an empty [Config.ProfileDir] is the ordinary launch's
+// word for "the usual profile", so handing the field through made the two one
+// word. [config.ProfilePath] with no name is the profile directory itself,
+// resolved the way every other reader of the profile resolves it.
 func (c Config) teamProfile() string {
 	if c.InTask || c.taskID != 0 {
 		return ""
@@ -162,7 +176,7 @@ func (c Config) teamProfile() string {
 	if strings.TrimSpace(c.transcriptPath()) == "" {
 		return ""
 	}
-	return strings.TrimSpace(c.ProfileDir)
+	return config.ProfilePath(c.ProfileDir, "")
 }
 
 // transcriptPath is the journal this conversation is keyed by.
