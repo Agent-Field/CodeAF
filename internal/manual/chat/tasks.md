@@ -4263,14 +4263,14 @@ pinned either way. Asked in words — "do this one properly, cost no object" —
 that grooms the work sets the hand-off's `effort` field to `best` or `cheap`, and it means
 the same; it leaves the field out unless you said how hard to try.
 
-**The task says its crew twice.** When it starts, one line gives the class it was read as,
-the models on the seats and what it is expected to cost:
+**The task says its crew in one line, rewritten in place.** When it starts, it gives the
+class it was read as, the models on the seats and what it is expected to cost:
 
 ```
 task 4 crew · bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 · est $0.023
 ```
 
-When it lands, the same line with what it actually cost beside the estimate, and the way
+When it lands, the same line becomes what it actually cost beside the estimate, and the way
 to ask again:
 
 ```
@@ -4279,9 +4279,11 @@ task 4 crew · bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 ·
 
 A seat you pinned wears the pin mark `⌖` in front of its model.
 
-**`/redo stronger`** runs the last task this conversation started again, with every seat
-nobody pinned one step stronger. It also teaches the crew: the next task of the same kind in
-this repository starts a step higher, until enough accepted work brings it back. A crew
+**`/redo stronger`** runs the last task this conversation started again, one rung stronger:
+the one seat nobody pinned whose next model up buys the most moves to it, and the line names
+the rung. A task that never started is asked again on the next-best models instead. It also
+teaches the crew: the next task of the same kind in this repository starts a rung higher,
+until an accepted task brings it back. A crew
 that is already the strongest allowed says so and starts nothing —
 `this crew is already the strongest allowed · pin a stronger model with /crew pin, or widen /crew models`.
 A task still running is not redone; stop it first.

@@ -165,7 +165,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 		// own, so a page promising a decay the code does not keep names itself.
 		fact: "how many accepted tasks decay a learned step", owner: "router.redoDecayAfter",
 		value: decay, others: notDecay,
-		quotes: []quotedIn{{"models-and-cost", "after %s accepted tasks"}},
+		quotes: []quotedIn{{"models-and-cost", "after %s accepted task"}},
 	}, {
 		fact: "how many steps a class can learn", owner: "router.redoOffsetCeiling",
 		value: steps, others: notSteps,

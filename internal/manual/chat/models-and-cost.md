@@ -471,7 +471,7 @@ and only when nothing answers, the conversation model.
 The crew is three seats: the **worker** that does the work, the **planner** that
 structures it, and the **checker** that reads the result. **By default all three are auto.**
 codeaf picks each seat for each task: it reads what kind of work the task is — a
-**bugfix**, **openended** work, or **other** — and picks the model for each seat from what
+**bugfix**, **open-ended** work, or **other** — and picks the model for each seat from what
 it has measured on that kind of work, weighed against what the model costs. A task it
 cannot read with confidence counts as open-ended, because that is where a weak crew costs
 the most.
@@ -670,33 +670,56 @@ The next task is back on the ordinary pick.
 
 ### What a task says about its crew
 
-A routed task says its crew twice. When it starts:
+A routed task says its crew in ONE line, under the line that says it started, and the line
+is rewritten in place as the task goes. When it starts:
 
 ```
-task 12 crew · openended · worker glm-5.3-flash (openrouter) · checker ⌖ kimi-k3 · est $0.112
+task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · est $0.112
 ```
 
-and when it lands, with what it actually cost beside the estimate:
+and when it lands, the same line with what it actually cost beside the estimate:
 
 ```
-task 12 crew · openended · worker glm-5.3-flash (openrouter) · checker ⌖ kimi-k3 · $0.108 (est $0.112) · not right? /redo stronger
+task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · $0.108 (est $0.112) · not right? /redo stronger
 ```
 
 The first word is the kind of work the task was read as. The worker's provider is named
-because it is where the money goes; a seat you pinned wears the pin mark. Each is said once
-per task, however many times its row updates.
+because it is where the money goes; the planner is named when it is another model than the
+worker; a seat you pinned wears the pin mark `⌖`. A task that failed ends its line on
+`failed — /redo stronger runs it again on a stronger crew`. `/task --best` that changes
+nothing says `best · already the strongest measured crew`, and one that does names the rung
+(`worker glm-5.3-flash → kimi-k3`).
+
+**A seat whose model cannot start moves, inside the task.** When a seat's first call is
+refused, the seat goes down its ladder: the same model on its next route, then the next
+model for the seat at a similar cost, then the model the last good crew here used, then the
+model you are talking to. The line says so — `running on fallback crew · worker
+glm-5.3-flash → deepseek-v4-flash (credit unavailable on openrouter)` — and with nothing left
+the task stops on the one thing to do: `add credit on openrouter to continue`, `reconnect
+openrouter with /connect`, or when the limit resets. What each route did is kept: a route
+that refused a model is left out for a week, one at its limit rests until its reset, an
+account out of credit is skipped until a paid call on it answers again. Free routes are
+off unless you turn them on; when every paid route is out of reach they are used anyway,
+and the line says `free routes may log prompts`.
 
 ### Redo stronger
 
-`/redo stronger` runs the last task again with every seat you did not pin one step
-stronger. It is one task's ask — your pins and your allowed rule are untouched — and a crew
-already at the strongest the allowed models make says so and starts nothing. A task still
-running cannot be redone; stop it first.
+`/redo stronger` runs the last task again ONE RUNG stronger: every seat keeps what it ran,
+and the one seat whose next model up buys the most moves to that next model — never to the
+top of the catalog in one step. The line says the rung it took (`checker glm-5.3-flash →
+deepseek-v4-flash`); a second redo takes the next rung. It is one task's ask — your pins and
+your allowed rule are untouched — and a crew already at the strongest the allowed models
+make says so and starts nothing. A task still running cannot be redone; stop it first.
+
+**A task that never started is asked again, not escalated.** When no seat answered a single
+call — the route refused it, the account was out of credit — nothing ran to be too weak, so
+the redo takes the next-best models at the same cost.
 
 **It also teaches the crew.** A redo says the crew under-served that kind of work in that
-repository, so the next task of the same kind there starts a step higher — at most three steps —
-and the step decays after five accepted tasks of that kind, so work that was
-under-served once is not overpaid for ever.
+repository, so the next task of the same kind there starts a rung higher — at most three
+steps — and a step comes off after one accepted task of that kind, so work that was
+under-served once is not overpaid for ever. A task counts as accepted when it finished and
+its result was not refused: merged, kept on its branch, or an answer with nothing to land.
 
 Every decision and how it ended — accepted, redone stronger, or not kept — is written to
 the router's log beside your settings, `router-events.jsonl`, which is what the panel's
