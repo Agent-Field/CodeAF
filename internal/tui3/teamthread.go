@@ -134,6 +134,24 @@ func (s *trafficSheet) add(segs []railSeg, doors []trafficDoor, age string) {
 	s.rows = append(s.rows, laid)
 }
 
+// fits reports whether segs and age lay out whole in the sheet's width.
+func (s *trafficSheet) fits(segs []railSeg, age string) bool {
+	room := s.width
+	if age != "" && s.width >= 24 {
+		room -= ansi.StringWidth(age) + 1
+	}
+	used := 0
+	for _, seg := range segs {
+		used += ansi.StringWidth(seg.text)
+	}
+	return used <= room
+}
+
+// trafficReplyAgeCols is the narrowest rail whose answers carry their age: on
+// a narrower one the words need the cells more, and the thread's header still
+// says when it began.
+const trafficReplyAgeCols = 40
+
 // blank lays an empty row.
 func (s *trafficSheet) blank() {
 	s.rows = append(s.rows, trafficLaid{text: strings.Repeat(" ", s.width)})
@@ -256,14 +274,33 @@ func (s *trafficSheet) thread(th teamstore.Thread) {
 		segs = append(segs, s.handleSeg(e.To, &doors, pal.muted))
 		s.add(segs, doors, s.a.trafficAge(e))
 	default:
-		segs := append(s.speakerSegs(e.From, &doors), railSeg{text: arrow, paint: pal.dim, door: -1})
-		segs = append(segs, s.addressSegs(e, &doors)...)
 		tag := "fyi"
 		if e.Kind == teamstore.KindDirective {
 			tag = "do"
 		}
-		segs = append(segs, railSeg{text: "  " + tag, paint: pal.dim, door: -1})
-		s.add(segs, doors, s.a.trafficAge(e))
+		// A HEADER THAT CANNOT NAME EVERYONE NAMES WHOM IT CAN AND COUNTS THE
+		// REST, `@agent @checking +1  do`, so the tag is never the part cut.
+		named := e.Recipients()
+		for keep := len(named); ; keep-- {
+			doors = doors[:0]
+			segs := append(s.speakerSegs(e.From, &doors), railSeg{text: arrow, paint: pal.dim, door: -1})
+			if keep == len(named) {
+				segs = append(segs, s.addressSegs(e, &doors)...)
+			} else {
+				for i, h := range named[:keep] {
+					if i > 0 {
+						segs = append(segs, railSeg{text: " ", door: -1})
+					}
+					segs = append(segs, s.handleSeg(h, &doors, pal.muted))
+				}
+				segs = append(segs, railSeg{text: " +" + itoa(len(named)-keep), paint: pal.dim, door: -1})
+			}
+			segs = append(segs, railSeg{text: "  " + tag, paint: pal.dim, door: -1})
+			if keep <= 1 || s.fits(segs, s.a.trafficAge(e)) {
+				s.add(segs, doors, s.a.trafficAge(e))
+				break
+			}
+		}
 	}
 	if strings.TrimSpace(e.Text) != "" {
 		s.words(e, []railSeg{{text: "  ", door: -1}}, "  ", pal.dim, "", nil)
@@ -357,7 +394,10 @@ func (s *trafficSheet) replies(th teamstore.Thread) {
 			lead = append(lead, s.handleSeg(r.who, &doors, pal.muted))
 		}
 		lead = append(lead, railSeg{text: "  ", door: -1})
-		age := s.a.trafficAge(r.last)
+		age := ""
+		if s.width >= trafficReplyAgeCols {
+			age = s.a.trafficAge(r.last)
+		}
 		mark := ""
 		switch r.state {
 		case teamstore.StateFinished:

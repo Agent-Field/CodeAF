@@ -269,6 +269,12 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			if es[i].kind == entrySeam {
 				blocked = true
 			}
+			// NOR IS A MANAGER'S QUESTION TO ITS TEAM. Its answers land under
+			// it after the turn has ended (teamthreadcard.go), and a chip that
+			// swallowed the card would hide the one place they arrive.
+			if es[i].kind == entryTool && es[i].tool == "team_send" && es[i].status == toolOK {
+				blocked = true
+			}
 		}
 		// THE END OF WHAT THE CHIP SWALLOWS. An ordinary fold stops at the answer
 		// and leaves it standing; a stopped turn's fold runs to the end of the
