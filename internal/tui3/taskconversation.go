@@ -34,6 +34,7 @@ package tui3
 import (
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
@@ -197,7 +198,15 @@ func (a *app) taskPlanAge(row session.PlanTaskRow) string {
 	if end.Before(row.Started) {
 		return ""
 	}
-	return countUpWord(end.Sub(row.Started))
+	span := end.Sub(row.Started)
+	// A FINISHED SPAN IS ROUNDED TO THE SECOND, as the card and the room round
+	// it ([taskNode.ranFor]) and as the note the chat is handed does, so a
+	// 61.5-second run reads `1m 2s` wherever it is read; a running clock counts
+	// whole seconds up.
+	if !row.Ended.IsZero() {
+		span = span.Round(time.Second)
+	}
+	return countUpWord(span)
 }
 
 // taskProgramBody is what a person reads on a program's page, under the pinned

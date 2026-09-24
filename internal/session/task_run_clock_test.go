@@ -36,6 +36,8 @@ func TestRunSpanWordSpellsASpanTheWayThePageDoes(t *testing.T) {
 		{5 * time.Minute, "5m"},
 		{67*time.Minute + 34*time.Second, "1h 7m"},
 		{2 * time.Hour, "2h"},
+		{61*time.Second + 500*time.Millisecond, "1m 2s"},
+		{59*time.Second + 600*time.Millisecond, "1m"},
 	} {
 		if got := runSpanWord(tc.d); got != tc.want {
 			t.Errorf("runSpanWord(%v) = %q, want %q", tc.d, got, tc.want)

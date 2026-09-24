@@ -77,3 +77,17 @@ func TestALandedCardMeasuresTheRecordsOwnSpan(t *testing.T) {
 		})
 	}
 }
+
+// A FINISHED SPAN READ OFF THE STORE IS ROUNDED LIKE EVERY OTHER. A page whose
+// run this window holds no node for reads the row's own pair, and it cut a
+// 61.5-second run to `1m 1s` while the card and the note the chat was handed
+// said `1m 2s`.
+func TestAStoredRowsFinishedSpanIsRoundedLikeTheCards(t *testing.T) {
+	a, _ := planAppWith(t, nil, nil)
+	started := taskFixtureNow
+	row := session.PlanTaskRow{ID: "t-9", Program: "senior-dev", Status: "done",
+		Started: started, Ended: started.Add(61*time.Second + 500*time.Millisecond)}
+	if got := a.taskPlanAge(row); got != "1m 2s" {
+		t.Fatalf("a finished 61.5-second run reads %q, want 1m 2s", got)
+	}
+}

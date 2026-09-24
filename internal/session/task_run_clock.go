@@ -104,6 +104,10 @@ func runSpanWord(d time.Duration) string {
 	if d < time.Second {
 		return ""
 	}
+	// ROUNDED TO THE SECOND, as the page and the card round it (tui3's
+	// taskNode.ranFor): the same 61.5-second run read `ran 1m 1s` in the note
+	// the chat was handed and `1m 2s` on the page it was reading about.
+	d = d.Round(time.Second)
 	rungs := func(big int, bigUnit string, small int, smallUnit string) string {
 		out := strconv.Itoa(big) + bigUnit
 		if small == 0 {
