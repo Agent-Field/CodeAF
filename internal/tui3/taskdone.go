@@ -228,7 +228,7 @@ func (a *app) landedCard(node *taskNode) {
 		title:       title,
 		subtitle:    taskSubtitleOf(title, node.assignment),
 		status:      session.ProjectTask(doneNodeFacts(node)),
-		span:        node.elapsed,
+		span:        node.ranFor(),
 		started:     node.spawnedAt(),
 		landed:      landed,
 		outcome:     firstProseLine(node.report),

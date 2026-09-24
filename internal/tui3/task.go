@@ -494,6 +494,53 @@ func (n *taskNode) spawnedAt() time.Time {
 	return n.met
 }
 
+// ranFor is how long this node's work took once it has landed: the record's
+// own two stamps when it carries both, the age the landing reported when it
+// does not, and zero — which every surface draws as nothing — when neither is
+// known.
+//
+// THE STAMPS OUTRANK THE REPORTED AGE, AND BOTH OUTRANK THIS WINDOW'S CLOCK.
+// A run's rows used to publish no age at all, so the landed card measured from
+// the moment this window first saw the run, and a window reopened twenty
+// minutes into a senior-dev run read a twenty-nine-minute run as nine. The
+// stamps are the record's facts about the work; the window's own moments are
+// not.
+//
+// IT IS WHOLE SECONDS, ROUNDED, because the three surfaces that draw a landed
+// node's span spell it through two formatters — the landed card's
+// [taskSpanWord], which rounds, and the room's and the page's [countUpWord],
+// which cuts — and a span handed to both unrounded read `22m52s` on the card
+// and `22m 51s` on the page for one run.
+func (n *taskNode) ranFor() time.Duration {
+	if !n.started.IsZero() && n.ended.After(n.started) {
+		return n.ended.Sub(n.started).Round(time.Second)
+	}
+	if n.elapsed > 0 {
+		return n.elapsed.Round(time.Second)
+	}
+	return 0
+}
+
+// noticeBegan is the instant a node's running clock counts from, anchored
+// from the first running update this window receives about it.
+//
+// THE RECORD'S START IS THE ANCHOR WHEN THE UPDATE CARRIES ONE. A run's rows
+// report no age (session's task_run_belt.go publishes StartedAt and a zero
+// Elapsed), and a run's row is replayed to a window that attaches mid-run as
+// it was first published — so an anchor taken from the age alone started the
+// rail's clock at the moment this window opened, and a window reopened while
+// senior-dev worked read the run as however long the window had been open. A
+// start stamped later than this window's own clock is another machine's clock
+// running ahead, and it falls back to the reported age, which needs no
+// agreement between two clocks.
+func (a *app) noticeBegan(notice session.TaskNotice) time.Time {
+	now := a.now()
+	if !notice.StartedAt.IsZero() && !notice.StartedAt.After(now) {
+		return notice.StartedAt
+	}
+	return now.Add(-notice.Elapsed)
+}
+
 // spent is what this node has cost, in dollars, from whichever of its two lanes
 // knows the most — the engine's published figure, or the pilot's running sum.
 // Zero means nobody has priced it, which is not "it was free", and a surface
@@ -6003,10 +6050,11 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if !notice.EndedAt.IsZero() {
 		node.ended = notice.EndedAt
 	}
-	// The clock is anchored ONCE, from the age the update reported, so the row
-	// counts on the frame tick instead of standing still between events.
+	// The clock is anchored ONCE, from the record's start or the age the update
+	// reported ([app.noticeBegan]), so the row counts on the frame tick instead
+	// of standing still between events.
 	if notice.State == session.TaskRunning && node.began.IsZero() {
-		node.began = a.now().Add(-notice.Elapsed)
+		node.began = a.noticeBegan(*notice)
 	}
 	// A node that started is a proposal that was approved, whatever answered it:
 	// the card stops asking here for the case where the engine's clock, and not

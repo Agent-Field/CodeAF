@@ -3383,13 +3383,29 @@ const (
 	roomDoneWord   = "done"
 )
 
-// roomClock is the node's age: counting up while it runs, frozen at what the
-// update that ended it reported.
+// roomClock is the node's age: counting up while it runs, and once it has
+// landed the span the landed card draws ([taskNode.ranFor]) — the record's
+// own start and end, so the page and the card read one number for one run.
 func (a *app) roomClock(node *taskNode) string {
-	if node.state == session.TaskRunning && !node.began.IsZero() {
-		return countUpWord(a.now().Sub(node.began))
+	word, _ := a.nodeClock(node)
+	return word
+}
+
+// nodeClock is [app.roomClock] with whether this window holds any clock for
+// the node at all, which is what lets a page that has another source for the
+// figure ([app.taskPlanAge]'s store stamps) fall back to it only when the rail
+// has nothing to say.
+func (a *app) nodeClock(node *taskNode) (string, bool) {
+	if node == nil {
+		return "", false
 	}
-	return countUpWord(node.elapsed)
+	if node.state == session.TaskRunning && !node.began.IsZero() {
+		return countUpWord(a.now().Sub(node.began)), true
+	}
+	if span := node.ranFor(); span > 0 {
+		return countUpWord(span), true
+	}
+	return "", false
 }
 
 // roomSpend is what this node has cost, or "" when nobody has published a price
