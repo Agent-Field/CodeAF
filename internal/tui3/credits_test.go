@@ -15,6 +15,41 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+func TestSurfaceCancelsAndJoinsAnInFlightCreditRead(t *testing.T) {
+	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	reader := func(ctx context.Context) (credits.Reading, error) {
+		close(started)
+		<-ctx.Done()
+		close(canceled)
+		<-release
+		return credits.Reading{}, ctx.Err()
+	}
+	read, closeReads := ownedCreditReader(context.Background(), reader)
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		_, _ = read(context.Background())
+	}()
+	<-started
+	closed := make(chan struct{})
+	go func() {
+		closeReads()
+		close(closed)
+	}()
+	<-canceled
+	select {
+	case <-closed:
+		t.Fatal("the surface returned while its balance read was still running")
+	default:
+	}
+	close(release)
+	<-closed
+	<-readDone
+	if _, err := read(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a read after close returned %v, want cancellation", err)
+	}
+}
+
 func seedLowCredits(t *testing.T, a *app) {
 	t.Helper()
 	if err := config.WriteAPIKey(a.profileDir, "credit-test-key"); err != nil {
