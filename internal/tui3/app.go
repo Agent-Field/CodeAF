@@ -21,6 +21,7 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -1795,8 +1796,11 @@ type app struct {
 	// list, so a list opened again draws the last answer while the next read
 	// is on its way.
 	skillShelfSeen *skillShelfReading
-	connNames      map[string]string
-	connFlows      map[string]*connect.Flow
+	// skillDiskSeen is the last foreign folder scan. It outlives the picker
+	// so reopening can draw those rows while a fresh scan is in flight.
+	skillDiskSeen []skills.Skill
+	connNames     map[string]string
+	connFlows     map[string]*connect.Flow
 	// codexFlow is the model-service browser sign-in. Its result is tokens rather
 	// than a connected-account status, so it cannot live in connFlows; it is held
 	// for the same reason, so replacing the conversation can cancel its listener.
@@ -7299,9 +7303,9 @@ func (a *app) slash(line string) tea.Cmd {
 		// that home opens before this command reaches the picker.
 		a.input.reset()
 		a.input.insert("/skill " + rest)
-		a.syncLists()
+		cmd := a.edited()
 		a.touch()
-		return a.edited()
+		return cmd
 
 	case "subharness":
 		a.noticeEvent(eventSubharnessOpened)

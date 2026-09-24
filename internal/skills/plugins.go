@@ -88,7 +88,7 @@ func claudePlugins(homeDir, projectDir string) (user, project []claudePlugin) {
 	if homeDir == "" {
 		return nil, nil
 	}
-	data, err := os.ReadFile(filepath.Join(absolute(homeDir), installedPluginsFile))
+	data, err := readPluginJSON(filepath.Join(absolute(homeDir), installedPluginsFile))
 	if err != nil {
 		return nil, nil
 	}
@@ -160,7 +160,7 @@ func enabledPlugins(homeDir, projectDir string) map[string]bool {
 	}
 	merged := make(map[string]bool)
 	for _, file := range files {
-		data, err := os.ReadFile(file)
+		data, err := readPluginJSON(file)
 		if err != nil {
 			continue
 		}
@@ -222,7 +222,7 @@ func pluginSkillFolders(homeDir, id, root string) []string {
 // document's `plugins` list, which is a marketplace catalog's shape. A file
 // that is absent or does not parse names nothing.
 func declaredSkillPaths(file, entry string) []string {
-	data, err := os.ReadFile(file)
+	data, err := readPluginJSON(file)
 	if err != nil {
 		return nil
 	}
@@ -274,7 +274,7 @@ func declaredSkillPaths(file, entry string) []string {
 // the one read.
 func marketplaceSkillPaths(homeDir, market, plugin, installPath string) []string {
 	var places []string
-	if data, err := os.ReadFile(filepath.Join(absolute(homeDir), knownMarketplacesFile)); err == nil {
+	if data, err := readPluginJSON(filepath.Join(absolute(homeDir), knownMarketplacesFile)); err == nil {
 		var known map[string]struct {
 			InstallLocation string `json:"installLocation"`
 		}

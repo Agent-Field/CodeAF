@@ -96,6 +96,11 @@ var skillHomeDir = func() string {
 	return dir
 }
 
+// skillDiscover is the picker's one road to the disk scan. It is a variable so
+// a test can hold a scan in flight and prove the list, and every gesture
+// after it, carries on without it; nothing else ever replaces it.
+var skillDiscover = skills.Discover
+
 // skillPickRow is one skill as this list draws it: the name, the one-line
 // description, the dim word for where it came from, a Warning the folder
 // carries, and whether the skill is attached to this conversation.
@@ -335,7 +340,7 @@ func (a *app) syncSkillPick() (bool, tea.Cmd) {
 	}
 	if !a.skillPick.open {
 		a.skillPick.start(a.skillPickList(), query)
-		return true, a.readSkillShelf()
+		return true, tea.Batch(a.readSkillShelf(), a.readSkillDisk())
 	}
 	if query != a.skillPick.query {
 		a.skillPick.rank(query)
@@ -370,6 +375,35 @@ func (a *app) readSkillShelf() tea.Cmd {
 				return nil
 			}
 			a.skillShelfSeen = reading
+			if a.skillPick.open {
+				a.restartSkillPick()
+				a.touch()
+			}
+			return nil
+		}
+	})
+}
+
+// readSkillDisk scans the skill folders under the workspace and the home
+// directory off the update loop and redraws the open list from the answer.
+//
+// IT IS ASKED BESIDE THE LINE, NOT IN IT ([app.besideLine]). A scan is a read
+// nobody pressed for in the line's sense: nothing a person does next depends on
+// it having finished, and it is the one read here that can be slow for reasons
+// nobody chose — a skill folder linked to the root of a large repository, a
+// home on a network disk. In the ordered line it would stand in front of every
+// attach and every message after it. So the list opens at once on what is
+// already known (the shelf, and the last scan this app saw), and the folders
+// arrive when the scan answers.
+func (a *app) readSkillDisk() tea.Cmd {
+	workspace, homeDir := a.workspace, skillHomeDir()
+	return a.besideLine(func() func(bool) tea.Cmd {
+		found, _ := skillDiscover(skills.Options{ProjectDir: workspace, HomeDir: homeDir})
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			a.skillDiskSeen = found
 			if a.skillPick.open {
 				a.restartSkillPick()
 				a.touch()
@@ -417,7 +451,7 @@ func (a *app) skillPickList() []skillPickRow {
 		seen[strings.ToLower(name)] = true
 		rest = append(rest, skillPickRow{name: name, desc: skill.desc, from: skillFromShelf, on: attachedHas(attached, name)})
 	}
-	for _, skill := range a.discoveredSkills() {
+	for _, skill := range a.skillDiskSeen {
 		if skill.Shadowed || skill.Name == "" || seen[strings.ToLower(skill.Name)] {
 			continue
 		}
@@ -507,17 +541,6 @@ func (a *app) shelfSkillFacts() ([]shelfSkillRow, bool) {
 // shelf, and so is an agent without the door.
 type skillShelf interface {
 	SkillFacts(status string, limit int) ([]store.Fact, error)
-}
-
-// discoveredSkills is what internal/skills finds in place under the workspace
-// and the home directory. A scan that cannot run is an empty shelf here
-// rather than a refusal: the picker still has the store's half to show.
-func (a *app) discoveredSkills() []skills.Skill {
-	found, err := skills.Discover(skills.Options{ProjectDir: a.workspace, HomeDir: skillHomeDir()})
-	if err != nil {
-		return nil
-	}
-	return found
 }
 
 // nameOf keeps the discovered Skill's own name in one place.
@@ -629,17 +652,28 @@ func (a *app) remarkSkillRows() {
 }
 
 // skillFolderAttached is enter on the folder row: the skill in the folder the
-// query named goes on, read through internal/skills when the folder sits
-// where discovery looks and read from its own SKILL.md otherwise, and a
-// folder with no SKILL.md is refused in one plain line. Nothing is copied
-// anywhere — attachment is by name, and the folder stays where it is.
+// query named goes on, named the way discovery named it when the picker's last
+// scan found that folder and read from its own SKILL.md otherwise, and a folder
+// with no SKILL.md — or one whose SKILL.md is not an ordinary file — is refused
+// in one plain line. Nothing is copied anywhere — attachment is by name, and
+// the folder stays where it is.
+//
+// NO DISK SCAN RUNS HERE. The name is read on the update loop because the
+// attach is a person's gesture and belongs in the ordered line exactly where
+// they pressed it: a name resolved off the loop would put this attach behind
+// whatever they pressed next, and attachment order is the conflict rule the
+// workers read. What makes that safe is the size of the read. The folder's
+// scan already ran when the picker opened ([app.readSkillDisk]), beside the
+// line; what is left is at most one SKILL.md, read through the skills
+// package's opener, which never opens a pipe or a device and never reads past
+// the skill cap.
 func (a *app) skillFolderAttached(door skillAttacher) tea.Cmd {
 	folder := expandSkillPath(a.skillPick.folder)
 	if folder == "" {
 		return nil
 	}
 	name := ""
-	for _, skill := range a.discoveredSkills() {
+	for _, skill := range a.skillDiskSeen {
 		if samePath(skill.Dir, folder) {
 			name = skill.Name
 			break
@@ -706,8 +740,11 @@ func samePath(one, other string) bool {
 // names no skill, is an error whose text is the one plain line the row
 // refuses by.
 func readSkillName(folder string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(folder, "SKILL.md"))
+	data, err := skills.ReadRegularHead(filepath.Join(folder, "SKILL.md"), skills.MaxSkillFileBytes)
 	if err != nil {
+		if errors.Is(err, skills.ErrNotRegular) {
+			return "", errors.New("SKILL.md is not a regular file in " + folder)
+		}
 		return "", errors.New(skillFolderMissing(folder))
 	}
 	name := skillFrontmatterName(string(data))

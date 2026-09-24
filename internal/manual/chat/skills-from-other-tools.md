@@ -71,3 +71,17 @@ A skill whose `SKILL.md` has no `name`, no `description` or frontmatter that
 does not parse is skipped. Claude Code's plugin settings that hide a skill
 from the model or from the slash menu are not honoured yet: every skill of an
 enabled plugin is offered both ways.
+
+## Why is my skill skipped when SKILL.md is a link to a device or pipe
+
+A `SKILL.md` that is a pipe, socket, device or link to one is skipped with the
+reason `SKILL.md is not a regular file`. It is not offered in the `/skill` picker,
+like a `SKILL.md` that does not parse. A link to
+an ordinary file still works. codeaf reads at most 64 KiB of an ordinary
+`SKILL.md`.
+
+Claude Code settings, plugin registries, manifests and marketplace catalogs
+are also skipped when they are not ordinary files. Any one of those JSON files
+over 1 MiB is skipped. This keeps a pipe or device from holding up a launch or
+the `/skill` picker. The picker opens with the shelf and the last disk reading;
+new folder rows arrive when its fresh scan finishes.

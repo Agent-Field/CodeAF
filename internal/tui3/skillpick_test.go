@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	store "github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -163,6 +164,96 @@ func TestTheSkillPickerOpensOnTheWholeShelf(t *testing.T) {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the list does not say %q:\n%s", want, screen)
 		}
+	}
+}
+
+func TestTheSkillPickerShowsShelfWhileDiskScanIsHeld(t *testing.T) {
+	a, agent, project, _ := skillApp(t)
+	agent.AttachSkills("held-skill")
+	seedSkill(t, filepath.Join(project, ".agents", "skills"), "disk-skill", "from disk")
+	started, release := make(chan struct{}), make(chan struct{})
+	old := skillDiscover
+	skillDiscover = func(opts skills.Options) ([]skills.Skill, error) {
+		close(started)
+		<-release
+		return old(opts)
+	}
+	t.Cleanup(func() { skillDiscover = old })
+	typeInto(t, a, "/skill")
+	settled := make(chan struct{})
+	go func() { drive(t, a, key(" ")); close(settled) }()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("disk scan did not start")
+	}
+	if !a.skillPick.open || len(a.skillPick.rows) != 1 || a.skillPick.rows[0].name != "held-skill" {
+		t.Fatalf("picker did not open with its shelf row while disk was held: %+v", a.skillPick.rows)
+	}
+	close(release)
+	select {
+	case <-settled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("picker did not fold the disk scan")
+	}
+	if len(a.skillPick.rows) != 2 || a.skillPick.rows[1].name != "disk-skill" {
+		t.Fatalf("disk row did not arrive after release: %+v", a.skillPick.rows)
+	}
+}
+
+func TestSkillDiskScanDoesNotDelayALaterOrderedToggle(t *testing.T) {
+	a, agent, _, _ := skillApp(t)
+	a.skillPick.start([]skillPickRow{{name: "shelf-skill"}}, "")
+	started, release := make(chan struct{}), make(chan struct{})
+	old := skillDiscover
+	skillDiscover = func(opts skills.Options) ([]skills.Skill, error) {
+		close(started)
+		<-release
+		return nil, nil
+	}
+	t.Cleanup(func() { skillDiscover = old })
+	scan := a.readSkillDisk()
+	scanDone := make(chan tea.Msg, 1)
+	go func() { scanDone <- scan() }()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("disk scan did not begin")
+	}
+	toggle := a.skillToggled()
+	toggled := make(chan tea.Msg, 1)
+	go func() { toggled <- toggle() }()
+	select {
+	case msg := <-toggled:
+		a.doorSaid(msg.(doorMsg))
+		if len(agent.held) != 1 || agent.held[0] != "shelf-skill" {
+			t.Fatalf("ordered toggle attached %v", agent.held)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("disk scan held the later ordered attachment")
+	}
+	close(release)
+	a.doorSaid((<-scanDone).(doorMsg))
+}
+
+// THE FOLDER ROW RUNS NO DISK SCAN. Its attach is a gesture and keeps its place
+// in the ordered line, so the name is read on the loop — which is only safe
+// while that read is the folder's one SKILL.md, never a walk of every skill
+// root.
+func TestTheFolderRowAttachesWithoutADiskScan(t *testing.T) {
+	a, agent, _, homeDir := skillApp(t)
+	folder := seedSkill(t, homeDir, "loose-skill", "from a folder")
+	old := skillDiscover
+	skillDiscover = func(skills.Options) ([]skills.Skill, error) {
+		t.Error("enter on the folder row ran a disk scan")
+		return nil, nil
+	}
+	t.Cleanup(func() { skillDiscover = old })
+	a.skillPick.start([]skillPickRow{{name: "shelf-skill"}}, folder)
+	a.skillPick.cursor = len(a.skillPick.hits)
+	spend(t, a, a.skillToggled())
+	if !attachedHas(agent.held, "loose-skill") {
+		t.Fatalf("the folder row attached %v, want loose-skill", agent.held)
 	}
 }
 
@@ -416,13 +507,14 @@ func TestBareSkillOpensThePickerOnTheWholeShelf(t *testing.T) {
 	a, _, project, _ := skillApp(t)
 	seedSkill(t, filepath.Join(project, ".claude", "skills"), "alpha-flake", "chase a flaky test")
 
-	a.slash("/skill")
+	cmd := a.slash("/skill")
 	if !a.skillPick.open {
 		t.Fatal("bare /skill opened no picker")
 	}
 	if got := a.input.String(); got != "/skill " {
 		t.Fatalf("bare /skill left %q in the box", got)
 	}
+	spend(t, a, cmd)
 	screen := strings.Join(plainOverlay(a), "\n")
 	if !strings.Contains(screen, "alpha-flake") {
 		t.Fatalf("the picker did not open on the shelf:\n%s", screen)

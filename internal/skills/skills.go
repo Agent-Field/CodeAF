@@ -17,8 +17,8 @@
 package skills
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -219,7 +219,7 @@ func Discover(opts Options) ([]Skill, error) {
 			for _, folder := range plugin.skillFolders {
 				// A folder a plugin names may be one skill rather than a
 				// folder of them, and then it is read as the one skill.
-				if info, err := os.Stat(filepath.Join(folder, "SKILL.md")); err == nil && info.Mode().IsRegular() {
+				if _, err := os.Stat(filepath.Join(folder, "SKILL.md")); err == nil {
 					take(folder, RootClaudePlugins, scope, plugin.id)
 					continue
 				}
@@ -272,15 +272,11 @@ const (
 	stateLoaded
 )
 
-const maxSkillFileBytes = 64 * 1024
+// MaxSkillFileBytes bounds the text read from one SKILL.md on every door.
+const MaxSkillFileBytes = 64 * 1024
 
 func readSkillFile(path string) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	return io.ReadAll(io.LimitReader(f, maxSkillFileBytes))
+	return ReadRegularHead(path, MaxSkillFileBytes)
 }
 
 // readSkill reads one direct child directory of a skills root.
@@ -288,6 +284,10 @@ func readSkill(dir, root, scope string) (Skill, skillState) {
 	skill := Skill{Dir: dir, Scope: scope, Root: root}
 	data, err := readSkillFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {
+		if errors.Is(err, ErrNotRegular) {
+			skill.Warning = "SKILL.md is not a regular file"
+			return skill, stateSkipped
+		}
 		return Skill{}, stateNotASkill
 	}
 	name, description, warning := parseSkillMarkdown(string(data))
