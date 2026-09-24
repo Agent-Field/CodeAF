@@ -89,20 +89,22 @@ func (placeTeams) remote(a *app) string {
 	return ""
 }
 
-// stops is every target, in the order the keyboard walks them.
+// stops is every body line with a target on it, top first: the router's
+// names for rows, which a scrolled pane does not move.
 func (placeTeams) stops(a *app) []int {
-	out := make([]int, len(a.tp.targets))
-	for i := range out {
-		out[i] = i
+	out := make([]int, 0, len(a.tp.targets))
+	for _, t := range a.tp.targets {
+		out = append(out, t.line)
 	}
+	sort.Ints(out)
 	return out
 }
 
-// cursorAt is the target the keyboard is on, 0 when it is on none, so `↑` from
-// the first target reaches the bar.
+// cursorAt is the body line the keyboard is on, the first stop when it is on
+// none, so `↑` from the first target reaches the bar.
 func (placeTeams) cursorAt(a *app) int {
-	if i := a.teamsCursorIndex(); i >= 0 {
-		return i
+	if t, ok := a.teamsCursorTarget(); ok {
+		return t.line
 	}
 	return 0
 }
@@ -128,6 +130,9 @@ func (placeTeams) note(a *app, width int) []string {
 // hint is what the pointer or the cursor is on, with its key, and otherwise
 // the page's keys.
 func (placeTeams) hint(a *app) string {
+	if a.tsheet.on {
+		return a.teamSheetHint()
+	}
 	if words := a.teamsTargetHint(); words != "" {
 		return words
 	}
@@ -267,6 +272,10 @@ func (a *app) teamsWalk(dx, dy int) bool {
 		}
 		return ti.x0 < tj.x0
 	})
+	// ↑ AND ↓ STAY ON THEIR SIDE: the rail walks the rail and the pane walks
+	// the pane, so a walk down the teams is never pulled into a card beside
+	// them. ← and → walk along a row, and past its end cross to the nearest
+	// target on the other side.
 	best, bestScore := -1, 1<<30
 	for _, i := range order {
 		t := a.tp.targets[i]
@@ -275,14 +284,16 @@ func (a *app) teamsWalk(dx, dy int) bool {
 		}
 		var score int
 		switch {
-		case dy < 0 && t.y < here.y:
+		case dy < 0 && t.y < here.y && t.pane == here.pane:
 			score = (here.y-t.y)*1000 + abs(t.x0-here.x0)
-		case dy > 0 && t.y > here.y:
+		case dy > 0 && t.y > here.y && t.pane == here.pane:
 			score = (t.y-here.y)*1000 + abs(t.x0-here.x0)
 		case dx < 0 && t.y == here.y && t.x0 < here.x0:
 			score = here.x0 - t.x0
 		case dx > 0 && t.y == here.y && t.x0 > here.x0:
 			score = t.x0 - here.x0
+		case dx < 0 && here.pane && !t.pane, dx > 0 && !here.pane && t.pane:
+			score = 100000 + abs(t.y-here.y)*1000 + abs(t.x0-here.x0)
 		default:
 			continue
 		}

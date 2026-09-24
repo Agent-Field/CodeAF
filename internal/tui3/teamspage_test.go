@@ -52,14 +52,24 @@ func teamsHits(a *app) []int {
 	}
 	cur := a.teamsCursorIndex()
 	for i, tg := range a.tp.targets {
-		if tg.y < 0 || tg.y >= len(hits) {
+		// The rail's rows, which the arrows walk as one list, and of those the
+		// ones a press at the left edge (where the shared tests press) lands on.
+		if tg.y < 0 || tg.y >= len(hits) || tg.pane || tg.x0 > 4 || tg.x1 <= 4 {
 			continue
 		}
 		if hits[tg.y] < 0 || i == cur {
-			hits[tg.y] = i
+			hits[tg.y] = tg.line
 		}
 	}
 	return hits
+}
+
+// teamsCursorLine is the body line the keyboard is on, -1 for none.
+func teamsCursorLine(a *app) int {
+	if t, ok := a.teamsCursorTarget(); ok {
+		return t.line
+	}
+	return -1
 }
 
 // teamsFrameText is the whole frame, plain.

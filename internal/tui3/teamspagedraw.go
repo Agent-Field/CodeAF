@@ -294,6 +294,7 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 		return out
 	}
 	out = append(out, a.teamsMembersRows(d, t, width, len(out))...)
+	out = append(out, a.teamsNoManagerRows(d, t, width, len(out))...)
 	if !a.teamsSeam().delegation() && !a.teamsOff() && a.hosted() {
 		out = append(out, "", " "+pal.dim(fit(teamsHostedWord, width-2)))
 	}
@@ -658,7 +659,11 @@ func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string
 	for _, o := range p.Options {
 		labelW = max(labelW, ansi.StringWidth(o.Label)+2)
 	}
-	labelW = min(labelW, max(width/3, 8))
+	labelW = min(labelW, max(width/2, 12))
+	rec := ""
+	if p.Recommendation != nil {
+		rec = p.Recommendation.Option
+	}
 	for _, o := range p.Options {
 		word := o.Label
 		if ansi.StringWidth(word) > labelW-2 {
@@ -667,14 +672,20 @@ func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string
 		hint := o.Label + hintSegment + o.Consequence
 		s, w := d.button(word, teamsTarget{act: teamsActOption, arg: p.ID, opt: o.ID, x0: 1, y: y + len(out), hint: hint}, pal.ink)
 		rest := strings.Repeat(" ", max(labelW-w, 0)) + "  " + pal.dim(o.Consequence)
-		if p.Recommendation != nil && p.Recommendation.Option == o.ID {
-			rec := "recommended"
-			if reason := strings.TrimSpace(p.Recommendation.Reason); reason != "" {
-				rec += ": " + reason
-			}
-			rest = strings.Repeat(" ", max(labelW-w, 0)) + "  " + pal.dim(o.Consequence) + "  " + pal.muted(rec)
+		if o.ID == rec {
+			// THE RECOMMENDED OPTION IS MARKED ON ITS OWN ROW, and its reason
+			// is a line of its own under the options, where it can be read
+			// whole at any width.
+			rest += "  " + pal.muted(a.linearMark("✓", "*")+" recommended")
 		}
 		out = append(out, fit(" "+s+rest, width))
+	}
+	if p.Recommendation != nil {
+		if reason := strings.TrimSpace(p.Recommendation.Reason); reason != "" {
+			for _, l := range wrap("recommended because "+reason, max(width-4, 8)) {
+				out = append(out, "   "+pal.dim(l))
+			}
+		}
 	}
 	if a.tp.answering == p.ID {
 		box, _, _ := draftBlock(&a.tp.answer, pal, width-4, 1, "your own answer, then enter", "")
@@ -711,16 +722,33 @@ func (a *app) teamsPaneRest(d *teamsDraw, width, y int) []string {
 	case t.Closed():
 		out = append(out, a.teamsClosedRows(d, t, width, y)...)
 	case t.Manager == "":
-		for _, l := range wrap(teamsNoManagerWord, max(width-2, 8)) {
-			out = append(out, " "+pal.dim(l))
-		}
-		out = append([]string{""}, out...)
-		s, _ := d.button(teamManagerSlotWord, teamsTarget{act: teamsActManager, id: t.ID, x0: 1, y: y + len(out) + 1,
-			hint: "Start " + t.Name + "'s manager: a conversation that runs the team for you" + hintSegment + "m"}, pal.ink)
-		out = append(out, "", " "+s)
+		// Its offer is drawn under the members ([app.teamsNoManagerRows]).
 	default:
 		word := "opening " + a.teamManagerMark() + " " + t.Name + "'s manager" + a.linearMark("…", "...")
 		out = append(out, "", " "+pal.dim(fit(word, width-2)))
+	}
+	return out
+}
+
+// teamsNoManagerRows is a team without a manager's one offer, under its
+// members and above anything waiting, so a long inbox never pushes it off the
+// pane: `+ Manager` and what a manager is, wrapped beside it.
+func (a *app) teamsNoManagerRows(d *teamsDraw, t team, width, y int) []string {
+	if t.Manager != "" || t.Closed() || t.Root || a.teamsOff() {
+		return nil
+	}
+	pal := a.pal
+	s, w := d.button(teamManagerSlotWord, teamsTarget{act: teamsActManager, id: t.ID, x0: 1, y: y + 1,
+		hint: "Start " + t.Name + "'s manager: a conversation that runs the team for you" + hintSegment + "m"}, pal.ink)
+	lead := 1 + w + 2
+	said := wrap(teamsNoManagerWord, max(width-lead, 8))
+	out := []string{""}
+	for i, l := range said {
+		if i == 0 {
+			out = append(out, " "+s+"  "+pal.dim(l))
+			continue
+		}
+		out = append(out, strings.Repeat(" ", lead)+pal.dim(l))
 	}
 	return out
 }
@@ -787,7 +815,7 @@ func (a *app) teamsEmpty(d *teamsDraw, width, height int) []string {
 	out = append(out, "")
 	y := len(out)
 	s1, w1 := d.button(a.teamsSpark()+" "+teamsOrganizeWord, teamsTarget{act: teamsActOrganize, x0: lead, y: y,
-		hint: "Suggest teams from your open conversations; nothing changes until you apply" + hintSegment + "o"}, pal.ink)
+		hint: "Suggest teams; nothing changes until you apply" + hintSegment + "o"}, pal.ink)
 	s2, _ := d.button("+ "+teamsNewTeamWord, teamsTarget{act: teamsActNewTeam, x0: lead + w1 + 2, y: y,
 		hint: "Make a team of the conversation in front" + hintSegment + "n"}, pal.ink)
 	out = append(out, pad+s1+"  "+s2)
@@ -805,19 +833,54 @@ func (a *app) teamsBody(width, room int) []placeRow {
 	var lines []string
 	if !a.teamsAny() {
 		lines = a.teamsEmpty(d, width, room)
+		for i := range d.targets {
+			d.targets[i].line = d.targets[i].y
+		}
 	} else {
 		railW := teamsRailCols(width)
 		paneW := width - railW
 		var rail []string
 		if railW > 0 {
 			rail = a.teamsRail(d, railW-1, room)
+			for i := range d.targets {
+				d.targets[i].line = d.targets[i].y
+			}
+		} else {
+			// TOO NARROW FOR TWO COLUMNS, the rail stands over the pane as one
+			// list, and the arrows walk the two as one.
+			lines = a.teamsRail(d, width, len(a.teamsRailRows()))
+			lines = append(lines, a.pal.dim(rule(width)))
+			for i := range d.targets {
+				d.targets[i].line = d.targets[i].y
+			}
 		}
+		top := len(lines)
 		mark := len(d.targets)
 		pane := a.teamsTop(d, paneW-1)
 		pane = append(pane, a.teamsPaneRest(d, paneW-1, len(pane))...)
-		d.shift(mark, railW, 0)
+		for i := mark; i < len(d.targets); i++ {
+			d.targets[i].line = top + d.targets[i].y
+		}
+		// THE PANE SCROLLS TO KEEP THE CURSOR ON IT: a long inbox moves up
+		// under a cursor walking down it, rather than walking it off the frame.
+		if vis := room - top; len(pane) > vis && vis > 0 {
+			off := 0
+			for _, t := range d.targets[mark:] {
+				if t.ref() == a.tp.cur && t.y >= vis {
+					off = min(t.y-vis+1, len(pane)-vis)
+				}
+			}
+			if off > 0 {
+				pane = pane[off:]
+				d.shift(mark, 0, -off)
+			}
+		}
+		d.shift(mark, railW, top)
+		for i := mark; i < len(d.targets) && railW > 0; i++ {
+			d.targets[i].pane = true
+		}
 		sep := a.pal.dim(a.linearMark("│", "|"))
-		for i := 0; i < room; i++ {
+		for i := 0; i < room-top; i++ {
 			left := ""
 			if railW > 0 {
 				left = strings.Repeat(" ", railW-1)
@@ -833,6 +896,14 @@ func (a *app) teamsBody(width, room int) []placeRow {
 			lines = append(lines, left+teamsPad(right, paneW))
 		}
 	}
+	// Only what was drawn can be pressed.
+	kept := d.targets[:0]
+	for _, t := range d.targets {
+		if t.y >= 0 && t.y < room {
+			kept = append(kept, t)
+		}
+	}
+	d.targets = kept
 	d.shift(0, 0, placeHeadRows)
 	a.tp.targets = d.targets
 	// A CURSOR WHOSE BUTTON IS GONE (a team closed, a card decided) comes home

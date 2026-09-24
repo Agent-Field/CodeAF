@@ -147,6 +147,12 @@ type teamsTarget struct {
 	// hint is what the hint line says with the pointer or the cursor on it,
 	// its key included.
 	hint string
+	// pane says the target is in the pane rather than on the rail. ↑ and ↓
+	// walk within one of the two, and ← and → cross between them.
+	pane bool
+	// line is the body line the target is on with the pane unscrolled: the
+	// router's name for a row ([place.stops]), which a scroll does not move.
+	line int
 }
 
 // teamsRef names a target by what it does.

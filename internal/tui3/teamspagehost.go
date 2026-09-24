@@ -175,7 +175,11 @@ func (a *app) teamsHostFrame() ([]string, []placeHit, int, int, bool) {
 		t.x0 += railW
 		t.x1 += railW
 		t.y += topAt
+		t.pane = railW > 0
 		d.targets = append(d.targets, t)
+	}
+	for i := range d.targets {
+		d.targets[i].line = d.targets[i].y
 	}
 	a.tp.targets = d.targets
 	sep := a.pal.dim(a.linearMark("│", "|"))
