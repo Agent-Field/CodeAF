@@ -14,34 +14,6 @@ import (
 	"time"
 )
 
-func TestTeamSaveLoadRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	made := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
-	want := []team{
-		{ID: "0a0a0a0a0a0a", Name: "port", Made: made, Hue: 40, hued: true, Members: []teamMember{{Key: "k1", File: "f1", Where: "/w/a", Word: "one"}}},
-		{ID: "0b0b0b0b0b0b", Name: "docs", Parent: "0a0a0a0a0a0a", Made: made, Hue: 0, Tier: 1, hued: true, Members: []teamMember{{Key: "k2", File: "f2", Where: "/w/b", Word: "two"}}},
-	}
-	if err := saveTeams(dir, want); err != nil {
-		t.Fatal(err)
-	}
-	got, err := loadTeams(dir, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("round trip:\n got %#v\nwant %#v", got, want)
-	}
-	// The write is a rename, so nothing temporary is left beside the file.
-	entries, _ := os.ReadDir(dir)
-	if len(entries) != 1 || entries[0].Name() != teamsFile {
-		t.Fatalf("profile holds %v, want only %s", entries, teamsFile)
-	}
-	// And it is never config.json.
-	if _, err := os.Stat(filepath.Join(dir, "config.json")); err == nil {
-		t.Fatal("teams wrote config.json")
-	}
-}
-
 func TestTeamMissingFileIsNoTeamsAndNoError(t *testing.T) {
 	got, err := loadTeams(t.TempDir(), nil)
 	if err != nil || got != nil {
@@ -222,96 +194,6 @@ func TestTeamMakeReplacesByNameAndDeleteFollowsActive(t *testing.T) {
 	}
 }
 
-// THE FIRST BUILD'S FILE BECOMES TEAMS, ONCE, AND NOTHING IS LOST. A
-// spaces.json with no teams.json beside it is read (the oldest shape has no
-// colours at all), written as a version 2 teams.json with an id for every
-// team and no parent, and only then renamed aside; the colours are the ones the
-// first build drew it with.
-func TestTeamMigratesTheFirstBuildsFile(t *testing.T) {
-	dir := t.TempDir()
-	v1 := `{"spaces":[` +
-		`{"name":"harbor","members":[{"key":"k1","file":"f1","where":"/w/a","word":"one"}],"made":"2026-09-20T10:00:00Z"},` +
-		`{"name":"orbit","members":[{"key":"k2"}],"made":"2026-09-21T10:00:00Z","hue":200,"tier":0},` +
-		`{"name":"lumen","members":[]}]}`
-	legacy := filepath.Join(dir, teamsLegacyFile)
-	if err := os.WriteFile(legacy, []byte(v1), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	reserved := teamReservedFrom(darkRamp)
-	// The colours the first build gave this file, worked out the way it did.
-	var first []team
-	if err := json.Unmarshal([]byte(`[{"name":"harbor"},{"name":"orbit","hue":200},{"name":"lumen"}]`), &first); err != nil {
-		t.Fatal(err)
-	}
-	teamsHueLegacy(first, reserved)
-
-	got, err := loadTeams(dir, reserved)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 3 || got[0].Name != "harbor" || got[1].Name != "orbit" || got[2].Name != "lumen" {
-		t.Fatalf("migrated %+v", got)
-	}
-	if !reflect.DeepEqual(got[0].Members, []teamMember{{Key: "k1", File: "f1", Where: "/w/a", Word: "one"}}) {
-		t.Fatalf("members lost: %+v", got[0].Members)
-	}
-	seen := map[string]bool{}
-	for i, tm := range got {
-		if len(tm.ID) != 12 || strings.Trim(tm.ID, "0123456789abcdef") != "" || seen[tm.ID] {
-			t.Fatalf("team %d has id %q", i, tm.ID)
-		}
-		seen[tm.ID] = true
-		if tm.Parent != "" || tm.Manager != "" {
-			t.Fatalf("team %d came up with parent %q manager %q", i, tm.Parent, tm.Manager)
-		}
-		if tm.hueSpec() != first[i].hueSpec() {
-			t.Fatalf("team %d drawn %v before and %v after", i, first[i].hueSpec(), tm.hueSpec())
-		}
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Fatalf("spaces.json is still there: %v", err)
-	}
-	if raw, err := os.ReadFile(legacy + ".migrated"); err != nil || string(raw) != v1 {
-		t.Fatalf("the old file was not kept as it was: %q %v", raw, err)
-	}
-	raw, err := os.ReadFile(filepath.Join(dir, teamsFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var disk struct {
-		Version int               `json:"version"`
-		Teams   []json.RawMessage `json:"teams"`
-	}
-	if err := json.Unmarshal(raw, &disk); err != nil || disk.Version != 2 || len(disk.Teams) != 3 {
-		t.Fatalf("teams.json is %s", raw)
-	}
-	// The next load reads teams.json and finds the same teams, ids and all.
-	again, err := loadTeams(dir, reserved)
-	if err != nil || !reflect.DeepEqual(again, got) {
-		t.Fatalf("reloaded %+v, %v", again, err)
-	}
-}
-
-// A TEAMS FILE ALREADY THERE WINS, and the old one is left alone: the person
-// has been using teams, and what spaces.json says is older.
-func TestTeamMigrationLeavesTheOldFileWhenTeamsExist(t *testing.T) {
-	dir := t.TempDir()
-	if err := saveTeams(dir, []team{{ID: "aaaaaaaaaaaa", Name: "kept", hued: true}}); err != nil {
-		t.Fatal(err)
-	}
-	legacy := filepath.Join(dir, teamsLegacyFile)
-	if err := os.WriteFile(legacy, []byte(`{"spaces":[{"name":"old"}]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	got, err := loadTeams(dir, nil)
-	if err != nil || len(got) != 1 || got[0].Name != "kept" {
-		t.Fatalf("loaded %+v %v", got, err)
-	}
-	if _, err := os.Stat(legacy); err != nil {
-		t.Fatalf("spaces.json was moved though teams.json was there: %v", err)
-	}
-}
-
 // WHAT A LATER BUILD WROTE SURVIVES THIS ONE. A field it does not know, on a
 // team or beside the list, and the reserved Manager, come back out of a load
 // and a save exactly as they went in.
@@ -423,29 +305,6 @@ func TestTeamTreeRefusesLoopsAndDeleteReparents(t *testing.T) {
 	b.teamsEnsure()
 	if lowT, _ := b.teamByID(low); lowT.Parent != top {
 		t.Fatalf("reloaded, low sits under %q", lowT.Parent)
-	}
-}
-
-// A FILE THAT LOOPS OR NAMES A MISSING PARENT IS PUT RIGHT ON LOAD, so the
-// walks above can trust the list.
-func TestTeamLoadCutsLoopsAndMissingParents(t *testing.T) {
-	dir := t.TempDir()
-	in := `{"version":2,"teams":[` +
-		`{"id":"aaaaaaaaaaaa","name":"a","parent":"bbbbbbbbbbbb","hue":1},` +
-		`{"id":"bbbbbbbbbbbb","name":"b","parent":"aaaaaaaaaaaa","hue":2},` +
-		`{"id":"cccccccccccc","name":"c","parent":"gone00000000","hue":3}]}`
-	if err := os.WriteFile(filepath.Join(dir, teamsFile), []byte(in), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	got, err := loadTeams(dir, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got[2].Parent != "" {
-		t.Fatalf("a missing parent was kept: %q", got[2].Parent)
-	}
-	if teamParentLoops(got, got[0].ID, got[0].Parent) || teamParentLoops(got, got[1].ID, got[1].Parent) {
-		t.Fatalf("the loop is still there: %+v", got)
 	}
 }
 

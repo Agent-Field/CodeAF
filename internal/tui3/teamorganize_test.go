@@ -210,7 +210,7 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 	if a.wall.org.on || len(a.wall.teams) != 2 || a.wall.teams[1].Name != "lab" || len(a.wall.teams[1].Members) != 2 {
 		t.Fatalf("after Apply: %+v", a.wall.teams)
 	}
-	if hue := a.wall.teams[1].hueSpec(); hue == a.wall.teams[0].hueSpec() {
+	if hue := a.wall.teams[1].HueSpec(); hue == a.wall.teams[0].HueSpec() {
 		t.Fatal("the new team took an existing team's colour")
 	}
 	frame := orgFrame(a)

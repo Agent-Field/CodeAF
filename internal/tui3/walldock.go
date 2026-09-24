@@ -180,7 +180,7 @@ func (a *app) dockPaint(tabs []chatTab, from, count, hidden, at int) string {
 	default:
 		ink := a.pal.dim
 		if sp, ok := a.teamActive(); ok {
-			if pen := a.pal.teamInk(sp.hueSpec()); pen != nil && !a.linear {
+			if pen := a.pal.teamInk(sp.HueSpec()); pen != nil && !a.linear {
 				ink = pen
 			}
 		}

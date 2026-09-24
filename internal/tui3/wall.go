@@ -252,7 +252,7 @@ func (a *app) wallFrame(width, height int) []string {
 				n++
 			}
 		}
-		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: t.Name, hue: t.hueSpec(), count: n})
+		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: t.Name, hue: t.HueSpec(), count: n})
 	}
 	rows, hits := renderWall(a.pal, view, width, room)
 	// A scroll moved the tiles under a pointer that did not move: the target

@@ -664,7 +664,7 @@ func (a *app) tabWallPaint(word string, hot bool) string {
 	}
 	ink := a.pal.dim
 	if sp, ok := a.teamActive(); ok {
-		if pen := a.pal.teamInk(sp.hueSpec()); pen != nil && !a.linear {
+		if pen := a.pal.teamInk(sp.HueSpec()); pen != nil && !a.linear {
 			ink = pen
 		}
 	}
@@ -696,7 +696,7 @@ func (a *app) tabTeamWord() string {
 }
 
 func (a *app) tabTeamDot(sp team) string {
-	if ink := a.pal.teamInk(sp.hueSpec()); ink != nil && !a.linear {
+	if ink := a.pal.teamInk(sp.HueSpec()); ink != nil && !a.linear {
 		return ink("●")
 	}
 	if r := []rune(sp.Name); len(r) > 0 && ansi.StringWidth(string(r[0])) == 1 {
