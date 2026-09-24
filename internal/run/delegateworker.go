@@ -107,12 +107,13 @@ type DelegateSetup struct {
 	// program's line carries in its own flags (delegate.Delegate.CrewFlags) so
 	// it works on the models the person chose. Zero leaves it to its own.
 	Crew delegate.Crew
-	// Ground is every spelling of the folder the task was proposed on, when the
-	// program works in a copy of it (session.RunSpec.Ground). The brief is
-	// rewritten to name the copy wherever it named that folder
+	// Ground is every spelling of the folder the task was proposed on and of
+	// the repository around it, each paired with where it stands in the copy,
+	// when the program works in a copy (session.RunSpec.Ground). The brief is
+	// rewritten to name the copy wherever it named either
 	// (delegate.RehomeBrief), so the program is never told a path it must not
 	// work in. Empty for a program working in the folder itself.
-	Ground []string
+	Ground []delegate.Rehome
 	// Conversation is the id of the conversation the run belongs to
 	// (session.RunSpec.Conversation), which every ledger row the program's
 	// calls write names as its Root and its Session, beside the task's id, so
@@ -404,7 +405,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
 	}
-	brief = delegate.RehomeBrief(brief, w.setup.Ground, w.workspace)
+	brief = delegate.RehomeBrief(brief, w.setup.Ground)
 	started = time.Now()
 	sink.record.StartedAt = started
 	result, err := delegate.Run(launchCtx, delegate.Launch{

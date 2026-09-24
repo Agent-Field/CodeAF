@@ -80,7 +80,7 @@ func TestADelegatedRunSquashesTheProgramsCommitsAndLandsThemAsABranch(t *testing
 	}
 	// The folder the task was proposed on is handed over in its spellings, so
 	// the program's brief names its copy wherever it named the folder.
-	if !slices.Contains(spec.Ground, canonicalPath(conversation)) || canonicalPath(spec.Workspace) == canonicalPath(conversation) {
+	if !slices.Contains(spec.Ground, delegate.Rehome{From: canonicalPath(conversation), To: spec.Workspace}) || canonicalPath(spec.Workspace) == canonicalPath(conversation) {
 		t.Fatalf("spec.Ground = %q for a copy at %q, want the proposed folder's spellings", spec.Ground, spec.Workspace)
 	}
 	endBeltRun(t, agent, double)

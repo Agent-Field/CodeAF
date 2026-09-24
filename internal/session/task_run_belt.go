@@ -144,10 +144,11 @@ type RunSpec struct {
 	// (delegate.Delegate.PlainFolder). False for every other run.
 	PlainFolder bool
 	// Ground is every spelling of the folder a delegated run's task was
-	// proposed on, when the program works in a copy of it: the brief it is
-	// handed names the copy wherever it named the folder
-	// (delegate.RehomeBrief). Empty for every other run.
-	Ground []string
+	// proposed on, and of the repository around it, each paired with where it
+	// stands in the copy, when the program works in a copy: the brief it is
+	// handed names the copy wherever it named either (delegate.RehomeBrief).
+	// Empty for every other run.
+	Ground []delegate.Rehome
 	// Crew is the conversation's crew as a delegated run's program is handed it
 	// ([conversationCrew]), so the program works on the models the person
 	// chose. Zero for every other run.
@@ -306,10 +307,11 @@ type beltRun struct {
 	// ([delegateOnPlainFolder]): it is told so on its line, and its landing
 	// commits nothing, because the work is already where it belongs.
 	plain bool
-	// groundNames is every spelling of the folder a tree program's task was
-	// proposed on, when the program works in a copy of it
-	// ([delegateGroundNames]); empty otherwise.
-	groundNames []string
+	// groundMoves is every spelling of the folder a tree program's task was
+	// proposed on and of the repository around it, each paired with where it
+	// stands in the copy, when the program works in a copy of it
+	// ([delegateGroundMoves]); empty otherwise.
+	groundMoves []delegate.Rehome
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -415,7 +417,7 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 		plain: delegateOnPlainFolder(tree, via),
 	}
 	if via != nil && via.LandsTree() && !run.plain {
-		run.groundNames = delegateGroundNames(stand.dir, tree.dir)
+		run.groundMoves = delegateGroundMoves(stand.dir, tree.root, tree.dir)
 	}
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
@@ -550,7 +552,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		Conversation: a.runConversation(),
 		Delegate:     run.delegate,
 		PlainFolder:  run.plain,
-		Ground:       run.groundNames,
+		Ground:       run.groundMoves,
 		Crew:         a.delegateCrew(run),
 	}
 }
@@ -577,19 +579,63 @@ func (a *Agent) delegateCrew(run *beltRun) delegate.Crew {
 	return delegate.Crew{Brain: seat(roles.TierMastermind), Hands: seat(roles.TierWorker), Light: seat(roles.TierLow)}
 }
 
-// delegateGroundNames is every way a brief is likely to spell the folder a
-// tree program's task was proposed on: as the proposal named it, absolute,
-// with its links resolved, and under ~. It is empty when the program works in
-// that folder itself, where there is nothing to rewrite.
-func delegateGroundNames(proposed, copyDir string) []string {
+// delegateGroundMoves is every way a brief is likely to spell the folder a
+// tree program's task was proposed on (as the proposal named it, absolute,
+// with its links resolved, and under ~) and the repository it is in, each
+// paired with where it stands in the program's copy. It is empty when the
+// program works in that folder itself, where there is nothing to rewrite.
+//
+// THE COPY IS CUT AT THE REPOSITORY'S ROOT, NOT AT THE FOLDER. A task proposed
+// on a subfolder of a repository (a conversation opened in one package of a
+// monorepo) gets a copy of the whole repository, so the subfolder is the same
+// subfolder inside the copy, and the repository's own root is the copy's root.
+// Both used to be wrong: the subfolder was mapped to the copy's root, which sent
+// every path under it to a file that does not exist, and the repository's
+// spelling was left as it was, so `git -C <the person's checkout>` reached the
+// program intact — the exact failure the rewrite exists to stop.
+func delegateGroundMoves(proposed, root, copyDir string) []delegate.Rehome {
 	proposed = strings.TrimSpace(proposed)
 	if proposed == "" || canonicalPath(proposed) == canonicalPath(copyDir) {
 		return nil
 	}
-	names := []string{proposed, canonicalPath(proposed)}
+	ground := canonicalPath(proposed)
+	target, rel := copyDir, ""
+	if root = strings.TrimSpace(root); root != "" {
+		if within, err := filepath.Rel(canonicalPath(root), ground); err == nil && within != "." &&
+			within != ".." && !strings.HasPrefix(within, "../") {
+			target, rel = filepath.Join(copyDir, within), within
+		}
+	}
+	groundSpellings := pathSpellings(proposed)
+	moves := make([]delegate.Rehome, 0, 2*len(groundSpellings))
+	for _, spelling := range groundSpellings {
+		moves = append(moves, delegate.Rehome{From: spelling, To: target})
+	}
+	if rel == "" {
+		return moves
+	}
+	// THE REPOSITORY IN EVERY SPELLING THE BRIEF COULD USE: its own, and the
+	// folder's spellings with the subfolder taken off, so `~/Code/app` is found
+	// wherever `~/Code/app/packages/foo` was how the task was named.
+	rootSpellings := pathSpellings(root)
+	for _, spelling := range groundSpellings {
+		if trimmed, ok := strings.CutSuffix(strings.TrimRight(spelling, "/"), "/"+filepath.ToSlash(rel)); ok && trimmed != "" {
+			rootSpellings = append(rootSpellings, trimmed)
+		}
+	}
+	for _, spelling := range rootSpellings {
+		moves = append(moves, delegate.Rehome{From: spelling, To: copyDir})
+	}
+	return moves
+}
+
+// pathSpellings is every way a brief is likely to spell one folder: as given,
+// absolute, with its links resolved, and under ~.
+func pathSpellings(path string) []string {
+	names := []string{path, canonicalPath(path)}
 	home, _ := os.UserHomeDir()
 	home = strings.TrimRight(home, "/")
-	if abs, err := filepath.Abs(proposed); err == nil && !strings.HasPrefix(proposed, "~") {
+	if abs, err := filepath.Abs(path); err == nil && !strings.HasPrefix(path, "~") {
 		names = append(names, abs)
 	}
 	if home != "" {

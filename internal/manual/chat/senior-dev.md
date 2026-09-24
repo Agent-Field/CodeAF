@@ -52,7 +52,9 @@ At a shell, clone the repository yourself, then run `codeaf senior-dev` inside i
 the folder with `--dir`.
 
 A brief that names the folder you proposed is fine: codeaf rewrites that path to senior-dev's
-copy before senior-dev reads it, so its commands run in the copy.
+copy before senior-dev reads it, so its commands run in the copy. The copy is of the whole
+repository, so a subfolder you proposed becomes the same subfolder in the copy, and the
+repository around it becomes the copy's root.
 
 A brief that tells senior-dev to make a checkout of its own somewhere else does not work.
 It has no copy of that folder, so nothing it does there lands: its file tools refuse to

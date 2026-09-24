@@ -54,7 +54,8 @@ task's ending does not see it.
 
 **The brief it reads names its copy.** Wherever the brief names the task's folder, codeaf
 rewrites that path to the copy's before the program reads it, so it is never pointed at
-your checkout.
+your checkout. The copy is of the whole repository: a subfolder is rewritten to the same
+subfolder in the copy, and the repository around it to the copy's root.
 
 So when the work belongs in a repository that is not on this machine (a benchmark task
 that names a repository and a commit, or a project you have not cloned), the model clones

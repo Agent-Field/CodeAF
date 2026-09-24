@@ -359,7 +359,7 @@ func TestDelegateWorkerHandsTheProgramABriefThatNamesItsCopy(t *testing.T) {
 	t.Setenv("FAKE_ARGS", args)
 	workspace := t.TempDir()
 	m, setup := fakeDelegate(t, passLine("done"))
-	setup.Ground = []string{ground}
+	setup.Ground = []delegate.Rehome{{From: ground, To: workspace}}
 	worker := run.NewDelegateWorker(store, workspace, m, setup, 0, 0)
 	if _, err := worker.Run(runContext(t), *store.Task(store.RootID())); err != nil {
 		t.Fatal(err)

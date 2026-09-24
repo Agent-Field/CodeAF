@@ -239,3 +239,44 @@ func TestAProgramsReceiptSaysWhereTheWorkWillBeAndPromisesNoMerge(t *testing.T) 
 		}
 	}
 }
+
+// A PROGRAM HANDED A SUBFOLDER'S TASK READS PATHS THAT EXIST IN ITS COPY. The
+// copy is of the whole repository, so the subfolder is the same subfolder in
+// it and the repository is the copy's root; mapping the subfolder to the copy's
+// root sent every path to a file that is not there, and left the repository's
+// own spelling pointing at the person's checkout.
+func TestAProgramHandedASubfoldersTaskReadsPathsThatExistInItsCopy(t *testing.T) {
+	double := newBeltRunDouble("")
+	registerBeltRunEngine(t, double)
+	repo := newTestRepo(t)
+	sub := filepath.Join(repo, "packages", "foo")
+	if err := os.MkdirAll(filepath.Join(sub, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(sub, "src", "a.ts"), "export {}\n")
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "the package")
+	agent, _ := newTestAgent(t, beltRunCompleter{text: ""}, func(config *Config) {
+		config.Workspace = sub
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	brief := "fix " + sub + "/src/a.ts, then run git -C " + repo + " status"
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", brief); err != nil {
+		t.Fatalf("StartDelegate: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	copyRoot := spec.Workspace
+	want := "fix " + copyRoot + "/packages/foo/src/a.ts, then run git -C " + copyRoot + " status"
+	if got := delegate.RehomeBrief(spec.Brief, spec.Ground); got != want {
+		t.Fatalf("the program would read %q, want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(copyRoot, "packages", "foo", "src", "a.ts")); err != nil {
+		t.Fatalf("the path the program reads is not in its copy: %v", err)
+	}
+	endBeltRun(t, agent, double)
+}
