@@ -35,10 +35,13 @@ import (
 // write the same file. What is here is the interface's side: which tabs make a
 // team, how a team is named on the card, what the strip shows.
 //
-// THE INTERFACE STILL SAVES ITS WHOLE LOADED LIST ([teamstore.Save]), under
-// the store's lock but not as a read-modify-write, so an edit here replaces a
-// change another process made since the opening. Each edit moving onto
-// [teamstore.Update] is what ends that.
+// EVERY EDIT HERE IS THE STORE'S READ-MODIFY-WRITE ([app.teamEdit], over
+// [teamstore.Update]). The change is made to what this window loaded, so the
+// person sees it at once and keeps it even when the disk refuses, and then made
+// again, under the lock, to the file as it is on disk now; what that wrote is
+// what the window holds afterwards. A manager, a handle or a member another
+// process wrote since the opening is therefore kept, where saving the whole
+// loaded list would have put the old list back over it.
 //
 // THE FRAME NEVER READS IT (framedisk_law_test.go). The file is read once, by
 // [app.teamsEnsure], on an opening (the wall, an alt+digit, the strip chip);
@@ -69,8 +72,11 @@ func loadTeams(profileDir string, reserved []float64) ([]team, error) {
 	return f.Teams, nil
 }
 
-// saveTeams writes the sets to profileDir, all at once or not at all
-// ([teamstore.Save]).
+// saveTeams writes the sets to profileDir as the whole file
+// ([teamstore.Save]). THE INTERFACE NO LONGER CALLS IT: a whole-list save puts
+// back what this window loaded over whatever another process wrote since, and
+// every edit goes through [app.teamEdit] instead. It stays for the tests, which
+// write a file as a fixture.
 func saveTeams(profileDir string, s []team) error { return teamstore.Save(profileDir, s) }
 
 // newTeamID is a fresh random id ([teamstore.NewID]).
@@ -100,11 +106,7 @@ func (a *app) teamAncestors(id string) []team { return a.teamTree().Ancestors(id
 // parent must exist and may not be the team or anything under it. It is the
 // tree's one door and nothing in the interface opens it yet.
 func (a *app) teamSetParent(id, parent string) error {
-	a.teamsEnsure()
-	if err := a.teamTree().SetParent(id, parent); err != nil {
-		return err
-	}
-	return saveTeams(a.profileDir, a.wall.teams)
+	return a.teamEdit(func(f *teamstore.File) error { return f.SetParent(id, parent) })
 }
 
 // ── MEMBERS AND NAMES ───────────────────────────────────────────────────────
@@ -272,22 +274,88 @@ func (a *app) teamsEnsure() {
 	a.wall.teams = teams
 }
 
-// teamSave writes the sets; they are kept in memory either way. Each member
-// the strip still has a tab for takes that tab's current name first, so a
-// conversation that joined before it had a title is saved under the one it has
-// now and can be named again once its tab is closed.
-func (a *app) teamSave() error {
-	for i := range a.wall.teams {
-		for j, m := range a.wall.teams[i].Members {
+// teamEdit makes one change to the teams, and it is the only way the
+// interface writes them.
+//
+// THE CHANGE IS MADE TWICE, AND THAT IS THE POINT. First to what this window
+// holds, so the strip and the wall show it on this frame and keep it when the
+// disk refuses (the error says the disk did not take it, and the change stays
+// "for this window"). Then again inside [teamstore.Update], to the file as it
+// is on disk under the lock, so a manager, a handle, a member or a whole team
+// another process wrote since this window loaded is kept rather than replaced.
+// What that second pass wrote, tidied and coloured, is what the window holds
+// afterwards. So change must depend only on the file it is handed and on
+// values its caller chose beforehand: an id minted inside it would be two ids.
+//
+// Each member this window has an open tab for takes the tab's current name on
+// the way ([app.teamRefreshWords]), which is how a conversation that joined
+// before it had a title gets one, and with it a handle ([teamstore.DeriveHandle]
+// through the store's tidy).
+//
+// It reads and writes the disk, so it is called from an update and never from a
+// frame (framedisk_law_test.go).
+func (a *app) teamEdit(change func(f *teamstore.File) error) error {
+	a.teamsEnsure()
+	mine := &teamstore.File{Version: teamstore.Version, Teams: teamsClone(a.wall.teams)}
+	if err := change(mine); err != nil {
+		return err
+	}
+	a.teamRefreshWords(mine.Teams)
+	a.wall.teams = mine.Teams
+	reserved := teamReservedHues(a.pal)
+	var wrote *teamstore.File
+	err := teamstore.Update(a.profileDir, func(f *teamstore.File) error {
+		if err := change(f); err != nil {
+			return err
+		}
+		a.teamRefreshWords(f.Teams)
+		f.Colour(reserved)
+		// The store tidies the list in place after this returns and before it
+		// writes (ids, handles, the manager), so the pointer kept here reads
+		// what was written once Update is done.
+		wrote = f
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if wrote != nil {
+		a.teamAdopt(teamsClone(wrote.Teams))
+	}
+	return nil
+}
+
+// teamAdopt makes teams what this window holds: a list that came off the disk,
+// newer than the one loaded. The active team is cleared when it is gone, and
+// nothing else moves, because everything else names a team by its id.
+//
+// A time a change put on a team came from the clock and carries its monotonic
+// reading, which the same time read back from the file does not; it is dropped
+// here, so a team is the same value whichever way it reached this window.
+func (a *app) teamAdopt(teams []team) {
+	for i := range teams {
+		teams[i].Made = teams[i].Made.Round(0)
+	}
+	a.wall.teams = teams
+	if a.wall.activeID != "" && teamIndex(teams, a.wall.activeID) < 0 {
+		a.wall.activeID = ""
+	}
+}
+
+// teamRefreshWords gives each member of teams that this window has an open tab
+// for the tab's current name. A member keeps the name it has when its tab has
+// none, or is a page rather than a conversation.
+func (a *app) teamRefreshWords(teams []team) {
+	for i := range teams {
+		for j, m := range teams[i].Members {
 			for _, tab := range a.chatTabs {
 				if tab.key == m.Key && strings.TrimSpace(tab.word) != "" && !tab.start && !tab.work {
-					a.wall.teams[i].Members[j].Word = tab.word
+					teams[i].Members[j].Word = tab.word
 					break
 				}
 			}
 		}
 	}
-	return saveTeams(a.profileDir, a.wall.teams)
 }
 
 // teamMake keeps tabs as a team called name and returns its id. A name
@@ -323,23 +391,41 @@ func (a *app) teamMakeHued(name string, tabs []chatTab, hue teamHueSpec) (string
 	if len(t.Members) == 0 {
 		return "", errors.New("a team needs at least one conversation")
 	}
-	at := -1
-	for i, old := range a.wall.teams {
-		if strings.EqualFold(old.Name, name) {
-			at = i
-			break
+	// The id is minted here, once, and the change below only uses it: the
+	// change is made twice ([app.teamEdit]) and must name the same team both
+	// times.
+	fresh := newTeamID()
+	id := fresh
+	err := a.teamEdit(func(f *teamstore.File) error {
+		at := teamNamed(f.Teams, name)
+		if at < 0 {
+			made := t.Clone()
+			made.ID = fresh
+			made.SetHue(hue)
+			f.Teams = append(f.Teams, made)
+			id = fresh
+			return nil
 		}
-	}
-	if at < 0 {
-		t.ID = newTeamID()
-		t.SetHue(hue)
-		a.wall.teams = append(a.wall.teams, t)
-		return t.ID, a.teamSave()
-	}
-	old := a.wall.teams[at]
-	old.Name, old.Members = name, t.Members
-	a.wall.teams[at] = old
-	return old.ID, a.teamSave()
+		// A team remade under its name keeps what its members already had (a
+		// handle above all) and keeps its manager while the manager is still
+		// one of them; the store's tidy clears a manager that is not.
+		old := &f.Teams[at]
+		members := make([]teamMember, 0, len(t.Members))
+		for _, m := range t.Members {
+			if kept, ok := old.Member(m.Key); ok {
+				kept.File, kept.Where = m.File, m.Where
+				if strings.TrimSpace(m.Word) != "" {
+					kept.Word = m.Word
+				}
+				m = kept
+			}
+			members = append(members, m)
+		}
+		old.Name, old.Members = name, members
+		id = old.ID
+		return nil
+	})
+	return id, err
 }
 
 // teamAt is the index of team id for a change, or an error naming it.
@@ -369,8 +455,15 @@ func (a *app) teamRecolor(id string, hue teamHueSpec) error {
 	if err != nil {
 		return err
 	}
-	a.wall.teams[i].Hue, a.wall.teams[i].Tier = hue.Hue, hue.Tier
-	return a.teamSave()
+	id = a.wall.teams[i].ID
+	return a.teamEdit(func(f *teamstore.File) error {
+		j := teamIndex(f.Teams, id)
+		if j < 0 {
+			return fmt.Errorf("no team %s", id)
+		}
+		f.Teams[j].SetHue(hue)
+		return nil
+	})
 }
 
 // teamRename gives team id another name. A name another team has, compared
@@ -391,8 +484,15 @@ func (a *app) teamRename(id, name string) error {
 			return fmt.Errorf("there is already a team called %s", t.Name)
 		}
 	}
-	a.wall.teams[i].Name = name
-	return a.teamSave()
+	id = a.wall.teams[i].ID
+	return a.teamEdit(func(f *teamstore.File) error {
+		j := teamIndex(f.Teams, id)
+		if j < 0 {
+			return fmt.Errorf("no team %s", id)
+		}
+		f.Teams[j].Name = name
+		return nil
+	})
 }
 
 // teamsOf is the id of every team holding key, in order. Frame-safe: memory
@@ -418,15 +518,18 @@ func (a *app) teamAdd(id string, tabs []chatTab) error {
 	if err != nil {
 		return err
 	}
-	t := a.wall.teams[i]
-	t.Members = append([]teamMember(nil), t.Members...)
-	for _, m := range teamFromTabs(t.Name, tabs, t.Made).Members {
-		if !teamHolds(t, m.Key) {
-			t.Members = append(t.Members, m)
+	id = a.wall.teams[i].ID
+	members := teamFromTabs("", tabs, time.Time{}).Members
+	return a.teamEdit(func(f *teamstore.File) error {
+		for _, m := range members {
+			// A member joins with a handle when it has a title
+			// ([teamstore.File.AddMember]); one already there is left as it is.
+			if err := f.AddMember(id, m); err != nil {
+				return err
+			}
 		}
-	}
-	a.wall.teams[i] = t
-	return a.teamSave()
+		return nil
+	})
 }
 
 // teamRemove takes the conversations with the given keys out of team id. The
@@ -437,20 +540,16 @@ func (a *app) teamRemove(id string, keys []string) error {
 	if err != nil {
 		return err
 	}
-	gone := make(map[string]bool, len(keys))
-	for _, k := range keys {
-		gone[k] = true
-	}
-	t := a.wall.teams[i]
-	kept := make([]teamMember, 0, len(t.Members))
-	for _, m := range t.Members {
-		if !gone[m.Key] {
-			kept = append(kept, m)
+	id = a.wall.teams[i].ID
+	return a.teamEdit(func(f *teamstore.File) error {
+		for _, k := range keys {
+			// A manager taken out of its team is no longer its manager.
+			if err := f.RemoveMember(id, k); err != nil {
+				return err
+			}
 		}
-	}
-	t.Members = kept
-	a.wall.teams[i] = t
-	return a.teamSave()
+		return nil
+	})
 }
 
 // teamActivate narrows the strip to team id, or widens it to every tab for
@@ -503,18 +602,31 @@ func (a *app) teamDelete(id string) error {
 	if err != nil {
 		return err
 	}
-	parent := a.wall.teams[i].Parent
-	a.wall.teams = append(a.wall.teams[:i], a.wall.teams[i+1:]...)
-	for j := range a.wall.teams {
-		if a.wall.teams[j].Parent == id {
-			a.wall.teams[j].Parent = parent
-		}
-	}
+	id = a.wall.teams[i].ID
 	if a.wall.activeID == id {
 		a.wall.activeID = ""
 	}
 	delete(a.wall.places, id)
-	return a.teamSave()
+	return a.teamEdit(func(f *teamstore.File) error {
+		teamDrop(f, id)
+		return nil
+	})
+}
+
+// teamDrop takes team id out of f and moves every team under it up to its
+// parent. A team that is not there is nothing to drop.
+func teamDrop(f *teamstore.File, id string) {
+	j := teamIndex(f.Teams, id)
+	if j < 0 {
+		return
+	}
+	parent := f.Teams[j].Parent
+	f.Teams = append(f.Teams[:j:j], f.Teams[j+1:]...)
+	for k := range f.Teams {
+		if f.Teams[k].Parent == id {
+			f.Teams[k].Parent = parent
+		}
+	}
 }
 
 // teamJoinFront puts the conversation this window has just started, now in
