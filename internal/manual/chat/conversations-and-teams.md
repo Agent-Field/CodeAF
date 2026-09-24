@@ -214,7 +214,7 @@ Teams list makes an existing conversation the manager. While the manager is in f
 ## Where teams are kept
 
 Teams are saved in your profile, in `teams.json`, every time one changes, and never in
-`config.json`. A `spaces.json` from an earlier build is read once, its groups keep their
+`config.json`. Over `--host` that is the far machine's profile, where the conversations run. A `spaces.json` from an earlier build is read once, its groups keep their
 names, members and colours, and it is renamed to `spaces.json.migrated`. A teams file that
 cannot be read is moved aside as `teams.json.unreadable-<number>` rather than written over,
 so nothing you made is lost.
