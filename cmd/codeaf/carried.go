@@ -47,6 +47,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/reltime"
 )
 
 // carriedStdout is where a carried verb writes what a person reads: its help,
@@ -54,6 +55,11 @@ import (
 // a child of a host writes its records to the real stdout whatever this says,
 // because that pipe is its host's.
 var carriedStdout io.Writer = os.Stdout
+
+// carriedStderr is where a shell run says what it is doing about its own
+// ending — the stop, and the wait for a last call's price — beside the lines
+// or records on stdout. A variable so a test can read it back.
+var carriedStderr io.Writer = os.Stderr
 
 // carriedGrace overrides the launch's SIGTERM grace for a shell run, for a
 // test that must not wait fifteen seconds; zero is delegate.DefaultGrace.
@@ -202,6 +208,11 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		defer clock.Stop()
 	}
 	ledger := session.UsageLedgerPath()
+	// A SHELL RUN'S ROWS NAME THE RUN. There is no conversation and no task
+	// behind them, and a row that named nothing was money the spending page
+	// could not say anything about; the run's own record folder is the one
+	// name it has, so its rows are filed as one piece of work under it.
+	subject := filepath.Base(record)
 	api, err := modelapi.Open(modelapi.Config{
 		TaskDir:      record,
 		CompleterFor: road.completerFor,
@@ -213,7 +224,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 			// nowhere else: nothing else in this process meters these calls.
 			line := session.UsageLine{
 				Model: charge.Model, Calls: 1, Input: charge.TokensIn, Output: charge.TokensOut, USD: charge.CostUSD,
-				Reconciled: charge.Late, Workspace: inv.Workspace,
+				Reconciled: charge.Late, Workspace: inv.Workspace, Task: subject,
 			}
 			session.RecordUsage(ledger, session.TagUsage(line, roles.RoleWorker, session.SeatWorker))
 			view.call(charge)
@@ -223,10 +234,15 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 			}
 		},
 		Unbilled: func(model string) {
-			session.RecordUnbilledCall(ledger, session.TagUsage(session.UsageLine{Model: model, Workspace: inv.Workspace}, roles.RoleWorker, session.SeatWorker))
+			session.RecordUnbilledCall(ledger, session.TagUsage(session.UsageLine{Model: model, Workspace: inv.Workspace, Task: subject}, roles.RoleWorker, session.SeatWorker))
 		},
-		Role: lanes.RoleLeafAttached,
-		Node: inv.Program.Name,
+		// THE LAST CALL'S PRICE IS WAITED FOR, AND THE PERSON IS TOLD WHY. A
+		// run stopped by ctrl-c or its own ceiling is usually in the middle of
+		// a call, priced by a receipt about twenty seconds later; this process
+		// used to exit first, and that call never reached the ledger.
+		Settling: func(owed int) { fmt.Fprintln(carriedStderr, carriedSettlingLine(owed)) },
+		Role:     lanes.RoleLeafAttached,
+		Node:     inv.Program.Name,
 	})
 	if err != nil {
 		return err
@@ -248,9 +264,14 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// grace to write how it ended; the person is told that much at once rather
 	// than left watching a terminal that has gone quiet for fifteen seconds.
 	untell := context.AfterFunc(ctx, func() {
-		fmt.Fprintf(os.Stderr, "stopping %s: it has %s to say how it ended\n", inv.Program.Name, grace)
+		fmt.Fprintf(carriedStderr, "stopping %s: it has %s to say how it ended\n", inv.Program.Name, grace)
 	})
 	view.begin()
+	// THE PROGRAM'S OWN CLOCK is written in its record folder, as a chat's
+	// run writes it in the task's: the instant its process was started and
+	// the instant it was gone (delegate.ProgramRecord).
+	started := time.Now()
+	view.opened(started)
 	result, runErr := delegate.Run(runCtx, delegate.Launch{
 		Name: inv.Program.Name,
 		Bin:  exe,
@@ -262,12 +283,26 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		StderrPath: filepath.Join(record, carriedStderrName),
 		Grace:      grace,
 	}, view)
+	ended := time.Now()
 	untell()
 	// The program has exited: its API goes with it, so nothing it left behind
-	// can spend, and every row it cost is on disk before this process leaves.
+	// can spend, and every row it cost is on disk before this process leaves —
+	// the close waits for the price of a call the stop cut in the middle.
 	_ = api.Close()
+	view.closed(ended)
 	session.CloseUsage()
-	return view.end(result, runErr, limited.Load(), api.Spent())
+	return view.end(result, runErr, limited.Load(), api.Spent(), ended.Sub(started))
+}
+
+// carriedSettlingLine is what a shell run says while it waits for the
+// receipts still owed on the calls its ending cut short, bounded by the
+// provider's own schedule (provider.ReceiptWait).
+func carriedSettlingLine(owed int) string {
+	calls := "1 call that was"
+	if owed != 1 {
+		calls = strconv.Itoa(owed) + " calls that were"
+	}
+	return "waiting up to " + reltime.Elapsed(provider.ReceiptWait) + " for the price of " + calls + " cut short"
 }
 
 // carriedStderrName is the file a shell run keeps its program's stderr in,
@@ -418,6 +453,10 @@ type carriedView struct {
 	status   string
 	calls    int
 	terminal *delegate.Terminal
+	// program is the run's program record as it stands, rewritten whole in
+	// the record folder each time it learns something: its start, its hello,
+	// its end.
+	program delegate.ProgramRecord
 }
 
 func newCarriedView(out io.Writer, inv *delegate.Invocation, record string) *carriedView {
@@ -437,9 +476,35 @@ func (v *carriedView) begin() {
 }
 
 func (v *carriedView) Hello(h delegate.Hello) {
+	v.remember(func(record *delegate.ProgramRecord) { record.Stages = h.Stages })
 	if v.records != nil {
 		_ = v.records.Hello(v.inv.Program.Name, h.Stages)
 	}
+}
+
+// opened writes the program record the moment the program's process is
+// started: whose run it is, its ceiling, and when it began.
+func (v *carriedView) opened(at time.Time) {
+	v.remember(func(record *delegate.ProgramRecord) {
+		record.Name, record.CeilingUSD, record.StartedAt = v.inv.Program.Name, v.inv.Ceilings.CostUSD, at
+	})
+}
+
+// closed writes the instant the program's process was gone.
+func (v *carriedView) closed(at time.Time) {
+	v.remember(func(record *delegate.ProgramRecord) { record.EndedAt = at })
+}
+
+// remember changes the program record and writes it whole. It is a record, so
+// a disk that refuses it costs the record and never the run.
+func (v *carriedView) remember(change func(record *delegate.ProgramRecord)) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	change(&v.program)
+	if v.program.Name == "" {
+		v.program.Name = v.inv.Program.Name
+	}
+	_ = delegate.WriteProgram(v.record, v.program)
 }
 
 func (v *carriedView) Stage(stage, status string) {
@@ -537,8 +602,9 @@ func (v *carriedView) call(charge modelapi.Charge) {
 	v.say("  %s", strings.Join(parts, " · "))
 }
 
-// end says how the run ended and answers its rung on the exit ladder.
-func (v *carriedView) end(result delegate.Result, runErr error, limited bool, spent float64) error {
+// end says how the run ended and answers its rung on the exit ladder. took is
+// how long the program's process ran.
+func (v *carriedView) end(result delegate.Result, runErr error, limited bool, spent float64, took time.Duration) error {
 	terminal, calls := v.ending()
 	name := v.inv.Program.Name
 	if terminal == nil && result.ExitCode < 0 && !result.Stopped && runErr != nil && !errors.Is(runErr, delegate.ErrNoTerminal) {
@@ -582,16 +648,24 @@ func (v *carriedView) end(result delegate.Result, runErr error, limited bool, sp
 			v.say("  %s observed: %s", name, observed)
 		}
 	}
+	// THE LAST LINE IS WHAT THE RUN CAME TO: its calls, its dollars and how
+	// long the program ran, each left off rather than written as a zero.
+	var summary []string
 	if calls > 0 {
 		word := "calls"
 		if calls == 1 {
 			word = "call"
 		}
-		summary := fmt.Sprintf("  %d model %s", calls, word)
+		summary = append(summary, fmt.Sprintf("%d model %s", calls, word))
 		if spent > 0 {
-			summary += " · " + carriedDollars(spent)
+			summary = append(summary, carriedDollars(spent))
 		}
-		v.say("%s", summary)
+	}
+	if took >= time.Second {
+		summary = append(summary, reltime.Elapsed(took))
+	}
+	if len(summary) > 0 {
+		v.say("  %s", strings.Join(summary, " · "))
 	}
 	if _, err := os.Stat(v.record); err == nil {
 		v.say("  the run's record is in %s", v.record)

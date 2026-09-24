@@ -42,6 +42,8 @@ say, and what it needs of its folder.
 At a shell, `codeaf <name> <brief>` runs the same program in the folder you are in, or the
 one `--dir` names. `--max-cost` and `--max-hours` set its ceilings, and `--json` prints its
 records instead of readable lines. `codeaf <name> --help` lists its own commands and flags.
+Its last line says what the run came to, such as `277 model calls · $2.30 · 22m 51s`: the
+calls, the dollars and how long the program ran.
 
 ## Which folder a program works in — a repository I have not cloned, it edited files outside its copy, a folder with no git
 

@@ -180,6 +180,28 @@ glm-5.1 and minimax-m2.7. A run with no crew set uses it, and so does a shell ru
 **At a shell you choose**: `--high` replaces the list, `--frontier` and `--low` set the
 other two, and `--variant` sets the reasoning effort every call asks for.
 
+## What a shell run prints at the end — how long senior-dev ran, what it cost, waiting for the last price
+
+At a shell, `codeaf senior-dev` prints each stage, step and model call as it happens, then
+how the run ended, then one line with what it came to:
+
+```
+  277 model calls · $2.30 · 22m 51s
+```
+
+That is the calls, the dollars, and how long senior-dev's own process ran. A figure nobody
+measured is left off, never written as a zero.
+
+When ctrl-c or `--max-cost` stops the run in the middle of a model call, that call is still
+paid for, and its price arrives by a receipt about twenty seconds later. The run waits for
+it before those last lines, and says so on stderr:
+`waiting up to 1m 10s for the price of 1 call that was cut short`.
+
+Every call is written to this machine's spending ledger, filed as one piece of work named
+after the run's record folder (such as `20260924-150405.000000`). That folder also keeps
+`delegate-program.json`, with the instant senior-dev's process started and the instant it
+ended.
+
 ## senior-dev's flags — run, --variant, --in-place, --high, --max-cost
 
 `codeaf senior-dev <brief>` is `codeaf senior-dev run -- <brief>`. codeaf gives every
@@ -265,5 +287,6 @@ tests could run, or to where it began.
 
 Everything senior-dev said while it worked (each stage and what it knew at the time)
 is kept in `delegate-stderr.log` in the task's record folder. A run started at a shell has
-no task, so its record — that log, its conversation with codeaf and its stages — is kept
-in a folder of its own under `~/.codeaf/v3/carried/senior-dev/`, one per run.
+no task, so its record — that log, its conversation with codeaf, its stages and when it
+started and ended — is kept in a folder of its own under
+`~/.codeaf/v3/carried/senior-dev/`, one per run.
