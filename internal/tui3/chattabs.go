@@ -157,6 +157,9 @@ type chatTab struct {
 	// slot is the manager's place in a team that has none: `+ Manager`, a
 	// word button with no conversation behind it (teammanager.go).
 	slot bool
+	// pinned says this tab is the manager's place, held at the left of the run
+	// like a browser's pinned tab: it never scrolls away (teammanager.go).
+	pinned bool
 }
 
 // tabKind is what one drawn piece of the strip IS, which is what decides whether
@@ -665,7 +668,7 @@ func (a *app) tabWallPaint(word string, hot bool) string {
 		if a.pal.profile < tokens.ANSI256 {
 			word = a.linearMark("·", ".") + strings.TrimPrefix(word, " ")
 		}
-		return a.pal.cursor(a.pal.ink(word), 0)
+		return a.tabHoverPaint(word)
 	case a.wall.on:
 		return a.tabActivePaint(word)
 	}
@@ -720,7 +723,7 @@ func (a *app) tabTeamPaint(word string, at int) string {
 	w := ansi.StringWidth(word)
 	a.wall.chip = hudSpan{from: at, to: at + w}
 	if (a.hot.kind == hoverTab && a.hot.index == at) || a.teamMenu.on {
-		return a.pal.cursor(a.pal.ink(word), 0)
+		return a.tabHoverPaint(word)
 	}
 	if _, ok := a.teamActive(); !ok {
 		return a.pal.muted(word)
@@ -753,6 +756,14 @@ func (a *app) tabCloseWord() string { return a.linearMark(tabCloseMark, tabClose
 func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 	if room <= 0 {
 		return nil, nil
+	}
+	// THE MANAGER'S EMPTY PLACE LEAVES A NARROW STRIP. `+ Manager` is an offer,
+	// and under [teamManagerSlotFloor] it would take a slot a conversation
+	// needs; the team switcher still makes it (teammenu.go).
+	if len(tabs) > 0 && tabs[0].slot {
+		if width, _ := a.size(); width < teamManagerSlotFloor {
+			tabs = tabs[1:]
+		}
 	}
 	if len(tabs) == 0 {
 		if a.canStart() && room >= 3 {
@@ -804,32 +815,31 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 		if tab.slot {
 			// The manager's empty place is a word button: its word whole where
 			// it fits, and no close cells, since nothing is behind it.
-			words[at] = " " + fitConversationTitle(tab.word, max(cell-tabInsetCells-2, 1)) + " "
+			words[at] = " " + fitConversationTitle(tab.word, max(cell-tabInsetCells-3, 1)) + "  "
 			widths[at] = ansi.StringWidth(words[at]) + tabInsetCells
 			continue
 		}
 		words[at] = a.tabName(tab, cell-tabCloseCells-tabInsetCells)
 		widths[at] = ansi.StringWidth(words[at]) + tabInsetCells + tabCloseCells
 	}
-	from, to, scroll := a.tabWindow(tabs, widths, budget, active)
-	windowBudget := budget
+	// THE MANAGER'S PLACE IS PINNED, as a browser pins a tab: it is drawn
+	// first, outside the window, and the window scrolls over the rest.
+	pin, pinW := 0, 0
+	if len(tabs) > 1 && tabs[0].pinned {
+		pin, pinW = 1, widths[0]+sepW
+	}
+	from, to, scroll := a.tabWindow(tabs[pin:], widths[pin:], budget-pinW, max(active-pin, 0))
+	from, to = from+pin, to+pin
+	windowBudget := budget - pinW
 	if scroll {
 		windowBudget -= 2 * tabArrowCells
 	}
-	pieces := make([]tabPiece, 0, 3*(to-from)+3)
-	hits := make([]tabHit, 0, 2*(to-from)+1)
+	pieces := make([]tabPiece, 0, 3*(to-from+pin)+3)
+	hits := make([]tabHit, 0, 2*(to-from+pin)+1)
 	at := 0
-	if scroll {
-		piece, hit := a.tabArrowPiece(false, from > 0, at)
-		pieces = append(pieces, piece)
-		if hit != nil {
-			hits = append(hits, *hit)
-		}
-		at += tabArrowCells
-	}
-	for i := from; i < to; i++ {
+	place := func(i int, lone bool) {
 		word := words[i]
-		if to-from == 1 && !tabs[i].slot {
+		if lone && !tabs[i].slot {
 			// The one tab that is left takes whatever the row has, cut. A name with
 			// an ellipsis in it still says which conversation this is; a blank row
 			// says nothing at all.
@@ -837,7 +847,7 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 		}
 		width := ansi.StringWidth(word) + tabInsetCells
 		if width == tabInsetCells {
-			continue
+			return
 		}
 		kind := tabOther
 		if tabs[i].here {
@@ -849,7 +859,7 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabInsetCells) + words[i], kind: tabManager, tab: tabs[i]})
 			hits = append(hits, tabHit{span: hudSpan{from: at, to: at + width}, kind: tabManager, tab: tabs[i]})
 			at += width
-			continue
+			return
 		}
 		pieces = append(pieces, tabPiece{word: a.tabSepWord(), quiet: true})
 		at += sepW
@@ -862,6 +872,20 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 		pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabCloseCells), kind: tabClose, tab: tabs[i]})
 		hits = append(hits, tabHit{span: hudSpan{from: at, to: at + tabCloseCells}, kind: tabClose, tab: tabs[i]})
 		at += tabCloseCells
+	}
+	if pin > 0 {
+		place(0, false)
+	}
+	if scroll {
+		piece, hit := a.tabArrowPiece(false, from > pin, at)
+		pieces = append(pieces, piece)
+		if hit != nil {
+			hits = append(hits, *hit)
+		}
+		at += tabArrowCells
+	}
+	for i := from; i < to; i++ {
+		place(i, to-from == 1)
 	}
 	if len(pieces) > 0 {
 		pieces = append(pieces, tabPiece{word: a.tabSepWord(), quiet: true})
@@ -903,7 +927,7 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 	// are all fact, so it is drawn whole or it is not drawn — which is the same
 	// answer the old control's ladder arrived at one rung later, having first
 	// spent its mark and its count to keep a word that no longer exists.
-	hidden := len(tabs) - (to - from)
+	hidden := len(tabs) - (to - from) - pin
 	if word := a.tabsFoldWord(hidden); word != "" {
 		if width := ansi.StringWidth(word); at+tabsMoreGap+width <= fullRoom {
 			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabsMoreGap), quiet: true})
@@ -926,6 +950,20 @@ func (a *app) tabsFoldWord(hidden int) string {
 		return ""
 	}
 	return tabHiddenLead + itoa(hidden)
+}
+
+// tabHoverPaint is a word button of the strip under the pointer: ink on the
+// ground ladder's mark step, which is one step above the selected ground the
+// idle tabs stand on. It is the ground a hovered tab takes ([app.tabsPaint]),
+// so everything on the row that answers the hand answers it the same way; the
+// cursor step it used to take is one BELOW the idle tabs, and read as a
+// hovered thing sinking. Linear mode draws no pointer's ground, as
+// [palette.cursor] says.
+func (a *app) tabHoverPaint(word string) string {
+	if a.pal.linear {
+		return a.pal.ink(word)
+	}
+	return a.pal.background(a.pal.ink(word), 0, a.pal.ramp.mark)
 }
 
 // tabLabel gives each tab a padded target. Brackets identify the selected
@@ -995,7 +1033,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 						word = a.linearMark("·", ".") + strings.TrimSpace(word) + " "
 					}
 				}
-				line += a.pal.cursor(a.pal.ink(word), 0)
+				line += a.tabHoverPaint(word)
 				continue
 			}
 			line += a.pal.dim(piece.word)

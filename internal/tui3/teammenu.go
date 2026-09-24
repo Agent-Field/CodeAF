@@ -378,11 +378,11 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 			}
 			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)
 		case teamMenuManager:
-			word := a.teamManagerMark() + " Make manager"
-			if shown.Manager != "" && shown.Manager == front {
-				word = "  Remove manager"
-			}
+			word := a.teamManagerMenuWord(shown, front)
 			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)
+			if a.hosted() {
+				ln.left = pal.dim(word)
+			}
 		case teamMenuNew:
 			word := "+ New team" + k.more
 			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)

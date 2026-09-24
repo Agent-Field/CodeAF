@@ -49,9 +49,12 @@ func TestTeamManagerSlotStartsAManager(t *testing.T) {
 		}
 	}
 
-	if _, took := a.tabPress(slot.span.from+1, placeTabRow); !took {
+	cmd, took := a.tabPress(slot.span.from+1, placeTabRow)
+	if !took {
 		t.Fatal("the strip did not take the press")
 	}
+	// The conversation is opened on the door line, off the loop.
+	spend(t, a, cmd)
 	if n != 1 {
 		t.Fatalf("the press started %d conversations", n)
 	}
@@ -82,8 +85,8 @@ func TestTeamManagerSlotStartsAManager(t *testing.T) {
 			first = hit
 		}
 	}
-	if first.tab.key != boss || !strings.Contains(row, teamManagerGlyph+" harbor") {
-		t.Fatalf("the first tab is %+v on %q, want the manager as ◆ harbor", first.tab, row)
+	if first.tab.key != boss || !strings.Contains(row, teamManagerGlyph+" "+teamManagerWord) {
+		t.Fatalf("the first tab is %+v on %q, want the manager as ◆ Manager", first.tab, row)
 	}
 }
 
@@ -128,7 +131,7 @@ func TestTeamMenuMakesAndRemovesTheManager(t *testing.T) {
 		t.Fatal("the chip did not open the switcher")
 	}
 	frame, _ := menuFrame(t, a)
-	if !strings.Contains(frame, teamManagerGlyph+" Make manager") {
+	if !strings.Contains(frame, teamManagerGlyph+" Make this harbor's manager") {
 		t.Fatalf("the switcher does not offer Make manager:\n%s", frame)
 	}
 	hit := menuHit(t, a, teamMenuManager, "")
@@ -140,7 +143,7 @@ func TestTeamMenuMakesAndRemovesTheManager(t *testing.T) {
 		t.Fatal("the switcher closed on Make manager")
 	}
 	frame, _ = menuFrame(t, a)
-	if !strings.Contains(frame, "Remove manager") {
+	if !strings.Contains(frame, "Make an ordinary member") {
 		t.Fatalf("the row did not flip:\n%s", frame)
 	}
 	hit = menuHit(t, a, teamMenuManager, "")
@@ -164,7 +167,7 @@ func TestWallPopoverMakesTheManagerAndPinsItsTile(t *testing.T) {
 	last := tiles[len(tiles)-1].tab
 	a.wallOpenMembers([]string{last.key}, wallPop{x: 2, y0: 2, y1: 3})
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, teamManagerGlyph+" Make manager") {
+	if !strings.Contains(frame, teamManagerGlyph+" Make this harbor's manager") {
 		t.Fatalf("the popover does not offer Make manager:\n%s", frame)
 	}
 	var row wallHit
@@ -186,7 +189,7 @@ func TestWallPopoverMakesTheManagerAndPinsItsTile(t *testing.T) {
 		t.Fatalf("the manager's tile is not pinned first: %+v", tiles[0].tab)
 	}
 	frame = wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, teamManagerGlyph+" ") {
-		t.Fatalf("the manager's tile is not marked:\n%s", frame)
+	if !strings.Contains(frame, teamManagerGlyph+" "+teamManagerWord+" · ") {
+		t.Fatalf("the manager's tile is not titled ◆ Manager · <title>:\n%s", frame)
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -16,41 +15,51 @@ import (
 // The Traffic log (internal/teams' traffic.go) is the only channel between this
 // interface and the team tools a model calls (internal/session): the manager's
 // notes and directives, the members' posts, and the two acts the manager asks
-// for, stop and start. This file is the interface's side of it, and it has three
-// halves.
+// for, stop and start. This file is the interface's side of it, the clock, the
+// read and the acts; teamrail.go draws it.
 //
-// THE READ IS OFF THE LOOP. A clock of its own ([trafficEvery]) runs while this
-// window holds a conversation in any team, and on each turn it pages each such
-// team's log forward from a cursor, in a command beside the door line
-// ([app.besideLine]): nobody pressed for it, and nothing a person does waits on
-// it. What came back is folded into a cache on the loop, and THE FRAME DRAWS THE
-// CACHE AND NOTHING ELSE (framedisk_law_test.go). The same read picks up the
-// teams file when another process changed it, and gives a member its title
-// when it joined before it had one ([teamstore.DeriveHandle] through the
-// store's tidy), so the strip names the manager another window made.
+// THE READ IS OFF THE LOOP, AND A QUIET SECOND COSTS A STAT. A clock of its own
+// ([trafficEvery]) runs while this window holds a conversation in a team that
+// HAS A MANAGER, and at no other time: a team without one writes no Traffic
+// worth reading here. On each turn the clock's own command stats the teams
+// file and each held team's log, off the loop ([app.trafficNext]); the loop
+// compares the two stamps with the ones it kept and, when nothing moved, starts
+// no read, touches nothing, and tells the frame it may draw what it drew before
+// (view.go's still frame). A second of quiet is therefore one timer, one stat
+// per file and one message the frame skips. After [trafficIdleTurns] quiet
+// turns the clock slows to [trafficEveryIdle], and anything that moves brings
+// it back. Only a log that moved is read, forward from a cursor, in a command
+// beside the door line ([app.besideLine]); what came back is folded into a
+// cache on the loop, and THE FRAME DRAWS THE CACHE AND NOTHING ELSE
+// (framedisk_law_test.go). The same read picks up the teams file when another
+// process changed it, and gives a member its title when it joined before it had
+// one ([teamstore.DeriveHandle] through the store's tidy).
+//
+// OVER --host THERE IS NO CLOCK AT ALL. The session writes its Traffic into the
+// profile of the machine it runs on, and this window's profile is not that one;
+// a rail read from here would be an empty log drawn as if it were the team's
+// (host.go's honesty table says so, and teammanager.go says it on the strip).
 //
 // THE ACTS ARE DONE ONCE, AND ONLY NEW ONES. A stop addressed to a
 // conversation this window holds ends that conversation's current turn, as the
 // person's own stop does; a start is done by the window that holds the team's
-// manager, which opens a conversation in the team's folder, puts it in the team
-// under the handle the manager chose, and sends it the brief marked as the
-// manager's. Each is done once per entry id, remembered in memory, and a window
-// opening reads the log from its TAIL, so what was asked before it opened is
-// history on its rail and is never done again.
-//
-// THE RAIL IS WHERE A PERSON READS IT. While the manager is the conversation in
-// front, the frame gives the right of the body to a column of the team's
-// traffic, newest at the bottom: `@parser → @web  the lexer is in`, `◆ → @web`,
-// and the events, a member stopped, started or joined. Each row is a door to
-// the member it is about. On a frame too narrow to lend the column, the column
-// is a two-cell edge with the manager's mark in it, and pressing it lays the
-// traffic over the body instead, until a row is chosen or the edge is pressed
-// again.
+// manager, which opens a conversation in the team's folder BEHIND the one in
+// front and puts it in the team under the handle the manager chose. It never
+// comes forward and it is never sent the brief as the person's words: the
+// brief is the manager's, it reaches the member through the same Traffic
+// delivery every other line of the manager's does, and the member's first turn
+// is started by the session on seeing itself started (internal/session's
+// team_wake.go). Each act is done once per entry id, remembered in memory, and
+// a window opening reads the log from its TAIL, so what was asked before it
+// opened is history on its rail and is never done again.
 
 const (
-	// trafficEvery is how often the log is read while this window holds a
-	// conversation in a team.
-	trafficEvery = time.Second
+	// trafficEvery is how often the log is looked at while this window holds a
+	// conversation in a managed team, and trafficEveryIdle how often once
+	// trafficIdleTurns looks in a row found nothing.
+	trafficEvery     = time.Second
+	trafficEveryIdle = 5 * time.Second
+	trafficIdleTurns = 10
 	// trafficKeep is how many entries a team's cache holds, and how many a
 	// first look reads from the tail.
 	trafficKeep = 200
@@ -60,24 +69,34 @@ const (
 	// trafficFromStart is the cursor for a log that was empty at the first
 	// look: every entry after it is new.
 	trafficFromStart = "000000000000"
-	// The column: it stands on a frame at least trafficFloor wide after the
-	// task column, takes three tenths of that between trafficColsMin and
-	// trafficColsMax, and never leaves the conversation under trafficBodyFloor.
-	trafficFloor     = 110
-	trafficColsMin   = 28
-	trafficColsMax   = 44
-	trafficBodyFloor = 56
-	// trafficGripCols is the narrow frame's edge, the task column's own
-	// width for its closed edge (task.go's [railGripCols]).
-	trafficGripCols = 2
 )
 
-// trafficState is the cache and the clock.
+// trafficStamp is what a stat said about one file: its size and time, and
+// whether it was there at all. Two equal stamps are a file nobody wrote.
+type trafficStamp struct {
+	size int64
+	mod  time.Time
+	ok   bool
+}
+
+// trafficStat is one file's stamp. It reads the disk, so it is called from a
+// command and never from the loop or a frame.
+func trafficStat(path string) trafficStamp {
+	info, err := os.Stat(path)
+	if err != nil {
+		return trafficStamp{}
+	}
+	return trafficStamp{size: info.Size(), mod: info.ModTime(), ok: true}
+}
+
+// trafficState is the cache, the clock and the rail's own state.
 type trafficState struct {
 	// ticking says a trafficTickMsg is on its way, and reading that a read is
-	// out, so a turn of the clock never starts a second one beside it.
+	// out, so a turn of the clock never starts a second one beside it. idle
+	// counts the turns in a row that found nothing.
 	ticking bool
 	reading bool
+	idle    int
 	// cursor is each team's last entry id read, by team id; a team with none
 	// has not been looked at yet, and its first read is the tail.
 	cursor map[string]string
@@ -85,24 +104,37 @@ type trafficState struct {
 	rows map[string][]teamstore.Entry
 	// done is every stop and start acted on, by team id and entry id.
 	done map[string]bool
+	// logs is each team's log as it was when a read of it was last started,
+	// and teamsAt the teams file's, so a turn of the clock reads only what
+	// moved.
+	logs    map[string]trafficStamp
+	teamsAt trafficStamp
 	// stamp is the teams file's time when it was last read here, and edits
 	// counts this window's own writes, so a read that crossed one does not
 	// put the list from before it back.
 	stamp time.Time
 	edits int
-	// over says the traffic is laid over the body on a narrow frame.
-	over bool
-	// lines is the last frame's rows, top to bottom, as the member a press on
-	// each goes to ("" for none); left and width are the columns they were
-	// drawn in, and grip says the frame drew the narrow edge instead.
-	lines []string
-	left  int
-	width int
-	grip  bool
+	// seen is, per team, the newest entry the person has had in front of them
+	// on the rail, which is what the closed edge counts past.
+	seen map[string]string
+	// hidden says the person put the rail away on a frame wide enough for it,
+	// and over that the traffic is laid over the body as a card on a frame
+	// that is not. Both are this window's, in memory: another window keeps its
+	// own, as it keeps its own tabs.
+	hidden bool
+	over   bool
+	// The last frame's rail, for the pointer (teamrail.go).
+	drawn trafficDrawn
+	cache trafficCache
 }
 
-// trafficTickMsg is the Traffic clock.
-type trafficTickMsg struct{}
+// trafficTickMsg is one turn of the Traffic clock: the stamps its command took
+// of the teams file and of each team's log in ids, in the same order.
+type trafficTickMsg struct {
+	teams trafficStamp
+	ids   []string
+	logs  []trafficStamp
+}
 
 // trafficJob is one team's read: after the cursor, or the tail on a first look.
 type trafficJob struct {
@@ -128,18 +160,29 @@ func (a *app) trafficHeld(key string) bool {
 	return key != "" && (key == a.frontTabKey() || a.behind[key] != nil)
 }
 
-// trafficWanted reports whether any team holds a conversation this window
-// holds, which is when the log is worth reading. It allocates nothing: it is
-// asked after every message.
+// trafficTeamWanted reports whether team t is worth reading: it has a manager
+// and this window holds one of its conversations. It allocates nothing.
+func (a *app) trafficTeamWanted(t team) bool {
+	if t.Manager == "" {
+		return false
+	}
+	for _, m := range t.Members {
+		if a.trafficHeld(m.Key) {
+			return true
+		}
+	}
+	return false
+}
+
+// trafficWanted reports whether any team is worth reading, which is when the
+// clock runs. It allocates nothing: it is asked after every message.
 func (a *app) trafficWanted() bool {
-	if !a.wall.loaded || len(a.wall.teams) == 0 {
+	if !a.wall.loaded || len(a.wall.teams) == 0 || a.hosted() {
 		return false
 	}
 	for _, t := range a.wall.teams {
-		for _, m := range t.Members {
-			if a.trafficHeld(m.Key) {
-				return true
-			}
+		if a.trafficTeamWanted(t) {
+			return true
 		}
 	}
 	return false
@@ -148,45 +191,86 @@ func (a *app) trafficWanted() bool {
 // trafficArm starts the clock when there is something to read and it is not
 // already turning. It is asked after every message ([app.Update]), so a team
 // made, a member joined or a manager opened starts it without each of those
-// doors having to know.
+// doors having to know. Its first turn reads at once; the turns after it read
+// only what moved.
 func (a *app) trafficArm() tea.Cmd {
 	if a.traffic.ticking || !a.trafficWanted() {
 		return nil
 	}
 	a.traffic.ticking = true
+	a.traffic.idle = 0
 	return tea.Batch(a.trafficRead(), a.trafficNext())
 }
 
-// trafficNext is the clock's next turn.
+// trafficNext is the clock's next turn. The ids are taken here, on the loop;
+// the stats are taken by the command, when the turn comes round.
 func (a *app) trafficNext() tea.Cmd {
-	return surfaceTick(trafficEvery, func(time.Time) tea.Msg { return trafficTickMsg{} })
+	dir := a.profileDir
+	var ids []string
+	for _, t := range a.wall.teams {
+		if a.trafficTeamWanted(t) {
+			ids = append(ids, t.ID)
+		}
+	}
+	every := trafficEvery
+	if a.traffic.idle >= trafficIdleTurns {
+		every = trafficEveryIdle
+	}
+	return surfaceTick(every, func(time.Time) tea.Msg {
+		msg := trafficTickMsg{teams: trafficStat(teamstore.Path(dir)), ids: ids, logs: make([]trafficStamp, len(ids))}
+		for i, id := range ids {
+			msg.logs[i] = trafficStat(teamstore.TrafficPath(dir, id))
+		}
+		return msg
+	})
 }
 
-// trafficTick is a turn of the clock: read, and come round again, while there
-// is anything to read. It stops itself when there is not, and [app.trafficArm]
-// starts it again.
-func (a *app) trafficTick() tea.Cmd {
+// trafficTick is a turn of the clock: read what moved, and come round again,
+// while there is anything to read. It stops itself when there is not, and
+// [app.trafficArm] starts it again. quiet says the turn changed nothing a frame
+// draws, so the frame before it stands.
+func (a *app) trafficTick(msg trafficTickMsg) (cmd tea.Cmd, quiet bool) {
 	if !a.trafficWanted() {
 		a.traffic.ticking = false
-		return nil
+		return nil, true
 	}
-	return tea.Batch(a.trafficRead(), a.trafficNext())
+	var moved []string
+	for i, id := range msg.ids {
+		if _, seen := a.traffic.cursor[id]; !seen || msg.logs[i] != a.traffic.logs[id] {
+			moved = append(moved, id)
+		}
+	}
+	teamsMoved := msg.teams != a.traffic.teamsAt
+	titles := a.trafficTitles()
+	if len(moved) == 0 && !teamsMoved && len(titles) == 0 {
+		a.traffic.idle++
+		return a.trafficNext(), true
+	}
+	if a.traffic.reading {
+		// The read already out answers for this turn; the stamps are left as
+		// they were, so the next turn sees the same movement and reads it.
+		return a.trafficNext(), true
+	}
+	a.traffic.idle = 0
+	if a.traffic.logs == nil {
+		a.traffic.logs = map[string]trafficStamp{}
+	}
+	for i, id := range msg.ids {
+		a.traffic.logs[id] = msg.logs[i]
+	}
+	a.traffic.teamsAt = msg.teams
+	return tea.Batch(a.trafficReadOf(moved, titles, teamsMoved), a.trafficNext()), false
 }
 
-// trafficRead reads every team this window holds a conversation in, off the
-// loop, and folds what it found in ([app.trafficTake]).
-func (a *app) trafficRead() tea.Cmd {
-	if a.traffic.reading || !a.wall.loaded {
-		return nil
-	}
-	var jobs []trafficJob
+// trafficTitles is every member that joined with no title and whose tab has
+// one now. It reads memory, and allocates only when there is one.
+func (a *app) trafficTitles() []trafficTitle {
 	var titles []trafficTitle
 	for _, t := range a.wall.teams {
-		held := false
+		if !a.trafficTeamWanted(t) {
+			continue
+		}
 		for _, m := range t.Members {
-			if a.trafficHeld(m.Key) {
-				held = true
-			}
 			if strings.TrimSpace(m.Word) != "" {
 				continue
 			}
@@ -197,13 +281,35 @@ func (a *app) trafficRead() tea.Cmd {
 				}
 			}
 		}
-		if !held {
-			continue
-		}
-		after, seen := a.traffic.cursor[t.ID]
-		jobs = append(jobs, trafficJob{id: t.ID, after: after, first: !seen})
 	}
-	if len(jobs) == 0 && len(titles) == 0 {
+	return titles
+}
+
+// trafficRead reads every managed team this window holds a conversation in,
+// the teams file with them. It is the clock's first turn and a test's.
+func (a *app) trafficRead() tea.Cmd {
+	var ids []string
+	for _, t := range a.wall.teams {
+		if a.trafficTeamWanted(t) {
+			ids = append(ids, t.ID)
+		}
+	}
+	return a.trafficReadOf(ids, a.trafficTitles(), true)
+}
+
+// trafficReadOf reads the logs of teams ids, and the teams file when teams
+// says it moved, off the loop, and folds what it found in
+// ([app.trafficTake]).
+func (a *app) trafficReadOf(ids []string, titles []trafficTitle, teams bool) tea.Cmd {
+	if a.traffic.reading || !a.wall.loaded {
+		return nil
+	}
+	var jobs []trafficJob
+	for _, id := range ids {
+		after, seen := a.traffic.cursor[id]
+		jobs = append(jobs, trafficJob{id: id, after: after, first: !seen})
+	}
+	if len(jobs) == 0 && len(titles) == 0 && !teams {
 		return nil
 	}
 	a.traffic.reading = true
@@ -238,13 +344,17 @@ func (a *app) trafficRead() tea.Cmd {
 		}
 		var fresh []team
 		var at time.Time
-		if info, err := os.Stat(teamstore.Path(dir)); err == nil {
-			at = info.ModTime()
-		}
-		if titled || !at.Equal(stamp) {
-			if f, err := teamstore.LoadHued(dir, reserved); err == nil {
-				fresh = f.Teams
+		if teams || titled {
+			if info, err := os.Stat(teamstore.Path(dir)); err == nil {
+				at = info.ModTime()
 			}
+			if titled || !at.Equal(stamp) {
+				if f, err := teamstore.LoadHued(dir, reserved); err == nil {
+					fresh = f.Teams
+				}
+			}
+		} else {
+			at = stamp
 		}
 		return func(bool) tea.Cmd { return a.trafficTake(got, fresh, at, edits) }
 	})
@@ -252,13 +362,15 @@ func (a *app) trafficRead() tea.Cmd {
 
 // trafficTake folds one read in, on the loop: the teams file when it changed
 // and nothing was written here since the read began, each team's new entries
-// onto its cache, and the stops and starts among them done.
+// onto its cache, and the stops and starts among them done. A read that found
+// nothing new leaves the frame before it standing.
 func (a *app) trafficTake(got []trafficGot, fresh []team, at time.Time, edits int) tea.Cmd {
 	a.traffic.reading = false
+	changed := false
 	if edits == a.traffic.edits {
 		if fresh != nil {
 			a.teamAdopt(teamsClone(fresh))
-			a.touch()
+			changed = true
 		}
 		a.traffic.stamp = at
 	}
@@ -287,11 +399,19 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at time.Time, edits in
 			rows = append([]teamstore.Entry(nil), rows[len(rows)-trafficKeep:]...)
 		}
 		a.traffic.rows[g.id] = rows
-		a.touch()
+		changed = true
 		if g.first {
 			// A first look is history: what was asked before this window
 			// opened was asked of another window, or of none, and doing it now
-			// would do it twice or late.
+			// would do it twice or late. It is history the person has not been
+			// shown, but it is not news either, so the edge counts nothing
+			// for it.
+			if _, ok := a.traffic.seen[g.id]; !ok {
+				if a.traffic.seen == nil {
+					a.traffic.seen = map[string]string{}
+				}
+				a.traffic.seen[g.id] = a.traffic.cursor[g.id]
+			}
 			continue
 		}
 		for _, e := range g.entries {
@@ -299,6 +419,11 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at time.Time, edits in
 				acts = append(acts, cmd)
 			}
 		}
+	}
+	if changed {
+		a.touch()
+	} else if len(acts) == 0 {
+		a.ptr.still = a.drawn
 	}
 	return tea.Batch(acts...)
 }
@@ -368,354 +493,100 @@ func (a *app) trafficStop(key string) {
 }
 
 // trafficStart is the manager's start: a new conversation in the team's
-// folder, in the team under the handle the manager chose, sent the brief as
-// its first message, marked as the manager's rather than the person's. It comes
-// to the front, which is where a person who approved a start looks for it.
+// folder, opened BEHIND the one in front and never brought forward, in the
+// team under the handle the manager chose.
+//
+// NOTHING A MANAGER DOES MOVES THE PERSON'S FOCUS. Whoever is in front stays
+// in front and keeps the keyboard: a start that took the front would send the
+// next words somebody was typing to the manager into a conversation they have
+// never seen. The new member arrives as a tab at the end of the team's run,
+// named by its handle (`@lexer`) until it has a title, and its working mark is
+// the only thing that stirs.
+//
+// THE BRIEF IS NOT SENT FROM HERE. It is the manager's line in the Traffic,
+// and the member reads it there as the manager's, at its first step; the
+// session starts that first turn itself once it sees it has been made a
+// member (internal/session's team_wake.go).
+//
+// The conversation is opened on the door line, off the loop, because opening
+// one is a call to the engine; what comes back is held and joined here.
 func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
-	// A conversation started while a team is shown joins that team
-	// ([app.teamJoinFront]); this one belongs to t whatever is shown, so no
-	// other team is shown while it starts.
-	shown := a.wall.activeID
-	if shown != t.ID {
-		a.wall.activeID = ""
-	}
-	cmd, refusal := a.teamStartIn(t)
-	a.wall.activeID = shown
-	if refusal != "" {
-		a.note(a.teamManagerMark() + " could not start @" + e.To + ": " + refusal)
+	handle := strings.TrimSpace(e.To)
+	switch {
+	case a.shared:
+		a.trafficStartRefused(handle, oneConversationWord)
+		return nil
+	case a.start == nil || !a.canStart():
+		a.trafficStartRefused(handle, newUnavailableWord)
 		return nil
 	}
-	m := teamMember{Key: a.convKey(a.file), File: a.file, Where: a.workspace, Handle: e.To}
-	if err := a.teamEdit(func(f *teamstore.File) error {
-		if err := f.AddMember(t.ID, m); err != nil {
-			return err
+	start, where, id := a.start, a.teamWhere(t), t.ID
+	return a.besideLine(func() func(bool) tea.Cmd {
+		conv, err := start(where)
+		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, conv, err) }
+	})
+}
+
+// trafficStartRefused says, beside the manager, why a start was not done.
+func (a *app) trafficStartRefused(handle, why string) {
+	a.note(a.teamManagerMark() + " could not start @" + handle + ": " + why)
+}
+
+// trafficStarted is the start's conversation back from the engine: held
+// behind, joined to the team under its handle, and said beside the manager.
+func (a *app) trafficStarted(id, handle string, conv Conversation, err error) tea.Cmd {
+	if err != nil || conv.Agent == nil {
+		why := "the conversation did not open"
+		if err != nil {
+			why = err.Error()
 		}
-		if got, _ := f.Teams[teamIndex(f.Teams, t.ID)].Member(m.Key); got.Handle != e.To && teamstore.ValidHandle(e.To) == nil {
-			// Joined before this edit without the handle (the team was
-			// shown); the manager's name for it is the one the log uses.
-			_ = f.SetHandle(t.ID, m.Key, e.To)
-		}
-		return nil
-	}); err != nil {
-		a.note("the new member is in " + t.Name + " for this window, but " + err.Error())
-	}
-	brief := strings.TrimSpace(e.Text)
-	if brief == "" {
-		return cmd
-	}
-	return tea.Batch(cmd, a.submit(a.teamManagerMark()+" from manager: "+brief))
-}
-
-// ── THE RAIL ────────────────────────────────────────────────────────────────
-
-// trafficColsFor is the column the rail takes from room columns of frame, 0
-// when it cannot stand there.
-func trafficColsFor(room int) int {
-	if room < trafficFloor {
-		return 0
-	}
-	cols := min(max(room*3/10, trafficColsMin), trafficColsMax)
-	if room-cols < trafficBodyFloor {
-		return 0
-	}
-	return cols
-}
-
-// trafficWidth is what the rail costs the conversation, in columns: its column
-// while the manager is in front on a frame wide enough, the narrow edge on one
-// that is not, and nothing otherwise. It is asked wherever [app.bodyWidth] is,
-// so it reads memory and allocates nothing.
-func (a *app) trafficWidth() int {
-	if _, ok := a.teamFrontManaged(); !ok {
-		return 0
-	}
-	width, _ := a.size()
-	if cols := trafficColsFor(width - a.railWidth()); cols > 0 {
-		return cols
-	}
-	return trafficGripCols
-}
-
-// trafficOverShowing reports whether the traffic is laid over the body: asked
-// for, on a frame that has only the edge to give it.
-func (a *app) trafficOverShowing() bool {
-	return a.traffic.over && a.trafficWidth() == trafficGripCols
-}
-
-// trafficAddr is one address of an entry as the rail spells it: `@handle`, the
-// manager's mark, or the word for someone who is not a member.
-func (a *app) trafficAddr(s string) string {
-	switch s {
-	case teamstore.FromManager:
-		return a.teamManagerMark()
-	case teamstore.FromYou:
-		return "you"
-	case teamstore.FromSystem:
-		return "·"
-	case teamstore.ToEveryone:
-		return "all"
-	case teamstore.ToRoom:
-		return "room"
-	case "":
-		return ""
-	}
-	return "@" + s
-}
-
-// trafficLine is one entry as one painted row width cells wide, and the
-// member a press on it goes to.
-func (a *app) trafficLine(t team, e teamstore.Entry, width int) (string, string) {
-	pal := a.pal
-	arrow := a.linearMark("→", "->")
-	if pal.ascii {
-		arrow = "->"
-	}
-	text := strings.Join(strings.Fields(e.Text), " ")
-	var head string
-	target := ""
-	switch e.Kind {
-	case teamstore.KindStop, teamstore.KindStart:
-		word := "stopped"
-		if e.Kind == teamstore.KindStart {
-			word = "started"
-		}
-		head = pal.dim(a.trafficAddr(e.From) + " " + word + " " + a.trafficAddr(e.To))
-		target = trafficMemberKey(t, e.To, e.Member)
-		text = ""
-	case teamstore.KindEvent:
-		head = pal.muted(a.trafficAddr(e.From))
-		target = trafficMemberKey(t, e.From, e.Member)
-		text = pal.dim(text)
-	default:
-		head = pal.ink(a.trafficAddr(e.From)) + pal.dim(" "+arrow+" ") + pal.ink(a.trafficAddr(e.To))
-		target = trafficMemberKey(t, e.From, "")
-		if target == "" {
-			target = trafficMemberKey(t, e.To, e.Member)
-		}
-		text = pal.muted(text)
-	}
-	line := head
-	if text != "" {
-		line += "  " + text
-	}
-	line = fit(line, width)
-	return line + strings.Repeat(" ", max(width-ansi.StringWidth(line), 0)), target
-}
-
-// trafficBody is the rail's rows for team t, height tall and width wide: the
-// team's name at the top, and the newest entries at the bottom, as many as fit.
-// It records where each row goes on a press. Frame-safe: the cache only.
-func (a *app) trafficBody(t team, height, width int) []string {
-	out := make([]string, height)
-	a.traffic.lines = make([]string, height)
-	if height <= 0 || width <= 0 {
-		return out
-	}
-	blank := strings.Repeat(" ", width)
-	for i := range out {
-		out[i] = blank
-	}
-	title := fit(a.pal.accent(a.teamManagerMark())+" "+a.pal.ink(t.Name)+a.pal.dim("  traffic"), width)
-	out[0] = title + strings.Repeat(" ", max(width-ansi.StringWidth(title), 0))
-	rows := a.traffic.rows[t.ID]
-	room := height - 1
-	if len(rows) > room {
-		rows = rows[len(rows)-room:]
-	}
-	if len(rows) == 0 && height > 2 {
-		quiet := fit(a.pal.dim("nothing yet"), width)
-		out[height-1] = quiet + strings.Repeat(" ", max(width-ansi.StringWidth(quiet), 0))
-		return out
-	}
-	at := height - len(rows)
-	for i, e := range rows {
-		line, target := a.trafficLine(t, e, width)
-		if target != "" && a.hot.kind == hoverTraffic && a.hot.index == at+i {
-			line = a.pal.cursor(line, width)
-		}
-		out[at+i], a.traffic.lines[at+i] = line, target
-	}
-	return out
-}
-
-// trafficRows is the rail's column beside the body, height rows exactly
-// [app.trafficWidth] wide: the seam and the rows, or the narrow edge with the
-// manager's mark at its middle. nil when the manager is not in front.
-func (a *app) trafficRows(height int) []string {
-	t, ok := a.teamFrontManaged()
-	cols := a.trafficWidth()
-	a.traffic.grip = false
-	if !ok || cols == 0 || height <= 0 {
-		a.traffic.lines, a.traffic.width = nil, 0
+		a.trafficStartRefused(handle, why)
 		return nil
 	}
-	width, _ := a.size()
-	if cols == trafficGripCols {
-		// The rows laid over the body, when they are, were placed by
-		// [app.trafficOverRows] earlier in this frame and are left as they are.
-		a.traffic.grip = true
-		if !a.traffic.over {
-			a.traffic.lines, a.traffic.width = nil, 0
-		}
-		blank := strings.Repeat(" ", cols)
-		out := make([]string, height)
-		for i := range out {
-			out[i] = blank
-		}
-		mark := " " + a.pal.ink(a.teamManagerMark())
-		if a.hot.kind == hoverTrafficGrip || a.traffic.over {
-			mark = a.pal.cursor(" "+a.pal.accent(a.teamManagerMark()), cols)
-		}
-		out[height/2] = mark
-		return out
+	t, ok := a.teamByID(id)
+	if !ok {
+		// The team went while the conversation was opening. It is held all the
+		// same, as any other conversation this window opened.
+		t = team{}
 	}
-	seamW := ansi.StringWidth(railSeam)
-	body := a.trafficBody(t, height, cols-seamW)
-	a.traffic.left, a.traffic.width = width-cols+seamW, cols-seamW
-	seam := a.pal.dim(railSeam)
-	for i := range body {
-		body[i] = seam + body[i]
-	}
-	return body
-}
-
-// trafficBeside joins the rail's column onto the task column's rows for the
-// body region, so [app.railJoin] lays both beside the conversation: the task
-// column's row padded to its own width, then the traffic's. With no traffic
-// column it hands the task column back as it was.
-func (a *app) trafficBeside(rail []string, height int) []string {
-	traffic := a.trafficRows(height)
-	if traffic == nil {
-		return rail
-	}
-	cols := a.railWidth()
-	out := make([]string, height)
-	for i := range out {
-		task := ""
-		if i < len(rail) {
-			task = rail[i]
-		}
-		if cols > 0 {
-			if w := ansi.StringWidth(task); w < cols {
-				task += strings.Repeat(" ", cols-w)
+	key := a.convKey(conv.SessionFile)
+	cmd := a.stow(conv, nil)
+	a.trafficBehindTop(key)
+	a.chatTabBar = tabBar{}
+	if t.ID != "" {
+		m := teamMember{Key: key, File: conv.SessionFile, Where: conv.Workspace, Handle: handle}
+		if err := a.teamEdit(func(f *teamstore.File) error {
+			if err := f.AddMember(t.ID, m); err != nil {
+				return err
 			}
-		}
-		out[i] = task + traffic[i]
-	}
-	return out
-}
-
-// trafficOverRows is the traffic laid over the body on a narrow frame, height
-// rows at the body's width.
-func (a *app) trafficOverRows(height int) []string {
-	t, ok := a.teamFrontManaged()
-	if !ok {
-		return nil
-	}
-	width := a.bodyWidth()
-	pad := ansi.StringWidth(railSeam)
-	body := a.trafficBody(t, height, width-pad)
-	a.traffic.left, a.traffic.width = pad, width-pad
-	for i := range body {
-		body[i] = strings.Repeat(" ", pad) + body[i]
-	}
-	return body
-}
-
-// ── THE POINTER ─────────────────────────────────────────────────────────────
-
-// trafficRowAt is the rail's row under the pointer on the last frame, -1 for
-// none, and whether the pointer is over the rail's cells at all.
-func (a *app) trafficRowAt(x, y int) (int, bool) {
-	if a.trafficWidth() == 0 || a.traffic.width <= 0 {
-		return -1, false
-	}
-	top := a.bodyTop()
-	if top < 0 || y < top || y >= top+a.viewHeight() {
-		return -1, false
-	}
-	if a.traffic.grip && !a.trafficOverShowing() {
-		return -1, false
-	}
-	left := a.traffic.left - ansi.StringWidth(railSeam)
-	if x < left || x >= a.traffic.left+a.traffic.width {
-		return -1, false
-	}
-	if i := y - top; i < len(a.traffic.lines) && a.traffic.lines[i] != "" {
-		return i, true
-	}
-	return -1, true
-}
-
-// trafficGripAt reports whether the pointer is on the narrow frame's edge.
-func (a *app) trafficGripAt(x, y int) bool {
-	if a.trafficWidth() != trafficGripCols {
-		return false
-	}
-	width, _ := a.size()
-	top := a.bodyTop()
-	return top >= 0 && y >= top && y < top+a.viewHeight() && x >= width-trafficGripCols && x < width
-}
-
-// trafficHoverAt is the hover the rail answers with.
-func (a *app) trafficHoverAt(x, y int) (hoverAt, bool) {
-	if a.trafficGripAt(x, y) {
-		return hoverAt{kind: hoverTrafficGrip}, true
-	}
-	if row, ok := a.trafficRowAt(x, y); ok {
-		if row < 0 {
-			return hoverAt{}, true
-		}
-		return hoverAt{kind: hoverTraffic, index: row}, true
-	}
-	return hoverAt{}, false
-}
-
-// trafficPress answers a press on the rail and reports whether it took it. A
-// row goes to its member; the edge on a narrow frame lays the traffic over the
-// body or takes it away; the rail's other cells are furniture and take the press
-// to do nothing.
-func (a *app) trafficPress(x, y int) (tea.Cmd, bool) {
-	if a.trafficGripAt(x, y) {
-		a.traffic.over = !a.traffic.over
-		a.touch()
-		return nil, true
-	}
-	row, ok := a.trafficRowAt(x, y)
-	if !ok {
-		return nil, false
-	}
-	if row < 0 {
-		return nil, true
-	}
-	a.traffic.over = false
-	return a.trafficGo(a.traffic.lines[row]), true
-}
-
-// trafficGo switches to member key: its tab when the strip has one, and
-// otherwise what the team kept of it, which is enough to open it again.
-func (a *app) trafficGo(key string) tea.Cmd {
-	if key == "" || key == a.frontTabKey() {
-		return nil
-	}
-	for _, tab := range a.tabList() {
-		if tab.key == key {
-			return a.tabGo(tab)
+			if got, _ := f.Teams[teamIndex(f.Teams, t.ID)].Member(m.Key); got.Handle != handle && teamstore.ValidHandle(handle) == nil {
+				_ = f.SetHandle(t.ID, m.Key, handle)
+			}
+			return nil
+		}); err != nil {
+			a.note("@" + handle + " is in " + t.Name + " for this window, but " + err.Error())
 		}
 	}
-	for _, t := range a.wall.teams {
-		if m, ok := t.Member(key); ok && m.File != "" {
-			return a.tabGo(chatTab{key: m.Key, file: m.File, where: m.Where, word: m.Word, full: m.Word})
-		}
+	if t.Manager != "" && t.Manager == a.frontTabKey() {
+		a.note(a.teamManagerMark() + " started @" + handle + " · its tab is on the strip")
 	}
-	return nil
+	a.touch()
+	return cmd
 }
 
-// trafficHint is the composer's placeholder while the manager is in front: the
-// person's words go to the manager, and the box says so.
-func (a *app) trafficHint() string {
-	if _, ok := a.teamFrontManaged(); !ok {
-		return ""
+// trafficBehindTop keeps a conversation opened behind from becoming the one
+// `tab` goes back to. The keeper put it on top of the previous-stack as it
+// does every conversation it takes ([app.rememberOpen]); a start is not
+// somewhere the person has been, so it goes under the two they have.
+func (a *app) trafficBehindTop(key string) {
+	n := len(a.prev)
+	if key == "" || n < 2 || a.prev[n-1] != key {
+		return
 	}
-	return "to " + a.teamManagerMark() + " manager"
+	if n == 2 {
+		a.prev[0], a.prev[1] = key, a.prev[0]
+		return
+	}
+	a.prev[n-1], a.prev[n-2] = a.prev[n-2], a.prev[n-3]
+	a.prev[n-3] = key
 }

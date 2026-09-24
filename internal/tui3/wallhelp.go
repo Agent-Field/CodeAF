@@ -69,6 +69,7 @@ func wallHelpList(ascii bool) []wallHelpGroup {
 			row("New team", "s", "s", "Make a team"),
 			row("Organize", "o", "o", "Suggest teams for your conversations"),
 			row("Add to teams", "m", "m", "Add the focused conversation to teams"),
+			row("Make manager", "m", "m", "In the Teams list: make the focused conversation the shown team's manager"),
 			row("Team settings", "e", "e", "Rename, recolour or delete the shown team"),
 			row("Switch team", "tab / "+span, "tab", "Show the next team"),
 			row("Close view", "x", "x", "Close the focused view; the work keeps running"),

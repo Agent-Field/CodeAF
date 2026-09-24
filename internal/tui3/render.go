@@ -1222,6 +1222,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 	case entryHarness:
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
 
+	case entryTeam:
+		return a.teamCardRows(*e, width)
+
 	case entryNote:
 		// A LINE MAY BE QUIET; THE FACT IT CARRIES MAY NOT BE (payload.go). The
 		// lane keeps its dim prose and its dim lead — a note is still the surface

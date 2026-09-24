@@ -327,6 +327,10 @@ const (
 	// frame's edge that lays the traffic over the body.
 	hoverTraffic
 	hoverTrafficGrip
+	// hoverTrafficHide is the rail header's `hide` word, and hoverTrafficClose
+	// the narrow frame's card's `Close esc` (teamrail.go).
+	hoverTrafficHide
+	hoverTrafficClose
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen

@@ -239,12 +239,18 @@ func teamTabs(t team, live []chatTab) []chatTab {
 			}
 		}
 		if !found {
-			// A member closed before it had a name is not drawn, as the strip
-			// draws no nameless tab ([app.tabList]); it is still a member.
-			if strings.TrimSpace(m.Word) == "" {
+			// A member with no name yet is drawn by its handle, `@lexer`, which
+			// is what a member the manager started is called until its first
+			// answer names it. One with neither is not drawn, as the strip draws
+			// no nameless tab ([app.tabList]); it is still a member.
+			word := m.Word
+			if strings.TrimSpace(word) == "" && m.Handle != "" {
+				word = "@" + m.Handle
+			}
+			if strings.TrimSpace(word) == "" {
 				continue
 			}
-			tab = chatTab{key: m.Key, file: m.File, where: m.Where, word: m.Word, full: m.Word}
+			tab = chatTab{key: m.Key, file: m.File, where: m.Where, word: word, full: word}
 		}
 		out = append(out, tab)
 	}
@@ -274,6 +280,9 @@ func (a *app) teamsEnsure() {
 	a.wall.teams = teams
 }
 
+// errTeamsHosted is [app.teamEdit]'s refusal over --host.
+var errTeamsHosted = errors.New("teams are not kept over --host yet")
+
 // teamEdit makes one change to the teams, and it is the only way the
 // interface writes them.
 //
@@ -295,6 +304,13 @@ func (a *app) teamsEnsure() {
 // It reads and writes the disk, so it is called from an update and never from a
 // frame (framedisk_law_test.go).
 func (a *app) teamEdit(change func(f *teamstore.File) error) error {
+	// OVER --host NOTHING IS WRITTEN. This window's teams file is this
+	// machine's, and the conversations are the far machine's: a member kept
+	// here would be a path that means nothing on this disk, and the far
+	// session, which reads its own profile, would never see it (host.go).
+	if a.hosted() {
+		return errTeamsHosted
+	}
 	a.teamsEnsure()
 	mine := &teamstore.File{Version: teamstore.Version, Teams: teamsClone(a.wall.teams)}
 	if err := change(mine); err != nil {
@@ -325,6 +341,11 @@ func (a *app) teamEdit(change func(f *teamstore.File) error) error {
 	if wrote != nil {
 		a.teamAdopt(teamsClone(wrote.Teams))
 	}
+	// AND THE FILE AS THIS WRITE LEFT IT IS THE ONE THE TRAFFIC CLOCK HAS SEEN,
+	// so its next turn does not read back what this window just wrote
+	// (teamtraffic.go). It is one stat, beside the write it follows.
+	a.traffic.teamsAt = trafficStat(teamstore.Path(a.profileDir))
+	a.traffic.stamp = a.traffic.teamsAt.mod
 	return nil
 }
 
@@ -667,6 +688,14 @@ func (a *app) teamStripTabs(tabs []chatTab) []chatTab {
 		return tabs
 	}
 	out := a.teamStripManager(t, teamTabs(t, tabs))
+	// A member held behind that the strip had no tab for yet (one the manager
+	// started) still says what it is doing, as every held tab does.
+	for i := range out {
+		if held := a.behind[out[i].key]; held != nil && !out[i].held {
+			out[i].held = true
+			out[i].signal = a.tabSignalFor(out[i].key, false)
+		}
+	}
 	for _, tab := range tabs {
 		if tab.here && !teamHolds(t, tab.key) {
 			out = append(out, tab)

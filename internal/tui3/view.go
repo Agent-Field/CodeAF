@@ -551,14 +551,11 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	// sit at the top of an empty screen. What it is centred in is what a person
 	// sees, which is the region.
 	// ON A NARROW FRAME THE TRAFFIC IS LAID OVER THE BODY when the person asked
-	// for it at the edge (teamtraffic.go): the rows take the region, as the
-	// switcher's card below does, and a press on one is a press on it.
+	// for it (teamrail.go): a card over the lower rows, with the top of the
+	// conversation still drawn above it, and a press on a row of it is a press
+	// on it.
 	if a.trafficOverShowing() {
-		texts := a.trafficOverRows(view)
-		body, pad = make([]row, len(texts)), 0
-		for i, text := range texts {
-			body[i] = row{text: text, entry: -1}
-		}
+		body, pad = a.trafficOverBody(body, pad, view)
 		selOn = false
 	}
 	if a.hopShowing() {

@@ -362,9 +362,9 @@ func wallHint(v wallView, ascii bool) string {
 			return "Make a new team with this conversation in it"
 		case wallPopManager:
 			if v.popManager == wallManagerRemove {
-				return "Make this an ordinary member again"
+				return "Make this an ordinary member again; it keeps its history"
 			}
-			return "Make this conversation the team's manager"
+			return "Make this conversation the shown team's manager; the one before stays a member"
 		case wallPopDelete:
 			return "Delete this team; its conversations stay open"
 		case wallPopConfirm:
@@ -1287,6 +1287,11 @@ func wallMembersLines(pal palette, g wallGlyphs, v wallView) (string, []wallCard
 	for _, t := range v.teams {
 		inner = max(inner, ansi.StringWidth(k.boxOff)+3+min(ansi.StringWidth(t.name), wallChipCap)+6)
 	}
+	// The manager's row says which team and what it replaces, so the card is
+	// as wide as that sentence, up to a width a popover can hold.
+	if v.popManager != 0 {
+		inner = max(inner, min(ansi.StringWidth(v.popManagerWord), 56))
+	}
 	var lines []wallCardLine
 	row := func(code int, id, s string, cursorAt int) {
 		lit := v.pop.cursor == cursorAt || v.hover == wallHitRef{kind: wallHitPopRow, arg: code, id: id}
@@ -1324,11 +1329,15 @@ func wallMembersLines(pal palette, g wallGlyphs, v wallView) (string, []wallCard
 		lines = append(lines, wallCardLine{rule: true})
 	}
 	row(wallPopNew, "", pal.muted("+ New team"+k.more), len(v.teams))
-	switch v.popManager {
-	case wallManagerMake:
-		row(wallPopManager, "", pal.muted(v.mark+" Make manager"), len(v.teams)+1)
-	case wallManagerRemove:
-		row(wallPopManager, "", pal.muted("  Remove manager"), len(v.teams)+1)
+	if v.popManager != 0 {
+		word := v.popManagerWord
+		if word == "" {
+			word = v.mark + " Make manager"
+		}
+		if ansi.StringWidth(word) > inner {
+			word = ansi.Truncate(word, inner, wallGlyphsFor(pal.ascii).more)
+		}
+		row(wallPopManager, "", pal.muted(word), len(v.teams)+1)
 	}
 	return "Teams", lines, inner
 }

@@ -872,7 +872,13 @@ func wallTopBorder(pal palette, v wallView, t wallTile, i int, look wallTileLook
 		if pal.ascii {
 			mark = teamManagerGlyphASCII
 		}
-		if w-used-right-2 >= 8 {
+		// `◆ Manager · <title>`, as the strip names the same conversation, and
+		// the mark alone where the word would cost the title.
+		switch word := teamManagerWord + " · "; {
+		case w-used-right-2-len(word) >= 12:
+			add(pal.accent(mark) + " " + pal.ink(teamManagerWord) + pal.dim(" · "))
+			used += ansi.StringWidth(mark) + 1 + len(word)
+		case w-used-right-2 >= 8:
 			add(pal.accent(mark) + " ")
 			used += ansi.StringWidth(mark) + 1
 		}
