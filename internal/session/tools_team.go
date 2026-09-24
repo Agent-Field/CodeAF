@@ -236,7 +236,7 @@ func (a *Agent) teamStatusTool(ctx context.Context, args json.RawMessage) (strin
 	keys := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
 	log, _ := teams.ReadTraffic(profile, team.ID, "", teamStateLook)
-	return teams.Digest(team, memberStates(team, keys, time.Now(), log), recentOf(log), teamStatusBudget), false, nil
+	return teams.Digest(team, memberStates(team, keys, time.Now(), log, &a.team.journals), recentOf(log), teamStatusBudget), false, nil
 }
 
 // ── team_read ───────────────────────────────────────────────────────────────
