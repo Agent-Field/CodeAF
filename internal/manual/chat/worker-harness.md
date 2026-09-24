@@ -205,7 +205,7 @@ step, with its number and the head of what came back.
 A task handed to a program codeaf carries (`/<name> <brief>`, such as `/senior-dev`)
 opens **inside the conversation's own tab**, as any task does: from its row on the side
 list, its card in the conversation, a task link, the task strip or the home panel. The
-tab strip stays on top with the conversation's tab the one selected and `Home` beside
+tab strip stays on top with the conversation's tab the one selected and the `home` tab beside
 it, and the program gets no tab of its own.
 
 ```
@@ -220,7 +220,7 @@ it, and the program gets no tab of its own.
              ◐ thinking · 12s
 ```
 
-`esc`, a press on the conversation's tab and a press on `Home` leave it; none of them
+`esc`, a press on the conversation's tab and a press on the `home` tab leave it; none of them
 stops the run. `ctrl+o` opens and folds a long brief. `ctrl+y` turns the page to the
 program's raw calls and back. `x` over an empty box, `/stop`, or `Stop` at the end of the
 line over the page asks `Stop this task?` and ends the whole run.

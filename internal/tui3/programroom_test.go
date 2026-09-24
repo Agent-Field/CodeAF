@@ -280,7 +280,7 @@ func TestAProgramsRoomAtFortyFourColumns(t *testing.T) {
 	openProgramRoomNow(t, a)
 	frame, _, _ := a.frame()
 	text := plain(frame)
-	for _, want := range []string{"Home", "the run", "implement · $1.24", "IMPLEMENT", "edited internal/auth/"} {
+	for _, want := range []string{pageHome.word(), "the run", "implement · $1.24", "IMPLEMENT", "edited internal/auth/"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the room at 44 columns lost %q:\n%s", want, text)
 		}

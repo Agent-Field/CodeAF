@@ -53,7 +53,7 @@ A senior-dev run is a task of the conversation that started it. Its row is on th
 list wearing `[senior-dev]` after its title, with the step it is in and what it has spent
 so far under it, and a card in the conversation lands when it ends. Click the row or the
 card, or follow a task link to it, and its task opens **inside the conversation's own
-tab**: the tab strip stays on top, with the conversation's tab selected and `Home` beside
+tab**: the tab strip stays on top, with the conversation's tab selected and the `home` tab beside
 it. senior-dev gets no tab of its own.
 
 The task shows **what senior-dev is doing**, action by action, each under the step of its
@@ -70,7 +70,7 @@ stopped when you clicked; the true time is back on the row the moment you leave.
 model — what it sent, what the model answered, and which model it was — and `ctrl+y`
 turns it back; the key row says `ctrl+y calls` or `ctrl+y actions`.
 
-`esc`, a press on the conversation's tab, or a press on `Home` leaves it, and the run goes
+`esc`, a press on the conversation's tab, or a press on the `home` tab leaves it, and the run goes
 on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.
 Nothing typed there reaches senior-dev: the box says `senior-dev reads no messages — say
 it to main`, and `enter` says the same line and keeps your words in the box.

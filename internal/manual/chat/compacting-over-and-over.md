@@ -134,7 +134,7 @@ foldable material above the target. The pass still succeeds with what it took, a
 honestly, because there was nothing more to take. That is the one case where two passes
 in quick succession are not a defect.
 
-## Where did the folded messages go — how do I get the compacted text back, why it loses the earlier part of our chat
+## Where did the folded messages go — what happened to the earlier messages, how do I get the compacted text back, why it loses the earlier part of our chat
 
 They are still on disk. A fold replaces the oldest assistant work in the model's window with
 one line such as

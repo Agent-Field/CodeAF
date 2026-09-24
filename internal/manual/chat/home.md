@@ -2376,9 +2376,9 @@ does not repeat that indicator unless it has a separate question.
 
 No. Home’s Sessions list and the chats menu keep one row for the conversation, using its conversation title.
 
-A run the task-belt switch (`CODEAF_TASK_BELT=bash`) drives also has a tab of its own on the strip beside its conversation’s, named after the task the run is working on, for as long as the run works. It is a view inside that conversation: while it is open it is the one tab drawn selected, and a press on the conversation’s tab, a press on `Home`, or `esc` leaves it.
+A run the task-belt switch (`CODEAF_TASK_BELT=bash`) drives also has a tab of its own on the strip beside its conversation’s, named after the task the run is working on, for as long as the run works. It is a view inside that conversation: while it is open it is the one tab drawn selected, and a press on the conversation’s tab, a press on the `home` tab, or `esc` leaves it.
 
-A task handed to a program such as senior-dev has no tab. It opens inside the conversation’s own tab, as any task does, and `esc`, the conversation’s tab and `Home` leave it.
+A task handed to a program such as senior-dev has no tab. It opens inside the conversation’s own tab, as any task does, and `esc`, the conversation’s tab and the `home` tab leave it.
 
 ## Why does a closed conversation say another window
 
