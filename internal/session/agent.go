@@ -1623,6 +1623,8 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	// The person speaking is what resets a team's loop breaker (team_wakewatch.go).
+	a.notePersonTurn(user)
 	a.rebindClientLocked(a.model)
 	a.running = true
 	a.lastTurnTruncated = false

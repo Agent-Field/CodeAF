@@ -24,9 +24,11 @@ package session
 //     user-role line may join a turn (agent.go's [Agent.drainSteering]), what was
 //     addressed to this conversation since its cursor is put in front of the
 //     model as ONE marked note: "◆ from manager: …", "from @web: …". It is the
-//     session's line and never the person's, it starts no turn (v1 does not
-//     wake on team events), and it is journaled as a note so a reopened page
-//     draws it in the harness's lane.
+//     session's line and never the person's, and it is journaled as a note so
+//     a reopened page draws it in the harness's lane. The boundary itself
+//     starts no turn; the lines that ask for an answer (a directive to a
+//     member, a reply to the manager) wake an idle conversation through the
+//     traffic watch (team_wakewatch.go), which hands them over by this door.
 //   - THE ROLE ([teamRoleBlock]). What this conversation IS in each team, the
 //     manager of it with its members named and its three laws, or a member
 //     under a manager with its handle and its verb, rides a note of its own
@@ -92,6 +94,9 @@ type teamRole struct {
 	// team, the one spelling of [Agent.teamKeysLocked] the file holds. An event
 	// this conversation writes names it ([teams.Entry.Member]).
 	key string
+	// wakes says the team's traffic starts this conversation's turn when it is
+	// idle ([teams.Team.Wakes], team_wakewatch.go).
+	wakes bool
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
@@ -142,6 +147,11 @@ type teamSeat struct {
 	file *teams.File
 	// journals is what each member's journal last said (teamcache.go).
 	journals journalCache
+	// watch is the wake's own reading of the Traffic, and person counts the
+	// turns the person started, which the wake's loop breaker is reset by
+	// (team_wakewatch.go).
+	watch  teamWatch
+	person personTurns
 }
 
 // teamLogStart is the cursor that reads a Traffic log from its first entry:
@@ -273,6 +283,7 @@ func rolesFor(list []teams.Team, keys []string) []teamRole {
 			manager: team.Manager != "" && team.Manager == member.Key,
 			managed: team.Manager != "",
 			key:     member.Key,
+			wakes:   team.Wakes(),
 		})
 	}
 	return roles
@@ -425,6 +436,16 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 			cursor = entry.ID
 		}
 		if role.handle != "" && entry.Kind == teams.KindStart && entry.To == role.handle &&
+			!entry.At.Before(born.Add(-teamStartGrace)) {
+			started = entry.ID
+		}
+		// AND THE DIRECTIVE IT WAS OPENED FOR. A member nobody had open is
+		// opened by the engine because a directive was just sent to it
+		// (team_wakewatch.go's [Agent.teamRouse]), and a member that never read
+		// this team before would otherwise start after that very directive. So
+		// the earliest directive to it inside the same grace is where it starts,
+		// for a member only: a manager is never opened for a line it sent.
+		if started == "" && !role.manager && role.wakes && teamWakes(role, entry) &&
 			!entry.At.Before(born.Add(-teamStartGrace)) {
 			started = entry.ID
 		}
@@ -1046,8 +1067,21 @@ func teamManagerRole(role teamRole, file *teams.File) string {
 	fmt.Fprintf(&b, "You are the manager of the team %q. The person talks to you and you run the team for them: you decide who does what, hand the work out, and tell the person where it stands.\n", role.name)
 	b.WriteString(teamRoster(role, file))
 	b.WriteString("\n")
+	b.WriteString(teamManagerDelivery(role))
+	b.WriteString("\n")
 	b.WriteString(teamManagerLaws)
 	return b.String()
+}
+
+// teamManagerDelivery is what happens to what the manager sends and what comes
+// back, said as it is on this team: with the auto-wake on, a directive starts
+// an idle member and replies start the manager (team_wakewatch.go); with it
+// off, everything waits for the next turn each conversation takes.
+func teamManagerDelivery(role teamRole) string {
+	if !role.wakes {
+		return "This team's auto-wake is off: what you send, and your members' replies, wait for each conversation's next turn, so an idle member does not start on a directive until it next runs."
+	}
+	return "A directive (team_send kind directive) starts an idle member's turn; a note waits for its next turn. Members' replies to you, and their finishing, failing or asking, come back to you and start your turn when you are idle, so do not wait or poll for them."
 }
 
 // teamRoster names the manager's members by handle, with the start of each
