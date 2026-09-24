@@ -380,10 +380,10 @@ func TestTheFolderRuleIsSaidWhereAProgramEditsFilesAndOnlyThere(t *testing.T) {
 	tree := Config{Workspace: t.TempDir(), Delegates: testPrograms("fake")}
 	page := promptWithBeltFacts(tree)
 	for _, want := range []string{
-		"It works in a copy of the task's folder and only that copy lands",
-		"clone one this machine lacks into a new folder",
-		"branch at the commit the work names, and pass it as `ground`.",
-		"Never brief it to work\nelsewhere.",
+		"It works in a copy of the task's folder, and only that copy's work is kept, on a branch\nnothing merges",
+		"clone one this machine\nlacks into a new folder",
+		"branch at the commit the work names, and pass it as\n`ground`.",
+		"Never brief it to work elsewhere.",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("a build carrying a program that edits files is not told %q:\n%s", want, page)

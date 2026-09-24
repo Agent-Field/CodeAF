@@ -119,10 +119,15 @@ var delegateFact = beltFact{
 // The copy is cut from the folder the proposal names, so the folder is the one
 // thing the model has to get right, and fetching a repository that is not here
 // is its job, done before the proposal.
-const delegateFolderRule = "\nIt works in a copy of the task's folder and only that copy lands, so hand it the\n" +
-	"repository the work belongs in: clone one this machine lacks into a new folder, on a\n" +
-	"branch at the commit the work names, and pass it as `ground`. Never brief it to work\n" +
-	"elsewhere."
+//
+// AND IT PROMISES NO MERGE, because there is none. It said "only that copy
+// lands", and a model told its work lands tells the person the work is in their
+// folder; a program's work is left on the task's own branch
+// ([delegateKeepsBranch]), and bringing it in is a separate step.
+const delegateFolderRule = "\nIt works in a copy of the task's folder, and only that copy's work is kept, on a branch\n" +
+	"nothing merges, so hand it the repository the work belongs in: clone one this machine\n" +
+	"lacks into a new folder, on a branch at the commit the work names, and pass it as\n" +
+	"`ground`. Never brief it to work elsewhere."
 
 // carriesTreeProgram says whether any program this conversation can hand work
 // to edits files, which is when [delegateFolderRule] is true of it.
@@ -167,6 +172,27 @@ func delegateKeepsBranch(via *delegate.Delegate, plain bool) bool {
 // branch: where it is, and that it is theirs to bring in.
 func branchOnlySentence(branch, root string) string {
 	return "its work is on the branch " + branch + " in " + root + "; nothing was merged into your checkout"
+}
+
+// delegateReceipt is the sentence an approved hand-off to a program adds to
+// its receipt: who has the work and where it will be when it ends. It is read
+// off the run just started under row, which knows whether its folder had a
+// history to copy.
+//
+// IT NEVER SAYS THE WORK LANDS. It said "lands when it ends", and a program's
+// work is left on the task's own branch and merged by nobody; a model that read
+// "lands" told the person their folder held work it did not.
+func (a *Agent) delegateReceipt(row uint64, via delegate.Delegate) string {
+	if !via.LandsTree() {
+		return "It is " + via.Name + "'s: it works alone, and its answer arrives when it ends."
+	}
+	a.beltMu.Lock()
+	plain := a.beltRun != nil && a.beltRun.row == row && a.beltRun.plain
+	a.beltMu.Unlock()
+	if plain {
+		return "It is " + via.Name + "'s: it works alone in the folder itself, which has no git history, so its changes are there as it makes them."
+	}
+	return "It is " + via.Name + "'s: it works alone in a copy, and when it ends its work is left on the task's own branch; nothing is merged into the checkout."
 }
 
 // DelegateUnknownError is the refusal for a `via` or a command naming no

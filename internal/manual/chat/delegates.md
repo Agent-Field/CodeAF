@@ -48,8 +48,9 @@ calls, the dollars and how long the program ran.
 ## Which folder a program works in — a repository I have not cloned, it edited files outside its copy, a folder with no git
 
 A program that edits code works in a copy of one folder: the one this conversation works
-in, or the one the task names. **Only what it changes inside that copy lands.** Anything it
-changed anywhere else is not part of the task, and the task's ending does not see it.
+in, or the one the task names. **Only what it changes inside that copy is kept**, on the
+task's own branch. Anything it changed anywhere else is not part of the task, and the
+task's ending does not see it.
 
 **The brief it reads names its copy.** Wherever the brief names the task's folder, codeaf
 rewrites that path to the copy's before the program reads it, so it is never pointed at
@@ -108,9 +109,11 @@ title, and its body is the program's own account of the ending.
 **That commit stays on the task's own branch** (`task/<title>-<id>`) in your repository,
 and **codeaf does not merge it into your checkout**. Your files and your branch are exactly
 as you left them. The task's page says `its work is on the branch <branch> in <folder>;
-nothing was merged into your checkout`. Ask the chat to merge it, or merge it yourself
-(`git merge <branch>`), when you are ready. Nothing can conflict when the run ends,
-because the landing writes nothing of yours; a conflict only appears when you merge.
+nothing was merged into your checkout`, and the conversation is told the same with the
+number of files and the command that brings it in, `git -C '<folder>' merge <branch>`.
+Ask the chat to merge it, or run that yourself, when you are ready. Nothing can conflict
+when the run ends, because the landing writes nothing of yours; a conflict only appears
+when you merge.
 
 If the program switched branches in its copy, its work still lands on the task's own
 branch, and the branch it had moved to (even one of yours) is never reset by codeaf; the

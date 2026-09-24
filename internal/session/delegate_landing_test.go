@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/delegate"
 )
 
 // delegatedRunThatDid runs one program whose work is play, in a repository
@@ -170,5 +172,70 @@ func TestADelegatedRunThatChangedNothingLeavesNoBranch(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(notes, "\n"), "nothing to land: the run's working copy holds no change") {
 		t.Fatalf("the page does not say there was nothing to land: %q", notes)
+	}
+}
+
+// THE CONVERSATION IS TOLD NOTHING WAS MERGED, WHERE THE BRANCH IS, AND HOW TO
+// BRING IT IN. The line a landing delivers is the one account the chat's model
+// gets, and it read like a merged run's: `landed on task/x: 2 files`.
+func TestTheConversationIsToldABranchOnlyLandingWasNotMerged(t *testing.T) {
+	double := newBeltRunDouble("done")
+	double.work = func(workspace string) { commitIn(t, workspace, "one.txt", "two.txt") }
+	registerBeltRunEngine(t, double)
+	conversation := newTestRepo(t)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = conversation
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", "add two files"); err != nil {
+		t.Fatalf("StartDelegate: %v", err)
+	}
+	<-double.entered
+	endBeltRun(t, agent, double)
+	branches := strings.Fields(gitOut(t, conversation, "branch", "--format=%(refname:short)", "--list", "task/*"))
+	if len(branches) != 1 {
+		t.Fatalf("want the task's one branch, got %q", branches)
+	}
+	root := canonicalPath(conversation)
+	want := "its work is on the branch " + branches[0] + " in " + root + ", 2 files; nothing was merged into your checkout, and `git -C '" +
+		root + "' merge " + branches[0] + "` brings it in"
+	if got := conversationJournalLines(agent, want); got != 1 {
+		t.Fatalf("the conversation was told %d times %q", got, want)
+	}
+	if got := conversationJournalLines(agent, "landed on "+branches[0]); got != 0 {
+		t.Fatal("the conversation was told the work landed, the shape of a merged run")
+	}
+}
+
+// THE RECEIPT PROMISES NO MERGE. An approved hand-off to a program says who has
+// the work and where it will be: on the task's own branch for a copy, in the
+// folder itself for a folder with no history, in the conversation for one that
+// only answers.
+func TestAProgramsReceiptSaysWhereTheWorkWillBeAndPromisesNoMerge(t *testing.T) {
+	agent, _ := newTestAgent(t, beltRunCompleter{text: ""}, nil)
+	tree := testPrograms("fake")[0]
+	if got := agent.delegateReceipt(4, tree); got != "It is fake's: it works alone in a copy, and when it ends its work is left on the task's own branch; nothing is merged into the checkout." {
+		t.Fatalf("the receipt for a copy = %q", got)
+	}
+	agent.beltMu.Lock()
+	agent.beltRun = &beltRun{row: 4, plain: true}
+	agent.beltMu.Unlock()
+	if got := agent.delegateReceipt(4, tree); !strings.Contains(got, "in the folder itself, which has no git history") {
+		t.Fatalf("the receipt for a plain folder = %q", got)
+	}
+	agent.beltMu.Lock()
+	agent.beltRun = nil
+	agent.beltMu.Unlock()
+	reader := tree
+	reader.Lands = delegate.LandsText
+	if got := agent.delegateReceipt(4, reader); got != "It is fake's: it works alone, and its answer arrives when it ends." {
+		t.Fatalf("the receipt for a program that answers = %q", got)
+	}
+	for _, got := range []string{agent.delegateReceipt(4, tree), agent.delegateReceipt(4, reader)} {
+		if strings.Contains(got, "lands") {
+			t.Fatalf("a receipt promises a landing: %q", got)
+		}
 	}
 }

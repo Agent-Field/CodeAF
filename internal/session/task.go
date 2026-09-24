@@ -890,7 +890,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
 		switch {
 		case via != nil:
-			receipt = withReport(receipt, "It is "+via.Name+"'s: the program works alone in the copy and lands when it ends.")
+			receipt = withReport(receipt, a.delegateReceipt(p.id, *via))
 		case joined:
 			receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
 		}

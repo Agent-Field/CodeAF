@@ -215,6 +215,10 @@ type RunLanding struct {
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
 	// landing, which commits on the copy's branch and merges nothing.
 	Home string
+	// Root is the repository a branch-only landing left its branch in
+	// ([delegateKeepsBranch]), set only for that landing: the folder the merge
+	// that brings the work in runs in ([beltLandingLine]).
+	Root string
 }
 
 // RunEngine is the run engine as this door reaches it. Start drives one store
@@ -1032,7 +1036,7 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 	if merge == mergeKept && run.tree.keepsBranch {
 		// A BRANCH-ONLY LANDING IS A LANDING, not a refusal: the work is on its
 		// branch in the person's repository, which is where it was promised.
-		landing.Home = merge
+		landing.Home, landing.Root = merge, run.tree.root
 		if run.tree.branch != "" {
 			landing.Branch = run.tree.branch
 		}
@@ -1334,12 +1338,24 @@ func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, 
 // beltLandingLine is what a landing is in one line: where the work went and how
 // much of it, or the refusal that says why it did not. It is empty only when
 // there is nothing to say — a landing with no branch and no refusal.
+//
+// A BRANCH-ONLY LANDING SAYS NOTHING WAS MERGED, WHERE, AND HOW TO BRING IT IN.
+// This line is the one account of a landing the conversation's model is given,
+// and it read `landed on task/x: 2 files`, the shape of a run whose work is
+// already in the person's folder: the model had no way to know that nothing was
+// merged, which repository held the branch, or what brings it in, and would tell
+// the person their folder held the work. The folder is quoted for a shell the
+// way every path this package hands one is ([shellQuoted]).
 func beltLandingLine(landing RunLanding) string {
 	if landing.Refused != "" {
 		return landing.Refused
 	}
 	if landing.Branch == "" {
 		return ""
+	}
+	if landing.Home == mergeKept && landing.Root != "" {
+		return fmt.Sprintf("its work is on the branch %s in %s, %s; nothing was merged into your checkout, and `git -C %s merge %s` brings it in",
+			landing.Branch, landing.Root, fileCount(len(landing.Changed)), shellQuoted(landing.Root), landing.Branch)
 	}
 	return fmt.Sprintf("landed on %s: %s", landing.Branch, fileCount(len(landing.Changed)))
 }

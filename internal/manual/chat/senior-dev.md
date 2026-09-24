@@ -39,7 +39,8 @@ so a flag written after the brief becomes part of it.
 ## Running senior-dev on a repository you have not cloned — a benchmark task, another project
 
 senior-dev works in a copy of the folder it is handed, and only what it changes in that
-copy lands. So it has to be handed the repository the work belongs in.
+copy is kept, on the task's own branch. So it has to be handed the repository the work
+belongs in.
 
 In the chat, ask for the work and name the repository, and the commit if the work names
 one. The model clones it first, into a new folder, onto a branch at that commit, and hands
@@ -113,9 +114,12 @@ whose subject is `task:` and the task's title, and whose body is senior-dev's ow
 
 **That commit is left on the task's own branch in your repository, and nothing is merged
 into your checkout.** The task's page says `its work is on the branch <branch> in
-<folder>; nothing was merged into your checkout`. Merge it when you are ready, or ask the
-chat to. A run can take an hour, and a merge at its end used to meet whatever changed in
-your checkout meanwhile; now nothing can clash until you choose to merge.
+<folder>; nothing was merged into your checkout`, and the conversation is told
+``its work is on the branch <branch> in <folder>, N files; nothing was merged into your
+checkout, and `git -C '<folder>' merge <branch>` brings it in``. Merge it when you are
+ready, or ask the chat to. A run can take an hour, and a merge at its end used to meet
+whatever changed in your checkout meanwhile; now nothing can clash until you choose to
+merge.
 
 The ending keeps two witnesses apart: what senior-dev's model said it did when it
 submitted (`senior-dev's model said: …`) and what senior-dev itself saw when it ran the
