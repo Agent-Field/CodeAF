@@ -86,6 +86,12 @@ func (a *Agent) beltRunEndedAt(run *beltRun) time.Time {
 	return runClockEnd(run.born, beltRunProgram(run), ending)
 }
 
+// beltRunSpan is how long a run took, off its one pair: the hand-off to the end
+// [Agent.beltRunEndedAt] answers.
+func (a *Agent) beltRunSpan(run *beltRun) time.Duration {
+	return runSpan(run.born, a.beltRunEndedAt(run))
+}
+
 // runSpanWord spells a finished span EXACTLY AS THE TASK PAGE DOES (internal/
 // tui3's countUpWord): seconds under a minute, then minutes and seconds, then
 // hours and minutes, with a second rung of zero dropped — `22m 51s`, `1h 7m`,
@@ -218,12 +224,17 @@ func planLastActivity(dir string, task *plandb.Task) time.Time {
 	return last
 }
 
-// planRowSpanWord is a run row's time as the tasks tool says it: `ran 22m 51s`
-// for a row that has ended, `running for 3m 2s` for one that is running, and
-// nothing for a row with no start or one that is only waiting. It reads the
-// row's own pair, which for a program's run is the run's one pair ([apply]).
+// planRowSpanWord is a program's run's time as the tasks tool says it:
+// `ran 22m 51s` for a run that has ended, `running for 3m 2s` for one that is
+// running, and nothing for a run with no start. It reads the row's pair, which
+// for a program's row is the run's one pair ([planRunClocks.apply]).
+//
+// EVERY OTHER ROW SAYS NO TIME, as it never has: its pair is the store's own,
+// which counts a part from when it was added rather than from when anybody
+// started it, and a figure the tool cannot stand behind is left out rather than
+// said.
 func planRowSpanWord(row PlanTaskRow, now time.Time) string {
-	if row.Started.IsZero() {
+	if row.Program == "" || row.Started.IsZero() {
 		return ""
 	}
 	if !row.Ended.IsZero() {

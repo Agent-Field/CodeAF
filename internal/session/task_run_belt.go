@@ -753,7 +753,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	refreshCtx, cancelRefresh := context.WithTimeout(ctx, beltRunSummaryDeadline)
 	a.RefreshRunSummary(refreshCtx, run.root, time.Time{})
 	cancelRefresh()
-	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(run.store, run.root, summary, landing)); err != nil {
+	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))); err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's outcome note failed: " + err.Error())
 		}
@@ -854,7 +854,7 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 // deliverBeltRunLanding writes the run's digest into the conversation record.
 // A LANDING SPEAKS ONLY WHEN AN ANSWER IS OWED.
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
-	line := beltRunOutcomeNote(run.store, run.root, summary, landing)
+	line := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
 	if task := run.store.Task(run.root); landingOwesAnswer(task) {
 		document := owedLandingDocument(task, line)
 		note := wakeNote(document.text())
@@ -1067,12 +1067,22 @@ func beltRunLimitEnding(limit RunLimit) TaskEnding {
 }
 
 // beltRunOutcomeNote is the one line a run's own page carries about how it
-// ended: the engine's outcome word and where the work went, or the sentence that
-// says why it did not. The last stored run reading supplies its Now sentence;
-// without one this remains the landing digest that predates run summaries.
-func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, landing RunLanding) string {
+// ended: the engine's outcome word, how long the run took, and where the work
+// went, or the sentence that says why it did not. The last stored run reading
+// supplies its Now sentence; without one this remains the landing digest that
+// predates run summaries.
+//
+// THE TIME IS THE RUN'S ONE PAIR ([Agent.beltRunSpan]), said as `ran 22m 51s`
+// in the page's own spelling ([runSpanWord]) and said not at all under a
+// second. The same line is what the conversation is handed when the run lands,
+// and a conversation told only that a run was done could not say how long it
+// had taken when it was asked.
+func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, landing RunLanding, span time.Duration) string {
 	outcome, result := runEndingWords(summary)
 	parts := []string{outcome}
+	if ran := runSpanWord(span); ran != "" {
+		parts = append(parts, "ran "+ran)
+	}
 	if result != "" {
 		parts = append(parts, result)
 	}

@@ -221,7 +221,7 @@ func TestAProgramsOwnEndingIsTheRowsReasonAndNotAFault(t *testing.T) {
 	if taskEndingIsFault(notice.Ending) {
 		t.Fatal("a program judging its own work unfinished was drawn as a fault")
 	}
-	if note := beltRunOutcomeNote(nil, "", summary, RunLanding{}); !strings.HasPrefix(note, summary.Program.Reason) || strings.Contains(note, "ran and did not finish") {
+	if note := beltRunOutcomeNote(nil, "", summary, RunLanding{}, 0); !strings.HasPrefix(note, summary.Program.Reason) || strings.Contains(note, "ran and did not finish") {
 		t.Fatalf("the outcome note = %q, want the program's own words and not the run's generic one", note)
 	}
 	summary.Program.Status = delegate.StatusCrashed

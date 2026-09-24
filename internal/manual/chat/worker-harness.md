@@ -32,8 +32,10 @@ copy cut from your folder as the first run left it.
 **When the run ends its work comes home by itself.** The copy's work is committed and
 merged into the folder it was cut from, the copy is given back, and the run's page
 carries `its work is in <folder> on <branch>`. The conversation is woken with the same
-note a landed task sends: the outcome word, the result the root reported, and where the
-work went (`landed on <branch>: N files`, or the sentence saying why it did not). Work
+note a landed task sends: the outcome word, how long the run took (`ran 4m 12s`, from the
+hand-off to the moment its work ended, and left out under a second), the result the root
+reported, and where the work went (`landed on <branch>: N files`, or the sentence saying
+why it did not). Work
 that will not go in is never forced: the branch is kept in your repository and the note
 names it, for example `its branch <branch> was kept`, when your checkout moved on after
 the copy was cut. A run that only read says `nothing to land: the run's working copy holds no change` and changes no file. The

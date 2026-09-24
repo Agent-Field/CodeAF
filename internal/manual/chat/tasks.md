@@ -5163,8 +5163,10 @@ number its card and the rail show, `#2`; a part the run made for itself is read 
 place under that task, `#2.1`, `#2.2`, in an order that does not move. A listing shows each
 one's name, title, state and the first line of what came back; reading one task shows what
 it was asked, what came back in full, what the run's checks found, and its last steps. A
-store's own id is never shown. A finished task is asked about this way and is never redone
-or rechecked by hand.
+task handed to senior-dev also says how long it has taken — `#3 · <title> · done · ran 22m 51s`,
+or `running for 3m` while it goes — and it is read this way whatever the task belt is set
+to. A store's own id is never shown. A finished task is asked about this way and is never
+redone or rechecked by hand.
 
 Tasks from earlier sittings and from other windows are still listed after the run's, and a
 number the run does not hold is answered the way it always was.

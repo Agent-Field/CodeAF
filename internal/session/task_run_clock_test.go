@@ -329,3 +329,65 @@ func TestAProgramsRunNothingIsDrivingEndsAtItsLastActivity(t *testing.T) {
 		t.Fatalf("the listing's row = %+v, want the page's reading", row)
 	}
 }
+
+// THE CHAT'S tasks TOOL SEES A senior-dev RUN, AND SAYS HOW LONG IT TOOK. Its
+// reader of the run's store was gated on the bash-belt switch, which a program's
+// run never sets, so the owner's conversation was told `No task "3" in this
+// project` over a run its rail was drawing; and nothing the model could read
+// said how long a run had taken. The same span reaches the note the
+// conversation is handed when the run lands.
+func TestTheTasksToolSeesAProgramsRunAndSaysHowLongItTook(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "")
+	if bashBeltAsked() {
+		t.Fatal("the switch is still on, so this test would prove nothing")
+	}
+	double := newBeltRunDouble("submitted and verified")
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "submitted and verified"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	handoff := time.Date(2026, time.September, 24, 1, 14, 7, 0, time.UTC)
+	clock := &fakeClock{at: handoff}
+	agent.taskNow = clock.now
+	id, title, _, err := agent.StartDelegate(context.Background(), "fake", "add two files to the project")
+	if err != nil {
+		t.Fatalf("StartDelegate: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	name := "#" + strconv.FormatUint(id, 10)
+
+	clock.advance(3 * time.Minute)
+	read, failed := runTool(t, agent, "tasks", `{"id":"`+strconv.FormatUint(id, 10)+`"}`)
+	if failed || !strings.Contains(read, name+" · "+title+" · running · running for 3m") {
+		t.Fatalf("reading the live run answered %q (failed %v), want it running for three minutes", read, failed)
+	}
+	found, failed := runTool(t, agent, "tasks", `{"query":"two files"}`)
+	if failed || !strings.Contains(found, name+" · "+title+" · running") {
+		t.Fatalf("a search for the run answered %q (failed %v), want the run named", found, failed)
+	}
+
+	exited := handoff.Add(22*time.Minute + 51*time.Second)
+	if err := delegate.WriteProgram(plandb.TaskDir(filepath.Dir(spec.Store.Path()), spec.Store.RootID()), delegate.ProgramRecord{Name: "fake", StartedAt: handoff, EndedAt: exited}); err != nil {
+		t.Fatal(err)
+	}
+	clock.advance(30 * time.Minute)
+	endBeltRun(t, agent, double)
+
+	listing, failed := runTool(t, agent, "tasks", `{}`)
+	if failed || !strings.Contains(listing, name+" · "+title+" · done · ran 22m 51s") {
+		t.Fatalf("the listing answered %q (failed %v), want the run done with its time", listing, failed)
+	}
+	read, failed = runTool(t, agent, "tasks", `{"id":"`+name+`"}`)
+	if failed || !strings.HasPrefix(read, name+" · "+title+" · done · ran 22m 51s\n") {
+		t.Fatalf("reading the ended run answered %q (failed %v), want its time on its first line", read, failed)
+	}
+	if conversationNotes(agent, "done · ran 22m 51s · submitted and verified") == 0 {
+		t.Fatal("the note the conversation was handed at the landing does not say how long the run took")
+	}
+}

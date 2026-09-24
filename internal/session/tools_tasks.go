@@ -1411,12 +1411,19 @@ func TaskAgeWord(d time.Duration) string {
 // Told no task existed, the conversation set out to verify the work by running
 // the suite itself. The rows are read where the surface reads them
 // ([Agent.PlanTasks]), so the tool and the rail cannot disagree about what ran.
+//
+// AND IT WAS BLIND AGAIN TO EVERY senior-dev RUN (2026-09-24, the real
+// binary): the reader was gated on the bash-belt switch, which a program's run
+// never sets, so `tasks {"id":3}` answered `No task "3" in this project` over a
+// run the rail was drawing, and the model went looking through unrelated older
+// rows. It reads the plan the pages read ([TaskGraph.planForPages]), which is
+// this conversation's store whatever the switch says and never makes one.
 func (a *Agent) runPlanTasks() []PlanTaskRow {
 	g := a.graph()
 	if g == nil {
 		return nil
 	}
-	plan := g.planIfArmed()
+	plan := g.planForPages()
 	if plan == nil || plan.chat == "" {
 		return nil
 	}
@@ -1448,11 +1455,17 @@ func planTaskLabels(rows []PlanTaskRow) map[string]string {
 }
 
 // planTasksText is the run's tasks as a listing: the name a person sees, the
-// title, the state, and the first line of what came back. Empty when there is
-// no run or nothing in it matches, so the caller's own listing stands alone.
+// title, the state, how long it ran, and the first line of what came back.
+// Empty when there is no run or nothing in it matches, so the caller's own
+// listing stands alone.
+//
+// A PROGRAM'S RUN SAYS HOW LONG IT TOOK, off the run's one pair
+// ([planRowSpanWord], task_run_clock.go): the tool said no time at all, and a
+// model asked how long senior-dev took could only guess.
 func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 	query = strings.ToLower(strings.TrimSpace(query))
 	labels := planTaskLabels(rows)
+	now := a.taskClockNow()
 	var b strings.Builder
 	for _, row := range rows {
 		page, _ := a.PlanTaskPage(row.ID)
@@ -1460,6 +1473,9 @@ func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 			continue
 		}
 		fmt.Fprintf(&b, "%s · %s · %s", labels[row.ID], cutChars(row.Title, runAskLineChars), row.Status)
+		if span := planRowSpanWord(row, now); span != "" {
+			fmt.Fprintf(&b, " · %s", span)
+		}
 		if line := summaryFirstLine(page.Result, runAskLineChars); line != "" {
 			fmt.Fprintf(&b, " · %s", line)
 		}
@@ -1490,7 +1506,11 @@ func (a *Agent) planTaskText(rows []PlanTaskRow, token string) (string, bool) {
 		return "", false
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s · %s · %s\n\nbrief:\n%s\n", labels[id], cutChars(page.Row.Title, runAskLineChars), page.Row.Status, cutChars(page.Description, runAskBodyChars))
+	head := labels[id] + " · " + cutChars(page.Row.Title, runAskLineChars) + " · " + page.Row.Status
+	if span := planRowSpanWord(page.Row, a.taskClockNow()); span != "" {
+		head += " · " + span
+	}
+	fmt.Fprintf(&b, "%s\n\nbrief:\n%s\n", head, cutChars(page.Description, runAskBodyChars))
 	if page.Result != "" {
 		fmt.Fprintf(&b, "\nresult:\n%s\n", cutChars(page.Result, runAskBodyChars))
 	}

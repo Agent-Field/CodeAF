@@ -348,7 +348,7 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	if !anyNoteCarries(beltRunNotes(t, dir, rootID), "landed on "+home.Branch) {
 		t.Fatalf("no note on the root carries the branch: %v", beltRunNotes(t, dir, rootID))
 	}
-	wantDigest := beltRunOutcomeNote(nil, "", double.summary, home)
+	wantDigest := beltRunOutcomeNote(nil, "", double.summary, home, 0)
 	if !strings.Contains(wantDigest, "done") || !strings.Contains(wantDigest, "the run fixed the nil map") ||
 		!strings.Contains(wantDigest, "landed on "+home.Branch) {
 		t.Fatalf("digest = %q, want outcome, root result, and work destination", wantDigest)
@@ -539,7 +539,7 @@ func TestLandingDigestCarriesTheStoredNowSentence(t *testing.T) {
 
 	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
 		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
-	})
+	}, 0)
 	want := "done · landed on task/landing-digest: 1 file · The focused landing tests pass."
 	if got != want {
 		t.Fatalf("landing digest = %q, want %q", got, want)
@@ -554,7 +554,7 @@ func TestLandingDigestIsUnchangedWithoutAStoredSummary(t *testing.T) {
 	defer store.Close()
 	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
 		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
-	})
+	}, 0)
 	want := "done · landed on task/landing-digest: 1 file"
 	if got != want {
 		t.Fatalf("landing digest = %q, want byte-for-byte legacy digest %q", got, want)
