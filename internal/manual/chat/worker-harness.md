@@ -200,7 +200,7 @@ steps
 When the command ends the store clears the live step and the next read draws it as an ordinary
 step, with its number and the head of what came back.
 
-## A program's task page is a conversation, not steps — a delegate's page: open it, leave it, no tab of its own, no note box, what the box says
+## A program's task page is the actions it took, not steps — a delegate's page: open it, leave it, no tab of its own, no note box, what the box says
 
 A task handed to a program codeaf carries (`/<name> <brief>`, such as `/senior-dev`)
 opens **inside the conversation's own tab**, as any task does: from its row on the side
@@ -210,58 +210,72 @@ it, and the program gets no tab of its own.
 
 ```
   the run ▸ rewrite the auth middleware                              esc/← main
-─ working · $1.24 of $5.00 · 3 calls · 14m 3s ────────────────────── Stop ─
-  <program>          rewrite the auth middleware to use the new session store
-  deepseek-v4-flash  I'll read the middleware and the store first.
-                     ▤ read internal/auth/middleware.go
-  <program>          read: package auth
-  ◐ deepseek-v4-flash · 12s
+─ implement · $1.24 of $5.00 · 3 calls · 14m 3s ─────────────────── Stop ─
+  BRIEF      rewrite the auth middleware to use the new session store
+  SETUP      set up its workspace                                     git
+  SPEC       wrote your brief down as its spec
+  EXPLORE    read internal/auth/middleware.go
+             ran go test ./internal/auth/...                fails · exit 1
+  IMPLEMENT  edited internal/auth/middleware.go
+             ◐ thinking · 12s
 ```
 
 `esc`, a press on the conversation's tab and a press on `Home` leave it; none of them
-stops the run. `ctrl+o` opens and folds a long brief. `x` over an empty box, `/stop`, or
-`Stop` at the end of the line over the conversation asks `Stop this task?` and ends the
-whole run.
+stops the run. `ctrl+o` opens and folds a long brief. `ctrl+y` turns the page to the
+program's raw calls and back. `x` over an empty box, `/stop`, or `Stop` at the end of the
+line over the page asks `Stop this task?` and ends the whole run.
 
 **The box sends nothing.** A program reads no message. The box says `<program> reads no
 messages — say it to main` (`senior-dev reads no messages — say it to main`), and `enter`
 over a sentence says the same line on the page and leaves your words in the box. Once the
 run has ended its foot and its box say `this task has finished — say it to main`.
 
-In the tasks place, `enter` on the program's row opens the same conversation as a page
-of that place, with no box at all.
+In the tasks place, `enter` on the program's row opens the same page as a page of that
+place, with no box at all.
 
-## Reading a program's conversation — what the program sent, what the model answered, the call in flight, how long it has run
+## Reading a program's actions — the step words down the side, how each came out, the call in flight, how long it has run
 
-Every model call a program makes goes through codeaf, so its task's page is that
-conversation: the program on one side, like a very particular person asking codeaf
-things, and the model that answered on the other.
+The page shows what the program did, as the program itself says it: every stage, step and
+ending it reported, kept as codeaf received them, each read in the program's own words.
+The word down the left is the step of the program's own process the action served
+(senior-dev's page has its own section on its steps). It is printed on the first action
+of each run of actions in one step and left blank for the rest, so a word comes back when
+the program comes back to that step. How an action came out is at the right edge, dim:
+`passes`, `fails · exit 2`, `4 files`. Under about 28 cells of room the step's word
+stands on its own line and its actions hang under it.
 
-The line over the conversation stays put while you scroll: the stage the program says it
-is in, in the word the program gives a person for it rather than its own name for the
-stage (the task's own word, such as `running` or `done`, when there is none), what the
-run has spent (`of` its ceiling when the page knows it), how many model calls it has
-made, and how long it has been going. A figure with nothing behind it is left out, and a
-narrow window drops the time first. The time is the one the side list and the landed card
-show for the run: it counts from the moment codeaf handed the work over, and once the run
-has ended it is the whole span, up to the moment the program's own process ended. It stops
-there as soon as that process ends, while codeaf is still landing the work. A run
-nothing is driving any more, because codeaf closed while the program worked, reads
-`incomplete` with its time stopped at the last thing it did. On a tall window with the side list open, the line sits
-beside the task's title instead.
+The page opens on the brief, under `BRIEF`. What only the program's model calls know is
+put in where it happened, each one plain line: `compacted its memory` when the program
+rewrote its history as a summary, `switched to <model>` when another model started
+answering its work (with the program's reason after it when it gave one), `codeaf
+refused a call · <why>` and `a call to its model failed · <why>`. A model is named nowhere
+else. While a call is out the last line is `◐ thinking` and its seconds. A long run shows
+its newest actions under a line such as `…142 earlier actions`.
 
-The conversation opens on the brief. Each call is the program's side — a tool's result as
+The line over the page stays put while you scroll: the step the program is in (before it
+names one, its stage in the word it gives a person; the task's own word, such as
+`running` or `done`, when there is neither), what the run has spent (`of` its ceiling when
+the page knows it), how many model calls it has made, and how long it has been going. A
+figure with nothing behind it is left out, and a narrow window drops the time first. The
+time counts from the moment codeaf handed the work over and stops when the program's own
+process ends. The page reads the store again every three seconds while the run works, and
+once more after its work has landed, so the note on where the work went is on the page.
+
+## A program's raw calls — ctrl+y, the dialogue with its model, what it sent and what the model answered
+
+`ctrl+y` on a program's page — in its room or in the tasks place — turns it to the raw
+calls the program made, and `ctrl+y` again turns it back to the actions; the key row says
+which: `ctrl+y calls` or `ctrl+y actions`. A page opens on the actions.
+
+The calls are the conversation between the program and the model that answered it, for
+seeing exactly what it was sent. Each call is the program's side — a tool's result as
 `<tool>: <first line>`, its own words, or `summarized its history so far` — and the
 model's, named by its short name: the first line of its answer, and one dim row per tool
 it asked for behind that tool's mark. A call codeaf refused is one line from `codeaf`,
 `refused · <why>`; a failed one is `the call failed · <why>`. The call in flight is the
-last line, `◐`, the model and its seconds, gone when the call returns. The page reads the
-store again every three seconds while the run works, and once more after its work has
-landed, so the note on where the work went is on the page.
-
-Only the first line of each message is drawn, and a long run shows its newest calls under
-a line such as `…142 earlier calls`; the task's own record keeps more of every call. On
-the side list the run's row says the stage and the spend so far.
+last line, `◐`, the model and its seconds. Only the first line of each message is drawn,
+and a long run shows its newest calls under a line such as `…142 earlier calls`; the
+task's own record keeps more of every call.
 
 ## Why is a step missing, the step numbers skip, the cd at the front of a command is gone
 

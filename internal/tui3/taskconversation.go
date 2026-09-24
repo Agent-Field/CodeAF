@@ -1,22 +1,34 @@
 package tui3
 
-// taskconversation.go draws a PROGRAM'S task page as the conversation it is.
+// taskconversation.go draws a PROGRAM'S task page as the actions it took.
 //
-// A task a run handed to a program codeaf carries (senior-dev first) used to
-// open on the same page as every other task: a telemetry line, the brief, and a
-// list of steps, with a box for a note the program would never read. What the
-// program was actually doing was invisible — its work happens inside the calls
-// it makes to a model, and every one of those goes through the model API codeaf
-// serves the run. So codeaf has the whole exchange, and this page draws it: the
-// program on one side, like a very particular person asking codeaf things, and
-// the model that answered on the other, one call at a time, with the call in
-// flight as the last line while it is out.
+// A task a run handed to a program codeaf carries (senior-dev first) is a
+// process with steps of its own, and the page shows the program doing it: each
+// thing it did, under the step of its process that action served, with how it
+// came out at the right edge — not a dialogue between the program and a model,
+// which made a pipeline of spec, exploration, a pinned check, a checklist, an
+// implementation, a hand-in and its own check of the tree read like one chat.
 //
-//	senior-dev          rewrite the auth middleware to use the new session store
-//	deepseek-v4-flash   I'll read the middleware first.
-//	                    ▤ read internal/auth/middleware.go
-//	senior-dev          read: package auth
-//	◐ deepseek-v4-flash · 12s
+//	BRIEF      rewrite the auth middleware to use the new session store
+//	SETUP      set up its workspace                               git
+//	SPEC       wrote your brief down as its spec
+//	EXPLORE    read internal/auth/middleware.go
+//	           ran go test ./internal/auth/...             fails · exit 1
+//	IMPLEMENT  edited internal/auth/middleware.go
+//	           compacted its memory
+//	           ◐ thinking · 12s
+//
+// THE ACTIONS ARE THE PROGRAM'S, IN ITS OWN WORDS. The run keeps every stage,
+// step and ending the program reported, stamped as codeaf received it, and the
+// program's own vocabulary reads them (internal/delegate's Present; senior-dev's
+// is internal/seniordev's actions.go) before the page ever holds them. What only
+// the program's calls to a model know is merged in by time: a history rewritten
+// as a summary is `compacted its memory` (once, when the program said so too), a
+// change of the model answering is `switched to <model>` with the program's
+// reason when it gave one, and a call refused or failed is one plain line. A
+// model is named nowhere else on the page; the cost and the clock stay on the
+// pinned line. The raw calls are one key away (programcalls.go,
+// [programCallsKey]).
 //
 // THE PAGE READS NOTHING. Every line here is drawn from the page the surface
 // already holds ([session.PlanTaskPage.Program], read off the loop on the page's
@@ -25,13 +37,9 @@ package tui3
 // with the run's copy taken out of their paths (internal/session's
 // plandb_program.go), so a row here is a choice of which line to show and never
 // a reading of the record.
-//
-// WHAT IS DRAWN IS THE PERSON'S, NEVER THE MACHINERY'S. A program's system
-// prompt and the model's own words handed back to it are part of every call and
-// say nothing new, so neither is ever a row; a program that summarized its own
-// history is said in one line, not replayed.
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -60,46 +68,10 @@ const (
 	// stand on lines of their own: the two-cell lead every piece of this
 	// surface's machinery keeps.
 	convIndent = 2
-	// convSaidMost is how many of the program's messages one of its turns draws.
-	// A turn that answers eight tool calls sends eight results, and the eight
-	// calls are already drawn one row each on the model's side just above it.
-	convSaidMost = 3
-	// convCodeaf is who answers a call codeaf refused. No model saw it, so the
-	// line under the program's is codeaf's own.
-	convCodeaf = "codeaf"
 	// convProgramFallback names the program's side in the one case its name is
 	// unknown: a conversation log with no program record beside it.
 	convProgramFallback = "program"
 )
-
-// The words this page says in its own voice, each quoted in the manual as it is
-// spelled here (worker-harness.md).
-const (
-	// convRestartedWord is the program's side of a call made after it rewrote its
-	// own history as a summary: what it sent is its whole history again, and that
-	// is one sentence rather than a replay.
-	convRestartedWord = "summarized its history so far"
-	// convFailedWord leads the line a call the model's side failed draws.
-	convFailedWord = "the call failed"
-	// convEarlierWord follows the count of calls the page does not carry.
-	convEarlierWord = "earlier calls"
-)
-
-// convSide is one speaker's turn at talking: the name in the column and the
-// lines it said, each already painted and not yet fitted.
-type convSide struct {
-	name  string
-	lines []convLine
-}
-
-// convLine is one line a speaker said. lead is a painted mark drawn in front of
-// the words and outside their fitting, so a narrow row gives up the tail of the
-// words and never half a mark; text is the words, painted by ink.
-type convLine struct {
-	lead string
-	text string
-	ink  func(string) string
-}
 
 // taskPlanIsProgram reports whether the open stored page is a program's: its
 // read carries the program's conversation, or its row names the program, which
@@ -215,43 +187,51 @@ func (a *app) taskPlanAge(row session.PlanTaskRow) string {
 }
 
 // taskProgramBody is what a person reads on a program's page, under the pinned
-// line: the conversation, and under it the notes the run left — its outcome and
-// where its work went, which arrive when it ends and so belong at the bottom
-// edge the page opens on, not above an hour of calls.
+// line: the actions the program took, and under them the notes the run left —
+// its outcome and where its work went, which arrive when it ends and so belong
+// at the bottom edge the page opens on, not above an hour of work.
 //
 // EVERYTHING AN ORDINARY PAGE SPENDS ON ITS OWN MACHINERY IS ABSENT. The
-// telemetry line is the pinned one; the brief opens the conversation; and a
-// program's run records no steps worth a list of their own when the calls that
-// did the work are on the page. A run whose conversation was never written —
-// one from before the model API kept one — still has the steps its program
-// reported, and draws them, so no page shows less than it did.
+// telemetry line is the pinned one; the brief opens the actions; and a
+// program's run needs no list of steps of its own when the actions that did
+// the work are on the page.
 func (a *app) taskProgramBody(width int) []string {
 	page, pal := a.taskSheet.plan, a.pal
 	var out []string
 	if n := len(a.taskSheet.planBack); n > 0 {
 		out = append(out, pal.dim("esc/← "+a.taskSheet.planBack[n-1].Row.Title))
 	}
-	return append(out, a.programBody(page, width, a.taskSheet.planBriefFull)...)
+	return append(out, a.programBody(page, width, a.taskSheet.planBriefFull, a.taskSheet.planCalls)...)
 }
 
 // programBody is what both of a program's pages draw under their head — the
 // tasks place's stored page ([app.taskProgramBody]) and the program's room in
-// the conversation's own tab (programroom.go): the conversation, the steps a
-// run with no conversation reported, and the notes. briefFull is the page's
-// own fold, because each page folds its brief with its own key.
-func (a *app) programBody(page session.PlanTaskPage, width int, briefFull bool) []string {
+// the conversation's own tab (programroom.go): the program's actions, or its
+// raw calls when the page's own [programCallsKey] asked for them, and the
+// notes. briefFull and calls are the page's own, because each page folds its
+// brief and turns to its calls with its own keys.
+//
+// A RUN FROM BEFORE ITS CALLS WERE LOGGED still has the steps its program
+// reported: the actions draw them in their own shape, and the calls, which
+// have none to draw, list them under their own heading as they always did.
+func (a *app) programBody(page session.PlanTaskPage, width int, briefFull, calls bool) []string {
 	pal := a.pal
-	out := a.taskConversation(page, width, briefFull)
-	if len(convProgramOf(page).Turns) == 0 && len(page.Steps) > 0 {
-		out = append(out, "", pal.dim("steps"))
-		for _, step := range page.Steps {
-			if step.NotRun {
-				continue
-			}
-			if command := planDisplayCommand(step.Command, step.Parts); command != "" {
-				out = append(out, pal.ink(itoa(step.Step)+"  "+command))
+	var out []string
+	if calls {
+		out = a.programCalls(page, width, briefFull)
+		if len(convProgramOf(page).Turns) == 0 && len(page.Steps) > 0 {
+			out = append(out, "", pal.dim("steps"))
+			for _, step := range page.Steps {
+				if step.NotRun {
+					continue
+				}
+				if command := planDisplayCommand(step.Command, step.Parts); command != "" {
+					out = append(out, pal.ink(itoa(step.Step)+"  "+command))
+				}
 			}
 		}
+	} else {
+		out = a.taskConversation(page, width, briefFull)
 	}
 	if len(page.Notes) > 0 {
 		if len(out) > 0 {
@@ -263,83 +243,378 @@ func (a *app) programBody(page session.PlanTaskPage, width int, briefFull bool) 
 	return out
 }
 
+// The words this page says in its own voice, each quoted in the manual as it is
+// spelled here (senior-dev.md, worker-harness.md).
+const (
+	// actBriefWord leads the brief, in the column the step words stand in: the
+	// brief is what the program was handed, before any step of its own.
+	actBriefWord = "brief"
+	// actCompactedWord is a program's history rewritten as a summary, said once.
+	actCompactedWord = "compacted its memory"
+	// actSwitchedWord leads the line a change of the model answering draws.
+	actSwitchedWord = "switched to"
+	// actRefusedWord and actFailedWord lead the line a call codeaf refused, or
+	// the model's side failed, draws.
+	actRefusedWord = "codeaf refused a call"
+	actFailedWord  = "a call to its model failed"
+	// actThinkingWord is what is in flight while a call to the model is out.
+	actThinkingWord = "thinking"
+	// actEarlierWord follows the count of actions the page does not carry.
+	actEarlierWord = "earlier actions"
+)
+
+// actNear is how far apart in time a line from the calls and the program's own
+// line about the same thing — a compaction, a switch of model — may be and
+// still be the one event. The program reports a compaction the moment it is
+// decided, between the summary call and the call after it; a switch, when the
+// call it was made for has come back.
+const actNear = 10 * time.Second
+
+// actLine is one line of the actions, before it is laid out: when it happened,
+// the step's word it belongs under ("" for whatever step is under way), its
+// words and how it came out, and whether it is the program steering its own
+// model or a line from the calls, which are drawn quieter.
+type actLine struct {
+	at      time.Time
+	step    string
+	text    string
+	outcome string
+	steer   bool
+	quiet   bool
+}
+
 // taskConversation is a program's page where an ordinary page draws its steps:
-// the brief the program was handed, then every call it made, each as the
-// program's side and the side that answered it.
+// the brief the program was handed, then every action it took, merged by time
+// with what only its calls know, each under the step of its process it served.
 //
-// THE NAMES STAND IN A COLUMN OF THEIR OWN while the frame has the room, so the
-// eye reads down the speakers and across to what each said; under
-// [convTextLeast] cells of words each name stands on its own line instead. The
-// column is as wide as the widest name on the page, so it does not move as the
-// conversation grows by a call from the same model.
+// THE STEP'S WORD STANDS IN A COLUMN OF ITS OWN while the frame has the room,
+// printed on the first action of each run of actions in one step and blank for
+// the rest, so the eye reads down the steps and across to what was done in
+// each; under [convTextLeast] cells of words each step's word stands on its own
+// line instead, and its actions hang under it. The column is as wide as the
+// widest word on the page, so it does not move as the run goes on.
 func (a *app) taskConversation(page session.PlanTaskPage, width int, briefFull bool) []string {
 	if width < 1 {
 		return nil
 	}
 	program := convProgramOf(page)
 	pal := a.pal
-	speaker := convProgramName(page)
-	running := planStateWord(page.Row) == "running"
-	column, text := convColumns(convNames(program, speaker), width)
+	lines := actLines(page)
+	column, text := actColumns(lines, width)
 
 	var out []string
-	// THE BRIEF OPENS THE CONVERSATION. It is what the program was handed, in
-	// the person's own words, and it stands for the program's side of the first
-	// call — whose own words are the program's prompt around the same brief.
-	// Folded to the brief's own three lines, with the key that unfolds it, the
-	// way every other page folds a brief.
-	opening := convSide{name: speaker}
-	for _, line := range taskConversationBrief(page, text, briefFull) {
-		opening.lines = append(opening.lines, convLine{text: line, ink: pal.ink})
-	}
-	if len(opening.lines) > 0 {
-		out = append(out, convDraw(opening, column, width, pal)...)
-	}
-	// THE CALLS THE PAGE LEAVES OUT ARE COUNTED AT THE PAGE'S OWN EDGE, never in
-	// a speaker's column, where the count read as something the program said. It
-	// is spelled the way every fold line on this surface is ([bandFoldWord]).
-	if program.Earlier > 0 {
-		out = append(out, pal.dim(fit(glyphMore+itoa(program.Earlier)+" "+convEarlierWord, width)))
-	}
-	briefHead := convBriefHead(page.Description)
-	for i, turn := range program.Turns {
-		first := i == 0 && program.Earlier == 0
-		if said := a.convProgramSide(turn, speaker, briefHead, first); len(said.lines) > 0 {
-			out = append(out, convDraw(said, column, width, pal)...)
+	// THE BRIEF OPENS THE PAGE, under its own word: it is what the program was
+	// handed, in the person's own words, folded to the brief's own three lines
+	// with the key that unfolds it, the way every other page folds a brief.
+	for i, line := range taskConversationBrief(page, text, briefFull) {
+		word := ""
+		if i == 0 {
+			word = actBriefWord
 		}
-		switch {
-		case convHead(turn.Refused) != "":
-			out = append(out, convDraw(convSide{name: convCodeaf, lines: []convLine{{
-				text: taskPlanRefusedWord + railSep + convHead(turn.Refused), ink: pal.dim,
-			}}}, column, width, pal)...)
-		case convHead(turn.Failed) != "":
-			out = append(out, convDraw(convSide{name: convModelWord(turn), lines: []convLine{{
-				text: convFailedWord + railSep + convHead(turn.Failed), ink: pal.dim,
-			}}}, column, width, pal)...)
-		case turn.InFlight():
-			// THE CALL IN FLIGHT IS THE LIVE EDGE, and it is drawn only while the
-			// task can still be waiting on it. A call whose ending never reached the
-			// log before the run ended is not in flight on a page about work that
-			// is over: it draws no line at all rather than a clock that never stops.
-			if running {
-				if line := a.convInFlight(turn, width); line != "" {
-					out = append(out, line)
-				}
-			}
-		default:
-			if answer := a.convModelSide(turn); len(answer.lines) > 0 {
-				out = append(out, convDraw(answer, column, width, pal)...)
+		out = append(out, actRow(pal, word, pal.ink(fit(line, text)), column, width)...)
+	}
+	// THE ACTIONS THE PAGE LEAVES OUT ARE COUNTED AT THE PAGE'S OWN EDGE, spelled
+	// the way every fold line on this surface is ([bandFoldWord]).
+	if program.EarlierActions > 0 {
+		out = append(out, pal.dim(fit(glyphMore+itoa(program.EarlierActions)+" "+actEarlierWord, width)))
+	}
+	current := ""
+	for _, line := range lines {
+		word := ""
+		if line.step != "" && line.step != current {
+			word, current = line.step, line.step
+		}
+		out = append(out, actRow(pal, word, a.actBody(line, text), column, width)...)
+	}
+	// THE CALL IN FLIGHT IS THE LIVE EDGE, drawn only while the task can still be
+	// waiting on it: a call whose ending never reached the log before the run
+	// ended is not in flight on a page about work that is over.
+	if planStateWord(page.Row) == "running" {
+		if n := len(program.Turns); n > 0 && program.Turns[n-1].InFlight() {
+			if line := a.actInFlight(program.Turns[n-1], text); line != "" {
+				out = append(out, actRow(pal, "", line, column, width)...)
 			}
 		}
 	}
 	return out
 }
 
-// taskConversationBrief is the brief as the conversation opens with it: the
-// description through the reader every page draws a brief with
-// ([planBriefRows]), at the width the words get beside the names, folded to
-// [briefFoldLines] with the line that says how many more and which key opens
-// them.
+// actRow lays one row out: the step's word in the column and the body beside
+// it, or — where the frame is too narrow for a column — the word on a line of
+// its own and the body hung [convIndent] cells under it. The word is the page's
+// structure, not its signal: bold and upper-case in the muted ink, never the
+// accent, which a screen spends on the one live thing ([DESIGN-LANGUAGE.md]'s
+// accent budget).
+func actRow(pal palette, word, body string, column, width int) []string {
+	label := ""
+	if word = strings.TrimSpace(word); word != "" {
+		room := column
+		if column == 0 {
+			room = width
+		}
+		trimmed, _ := rowTrim(strings.ToUpper(word), room, false)
+		label = pal.bold(pal.muted(trimmed))
+	}
+	if column == 0 {
+		var out []string
+		if label != "" {
+			out = append(out, label)
+		}
+		return append(out, strings.Repeat(" ", convIndent)+body)
+	}
+	cell := strings.Repeat(" ", column)
+	if label != "" {
+		cell = padTo(label, column)
+	}
+	return []string{cell + strings.Repeat(" ", convGap) + body}
+}
+
+// actBody is one action's words at the room they get, painted: the program's
+// own work in ink, its steering of its model in the note's ink, a line from the
+// calls dim, and how it came out dim at the right edge. When the room will not
+// hold both at the edge, the outcome follows the words after a separator and
+// the row gives up its tail.
+func (a *app) actBody(line actLine, width int) string {
+	pal := a.pal
+	ink := pal.ink
+	switch {
+	case line.quiet:
+		ink = pal.dim
+	case line.steer:
+		ink = pal.narr
+	}
+	text, outcome := convHead(line.text), convHead(line.outcome)
+	if outcome == "" {
+		return ink(fit(text, width))
+	}
+	cells := ansi.StringWidth(outcome)
+	if room := width - cells - convGap; room >= convTextLeast/2 {
+		words, measured := fitWidth(text, room)
+		return ink(words) + strings.Repeat(" ", width-measured-cells) + pal.dim(outcome)
+	}
+	return ink(fit(text+railSep+outcome, width))
+}
+
+// actInFlight is the call in flight: the running mark and how long the program
+// has been waiting on its model — one line, the last on the page, gone the
+// moment the call's ending reaches the log. The mark comes off the vocabulary's
+// own door, so the line gets this terminal's repertoire; the clock is the
+// frame's and says nothing for the call's first second.
+func (a *app) actInFlight(turn delegate.Turn, width int) string {
+	mark := a.icon(tokens.GStepRunning)
+	room := width - ansi.StringWidth(mark) - 1
+	if room < 1 {
+		return ""
+	}
+	words := []string{actThinkingWord}
+	if !turn.Started.IsZero() {
+		if clock := countUpWord(a.now().Sub(turn.Started)); clock != "" {
+			words = append(words, clock)
+		}
+	}
+	return a.pal.ink(mark) + " " + a.pal.dim(fit(strings.Join(words, railSep), room))
+}
+
+// actColumns decides the page's two widths from the step words on it: the
+// column the words stand in and the room the actions get beside it. A column
+// of zero is the narrow layout, where every word stands on its own line and
+// the actions hang [convIndent] cells under it.
+func actColumns(lines []actLine, width int) (int, int) {
+	widest := ansi.StringWidth(actBriefWord)
+	for _, line := range lines {
+		if cells := ansi.StringWidth(strings.TrimSpace(line.step)); cells > widest {
+			widest = cells
+		}
+	}
+	column := min(min(widest, convLabelMost), width/3)
+	if column < 1 || width-column-convGap < convTextLeast {
+		return 0, width - convIndent
+	}
+	return column, width - column - convGap
+}
+
+// actLines is everything the page draws under the brief, in the order it
+// happened: the program's actions as its own vocabulary read them, and what
+// only its calls know — a compaction the program did not report, a change of
+// the model answering, a call refused or failed.
+//
+// A RUN FROM BEFORE THE ACTION LOG has only its calls, and its page is drawn
+// from them in the same shape: each tool its model asked for as an action, and
+// no step's word, because nothing recorded which step it served. A run whose
+// calls were never logged either draws the steps its program reported.
+func actLines(page session.PlanTaskPage) []actLine {
+	program := convProgramOf(page)
+	var lines []actLine
+	for _, shown := range program.Actions {
+		if strings.TrimSpace(shown.Model) != "" {
+			// A SWITCH IS READ WITH THE CALLS BELOW, which say the same move from
+			// the model's side; the program's line gives it its reason.
+			continue
+		}
+		lines = append(lines, actLine{at: shown.At, step: shown.Step, text: shown.Text, outcome: shown.Outcome, steer: shown.Steer})
+	}
+	lines = append(lines, actFromCalls(program)...)
+	if len(program.Actions) == 0 && len(program.Turns) == 0 {
+		for _, step := range page.Steps {
+			if command := planDisplayCommand(step.Command, step.Parts); command != "" && !step.NotRun {
+				lines = append(lines, actLine{text: command})
+			}
+		}
+	}
+	// THE ACTIONS THE PAGE CUT ARE CUT FROM THE CALLS TOO: a line from a call
+	// older than the first action the page carries would stand above the count
+	// of the ones it left out.
+	if program.EarlierActions > 0 && len(program.Actions) > 0 {
+		first := program.Actions[0].At
+		kept := lines[:0]
+		for _, line := range lines {
+			if !line.at.Before(first) {
+				kept = append(kept, line)
+			}
+		}
+		lines = kept
+	}
+	sort.SliceStable(lines, func(i, j int) bool { return lines[i].at.Before(lines[j].at) })
+	return lines
+}
+
+// actFromCalls is what the page draws from the program's calls: the compactions
+// the program did not report itself, every change of the model answering its
+// work — with the program's reason when it gave one, and the program's own line
+// for a move the calls do not show — and every call refused or failed; and for
+// a run with no action log at all, every tool its model asked for.
+func actFromCalls(program *session.PlanProgram) []actLine {
+	turns := program.Turns
+	var lines []actLine
+	memory := func(from, to time.Time) bool {
+		for _, shown := range program.Actions {
+			if shown.Memory && !shown.At.Before(from.Add(-actNear)) && !shown.At.After(to.Add(actNear)) {
+				return true
+			}
+		}
+		return false
+	}
+	switches := map[int]bool{}
+	switchFor := func(model string, from, to time.Time) (string, bool) {
+		for i, shown := range program.Actions {
+			if switches[i] || strings.TrimSpace(shown.Model) == "" || !actSameModel(convModelWordOf(shown.Model), model) {
+				continue
+			}
+			if !shown.At.Before(from.Add(-actNear)) && !shown.At.After(to.Add(actNear)) {
+				switches[i] = true
+				return shown.Reason, true
+			}
+		}
+		return "", false
+	}
+	previous, previousAt := "", time.Time{}
+	compacted := -1
+	for i := 0; i < len(turns); i++ {
+		turn := turns[i]
+		switch {
+		case convHead(turn.Refused) != "":
+			lines = append(lines, actLine{at: turn.Started, text: actRefusedWord + railSep + convHead(turn.Refused), quiet: true})
+			continue
+		case convHead(turn.Failed) != "":
+			lines = append(lines, actLine{at: turn.Started, text: actFailedWord + railSep + convHead(turn.Failed), quiet: true})
+			continue
+		}
+		if turn.Restarted && i > compacted {
+			// ONE COMPACTION IS A RUN OF RESTARTED CALLS: the summary itself and
+			// the call after it both rewrite the history, and a person reads one
+			// line for them.
+			last := i
+			for last+1 < len(turns) && turns[last+1].Restarted {
+				last++
+			}
+			compacted = last
+			end := turns[last].Ended
+			if end.IsZero() {
+				end = turns[last].Started
+			}
+			if !memory(turn.Started, end) {
+				lines = append(lines, actLine{at: turn.Started, text: actCompactedWord})
+			}
+		}
+		if turn.InFlight() {
+			continue
+		}
+		// THE SUMMARY CALL IS NOT THE WORK. A restarted call that asked for no
+		// tool, followed by another restarted call, is the history being
+		// summarized — on a cheaper model, often — and its model is not a change
+		// of the model doing the work.
+		if turn.Restarted && len(turn.Calls) == 0 && i+1 < len(turns) && turns[i+1].Restarted {
+			continue
+		}
+		model := convModelWord(turn)
+		if previous != "" && model != "" && !actSameModel(model, previous) {
+			reason, _ := switchFor(model, previousAt, turn.Ended)
+			text := actSwitchedWord + " " + model
+			if reason != "" {
+				text += railSep + reason
+			}
+			lines = append(lines, actLine{at: turn.Started, text: text})
+		}
+		if model != "" {
+			previous, previousAt = model, turn.Started
+		}
+		if len(program.Actions) == 0 {
+			for _, call := range turn.Calls {
+				if text := actCallText(call); text != "" {
+					lines = append(lines, actLine{at: turn.Ended, text: text})
+				}
+			}
+		}
+	}
+	// A MOVE THE CALLS DO NOT SHOW is still the program's to say: the router
+	// moved the work and the model API answered on the model it moved to.
+	for i, shown := range program.Actions {
+		if strings.TrimSpace(shown.Model) == "" || switches[i] {
+			continue
+		}
+		text := actSwitchedWord + " " + convModelWordOf(shown.Model)
+		if reason := strings.TrimSpace(shown.Reason); reason != "" {
+			text += railSep + reason
+		}
+		lines = append(lines, actLine{at: shown.At, step: shown.Step, text: text})
+	}
+	return lines
+}
+
+// actSameModel reports whether two short model words name one model: the same
+// word, or one a dated build or variant of the other (`deepseek-v4-flash` and
+// `deepseek-v4-flash-0731`), which is how the model a program asked for and the
+// one the service answered with are often spelled.
+func actSameModel(a, b string) bool {
+	return a == b || strings.HasPrefix(a, b+"-") || strings.HasPrefix(b, a+"-")
+}
+
+// actCallText is one tool a model asked for, as an action a person reads, for a
+// run whose program kept no action log: the verb and what it was about.
+func actCallText(call delegate.ToolUse) string {
+	name := convHead(call.Name)
+	about := convHead(convCallAbout(call.Args))
+	if name == "" {
+		return ""
+	}
+	verb := map[string]string{
+		"read": "read", "edit": "edited", "write": "wrote", "apply_patch": "patched",
+		"bash": "ran", "grep": "searched", "glob": "listed", "webfetch": "fetched",
+		"websearch": "searched the web for",
+	}[name]
+	switch {
+	case name == "submit":
+		return "handed in its work"
+	case verb == "" || about == "":
+		return strings.TrimSpace(name + " " + about)
+	}
+	return verb + " " + about
+}
+
+// taskConversationBrief is the brief as the page opens with it: the description
+// through the reader every page draws a brief with ([planBriefRows]), at the
+// width the words get beside the step words, folded to [briefFoldLines] with
+// the line that says how many more and which key opens them.
 func taskConversationBrief(page session.PlanTaskPage, text int, briefFull bool) []string {
 	lines := planBriefRows(page.Description, text)
 	if briefFull || len(lines) <= briefFoldLines {
@@ -352,209 +627,21 @@ func taskConversationBrief(page session.PlanTaskPage, text int, briefFull bool) 
 // taskConversationFolds reports whether a program's brief is long enough to
 // fold at the frame's own width, which is what `ctrl+o` asks before it opens
 // or closes it ([app.taskPlanKey]). It measures the brief at the width the
-// conversation draws it at, so the key and the fold line cannot disagree.
+// page draws it at, so the key and the fold line cannot disagree.
 func (a *app) taskConversationFolds() bool {
 	width, _ := a.size()
-	return convBriefFolds(a.taskSheet.plan, width-2)
+	return convBriefFolds(a.taskSheet.plan, width-2, a.taskSheet.planCalls)
 }
 
-// convBriefFolds is whether a program's brief folds when its conversation is
-// drawn at this width — the one measure both of a program's pages ask before
-// their `ctrl+o` opens or closes it.
-func convBriefFolds(page session.PlanTaskPage, width int) bool {
-	_, text := convColumns(convNames(convProgramOf(page), convProgramName(page)), width)
+// convBriefFolds is whether a program's brief folds when its page is drawn at
+// this width — as its actions, or as its calls — the one measure both of a
+// program's pages ask before their `ctrl+o` opens or closes it.
+func convBriefFolds(page session.PlanTaskPage, width int, calls bool) bool {
+	_, text := actColumns(actLines(page), width)
+	if calls {
+		_, text = convColumns(convNames(convProgramOf(page), convProgramName(page)), width)
+	}
 	return len(planBriefRows(page.Description, text)) > briefFoldLines
-}
-
-// convProgramSide is what the program said on one call, in the lines a person
-// reads for it: nothing new on the first call, whose words the brief above
-// already stands for; one sentence on a call made after it summarized its own
-// history; and otherwise its newest messages, each as its first line — a tool's
-// result as `<tool>: <line>` and its own words as they were.
-//
-// NEITHER A PROMPT NOR AN ECHO IS A ROW. A `system` message is the program
-// instructing its model, and an `assistant` one is the model's last answer
-// handed back to it, which the model's own side has already drawn; and a
-// message that is the brief again says nothing the opening has not.
-func (a *app) convProgramSide(turn delegate.Turn, speaker, briefHead string, first bool) convSide {
-	pal := a.pal
-	side := convSide{name: speaker}
-	if turn.Restarted {
-		side.lines = append(side.lines, convLine{text: convRestartedWord, ink: pal.dim})
-		return side
-	}
-	if first {
-		return side
-	}
-	var said []string
-	for _, message := range turn.Sent {
-		line := convHead(message.Text)
-		switch strings.TrimSpace(message.Role) {
-		case "system", "assistant":
-			continue
-		case "tool":
-			if tool := strings.TrimSpace(message.Tool); tool != "" {
-				line = tool + ": " + line
-			}
-		default:
-			if convRepeatsBrief(line, briefHead) {
-				continue
-			}
-		}
-		if strings.TrimSpace(line) != "" {
-			said = append(said, line)
-		}
-	}
-	shown := said
-	if len(shown) > convSaidMost {
-		shown = shown[:convSaidMost]
-	}
-	for _, line := range shown {
-		side.lines = append(side.lines, convLine{text: line, ink: pal.dim})
-	}
-	if more := len(said) - len(shown); more > 0 {
-		side.lines = append(side.lines, convLine{text: "+" + itoa(more) + " more", ink: pal.dim})
-	}
-	return side
-}
-
-// convModelSide is what the model answered on one call: the first line of its
-// words, and every tool it asked the program to run, one dim row each behind
-// that tool's action mark — the same family marks the conversation's own steps
-// wear ([app.actionMarkFor]), so a person who has learned `✎` for an edit there
-// reads it here.
-func (a *app) convModelSide(turn delegate.Turn) convSide {
-	pal := a.pal
-	side := convSide{name: convModelWord(turn)}
-	if reply := convHead(turn.Reply); reply != "" {
-		side.lines = append(side.lines, convLine{text: reply, ink: pal.ink})
-	}
-	for _, call := range turn.Calls {
-		name := convHead(call.Name)
-		if name == "" {
-			continue
-		}
-		words := name
-		if about := convHead(convCallAbout(call.Args)); about != "" {
-			words += " " + about
-		}
-		mark := a.actionMarkFor(session.ActionCategoryForTool(name))
-		side.lines = append(side.lines, convLine{lead: pal.dim(mark) + " ", text: words, ink: pal.dim})
-	}
-	return side
-}
-
-// convInFlight is the call in flight: the running mark, the model it went to,
-// and how long it has been out — one line, the last on the page, gone the moment
-// its ending reaches the log. The mark comes off the vocabulary's own door, so
-// the line gets this terminal's repertoire; the clock is the frame's and says
-// nothing for the call's first second.
-func (a *app) convInFlight(turn delegate.Turn, width int) string {
-	mark := a.icon(tokens.GStepRunning)
-	room := width - ansi.StringWidth(mark) - 1
-	if room < 1 {
-		return ""
-	}
-	var words []string
-	if model := convModelWordOf(turn.Model); model != "" {
-		words = append(words, model)
-	}
-	if !turn.Started.IsZero() {
-		if clock := countUpWord(a.now().Sub(turn.Started)); clock != "" {
-			words = append(words, clock)
-		}
-	}
-	return a.pal.ink(mark) + " " + a.pal.dim(fit(strings.Join(words, railSep), room))
-}
-
-// convDraw lays one side out: its name in the column on its first line and its
-// words beside it, or — where the frame is too narrow for a column — its name
-// on a line of its own and its words hung under it. EVERY ROW IS FITTED TO THE
-// WIDTH: the name is cut in the middle when it must be ([rowTrim]), a mark in
-// front of the words is kept whole, and the words give up their tail.
-func convDraw(side convSide, column, width int, pal palette) []string {
-	var out []string
-	if column == 0 {
-		if name := strings.TrimSpace(side.name); name != "" {
-			label, _ := rowTrim(name, width, false)
-			out = append(out, pal.muted(label))
-		}
-		indent := strings.Repeat(" ", convIndent)
-		for _, line := range side.lines {
-			out = append(out, indent+convWords(line, width-convIndent))
-		}
-		return out
-	}
-	gap := strings.Repeat(" ", convGap)
-	blank := strings.Repeat(" ", column)
-	for i, line := range side.lines {
-		cell := blank
-		if i == 0 && strings.TrimSpace(side.name) != "" {
-			label, _ := rowTrim(side.name, column, false)
-			cell = padTo(pal.muted(label), column)
-		}
-		out = append(out, cell+gap+convWords(line, width-column-convGap))
-	}
-	return out
-}
-
-// convWords is one line's words at their width, behind its mark when it has
-// one. A width too small to hold the mark draws the words alone.
-func convWords(line convLine, width int) string {
-	if width < 1 {
-		return ""
-	}
-	ink := line.ink
-	if ink == nil {
-		ink = func(s string) string { return s }
-	}
-	lead := line.lead
-	if lead != "" {
-		if cells := ansi.StringWidth(ansi.Strip(lead)); cells < width {
-			return lead + ink(fit(line.text, width-cells))
-		}
-	}
-	return ink(fit(line.text, width))
-}
-
-// convColumns decides the page's two widths from the names on it: the column
-// the names stand in, and the room their words get beside it. A column of zero
-// is the narrow layout, where every name stands on its own line and the words
-// hang [convIndent] cells under it.
-func convColumns(names []string, width int) (int, int) {
-	widest := 0
-	for _, name := range names {
-		if cells := ansi.StringWidth(strings.TrimSpace(name)); cells > widest {
-			widest = cells
-		}
-	}
-	column := widest
-	if column > convLabelMost {
-		column = convLabelMost
-	}
-	if third := width / 3; column > third {
-		column = third
-	}
-	if column < 1 || width-column-convGap < convTextLeast {
-		return 0, width - convIndent
-	}
-	return column, width - column - convGap
-}
-
-// convNames is every name the page will draw in its column: the program's,
-// codeaf's when a call was refused, and the model of every call on the page.
-func convNames(program *session.PlanProgram, speaker string) []string {
-	names := []string{speaker}
-	for _, turn := range program.Turns {
-		if strings.TrimSpace(turn.Refused) != "" {
-			names = append(names, convCodeaf)
-			continue
-		}
-		if !turn.InFlight() {
-			names = append(names, convModelWord(turn))
-		}
-	}
-	return names
 }
 
 // convProgramName is the name the program's side wears: the program record's,
@@ -621,25 +708,6 @@ func convClean(line string) string {
 		}
 		return r
 	}, ansi.Strip(line))
-}
-
-// convBriefHead is the brief's first line as a program's own message would
-// carry it, so a message that is the brief again can be told from one that
-// says something new.
-func convBriefHead(description string) string { return convHead(description) }
-
-// convRepeatsBrief reports whether a message's first line is the brief's again.
-// The page carries a message's head cut at a couple of hundred bytes with the
-// cut marked, so a long brief repeated is the brief's own line up to that mark.
-func convRepeatsBrief(line, briefHead string) bool {
-	if line == "" || briefHead == "" {
-		return false
-	}
-	if line == briefHead {
-		return true
-	}
-	cut := strings.TrimSuffix(line, glyphMore)
-	return cut != line && cut != "" && strings.HasPrefix(briefHead, cut)
 }
 
 // convAboutKeys are the arguments that say what a call was about, most telling

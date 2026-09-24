@@ -2154,6 +2154,9 @@ func (a *app) roomHint() string {
 		// card and never through the dismiss key (stop.go), so this is the key a
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
+		if p := a.programOf(); p != nil {
+			return roomStopHint + railSep + programCallsHint(p.calls)
+		}
 		return roomStopHint
 	case a.roomLandingAsking():
 		// THE ROOM'S ANSWER TO "IT SAYS LOOK IT OVER, NOW WHAT". The node has
@@ -2166,6 +2169,11 @@ func (a *app) roomHint() string {
 		// slot and the roster's cannot name three different letters for one
 		// question ([app.landingHintAt]).
 		return a.landingHintAt(a.room.id, a.width, "")
+	}
+	// A PROGRAM'S ROOM WITH NOTHING TO STOP still turns between its actions and
+	// its raw calls, and says the key that does it.
+	if p := a.programOf(); p != nil {
+		return programCallsHint(p.calls)
 	}
 	return ""
 }

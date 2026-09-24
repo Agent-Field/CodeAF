@@ -48,8 +48,11 @@ type programRoom struct {
 	readAt    time.Time
 	reading   bool
 	briefFull bool
-	inner     int
-	said      []string
+	// calls says the room shows the program's raw calls instead of its actions
+	// ([programCallsKey]); a room opens on the actions.
+	calls bool
+	inner int
+	said  []string
 }
 
 // programRoomRefusal is what a program's room says about its box: the fact, and
@@ -268,7 +271,7 @@ func (a *app) programRoomRows(width int) []row {
 	p.inner = inner
 	pal := a.pal
 	var out []row
-	for _, line := range a.programBody(p.page, inner, p.briefFull) {
+	for _, line := range a.programBody(p.page, inner, p.briefFull, p.calls) {
 		out = append(out, row{text: line, entry: -1})
 	}
 	if len(p.said) > 0 {
@@ -397,9 +400,11 @@ func (a *app) programStopTarget() stopTarget {
 }
 
 // programRoomKey is what a program's room takes before the room's own keys:
-// `ctrl+o` folds and unfolds the brief when it is long enough to fold, and the
-// thinking chord is taken and does nothing, because a program's run has no
-// thinking level this surface can move. Everything else is the room's.
+// `ctrl+o` folds and unfolds the brief when it is long enough to fold,
+// [programCallsKey] turns the page between the program's actions and its raw
+// calls, and the thinking chord is taken and does nothing, because a program's
+// run has no thinking level this surface can move. Everything else is the
+// room's.
 func (a *app) programRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	p := a.programOf()
 	if p == nil {
@@ -411,10 +416,15 @@ func (a *app) programRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if width <= 0 {
 			width = gutterInner(a.bodyWidth())
 		}
-		if !convBriefFolds(p.page, width) {
+		if !convBriefFolds(p.page, width, p.calls) {
 			return nil, false
 		}
 		p.briefFull = !p.briefFull
+		a.room.dirty = true
+		a.touch()
+		return nil, true
+	case programCallsKey:
+		p.calls = !p.calls
 		a.room.dirty = true
 		a.touch()
 		return nil, true

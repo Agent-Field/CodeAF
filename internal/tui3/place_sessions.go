@@ -109,8 +109,11 @@ type tasksPlace struct {
 	plan          session.PlanTaskPage
 	planOn        bool
 	planBriefFull bool
-	planAt        int
-	planBack      []session.PlanTaskPage
+	// planCalls says a program's page shows its raw calls instead of its
+	// actions ([programCallsKey]); every page opens on the actions.
+	planCalls bool
+	planAt    int
+	planBack  []session.PlanTaskPage
 	// planNote is the note a person types on a plan task's page, and it is the
 	// [editor] every other box on this surface is rather than a string of its own
 	// (the filter is one, and so is the conversation's composer). Typing on the

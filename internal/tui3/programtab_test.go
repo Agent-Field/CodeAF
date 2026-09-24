@@ -18,10 +18,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// programTabSaid is a line only the program's conversation draws: the model's
-// first answer in [programTurns]. Its presence on the frame is the program's
-// page being on screen.
-const programTabSaid = "I'll read the middleware and the store first."
+// programTabSaid is a line only the program's page draws: one of its actions in
+// [programActions]. Its presence on the frame is the program's page being on
+// screen.
+const programTabSaid = "wrote your brief down as its spec"
 
 // newProgramTabLab is a window in one conversation, "the run", that handed a
 // task to senior-dev: the task is node 7 of its graph and the run's root in

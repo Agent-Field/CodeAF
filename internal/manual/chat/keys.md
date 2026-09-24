@@ -2465,6 +2465,12 @@ and scroll the page one row only when there is no history to walk. `left` is
 deliberately **not** taken here — it falls through to the message box's
 back-navigation.
 
+**Inside a program's room** — a task handed to senior-dev — `ctrl+y` turns the page
+between the actions it took and its raw calls to its model, `ctrl+o` folds its brief, and
+the box sends nothing. While it works the keys row under the box reads
+`/stop · x with empty input · esc main · ctrl+y calls`, ending `ctrl+y actions` while the
+calls are showing; once it has ended the row is the `ctrl+y` clause alone.
+
 **`up` and `down` in a room mean what they mean in the message box**, in the same order:
 inside a multi-line message they move the caret; on the first line — or over an empty box
 — they walk your own history, newest first; and only with nothing to walk do they scroll
@@ -2529,6 +2535,18 @@ gives the roster a cursor to aim with. It never stops anything by itself: it rai
 card, and the card is answered below.
 
 The tasks pages describe what rooms and the roster are for.
+
+## See a program's raw calls — ctrl+y on senior-dev's page, the model calls behind its actions
+
+A program's task page — senior-dev's — opens on the actions it took, each under the step
+of its process. **`ctrl+y` turns it to the raw calls** it made to its model: what it sent,
+what the model answered, which model it was, and the call in flight. `ctrl+y` again turns
+it back. It works in the program's room in the conversation's tab and on its page in the
+tasks place, and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
+over the calls. Every page opens on the actions.
+
+It is a chord, so it never costs a character: the room's box keeps what you typed. It is
+not bound on any other task's page.
 
 ## Stopping work with `x` — the confirmation card, why the stop card needs enter as well as the number
 
@@ -3099,7 +3117,8 @@ answer:
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
 | `alt+e` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "alt+e — how hard the thing you are looking at thinks". Anywhere else it does nothing. On macOS it is shown as `opt+e`; the terminal must send Option as Alt/Meta, as for the other Option shortcuts |
 | `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `tasks` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
-| `ctrl+y`, `ctrl+z` | Not bound |
+| `ctrl+y` | **Bound in two places**: on a program's task page — senior-dev's, in its room or in the tasks place — it turns the page between the actions the program took and its raw calls to its model; in the `/files` list it copies the file under the cursor. Nowhere else |
+| `ctrl+z` | **Bound**: undo in every box, with `ctrl+shift+z` to redo — see "Undo what I typed" |
 | `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
 | `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |

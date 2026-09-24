@@ -80,13 +80,16 @@ var Program = delegate.Delegate{
 	// conversation (app's seniorDevDataDirectory, which git never sees).
 	Notes:     ".senior-dev",
 	CrewFlags: crewFlags,
-	// What a person reads while it works, one plain word per phase: getting
+	// What a person reads for its stages, one plain word per phase: getting
 	// ready, doing the work (every inner stage of a model turn included),
-	// handing it in, checking it, wrapping up. A test holds every stage in
-	// app.Stages to a word.
+	// handing it in, checking it, wrapping up. Its task's row reads them only
+	// until a record has named a step of its process — which its first,
+	// `bootstrap`, already does — so they are the words for a run whose records
+	// say no step. A test holds every stage in app.Stages to a word.
 	StageWords: stageWords,
 	// What each line of its action log reads as on its task's page, under the
-	// step of its process it served (actions.go).
+	// step of its process it served, and the step's word its task's row reads
+	// while it is in it (actions.go).
 	Present:  presentActions,
 	Default:  "run",
 	Page:     "senior-dev",

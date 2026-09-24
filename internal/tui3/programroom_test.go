@@ -272,14 +272,15 @@ func TestStopOnAProgramsRoomRaisesThePlanCard(t *testing.T) {
 }
 
 // THE ROOM AT A PHONE'S WIDTH keeps the conversation's strip and the trail, its
-// facts row keeps the stage and the spend, the conversation stands each name
-// on a line of its own, and no row of the frame is wider than the frame.
+// facts row keeps the step and the spend, the actions stand each step's word on
+// a line of its own with its actions hung under it, and no row of the frame is
+// wider than the frame.
 func TestAProgramsRoomAtFortyFourColumns(t *testing.T) {
 	a, _ := programRoomApp(t, 44, 30)
 	openProgramRoomNow(t, a)
 	frame, _, _ := a.frame()
 	text := plain(frame)
-	for _, want := range []string{"Home", "the run", "implement · $1.24", "senior-dev", "I'll read the middleware"} {
+	for _, want := range []string{"Home", "the run", "implement · $1.24", "IMPLEMENT", "edited internal/auth/"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the room at 44 columns lost %q:\n%s", want, text)
 		}
@@ -370,5 +371,30 @@ func TestAProgramRoomsClockStopsAtTheProgramsExit(t *testing.T) {
 	page.Row.Ended = time.Time{}
 	if got := a.taskPlanAge(page.Row); got != "21m 5s" {
 		t.Fatalf("a running program's page reads %q, want 21m 5s", got)
+	}
+}
+
+// THE ROOM TURNS TO THE RAW CALLS AND BACK ON ONE KEY, and its key row says
+// which: the calls while the room shows the actions, and the actions while it
+// shows the calls — beside the stop while there is work to stop.
+func TestAProgramRoomTurnsToItsRawCallsAndBack(t *testing.T) {
+	a, _ := programRoomApp(t, 120, 30)
+	openProgramRoomNow(t, a)
+	if hint := a.roomHint(); hint != roomStopHint+railSep+programCallsWord {
+		t.Fatalf("the room's key row reads %q, want the stop and the calls", hint)
+	}
+	if text := roomText(a); strings.Contains(text, "I'll read the middleware") || !strings.Contains(text, programTabSaid) {
+		t.Fatalf("the room does not open on the actions:\n%s", text)
+	}
+	drive(t, a, key(programCallsKey))
+	if text := roomText(a); !strings.Contains(text, "I'll read the middleware and the store first.") || !strings.Contains(text, "deepseek-v4-flash") {
+		t.Fatalf("the key did not turn the room to its calls:\n%s", text)
+	}
+	if hint := a.roomHint(); !strings.HasSuffix(hint, programActionsWord) {
+		t.Fatalf("the room's key row reads %q, want the way back to the actions", hint)
+	}
+	drive(t, a, key(programCallsKey))
+	if text := roomText(a); strings.Contains(text, "I'll read the middleware") || !strings.Contains(text, programTabSaid) {
+		t.Fatalf("the key did not turn the room back to its actions:\n%s", text)
 	}
 }

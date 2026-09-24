@@ -18,31 +18,57 @@ Use it for one change big enough to want an agent of its own for an hour, and sp
 well enough that nobody will be asked anything: a rewrite across a package, a migration,
 a feature with its tests. A change you would make in a few steps is not worth it.
 
-## Watching senior-dev work — open its task, its conversation with codeaf, how long it has run, stop it
+## Watching senior-dev work — open its task, what it is doing step by step, how long it has run, stop it
 
 A senior-dev run is a task of the conversation that started it. Its row is on the side
-list with the stage it is in and what it has spent so far, and a card in the conversation
+list with the step it is in and what it has spent so far, and a card in the conversation
 lands when it ends. Click the row or the card, or follow a task link to it, and its task
 opens **inside the conversation's own tab**: the tab strip stays on top, with the
 conversation's tab selected and `Home` beside it. senior-dev gets no tab of its own.
 
-The task shows senior-dev's conversation with codeaf: its brief, each model call with
-what senior-dev sent and what the model answered, and the call in flight. The line over
-it pins the stage, the spend of the run's ceiling, the number of calls and how long the
-run has been going — the same time the side list and the landed card show, counted from
-the moment codeaf handed the work over.
+The task shows **what senior-dev is doing**, action by action, each under the step of its
+process it served — its brief, the workspace it set up, what it read and ran and changed,
+its hand-in, the build and tests it ran itself, and how it finished — with the call to its
+model in flight as the last line, `◐ thinking` and its seconds. The next section says what
+each step means. The line over it pins the step, the spend of the run's ceiling, the
+number of model calls and how long the run has been going — the same time the side list
+and the landed card show, counted from the moment codeaf handed the work over.
 
-**The stage is said in plain words.** On the row and on that line senior-dev's stage
-reads `starting`, `reading the brief`, `working`, `handing in its work`, `checking its
-work` or `finishing` — never senior-dev's own names for its inner phases. The whole of its
-work on the change, every model call and tool included, reads `working`; the build and
-tests it runs at the end, and a last turn to leave its work in a state that stands, read
-`checking its work`.
+**The raw calls are one key away.** `ctrl+y` turns the page to senior-dev's calls to its
+model — what it sent, what the model answered, and which model it was — and `ctrl+y`
+turns it back; the key row says `ctrl+y calls` or `ctrl+y actions`.
 
 `esc`, a press on the conversation's tab, or a press on `Home` leaves it, and the run goes
 on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.
 Nothing typed there reaches senior-dev: the box says `senior-dev reads no messages — say
 it to main`, and `enter` says the same line and keeps your words in the box.
+
+## What is senior-dev doing — the steps on senior-dev's page, what spec, explore, pin, checklist, implement, submit, verify mean
+
+The word down the left of senior-dev's page, and on its row while it runs, is the step of
+its own process an action served. senior-dev has no planner, reviewer or helper agent:
+one model works through the middle steps in the order it chooses, so a step's word comes
+back whenever it returns to that step.
+
+- `setup` — it set up the folder it works in: `git`, or `no git history` for a plain
+  folder, whose checkpoints it keeps outside it.
+- `spec` — it wrote your brief down word for word as its spec, and read it back.
+- `explore` — it read, searched and ran commands before changing any file.
+- `pin` — it wrote down the one command that shows the work passes.
+- `checklist` — it listed what the brief asks for, and ticked it off.
+- `implement` — it changed files, and everything it read or ran after its first change.
+- `submit` — it handed in its work: `handed in its work · 4 files · 5 of 5 ticked`, or
+  `its hand-in was refused` and why. The work is frozen at that moment.
+- `verify` — with no model, it ran the project's own build and tests itself, one line per
+  command with `passes` or `fails · exit N`, then what they came to. It also checks the
+  tree this way when its model stops without handing in.
+- `finish` — what it did to the tree it leaves, the size of its change, and its ending.
+
+Lines with no word of their own are senior-dev steering its model in the step already
+under way, drawn quieter: `told its model what it found, and to finish and hand in (nudge
+1)`, `time is short: gave its model one last turn to finish`, a dropped call retried, a
+tool call written as text corrected — and `compacted its memory` and `switched to <model>`
+with its reason.
 
 ## How do I ask senior-dev for a change — writing the brief, what to put in it
 
@@ -236,8 +262,8 @@ and never more than a quarter of it. When that window opens it gets one last tur
 submit.
 
 **When none of your model services can serve the model it asks for**, codeaf answers the
-call on the run's own work model — the one a task's own worker would use — and the
-conversation on the task page names the model that answered. When nothing here can serve
+call on the run's own work model — the one a task's own worker would use — and the raw
+calls on the task page (`ctrl+y`) name the model that answered. When nothing here can serve
 that model either, the conversation's own model may answer instead, and the page names
 whichever model did. A dated build or a variant of the model it asked for, such as
 `deepseek/deepseek-v4-pro-0731` or `qwen/qwen3.6-plus:free`, is that model and is not named
@@ -442,9 +468,10 @@ own, under its own task number, with its own brief and its own page. The old run
 stays as the record of what it did.
 
 Everything senior-dev said while it worked (each stage and what it knew at the time)
-is kept in `delegate-stderr.log` in the task's record folder. Its `agent-summary` there
+is kept in `delegate-stderr.log` in the task's record folder, and every stage, step and
+ending it reported — what its page draws — in `delegate-actions.jsonl` beside it. Its `agent-summary` there
 adds up each of its agents' calls, time and cost; the cost is the price codeaf's model
 API told it for each call, not a catalog estimate, and a call nobody priced adds nothing. A run started at a shell has
-no task, so its record — that log, its conversation with codeaf, its stages and when it
-started and ended — is kept in a folder of its own under
+no task, so its record — that log, its conversation with codeaf, its actions, its stages
+and when it started and ended — is kept in a folder of its own under
 `~/.codeaf/v3/carried/senior-dev/`, one per run.

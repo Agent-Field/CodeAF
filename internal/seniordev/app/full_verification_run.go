@@ -58,6 +58,12 @@ func newProjectVerificationRun(runner *pipeline, ctx context.Context) *projectVe
 }
 
 func (run *projectVerificationRun) run() projectVerificationResult {
+	// THE CHECK SAYS IT HAS STARTED, so a reader following the run knows
+	// senior-dev is running the project's build and tests itself before the
+	// first of them has finished. It reports; it decides nothing.
+	run.runner.events.stage("verification", "running", map[string]any{
+		"commands": len(run.plan.Entrypoints),
+	})
 	for _, entrypoint := range run.plan.Entrypoints {
 		observation := run.observe(entrypoint)
 		run.record(observation)

@@ -76,7 +76,7 @@ func presentActions() delegate.ActionReader {
 func nudged(attempt int) delegate.Shown {
 	return delegate.Shown{
 		Step: stepWords[app.StepImplement], Steer: true,
-		Text: fmt.Sprintf("its model stopped without handing in; told it what it found and to finish (nudge %d)", attempt),
+		Text: fmt.Sprintf("told its model what it found, and to finish and hand in (nudge %d)", attempt),
 	}
 }
 
@@ -199,7 +199,13 @@ func patchedFile(tool, about string) string {
 func presentStage(stage, status string, facts stageFacts) (delegate.Shown, bool) {
 	switch stage + "/" + status {
 	case "bootstrap/ready":
-		return delegate.Shown{Step: setupWord, Text: "set up its workspace", Outcome: facts.text("recorder")}, true
+		// How it keeps its record of the tree: in git, or — in a folder with no
+		// git history, `--in-place` — in checkpoints of its own outside it.
+		outcome := facts.text("recorder")
+		if outcome == "snapshot" {
+			outcome = "no git history"
+		}
+		return delegate.Shown{Step: setupWord, Text: "set up its workspace", Outcome: outcome}, true
 	case "intake/captured":
 		return delegate.Shown{Step: stepWords[app.StepBrief], Text: "wrote your brief down as its spec"}, true
 
@@ -251,6 +257,8 @@ func presentStage(stage, status string, facts stageFacts) (delegate.Shown, bool)
 	case "submit/refused":
 		return delegate.Shown{Step: stepWords[app.StepSubmit], Text: "its hand-in was refused", Outcome: refusalWord(facts.text("reason_class"))}, true
 
+	case "verification/running":
+		return delegate.Shown{Step: stepWords[app.StepVerify], Text: "checked its work itself, with the project's own build and tests"}, true
 	case "verification/pass", "verification/fail":
 		shown := delegate.Shown{Step: stepWords[app.StepVerify]}
 		switch {

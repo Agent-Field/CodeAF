@@ -864,7 +864,7 @@ func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened fun
 			}
 			a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
 			a.taskSheet.planPageAt = a.now()
-			a.taskSheet.planBriefFull = false
+			a.taskSheet.planBriefFull, a.taskSheet.planCalls = false, false
 			a.taskSheet.planAt = -1
 			a.taskSheet.detailTop = 0
 			// A PAGE OPENS AT THE LIVE EDGE. The newest step is the reason the page
@@ -889,7 +889,7 @@ func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened fun
 // closeTaskPlan backs out one layer to the list, which is the card's own `esc`.
 func (a *app) closeTaskPlan() {
 	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = session.PlanTaskPage{}, false, false
-	a.taskSheet.planBriefFull = false
+	a.taskSheet.planBriefFull, a.taskSheet.planCalls = false, false
 	a.taskSheet.detailTop, a.taskSheet.planStick = 0, false
 	// A half-typed note does not survive the page it was typed on, which is the
 	// box's own law everywhere here ([app.placeHomeGesture] resets the box it
@@ -1208,6 +1208,12 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 				return a.taskSheetPlanFrom(old.Children[a.taskSheet.planAt].ID, &old)
 			}
 			return nil
+		case programCallsKey:
+			// THE RAW CALLS, ONE KEY AWAY, and the same key back to the actions
+			// (programcalls.go).
+			a.taskSheet.planCalls = !a.taskSheet.planCalls
+			a.touch()
+			return nil
 		case "esc", "left", taskSheetKey, "up", "ctrl+p", "down", "ctrl+n", "pgup", "pgdown", "ctrl+o":
 		default:
 			return nil
@@ -1512,9 +1518,12 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 // first is the scroll.
 func (a *app) taskPlanKeys() string {
 	parts := []string{"↑↓ scroll"}
-	// A PROGRAM'S PAGE SENDS NOTHING, so its key line offers no send.
+	// A PROGRAM'S PAGE SENDS NOTHING, so its key line offers no send; it offers
+	// the key that turns it between the program's actions and its raw calls.
 	if !a.taskPlanIsProgram() {
 		parts = append(parts, "enter send")
+	} else {
+		parts = append(parts, programCallsHint(a.taskSheet.planCalls))
 	}
 	parts = append(parts, a.tasksPlanKeyWords(a.taskSheet.plan.Row)...)
 	parts = append(parts, taskCardBackWord)

@@ -935,6 +935,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how long did the senior-dev run take", "senior-dev"},
 		{"senior-dev's page still says running after codeaf crashed", "senior-dev"},
 		{"can my other window see the senior-dev run", "senior-dev"},
+		// Its page is the actions it took, each under the step of its process,
+		// asked the ways somebody watching it would ask.
+		{"what is senior-dev doing", "senior-dev"},
+		{"what do the steps on senior-dev's page mean", "senior-dev"},
+		{"how do I see senior-dev's raw calls to its model", "senior-dev"},
 		{"which folder does a delegate work in", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
@@ -2826,6 +2831,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the program saying to the model on its task page", "worker-harness"},
 		{"what does the delegate's task page show", "worker-harness"},
 		{"can I leave a note for the delegate", "worker-harness"},
+		{"what are the words down the side of a program's task page", "worker-harness"},
+		{"what does ctrl+y do on a program's page", "keys"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

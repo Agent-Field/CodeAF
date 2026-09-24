@@ -215,7 +215,7 @@ func TestEachVerificationCommandIsReportedAsAVerifyStep(t *testing.T) {
 	if !failed || verification.Failed == nil {
 		t.Fatalf("the failing build is not a verify step with its exit and tail: %+v", host.stepRecords)
 	}
-	if last := host.stages[len(host.stages)-1]; last != "verification/fail" {
-		t.Fatalf("the last stage is %q, want the verification's own result after its steps", last)
+	if first, last := host.stages[0], host.stages[len(host.stages)-1]; first != "verification/running" || last != "verification/fail" {
+		t.Fatalf("the stages are %v, want the check's start before its steps and its own result after them", host.stages)
 	}
 }
