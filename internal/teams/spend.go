@@ -118,6 +118,13 @@ func SpendStamp(profileDir, ledger string) string {
 	return Stamp(profileDir) + "|" + stampOf(ledger)
 }
 
+// TeamSpendStamp is the stamp of one team's day as [TeamSpend] reads it: the
+// day, the team, and [SpendStamp] over the machine's ledger. The engine and a
+// local window both answer "same" from it.
+func TeamSpendStamp(profileDir, teamID, day string) string {
+	return day + "|" + teamID + "|" + SpendStamp(profileDir, UsageLedgerPath())
+}
+
 // sessionIDs is the ledger ids a conversation key can carry: its folder's
 // name, the ordinary layout, and for an older flat file its own name.
 func sessionIDs(key string) []string {
