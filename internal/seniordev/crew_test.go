@@ -22,3 +22,12 @@ func TestTheCrewBecomesSeniorDevsOwnPools(t *testing.T) {
 		t.Fatalf("flags for a crew with one seat = %q", got)
 	}
 }
+
+// Models the person asked for are the working pool in place of the crew's
+// working seat, kept as asked (`--asked`), and the light seat still summarises.
+func TestTheModelsAPersonAskedForAreSeniorDevsWorkingPool(t *testing.T) {
+	got := strings.Join(crewFlags(delegate.Crew{Hands: "vendor/hands", Light: "vendor/light", Asked: []string{"vendor/one", "vendor/two"}}), " ")
+	if want := "--crew --asked --high openrouter/vendor/one,openrouter/vendor/two --low openrouter/vendor/light"; got != want {
+		t.Fatalf("flags = %q, want %q", got, want)
+	}
+}

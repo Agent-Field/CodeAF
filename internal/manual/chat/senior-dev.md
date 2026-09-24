@@ -278,9 +278,18 @@ about the same way, including one codeaf then set aside because it was not usabl
 priced by its receipt, or kept as a call nobody could price. codeaf never guesses a figure
 for either.
 
-## Which models does senior-dev use — your crew, its own list, --high
+## Which models does senior-dev use — your crew, a model you ask for, its own list, --high
 
-**From the chat it uses your crew.** codeaf hands senior-dev two of the conversation's
+**Ask for a model and it works with that one.** Say which in the chat — "use senior-dev
+with kimi-k2.6", or several: "with kimi-k2.6 and deepseek-v4-pro" — and senior-dev works
+with exactly those, routing among them call by call when there are several; the card and
+the task's first line name them. A name that fits more than one model is put to you to
+settle. A model senior-dev's model catalog does not know how to size cannot be used: the
+run ends before its first call with `senior-dev cannot work with <model>: …`, and nothing
+is spent. The models are fixed when the run starts; changing the crew later does not move
+a run already working. `/senior-dev` typed with a brief uses your crew.
+
+**Otherwise, from the chat it uses your crew.** codeaf hands senior-dev two of the conversation's
 crew: the worker (hands) model is the one it works with, and the low model its history
 summaries. Change the crew and the next run follows. The mastermind (brain) model is not
 used: every call senior-dev makes is either its work or a history summary.

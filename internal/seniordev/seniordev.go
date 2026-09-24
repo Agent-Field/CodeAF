@@ -100,13 +100,30 @@ var Program = delegate.Delegate{
 // one (baked/tier.go). No call rides the frontier tier, so the flag changed
 // nothing, while the manual told the person their mastermind model handled
 // senior-dev's hardest calls.
+//
+// MODELS THE PERSON ASKED FOR ARE THE WORKING POOL, AND ARE KEPT AS ASKED.
+// They go on --high in place of the crew's working seat, with --asked, which
+// takes that pool out of the crew's leniency: a model the person named that
+// senior-dev cannot size ends the run before its first call, naming it,
+// rather than being quietly swapped for its own list.
 func crewFlags(crew delegate.Crew) []string {
 	flags := []string{"--crew"}
+	high := app.CrewModel(crew.Hands)
+	if len(crew.Asked) > 0 {
+		asked := make([]string, 0, len(crew.Asked))
+		for _, model := range crew.Asked {
+			if model = app.CrewModel(model); model != "" {
+				asked = append(asked, model)
+			}
+		}
+		high = strings.Join(asked, ",")
+		flags = append(flags, "--asked")
+	}
 	for _, seat := range []struct{ flag, model string }{
-		{"--high", crew.Hands}, {"--low", crew.Light},
+		{"--high", high}, {"--low", app.CrewModel(crew.Light)},
 	} {
-		if model := app.CrewModel(seat.model); model != "" {
-			flags = append(flags, seat.flag, model)
+		if seat.model != "" {
+			flags = append(flags, seat.flag, seat.model)
 		}
 	}
 	return flags
@@ -130,6 +147,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	low := fs.String("low", "", "models for the history summary (default: --high)")
 	frontier := fs.String("frontier", "", "models for the frontier tier (no call uses it)")
 	crew := fs.Bool("crew", false, "the models came from codeaf's crew: skip any it cannot size")
+	asked := fs.Bool("asked", false, "the --high models were asked for by name; none is skipped")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		run(ctx, host, app.Options{
 			Goal:     strings.Join(args, " "),
@@ -139,6 +157,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 			Variant:  *variant,
 			InPlace:  *inPlace,
 			Crew:     *crew,
+			Asked:    *asked,
 		}, os.Stderr)
 		return nil
 	}

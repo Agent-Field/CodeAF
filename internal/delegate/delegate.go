@@ -173,10 +173,17 @@ type Crew struct {
 	Hands string
 	// Light is the cheap seat: summaries, and whatever needs no depth.
 	Light string
+	// Asked is the models the person asked this run to work with, in their
+	// words' order, already resolved to ids. When it is set it is the working
+	// seat in place of Hands, and a program may not swap any of it for another:
+	// one it cannot use is a refusal, said before anything is spent.
+	Asked []string
 }
 
 // IsZero says the crew names no model at all, so no flag is owed for it.
-func (c Crew) IsZero() bool { return c == Crew{} }
+func (c Crew) IsZero() bool {
+	return c.Brain == "" && c.Hands == "" && c.Light == "" && len(c.Asked) == 0
+}
 
 // GuideMax is the most bytes a program's [Delegate.Guide] may take. It is a
 // paragraph a model reads on every turn of every conversation that carries the
@@ -263,9 +270,13 @@ func (d Delegate) validateLineFlags() error {
 		return fs.Parse(flags) == nil && fs.NArg() == 0
 	}
 	if d.CrewFlags != nil {
-		sample := Crew{Brain: "vendor/brain", Hands: "vendor/hands", Light: "vendor/light"}
-		if flags := d.CrewFlags(sample); !parses(flags) {
-			return fmt.Errorf("%s: the crew flags %q are not flags its %s command takes", d.Name, strings.Join(flags, " "), command.Name)
+		for _, sample := range []Crew{
+			{Brain: "vendor/brain", Hands: "vendor/hands", Light: "vendor/light"},
+			{Hands: "vendor/hands", Light: "vendor/light", Asked: []string{"vendor/one", "vendor/two"}},
+		} {
+			if flags := d.CrewFlags(sample); !parses(flags) {
+				return fmt.Errorf("%s: the crew flags %q are not flags its %s command takes", d.Name, strings.Join(flags, " "), command.Name)
+			}
 		}
 	}
 	if len(d.PlainFolder) > 0 && !parses(d.PlainFolder) {

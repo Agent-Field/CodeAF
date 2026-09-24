@@ -663,6 +663,9 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// several is not refused at all: the shortlist rides on the proposal, and the
 	// person settles it in the same breath as the work.
 	choice := a.resolveTaskModel(spec.modelWord)
+	if spec.via != "" {
+		choice = a.resolveProgramModels(spec.modelWord)
+	}
 	if choice.problem != "" {
 		return bare.Settled(choice.problem, true)
 	}
@@ -882,7 +885,8 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	if via != nil {
 		stand = delegateStand(stand.dir, *via)
 	}
-	err := a.startKnownTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via)
+	asked := programAsked(spec)
+	err := a.startKnownTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
 	if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 		return refusal.Error(), true, true
 	}
@@ -890,7 +894,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
 		switch {
 		case via != nil:
-			receipt = delegateStartedReceipt(p.id, spec.title, delegateReceipt(canonicalPath(stand.dir), *via), elsewhere)
+			receipt = delegateStartedReceipt(p.id, spec.title, strings.Join(asked, ", "), delegateReceipt(canonicalPath(stand.dir), *via), elsewhere)
 		case joined:
 			receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
 		}

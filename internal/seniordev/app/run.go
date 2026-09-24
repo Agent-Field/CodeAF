@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
 	"github.com/Agent-Field/codeaf/internal/seniordev/modelsdev"
 	"github.com/Agent-Field/codeaf/internal/seniordev/netpolicy"
 )
@@ -68,6 +69,11 @@ type Options struct {
 	// cannot size is dropped with a note, and a --high left empty routes on
 	// [DefaultHighModels] ([crewPools]).
 	Crew bool
+	// Asked says the --high pool is the models the person asked for (`--asked`).
+	// It is kept whole under Crew: every one of them must be sizable, and the
+	// run refuses before its first call, naming the one that is not
+	// ([askedRefusal]).
+	Asked bool
 }
 
 // Run runs senior-dev once in the host's workspace and answers how it ended.
@@ -140,14 +146,24 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 		}
 		client.catalog = catalog
 		model = client
+		known := func(ref string) bool {
+			providerID, modelID := normalizeModelRef(splitModelID(ref))
+			if _, err := catalog.Resolve(providerID, modelID); err == nil {
+				return true
+			}
+			return len(loadedConfig.model(providerID, modelID)) > 0
+		}
+		if options.Asked {
+			if refusal := askedRefusal(args.High, known); refusal != "" {
+				return refused(refusal)
+			}
+		}
 		if options.Crew {
-			args = crewPools(args, func(ref string) bool {
-				providerID, modelID := normalizeModelRef(splitModelID(ref))
-				if _, err := catalog.Resolve(providerID, modelID); err == nil {
-					return true
-				}
-				return len(loadedConfig.model(providerID, modelID)) > 0
-			}, notes)
+			high := args.High
+			args = crewPools(args, known, notes)
+			if options.Asked {
+				args.High = high
+			}
 		}
 	}
 
@@ -186,6 +202,23 @@ func loadCatalog(ctx context.Context, notes io.Writer) (modelsdev.Catalog, error
 		_, _ = fmt.Fprintf(notes, "[senior-dev] failed to fetch models.dev: %v\n", refreshErr)
 	})
 	return catalog, nil
+}
+
+// askedRefusal is the sentence for models the person asked for that senior-dev
+// cannot size — it needs each model's window to keep a long run's history in
+// it — or "" when it can size them all.
+func askedRefusal(pool string, known func(string) bool) string {
+	var unknown []string
+	for _, ref := range splitPool(pool) {
+		if !known(ref) {
+			unknown = append(unknown, strings.TrimPrefix(ref, orclient.Service+"/"))
+		}
+	}
+	if len(unknown) == 0 {
+		return ""
+	}
+	return "senior-dev cannot work with " + strings.Join(unknown, ", ") +
+		": its model catalog does not know how much it can hold, so nothing was started; ask for a model it knows"
 }
 
 // refused is the ending of a run that could not start: its brief, its

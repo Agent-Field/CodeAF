@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -243,8 +244,13 @@ func TestAProgramIsHandedTheConversationsCrew(t *testing.T) {
 	})
 	program := testPrograms("fake")[0]
 	got := agent.delegateCrew(&beltRun{delegate: &program})
-	if want := (delegate.Crew{Brain: "vendor/brain", Hands: "vendor/hands", Light: "vendor/light"}); got != want {
+	if want := (delegate.Crew{Brain: "vendor/brain", Hands: "vendor/hands", Light: "vendor/light"}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("crew = %+v, want %+v", got, want)
+	}
+	// A run the person asked a model for is handed that model beside the crew.
+	asked := agent.delegateCrew(&beltRun{delegate: &program, asked: []string{"vendor/one", "vendor/two"}})
+	if want := (delegate.Crew{Brain: "vendor/brain", Hands: "vendor/hands", Light: "vendor/light", Asked: []string{"vendor/one", "vendor/two"}}); !reflect.DeepEqual(asked, want) {
+		t.Fatalf("asked crew = %+v, want %+v", asked, want)
 	}
 	if got := agent.delegateCrew(&beltRun{}); !got.IsZero() {
 		t.Fatalf("a run no program works was handed a crew: %+v", got)

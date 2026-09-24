@@ -83,7 +83,7 @@ func TestAProgramsReceiptNamesItsFolder(t *testing.T) {
 	if got, want := delegateReceipt(plain, tree), "It is fake's: it works alone in "+plain+" itself, which has no git history, so its changes are there as it makes them."; got != want {
 		t.Fatalf("the receipt for a plain folder = %q, want %q", got, want)
 	}
-	got := delegateStartedReceipt(3, "Pong", delegateReceipt(plain, tree), "")
+	got := delegateStartedReceipt(3, "Pong", "", delegateReceipt(plain, tree), "")
 	if !strings.HasPrefix(got, "task 3 started: Pong\nIt is fake's: it works alone in "+plain+" itself") || strings.Contains(got, "a copy of its own") || !strings.Contains(got, taskHandoffWakeSentence) {
 		t.Fatalf("the started receipt = %q", got)
 	}
@@ -99,5 +99,37 @@ func TestAProgramsCardNamesTheProject(t *testing.T) {
 	}
 	if got := taskCardWhere(config, 1, taskSpec{via: "fake", ground: plain}); got != plain {
 		t.Fatalf("a plain folder's card says where: %q", got)
+	}
+}
+
+// A PROGRAM WORKS WITH THE MODELS THE PERSON ASKED FOR. The card showed the
+// model a proposal named and the run was handed the crew's; now one word or
+// several (comma-separated) resolve to the models the run is handed, a word
+// that names no model is refused, and a proposal naming none is handed the
+// crew rather than the default a task's card shows.
+func TestAProgramWorksWithTheModelsThePersonAskedFor(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.TaskModels = func() []string {
+			return []string{"moonshotai/kimi-k2.6", "z-ai/glm-5.1", "z-ai/glm-5.3-flash", "deepseek/deepseek-v4-pro"}
+		}
+	})
+	choice := agent.resolveProgramModels("kimi-k2.6, deepseek-v4-pro")
+	if choice.problem != "" || choice.model != "moonshotai/kimi-k2.6,deepseek/deepseek-v4-pro" {
+		t.Fatalf("two words = %+v", choice)
+	}
+	if got := programAsked(taskSpec{modelWord: "kimi-k2.6, deepseek-v4-pro", model: choice.model}); strings.Join(got, " ") != "moonshotai/kimi-k2.6 deepseek/deepseek-v4-pro" {
+		t.Fatalf("asked = %q", got)
+	}
+	if choice := agent.resolveProgramModels("kimi-k2.6, nosuchmodel"); choice.problem == "" {
+		t.Fatalf("a word naming no model was not refused: %+v", choice)
+	}
+	if choice := agent.resolveProgramModels("glm, kimi-k2.6"); choice.problem == "" {
+		t.Fatalf("a word naming several models in a list was not refused: %+v", choice)
+	}
+	if got := programAsked(taskSpec{model: "z-ai/glm-5.3-flash"}); got != nil {
+		t.Fatalf("a proposal naming no model asked for %q", got)
+	}
+	if got := delegateStartedReceipt(2, "Invaders", "moonshotai/kimi-k2.6", "It is fake's.", ""); !strings.HasPrefix(got, "task 2 started on moonshotai/kimi-k2.6: Invaders\n") {
+		t.Fatalf("receipt = %q", got)
 	}
 }

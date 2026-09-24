@@ -47,3 +47,16 @@ func TestCrewPoolsDropWhatTheCatalogLacksAndFallBackToTheOwnList(t *testing.T) {
 		t.Fatalf("notes = %q, want the fallback said", notes.String())
 	}
 }
+
+// A model the person asked for that the catalog cannot size is a refusal that
+// names it, before any call; one it can size is no refusal.
+func TestAnAskedModelTheCatalogCannotSizeIsRefusedByName(t *testing.T) {
+	known := func(ref string) bool { return ref == "openrouter/vendor/known" }
+	if got := askedRefusal("openrouter/vendor/known", known); got != "" {
+		t.Fatalf("a known model was refused: %q", got)
+	}
+	got := askedRefusal("openrouter/vendor/known,openrouter/proxy/mystery", known)
+	if !strings.HasPrefix(got, "senior-dev cannot work with proxy/mystery: ") || !strings.Contains(got, "nothing was started") {
+		t.Fatalf("refusal = %q", got)
+	}
+}

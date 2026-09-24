@@ -222,8 +222,12 @@ func hasGitHistory(ground string) bool {
 // and its wake sentence, with the program's own account of where it works
 // ([Agent.delegateReceipt]) in place of a task's "in a copy of its own", which
 // a program on a plain folder is not.
-func delegateStartedReceipt(id uint64, title, where, elsewhere string) string {
-	return withElsewhere(fmt.Sprintf("task %d started: %s\n%s %s", id, title, where, taskHandoffWakeSentence), elsewhere)
+// on is the models the person asked it to work with, "" for the crew's.
+func delegateStartedReceipt(id uint64, title, on, where, elsewhere string) string {
+	if on != "" {
+		on = " on " + on
+	}
+	return withElsewhere(fmt.Sprintf("task %d started%s: %s\n%s %s", id, on, title, where, taskHandoffWakeSentence), elsewhere)
 }
 
 // programHomeRefusal is the one folder a tree program is never handed: the

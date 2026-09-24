@@ -36,6 +36,7 @@ package session
 // caller had before this file existed.
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -395,4 +396,50 @@ func taskModelMovedNote(model, next string) string {
 // they cannot reconcile against anything.
 func taskModelMovedSentence(from, to string) string {
 	return from + " stopped answering, so this ran again on " + to
+}
+
+// resolveProgramModels is [Agent.resolveTaskModel] for a program, which works
+// with one model or several: a `model` naming more than one, separated by
+// commas, is resolved word by word, and each word must name exactly one model
+// this install has. One word is resolved as any task's is, its shortlist and
+// all.
+func (a *Agent) resolveProgramModels(word string) taskModelChoice {
+	words := strings.Split(word, ",")
+	if len(words) < 2 {
+		return a.resolveTaskModel(word)
+	}
+	var models []string
+	for _, part := range words {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		choice := a.resolveTaskModel(part)
+		switch {
+		case choice.problem != "":
+			return choice
+		case len(choice.options) > 0:
+			return taskModelChoice{problem: taskModelVague(strings.TrimSpace(part), choice.options)}
+		}
+		if !slices.Contains(models, choice.model) {
+			models = append(models, choice.model)
+		}
+	}
+	return taskModelChoice{model: strings.Join(models, ",")}
+}
+
+// programAsked is the models a proposal asked its program to work with: what
+// its `model` resolved to when the proposal named one, and nothing when it
+// named none, so the run is handed the crew rather than the default a card
+// shows for a task.
+func programAsked(spec taskSpec) []string {
+	if strings.TrimSpace(spec.modelWord) == "" || strings.TrimSpace(spec.model) == "" {
+		return nil
+	}
+	var asked []string
+	for _, model := range strings.Split(spec.model, ",") {
+		if model = strings.TrimSpace(model); model != "" {
+			asked = append(asked, model)
+		}
+	}
+	return asked
 }

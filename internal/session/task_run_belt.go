@@ -281,6 +281,9 @@ type beltRun struct {
 	workspace string
 	ground    string
 	tree      taskTree
+	// asked is the models the person asked this run's program to work with, in
+	// place of the crew's working seat; empty for the crew ([Agent.delegateCrew]).
+	asked []string
 	// joined is every hand-off that joined this run after it started, by the
 	// number its row wears. Each was published as a running row of its own, and
 	// each is settled with the run ([Agent.settleBeltRun]); it is written and
@@ -385,7 +388,10 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 // is handed to (delegate_door.go). One body serves both because a
 // delegated run IS a run — the store, the copy, the row and the stop road are
 // the same — and a second body would be two roads that must stay in step.
-func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Delegate) error {
+//
+// asked is the models the person asked the program to work with, resolved;
+// none means the conversation's crew ([Agent.delegateCrew]).
+func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Delegate, asked ...string) error {
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
@@ -435,7 +441,7 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
 		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
 		born: born, delegate: via, startSha: delegateStartSha(tree, via),
-		plain: delegateOnPlainFolder(tree, via),
+		plain: delegateOnPlainFolder(tree, via), asked: asked,
 	}
 	if via != nil && via.LandsTree() && !run.plain {
 		run.groundMoves = delegateGroundMoves(stand.dir, tree.root, tree.dir)
@@ -601,7 +607,10 @@ func (a *Agent) delegateCrew(run *beltRun) delegate.Crew {
 		model, _ := roles.SplitEffort(strings.TrimSpace(value))
 		return strings.TrimSpace(model)
 	}
-	return delegate.Crew{Brain: seat(roles.TierMastermind), Hands: seat(roles.TierWorker), Light: seat(roles.TierLow)}
+	return delegate.Crew{
+		Brain: seat(roles.TierMastermind), Hands: seat(roles.TierWorker), Light: seat(roles.TierLow),
+		Asked: append([]string(nil), run.asked...),
+	}
 }
 
 // delegateGroundMoves is every way a brief is likely to spell the folder a
