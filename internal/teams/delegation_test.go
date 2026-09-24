@@ -3,6 +3,7 @@ package teams
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -481,5 +482,33 @@ func TestTheRootHoldsEveryTeamAndIsNotALevel(t *testing.T) {
 	}
 	if tm, _ := f.Team("aaaaaaaaaaaa"); tm.Parent != "" {
 		t.Fatal("harbor was not put back at the top")
+	}
+}
+
+// ORGANIZE'S QUIET TEAMS: a team nobody touched in the window and with no
+// packet waiting is proposed; one with a recent Traffic line, a recently
+// written member, or a waiting packet is not; neither is a closed team.
+func TestQuietTeamsAreProposedAndBusyOnesAreNot(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-30 * 24 * time.Hour)
+	fresh := filepath.Join(dir, "fresh.jsonl")
+	must(t, os.WriteFile(fresh, []byte("x"), 0o600))
+	stale := filepath.Join(dir, "stale.jsonl")
+	must(t, os.WriteFile(stale, []byte("x"), 0o600))
+	must(t, os.Chtimes(stale, old, old))
+	must(t, Save(dir, []Team{
+		{ID: "aaaaaaaaaaaa", Name: "quiet", Made: old, Members: []Member{{Key: stale}}},
+		{ID: "bbbbbbbbbbbb", Name: "talking", Made: old},
+		{ID: "cccccccccccc", Name: "writing", Made: old, Members: []Member{{Key: fresh}}},
+		{ID: "dddddddddddd", Name: "asked", Made: old, Manager: "m", Members: []Member{{Key: "m", Handle: "boss"}}},
+		{ID: "eeeeeeeeeeee", Name: "closed", Made: old, State: TeamClosed, ClosedAt: old},
+	}))
+	must(t, AppendTraffic(dir, "bbbbbbbbbbbb", Entry{Kind: KindNote, From: FromManager, To: ToEveryone, Text: "hi"}))
+	_, err := Raise(dir, Packet{Team: Person, Origin: "dddddddddddd", Kind: PacketQuestion, RaisedBy: "boss", Question: "?"})
+	must(t, err)
+	f, _ := Load(dir)
+	quiet, err := Quiet(dir, f, time.Now(), QuietAfter)
+	if err != nil || len(quiet) != 1 || quiet[0] != "aaaaaaaaaaaa" {
+		t.Fatalf("quiet teams %v, %v", quiet, err)
 	}
 }

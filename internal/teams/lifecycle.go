@@ -217,3 +217,60 @@ func Delete(profileDir, id string) ([]string, error) {
 	forgetPackets(profileDir)
 	return gone, nil
 }
+
+// QuietAfter is how long a team goes without activity before Organize may
+// propose closing it (ruling c-9's "about seven days").
+const QuietAfter = 7 * 24 * time.Hour
+
+// Quiet is every open team in f, the root aside, that Organize may propose
+// closing at now: nothing in its Traffic, its packets or its members'
+// transcripts for idle, and no packet waiting on it or raised from it. It is
+// a proposal's input and closes nothing. It reads one Traffic line and one
+// packet fold per team and stats each member's transcript, so it is asked off
+// the loop, when Organize is.
+func Quiet(profileDir string, f *File, now time.Time, idle time.Duration) ([]string, error) {
+	waiting := map[string]bool{}
+	open, _, err := OpenPackets(profileDir, ScopeAll)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range open {
+		waiting[p.Team], waiting[p.Origin] = true, true
+	}
+	cut := now.Add(-idle)
+	var out []string
+	for _, t := range f.Teams {
+		if t.Closed() || t.Root || waiting[t.ID] {
+			continue
+		}
+		if last := lastActivity(profileDir, t); last.After(cut) {
+			continue
+		}
+		out = append(out, t.ID)
+	}
+	return out, nil
+}
+
+// lastActivity is the latest of team t's last Traffic line, its last packet
+// change and its members' transcripts' modification times; a team with none
+// of these is as old as it was made.
+func lastActivity(profileDir string, t Team) time.Time {
+	last := t.Made
+	later := func(at time.Time) {
+		if at.After(last) {
+			last = at
+		}
+	}
+	if tail, err := ReadTraffic(profileDir, t.ID, "", 1); err == nil && len(tail) == 1 {
+		later(tail[0].At)
+	}
+	if packets, err := Packets(profileDir, t.ID); err == nil {
+		for _, p := range packets {
+			later(p.At)
+		}
+	}
+	for _, m := range t.Members {
+		later(modTime(m.Key))
+	}
+	return last
+}
