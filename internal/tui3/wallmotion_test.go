@@ -347,25 +347,25 @@ func TestWallCloseHandsTheFocusToTheNeighbour(t *testing.T) {
 
 // EACH SPACE KEEPS ITS PLACE while the wall is up: All, then harbor, then All
 // again, returns to the tile that was focused.
-func TestWallSpacesKeepTheirPlace(t *testing.T) {
+func TestWallTeamsKeepTheirPlace(t *testing.T) {
 	a, _, _ := tabApp(t)
 	_ = a.openWall()
 	_ = a.wallFrame(a.width, a.height)
 	tiles := a.wallShown(a.now())
-	if _, err := a.spaceMake("harbor", []chatTab{tiles[0].tab, tiles[1].tab}); err != nil {
+	if _, err := a.teamMake("harbor", []chatTab{tiles[0].tab, tiles[1].tab}); err != nil {
 		t.Fatal(err)
 	}
 	a.wallMove(2, len(tiles))
 	all := tiles[2].tab.key
 	wallKeyPress(a, "1")
 	if a.wall.active != 0 || a.wall.focus != 0 {
-		t.Fatalf("1: space %d focus %d", a.wall.active, a.wall.focus)
+		t.Fatalf("1: team %d focus %d", a.wall.active, a.wall.focus)
 	}
 	wallKeyPress(a, "right")
 	harbor := a.wallShown(a.now())[a.wall.focus].tab.key
 	wallKeyPress(a, "1")
 	if a.wall.active != -1 {
-		t.Fatalf("the shown space's digit did not go back to All: %d", a.wall.active)
+		t.Fatalf("the shown team's digit did not go back to All: %d", a.wall.active)
 	}
 	if got := a.wallShown(a.now())[a.wall.focus].tab.key; got != all {
 		t.Fatalf("All came back on %q, want %q", got, all)
@@ -400,7 +400,7 @@ func TestWallFilterFocusesTheFirstMatchAndClearingKeepsIt(t *testing.T) {
 }
 
 // THE PICKED ARE ACTED ON BY THE SAME KEYS AS THE TRAY'S BUTTONS: m is Add
-// to…, x is Close views; e opens the shown space's settings.
+// to…, x is Close views; e opens the shown team's settings.
 func TestWallKeysDoWhatTheButtonsDo(t *testing.T) {
 	a, _, _ := tabApp(t)
 	_ = a.openWall()
@@ -425,17 +425,17 @@ func TestWallKeysDoWhatTheButtonsDo(t *testing.T) {
 		t.Fatalf("x with %d picked left %d of %d", len(behind), n, len(tiles))
 	}
 
-	if _, err := a.spaceMake("harbor", []chatTab{tiles[0].tab}); err != nil {
+	if _, err := a.teamMake("harbor", []chatTab{tiles[0].tab}); err != nil {
 		t.Fatal(err)
 	}
 	wallKeyPress(a, "e")
 	if a.wall.pop.kind != wallPopNone {
-		t.Fatal("e with no space shown opened something")
+		t.Fatal("e with no team shown opened something")
 	}
 	wallKeyPress(a, "1")
 	_ = a.wallFrame(a.width, a.height)
 	wallKeyPress(a, "e")
-	if a.wall.pop.kind != wallPopSettings || a.wall.pop.space != 0 {
+	if a.wall.pop.kind != wallPopSettings || a.wall.pop.team != 0 {
 		t.Fatalf("e: %+v", a.wall.pop)
 	}
 }

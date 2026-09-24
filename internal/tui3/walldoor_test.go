@@ -155,11 +155,11 @@ func TestTabWallDoorAtEveryWidth(t *testing.T) {
 
 // WHILE A SPACE NARROWS THE STRIP THE DOOR'S GLYPH WEARS ITS COLOUR, as the
 // dock's does.
-func TestTabWallDoorTakesTheSpaceColour(t *testing.T) {
+func TestTabWallDoorTakesTheTeamColour(t *testing.T) {
 	a := wallDoorApp(t, 160)
 	before := a.tabsRow(160)
 	tabs := a.tabList()
-	i, err := a.spaceMake("harbor", tabs)
+	i, err := a.teamMake("harbor", tabs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,13 +168,13 @@ func TestTabWallDoorTakesTheSpaceColour(t *testing.T) {
 	row := a.tabsRow(160)
 	door := a.wall.door
 	if !door.pressable() {
-		t.Fatalf("no door with a space shown: %q", plain(row))
+		t.Fatalf("no door with a team shown: %q", plain(row))
 	}
-	ink := a.pal.spaceInk(a.wall.spaces[i].hueSpec())
+	ink := a.pal.teamInk(a.wall.teams[i].hueSpec())
 	if ink == nil {
-		t.Skip("the palette draws no space colour")
+		t.Skip("the palette draws no team colour")
 	}
 	if cell := ansi.Cut(row, door.from, door.to); !strings.Contains(cell, ink("▦")) {
-		t.Fatalf("the door's glyph is not in the space's colour: %q (before %q)", cell, ansi.Cut(before, a.wall.door.from, a.wall.door.to))
+		t.Fatalf("the door's glyph is not in the team's colour: %q (before %q)", cell, ansi.Cut(before, a.wall.door.from, a.wall.door.to))
 	}
 }

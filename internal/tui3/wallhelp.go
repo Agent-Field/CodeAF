@@ -16,7 +16,7 @@ import (
 //	│                                                          │
 //	│  Navigate                    Organize                    │
 //	│  Move               ←↑↓→     Select                   ␣  │
-//	│  First/last          g G     New space                s  │
+//	│  First/last          g G     New team                 s  │
 //	│  …                                                       │
 //	╰──────────────────────────────────────────────────────────╯
 //
@@ -66,10 +66,10 @@ func wallHelpList(ascii bool) []wallHelpGroup {
 		}},
 		{name: "Organize", rows: []wallHelpRow{
 			row("Select", k.pick, "space", "Select the focused conversation"),
-			row("New space", "s", "s", "Make a space"),
-			row("Add to spaces", "m", "m", "Add the focused conversation to spaces"),
-			row("Space settings", "e", "e", "Rename, recolour or delete the shown space"),
-			row("Switch space", "tab / "+span, "tab", "Show the next space"),
+			row("New team", "s", "s", "Make a team"),
+			row("Add to teams", "m", "m", "Add the focused conversation to teams"),
+			row("Team settings", "e", "e", "Rename, recolour or delete the shown team"),
+			row("Switch team", "tab / "+span, "tab", "Show the next team"),
 			row("Close view", "x", "x", "Close the focused view; the work keeps running"),
 		}},
 		{name: "View", rows: []wallHelpRow{

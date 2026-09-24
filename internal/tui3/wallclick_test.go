@@ -36,7 +36,7 @@ func wallClick(t *testing.T, a *app, hit wallHit) tea.Cmd {
 	return cmd
 }
 
-// A HAND CAN DO WHAT THE KEYS DO: pick two tiles with their boxes, make a space
+// A HAND CAN DO WHAT THE KEYS DO: pick two tiles with their boxes, make a team
 // of them from the tray, keep the name the wall offered, and land in it.
 func TestWallClickPicksTilesAndMakesASpace(t *testing.T) {
 	a, _, _ := tabApp(t)
@@ -63,9 +63,9 @@ func TestWallClickPicksTilesAndMakesASpace(t *testing.T) {
 		t.Fatal("no tray")
 	}
 
-	wallClick(t, a, wallHitFor(t, a, wallHitAction, int(wallActMakeSpace)))
+	wallClick(t, a, wallHitFor(t, a, wallHitAction, int(wallActMakeTeam)))
 	if !a.wall.naming || a.wall.name == "" || !a.wall.nameFresh {
-		t.Fatalf("make space opened no card with a name in it: naming=%v name=%q", a.wall.naming, a.wall.name)
+		t.Fatalf("make team opened no card with a name in it: naming=%v name=%q", a.wall.naming, a.wall.name)
 	}
 	offered := a.wall.name
 	// While the card is up nothing under it answers.
@@ -73,21 +73,21 @@ func TestWallClickPicksTilesAndMakesASpace(t *testing.T) {
 		t.Fatal("the card let a press through")
 	}
 	wallClick(t, a, wallHitFor(t, a, wallHitAction, int(wallActSave)))
-	if a.wall.naming || a.wall.active != -1 || len(a.wall.spaces) == 0 || a.wall.spaces[len(a.wall.spaces)-1].Name != offered {
-		t.Fatalf("create did not make %q and stay in the view: %+v active=%d", offered, a.wall.spaces, a.wall.active)
+	if a.wall.naming || a.wall.active != -1 || len(a.wall.teams) == 0 || a.wall.teams[len(a.wall.teams)-1].Name != offered {
+		t.Fatalf("create did not make %q and stay in the view: %+v active=%d", offered, a.wall.teams, a.wall.active)
 	}
 	if len(a.wall.marked) != 0 || a.wall.made != offered {
 		t.Fatalf("after create: marked=%v made=%q", a.wall.marked, a.wall.made)
 	}
 	if !strings.Contains(ansi.Strip(a.wallFrame(a.width, a.height)[a.wall.headRows+1]), "Made "+offered) {
-		t.Fatal("the chips row does not say the space was made")
+		t.Fatal("the chips row does not say the team was made")
 	}
 
 	// The chip for all widens the wall again, and the typed name replaces the
 	// offered one.
 	wallClick(t, a, wallHitFor(t, a, wallHitChip, -1))
 	if a.wall.active != -1 {
-		t.Fatalf("the all chip left space %d active", a.wall.active)
+		t.Fatalf("the all chip left team %d active", a.wall.active)
 	}
 	a.wallKey(tea.KeyPressMsg{Code: 's', Text: "s"})
 	a.wallKey(tea.KeyPressMsg{Code: 'q', Text: "q"})
@@ -103,18 +103,18 @@ func TestWallClickPicksTilesAndMakesASpace(t *testing.T) {
 }
 
 // A CONVERSATION'S SPACES ARE A CLICK AWAY: its ●+ opens the popover, a box
-// puts it in a space and takes it out again, and a space's dot opens its
+// puts it in a team and takes it out again, and a team's dot opens its
 // settings, where it is renamed, recoloured and deleted, the last only once
 // the question is answered.
-func TestWallClickSpacesPopoverAndSettings(t *testing.T) {
+func TestWallClickTeamsPopoverAndSettings(t *testing.T) {
 	a, _, _ := tabApp(t)
 	_ = a.openWall()
 	_ = a.wallFrame(a.width, a.height)
 	tiles := a.wallShown(a.now())
-	if _, err := a.spaceMake("harbor", []chatTab{tiles[0].tab}); err != nil {
+	if _, err := a.teamMake("harbor", []chatTab{tiles[0].tab}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.spaceMake("orbit", []chatTab{tiles[0].tab}); err != nil {
+	if _, err := a.teamMake("orbit", []chatTab{tiles[0].tab}); err != nil {
 		t.Fatal(err)
 	}
 	_ = a.wallFrame(a.width, a.height)
@@ -124,21 +124,21 @@ func TestWallClickSpacesPopoverAndSettings(t *testing.T) {
 	body := wallHitFor(t, a, wallHitTile, 1)
 	a.wallMotion(body.x0+4, body.y0+3)
 	_ = a.wallFrame(a.width, a.height)
-	wallClick(t, a, wallHitFor(t, a, wallHitSpaces, 1))
+	wallClick(t, a, wallHitFor(t, a, wallHitTeams, 1))
 	if a.wall.pop.kind != wallPopMembers || len(a.wall.pop.targets) != 1 || a.wall.pop.targets[0] != key {
 		t.Fatalf("the popover: %+v", a.wall.pop)
 	}
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, "☐ ● harbor") || !strings.Contains(frame, "+ New space") {
+	if !strings.Contains(frame, "☐ ● harbor") || !strings.Contains(frame, "+ New team") {
 		t.Fatalf("the popover is not drawn:\n%s", frame)
 	}
 	wallClick(t, a, wallHitFor(t, a, wallHitPopRow, 1))
-	if got := a.spacesOf(key); len(got) != 1 || got[0] != 1 {
+	if got := a.teamsOf(key); len(got) != 1 || got[0] != 1 {
 		t.Fatalf("after one box the conversation is in %v", got)
 	}
 	a.wallKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	a.wallKey(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-	if got := a.spacesOf(key); len(got) != 2 {
+	if got := a.teamsOf(key); len(got) != 2 {
 		t.Fatalf("after the keyboard's box the conversation is in %v", got)
 	}
 	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -146,16 +146,16 @@ func TestWallClickSpacesPopoverAndSettings(t *testing.T) {
 		t.Fatal("esc did not put the popover away, or took the whole view with it")
 	}
 
-	// The dot on a segment opens that space's settings.
+	// The dot on a segment opens that team's settings.
 	_ = a.wallFrame(a.width, a.height)
 	wallClick(t, a, wallHitFor(t, a, wallHitChipMenu, 0))
-	if a.wall.pop.kind != wallPopSettings || a.wall.pop.space != 0 || a.wall.pop.name != "harbor" {
+	if a.wall.pop.kind != wallPopSettings || a.wall.pop.team != 0 || a.wall.pop.name != "harbor" {
 		t.Fatalf("settings: %+v", a.wall.pop)
 	}
-	before := a.wall.spaces[0].hueSpec()
+	before := a.wall.teams[0].hueSpec()
 	wallClick(t, a, wallHitFor(t, a, wallHitSwatch, 2))
-	if a.wall.spaces[0].hueSpec() == before {
-		t.Fatal("a swatch did not recolour the space")
+	if a.wall.teams[0].hueSpec() == before {
+		t.Fatal("a swatch did not recolour the team")
 	}
 	for range "harbor" {
 		a.wallKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
@@ -164,34 +164,34 @@ func TestWallClickSpacesPopoverAndSettings(t *testing.T) {
 		a.wallKey(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if a.wall.spaces[0].Name != "dock" || a.wall.pop.kind != wallPopNone {
-		t.Fatalf("rename: %q, pop %+v", a.wall.spaces[0].Name, a.wall.pop)
+	if a.wall.teams[0].Name != "dock" || a.wall.pop.kind != wallPopNone {
+		t.Fatalf("rename: %q, pop %+v", a.wall.teams[0].Name, a.wall.pop)
 	}
 	_ = a.wallFrame(a.width, a.height)
 	wallClick(t, a, wallHitFor(t, a, wallHitChipMenu, 0))
 	wallClick(t, a, wallHitFor(t, a, wallHitPopRow, wallPopDelete))
-	if len(a.wall.spaces) != 2 || !a.wall.pop.confirm {
+	if len(a.wall.teams) != 2 || !a.wall.pop.confirm {
 		t.Fatal("delete did not ask first")
 	}
 	wallClick(t, a, wallHitFor(t, a, wallHitPopRow, wallPopConfirm))
-	if len(a.wall.spaces) != 1 || a.wall.spaces[0].Name != "orbit" {
-		t.Fatalf("after the delete: %+v", a.spaceNames())
+	if len(a.wall.teams) != 1 || a.wall.teams[0].Name != "orbit" {
+		t.Fatalf("after the delete: %+v", a.teamNames())
 	}
 	if len(a.wallShown(a.now())) != len(tiles) {
-		t.Fatal("deleting a space closed a conversation")
+		t.Fatal("deleting a team closed a conversation")
 	}
 }
 
 // WHILE A SPACE NARROWS THE STRIP, THE STRIP SAYS WHICH: a chip at its left
-// end, which opens the conversations view where spaces are changed.
-func TestTabSpaceChipNamesTheShownSpace(t *testing.T) {
+// end, which opens the conversations view where teams are changed.
+func TestTabTeamChipNamesTheShownTeam(t *testing.T) {
 	a, _, _ := tabApp(t)
 	plainRow := plain(a.tabsRow(a.width))
 	if strings.Contains(plainRow, "▾") {
-		t.Fatalf("a chip with no space shown: %q", plainRow)
+		t.Fatalf("a chip with no team shown: %q", plainRow)
 	}
 	tabs := a.tabList()
-	i, err := a.spaceMake("harbor", tabs[:1])
+	i, err := a.teamMake("harbor", tabs[:1])
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,7 @@ import (
 // ── THE WALL'S WIRING: KEYS, FRAME, POINTER AND STRIP ───────────────────────
 //
 // This is the only file of the wall that touches the app. The reading
-// (walltail.go), the painting (wallview.go) and the spaces (spaces.go) meet
+// (walltail.go), the painting (wallview.go) and the teams (teams.go) meet
 // here through the shapes in wallcontract.go.
 //
 // THE WALL'S DOORS ARE THE STRIP'S DOORS. Enter on a tile is [app.tabGo] and x
@@ -33,14 +33,14 @@ import (
 //	pgup, pgdown       a screen of rows              the wheel, one row a notch
 //	n                  next waiting on a person      the title's needs-you count
 //	enter              open the focused tile         a press on any tile, or Open
-//	space              pick the focused tile         Select; any tile once one is picked
+//	team              pick the focused tile         Select; any tile once one is picked
 //	x                  close its view, or the picked'  Close on a tile, Close views
-//	m                  its spaces, or the picked'    Spaces on a tile, Add to…
-//	s                  new space of the picked       + New space, Make space
-//	e                  the shown space's settings    a segment's dot or ⋯
-//	tab, shift+tab     next or previous space        a Spaces segment
-//	1 to 9             that space, again for All     a Spaces segment
-//	D                  delete the shown space        settings, Delete
+//	m                  its teams, or the picked'    Teams on a tile, Add to…
+//	s                  new team of the picked       + New team, Make team
+//	e                  the shown team's settings    a segment's dot or ⋯
+//	tab, shift+tab     next or previous team        a Teams segment
+//	1 to 9             that team, again for All     a Teams segment
+//	D                  delete the shown team        settings, Delete
 //	/                  filter                        Filter /
 //	-, + or =          fewer or more columns         Columns − +
 //	0                  columns back to automatic     (key only)
@@ -80,7 +80,7 @@ func wallOpenPressed(msg tea.KeyPressMsg) bool {
 // first frame draws whatever the cache already holds; the readings land a
 // moment later and the tiles fill in.
 func (a *app) openWall() tea.Cmd {
-	a.spacesEnsure()
+	a.teamsEnsure()
 	now := a.now()
 	a.wall.on = true
 	a.wall.openedAt = now
@@ -129,10 +129,10 @@ func (a *app) closeWall() {
 }
 
 // wallShown is the tiles the wall draws: every open conversation, narrowed to
-// the active space's members when one is active.
+// the active team's members when one is active.
 func (a *app) wallShown(now time.Time) []wallTile {
 	tiles := a.wallTiles(now)
-	sp, ok := a.spaceActive()
+	sp, ok := a.teamActive()
 	if !ok {
 		return tiles
 	}
@@ -179,7 +179,7 @@ func (a *app) wallFrame(width, height int) []string {
 	a.wall.spinning = false
 	for i := range tiles {
 		tiles[i].marked = a.wall.marked[tiles[i].tab.key]
-		tiles[i].spaces = a.spacesOf(tiles[i].tab.key)
+		tiles[i].teams = a.teamsOf(tiles[i].tab.key)
 		tail := a.wall.tails[tiles[i].tab.key]
 		tiles[i].rows = a.wallMiniRows(tail, wallInnerW(tileW))
 		if tail != nil {
@@ -197,7 +197,7 @@ func (a *app) wallFrame(width, height int) []string {
 		a.wall.spinning = false
 	}
 	view := wallView{
-		spaces:    a.spaceNames(),
+		teams:     a.teamNames(),
 		tiles:     tiles,
 		focus:     a.wall.focus,
 		scroll:    a.wall.scroll,
@@ -223,11 +223,11 @@ func (a *app) wallFrame(width, height int) []string {
 		helpTop:   a.wall.helpTop,
 		doorHot:   a.hot.kind == hoverTab && a.wall.door.pressable() && a.hot.index == a.wall.door.from,
 	}
-	if sp, ok := a.spaceActive(); ok {
-		view.space = sp.Name
+	if sp, ok := a.teamActive(); ok {
+		view.team = sp.Name
 	}
 	// The counts are of open conversations, whatever a filter is hiding: a
-	// space's members this window has no tab for are still members, but they
+	// team's members this window has no tab for are still members, but they
 	// are not on the wall. They are read off the strip's list, not a second
 	// build of every tile.
 	open := map[string]bool{}
@@ -237,7 +237,7 @@ func (a *app) wallFrame(width, height int) []string {
 		}
 	}
 	view.total = len(open)
-	for _, sp := range a.wall.spaces {
+	for _, sp := range a.wall.teams {
 		view.hues = append(view.hues, sp.hueSpec())
 		n := 0
 		for _, m := range sp.Members {
@@ -324,7 +324,7 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "esc":
 			a.wall.naming = false
 		case "enter":
-			return a.wallMakeSpace(tiles)
+			return a.wallMakeTeam(tiles)
 		case "ctrl+r":
 			a.wallShuffleName(tiles)
 		case "left", "right":
@@ -422,8 +422,8 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 	case "space":
 		a.wallToggle(tiles, a.wall.focus)
 	case "m":
-		// The picked conversations' spaces, as the tray's Add to… opens them;
-		// with none picked, the focused one's, as a press on its Spaces does.
+		// The picked conversations' teams, as the tray's Add to… opens them;
+		// with none picked, the focused one's, as a press on its Teams does.
 		if marked := a.wallMarkedTabs(tiles); len(marked) > 0 {
 			keys := make([]string, 0, len(marked))
 			for _, tab := range marked {
@@ -431,7 +431,7 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 			}
 			a.wallOpenMembers(keys, a.wallAnchor(wallHitAction, int(wallActAddTo)))
 		} else if n > 0 {
-			a.wallOpenMembers([]string{tiles[a.wall.focus].tab.key}, a.wallAnchor(wallHitSpaces, a.wall.focus))
+			a.wallOpenMembers([]string{tiles[a.wall.focus].tab.key}, a.wallAnchor(wallHitTeams, a.wall.focus))
 		}
 	case "s":
 		a.wallStartNaming(tiles)
@@ -446,20 +446,20 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 		}
 		return a.wallDismissAt(tiles, a.wall.focus)
 	case "e":
-		// The shown space's settings, where its dot or ⋯ opens them.
+		// The shown team's settings, where its dot or ⋯ opens them.
 		if a.wall.active >= 0 {
 			a.wallOpenSettings(a.wall.active, a.wallAnchor(wallHitChipMenu, a.wall.active))
 		}
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-		// A space by its place on the Spaces row; the digit of the space that
+		// A team by its place on the Teams row; the digit of the team that
 		// is shown goes back to All, so the same key undoes itself.
 		i := int(key[0] - '1')
 		switch {
-		case i >= len(a.wall.spaces):
+		case i >= len(a.wall.teams):
 		case i == a.wall.active:
-			a.wallSetSpace(-1)
+			a.wallSetTeam(-1)
 		default:
-			a.wallSetSpace(i)
+			a.wallSetTeam(i)
 		}
 	case "/":
 		a.wall.filterOn = true
@@ -468,7 +468,7 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 	case "?":
 		a.wallOpenHelp()
 	case "tab", "shift+tab":
-		a.wallCycleSpace(key == "tab")
+		a.wallCycleTeam(key == "tab")
 	case "-":
 		a.wallCols(-1, n)
 	case "=", "+":
@@ -477,10 +477,10 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 		a.wall.cols = 0
 		a.wallMove(a.wall.focus, n)
 	case "D":
-		// Delete the active space. The conversations in it are untouched: a
-		// space is a view, and so is its going.
+		// Delete the active team. The conversations in it are untouched: a
+		// team is a view, and so is its going.
 		if a.wall.active >= 0 {
-			a.wallDeleteSpace(a.wall.active)
+			a.wallDeleteTeam(a.wall.active)
 		}
 	}
 	return nil
@@ -576,7 +576,7 @@ func (a *app) wallCols(by, n int) {
 	a.wallMove(a.wall.focus, n)
 }
 
-// wallStartNaming opens the new-space card with a name already in it. Nothing
+// wallStartNaming opens the new-team card with a name already in it. Nothing
 // marked names the focused tile alone, which is the one a person pressing s
 // is looking at.
 func (a *app) wallStartNaming(tiles []wallTile) {
@@ -591,11 +591,11 @@ func (a *app) wallStartNaming(tiles []wallTile) {
 	a.wall.naming = true
 	a.wall.filterOn = false
 	a.wall.pop = wallPop{}
-	a.wall.name = spaceFreshName(marked, a.spaceNames(), "", rand.IntN)
+	a.wall.name = teamFreshName(marked, a.teamNames(), "", rand.IntN)
 	a.wall.nameFresh = true
-	// The colours offered are the farthest from every space's, best first,
+	// The colours offered are the farthest from every team's, best first,
 	// and the best is taken until the person takes another.
-	a.wall.choices = spaceHueChoices(a.spaceHues(-1), spaceReservedHues(a.pal), wallSwatchCount)
+	a.wall.choices = teamHueChoices(a.teamHues(-1), teamReservedHues(a.pal), wallSwatchCount)
 	a.wall.choice = 0
 }
 
@@ -603,10 +603,10 @@ func (a *app) wallStartNaming(tiles []wallTile) {
 const wallSwatchCount = 6
 
 // wallShuffleName puts another pleasant word in the card, never the one that
-// is there and never one a space already has, and moves the colour to the next
+// is there and never one a team already has, and moves the colour to the next
 // best one offered.
 func (a *app) wallShuffleName(tiles []wallTile) {
-	a.wall.name = spaceFreshName(a.wallMarkedTabs(tiles), a.spaceNames(), a.wall.name, rand.IntN)
+	a.wall.name = teamFreshName(a.wallMarkedTabs(tiles), a.teamNames(), a.wall.name, rand.IntN)
 	a.wall.nameFresh = true
 	if c := len(a.wall.choices); c > 0 {
 		a.wall.choice = (a.wall.choice + 1) % c
@@ -623,49 +623,49 @@ func (a *app) wallMarkedTabs(tiles []wallTile) []chatTab {
 	return out
 }
 
-func (a *app) wallMakeSpace(tiles []wallTile) tea.Cmd {
+func (a *app) wallMakeTeam(tiles []wallTile) tea.Cmd {
 	name := strings.TrimSpace(a.wall.name)
 	a.wall.naming = false
 	if name == "" {
 		return nil
 	}
-	a.spacesEnsure()
-	hue := nextSpaceHue(a.spaceHues(-1), spaceReservedHues(a.pal))
+	a.teamsEnsure()
+	hue := nextTeamHue(a.teamHues(-1), teamReservedHues(a.pal))
 	if a.wall.choice >= 0 && a.wall.choice < len(a.wall.choices) {
 		hue = a.wall.choices[a.wall.choice]
 	}
-	i, err := a.spaceMakeHued(name, a.wallMarkedTabs(tiles), hue)
+	i, err := a.teamMakeHued(name, a.wallMarkedTabs(tiles), hue)
 	if i < 0 {
 		return nil
 	}
 	if err != nil {
-		a.note("the space is kept for this window, but " + err.Error())
+		a.note("the team is kept for this window, but " + err.Error())
 	}
-	// THE VIEW STAYS WHERE IT WAS. A person making a space is usually sorting
+	// THE VIEW STAYS WHERE IT WAS. A person making a team is usually sorting
 	// several at once, and a wall that jumped into the new one would hide the
-	// conversations they were about to sort next. The chip row names the space
+	// conversations they were about to sort next. The chip row names the team
 	// and its chip is one press away.
 	a.wall.marked = map[string]bool{}
-	a.wall.made, a.wall.madeN, a.wall.madeAt = a.wall.spaces[i].Name, len(a.wall.spaces[i].Members), time.Now()
+	a.wall.made, a.wall.madeN, a.wall.madeAt = a.wall.teams[i].Name, len(a.wall.teams[i].Members), time.Now()
 	return nil
 }
 
-// wallPlace is where one space's grid was left: the focused conversation, by
+// wallPlace is where one team's grid was left: the focused conversation, by
 // key so a tile that moved is still found, and the row at the top.
 type wallPlace struct {
 	key    string
 	scroll int
 }
 
-// wallSetSpace narrows the wall and the strip to space i, or widens them for
+// wallSetTeam narrows the wall and the strip to team i, or widens them for
 // i < 0. Like the chips' cycling it never switches the conversation in front.
 //
 // EACH SPACE KEEPS ITS PLACE WHILE THE WALL IS UP. Looking into harbor and
 // back to All returns to the tile and the row that were on screen, as a
-// browser's tabs each keep their own scroll; a space not visited yet starts
+// browser's tabs each keep their own scroll; a team not visited yet starts
 // at its first tile.
-func (a *app) wallSetSpace(i int) {
-	if i >= len(a.wall.spaces) {
+func (a *app) wallSetTeam(i int) {
+	if i >= len(a.wall.teams) {
 		i = -1
 	}
 	if i == a.wall.active {
@@ -690,14 +690,14 @@ func (a *app) wallSetSpace(i int) {
 	a.wallFocusKey(place.key)
 }
 
-// wallDeleteSpace forgets space i. Its conversations stay open: a space is a
+// wallDeleteTeam forgets team i. Its conversations stay open: a team is a
 // view, and so is its going.
-func (a *app) wallDeleteSpace(i int) {
-	if i < 0 || i >= len(a.wall.spaces) {
+func (a *app) wallDeleteTeam(i int) {
+	if i < 0 || i >= len(a.wall.teams) {
 		return
 	}
-	if err := a.spaceDelete(i); err != nil {
-		a.note("the space is gone from this window, but " + err.Error())
+	if err := a.teamDelete(i); err != nil {
+		a.note("the team is gone from this window, but " + err.Error())
 	}
 	a.wall.hover = wallHitRef{}
 	a.wall.pop = wallPop{}
@@ -705,11 +705,11 @@ func (a *app) wallDeleteSpace(i int) {
 	a.wall.places = nil
 }
 
-// wallCycleSpace walks all → each space → all. It only narrows what the wall
+// wallCycleTeam walks all → each team → all. It only narrows what the wall
 // and the strip show; it never switches the conversation in front, so a person
-// can look through their spaces without leaving the one they are in.
-func (a *app) wallCycleSpace(forward bool) {
-	n := len(a.wall.spaces)
+// can look through their teams without leaving the one they are in.
+func (a *app) wallCycleTeam(forward bool) {
+	n := len(a.wall.teams)
 	if n == 0 {
 		return
 	}
@@ -723,7 +723,7 @@ func (a *app) wallCycleSpace(forward bool) {
 	if next < -1 {
 		next = n - 1
 	}
-	a.wallSetSpace(next)
+	a.wallSetTeam(next)
 }
 
 // ── THE POINTER ─────────────────────────────────────────────────────────────
@@ -808,7 +808,7 @@ func (a *app) wallPress(x, y int) (tea.Cmd, bool) {
 	if y < a.wall.headRows {
 		if hit, ok := a.tabAt(x, y); ok {
 			switch hit.kind {
-			case tabSpace:
+			case tabTeam:
 				return nil, true
 			case tabWall:
 				// The strip's own door to this view closes it, as alt+v does.
@@ -828,7 +828,7 @@ func (a *app) wallPress(x, y int) (tea.Cmd, bool) {
 	}
 	a.wallSettle()
 	// A PRESS OFF A CARD PUTS THE CARD AWAY and does nothing else, as a menu
-	// or a sheet does anywhere: the popover, or the new-space card, which is
+	// or a sheet does anywhere: the popover, or the new-team card, which is
 	// the same as its Cancel. A press inside a card but on none of its
 	// controls is a press on the card, and does nothing.
 	if a.wall.card.w() > 0 && (a.wall.pop.kind != wallPopNone || a.wall.naming || a.wall.help) {
@@ -853,7 +853,7 @@ func (a *app) wallPress(x, y int) (tea.Cmd, bool) {
 func (a *app) wallDo(hit wallHit) tea.Cmd {
 	tiles := a.wallShown(a.now())
 	n := len(tiles)
-	// While a space is being named the card is modal: only its own buttons
+	// While a team is being named the card is modal: only its own buttons
 	// answer, as only its own keys do.
 	if a.wall.naming {
 		switch {
@@ -901,7 +901,7 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 		}
 	case wallHitSelect:
 		a.wallToggle(tiles, hit.arg)
-	case wallHitSpaces:
+	case wallHitTeams:
 		if hit.arg < n {
 			a.wallOpenMembers([]string{tiles[hit.arg].tab.key}, a.wallLocal(hit))
 		}
@@ -910,10 +910,10 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 	case wallHitClose:
 		return a.wallDismissAt(tiles, hit.arg)
 	case wallHitChip:
-		a.wallSetSpace(hit.arg)
+		a.wallSetTeam(hit.arg)
 	case wallHitChipMenu:
 		a.wallOpenSettings(hit.arg, a.wallLocal(hit))
-	case wallHitAddSpace:
+	case wallHitAddTeam:
 		a.wallStartNaming(tiles)
 	case wallHitMini:
 		a.wallMove(hit.arg, n)
@@ -944,7 +944,7 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 		return a.wallOpen(tiles, a.wall.focus)
 	case wallActSelect:
 		a.wallToggle(tiles, a.wall.focus)
-	case wallActNewSpace, wallActMakeSpace:
+	case wallActNewTeam, wallActMakeTeam:
 		a.wallStartNaming(tiles)
 	case wallActFilter:
 		a.wall.filterOn = true
@@ -963,7 +963,7 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 	case wallActClear:
 		a.wall.marked = map[string]bool{}
 	case wallActSave:
-		return a.wallMakeSpace(tiles)
+		return a.wallMakeTeam(tiles)
 	case wallActCancel:
 		a.wall.naming = false
 	case wallActShuffle:
@@ -1239,7 +1239,7 @@ func wallTileBounds(hits []wallHit, i int) (wallRect, bool) {
 	return r, ok
 }
 
-// wallCardRect is where the help sheet, the popover, or else the new-space
+// wallCardRect is where the help sheet, the popover, or else the new-team
 // card lands on this frame, so a press can be told to be on it or off it. It is laid out
 // only while one is up, and a card is a handful of short rows.
 func (a *app) wallCardRect(v wallView, width, room, head int) wallRect {

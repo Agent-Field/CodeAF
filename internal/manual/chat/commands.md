@@ -192,7 +192,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
 | `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+3`) |
-| `/wall` | | | every open conversation at once, as a grid of live tiles (also `alt+v`, or `▦` under the box) |
+| `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what codeaf may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |

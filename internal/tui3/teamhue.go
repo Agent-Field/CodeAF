@@ -9,40 +9,40 @@ import (
 
 // ── A SPACE'S COLOUR, GENERATED ─────────────────────────────────────────────
 //
-// A space is told apart by a colour, and the colours are generated rather
-// than picked from a list, so that the tenth space is as easy to tell from the
+// A team is told apart by a colour, and the colours are generated rather
+// than picked from a list, so that the tenth team is as easy to tell from the
 // other nine as the second is from the first.
 //
 // THE COLOURS LIVE IN OKLCH, where equal steps of hue look like equal steps.
-// A space keeps only its hue angle and a lightness tier; the lightness and
-// chroma come from the tier and the ladder being drawn on, so one space reads
+// A team keeps only its hue angle and a lightness tier; the lightness and
+// chroma come from the tier and the ladder being drawn on, so one team reads
 // right on a dark terminal and a light one.
 //
 // THE HUES THAT ALREADY MEAN SOMETHING ARE KEPT OUT. Amber is a question
 // waiting, the live ink is work running, red is a failure and the accent is the
-// cursor; a space in any of those would say a second thing in a colour that
+// cursor; a team in any of those would say a second thing in a colour that
 // already says one. Their hues are read off the ramp being drawn with, never
 // written down here, so a theme that moves them moves the bands with them.
 //
 // EACH NEW SPACE TAKES THE FARTHEST HUE: of every allowed degree, the one whose
-// nearest used hue is farthest away. The second space lands opposite the
+// nearest used hue is farthest away. The second team lands opposite the
 // first, the third splits the widest gap, and so on; past six the tiers
 // alternate so neighbours differ in lightness as well.
 
-// spaceHueSpec is a space's colour as stored: a hue angle in degrees and a
+// teamHueSpec is a team's colour as stored: a hue angle in degrees and a
 // lightness tier, 0 or 1.
-type spaceHueSpec struct {
+type teamHueSpec struct {
 	Hue  float64
 	Tier int
 }
 
-// spaceHueBand is how many degrees either side of a meaningful hue no space
+// teamHueBand is how many degrees either side of a meaningful hue no team
 // may take.
-const spaceHueBand = 25
+const teamHueBand = 25
 
-// spaceHueTierFree is how many spaces are all drawn at tier 0 before the tiers
+// teamHueTierFree is how many teams are all drawn at tier 0 before the tiers
 // start to alternate.
-const spaceHueTierFree = 6
+const teamHueTierFree = 6
 
 // ── OKLAB AND OKLCH ─────────────────────────────────────────────────────────
 
@@ -116,13 +116,13 @@ func hueGap(a, b float64) float64 {
 
 // ── THE GENERATOR ───────────────────────────────────────────────────────────
 
-// spaceReservedHues is the hues the palette already spends on meaning: the
+// teamReservedHues is the hues the palette already spends on meaning: the
 // question's amber, the running ink, the failure red and the cursor's accent.
-func spaceReservedHues(p palette) []float64 {
-	return spaceReservedFrom(p.ramp)
+func teamReservedHues(p palette) []float64 {
+	return teamReservedFrom(p.ramp)
 }
 
-func spaceReservedFrom(r ramp) []float64 {
+func teamReservedFrom(r ramp) []float64 {
 	out := make([]float64, 0, 4)
 	for _, h := range []hue{r.warn, r.live, r.bad, r.accent} {
 		out = append(out, oklabHue(h.r, h.g, h.b))
@@ -130,31 +130,31 @@ func spaceReservedFrom(r ramp) []float64 {
 	return out
 }
 
-// spaceHueAllowed reports whether a hue is clear of every reserved band.
-func spaceHueAllowed(h float64, reserved []float64) bool {
+// teamHueAllowed reports whether a hue is clear of every reserved band.
+func teamHueAllowed(h float64, reserved []float64) bool {
 	for _, r := range reserved {
-		if hueGap(h, r) < spaceHueBand {
+		if hueGap(h, r) < teamHueBand {
 			return false
 		}
 	}
 	return true
 }
 
-// spaceTierFor is the tier the n-th space (from zero) is drawn at.
-func spaceTierFor(n int) int {
-	if n < spaceHueTierFree {
+// teamTierFor is the tier the n-th team (from zero) is drawn at.
+func teamTierFor(n int) int {
+	if n < teamHueTierFree {
 		return 0
 	}
-	return 1 - (n-spaceHueTierFree)%2
+	return 1 - (n-teamHueTierFree)%2
 }
 
-// nextSpaceHue is the colour for a new space beside the used ones: the allowed
+// nextTeamHue is the colour for a new team beside the used ones: the allowed
 // whole degree farthest from every used hue, the lowest such degree on a tie.
-func nextSpaceHue(used []spaceHueSpec, reserved []float64) spaceHueSpec {
+func nextTeamHue(used []teamHueSpec, reserved []float64) teamHueSpec {
 	best, bestGap := -1.0, -1.0
 	for d := 0; d < 360; d++ {
 		h := float64(d)
-		if !spaceHueAllowed(h, reserved) {
+		if !teamHueAllowed(h, reserved) {
 			continue
 		}
 		gap := 1000.0
@@ -168,18 +168,18 @@ func nextSpaceHue(used []spaceHueSpec, reserved []float64) spaceHueSpec {
 	if best < 0 {
 		best = 0
 	}
-	return spaceHueSpec{Hue: best, Tier: spaceTierFor(len(used))}
+	return teamHueSpec{Hue: best, Tier: teamTierFor(len(used))}
 }
 
-// spaceHueChoices is k colours a new space could take, best first: each the
+// teamHueChoices is k colours a new team could take, best first: each the
 // farthest from the used hues and from the choices before it. They are what
-// the new-space card offers as swatches and what shuffle walks through.
-func spaceHueChoices(used []spaceHueSpec, reserved []float64, k int) []spaceHueSpec {
-	tier := spaceTierFor(len(used))
-	seen := append([]spaceHueSpec(nil), used...)
-	out := make([]spaceHueSpec, 0, k)
+// the new-team card offers as swatches and what shuffle walks through.
+func teamHueChoices(used []teamHueSpec, reserved []float64, k int) []teamHueSpec {
+	tier := teamTierFor(len(used))
+	seen := append([]teamHueSpec(nil), used...)
+	out := make([]teamHueSpec, 0, k)
 	for len(out) < k {
-		next := nextSpaceHue(seen, reserved)
+		next := nextTeamHue(seen, reserved)
 		next.Tier = tier
 		out = append(out, next)
 		seen = append(seen, next)
@@ -189,10 +189,10 @@ func spaceHueChoices(used []spaceHueSpec, reserved []float64, k int) []spaceHueS
 
 // ── DRAWING ONE ─────────────────────────────────────────────────────────────
 
-// spaceGround is the luminance of the background a space colour must read on:
+// teamGround is the luminance of the background a team colour must read on:
 // the one the terminal reported, else the middle of the assumed dark range, or
 // white on the light ladder (styles.go's THE GLARE LAW names both).
-func spaceGround(p palette) float64 {
+func teamGround(p palette) float64 {
 	switch {
 	case p.measured:
 		return luminanceOf(p.ground.r, p.ground.g, p.ground.b)
@@ -202,19 +202,19 @@ func spaceGround(p palette) float64 {
 	return luminanceOf(0x1A, 0x1B, 0x26)
 }
 
-// spaceLight reports whether the palette is drawing on a light background.
-func spaceLight(p palette) bool {
+// teamLight reports whether the palette is drawing on a light background.
+func teamLight(p palette) bool {
 	if p.measured {
 		return luminanceOf(p.ground.r, p.ground.g, p.ground.b) > 0.18
 	}
 	return p.light
 }
 
-// spaceRGB is a space colour as 8-bit sRGB for this palette: the tier's
+// teamRGB is a team colour as 8-bit sRGB for this palette: the tier's
 // lightness and chroma, the chroma eased until the colour is drawable, and the
 // lightness moved away from the background until it reads at 3:1.
-func spaceRGB(p palette, h spaceHueSpec) (uint8, uint8, uint8) {
-	light := spaceLight(p)
+func teamRGB(p palette, h teamHueSpec) (uint8, uint8, uint8) {
+	light := teamLight(p)
 	L, C := 0.80, 0.11
 	if h.Tier == 1 {
 		L, C = 0.68, 0.13
@@ -225,7 +225,7 @@ func spaceRGB(p palette, h spaceHueSpec) (uint8, uint8, uint8) {
 			L = 0.45
 		}
 	}
-	ground := spaceGround(p)
+	ground := teamGround(p)
 	for step := 0; step < 40; step++ {
 		c := C
 		r, g, b := oklchToSRGB(L, c, h.Hue)
@@ -283,19 +283,19 @@ func nearest256Lab(r, g, b uint8) uint8 {
 	return uint8(best)
 }
 
-// spaceHueOf is a space colour as a hue this palette can paint with.
-func spaceHueOf(p palette, h spaceHueSpec) hue {
-	r, g, b := spaceRGB(p, h)
+// teamHueOf is a team colour as a hue this palette can paint with.
+func teamHueOf(p palette, h teamHueSpec) hue {
+	r, g, b := teamRGB(p, h)
 	return hue{r: r, g: g, b: b, idx: nearest256Lab(r, g, b), tier: flat}
 }
 
-// spaceInk is the pen a space's colour is drawn with, or nil where there is no
+// teamInk is the pen a team's colour is drawn with, or nil where there is no
 // colour to draw: a terminal under 256 colours, NO_COLOR, or the ASCII floor.
-// A caller given nil draws the space's initial, dim, instead of a dot.
-func (p palette) spaceInk(h spaceHueSpec) func(string) string {
+// A caller given nil draws the team's initial, dim, instead of a dot.
+func (p palette) teamInk(h teamHueSpec) func(string) string {
 	if p.ascii || p.profile < tokens.ANSI256 {
 		return nil
 	}
-	hh := spaceHueOf(p, h)
+	hh := teamHueOf(p, h)
 	return func(s string) string { return p.paint(s, hh) }
 }

@@ -7,12 +7,12 @@ import (
 // ── THE WALL'S POPOVERS, WIRED ──────────────────────────────────────────────
 //
 // Two small cards hang off the control that opened them (wallbar.go draws
-// them): which spaces a conversation is in, and one space's settings. While
+// them): which teams a conversation is in, and one team's settings. While
 // one is up it has the keyboard, and a press anywhere off it puts it away and
 // does nothing else, as a menu's does.
 //
-// A CONVERSATION MAY BE IN ANY NUMBER OF SPACES. The spaces popover is a list
-// of boxes, one per space, and a box pressed is saved at once: there is no
+// A CONVERSATION MAY BE IN ANY NUMBER OF SPACES. The teams popover is a list
+// of boxes, one per team, and a box pressed is saved at once: there is no
 // apply, because a grouping is cheap to change and cheap to change back.
 
 // wallPopDone is the settings popover's Done: the name kept, the popover put
@@ -45,30 +45,30 @@ func (a *app) wallAnchor(kind wallHitKind, arg int) wallPop {
 	return wallPop{x: 2, y0: 2, y1: 3}
 }
 
-// wallOpenMembers puts up the spaces popover for the conversations with the
+// wallOpenMembers puts up the teams popover for the conversations with the
 // given keys.
 func (a *app) wallOpenMembers(keys []string, at wallPop) {
 	if len(keys) == 0 {
 		return
 	}
-	a.spacesEnsure()
+	a.teamsEnsure()
 	at.kind = wallPopMembers
 	at.targets = keys
 	a.wall.pop = at
 	a.wall.filterOn = false
 }
 
-// wallOpenSettings puts up space i's settings: its name ready to edit, and
+// wallOpenSettings puts up team i's settings: its name ready to edit, and
 // the colour it has first among the others it could take.
 func (a *app) wallOpenSettings(i int, at wallPop) {
-	if i < 0 || i >= len(a.wall.spaces) {
+	if i < 0 || i >= len(a.wall.teams) {
 		return
 	}
 	at.kind = wallPopSettings
-	at.space = i
-	at.name = a.wall.spaces[i].Name
-	at.choices = append([]spaceHueSpec{a.wall.spaces[i].hueSpec()},
-		spaceHueChoices(a.spaceHues(i), spaceReservedHues(a.pal), wallSwatchCount-1)...)
+	at.team = i
+	at.name = a.wall.teams[i].Name
+	at.choices = append([]teamHueSpec{a.wall.teams[i].hueSpec()},
+		teamHueChoices(a.teamHues(i), teamReservedHues(a.pal), wallSwatchCount-1)...)
 	at.choice = 0
 	a.wall.pop = at
 	a.wall.filterOn = false
@@ -100,17 +100,17 @@ func (a *app) wallTabsFor(keys []string, tiles []wallTile) []chatTab {
 	return out
 }
 
-// wallToggleSpace is a box in the spaces popover pressed: the targets all go
-// into space i, unless they are all in it already, in which case they all
+// wallToggleTeam is a box in the teams popover pressed: the targets all go
+// into team i, unless they are all in it already, in which case they all
 // come out. A mixed box fills first, which is what a checkbox does.
-func (a *app) wallToggleSpace(i int, tiles []wallTile) {
-	if i < 0 || i >= len(a.wall.spaces) {
+func (a *app) wallToggleTeam(i int, tiles []wallTile) {
+	if i < 0 || i >= len(a.wall.teams) {
 		return
 	}
 	tabs := a.wallTabsFor(a.wall.pop.targets, tiles)
 	all := len(tabs) > 0
 	for _, tab := range tabs {
-		if !spaceHolds(a.wall.spaces[i], tab.key) {
+		if !teamHolds(a.wall.teams[i], tab.key) {
 			all = false
 		}
 	}
@@ -120,18 +120,18 @@ func (a *app) wallToggleSpace(i int, tiles []wallTile) {
 		for _, tab := range tabs {
 			keys = append(keys, tab.key)
 		}
-		err = a.spaceRemove(i, keys)
+		err = a.teamRemove(i, keys)
 	} else {
-		err = a.spaceAdd(i, tabs)
+		err = a.teamAdd(i, tabs)
 	}
 	if err != nil {
-		a.note("the space is changed for this window, but " + err.Error())
+		a.note("the team is changed for this window, but " + err.Error())
 	}
 }
 
-// wallPopNewSpace is + New space… in the spaces popover: the new-space card,
+// wallPopNewTeam is + New team… in the teams popover: the new-team card,
 // with the popover's conversations as the ones picked.
-func (a *app) wallPopNewSpace(tiles []wallTile) {
+func (a *app) wallPopNewTeam(tiles []wallTile) {
 	keys := a.wall.pop.targets
 	a.wall.pop = wallPop{}
 	a.wall.marked = map[string]bool{}
@@ -148,7 +148,7 @@ func (a *app) wallRecolor(j int) {
 		return
 	}
 	p.choice = j
-	if err := a.spaceRecolor(p.space, p.choices[j]); err != nil {
+	if err := a.teamRecolor(p.team, p.choices[j]); err != nil {
 		a.note("the colour is kept for this window, but " + err.Error())
 	}
 }
@@ -156,10 +156,10 @@ func (a *app) wallRecolor(j int) {
 // wallRenameFromPop saves the settings popover's name if it changed.
 func (a *app) wallRenameFromPop() {
 	p := a.wall.pop
-	if p.space < 0 || p.space >= len(a.wall.spaces) || p.name == a.wall.spaces[p.space].Name {
+	if p.team < 0 || p.team >= len(a.wall.teams) || p.name == a.wall.teams[p.team].Name {
 		return
 	}
-	if err := a.spaceRename(p.space, p.name); err != nil {
+	if err := a.teamRename(p.team, p.name); err != nil {
 		a.note(err.Error())
 	}
 }
@@ -171,16 +171,16 @@ func (a *app) wallPopPress(hit wallHit, tiles []wallTile) tea.Cmd {
 	case hit.kind == wallHitSwatch && p.kind == wallPopSettings:
 		a.wallRecolor(hit.arg)
 	case p.kind == wallPopMembers && hit.arg == wallPopNew:
-		a.wallPopNewSpace(tiles)
+		a.wallPopNewTeam(tiles)
 	case p.kind == wallPopMembers:
 		p.cursor = hit.arg
-		a.wallToggleSpace(hit.arg, tiles)
+		a.wallToggleTeam(hit.arg, tiles)
 	case hit.arg == wallPopDelete:
 		p.confirm = true
 	case hit.arg == wallPopKeep:
 		p.confirm = false
 	case hit.arg == wallPopConfirm:
-		a.wallDeleteSpace(p.space)
+		a.wallDeleteTeam(p.team)
 	case hit.arg == wallPopDone:
 		a.wallRenameFromPop()
 		a.wall.pop = wallPop{}
@@ -188,8 +188,8 @@ func (a *app) wallPopPress(hit wallHit, tiles []wallTile) tea.Cmd {
 	return nil
 }
 
-// wallPopKey is a key while a popover is up. The spaces popover walks its rows
-// with the arrows and presses one with space or enter; the settings popover
+// wallPopKey is a key while a popover is up. The teams popover walks its rows
+// with the arrows and presses one with team or enter; the settings popover
 // takes typing into the name, the arrows through the colours, and enter to
 // keep the name. esc puts either away.
 func (a *app) wallPopKey(msg tea.KeyPressMsg, tiles []wallTile) tea.Cmd {
@@ -205,7 +205,7 @@ func (a *app) wallPopKey(msg tea.KeyPressMsg, tiles []wallTile) tea.Cmd {
 	}
 	switch p.kind {
 	case wallPopMembers:
-		last := len(a.wall.spaces) // the + New space row
+		last := len(a.wall.teams) // the + New team row
 		switch key {
 		case "up", "k":
 			p.cursor = max(p.cursor-1, 0)
@@ -213,10 +213,10 @@ func (a *app) wallPopKey(msg tea.KeyPressMsg, tiles []wallTile) tea.Cmd {
 			p.cursor = min(p.cursor+1, last)
 		case "space", "enter":
 			if p.cursor >= last {
-				a.wallPopNewSpace(tiles)
+				a.wallPopNewTeam(tiles)
 				return nil
 			}
-			a.wallToggleSpace(p.cursor, tiles)
+			a.wallToggleTeam(p.cursor, tiles)
 		}
 	case wallPopSettings:
 		switch key {
