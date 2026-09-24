@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -71,6 +72,10 @@ func CrewSeatTier(seat crewroute.Seat) string {
 	}
 	return ModelTierWorker
 }
+
+// CrewSeatKey is the registry row a seat's pin is written in — the settings
+// sheet's one way of telling a seat's row from the other tier rows.
+func CrewSeatKey(seat crewroute.Seat) string { return tierKeyFor(CrewSeatTier(seat)) }
 
 // CrewTierSeat is the seat a tier row pins, false for a tier that is not a
 // crew seat (reflex, small work).
@@ -513,8 +518,12 @@ func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewr
 // routes of equal cost is broken in. A model no connected provider reaches is
 // not a candidate, however cheap.
 func CrewCandidatesAt(profileDir string) []crewroute.Candidate {
-	rule := CrewAllowedAt(profileDir)
-	providers := CrewProvidersAt(profileDir)
+	return crewCandidates(CrewAllowedAt(profileDir), CrewProvidersAt(profileDir))
+}
+
+// crewCandidates is [CrewCandidatesAt] over a rule and a set of providers
+// already read, which is how [CrewOffersAt] asks the same question under `all`.
+func crewCandidates(rule crewroute.Allowed, providers []CrewProvider) []crewroute.Candidate {
 	var models []crewroute.Model
 	if rows := crewCatalogRows(); len(rows) > 0 {
 		for _, row := range rows {
@@ -559,6 +568,100 @@ func CrewCandidatesAt(profileDir string) []crewroute.Candidate {
 		out = append(out, crewroute.Candidate{Model: m, Routes: routes})
 	}
 	return out
+}
+
+// CrewOffer is one model a seat could be pinned to on this profile: a model
+// some connected provider reaches, WHETHER OR NOT THE ALLOWED RULE ADMITS IT.
+//
+// THE PICKER LISTS WHAT THE RULE LEAVES OUT, AND SAYS SO. A list that hid
+// every model outside the rule would answer "why can't I pick kimi?" with
+// silence; one that shows it dim, with the one key that lets it in, answers
+// the question on the row where it was asked ([SetCrewPin] still refuses a pin
+// outside the rule — the panel's key widens the rule first, out loud).
+type CrewOffer struct {
+	Model crewroute.Model
+	// Routes are every connected provider reaching it, in [CrewCandidatesAt]'s
+	// order — plans and local first, the default service last — and the
+	// cheapest route is the first one.
+	Routes []crewroute.Route
+	// Allowed is whether the rule admits the model on at least one of them.
+	Allowed bool
+}
+
+// CrewOffersAt is every model a connected provider reaches, allowed or not,
+// in the catalog's order. It is [CrewCandidatesAt] asked under `all` and then
+// read against the rule in force, so the two can never disagree about which
+// route reaches what.
+func CrewOffersAt(profileDir string) []CrewOffer {
+	rule := CrewAllowedAt(profileDir)
+	providers := CrewProvidersAt(profileDir)
+	var out []CrewOffer
+	for _, c := range crewCandidates(crewroute.Allowed{Base: crewroute.BaseAll}, providers) {
+		offer := CrewOffer{Model: c.Model, Routes: c.Routes}
+		if rule.AdmitsModel(c.Model) {
+			for _, r := range c.Routes {
+				if rule.AdmitsRoute(r.Provider) {
+					offer.Allowed = true
+					break
+				}
+			}
+		}
+		out = append(out, offer)
+	}
+	return out
+}
+
+// SetCrewAllowedRule writes a rule the panel composed ([crewroute.Allowed]'s
+// edits) through the rule's one writer, so a checklist tick is refused for
+// exactly the reason the typed form would be — a pinned seat it would leave
+// outside.
+func SetCrewAllowedRule(profileDir string, rule crewroute.Allowed) error {
+	return writeCrewAllowed(profileDir, rule)
+}
+
+// CrewState is the crew's persisted rows as they stand — the three seats, the
+// allowed rule and the cap, raw — which is what the panel's undo puts back.
+//
+// IT IS THE ROWS AND NOT A READING OF THEM. An undo that re-wrote what the
+// readers made of the rows would turn a hand-written `auto` into an absent
+// row, or a preset's legacy row into a pin; putting the bytes back is the only
+// undo that restores exactly what was there.
+type CrewState struct {
+	values map[string]json.RawMessage
+}
+
+// crewStateKeys are the rows a [CrewState] carries.
+func crewStateKeys() []string {
+	keys := []string{KeyCrewAllowed, KeyCrewCap}
+	for _, seat := range crewroute.Seats {
+		keys = append(keys, tierKeyFor(CrewSeatTier(seat)))
+	}
+	return keys
+}
+
+// CrewStateAt reads the crew's rows as they stand.
+func CrewStateAt(profileDir string) CrewState {
+	state := CrewState{values: map[string]json.RawMessage{}}
+	for _, key := range crewStateKeys() {
+		if raw, ok := persistedValue(profileDir, key); ok {
+			state.values[key] = raw
+		}
+	}
+	return state
+}
+
+// RestoreCrewState writes a [CrewState] back, IN ONE FILE WRITE: a row that
+// was absent is removed, and every other row gets its old bytes.
+func RestoreCrewState(profileDir string, state CrewState) error {
+	values := map[string]any{}
+	for _, key := range crewStateKeys() {
+		if raw, ok := state.values[key]; ok {
+			values[key] = raw
+			continue
+		}
+		values[key] = removeProfileKey
+	}
+	return writeProfileValues(profileDir, values)
 }
 
 // CrewGapsAt names what the allowed models leave uncovered, for the panel's

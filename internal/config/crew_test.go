@@ -345,3 +345,55 @@ func TestParseCrewPin(t *testing.T) {
 		}
 	}
 }
+
+// THE PICKER'S OFFERS ARE EVERY REACHABLE MODEL, and the rule only marks them:
+// a model the rule leaves out is still offered, as not allowed.
+func TestCrewOffersMarkWhatTheRuleLeavesOut(t *testing.T) {
+	dir := crewProfile(t)
+	if err := SetCrewAllowed(dir, "open"); err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{}
+	for _, offer := range CrewOffersAt(dir) {
+		if len(offer.Routes) == 0 {
+			t.Errorf("%s was offered with no route", offer.Model.ID)
+		}
+		allowed[offer.Model.ID] = offer.Allowed
+	}
+	if got, ok := allowed["anthropic/claude-opus-5"]; !ok || got {
+		t.Fatalf("a closed model under `open` reads offered=%v allowed=%v", ok, got)
+	}
+	if !allowed["moonshotai/kimi-k3"] {
+		t.Fatal("an open model under `open` is not allowed")
+	}
+	if _, ok := allowed["vendor/unpriced"]; ok {
+		t.Fatal("an unpriced row was offered")
+	}
+}
+
+// UNDO PUTS THE ROWS BACK, absent ones included, in one write.
+func TestCrewStateRestoresTheRows(t *testing.T) {
+	dir := crewProfile(t)
+	before := CrewStateAt(dir)
+	if err := SetCrewPin(dir, crewroute.Checker, "moonshotai/kimi-k3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewCap(dir, "5"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewAllowedRule(dir, crewroute.Allowed{Base: crewroute.BaseOpen}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RestoreCrewState(dir, before); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := CrewPinAt(dir, crewroute.Checker); ok {
+		t.Fatal("the restored profile still pins the checker")
+	}
+	if CrewCapAt(dir) != 0 || CrewAllowedAt(dir).String() != "all" {
+		t.Fatalf("restored cap %v rule %q", CrewCapAt(dir), CrewAllowedAt(dir).String())
+	}
+	if _, held := persistedValue(dir, KeyCrewCap); held {
+		t.Fatal("an absent row came back as a written one")
+	}
+}

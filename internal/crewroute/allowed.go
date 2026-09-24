@@ -248,3 +248,97 @@ func matchesModel(word, id string) bool {
 	}
 	return word == vendor || Lineage(word) == tail
 }
+
+// ── THE PANEL'S EDITS, EACH THE SHORTEST RULE THAT SAYS IT ──
+//
+// The /crew panel edits the rule a toggle at a time — a model ticked on or off
+// in its checklist, a provider taken away, the base walked from `all` to
+// `open` — and every one of those writes the rule back through the same one
+// writer the typed form uses. What these add is the arithmetic of saying the
+// change in as few words as possible, because the rule is SHOWN: a checklist
+// that left `+x -x +x` behind after three presses would be a panel writing a
+// rule nobody could read back.
+
+// Custom says whether the rule is more than one of the three plain bases: an
+// explicit list, or a base with exceptions on it. It is the fourth answer the
+// panel's models row walks between, and the one its checklist edits.
+func (a Allowed) Custom() bool {
+	return a.Base == BaseList || len(a.Mods) > 0
+}
+
+// Rebased is the rule on a new base with nothing carried over — the `‹ open ›`
+// the panel's row steps to is `open`, and not `open` with whatever exceptions
+// the rule it stepped from happened to have. The price ceilings are taken for
+// [BasePrice] and ignored for every other base.
+func (a Allowed) Rebased(base Base, maxIn, maxOut float64) Allowed {
+	out := Allowed{Base: base}
+	if base == BasePrice {
+		out.MaxIn, out.MaxOut = maxIn, maxOut
+	}
+	return out
+}
+
+// Without is the rule with every `+x` or `-x` naming word taken off, which
+// hands that word's verdict back to the base.
+func (a Allowed) Without(word string) Allowed {
+	word = strings.ToLower(strings.TrimSpace(word))
+	out := a
+	out.Mods = nil
+	for _, mod := range a.Mods {
+		if mod.Word != word {
+			out.Mods = append(out.Mods, mod)
+		}
+	}
+	return out
+}
+
+// Toggled is the rule with one model's verdict flipped to admit, in the
+// shortest spelling: an explicit list gains or loses a member, and any other
+// base loses the exception it already had for the model when that alone gives
+// the wanted verdict, or gains one when it does not. It is what a tick in the
+// panel's checklist writes.
+//
+// AN EXPLICIT LIST MAY NOT BE EMPTIED. `a, b` less both is not a rule the
+// grammar can spell — an empty rule reads as `all`, which is the opposite of
+// what unticking the last model means — so the second answer is false and the
+// rule comes back as it was.
+func (a Allowed) Toggled(m Model, admit bool) (Allowed, bool) {
+	word := strings.ToLower(strings.TrimSpace(m.ID))
+	if a.Base == BaseList {
+		out := a.Without(word)
+		var members []string
+		for _, member := range a.Members {
+			if !matchesModel(member, m.ID) {
+				members = append(members, member)
+			}
+		}
+		if admit {
+			members = append(members, word)
+		}
+		if len(members) == 0 {
+			return a, false
+		}
+		out.Members = members
+		if out.AdmitsModel(m) != admit {
+			// A vendor-wide exception outranks the member: say this model by name
+			// after it, which is the last word and therefore the verdict.
+			out = out.With(admit, word)
+		}
+		return out, true
+	}
+	out := a.Without(word)
+	if out.AdmitsModel(m) != admit {
+		out = out.With(admit, word)
+	}
+	return out, true
+}
+
+// RouteToggled is the rule with one provider's routes given back or taken
+// away, in the shortest spelling, the way [Allowed.Toggled] says a model.
+func (a Allowed) RouteToggled(provider string, admit bool) Allowed {
+	out := a.Without(provider)
+	if out.AdmitsRoute(provider) != admit {
+		out = out.With(admit, provider)
+	}
+	return out
+}

@@ -65,3 +65,56 @@ func TestAllowedRoundTripsAndModifies(t *testing.T) {
 		t.Errorf("-openrouter: %q", got.String())
 	}
 }
+
+// THE PANEL'S EDITS ARE THE SHORTEST RULE THAT SAYS THEM: a tick undone is the
+// rule it was, and a list keeps at least one member.
+func TestAllowedTogglesInTheShortestSpelling(t *testing.T) {
+	kimi := Model{ID: "moonshotai/kimi-k3", Open: true}
+	opus := Model{ID: "anthropic/claude-opus-5"}
+	all, _ := ParseAllowed("all")
+
+	off, ok := all.Toggled(kimi, false)
+	if !ok || off.String() != "all -moonshotai/kimi-k3" {
+		t.Fatalf("unticking kimi from all wrote %q", off.String())
+	}
+	back, _ := off.Toggled(kimi, true)
+	if back.String() != "all" || back.Custom() {
+		t.Fatalf("ticking it again wrote %q, want the plain base back", back.String())
+	}
+
+	open, _ := ParseAllowed("open")
+	in, _ := open.Toggled(opus, true)
+	if in.String() != "open +anthropic/claude-opus-5" || !in.AdmitsModel(opus) {
+		t.Fatalf("ticking a closed model on open wrote %q", in.String())
+	}
+
+	list, _ := ParseAllowed("kimi-k3, glm-5.3-flash")
+	grown, _ := list.Toggled(opus, true)
+	if !grown.AdmitsModel(opus) || grown.Base != BaseList {
+		t.Fatalf("ticking onto a list wrote %q", grown.String())
+	}
+	shrunk, _ := grown.Toggled(kimi, false)
+	if shrunk.AdmitsModel(kimi) || len(shrunk.Mods) != 0 {
+		t.Fatalf("unticking a member wrote %q, want it off the list and no exception", shrunk.String())
+	}
+	one, _ := ParseAllowed("kimi-k3")
+	if kept, ok := one.Toggled(kimi, false); ok || kept.String() != one.String() {
+		t.Fatalf("emptying a list was accepted as %q", kept.String())
+	}
+
+	away := all.RouteToggled("openrouter", false)
+	if away.String() != "all -openrouter" || away.AdmitsRoute("openrouter") {
+		t.Fatalf("taking openrouter away wrote %q", away.String())
+	}
+	if again := away.RouteToggled("openrouter", true); again.String() != "all" {
+		t.Fatalf("giving it back wrote %q", again.String())
+	}
+
+	price, _ := ParseAllowed("open -deepseek")
+	if re := price.Rebased(BasePrice, 1, 5); re.String() != "≤1/5" {
+		t.Fatalf("rebasing onto a price wrote %q", re.String())
+	}
+	if !price.Custom() {
+		t.Fatal("a base with an exception is not custom")
+	}
+}
