@@ -987,7 +987,8 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 		WaitRows: []session.PlanTaskRow{row},
 		// A PROGRAM'S CONVERSATION CROSSES WITH ITS PAGE, on the page's own call
 		// and in no call of its own: an answered turn with everything a turn can
-		// carry, a refused one, and the one still in flight.
+		// carry, a refused one, and the one still in flight — and so do its
+		// actions, each with everything an action can carry.
 		Program: &session.PlanProgram{
 			Name: "senior-dev", Stages: []string{"intake", "implement"},
 			Turns: []delegate.Turn{
@@ -999,6 +1000,13 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 				{Seq: 3, Thread: "main", Started: ended, Model: "deepseek/deepseek-v4-flash", Restarted: true},
 			},
 			Earlier: 4, Calls: 6, CeilingUSD: 5,
+			Actions: []delegate.Shown{
+				{At: started, Step: "explore", Text: "ran go test ./internal/remote", Outcome: "fails · exit 1"},
+				{At: started.Add(time.Second), Text: "compacted its memory", Outcome: "kept its own record", Memory: true},
+				{At: ended, Text: "switched to deepseek-v4-flash", Model: "openrouter/deepseek/deepseek-v4-flash", Reason: "the last one was busy"},
+				{At: ended, Step: "implement", Text: "told its model to finish (nudge 1)", Steer: true},
+			},
+			EarlierActions: 12,
 		},
 	}
 	e.answers[MethodPlanTasks] = []session.PlanTaskRow{row}

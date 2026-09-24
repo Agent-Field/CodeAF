@@ -331,7 +331,7 @@ func carriedSettlingLine(owed int) string {
 const carriedStderrName = "delegate-stderr.log"
 
 // carriedRecordDir is a shell run's record folder: the conversation log, the
-// program record and the program's stderr, under this machine's state root
+// action log, the program record and the program's stderr, under this machine's state root
 // where a person can open them after the lines have scrolled away. It has no
 // task page to live beside, so it has a folder of its own, one per run.
 func carriedRecordDir(name string) string {
@@ -528,7 +528,19 @@ func (v *carriedView) remember(change func(record *delegate.ProgramRecord)) {
 	_ = delegate.WriteProgram(v.record, v.program)
 }
 
+// kept writes one received record to the run's action log in its record
+// folder, stamped with the moment it arrived — the same log a chat's run keeps
+// beside its task (delegate.ActionsFile), so the two roads leave one record. It
+// is a record, so a disk that refuses it costs the record and never the run.
+func (v *carriedView) kept(action delegate.Action) {
+	if strings.TrimSpace(v.record) == "" {
+		return
+	}
+	_ = delegate.AppendAction(v.record, action)
+}
+
 func (v *carriedView) Stage(record delegate.StageRecord) {
+	v.kept(delegate.StageAction(time.Now(), record))
 	if v.records != nil {
 		_ = v.records.Stage(record)
 		return
@@ -555,6 +567,7 @@ func (v *carriedView) moved(stage, status string) bool {
 }
 
 func (v *carriedView) Step(record delegate.StepRecord) {
+	v.kept(delegate.StepAction(time.Now(), record))
 	if v.records != nil {
 		_ = v.records.Step(record)
 		return
@@ -568,6 +581,7 @@ func (v *carriedView) Step(record delegate.StepRecord) {
 
 func (v *carriedView) Terminal(t delegate.Terminal) {
 	v.keep(t)
+	v.kept(delegate.EndAction(time.Now(), t))
 	if v.records == nil {
 		return
 	}

@@ -170,15 +170,30 @@ SIGTERM to the process group, a 15-second grace, then SIGKILL. On SIGTERM the
 program stops starting new work, writes its terminal, and exits. A body that
 returns without writing a terminal gets one written for it (`delegate.RunChild`).
 
-## 6. The conversation log
+## 6. The conversation log and the action log
 
 `delegate-conversation.jsonl` in the task's record folder, one `delegate.Turn`
 per model call: the thread, the model asked for and the one that answered, what
 the program sent that the thread's previous call had not, the reply and the tool
 calls, tokens and cost, and codeaf's refusal or the model's failure. A call is
 written when it starts and again when it ends, and a reader keeps the later
-record, so the task page shows the call in flight. The page draws the turns as
-the conversation between the program and codeaf.
+record, so the task page shows the call in flight.
+
+`delegate-actions.jsonl` beside it, one `delegate.Action` per record the program
+wrote — `stage`, `step`, and its ending (`end`: the terminal's status and
+message) — each stamped `at` with the moment codeaf received it, because a
+program's own clock is not trusted and the page merges this log with the
+conversation log, whose times are codeaf's too. The run's worker writes it and
+so does a shell run, into its own record folder; it is capped as the turns are.
+
+**The page draws actions, not the dialogue.** A program's own vocabulary
+(`Delegate.Present`, a reader told every line of the log in order) turns each
+line into what a person reads under the step of the program's process it
+served (`delegate.Shown`); the page merges those with what only the calls know
+— a compaction, a change of the model answering, a refused or failed call — by
+time, and keeps the dialogue of the raw calls one key away. The live step names
+the step the program is in: the word the program's reader gives the latest
+record that named one, and its stage's word before any has.
 
 ## 7. What a program may not do
 

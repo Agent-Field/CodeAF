@@ -160,6 +160,16 @@ func TestAShellRunHostsTheModelAPIForARealChildAndPrintsItsWork(t *testing.T) {
 	if err != nil || len(turns) != 2 || turns[1].Reply != "answered question 2: fix the flaky test" || turns[1].CostUSD != 0.004 {
 		t.Fatalf("the kept conversation = %+v (%v)", turns, err)
 	}
+	// AND THE ACTIONS ARE KEPT BESIDE IT, the log a chat's run keeps: every
+	// stage, step and ending as it arrived.
+	actions, err := delegate.ReadActions(record, 0)
+	var kinds []string
+	for _, action := range actions {
+		kinds = append(kinds, action.Kind)
+	}
+	if err != nil || strings.Join(kinds, ",") != "stage,step,step,stage,end" || actions[4].Message != "submitted and verified" {
+		t.Fatalf("the kept actions = %v %+v (%v)", kinds, actions, err)
+	}
 }
 
 // WITH --json THE RECORDS PASS THROUGH AS RECORDS, and nothing a person reads

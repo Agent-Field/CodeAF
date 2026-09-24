@@ -311,3 +311,82 @@ func TestStripTakesOnlyTheRunsCopyOut(t *testing.T) {
 		}
 	}
 }
+
+// A PROGRAM'S PAGE CARRIES WHAT IT DID, IN ITS OWN WORDS. Every line of the
+// task's action log is read, in the order it arrived, by the program's own
+// reader of it — which is handed the lines with the run's copy taken out of
+// what they name — and what it shows is carried with its moment, its step's
+// word, its head and its outcome; what it leaves out is absent. A program this
+// build does not carry is read plainly, so its page still says what it did.
+func TestAProgramsPageCarriesItsActionsInItsOwnWords(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha"})
+	folder := plandb.TaskDir(dir, "alpha")
+	if err := delegate.WriteProgram(folder, delegate.ProgramRecord{Name: "senior-dev"}); err != nil {
+		t.Fatal(err)
+	}
+	place := t.TempDir()
+	var seen []string
+	own := delegate.Delegate{Name: "senior-dev", Present: func() delegate.ActionReader {
+		return func(action delegate.Action) (delegate.Shown, bool) {
+			seen = append(seen, action.Command)
+			if action.Kind == delegate.ActionStage {
+				return delegate.Shown{}, false
+			}
+			return delegate.Shown{Step: "explore", Text: "ran " + action.Command + "\nand a second line", Outcome: delegate.ExitWord(action.Exit)}, true
+		}
+	}}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Place = Place{Dir: place}
+		c.Delegates = []delegate.Delegate{own}
+	})
+	armPlanStore(t, agent, path, "chat-a")
+	copyDir := filepath.Join(agent.treesDir(), "7")
+	began := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
+	exit := 1
+	for _, action := range []delegate.Action{
+		delegate.StageAction(began, delegate.StageRecord{Stage: "run-contract", Status: "ready"}),
+		delegate.StepAction(began.Add(time.Second), delegate.StepRecord{Command: "go test " + copyDir + "/internal/auth", Tool: "bash", Step: "explore", Exit: &exit}),
+	} {
+		if err := delegate.AppendAction(folder, action); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, ok := agent.PlanTaskPage("t-alpha")
+	if !ok || page.Program == nil {
+		t.Fatal("the program's task answered no program page")
+	}
+	if len(page.Program.Actions) != 1 || page.Program.EarlierActions != 0 {
+		t.Fatalf("actions = %+v, want the one step its reader showed", page.Program.Actions)
+	}
+	got := page.Program.Actions[0]
+	want := delegate.Shown{At: began.Add(time.Second), Step: "explore", Text: "ran go test internal/auth", Outcome: "fails · exit 1"}
+	if got != want {
+		t.Fatalf("the action = %+v, want %+v", got, want)
+	}
+	if len(seen) != 2 || strings.Contains(seen[1], copyDir) {
+		t.Fatalf("the reader was handed %q, want both lines with the copy taken out", seen)
+	}
+
+	// A PROGRAM THIS BUILD DOES NOT CARRY IS READ PLAINLY.
+	plain := planProgramOf(nil, "senior-dev")
+	shown, _ := planProgramActionsFor([]delegate.Action{delegate.StageAction(began, delegate.StageRecord{Stage: "intake", Status: "captured"})}, plain, planRunCopies{})
+	if len(shown) != 1 || shown[0].Text != "intake · captured" {
+		t.Fatalf("a program with no vocabulary read %+v, want its stage and status", shown)
+	}
+}
+
+// A LONG RUN'S PAGE CARRIES ITS NEWEST ACTIONS AND COUNTS THE REST, as it does
+// its calls.
+func TestAProgramsPageCarriesTheNewestActionsAndCountsTheRest(t *testing.T) {
+	began := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
+	var logged []delegate.Action
+	for i := 0; i < planProgramActions+5; i++ {
+		logged = append(logged, delegate.StepAction(began.Add(time.Duration(i)*time.Second), delegate.StepRecord{Command: "bash: step " + itoa(i)}))
+	}
+	shown, earlier := planProgramActionsFor(logged, planProgramOf(nil, "senior-dev"), planRunCopies{})
+	if len(shown) != planProgramActions || earlier != 5 || shown[0].Text != "bash: step 5" {
+		t.Fatalf("carried %d actions from %q with %d earlier, want the newest %d and 5 earlier", len(shown), shown[0].Text, earlier, planProgramActions)
+	}
+}

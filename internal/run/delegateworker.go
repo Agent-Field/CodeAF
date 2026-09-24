@@ -11,9 +11,12 @@ package run
 // What differs is inside: there is no model turn here. The program runs as a
 // child process of codeaf's own executable (`codeaf <name> run --json …`) in
 // the run's working copy, its stdout is the records, and its terminal record is
-// the ending. Its stages feed the live step only; its `step` records are what
-// enter the trajectory, so the task page's step count is what the program said
-// it did and not how many phases it announced.
+// the ending. Every stage, step and ending is written to the task's action log
+// (delegate.ActionsFile) the moment it is received, which is what the task
+// page draws the program's work from; its `step` records are also what enter
+// the trajectory, so the task page's step count is what the program said it
+// did and not how many phases it announced; and the live step names the step
+// of the program's process it is in.
 //
 // ── ITS ONLY ROAD TO A MODEL IS THIS RUN'S MODEL API ────────────────────────
 //
@@ -172,6 +175,68 @@ type delegateSink struct {
 	// is written whole, twice — at the hello and when the process is gone — and
 	// the second write must carry what the first one said.
 	record delegate.ProgramRecord
+	// reader is the program's own reader of its action log
+	// (delegate.Delegate.Reader), told every record in the order it arrives, so
+	// the live step can name the step of the program's process the record
+	// served; stepped is whether any record has named one yet.
+	reader  delegate.ActionReader
+	stepped bool
+}
+
+// remember writes one received record to the task's action log, stamped with
+// the moment it arrived, and moves the live step to the step it served.
+//
+// THE LOG IS A RECORD, SO A DISK THAT REFUSES IT COSTS THE PAGE AND NEVER THE
+// RUN, as the program record's does; and a child of ANOTHER BUILD is not this
+// run's program, so nothing it says is written down as the program's.
+func (s *delegateSink) remember(action delegate.Action) {
+	if s.mismatch != "" {
+		return
+	}
+	if strings.TrimSpace(s.taskDir) != "" {
+		_ = delegate.AppendAction(s.taskDir, action)
+	}
+	s.live(action)
+}
+
+// live moves the live step for one received record.
+//
+// THE LIVE STEP IS THE STEP OF THE PROGRAM'S PROCESS IT IS IN, numbered after
+// the last step recorded, so the row reads "senior-dev: explore" while the
+// program explores and the count on the row stays the steps'. The step is the
+// one the program's own reader of its log names for the record
+// (delegate.Delegate.Present) — a stage can name one as well as a step — and a
+// record that names none leaves the word standing.
+//
+// BEFORE ANY RECORD HAS NAMED A STEP, A STAGE IS SHOWN IN THE PROGRAM'S WORDS
+// FOR A PERSON, NOT ITS STAGE'S NAME. A program that says what a person should
+// read for its stages (delegate.Delegate's StageWords) is shown that word and
+// no status beside it — a status is its machinery too — and a stage it gave no
+// word keeps the word already shown. Only a program that said nothing is shown
+// its own names, as it spelled them.
+func (s *delegateSink) live(action delegate.Action) {
+	if s.reader == nil {
+		s.reader = s.worker.program.Reader()
+	}
+	if shown, ok := s.reader(action); ok && strings.TrimSpace(shown.Step) != "" {
+		s.stepped = true
+		_ = s.worker.store.SetLive(s.taskID, s.steps+1, s.name+": "+strings.TrimSpace(shown.Step))
+		return
+	}
+	if action.Kind != delegate.ActionStage || s.stepped {
+		return
+	}
+	label := s.name + ": " + action.Stage
+	if words := s.worker.program.StageWords; words != nil {
+		word := strings.TrimSpace(words[action.Stage])
+		if word == "" {
+			return
+		}
+		label = s.name + ": " + word
+	} else if action.Status != "" {
+		label += " · " + action.Status
+	}
+	_ = s.worker.store.SetLive(s.taskID, s.steps+1, label)
 }
 
 func (s *delegateSink) Hello(h delegate.Hello) {
@@ -196,28 +261,7 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 }
 
 func (s *delegateSink) Stage(record delegate.StageRecord) {
-	stage, status := record.Stage, record.Status
-	// THE LIVE STEP IS THE PROGRAM'S PHASE, numbered after the last step
-	// recorded, so the row reads "senior-dev: working" while the program is
-	// inside that phase and the count on the row stays the steps'.
-	//
-	// IN THE PROGRAM'S WORDS FOR A PERSON, NOT ITS STAGE'S NAME. A program that
-	// says what a person should read for its stages (delegate.Delegate's
-	// StageWords) is shown that word and no status beside it — a status is its
-	// machinery too — and a stage it gave no word keeps the word already shown.
-	// Only a program that said nothing is shown its own names, as it spelled
-	// them.
-	label := s.name + ": " + stage
-	if words := s.worker.program.StageWords; words != nil {
-		word := strings.TrimSpace(words[stage])
-		if word == "" {
-			return
-		}
-		label = s.name + ": " + word
-	} else if status != "" {
-		label += " · " + status
-	}
-	_ = s.worker.store.SetLive(s.taskID, s.steps+1, label)
+	s.remember(delegate.StageAction(time.Now(), record))
 }
 
 func (s *delegateSink) Step(record delegate.StepRecord) {
@@ -230,9 +274,13 @@ func (s *delegateSink) Step(record delegate.StepRecord) {
 	}); err != nil && s.lastErr == nil {
 		s.lastErr = err
 	}
+	s.remember(delegate.StepAction(time.Now(), record))
 }
 
-func (s *delegateSink) Terminal(t delegate.Terminal) { s.terminal = &t }
+func (s *delegateSink) Terminal(t delegate.Terminal) {
+	s.terminal = &t
+	s.remember(delegate.EndAction(time.Now(), t))
+}
 
 // delegateMeter is where the run's model API tells each charge as it is
 // metered: the conversation's books, the run's live bank, the task's spend

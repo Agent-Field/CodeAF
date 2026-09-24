@@ -5,7 +5,8 @@
 > no `/delegate`; senior-dev copied into `internal/seniordev` from swe-pro-go at
 > the tag `codeaf-absorb` (`6103488`); its CLI is `codeaf senior-dev`; every
 > model call goes through a per-run model API codeaf serves; and the task page
-> shows the program's conversation with codeaf. The protocol is now internal,
+> shows the program's conversation with codeaf (since 2026-09-24, the actions it
+> took, step by step, with the conversation one key away). The protocol is now internal,
 > version 2: [PROTOCOL.md](PROTOCOL.md). What follows is the v1 design as it was
 > built; the manifest road is kept on the tag `delegate-manifest-v1`. The run
 > road, the landing (one squashed commit for a tree, the answer folded in for
@@ -57,6 +58,7 @@ at the person's discretion.
 | Readers | **one generic reader**, compiled in, over a small stdout protocol. No per-program reader | 2026-09-21 |
 | Delegates that produce no tree | allowed. The manifest says `"lands": "text"` and the terminal record's text is the deliverable | 2026-09-21 |
 | Stage records on the task page | stages feed the live step only; `step` records are the trajectory, so the step count is what the program said it did | 2026-09-22 |
+| The task page draws actions, not a dialogue | **superseded the row above, 2026-09-24.** Every stage, step and ending is also written to the task's action log (`delegate-actions.jsonl`) as it arrives, stamped with codeaf's clock; the page draws the program's actions under the steps of its own process through the program's own vocabulary (`Delegate.Present`), and the raw calls are one key away (`ctrl+y`). The live step names the step the program is in. Steps still feed the trajectory | 2026-09-24 |
 | Review round on a delegated run | none. A check seat is a bash-belt worker the belt switch may have left off; the program's own checking is in its result | 2026-09-22 |
 | The run road and the belt switch | a delegated run takes the run road whatever `CODEAF_TASK_BELT` says; only the worker kind differs | 2026-09-22 |
 | A delegate runs alone | nothing joins a delegated run and no delegate joins a run underway; both are refused naming the busy folder | 2026-09-22 |

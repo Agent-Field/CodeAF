@@ -114,6 +114,24 @@ func TestSeniorDevWorksATaskAsTheChatsRunWorker(t *testing.T) {
 	if !ok || record.Name != "senior-dev" || len(record.Stages) == 0 || record.CeilingUSD != ceiling {
 		t.Fatalf("the program record = %+v %v, want senior-dev, its stages and the run's ceiling", record, ok)
 	}
+	// THE TASK KEEPS senior-dev's ACTIONS, and senior-dev's own words read them
+	// under the steps of its process: the brief written down as its spec, the
+	// work, the hand-in, each command of its own check and its ending.
+	actions, err := delegate.ReadActions(taskDir, 0)
+	if err != nil || len(actions) == 0 || actions[len(actions)-1].Kind != delegate.ActionEnd {
+		t.Fatalf("the task's action log = %+v (%v), want every record and the ending last", actions, err)
+	}
+	read, steps := program.Reader(), map[string]bool{}
+	for _, action := range actions {
+		if shown, ok := read(action); ok && shown.Step != "" {
+			steps[shown.Step] = true
+		}
+	}
+	for _, want := range []string{"setup", "spec", "checklist", "implement", "submit", "verify", "finish"} {
+		if !steps[want] {
+			t.Errorf("no action was read under %q: %v", want, steps)
+		}
+	}
 	// AND NO KEY WAS HANDED ON: the child's stderr is the program's own words,
 	// and the planted key is nowhere in them.
 	if stderr, _ := os.ReadFile(filepath.Join(taskDir, "delegate-stderr.log")); strings.Contains(string(stderr), "the-chat-run-must-not-hand-this-on") {

@@ -85,9 +85,12 @@ var Program = delegate.Delegate{
 	// handing it in, checking it, wrapping up. A test holds every stage in
 	// app.Stages to a word.
 	StageWords: stageWords,
-	Default:    "run",
-	Page:       "senior-dev",
-	Commands:   []delegate.Command{runCommand},
+	// What each line of its action log reads as on its task's page, under the
+	// step of its process it served (actions.go).
+	Present:  presentActions,
+	Default:  "run",
+	Page:     "senior-dev",
+	Commands: []delegate.Command{runCommand},
 }
 
 // crewFlags is the conversation's crew as senior-dev's own flags: the working

@@ -1,20 +1,26 @@
 package session
 
-// A PROGRAM'S TASK IS READ AS A CONVERSATION. A task a run handed to a program
-// codeaf carries (senior-dev first; internal/delegate) has no steps worth a
-// page of their own: the program's work happens inside the calls it makes to a
-// model, and every one of those goes through the model API codeaf serves the
-// run, which writes each call as one turn of the program's conversation with
-// codeaf into the task's own record folder (delegate.ConversationFile). This
-// file is the reading side of that record for the task page: whose
-// conversation it is, the stages it said it would move through, the stage it
-// is in now, and the turns themselves, cut to what a page draws.
+// A PROGRAM'S TASK IS READ AS THE ACTIONS IT TOOK. A task a run handed to a
+// program codeaf carries (senior-dev first; internal/delegate) is drawn as what
+// the program did, step by step through its own process: every stage, step and
+// ending it reported, which the run's worker writes to the task's action log
+// as each arrives (delegate.ActionsFile), read through the program's own
+// vocabulary for them (delegate.Delegate's Present). Beside them the page
+// carries the program's calls to a model — every one of which goes through the
+// model API codeaf serves the run, which writes each as one turn into the
+// task's own record folder (delegate.ConversationFile) — because the calls
+// know two things the actions do not always say (a compaction, a change of
+// model) and because the raw calls stay one key away on the page. This file is
+// the reading side of both for the task page: whose run it is, the stages it
+// said it would move through, the step it is in now, its actions and its
+// turns, cut to what a page draws.
 //
 // NOTHING HERE WRITES. The run's worker writes the program record when the
-// program says hello (delegate.ProgramFile) and the model API writes the
-// turns; this file reads both, inside the page read the surface already makes
-// off its loop ([Agent.PlanTaskPage]) and the row read the side list already
-// makes on its beat ([Agent.PlanTasks]), and never on a frame.
+// program says hello (delegate.ProgramFile) and the action log as the records
+// arrive, and the model API writes the turns; this file reads all three,
+// inside the page read the surface already makes off its loop
+// ([Agent.PlanTaskPage]) and the row read the side list already makes on its
+// beat ([Agent.PlanTasks]), and never on a frame.
 
 import (
 	"path/filepath"
@@ -30,6 +36,11 @@ import (
 // carried, which is also what keeps a page read over a connection the size of
 // a page and not the size of the log.
 const planProgramTurns = 200
+
+// planProgramActions is how many of a program's actions one page carries: the
+// newest, for the reason [planProgramTurns] keeps the newest calls, and more of
+// them, because a call that ran five tools is five actions.
+const planProgramActions = 400
 
 // planProgramHead is the most of any one text a page carries, in bytes. The
 // page draws the first line of what a program sent and of what the model
@@ -71,6 +82,17 @@ type PlanProgram struct {
 	// and zero when the run set none or the program has not said hello yet —
 	// which the page draws as no ceiling at all rather than as $0.00.
 	CeilingUSD float64
+	// Actions is what the program did: the newest [planProgramActions] lines of
+	// its action log, in the order they arrived, each as the program's own
+	// vocabulary reads it (delegate.Delegate.Reader) — the step of its process
+	// it served, the words, how it came out — and the lines it leaves out
+	// absent. Every text is cut to its head and the run's own copy is taken out
+	// of it, as the turns' are. Empty for a run from before the log existed,
+	// whose page is drawn from its turns.
+	Actions []delegate.Shown
+	// EarlierActions is how many actions came before the first of Actions,
+	// which the page says rather than draws.
+	EarlierActions int
 }
 
 // planProgramRecord is the program a task was handed to: the record the run's
@@ -93,12 +115,13 @@ func planProgramRecord(dir, id, carried string) (delegate.ProgramRecord, bool) {
 	return delegate.ProgramRecord{}, false
 }
 
-// planProgramStage is the stage a program says it is in, read off its task's
-// live step. The worker publishes a program's phase as the live step in the
-// program's own words, `<name>: <stage> · <status>` (internal/run's
-// delegateSink.Stage), so the stage is what is left without the name in front
-// and without the status behind — `implement` — and nothing at all when no
-// step is live, because a run whose program has ended is in no stage.
+// planProgramStage is where a program says it is, read off its task's live
+// step. The worker publishes it as the live step in the program's own words —
+// the step of its process, `<name>: explore`, or before it has named one its
+// stage's word, and for a program that gave no words `<name>: <stage> ·
+// <status>` (internal/run's delegateSink.live) — so the word is what is left
+// without the name in front and without a status behind, and nothing at all
+// when no step is live, because a run whose program has ended is in no step.
 //
 // IT IS READ FOR A PROGRAM'S TASK AND FOR NO OTHER. A live step of any other
 // task is a command a worker is running, and a command is not a stage.
@@ -164,13 +187,16 @@ func (a *Agent) planRootIsProgram(store *plandb.Store, rootID string) bool {
 // skips a line cut mid-write; anything worse leaves the page with its brief and
 // its pinned line, which is still the truth about a run that has said nothing
 // this page can read.
-func planProgramPage(dir, id, carried string, copies planRunCopies) *PlanProgram {
+func planProgramPage(dir, id, carried string, copies planRunCopies, programs []delegate.Delegate) *PlanProgram {
 	record, known := planProgramRecord(dir, id, carried)
-	all, _ := delegate.ReadTurns(plandb.TaskDir(dir, id), 0)
-	if !known && len(all) == 0 {
+	taskDir := plandb.TaskDir(dir, id)
+	all, _ := delegate.ReadTurns(taskDir, 0)
+	logged, _ := delegate.ReadActions(taskDir, 0)
+	if !known && len(all) == 0 && len(logged) == 0 {
 		return nil
 	}
 	program := &PlanProgram{Name: record.Name, CeilingUSD: record.CeilingUSD}
+	program.Actions, program.EarlierActions = planProgramActionsFor(logged, planProgramOf(programs, record.Name), copies)
 	if len(record.Stages) > 0 {
 		program.Stages = append([]string(nil), record.Stages...)
 	}
@@ -191,6 +217,52 @@ func planProgramPage(dir, id, carried string, copies planRunCopies) *PlanProgram
 		}
 	}
 	return program
+}
+
+// planProgramOf is the program of this build's list with this name, and a
+// program of that name with no vocabulary of its own — read plainly — when the
+// list does not carry it: a run of a program this build no longer carries is
+// still a run whose page draws what it did.
+func planProgramOf(programs []delegate.Delegate, name string) delegate.Delegate {
+	for _, program := range programs {
+		if program.Name == name {
+			return program
+		}
+	}
+	return delegate.Delegate{Name: name}
+}
+
+// planProgramActionsFor is a program's action log as its page carries it: every
+// line read, from the first, by one reader of the program's own vocabulary —
+// which may need the lines before to read the one in front of it — with the
+// run's copy taken out of what it names; the newest [planProgramActions] of
+// what it shows, every text cut to its head; and how many shown actions came
+// before those.
+func planProgramActionsFor(logged []delegate.Action, program delegate.Delegate, copies planRunCopies) ([]delegate.Shown, int) {
+	read := program.Reader()
+	var shown []delegate.Shown
+	for _, action := range logged {
+		action.Command = copies.strip(action.Command)
+		action.Observation = copies.strip(action.Observation)
+		action.Message = copies.strip(action.Message)
+		line, ok := read(action)
+		if !ok {
+			continue
+		}
+		line.Text = planTextHead(copies.strip(line.Text))
+		line.Outcome = planTextHead(line.Outcome)
+		line.Reason = planTextHead(line.Reason)
+		if line.Text == "" {
+			continue
+		}
+		shown = append(shown, line)
+	}
+	earlier := 0
+	if len(shown) > planProgramActions {
+		earlier = len(shown) - planProgramActions
+		shown = shown[earlier:]
+	}
+	return shown, earlier
 }
 
 // planTurnForPage is one turn as a page carries it: every text cut to its head

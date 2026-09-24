@@ -349,13 +349,15 @@ func observedOf(data map[string]any) string {
 		said = append(said, "its test suite could not even start")
 	}
 	if source, _ := data["restore_source"].(string); source != "" {
-		said = append(said, "the tree was put back to "+restoredFrom(source))
+		said = append(said, "the tree was put back to "+RestoredFrom(source))
 	}
 	return strings.Join(said, "; ")
 }
 
-// restoredFrom names a restore's source the way a person would.
-func restoredFrom(source string) string {
+// RestoredFrom names a restore's source the way a person would: the ending's
+// observation says it here, and senior-dev's page says it with the same words
+// (internal/seniordev's actions.go).
+func RestoredFrom(source string) string {
 	switch source {
 	case "coherent-checkpoint":
 		return "the last state whose build and tests could run"

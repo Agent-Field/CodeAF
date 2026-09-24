@@ -122,6 +122,20 @@ type Delegate struct {
 	// program's inner phases need not each be named. Nil shows every stage by
 	// its own name, for a program that has not said.
 	StageWords map[string]string
+	// Present is the program's own vocabulary for its task's page: it makes a
+	// reader ([ActionReader]) that turns each line of its action log
+	// ([Action]) — a stage, a step or its ending — into the words a person
+	// reads, under the word for the step of its process it served ([Shown]),
+	// and answers false for a line the page leaves out. Nil reads every line
+	// plainly ([Delegate.Reader]).
+	//
+	// THE PROGRAM KNOWS WHAT ITS RECORDS MEAN, AND CODEAF KNOWS HOW A PAGE IS
+	// DRAWN. A stage named `submit` with `patch_files` in its data is
+	// senior-dev's machinery; that it reads `handed in its work · 4 files` is
+	// senior-dev's to say, once, beside the words it gives its stages. The page
+	// draws whatever a program says here, and the same step word leads the
+	// task's row while the program is in that step.
+	Present func() ActionReader
 	// Default is the command a bare brief runs: `/<name> <brief>` in the chat
 	// and `codeaf <name> <brief>` in a shell. It names one of Commands.
 	Default string

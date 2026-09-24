@@ -84,9 +84,10 @@ type PlanTaskRow struct {
 	// Program is the name of the program this task was handed to — senior-dev —
 	// read off the program record in the task's own record folder
 	// ([planProgramRecord]), and empty for every task a worker of this
-	// conversation's own drives. Stage is the stage that program says it is in
-	// right now, its live step read without its name in front
-	// ([planProgramStage]), and empty whenever nothing is live. The rail draws
+	// conversation's own drives. Stage is the word for where that program says
+	// it is right now — the step of its own process, `explore`, or before it
+	// has named one its stage's word — its live step read without its name in
+	// front ([planProgramStage]), and empty whenever nothing is live. The rail draws
 	// both under the run's own row, where a program's run used to wear only its
 	// clock.
 	Program string
@@ -339,7 +340,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Live:     pageRow.Live,
 		Children: children,
 		WaitRows: waitRows,
-		Program:  planProgramPage(dir, task.ID, carried[task.ID], copies.or(pageRow.Folder)),
+		Program:  planProgramPage(dir, task.ID, carried[task.ID], copies.or(pageRow.Folder), a.config.Delegates),
 	}, true
 }
 

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +51,10 @@ func (m *seniorDevModel) CompleteWithMessages(ctx context.Context, _ []ai.Messag
 		encoded, _ := json.Marshal(arguments)
 		return &ai.Response{Model: request.Model, Choices: []ai.Choice{{
 			Message: ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
-				ID: "call-" + name, Type: "function", Function: ai.ToolCallFunction{Name: name, Arguments: string(encoded)},
+				// ONE ID PER CALL, as a model gives them: senior-dev reports a
+				// finished call once per id, so two writes under one id read as
+				// one step.
+				ID: fmt.Sprintf("call-%s-%d", name, call), Type: "function", Function: ai.ToolCallFunction{Name: name, Arguments: string(encoded)},
 			}}},
 			FinishReason: "tool_calls",
 		}}}, nil
