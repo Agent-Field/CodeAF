@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -206,5 +208,70 @@ func flushTeams(t *testing.T, a *app) {
 	t.Helper()
 	if cmd := a.teamsWrite(); cmd != nil {
 		drive(t, a, runCmd(cmd)...)
+	}
+}
+
+// teamsHostedLab is the lab with harbor's manager made of the conversation in
+// front, so the pane hosts it.
+func teamsHostedLab(t *testing.T) (a *app, harbor, orbit string) {
+	t.Helper()
+	a, harbor, orbit = teamsPlaceLabIDs(t)
+	for _, tab := range a.tabList() {
+		if tab.key == a.frontTabKey() {
+			if err := a.teamMakeManager(harbor, tab); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	drive(t, a, key("alt+1"))
+	drive(t, a, key("alt+2"))
+	if !a.teamsHosting() {
+		t.Fatalf("the pane does not host harbor's manager:\n%s", teamsFrameText(a))
+	}
+	return a, harbor, orbit
+}
+
+// THE PANE IS THE MANAGER'S REAL CONVERSATION: the bar still says teams, the
+// rail stands on the left, the composer says whom it talks to, and a letter
+// typed lands in the manager's own box.
+func TestTeamsHostsTheManagersRealConversation(t *testing.T) {
+	a, _, _ := teamsHostedLab(t)
+	lines := strings.Split(teamsFrameText(a), "\n")
+	if len(lines) != a.height {
+		t.Fatalf("the hosted frame has %d rows, want %d", len(lines), a.height)
+	}
+	if !strings.Contains(lines[placeTabRow], "teams") {
+		t.Fatalf("the bar does not say teams:\n%s", strings.Join(lines, "\n"))
+	}
+	w, _ := a.size()
+	if w != a.width-a.tp.railW {
+		t.Fatalf("the hosted conversation is %d wide, want %d", w, a.width-a.tp.railW)
+	}
+	text := strings.Join(lines, "\n")
+	for _, want := range []string{"All teams", "harbor", "orbit", "Settings", "Close…"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the hosted page lost %q:\n%s", want, text)
+		}
+	}
+	drive(t, a, key("h"), key("i"))
+	if got := a.input.String(); got != "hi" {
+		t.Fatalf("typing on the hosted page put %q in the manager's box:\n%s", got, teamsFrameText(a))
+	}
+	if !a.at(pageTeams) {
+		t.Fatalf("typing left the page for %q", a.page.word())
+	}
+	// alt+↓ puts the keyboard on the page's buttons, and esc gives it back.
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModAlt})
+	if !a.tp.focus {
+		t.Fatal("alt+↓ did not put the keyboard on the page")
+	}
+	drive(t, a, key("esc"))
+	if a.tp.focus || !a.at(pageTeams) {
+		t.Fatalf("esc did not give the keyboard back (focus %v, page %q)", a.tp.focus, a.page.word())
+	}
+	// And tab still walks the places.
+	drive(t, a, key("tab"))
+	if a.at(pageTeams) {
+		t.Fatal("tab on the hosted page did not walk on")
 	}
 }

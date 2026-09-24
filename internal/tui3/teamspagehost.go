@@ -157,7 +157,11 @@ func (a *app) teamsHostFrame() ([]string, []placeHit, int, int, bool) {
 	head := []string(nil)
 	if headN > 0 {
 		a.tabRow = placeTabRow
-		head = a.headRows(width, a.placeTabBar(width, a.mapShowing, a.pal), a.pal)[:headN]
+		head = a.headRows(width, a.placeTabBar(width, a.mapShowing, a.pal), a.pal)
+		for len(head) < headN {
+			head = append(head, "")
+		}
+		head = head[:headN]
 	}
 	a.pal = was
 	d := &teamsDraw{a: a}
@@ -360,10 +364,11 @@ func (a *app) teamsPageHint() string {
 	if !a.teamsHosting() {
 		return ""
 	}
-	if words := a.teamsTargetHint(); words != "" {
-		return words
+	words := a.teamsTargetHint()
+	if words != "" && a.tp.focus {
+		words += hintSegment + "esc back to the box"
 	}
-	return ""
+	return words
 }
 
 // teamsComposerWord is the composer's `to` while the pane hosts the manager:
@@ -381,4 +386,14 @@ func (a *app) teamsComposerWord() string {
 		name = "all teams"
 	}
 	return "to " + a.teamManagerMark() + " " + name + " manager"
+}
+
+// trafficHidden reports whether the Traffic rail is put away: the window's own
+// answer, and on the teams page the page's, which starts folded because the
+// page has a rail of its own on the left. `alt+t` or the grip unfolds it.
+func (a *app) trafficHidden() bool {
+	if a.teamsHosting() {
+		return !a.tp.traffic
+	}
+	return a.traffic.hidden
 }

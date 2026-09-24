@@ -328,6 +328,10 @@ func (a *app) teamManagerMenuWord(t team, key string) string {
 // team's doors: the manager's place on the strip, the team chip, and the
 // Traffic's rows and words. "" anywhere else.
 func (a *app) teamHoverWords() string {
+	// The teams page's own buttons, while it hosts the manager.
+	if words := a.teamsPageHint(); words != "" {
+		return words
+	}
 	if words := a.trafficHoverWords(); words != "" {
 		return words
 	}

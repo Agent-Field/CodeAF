@@ -51,7 +51,16 @@ type orgProp struct {
 	reason string
 	folder bool
 	take   bool
+	// closes is the teams a `Close N quiet teams` suggestion closes (ruling
+	// c-9): open teams with no activity for [teamstore.QuietAfter] and nothing
+	// waiting. It is the one suggestion that is not about membership, and its
+	// team is [orgCloseRow].
+	closes []string
 }
+
+// orgCloseRow is the team field of the close-quiet suggestion: no team's id,
+// so Apply's membership pass passes over it.
+const orgCloseRow = "\x00close"
 
 // wallOrganize is Organize's whole state, and the painter's input once the
 // frame has filled in loose and clean.
@@ -77,10 +86,16 @@ type wallOrganize struct {
 	doneAt time.Time
 	// undoMade and undoJoins are what the last Apply did, the teams it made by
 	// id and the members it added, so Undo can take exactly those back.
-	undoMade  []string
-	undoJoins []orgJoin
-	made      int
-	added     int
+	undoMade   []string
+	undoJoins  []orgJoin
+	undoClosed []string
+	made       int
+	added      int
+	closed     int
+	// quiet is the open teams the last off-loop read found quiet, and quietGen
+	// the ask it answered.
+	quiet    []string
+	quietGen int
 	// cleanSig is the state of the conversations and teams when the last run
 	// found nothing to suggest, and cleanSet says there is one.
 	cleanSig uint64
@@ -391,6 +406,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	a.wall.hover = wallHitRef{}
 	a.wall.stirred = true
 	a.touch()
+	quiet := a.wallOrganizeQuiet(o.gen)
 	convs := a.orgConvs()
 	var proposer teamProposer
 	if a.agent != nil {
@@ -398,7 +414,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	}
 	if proposer == nil || len(convs) < 2 {
 		a.wallOrganizeShow(nil, proposer == nil && len(convs) >= 2, "")
-		return nil
+		return quiet
 	}
 	in := session.TeamProposalInput{}
 	for _, c := range convs {
@@ -413,7 +429,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	}
 	gen := o.gen
 	o.thinking = true
-	return a.besideLine(func() func(here bool) tea.Cmd {
+	return tea.Batch(quiet, a.besideLine(func() func(here bool) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), organizeWait)
 		defer cancel()
 		res, err := proposer.ProposeTeams(ctx, in)
@@ -421,7 +437,73 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 			a.wallOrganized(gen, res, err)
 			return nil
 		}
+	}))
+}
+
+// wallOrganizeQuiet asks, off the loop, which open teams have been quiet for
+// [teamstore.QuietAfter] with nothing waiting, for the card's `Close N quiet
+// teams`. It reads this machine's profile, so over --host it asks nothing:
+// the engine has no door for it yet, and the card simply does not offer it.
+func (a *app) wallOrganizeQuiet(gen int) tea.Cmd {
+	o := &a.wall.org
+	o.quiet, o.quietGen = nil, gen
+	if a.hosted() || a.teamsOff() {
+		return nil
+	}
+	dir, now := a.profileDir, a.now()
+	tree := &teamstore.File{Teams: teamsClone(a.wall.teams)}
+	return a.besideLine(func() func(here bool) tea.Cmd {
+		ids, err := teamstore.Quiet(dir, tree, now, teamstore.QuietAfter)
+		return func(bool) tea.Cmd {
+			if err == nil {
+				a.wallOrganizeQuietTake(gen, ids)
+			}
+			return nil
+		}
 	})
+}
+
+// wallOrganizeQuietTake folds the quiet teams in: kept for the card, and put
+// on it at once when the card is already showing its suggestions.
+func (a *app) wallOrganizeQuietTake(gen int, ids []string) {
+	o := &a.wall.org
+	if gen != o.quietGen || !o.on {
+		return
+	}
+	o.quiet = ids
+	if !o.thinking {
+		o.props = a.orgWithQuiet(o.props)
+		a.touch()
+	}
+}
+
+// orgWithQuiet is props with the close-quiet suggestion last, when any team
+// is quiet and the suggestion is not there yet.
+func (a *app) orgWithQuiet(props []orgProp) []orgProp {
+	o := &a.wall.org
+	if len(o.quiet) == 0 {
+		return props
+	}
+	for _, p := range props {
+		if p.team == orgCloseRow {
+			return props
+		}
+	}
+	p := orgProp{team: orgCloseRow, take: true, reason: "Nothing has happened in these for a week; Undo takes it back"}
+	for _, id := range o.quiet {
+		if t, ok := a.teamByID(id); ok && !t.Closed() && !t.Root {
+			p.closes = append(p.closes, id)
+			p.names = append(p.names, t.Name)
+		}
+	}
+	if len(p.closes) == 0 {
+		return props
+	}
+	p.name = "Close " + strconv.Itoa(len(p.closes)) + " quiet team"
+	if len(p.closes) != 1 {
+		p.name += "s"
+	}
+	return append(props, p)
 }
 
 // wallOrganized takes answer gen into the card, if it is still the one being
@@ -473,6 +555,7 @@ func (a *app) wallOrganizeShow(model []orgProp, folderOnly bool, cost string) {
 			used = append(used, p.hue)
 		}
 	}
+	props = a.orgWithQuiet(props)
 	o.thinking, o.props, o.folderOnly, o.cost = false, props, folderOnly, cost
 	o.cursor, o.top = 0, 0
 	o.cleanSet = len(props) == 0 && !folderOnly
@@ -536,8 +619,13 @@ func (a *app) wallOrganizeApply() {
 	// file as it is on disk. The same two lists are what Undo takes back.
 	var fresh []team
 	var joins []orgJoin
+	var closes []string
 	for _, p := range o.props {
 		if !p.take {
+			continue
+		}
+		if p.team == orgCloseRow {
+			closes = append(closes, p.closes...)
 			continue
 		}
 		members := teamFromTabs(p.name, a.wallTabsFor(p.keys, nil), now).Members
@@ -579,11 +667,11 @@ func (a *app) wallOrganizeApply() {
 	}
 	a.wallOrganizeClose()
 	made, added := len(fresh), len(joins)
-	if made == 0 && added == 0 {
+	if made == 0 && added == 0 && len(closes) == 0 {
 		return
 	}
-	o.undo, o.doneAt, o.made, o.added = prior, now, made, added
-	o.undoMade, o.undoJoins = nil, joins
+	o.undo, o.doneAt, o.made, o.added, o.closed = prior, now, made, added, len(closes)
+	o.undoMade, o.undoJoins, o.undoClosed = nil, joins, closes
 	for _, t := range fresh {
 		o.undoMade = append(o.undoMade, t.ID)
 	}
@@ -601,10 +689,24 @@ func (a *app) wallOrganizeApply() {
 				return err
 			}
 		}
+		// A quiet team closes with no report: nothing was running to wrap up.
+		for _, id := range closes {
+			if t, ok := f.Team(id); !ok || t.Closed() {
+				continue
+			}
+			if err := f.Close(id, now, ""); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		a.note("the teams are kept for this window, but " + err.Error())
+	}
+	for _, id := range closes {
+		if a.wall.activeID == id {
+			a.wall.activeID = ""
+		}
 	}
 }
 
@@ -634,9 +736,9 @@ func (a *app) wallOrganizeUndo() {
 	if o.undo == nil || o.doneAt.IsZero() || a.now().Sub(o.doneAt) >= wallOrganizedFor {
 		return
 	}
-	made, joins := o.undoMade, o.undoJoins
+	made, joins, closed := o.undoMade, o.undoJoins, o.undoClosed
 	o.undo, o.doneAt = nil, time.Time{}
-	o.undoMade, o.undoJoins = nil, nil
+	o.undoMade, o.undoJoins, o.undoClosed = nil, nil, nil
 	a.wall.hover = wallHitRef{}
 	a.wall.stirred = true
 	a.touch()
@@ -649,6 +751,14 @@ func (a *app) wallOrganizeUndo() {
 				continue
 			}
 			if err := f.RemoveMember(j.team, j.member.Key); err != nil {
+				return err
+			}
+		}
+		for _, id := range closed {
+			if t, ok := f.Team(id); !ok || !t.Closed() {
+				continue
+			}
+			if err := f.Reopen(id); err != nil {
 				return err
 			}
 		}
@@ -773,6 +883,9 @@ func wallOrganizeButton(pal palette, g wallGlyphs, v wallView, y int) wallOrgPie
 		if o.added > 0 {
 			said = append(said, strconv.Itoa(o.added)+" added")
 		}
+		if o.closed > 0 {
+			said = append(said, strconv.Itoa(o.closed)+" closed")
+		}
 		word := "Organized " + g.sep + " " + strings.Join(said, ", ") + "  "
 		undo := wallButton{act: wallActOrgUndo, label: "Undo"}
 		hot := v.hover == wallHitRef{kind: wallHitAction, arg: int(wallActOrgUndo)}
@@ -876,8 +989,11 @@ func wallOrgCard(pal palette, g wallGlyphs, v wallView, width, height int) wallC
 			if i == 0 && p.team == "" {
 				heading("New teams")
 			}
-			if p.team != "" && (i == 0 || o.props[i-1].team == "") {
+			if p.team != "" && p.team != orgCloseRow && (i == 0 || o.props[i-1].team == "") {
 				heading("Add to existing")
+			}
+			if p.team == orgCloseRow {
+				heading("Quiet for a week")
 			}
 			if i == o.cursor {
 				cursorLine = len(list)
@@ -934,6 +1050,9 @@ func wallOrgCard(pal palette, g wallGlyphs, v wallView, width, height int) wallC
 // wallOrgCount is a row's count: how many a new team holds, or `+ 2` for how
 // many an existing team gains.
 func wallOrgCount(p orgProp) string {
+	if p.team == orgCloseRow {
+		return strconv.Itoa(len(p.closes))
+	}
 	if p.team != "" {
 		return "+ " + strconv.Itoa(len(p.keys))
 	}

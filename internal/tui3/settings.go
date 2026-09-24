@@ -988,6 +988,10 @@ func (i sheetItem) restful() bool { return i.head == "" && i.read == nil }
 // frame nothing.
 type sheet struct {
 	tab int
+	// host is the machine the session runs on over --host, "" otherwise. The
+	// Teams tab reads it: the teams there inherit that machine's defaults,
+	// which this window cannot read yet, so its rows are shown and not edited.
+	host string
 
 	registry *config.Settings
 	// profileDir is retained only for live explanations derived from several
@@ -1323,6 +1327,7 @@ func (a *app) raiseSettings() {
 	// ([session.UsageCache]) and it happens once per visit, never on a draw.
 	a.readTreeSpend()
 	a.sheet = sheet{
+		host:       a.host,
 		registry:   a.registry(),
 		profileDir: a.profileDir,
 		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE. The
@@ -2287,6 +2292,13 @@ func (a *app) activate() tea.Cmd {
 		return a.startModelConnect(modelConnectionStatus(source, true), true)
 	}
 	s.msg = ""
+	// OVER --host THE TEAMS DEFAULTS ARE THAT MACHINE'S, and this window has no
+	// door to them yet: an edit here would change this laptop's file and no team
+	// anybody is running. The row says so instead of taking the edit.
+	if s.host != "" && item.meta.tab == tabTeams {
+		s.msg = "the teams on " + s.host + " inherit that machine's Settings; change them there"
+		return nil
+	}
 	if item.autonomy != nil {
 		return a.autonomyRowNext(item.autonomy)
 	}
@@ -3398,6 +3410,15 @@ func (s *sheet) footNote() string {
 	// question, so it says its own line (connectcaps.go).
 	if s.onConnections() {
 		return s.connFootNote()
+	}
+	// THE TEAMS TAB IS DEFAULTS, and says where the exceptions live: a team's
+	// own overrides are on its card on the teams page (teamsheet.go). Over
+	// --host it says whose defaults the teams there really read.
+	if settingTabs[s.tab] == tabTeams {
+		if s.host != "" {
+			return "on " + s.host + " the teams inherit that machine's Settings · these are this one's, shown and not edited"
+		}
+		return "a team can override any of these on its card · saved to your profile"
 	}
 	if item, ok := s.current(); ok {
 		if name, pinned := item.row.PinnedBy(); pinned {

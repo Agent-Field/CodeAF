@@ -62,6 +62,7 @@ const (
 	teamMenuNew      = -12 // + New team…
 	teamMenuSettings = -13 // Team settings…
 	teamMenuManager  = -14 // ◆ Make manager, or Remove manager
+	teamMenuClosed   = -15 // Closed · N, folded, which opens the teams page
 )
 
 // teamMenuRow is one row of the switcher, as the painter and the keys both
@@ -77,10 +78,16 @@ type teamMenuRow struct {
 // while a team is shown, and Add only for a conversation that can be a member.
 func (a *app) teamMenuRows() []teamMenuRow {
 	var rows []teamMenuRow
-	for _, t := range a.wall.teams {
+	for _, t := range a.wallTeams() {
 		rows = append(rows, teamMenuRow{code: wallPopTeam, id: t.ID})
 	}
-	rows = append(rows, teamMenuRow{code: teamMenuAll}, teamMenuRow{rule: true})
+	rows = append(rows, teamMenuRow{code: teamMenuAll})
+	// THE CLOSED TEAMS ARE ONE FOLDED ROW (ruling c-9), never a team on the
+	// switcher: a press opens the teams page with its Closed fold open.
+	if len(a.teamsClosed()) > 0 {
+		rows = append(rows, teamMenuRow{code: teamMenuClosed})
+	}
+	rows = append(rows, teamMenuRow{rule: true})
 	_, shown := a.teamActive()
 	if shown && a.frontTabKey() != "" {
 		rows = append(rows, teamMenuRow{code: teamMenuToggle})
@@ -175,15 +182,15 @@ func (a *app) teamMenuDo(r teamMenuRow) tea.Cmd {
 	case teamMenuNew:
 		a.closeTeamMenu()
 		return a.teamMenuNewTeam()
+	case teamMenuClosed:
+		a.closeTeamMenu()
+		a.tp.closedOpen = true
+		return a.showPage(pageTeams)
 	case teamMenuSettings:
 		a.closeTeamMenu()
-		id := a.wall.activeID
-		var open tea.Cmd
-		if !a.wall.on {
-			open = a.openWall()
-		}
-		a.wallOpenSettings(id, a.wallAnchorTeam(wallHitChipMenu, id))
-		return open
+		// The team's card, over whatever is drawn (teamsheet.go): its name,
+		// its colour, the settings it overrides and its close.
+		return a.teamSheetOpen(a.wall.activeID, teamSheetSettings)
 	}
 	return nil
 }
@@ -368,6 +375,10 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 			ln.left = pal.ink(radio) + "   " + pal.ink("All")
 			ln.leftW = ansi.StringWidth(radio) + 3 + 3
 			ln.right = strconv.Itoa(len(open))
+		case teamMenuClosed:
+			word := "Closed " + a.teamsDot() + " " + strconv.Itoa(len(a.teamsClosed())) + " " + a.linearMark("▸", ">")
+			ln.left = strings.Repeat(" ", ansi.StringWidth(off)+3) + pal.dim(word)
+			ln.leftW = ansi.StringWidth(off) + 3 + ansi.StringWidth(word)
 		case teamMenuToggle:
 			word := "+ Add this conversation"
 			if teamHolds(shown, front) {

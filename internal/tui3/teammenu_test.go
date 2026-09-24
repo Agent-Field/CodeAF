@@ -228,11 +228,14 @@ func TestTeamMenuOpensTheCardAndTheSettings(t *testing.T) {
 	_, _ = menuFrame(t, a)
 	hit = menuHit(t, a, teamMenuSettings, "")
 	a.teamMenuPress(hit.x0+1, hit.y0)
-	if !a.wall.on || a.wall.pop.kind != wallPopSettings || a.wall.pop.team != harbor {
-		t.Fatalf("Team settings: wall %v pop %+v", a.wall.on, a.wall.pop)
+	if !a.tsheet.on || a.tsheet.mode != teamSheetSettings || a.tsheet.team != harbor {
+		t.Fatalf("Team settings: card %+v", a.tsheet)
 	}
 	// And on the wall the chip is the switcher too.
-	a.wall.pop = wallPop{}
+	a.tsheet = teamSheet{}
+	if !a.wall.on {
+		_ = a.openWall()
+	}
 	_, _ = menuFrame(t, a)
 	if _, took := a.wallPress(a.wall.chip.from+1, placeTabRow); !took || !a.teamMenu.on {
 		t.Fatal("the chip on the wall did not open the switcher")

@@ -164,36 +164,39 @@ func TestWallClickTeamsPopoverAndSettings(t *testing.T) {
 	// The dot on a segment opens that team's settings.
 	_ = a.wallFrame(a.width, a.height)
 	wallClick(t, a, wallHitForTeam(t, a, wallHitChipMenu, harbor))
-	if a.wall.pop.kind != wallPopSettings || a.wall.pop.team != harbor || a.wall.pop.name != "harbor" {
-		t.Fatalf("settings: %+v", a.wall.pop)
+	// The team's card (teamsheet.go), over the wall.
+	if !a.tsheet.on || a.tsheet.team != harbor || a.tsheet.name.String() != "harbor" {
+		t.Fatalf("settings: %+v", a.tsheet)
 	}
 	before := a.wall.teams[0].HueSpec()
-	wallClick(t, a, wallHitFor(t, a, wallHitSwatch, 2))
+	a.teamSheetDo(tsSwatch + 2)
 	if a.wall.teams[0].HueSpec() == before {
 		t.Fatal("a swatch did not recolour the team")
 	}
+	a.tsheet.cursor = tsName
 	for range "harbor" {
-		a.wallKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+		a.teamSheetKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	}
 	for _, r := range "dock" {
-		a.wallKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+		a.teamSheetKey(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
-	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if a.wall.teams[0].Name != "dock" || a.wall.pop.kind != wallPopNone {
-		t.Fatalf("rename: %q, pop %+v", a.wall.teams[0].Name, a.wall.pop)
+	a.teamSheetKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if a.wall.teams[0].Name != "dock" || a.tsheet.on {
+		t.Fatalf("rename: %q, card %+v", a.wall.teams[0].Name, a.tsheet)
 	}
 	_ = a.wallFrame(a.width, a.height)
+	// The card's `Close team…` closes it (ruling c-9: a team is deleted only
+	// once closed, from the teams page), and the wall's Teams row drops it.
 	wallClick(t, a, wallHitForTeam(t, a, wallHitChipMenu, harbor))
-	wallClick(t, a, wallHitFor(t, a, wallHitPopRow, wallPopDelete))
-	if len(a.wall.teams) != 2 || !a.wall.pop.confirm {
-		t.Fatal("delete did not ask first")
+	a.teamSheetDo(tsCloseTeam)
+	if got, ok := a.teamByID(harbor); !ok || !got.Closed() {
+		t.Fatalf("Close team did not close it: %+v", a.teamNames())
 	}
-	wallClick(t, a, wallHitFor(t, a, wallHitPopRow, wallPopConfirm))
-	if len(a.wall.teams) != 1 || a.wall.teams[0].Name != "orbit" {
-		t.Fatalf("after the delete: %+v", a.teamNames())
+	if shown := a.wallTeams(); len(shown) != 1 || shown[0].Name != "orbit" {
+		t.Fatalf("after the close the wall lists %d teams", len(shown))
 	}
 	if len(a.wallShown(a.now())) != len(tiles) {
-		t.Fatal("deleting a team closed a conversation")
+		t.Fatal("closing a team closed a conversation on the wall")
 	}
 }
 

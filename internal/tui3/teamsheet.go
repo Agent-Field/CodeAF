@@ -127,20 +127,26 @@ func (a *app) teamSheetOpen(id string, mode teamSheetMode) tea.Cmd {
 	return nil
 }
 
-// teamSheetClose puts the card away, keeping a name typed into it.
+// teamSheetShut puts the card away, keeping a name typed into it.
 func (a *app) teamSheetShut() {
+	a.teamSheetRename()
+	a.tsheet = teamSheet{}
+	a.touch()
+}
+
+// teamSheetRename keeps the name typed into the card, when it changed.
+func (a *app) teamSheetRename() {
 	s := &a.tsheet
-	if s.mode == teamSheetSettings {
-		if t, ok := a.teamByID(s.team); ok {
-			if name := strings.TrimSpace(s.name.String()); name != "" && name != t.Name {
-				if err := a.teamRename(s.team, name); err != nil {
-					a.note(err.Error())
-				}
+	if s.mode != teamSheetSettings {
+		return
+	}
+	if t, ok := a.teamByID(s.team); ok {
+		if name := strings.TrimSpace(s.name.String()); name != "" && name != t.Name {
+			if err := a.teamRename(s.team, name); err != nil {
+				a.note(err.Error())
 			}
 		}
 	}
-	a.tsheet = teamSheet{}
-	a.touch()
 }
 
 // ── WHAT EACH VALUE ROW SAYS ────────────────────────────────────────────────
@@ -552,7 +558,11 @@ func (a *app) teamSheetDo(code int) tea.Cmd {
 		return nil
 	}
 	switch code {
-	case tsName, tsColour:
+	case tsName:
+		// enter on the name keeps it and moves on, as a form's field does.
+		a.teamSheetRename()
+		s.cursor = tsColour
+	case tsColour:
 		s.cursor = code
 	case tsQuestions:
 		s.cursor = code

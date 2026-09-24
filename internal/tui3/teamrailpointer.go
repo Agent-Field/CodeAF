@@ -94,7 +94,7 @@ func (a *app) trafficPress(x, y int) (tea.Cmd, bool) {
 // column on a wide frame, the card on a narrow one.
 func (a *app) trafficShowing() bool {
 	if a.trafficFits() {
-		return !a.traffic.hidden
+		return !a.trafficHidden()
 	}
 	return a.traffic.over
 }
@@ -103,7 +103,10 @@ func (a *app) trafficShowing() bool {
 // has for it. The column's answer is kept for the window; the card is only
 // ever laid over for as long as the person is reading it.
 func (a *app) trafficShow(on bool) {
-	if a.trafficFits() {
+	if a.teamsHosting() && a.trafficFits() {
+		// The teams page keeps its own answer (teamspagehost.go).
+		a.tp.traffic = on
+	} else if a.trafficFits() {
 		a.traffic.hidden = !on
 	} else {
 		a.traffic.over = on
@@ -231,6 +234,10 @@ func (a *app) trafficHoverWords() string {
 func (a *app) trafficHint() string {
 	if a.teamsOff() || !a.wall.loaded || len(a.wall.teams) == 0 {
 		return ""
+	}
+	// On the teams page the box says which team as well as who.
+	if words := a.teamsComposerWord(); words != "" {
+		return words
 	}
 	if _, ok := a.teamFrontManaged(); ok {
 		return "to " + a.teamManagerMark() + " manager"
