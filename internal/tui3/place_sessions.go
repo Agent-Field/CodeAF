@@ -368,6 +368,15 @@ func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 func (p *tasksPlace) filtered(a *app) tasksReading {
 	r := p.reading
 	r.chatViews = make(map[string]tasksChatView)
+	// The window's close state is newer than a background world reading. Keep
+	// the activity marks independent: a closed tab may still have running work.
+	for _, row := range r.chats {
+		cell := &homeCell{chatKey: a.convKey(row.Transcript)}
+		working, unread := a.homeChatState(cell)
+		_, moving := homeMovingAt(homeLine{kind: homeSession, row: row})
+		working = working || moving
+		r.chatViews[row.Transcript] = tasksChatView{title: homeName(row), working: working, unread: unread, closed: a.homeConversationClosed(row)}
+	}
 	for _, tab := range a.tabList() {
 		if tab.work {
 			continue

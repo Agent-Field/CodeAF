@@ -2063,10 +2063,13 @@ everything else this window is not showing — so pressing it again closes the n
 rather than the same one, and several go in a row. Its conversation, its work and its
 draft are untouched; `→` reaches it and `enter` brings it back.
 
-**Tab closing does not archive the saved conversation.** Home shows up to three
-recently closed tabs as dimmed rows. `ctrl+e` or `→`, then `x close`, on Home also
-archives the conversation and closes its tab, removing it from the default chats
-list. Both routes keep work and drafts. Enter on a dimmed Home row reopens it.
+**Every Close shares the same saved closed state.** Closing a tab, closing from
+this menu, or using Close on Home or Sessions removes its tab and default chats
+entry. Home and Sessions show its name in dark grey; work and drafts remain.
+`→ show closed` in the chats menu includes saved closed conversations. Enter there,
+on Home or Sessions, or `ctrl+shift+t` reopens it and clears the closed state everywhere.
+Confirmed permanent deletion from Home or Sessions removes it from all four places
+and the reopen stack.
 
 On the row marked `you are here`, the card closes and the window selects the most
 recently used remaining tab, or Home when none remain. This is the same action as
