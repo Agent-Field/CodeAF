@@ -524,6 +524,9 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 		// The card has no room on this frame; the prompt is drawn here instead,
 		// with the same two buttons.
 		lead := pal.muted("New team "+g.gt+" ") + pal.ink(v.name) + pal.ink(g.cursor)
+		if v.asking {
+			lead += pal.dim(wallNamingWord(pal.ascii))
+		}
 		put(lead, ansi.StringWidth(lead))
 		count := "   " + pal.dim(strconv.Itoa(wallMarked(v))+" picked") + "  "
 		put(count, ansi.StringWidth(count))
@@ -983,6 +986,15 @@ func wallTray(pal palette, g wallGlyphs, v wallView, width, height int) wallCard
 	return wallCardBuild(pal, "", []wallCardLine{{s: lead + s, hits: hits}}, x, y, w, wallCardPadX, 0)
 }
 
+// wallNamingWord is what the card says while a name is asked for, with the
+// two cells that part it from the field.
+func wallNamingWord(ascii bool) string {
+	if ascii {
+		return "  naming..."
+	}
+	return "  naming…"
+}
+
 // wallNameCardRows is the new-team card's height: two borders, the padding
 // above and below, and four lines.
 const wallNameCardRows = 2 + 2*wallCardPadY + 4
@@ -1065,6 +1077,15 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	}
 	field += pal.ink(g.cursor)
 	fieldW := labelW + ansi.StringWidth(name) + ansi.StringWidth(g.cursor)
+	// While a better name is asked for, the card says so, quietly, beside the
+	// field, and only where it fits whole.
+	if v.asking {
+		word := wallNamingWord(pal.ascii)
+		if ww := ansi.StringWidth(word); inner+1-sw-fieldW >= ww+1 {
+			field += pal.dim(word)
+			fieldW += ww
+		}
+	}
 	// The Name row and the button row bleed (wallCardLine), so Shuffle and
 	// Create end on the text's right edge; the label takes the cell back.
 	s, _, sh := wallLay(pal, []wallButton{shuffle}, v.hover, inner+2-sw, 0, 1)

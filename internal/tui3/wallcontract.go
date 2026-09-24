@@ -131,8 +131,10 @@ type wallView struct {
 	// pop is the popover that is up, if one is.
 	pop wallPop
 	// nameFresh says the name in the new-team card is one the wall filled in,
-	// drawn selected so the first key typed replaces it.
+	// drawn selected so the first key typed replaces it; asking says a better
+	// one is being asked for, and the card says `naming…`.
 	nameFresh bool
+	asking    bool
 	// made is the team just made and how many it holds, said on the chip row
 	// until madeAt is wallMadeFor old.
 	made   string
@@ -365,10 +367,14 @@ type wallState struct {
 	// drawn.
 	chip hudSpan
 	// nameFresh, made, madeN and madeAt are the view's fields of those names.
-	nameFresh bool
-	made      string
-	madeN     int
-	madeAt    time.Time
+	// nameGen counts the suggestions asked for, so an answer to one the card
+	// has moved past is dropped, and nameAsking says one is on its way.
+	nameFresh  bool
+	nameGen    int
+	nameAsking bool
+	made       string
+	madeN      int
+	madeAt     time.Time
 
 	// The motion and the pointer's memory (wall.go). revealAt is when the
 	// opening's row-by-row reveal began, zero once it is done; zoomAt and

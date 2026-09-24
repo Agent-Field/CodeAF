@@ -3586,6 +3586,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case wallTickMsg:
 		return a, a.wallTick()
 
+	case wallNameTimeMsg:
+		a.wallNameTimedOut(msg.gen)
+		return a, nil
+
 	case behindStirMsg:
 		if a.wall.on {
 			return a, tea.Batch(a.behindStir(msg), a.wallStir(msg.key))
