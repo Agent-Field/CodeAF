@@ -114,6 +114,7 @@ type v3Process struct {
 	sweepCancel     context.CancelFunc
 	sweepDone       chan struct{}
 	closed          bool
+	creditWatcher   *v3CreditWatcher
 }
 
 // openV3Process builds the once-only half of a v3 launch.
@@ -205,6 +206,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Conns:             v3Connect(settings.ProfileDir),
 		LaunchDir:         launchDir,
 	}
+	process.creditWatcher = newV3CreditWatcher(process)
 	process.startPlaceSweep()
 	return process, nil
 }
@@ -435,6 +437,9 @@ func (p *v3Process) closeAll() {
 	if p.processStop != nil {
 		p.processStop()
 	}
+	if p.creditWatcher != nil {
+		p.creditWatcher.close()
+	}
 	if p.Models != nil {
 		p.Models.Close()
 	}
@@ -590,6 +595,7 @@ func (s *v3Seam) start(workspace string) (tui3.Conversation, error) {
 	if err != nil {
 		return tui3.Conversation{}, err
 	}
+	launch = v3FreshDefault(launch, s.seed.Model)
 	place, err := v3NextSession(launch.Place, launch.Workspace)
 	if err != nil {
 		return tui3.Conversation{}, err

@@ -28,6 +28,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -257,6 +258,7 @@ func openChatV3Local(launch localLaunch) error {
 	closeClient = fleet.closeAll
 	options, settings := hostOptions(fleet, welcome, launch.pick)
 	localDoors(&options, welcome, settings)
+	options.ImplicitTalk = strings.TrimSpace(launch.model) == "" && strings.TrimSpace(env.Get(config.ModelEnv)) == "" && config.ChatModelAt(options.ProfileDir) == ""
 	// AND A PLAIN LAUNCH IS STILL GREETED BY HOME ON THIS ROAD. Whether somebody
 	// is being greeted is one fact — a person opened codeaf with no particular
 	// conversation in mind — and [tui3.Options.Landing] is the only place the
@@ -360,6 +362,7 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 	}
 	options.ProfileDir = profileDir
 	options.EngineRoad = true
+	options.ReadCredits = v3LocalCreditReader(settings)
 	options.Connections = v3Connections(v3Connect(profileDir))
 	options.Harnesses = subharness.Default()
 	options.SaveApproval = func(tool string) error {

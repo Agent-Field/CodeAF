@@ -228,9 +228,16 @@ func (a *app) hintRow(width int) string {
 	if !a.seamShowing() {
 		right, rightPlain = a.seamAliveLabel(width)
 	}
+	warning := a.chatCreditWarning
+	if layoutTier(width) == tierPhone || ansi.StringWidth(warning)+ansi.StringWidth(rightPlain)+3 > width {
+		warning = ""
+	}
 	room := width - 1
 	if rightPlain != "" {
 		room -= ansi.StringWidth(rightPlain) + hudGap
+	}
+	if warning != "" {
+		room -= ansi.StringWidth(warning) + 1
 	}
 	for hint != "" && ansi.StringWidth(hint) > room {
 		hint = a.hintShorter(hint)
@@ -253,6 +260,10 @@ func (a *app) hintRow(width int) string {
 	used := ansi.StringWidth(hint)
 	if used > 0 {
 		used++
+	}
+	if warning != "" {
+		line += strings.Repeat(" ", max(1, width-used-ansi.StringWidth(warning)-ansi.StringWidth(rightPlain)-1)) + a.pal.warn(warning)
+		used = ansi.StringWidth(line)
 	}
 	if rightPlain == "" {
 		return line + strings.Repeat(" ", max(0, width-used))
