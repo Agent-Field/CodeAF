@@ -956,6 +956,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I stop it using senior-dev for this", "senior-dev"},
 		{"will codeaf hand work to a program without being asked", "delegates"},
 		{"is naming a delegate enough to make codeaf use it", "delegates"},
+		{"I typed a correction and it forgot I named the delegate", "delegates"},
+		{"does a correction undo naming a program", "delegates"},
 		{"which folder does a delegate work in", "delegates"},
 		// A program works in the folder itself, on a branch of its own in a
 		// repository (internal/session's programfolder.go), asked the ways

@@ -2652,6 +2652,12 @@ type Agent struct {
 	// a proposal for the same message from a later step, after the model has
 	// read the bounce, passes as it is.
 	programBounced bounceMark
+	// programsHeard is what the person's messages of the turn they last spoke
+	// in said about the programs this build carries: the newest one named,
+	// the message that named it, and every one named (delegate_asked.go). It is
+	// written where their words are recorded ([Agent.rememberAskLocked]), so a
+	// steer that names nothing does not unsay what the turn opened by asking.
+	programsHeard programsHeard
 	// callOutcomes is whether a finished call came back a failure, by call occurrence
 	// (admission_compile.go). It is recorded at the batch's own fan-out because
 	// the flag the tool returned does not survive into the transcript, and it is

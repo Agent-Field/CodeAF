@@ -73,14 +73,24 @@ anyway, codeaf turns that proposal back once, along with every other proposal wi
 it in the same reply:
 ``the person named senior-dev: if they want it to do this work, propose this again with `via: "senior-dev"`; if they asked for it not to be used, or did not mean the program, propose it again unchanged``.
 A proposal the model makes after reading that passes as it is, so "don't use senior-dev
-for this" is kept too.
-
-**An ask for a program is never too small.** A one-file fix or a single command otherwise
-stays in the conversation, but "fix this file with senior-dev" goes to senior-dev.
+for this" is kept too. The next section says what else counts.
 
 **What it does not do.** A reply codeaf moves to a task on its own, because it ran long or
 looked like work, goes to codeaf's own worker and never to a program. A task never hands
 its work to a program. `/<name> <brief>` starts the program at once, with no card.
+
+## Naming a program in a small ask or a correction — fix this file with senior-dev, I typed a correction and it forgot senior-dev
+
+**An ask for a program is never too small.** A one-file fix or a single command otherwise
+stays in the conversation, but "fix this file with senior-dev" goes to senior-dev.
+
+**A correction does not undo the name.** Every message you type into one turn is read for
+the program's name, not only the newest. Name senior-dev, then type "the failing test is
+TestRetryUnderLoad" while it reads the code, and the name still holds for the rest of that
+turn and for a turn a finished task or job wakes to answer it: a proposal without the
+program is turned back as above, and "fix this file only" typed after the name still goes
+to senior-dev. A correction that does not name the program earns no second turn-back. Your
+next message that starts a turn of its own is read on its own.
 
 ## Which folder a program works in — a repository I have not cloned, it edited files outside its folder, a folder with no git
 

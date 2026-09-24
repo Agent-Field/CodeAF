@@ -61,7 +61,7 @@ func (a *Agent) refuseProposedTask(spec taskSpec) bare.Staged {
 		return bounce
 	}
 	if !a.config.InTask {
-		if asked := a.taskRequest(); trivialAsk(asked) && !a.config.askedForProgram(asked, spec.via) {
+		if trivialAsk(a.taskRequest()) && !a.askedForProgram(spec.via) {
 			return bare.Settled(spawnFloorRefusal, true)
 		}
 	}

@@ -311,6 +311,64 @@ func TestTheBounceIsNotSpentUntilTheModelHasReadIt(t *testing.T) {
 	}
 }
 
+// heardInANewTurn records text as the message that opens a turn of its own,
+// rather than one steered into the turn running ([Agent.startTurnLocked]).
+func heardInANewTurn(agent *Agent, text string) {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	agent.turnSeq++
+	agent.rememberAskLocked(userText(text))
+}
+
+// A STEER DOES NOT UNSAY THE PROGRAM. The person named senior-dev when the turn
+// opened, then steered with a detail while the model read the code. The steer
+// is the newest thing they typed and names no program, and it used to be all
+// the bounce and the floor read: a proposal without `via` went to codeaf's own
+// worker, and "fix this file only" steered after the ask held senior-dev on the
+// floor. The ask stands for the rest of the turn it was typed into, and a woken
+// turn still answering it; the steer earns no bounce of its own, because it
+// named nothing new; and a message that opens a turn of its own is a new ask.
+func TestASteerDoesNotUnsayTheProgramThePersonNamed(t *testing.T) {
+	named := "fix the dropped-retries issue with senior-dev"
+	steered := programConversation(t, nil)
+	heard(steered, named)
+	heard(steered, "the failing test is TestRetryUnderLoad")
+	if bounce := refusedWith(steered, taskSpec{}); bounce != programNamedSentence("senior-dev") {
+		t.Fatalf("after a steer naming nothing, the proposal without via read %q, want the bounce", bounce)
+	}
+	modelReadTheResults(steered)
+	heard(steered, "and keep the old retry budget")
+	if bounce := refusedWith(steered, taskSpec{}); bounce != "" {
+		t.Fatalf("a steer naming nothing new earned a second bounce: %q", bounce)
+	}
+
+	floored := programConversation(t, nil)
+	heard(floored, named)
+	heard(floored, "fix this file only")
+	if !trivialAsk("fix this file only") {
+		t.Fatal("the steer is off the floor, so this would prove nothing")
+	}
+	if refusal := refusedWith(floored, taskSpec{via: "senior-dev"}); refusal != "" {
+		t.Fatalf("a trivial steer held the program the person asked for on the floor: %q", refusal)
+	}
+
+	woken := programConversation(t, nil)
+	heard(woken, named)
+	woken.mu.Lock()
+	woken.turnSeq++
+	woken.mu.Unlock()
+	if bounce := refusedWith(woken, taskSpec{}); bounce != programNamedSentence("senior-dev") {
+		t.Fatalf("a woken turn still answering the ask read %q, want the bounce", bounce)
+	}
+
+	nextTurn := programConversation(t, nil)
+	heard(nextTurn, named)
+	heardInANewTurn(nextTurn, "now tidy the changelog")
+	if bounce := refusedWith(nextTurn, taskSpec{}); bounce != "" {
+		t.Fatalf("a message opening a turn of its own was read with the last turn's program: %q", bounce)
+	}
+}
+
 // AN ASK FOR A PROGRAM IS NEVER TOO SMALL. "fix this file with senior-dev" is
 // on the spawn floor as a one-file fix, and the floor ran before `via` was
 // read, so the person who asked for senior-dev by name was refused with "do it

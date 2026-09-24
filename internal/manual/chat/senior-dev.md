@@ -33,7 +33,8 @@ countdown. A change you would make in a few steps it still makes itself.
 with senior-dev", "/senior-dev should take this", "senior dev". The model is told to use
 it, and if it proposes the work without senior-dev anyway, codeaf turns that proposal
 back once, with any others in the same reply, and tells it you named senior-dev. That
-holds even for a one-file fix, which otherwise stays in the conversation.
+holds even for a one-file fix, which otherwise stays in the conversation, and through a
+correction you type while it works that does not name senior-dev again.
 
 **Saying not to is kept too.** "don't use senior-dev for this" names it, so the first
 proposal is turned back the same way; the model reads that and proposes it again as it

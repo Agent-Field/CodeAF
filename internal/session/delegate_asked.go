@@ -21,6 +21,10 @@ package session
 //     conversation, and a person who typed "fix this file with senior-dev" has
 //     overruled it already, exactly as a person who typed `/task` has.
 //
+// AND THE PERSON'S WORDS ARE EVERY MESSAGE OF THE TURN, not the newest one
+// ([programsHeard]): a steer typed while the model reads the code names
+// nothing, and it does not unsay the program the turn opened by asking for.
+//
 // ONLY WHERE A `via` COULD BE HONOURED. Inside a task, with no run road, or
 // with no program carried, a `via` is refused anyway ([Agent.stageTask]), and a
 // bounce there would be a round trip that ends where it began.
@@ -52,10 +56,13 @@ func (a *Agent) mayHandToProgram() bool {
 // programAskBounce is the once-per-message refusal of a proposal that left out
 // the program the person named, or nil when this proposal is not turned back.
 //
-// ONCE IS COUNTED PER MESSAGE OF THE PERSON'S. [Agent.personSeq] numbers what
-// they have typed, steering included, so a new message of theirs that names
-// the program again earns one more bounce, and a woken turn, which types
-// nothing, inherits the count of the message it is still answering.
+// ONCE IS COUNTED PER MESSAGE THAT NAMED THE PROGRAM. [Agent.personSeq]
+// numbers what the person has typed, steering included, and the bounce is
+// counted against the newest message of the turn that named one
+// ([programsHeard]): a new message of theirs that names the program again
+// earns one more bounce, a steer that names nothing earns none and does not
+// unsay the one before it, and a woken turn, which types nothing, inherits the
+// count of the message it is still answering.
 //
 // AND A PROPOSAL PASSES ONLY ONCE THE MODEL HAS READ THE BOUNCE, which is never
 // in the step that made it. A model reads a result in the request after the
@@ -75,17 +82,14 @@ func (a *Agent) programAskBounce(spec taskSpec) *askBounce {
 	step := a.stepSeq.Load()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.personSeq == 0 {
+	heard := a.programsHeard
+	if heard.named == "" {
 		return nil
 	}
-	if a.programBounced.seq == a.personSeq && a.programBounced.step < step {
+	if a.programBounced.seq == heard.seq && a.programBounced.step < step {
 		return nil
 	}
-	name := a.config.programNamedIn(a.personAsk)
-	if name == "" {
-		return nil
-	}
-	bounce := &askBounce{agent: a, name: name, prior: a.programBounced, mark: bounceMark{seq: a.personSeq, step: step}}
+	bounce := &askBounce{agent: a, name: heard.named, prior: a.programBounced, mark: bounceMark{seq: heard.seq, step: step}}
 	a.programBounced = bounce.mark
 	return bounce
 }
@@ -138,14 +142,65 @@ func (b *askBounce) text() string {
 	return programNamedSentence(b.name)
 }
 
-// askedForProgram says `via` names a program this build carries and the
-// person's words named that same program, which is the one thing that lifts
-// the spawn floor for a proposal ([Agent.refuseProposedTask]).
-func (c Config) askedForProgram(asked, via string) bool {
-	if via == "" || !slices.Contains(c.delegateNames(), via) {
+// askedForProgram says `via` names a program the person's words named in the
+// turn they last spoke in, which is the one thing that lifts the spawn floor
+// for a proposal ([Agent.refuseProposedTask]). A name this build does not
+// carry is never heard ([Agent.hearProgramsLocked]), so it lifts nothing.
+func (a *Agent) askedForProgram(via string) bool {
+	if via == "" {
 		return false
 	}
-	return namesProgram(normalizedWords(asked), via)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return slices.Contains(a.programsHeard.asked, via)
+}
+
+// programsHeard is what the person's messages of one turn said about the
+// programs this build carries.
+//
+// A TURN'S ASK IS EVERY MESSAGE TYPED INTO IT, not the newest one. A person
+// names senior-dev as the turn opens and steers with a detail while the model
+// reads the code, which is exactly when a model that has forgotten the name
+// proposes without `via`, and the steer names nothing. [Agent.personAsk] is
+// that steer by then, and reading it alone sent the work to codeaf's own
+// worker and held "fix this file only" on the spawn floor although the turn
+// had asked for senior-dev. So this is kept from the message that opens a turn
+// to the last one steered into it, and started again by the next message that
+// opens a turn. A woken turn types nothing and leaves it where it was, so it
+// still answers the ask it was woken under.
+type programsHeard struct {
+	// turn is the [Agent.turnSeq] the messages were typed into.
+	turn uint64
+	// named is the program the newest message that named one named, and seq is
+	// that message's [Agent.personSeq], which the bounce is counted against.
+	named string
+	seq   uint64
+	// asked is every program a message of the turn named, which is what lifts
+	// the floor for a proposal whose `via` is one of them.
+	asked []string
+}
+
+// hearProgramsLocked reads one message of the person's for the programs this
+// build carries, into [Agent.programsHeard]. [Agent.rememberAskLocked] is the
+// one caller, after the message is numbered, so every message they type is
+// read here exactly once and nothing the session wrote itself is. The caller
+// holds a.mu.
+func (a *Agent) hearProgramsLocked(text string) {
+	if len(a.config.Delegates) == 0 {
+		return
+	}
+	if a.programsHeard.turn != a.turnSeq {
+		a.programsHeard = programsHeard{turn: a.turnSeq}
+	}
+	words := normalizedWords(text)
+	for _, name := range a.config.delegateNames() {
+		if namesProgram(words, name) && !slices.Contains(a.programsHeard.asked, name) {
+			a.programsHeard.asked = append(a.programsHeard.asked, name)
+		}
+	}
+	if name := a.config.programNamedIn(text); name != "" {
+		a.programsHeard.named, a.programsHeard.seq = name, a.personSeq
+	}
 }
 
 // programNamedIn is the first program, by name, that the person's words name,
