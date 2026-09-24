@@ -1901,6 +1901,10 @@ func v3BuiltinApprovals() map[string]any {
 		"manual": "allow", "settings": "allow",
 		"team_status": "allow", "team_read": "allow", "team_send": "allow",
 		"team_stop": "allow", "team_post": "allow",
+		// A manager deciding or sending up a packet waiting on it, and bringing
+		// the person its closing report: each is a line in the team's own
+		// record, and none spends or starts anything.
+		"team_decide": "allow", "team_escalate": "allow", "team_close_report": "allow",
 	}
 }
 

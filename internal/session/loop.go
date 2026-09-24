@@ -3640,6 +3640,10 @@ var glossFields = map[string][]string{
 	// here: it reads as its own sentence ([teamStartGloss]).
 	"team_send": {"to", "text"},
 	"team_post": {"to", "text"},
+	// A packet is its id and what was done with it.
+	"team_decide":       {"packet", "answer"},
+	"team_escalate":     {"packet", "to"},
+	"team_close_report": {"done"},
 }
 
 // gloss renders one call as a person-readable line: the tool name and the one
