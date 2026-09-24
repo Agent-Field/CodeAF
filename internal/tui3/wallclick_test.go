@@ -51,7 +51,7 @@ func wallClick(t *testing.T, a *app, hit wallHit) tea.Cmd {
 
 // A HAND CAN DO WHAT THE KEYS DO: pick two tiles with their boxes, make a team
 // of them from the tray, keep the name the wall offered, and land in it.
-func TestWallClickPicksTilesAndMakesASpace(t *testing.T) {
+func TestWallClickPicksTilesAndMakesATeam(t *testing.T) {
 	a, _, _ := tabApp(t)
 	_ = a.openWall()
 	_ = a.wallFrame(a.width, a.height)
