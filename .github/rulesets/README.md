@@ -7,6 +7,12 @@ when it changed, and who signed for it.
 
 They are **not applied automatically.** Apply them by hand:
 
+This repository is public. The live `protection` ruleset covers `main`, `dev`,
+and `staging`. The checked-in `promotion-pointers.json` has no bypass actors.
+Whoever applies it must add the owner of `PROMOTION_TOKEN` (or that account's
+role) to its bypass list; otherwise Friday's push is refused. The token also
+needs Contents and Workflows read and write to publish the staging release.
+
 ```sh
 gh api -X POST repos/Agent-Field/codeaf/rulesets --input .github/rulesets/dev.json
 gh api -X POST repos/Agent-Field/codeaf/rulesets --input .github/rulesets/promotion-pointers.json
@@ -19,19 +25,15 @@ gh api repos/Agent-Field/codeaf/rulesets --jq '.[] | "\(.id)\t\(.name)"'
 gh api -X PUT repos/Agent-Field/codeaf/rulesets/<id> --input .github/rulesets/dev.json
 ```
 
-## When they can be applied
+## Inspect the live rules
 
-While `Agent-Field` is on the **free** plan and this repository is **private**,
-that combination has no branch rules at all — both the rulesets API and the older
-protection API answer `403 Upgrade to GitHub Pro`. Until the org moves to **GitHub
-Team** or the repository is **public**, everything in `docs/rules/` is convention
-that a careless `git push --force` can undo without being asked a question.
-
-Apply both rulesets with the commands above the day the repository goes public.
-Until then, check whether the API has started working:
+The repository is public and its `protection` ruleset is live. Inspect the
+rulesets and confirm the promotion account can bypass the pointer rules before
+enabling the Friday workflow:
 
 ```sh
 gh api repos/Agent-Field/codeaf/rulesets
+gh api repos/Agent-Field/codeaf/rulesets/<id> --jq .current_user_can_bypass
 ```
 
 ## `required_status_checks` names are job names
