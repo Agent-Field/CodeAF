@@ -232,7 +232,10 @@ submit.
 call on the run's own work model — the one a task's own worker would use — and the
 conversation on the task page names the model that answered. When nothing here can serve
 that model either, the conversation's own model may answer instead, and the page names
-whichever model did. Which models it asks for is the next section.
+whichever model did. A dated build or a variant of the model it asked for, such as
+`deepseek/deepseek-v4-pro-0731` or `qwen/qwen3.6-plus:free`, is that model and is not named
+again; a sibling such as `openai/gpt-5.5-mini` answering for `openai/gpt-5.5` is a different
+model and is named. Which models it asks for is the next section.
 
 ## senior-dev on a service that reports no prices — a local proxy, a Codex sign-in, the dollar ceiling does not hold, set a time limit
 

@@ -780,7 +780,10 @@ func TestCloseWaitsForTheReceiptOwedOnACutCall(t *testing.T) {
 // API never hears of — run 3d6d asked qwen and was answered by gpt-5.6-sol, at a
 // price its service does not report. The funnel's bill names who answered, and
 // the turn says so; an ask answered by the same model under another spelling,
-// or by a dated build of it, names nothing more.
+// or by a dated build of it, names nothing more. A SIBLING IS ANOTHER MODEL:
+// `gpt-5.5-mini` answering an ask for `gpt-5.5` is named, because a hyphen
+// followed by a word is a different model and only a date or build number is
+// the same one.
 func TestATurnNamesTheModelTheFunnelBilledWhenItIsNotTheAsk(t *testing.T) {
 	for _, row := range []struct {
 		name, asked, billed, answer, want string
@@ -788,6 +791,12 @@ func TestATurnNamesTheModelTheFunnelBilledWhenItIsNotTheAsk(t *testing.T) {
 		{name: "the pool's seat answered", asked: "qwen/qwen3.6-plus", billed: "gpt-5.6-sol", want: "gpt-5.6-sol"},
 		{name: "the same model without its service", asked: "openrouter/deepseek/deepseek-v4-pro", billed: "deepseek/deepseek-v4-pro", want: ""},
 		{name: "a dated build of the ask", asked: "deepseek/deepseek-v4-pro", billed: "deepseek/deepseek-v4-pro-0731", want: ""},
+		{name: "a full date on the build", asked: "openai/gpt-5.5", billed: "openai/gpt-5.5-20260731", want: ""},
+		{name: "a variant of the ask", asked: "qwen/qwen3.6-plus", billed: "qwen/qwen3.6-plus:free", want: ""},
+		{name: "a smaller sibling answered", asked: "openai/gpt-5.5", billed: "openai/gpt-5.5-mini", want: "openai/gpt-5.5-mini"},
+		{name: "a faster sibling answered", asked: "deepseek/deepseek-v4", billed: "deepseek/deepseek-v4-flash", want: "deepseek/deepseek-v4-flash"},
+		{name: "a thinking sibling answered", asked: "moonshotai/kimi-k2", billed: "moonshotai/kimi-k2-thinking", want: "moonshotai/kimi-k2-thinking"},
+		{name: "the ask is the sibling", asked: "deepseek/deepseek-v4-flash", billed: "deepseek/deepseek-v4", want: "deepseek/deepseek-v4"},
 		{name: "nothing billed, the answer names another", asked: "moonshotai/kimi-k2.6", answer: "z-ai/glm-5.1", want: "z-ai/glm-5.1"},
 	} {
 		t.Run(row.name, func(t *testing.T) {

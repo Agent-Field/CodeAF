@@ -760,8 +760,9 @@ func answeredBy(turn delegate.Turn, billed string, response *ai.Response) string
 // sameModel reports whether two ids name one model, read the way the task page
 // names a speaker: by the part after the last vendor, case aside, so
 // `openrouter/deepseek/deepseek-v4-pro` and `deepseek/deepseek-v4-pro` are one
-// model, and a dated build of it (`deepseek-v4-pro-0731`) is still it. An ask
-// that named no model is never the same as the model that answered it.
+// model, and a dated build of it (`deepseek-v4-pro-0731`) or a variant of it
+// (`qwen3.6-plus:free`) is still it ([buildOf] says which suffixes count). An
+// ask that named no model is never the same as the model that answered it.
 func sameModel(asked, answered string) bool {
 	word := func(id string) string {
 		id = strings.ToLower(strings.TrimSpace(id))
@@ -774,10 +775,35 @@ func sameModel(asked, answered string) bool {
 	if a == "" || b == "" {
 		return a == b
 	}
-	build := func(long, short string) bool {
-		return strings.HasPrefix(long, short+"-") || strings.HasPrefix(long, short+":")
+	return a == b || buildOf(a, b) || buildOf(b, a)
+}
+
+// buildOf reports whether long is short with a build stamp or a variant on it:
+// `-0731` or `-20260731` (four to eight digits, which is how makers date a
+// build), a `:free` variant, or a dated build of a variant.
+//
+// A HYPHEN FOLLOWED BY A WORD IS ANOTHER MODEL. `gpt-5.5-mini`,
+// `deepseek-v4-flash` and `kimi-k2-thinking` are siblings of the model they
+// extend, sold and priced as models of their own, and reading any hyphenated
+// suffix as a build named the ask as the speaker when its sibling answered —
+// the misnaming [answeredBy] exists to stop.
+func buildOf(long, short string) bool {
+	rest, ok := strings.CutPrefix(long, short)
+	if !ok {
+		return false
 	}
-	return a == b || build(a, b) || build(b, a)
+	if variant, ok := strings.CutPrefix(rest, ":"); ok {
+		return variant != ""
+	}
+	stamp, ok := strings.CutPrefix(rest, "-")
+	if !ok {
+		return false
+	}
+	stamp, variant, tagged := strings.Cut(stamp, ":")
+	if tagged && variant == "" {
+		return false
+	}
+	return len(stamp) >= 4 && len(stamp) <= 8 && strings.Trim(stamp, "0123456789") == ""
 }
 
 // log writes one turn. A log that cannot be written costs the record and never
