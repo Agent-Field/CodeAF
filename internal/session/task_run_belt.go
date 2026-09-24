@@ -708,6 +708,10 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, ru
 			}
 		}
 		if task := run.store.Task(strconv.FormatUint(id, 10)); task != nil {
+			notice.Stopped = planTaskStopped(run.store, task)
+			if notice.Stopped {
+				notice.Ending = TaskEndingStopped
+			}
 			if task.Status == plandb.StatusDone {
 				notice.State = TaskDone
 			}
@@ -721,7 +725,7 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, ru
 				notice.Report = strings.TrimSpace(task.Error)
 			}
 		}
-		if notice.State != TaskDone && runEnding != "" && cutRows[id] {
+		if !notice.Stopped && notice.State != TaskDone && runEnding != "" && cutRows[id] {
 			notice.Ending = runEnding
 		}
 		a.publishRunRow(g, notice)

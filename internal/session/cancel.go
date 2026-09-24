@@ -187,6 +187,9 @@ func (g *TaskGraph) stopFor(id uint64, why string) (string, error) {
 		line    string
 	)
 	switch {
+	case node.stopped && node.state.settled():
+		g.mu.Unlock()
+		return name + " is already stopped; there is nothing to stop", nil
 	case node.stopped && node.state == TaskRunning:
 		// Already stopping. A second press is a person leaning on a key, not a
 		// second decision, and the honest answer is what is already happening.
