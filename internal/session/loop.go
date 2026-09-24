@@ -3636,12 +3636,10 @@ var glossFields = map[string][]string{
 	// and the whole of what they are agreeing to is which row and what it
 	// becomes.
 	"change_setting": {"key", "value"},
-	// A line into a team is who it goes to and what it says, and a start is the
-	// new member's handle and its brief: team_start goes to the person, and
-	// "team_start" alone would be a question about nobody.
-	"team_send":  {"to", "text"},
-	"team_post":  {"to", "text"},
-	"team_start": {"handle", "brief"},
+	// A line into a team is who it goes to and what it says. A start is not
+	// here: it reads as its own sentence ([teamStartGloss]).
+	"team_send": {"to", "text"},
+	"team_post": {"to", "text"},
 }
 
 // gloss renders one call as a person-readable line: the tool name and the one
@@ -3697,6 +3695,11 @@ func control(r rune) bool { return r < ' ' || r == 0x7f }
 
 func glossOf(call ai.ToolCall) string {
 	name := call.Function.Name
+	if name == teamStartToolName {
+		if said := teamStartGloss(call.Function.Arguments); said != "" {
+			return said
+		}
+	}
 	fields, known := glossFields[name]
 	if !known {
 		field, single := glossField[name]

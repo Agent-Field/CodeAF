@@ -667,12 +667,18 @@ func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string,
 // question through the one door. The two go up and come down together, because a
 // lane that stopped waiting has stopped asking, and a window still drawing the
 // question would be offering a key the session would drop.
+//
+// AND A TEAM MEMBER'S MANAGER IS TOLD IT IS WAITING, for the same reason home
+// is: every question that holds a turn comes through here, so this is the one
+// place a member's asking event can be raised and taken down ([Agent.teamAsking]).
 func (a *Agent) presenceAskingWhole(q Question, announce func()) func() {
 	forgetDesk := a.presenceAskingQuestion(q)
 	letGo := a.raiseQuestion(q, announce)
+	teamDown := a.teamAsking(q)
 	return func() {
 		forgetDesk()
 		letGo()
+		teamDown()
 	}
 }
 

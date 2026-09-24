@@ -390,8 +390,11 @@ func TestAFreshConversationStartsAtItsBirthOrItsOwnStart(t *testing.T) {
 	if !strings.Contains(news, "after its start") {
 		t.Fatalf("a started member lost what the manager said after its start: %q", news)
 	}
-	if strings.Contains(news, "before its start") || strings.Contains(news, "the brief") {
-		t.Fatalf("a started member was handed history or its own brief: %q", news)
+	if !strings.Contains(news, teamBriefWord+": the brief") {
+		t.Fatalf("a started member was not handed its brief, marked as the manager's: %q", news)
+	}
+	if strings.Contains(news, "before its start") {
+		t.Fatalf("a started member was handed history: %q", news)
 	}
 }
 

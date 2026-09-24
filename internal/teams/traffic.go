@@ -70,6 +70,13 @@ type Entry struct {
 	Files []string `json:"files,omitempty"`
 	// Member is the conversation key the entry concerns, when there is one.
 	Member string `json:"member,omitempty"`
+	// State is what a [KindEvent] says the member it concerns is now: one of
+	// the State constants ([StateFinished], [StateFailed], [StateAsking],
+	// [StateIdle] for a turn that was stopped, [StateRunning] for one that
+	// carried on after its question was answered). It is empty on every other
+	// kind. A reader colours by it rather than by reading Text, which is the
+	// words a person reads.
+	State string `json:"state,omitempty"`
 }
 
 // trafficRotateBytes is the size past which the log starts a new file.

@@ -28,7 +28,8 @@ package session
 // [teams.AppendTraffic]: a message is a note or a directive, a stop is a
 // [teams.KindStop] entry the interface performs as the person's own Stop, and a
 // start is a [teams.KindStart] entry the interface performs by opening the new
-// conversation and sending the brief. None of these verbs reaches into another
+// conversation, and the new conversation reads its brief off that same entry
+// (teamevent.go's [teamBriefLine]), marked as the manager's and never the person's. None of these verbs reaches into another
 // conversation directly, which is what lets the other conversation be in
 // another window, on another build, or closed.
 //
@@ -234,8 +235,8 @@ func (a *Agent) teamStatusTool(ctx context.Context, args json.RawMessage) (strin
 	a.team.mu.Lock()
 	keys := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
-	recent, _ := teams.ReadTraffic(profile, team.ID, "", teamRecent)
-	return teams.Digest(team, memberStates(team, keys, time.Now()), recent, teamStatusBudget), false, nil
+	log, _ := teams.ReadTraffic(profile, team.ID, "", teamStateLook)
+	return teams.Digest(team, memberStates(team, keys, time.Now(), log), recentOf(log), teamStatusBudget), false, nil
 }
 
 // ── team_read ───────────────────────────────────────────────────────────────
@@ -450,8 +451,47 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
 		return "The start could not be written to the team's traffic: " + err.Error(), true, nil
 	}
-	return fmt.Sprintf("Asked for a new member @%s in %q. The conversations view opens it in the team's folder and sends your brief as its first message; "+
+	return fmt.Sprintf("Asked for a new member @%s in %q. The conversations view opens it in the team's folder, and it is handed your brief, marked as from you, on its first request; "+
 		"it shows in team_status once it has joined. Anything you team_send it before then is waiting for it.", handle, team.Name), false, nil
+}
+
+// teamStartCost is the clause a start's permission card carries under the
+// brief: what saying yes buys. A start is the one team verb that spends money
+// the person has not already agreed to spend, and a card that said only "it
+// will not run this without your word" would not say what the word is for.
+const teamStartCost = "a new conversation; it spends until it stops"
+
+// teamStartArgs is a start's handle and brief out of its arguments, the handle
+// the way the verb reads it (no @, lower case). Both are "" when they do not
+// parse.
+func teamStartArgs(arguments string) (handle, brief string) {
+	var parsed struct {
+		Handle string `json:"handle"`
+		Brief  string `json:"brief"`
+	}
+	if json.Unmarshal([]byte(arguments), &parsed) != nil {
+		return "", ""
+	}
+	handle = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(parsed.Handle)), "@")
+	if teams.ValidHandle(handle) != nil {
+		handle = ""
+	}
+	return handle, strings.TrimSpace(parsed.Brief)
+}
+
+// teamStartGloss is a start's row and the body of its card: the handle with
+// its @, and the brief's first line, "team_start @lexer: Rewrite the lexer…".
+// The card's own line says who wants it ([ConsentHead]); this says what for.
+func teamStartGloss(arguments string) string {
+	handle, brief := teamStartArgs(arguments)
+	if handle == "" {
+		return ""
+	}
+	said := teamStartToolName + " @" + handle
+	if line := firstLine(brief); strings.TrimSpace(line) != "" {
+		said += ": " + strings.TrimSpace(line)
+	}
+	return clip(said, hintLimit)
 }
 
 // ── team_post ───────────────────────────────────────────────────────────────
