@@ -216,6 +216,17 @@ func TestClosingAFilteredTaskRemovesItUntilTheFilterChanges(t *testing.T) {
 			t.Fatal("a refresh restored the closed task")
 		}
 	}
+	// An edit that leaves the search text as it was is not a new search: ctrl+k
+	// with the caret already at the end of the box takes nothing.
+	drive(t, a, key("ctrl+k"))
+	if a.taskSheet.query.String() != "read 40 filings" {
+		t.Fatalf("ctrl+k at the end changed the filter to %q", a.taskSheet.query.String())
+	}
+	for _, item := range a.tasksFiltered().items {
+		if item.entry.ID == "t1" && item.entry.SessionID == owner.ID {
+			t.Fatal("an edit that left the search text unchanged restored the closed task")
+		}
+	}
 	a.taskSheet.query.setText("filings")
 	a.taskSheetTyped()
 	found := false

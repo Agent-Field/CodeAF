@@ -83,6 +83,7 @@ func (a *app) putTaskAway(dir string, entry session.TaskIndexEntry, archived boo
 				p.closed = make(map[tasksKey]bool)
 			}
 			p.closed[tasksKeyOf(entry)] = true
+			p.closedQuery = p.query.String()
 		} else {
 			delete(p.closed, tasksKeyOf(entry))
 		}

@@ -55,6 +55,12 @@ type tasksPlace struct {
 	// row immediately even though searches can recover older archived tasks.
 	// Editing the query starts a new search and makes them discoverable again.
 	closed map[tasksKey]bool
+	// closedQuery is the search text [tasksPlace.closed] was put away under.
+	// AN EDIT THAT CHANGES NOTHING IS NOT A NEW SEARCH: ctrl+k at the end of the
+	// box, or backspace with the caret at its start, takes no rune, and a task
+	// that came back on a keystroke that left the text as it was would read as a
+	// close that did not hold.
+	closedQuery string
 	// query is the type-to-filter box, and it is the [editor] every other box on
 	// this surface is rather than a string of its own: backspace, ctrl+u and
 	// ctrl+w are edits a person's hands already know, and a second implementation
@@ -877,7 +883,9 @@ func (a *app) taskSheetReverseAge() {
 // the window with it. A cursor left at row forty of a list that now has three is
 // a page a person types one letter into and finds empty.
 func (a *app) taskSheetTyped() {
-	a.taskSheet.closed = nil
+	if a.taskSheet.query.String() != a.taskSheet.closedQuery {
+		a.taskSheet.closed = nil
+	}
 	a.taskSheet.top = 0
 	a.taskSheet.cursor = a.tasksSettle(0)
 }
