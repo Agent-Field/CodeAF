@@ -395,10 +395,18 @@ func (a *app) wallTick() tea.Cmd {
 		return nil
 	}
 	a.wall.ticking = true
+	// ONLY WHAT MOVED IS READ. The front conversation's transcript is asked for
+	// when the surface's own entries say it changed ([app.wallFrontMoved]); a
+	// held one is read on its stir ([app.wallStir]), and here only when its tile
+	// has never been read. A whole transcript every half second, per working
+	// tile, was the wall's cost with nothing on it moving.
 	front := a.frontTabKey()
-	keys := []string{front}
+	var keys []string
+	if a.wall.tails[front] == nil || a.wallFrontMoved() {
+		keys = append(keys, front)
+	}
 	for _, tab := range a.tabList() {
-		if tab.start || tab.work || tab.key == front {
+		if tab.start || tab.work || tab.key == front || a.wall.tails[tab.key] != nil {
 			continue
 		}
 		if a.tabSignalFor(tab.key, tab.here) != tabIdle {
@@ -415,6 +423,29 @@ func (a *app) wallTick() tea.Cmd {
 		return tea.Batch(read, next)
 	}
 	return next
+}
+
+// wallFrontVer is a cheap reading of the conversation in front: how many
+// entries the surface holds, how long the newest one is, and whether a turn is
+// running. Two equal readings are a transcript nobody wrote to.
+type wallFrontVer struct {
+	file        string
+	n, last     int
+	working, ok bool
+}
+
+// wallFrontMoved reports whether the front has moved since the wall last read
+// it, and takes the new reading. Memory only.
+func (a *app) wallFrontMoved() bool {
+	ver := wallFrontVer{file: a.file, n: len(a.entries), working: a.state == stateWorking, ok: true}
+	if ver.n > 0 {
+		ver.last = len(a.entries[ver.n-1].text)
+	}
+	if ver == a.wall.frontVer {
+		return false
+	}
+	a.wall.frontVer = ver
+	return true
 }
 
 // wallTiles is the wall as the painter draws it, in the strip's order.

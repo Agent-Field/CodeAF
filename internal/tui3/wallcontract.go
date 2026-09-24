@@ -322,6 +322,9 @@ type (
 
 // wallState is the wall's whole footprint on the app: one field.
 type wallState struct {
+	// frontVer is the front conversation as the wall last read it for its tile
+	// (walltail.go's [app.wallFrontMoved]).
+	frontVer wallFrontVer
 	on       bool
 	focus    int
 	scroll   int
