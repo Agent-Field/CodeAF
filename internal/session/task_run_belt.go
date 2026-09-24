@@ -1151,6 +1151,12 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// picked under, for the card's crew line.
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: summary.USD,
 	}
+	if run.crew != nil && !run.crew.anyStarted() {
+		// A CREW NO SEAT OF WHICH EVER ANSWERED WROTE NOTHING: whatever the
+		// landing counted is the run's own scaffolding, and "1 file" under a
+		// run that never started claims work nobody did.
+		notice.Changed = nil
+	}
 	if landing.Branch != "" {
 		notice.Branch = landing.Branch
 		// WHERE THE WORK IS, AS A FACT. A run whose copy came home says so, and

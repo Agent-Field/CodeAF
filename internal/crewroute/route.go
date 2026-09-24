@@ -261,7 +261,16 @@ type Decision struct {
 	// Note is one plain sentence the line ends on: an effort word that changed
 	// nothing, or the free routes taken because nothing paid could be.
 	Note string `json:",omitempty"`
+	// Stopped is the one action a task stopped on when a seat had nowhere
+	// left to go and the failure said why — credit, a key, a limit. The line
+	// leads with it and offers no stronger redo, which could not help.
+	Stopped string `json:",omitempty"`
 }
+
+// Unspent is the actual cost a line is drawn with when there is none worth
+// saying: a task that stopped before anything was spent. The line then names
+// no money at all, rather than a $0.000 that reads as a free success.
+const Unspent = -2.0
 
 // Retry is one seat moved from one model to another — down its ladder during
 // a task, or up a rung on a redo — and why, when a failure moved it.
@@ -938,6 +947,19 @@ func Gaps(candidates []Candidate) []Gap {
 // unknown is absent, never $0.00).
 func (d Decision) Line(pinMark string, actual float64) string {
 	var b strings.Builder
+	if len(d.Retried) > 0 {
+		// A SEAT THAT MOVED DURING THE TASK IS SAID FIRST, plainly: the crew
+		// running is not the crew picked, and why — before any figure a reader
+		// could take for the picked crew's success.
+		b.WriteString("running on fallback crew")
+		for _, r := range d.Retried {
+			b.WriteString(" · " + string(r.Seat) + " " + ShortModel(r.From) + " → " + ShortModel(r.To))
+			if r.Why != "" {
+				b.WriteString(" (" + r.Why + ")")
+			}
+		}
+		b.WriteString(" · ")
+	}
 	b.WriteString(d.Class.Word())
 	worker, planner, checker := d.Seat(Worker), d.Seat(Planner), d.Seat(Checker)
 	b.WriteString(" · worker ")
@@ -961,18 +983,8 @@ func (d Decision) Line(pinMark string, actual float64) string {
 	for _, r := range d.Rungs {
 		b.WriteString(" · " + string(r.Seat) + " " + ShortModel(r.From) + " → " + ShortModel(r.To))
 	}
-	if len(d.Retried) > 0 {
-		// A SEAT THAT MOVED DURING THE TASK IS SAID PLAINLY: the crew running
-		// is not the crew picked, and why.
-		b.WriteString(" · running on fallback crew")
-		for _, r := range d.Retried {
-			b.WriteString(" · " + string(r.Seat) + " " + ShortModel(r.From) + " → " + ShortModel(r.To))
-			if r.Why != "" {
-				b.WriteString(" (" + r.Why + ")")
-			}
-		}
-	}
 	switch {
+	case actual == Unspent:
 	case actual >= 0:
 		b.WriteString(" · " + Money(actual) + " (est " + Money(d.EstUSD) + ")")
 	default:

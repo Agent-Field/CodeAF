@@ -96,7 +96,7 @@ func TestAForbiddenRouteIsNotRoutedToAgain(t *testing.T) {
 
 // A ZERO-CREDIT ACCOUNT, end to end: a paid call says payment → the free
 // pools are used, with the notice → they are limited → the person's own model
-// sits the seat → with no model of their own either, the one action.
+// on that same account is skipped → the one action.
 // Credit coming back puts normal routing back.
 func TestAZeroCreditAccountWalksTheLadder(t *testing.T) {
 	dir := crewProfile(t)
@@ -130,18 +130,12 @@ func TestAZeroCreditAccountWalksTheLadder(t *testing.T) {
 	}
 
 	history = append(history, router.CrewRouteOutcome{At: time.Now(), Seat: "worker", Send: "z-ai/glm-5.3-flash:free", Provider: w.Provider, Kind: "quota"})
-	chat, err := RouteCrew(dir, CrewAsk{Task: ask.Task, ChatModel: "somelab/the-chat-model"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := chat.Seat(crewroute.Worker); got.Model != "somelab/the-chat-model" || !strings.Contains(chat.Line("", -1), "running on fallback crew") {
-		t.Fatalf("with nothing routed reachable the worker is %+v (%q), want the chat model", got, chat.Line("", -1))
-	}
-
-	_, err = RouteCrew(dir, ask)
+	// The person's own model on the SAME account is no rescue: the account
+	// said it is out of credit, whichever model asks it.
+	_, err = RouteCrew(dir, CrewAsk{Task: ask.Task, ChatModel: "somelab/the-chat-model"})
 	var stop ErrCrewUnreachable
 	if !errors.As(err, &stop) || !strings.Contains(stop.Action, "add credit on openrouter") {
-		t.Fatalf("with nothing at all the answer is %v, want the one action", err)
+		t.Fatalf("with the chat model on the account out of credit the answer is %v, want the one action", err)
 	}
 
 	history = append(history, router.CrewRouteOutcome{At: time.Now(), Seat: "worker", Send: w.Send, Provider: w.Provider, Paid: true})
@@ -275,5 +269,47 @@ func TestCrewOffersNoSpeechOrImageModels(t *testing.T) {
 	}
 	if !deepseek {
 		t.Error("a chat model with tools was not offered")
+	}
+}
+
+// THE FREE RUNG RUNS WITH THE SWITCH OFF when every paid route is out of
+// reach: a seat's rescue after a payment failure is a free pool, and the
+// person's own model on the account that said no is not.
+func TestTheRescueFallsToAFreePoolWhenNothingPaidIsReachable(t *testing.T) {
+	dir := crewProfile(t)
+	rows := CrewCatalog()
+	rows = append(rows, catalog.Model{ID: "z-ai/glm-5.3-flash:free", OpenWeights: true,
+		IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9, ContextLength: 1310720, Parameters: []string{"tools"}})
+	CrewCatalog = func() []catalog.Model { return rows }
+	history := []router.CrewRouteOutcome{{At: time.Now(), Seat: "worker", Send: "z-ai/glm-5.3-flash", Provider: "openrouter", Kind: "payment"}}
+	withRouteHistory(t, &history)
+	if CrewFreeRoutesAt(dir) {
+		t.Fatal("the switch should be off")
+	}
+	rescue := CrewRescue(dir, crewroute.Bugfix, crewroute.Worker, "moonshotai/kimi-k3")
+	if len(rescue) == 0 || rescue[0].Kind != crewroute.Free {
+		t.Fatalf("rescue %+v, want a free pool first", rescue)
+	}
+	for _, r := range rescue {
+		if r.Model == "moonshotai/kimi-k3" {
+			t.Errorf("the chat model rode the account out of credit: %+v", r)
+		}
+	}
+}
+
+// A FREE POOL CAN BE PINNED BY NAME: `:free` is a route, not a thinking level,
+// and the pin runs on the pool.
+func TestAFreePoolCanBePinnedByName(t *testing.T) {
+	pin, auto, err := ParseCrewPin("thinkingmachines/inkling-small:free@openrouter")
+	if err != nil || auto || pin.Model != "thinkingmachines/inkling-small:free" || pin.Provider != "openrouter" {
+		t.Fatalf("parse: %+v %v %v", pin, auto, err)
+	}
+	if _, _, err := ParseCrewPin("vendor/model:loud"); err == nil {
+		t.Error("an unknown suffix was taken")
+	}
+	dir := crewProfile(t)
+	got := resolveCrewPin(CrewPin{Model: "z-ai/glm-5.3-flash:free"}, CrewProvidersAt(dir))
+	if got.Kind != crewroute.Free || got.Send != "z-ai/glm-5.3-flash:free" {
+		t.Errorf("a pinned free pool resolves to %+v", got)
 	}
 }

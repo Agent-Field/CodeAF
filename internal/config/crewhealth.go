@@ -295,11 +295,11 @@ func LogCrewRoute(profileDir, call string, d crewroute.Decision, repo, title str
 // ran it, then the model the person is talking to — each only when its route
 // is healthy and the model can sit the seat. The router's own rungs come first
 // ([crewroute.Decision.Ladder]).
-func CrewRescue(profileDir string, seat crewroute.Seat, chatModel string) []crewroute.Pick {
+func CrewRescue(profileDir string, class crewroute.Class, seat crewroute.Seat, chatModel string) []crewroute.Pick {
 	health := crewHealthAt(profileDir)
 	var out []crewroute.Pick
 	seen := map[string]bool{}
-	add := func(send string, proven bool) {
+	add := func(send string) {
 		send = strings.TrimSpace(send)
 		if send == "" || seen[send] {
 			return
@@ -309,12 +309,10 @@ func CrewRescue(profileDir string, seat crewroute.Seat, chatModel string) []crew
 			return
 		}
 		pin := resolveCrewPin(CrewPin{Model: send}, CrewProvidersAt(profileDir))
-		if proven {
-			// THE PERSON'S OWN MODEL IS PROVEN REACHABLE — the conversation is
-			// running on it — so an account's routing health is not asked of it;
-			// its kind is left unsaid, so no rung-skipping reads it as metered.
-			pin.Kind = ""
-		} else if health.disconnected[pin.Provider] || (pin.Kind == crewroute.Metered && health.unaffordable[pin.Provider]) {
+		// NOT EVEN THE PERSON'S OWN MODEL rides an account that just said it
+		// is out of credit, or a key that was just refused: the conversation
+		// running on it proves the model, not the account.
+		if health.disconnected[pin.Provider] || (pin.Kind == crewroute.Metered && health.unaffordable[pin.Provider]) {
 			return
 		}
 		if model, known := crewCatalogModel(send); known && !crewroute.Seatable(seat, crewroute.Candidate{Model: model, Routes: []crewroute.Route{{Send: pin.Send}}}) {
@@ -323,11 +321,56 @@ func CrewRescue(profileDir string, seat crewroute.Seat, chatModel string) []crew
 		out = append(out, crewroute.Pick{Seat: seat, Model: pin.Model, Provider: pin.Provider, Send: pin.Send, Kind: pin.Kind})
 	}
 	if last := CrewLastGood(profileDir); last != nil {
-		add(last.Seats[string(seat)], false)
+		add(last.Seats[string(seat)])
 	}
-	add(chatModel, true)
+	out = append(out, crewFreeRescue(profileDir, class, seat, health)...)
+	add(chatModel)
 	return out
 }
+
+// crewFreeRescue is the seat on a free pool when EVERY PAID ROUTE IS OUT OF
+// REACH — the free-routes switch off or on. With the switch on the pools are
+// already routes on the seat's ladder; with it off they are used only here,
+// and the crew line says so ([crewCandidatesNoticed]'s notice). The best few
+// free picks for the seat, each a different model, so a pool at its limit
+// leaves the next.
+func crewFreeRescue(profileDir string, class crewroute.Class, seat crewroute.Seat, health crewHealth) []crewroute.Pick {
+	candidates, notice := crewCandidatesNoticed(profileDir, health)
+	if notice == "" {
+		return nil
+	}
+	var free []crewroute.Candidate
+	for _, c := range candidates {
+		var routes []crewroute.Route
+		for _, r := range c.Routes {
+			if r.Kind == crewroute.Free {
+				routes = append(routes, r)
+			}
+		}
+		if len(routes) > 0 {
+			free = append(free, crewroute.Candidate{Model: c.Model, Routes: routes})
+		}
+	}
+	var out []crewroute.Pick
+	avoid := map[string]bool{}
+	for len(out) < crewFreeRescues && len(free) > 0 {
+		d, err := crewroute.Decide(crewroute.Request{Class: class, Candidates: free, Avoid: avoid})
+		if err != nil {
+			break
+		}
+		pick := d.Seat(seat)
+		if pick.Send == "" || avoid[crewroute.Lineage(pick.Model)] {
+			break
+		}
+		pick.Pinned = false
+		out = append(out, pick)
+		avoid[crewroute.Lineage(pick.Model)] = true
+	}
+	return out
+}
+
+// crewFreeRescues is how many free models a seat's rescue tries.
+const crewFreeRescues = 3
 
 // CrewLastGood is the crew of the newest task whose result was kept.
 var CrewLastGood = func(profileDir string) *router.CrewRecord {
@@ -348,7 +391,7 @@ func crewRescued(profileDir string, req crewroute.Request, health crewHealth, ch
 	}
 	var rescued []string
 	for tries := 0; tries < len(crewroute.Seats); tries++ {
-		rescue := CrewRescue(profileDir, missing.Seat, chatModel)
+		rescue := CrewRescue(profileDir, req.Class, missing.Seat, chatModel)
 		if len(rescue) == 0 {
 			return crewroute.Decision{}, ErrCrewUnreachable{Action: health.crewAction()}
 		}

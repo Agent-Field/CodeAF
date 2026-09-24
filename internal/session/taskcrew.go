@@ -410,18 +410,33 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 			continue
 		}
 		rung, ok := crew.nextRung(append(append([]crewroute.Pick(nil), crew.ladders[seat]...),
-			config.CrewRescue(a.config.ProfileDir, seat, a.Model())...))
+			config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())...))
 		if !ok {
 			continue
 		}
 		decision = decision.WithRung(seat, rung, crewWhy(kind, provided))
+		if rung.Kind == crewroute.Free && !strings.Contains(decision.Note, crewFreeNotice) {
+			decision.Note = strings.TrimSpace(decision.Note + " " + crewFreeNotice)
+		}
 		if next.Send == "" {
 			next = rung
 		}
 	}
 	if next.Send == "" {
+		action := crewActionFor(kind, provided, until)
+		stopped := crewStopsOn(kind)
+		if stopped {
+			// THE CAUSE IS KNOWN, SO THE LINE SAYS THE ONE THING TO DO — and
+			// not "/redo stronger", which no stronger crew on the same
+			// account could make work.
+			decision.Stopped = action
+			crew.decision = decision
+		}
 		crew.mu.Unlock()
-		return crewActionFor(kind, provided, until), false
+		if stopped {
+			a.republishCrew(run, decision, current+" could not start · "+action)
+		}
+		return action, false
 	}
 	if crew.swaps == nil {
 		crew.swaps = map[string]string{}
@@ -489,6 +504,21 @@ func (c *taskCrew) nextRung(ladder []crewroute.Pick) (crewroute.Pick, bool) {
 		}
 	}
 	return crewroute.Pick{}, false
+}
+
+// crewFreeNotice is what the crew line says when a seat fell to a free pool:
+// the pool may keep what it is sent.
+const crewFreeNotice = "free routes in use · free routes may log prompts"
+
+// crewStopsOn is whether a seat with nowhere left to go stops the task on its
+// one action: a failure whose cause a person can fix (credit, a key, a
+// limit), where a stronger crew would meet the same wall.
+func crewStopsOn(kind provider.RouteFailure) bool {
+	switch kind {
+	case provider.RoutePayment, provider.RouteAuth, provider.RouteQuota:
+		return true
+	}
+	return false
 }
 
 // crewWhy is a failure as the crew line says why a seat moved.

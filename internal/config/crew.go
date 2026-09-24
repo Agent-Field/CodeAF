@@ -151,7 +151,9 @@ func ParseCrewPin(raw string) (pin CrewPin, auto bool, err error) {
 			return CrewPin{}, false, fmt.Errorf("%q: name the provider after @, or leave the @ off", raw)
 		}
 	}
-	if err := ValidateTierValue(model); err != nil {
+	// A FREE POOL IS A ROUTE, NOT A THINKING LEVEL: `…:free` names the model's
+	// free route, and only what is left of the id is a tier value.
+	if err := ValidateTierValue(strings.TrimSuffix(model, ":free")); err != nil {
 		return CrewPin{}, false, err
 	}
 	return CrewPin{Model: model, Provider: provider}, false, nil
@@ -1097,8 +1099,12 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 
 // resolveCrewPin is a pin with the route it will run on: the provider it
 // names, or the connection its own prefix names, or the default service.
-func resolveCrewPin(pin CrewPin, providers []CrewProvider) crewroute.Pin {
-	out := crewroute.Pin{Model: stripCrewRoute(pin.Model), Provider: pin.Provider, Send: pin.Model, Kind: crewroute.Metered}
+func resolveCrewPin(pin CrewPin, providers []CrewProvider) (out crewroute.Pin) {
+	out = crewroute.Pin{Model: stripCrewRoute(pin.Model), Provider: pin.Provider, Send: pin.Model, Kind: crewroute.Metered}
+	if crewroute.IsFree(out.Model) {
+		// A pinned free pool runs on that pool and is weighed as one.
+		defer func() { out.Kind = crewroute.Free }()
+	}
 	model, known := crewCatalogModel(pin.Model)
 	if pin.Provider != "" {
 		if p, ok := crewProviderByID(providers, pin.Provider); ok {

@@ -290,3 +290,20 @@ func TestALearnedOffsetIsRungsNotAJump(t *testing.T) {
 		t.Fatalf("one learned step moved %d seats", moved)
 	}
 }
+
+// A LINE LEADS WITH ITS STATE: a crew running on its fallback says so before
+// the class and the seats, and a task that stopped before spending names no
+// money — never a $0.000 that reads as a free success.
+func TestTheLineLeadsWithTheFallbackAndNamesNoUnspentMoney(t *testing.T) {
+	d := Decision{Class: Bugfix, EstUSD: 0.01, Crew: []Pick{
+		{Seat: Worker, Model: "z-ai/glm-5.3-flash"}, {Seat: Planner, Model: "z-ai/glm-5.3-flash"}, {Seat: Checker, Model: "moonshotai/kimi-k3"},
+	}}
+	moved := d.WithRung(Worker, Pick{Model: "deepseek/deepseek-v4-flash"}, "credit unavailable on openrouter")
+	line := moved.Line("", Unspent)
+	if !strings.HasPrefix(line, "running on fallback crew · worker glm-5.3-flash → deepseek-v4-flash") {
+		t.Errorf("the fallback is not first: %q", line)
+	}
+	if strings.Contains(line, "$") {
+		t.Errorf("an unspent line names money: %q", line)
+	}
+}
