@@ -79,9 +79,11 @@ func TestAPacketIsRaisedDecidedOnceAndFolded(t *testing.T) {
 	if lines := strings.Count(string(raw), "\n"); lines != 2 {
 		t.Fatalf("the file has %d lines, want a raise and a decide:\n%s", lines, raw)
 	}
-	// And every change is a line of Traffic.
+	// And every change is a line of Traffic, and a conflict's ruling is a
+	// directive to each of its parties (both in dock here).
 	entries, _ := ReadTraffic(dir, "bbbbbbbbbbbb", "", 0)
-	if len(entries) != 2 || entries[0].Kind != KindPacket || entries[1].State != PacketDecided || entries[1].Packet != p.ID {
+	if len(entries) != 4 || entries[0].Kind != KindPacket || entries[1].State != PacketDecided || entries[1].Packet != p.ID ||
+		!IsRuling(entries[2]) || entries[2].To != "web" || !IsRuling(entries[3]) || entries[3].To != "api" {
 		t.Fatalf("traffic %+v", entries)
 	}
 }
