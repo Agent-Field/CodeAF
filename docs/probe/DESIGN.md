@@ -50,21 +50,31 @@ judgments.
 
 ## 3. Commands and contract
 
-CLI verbs, each a short invocation; every response is compact JSON on stdout:
+CLI verbs, each a short invocation; every response is one compact JSON object on
+stdout (`{"ok":true,"data":…}` on success, `{"ok":false,"error":{code,message}}`
+with a non-zero exit on failure). This table matches the implemented CLI
+(`cmd/codeaf-probe`); `codeaf-probe contract` prints the machine-readable
+schema of every verb, flag, request and response, so an agent can read the
+interface without reading this document.
 
-| Command | Purpose | Response (compact JSON) |
-| --- | --- | --- |
-| `prepare` | Build or adopt a CodeAF binary; establish immutable build identity; report contract version | `{"contract":1,"build_id":…,"bin":…,"reused":bool}` |
-| `start` | Launch an isolated persistent terminal session on a fixture | `{"session":…,"rev":N,"screen_b64":…,"cursor":{…}}` |
-| `observe` | Snapshot the screen now (with cursor and process status) | `{"rev":N,"screen_b64":…,"cursor":{…},"proc":…}` |
-| `act` | Send real text/keys or resize; optionally bounded-wait for a new revision, atomically | `{"rev":N,"act_ok":true,"wait":{…}}` |
-| `finish` | End a session; clean up only owned resources | `{"cleaned":[…],"kept":[]}` |
-| `fixture` | `list`, `reset`, `verify` — prepare/restore reproducible product state | `{"fixture":…,"ok":true,"identity":…}` |
-| `record` | Read step-indexed action/observation recordings | `{"steps":[…]}` |
+| Command | Flags | Purpose | Response data |
+| --- | --- | --- | --- |
+| `prepare` | `--bin PATH` or `--source DIR` (exclusive, one required) | Adopt or build a CodeAF binary; pin the immutable build identity (sha, dirty flag, go version, flags) and reuse it | `{build:{sha,dirty,go_version,flags,binary}, reused}` |
+| `start` | `--session ID --profile NAME --bin PATH` (required), `--arg s` repeatable | Launch an isolated persistent tmux session running the pinned binary (defaults to `codeaf chat`) | `{session_id, socket, profile, dims}` |
+| `observe` | `--session ID [--diff]` | Rendered screen snapshot now, with cursor, process status and the revision counter | `{revision, snapshot, cursor, processes, ts}` |
+| `act` | `--session ID`, `--text s` / `--keys ks` / `--resize WxH`, `--wait quietMs,timeoutMs`, `--expect-revision N` | Real input or resize, optionally bounded-wait, atomically with the resulting observation; a stale expected revision is refused before anything is sent | `{accepted, revision_before, revision_after, stale, observation}` |
+| `wait` | `--session ID [--quiet ms] [--timeout ms]` | Bounded wait with a truthful reason | `{settled, reason, revision}` |
+| `finish` | `--session ID` | End the session; clean up only owned resources; write the terminal record | `{recorded, removed}` |
+| `fixture-prepare` | `--scenario clean\|returning` | Prepare a verified, idempotent fixture home | `{scenario, home, seeded}` |
+| `fixture-reset` | `--scenario clean\|returning` | Verify the old tree, then replay the recipe from empty and re-verify | `{scenario, home, seeded}` |
+| `contract` | — | The machine-readable contract of every verb | schema document |
+| `record-outcome` | `--session ID --outcome ok\|failed\|error [--reason s]` | Append the journey's terminal record to the session evidence file | `{recorded}` |
 
-The contract is discoverable: `codeaf-probe --json-contract` prints this table
-plus error codes, so an agent can read the interface without reading this
-document.
+**Deferred (documented, not implemented):** `start --fixture` wiring a fixture
+home into a session (start creates its own isolated home today), a `fixture
+verify` verb (prepare self-verifies instead), a `record`/playback verb, live
+model campaigns, and the Spark SSH cluster path. Unknown verbs and flags return
+`BAD_REQUEST` with `usage` on stderr.
 
 ## 4. The persistent runtime, and what "screen" means
 
@@ -155,9 +165,13 @@ between actions, which is also what makes them usability evidence.
   pinned and recorded per `docs/HEADLESS.md`) is nondeterministic by nature;
   its results are campaign evidence, never a CI gate. The two are labeled
   differently everywhere they are reported.
-- **Playback vs re-execution.** Recorded evidence can be played back locally
-  (a re-render of what happened); re-executing a journey may be
-  nondeterministic. Playback is labeled playback.
+- **Playback vs re-execution.** Recorded evidence exists today as step-indexed
+  terminal records plus `record-outcome`; a playback verb is deferred
+  (re-executing a journey may be nondeterministic). Playback, when it exists,
+  will be labeled playback.
 - **Out of scope in v1:** no browser support, no video production, no A/B
   statistics engine, no model-worker orchestration inside the binary. The
   external coding agent owns all of that where it wants it.
+- **Also deferred:** live-model campaigns (real paid turns; the fixture-backed
+  journey above is the CI-repeatable part) and the Spark SSH cluster path —
+  no documented host/config is wired in, and nothing here assumes one.

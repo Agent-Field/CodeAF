@@ -57,6 +57,7 @@ verbs:
   act --session <id> [--text s] [--keys ks] [--resize WxH] [--wait quietMs,timeoutMs] [--expect-revision N]
                                                    atomic act+wait+observe (stale revision -> STALE_REVISION)
   wait --session <id> --quiet <ms> --timeout <ms>  truthful settled/timeout reason
+  record --session <id>                            read the session recording back as compact JSON
   finish --session <id>                            cleanup owned resources only
   fixture-prepare --scenario <name> | fixture-reset --scenario <name>
   contract                                         print the machine-readable JSON contract of all verbs`)
@@ -103,6 +104,11 @@ func contractSchema() interface{} {
 				"flags":   map[string]string{"--session": "required id"},
 				"request": map[string]string{"session_id": "string"},
 				"data":    map[string]interface{}{"removed": "bool", "killed": "[]string"},
+			},
+			"record": map[string]interface{}{
+				"flags":   map[string]string{"--session": "required id"},
+				"request": map[string]string{"session_id": "string"},
+				"data":    map[string]interface{}{"session_id": "string", "count": "int", "records": "[]Record"},
 			},
 			"fixture-prepare": map[string]interface{}{
 				"flags":   map[string]string{"--scenario": "required scenario name (e.g. clean)"},
