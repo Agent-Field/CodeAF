@@ -29,7 +29,7 @@ import (
 // file and cross by [MethodTeamsUpdate] like any other; only deleting, which
 // removes the team's Traffic and packet files too, needs its own door.
 const (
-	// MethodTeamsDefaults is the engine profile's four `teams.` defaults.
+	// MethodTeamsDefaults is the engine profile's five `teams.` defaults.
 	MethodTeamsDefaults = "Teams.Defaults" // struct{} → teamstore.Defaults
 	// MethodTeamsPackets is the packets waiting on a scope, or word that the
 	// packet files have not moved since the stamp the window holds.

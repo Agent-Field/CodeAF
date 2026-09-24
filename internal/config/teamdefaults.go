@@ -7,12 +7,12 @@ import (
 
 // ── THE TEAMS GROUP: WHAT EVERY TEAM INHERITS WHEN IT SAYS NOTHING ─────────
 //
-// A team may override four things about how work is delegated to it
-// (internal/teams' teamsettings.go): whether its members' questions go up to
-// its manager first, what it may spend in a day, how deep teams may nest under
+// A team may override five things about how work is delegated to it
+// (internal/teams' teamsettings.go): whether team traffic wakes its idle
+// conversations, whether its members' questions go up to its manager first, what it may spend in a day, how deep teams may nest under
 // it, and what share of its own cap a new sub-team is handed. A team that sets
 // none of them inherits each from its parent, and the top of every chain
-// inherits from these four rows. So these are DEFAULTS and nothing else: no
+// inherits from these five rows. So these are DEFAULTS and nothing else: no
 // session reads them to decide anything except through internal/teams'
 // resolver, which reports beside every value where it came from, so a card can
 // say `$5/day · from Settings` without guessing.
@@ -21,12 +21,13 @@ import (
 // ([readProfileConfig]); a nested `teams` object would read as unset with no
 // error and every team would fall to the built-in default.
 
-// The four rows' keys.
+// The five rows' keys.
 const (
 	KeyTeamsQuestionsUp = "teams.questions_up"
 	KeyTeamsCapUSDDay   = "teams.cap_usd_day"
 	KeyTeamsDepthLimit  = "teams.depth_limit"
 	KeyTeamsSubSharePct = "teams.sub_share_pct"
+	KeyTeamsWake        = "teams.wake"
 )
 
 // The built-in defaults.
@@ -42,6 +43,9 @@ const (
 	DefaultTeamsCapUSDDay   = 0.0
 	DefaultTeamsDepthLimit  = 3
 	DefaultTeamsSubSharePct = 50
+	// DefaultTeamsWake is on: a directive that waited for the person to type
+	// in the member's tab would make a manager a mailbox.
+	DefaultTeamsWake = true
 )
 
 // The bands the two counts are kept inside. A depth of 1 is teams with no
@@ -55,7 +59,7 @@ const (
 	teamsShareMax = 100
 )
 
-// TeamDefaults is the four rows resolved: the persisted value where there is
+// TeamDefaults is the five rows resolved: the persisted value where there is
 // one inside its band, and the built-in default everywhere else.
 type TeamDefaults struct {
 	QuestionsUp bool
@@ -68,9 +72,12 @@ type TeamDefaults struct {
 	// SubSharePct is the whole percentage of its parent's cap a new sub-team
 	// is given.
 	SubSharePct int
+	// Wake is whether team traffic wakes an idle conversation: a directive its
+	// member, a member's reply its manager.
+	Wake bool
 }
 
-// TeamDefaultsAt resolves the four rows in one read of the profile, for
+// TeamDefaultsAt resolves the five rows in one read of the profile, for
 // internal/teams' [teams.DefaultsAt]. A value outside its band reads as the
 // default rather than refusing a team over a hand-edited file.
 func TeamDefaultsAt(profileDir string) TeamDefaults {
@@ -79,6 +86,7 @@ func TeamDefaultsAt(profileDir string) TeamDefaults {
 		CapUSDDay:   DefaultTeamsCapUSDDay,
 		DepthLimit:  DefaultTeamsDepthLimit,
 		SubSharePct: DefaultTeamsSubSharePct,
+		Wake:        DefaultTeamsWake,
 	}
 	if value, ok := persistedBool(profileDir, KeyTeamsQuestionsUp); ok {
 		out.QuestionsUp = value
@@ -92,11 +100,15 @@ func TeamDefaultsAt(profileDir string) TeamDefaults {
 	if value, ok := persistedInt(profileDir, KeyTeamsSubSharePct); ok && value >= teamsShareMin && value <= teamsShareMax {
 		out.SubSharePct = value
 	}
+	if value, ok := persistedBool(profileDir, KeyTeamsWake); ok {
+		out.Wake = value
+	}
 	return out
 }
 
 // teamRows are the Teams group, in the order a person reaches for them: who
-// answers a question, then money, then the shape of the tree.
+// answers a question and whether messages wake, then money, then the shape of
+// the tree.
 func teamRows(dir string) []Setting {
 	return []Setting{
 		{
@@ -107,6 +119,15 @@ func teamRows(dir string) []Setting {
 				"Permission prompts always come to you. A team can override this.",
 			read:  func() string { return formatBool(TeamDefaultsAt(dir).QuestionsUp) },
 			write: func(raw string) error { return writeBool(dir, KeyTeamsQuestionsUp, raw) },
+		},
+		{
+			Key: KeyTeamsWake, Category: CategoryTeams, Kind: SettingBool,
+			Label: "team messages wake",
+			Hint: "a manager's directive starts an idle member's turn, and a member's " +
+				"reply starts the manager's. Off, everything still arrives, at the next " +
+				"turn each conversation takes. A team can override this.",
+			read:  func() string { return formatBool(TeamDefaultsAt(dir).Wake) },
+			write: func(raw string) error { return writeBool(dir, KeyTeamsWake, raw) },
 		},
 		{
 			Key: KeyTeamsCapUSDDay, Category: CategoryTeams, Kind: SettingDollars,

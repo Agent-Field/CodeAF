@@ -9,9 +9,10 @@ import (
 
 // ── A TEAM'S DELEGATION SETTINGS, AND WHERE EACH ONE CAME FROM ──────────────
 //
-// Four things about how work is delegated can differ from team to team:
-// whether a member's clarifying questions go up to the manager first
-// (questions_up), what the team and everything under it may spend in a local
+// Five things about how work is delegated can differ from team to team:
+// whether team traffic wakes an idle conversation (wake: a directive its
+// member, a member's reply its manager), whether a member's clarifying
+// questions go up to the manager first (questions_up), what the team and everything under it may spend in a local
 // day (cap_usd_day, 0 for no cap), how many levels of teams may stand under it
 // counting the top as one (depth_limit), and what share of its own cap a new
 // sub-team is handed (sub_share, a fraction in (0, 1]).
@@ -36,6 +37,10 @@ type Settings struct {
 	CapUSDDay   *float64 `json:"cap_usd_day,omitempty"`
 	DepthLimit  *int     `json:"depth_limit,omitempty"`
 	SubShare    *float64 `json:"sub_share,omitempty"`
+	// Wake is stored as "wake". A file from before wake was inheritable wrote
+	// only "wake": false (on was written as nothing), and that spelling reads
+	// here unchanged as an override to off.
+	Wake *bool `json:"wake,omitempty"`
 }
 
 // The bands an override is kept inside; a value outside them is dropped by
@@ -49,7 +54,7 @@ var ErrSetting = errors.New("teams: a cap is 0 or more, a depth 1 to 10, a share
 
 // Empty reports whether the team overrides nothing.
 func (s Settings) Empty() bool {
-	return s.QuestionsUp == nil && s.CapUSDDay == nil && s.DepthLimit == nil && s.SubShare == nil
+	return s.QuestionsUp == nil && s.CapUSDDay == nil && s.DepthLimit == nil && s.SubShare == nil && s.Wake == nil
 }
 
 // valid reports whether every set field is inside its band.
@@ -95,6 +100,10 @@ func (s Settings) clone() Settings {
 		v := *s.SubShare
 		s.SubShare = &v
 	}
+	if s.Wake != nil {
+		v := *s.Wake
+		s.Wake = &v
+	}
 	return s
 }
 
@@ -122,9 +131,11 @@ type Defaults struct {
 	DepthLimit  int     `json:"depth_limit"`
 	// SubShare is a fraction, the row's whole percentage over 100.
 	SubShare float64 `json:"sub_share"`
+	// Wake is whether team traffic wakes idle conversations.
+	Wake bool `json:"wake"`
 }
 
-// DefaultsAt reads the four rows from profileDir's config.json in one read
+// DefaultsAt reads the five rows from profileDir's config.json in one read
 // (config's TeamDefaultsAt). An empty profileDir is the ordinary launch.
 func DefaultsAt(profileDir string) Defaults {
 	d := config.TeamDefaultsAt(profileDir)
@@ -133,6 +144,7 @@ func DefaultsAt(profileDir string) Defaults {
 		CapUSDDay:   d.CapUSDDay,
 		DepthLimit:  d.DepthLimit,
 		SubShare:    float64(d.SubSharePct) / 100,
+		Wake:        d.Wake,
 	}
 }
 
@@ -174,7 +186,7 @@ func (o Origin) Words() string {
 	return ""
 }
 
-// Effective is a team's four settings resolved, each with its origin.
+// Effective is a team's five settings resolved, each with its origin.
 type Effective struct {
 	QuestionsUp     bool    `json:"questions_up"`
 	QuestionsUpFrom Origin  `json:"questions_up_from"`
@@ -188,6 +200,10 @@ type Effective struct {
 	DepthFrom    Origin  `json:"depth_from"`
 	SubShare     float64 `json:"sub_share"`
 	SubShareFrom Origin  `json:"sub_share_from"`
+	// Wake is whether team traffic wakes the team's idle conversations: a
+	// directive its member, a member's reply or event its manager.
+	Wake     bool   `json:"wake"`
+	WakeFrom Origin `json:"wake_from"`
 }
 
 // Effective resolves team id's settings: each from the team's own override,
@@ -200,12 +216,13 @@ func (f *File) Effective(id string, d Defaults) Effective {
 		CapUSDDay: d.CapUSDDay, CapFrom: settings,
 		DepthLimit: d.DepthLimit, DepthFrom: settings,
 		SubShare: d.SubShare, SubShareFrom: settings,
+		Wake: d.Wake, WakeFrom: settings,
 	}
 	self, ok := f.Team(id)
 	if !ok {
 		return out
 	}
-	var got struct{ questions, cap, depth, share bool }
+	var got struct{ questions, cap, depth, share, wake bool }
 	chain := append([]Team{self}, f.Ancestors(id)...)
 	for i, t := range chain {
 		if t.Closed() && i > 0 {
@@ -227,6 +244,9 @@ func (f *File) Effective(id string, d Defaults) Effective {
 		}
 		if !got.share && s.SubShare != nil {
 			out.SubShare, out.SubShareFrom, got.share = *s.SubShare, origin, true
+		}
+		if !got.wake && s.Wake != nil {
+			out.Wake, out.WakeFrom, got.wake = *s.Wake, origin, true
 		}
 	}
 	if self.Closed() {

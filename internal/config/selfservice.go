@@ -111,6 +111,8 @@ var selfServiceGuards = map[string]string{
 	KeyTeamsSubSharePct: guardSpending,
 	KeyTeamsDepthLimit:  guardPressure,
 	KeyTeamsQuestionsUp: guardConsent,
+	// Waking starts a model turn nobody typed: unattended work, so pressure.
+	KeyTeamsWake: guardPressure,
 
 	KeyTaskAudit:   guardProof,
 	KeyAttribution: guardSignature,

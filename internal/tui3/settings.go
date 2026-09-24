@@ -774,12 +774,17 @@ var settingUI = map[string]settingMeta{
 			"for a provider that reports a window its model does not really have.",
 	},
 	// ── Teams ───────────────────────────────────────────────────────────────
-	// The four defaults every team inherits, in the order a person reaches
+	// The five defaults every team inherits, in the order a person reaches
 	// for them (DESIGN.md section 8, the settings tab's Teams group).
 	config.KeyTeamsQuestionsUp: {
 		tab: tabTeams, label: "questions go to the manager", widget: widgetToggle,
 		about: "a member's clarifying question goes to its manager first; you are asked only " +
 			"what no manager can answer. Permission prompts always come to you.",
+	},
+	config.KeyTeamsWake: {
+		tab: tabTeams, label: "team messages wake", widget: widgetToggle,
+		about: "a manager's directive starts an idle member's turn, and a member's reply " +
+			"starts the manager's. Off, messages wait for the next turn.",
 	},
 	config.KeyTeamsCapUSDDay: {
 		tab: tabTeams, label: "daily cap per team", widget: widgetText,

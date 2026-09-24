@@ -88,7 +88,7 @@ var knownFields = map[string]bool{
 	"id": true, "name": true, "parent": true, "members": true, "manager": true,
 	"hue": true, "tier": true, "made": true,
 	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
-	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true,
+	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
@@ -186,6 +186,11 @@ func (t Team) MarshalJSON() ([]byte, error) {
 	b.WriteByte('}')
 	return b.Bytes(), nil
 }
+
+// Wakes reports whether the team's OWN setting leaves waking on: true unless
+// the team itself says "wake": false. It does not walk the chain; whether team
+// traffic really wakes a conversation is [Effective].Wake, which inherits.
+func (t Team) Wakes() bool { return t.Settings.Wake == nil || *t.Settings.Wake }
 
 // Hued reports whether the team has a colour. A team built in code with a
 // non-zero hue or tier counts as coloured.

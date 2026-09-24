@@ -41,7 +41,7 @@ func TestTheRestraintRowsAreNotSelfService(t *testing.T) {
 		// How hard the machine may be worked.
 		KeyTaskParallel, KeyTaskMaxLoad, KeyTaskMinFreeMB, KeyBashBackgroundAfter,
 		// What every team inherits: a manager is a model.
-		KeyTeamsCapUSDDay, KeyTeamsSubSharePct, KeyTeamsDepthLimit, KeyTeamsQuestionsUp,
+		KeyTeamsCapUSDDay, KeyTeamsSubSharePct, KeyTeamsDepthLimit, KeyTeamsQuestionsUp, KeyTeamsWake,
 		// Whether the work is checked, and how it is signed.
 		KeyTaskAudit, KeyAttribution,
 		// The credentials.
