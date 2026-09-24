@@ -212,13 +212,13 @@ func TestCancelIsIdempotentOverATask(t *testing.T) {
 		t.Fatalf("the node was cut %d times, want once", got)
 	}
 
-	// And once it has settled there is nothing to stop, said plainly.
+	// And once it has settled its earlier stop is still named as a stop.
 	graph.complete(graph.node(id), TaskDone)
 	line, err := agent.Cancel("task:" + itoa64(id))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(line, "already finished") {
+	if !strings.Contains(line, "already stopped") {
 		t.Fatalf("stopping settled work reads %q", line)
 	}
 }
