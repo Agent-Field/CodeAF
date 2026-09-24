@@ -161,3 +161,63 @@ func TestTheDelegationDoorsCrossHostOnlyWhenTheEngineSaysSo(t *testing.T) {
 		t.Fatal("an engine without the delegation doors was handed them")
 	}
 }
+
+// THE WRAP-UP'S TWO DOORS CROSS --host WHEN THE ENGINE SAYS SO (DESIGN.md
+// 8.8): `Wrap up first` lands the one request line in the ENGINE's Traffic,
+// and accepting a closing report closes the team in the engine's profile. An
+// engine that does not say WrapUp hands no such doors, and the close card
+// offers `Close now` only.
+func TestTheWrapUpDoorsCrossHostOnlyWhenTheEngineSaysSo(t *testing.T) {
+	far := t.TempDir()
+	loop, err := remote.Loopback(remote.Hello{Version: remote.Version}, remote.Options{Boot: func(remote.Hello) (*remote.Engine, error) {
+		return &remote.Engine{Agent: &quietAgent{}, ProfileDir: far}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	const harbor = "0a0a0a0a0a0a"
+	if err := teamstore.Save(far, []teamstore.Team{{ID: harbor, Name: "harbor", Manager: "hm",
+		Members: []teamstore.Member{{Key: "hm", Handle: "boss"}, {Key: "k1", Handle: "web"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	welcome := loop.Client.Welcome()
+	seam := hostTeamsSeam(hostFar{client: loop.Client}, welcome)
+	if seam.WrapUp == nil || seam.AcceptClosing == nil {
+		t.Fatal("an engine with the wrap-up doors got a seam without them")
+	}
+	if err := seam.WrapUp(harbor, ""); err != nil {
+		t.Fatal(err)
+	}
+	log, err := teamstore.ReadTraffic(far, harbor, "", 10)
+	if err != nil || len(log) != 1 || !teamstore.IsWrapUp(log[0]) {
+		t.Fatalf("the engine's Traffic after a wrap-up: %+v %v", log, err)
+	}
+	p, err := seam.Raise(teamstore.Packet{Team: teamstore.Person, Origin: harbor, Kind: teamstore.PacketClosing,
+		RaisedBy: teamstore.FromManager, Question: "close harbor?",
+		Options: []teamstore.Option{{ID: teamstore.OptionClose, Label: "Close", Consequence: "the team closes"},
+			{ID: teamstore.OptionKeepGoing, Label: "Keep going", Consequence: "the team goes on"}},
+		Report: &teamstore.ClosingReport{Done: "the parser"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := seam.Decide(p.ID, teamstore.Person, teamstore.OptionClose, ""); err != nil {
+		t.Fatal(err)
+	}
+	if closed, err := seam.AcceptClosing(p.ID); err != nil || !closed {
+		t.Fatalf("accepting the report over --host: %v %v", closed, err)
+	}
+	f, err := teamstore.Load(far)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := f.Team(harbor); !ok || !got.Closed() {
+		t.Fatalf("the engine's harbor is not closed: %+v", got)
+	}
+
+	welcome.WrapUp = false
+	older := hostTeamsSeam(hostFar{client: loop.Client}, welcome)
+	if older.Decide == nil || older.WrapUp != nil || older.AcceptClosing != nil {
+		t.Fatal("an engine without the wrap-up doors was handed them, or lost the others")
+	}
+}

@@ -99,9 +99,25 @@ type TeamsSeam struct {
 	// closed view reads its closing report from it (teamstore.Packets).
 	History func(team string) ([]teamstore.Packet, error)
 	// Append writes one entry to team's Traffic (teamstore.AppendTraffic). The
-	// page uses it for the three things the person says to a team outside a
-	// conversation: a wrap-up asked of the manager, a close and a reopen.
+	// page uses it for the two things the person says to a team outside a
+	// conversation that the session does not write itself: a close and a
+	// reopen.
 	Append func(team string, e teamstore.Entry) error
+
+	// ── THE WRAP-UP (DESIGN.md 8.8) ──
+	//
+	// Two narrow doors, which cross --host when the engine says so
+	// ([remote.Welcome.WrapUp]); an engine without them offers `Close now`
+	// only, and the close card says so.
+
+	// WrapUp asks team's manager to wrap up: it appends exactly
+	// teamstore.WrapUpRequest(text) to the team's Traffic, which the manager's
+	// session reads, and nothing else. text "" is the standard words.
+	WrapUp func(team, text string) error
+	// AcceptClosing closes the team a decided closing packet reports on, with
+	// the packet as its report (teamstore.AcceptClosing), and says whether
+	// this call closed it. The page calls it after the person's Decide.
+	AcceptClosing func(id string) (bool, error)
 }
 
 // present reports whether the seam was handed at all.
@@ -185,7 +201,21 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			return teamstore.Packets(dir, team)
 		},
 		Append: func(team string, e teamstore.Entry) error { return teamstore.AppendTraffic(dir, team, e) },
+		WrapUp: func(team, text string) error {
+			return teamstore.AppendTraffic(dir, team, teamstore.WrapUpRequest(text))
+		},
+		AcceptClosing: func(id string) (bool, error) { return teamsAcceptClosingLocal(dir, id) },
 	}
+}
+
+// teamsAcceptClosingLocal closes the team decided closing packet id in this
+// profile reports on.
+func teamsAcceptClosingLocal(dir, id string) (bool, error) {
+	p, err := teamstore.PacketByID(dir, id)
+	if err != nil {
+		return false, err
+	}
+	return teamstore.AcceptClosing(dir, p)
 }
 
 // teamsDisk is the window's side of the seam: the door, the queue of edits

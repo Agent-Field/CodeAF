@@ -429,11 +429,24 @@ func (a *app) teamsMembersRows(d *teamsDraw, t team, width, y int) []string {
 	var pieces []string
 	var targets []teamsTarget
 	now := a.now()
+	tree := a.teamTree()
 	for _, m := range t.Members {
 		if m.Key == t.Manager {
 			continue
 		}
 		st := a.teamsMember(m)
+		// A SHARED MEMBER SAYS WHOSE IT IS (DESIGN.md 8.8): it reports to the
+		// manager of its home team, and this team's manager may only read it
+		// and send it a note. Running, it is busy for that team.
+		if home, ok := tree.Home(m.Key); ok && t.Manager != "" && home.Team != t.ID && home.Via != t.ID {
+			if ht, ok := a.teamByID(home.Team); ok {
+				if st.word == "running" {
+					st.word = "busy for " + ht.Name
+				} else {
+					st.word += ", reports to " + ht.Name
+				}
+			}
+		}
 		name := m.Word
 		if m.Handle != "" {
 			name = "@" + m.Handle
@@ -446,13 +459,13 @@ func (a *app) teamsMembersRows(d *teamsDraw, t team, width, y int) []string {
 		switch {
 		case st.asking:
 			word += pal.ask(st.word)
-		case st.word == "running":
+		case st.word == "running" || strings.HasPrefix(st.word, "busy for "):
 			word += pal.muted(st.word)
 		default:
 			word += pal.dim(st.word)
 		}
 		plain := name + " " + st.word
-		if age := sinceAt(st.at, now); age != "" && st.word != "running" {
+		if age := sinceAt(st.at, now); age != "" && st.word != "running" && !strings.HasPrefix(st.word, "busy for ") {
 			word += " " + pal.dim(age)
 			plain += " " + age
 		}
@@ -639,6 +652,18 @@ func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string
 		who = "@" + strings.TrimPrefix(who, "@")
 		ctx := strings.Join(strings.Fields(party.Context), " ")
 		out = append(out, "   "+pal.muted(teamsPad(who, 10))+pal.dim(fit(ctx, max(width-14, 8))))
+	}
+	// A CAP PACKET SAYS ITS FIGURES (DESIGN.md 8.8): what the pool spent of
+	// its cap today, and which team's pool that is. Its two options,
+	// `Raise to $X` and `Stop for today`, are the person's alone; the session
+	// reads a raise back from these same figures.
+	if c := p.Cap; c != nil {
+		pool := c.Team
+		if t, ok := a.teamByID(c.Team); ok {
+			pool = t.Name
+		}
+		said := "spent " + dollars(c.SpentUSD) + " of " + dollars(c.CapUSD) + " today " + a.teamsDot() + " " + pool + "'s cap"
+		out = append(out, "   "+pal.dim(fit(said, max(width-4, 8))))
 	}
 	if r := p.Report; r != nil {
 		add := func(label, text string) {

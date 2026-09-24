@@ -61,6 +61,7 @@ const (
 	tsName = iota
 	tsColour
 	tsQuestions
+	tsWake
 	tsCap
 	tsDepth
 	tsShare
@@ -113,7 +114,7 @@ func (a *app) teamSheetOpen(id string, mode teamSheetMode) tea.Cmd {
 		s.choices = append([]teamHueSpec{t.HueSpec()}, teamHueChoices(a.teamHues(id), teamReservedHues(a.pal), wallSwatchCount-1)...)
 	case teamSheetClose:
 		s.cursor = tsCloseNow
-		if _, managed := a.teamsRunning(id); managed {
+		if _, managed := a.teamsRunning(id); managed && a.teamsSeam().WrapUp != nil {
 			s.cursor = tsWrapUp
 		}
 	case teamSheetDelete:
@@ -172,9 +173,11 @@ func (a *app) teamSheetRows(t team) []teamSheetRow {
 		}
 		return r
 	}
-	onOff := "off"
-	if e.QuestionsUp {
-		onOff = "on"
+	onOff := func(on bool) string {
+		if on {
+			return "on"
+		}
+		return "off"
 	}
 	cap := "no cap"
 	if e.CapUSDDay > 0 {
@@ -186,7 +189,8 @@ func (a *app) teamSheetRows(t team) []teamSheetRow {
 	}
 	share := strconv.Itoa(int(e.SubShare*100+0.5)) + "%"
 	return []teamSheetRow{
-		row(tsQuestions, "questions go to the manager", onOff, e.QuestionsUpFrom),
+		row(tsQuestions, "questions go to the manager", onOff(e.QuestionsUp), e.QuestionsUpFrom),
+		row(tsWake, "team messages wake", onOff(e.Wake), e.WakeFrom),
 		row(tsCap, "daily cap", cap, e.CapFrom),
 		row(tsDepth, "team depth", depth, e.DepthFrom),
 		row(tsShare, "sub-team share", share, e.SubShareFrom),
@@ -395,8 +399,15 @@ func (a *app) teamSheetCloseLines(t team, inner int) []wallCardLine {
 		consequence string
 	}
 	var cs []choice
-	if t.Manager != "" {
+	switch {
+	case t.Manager != "" && a.teamsSeam().WrapUp != nil:
 		cs = append(cs, choice{tsWrapUp, "Wrap up first", "", "the manager asks everyone to finish and commit, then brings you a closing report"})
+	case t.Manager != "":
+		// The engine behind this window has no wrap-up door: said, not hidden.
+		for _, l := range wrap(teamsNoWrapUpWord, inner) {
+			lines = append(lines, wallCardLine{s: pal.dim(l)})
+		}
+		lines = append(lines, wallCardLine{})
 	}
 	cs = append(cs,
 		choice{tsCloseNow, "Close now", "", "stops every turn and closes the tabs; Undo for a few seconds"},
@@ -453,14 +464,14 @@ func (a *app) teamSheetStops() []int {
 	s := &a.tsheet
 	switch s.mode {
 	case teamSheetSettings:
-		stops := []int{tsName, tsColour, tsQuestions, tsCap, tsDepth, tsShare}
+		stops := []int{tsName, tsColour, tsQuestions, tsWake, tsCap, tsDepth, tsShare}
 		if t, ok := a.teamByID(s.team); ok && !t.Root {
 			stops = append(stops, tsCloseTeam)
 		}
 		return append(stops, tsDone)
 	case teamSheetClose:
 		var stops []int
-		if t, ok := a.teamByID(s.team); ok && t.Manager != "" {
+		if t, ok := a.teamByID(s.team); ok && t.Manager != "" && a.teamsSeam().WrapUp != nil {
 			stops = append(stops, tsWrapUp)
 		}
 		return append(stops, tsCloseNow, tsCancel)
@@ -578,6 +589,14 @@ func (a *app) teamSheetDo(code int) tea.Cmd {
 		}
 		next := !a.teamTree().Effective(t.ID, a.tp.defaults).QuestionsUp
 		a.teamSheetWrite(func(set *teamstore.Settings) { set.QuestionsUp = &next })
+	case tsWake:
+		s.cursor = code
+		t, ok := a.teamByID(id)
+		if !ok {
+			return nil
+		}
+		next := !a.teamTree().Effective(t.ID, a.tp.defaults).Wake
+		a.teamSheetWrite(func(set *teamstore.Settings) { set.Wake = &next })
 	case tsCap, tsDepth, tsShare:
 		s.cursor, s.editing = code, code
 		s.box.reset()
@@ -662,6 +681,8 @@ func (a *app) teamSheetReset(code int) {
 		switch code {
 		case tsQuestions:
 			set.QuestionsUp = nil
+		case tsWake:
+			set.Wake = nil
 		case tsCap:
 			set.CapUSDDay = nil
 		case tsDepth:

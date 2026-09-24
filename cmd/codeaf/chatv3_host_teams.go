@@ -42,6 +42,10 @@ type hostTeams struct {
 	escalate  func(id, by, to, reason string) (teamstore.Packet, error)
 	spend     func(team, day, stamp string) (remote.SpendReading, error)
 	deleteOne func(team string) (remote.DeleteTeamReply, error)
+	// The wrap-up's two doors, nil when the engine does not answer them
+	// ([remote.Welcome.WrapUp]).
+	wrapUp        func(team, text string) error
+	acceptClosing func(id string) (remote.AcceptClosingReply, error)
 
 	mu sync.Mutex
 	// teams and stamp are the last list the engine answered with and the
@@ -61,7 +65,7 @@ const hostTeamsTries = 3
 // errHostTeamsBusy is a write that met another writer on every try.
 var errHostTeamsBusy = errors.New("the teams on the far machine kept changing while this was written; try again")
 
-func newHostTeams(far hostFar, delegation bool) *hostTeams {
+func newHostTeams(far hostFar, delegation, wrapUp bool) *hostTeams {
 	h := &hostTeams{
 		read:    far.client.TeamsRead,
 		write:   far.client.TeamsUpdate,
@@ -71,6 +75,9 @@ func newHostTeams(far hostFar, delegation bool) *hostTeams {
 		c := far.client
 		h.defaults, h.packets, h.raise = c.TeamsDefaults, c.TeamsPackets, c.TeamsRaise
 		h.decide, h.escalate, h.spend, h.deleteOne = c.TeamsDecide, c.TeamsEscalate, c.TeamsSpend, c.TeamsDelete
+		if wrapUp {
+			h.wrapUp, h.acceptClosing = c.TeamsWrapUp, c.TeamsAcceptClosing
+		}
 	}
 	return h
 }
@@ -83,7 +90,7 @@ func hostTeamsSeam(far hostFar, welcome remote.Welcome) tui3.TeamsSeam {
 	if far.client == nil || !welcome.Teams {
 		return tui3.TeamsSeam{}
 	}
-	return newHostTeams(far, welcome.Delegation).seam()
+	return newHostTeams(far, welcome.Delegation, welcome.WrapUp).seam()
 }
 
 // seam is h as the surface's functions. The delegation doors are handed only
@@ -96,7 +103,25 @@ func (h *hostTeams) seam() tui3.TeamsSeam {
 	}
 	s.Defaults, s.Raise, s.Decide, s.Escalate = h.defaults, h.raise, h.decide, h.escalate
 	s.Packets, s.Spend, s.Delete = h.readPackets, h.readSpend, h.forget
+	if h.wrapUp != nil && h.acceptClosing != nil {
+		s.WrapUp, s.AcceptClosing = h.wrapUp, h.closeOnReport
+	}
 	return s
+}
+
+// closeOnReport is [tui3.TeamsSeam.AcceptClosing]: the engine closes the team
+// on its report, and the list held here is read again, because the file moved.
+func (h *hostTeams) closeOnReport(id string) (bool, error) {
+	reply, err := h.acceptClosing(id)
+	if err != nil {
+		return false, err
+	}
+	if reply.Closed {
+		if _, _, _, err := h.readSince("", h.reservedHues()); err != nil {
+			return true, err
+		}
+	}
+	return reply.Closed, nil
 }
 
 // readPackets is [tui3.TeamsSeam.Packets]: one round trip, a few bytes when
