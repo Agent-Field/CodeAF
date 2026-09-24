@@ -63,8 +63,9 @@ on the tray above the message box, and it goes with the next thing you send.
 /attach                     the browser, so you can find the file and look at it first
 ```
 
-**On the home screen a bare `/attach` does not open that sheet** — it says
-`type the path after /attach · or drop the file here`, and `/folder` is the browser there.
+**On the home screen a bare `/attach` opens the browser** for the next
+conversation's folder. `/project` opens that browser to pin the folder itself;
+`/folder` opens a conversation first and chooses a folder for that conversation.
 Everything below is about `/attach` inside a conversation; *Attaching a file from home* has
 the home half.
 
