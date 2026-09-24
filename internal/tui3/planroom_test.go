@@ -368,3 +368,22 @@ func TestAPressOnAPartRowInTheRoomOpensThePartsRoom(t *testing.T) {
 		t.Fatalf("a press on the part's row did not open its room: room %v", a.roomOpen())
 	}
 }
+
+// A TASK THAT HAS ENDED TAKES NO NOTE: the room says what its box already says,
+// asks the store nothing, and leaves the words in the box.
+func TestAnEndedTasksRoomRefusesANoteInItsOwnWords(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-6", Title: "fix the loader", Status: "done"}
+	a, fake := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: {Row: row, Description: "b"}})
+	openPlanRoomNow(t, a, row.ID)
+	typeText(t, a, "one more thing")
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if len(fake.noted) != 0 {
+		t.Fatalf("an ended task's room sent a note: %v", fake.noted)
+	}
+	if got := string(a.input.value); got != "one more thing" {
+		t.Fatalf("the box holds %q, want the words kept", got)
+	}
+	if text := planRoomText(t, a); !strings.Contains(text, roomFinishedRefusal.what) {
+		t.Fatalf("the room does not say the task has finished:\n%s", text)
+	}
+}

@@ -283,6 +283,14 @@ func (a *app) planRoomSteer(line string) tea.Cmd {
 		a.roomNote(roomUnavailableRefusal.line())
 		return nil
 	}
+	// A TASK THAT HAS ENDED TAKES NO NOTE, and the room says so in the words its
+	// box and its foot already say, with the words left in the box. Sending them
+	// would only bring back the store's refusal under a placeholder that named
+	// another door: one fact, two sentences.
+	if room.done {
+		a.roomNote(a.roomDoneRefusal().line())
+		return nil
+	}
 	words := a.pastesUnfolded(line)
 	id, gen := room.plan.id, room.gen
 	a.pastes = nil
