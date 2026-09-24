@@ -1,6 +1,7 @@
 package teams
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -128,5 +129,45 @@ func TestAddMemberAssignsAHandleOnce(t *testing.T) {
 	}
 	if err := f.AddMember("t1", Member{}); err == nil {
 		t.Fatal("a member with no key was accepted")
+	}
+}
+
+// A TEAM WAKES UNLESS IT WAS TURNED OFF, and only the off is written: a file
+// that never mentioned waking reads as on, and on is written as nothing.
+func TestATeamWakesUnlessTurnedOff(t *testing.T) {
+	var fresh Team
+	if err := json.Unmarshal([]byte(`{"id":"a","name":"a"}`), &fresh); err != nil {
+		t.Fatal(err)
+	}
+	if !fresh.Wakes() {
+		t.Fatal("a team whose file says nothing about waking does not wake")
+	}
+	raw, err := json.Marshal(fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"wake"`) {
+		t.Fatalf("a team that wakes wrote the field: %s", raw)
+	}
+	fresh.WakeOff = true
+	raw, err = json.Marshal(fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"wake":false`) {
+		t.Fatalf("a team turned off did not write wake false: %s", raw)
+	}
+	var back Team
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Wakes() {
+		t.Fatal("wake false did not survive a round trip")
+	}
+	if err := json.Unmarshal([]byte(`{"id":"a","name":"a","wake":true}`), &back); err != nil {
+		t.Fatal(err)
+	}
+	if !back.Wakes() {
+		t.Fatal("wake true reads as off")
 	}
 }
