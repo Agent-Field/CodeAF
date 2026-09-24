@@ -314,7 +314,7 @@ func TestTheDecisionLine(t *testing.T) {
 	cands := evidenceCandidates()
 	d, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Pins: map[Seat]Pin{Checker: {Model: "moonshotai/kimi-k3"}}})
 	got := d.Line("📌", 0.108)
-	want := "openended · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · $0.108 (est $0.112)"
+	want := "open-ended · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · $0.108 (est $0.112)"
 	if got != want {
 		t.Errorf("line\n got %q\nwant %q", got, want)
 	}

@@ -76,3 +76,30 @@ func TestLineageFoldsSnapshotsAndLevels(t *testing.T) {
 		}
 	}
 }
+
+// A DEFECT SAID IN PLAIN WORDS IS A FIX, a tiny edit is small whatever verb it
+// opens with, and a genuinely open ask stays open-ended.
+func TestClassifyPlainDefectsAndTinyEdits(t *testing.T) {
+	cases := []struct {
+		text  string
+		class Class
+	}{
+		{"Fix the bug in calc.py: add(a, b) returns a - b instead of a + b.", Bugfix},
+		{"Repair the export so it keeps the header row", Bugfix},
+		{"The pager is broken on narrow terminals", Bugfix},
+		{"sorting should keep equal items in order but it reorders them", Bugfix},
+		{"parse_date: expected 2024-01-02, got 2024-02-01", Bugfix},
+		{"tests/test_lists.py is failing: natural_list drops middle items", Bugfix},
+		{"add a one-line docstring to the helper in utils.py", Other},
+		{"fix a typo in the README", Other},
+		{"Add support for YAML config files", OpenEnded},
+		{"refactor the storage layer into separate packages", OpenEnded},
+		{"Design a plugin system for exporters", OpenEnded},
+		{"do a deep research on opensource coding agents and harnesses please", OpenEnded},
+	}
+	for _, tc := range cases {
+		if got := Classify(Task{Text: tc.text}); got.Class != tc.class {
+			t.Errorf("%q: %s (%q), want %s", tc.text, got.Class, got.Why, tc.class)
+		}
+	}
+}

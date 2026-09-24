@@ -91,7 +91,22 @@ const (
 	Plan RouteKind = "plan"
 	// Local is a model on this machine, which costs nothing per token.
 	Local RouteKind = "local"
+	// Free is a provider's free pool for a model (OpenRouter's `:free`): no
+	// price, but rate-limited hard, dropped without notice, and allowed to log
+	// or train on what it is sent. It is weighed at what it is EXPECTED to cost
+	// ([routeCost]), used only when the person turned free routes on, and a
+	// seat on it falls through to the same model's paid route first.
+	Free RouteKind = "free"
 )
+
+// freeFailPrior is the chance a free route refuses a task's first call,
+// before this install has any outcome of its own for that route: free pools
+// are rate-limited by design, so the prior is pessimistic.
+const freeFailPrior = 0.3
+
+// freeLimitPenalty is what a free route is charged for its limits even when it
+// answers — the waits and retries of a rate-limited pool — in dollars a task.
+const freeLimitPenalty = 0.001
 
 // Route is one way to reach a model: the provider, the id to send so the call
 // goes that way, and how it bills.
@@ -99,6 +114,10 @@ type Route struct {
 	Provider string
 	Send     string
 	Kind     RouteKind
+	// FailRate is this install's learned chance that the route refuses a
+	// task's first call, zero when nothing is known — a free route then reads
+	// [freeFailPrior].
+	FailRate float64
 }
 
 // Candidate is a model the person allows, with every route a connected
@@ -185,6 +204,14 @@ type Request struct {
 	// stronger: every unpinned seat is picked at least as strong, and the crew
 	// as a whole strictly stronger, or the decision says it cannot be.
 	Stronger *Decision
+	// Again is the crew that ran and NEVER STARTED — its seats' first calls
+	// were refused — when the person asks to redo it: the task never ran, so it
+	// is asked again at the same λ on the next-best models, not escalated.
+	Again *Decision
+	// Avoid are model lineages that failed to start on this install recently
+	// ([Lineage]). An unpinned seat is not given one while anything else can
+	// sit it; a pin is never overruled.
+	Avoid map[string]bool
 }
 
 // Pick is one seat's answer.
@@ -220,6 +247,48 @@ type Decision struct {
 	OneOff bool
 	// Considered is how many candidates the decision chose among.
 	Considered int
+	// Ladder is, for each unpinned seat, where the seat goes when its call
+	// fails to start, in order: the same model on its next routes, then the
+	// next qualified models at a similar cost. The caller adds what only it
+	// knows — the last crew that worked, the model the person is talking to.
+	Ladder map[Seat][]Pick `json:"-"`
+	// Retried are the seats that moved down their ladder during the task, in
+	// the order they moved, so the line can say so.
+	Retried []Retry `json:",omitempty"`
+	// Rungs are what a redo or an effort word changed against the crew it
+	// would otherwise have run, seat by seat.
+	Rungs []Retry `json:",omitempty"`
+	// Note is one plain sentence the line ends on: an effort word that changed
+	// nothing, or the free routes taken because nothing paid could be.
+	Note string `json:",omitempty"`
+}
+
+// Retry is one seat moved from one model to another — down its ladder during
+// a task, or up a rung on a redo — and why, when a failure moved it.
+type Retry struct {
+	Seat Seat
+	From string
+	To   string
+	Why  string `json:",omitempty"`
+}
+
+// WithRung is the decision with one seat moved to another pick for the rest
+// of the task — a rung of its ladder, or one the caller found — the estimate
+// re-added and the move recorded, with why, for the line.
+func (d Decision) WithRung(seat Seat, next Pick, why string) Decision {
+	out := d
+	out.Crew = append([]Pick(nil), d.Crew...)
+	next.Seat = seat
+	out.Retried = append(append([]Retry(nil), d.Retried...), Retry{Seat: seat, From: d.Seat(seat).Model, To: next.Model, Why: why})
+	out.EstUSD, out.Quality = 0, 0
+	for i := range out.Crew {
+		if out.Crew[i].Seat == seat {
+			out.Crew[i] = next
+		}
+		out.EstUSD += out.Crew[i].CostUSD
+		out.Quality += out.Crew[i].Quality
+	}
+	return out
 }
 
 // Seat is one seat's pick, the zero Pick for a seat the decision has none for.
@@ -259,17 +328,84 @@ func Decide(r Request) (Decision, error) {
 	}
 	lambda := baseLambda(t, r)
 	d.Lambda = lambda
-	crew, err := pickCrew(t, d.Class, r.Candidates, pins, lambda)
+	candidates := r.Candidates
+	avoid := r.Avoid
+	if r.Again != nil {
+		avoid = map[string]bool{}
+		for lineage := range r.Avoid {
+			avoid[lineage] = true
+		}
+		for _, pick := range r.Again.Crew {
+			if !pick.Pinned {
+				avoid[Lineage(pick.Model)] = true
+			}
+		}
+	}
+	if len(avoid) > 0 {
+		candidates = avoiding(candidates, avoid)
+	}
+	crew, err := pickCrew(t, d.Class, candidates, pins, lambda)
 	if err != nil {
 		return Decision{}, err
 	}
+	// A LEARNED OFFSET IS RUNGS, NOT A PRICE: each step is one rung up the
+	// front from the crew the knee picks ([stronger]), so a repository whose
+	// work was redone once starts one rung higher — never at the top.
+	for i := 0; i < r.Steps && i < maxSteps && r.Stronger == nil && r.Again == nil; i++ {
+		ran := Decision{Crew: crew}
+		up, _, err := stronger(t, d.Class, candidates, pins, lambda, &ran)
+		if err != nil {
+			break
+		}
+		crew = up
+	}
 	if r.Stronger != nil {
-		crew, d.Lambda, err = stronger(t, d.Class, r.Candidates, pins, lambda, r.Stronger)
+		crew, d.Lambda, err = stronger(t, d.Class, candidates, pins, lambda, r.Stronger)
 		if err != nil {
 			return Decision{}, err
 		}
 	}
 	d.Crew = crew
+	// AN EFFORT WORD SAYS WHAT IT CHANGED, or that it changed nothing: the crew
+	// the knee would have picked is the one to compare with.
+	var knee *Decision
+	if (r.Effort == EffortBest || r.Effort == EffortCheap) && r.Stronger == nil && r.Again == nil {
+		plain := r
+		plain.Effort, plain.Steps = "", 0
+		if kneeCrew, err := pickCrew(t, d.Class, candidates, pins, baseLambda(t, plain)); err == nil {
+			knee = &Decision{Crew: kneeCrew}
+			if sameCrew(kneeCrew, crew) {
+				if r.Effort == EffortBest {
+					d.Note = "best · already the strongest measured crew"
+				} else {
+					d.Note = "cheap · already the cheapest crew"
+				}
+			}
+		}
+	}
+	// A REDO SAYS WHAT IT CHANGED, seat by seat, so the card can show the rung
+	// it took rather than a new crew to compare by eye.
+	if ran := firstOf(firstOf(r.Stronger, r.Again), knee); ran != nil {
+		for _, pick := range crew {
+			if was := ran.Seat(pick.Seat); was.Model != "" && Lineage(was.Model) != Lineage(pick.Model) {
+				d.Rungs = append(d.Rungs, Retry{Seat: pick.Seat, From: was.Model, To: pick.Model})
+			}
+		}
+	}
+	// EACH UNPINNED SEAT CARRIES ITS NEXT PICK, so a model that fails to start
+	// is replaced inside the task rather than ending it: the best candidate of
+	// another lineage at the λ the crew was picked at.
+	for _, pick := range crew {
+		if pick.Pinned {
+			continue
+		}
+		if ladder := ladderFor(t, d.Class, pick, candidates, d.Lambda); len(ladder) > 0 {
+			if d.Ladder == nil {
+				d.Ladder = map[Seat][]Pick{}
+			}
+			d.Ladder[pick.Seat] = ladder
+		}
+	}
 	for _, pick := range crew {
 		d.EstUSD += pick.CostUSD
 		d.Quality += pick.Quality
@@ -287,17 +423,129 @@ func baseLambda(t *table, r Request) float64 {
 	case EffortCheap:
 		lambda *= cheapFactor
 	}
-	steps := r.Steps
-	if steps > maxSteps {
-		steps = maxSteps
-	}
-	for i := 0; i < steps; i++ {
-		lambda /= stepFactor
-	}
 	if r.Pace > 0 {
 		lambda *= r.Pace
 	}
 	return lambda
+}
+
+// firstOf is the first of two decisions that is set.
+func firstOf(a, b *Decision) *Decision {
+	if a != nil {
+		return a
+	}
+	return b
+}
+
+// ladderRivals is how many other models a seat's ladder offers after its
+// own model's routes.
+const ladderRivals = 2
+
+// ladderFor is where a seat goes when its call fails to start, in order:
+//
+//  1. THE SAME MODEL ON ITS NEXT ROUTES, cheapest first. A route refusing says
+//     something about the route, and the model was picked on its own merits.
+//  2. THE NEXT QUALIFIED MODELS for the seat at the same λ — the picks the
+//     seat would have had without this model — so the fallback costs about
+//     what the pick did rather than whatever is left.
+func ladderFor(t *table, class Class, pick Pick, candidates []Candidate, lambda float64) []Pick {
+	var ladder []Pick
+	for _, c := range candidates {
+		if Lineage(c.Model.ID) != Lineage(pick.Model) {
+			continue
+		}
+		rest := append([]Route(nil), c.Routes...)
+		used := map[string]bool{pick.Send: true}
+		for {
+			var left []Route
+			for _, r := range rest {
+				if !used[r.Send] {
+					left = append(left, r)
+				}
+			}
+			if len(left) == 0 {
+				break
+			}
+			c.Routes = left
+			next := pickOf(t, class, pick.Seat, c)
+			used[next.Send] = true
+			ladder = append(ladder, next)
+			rest = left
+		}
+		break
+	}
+	// The rivals, in ONE pass: the best few other lineages by the score
+	// [bestFor] ranks on, kept in order as they are found.
+	own := Lineage(pick.Model)
+	type rival struct {
+		pick  Pick
+		score float64
+	}
+	var rivals []rival
+	for _, c := range candidates {
+		if Lineage(c.Model.ID) == own {
+			continue
+		}
+		next, ok := eligible(t, class, pick.Seat, c)
+		if !ok {
+			continue
+		}
+		score := next.Quality - lambda*weighedCost(t, class, pick.Seat, next)
+		at := len(rivals)
+		for at > 0 && score > rivals[at-1].score+1e-12 {
+			at--
+		}
+		if at >= ladderRivals {
+			continue
+		}
+		rivals = append(rivals, rival{})
+		copy(rivals[at+1:], rivals[at:])
+		rivals[at] = rival{pick: next, score: score}
+		if len(rivals) > ladderRivals {
+			rivals = rivals[:ladderRivals]
+		}
+	}
+	for _, r := range rivals {
+		ladder = append(ladder, r.pick)
+	}
+	return ladder
+}
+
+// sameCrew is whether two crews seat the same models.
+func sameCrew(a, b []Pick) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for _, pick := range a {
+		if Lineage(seatOf(b, pick.Seat).Model) != Lineage(pick.Model) {
+			return false
+		}
+	}
+	return true
+}
+
+// seatOf is a crew's pick for a seat.
+func seatOf(crew []Pick, seat Seat) Pick {
+	if i := seatIndex(crew, seat); i >= 0 {
+		return crew[i]
+	}
+	return Pick{}
+}
+
+// avoiding is the candidates without the lineages named — unless that would
+// leave none, because a crew on a model that failed once is better than no
+// crew at all, and the task then says why it stopped.
+func avoiding(candidates []Candidate, avoid map[string]bool) []Candidate {
+	out := make([]Candidate, 0, len(candidates))
+	for _, c := range candidates {
+		if !avoid[Lineage(c.Model.ID)] {
+			out = append(out, c)
+		}
+	}
+	if len(out) == 0 {
+		return candidates
+	}
+	return out
 }
 
 // allPinned is whether every seat is pinned.
@@ -337,17 +585,18 @@ func bestFor(t *table, class Class, seat Seat, candidates []Candidate, lambda, f
 	var bestScore float64
 	found := false
 	for _, c := range candidates {
-		if !seatable(c) {
+		pick, ok := eligible(t, class, seat, c)
+		if !ok || pick.Quality <= floor+1e-9 {
 			continue
 		}
-		pick := pickOf(t, class, seat, c)
-		if pick.Quality <= floor+1e-9 {
-			continue
-		}
-		score := pick.Quality - lambda*pick.CostUSD
+		score := pick.Quality - lambda*weighedCost(t, class, seat, pick)
 		switch {
 		case !found, score > bestScore+1e-12:
 		case score < bestScore-1e-12:
+			continue
+		case pick.Measured && !best.Measured:
+			// A MEASURED MODEL WINS A TIE: evidence over a guess.
+		case !pick.Measured && best.Measured:
 			continue
 		case pick.CostUSD < best.CostUSD-1e-12:
 		case pick.CostUSD > best.CostUSD+1e-12:
@@ -361,9 +610,62 @@ func bestFor(t *table, class Class, seat Seat, candidates []Candidate, lambda, f
 	return best, found
 }
 
-// seatable is whether a candidate can sit a seat at all: it takes tool calls
-// and it has a route.
-func seatable(c Candidate) bool { return c.Model.Tools && len(c.Routes) > 0 }
+// seatable is whether a candidate can sit a seat at all: it takes tool calls,
+// it has a route, and its context holds the seat's work. A free pool is a
+// ROUTE of its model, not a model ([Free]): whether the model may sit the seat
+// is decided on the model's own merits, and the route is chosen after.
+func seatable(seat Seat, c Candidate) bool {
+	if !c.Model.Tools || len(c.Routes) == 0 {
+		return false
+	}
+	return c.Model.Context <= 0 || c.Model.Context >= seatContext[seat]
+}
+
+// Seatable is [seatable] for a caller that offers models for a seat — a
+// picker, a rescue — so it offers exactly what the router could seat.
+func Seatable(seat Seat, c Candidate) bool { return seatable(seat, c) }
+
+// seatContext is the least context window a model needs to sit each seat, in
+// tokens: the worker holds a long agent loop over a repository, the checker
+// reads the work and its diff, the planner reads a brief and writes a plan. A
+// model that publishes no window is not refused for it.
+var seatContext = map[Seat]int{Worker: 64_000, Checker: 64_000, Planner: 32_000}
+
+// IsFree is whether an id names a free, rate-limited route (`…:free`).
+func IsFree(id string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(id)), ":free")
+}
+
+// eligible is one candidate in one seat, and whether it may sit it: seatable,
+// and — for a model the table did not measure — publishing the agentic index
+// an agent-loop seat needs ([agenticKnown]) and read high enough to be
+// believed ([table.credible]).
+func eligible(t *table, class Class, seat Seat, c Candidate) (Pick, bool) {
+	if !seatable(seat, c) {
+		return Pick{}, false
+	}
+	pick := pickOf(t, class, seat, c)
+	if !pick.Measured && !agenticKnown(seat, c.Model) && CanonicalOf(c.Model.ID).Variant == "" {
+		return Pick{}, false
+	}
+	return pick, t.credible(class, seat, pick.Quality, pick.Measured)
+}
+
+// weighedCost is the cost a pick is weighed at: its own, or — for a model the
+// table did not measure — no less than the cheapest measured model's
+// in the seat and class ([table.costFloor]). The pick still reports what it
+// costs.
+func weighedCost(t *table, class Class, seat Seat, pick Pick) float64 {
+	if pick.Measured {
+		return pick.CostUSD
+	}
+	if canon := CanonicalOf(pick.Model); canon.Variant != "" && IsMeasured(canon.ID) {
+		// A quantised copy of a measured model borrowed its evidence at a
+		// discount ([quantDiscount]); its local zero is real.
+		return pick.CostUSD
+	}
+	return math.Max(pick.CostUSD, t.costFloor(class, seat))
+}
 
 // pickOf is one candidate in one seat on its cheapest route. Routes of equal
 // cost keep the caller's order, which puts the provider the person connected
@@ -371,9 +673,13 @@ func seatable(c Candidate) bool { return c.Model.Tools && len(c.Routes) > 0 }
 func pickOf(t *table, class Class, seat Seat, c Candidate) Pick {
 	q, measured := t.quality(class, seat, c.Model)
 	metered := t.seatCost(seat, c.Model)
+	fallback := metered
+	if fallback <= 0 {
+		fallback = t.costFloor(class, seat)
+	}
 	pick := Pick{Seat: seat, Model: c.Model.ID, Quality: q, Measured: measured, CostUSD: math.Inf(1)}
 	for _, route := range c.Routes {
-		cost := routeCost(route, metered)
+		cost := routeCost(route, metered, fallback)
 		if cost < pick.CostUSD-1e-12 {
 			pick.Provider, pick.Send, pick.Kind, pick.CostUSD = route.Provider, route.Send, route.Kind, cost
 		}
@@ -381,13 +687,29 @@ func pickOf(t *table, class Class, seat Seat, c Candidate) Pick {
 	return pick
 }
 
-// routeCost is what one more task costs on a route: the metered price on a
-// metered route, and nothing on a plan or a local model.
-func routeCost(route Route, metered float64) float64 {
-	if route.Kind == Plan || route.Kind == Local {
-		return 0
+// routeCost is what one more task is EXPECTED to cost on a route: what it
+// bills — the metered price, nothing on a plan, a local model or a free pool —
+// plus what its refusals cost: the chance it refuses a first call times the
+// paid route the seat then falls to (fallback). A free pool's chance starts
+// pessimistic and it pays a charge for its limits.
+//
+// A FREE ROUTE IS NEVER PRICED AT ZERO. Zero is what made a free pool nobody
+// measured win a worker seat and die in its first second; its expected cost
+// is what a person actually pays for choosing it.
+func routeCost(route Route, metered, fallback float64) float64 {
+	switch route.Kind {
+	case Plan, Local:
+		return route.FailRate * fallback
+	case Free:
+		rate := route.FailRate
+		if rate <= 0 {
+			rate = freeFailPrior
+		}
+		return rate*fallback + freeLimitPenalty
 	}
-	return metered
+	// A ROUTE THAT REFUSES SOME FIRST CALLS costs what it bills plus what its
+	// refusals send elsewhere, at this install's learned rate.
+	return metered + route.FailRate*fallback
 }
 
 // pinned is a pinned seat's pick: the pin, always, on the route the pin names
@@ -406,7 +728,8 @@ func pinned(t *table, class Class, seat Seat, pin Pin, candidates []Candidate) P
 			for _, route := range c.Routes {
 				if strings.EqualFold(route.Provider, pin.Provider) {
 					found.Provider, found.Send, found.Kind = route.Provider, route.Send, route.Kind
-					found.CostUSD = routeCost(route, t.seatCost(seat, c.Model))
+					metered := t.seatCost(seat, c.Model)
+					found.CostUSD = routeCost(route, metered, math.Max(metered, t.costFloor(class, seat)))
 				}
 			}
 		}
@@ -431,66 +754,106 @@ func pinned(t *table, class Class, seat Seat, pin Pin, candidates []Candidate) P
 	return pick
 }
 
-// stronger is a redo's crew: the λ steps down until the crew is strictly
-// stronger than the one that ran, no unpinned seat weaker; and when no λ gets
-// there because the cheap picks are already the table's best, the seat whose
-// next-stronger model costs least is moved up by one model.
+// stronger is a redo's crew: ONE RUNG UP, on one seat.
+//
+// Every seat keeps what ran; then the unpinned seat whose next rung buys the
+// most — quality gained less the dearer price at one step below this λ — moves
+// up to that rung and no further. The next rung is the least step up the
+// seat's front ([nextRung]): the next model above it by quality that no other
+// model beats on both quality and cost. A redo that jumped to the top of the
+// catalog skipped every mid-price model and multiplied the bill for one
+// sentence of dissatisfaction; a ladder is walked a rung at a time, and a
+// second redo takes the next rung. Ties go to the checker, then the worker,
+// then the planner — the checker is the lever the evidence found.
 func stronger(t *table, class Class, candidates []Candidate, pins map[Seat]Pin, lambda float64, ran *Decision) ([]Pick, float64, error) {
-	before := 0.0
+	crew := make([]Pick, 0, len(Seats))
 	for _, seat := range Seats {
-		if _, ok := pins[seat]; !ok {
-			before += ran.Seat(seat).Quality
-		}
-	}
-	for i := 0; i <= maxSteps; i++ {
-		lambda /= stepFactor
-		if i == maxSteps {
-			lambda = 0
-		}
-		crew, err := pickCrew(t, class, candidates, pins, lambda)
-		if err != nil {
-			return nil, 0, err
-		}
-		after, weaker := 0.0, false
-		for _, pick := range crew {
-			if pick.Pinned {
-				continue
-			}
-			after += pick.Quality
-			if pick.Quality < ran.Seat(pick.Seat).Quality-1e-9 {
-				weaker = true
-			}
-		}
-		if !weaker && after > before+1e-9 {
-			return crew, lambda, nil
-		}
-	}
-	// NO PRICE OF A POINT BUYS MORE: step one seat up by one model. The
-	// checker first, because it is the lever the evidence found, then the
-	// worker, then the planner.
-	crew, err := pickCrew(t, class, candidates, pins, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	for _, seat := range []Seat{Checker, Worker, Planner} {
-		if _, ok := pins[seat]; ok {
+		if pin, ok := pins[seat]; ok {
+			crew = append(crew, pinned(t, class, seat, pin, candidates))
 			continue
 		}
-		floor := ran.Seat(seat).Quality
-		up, ok := nextUp(t, class, seat, candidates, floor)
+		was := ran.Seat(seat)
+		if was.Model == "" {
+			pick, ok := bestFor(t, class, seat, candidates, lambda, math.Inf(-1))
+			if !ok {
+				return nil, 0, NoCandidateError{Seat: seat}
+			}
+			was = pick
+		}
+		// A one-off over every pin starts from the pins as they ran.
+		was.Pinned = false
+		crew = append(crew, was)
+	}
+	step := lambda / stepFactor
+	at, gain := -1, math.Inf(-1)
+	var up Pick
+	for _, seat := range []Seat{Checker, Worker, Planner} {
+		i := seatIndex(crew, seat)
+		if i < 0 || crew[i].Pinned {
+			continue
+		}
+		next, ok := nextRung(t, class, seat, candidates, crew[i])
 		if !ok {
 			continue
 		}
-		for i := range crew {
-			if crew[i].Seat == seat {
-				crew[i] = up
-			} else if !crew[i].Pinned && crew[i].Quality < ran.Seat(crew[i].Seat).Quality {
-				crew[i] = ran.Seat(crew[i].Seat)
+		g := (next.Quality - crew[i].Quality) - step*(weighedCost(t, class, seat, next)-weighedCost(t, class, seat, crew[i]))
+		if g > gain+1e-12 {
+			at, gain, up = i, g, next
+		}
+	}
+	if at < 0 {
+		return nil, 0, ErrStrongest
+	}
+	crew[at] = up
+	return crew, step, nil
+}
+
+// seatIndex is where a seat's pick sits in a crew, -1 when it is not there.
+func seatIndex(crew []Pick, seat Seat) int {
+	for i, pick := range crew {
+		if pick.Seat == seat {
+			return i
+		}
+	}
+	return -1
+}
+
+// nextRung is the least step up a seat's front from the pick it has: among the
+// models above it by quality, those no other model beats on both quality and
+// weighed cost, and of those the one with the least quality — ties to the
+// cheaper.
+func nextRung(t *table, class Class, seat Seat, candidates []Candidate, from Pick) (Pick, bool) {
+	var above []Pick
+	for _, c := range candidates {
+		pick, ok := eligible(t, class, seat, c)
+		if !ok || pick.Quality <= from.Quality+1e-9 || Lineage(pick.Model) == Lineage(from.Model) {
+			continue
+		}
+		above = append(above, pick)
+	}
+	var best Pick
+	found := false
+	for i, p := range above {
+		dominated := false
+		for j, q := range above {
+			if i == j {
+				continue
+			}
+			pc, qc := weighedCost(t, class, seat, p), weighedCost(t, class, seat, q)
+			if q.Quality >= p.Quality-1e-9 && qc <= pc+1e-12 && (q.Quality > p.Quality+1e-9 || qc < pc-1e-12) {
+				dominated = true
+				break
 			}
 		}
-		return crew, 0, nil
+		if dominated {
+			continue
+		}
+		if !found || p.Quality < best.Quality-1e-9 ||
+			(math.Abs(p.Quality-best.Quality) <= 1e-9 && weighedCost(t, class, seat, p) < weighedCost(t, class, seat, best)) {
+			best, found = p, true
+		}
 	}
-	return nil, 0, ErrStrongest
+	return best, found
 }
 
 // nextUp is the cheapest model whose quality in the seat is above floor.
@@ -498,11 +861,8 @@ func nextUp(t *table, class Class, seat Seat, candidates []Candidate, floor floa
 	var best Pick
 	found := false
 	for _, c := range candidates {
-		if !seatable(c) {
-			continue
-		}
-		pick := pickOf(t, class, seat, c)
-		if pick.Quality <= floor+1e-9 {
+		pick, ok := eligible(t, class, seat, c)
+		if !ok || pick.Quality <= floor+1e-9 {
 			continue
 		}
 		if !found || pick.Quality < best.Quality-1e-9 ||
@@ -553,7 +913,7 @@ func Gaps(candidates []Candidate) []Gap {
 	t := prior()
 	best := math.Inf(-1)
 	for _, c := range candidates {
-		if !seatable(c) {
+		if !seatable(Checker, c) {
 			continue
 		}
 		if q, _ := t.quality(OpenEnded, Checker, c.Model); q > best {
@@ -578,20 +938,48 @@ func Gaps(candidates []Candidate) []Gap {
 // unknown is absent, never $0.00).
 func (d Decision) Line(pinMark string, actual float64) string {
 	var b strings.Builder
-	b.WriteString(string(d.Class))
-	worker, checker := d.Seat(Worker), d.Seat(Checker)
+	b.WriteString(d.Class.Word())
+	worker, planner, checker := d.Seat(Worker), d.Seat(Planner), d.Seat(Checker)
 	b.WriteString(" · worker ")
 	b.WriteString(seatModel(worker, pinMark))
 	if worker.Provider != "" {
-		b.WriteString(" (" + worker.Provider + ")")
+		route := worker.Provider
+		if worker.Kind == Free {
+			route += " · free"
+		}
+		b.WriteString(" (" + route + ")")
+	}
+	// THE PLANNER IS NAMED WHEN IT IS NOT THE WORKER. A crew whose planner is
+	// the worker's model says nothing a person reading the line needs; one
+	// whose planner is another model is a crew of three, and says so.
+	if planner.Model != "" && Lineage(planner.Model) != Lineage(worker.Model) {
+		b.WriteString(" · planner ")
+		b.WriteString(seatModel(planner, pinMark))
 	}
 	b.WriteString(" · checker ")
 	b.WriteString(seatModel(checker, pinMark))
+	for _, r := range d.Rungs {
+		b.WriteString(" · " + string(r.Seat) + " " + ShortModel(r.From) + " → " + ShortModel(r.To))
+	}
+	if len(d.Retried) > 0 {
+		// A SEAT THAT MOVED DURING THE TASK IS SAID PLAINLY: the crew running
+		// is not the crew picked, and why.
+		b.WriteString(" · running on fallback crew")
+		for _, r := range d.Retried {
+			b.WriteString(" · " + string(r.Seat) + " " + ShortModel(r.From) + " → " + ShortModel(r.To))
+			if r.Why != "" {
+				b.WriteString(" (" + r.Why + ")")
+			}
+		}
+	}
 	switch {
 	case actual >= 0:
 		b.WriteString(" · " + Money(actual) + " (est " + Money(d.EstUSD) + ")")
 	default:
 		b.WriteString(" · est " + Money(d.EstUSD))
+	}
+	if d.Note != "" {
+		b.WriteString(" · " + d.Note)
 	}
 	return b.String()
 }
@@ -600,8 +988,12 @@ func (d Decision) Line(pinMark string, actual float64) string {
 // vendor, with the pin mark in front when the seat was pinned.
 func seatModel(pick Pick, pinMark string) string {
 	name := ShortModel(pick.Model)
-	if pick.Pinned && pinMark != "" {
+	switch {
+	case pick.Pinned && strings.TrimSpace(pinMark) != "":
 		return pinMark + " " + name
+	case pick.Pinned:
+		// NO MARK IS NO BLANK: a surface with no glyph for a pin says the word.
+		return name + " (pinned)"
 	}
 	return name
 }

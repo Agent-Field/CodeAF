@@ -66,6 +66,16 @@ const (
 )
 
 // Classes lists the three, in the order a report prints them.
+// Word is the class as a person reads it: `open-ended` rather than the
+// logged `openended`, which stays the key the router's log and the evidence
+// table are written in.
+func (c Class) Word() string {
+	if c == OpenEnded {
+		return "open-ended"
+	}
+	return string(c)
+}
+
 var Classes = []Class{Bugfix, OpenEnded, Other}
 
 // Task is what the classifier reads: the words a person or an issue gave the
@@ -113,6 +123,12 @@ var titleSignals = []signal{
 	{regexp.MustCompile(`(?i)\[\s*bug\s*\]|^\s*bug\s*[:\-]|^\s*BUG\b`), Bugfix, 2, "a bug tag in the title"},
 	{regexp.MustCompile(`(?i)\b(crash(es|ed|ing)?|error|exception|fails?|failing|broken|regression|drops?|rejects?|ignored|incorrect(ly)?|wrong|overflow\w*|hangs?|leaks?)\b`), Bugfix, 1, "a failure word in the title"},
 	{regexp.MustCompile(`\b[A-Z][A-Za-z]+(Error|Exception)\b`), Bugfix, 1, "an exception named in the title"},
+	// A DEFECT SAID IN PLAIN WORDS is a fix whether or not it wears a `fix:`
+	// prefix: a leading verb that repairs something, the word bug or broken,
+	// and a sentence that sets what happens against what should.
+	{regexp.MustCompile(`(?i)^\s*(please\s+)?(fix|repair|correct|resolve|patch)\b`), Bugfix, 2, "a title that asks for a repair"},
+	{regexp.MustCompile(`(?i)\b(bug|bugs|buggy|broken)\b`), Bugfix, 1, "the word bug or broken"},
+	{defectSentence, Bugfix, 2, "what happens set against what should"},
 	{regexp.MustCompile(`(?i)^\s*(feat|feature|refactor|perf|docs?)(\([^)]*\))?!?:`), OpenEnded, 2, "a feature or refactor title"},
 	{regexp.MustCompile(`(?i)^\s*(add|support|implement|introduce|enable|allow|create|design|define|document|redesign|rework|restructure|migrate|extend|expose|make)\b`), OpenEnded, 2, "a title that asks for something new"},
 	{regexp.MustCompile(`(?i)\b(consider|proposal|rfc|epic|feature|enhancement|refactor|docs|documentation|more pythonic|should (probably )?(default|be|support|allow)|fractional|metadata)\b`), OpenEnded, 1, "an open-ended word in the title"},
@@ -123,6 +139,8 @@ var bodySignals = []signal{
 	{regexp.MustCompile(`Traceback \(most recent call last\)|(?m)^\s+at [\w.$]+\(|panic: |goroutine \d+ \[`), Bugfix, 2, "a stack trace"},
 	{regexp.MustCompile(`\b[A-Z][A-Za-z]*(Error|Exception)\b`), Bugfix, 1, "an exception in the text"},
 	{regexp.MustCompile(`(?i)\b(steps to reproduce|to reproduce|describe the bug|expected behaviou?r|actual behaviou?r|minimal (reproducible )?example)\b`), Bugfix, 2, "a bug report's own headings"},
+	{defectSentence, Bugfix, 2, "what happens set against what should"},
+	{regexp.MustCompile(`(?i)\b(failing|failed|fails) (unit |integration )?tests?\b|\btests? (is |are )?(failing|fail|broken)\b`), Bugfix, 1, "a failing test named"},
 	{regexp.MustCompile(`(?i)\b(crash(es|ed)?|regression|exit code \d+|stack ?trace|segfault|fails with|raises|silently (drops?|discards?|ignores?)|returns? (the )?wrong)\b`), Bugfix, 1, "a failure described in the text"},
 	{regexp.MustCompile(`(?i)\b(is your feature request|feature request|would be (really )?(great|nice|useful|helpful)|it'?d be great|consider adding|nice to have|enhancement|design (doc|proposal)|user stor(y|ies))\b`), OpenEnded, 2, "a feature request's own words"},
 	{regexp.MustCompile(`(?i)\b(refactor(ing)?|restructur(e|ing)|redesign|extensib(le|ility)|new (api|option|parameter|feature|command|endpoint|page|metric)s?|not well documented|documentation)\b`), OpenEnded, 1, "open-ended work described in the text"},
@@ -148,6 +166,16 @@ var labelWords = map[string]Class{
 // the harness talking and the tail is the issue's own title.
 var wrapperLine = regexp.MustCompile(`(?i)^\s*(implement|fix|resolve|address|solve|close|work on)\s+(github\s+)?issue\s+#?\d+\s*[:\-—]\s*(.*)$`)
 
+// defectSentence is a sentence that sets what happens against what should:
+// "returns a - b instead of a + b", "should keep the order but drops it",
+// "expected 3, got 4".
+var defectSentence = regexp.MustCompile(`(?i)\b(returns?|gives?|prints?|produces?|yields?|shows?)\b[^.]*\binstead of\b|\bshould\b[^.]*\bbut\b|\bexpected\b[^.]*\b(got|but|received|instead)\b`)
+
+// tinyEdit is a change too small to be open-ended whatever verb it opens
+// with: a docstring, a typo, a comment, one line. It reads as work of no
+// particular class — the cheap crew — and it outweighs a leading "add".
+var tinyEdit = regexp.MustCompile(`(?i)\b(docstring|docstrings|typo|typos|spelling|misspell\w*|one[- ]line|single[- ]line|whitespace|a comment|code comment|trailing comma)\b`)
+
 // boilerplate is the standing instruction a harness appends to every task.
 // It is cut before the body is read, because it is the same on every task.
 var boilerplate = regexp.MustCompile(`(?is)work in this repository\..*$`)
@@ -171,6 +199,9 @@ func Classify(task Task) Reading {
 	}
 	if otherTitle.MatchString(title) {
 		note(signal{class: Other, name: "a title asking a question rather than for a change"}, weightTitle+1)
+	}
+	if tinyEdit.MatchString(title) {
+		note(signal{class: Other, name: "a small scoped edit"}, 2*weightTitle+1)
 	}
 	for _, s := range titleSignals {
 		if s.pattern.MatchString(title) {

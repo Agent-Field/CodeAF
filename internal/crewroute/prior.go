@@ -30,9 +30,12 @@ import (
 //  2. THE CATALOG'S OWN FIGURES, for a model nobody measured. Its published
 //     intelligence, coding and agentic indexes, weighed the way each seat uses
 //     a model, place it above or below the middle of what was measured for
-//     that seat — and NEVER ABOVE THE BEST MEASURED MODEL, because a model
-//     nobody has watched do the work is not believed to do it better than one
-//     somebody has. The published indexes predicted the measured checkers
+//     that seat — and NEVER AS HIGH AS THE MEASURED MIDDLE, because a model
+//     nobody has watched do the work is not believed to do it as well as one
+//     somebody has. One that reads far under the worst measured model does
+//     not sit the seat at all ([table.credible]), and when it is weighed its
+//     cost is never taken as less than the cheapest measured model's
+//     ([table.costFloor]): a price of zero is not evidence of anything. The published indexes predicted the measured checkers
 //     badly (the weakest-indexed model was the second-best checker), which is
 //     why they only move an unmeasured model half as far as the measured
 //     spread, and why a measured row always wins a tie.
@@ -86,6 +89,7 @@ type table struct {
 	Cells    []cell           `json:"cells"`
 	measured map[cellKey]cell // lineage-folded, the Other class derived
 	spread   map[seatKey]spread
+	floors   map[seatKey]float64
 	byID     map[string]priorModel
 }
 
@@ -105,6 +109,7 @@ type seatKey struct {
 type spread struct {
 	median float64
 	best   float64
+	worst  float64
 	half   float64
 }
 
@@ -119,6 +124,19 @@ const (
 	indexScale   = 10.0
 	unseenShrink = 0.5
 	minHalf      = 0.5
+	// unseenMargin is how far under the measured middle an unmeasured model's
+	// ceiling sits, as a share of the seat's half-width. An unmeasured model is
+	// believed at most a little WORSE than the middle of what was watched doing
+	// the work: on a seat where one model was measured, the middle is that
+	// model, and a stranger that tied it would win on price alone — which is
+	// how a free variant nobody measured took a worker seat and died in its
+	// first second.
+	unseenMargin = 0.25
+	// unseenFloor is how far under the worst measured model an unmeasured one
+	// may read and still sit the seat, as a share of the half-width. Below it
+	// the published figures say the model is weaker than anything measured,
+	// and a seat is not a place to find out.
+	unseenFloor = 1.0
 )
 
 var (
@@ -186,6 +204,7 @@ func (t *table) index() {
 		t.measured[key] = cell{Class: Other, Seat: c.Seat, Model: key.model, Quality: sum / 2, N: n}
 	}
 	t.spreads(Other)
+	t.floors = t.floorsOf()
 }
 
 // spreads reads the measured spread of every seat for the classes given.
@@ -210,30 +229,24 @@ func (t *table) spreads(classes ...Class) {
 			if half < minHalf {
 				half = minHalf
 			}
-			t.spread[seatKey{class, seat}] = spread{median: median, best: qs[len(qs)-1], half: half}
+			t.spread[seatKey{class, seat}] = spread{median: median, best: qs[len(qs)-1], worst: qs[0], half: half}
 		}
 	}
 }
 
-// Lineage is the id a model is measured under: lowercase, with a thinking
+// Lineage is the id a model is measured under: its canonical identity across
+// every provider's spelling ([CanonicalOf]) — lowercase, a provider's
+// namespace and a route suffix (`:free`, `:nitro`) taken off, a thinking
 // level, a floating alias's `~` and `-latest`, and a dated snapshot suffix
 // taken off. `deepseek/deepseek-v4-flash-0731` is the same lineage as the
-// `deepseek/deepseek-v4-flash` the table measured, and a measurement of one is
-// read for the other — a dated build is the same weights under a pinned name
-// far more often than it is a different model.
-//
-// It is spelled with string operations rather than a pattern because it runs
-// for every candidate in every seat of every decision, and a decision's budget
-// is two milliseconds against a catalog of several hundred rows.
-func Lineage(id string) string {
-	id = strings.ToLower(strings.TrimSpace(id))
-	id = strings.TrimPrefix(id, "~")
-	if at := strings.LastIndex(id, ":"); at > 0 {
-		switch id[at+1:] {
-		case "low", "medium", "high", "minimal", "max":
-			id = id[:at]
-		}
-	}
+// `deepseek/deepseek-v4-flash` the table measured, and so is its free pool:
+// a route is not a model. A quantised local copy keeps its variant after `@`,
+// so it is never mistaken for the model it was squeezed from.
+func Lineage(id string) string { return CanonicalOf(id).String() }
+
+// lineageTail is [Lineage]'s own rules on an id already read by
+// [CanonicalOf]: `-latest` and a dated snapshot suffix taken off.
+func lineageTail(id string) string {
 	id = strings.TrimSuffix(id, "-latest")
 	if at := strings.LastIndex(id, "-"); at > 0 {
 		if tail := id[at+1:]; (len(tail) == 4 || len(tail) == 8) && allDigits(tail) {
@@ -256,8 +269,16 @@ func allDigits(word string) bool {
 // quality is what one model adds in one seat for one class of work, and
 // whether that number was measured.
 func (t *table) quality(class Class, seat Seat, m Model) (float64, bool) {
-	if c, ok := t.measured[cellKey{class, seat, Lineage(m.ID)}]; ok {
+	canon := CanonicalOf(m.ID)
+	if c, ok := t.measured[cellKey{class, seat, canon.String()}]; ok {
 		return c.Quality, true
+	}
+	if canon.Variant != "" {
+		// A QUANTISED COPY INHERITS ITS MODEL'S EVIDENCE AT A DISCOUNT, and
+		// reads as unmeasured: the number is borrowed, not watched.
+		if c, ok := t.measured[cellKey{class, seat, canon.ID}]; ok {
+			return c.Quality * quantDiscount, false
+		}
 	}
 	sp, ok := t.spread[seatKey{class, seat}]
 	if !ok {
@@ -271,24 +292,83 @@ func (t *table) quality(class Class, seat Seat, m Model) (float64, bool) {
 		move = -1
 	}
 	q := sp.median + move*sp.half*unseenShrink
-	if q > sp.best {
-		q = sp.best
+	if ceiling := sp.median - unseenMargin*sp.half; q > ceiling {
+		q = ceiling
 	}
 	return q, false
 }
 
+// credible is whether an unmeasured model's reading is high enough to sit a
+// seat at all: no lower than a half-width under the worst model measured
+// there. A measured model is always credible — its number is evidence.
+func (t *table) credible(class Class, seat Seat, q float64, measured bool) bool {
+	if measured {
+		return true
+	}
+	sp, ok := t.spread[seatKey{class, seat}]
+	if !ok {
+		return false
+	}
+	return q >= sp.worst-unseenFloor*sp.half-1e-9
+}
+
+// costFloor is the least an UNMEASURED model is taken to cost in a seat when
+// the router weighs it: the cheapest metered cost of a model MEASURED in that
+// seat for that class of work.
+//
+// A PRICE OF ZERO IS NOT EVIDENCE OF VALUE. A free pool, or a model on a route
+// this table cannot price, reads as costing nothing, and quality minus λ·0
+// beats every measured model that costs a cent. The floor says the stranger is
+// at best as cheap as the cheapest model that was actually watched doing this
+// work — and a measured model on a subscription or a local route still costs
+// what its route costs, because there the zero IS the evidence.
+func (t *table) costFloor(class Class, seat Seat) float64 {
+	return t.floors[seatKey{class, seat}]
+}
+
+// floorsOf reads every class and seat's cost floor once, when the table is
+// indexed: a decision asks for them once per candidate per seat.
+func (t *table) floorsOf() map[seatKey]float64 {
+	floors := map[seatKey]float64{}
+	for key := range t.measured {
+		pm, ok := t.byID[key.model]
+		if !ok {
+			continue
+		}
+		m := Model{PromptPrice: pm.Prompt, CompletionPrice: pm.Completion, CacheReadPrice: pm.CacheRead}
+		sk := seatKey{key.class, key.seat}
+		if c, held := floors[sk]; !held || t.seatCost(key.seat, m) < c {
+			floors[sk] = t.seatCost(key.seat, m)
+		}
+	}
+	return floors
+}
+
+// IsMeasured is whether the evidence table measured this model's lineage in
+// any seat — the models the router trusts before this install has run any.
+func IsMeasured(id string) bool {
+	_, ok := prior().byID[Lineage(id)]
+	return ok
+}
+
 // indexScore reads a model's published indexes the way one seat uses a model.
-// An index a row does not publish is left out and the weights of the rest are
-// renormalised; a row that publishes none reads as a full scale below the
-// middle, because a model with no published figure is a model nobody has
-// described, which is not a reason to believe it is average.
+//
+// AN INDEX A ROW DOES NOT PUBLISH COUNTS AGAINST IT. Each missing index is read
+// as a full scale below the middle ([indexRef] − [indexScale]) at its seat's
+// weight — never renormalised away. Renormalising let a model that published
+// one flattering index and nothing else read as though it had published three:
+// a free model with only a coding figure outranked models whose agentic figure
+// was known and middling, and took a worker seat it could not hold.
 func indexScore(seat Seat, m Model) float64 {
 	weights := seatWeight[seat]
 	values := [3]float64{m.Intelligence, m.Coding, m.Agentic}
 	var sum, weight float64
 	for i, v := range values {
-		if v <= 0 || weights[i] == 0 {
+		if weights[i] == 0 {
 			continue
+		}
+		if v <= 0 {
+			v = indexRef - indexScale
 		}
 		sum += v * weights[i]
 		weight += weights[i]
@@ -297,6 +377,14 @@ func indexScore(seat Seat, m Model) float64 {
 		return indexRef - indexScale
 	}
 	return sum / weight
+}
+
+// agenticKnown is whether an unmeasured model may be believed in a seat that
+// runs an agent loop — the worker and the checker — at all: it must publish
+// the agentic index those seats weigh most. The planner writes a plan once and
+// is read on what it publishes.
+func agenticKnown(seat Seat, m Model) bool {
+	return seat == Planner || m.Agentic > 0
 }
 
 // seatCost is what one model costs in one seat on an ordinary task, at the
