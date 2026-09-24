@@ -72,6 +72,10 @@ type teamRole struct {
 	// offered only in a team that has one, because the manager is the one the
 	// room is run by (docs/design/conversations-and-teams/DESIGN.md, section 5).
 	managed bool
+	// key is the conversation key this conversation is stored under in the
+	// team, the one spelling of [Agent.teamKeysLocked] the file holds. An event
+	// this conversation writes names it ([teams.Entry.Member]).
+	key string
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
@@ -115,6 +119,8 @@ type teamSeat struct {
 	cursors     map[string]string
 	cursorsRead bool
 	trafficAt   map[string]fileStamp
+	// events is the lane this conversation's own events leave by (teamevent.go).
+	events teamEventLane
 }
 
 // teamLogStart is the cursor that reads a Traffic log from its first entry:
@@ -208,6 +214,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	}
 	if !now.present {
 		a.team.teamsAt, a.team.roles = now, nil
+		a.team.events.member.Store(false)
 		return nil
 	}
 	file, err := teams.Load(profile)
@@ -219,6 +226,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	}
 	a.team.teamsAt = now
 	a.team.roles = rolesFor(file.Teams, keys)
+	a.team.events.member.Store(eventfulRoles(a.team.roles))
 	return a.team.roles
 }
 
@@ -236,6 +244,7 @@ func rolesFor(list []teams.Team, keys []string) []teamRole {
 			handle:  member.Handle,
 			manager: team.Manager != "" && team.Manager == member.Key,
 			managed: team.Manager != "",
+			key:     member.Key,
 		})
 	}
 	return roles
@@ -364,7 +373,10 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 // `team_start` is opened by the interface after the start is written, and the
 // manager may have said something to it in between; so a start addressed to
 // this conversation's handle, written shortly before this process began, is
-// where it starts reading instead.
+// where it starts reading instead. It starts reading AT the start and not after
+// it, because the start carries the brief, and the brief is handed to the new
+// member here, marked as the manager's, on its first request ([teamBriefLine]).
+// The person never typed it, so it must not arrive as the person's message.
 func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 	tail, err := teams.ReadTraffic(profile, role.id, "", teamFirstLook)
 	if err != nil {
@@ -382,8 +394,8 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 			started = entry.ID
 		}
 	}
-	if started != "" && started < cursor {
-		return started
+	if started != "" && started <= cursor {
+		return teamCursorBefore(started)
 	}
 	return cursor
 }
@@ -397,6 +409,9 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 // own lines, the person's (which reach it in its own chat), a start or a stop
 // (which the interface performs) or an event (which the digest carries).
 func teamLine(role teamRole, entry teams.Entry) string {
+	if entry.Kind == teams.KindStart {
+		return teamBriefLine(role, entry)
+	}
 	if entry.Kind != teams.KindNote && entry.Kind != teams.KindDirective {
 		return ""
 	}
@@ -658,8 +673,8 @@ func (a *Agent) teamDigest(profile string) string {
 		if !ok {
 			continue
 		}
-		recent, _ := teams.ReadTraffic(profile, role.id, "", teamRecent)
-		parts = append(parts, teams.Digest(team, memberStates(team, keys, now), recent, teamDigestBudget))
+		log, _ := teams.ReadTraffic(profile, role.id, "", teamStateLook)
+		parts = append(parts, teams.Digest(team, memberStates(team, keys, now, log), recentOf(log), teamDigestBudget))
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
@@ -670,17 +685,19 @@ func (a *Agent) teamBlockLocked() string { return strings.TrimSpace(a.teamDigest
 // ── what a member is doing, read off its journal ────────────────────────────
 
 // memberStates is each member's state as its journal says it, keyed by
-// conversation key. This conversation's own row is left to the digest to call
-// unknown: it is the one reading the file, and it is running.
-func memberStates(team teams.Team, self []string, now time.Time) map[string]teams.MemberState {
+// conversation key, corrected by the events in log (the team's Traffic, oldest
+// first) for the one state a journal cannot hold: a member held on a permission
+// prompt ([askingFromEvents]). This conversation's own row is running: it is
+// the one reading the file.
+func memberStates(team teams.Team, self []string, now time.Time, log []teams.Entry) map[string]teams.MemberState {
 	states := make(map[string]teams.MemberState, len(team.Members))
 	for _, member := range team.Members {
 		if teamHoldsKey(self, member.Key) {
 			states[member.Key] = teams.MemberState{State: teams.StateRunning}
 			continue
 		}
-		if state, ok := journalState(member.File, now); ok {
-			states[member.Key] = state
+		if state, last, ok := journalStateAt(member.File, now); ok {
+			states[member.Key] = askingFromEvents(state, last, member, log)
 		}
 	}
 	return states
@@ -721,16 +738,23 @@ const journalFiles = 8
 //   - idle otherwise: a turn ended and nobody has said anything since.
 //
 // A permission prompt waiting on the person is not written to the journal, so a
-// member held on one reads as running; the manager's brief says those are the
-// person's either way.
+// member held on one reads as running here; the member's own asking event in
+// the Traffic log is what says otherwise ([askingFromEvents]).
 func journalState(path string, now time.Time) (teams.MemberState, bool) {
+	state, _, ok := journalStateAt(path, now)
+	return state, ok
+}
+
+// journalStateAt is [journalState] and the instant of the journal's last line,
+// which is what an asking event is weighed against.
+func journalStateAt(path string, now time.Time) (teams.MemberState, time.Time, bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return teams.MemberState{}, false
+		return teams.MemberState{}, time.Time{}, false
 	}
 	lines, mod, err := journalTailLines(path, journalTail)
 	if err != nil {
-		return teams.MemberState{}, false
+		return teams.MemberState{}, time.Time{}, false
 	}
 	var (
 		last       time.Time
@@ -802,7 +826,7 @@ func journalState(path string, now time.Time) (teams.MemberState, bool) {
 	default:
 		state.State = teams.StateIdle
 	}
-	return state, true
+	return state, last, true
 }
 
 // appendFresh moves path to the end of files, so the list is in the order the

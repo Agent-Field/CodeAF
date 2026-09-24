@@ -37,10 +37,29 @@ the log of who told whom inside the team: `◆ → @web` for the manager's messa
 On a narrow window the rail folds to a `◆` at the right edge; press it to lay the traffic over
 the conversation, and again to put it away.
 
-When the manager starts a member with `team_start` and you allow it, this window opens the new
-conversation in the team's folder, gives it its handle, and sends the brief as its first
-message, marked `◆ from manager`. When the manager stops a member, this window stops it the
-way your own Stop would. Both happen only in a window that has those conversations open.
+When the manager starts a member with `team_start`, you are asked first, on a card that reads
+`◆ manager wants to start @lexer`, with the brief under it and the clause `a new conversation;
+it spends until it stops`. When you allow it, this window opens the new conversation in the
+team's folder and gives it its handle. The member is handed the brief on its first request,
+marked `◆ brief from manager`: it is the manager's assignment, never your message, and the
+member's page shows it as the manager's. When the manager stops a member, this window stops it
+the way your own Stop would, and the reason the manager gave is kept in the traffic. Both
+happen only in a window that has those conversations open.
+
+## What members say without being asked
+
+A member of a team that has a manager tells the manager, through the traffic, three things it
+would never write in a message:
+
+- `finished` when a turn ends, `stopped` when somebody stopped it, and `failed: ` with the
+  error's first line when a turn ends on one;
+- when it starts waiting on you: the permission line for a permission prompt (`needs your ok
+  to run bash`), or `asks: ` and the question for anything else;
+- `no longer waiting` when the last of those questions comes down.
+
+Each is one line of traffic per change, never one per step. They are the session's own words;
+nothing you type is ever written to the traffic. `team_status` reads them too, so a member held
+on a permission prompt shows as `asking` rather than `running`.
 
 ## Who outranks whom
 
@@ -60,7 +79,7 @@ on one waits for you.
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
 | `team_send` | a message to one member or to everyone, as a note (information) or a directive (an instruction) | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does: nothing is deleted, and its background tasks and jobs keep running | no |
-| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and the brief is its first message | yes |
+| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request | yes |
 
 `team_start` asks because a new conversation spends money for as long as it runs. The others
 act only inside the team you made, and every one of them is logged in the team's traffic.

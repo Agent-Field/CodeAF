@@ -372,7 +372,7 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 			// own words for why it is asking.
 			Hint: a.gloss(call),
 			Args: argsText(call),
-			Rule: decision.Rule,
+			Rule: consentRule(call, decision),
 			// And whether the memo is even available, so a surface can leave the
 			// "always" key off a question it would be dropped on (see Event.Memo).
 			Memo: true,
@@ -591,8 +591,8 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 		Ask:     AskPermission,
 		Form:    FormLine,
 		Asker:   Asker{Kind: AskerEngine},
-		Head:    consentHeadLead + call.Function.Name,
-		Reason:  consentReason(decision),
+		Head:    ConsentHead(call.Function.Name, call.Function.Arguments),
+		Reason:  consentReason(call, decision),
 		Subject: SubjectRef{Kind: SubjectCall, CallID: call.ID, Name: call.Function.Name},
 		// AND WHICH STEP ASKED, so that three approvals raised by one tool batch
 		// are drawn and answered as the one thing they are (question.go's
@@ -618,12 +618,43 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 // window — home, a second terminal, the phone — and the tool's name closes it.
 const consentHeadLead = "needs your ok to run "
 
+// ConsentHead is the permission question's one line for a call: "needs your ok
+// to run bash", and for a manager's `team_start` the sentence the person is
+// actually being asked, "◆ manager wants to start @lexer". args is the call's
+// arguments as JSON, the raw ones or [Event.Args]; a start whose handle cannot
+// be read falls back to the ordinary line.
+//
+// IT IS EXPORTED SO THERE IS ONE BUILDER. The card a surface draws and the
+// question home and a second window answer from are the same question, and two
+// builders that drifted would make them two.
+func ConsentHead(tool, args string) string {
+	tool = strings.TrimSpace(tool)
+	if tool == teamStartToolName {
+		if handle, _ := teamStartArgs(args); handle != "" {
+			return "◆ manager wants to start @" + handle
+		}
+	}
+	return consentHeadLead + tool
+}
+
+// consentRule is [Event.Rule] for a call: the policy's own words, and for a
+// start with none, what the person is agreeing to pay for ([teamStartCost]).
+func consentRule(call ai.ToolCall, decision approval.Decision) string {
+	if rule := strings.TrimSpace(decision.Rule); rule != "" {
+		return rule
+	}
+	if call.Function.Name == teamStartToolName {
+		return teamStartCost
+	}
+	return ""
+}
+
 // consentReason is why the gate is asking, in the policy's own words where it
 // gave any and in this lane's own sentence where it did not. The wording is
 // internal/approval's on the same terms [Event.Rule] takes it: every surface
 // should say the same sentence about the same rule instead of deriving one.
-func consentReason(decision approval.Decision) string {
-	if rule := strings.TrimSpace(decision.Rule); rule != "" {
+func consentReason(call ai.ToolCall, decision approval.Decision) string {
+	if rule := consentRule(call, decision); rule != "" {
 		return rule
 	}
 	return ConsentFallbackReason

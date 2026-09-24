@@ -112,6 +112,7 @@ func (a *Agent) SettleWrites() {
 	a.toldStamp().settle()
 	a.fixShelfFor().settle()
 	a.treesAhead().Settle()
+	a.settleTeamEvents()
 }
 
 // stampWriter is [offpath.Write] with the patch it is to perform carried beside

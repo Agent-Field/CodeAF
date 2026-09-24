@@ -1850,6 +1850,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// return above because a turn that was abandoned has had every one
 			// of these acts done for it already.
 			a.retireTurnQuestions()
+			// AND A TEAM MEMBER'S MANAGER IS TOLD HOW IT ENDED, after the
+			// questions above came down, so the wait the turn ended inside is
+			// closed before the ending is said (teamevent.go). The context is
+			// the turn's own, still uncancelled unless somebody stopped it.
+			a.teamTurnEnded(turnCtx, hub)
 		}()
 		// A faulted turn must end its streams with a reason rather than take
 		// the process down: the person is holding a live channel.
@@ -4497,6 +4502,14 @@ type DisplayEntry struct {
 	// Nil on every other entry, and on every session with no file to have kept a
 	// mark.
 	Steer *SteerMark
+
+	// Team is what a TEAM DELIVERY handed this conversation, line by line, on
+	// an "aside" that is one (teamshape.go): the manager's brief that started
+	// it (Kind [teams.KindStart]), a manager's note or directive, a teammate's
+	// post. It is what lets a surface draw the brief as a quoted card headed by
+	// who sent it rather than as the aside's first line. Nil on every other
+	// entry; the aside's Text still holds the whole delivery as the model read it.
+	Team []TeamLine
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -4616,6 +4629,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			role = "aside"
 			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
 		}
+		var team []TeamLine
+		if role == "aside" {
+			team = teamNewsLines(messageContentText(msg))
+		}
 		var tags []TaskReplyTag
 		if role == "assistant" && len(replyTags) > 0 {
 			tags = append([]TaskReplyTag(nil), replyTags...)
@@ -4631,6 +4648,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			// message itself is an ordinary user message, because that is what the
 			// model has to read it as (steer.go).
 			Steer: journal.steerMark(msg),
+			Team:  team,
 		})
 		for callIndex := range msg.ToolCalls {
 			call := &msg.ToolCalls[callIndex]
