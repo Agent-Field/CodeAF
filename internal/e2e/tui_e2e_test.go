@@ -2249,11 +2249,17 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// conversation too.
 	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	// THE ROOM COMING UP IS THE ASSERTION: its note box and its two tabs are
-	// there whatever state the task is in. Which command a worker happens to be
-	// part-way through when the key lands is a moment, and is only logged.
-	page := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"), say(t, "roomTabsWords"))
+	// THE ROOM COMING UP IS THE ASSERTION: its two tabs are there whatever state
+	// the task is in. The note box's own words are there only while the task can
+	// still take a note, and which command a worker happens to be part-way
+	// through when the key lands is a moment, so both are only logged.
+	page := r.waitFor(40*time.Second, say(t, "roomTabsWords"))
 	t.Logf("the room the press over the run's row opened:\n%s", page)
+	if box, saw := r.glimpse(2*time.Second, say(t, "planNoteBoxWord")); saw {
+		t.Logf("the room's box takes a note while the task runs:\n%s", box)
+	} else {
+		t.Logf("the task had ended before its room opened, so its box names another door")
+	}
 	if live, sawLive := r.glimpse(15*time.Second, say(t, "planLiveGlyph")); sawLive {
 		t.Logf("the room mid-run, carrying the live step:\n%s", live)
 	} else {
@@ -2292,9 +2298,8 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	openTasksPlace(t, r)
 	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	// THE ROOM IS READ BY TWO OF ITS OWN WORDS, and neither is the model's: the
-	// note box a run's task takes its notes in, and the room's two tabs, which
-	// every task's room draws on either engine.
+	// THE ROOM IS READ BY ITS OWN WORDS, and not by the model's: the
+	// room's two tabs, which every task's room draws on either engine.
 	//
 	// WHICH COMMANDS ARE ON IT IS THE WORKER'S BUSINESS. The finish is the
 	// worker's own `plandb done` when the worker writes one, and the RUN's when
@@ -2303,7 +2308,7 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// page carried `echo`, `cat` and the run's own ending note. So the finish
 	// command is observed and logged, never waited out: asserting it made a red
 	// out of a model's choice and said nothing about the surface.
-	stored := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"), say(t, "roomTabsWords"))
+	stored := r.waitFor(40*time.Second, say(t, "roomTabsWords"))
 	t.Logf("the room the run's row opens:\n%s", stored)
 	if finish, saw := r.glimpse(5*time.Second, say(t, "planFinishCommand")); saw {
 		t.Logf("and this worker wrote its own finish into the trajectory:\n%s", finish)

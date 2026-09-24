@@ -644,14 +644,14 @@ var tuiWords = map[string]tuiWord{
 			"choice: the run writes the ending itself for a task whose worker stopped calling tools " +
 			"without writing one (internal/run's worker.go), which a small brief on a fast model " +
 			"regularly is. What the suite asserts about that room instead is that it is the task's " +
-			"room at all: planNoteBoxWord and roomTabsWords",
+			"room at all: roomTabsWords",
 	},
 	"planNoteBoxWord": {
 		screen: "a note for this task",
 		why: "the note box a run's task takes its notes in (taskplan.go's taskPlanNoteWord, drawn as " +
-			"the task room's steer box by room.go), and the one word on it that is there whatever state " +
-			"the task is in. It is what says the press over a run's row opened that task's room, where " +
-			"the live step beside it is a moment and is only ever observed",
+			"the task room's steer box by room.go) while the task can still take a note. A task that has " +
+			"ended names another door in its box, so the suite only observes this word; what it asserts " +
+			"about the room is roomTabsWords",
 	},
 	"roomTabsWords": {
 		screen: "transcript · work",
