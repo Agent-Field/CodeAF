@@ -695,7 +695,7 @@ answer — with three more that belong to this moment alone:
 - **Nothing on a message with pictures in it.** A task is given words, so a message
   carrying images is always answered here, where they can be looked at.
 
-## Handing work over in the middle of an answer — this one wants more hands
+## Handing work over in the middle of an answer — this one wants more hands, why it handed my answer to a team of workers
 
 **Work can leave an answer that already started it.** A turn begins as an ordinary reply,
 a few tool calls go by, and the material turns out to be wider or longer than one answer.

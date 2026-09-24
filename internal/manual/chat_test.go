@@ -29,6 +29,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		// The conversations view and its teams (conversations-and-teams.md).
+		{"how do I see all my conversations at once", "conversations-and-teams"},
+		{"how do I group conversations into a team", "conversations-and-teams"},
+		{"how do I switch teams from the tab strip", "conversations-and-teams"},
+		{"does deleting a team close its conversations", "conversations-and-teams"},
+		{"where are my teams saved", "conversations-and-teams"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
