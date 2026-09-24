@@ -130,15 +130,24 @@ member is doing, and a place where members coordinate with each other in the ope
 **It is a special conversation.** It is recorded in the team's `manager` field, one per team,
 and removing it returns it to an ordinary chat with its history. What makes it special:
 
-- it is the team's first tab (`◆ harbor`) and the pinned first tile on the wall; until one
-  exists, that tab is a `+ Manager` placeholder, and nothing costs anything;
+- it is the team's first tab, pinned at the left like a browser's pinned tab (`◆ Manager`),
+  and the pinned first tile on the wall (`◆ Manager · <title>`); until one exists, that tab is
+  a `+ Manager` placeholder, and nothing costs anything;
 - its layout is split: the person's conversation with the manager on the left, a **Traffic**
   rail on the right. Whatever the person types goes to the manager, always, and the composer
-  says so (`to ◆ manager`). Traffic shows routed messages (`@parser → @web`,
-  `◆ → @web`) and events, every row clickable to open that member;
+  says so (`to ◆ manager`, on the box's rule once there is text). Traffic shows routed
+  messages (`@parser → @web  fyi`, `◆ → @web  do`) with their age, stops and starts with the
+  reason and the brief, and events (finished, failed, asking in the needs-you amber), every
+  row with a member behind it clickable to open that member. The rail holds the right-hand
+  column while the manager is in front, the task column folding to its edge beside it; it
+  is put away with `hide alt+l` to a `Traffic` edge that counts what arrived, and on a narrow
+  window it is that edge and a card laid over the lower conversation;
 - each turn it carries a small team digest (members, handles, states, questions waiting,
   files touched, recent traffic), never whole transcripts;
-- its messages reach members marked `◆ from manager`, never as if the person had typed them.
+- its messages reach members marked `◆ from manager`, never as if the person had typed them;
+- nothing it does moves the person's focus: a member it starts opens behind the conversation
+  in front, as a tab named `@handle`, and takes its first turn on its own (the session sees
+  itself started and wakes), reading the brief as the manager's.
 
 **Why not one stream of chat bubbles.** Members do not all read everything; each receives only
 what is addressed to it. A shared stream would look like a group chat and teach the person
@@ -191,8 +200,10 @@ entry. Neither package calls the other for team features.
 
 **Known limits of v1.** A stop or a start takes effect only in a window that holds those
 conversations. A member waiting on a permission prompt shows as running, because the prompt is
-not in its session file. A message never wakes an idle conversation; it is read when that
-conversation next runs. Over `--host` the store is assumed to be in the engine's profile.
+not in its session file, until its own asking event says so. A message never wakes an idle
+conversation; it is read when that conversation next runs; the one exception is a member's
+own start. Over `--host` the manager is off: the store is in the engine's profile and this
+window can read only its own, so the doors say so and no rail is drawn.
 
 **Not in v1.** Waking on team events by itself (with a budget and an off switch), collision
 flags when two members touch the same files, nested managers (a sub-team's manager is a member

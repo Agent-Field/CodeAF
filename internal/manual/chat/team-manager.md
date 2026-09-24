@@ -16,35 +16,66 @@ joins. Messages in a team are addressed by handle.
 ## Making a manager
 
 A team has no manager until you make one, and until then nothing about managers costs anything.
-While a team is shown, the first place on the tab strip is the manager's:
+While a team is shown, the first place on the tab strip is the manager's, pinned at the left
+like a pinned browser tab so it never scrolls away:
 
 - **`+ Manager`**, a quiet button, while the team has none. A press starts a new conversation
-  in the team's folder and makes it the manager.
-- **`◆ Make manager`** in the team switcher (the `● harbor ▾` chip) makes the conversation in
-  front the manager, and in a tile's Teams list on the conversations view makes that one the
-  manager. On the manager itself the row reads **Remove manager**, which turns it back into an
-  ordinary conversation with all its history.
+  in the team's folder and makes it the manager. Point at it and the hint line says so. On a
+  window under 100 columns the button leaves the strip; the team switcher still offers it.
+- **`◆ Make this harbor's manager`** in the team switcher (the `● harbor ▾` chip) makes the
+  conversation in front the manager, and in a tile's Teams list on the conversations view makes
+  that one the manager. When the team already has one, the row says which one it replaces:
+  `◆ Make this harbor's manager (replaces Shipping the parser)`. On the manager itself the row
+  reads **`◇ Make an ordinary member`**, which turns it back into an ordinary conversation with
+  all its history.
 
-Once there is a manager, the first tab reads `◆ harbor`, and on the conversations view its tile
-comes first, marked `◆`.
+Once there is a manager the place reads **`◆ Manager`**, and on the conversations view its tile
+comes first, titled `◆ Manager · <its title>`. Point at the tab to see the team and the title in
+the hint line. `alt+m` goes to the manager from any conversation in the team.
 
 ## The manager's screen
 
-While the manager is in front, the message box says `to ◆ manager`: everything you type goes
-to the manager and nowhere else. Beside the conversation, on the right, is the **Traffic** rail,
-the log of who told whom inside the team: `◆ → @web` for the manager's messages, `@parser →
-@web` for a member's, and a line for each stop and start. Press a row to go to that member.
-On a narrow window the rail folds to a `◆` at the right edge; press it to lay the traffic over
-the conversation, and again to put it away.
+While the manager is in front, the message box says `to ◆ manager`, and keeps saying it on the
+rule above the box once you start typing: everything you type goes to the manager and nowhere
+else. With a member in front the box says `to @web` the same way.
+
+On the right is the **Traffic** rail, the log of who told whom inside the team, newest at the
+bottom:
+
+- `◆ → @web  do  take the scope model` for a directive, and `fyi` for a note;
+- `@parser → @web  fyi  the lexer is in` for a member's message;
+- `◆ stopped @web  going in circles` and `◆ started @lexer  rewrite the lexer…`, with the
+  reason and the brief;
+- `@web  finished`, `failed`, and `asking`, which is the only line in the needs-you amber.
+
+Each row ends with its age (`now`, `2m`, `3h`). Your own messages are not on the rail; they are
+in the manager's conversation. Point at a row to read its whole text in the hint line, and press
+it to go to that member; a row about the whole team (`◆ → all`) is not a door.
+
+The rail takes the right-hand column while the manager is in front. The task column folds to its
+edge beside it; press that edge or `ctrl+g` to bring the tasks back, which puts the Traffic away.
+The rail's header reads `Traffic` with `hide alt+l` at its right. Put away, the rail is the word
+`Traffic` down the right edge with a count of what arrived since you last looked; press it or
+`alt+l` to bring it back. This window remembers whether you put it away.
+
+On a window too narrow for the column (under about 84 columns after the task column's edge) the
+rail is only that edge. Pressing it, or `alt+l`, lays the Traffic over the lower part of the
+conversation as a card with `Close esc` in its foot; the top of the conversation stays in view.
+`esc` closes it.
+
+Over `--host` there is no manager: the Traffic is kept on the machine the session runs on, and
+this window reads its own. `+ Manager` and the menus say so, and there is no rail.
 
 When the manager starts a member with `team_start`, you are asked first, on a card that reads
 `◆ manager wants to start @lexer`, with the brief under it and the clause `a new conversation;
 it spends until it stops`. When you allow it, this window opens the new conversation in the
-team's folder and gives it its handle. The member is handed the brief on its first request,
-marked `◆ brief from manager`: it is the manager's assignment, never your message, and the
-member's page shows it as the manager's. When the manager stops a member, this window stops it
-the way your own Stop would, and the reason the manager gave is kept in the traffic. Both
-happen only in a window that has those conversations open.
+team's folder **behind** the one you are in, never in front of it: what you were typing stays
+where it was. Its tab arrives at the end of the team's run, named `@lexer` until it has a title,
+and its working mark is the only thing that moves. The member starts on its own: it is handed
+the brief on its first request, marked `◆ brief from manager`, and its page shows the brief as a
+quoted card headed `◆ manager → @lexer`, never as your message. When the manager stops a member,
+this window stops it the way your own Stop would. Both happen only in a window that has those
+conversations open.
 
 ## What members say without being asked
 

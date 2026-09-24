@@ -205,9 +205,10 @@ included:
 
 A team can have one **manager**, a conversation that runs the team for you: you talk to it, it
 hands work to the members and tells you where things stand. While a team is shown, the first
-place on the tab strip is the manager's, a quiet `+ Manager` until there is one and `◆ harbor`
-after; `◆ Make manager` in the team switcher or in a tile's Teams list makes an existing
-conversation the manager. What a manager can do, and how members talk to each other, is on the
+place on the tab strip is the manager's, pinned at the left: a quiet `+ Manager` until there is
+one and `◆ Manager` after; `◆ Make this harbor's manager` in the team switcher or in a tile's
+Teams list makes an existing conversation the manager. While the manager is in front its
+**Traffic** rail is on the right (`alt+l` shows or hides it), and `alt+m` goes to the manager. What a manager can do, and how members talk to each other, is on the
 **team manager** page.
 
 ## Where teams are kept
