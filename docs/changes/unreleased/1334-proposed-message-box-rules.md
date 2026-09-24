@@ -10,5 +10,4 @@ invalidates: []
 opens a place underlines under the pointer, and the message-box seam draws the
 current model bold in the data hue, spells the effort `model (provider):effort`,
 carries no git branch in a conversation, and keeps home's `project: <path>` at
-the far right, cut on the right. `CLAUDE.md` gains a standing preference: a
-change to Home's message box is weighed for the conversation's in the same change.
+the far right, cut on the right.
