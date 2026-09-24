@@ -6,7 +6,9 @@ import (
 	"errors"
 	"flag"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // testProgram is a program with two commands, the default one taking a flag
@@ -255,5 +257,58 @@ func TestValidateHoldsTheGuideToOneAffordableParagraph(t *testing.T) {
 	program.Guide = strings.Repeat("x", GuideMax)
 	if err := program.Validate(); err != nil {
 		t.Fatalf("a guide of exactly GuideMax bytes refused: %v", err)
+	}
+}
+
+// A CHILD WHOSE HOST HAS GONE STOPS. Its host can die without a word — killed,
+// or taken by a closed terminal's hangup, which never reaches a child in a
+// process group of its own — and the child used to work on in the person's
+// folder after the folder's hold had gone with the host. Now the child sees
+// its parent change and ends as a stop would end it, its terminal written.
+func TestAChildStopsWhenItsHostIsGone(t *testing.T) {
+	t.Setenv(EnvModelAPI, "http://127.0.0.1:9/v1")
+	t.Setenv(EnvModelToken, "token")
+	previousPID, previousWatch := hostPID, hostWatch
+	t.Cleanup(func() { hostPID, hostWatch = previousPID, previousWatch })
+	var mu sync.Mutex
+	host := 4242
+	hostPID = func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return host
+	}
+	hostWatch = 5 * time.Millisecond
+	started := make(chan struct{})
+	inv, err := Parse(testProgram(func(ctx context.Context, host Host, args []string) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	}), []string{"b"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	done := make(chan string, 1)
+	go func() { done <- RunChild(context.Background(), inv, &stdout) }()
+	<-started
+	select {
+	case <-done:
+		t.Fatal("the child stopped while its host was still there")
+	case <-time.After(50 * time.Millisecond):
+	}
+	mu.Lock()
+	host = 1
+	mu.Unlock()
+	select {
+	case status := <-done:
+		reading, err := Read(&stdout, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status != StatusFail || reading.Terminal == nil || reading.Terminal.Message != "stopped before it finished" {
+			t.Fatalf("the child ended %q with %+v, want it stopped", status, reading.Terminal)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the child worked on after its host was gone")
 	}
 }

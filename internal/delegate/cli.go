@@ -12,9 +12,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrHelp is Parse's answer when the line asked for help and got it.
@@ -184,7 +186,12 @@ func commandHelp(program Delegate, command Command, fs *flag.FlagSet, out io.Wri
 // the plain fact that it said nothing — because a host reads a missing
 // terminal as work that did not finish and says only that, and the reason the
 // body knew would be lost.
+//
+// AND IT ENDS WHEN ITS HOST DOES, however the host went ([watchHost]).
 func RunChild(ctx context.Context, inv *Invocation, stdout io.Writer) string {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go watchHost(ctx, cancel)
 	api, _ := ModelAPIFromEnv()
 	emitter := NewEmitter(stdout)
 	host := &childHost{inv: inv, emitter: emitter, api: api, ending: StatusFail}
@@ -205,6 +212,41 @@ func RunChild(ctx context.Context, inv *Invocation, stdout io.Writer) string {
 		}
 	}
 	return host.ending
+}
+
+// hostPID reads the process a child's host is; a variable so a test can play
+// a host that goes away.
+var hostPID = os.Getppid
+
+// hostWatch is how often a child looks for its host.
+var hostWatch = time.Second
+
+// watchHost ends a child's context when the process that started it is gone,
+// and returns when the context ends either way.
+//
+// A HOST KILLED OUTRIGHT SENDS NOTHING. A child runs in a process group of its
+// own ([Run]), so a closed terminal's hangup never reaches it, and a host that
+// was killed, or died of that hangup, never sends the SIGTERM a stop is: the
+// child worked on in the person's folder, released by nobody, while the next
+// run took the folder the dead host's lock had let go. The child learns it
+// here instead — the parent it was started by is no longer its parent — and
+// stops exactly as a stop would have stopped it, its terminal written on the
+// way out; a record written to the dead host's pipe after that ends it anyway.
+func watchHost(ctx context.Context, cancel context.CancelFunc) {
+	host := hostPID()
+	tick := time.NewTicker(hostWatch)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			if hostPID() != host {
+				cancel()
+				return
+			}
+		}
+	}
 }
 
 // childHost is the Host of a program running as a child: records to stdout,

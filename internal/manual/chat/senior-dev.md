@@ -433,7 +433,7 @@ glm-5.1 and minimax-m2.7. A run with no crew set uses it, and so does a shell ru
 **At a shell you choose**: `--high` replaces the list, `--low` sets the summaries' models,
 and `--variant` sets the reasoning effort every call asks for.
 
-## What a shell run prints at the end — how long senior-dev ran, what it cost, waiting for the last price
+## What a shell run prints at the end — how long senior-dev ran, what it cost, waiting for the last price, a closed terminal
 
 At a shell, `codeaf senior-dev` first says where it works (`senior-dev · working in
 <folder>, on its own branch <branch>` in a repository), then prints each stage, step and
@@ -452,8 +452,14 @@ When ctrl-c or `--max-cost` stops the run in the middle of a model call, that ca
 paid for, and its price arrives by a receipt about twenty seconds later. The run waits for
 it before those last lines, and says so on stderr:
 `waiting up to 1m 10s for the price of 1 call that was cut short`. **A second ctrl-c leaves
-at once** instead of waiting; a price still owed is then missing from the run's line and
-from this machine's spending ledger.
+at once** instead of waiting; its folder is already finished by then, and only a price
+still owed is missing from the run's line and from this machine's spending ledger.
+
+**A closed terminal or a dropped ssh connection stops the run the way ctrl-c does**:
+senior-dev is stopped and its folder finished. If the codeaf running it is killed
+outright, senior-dev sees within a second that it is gone and stops; its folder is then
+settled by the next run started there, without a commit (see `If codeaf quits while
+senior-dev works`).
 
 Every call is written to this machine's spending ledger, filed as one piece of work named
 after the run's record folder (such as `20260924-150405.000000`). That folder also keeps

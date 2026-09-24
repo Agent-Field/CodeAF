@@ -22,6 +22,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
+	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -247,4 +248,30 @@ func newestRecordOf(t *testing.T, name string) string {
 		}
 	}
 	return newest
+}
+
+// A SHELL RUN FINISHES ITS FOLDER BEFORE IT WAITS FOR ITS LAST PRICES. That
+// wait is up to seventy seconds, a second ctrl-c during it leaves at once,
+// and the folder used to be finished only after it: the repository was left
+// on the program's branch with its work uncommitted and nothing said. By the
+// time the model API starts closing, the work is committed and the run's
+// record says when its program ended.
+func TestAShellRunFinishesItsFolderBeforeWaitingForPrices(t *testing.T) {
+	_, printed, _ := hostWithFolderChild(t)
+	repo := shellRepo(t)
+	var atClose struct{ status, files string }
+	previous := carriedAPIClose
+	carriedAPIClose = func(api *modelapi.Server) error {
+		atClose.status = shellGit(t, repo, "status", "--porcelain")
+		atClose.files = shellGit(t, repo, "ls-tree", "--name-only", "HEAD")
+		return previous(api)
+	}
+	t.Cleanup(func() { carriedAPIClose = previous })
+	err := runCarried(fakeFolderProgram(), []string{"--dir", repo, "make a file"})
+	if code := exitCodeOf(err); code != 0 {
+		t.Fatalf("the shell run left with %d (%v):\n%s", code, err, printed)
+	}
+	if atClose.status != "" || atClose.files != "made.txt" {
+		t.Fatalf("when the API began to close the folder held %q uncommitted and %q committed, want its work committed", atClose.status, atClose.files)
+	}
 }

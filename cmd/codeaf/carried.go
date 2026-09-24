@@ -87,19 +87,32 @@ func runCarried(program delegate.Delegate, args []string) error {
 	return runCarriedHost(ctx, inv)
 }
 
-// carriedSignals is a shell run's context: it ends on the first ctrl-c or
-// SIGTERM, and that first signal hands the rest back to the terminal.
+// carriedSignals is a shell run's context: it ends on the first ctrl-c,
+// SIGTERM or hangup, and that first signal hands ctrl-c and SIGTERM back to the
+// terminal.
 //
 // A SECOND CTRL-C LEAVES AT ONCE. After the first one the run still waits for
 // the program's grace, its last calls to finish and the price of a call the
 // stop cut short — up to about a minute and a half, said on stderr as it
 // happens. Holding the signals for all of that swallowed a second ctrl-c, and
 // a person who means "now" is owed a way out that does not wait for money to
-// be counted. What leaving costs is said in the manual: a price still being
-// waited for is then not in the run's line.
+// be counted. What leaving costs is said in the manual: the folder is
+// finished before that wait ([runCarriedHost]), so it is only a price still
+// being waited for that is then not in the run's line.
+//
+// A HANGUP IS A STOP, AND ONLY THE FIRST ONE IS HEARD. A closed terminal or a
+// dropped ssh connection sent SIGHUP, which nothing caught: the host died on
+// the spot, its program worked on unstopped, and the folder was left on the
+// program's branch with nothing said. It now stops the program and finishes
+// the folder the way ctrl-c does, and a second hangup — a shell passing one on
+// to its jobs as it exits — is ignored rather than allowed to kill that
+// finishing halfway.
 func carriedSignals() (context.Context, context.CancelFunc) {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	context.AfterFunc(ctx, stop)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	context.AfterFunc(ctx, func() {
+		signal.Ignore(syscall.SIGHUP)
+		stop()
+	})
 	return ctx, stop
 }
 
@@ -334,15 +347,27 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// worker reads it this way ([delegate.Result.ExitedAt]).
 	ended := result.ExitedAt(started, time.Now())
 	untell()
+	// THE FOLDER IS FINISHED THE MOMENT THE PROGRAM HAS GONE, before its last
+	// prices are waited for. That wait is up to seventy seconds, a second
+	// ctrl-c during it leaves at once, and a folder finished after it was a
+	// folder left on the program's branch with its leftovers uncommitted and
+	// nothing said, for the next run to find. Nothing in the finishing needs
+	// the API: the program's ending is read off its last record, and its
+	// process — its whole group, on a stop — is already gone.
+	view.closed(ended)
+	finish(view.endingWords())
 	// The program has exited: its API goes with it, so nothing it left behind
 	// can spend, and every row it cost is on disk before this process leaves —
 	// the close waits for the price of a call the stop cut in the middle.
-	_ = api.Close()
-	view.closed(ended)
+	_ = carriedAPIClose(api)
 	session.CloseUsage()
-	finish(view.endingWords())
 	return view.end(result, runErr, limited.Load(), api.Spent(), ended.Sub(started))
 }
+
+// carriedAPIClose closes a shell run's model API, which waits for the price
+// of a call a stop cut short; a variable so a test can see what is already
+// done by the time that wait begins.
+var carriedAPIClose = (*modelapi.Server).Close
 
 // carriedFolder readies the folder a shell run's program works in
 // (internal/session's PrepareProgramFolder); nil for a program that edits no

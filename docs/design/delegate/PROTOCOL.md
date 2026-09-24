@@ -176,6 +176,13 @@ SIGTERM to the process group, a 15-second grace, then SIGKILL. On SIGTERM the
 program stops starting new work, writes its terminal, and exits. A body that
 returns without writing a terminal gets one written for it (`delegate.RunChild`).
 
+A host that dies without a word — killed, or taken by a closed terminal's
+hangup, which never reaches a child in a process group of its own — sends no
+SIGTERM. The child looks for its parent once a second and, when the process that
+started it is no longer its parent, stops exactly as a SIGTERM would stop it
+(`delegate.RunChild`'s `watchHost`). A shell run's host itself treats SIGHUP as
+its first ctrl-c.
+
 ## 6. The conversation log and the action log
 
 `delegate-conversation.jsonl` in the task's record folder, one `delegate.Turn`
