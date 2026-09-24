@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // ── ORGANIZE: TEAMS SUGGESTED FOR THE CONVERSATIONS, NEVER APPLIED ALONE ────
@@ -74,8 +75,12 @@ type wallOrganize struct {
 	// and added what the Teams row says while Undo is offered.
 	undo   []team
 	doneAt time.Time
-	made   int
-	added  int
+	// undoMade and undoJoins are what the last Apply did, the teams it made by
+	// id and the members it added, so Undo can take exactly those back.
+	undoMade  []string
+	undoJoins []orgJoin
+	made      int
+	added     int
 	// cleanSig is the state of the conversations and teams when the last run
 	// found nothing to suggest, and cleanSet says there is one.
 	cleanSig uint64
@@ -525,7 +530,12 @@ func (a *app) wallOrganizeApply() {
 	}
 	prior := teamsClone(a.wall.teams)
 	now := a.now()
-	made, added := 0, 0
+	// What Apply does is worked out against the teams this window holds, once,
+	// as new teams (their ids minted here) and members added to teams that
+	// exist, and then made through [app.teamEdit], which makes it again to the
+	// file as it is on disk. The same two lists are what Undo takes back.
+	var fresh []team
+	var joins []orgJoin
 	for _, p := range o.props {
 		if !p.take {
 			continue
@@ -534,54 +544,120 @@ func (a *app) wallOrganizeApply() {
 		i := teamIndex(a.wall.teams, p.team)
 		if p.team == "" {
 			i = teamNamed(a.wall.teams, p.name)
+			if i < 0 {
+				for j := range fresh {
+					if strings.EqualFold(strings.TrimSpace(fresh[j].Name), strings.TrimSpace(p.name)) {
+						for _, m := range members {
+							if !teamHolds(fresh[j], m.Key) {
+								fresh[j].Members = append(fresh[j].Members, m)
+								joins = append(joins, orgJoin{team: fresh[j].ID, member: m})
+							}
+						}
+						members = nil
+					}
+				}
+				if members == nil {
+					continue
+				}
+			}
 		}
 		if i < 0 && p.team == "" && len(members) > 0 {
-			fresh := team{ID: newTeamID(), Name: p.name, Members: members, Made: now}
-			fresh.SetHue(p.hue)
-			a.wall.teams = append(a.wall.teams, fresh)
-			made++
+			made := team{ID: newTeamID(), Name: p.name, Members: members, Made: now}
+			made.SetHue(p.hue)
+			fresh = append(fresh, made)
 			continue
 		}
 		if i < 0 {
 			continue
 		}
 		t := a.wall.teams[i]
-		t.Members = append([]teamMember(nil), t.Members...)
 		for _, m := range members {
-			if !teamHolds(t, m.Key) {
-				t.Members = append(t.Members, m)
-				added++
+			if !teamHolds(t, m.Key) && !orgJoined(joins, t.ID, m.Key) {
+				joins = append(joins, orgJoin{team: t.ID, member: m})
 			}
 		}
-		a.wall.teams[i] = t
 	}
 	a.wallOrganizeClose()
+	made, added := len(fresh), len(joins)
 	if made == 0 && added == 0 {
 		return
 	}
 	o.undo, o.doneAt, o.made, o.added = prior, now, made, added
-	if err := a.teamSave(); err != nil {
+	o.undoMade, o.undoJoins = nil, joins
+	for _, t := range fresh {
+		o.undoMade = append(o.undoMade, t.ID)
+	}
+	err := a.teamEdit(func(f *teamstore.File) error {
+		for _, t := range fresh {
+			if teamIndex(f.Teams, t.ID) < 0 {
+				f.Teams = append(f.Teams, t.Clone())
+			}
+		}
+		for _, j := range joins {
+			if teamIndex(f.Teams, j.team) < 0 {
+				continue
+			}
+			if err := f.AddMember(j.team, j.member); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		a.note("the teams are kept for this window, but " + err.Error())
 	}
 }
 
-// wallOrganizeUndo puts the team list back exactly as it was before the last
-// Apply, while the Teams row still offers it. It is written as it was kept,
-// not through [app.teamSave], which would refresh the members' names.
+// orgJoin is one conversation Apply put into a team.
+type orgJoin struct {
+	team   string
+	member teamMember
+}
+
+// orgJoined reports whether joins already puts key into team id.
+func orgJoined(joins []orgJoin, id, key string) bool {
+	for _, j := range joins {
+		if j.team == id && j.member.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// wallOrganizeUndo takes back the last Apply, while the Teams row still offers
+// it: the teams it made are dropped and the members it added are taken out
+// again. It is made through [app.teamEdit] like every other edit, so a manager,
+// a handle or a member another process wrote since the Apply is kept, and with
+// nothing written in between the list is back exactly as it was.
 func (a *app) wallOrganizeUndo() {
 	o := &a.wall.org
 	if o.undo == nil || o.doneAt.IsZero() || a.now().Sub(o.doneAt) >= wallOrganizedFor {
 		return
 	}
-	a.wall.teams = o.undo
+	made, joins := o.undoMade, o.undoJoins
 	o.undo, o.doneAt = nil, time.Time{}
-	if teamIndex(a.wall.teams, a.wall.activeID) < 0 {
-		a.wall.activeID = ""
-	}
+	o.undoMade, o.undoJoins = nil, nil
 	a.wall.hover = wallHitRef{}
 	a.wall.stirred = true
 	a.touch()
-	if err := saveTeams(a.profileDir, a.wall.teams); err != nil {
+	err := a.teamEdit(func(f *teamstore.File) error {
+		for _, id := range made {
+			teamDrop(f, id)
+		}
+		for _, j := range joins {
+			if teamIndex(f.Teams, j.team) < 0 {
+				continue
+			}
+			if err := f.RemoveMember(j.team, j.member.Key); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if teamIndex(a.wall.teams, a.wall.activeID) < 0 {
+		a.wall.activeID = ""
+	}
+	if err != nil {
 		a.note("the teams are back for this window, but " + err.Error())
 	}
 }
