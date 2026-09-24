@@ -86,7 +86,7 @@ var teamReadSchema = `{"type":"object","properties":{"handle":{"type":"string","
 	teamArgSchema + `},"required":["handle"],"additionalProperties":false}`
 
 const teamSendDescription = "Send a message to one member, or to everyone in the team. It arrives at the start of the member's next step, marked as from the manager, never as the person. " +
-	"kind note is information; kind directive is an instruction the member should follow unless the person said otherwise in its own conversation. " +
+	"kind note is information and waits for the member's next turn; kind directive is an instruction the member should follow unless the person said otherwise in its own conversation, and it starts an idle member's turn. " +
 	"A member busy in a long tool call reads it when that returns; use team_stop to end its turn first."
 
 const teamSendSchema = `{"type":"object","properties":{"to":{"type":"string","description":"A member's handle, or everyone."},` +
@@ -110,7 +110,7 @@ const teamStartSchema = `{"type":"object","properties":{"handle":{"type":"string
 	teamArgSchema + `},"required":["handle","brief"],"additionalProperties":false}`
 
 const teamPostDescription = "Post a message in your team: to the room (every member and the manager), to one member by handle, or to the manager. " +
-	"It arrives at the start of their next step, marked as from you. Use it to report progress or a finding, to ask a teammate, or to say you are blocked."
+	"It arrives at the start of their next step, marked as from you; a post to the manager starts its turn if it is idle. Use it to report progress or a finding, to ask a teammate, or to say you are blocked."
 
 const teamPostSchema = `{"type":"object","properties":{"to":{"type":"string","description":"room, manager, or a member's handle."},` +
 	`"text":{"type":"string","description":"The message."},` +
@@ -388,7 +388,36 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 	if entry.To == teams.ToEveryone {
 		who = "everyone in " + strconv.Quote(team.Name)
 	}
-	return fmt.Sprintf("Sent a %s to %s. It arrives at the start of their next step; a member that is idle reads it when its conversation next runs.", kind, who), false, nil
+	if kind == teams.KindDirective {
+		// A DIRECTIVE WAKES, and a member nobody has open is opened so it can
+		// (team_wakewatch.go). The answer says what will happen and no more:
+		// whether the wake ran is the Traffic's to say, where the person reads it.
+		a.teamRouse(a.config.teamProfile(), team, teamSendTargets(team, entry))
+		if !team.Wakes() {
+			return fmt.Sprintf("Sent a directive to %s. This team's auto-wake is off, so a member that is idle reads it when its conversation next runs; a busy one at its next step.", who), false, nil
+		}
+		return fmt.Sprintf("Sent a directive to %s. A member that is idle starts a turn on it now, and a busy one reads it at its next step. "+
+			"Their replies and their finishing wake you when they arrive, so there is no need to wait or poll; the traffic shows each wake.", who), false, nil
+	}
+	return fmt.Sprintf("Sent a note to %s. It arrives at the start of their next step; a note wakes nobody, so a member that is idle reads it when its conversation next runs.", who), false, nil
+}
+
+// teamSendTargets is who a manager's message is addressed to: the one member,
+// or every member but the manager.
+func teamSendTargets(team teams.Team, entry teams.Entry) []teams.Member {
+	if entry.To != teams.ToEveryone {
+		if member, ok := team.ByHandle(entry.To); ok {
+			return []teams.Member{member}
+		}
+		return nil
+	}
+	var out []teams.Member
+	for _, member := range team.Members {
+		if member.Key != team.Manager {
+			out = append(out, member)
+		}
+	}
+	return out
 }
 
 // ── team_stop ───────────────────────────────────────────────────────────────
@@ -544,6 +573,13 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 	case teams.ToRoom:
 	default:
 		where = "@" + entry.To
+	}
+	if entry.To == teams.ToManager {
+		// A REPLY TO THE MANAGER WAKES IT, so a manager nobody has open is
+		// opened (team_wakewatch.go).
+		if manager, ok := team.Member(team.Manager); ok {
+			a.teamRouse(a.config.teamProfile(), team, []teams.Member{manager})
+		}
 	}
 	return "Posted to " + where + " in " + strconv.Quote(team.Name) + ". It arrives at the start of their next step.", false, nil
 }

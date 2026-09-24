@@ -43,7 +43,23 @@ func convKeyOf(t *testing.T, path string) string {
 
 // newTeamFixture makes the three transcripts and the team. managed says whether
 // the manager conversation is recorded as the team's manager.
+//
+// ITS TEAM HAS THE AUTO-WAKE OFF, so every test here reads delivery at the
+// turns it starts itself, with no turn started behind it by the traffic
+// watch; the wake's own tests build theirs with [newWakingTeamFixture].
 func newTeamFixture(t *testing.T, managed bool) teamFixture {
+	t.Helper()
+	return makeTeamFixture(t, managed, false)
+}
+
+// newWakingTeamFixture is [newTeamFixture] with the team's auto-wake on, as a
+// team is made in the product.
+func newWakingTeamFixture(t *testing.T) teamFixture {
+	t.Helper()
+	return makeTeamFixture(t, true, true)
+}
+
+func makeTeamFixture(t *testing.T, managed, wakes bool) teamFixture {
 	t.Helper()
 	root := t.TempDir()
 	fixture := teamFixture{profile: filepath.Join(root, "profile")}
@@ -67,7 +83,7 @@ func newTeamFixture(t *testing.T, managed bool) teamFixture {
 	}
 	fixture.teamID = teams.NewID()
 	err := teams.Update(fixture.profile, func(file *teams.File) error {
-		file.Teams = append(file.Teams, teams.Team{ID: fixture.teamID, Name: "harbor"})
+		file.Teams = append(file.Teams, teams.Team{ID: fixture.teamID, Name: "harbor", WakeOff: !wakes})
 		for _, member := range []teams.Member{
 			{Key: convKeyOf(t, fixture.manager), File: fixture.manager, Word: "Harbor manager", Handle: "boss"},
 			{Key: convKeyOf(t, fixture.web), File: fixture.web, Word: "web frontend", Handle: "web"},

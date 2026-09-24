@@ -131,7 +131,7 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 		if !role.managed || role.manager || role.handle == "" {
 			continue
 		}
-		_ = teams.AppendTraffic(profile, role.id, teams.Entry{
+		err := teams.AppendTraffic(profile, role.id, teams.Entry{
 			At:     event.at,
 			Kind:   teams.KindEvent,
 			From:   role.handle,
@@ -140,6 +140,32 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 			Text:   event.text,
 			State:  event.state,
 		})
+		if err != nil || !role.wakes {
+			continue
+		}
+		switch event.state {
+		case teams.StateFinished, teams.StateFailed, teams.StateAsking:
+			// These wake the manager, so a manager nobody has open is opened
+			// (team_wakewatch.go).
+			a.rouseManager(profile, role)
+		}
+	}
+}
+
+// rouseManager opens the manager of role's team if nothing holds it.
+func (a *Agent) rouseManager(profile string, role teamRole) {
+	a.team.mu.Lock()
+	file := a.team.file
+	a.team.mu.Unlock()
+	if file == nil {
+		return
+	}
+	team, ok := file.Team(role.id)
+	if !ok {
+		return
+	}
+	if manager, ok := team.Member(team.Manager); ok {
+		a.teamRouse(profile, team, []teams.Member{manager})
 	}
 }
 
