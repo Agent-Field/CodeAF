@@ -156,3 +156,19 @@ func TestADelegatedRunBuiltOnAnotherCommitIsWarnedAbout(t *testing.T) {
 		t.Fatalf("work built on another commit landed without a word: %q", notes)
 	}
 }
+
+// A PROGRAM RUN THAT CHANGED NOTHING LEAVES NO BRANCH. There is nothing on an
+// empty branch to merge, and every look-only, failed or crashed run used to
+// leave one more `task/*` in the person's repository.
+func TestADelegatedRunThatChangedNothingLeavesNoBranch(t *testing.T) {
+	repo, _, row, notes := delegatedRunThatDid(t, nil, func(*testing.T, string) {})
+	if branches := strings.TrimSpace(gitOut(t, repo, "branch", "--list", "task/*")); branches != "" {
+		t.Fatalf("a run that changed nothing left a branch behind: %q", branches)
+	}
+	if row.Branch != "" {
+		t.Fatalf("the row names a branch %q over no work", row.Branch)
+	}
+	if !strings.Contains(strings.Join(notes, "\n"), "nothing to land: the run's working copy holds no change") {
+		t.Fatalf("the page does not say there was nothing to land: %q", notes)
+	}
+}

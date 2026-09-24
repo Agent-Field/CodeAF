@@ -117,7 +117,7 @@ branch, and the branch it had moved to (even one of yours) is never reset by cod
 task's page names that branch.
 
 When there is nothing to land, it says `nothing to land: the run's working copy holds no
-change`. A folder with no git history is the exception: the program works in it directly.
+change`, and the task's branch, which would hold nothing, is deleted. A folder with no git history is the exception: the program works in it directly.
 
 A program that only answers works in your folder in place and changes nothing. Its answer
 arrives in the conversation the way a task's landing does.

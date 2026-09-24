@@ -1013,6 +1013,17 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 		return landing
 	}
 	merge, said, _, _ := run.tree.comeHome(run.title, nil, a.signsGitWork())
+	if merge == mergeKept && run.tree.keepsBranch && dropEmptyTaskBranch(run.tree, run.startSha) {
+		// AN EMPTY BRANCH IS NOT A LANDING. The branch was kept for the person
+		// to merge, and there is nothing on it to merge: every look-only,
+		// failed or crashed program run left one more `task/*` branch at the
+		// commit it started from in the person's repository. It is deleted, and
+		// the run says what it always said about a copy that holds no change.
+		if landing.Refused == "" {
+			landing.Refused = runNothingToLand
+		}
+		return landing
+	}
 	if landing.Refused != "" {
 		// NOTHING TO LAND IS STILL AN ENDING: the copy was given back above, and
 		// the sentence the engine answered is the whole account.
@@ -1054,6 +1065,24 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 		}
 	}
 	return landing
+}
+
+// dropEmptyTaskBranch deletes a kept task branch that holds nothing past the
+// commit its copy started from, and reports whether it did. Only a branch
+// whose tip IS that commit goes, so a branch holding even one commit of the
+// program's is never touched; the repository's lock is taken the way every
+// landing's branch work takes it.
+func dropEmptyTaskBranch(tree taskTree, startSha string) bool {
+	if strings.TrimSpace(tree.root) == "" || strings.TrimSpace(tree.branch) == "" || startSha == "" {
+		return false
+	}
+	defer lockGitRoot(tree.place, tree.root)()
+	tip, err := git(tree.root, "rev-parse", "--verify", "-q", "refs/heads/"+tree.branch)
+	if err != nil || strings.TrimSpace(tip) != startSha {
+		return false
+	}
+	_, err = git(tree.root, "branch", "-D", tree.branch)
+	return err == nil
 }
 
 // deliverBeltRunLanding writes the run's digest into the conversation record.

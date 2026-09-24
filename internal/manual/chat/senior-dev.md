@@ -124,7 +124,8 @@ project's build and tests (`senior-dev observed: …`). Read the second for "did
 Its own notes live in `.senior-dev/` in the copy: the brief, its checklist, the command
 it pinned and its session database. That folder is kept out of git, so it never lands.
 
-When a run changed nothing, there is nothing to land and the task says so. On a folder
+When a run changed nothing, there is nothing to land and the task says so; its branch,
+which would hold nothing, is deleted rather than left in your repository. On a folder
 with no git history nothing is committed at all: the work is already in the folder.
 
 ## When it moved to another branch in its copy — "work on a new branch", my own branch, a detached HEAD
