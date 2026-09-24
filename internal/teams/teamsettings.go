@@ -236,12 +236,20 @@ func (f *File) Effective(id string, d Defaults) Effective {
 }
 
 // Depth is how many levels team id stands at, the top level being 1, and 0
-// for an id not in the file.
+// for an id not in the file. The root team (root.go) is not a level: it is 0,
+// and a team directly under it is 1.
 func (f *File) Depth(id string) int {
-	if _, ok := f.Team(id); !ok {
+	t, ok := f.Team(id)
+	if !ok || t.Root {
 		return 0
 	}
-	return 1 + len(f.Ancestors(id))
+	depth := 1
+	for _, a := range f.Ancestors(id) {
+		if !a.Root {
+			depth++
+		}
+	}
+	return depth
 }
 
 // CanNest reports whether a new sub-team may be made under parent: the parent

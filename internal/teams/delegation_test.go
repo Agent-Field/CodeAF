@@ -433,3 +433,53 @@ func writeRaw(t *testing.T, dir, raw string) {
 	must(t, os.MkdirAll(dir, 0o700))
 	must(t, os.WriteFile(Path(dir), []byte(raw), 0o600))
 }
+
+// THE GLOBAL MANAGER IS THE MANAGER OF A REAL ROOT, AND EVERY RULE HOLDS
+// WITHOUT A SPECIAL CASE. Making the root moves every top-level team under it;
+// parties in two trees then meet at the root instead of the person; a
+// top-level manager reports to it; its override is inherited as `from All
+// teams`; it is not a level; a team made later at the top lands under it; it
+// cannot be closed; and dissolving it puts the tree back.
+func TestTheRootHoldsEveryTeamAndIsNotALevel(t *testing.T) {
+	f := managed()
+	f.Teams[1].Members = []Member{{Key: "d1"}}
+	f.Teams[3].Members = append(f.Teams[3].Members, Member{Key: "y1"})
+	if _, ok := f.LCA("d1", "y1"); ok {
+		t.Fatal("two trees met before there was a root")
+	}
+	root := f.MakeRoot(time.Time{})
+	must(t, f.AddMember(root, Member{Key: "gm"}))
+	must(t, f.SetManager(root, "gm"))
+	must(t, f.SetSettings(root, func(s *Settings) { s.CapUSDDay = ptrF(20) }))
+	tidy(f.Teams)
+	if lca, ok := f.LCA("d1", "y1"); !ok || lca.ID != root {
+		t.Fatalf("two trees meet at %v %v, want the root", lca.Name, ok)
+	}
+	if h, _ := f.Home("hm"); h.Team != root {
+		t.Fatalf("harbor's manager reports to %+v, want the root", h)
+	}
+	if e := f.Effective("cccccccccccc", defaults); e.CapUSDDay != 20 || e.CapFrom.Words() != "from All teams" {
+		t.Fatalf("the root's cap: %+v", e)
+	}
+	if f.Depth(root) != 0 || f.Depth("aaaaaaaaaaaa") != 1 || f.Depth("cccccccccccc") != 3 {
+		t.Fatal("the root counted as a level")
+	}
+	f.Teams = append(f.Teams, Team{ID: "eeeeeeeeeeee", Name: "late"})
+	tidy(f.Teams)
+	if late, _ := f.Team("eeeeeeeeeeee"); late.Parent != root {
+		t.Fatal("a team made later at the top did not land under the root")
+	}
+	if err := f.Close(root, time.Time{}, ""); err != ErrRoot {
+		t.Fatalf("the root closed: %v", err)
+	}
+	if err := f.SetParent(root, "aaaaaaaaaaaa"); err != ErrRoot {
+		t.Fatalf("the root moved under a team: %v", err)
+	}
+	f.DissolveRoot()
+	if _, ok := f.Root(); ok {
+		t.Fatal("the root survived its dissolving")
+	}
+	if tm, _ := f.Team("aaaaaaaaaaaa"); tm.Parent != "" {
+		t.Fatal("harbor was not put back at the top")
+	}
+}
