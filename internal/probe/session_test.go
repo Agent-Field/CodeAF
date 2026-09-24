@@ -228,3 +228,36 @@ func TestNoSessionAndTimeout(t *testing.T) {
 	}
 	time.Sleep(50 * time.Millisecond)
 }
+
+func TestWaitReportsCurrentRevisionOnTimeout(t *testing.T) {
+	m := openIsolated(t, "t8")
+	if _, err := m.Start("s8", "/bin/sh", "", []string{}, nil, Dims{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// Two acts move the revision to 2.
+	for i := 0; i < 2; i++ {
+		if _, err := m.Act("s8", ActRequest{Text: "x"}); err != nil {
+			t.Fatalf("Act %d: %v", i, err)
+		}
+	}
+	// Keep the screen moving so the bounded wait must time out.
+	// A counter keeps every capture different, so the pane never looks quiet.
+	if _, err := m.Act("s8", ActRequest{Text: "i=0; while true; do i=$((i+1)); echo tick-$i; sleep 0.1; done"}); err != nil {
+		t.Fatalf("act loop text: %v", err)
+	}
+	if _, err := m.Act("s8", ActRequest{Keys: "Enter"}); err != nil {
+		t.Fatalf("act Enter: %v", err)
+	}
+	settled, obs, err := m.Wait("s8", ActWait{QuietMs: 200, TimeoutMs: 800})
+	if err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+	if settled {
+		t.Fatal("chatty session should not settle")
+	}
+	// Two setup acts + loop text + Enter = revision 4; the timed-out wait
+	// must still report the current revision, not zero.
+	if obs.Revision != 4 {
+		t.Fatalf("timeout wait reported revision %d, want current 4", obs.Revision)
+	}
+}

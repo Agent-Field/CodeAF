@@ -193,3 +193,109 @@ exit 1
 		}
 	}
 }
+
+// chattyStubCodeaf writes a stand-in that keeps the pane moving forever, so
+// a bounded wait can be proved to time out against a real tmux pane.
+func chattyStubCodeaf(t *testing.T) string {
+	t.Helper()
+	p := t.TempDir() + "/codeaf"
+	script := "#!/bin/sh\necho ready\ni=0\nwhile true; do i=$((i+1)); echo tick-$i; sleep 0.1; done\n"
+	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestRecordVerbReadsRecording drives the real CLI: a session that was acted
+// on, then read back through the `record` verb, must return the same lines
+// the recording holds — one JSON object on stdout.
+func TestRecordVerbReadsRecording(t *testing.T) {
+	base := shortBase(t)
+	bin := stubCodeaf(t)
+	if c, out := runCLI(t, base, "start", "--session", "recv", "--profile", "reviewer", "--bin", bin); c != 0 {
+		t.Fatalf("start: exit %d\n%s", c, out)
+	}
+	defer runCLI(t, base, "finish", "--session", "recv")
+	if c, out := runCLI(t, base, "act", "--session", "recv", "--text", "hello probe\n"); c != 0 {
+		t.Fatalf("act: exit %d\n%s", c, out)
+	}
+	c, out := runCLI(t, base, "record", "--session", "recv")
+	if c != 0 {
+		t.Fatalf("record: exit %d\n%s", c, out)
+	}
+	var env struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			SessionID string         `json:"session_id"`
+			Count     int            `json:"count"`
+			Records   []probe.Record `json:"records"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &env); err != nil {
+		t.Fatalf("record stdout not one JSON object: %q (%v)", out, err)
+	}
+	if !env.OK || env.Data.Count < 1 || len(env.Data.Records) != env.Data.Count {
+		t.Fatalf("bad record envelope: %+v", env)
+	}
+	if env.Data.Records[0].Verb != "act" {
+		t.Fatalf("first record verb %q, want act", env.Data.Records[0].Verb)
+	}
+}
+
+// TestActWaitTimeoutExitsTimeout proves act --wait reports TIMEOUT on the
+// wire, not BAD_REQUEST, when the bounded wait runs out.
+func TestActWaitTimeoutExitsTimeout(t *testing.T) {
+	base := shortBase(t)
+	bin := chattyStubCodeaf(t)
+	if c, out := runCLI(t, base, "start", "--session", "tw", "--profile", "reviewer", "--bin", bin); c != 0 {
+		t.Fatalf("start: exit %d\n%s", c, out)
+	}
+	defer runCLI(t, base, "finish", "--session", "tw")
+	// The chatty stub keeps the pane moving, so quiet is never reached.
+	c, out := runCLI(t, base, "act", "--session", "tw", "--wait", "200,800")
+	if c == 0 {
+		t.Fatalf("wait-only act on chatty pane succeeded:\n%s", out)
+	}
+	var e envelope
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &e); err != nil {
+		t.Fatalf("act timeout stdout not JSON: %q (%v)", out, err)
+	}
+	if e.Error == nil || e.Error.Code != "TIMEOUT" {
+		t.Fatalf("want error code TIMEOUT, got %+v", e.Error)
+	}
+}
+
+// TestWaitReportsCurrentRevision proves the wait verb returns the session's
+// current revision even when the wait times out.
+func TestWaitReportsCurrentRevision(t *testing.T) {
+	base := shortBase(t)
+	bin := chattyStubCodeaf(t)
+	if c, out := runCLI(t, base, "start", "--session", "wrev", "--profile", "reviewer", "--bin", bin); c != 0 {
+		t.Fatalf("start: exit %d\n%s", c, out)
+	}
+	defer runCLI(t, base, "finish", "--session", "wrev")
+	for i := 0; i < 2; i++ {
+		if c, out := runCLI(t, base, "act", "--session", "wrev", "--text", "x\n"); c != 0 {
+			t.Fatalf("act %d: exit %d\n%s", i, c, out)
+		}
+	}
+	// The chatty stub keeps the pane moving from here on.
+	c, out := runCLI(t, base, "wait", "--session", "wrev", "--quiet", "200", "--timeout", "800")
+	if c != 0 {
+		t.Fatalf("wait: exit %d\n%s", c, out)
+	}
+	var wd struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Settled  bool   `json:"settled"`
+			Reason   string `json:"reason"`
+			Revision int    `json:"revision"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &wd); err != nil {
+		t.Fatalf("wait stdout not JSON: %q (%v)", out, err)
+	}
+	if wd.Data.Settled || wd.Data.Reason != "timeout" || wd.Data.Revision != 2 {
+		t.Fatalf("want timeout at revision 2, got %+v", wd.Data)
+	}
+}

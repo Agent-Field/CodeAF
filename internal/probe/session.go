@@ -41,6 +41,11 @@ type SessionRec struct {
 
 var errNoSession = errors.New("no such probe session")
 
+// ErrWaitTimeout marks a bounded wait that did not reach its condition in
+// time. It is reported on the wire as TIMEOUT, never BAD_REQUEST: the request
+// itself was well-formed.
+var ErrWaitTimeout = errors.New("wait timeout")
+
 func Open(root string) (*Manager, error) {
 	if root == "" {
 		return nil, fmt.Errorf("probe root name required")
@@ -299,7 +304,10 @@ func (m *Manager) Act(sessionID string, req ActRequest) (ActData, error) {
 	}
 	if req.Wait != nil {
 		if _, err := m.waitQuiet(rec, req.Wait.QuietMs, req.Wait.TimeoutMs); err != nil {
-			return data, fmt.Errorf("wait did not reach quiet within timeout")
+			// The act itself went through; only the bounded wait timed out.
+			// That is a TIMEOUT, not a bad request — callers must be able to
+			// tell the difference (errors.Is).
+			return data, fmt.Errorf("%w: wait did not reach quiet within timeout", ErrWaitTimeout)
 		}
 	}
 	rec.Revision++
@@ -412,12 +420,17 @@ func (m *Manager) Wait(sessionID string, w ActWait) (bool, ObserveData, error) {
 		return false, ObserveData{}, err
 	}
 	settled, err := m.waitQuiet(rec, w.QuietMs, w.TimeoutMs)
+	// Always report the CURRENT revision, even on timeout: a caller that
+	// timed out still needs the revision to expect on its next act.
+	obs, oerr := m.Observe(sessionID)
 	if err != nil {
-		return false, ObserveData{}, nil // timeout: a truthful answer, not an error
+		if oerr != nil {
+			return false, ObserveData{}, nil // timeout, and the screen could not be read
+		}
+		return false, obs, nil // timeout: a truthful answer, not an error
 	}
-	obs, err := m.Observe(sessionID)
-	if err != nil {
-		return settled, ObserveData{}, err
+	if oerr != nil {
+		return settled, ObserveData{}, oerr
 	}
 	return settled, obs, nil
 }

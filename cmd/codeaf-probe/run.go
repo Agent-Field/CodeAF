@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,6 +36,8 @@ func run(argv []string) int {
 		return runFinish(rest)
 	case "fixture-prepare", "fixture-reset":
 		return runFixture(verb, rest)
+	case "record":
+		return runRecord(rest)
 	case "record-outcome":
 		return runRecordOutcome(rest)
 	default:
@@ -235,6 +239,11 @@ func runAct(argv []string) int {
 	}
 	data, obs, aerr := probe.RecordedAct(m, id, req)
 	if aerr != nil {
+		if errors.Is(aerr, probe.ErrWaitTimeout) {
+			// The keys went through; only the bounded wait timed out.
+			// TIMEOUT, not BAD_REQUEST.
+			return fail(probe.CodeTimeout, aerr.Error())
+		}
 		return failBadRequestMsg(aerr.Error())
 	}
 	if data.Stale {
@@ -295,11 +304,11 @@ func runWait(argv []string) int {
 	if err != nil {
 		return failBadRequestMsg(err.Error())
 	}
-	settled, _, err := m.Wait(id, probe.ActWait{QuietMs: q, TimeoutMs: t})
+	settled, obs, err := m.Wait(id, probe.ActWait{QuietMs: q, TimeoutMs: t})
 	if err != nil {
 		return failNoSession(err)
 	}
-	wd := waitData{Settled: settled, Reason: "quiet"}
+	wd := waitData{Settled: settled, Reason: "quiet", Revision: obs.Revision}
 	if !settled {
 		wd.Reason = "timeout"
 	}
@@ -373,6 +382,48 @@ func runFixture(verb string, argv []string) int {
 // evidence file: how the journey ended and why. A CI journey whose assertion
 // fails calls this on its way out, then exits non-zero — a failure lands in
 // the recording, it never silently passes.
+// recordData is the data payload of record: the session's evidence file,
+// read back whole, in order, as compact JSON.
+type recordData struct {
+	SessionID string         `json:"session_id"`
+	Count     int            `json:"count"`
+	Records   []probe.Record `json:"records"`
+}
+
+// runRecord reads a session's recording file back whole (redacted, compact
+// JSONL rendered as one JSON object on stdout).
+func runRecord(argv []string) int {
+	id := ""
+	for i := 0; i < len(argv); i++ {
+		if argv[i] == "--session" {
+			i++
+			if i < len(argv) {
+				id = argv[i]
+			}
+		} else {
+			return failBadRequestMsg("record: unknown flag " + argv[i])
+		}
+	}
+	if id == "" {
+		return failBadRequestMsg("record: --session required")
+	}
+	m, err := probe.Open(defaultRoot())
+	if err != nil {
+		return failBadRequestMsg(err.Error())
+	}
+	recs, err := probe.ReadRecords(m, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such file") {
+			return failNoSession(fmt.Errorf("session %q: no recording yet", id))
+		}
+		return failBadRequestMsg(err.Error())
+	}
+	if recs == nil {
+		recs = []probe.Record{}
+	}
+	return emit(true, recordData{SessionID: id, Count: len(recs), Records: recs}, "", "")
+}
+
 func runRecordOutcome(argv []string) int {
 	id, outcome, reason := "", "", ""
 	for i := 0; i < len(argv); i++ {
