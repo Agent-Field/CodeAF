@@ -62,19 +62,36 @@ While the manager is in front, the message box says `to ◆ manager`, and keeps 
 rule above the box once you start typing: everything you type goes to the manager and nowhere
 else. With a member in front the box says `to @web` the same way.
 
-On the right is the **Traffic** rail, the log of who told whom inside the team, newest at the
-bottom:
+On the right is the **Traffic** rail: who told whom inside the team, as threads. A thread is
+one message and everything that answered it, and the thread that moved last is at the top,
+straight under the header:
 
-- `◆ → @web  do  take the scope model` for a directive, and `fyi` for a note;
-- `@parser → @web  fyi  the lexer is in` for a member's message;
-- `◆ stopped @web  going in circles` and `◆ started @lexer  rewrite the lexer…`, with the
-  reason and the brief;
-- `@web  finished`, `failed`, and `asking`, which is the only line in the needs-you amber;
-- `codeaf  @review is now @security` when a member's handle changed.
+```
+Traffic                                  hide alt+l
+◆ manager → @agent @checking @review  do        2m
+  Please provide a brief status update on your part
+├ @checking  ✓ Status update: the lexer is in   1m
+├ @agent  working…
+└ @review  asking: may I run the migration?    now
+```
 
-Each row ends with its age (`now`, `2m`, `3h`). Your own messages are not on the rail; they are
-in the manager's conversation. Point at a row to read its whole text in the hint line, and press
-it to go to that member; a row about the whole team (`◆ → all`) is not a door.
+- The header says who sent it, to whom, and `do` for a directive or `fyi` for a note. When the
+  rail is too narrow for every handle it names whom it can and counts the rest, `+2`.
+- The message is on its own dim line under it.
+- Each member who answered, or was started on it, has one line of the tree, in the order it
+  happened. `working…` is a member the message woke that has not answered yet; `✓` is a member
+  that answered and finished its turn, `✗` one whose turn failed, and `asking:` is a member
+  waiting on you, the only line in the needs-you amber.
+- `◆ manager stopped @web · going in circles`, `◆ manager started @lexer` with the brief under
+  it, and `codeaf  @review is now @security` are lines of their own, as is anything written
+  before threads.
+
+Headers and answers end with their age (`now`, `2m`, `3h`); on a narrow rail only the header
+does. Your own messages are not on the rail; they are in the manager's conversation. Every
+`@handle` is a link, as in the chat: point at it for the member's title in the hint line, press
+it to open that member (resumed first when this window does not have it open). Point at a
+message's words to read them whole in the hint line, press them to lay them out in full under
+the row, and press again to fold them. Nothing on the rail moves your focus but a handle.
 
 The rail takes the right-hand column while the manager is in front. The task column folds to its
 edge beside it; press that edge or `ctrl+g` to bring the tasks back, which puts the Traffic away.
@@ -146,7 +163,7 @@ on one waits for you.
 |---|---|---|
 | `team_status` | every member's handle, title and state (running, asking, idle, failed), the question waiting, the files touched, and recent traffic | no |
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
-| `team_send` | a message to one member or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
+| `team_send` | a message to one member, to several (one message, every handle in `to`), or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does: nothing is deleted, and its background tasks and jobs keep running | no |
 | `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request | yes |
 
@@ -159,6 +176,30 @@ Like any tool, each can be set to ask or allow in `/settings` under the tool app
 A member of a team that has a manager has `team_post`: a message to the room (every member and
 the manager), to one teammate by handle, or to the manager. Members use it to report progress,
 share a finding, ask a teammate, or say they are blocked.
+
+## Threads: what answers what
+
+Every line a member is handed carries its number, `◆ directive from manager #42: …`. A
+member's `team_post` to the manager answers the last message the manager sent it, by itself;
+to answer another it names it, `thread: #41`. The member's finishing, failing or asking, and
+the wake that started it, answer the same message, which is how the rail and the chats draw
+them under it. A message to several members is one message, so the question and its answers
+are one thread however many were asked.
+
+**In the manager's chat** a `team_send` reads as the head of its thread,
+`team_send ◆ to @agent @checking @review · do`, with the message quoted under it and each
+answer attached under that in muted ink as it arrives, one line each. Press an answer's words
+to read it in full and again to fold it; point at them for the whole text in the hint line; a
+handle opens its member. A turn that sent one is not folded into a `worked` chip, so the
+thread stays where you can see it.
+
+The answers also reach the manager as its team's note. So nothing is shown twice, a note
+whose answers are already under their question reads as one dim line,
+`· @checking @review answered · in the thread above`; a line that answers nothing is drawn in
+full as before.
+
+**In a member's chat** the manager's message is the quoted card it always was, headed
+`◆ manager → @web  do`, and the member's own answers to it hang under it the same way.
 
 ## When messages arrive
 

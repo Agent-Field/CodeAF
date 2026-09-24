@@ -150,10 +150,8 @@ and removing it returns it to an ordinary chat with its history. What makes it s
   a `+ Manager` placeholder, and nothing costs anything;
 - its layout is split: the person's conversation with the manager on the left, a **Traffic**
   rail on the right. Whatever the person types goes to the manager, always, and the composer
-  says so (`to ◆ manager`, on the box's rule once there is text). Traffic shows routed
-  messages (`@parser → @web  fyi`, `◆ → @web  do`) with their age, stops and starts with the
-  reason and the brief, and events (finished, failed, asking in the needs-you amber), every
-  row with a member behind it clickable to open that member. The rail holds the right-hand
+  says so (`to ◆ manager`, on the box's rule once there is text). Traffic is drawn as
+  threads (below, **Traffic is threaded**). The rail holds the right-hand
   column while the manager is in front, the task column folding to its edge beside it; it
   is put away with `hide alt+l` to a `Traffic` edge that counts what arrived, and on a narrow
   window it is that edge and a card laid over the lower conversation;
@@ -264,6 +262,47 @@ first read is asked off the loop). The welcome's `Teams` flag says an engine has
 engine without it gets no seam, and the window turns teams and the manager off with the line
 it has always said rather than reading the laptop's file, which the far session never sees.
 
+**Traffic is threaded (ruled and built 2026-09-24).** Measured on the owner's screen, one
+question to three members was twelve rows at the bottom of an empty column: the question three
+times, three wakes, three replies cut to two words, the manager's wake and two finishings, with
+nothing saying which reply answered which question. So:
+
+- **One entry per message.** `team_send` takes several handles (`to: "@agent @checking"`) and
+  writes ONE entry, `to: several` with `handles`, or `to: everyone`; delivery asks
+  `teams.Entry.Addressed`, so each named member is told once and nobody else is.
+- **An answer names what it answers.** `teams.Entry.Answers` is the id of the entry a line
+  answers. A member is told each line's number (`◆ directive from manager #42: …`) and
+  remembers the last line its manager sent it; its next `team_post` to the manager answers that
+  line unless it names another with `thread`, and the events its turn raises (finished, failed,
+  asking, the wake that started it, a failure to wake it) answer the same line. `team_send`'s
+  answer carries the number too. Entries written before this answer nothing and read as
+  threads of their own; the field travels in the entry's JSON, so `--host` needs nothing new.
+- **The rail is threads, the newest activity at the top**, straight under the header with no
+  space above; inside a thread everything is in the order it happened. A thread is a header
+  (`◆ manager → @agent @checking @review  do  2m`, `+2` for handles that do not fit, never the
+  tag), the message on its own dim line, and the answers as a tree (`├ @checking  ✓ Status
+  update: …  1m`, `└ @review  working…`). Wakes are not rows: a woken member reads `working…`
+  until it answers; a finishing is the `✓` on its answer or its own `✓ finished` line, a failure
+  `✗`, and a member asking the person is the one line in the needs-you amber. Stops, starts,
+  handle changes and unthreaded entries stay one line each.
+- **Handles are links there too**, inked and grounded as in the chat, hint `Open @x · title ·
+  click` (`Resume` when not open here), a press opening or resuming the member. A message's words
+  are a door: hover puts them whole in the hint line, a press lays them out under the row, a
+  second folds them. Rows are cached on the entries, width, pointer, minute and what is laid out.
+- **The manager's chat has the thread where it asked.** A `team_send` row reads
+  `team_send ◆ to @agent @checking @review · do`, the words quoted under it, and each member's
+  answer attached under that in muted ink as the Traffic cache brings it, one line each; the
+  same press and hover as the rail. A turn with a `team_send` in it is not folded into a work
+  chip, because its answers arrive after it ends.
+- **The member's chat mirrors it.** The manager's line is the quoted card it always was, and the
+  member's own answers to it hang under it the same way.
+- **No answer is drawn twice.** A member's reply also reaches the manager's model as a delivery
+  note, which replays as a team card. In the manager's chat an answer already under its
+  question's card is left out of that card, and a card left with nothing is one dim line,
+  `· @checking @review answered · in the thread above`. The model's transcript is unchanged; only
+  the drawing folds. A delivery inside a wake note is read as one too, so a woken member's
+  directive draws as the manager's card rather than a dim line.
+
 **Traffic is the only channel between the UI and the session.** A conversation's identity in
 a team is its transcript path, the same key the tab strip uses. The session side writes
 messages, stops and starts as Traffic entries and delivers what is addressed to it before
@@ -303,7 +342,8 @@ the person to type again is not running a team, so the lines that ask for an ans
   needs-you amber, and a note for its next turn. The person's next message to it resets the
   count. Wakes spend through the ordinary budgets.
 - **Visibility.** Every wake is a Traffic event, `◆ woke @web` and `@web woke ◆`, and every
-  refusal is one too.
+  refusal is one too. The rail draws a member's wake as `working…` in the thread it answers and
+  does not draw the manager's; a refusal is the member's line in that thread.
 - **Off switch.** A team's `wake` field in `teams.json`, on when absent and written only as
   `"wake": false`. With it off, a directive, a reply and a `team_start` start no turn: the
   new member is opened and reads its brief on the first turn something else starts, and the
