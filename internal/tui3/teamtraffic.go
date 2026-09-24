@@ -106,6 +106,12 @@ type trafficState struct {
 	// own, as it keeps its own tabs.
 	hidden bool
 	over   bool
+	// open is every message the person laid out in full on the rail or under
+	// a thread card, by team and entry id (teamthread.go), and opened counts the
+	// presses that changed it, which is what the rail's cache keys on. Memory
+	// only, and this window's.
+	open   map[string]bool
+	opened int
 	// The last frame's rail, for the pointer (teamrail.go).
 	drawn trafficDrawn
 	cache trafficCache

@@ -9,33 +9,33 @@ import (
 // ── DRAWING THE RAIL (teamrail.go says what it is) ─────────────────────────
 
 // trafficBody is the rail's rows for team t, height tall and width wide: the
-// header, and the newest entries at the bottom, as many as fit. It records
-// where each row goes on a press, and keeps what it drew for the next frame.
+// header, and under it the threads, the newest at the top, as many as fit. It
+// records each row's doors, and keeps what it drew for the next frame.
 // Frame-safe: the cache only.
-func (a *app) trafficBody(t team, height, width int) ([]string, []string, []string, hudSpan) {
+func (a *app) trafficBody(t team, height, width int) ([]string, [][]trafficDoor, []string, hudSpan) {
 	rows := a.traffic.rows[t.ID]
 	last := ""
 	if len(rows) > 0 {
 		last = rows[len(rows)-1].ID
 	}
-	hot := -1
+	hot, hotDoor := -1, -1
 	if a.hot.kind == hoverTraffic {
-		hot = a.hot.index
+		hot, hotDoor = a.hot.index, a.hot.entry
 	}
 	key := trafficCacheKey{
 		team: t.ID, last: last, seen: a.traffic.seen[t.ID], rows: len(rows),
-		width: width, height: height, hot: hot, hideHot: a.hot.kind == hoverTrafficHide,
-		ascii: a.pal.ascii, minute: a.now().Unix() / 60,
+		width: width, height: height, hot: hot, hotDoor: hotDoor, open: a.traffic.opened,
+		hideHot: a.hot.kind == hoverTrafficHide, ascii: a.pal.ascii, minute: a.now().Unix() / 60,
 	}
 	if c := &a.traffic.cache; c.out != nil && c.key == key {
-		return c.out, c.lines, c.hints, c.hide
+		return c.out, c.doors, c.hints, c.hide
 	}
 	out := make([]string, height)
-	lines := make([]string, height)
+	doors := make([][]trafficDoor, height)
 	hints := make([]string, height)
 	var hide hudSpan
 	if height <= 0 || width <= 0 {
-		return out, lines, hints, hide
+		return out, doors, hints, hide
 	}
 	blank := strings.Repeat(" ", width)
 	for i := range out {
@@ -56,25 +56,21 @@ func (a *app) trafficBody(t team, height, width int) ([]string, []string, []stri
 		hints[0] = "Hide the traffic" + hintSegment + trafficKey
 	}
 	out[0] = fit(head, width)
-	room := height - 1
-	shown := a.trafficVisible(t, room)
-	if len(shown) == 0 {
+	// THE NEWEST THREAD IS AT THE TOP, straight under the header, and the
+	// older ones run down from it; what does not fit falls off the bottom.
+	// Nothing is pushed down to leave room above it.
+	laid := a.trafficSheetOf(t, height-1, width, 1)
+	if len(laid) == 0 {
 		if height > 2 {
 			quiet := fit(a.pal.dim("nothing yet"), width)
-			out[height-1] = quiet + strings.Repeat(" ", max(width-ansi.StringWidth(quiet), 0))
-		}
-	} else {
-		at := height - len(shown)
-		for i, e := range shown {
-			line, target, hint := a.trafficLine(t, e, width)
-			if target != "" && hot == at+i {
-				line = a.pal.cursor(line, width)
-			}
-			out[at+i], lines[at+i], hints[at+i] = line, target, hint
+			out[1] = quiet + strings.Repeat(" ", max(width-ansi.StringWidth(quiet), 0))
 		}
 	}
-	a.traffic.cache = trafficCache{key: key, out: out, lines: lines, hints: hints, hide: hide}
-	return out, lines, hints, hide
+	for i, r := range laid {
+		out[1+i], doors[1+i] = r.text, r.doors
+	}
+	a.traffic.cache = trafficCache{key: key, out: out, doors: doors, hints: hints, hide: hide}
+	return out, doors, hints, hide
 }
 
 // trafficRows is the rail's column beside the body, height rows exactly
@@ -98,12 +94,12 @@ func (a *app) trafficRows(height int) []string {
 		return out
 	}
 	seamW := ansi.StringWidth(railSeam)
-	body, lines, hints, hide := a.trafficBody(t, height, cols-seamW)
+	body, doors, hints, hide := a.trafficBody(t, height, cols-seamW)
 	a.trafficMarkSeen(t)
 	left := width - cols + seamW
 	a.traffic.drawn = trafficDrawn{
 		mode: trafficColumn, x0: width - cols, x1: width, y0: 0, y1: height,
-		lines: lines, hints: hints, hide: hudSpan{from: hide.from + left, to: hide.to + left},
+		doors: trafficDoorsAt(doors, left), hints: hints, hide: hudSpan{from: hide.from + left, to: hide.to + left},
 	}
 	if !hide.pressable() {
 		a.traffic.drawn.hide = hudSpan{}
@@ -206,7 +202,7 @@ func (a *app) trafficOverBody(body []row, pad, view int) ([]row, int) {
 	pal, ground := a.pal.hopSurfacePalette()
 	surface := func(s string, n int) string { return pal.background(s, n, ground) }
 	inner := frameInner(w) - 2
-	rows, lines, hints := a.trafficCardRows(t, h-2, inner, top+1)
+	rows, doors := a.trafficCardRows(t, h-2, inner, top+1)
 	a.trafficMarkSeen(t)
 	painted := make([]string, len(rows))
 	for i, r := range rows {
@@ -229,9 +225,13 @@ func (a *app) trafficOverBody(body []row, pad, view int) ([]row, int) {
 		}
 	}
 	d := trafficDrawn{mode: trafficCard, x0: inset, x1: inset + w, y0: top, y1: top + h,
-		lines: make([]string, view), hints: make([]string, view), closeY: top + h - 1}
-	for i := range lines {
-		d.lines[top+1+i], d.hints[top+1+i] = lines[i], hints[i]
+		doors: make([][]trafficDoor, view), hints: make([]string, view), closeY: top + h - 1}
+	// The card's rows start a border and a space in from its edge.
+	left := inset + (w-inner)/2
+	for i := range doors {
+		if top+1+i < view {
+			d.doors[top+1+i] = trafficDoorsShift(doors[i], left)
+		}
 	}
 	if span.pressable() {
 		d.close = hudSpan{from: inset + span.from, to: inset + span.to}
@@ -241,29 +241,46 @@ func (a *app) trafficOverBody(body []row, pad, view int) ([]row, int) {
 	return out, 0
 }
 
-// trafficCardRows is the card's rows: the entries, newest at the bottom, with
-// no header of its own, because the card's edge is the header. first is the
-// body row the first of them lands on, which is what the pointer holds.
-func (a *app) trafficCardRows(t team, height, width, first int) ([]string, []string, []string) {
+// trafficCardRows is the card's rows: the threads, the newest at the top,
+// with no header of its own, because the card's edge is the header. first is
+// the body row the first of them lands on, which is what the pointer holds.
+func (a *app) trafficCardRows(t team, height, width, first int) ([]string, [][]trafficDoor) {
 	out := make([]string, height)
-	lines := make([]string, height)
-	hints := make([]string, height)
+	doors := make([][]trafficDoor, height)
 	blank := strings.Repeat(" ", width)
 	for i := range out {
 		out[i] = blank
 	}
-	shown := a.trafficVisible(t, height)
-	if len(shown) == 0 {
-		out[height-1] = fit(a.pal.dim("nothing yet"), width)
-		return out, lines, hints
+	laid := a.trafficSheetOf(t, height, width, first)
+	if len(laid) == 0 {
+		out[0] = fit(a.pal.dim("nothing yet"), width)
+		return out, doors
 	}
-	at := height - len(shown)
-	for i, e := range shown {
-		line, target, hint := a.trafficLine(t, e, width)
-		if target != "" && a.hot.kind == hoverTraffic && a.hot.index == first+at+i {
-			line = a.pal.cursor(line, width)
-		}
-		out[at+i], lines[at+i], hints[at+i] = line, target, hint
+	for i, r := range laid {
+		out[i], doors[i] = r.text, r.doors
 	}
-	return out, lines, hints
+	return out, doors
+}
+
+// trafficDoorsAt is every row's doors moved from the rail's own columns into
+// the frame's.
+func trafficDoorsAt(rows [][]trafficDoor, left int) [][]trafficDoor {
+	out := make([][]trafficDoor, len(rows))
+	for i, r := range rows {
+		out[i] = trafficDoorsShift(r, left)
+	}
+	return out
+}
+
+// trafficDoorsShift is one row's doors moved left columns right.
+func trafficDoorsShift(r []trafficDoor, left int) []trafficDoor {
+	if len(r) == 0 {
+		return nil
+	}
+	out := make([]trafficDoor, len(r))
+	for i, d := range r {
+		d.span = hudSpan{from: d.span.from + left, to: d.span.to + left}
+		out[i] = d
+	}
+	return out
 }
