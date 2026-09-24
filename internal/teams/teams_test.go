@@ -1,6 +1,7 @@
 package teams
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -128,5 +129,83 @@ func TestAddMemberAssignsAHandleOnce(t *testing.T) {
 	}
 	if err := f.AddMember("t1", Member{}); err == nil {
 		t.Fatal("a member with no key was accepted")
+	}
+}
+
+// A TEAM WAKES UNLESS IT WAS TURNED OFF, and only what was set is written: a
+// file that never mentioned waking reads as unset (inherit, on by default),
+// unset is written as nothing, and the stored "wake": false spelling from
+// before wake was inheritable still reads as off.
+func TestATeamWakesUnlessTurnedOff(t *testing.T) {
+	var fresh Team
+	if err := json.Unmarshal([]byte(`{"id":"a","name":"a"}`), &fresh); err != nil {
+		t.Fatal(err)
+	}
+	if !fresh.Wakes() {
+		t.Fatal("a team whose file says nothing about waking does not wake")
+	}
+	raw, err := json.Marshal(fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"wake"`) {
+		t.Fatalf("a team that wakes wrote the field: %s", raw)
+	}
+	off := false
+	fresh.Settings.Wake = &off
+	raw, err = json.Marshal(fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"wake":false`) {
+		t.Fatalf("a team turned off did not write wake false: %s", raw)
+	}
+	var back Team
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Wakes() {
+		t.Fatal("wake false did not survive a round trip")
+	}
+	if err := json.Unmarshal([]byte(`{"id":"a","name":"a","wake":true}`), &back); err != nil {
+		t.Fatal(err)
+	}
+	if !back.Wakes() {
+		t.Fatal("wake true reads as off")
+	}
+}
+
+// WAKE IS INHERITED LIKE THE OTHER SETTINGS. Unset everywhere, it is the
+// profile's default with origin Settings; a parent's stored "wake": false (the
+// spelling a file from before this build wrote) turns its sub-teams off too,
+// named as from the parent; a child's own true overrides it.
+func TestWakeInheritsWithProvenance(t *testing.T) {
+	var f File
+	raw := `{"version":2,"teams":[
+		{"id":"aaaaaaaaaaaa","name":"harbor","wake":false},
+		{"id":"bbbbbbbbbbbb","name":"dock","parent":"aaaaaaaaaaaa"},
+		{"id":"cccccccccccc","name":"yard"}]}`
+	if err := json.Unmarshal([]byte(raw), &f); err != nil {
+		t.Fatal(err)
+	}
+	on := Defaults{Wake: true}
+	if e := f.Effective("cccccccccccc", on); !e.Wake || e.WakeFrom.Kind != OriginSettings {
+		t.Fatalf("an unset team does not take the default: %+v", e)
+	}
+	if e := f.Effective("aaaaaaaaaaaa", on); e.Wake || e.WakeFrom.Kind != OriginTeam {
+		t.Fatalf("the stored wake false is not the team's own off: %+v", e)
+	}
+	if e := f.Effective("bbbbbbbbbbbb", on); e.Wake || e.WakeFrom.Words() != "from harbor" {
+		t.Fatalf("a sub-team does not inherit its parent's off: %+v", e)
+	}
+	yes := true
+	if err := f.SetSettings("bbbbbbbbbbbb", func(s *Settings) { s.Wake = &yes }); err != nil {
+		t.Fatal(err)
+	}
+	if e := f.Effective("bbbbbbbbbbbb", on); !e.Wake || e.WakeFrom.Kind != OriginTeam {
+		t.Fatalf("a sub-team's own on does not override: %+v", e)
+	}
+	if e := f.Effective("cccccccccccc", Defaults{}); e.Wake {
+		t.Fatalf("a profile default of off is not honoured: %+v", e)
 	}
 }
