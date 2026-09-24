@@ -338,18 +338,7 @@ func (p *crewPanel) read(dir string) {
 		}
 	}
 	p.usual, p.usualSeen = crewUsual(p.log, p.suggest)
-	// "USUALLY" NAMES ONLY WHAT A SEAT COULD BE GIVEN TODAY: a model the recent
-	// tasks ran that is no longer offered — its route quarantined, its model
-	// demoted, never seatable — gives way to what the router would pick now.
-	offered := map[string]bool{}
-	for _, offer := range p.offers {
-		offered[crewroute.ShortModel(offer.Model.ID)] = true
-	}
-	for seat, model := range p.usual {
-		if !offered[model] {
-			p.usual[seat], p.usualSeen[seat] = crewroute.ShortModel(p.suggest[seat]), false
-		}
-	}
+	crewReachableUsual(p.usual, p.usualSeen, p.suggest, p.offers)
 	if p.rule.Base == crewroute.BasePrice {
 		p.priceIn, p.priceOut = p.rule.MaxIn, p.rule.MaxOut
 	}
@@ -389,6 +378,36 @@ func crewUsual(log router.CrewLog, suggest map[crewroute.Seat]string) (map[crewr
 		}
 	}
 	return usual, seen
+}
+
+// crewReachableUsual keeps a seat's hint only where it names a model the seat
+// could be given TODAY.
+//
+// "USUALLY" AND "LIKELY" ARE CLAIMS ABOUT NOW, not only about the past: a model
+// the recent tasks ran whose route has since been quarantined, whose provider
+// was turned off, which the allowed rule no longer admits, or which reached
+// the seat only through a free pool now switched off, gives way to what the
+// router would pick now; and where that is not reachable either, the hint is
+// empty, which the seat reads as "nothing allowed can sit this seat". An offer
+// is reachable when the rule admits it on a provider that is on — the offers
+// themselves already left out unhealthy and switched-off free routes
+// ([config.CrewOffersAt]).
+func crewReachableUsual(usual map[crewroute.Seat]string, seen map[crewroute.Seat]bool, suggest map[crewroute.Seat]string, offers []config.CrewOffer) {
+	reachable := map[string]bool{}
+	for _, offer := range offers {
+		if offer.Allowed && offer.Served {
+			reachable[crewroute.ShortModel(offer.Model.ID)] = true
+		}
+	}
+	for _, seat := range crewroute.Seats {
+		if model := usual[seat]; model != "" && reachable[model] {
+			continue
+		}
+		usual[seat], seen[seat] = "", false
+		if model := crewroute.ShortModel(suggest[seat]); reachable[model] {
+			usual[seat] = model
+		}
+	}
 }
 
 // slicesHas says whether a list of words holds one.
