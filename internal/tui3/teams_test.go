@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"bytes"
+	"encoding/json"
 	"github.com/Agent-Field/codeaf/internal/config"
 
 	"os"
@@ -15,13 +17,13 @@ func TestTeamSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	made := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
 	want := []team{
-		{Name: "port", Made: made, Members: []teamMember{{Key: "k1", File: "f1", Where: "/w/a", Word: "one"}}},
-		{Name: "docs", Made: made, Members: []teamMember{{Key: "k2", File: "f2", Where: "/w/b", Word: "two"}}},
+		{ID: "0a0a0a0a0a0a", Name: "port", Made: made, Hue: 40, hued: true, Members: []teamMember{{Key: "k1", File: "f1", Where: "/w/a", Word: "one"}}},
+		{ID: "0b0b0b0b0b0b", Name: "docs", Parent: "0a0a0a0a0a0a", Made: made, Hue: 0, Tier: 1, hued: true, Members: []teamMember{{Key: "k2", File: "f2", Where: "/w/b", Word: "two"}}},
 	}
 	if err := saveTeams(dir, want); err != nil {
 		t.Fatal(err)
 	}
-	got, err := loadTeams(dir)
+	got, err := loadTeams(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +42,7 @@ func TestTeamSaveLoadRoundTrip(t *testing.T) {
 }
 
 func TestTeamMissingFileIsNoTeamsAndNoError(t *testing.T) {
-	got, err := loadTeams(t.TempDir())
+	got, err := loadTeams(t.TempDir(), nil)
 	if err != nil || got != nil {
 		t.Fatalf("missing file: %v, %v", got, err)
 	}
@@ -67,7 +69,7 @@ func TestTeamCorruptFileErrorsAndIsNotClobbered(t *testing.T) {
 	if err := os.WriteFile(path, bad, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadTeams(dir); err == nil {
+	if _, err := loadTeams(dir, nil); err == nil {
 		t.Fatal("corrupt file loaded without error")
 	}
 	if raw, _ := os.ReadFile(path); string(raw) != string(bad) {
@@ -77,7 +79,7 @@ func TestTeamCorruptFileErrorsAndIsNotClobbered(t *testing.T) {
 	// The app's first load moves it aside, so a later save cannot overwrite it.
 	a := &app{profileDir: dir}
 	a.teamsEnsure()
-	if !a.wall.loaded || a.wall.active != -1 || len(a.wall.teams) != 0 {
+	if !a.wall.loaded || a.wall.activeID != "" || len(a.wall.teams) != 0 {
 		t.Fatalf("ensure on corrupt file: %+v", a.wall)
 	}
 	if _, err := a.teamMake("new", []chatTab{{key: "k", word: "w"}}); err != nil {
@@ -159,7 +161,7 @@ func TestTeamStripTabsKeepsTheFrontTab(t *testing.T) {
 	if _, err := a.teamMake("s", []chatTab{{key: "c", word: "gamma"}, {key: "a", word: "alpha"}}); err != nil {
 		t.Fatal(err)
 	}
-	a.wall.active = 0
+	a.wall.activeID = a.wall.teams[0].ID
 	got := a.teamStripTabs(tabs)
 	var keys []string
 	for _, tab := range got {
@@ -177,7 +179,8 @@ func TestTeamStripTabsKeepsTheFrontTab(t *testing.T) {
 
 func TestTeamNotActiveBeforeLoad(t *testing.T) {
 	a := &app{}
-	a.wall.teams = []team{{Name: "s", Members: []teamMember{{Key: "a"}}}}
+	a.wall.teams = []team{{ID: "s", Name: "s", Members: []teamMember{{Key: "a"}}}}
+	a.wall.activeID = "s"
 	if _, ok := a.teamActive(); ok {
 		t.Fatal("zero-value active read as a team before any load")
 	}
@@ -187,19 +190,19 @@ func TestTeamMakeReplacesByNameAndDeleteFollowsActive(t *testing.T) {
 	dir := t.TempDir()
 	a := &app{profileDir: dir}
 	i0, err := a.teamMake("Port", []chatTab{{key: "a", word: "alpha"}})
-	if err != nil || i0 != 0 {
-		t.Fatalf("make: %d %v", i0, err)
+	if err != nil || len(i0) != 12 {
+		t.Fatalf("make: %q %v", i0, err)
 	}
 	i1, _ := a.teamMake("docs", []chatTab{{key: "b", word: "beta"}})
 	again, _ := a.teamMake("port", []chatTab{{key: "c", word: "gamma"}})
-	if again != 0 || len(a.wall.teams) != 2 || a.wall.teams[0].Members[0].Key != "c" {
+	if again != i0 || len(a.wall.teams) != 2 || a.wall.teams[0].Members[0].Key != "c" {
 		t.Fatalf("same name did not replace: %+v", a.wall.teams)
 	}
 	if _, err := a.teamMake("  ", []chatTab{{key: "a"}}); err == nil {
 		t.Fatal("blank name accepted")
 	}
-	a.wall.active = i1
-	if err := a.teamDelete(0); err != nil {
+	a.wall.activeID = i1
+	if err := a.teamDelete(i0); err != nil {
 		t.Fatal(err)
 	}
 	if sp, ok := a.teamActive(); !ok || sp.Name != "docs" {
@@ -210,10 +213,303 @@ func TestTeamMakeReplacesByNameAndDeleteFollowsActive(t *testing.T) {
 	if names := b.teamNames(); !reflect.DeepEqual(names, []string{"docs"}) {
 		t.Fatalf("reloaded names %v", names)
 	}
-	if err := a.teamDelete(0); err != nil {
+	if err := a.teamDelete(i1); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := a.teamActive(); ok {
 		t.Fatal("deleted team still active")
+	}
+}
+
+// THE FIRST BUILD'S FILE BECOMES TEAMS, ONCE, AND NOTHING IS LOST. A
+// spaces.json with no teams.json beside it is read (the oldest shape has no
+// colours at all), written as a version 2 teams.json with an id for every
+// team and no parent, and only then renamed aside; the colours are the ones the
+// first build drew it with.
+func TestTeamMigratesTheFirstBuildsFile(t *testing.T) {
+	dir := t.TempDir()
+	v1 := `{"spaces":[` +
+		`{"name":"harbor","members":[{"key":"k1","file":"f1","where":"/w/a","word":"one"}],"made":"2026-09-20T10:00:00Z"},` +
+		`{"name":"orbit","members":[{"key":"k2"}],"made":"2026-09-21T10:00:00Z","hue":200,"tier":0},` +
+		`{"name":"lumen","members":[]}]}`
+	legacy := filepath.Join(dir, teamsLegacyFile)
+	if err := os.WriteFile(legacy, []byte(v1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reserved := teamReservedFrom(darkRamp)
+	// The colours the first build gave this file, worked out the way it did.
+	var first []team
+	if err := json.Unmarshal([]byte(`[{"name":"harbor"},{"name":"orbit","hue":200},{"name":"lumen"}]`), &first); err != nil {
+		t.Fatal(err)
+	}
+	teamsHueLegacy(first, reserved)
+
+	got, err := loadTeams(dir, reserved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0].Name != "harbor" || got[1].Name != "orbit" || got[2].Name != "lumen" {
+		t.Fatalf("migrated %+v", got)
+	}
+	if !reflect.DeepEqual(got[0].Members, []teamMember{{Key: "k1", File: "f1", Where: "/w/a", Word: "one"}}) {
+		t.Fatalf("members lost: %+v", got[0].Members)
+	}
+	seen := map[string]bool{}
+	for i, tm := range got {
+		if len(tm.ID) != 12 || strings.Trim(tm.ID, "0123456789abcdef") != "" || seen[tm.ID] {
+			t.Fatalf("team %d has id %q", i, tm.ID)
+		}
+		seen[tm.ID] = true
+		if tm.Parent != "" || tm.Manager != "" {
+			t.Fatalf("team %d came up with parent %q manager %q", i, tm.Parent, tm.Manager)
+		}
+		if tm.hueSpec() != first[i].hueSpec() {
+			t.Fatalf("team %d drawn %v before and %v after", i, first[i].hueSpec(), tm.hueSpec())
+		}
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("spaces.json is still there: %v", err)
+	}
+	if raw, err := os.ReadFile(legacy + ".migrated"); err != nil || string(raw) != v1 {
+		t.Fatalf("the old file was not kept as it was: %q %v", raw, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, teamsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var disk struct {
+		Version int               `json:"version"`
+		Teams   []json.RawMessage `json:"teams"`
+	}
+	if err := json.Unmarshal(raw, &disk); err != nil || disk.Version != 2 || len(disk.Teams) != 3 {
+		t.Fatalf("teams.json is %s", raw)
+	}
+	// The next load reads teams.json and finds the same teams, ids and all.
+	again, err := loadTeams(dir, reserved)
+	if err != nil || !reflect.DeepEqual(again, got) {
+		t.Fatalf("reloaded %+v, %v", again, err)
+	}
+}
+
+// A TEAMS FILE ALREADY THERE WINS, and the old one is left alone: the person
+// has been using teams, and what spaces.json says is older.
+func TestTeamMigrationLeavesTheOldFileWhenTeamsExist(t *testing.T) {
+	dir := t.TempDir()
+	if err := saveTeams(dir, []team{{ID: "aaaaaaaaaaaa", Name: "kept", hued: true}}); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(dir, teamsLegacyFile)
+	if err := os.WriteFile(legacy, []byte(`{"spaces":[{"name":"old"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadTeams(dir, nil)
+	if err != nil || len(got) != 1 || got[0].Name != "kept" {
+		t.Fatalf("loaded %+v %v", got, err)
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		t.Fatalf("spaces.json was moved though teams.json was there: %v", err)
+	}
+}
+
+// WHAT A LATER BUILD WROTE SURVIVES THIS ONE. A field it does not know, on a
+// team or beside the list, and the reserved Manager, come back out of a load
+// and a save exactly as they went in.
+func TestTeamRoundTripKeepsUnknownFieldsAndTheManager(t *testing.T) {
+	dir := t.TempDir()
+	in := `{"version":2,"teams":[{"id":"abcdefabcdef","name":"harbor","parent":"","members":[{"key":"k1","file":"","where":"","word":""}],` +
+		`"manager":"k1","hue":120,"tier":1,"made":"2026-09-20T10:00:00Z","pinned":true,"rules":{"quiet":["k2"]}}]}`
+	if err := os.WriteFile(filepath.Join(dir, teamsFile), []byte(in), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadTeams(dir, nil)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("loaded %+v %v", got, err)
+	}
+	if got[0].Manager != "k1" {
+		t.Fatalf("the manager was lost on load: %q", got[0].Manager)
+	}
+	if err := saveTeams(dir, got); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, teamsFile))
+	var disk struct {
+		Teams []map[string]json.RawMessage `json:"teams"`
+	}
+	if err := json.Unmarshal(raw, &disk); err != nil || len(disk.Teams) != 1 {
+		t.Fatalf("saved %s", raw)
+	}
+	saved := disk.Teams[0]
+	for key, want := range map[string]string{"pinned": `true`, "rules": `{"quiet":["k2"]}`, "manager": `"k1"`, "id": `"abcdefabcdef"`} {
+		var flat bytes.Buffer
+		if err := json.Compact(&flat, saved[key]); err != nil || flat.String() != want {
+			t.Fatalf("%s saved as %s, want %s\n%s", key, saved[key], want, raw)
+		}
+	}
+	// And an edit through the app keeps them too.
+	a := newTestAppWithProfile(dir, nil)
+	if err := a.teamRename("abcdefabcdef", "dock"); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(filepath.Join(dir, teamsFile))
+	if !strings.Contains(string(raw), `"pinned": true`) || !strings.Contains(string(raw), `"manager": "k1"`) || !strings.Contains(string(raw), `"dock"`) {
+		t.Fatalf("an edit dropped what it did not know:\n%s", raw)
+	}
+}
+
+// THE TREE: one parent, which exists, and no loops; a team deleted hands its
+// children to its own parent and closes no conversation.
+func TestTeamTreeRefusesLoopsAndDeleteReparents(t *testing.T) {
+	a := newTestAppWithProfile(t.TempDir(), nil)
+	mk := func(name, key string) string {
+		t.Helper()
+		id, err := a.teamMake(name, []chatTab{{key: key, word: name}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	top, mid, low, other := mk("top", "k1"), mk("mid", "k2"), mk("low", "k3"), mk("other", "k4")
+	if err := a.teamSetParent(mid, top); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.teamSetParent(low, mid); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ id, parent, why string }{
+		{top, top, "a team under itself"},
+		{top, low, "a team under its own grandchild"},
+		{mid, low, "a team under its own child"},
+		{mid, "nobody", "a parent that does not exist"},
+		{"nobody", top, "a team that does not exist"},
+	} {
+		if err := a.teamSetParent(c.id, c.parent); err == nil {
+			t.Fatalf("%s was allowed", c.why)
+		}
+	}
+	names := func(ts []team) string {
+		var out []string
+		for _, tm := range ts {
+			out = append(out, tm.Name)
+		}
+		return strings.Join(out, ",")
+	}
+	if got := names(a.teamAncestors(low)); got != "mid,top" {
+		t.Fatalf("low's ancestors are %q", got)
+	}
+	if got := names(a.teamChildren("")); got != "top,other" {
+		t.Fatalf("the top level is %q", got)
+	}
+	if got := names(a.teamChildren(top)); got != "mid" {
+		t.Fatalf("top's children are %q", got)
+	}
+	if err := a.teamSetParent(other, low); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.teamDelete(mid); err != nil {
+		t.Fatal(err)
+	}
+	if lowT, _ := a.teamByID(low); lowT.Parent != top {
+		t.Fatalf("low's parent after mid went is %q, want top", lowT.Parent)
+	}
+	if otherT, _ := a.teamByID(other); otherT.Parent != low {
+		t.Fatalf("a team under a survivor moved: %q", otherT.Parent)
+	}
+	if got := names(a.teamAncestors(other)); got != "low,top" {
+		t.Fatalf("other's ancestors are %q", got)
+	}
+	// The tree is on disk, as every edit is.
+	b := newTestAppWithProfile(a.profileDir, nil)
+	b.teamsEnsure()
+	if lowT, _ := b.teamByID(low); lowT.Parent != top {
+		t.Fatalf("reloaded, low sits under %q", lowT.Parent)
+	}
+}
+
+// A FILE THAT LOOPS OR NAMES A MISSING PARENT IS PUT RIGHT ON LOAD, so the
+// walks above can trust the list.
+func TestTeamLoadCutsLoopsAndMissingParents(t *testing.T) {
+	dir := t.TempDir()
+	in := `{"version":2,"teams":[` +
+		`{"id":"aaaaaaaaaaaa","name":"a","parent":"bbbbbbbbbbbb","hue":1},` +
+		`{"id":"bbbbbbbbbbbb","name":"b","parent":"aaaaaaaaaaaa","hue":2},` +
+		`{"id":"cccccccccccc","name":"c","parent":"gone00000000","hue":3}]}`
+	if err := os.WriteFile(filepath.Join(dir, teamsFile), []byte(in), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadTeams(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[2].Parent != "" {
+		t.Fatalf("a missing parent was kept: %q", got[2].Parent)
+	}
+	if teamParentLoops(got, got[0].ID, got[0].Parent) || teamParentLoops(got, got[1].ID, got[1].Parent) {
+		t.Fatalf("the loop is still there: %+v", got)
+	}
+}
+
+// NOTHING NAMES A TEAM BY ITS PLACE, so deleting one or reordering the list
+// never hands another team's state to a neighbour: the active team, its
+// remembered place, an open popover and the strip's chip all stay on theirs.
+func TestTeamDeleteOrReorderNeverRetargetsAnother(t *testing.T) {
+	a, _, _ := tabApp(t)
+	_ = a.openWall()
+	_ = a.wallFrame(a.width, a.height)
+	tiles := a.wallShown(a.now())
+	if len(tiles) < 3 {
+		t.Fatalf("the fixture has %d tiles", len(tiles))
+	}
+	first, err := a.teamMake("first", []chatTab{tiles[0].tab})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _ := a.teamMake("second", []chatTab{tiles[1].tab, tiles[2].tab})
+	third, _ := a.teamMake("third", []chatTab{tiles[2].tab})
+
+	a.wallSetTeam(second)
+	a.wallMove(1, 2)
+	a.wallSetTeam("")
+	a.wallSetTeam(third)
+	a.wallSetTeam(second)
+	a.wallOpenSettings(third, wallPop{})
+	_ = a.wallFrame(a.width, a.height)
+	chip := plain(a.tabsRow(a.width))
+
+	if err := a.teamDelete(first); err != nil {
+		t.Fatal(err)
+	}
+	if a.wall.activeID != second || a.wall.pop.team != third {
+		t.Fatalf("after the delete the wall shows %q and the settings are %q", a.wall.activeID, a.wall.pop.team)
+	}
+	if got, ok := a.teamActive(); !ok || got.Name != "second" {
+		t.Fatalf("the strip is narrowed to %+v", got)
+	}
+	if place, ok := a.wall.places[second]; !ok || place.key != tiles[2].tab.key {
+		t.Fatalf("second's place is %+v %v", place, ok)
+	}
+	a.touch()
+	if got := plain(a.tabsRow(a.width)); !strings.Contains(got, "● second ▾") || got == "" {
+		t.Fatalf("the chip went from %q to %q", chip, got)
+	}
+
+	// The list reordered under the same state.
+	a.wall.teams[0], a.wall.teams[1] = a.wall.teams[1], a.wall.teams[0]
+	if got, _ := a.teamActive(); got.Name != "second" {
+		t.Fatalf("a reorder moved the strip to %q", got.Name)
+	}
+	a.wall.pop = wallPop{}
+	_ = a.wallFrame(a.width, a.height)
+	a.wall.hover = wallHitForTeam(t, a, wallHitChip, third).ref()
+	a.wall.teams[0], a.wall.teams[1] = a.wall.teams[1], a.wall.teams[0]
+	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
+	if !strings.Contains(frame, "Show only the conversations in third") {
+		t.Fatalf("the hover followed the place, not the team:\n%s", frame)
+	}
+	wallKeyPress(a, "D")
+	if _, ok := a.teamByID(second); ok || a.wall.activeID != "" {
+		t.Fatalf("D deleted the wrong team: %v active %q", a.teamNames(), a.wall.activeID)
+	}
+	if _, ok := a.teamByID(third); !ok {
+		t.Fatal("D took a neighbour with it")
 	}
 }

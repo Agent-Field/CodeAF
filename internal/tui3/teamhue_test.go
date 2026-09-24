@@ -50,7 +50,7 @@ func TestTeamHueFarthestPointIsWellSpread(t *testing.T) {
 	}
 }
 
-// NO SPACE TAKES A HUE THAT ALREADY MEANS SOMETHING.
+// NO TEAM TAKES A HUE THAT ALREADY MEANS SOMETHING.
 func TestTeamHueKeepsOutOfTheReservedBands(t *testing.T) {
 	for name, r := range map[string]ramp{"dark": darkRamp, "light": lightRamp} {
 		reserved := teamReservedFrom(r)
@@ -154,8 +154,8 @@ func fmtHues(hs []float64) string {
 // around the teams that already have theirs.
 func TestTeamHueLegacyLoadIsStable(t *testing.T) {
 	dir := t.TempDir()
-	legacy := `{"teams":[{"name":"a","members":[{"key":"k1"}]},{"name":"b","members":[],"hue":200,"tier":0},{"name":"c","members":[]}]}`
-	if err := os.WriteFile(filepath.Join(dir, teamsFile), []byte(legacy), 0o600); err != nil {
+	legacy := `{"spaces":[{"name":"a","members":[{"key":"k1"}]},{"name":"b","members":[],"hue":200,"tier":0},{"name":"c","members":[]}]}`
+	if err := os.WriteFile(filepath.Join(dir, teamsLegacyFile), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	load := func() []team {
@@ -177,49 +177,52 @@ func TestTeamHueLegacyLoadIsStable(t *testing.T) {
 	}
 }
 
-// EACH NEW SPACE TAKES A HUE NO OTHER HAS; toggling, recolouring and renaming
+// EACH NEW TEAM TAKES A HUE NO OTHER HAS; toggling, recolouring and renaming
 // are saved.
 func TestTeamColourAndEditsPersist(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestAppWithProfile(dir, nil)
 	seen := map[float64]bool{}
+	var ids []string
 	for i, name := range []string{"one", "two", "three", "four"} {
-		at, err := a.teamMake(name, []chatTab{{key: fmt.Sprintf("k%d", i)}})
+		id, err := a.teamMake(name, []chatTab{{key: fmt.Sprintf("k%d", i)}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		h := a.wall.teams[at].Hue
+		ids = append(ids, id)
+		made, _ := a.teamByID(id)
+		h := made.Hue
 		if seen[h] {
 			t.Fatalf("team %s took hue %.0f, which another team has", name, h)
 		}
 		seen[h] = true
 	}
 	tab := chatTab{key: "k9", word: "nine"}
-	if err := a.teamToggleMember(0, tab); err != nil {
+	if err := a.teamToggleMember(ids[0], tab); err != nil {
 		t.Fatal(err)
 	}
-	if got := a.teamsOf("k9"); len(got) != 1 || got[0] != 0 {
+	if got := a.teamsOf("k9"); len(got) != 1 || got[0] != ids[0] {
 		t.Fatalf("after toggling in: %v", got)
 	}
-	if err := a.teamToggleMember(1, tab); err != nil {
+	if err := a.teamToggleMember(ids[1], tab); err != nil {
 		t.Fatal(err)
 	}
 	if got := a.teamsOf("k9"); len(got) != 2 {
 		t.Fatalf("a conversation in two teams is in %v", got)
 	}
-	if err := a.teamRecolor(0, teamHueSpec{Hue: 123, Tier: 1}); err != nil {
+	if err := a.teamRecolor(ids[0], teamHueSpec{Hue: 123, Tier: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.teamRename(0, "renamed"); err != nil {
+	if err := a.teamRename(ids[0], "renamed"); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.teamRename(1, "RENAMED"); err == nil {
+	if err := a.teamRename(ids[1], "RENAMED"); err == nil {
 		t.Fatal("a second team took a name already used")
 	}
-	if err := a.teamToggleMember(1, tab); err != nil {
+	if err := a.teamToggleMember(ids[1], tab); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := loadTeams(dir)
+	got, _ := loadTeams(dir, nil)
 	if got[0].Name != "renamed" || got[0].Hue != 123 || got[0].Tier != 1 || !teamHolds(got[0], "k9") || teamHolds(got[1], "k9") {
 		t.Fatalf("on disk: %+v", got[:2])
 	}

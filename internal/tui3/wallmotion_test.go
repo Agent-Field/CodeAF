@@ -345,33 +345,34 @@ func TestWallCloseHandsTheFocusToTheNeighbour(t *testing.T) {
 	}
 }
 
-// EACH SPACE KEEPS ITS PLACE while the wall is up: All, then harbor, then All
+// EACH TEAM KEEPS ITS PLACE while the wall is up: All, then harbor, then All
 // again, returns to the tile that was focused.
 func TestWallTeamsKeepTheirPlace(t *testing.T) {
 	a, _, _ := tabApp(t)
 	_ = a.openWall()
 	_ = a.wallFrame(a.width, a.height)
 	tiles := a.wallShown(a.now())
-	if _, err := a.teamMake("harbor", []chatTab{tiles[0].tab, tiles[1].tab}); err != nil {
+	id, err := a.teamMake("harbor", []chatTab{tiles[0].tab, tiles[1].tab})
+	if err != nil {
 		t.Fatal(err)
 	}
 	a.wallMove(2, len(tiles))
 	all := tiles[2].tab.key
 	wallKeyPress(a, "1")
-	if a.wall.active != 0 || a.wall.focus != 0 {
-		t.Fatalf("1: team %d focus %d", a.wall.active, a.wall.focus)
+	if a.wall.activeID != id || a.wall.focus != 0 {
+		t.Fatalf("1: team %q focus %d", a.wall.activeID, a.wall.focus)
 	}
 	wallKeyPress(a, "right")
 	harbor := a.wallShown(a.now())[a.wall.focus].tab.key
 	wallKeyPress(a, "1")
-	if a.wall.active != -1 {
-		t.Fatalf("the shown team's digit did not go back to All: %d", a.wall.active)
+	if a.wall.activeID != "" {
+		t.Fatalf("the shown team's digit did not go back to All: %q", a.wall.activeID)
 	}
 	if got := a.wallShown(a.now())[a.wall.focus].tab.key; got != all {
 		t.Fatalf("All came back on %q, want %q", got, all)
 	}
 	wallKeyPress(a, "tab")
-	if got := a.wallShown(a.now())[a.wall.focus].tab.key; a.wall.active != 0 || got != harbor {
+	if got := a.wallShown(a.now())[a.wall.focus].tab.key; a.wall.activeID != id || got != harbor {
 		t.Fatalf("harbor came back on %q, want %q", got, harbor)
 	}
 }
@@ -425,7 +426,8 @@ func TestWallKeysDoWhatTheButtonsDo(t *testing.T) {
 		t.Fatalf("x with %d picked left %d of %d", len(behind), n, len(tiles))
 	}
 
-	if _, err := a.teamMake("harbor", []chatTab{tiles[0].tab}); err != nil {
+	harbor, err := a.teamMake("harbor", []chatTab{tiles[0].tab})
+	if err != nil {
 		t.Fatal(err)
 	}
 	wallKeyPress(a, "e")
@@ -435,7 +437,7 @@ func TestWallKeysDoWhatTheButtonsDo(t *testing.T) {
 	wallKeyPress(a, "1")
 	_ = a.wallFrame(a.width, a.height)
 	wallKeyPress(a, "e")
-	if a.wall.pop.kind != wallPopSettings || a.wall.pop.team != 0 {
+	if a.wall.pop.kind != wallPopSettings || a.wall.pop.team != harbor {
 		t.Fatalf("e: %+v", a.wall.pop)
 	}
 }
