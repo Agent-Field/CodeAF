@@ -122,6 +122,8 @@ type TaskIndexEntry struct {
 	// root. It is additive: rows written before families entered the index
 	// decode as roots, which is exactly what they were.
 	Parent string `json:"parent,omitempty"`
+	// PlanID links this graph record to its plan row without matching titles.
+	PlanID string `json:"planId,omitempty"`
 	// Name is the slug an "@" mention resolves: the title, kebab-cased
 	// ([TaskSlug]). Two tasks may share one — a project that fixed the same
 	// crash twice — and the newest wins, because "the nil-map task" said out
@@ -437,11 +439,8 @@ func (c Config) taskIndexFile() string {
 	return TaskIndexPath(c.SessionFile)
 }
 
-// taskIndexMu serializes this process's appends. Two windows on the same
-// project are two processes and are not serialized by it — they are serialized
-// by O_APPEND, which is what makes an append-only file the right shape here —
-// but two nodes of ONE session landing at the same instant are two goroutines,
-// and they are.
+// taskIndexMu serializes index writes within this process. The stable sidecar
+// lock also coordinates other processes when permanent deletion rewrites it.
 var taskIndexMu sync.Mutex
 
 // appendTaskIndex writes one row. Every failure is silence: the caller is a
@@ -455,21 +454,18 @@ func appendTaskIndex(path string, entry TaskIndexEntry) {
 	if err != nil {
 		return
 	}
-	taskIndexMu.Lock()
-	defer taskIndexMu.Unlock()
-	if directory := filepath.Dir(path); directory != "" && directory != "." {
-		if err := os.MkdirAll(directory, 0o700); err != nil {
-			return
+	_ = withTaskIndexLock(path, func() error {
+		if taskRecordDeleted(path, entry) {
+			return nil
 		}
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-	// ONE write, so O_APPEND's atomic offset covers the whole row: a line
-	// assembled by two writes is a line another process may split.
-	_, _ = file.Write(append(line, '\n'))
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = file.Write(append(line, '\n'))
+		return err
+	})
 }
 
 // ReadTaskIndex reads the rows at path, NEWEST FIRST, and tolerates everything.
@@ -514,7 +510,7 @@ func ReadTaskIndex(path string) []TaskIndexEntry {
 	if len(rows) > taskIndexRows {
 		rows = rows[:taskIndexRows]
 	}
-	return rows
+	return keepTaskRecords(path, rows)
 }
 
 // lastPerNode keeps ONE row per node: the last thing the file says about it.
@@ -615,7 +611,7 @@ func (a *Agent) TaskIndex() []TaskIndexEntry {
 		merged = append(merged, entry)
 	}
 	sortTaskIndex(merged)
-	return merged
+	return keepTaskRecords(a.config.taskIndexFile(), merged)
 }
 
 // liveTaskRows is this session's graph as index rows. It reads the graph
@@ -761,7 +757,12 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 	// written so far while it is still running is presence's to report
 	// ([Agent.presenceTasks]), not this file's.
 	files, wrote := taskFileCitations(n.changed)
+	planID := ""
+	if n.spec.planID != "" {
+		planID = planStoreID(n.spec.planID)
+	}
 	entry := TaskIndexEntry{
+		PlanID: planID,
 		ID:     strconv.FormatUint(n.id, 10),
 		Parent: taskIndexParent(n.parent),
 		Name:   TaskSlug(n.spec.title),

@@ -10,7 +10,7 @@ import (
 )
 
 // taskRowVerbs supplies the same task options to home and the Tasks page.
-// Archive addresses the task inside its owner, never the conversation itself.
+// Tasks stop while active and delete once their whole subtree has settled.
 func (a *app) taskRowVerbs(row session.SessionRow, entry session.TaskIndexEntry) []verb {
 	if a.hosted() {
 		return nil
@@ -21,13 +21,16 @@ func (a *app) taskRowVerbs(row session.SessionRow, entry session.TaskIndexEntry)
 		dir = filepath.Dir(row.Transcript)
 	}
 	if dir != "" && row.ID != "" && row.ID == entry.SessionID && entry.ID != "" {
-		word := "close"
-		archived := row.ArchivedTasks[entry.ID]
-		if archived {
-			word = "reopen"
+		word := "delete"
+		active := taskTreeActive(a.taskActionRows(row, entry), row.ID, entry.ID)
+		if active {
+			word = "stop"
 		}
 		verbs = append(verbs, verb{key: 'x', word: word, do: func() tea.Cmd {
-			return a.putTaskAway(dir, entry, !archived)
+			if active {
+				return a.stopTaskRecord(row, entry)
+			}
+			return a.askRecordDelete(row, &entry)
 		}})
 	}
 	if workspace := strings.TrimSpace(row.Workspace); workspace != "" {
@@ -65,28 +68,4 @@ func (a *app) taskRowNotice(words string) {
 		a.taskSheet.actionNote = words
 	}
 	a.touch()
-}
-
-// putTaskAway persists only the visibility preference. Both lists then read
-// fresh metadata, so engine updates cannot resurrect a task somebody put away.
-func (a *app) putTaskAway(dir string, entry session.TaskIndexEntry, archived bool) tea.Cmd {
-	if err := session.SetTaskArchived(dir, entry.SessionID, entry.ID, archived); err != nil {
-		a.taskRowNotice("could not change task visibility: " + err.Error())
-		return nil
-	}
-	if a.at(pageHome) {
-		a.refreshHome()
-	} else {
-		p := &a.taskSheet
-		p.world = a.readWorld()
-		p.mine = a.taskSheetMine()
-		p.reading = readTasks(p.world, p.mine, p.reading.win, p.order, p.reading.seen, a.now())
-		p.cursor = a.tasksSettle(p.cursor)
-	}
-	word := "task reopened"
-	if archived {
-		word = "task closed · find it by typing its name in tasks"
-	}
-	a.taskRowNotice(word)
-	return a.taskPaneFollow()
 }

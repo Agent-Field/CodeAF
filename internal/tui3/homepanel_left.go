@@ -103,7 +103,7 @@ const (
 func ledgerLanded(world session.World, seen time.Time) []switcherRow {
 	var out []switcherRow
 	for _, landed := range session.LandedSince(&world, seen) {
-		if landed.Entry.Parent != "" || landed.Session.ArchivedTasks[landed.Entry.ID] {
+		if landed.Entry.Parent != "" {
 			continue
 		}
 		entry := landed.Entry

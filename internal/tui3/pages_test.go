@@ -369,7 +369,7 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 		t.Fatalf("an addressless row offered %v", got)
 	}
 	bare.session.Archived = true
-	if got := switcherVerbsFor(bare); len(got) != 1 || got[0].key != 'x' || got[0].word != "reopen" {
+	if got := switcherVerbsFor(bare); len(got) != 1 || got[0].key != 'x' || got[0].word != "delete" {
 		t.Fatalf("an archived row offered %v", got)
 	}
 }

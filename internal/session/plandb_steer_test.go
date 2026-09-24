@@ -91,9 +91,12 @@ func TestPlanSteerWritesReachTheStore(t *testing.T) {
 	}
 	rows := agent.PlanTasks()
 	for _, id := range []string{"t-gamma", "t-gamma-kid"} {
-		if row := planRowByID(t, rows, id); row.Status != "cancelled" {
-			t.Fatalf("a cancelled task reads %q, want %q", row.Status, "cancelled")
+		if row := planRowByID(t, rows, id); row.Status != "cancelled" || !row.Stopped {
+			t.Fatalf("a stopped task reads %#v, want cancelled with Stopped true", row)
 		}
+	}
+	if err := agent.PlanCancel("t-gamma"); err != nil {
+		t.Fatalf("already stopped: %v", err)
 	}
 }
 

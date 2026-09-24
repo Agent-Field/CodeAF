@@ -1109,7 +1109,7 @@ func (a *app) readWorldKnown() (session.World, bool) {
 			Transcript: file, Title: a.title, Workspace: a.workspace, Model: a.model,
 		}, time.Now())
 	}
-	return world, true
+	return a.withoutDeletedConversations(world), true
 }
 
 // worldOf is THE SEAM: the walk, and whether it is an answer.
@@ -4501,6 +4501,9 @@ func homeHeadingWord(project string) string {
 // homeMark is which of the three kinds of row this is: the conversation on
 // screen, one this terminal is holding behind it, or somebody else's.
 func (a *app) homeMark(row session.SessionRow) rowMark {
+	if a.homeConversationClosed(row) {
+		return markNone
+	}
 	switch {
 	case row.Transcript == "":
 		return markNone
@@ -5121,6 +5124,8 @@ func homeFacts(row session.SessionRow, now time.Time) string {
 func (a *app) homeHolding(row session.SessionRow) string {
 	word := ""
 	switch {
+	case a.homeConversationClosed(row):
+		word = "closed"
 	case a.holding(row.Transcript):
 		word = "open here"
 	case row.Open || row.Live:

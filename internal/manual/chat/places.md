@@ -483,28 +483,40 @@ shared prompt with the correction two rows further down on the foot, which meant
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
 the row's options: `x close`, `n new in project`, `o open folder`, and
-`p copy project` where the local conversation and project are available. A task this
-conversation is holding that is still queued or running also offers `s stop it`. Everything starts expanded; the list scrolls and its
+`p copy project` where the local conversation and project are available. To stop work, open its room and use Stop. Everything starts expanded; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
 the list already draws, and it says `nothing matches` only when your filter has emptied the
 page — and the foot names only what is true of the row you are on: `enter open its room ·
-→ verbs: stop it`.
+→ verbs: close, new in project, open folder, copy project`.
 
-## Close or put away a task, find an archived task, or reopen it
+## Closed conversations in Sessions — dark grey names and synchronized tabs
 
-On home or the Sessions list, select the task, press `→`, then `x close`.
-This hides only that task from home's panels and the unfiltered Sessions list. Its work
-continues if it is running; its record, conversation, and other tasks are unchanged.
-The choice is saved with the conversation and survives reopening the app.
+A closed conversation stays in Sessions with its name in the same dark grey as Home,
+even when selected. Its running work keeps its progress marks. Closing from Home,
+Sessions, the conversation tab or the chats menu saves the same state: the tab and
+its default `alt+k` entry disappear. The menu's `→ show closed` fold can still find it.
+Enter reopens it and restores its normal name and tab. Confirmed permanent deletion
+removes the conversation immediately from the current Home or Sessions screen, as well
+as tabs, the chats menu and reopen history. There is no need to leave and return;
+an older engine snapshot cannot bring the deleted row back.
+This also works for the current conversation: its saved folder and ownership survive
+live-status updates, and deletion prepares a fresh conversation before stopping it.
 
-To recover it, type its name in the Tasks filter. Search includes put-away tasks within
-the selected time window; expand that window if the task is older. Select the matching
-task and use `→`, then `x reopen`. `enter` can still open its record.
+## Stop or delete a task — what happened to close or archived tasks?
 
-`n new in project`, `o open folder`, and `p copy project` use the project of the conversation
-that owns the selected task. A new chat is independent of the task. These folder actions
-and per-task put-away are local capabilities; a connected remote window does not offer
-them. Its existing stop action remains available when that engine supports it.
+On Home or Sessions, select the task and press `→`. `x stop` stops active work,
+including queued or waiting tasks and active descendants. Its records remain visible.
+Tasks have no Close operation; previously hidden tasks are shown again.
+
+Once the whole selected subtree has stopped, `x delete` asks
+`delete is permanent, are you sure?`. `y` deletes the task and all descendants;
+`n` or Escape cancels and restores the four actions. Enter does not confirm deletion.
+New in project, Open folder and Copy project remain available. Deletion removes rows
+immediately and preserves the conversation and unrelated siblings. A Stop action stays
+Stop even if the task finishes while its menu is open.
+
+Conversation rows retain Close followed by confirmed Delete. Closing preserves work;
+confirmed conversation deletion stops its agent and deletes every task it owns.
 
 ## standing — what runs without being asked, and where to type on the standing page
 

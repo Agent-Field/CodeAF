@@ -285,15 +285,16 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
 updates the tab and the row in Sessions together.
 
-## Close or put away a task from home — task row options, new in project, open folder, copy project
+## Stop or delete a task from home — task row options, new in project, open folder, copy project
 
-**`→` offers task options just as it does for threads:** `x close`,
-`n new in project`, `o open folder`, and `p copy project` when the corresponding local
-folder and action are available. On a wide home these appear beneath the description
-in the middle column. Putting a task away hides that task from home and the unfiltered
-Sessions list; it does not stop it, delete its record, or put away its conversation.
-Find it again by typing its name in Sessions, then use `→` and `x reopen`.
-The choice survives closing the app. Folder actions use the task's conversation project.
+**Tasks have no Close action.** `→` offers `x stop` while the task or any descendant
+is active, including queued or waiting work. Stop preserves the task records and the
+conversation. Once the entire subtree has stopped, the action is `x delete`.
+Deletion asks `delete is permanent, are you sure?`: `y` deletes the selected task and
+all descendants; `n` or Escape restores the four actions. Enter never confirms deletion.
+A Stop action remains Stop even if the task finishes while its menu is open.
+The other actions are `n new in project`, `o open folder`, and `p copy project`.
+Previously hidden tasks are visible again; conversation Close is unchanged.
 
 ## Why does only one row spin — the one spinner on home
 
@@ -359,9 +360,9 @@ rows that do not fit behind `N more`. The Sessions heading opens the full Sessio
 typing into the box searches older history. The `alt+k chats` menu (`opt+k` on macOS)
 continues to list open tabs only.
 
-Closing with `→`, then `x close`, or `ctrl+e`, removes the same conversation from
-Home's open rows, the tab strip and the default chats menu immediately. It keeps
-running work and drafts. A waiting conversation carries a `?`;
+Closing with `→`, then `x close`, or `ctrl+e`, closes the tab and removes it from
+the default chats menu immediately. Home keeps the conversation visible as closed,
+including progress from its running work. It keeps running work and drafts. A waiting conversation carries a `?`;
 the question remains reachable even when its tab is closed.
 
 `/ask` exchanges follow the conversation rows. Escape opens Home; Enter opens the
@@ -682,19 +683,42 @@ machine with one conversation and on one with none (see *Why is the home screen 
 
 ## Close or archive a conversation — put junk away and clean up home
 
-Select a conversation, press `→`, then **`x close`**. `ctrl+e` does the same.
-Its tab closes and it leaves the default `alt+k chats` list immediately. Home keeps closed conversations dimmed in the same Sessions list while they are
-among the fifteen most recent. The
-foot says `closed · type its name to find it again`.
+Select a conversation, press `→`, then **`x close`**. `ctrl+e` also closes it.
+Its tab closes and leaves the default `alt+k chats` list. Home keeps the conversation
+among its fifteen most recent, and search finds older ones. Running replies, tasks
+and jobs keep their progress marks after the tab closes. Its draft and saved history stay.
 
-Nothing is deleted: its transcript, tasks, running work and draft remain. Closing
-from Home also saves its archived status, so the bounded closed list can find it
-after a restart. Closing a tab with `ctrl+w` retains it in this window's close stack
-without archiving it on disk.
+**Enter reopens the conversation and its tab.** On a phone-width terminal, Enter first
+opens its sheet; use the sheet's open action. Home, Sessions, the tab close button and
+`ctrl+w` in the chats menu save the same closed status across restarts. Closed names
+use the same dark grey on Home and Sessions, including the selected row. Running
+progress stays visible. Reopening from any of these places or `ctrl+shift+t` clears
+the closed status everywhere.
 
-**Enter on a dimmed row reopens the conversation and its tab.** `→`, then `x reopen`,
-or `ctrl+e`, does the same. Older closed conversations remain searchable by name.
-On a phone-width terminal, Enter first opens the row's sheet; use its open action.
+## Permanently delete a conversation or task — delete is permanent, are you sure?
+
+Home and Sessions use the same four actions: **`x close`**, **`n new in project`**,
+**`o open folder`**, **`p copy project`**. After Close, `x` becomes **delete**;
+Enter already reopens. In Sessions, `→` opens a collapsed family first; another `→`
+opens its actions. Nested tasks use `x stop` while active and `x delete` once their
+whole subtree has stopped; they have no Close action.
+
+Delete asks **`delete is permanent, are you sure?`**. Press **`y`** to confirm or
+**`n`** to cancel and return to the four actions. Escape also cancels. Enter does not
+confirm deletion.
+
+Deleting a conversation stops its agent and removes its session folder, saved history
+and all its task records. Its owned workspace is part of that folder; a borrowed
+project stays. It leaves Home, Sessions, search and the reopen stack. There is no undo.
+Deleting the current conversation prepares a fresh conversation first.
+
+Deleting a nested task removes its saved record and all descendant task records and
+journals. Its conversation and unrelated sibling tasks remain. It does not cancel their work or erase references already
+written into the conversation's messages. A deleted record cannot be reopened or
+recreated by a late completion. Closing alone never deletes or stops work.
+
+Permanent deletion is available for local session folders, including the local engine.
+It is absent on a remotely hosted session, whose files are on the other machine.
 
 ## Why did the list jump to the bottom when I typed — home's two shapes
 
@@ -2239,6 +2263,6 @@ A run’s tab is a view inside its parent conversation. Home’s Sessions list a
 
 Closing a tab hides that conversation from tabs and the chats menu. It does not
 stop its work or release an agent still held by this window. Such a conversation
-remains in Home history and can reopen here; it must not claim another window
-holds it. The other-window label is reserved for a conversation actually held
+remains in Home history and can reopen here. Its search card says `closed`, with
+its current work state when applicable; it must not claim another window holds it. The other-window label is reserved for a conversation actually held
 elsewhere.

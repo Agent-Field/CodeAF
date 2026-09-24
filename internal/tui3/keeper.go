@@ -886,7 +886,7 @@ func (a *app) stow(conv Conversation, side *aside) tea.Cmd {
 	if a.shared {
 		a.stowDrafts(conv, side)
 		// Retain the outgoing navigation identity even though its agent ended.
-		a.rememberOpen(key)
+		a.rememberHeld(key)
 		return nil
 	}
 	// AND IT IS THE WHOLE COMPOSER, not only the box: every page's own unsent line
@@ -903,7 +903,7 @@ func (a *app) stow(conv Conversation, side *aside) tea.Cmd {
 		watch: startBehindWatch(key, conv.Agent, a.stirs),
 	}
 	a.behind[key] = held
-	a.rememberOpen(key)
+	a.rememberHeld(key)
 	var parked tea.Cmd
 	if side != nil && len(side.parks) > 0 {
 		// The turn may have ended between the park and the watcher joining. Ask
@@ -920,6 +920,17 @@ func (a *app) stow(conv Conversation, side *aside) tea.Cmd {
 	return parked
 }
 
+// rememberHeld updates recency without reopening a dismissed tab when its
+// conversation moves from the foreground into the keeper.
+func (a *app) rememberHeld(key string) {
+	if a.tabShut[key] {
+		a.forget(key)
+		a.prev = append(a.prev, key)
+		return
+	}
+	a.rememberOpen(key)
+}
+
 // rememberOpen puts a key on top of the previous-stack, which is the order `tab`
 // walks and the order [app.closeFront] brings a conversation forward in.
 //
@@ -928,6 +939,9 @@ func (a *app) stow(conv Conversation, side *aside) tea.Cmd {
 // and a stack that grew an entry per visit would send `tab` somewhere it has
 // already been.
 func (a *app) rememberOpen(key string) {
+	if err := a.saveConversationClosed(key, false); err != nil {
+		a.taskRowNotice("could not save reopened conversation: " + err.Error())
+	}
 	a.forget(key)
 	a.prev = append(a.prev, key)
 	// AND A CONVERSATION COMING FORWARD GETS ITS TAB BACK. This is the one door
@@ -935,7 +949,7 @@ func (a *app) rememberOpen(key string) {
 	// a close bringing the next one up — so a dismissal lifted here cannot be
 	// missed by a road somebody adds later (chattabs.go's [app.tabDismiss]).
 	if a.tabShut[key] {
-		delete(a.tabShut, key)
+		a.tabShut[key] = false
 		a.chatTabBar = tabBar{}
 	}
 	if a.at(pageHome) && a.home.tabs != nil {
@@ -1186,10 +1200,16 @@ func (a *app) endAgent(agent Agent) { a.endAgentFor(agent, session.StopByLeaving
 // CONVERSATION to go, not for the reply to be thrown away — so the engine owes
 // them a sentence about the answer that never came.
 func (a *app) endAgentFor(agent Agent, door session.StopDoor) {
-	agent.InterruptFor(door)
-	if err := agent.Close(); err != nil {
+	if err := endConversationAgent(agent, door); err != nil {
 		a.note("close failed: " + err.Error())
 	}
+}
+
+// endConversationAgent shares the shutdown order with confirmed deletion and
+// returns failure before the caller removes any saved conversation files.
+func endConversationAgent(agent Agent, door session.StopDoor) error {
+	agent.InterruptFor(door)
+	return agent.Close()
 }
 
 // leaveFront is the act both doors above are: the conversation in front is let

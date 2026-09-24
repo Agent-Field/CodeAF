@@ -527,7 +527,7 @@ func switcherVerbsFor(row switcherRow) []switcherVerb {
 	verbs := switcherQuestionVerbs(row.options)
 	word := "close"
 	if row.session.Archived {
-		word = "reopen"
+		word = "delete"
 	}
 	verbs = append(verbs, switcherVerb{key: 'x', word: word})
 	if strings.TrimSpace(row.session.Workspace) != "" || strings.TrimSpace(row.session.ProjectDir) != "" {

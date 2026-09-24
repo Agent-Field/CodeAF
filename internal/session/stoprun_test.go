@@ -368,3 +368,52 @@ func TestAStoppedRunBuysNoFurtherSummary(t *testing.T) {
 		t.Fatalf("a stopped run's summary was asked of a model %d times, want never", got)
 	}
 }
+
+func TestPlanStopPublishesStoppedJoinedRowAndKeepsItStopped(t *testing.T) {
+	agent, _, conversation, dir := stoppableBeltRun(t, 71)
+	if err := agent.startKnownTaskRun(context.Background(), 72, "second piece", "brief", nil, taskStand{dir: conversation, mode: TaskModeWorktree}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.PlanCancel("t-72"); err != nil {
+		t.Fatal(err)
+	}
+	check := func() {
+		t.Helper()
+		rows := agent.graph().runRows(72)
+		if len(rows) != 1 || rows[0].State != TaskFailed || !rows[0].Stopped {
+			t.Fatalf("conversation notice lost stopped status: %+v", rows)
+		}
+		if word := ProjectTask(TaskFacts{State: rows[0].State, Stopped: rows[0].Stopped, Ending: rows[0].Ending}).Word; word != "stopped" {
+			t.Fatalf("conversation reads %q", word)
+		}
+	}
+	check()
+	before := beltRunTaskAt(t, dir, "72").CompletedAt
+	if err := agent.PlanCancel("t-72"); err != nil {
+		t.Fatal(err)
+	}
+	if after := beltRunTaskAt(t, dir, "72").CompletedAt; !before.Equal(after) {
+		t.Fatal("repeated stop rewrote the ending")
+	}
+	agent.beltMu.Lock()
+	run := agent.beltRun
+	agent.beltMu.Unlock()
+	// A later run ending must not overwrite this task's earlier personal stop.
+	agent.settleJoinedRows(agent.graph(), run, time.Now(), TaskEndingSteps, []string{"72"})
+	check()
+	lane, stop := agent.WatchTaskUpdates()
+	defer stop()
+	notices := takeTaskUpdates(t, lane, 2)
+	found := false
+	for _, notice := range notices {
+		if notice.ID == 72 {
+			found = true
+			if !notice.Stopped {
+				t.Fatal("reopened roster lost stopped status")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("reopened roster omitted stopped task")
+	}
+}

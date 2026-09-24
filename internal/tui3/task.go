@@ -173,6 +173,7 @@ type taskNode struct {
 	// why the parent is a string. Empty and false is a session that has never
 	// run anything adaptive, which is every session until one does.
 	parent string
+	planID string
 	paused bool
 	// run and node name this row's door inside an adaptive run. A root carries
 	// only run; a child carries both, so the same door opens the run's page at
@@ -1146,7 +1147,7 @@ func (a *app) refuseFormingCard() {
 // the question as well — it is the question that draws the clock now.
 func (a *app) proposeTask(ev session.Event) {
 	notice := ev.Task
-	if notice == nil {
+	if notice == nil || a.taskNoticeDeleted(notice) {
 		return
 	}
 	// A PROPOSAL THIS WINDOW HAS ALREADY SEEN IS AN UPDATE, NEVER A SECOND
@@ -4296,10 +4297,22 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	// three lines. The foot counts what the column holds; the bill is the
 	// status row's (foot.go).
 	members := a.railMembers()
+	stopped := 0
 	for _, g := range railFootOrder {
-		if n := len(members[g]); n > 0 {
+		n := len(members[g])
+		for _, node := range members[g] {
+			// Sorting ended work together must not call a person's stop done.
+			if a.taskStatus(node).Presence == session.TaskPresenceStopped {
+				stopped++
+				n--
+			}
+		}
+		if n > 0 {
 			segs = append(segs, itoa(n)+" "+railGroupWords[g])
 		}
+	}
+	if stopped > 0 {
+		segs = append(segs, itoa(stopped)+" "+taskStoppedWord)
 	}
 	// IN THIS TERMINAL'S OWN SPELLING of the modifier (chords.go), because the
 	// offer names a chord now rather than a bare letter and a Mac calls that
@@ -5636,7 +5649,7 @@ func (a *app) railJoin(text, rail string) string {
 // was accepted is the record of it.
 func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	notice := ev.Task
-	if notice == nil {
+	if notice == nil || a.taskNoticeDeleted(notice) {
 		return nil
 	}
 	// A BACKGROUND JOB IS NOT A TASK AND IS NOT FILED AS ONE. Jobs arrive on
@@ -5645,6 +5658,9 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// is the defect this wave exists to close.
 	if notice.Kind == session.TaskKindJob {
 		return nil
+	}
+	if node := a.tasks[notice.ID]; node != nil && notice.PlanID != "" {
+		node.planID = notice.PlanID
 	}
 	if last, seen := a.taskSeen[notice.ID]; seen && last == notice.State {
 		// THE DE-DUP HAS EXCEPTIONS, and every one of them is news that arrives
@@ -5738,6 +5754,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 			node.assignment = firstNonEmpty(card.summary, card.brief)
 			node.brief, node.acceptance, node.where = card.brief, card.acceptance, card.where
 		}
+		node.planID = notice.PlanID
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
 	}

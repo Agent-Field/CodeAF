@@ -2213,7 +2213,9 @@ type app struct {
 	// surface in which a bare letter is a verb rather than a character
 	// (verbstrip.go). Closed — which is nearly always — every printable key
 	// belongs to the composer.
-	strip verbStrip
+	strip          verbStrip
+	deleteBusy     bool
+	deletedRecords map[tasksKey]bool
 	// mapShowing is `alt+.`: the whole key map drawn in the cells a person was
 	// already reading, until the next key (SCREEN 3b). A terminal cannot see a
 	// held modifier, so what the mockup drew as "hold alt" is a chord that lasts
@@ -3296,6 +3298,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // switch ever sees them and hands on everything else untouched and in the order
 // it arrived (coalesce.go).
 func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if a.deleteBusy {
+		switch msg.(type) {
+		case tea.KeyPressMsg, tea.MouseClickMsg:
+			return a, nil
+		}
+	}
 	// THE LINK'S ONE-SHOT NEWS IS DRAINED HERE AND NOWHERE ELSE (hostlink.go).
 	// The seam forgets the sentence as it hands it over, so a second caller
 	// would not show it twice — it would swallow it. This is the one place the
@@ -3304,7 +3312,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// not survive has news, and a person who presses a key gets it rather than
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
+	if a.strip.prompt != "" {
+		if key, ok := msg.(tea.KeyPressMsg); ok {
+			if cmd, took := a.stripKey(key); took {
+				return a, cmd
+			}
+		}
+	}
 	switch msg := msg.(type) {
+	case recordDeletedMsg:
+		return a, a.recordDeleted(msg)
 	case tea.WindowSizeMsg:
 		// A zero size is a terminal that could not say — a headless boot, a
 		// window being born. Keeping the last known size draws something;

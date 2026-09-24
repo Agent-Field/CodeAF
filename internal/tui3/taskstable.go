@@ -179,7 +179,7 @@ func tasksChatStateField(chat tasksChat) rowField {
 // columns move is a tail with extra steps. Only the NAME flexes (rowfit.go law
 // 1), and the lead eats into the name.
 func tasksTableRow(lead string, leadCells int, name string, state, second rowField,
-	secondInk func(string) string, width int, key tasksSortKey, pal palette, lit bool, project, fold string) string {
+	secondInk func(string) string, width int, key tasksSortKey, pal palette, lit, closed bool, project, fold string) string {
 	stateCells, secondCells, nameCells := tasksColumns(width, key)
 	nameCells = max(nameCells-leadCells, 1)
 	foldCells := 0
@@ -187,7 +187,11 @@ func tasksTableRow(lead string, leadCells int, name string, state, second rowFie
 		foldCells = 1 + ansi.StringWidth(fold)
 	}
 	said := fit(name, max(nameCells-foldCells-tasksColumnAir, 1))
-	out := lead + placeSubject(said, lit, pal)
+	subject := placeSubject(said, lit, pal)
+	if closed {
+		subject = pal.dim(said)
+	}
+	out := lead + subject
 	if fold != "" {
 		out += " " + pal.dim(fold)
 	}

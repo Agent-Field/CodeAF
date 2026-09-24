@@ -1115,6 +1115,15 @@ func (a *app) lastVisibleTab() (chatTab, bool) {
 // that one function, so there is no road back onto the screen that forgets to
 // put the tab back.
 func (a *app) tabShutKey(key string) {
+	if err := a.saveConversationClosed(key, true); err != nil {
+		a.taskRowNotice("could not close conversation: " + err.Error())
+		return
+	}
+	a.tabShutSaved(key)
+}
+
+// tabShutSaved updates the window after its saved closure has succeeded.
+func (a *app) tabShutSaved(key string) {
 	if key == "" {
 		return
 	}

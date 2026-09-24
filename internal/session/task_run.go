@@ -3720,7 +3720,12 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	if n.nextEffort != nil {
 		thinking = *n.nextEffort
 	}
+	planID := ""
+	if n.spec.planID != "" {
+		planID = planStoreID(n.spec.planID)
+	}
 	return TaskNotice{
+		PlanID:   planID,
 		Thinking: thinking,
 		ID:       n.id,
 		Title:    n.spec.title,
@@ -4824,6 +4829,9 @@ func (a *Agent) readsTheDecisionLocked(node *TaskNode) bool {
 // A surface reading both sees an in-turn update on both, exactly as a surface
 // holding two Submit channels sees each event on each (see [Agent.Submit]).
 func (a *Agent) emitTaskUpdate(notice TaskNotice) {
+	if taskNoticeDeleted(a.deletedTaskRecords(), notice) {
+		return
+	}
 	event := Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice}
 	a.mu.Lock()
 	hub := a.hub
@@ -4988,10 +4996,14 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 	// moment old is the same snapshot a live watcher already drew; a job
 	// that moves after this returns will announce onto the lane itself.
 	liveJobs := a.liveJobNotices()
+	deleted := a.deletedTaskRecords()
 	graph.mu.Lock()
 	defer graph.mu.Unlock()
 	for i, node := range nodes {
 		notice := node.noticeLocked(costs[i])
+		if taskNoticeDeleted(deleted, notice) {
+			continue
+		}
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice})
 	}
 	// AND THE ADAPTIVE RUNS GO OUT UNDER THE SAME HOLD, for the same reason and
@@ -5029,7 +5041,9 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 			stream.send(Event{Kind: EventJobUpdate, Job: &job})
 			continue
 		}
-		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &row})
+		if !taskNoticeDeleted(deleted, row) {
+			stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &row})
+		}
 	}
 }
 
@@ -9642,4 +9656,10 @@ func mergePaths(kept, added []string) []string {
 		kept = append(kept, path)
 	}
 	return kept
+}
+
+// taskNoticeDeleted keeps live emissions and graph replay on the same record
+// authority as TaskIndex. Nodes remain in the scheduler for dependency history.
+func taskNoticeDeleted(deleted map[string]bool, notice TaskNotice) bool {
+	return notice.Kind != TaskKindJob && TaskRecordDeleted(deleted, strconv.FormatUint(notice.ID, 10), strconv.FormatUint(notice.Parent, 10), notice.PlanID)
 }

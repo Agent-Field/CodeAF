@@ -102,7 +102,7 @@ func TestHomeConversationBulletsFollowAnswerAndUnreadState(t *testing.T) {
 		t.Fatal("notification consumed unread state")
 	}
 	other.closed = true
-	if got := plain(a.homeConversationBullet(other, a.pal)); got != idle {
-		t.Fatal("closed conversation is not dim/idle")
+	if got := plain(a.homeConversationBullet(other, a.pal)); got != a.pal.glyph(tokens.GStepDone) {
+		t.Fatal("closing the tab hid its unread work")
 	}
 }

@@ -195,6 +195,9 @@ func (a *app) homeRowVerbs() []verb {
 	// thing on it with verbs — the two actions home has been ADVERTISING on such
 	// a row without binding (`homeItemActions`, homestanding.go), bound to ctrl+e
 	// and ctrl+x, which the line never named, and whose bare `p` and `s` typed.
+	if line.kind == homeSession {
+		return a.conversationRowVerbs(line.row)
+	}
 	if !line.standsForItem() {
 		return nil
 	}
@@ -209,6 +212,9 @@ func (a *app) homeRowVerbs() []verb {
 func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 	var verbs []verb
 	for _, v := range switcherVerbsFor(row) {
+		if a.hosted() && v.key == 'x' && a.homeConversationClosed(row.session) {
+			continue
+		}
 		if a.hosted() && row.kind == switcherConversation && v.answer == "" && (v.key == 'o' || v.key == 'p' || v.key == 'n') {
 			continue
 		}
@@ -221,8 +227,8 @@ func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 		if row.gone && v.answer == "" && (v.key == 'n' || v.key == 'o') {
 			continue
 		}
-		if v.key == 'x' && row.kind == switcherConversation && (row.session.Archived || line.cell != nil && line.cell.closed) {
-			v.word = "reopen"
+		if v.key == 'x' && row.kind == switcherConversation && (a.homeConversationClosed(row.session) || line.cell != nil && line.cell.closed) {
+			v.word = "delete"
 		}
 		verbs = append(verbs, a.homeSwitchVerb(line, row, v))
 	}
@@ -248,7 +254,12 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 			return cmd
 		}
 	case v.key == 'x':
-		do = func() tea.Cmd { return a.homeArchiveRow(row.session) }
+		do = func() tea.Cmd {
+			if a.homeConversationClosed(row.session) {
+				return a.askRecordDelete(row.session, nil)
+			}
+			return a.homeArchiveRow(row.session)
+		}
 	case v.key == 'n':
 		do = func() tea.Cmd { return a.homeStartInProject(homeWhere(line)) }
 	case v.key == 'o':
@@ -277,9 +288,9 @@ func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
 	if row.Transcript == a.file {
 		key = a.frontTabKey()
 	}
-	a.tabShutKey(key)
-	a.home.say(homeClosedWord, "")
-	a.refreshHome()
+	a.tabShutSaved(key)
+	a.taskRowNotice(homeClosedWord)
+	a.refreshRecordLists()
 	return nil
 }
 
@@ -288,7 +299,10 @@ func (a *app) homeConversationClosed(row session.SessionRow) bool {
 	if row.Transcript == a.file {
 		key = a.frontTabKey()
 	}
-	return row.Archived || a.tabShut[key]
+	if closed, known := a.tabShut[key]; known {
+		return closed
+	}
+	return row.Archived
 }
 
 // A new tab without a saved session has no archive record yet.

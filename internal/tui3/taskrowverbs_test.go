@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -24,89 +25,98 @@ func selectHomeTask(t *testing.T, a *app, id string) session.SessionRow {
 	return session.SessionRow{}
 }
 
-func TestTaskClosePersistsAndCanBeRestoredFromTheTasksFilter(t *testing.T) {
-	lab := newSwitchLab(t)
-	a := lab.open(180, 40)
-	owner := selectHomeTask(t, a, "t1")
-	drive(t, a, key("right"))
-	frame := taskSheetText(a)
-	for _, word := range []string{"x close", "n new in project", "o open folder", "p copy project"} {
-		if !strings.Contains(frame, word) {
-			t.Fatalf("task options are missing %q:\n%s", word, frame)
+type recordActionAgent struct {
+	*fakeAgent
+	rows  []session.TaskIndexEntry
+	calls []string
+	fail  error
+}
+
+func (a *recordActionAgent) TaskIndex() []session.TaskIndexEntry { return a.rows }
+func (a *recordActionAgent) Cancel(id string) (string, error) {
+	a.calls = append(a.calls, id)
+	if a.fail != nil {
+		return "", a.fail
+	}
+	for i := range a.rows {
+		if "task:"+a.rows[i].ID == id {
+			a.rows[i].Status = string(session.TaskFailed)
 		}
 	}
-	drive(t, a, key("a"))
-	before, err := session.LoadMeta(owner.Dir)
-	if err != nil || before.ArchivedTasks["t1"] {
-		t.Fatalf("the retired a shortcut changed task visibility: %+v, %v", before, err)
-	}
-	drive(t, a, key("x"))
-	meta, err := session.LoadMeta(owner.Dir)
-	if err != nil || !meta.ArchivedTasks["t1"] || meta.Archived {
-		t.Fatalf("task archive was not independent of its conversation: %+v, %v", meta, err)
-	}
-	b := lab.open(180, 40)
-	for _, line := range b.home.lines {
-		if line.cell != nil && line.cell.row != nil && line.cell.row.task != nil && line.cell.row.task.ID == "t1" {
-			t.Fatal("a fresh window restored a task that was put away")
-		}
-	}
-	b.showPage(pageTasks)
-	for _, item := range b.tasksFiltered().items {
-		if item.entry.ID == "t1" && item.entry.SessionID == owner.ID {
-			t.Fatal("the resting Tasks list still contains the put-away task")
-		}
-	}
-	b.taskSheet.query.setText("read 40 filings")
-	b.taskSheetTyped()
-	found := false
-	for _, at := range b.taskSheet.stops(b) {
-		b.taskSheet.cursor = at
-		if item, ok := b.taskSheetCurrent(); ok && item.entry.ID == "t1" && item.entry.SessionID == owner.ID {
-			if !item.runs {
-				t.Fatal("putting away the task stopped its running work")
+	return "stopped", nil
+}
+
+func TestTaskStopTargetsItsOwnerAndNeverDeletesAfterCompletion(t *testing.T) {
+	for _, settled := range []bool{false, true} {
+		t.Run(fmt.Sprint(settled), func(t *testing.T) {
+			lab := newSwitchLab(t)
+			a := lab.open(180, 40)
+			owner := selectHomeTask(t, a, "t1")
+			item, _ := a.taskSheetCurrent()
+			agent := &recordActionAgent{fakeAgent: &fakeAgent{model: "m"}, rows: []session.TaskIndexEntry{item.entry}}
+			var asked string
+			a.open = func(workspace, file string) (Conversation, error) {
+				asked = file
+				return Conversation{Agent: agent, SessionFile: file, Workspace: workspace}, nil
 			}
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("the filter could not recover the archived task record")
-	}
-	drive(t, b, key("right"))
-	if !strings.Contains(taskSheetText(b), "x reopen") {
-		t.Fatal("the filtered task did not offer restore")
-	}
-	drive(t, b, key("x"))
-	meta, _ = session.LoadMeta(owner.Dir)
-	if meta.ArchivedTasks["t1"] {
-		t.Fatal("restore did not persist")
-	}
-	selectHomeTask(t, lab.open(180, 40), "t1")
-}
-
-func TestTaskCloseFailureKeepsTheRowVisible(t *testing.T) {
-	a := newSwitchLab(t).open(180, 40)
-	owner := selectHomeTask(t, a, "t1")
-	a.putTaskAway(owner.Dir, session.TaskIndexEntry{ID: "t1", SessionID: "wrong-owner"}, true)
-	selectHomeTask(t, a, "t1")
-	meta, _ := session.LoadMeta(owner.Dir)
-	if meta.ArchivedTasks["t1"] {
-		t.Fatal("a mismatched task owner changed the row's visibility")
+			before := a.file
+			drive(t, a, key("right"))
+			for _, word := range []string{"x stop", "n new in project", "o open folder", "p copy project"} {
+				if !strings.Contains(taskSheetText(a), word) {
+					t.Fatalf("missing %q", word)
+				}
+			}
+			if settled {
+				agent.rows[0].Status = string(session.TaskDone)
+			}
+			drive(t, a, key("x"))
+			if asked != owner.Transcript || a.file != before {
+				t.Fatal("stop used or changed the wrong conversation")
+			}
+			if len(agent.calls) != map[bool]int{false: 1, true: 0}[settled] {
+				t.Fatalf("stop calls=%v", agent.calls)
+			}
+			meta, _ := session.LoadMeta(owner.Dir)
+			if meta.ArchivedTasks["t1"] || meta.DeletedTasks["t1"] || a.strip.prompt != "" {
+				t.Fatal("stop archived or deleted a record")
+			}
+		})
 	}
 }
 
-func TestFinishedTasksOfferCloseAndFolderActions(t *testing.T) {
+func TestFinishedTasksOfferConfirmedDeleteAndCancelRestoresActions(t *testing.T) {
 	lab := newSwitchLab(t)
-	lab.presence("-beta", "bbbb000000000001", session.PresenceIdle, "", lab.now)
-	lab.task("-beta", session.TaskIndexEntry{ID: "t1", SessionID: "bbbb000000000001",
-		Title: "read 40 filings", Label: "read 40 filings", Status: string(session.TaskDone), EndedAt: lab.now})
+	lab.task("-beta", session.TaskIndexEntry{ID: "t1", SessionID: "bbbb000000000001", Title: "read 40 filings", Status: string(session.TaskDone), EndedAt: lab.now})
 	a := lab.open(180, 40)
 	owner := selectHomeTask(t, a, "t1")
 	drive(t, a, key("right"), key("x"))
+	if !strings.Contains(a.strip.prompt, deletePermanentWord) {
+		t.Fatal("delete did not ask")
+	}
+	drive(t, a, key("enter"))
 	meta, _ := session.LoadMeta(owner.Dir)
-	if !meta.ArchivedTasks["t1"] {
-		t.Fatal("a finished task could not be put away")
+	if meta.DeletedTasks["t1"] {
+		t.Fatal("Enter confirmed deletion")
+	}
+	drive(t, a, key("n"))
+	if !a.strip.open || len(a.strip.verbs) != 4 || a.strip.verbs[0].word != "delete" {
+		t.Fatal("cancel did not restore four actions")
+	}
+}
+
+func TestTaskStopFailureKeepsTheRecordAndConversation(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(180, 40)
+	owner := selectHomeTask(t, a, "t1")
+	item, _ := a.taskSheetCurrent()
+	agent := &recordActionAgent{fakeAgent: &fakeAgent{model: "m"}, rows: []session.TaskIndexEntry{item.entry}, fail: errors.New("stop refused")}
+	a.open = func(workspace, file string) (Conversation, error) {
+		return Conversation{Agent: agent, SessionFile: file, Workspace: workspace}, nil
+	}
+	drive(t, a, key("right"), key("x"))
+	meta, _ := session.LoadMeta(owner.Dir)
+	if meta.DeletedTasks["t1"] || !strings.Contains(a.taskSheet.actionNote, "stop refused") {
+		t.Fatal("stop failure was hidden or deleted its record")
 	}
 }
 
@@ -180,5 +190,106 @@ func TestTaskOptionsSuspendTheLandingAnswerHints(t *testing.T) {
 	drive(t, a, key("left"))
 	if len(a.taskPaneVerbs(item)) < 2 {
 		t.Fatal("closing options did not restore the landing answers")
+	}
+}
+
+func TestTaskDeleteRechecksNewlyActiveDescendantsOnYes(t *testing.T) {
+	lab := newSwitchLab(t)
+	lab.task("-beta", session.TaskIndexEntry{ID: "t1", SessionID: "bbbb000000000001", Title: "read 40 filings", Status: string(session.TaskDone), EndedAt: lab.now})
+	a := lab.open(180, 40)
+	owner := selectHomeTask(t, a, "t1")
+	item, _ := a.taskSheetCurrent()
+	agent := &recordActionAgent{fakeAgent: &fakeAgent{model: "m"}, rows: []session.TaskIndexEntry{item.entry}}
+	a.file, a.agent = owner.Transcript, agent
+	drive(t, a, key("right"), key("x"))
+	if a.strip.prompt == "" {
+		t.Fatal("delete did not confirm")
+	}
+	agent.rows = append(agent.rows, session.TaskIndexEntry{ID: "child", Parent: "t1", SessionID: owner.ID, Title: "child", Status: string(session.TaskRunning)})
+	drive(t, a, key("y"))
+	meta, _ := session.LoadMeta(owner.Dir)
+	if meta.DeletedTasks["t1"] || len(agent.calls) > 0 || !strings.Contains(a.taskSheet.actionNote, "still active") {
+		t.Fatalf("confirmation deleted or stopped new work: %s", a.taskSheet.actionNote)
+	}
+}
+
+func TestTaskParentStopsActiveDescendantsAndOffersDeleteAfterTheySettle(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(180, 40)
+	owner := selectHomeTask(t, a, "t1")
+	rows := []session.TaskIndexEntry{
+		{ID: "t1", SessionID: owner.ID, Title: "Parent", Status: string(session.TaskDone)},
+		{ID: "child", Parent: "t1", SessionID: owner.ID, Title: "Child", Status: string(session.TaskQueued)},
+		{ID: "grandchild", Parent: "child", SessionID: owner.ID, Title: "Grandchild", Status: string(session.TaskRunning)},
+		{ID: "sibling", SessionID: owner.ID, Title: "Sibling", Status: string(session.TaskRunning)},
+	}
+	agent := &recordActionAgent{fakeAgent: &fakeAgent{model: "m"}, rows: rows}
+	a.file, a.agent = owner.Transcript, agent
+	a.taskSheet.reading.items = nil
+	owner.Tasks.Rows = rows
+	verbs := a.taskRowVerbs(owner, rows[0])
+	if verbs[0].word != "stop" {
+		t.Fatal("settled parent offered delete over active children")
+	}
+	drain(t, a, verbs[0].do())
+	if len(agent.calls) != 2 {
+		t.Fatalf("calls=%v", agent.calls)
+	}
+	for _, id := range agent.calls {
+		if id == "task:t1" || id == "task:sibling" {
+			t.Fatalf("stopped unrelated task: %s", id)
+		}
+	}
+	a.taskSheet.reading.items = nil
+	owner.Tasks.Rows = agent.rows
+	if got := a.taskRowVerbs(owner, agent.rows[0])[0].word; got != "delete" {
+		t.Fatalf("settled subtree offers %s", got)
+	}
+}
+
+func TestFormerlyClosedTasksRemainVisible(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(180, 40)
+	owner := selectHomeTask(t, a, "t1")
+	if err := session.SetTaskArchived(owner.Dir, owner.ID, "t1", true); err != nil {
+		t.Fatal(err)
+	}
+	fresh := lab.open(180, 40)
+	selectHomeTask(t, fresh, "t1")
+}
+
+func TestHomeTaskOptionsUseStopInsteadOfClose(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(180, 40)
+	owner := selectHomeTask(t, a, "t1")
+	item, _ := a.taskSheetCurrent()
+	line := homeLine{cell: &homeCell{row: &switcherRow{session: owner, task: &item.entry}}}
+	verbs := a.runningVerbs(line)
+	if len(verbs) != 4 || verbs[0].key != 'x' || verbs[0].word != "stop" {
+		t.Fatalf("home task actions=%v", verbs)
+	}
+}
+
+func TestTaskStopUsesPlanDoorForWaitingSubtree(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(180, 40)
+	owner := selectHomeTask(t, a, "t1")
+	agent := &planFake{taskFake: &taskFake{fakeAgent: &fakeAgent{model: "m"}}, plan: []session.PlanTaskRow{
+		{ID: "t-1", Title: "Root", Status: "done"},
+		{ID: "t-child", Parent: "t-1", Title: "Child", Status: "paused"},
+		{ID: "t-sibling", Title: "Sibling", Status: "running"},
+	}}
+	root := session.TaskIndexEntry{ID: "1", Title: "Root", SessionID: owner.ID, Status: string(session.TaskDone)}
+	a.file, a.agent = owner.Transcript, agent
+	a.planRows = agent.plan
+	a.taskSheet.reading.items = nil
+	owner.Tasks.Rows = []session.TaskIndexEntry{root}
+	verbs := a.taskRowVerbs(owner, root)
+	if verbs[0].word != "stop" {
+		t.Fatal("waiting plan child offered Delete")
+	}
+	drain(t, a, verbs[0].do())
+	if !reflect.DeepEqual(agent.cancelled, []string{"t-child"}) {
+		t.Fatalf("wrong plan work stopped: %v", agent.cancelled)
 	}
 }

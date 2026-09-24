@@ -368,6 +368,15 @@ func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 func (p *tasksPlace) filtered(a *app) tasksReading {
 	r := p.reading
 	r.chatViews = make(map[string]tasksChatView)
+	// The window's close state is newer than a background world reading. Keep
+	// the activity marks independent: a closed tab may still have running work.
+	for _, row := range r.chats {
+		cell := &homeCell{chatKey: a.convKey(row.Transcript)}
+		working, unread := a.homeChatState(cell)
+		_, moving := homeMovingAt(homeLine{kind: homeSession, row: row})
+		working = working || moving
+		r.chatViews[row.Transcript] = tasksChatView{title: homeName(row), working: working, unread: unread, closed: a.homeConversationClosed(row)}
+	}
 	for _, tab := range a.tabList() {
 		if tab.work {
 			continue
@@ -384,27 +393,9 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	// untrimmed text, so a person who has typed a space sees the caret move.
 	r.query = p.query.String()
 	if needle == "" {
-		var kept []tasksItem
-		for i, item := range r.items {
-			if item.row.ArchivedTasks[item.entry.ID] {
-				if kept == nil {
-					kept = make([]tasksItem, 0, len(r.items))
-					kept = append(kept, r.items[:i]...)
-				}
-				continue
-			}
-			if kept != nil {
-				kept = append(kept, item)
-			}
-		}
-		if kept != nil {
-			r.items = kept
-			tree := tasksTreeOf(kept, r.now, r.order, r.chats...)
-			tree.keepConversationStates(p.reading.tree())
-			r.shape = &tree
-		}
 		return r
 	}
+
 	// A QUERY OPENS EVERY FOLD ON THE PAGE. A row that matched and is sitting
 	// behind a shut fold is a row the query appears not to have found, and the
 	// fold somebody left shut is not a decision they made about a list they had
@@ -515,9 +506,11 @@ func (a *app) taskSheetSelfRow() session.SessionRow {
 		Transcript: strings.TrimSpace(a.file),
 		Model:      a.model,
 		Workspace:  a.workspace,
+		Owned:      a.owned,
 	}
 	if file := row.Transcript; file != "" {
-		row.ID = filepath.Base(filepath.Dir(file))
+		row.Dir = filepath.Dir(file)
+		row.ID = filepath.Base(row.Dir)
 	}
 	row.Open, row.Live = true, true
 	row.Presence.State = a.taskSheetSelfState()
@@ -602,7 +595,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			EndedAt:   taskNodeEnded(node),
 		})
 	}
-	return rows
+	return a.keepTaskRecords(rows)
 }
 
 // taskIndexHolds reports whether the project's index already carries this node.
@@ -1091,6 +1084,7 @@ func (p *tasksPlace) enter(a *app) tea.Cmd {
 	if !ok {
 		return nil
 	}
+
 	// A PLAN ROW OPENS ITS OWN PAGE — the description, the notes and the
 	// trajectory the store carries — through the sheet's own machinery and the
 	// same key a record row opens its card with ([app.taskSheetPlan]).
@@ -1657,43 +1651,17 @@ func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }
 // of the foot's second clause: the strip draws exactly what the foot named, and
 // the foot names exactly what the strip will do.
 //
-// ONLY ONE OF SCREEN 1e's TWO VERBS EXISTS, and the other is therefore ABSENT
-// rather than drawn dead. The design spells `run it again, stop it`:
-//
-//   - `stop it` is real. A node THIS window's graph is holding, still queued or
-//     running, is exactly what [app.stopTaskTarget] offers the roster's own `x`,
-//     and the engine door behind it is [app.stopDoors]. Work another conversation
-//     ran has no such node — the id in a cancel address is this session's — and
-//     work that has settled has nothing left to stop, so neither is offered one.
-//   - `run it again` has NO SEAM. Nothing on this machine re-runs a finished
-//     task: a record row is an account of work that happened, and starting the
-//     same brief again is `/task <brief>`, which is a new piece of work with a
-//     new id rather than a repeat of an old one. A capability that cannot work is
-//     absent, not broken — so the verb is not named here, and the foot does not
-//     promise it.
+// Conversations and nested tasks share Home's four actions. Tasks stop while
+// active and offer confirmed subtree deletion once all their work has stopped.
 func (p *tasksPlace) verbs(a *app) []verb {
+	if chat, ok := a.taskSheetChat(); ok {
+		return a.conversationRowVerbs(chat.row)
+	}
 	item, ok := a.taskSheetCurrent()
 	if !ok {
 		return nil
 	}
-	verbs := a.taskRowVerbs(item.row, item.entry)
-	entry := item.entry
-	node := a.taskSheetNodeFor(&entry)
-	if node == nil {
-		return verbs
-	}
-	target := a.stopTaskTarget(node)
-	if target.empty() {
-		return verbs
-	}
-	// THE BUILD GUARD, ASKED BEFORE THE VERB IS NAMED. A surface driven by an
-	// agent with no door onto cancelling says so when `x` is pressed
-	// ([stopUnavailableWord]); a NAMED verb that could only ever answer with that
-	// sentence would be this place advertising a key it has not got.
-	if _, ok := a.stopDoors(); !ok {
-		return verbs
-	}
-	return append(verbs, verb{key: 's', word: stopActWord, do: func() tea.Cmd { return a.tasksStop(target) }})
+	return a.taskRowVerbs(item.row, item.entry)
 }
 
 // tasksStop ends one piece of work from the strip, and says what the engine
@@ -1747,7 +1715,7 @@ func (p *tasksPlace) changed(a *app, since time.Time) int {
 	for _, project := range world.Projects {
 		for _, row := range project.Sessions {
 			for _, entry := range row.Tasks.Rows {
-				if !row.ArchivedTasks[entry.ID] && !entry.EndedAt.IsZero() && entry.EndedAt.After(since) {
+				if !entry.EndedAt.IsZero() && entry.EndedAt.After(since) {
 					count++
 				}
 			}
@@ -1839,8 +1807,8 @@ func (placeTasks) verbs(a *app) []verb  { return a.taskSheet.verbs(a) }
 func (placeTasks) rowID(a *app) string {
 	if chat, ok := a.taskSheetChat(); ok {
 		// A CONVERSATION IS NAMED SO IT CANNOT BE MISTAKEN FOR THE WORK UNDER IT
-		// ([tasksChatKey] holds the mark that makes that true). It carries no verbs
-		// of its own, and a strip captured over a task must not survive the cursor
+		// ([tasksChatKey] holds the mark that makes that true). A strip captured
+		// over a task must not survive the cursor
 		// stepping onto the chat above it.
 		return chat.key.session + "\x00" + chat.key.id
 	}
