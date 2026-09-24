@@ -355,14 +355,21 @@ func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 func (a *app) hopOpen() {
 	// A shared engine handle can only have one open conversation. Show its
 	// other saved chats immediately; an open-only list would offer no choice.
-	rows, tabs, rest := a.hopReading(a.shared)
-	if len(rows) < 2 && rest == 0 {
-		// Nowhere to go. The guard above has already refused this, and this is
-		// the same refusal said where the rows are actually counted.
+	all := a.shared
+	rows, tabs, rest := a.hopReading(all)
+	// With every tab closed, the fold is the whole list. Expand it before
+	// raising the card so the keyboard never belongs to an invisible menu.
+	if len(rows) == 0 && rest > 0 {
+		all = true
+		rows, tabs, rest = a.hopReading(all)
+	}
+	if rest == 0 && (len(rows) == 0 || len(rows) == 1 && tabs == 1 && rows[0].here) {
+		// A lone current tab offers no destination, while a closed row can
+		// still be reopened even when it is the only saved conversation.
 		return
 	}
 	a.dropHover()
-	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, tabs: tabs, total: len(rows) + rest, at: a.hopFirstStop(rows), armed: -1, from: a.file}
+	a.hop = hopCard{open: true, all: all, rows: rows, rest: rest, tabs: tabs, total: len(rows) + rest, at: a.hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
 
@@ -383,6 +390,10 @@ func (a *app) hopSpread(all bool) {
 	a.dropHover()
 	at := a.hop.at
 	rows, tabs, rest := a.hopReading(all)
+	// Hiding the only rows would erase the card without dismissing it.
+	if len(rows) == 0 {
+		return
+	}
 	a.hop.rows, a.hop.rest, a.hop.tabs, a.hop.all, a.hop.armed, a.hop.say = rows, rest, tabs, all, -1, ""
 	a.hop.at = min(at, max(0, len(rows)-1))
 	// AND THE CURSOR LEAVES `you are here` THE MOMENT THERE IS SOMEWHERE ELSE TO
@@ -1479,7 +1490,7 @@ func (a *app) hopFoot() string {
 		return a.hop.say
 	}
 	switch {
-	case a.hop.all:
+	case a.hop.all && a.hop.tabs > 0:
 		return hopShutKeyWord
 	case a.hop.rest > 0:
 		return hopFoldKeyWord
