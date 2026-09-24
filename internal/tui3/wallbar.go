@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// ── THE WALL'S CONTROLS: BUTTONS, SPACES, CARDS AND POPOVERS ────────────────
+// ── THE WALL'S CONTROLS: BUTTONS, TEAMS, CARDS AND POPOVERS ─────────────────
 //
 // Every act the wall answers a key for has a button, and every button names
 // its key: ` Filter / `, ` New team s `. A person who clicks learns the key on
@@ -22,7 +22,7 @@ import (
 // tab strip's own doors wear. A control inside something already on a ground
 // takes the ladder's next step up, so the two never read as one.
 //
-// COLOUR BELONGS TO SPACES AND TO STATE, AND TO NOTHING ELSE. A team's colour
+// COLOUR BELONGS TO TEAMS AND TO STATE, AND TO NOTHING ELSE. A team's colour
 // (teamhue.go) is drawn only as its dot: on its segment, on the tiles it
 // holds, in its popovers. Borders and grounds stay with state.
 
@@ -135,14 +135,14 @@ func wallCompose(pal palette, parts []wallPart, ground func(string) string) stri
 // wallTeamMark is team i's dot in its colour, or, where there is no colour
 // to draw, its initial, dim. Either way it is one cell.
 func wallTeamMark(pal palette, v wallView, i int, glyph string) string {
-	if i >= 0 && i < len(v.hues) {
-		if ink := pal.teamInk(v.hues[i]); ink != nil {
+	if i >= 0 && i < len(v.teams) {
+		if ink := pal.teamInk(v.teams[i].hue); ink != nil {
 			return ink(glyph)
 		}
 	}
 	initial := "?"
 	if i >= 0 && i < len(v.teams) {
-		if r := []rune(v.teams[i]); len(r) > 0 {
+		if r := []rune(v.teams[i].name); len(r) > 0 {
 			initial = strings.ToLower(string(r[0]))
 			if ansi.StringWidth(initial) != 1 {
 				initial = "?"
@@ -305,9 +305,9 @@ func wallHint(v wallView, ascii bool) string {
 		}
 		return "this conversation"
 	}
-	team := func(i int) string {
-		if i >= 0 && i < len(v.teams) {
-			return v.teams[i]
+	team := func(id string) string {
+		if i := v.teamRow(id); i >= 0 {
+			return v.teams[i].name
 		}
 		return "this team"
 	}
@@ -344,12 +344,12 @@ func wallHint(v wallView, ascii bool) string {
 	case wallHitChip:
 		// tab steps through the teams rather than naming one, so no key is
 		// offered for a single segment.
-		if h.arg < 0 {
+		if h.id == "" {
 			return "Show every conversation"
 		}
-		return "Show only the conversations in " + team(h.arg)
+		return "Show only the conversations in " + team(h.id)
 	case wallHitChipMenu:
-		return "Rename, recolour or delete " + team(h.arg)
+		return "Rename, recolour or delete " + team(h.id)
 	case wallHitAddTeam:
 		return keyed(wallNewTeamHint(marked), "s")
 	case wallHitMini:
@@ -369,7 +369,7 @@ func wallHint(v wallView, ascii bool) string {
 		case wallPopDone:
 			return keyed("Keep the name and close", "enter")
 		}
-		return keyed("Put in or take out of "+team(h.arg), "space")
+		return keyed("Put in or take out of "+team(h.id), "space")
 	case wallHitAction:
 		switch wallAct(h.arg) {
 		case wallActBack:
@@ -449,14 +449,18 @@ func wallEmptyRow(pal palette, v wallView, width, y int) (string, []wallHit) {
 //
 //	No conversations match "xyz"   Clear esc
 func wallNoneRow(pal palette, v wallView, width, y int) (string, []wallHit) {
-	word := "No open conversations in " + v.team
+	name := "this team"
+	if i := v.teamRow(v.team); i >= 0 {
+		name = v.teams[i].name
+	}
+	word := "No open conversations in " + name
 	btn := wallButton{act: wallActFilterClear, label: "Clear", key: "esc"}
 	kind, arg := wallHitAction, int(wallActFilterClear)
 	if v.filter != "" {
 		word = "No conversations match \"" + v.filter + "\""
 	} else {
 		btn = wallButton{label: "Show all"}
-		kind, arg = wallHitChip, -1
+		kind, arg = wallHitChip, 0
 	}
 	const gap = 3
 	bw := wallButtonW(btn)
@@ -468,13 +472,13 @@ func wallNoneRow(pal palette, v wallView, width, y int) (string, []wallHit) {
 	}
 	ww := ansi.StringWidth(word)
 	x := (width - ww - gap - bw) / 2
-	hot := v.hover.kind == kind && v.hover.arg == arg
+	hot := v.hover == wallHitRef{kind: kind, arg: arg}
 	row := strings.Repeat(" ", x) + pal.muted(word) + strings.Repeat(" ", gap) + wallButtonPaint(pal, btn, hot)
 	at := x + ww + gap
 	return row, []wallHit{{x0: at, y0: y, x1: at + bw, y1: y + 1, kind: kind, arg: arg}}
 }
 
-// ── THE SPACES ROW ──────────────────────────────────────────────────────────
+// ── THE TEAMS ROW ───────────────────────────────────────────────────────────
 
 // wallChipCap is the widest a team's name is drawn on its segment.
 const wallChipCap = teamNameCells
@@ -491,7 +495,7 @@ const wallChipCap = teamNameCells
 // EVERY SEGMENT IS PADDED ALIKE, one cell either side of its words, and parted
 // from the next by one rule, so the row reads as one control.
 //
-// A SEGMENT IS A DOOR TO ITS SPACE. Its dot opens the team's settings, and so
+// A SEGMENT IS A DOOR TO ITS TEAM. Its dot opens the team's settings, and so
 // does the ⋯ the pointer brings up where the count was, the way a sidebar
 // trades a count for its menu under the pointer: nothing beside it moves.
 func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c, first, last, y int) (string, []wallHit) {
@@ -560,7 +564,7 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 		first := true
 		// segment draws one segment and reports whether it fit, keeping room
 		// for the + New team segment after it when keep is set.
-		segment := func(at int, name, count string, on, keep bool) bool {
+		segment := func(at int, id, name, count string, on, keep bool) bool {
 			dotted := at >= 0
 			nw, cw := ansi.StringWidth(name), ansi.StringWidth(count)
 			w := 1 + nw + 1 + cw + 1
@@ -578,8 +582,8 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 				put(sep, 1)
 			}
 			first = false
-			hot := (v.hover.kind == wallHitChip || v.hover.kind == wallHitChipMenu) && v.hover.arg == at
-			menuHot := v.hover.kind == wallHitChipMenu && v.hover.arg == at
+			hot := (v.hover.kind == wallHitChip || v.hover.kind == wallHitChipMenu) && v.hover.id == id
+			menuHot := v.hover.kind == wallHitChipMenu && v.hover.id == id
 			ground := func(s string) string { return s }
 			switch {
 			case on:
@@ -596,7 +600,7 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 			if dotted {
 				// The dot, with the pad before it, is the settings door.
 				parts = append(parts, wallPart{s: " " + wallTeamMark(pal, v, at, "●"), hot: menuHot})
-				hits = append(hits, wallHit{x0: x0, y0: y, x1: x0 + 2, y1: y + 1, kind: wallHitChipMenu, arg: at})
+				hits = append(hits, wallHit{x0: x0, y0: y, x1: x0 + 2, y1: y + 1, kind: wallHitChipMenu, id: id})
 				x0 += 2
 			}
 			parts = append(parts, wallPart{s: " " + nameInk(name) + " "})
@@ -606,26 +610,23 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 				if mw := ansi.StringWidth(menu); mw > cw {
 					menu = ansi.Truncate(menu, cw, "")
 				}
-				hits = append(hits, wallHit{x0: x0, y0: y, x1: tail, y1: y + 1, kind: wallHitChip, arg: at})
+				hits = append(hits, wallHit{x0: x0, y0: y, x1: tail, y1: y + 1, kind: wallHitChip, id: id})
 				parts = append(parts, wallPart{s: wallFit(pal.ink(menu), cw) + " ", hot: menuHot})
-				hits = append(hits, wallHit{x0: tail, y0: y, x1: end, y1: y + 1, kind: wallHitChipMenu, arg: at})
+				hits = append(hits, wallHit{x0: tail, y0: y, x1: end, y1: y + 1, kind: wallHitChipMenu, id: id})
 			} else {
 				parts = append(parts, wallPart{s: pal.dim(count) + " "})
-				hits = append(hits, wallHit{x0: x0, y0: y, x1: end, y1: y + 1, kind: wallHitChip, arg: at})
+				hits = append(hits, wallHit{x0: x0, y0: y, x1: end, y1: y + 1, kind: wallHitChip, id: id})
 			}
 			put(wallCompose(pal, parts, ground), w)
 			return true
 		}
-		segment(-1, "All", strconv.Itoa(v.total), v.team == "", true)
-		for i, name := range v.teams {
+		segment(-1, "", "All", strconv.Itoa(v.total), v.team == "", true)
+		for i, t := range v.teams {
+			name := t.name
 			if ansi.StringWidth(name) > wallChipCap {
 				name = ansi.Truncate(name, wallChipCap, g.more)
 			}
-			count := 0
-			if i < len(v.counts) {
-				count = v.counts[i]
-			}
-			if !segment(i, name, strconv.Itoa(count), name == v.team, true) {
+			if !segment(i, t.id, name, strconv.Itoa(t.count), t.id == v.team, true) {
 				break
 			}
 		}
@@ -695,7 +696,7 @@ func wallHitsWithin(hits []wallHit, width int) []wallHit {
 	return kept
 }
 
-// ── A TILE'S ACTION ROW AND ITS SPACES ──────────────────────────────────────
+// ── A TILE'S ACTION ROW AND ITS TEAMS ───────────────────────────────────────
 
 // wallTileAct is one button on a tile's action row, x cells from the tile's
 // left edge.
@@ -779,14 +780,14 @@ func wallTileDots(pal palette, v wallView, t wallTile) (string, int) {
 	}
 	var b strings.Builder
 	w := 0
-	for i, sp := range t.teams {
+	for i, id := range t.teams {
 		if i == wallTileDotsMax {
 			more := "+" + strconv.Itoa(len(t.teams)-wallTileDotsMax)
 			b.WriteString(pal.dim(more))
 			w += len(more)
 			break
 		}
-		b.WriteString(wallTeamMark(pal, v, sp, "●"))
+		b.WriteString(wallTeamMark(pal, v, v.teamRow(id), "●"))
 		w++
 	}
 	b.WriteString(" ")
@@ -1156,31 +1157,32 @@ func wallPopRowPaint(pal palette, s string, inner int, lit bool) string {
 //	╰────────────────────────────╯
 func wallMembersLines(pal palette, g wallGlyphs, v wallView) (string, []wallCardLine, int) {
 	k := wallKeysFor(pal.ascii)
-	in := map[string][]int{}
+	in := map[string][]string{}
 	for _, t := range v.tiles {
 		in[t.tab.key] = t.teams
 	}
 	inner := 24
-	for _, name := range v.teams {
-		inner = max(inner, ansi.StringWidth(k.boxOff)+3+min(ansi.StringWidth(name), wallChipCap)+6)
+	for _, t := range v.teams {
+		inner = max(inner, ansi.StringWidth(k.boxOff)+3+min(ansi.StringWidth(t.name), wallChipCap)+6)
 	}
 	var lines []wallCardLine
-	row := func(code int, s string, cursorAt int) {
-		lit := v.pop.cursor == cursorAt || (v.hover.kind == wallHitPopRow && v.hover.arg == code)
+	row := func(code int, id, s string, cursorAt int) {
+		lit := v.pop.cursor == cursorAt || v.hover == wallHitRef{kind: wallHitPopRow, arg: code, id: id}
 		lines = append(lines, wallCardLine{
 			s:    wallPopRowPaint(pal, s, inner, lit),
-			hits: []wallHit{{x0: 0, y0: 0, x1: inner, y1: 1, kind: wallHitPopRow, arg: code}},
+			hits: []wallHit{{x0: 0, y0: 0, x1: inner, y1: 1, kind: wallHitPopRow, arg: code, id: id}},
 		})
 	}
-	for i, name := range v.teams {
+	for i, t := range v.teams {
 		held := 0
 		for _, key := range v.pop.targets {
-			for _, sp := range in[key] {
-				if sp == i {
+			for _, id := range in[key] {
+				if id == t.id {
 					held++
 				}
 			}
 		}
+		name := t.name
 		box := pal.muted(k.boxOff)
 		switch {
 		case held > 0 && held == len(v.pop.targets):
@@ -1191,19 +1193,15 @@ func wallMembersLines(pal palette, g wallGlyphs, v wallView) (string, []wallCard
 		if ansi.StringWidth(name) > wallChipCap {
 			name = ansi.Truncate(name, wallChipCap, g.more)
 		}
-		count := 0
-		if i < len(v.counts) {
-			count = v.counts[i]
-		}
 		left := box + " " + wallTeamMark(pal, v, i, "●") + " " + pal.ink(name)
-		cs := strconv.Itoa(count)
+		cs := strconv.Itoa(t.count)
 		gap := inner - ansi.StringWidth(left) - len(cs)
-		row(i, left+strings.Repeat(" ", max(gap, 1))+pal.dim(cs), i)
+		row(wallPopTeam, t.id, left+strings.Repeat(" ", max(gap, 1))+pal.dim(cs), i)
 	}
 	if len(v.teams) > 0 {
 		lines = append(lines, wallCardLine{rule: true})
 	}
-	row(wallPopNew, pal.muted("+ New team"+k.more), len(v.teams))
+	row(wallPopNew, "", pal.muted("+ New team"+k.more), len(v.teams))
 	return "Teams", lines, inner
 }
 
@@ -1292,10 +1290,9 @@ func wallPopButtons(pal palette, v wallView, inner int, lead *wallPopButton, bs 
 //	╰──────────────────────────────────╯
 func wallSettingsLines(pal palette, g wallGlyphs, v wallView) (string, []wallCardLine, int) {
 	k := wallKeysFor(pal.ascii)
-	i := v.pop.team
 	name := ""
-	if i >= 0 && i < len(v.teams) {
-		name = v.teams[i]
+	if i := v.teamRow(v.pop.team); i >= 0 {
+		name = v.teams[i].name
 	}
 	inner := 30
 	const labelW = 8

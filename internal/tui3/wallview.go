@@ -410,8 +410,8 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		mark, run = "#", "*"
 	}
 	sub := "every open conversation, live"
-	if v.team != "" {
-		sub = "the conversations in " + v.team
+	if i := v.teamRow(v.team); i >= 0 {
+		sub = "the conversations in " + v.teams[i].name
 	}
 	left := " " + pal.bold(pal.ink(mark+" Conversations")) + pal.dim(" "+g.sep+" "+sub)
 	working, needs := 0, 0
@@ -493,11 +493,9 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 // wallRule closes the head: dim, or, while a team is shown, in that team's
 // colour, so the whole frame says which set it is showing.
 func wallRule(pal palette, v wallView, width int) string {
-	for i, name := range v.teams {
-		if name == v.team && v.team != "" && i < len(v.hues) {
-			if ink := pal.teamInk(v.hues[i]); ink != nil {
-				return ink(wallRuleLine(pal, width))
-			}
+	if i := v.teamRow(v.team); i >= 0 {
+		if ink := pal.teamInk(v.teams[i].hue); ink != nil {
+			return ink(wallRuleLine(pal, width))
 		}
 	}
 	return pal.dim(wallRuleLine(pal, width))

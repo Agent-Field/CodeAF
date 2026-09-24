@@ -7,7 +7,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// ── A SPACE'S COLOUR, GENERATED ─────────────────────────────────────────────
+// ── A TEAM'S COLOUR, GENERATED ──────────────────────────────────────────────
 //
 // A team is told apart by a colour, and the colours are generated rather
 // than picked from a list, so that the tenth team is as easy to tell from the
@@ -24,7 +24,7 @@ import (
 // already says one. Their hues are read off the ramp being drawn with, never
 // written down here, so a theme that moves them moves the bands with them.
 //
-// EACH NEW SPACE TAKES THE FARTHEST HUE: of every allowed degree, the one whose
+// EACH NEW TEAM TAKES THE FARTHEST HUE: of every allowed degree, the one whose
 // nearest used hue is farthest away. The second team lands opposite the
 // first, the third splits the widest gap, and so on; past six the tiers
 // alternate so neighbours differ in lightness as well.

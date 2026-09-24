@@ -550,7 +550,7 @@ func (a *app) tabsRow(width int) string {
 	// this one can still see and a later one may not (a shared handle ends the
 	// conversation it swaps away from, and its title goes with it).
 	a.chatTabs = tabs
-	// A SPACE NARROWS WHAT THE ROW DRAWS AND NEVER WHAT IT REMEMBERS: the list
+	// A TEAM NARROWS WHAT THE ROW DRAWS AND NEVER WHAT IT REMEMBERS: the list
 	// above is stored whole, and only the copy drawn is cut to the team.
 	if _, ok := a.teamActive(); ok {
 		tabs = a.teamStripTabs(append([]chatTab(nil), tabs...))

@@ -1,12 +1,13 @@
 package tui3
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// ── THE WALL AND ITS SPACES: THE SHAPES THE THREE HALVES AGREE ON ──────────
+// ── THE WALL AND ITS TEAMS: THE SHAPES THE THREE HALVES AGREE ON ───────────
 //
 // The wall is a full-frame grid of every conversation this window has a tab
 // for, each drawn as a tile holding the live tail of its transcript. A team is
@@ -86,9 +87,9 @@ type wallTile struct {
 	// moved is when the conversation last grew; zero when this window has not
 	// seen it move.
 	moved time.Time
-	// teams is every team this conversation is in, by index into
-	// wallView.teams. A conversation may be in several.
-	teams []int
+	// teams is the id of every team this conversation is in. A conversation
+	// may be in several.
+	teams []string
 }
 
 // wallTailCap is the most logical lines a reading keeps per conversation.
@@ -96,9 +97,10 @@ const wallTailCap = 40
 
 // wallView is everything the painter needs, and nothing it may go and get.
 type wallView struct {
-	// team is the active team's name, "" for all.
+	// team is the active team's id, "" for All, and teams is every team in
+	// the order the Teams row draws them.
 	team  string
-	teams []string
+	teams []wallTeamRow
 	tiles []wallTile
 	focus int
 	// scroll is the first tile ROW on screen.
@@ -120,11 +122,8 @@ type wallView struct {
 	// it; the zero ref is no hover. It lights a button and reveals a tile's own
 	// controls, and it never moves a cell.
 	hover wallHitRef
-	// hues is each team's colour, counts how many open conversations each
-	// holds, and total how many are open in all.
-	hues   []teamHueSpec
-	counts []int
-	total  int
+	// total is how many conversations are open in all.
+	total int
 	// choices is the colours the new-team card offers and choice the one
 	// taken.
 	choices []teamHueSpec
@@ -155,6 +154,25 @@ type wallView struct {
 	doorHot bool
 }
 
+// wallTeamRow is one team as the painter draws it: its id, name and colour,
+// and how many of its members are open conversations.
+type wallTeamRow struct {
+	id    string
+	name  string
+	hue   teamHueSpec
+	count int
+}
+
+// teamRow is where team id sits in v.teams, -1 when it is not there.
+func (v wallView) teamRow(id string) int {
+	for i, t := range v.teams {
+		if id != "" && t.id == id {
+			return i
+		}
+	}
+	return -1
+}
+
 // wallHitKind is what a press on one hit does.
 type wallHitKind uint8
 
@@ -165,18 +183,19 @@ const (
 	wallHitTeams                // a tile's Teams: the teams it is in; arg is the tile
 	wallHitOpen                 // a tile's Open, or its Answer; arg is the tile
 	wallHitClose                // a tile's Close, which closes the view; arg is the tile
-	wallHitChip                 // a Teams segment; arg is the team, -1 for All
-	wallHitChipMenu             // a segment's dot or its ⋯: the team's settings; arg is the team
+	wallHitChip                 // a Teams segment; id is the team, "" for All
+	wallHitChipMenu             // a segment's dot or its ⋯: the team's settings; id is the team
 	wallHitAddTeam              // the + New team segment
 	wallHitAction               // a button; arg is a wallAct
 	wallHitMini                 // one minimap cell; arg is the tile
-	wallHitPopRow               // a popover row; arg is a team, or a wallPop row code
+	wallHitPopRow               // a popover row; id is a team (arg wallPopTeam), or arg is a wallPop row code
 	wallHitSwatch               // a colour swatch; arg is its index among the choices
 	wallHitHelp                 // a row of the help sheet; arg is its place in [wallHelpList]
 )
 
 // The popover rows that are not a team.
 const (
+	wallPopTeam    = 0  // a team's row; the hit's id says which
 	wallPopNew     = -1 // + New team…
 	wallPopDelete  = -2 // Delete team
 	wallPopConfirm = -3 // Delete, confirmed
@@ -204,9 +223,9 @@ type wallPop struct {
 	targets []string
 	// cursor is the row the keyboard is on.
 	cursor int
-	// team, name, choices and choice are the settings popover's: the team,
-	// its name as being edited, the colours offered and the one it has.
-	team    int
+	// team, name, choices and choice are the settings popover's: the team's
+	// id, its name as being edited, the colours offered and the one it has.
+	team    string
 	name    string
 	choices []teamHueSpec
 	choice  int
@@ -221,7 +240,7 @@ type wallAct int
 const (
 	wallActBack        wallAct = iota // esc
 	wallActOpen                       // enter
-	wallActSelect                     // team
+	wallActSelect                     // space
 	wallActNewTeam                    // s
 	wallActFilter                     // /
 	wallActNext                       // n
@@ -241,19 +260,25 @@ const (
 
 // wallHitRef names one target without its cells, which is what a hover keeps
 // from one frame to the next.
+//
+// A TARGET ON A TEAM NAMES IT BY ID, in id, and never by its place: a hover
+// or a popover that outlives a frame must still mean the same team after one
+// is deleted or the row is redrawn in another order.
 type wallHitRef struct {
 	kind wallHitKind
 	arg  int
+	id   string
 }
 
 // wallHit is where one target landed, for the pointer.
 type wallHit struct {
 	x0, y0, x1, y1 int // inclusive-exclusive cell rectangle
 	kind           wallHitKind
-	arg            int // the tile, the team or the act, by kind
+	arg            int    // the tile, the act or a popover row code, by kind
+	id             string // the team, for a target on one; "" is All
 }
 
-func (h wallHit) ref() wallHitRef { return wallHitRef{kind: h.kind, arg: h.arg} }
+func (h wallHit) ref() wallHitRef { return wallHitRef{kind: h.kind, arg: h.arg, id: h.id} }
 
 // onTile reports whether the ref is one of tile i's own targets.
 func (r wallHitRef) onTile(i int) bool {
@@ -271,19 +296,37 @@ type teamMember struct {
 
 // team is one named set of conversations. A conversation may be in any
 // number of them: a team is a grouping, not a place a conversation lives.
+// teams.json holds {"version":2,"teams":[...]} (teams.go).
 type team struct {
-	Name    string       `json:"name"`
-	Members []teamMember `json:"members"`
-	Made    time.Time    `json:"made"`
+	// ID is random and minted once; everything that names a team names it by
+	// this, never by its place in the list or by its name.
+	ID   string
+	Name string
+	// Parent is the id of the team this one sits under, "" at the top level.
+	// A team has one parent at most and the chain never loops.
+	Parent string
+	// Members are the conversations, in the order the person stored them.
+	Members []teamMember
+	// Manager is reserved for the member whose word will outrank the team's
+	// other conversations, by conversation key. Nothing sets it yet; a file
+	// that has one keeps it.
+	Manager string
 	// Hue and Tier are the team's colour (teamhue.go). A file written before
 	// teams had colours has neither, and is given them on load, the same ones
 	// every time.
-	Hue  float64 `json:"hue"`
-	Tier int     `json:"tier"`
+	Hue  float64
+	Tier int
+	Made time.Time
+
+	// hued says the file gave this team a colour; extra is every field a
+	// later build wrote that this one does not know, kept so a save does not
+	// drop it (teams.go reads and writes both).
+	hued  bool
+	extra map[string]json.RawMessage
 }
 
 // hueSpec is the team's colour as the generator speaks it.
-func (sp team) hueSpec() teamHueSpec { return teamHueSpec{Hue: sp.Hue, Tier: sp.Tier} }
+func (t team) hueSpec() teamHueSpec { return teamHueSpec{Hue: t.Hue, Tier: t.Tier} }
 
 // wallState is the wall's whole footprint on the app: one field.
 type wallState struct {
@@ -300,11 +343,11 @@ type wallState struct {
 	hits     []wallHit
 	// tails is the reading cache, by chatTab.key (walltail.go owns it).
 	tails map[string]*wallTail
-	// teams is the loaded set and active is the index of the one the strip is
-	// narrowed to, -1 for none (teams.go owns both).
-	teams  []team
-	active int
-	loaded bool
+	// teams is the loaded set and activeID the id of the one the strip is
+	// narrowed to, "" for none (teams.go owns both).
+	teams    []team
+	activeID string
+	loaded   bool
 	// ticking says a wallTickMsg is already on its way, so an opening never
 	// starts a second clock beside the first.
 	ticking bool
@@ -346,8 +389,8 @@ type wallState struct {
 	// so a pointer resting on the same target may not reuse that frame.
 	stirred bool
 	// places is each team's focus and scroll while the wall is up, by team
-	// index, -1 for All.
-	places map[int]wallPlace
+	// id, "" for All.
+	places map[string]wallPlace
 	// card is where the popover or the new-team card was drawn, in frame
 	// cells, empty when neither is up.
 	card wallRect

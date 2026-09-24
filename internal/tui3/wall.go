@@ -197,7 +197,6 @@ func (a *app) wallFrame(width, height int) []string {
 		a.wall.spinning = false
 	}
 	view := wallView{
-		teams:     a.teamNames(),
 		tiles:     tiles,
 		focus:     a.wall.focus,
 		scroll:    a.wall.scroll,
@@ -223,8 +222,8 @@ func (a *app) wallFrame(width, height int) []string {
 		helpTop:   a.wall.helpTop,
 		doorHot:   a.hot.kind == hoverTab && a.wall.door.pressable() && a.hot.index == a.wall.door.from,
 	}
-	if sp, ok := a.teamActive(); ok {
-		view.team = sp.Name
+	if t, ok := a.teamActive(); ok {
+		view.team = t.ID
 	}
 	// The counts are of open conversations, whatever a filter is hiding: a
 	// team's members this window has no tab for are still members, but they
@@ -237,15 +236,14 @@ func (a *app) wallFrame(width, height int) []string {
 		}
 	}
 	view.total = len(open)
-	for _, sp := range a.wall.teams {
-		view.hues = append(view.hues, sp.hueSpec())
+	for _, t := range a.wall.teams {
 		n := 0
-		for _, m := range sp.Members {
+		for _, m := range t.Members {
 			if open[m.Key] {
 				n++
 			}
 		}
-		view.counts = append(view.counts, n)
+		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: t.Name, hue: t.hueSpec(), count: n})
 	}
 	rows, hits := renderWall(a.pal, view, width, room)
 	// A scroll moved the tiles under a pointer that did not move: the target
@@ -447,8 +445,8 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 		return a.wallDismissAt(tiles, a.wall.focus)
 	case "e":
 		// The shown team's settings, where its dot or ⋯ opens them.
-		if a.wall.active >= 0 {
-			a.wallOpenSettings(a.wall.active, a.wallAnchor(wallHitChipMenu, a.wall.active))
+		if id := a.wall.activeID; id != "" {
+			a.wallOpenSettings(id, a.wallAnchorTeam(wallHitChipMenu, id))
 		}
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		// A team by its place on the Teams row; the digit of the team that
@@ -456,10 +454,10 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 		i := int(key[0] - '1')
 		switch {
 		case i >= len(a.wall.teams):
-		case i == a.wall.active:
-			a.wallSetTeam(-1)
+		case a.wall.teams[i].ID == a.wall.activeID:
+			a.wallSetTeam("")
 		default:
-			a.wallSetTeam(i)
+			a.wallSetTeam(a.wall.teams[i].ID)
 		}
 	case "/":
 		a.wall.filterOn = true
@@ -479,8 +477,8 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 	case "D":
 		// Delete the active team. The conversations in it are untouched: a
 		// team is a view, and so is its going.
-		if a.wall.active >= 0 {
-			a.wallDeleteTeam(a.wall.active)
+		if id := a.wall.activeID; id != "" {
+			a.wallDeleteTeam(id)
 		}
 	}
 	return nil
@@ -595,7 +593,7 @@ func (a *app) wallStartNaming(tiles []wallTile) {
 	a.wall.nameFresh = true
 	// The colours offered are the farthest from every team's, best first,
 	// and the best is taken until the person takes another.
-	a.wall.choices = teamHueChoices(a.teamHues(-1), teamReservedHues(a.pal), wallSwatchCount)
+	a.wall.choices = teamHueChoices(a.teamHues(""), teamReservedHues(a.pal), wallSwatchCount)
 	a.wall.choice = 0
 }
 
@@ -630,12 +628,13 @@ func (a *app) wallMakeTeam(tiles []wallTile) tea.Cmd {
 		return nil
 	}
 	a.teamsEnsure()
-	hue := nextTeamHue(a.teamHues(-1), teamReservedHues(a.pal))
+	hue := nextTeamHue(a.teamHues(""), teamReservedHues(a.pal))
 	if a.wall.choice >= 0 && a.wall.choice < len(a.wall.choices) {
 		hue = a.wall.choices[a.wall.choice]
 	}
-	i, err := a.teamMakeHued(name, a.wallMarkedTabs(tiles), hue)
-	if i < 0 {
+	id, err := a.teamMakeHued(name, a.wallMarkedTabs(tiles), hue)
+	made, ok := a.teamByID(id)
+	if !ok {
 		return nil
 	}
 	if err != nil {
@@ -646,7 +645,7 @@ func (a *app) wallMakeTeam(tiles []wallTile) tea.Cmd {
 	// conversations they were about to sort next. The chip row names the team
 	// and its chip is one press away.
 	a.wall.marked = map[string]bool{}
-	a.wall.made, a.wall.madeN, a.wall.madeAt = a.wall.teams[i].Name, len(a.wall.teams[i].Members), time.Now()
+	a.wall.made, a.wall.madeN, a.wall.madeAt = made.Name, len(made.Members), time.Now()
 	return nil
 }
 
@@ -657,31 +656,32 @@ type wallPlace struct {
 	scroll int
 }
 
-// wallSetTeam narrows the wall and the strip to team i, or widens them for
-// i < 0. Like the chips' cycling it never switches the conversation in front.
+// wallSetTeam narrows the wall and the strip to team id, or widens them for
+// "". Like the chips' cycling it never switches the conversation in front.
 //
-// EACH SPACE KEEPS ITS PLACE WHILE THE WALL IS UP. Looking into harbor and
+// EACH TEAM KEEPS ITS PLACE WHILE THE WALL IS UP. Looking into harbor and
 // back to All returns to the tile and the row that were on screen, as a
 // browser's tabs each keep their own scroll; a team not visited yet starts
-// at its first tile.
-func (a *app) wallSetTeam(i int) {
-	if i >= len(a.wall.teams) {
-		i = -1
+// at its first tile. The places are kept by id, so a team deleted or moved
+// takes its place with it and hands it to nobody.
+func (a *app) wallSetTeam(id string) {
+	if teamIndex(a.wall.teams, id) < 0 {
+		id = ""
 	}
-	if i == a.wall.active {
+	if id == a.wall.activeID {
 		return
 	}
 	if a.wall.places == nil {
-		a.wall.places = map[int]wallPlace{}
+		a.wall.places = map[string]wallPlace{}
 	}
 	tiles := a.wallShown(a.now())
 	if f := a.wall.focus; f >= 0 && f < len(tiles) {
-		a.wall.places[a.wall.active] = wallPlace{key: tiles[f].tab.key, scroll: a.wall.scroll}
+		a.wall.places[a.wall.activeID] = wallPlace{key: tiles[f].tab.key, scroll: a.wall.scroll}
 	}
-	a.wall.active = i
+	a.wall.activeID = id
 	a.wall.hover = wallHitRef{}
 	a.wall.rehover = true
-	place, ok := a.wall.places[i]
+	place, ok := a.wall.places[id]
 	if !ok {
 		a.wall.focus, a.wall.scroll = 0, 0
 		return
@@ -690,19 +690,17 @@ func (a *app) wallSetTeam(i int) {
 	a.wallFocusKey(place.key)
 }
 
-// wallDeleteTeam forgets team i. Its conversations stay open: a team is a
+// wallDeleteTeam forgets team id. Its conversations stay open: a team is a
 // view, and so is its going.
-func (a *app) wallDeleteTeam(i int) {
-	if i < 0 || i >= len(a.wall.teams) {
+func (a *app) wallDeleteTeam(id string) {
+	if teamIndex(a.wall.teams, id) < 0 {
 		return
 	}
-	if err := a.teamDelete(i); err != nil {
+	if err := a.teamDelete(id); err != nil {
 		a.note("the team is gone from this window, but " + err.Error())
 	}
 	a.wall.hover = wallHitRef{}
 	a.wall.pop = wallPop{}
-	// The places are kept by index and the indices after i just moved down.
-	a.wall.places = nil
 }
 
 // wallCycleTeam walks all → each team → all. It only narrows what the wall
@@ -713,9 +711,10 @@ func (a *app) wallCycleTeam(forward bool) {
 	if n == 0 {
 		return
 	}
-	next := a.wall.active + 1
+	at := teamIndex(a.wall.teams, a.wall.activeID) // -1 is All
+	next := at + 1
 	if !forward {
-		next = a.wall.active - 1
+		next = at - 1
 	}
 	if next >= n {
 		next = -1
@@ -723,7 +722,11 @@ func (a *app) wallCycleTeam(forward bool) {
 	if next < -1 {
 		next = n - 1
 	}
-	a.wallSetTeam(next)
+	if next < 0 {
+		a.wallSetTeam("")
+		return
+	}
+	a.wallSetTeam(a.wall.teams[next].ID)
 }
 
 // ── THE POINTER ─────────────────────────────────────────────────────────────
@@ -910,9 +913,9 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 	case wallHitClose:
 		return a.wallDismissAt(tiles, hit.arg)
 	case wallHitChip:
-		a.wallSetTeam(hit.arg)
+		a.wallSetTeam(hit.id)
 	case wallHitChipMenu:
-		a.wallOpenSettings(hit.arg, a.wallLocal(hit))
+		a.wallOpenSettings(hit.id, a.wallLocal(hit))
 	case wallHitAddTeam:
 		a.wallStartNaming(tiles)
 	case wallHitMini:

@@ -38,7 +38,7 @@ func (a *app) headRows(width int, middle string, pal palette) []string {
 	if a.at(pageHome) {
 		mode = pulseBudget
 	}
-	// WHILE A SPACE IS SHOWN THE RULE IS DRAWN IN ITS COLOUR, so every frame
+	// WHILE A TEAM IS SHOWN THE RULE IS DRAWN IN ITS COLOUR, so every frame
 	// says the strip above it is narrowed (teams.go).
 	ruleInk := pal.dim
 	if sp, ok := a.teamActive(); ok {

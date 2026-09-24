@@ -153,7 +153,7 @@ func TestTabWallDoorAtEveryWidth(t *testing.T) {
 	}
 }
 
-// WHILE A SPACE NARROWS THE STRIP THE DOOR'S GLYPH WEARS ITS COLOUR, as the
+// WHILE A TEAM NARROWS THE STRIP THE DOOR'S GLYPH WEARS ITS COLOUR, as the
 // dock's does.
 func TestTabWallDoorTakesTheTeamColour(t *testing.T) {
 	a := wallDoorApp(t, 160)
@@ -163,14 +163,15 @@ func TestTabWallDoorTakesTheTeamColour(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.wall.active = i
+	a.wall.activeID = i
 	a.touch()
 	row := a.tabsRow(160)
 	door := a.wall.door
 	if !door.pressable() {
 		t.Fatalf("no door with a team shown: %q", plain(row))
 	}
-	ink := a.pal.teamInk(a.wall.teams[i].hueSpec())
+	made, _ := a.teamByID(i)
+	ink := a.pal.teamInk(made.hueSpec())
 	if ink == nil {
 		t.Skip("the palette draws no team colour")
 	}
