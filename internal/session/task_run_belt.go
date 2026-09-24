@@ -885,11 +885,24 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 
 // crewKept is whether a run's ending counts as its crew's work kept: it
 // finished, and its landing was neither refused, conflicted nor abandoned.
+//
+// HOW THE WORK CAME HOME IS READ FIRST. A run whose work was kept on its
+// branch on purpose carries the sentence naming that branch in Refused too
+// ([Agent.landBeltRun] writes the road's own words there, for the outcome
+// note), and that sentence is an account of a keep, not a refusal. Only a
+// landing with no homecoming at all is judged by Refused: the engine's own
+// refusal to land.
 func crewKept(outcome string, landing RunLanding) bool {
-	if outcome != beltRunOutcomeDone || landing.Refused != "" {
+	if outcome != beltRunOutcomeDone {
 		return false
 	}
-	return landing.Home != mergeConflicted && landing.Home != mergeAborted
+	switch landing.Home {
+	case mergeConflicted, mergeAborted:
+		return false
+	case "":
+		return landing.Refused == ""
+	}
+	return true
 }
 
 // releaseBeltRun is the last thing every run does: it is cleared off the Agent,
