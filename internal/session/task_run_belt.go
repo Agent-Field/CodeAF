@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -128,6 +129,24 @@ type RunSpec struct {
 	// program is started with its own flags for one
 	// (delegate.Delegate.PlainFolder). False for every other run.
 	PlainFolder bool
+	// Ground is every spelling of the folder a delegated run's task was
+	// proposed on, when the program works in a copy of it: the brief it is
+	// handed names the copy wherever it named the folder
+	// (delegate.RehomeBrief). Empty for every other run.
+	Ground []string
+}
+
+// ProgramEnding is a delegated run's program's own ending when it did not
+// finish, as the engine read it off the program's terminal record: the status
+// word, the one sentence the row says, and the program's account.
+type ProgramEnding struct {
+	// Status is delegate.StatusFail, StatusBudget, StatusCrashed, or a word
+	// this build does not know.
+	Status string
+	// Reason is the sentence: `senior-dev did not finish: …`.
+	Reason string
+	// Result is the program's account in full.
+	Result string
 }
 
 // RunLimit is which bound a person set ended a run. The engine's outcome word
@@ -154,6 +173,9 @@ type RunSummary struct {
 	Result  string
 	// Limit is empty on every run that did not end on a bound its person set.
 	Limit RunLimit
+	// Program is how a delegated run's program ended when it did not finish,
+	// nil otherwise ([ProgramEnding]).
+	Program *ProgramEnding
 	// Cut is every task the run's own ending cut mid-flight, by store id: the
 	// same typed fact as the limit, read where the run recorded it. A joined
 	// row in this set is drawn with the run's own ending and never as a fault.
@@ -253,6 +275,10 @@ type beltRun struct {
 	// ([delegateOnPlainFolder]): it is told so on its line, and its landing
 	// commits nothing, because the work is already where it belongs.
 	plain bool
+	// groundNames is every spelling of the folder a tree program's task was
+	// proposed on, when the program works in a copy of it
+	// ([delegateGroundNames]); empty otherwise.
+	groundNames []string
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -343,6 +369,8 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 	// THE COPY IS A SHELL WORKER'S, so its landing stages the tree's own status:
 	// a run's workers edit through bash and fill no write ledger.
 	tree.bashBelt = true
+	// AND A PROGRAM'S WORK LANDS AS ITS BRANCH ([delegateKeepsBranch]).
+	tree.keepsBranch = delegateKeepsBranch(via, delegateOnPlainFolder(tree, via))
 	// THE RUN'S CONTEXT IS ONE A PERSON'S STOP CAN CUT. It outlives the turn that
 	// started it, which is the caller's business (task.go hands this door a
 	// context no turn's ending cancels); what it must not outlive is the person
@@ -354,6 +382,9 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
 		born: born, delegate: via, startSha: delegateStartSha(tree, via),
 		plain: delegateOnPlainFolder(tree, via),
+	}
+	if via != nil && via.LandsTree() && !run.plain {
+		run.groundNames = delegateGroundNames(stand.dir, tree.dir)
 	}
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
@@ -487,7 +518,33 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		Serves:       a.servesModel,
 		Delegate:     run.delegate,
 		PlainFolder:  run.plain,
+		Ground:       run.groundNames,
 	}
+}
+
+// delegateGroundNames is every way a brief is likely to spell the folder a
+// tree program's task was proposed on: as the proposal named it, absolute,
+// with its links resolved, and under ~. It is empty when the program works in
+// that folder itself, where there is nothing to rewrite.
+func delegateGroundNames(proposed, copyDir string) []string {
+	proposed = strings.TrimSpace(proposed)
+	if proposed == "" || canonicalPath(proposed) == canonicalPath(copyDir) {
+		return nil
+	}
+	names := []string{proposed, canonicalPath(proposed)}
+	home, _ := os.UserHomeDir()
+	home = strings.TrimRight(home, "/")
+	if abs, err := filepath.Abs(proposed); err == nil && !strings.HasPrefix(proposed, "~") {
+		names = append(names, abs)
+	}
+	if home != "" {
+		for _, name := range append([]string(nil), names...) {
+			if rest, ok := strings.CutPrefix(name, home+"/"); ok {
+				names = append(names, "~/"+rest)
+			}
+		}
+	}
+	return names
 }
 
 // openBeltRunStore opens the conversation's store for a run, creating it under
@@ -691,6 +748,20 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 		// the sentence the engine answered is the whole account.
 		return landing
 	}
+	if merge == mergeKept && run.tree.keepsBranch {
+		// A BRANCH-ONLY LANDING IS A LANDING, not a refusal: the work is on its
+		// branch in the person's repository, which is where it was promised.
+		landing.Home = merge
+		if run.tree.branch != "" {
+			landing.Branch = run.tree.branch
+		}
+		if _, err := run.store.AddNote(run.root, run.root, said); err != nil {
+			if g := a.graph(); g != nil {
+				g.planNote("the run's homecoming note failed: " + err.Error())
+			}
+		}
+		return landing
+	}
 	if merge != mergeMerged && merge != mergeInPlace {
 		// THE WORK DID NOT GO IN, AND THE OUTCOME NOTE SAYS SO IN THE ROAD'S OWN
 		// SENTENCE, which names the kept branch and what it clashed with. It is
@@ -847,9 +918,16 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 	if summary.Outcome != beltRunOutcomeDone {
 		state = TaskFailed
 	}
-	report := strings.TrimSpace(summary.Result)
-	if report == "" && summary.Outcome != beltRunOutcomeDone {
-		report = strings.TrimSpace(summary.Outcome)
+	outcome, result := runEndingWords(summary)
+	report := result
+	if summary.Outcome != beltRunOutcomeDone {
+		if summary.Program != nil {
+			// THE PROGRAM'S OWN SENTENCE LEADS, and its account follows: the
+			// reason line a surface draws is the report's first line.
+			report = strings.TrimSpace(outcome + "\n" + result)
+		} else if report == "" {
+			report = outcome
+		}
 	}
 	if line := beltLandingLine(landing); line != "" {
 		if report != "" {
@@ -864,7 +942,7 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// ([TaskReasonOf]): the outcome word alone says only that one of them
 		// fired. The ending comes from the summary's own fact and never out of
 		// the outcome sentence.
-		Ending: beltRunLimitEnding(summary.Limit),
+		Ending: beltRunEnding(summary),
 		Report: report, Result: summary.Result,
 		Changed: landing.Changed,
 	}
@@ -879,6 +957,34 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	return notice
+}
+
+// beltRunEnding is the run row's ending: a limit its person set, or how the
+// program a delegated run was handed to ended it — a crash is the fault it is,
+// and every other ending of the program's own is [TaskEndingProgram], whose
+// reason is the program's sentence. Empty for every other run.
+func beltRunEnding(summary RunSummary) TaskEnding {
+	if ending := beltRunLimitEnding(summary.Limit); ending != "" {
+		return ending
+	}
+	if ended := summary.Program; ended != nil && summary.Outcome != beltRunOutcomeDone {
+		if ended.Status == delegate.StatusCrashed {
+			return TaskEndingError
+		}
+		return TaskEndingProgram
+	}
+	return ""
+}
+
+// runEndingWords is a run's ending in the two parts every drawing of it reads:
+// the one sentence, and the account under it. A program that ended its run
+// unfinished speaks for itself; every other run answers the engine's outcome
+// word and the root's result.
+func runEndingWords(summary RunSummary) (string, string) {
+	if ended := summary.Program; ended != nil && summary.Outcome != beltRunOutcomeDone {
+		return strings.TrimSpace(ended.Reason), strings.TrimSpace(ended.Result)
+	}
+	return summary.Outcome, strings.TrimSpace(summary.Result)
 }
 
 // beltRunLimitEnding is the run row's ending for a limit its person set, off
@@ -900,8 +1006,9 @@ func beltRunLimitEnding(limit RunLimit) TaskEnding {
 // says why it did not. The last stored run reading supplies its Now sentence;
 // without one this remains the landing digest that predates run summaries.
 func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, landing RunLanding) string {
-	parts := []string{summary.Outcome}
-	if result := strings.TrimSpace(summary.Result); result != "" {
+	outcome, result := runEndingWords(summary)
+	parts := []string{outcome}
+	if result != "" {
 		parts = append(parts, result)
 	}
 	if line := beltLandingLine(landing); line != "" {

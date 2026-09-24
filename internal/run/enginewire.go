@@ -53,6 +53,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			Serves:       spec.Serves,
 			Seat:         WorkSeat(spec.ProfileDir, spec.WorkModel),
 			PlainFolder:  spec.PlainFolder,
+			Ground:       spec.Ground,
 		}
 		factory = DelegateFactory(spec.Store, spec.Workspace, *spec.Delegate, setup, limits, factory)
 	}
@@ -74,6 +75,10 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// so the session draws the ending out of the fact and never parses the
 		// sentence back apart.
 		Limit: runLimitOf(summary.Limit),
+		// AND A PROGRAM'S OWN ENDING CROSSES AS ITSELF, the same way: its
+		// status word and its sentence, so the row names what the program said
+		// and not the run's one word for every unfinished ending.
+		Program: programEndingOf(summary.Program),
 		// THE ROWS THE RUN'S OWN ENDING CUT CROSS AS THEMSELVES: the same
 		// one-for-one carrying as the limit fact, so the session draws a row
 		// the person's bound took down from the run's own record of it and
@@ -96,6 +101,15 @@ func runLimitOf(limit Limit) session.RunLimit {
 		return session.RunLimitCost
 	}
 	return ""
+}
+
+// programEndingOf is the program's ending in the session's words, nil where no
+// program ended the run unfinished.
+func programEndingOf(ended *ProgramEndedError) *session.ProgramEnding {
+	if ended == nil {
+		return nil
+	}
+	return &session.ProgramEnding{Status: ended.Status, Reason: ended.Reason, Result: ended.Result}
 }
 
 func (engine) Land(ctx context.Context, store *plandb.Store, workspace, rootID string) (session.RunLanding, error) {

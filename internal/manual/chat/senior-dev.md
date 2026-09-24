@@ -50,6 +50,9 @@ reference solution among them, are not in its copy.
 At a shell, clone the repository yourself, then run `codeaf senior-dev` inside it or pass
 the folder with `--dir`.
 
+A brief that names the folder you proposed is fine: codeaf rewrites that path to senior-dev's
+copy before senior-dev reads it, so its commands run in the copy.
+
 A brief that tells senior-dev to make a checkout of its own somewhere else does not work.
 It has no copy of that folder, so nothing it does there lands: its file tools refuse to
 write outside its copy, and what a shell command changes out there stays where it is.
@@ -82,7 +85,7 @@ rather than carry something that fails every time.
 ## senior-dev on a folder that is not a git repository — a plain folder, no git, --in-place
 
 From the chat, codeaf reads the task's folder before it starts senior-dev. A repository
-with at least one commit gets a copy, as every task does. **A folder with no git history —
+with at least one commit gets a copy, and the work lands on a branch of its own. **A folder with no git history —
 a plain folder, or a repository with no commit yet — has nothing to copy from**, so
 senior-dev works in that folder itself, and codeaf starts it with `--in-place`: it commits
 nothing, and keeps its checkpoints outside the folder.
@@ -96,16 +99,21 @@ At a shell, pass `--in-place` yourself. Without it senior-dev stops at once with
 `workspace is not a git repository: <folder>; run with --in-place to work in a plain
 folder`.
 
-To have its work isolated and landed as one commit instead, make the folder a repository
-with a first commit (`git init`, `git add -A`, `git commit`) before you ask.
+To have its work isolated and left on a branch as one commit instead, make the folder a
+repository with a first commit (`git init`, `git add -A`, `git commit`) before you ask.
 
-## Where senior-dev's work lands — one squashed commit on your branch
+## Where senior-dev's work lands — its own branch, not merged, one squashed commit
 
 senior-dev commits every file it writes inside its copy (`wip(write): <path>`,
 `wip(edit): <path>`), which is how it keeps a record to restore from. None of those
 commits reaches your branch. When the run ends, they are squashed into **one commit**
-whose subject is `task:` and the task's title, and whose body is senior-dev's own ending;
-that commit comes home the way every task's work does.
+whose subject is `task:` and the task's title, and whose body is senior-dev's own ending.
+
+**That commit is left on the task's own branch in your repository, and nothing is merged
+into your checkout.** The task's page says `its work is on the branch <branch> in
+<folder>; nothing was merged into your checkout`. Merge it when you are ready, or ask the
+chat to. A run can take an hour, and a merge at its end used to meet whatever changed in
+your checkout meanwhile; now nothing can clash until you choose to merge.
 
 The ending keeps two witnesses apart: what senior-dev's model said it did when it
 submitted (`senior-dev's model said: …`) and what senior-dev itself saw when it ran the
@@ -167,7 +175,8 @@ A run ends in one of these ways, and the task's ending says which:
 - `finished: …` — it submitted, and the words after say what the project's build and
   tests did on the frozen tree;
 - `senior-dev did not finish: …` — it ended without submitting, or what it submitted fails
-  the project's own build or tests;
+  the project's own build or tests. The task row shows this sentence as its reason; it is
+  not drawn as a fault, and what it made is still on its branch;
 - `senior-dev reached the run's dollar ceiling of $5.00: …` — codeaf refused a model call
   at the dollar ceiling; the words after are senior-dev's own ending;
 - `senior-dev stopped on its own ceiling: …` — it stopped itself at the time ceiling;

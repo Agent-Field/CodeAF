@@ -8168,6 +8168,11 @@ type taskTree struct {
 	// ([stageTaskWork]). Every other worker's ledger is complete by
 	// construction, and its landing reads the ledger alone, exactly as before.
 	bashBelt bool
+	// keepsBranch is a copy whose work lands AS ITS BRANCH and is never merged:
+	// the branch is put where the person's repository can reach it and the
+	// copy is given back, and bringing it in is the person's call. A program's
+	// run is landed this way (delegate_door.go's [delegateKeepsBranch]).
+	keepsBranch bool
 }
 
 // gitRoot is the in-process half of the root repository's lock, and the file
@@ -8711,20 +8716,14 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 		return mergeConflicted, withReport(withReport(unreachedSentence(t.branch, t.dir, out), stranded),
 			leftBehindSentence(left, true)), nil, refusedByTheWork
 	}
-	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT. The branch is
-	// already committed and present in the ground repository at this point, so
-	// keeping it gives the person a durable result and gives the working copy
-	// back without changing a byte of the checkout they are using.
-	if t.landsInThePersonsRepository() {
-		if kept := t.keptLandingSentence(); kept != "" {
-			t.releaseKeptLocked()
-			// refusedNothing: the landing was not refused, it was HONOURED. The
-			// work is committed on its branch and the person has been told which
-			// one — a refusal here would put a policy keep on the unsaved road
-			// (task_land_unsaved.go) and offer to try it again, which is the one
-			// thing that must not happen to a checkout codeaf will not write.
-			return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), nil, refusedNothing
-		}
+	if kept := t.keptInsteadOfMerged(); kept != "" {
+		t.releaseKeptLocked()
+		// refusedNothing: the landing was not refused, it was HONOURED. The
+		// work is committed on its branch and the person has been told which
+		// one — a refusal here would put a policy keep on the unsaved road
+		// (task_land_unsaved.go) and offer to try it again, which is the one
+		// thing that must not happen to a checkout codeaf will not write.
+		return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), nil, refusedNothing
 	}
 	// AND THE MERGE IS THE CARRY-OR-REFUSE ONE (groundcarry.go). The ground a
 	// task was carved from is the ground it merges into: work of the person's own
@@ -8766,6 +8765,25 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 	// longer there.
 	return mergeMerged, withReport(withReport(said, stranded),
 		leftBehindSentence(left, false)), nil, refusedNothing
+}
+
+// keptInsteadOfMerged is the sentence for a branch that lands by being kept
+// rather than merged, and "" for one that is merged. It is asked once the
+// branch is committed and present in the ground repository, so keeping it
+// gives the person a durable result and gives the working copy back without
+// changing a byte of the checkout they are using.
+func (t taskTree) keptInsteadOfMerged() string {
+	// A COPY THAT LANDS AS ITS BRANCH is kept whatever the checkout looks like:
+	// the branch in the person's repository is the whole landing it was
+	// promised, and nothing of theirs is merged into.
+	if t.keepsBranch {
+		return branchOnlySentence(t.branch, t.root)
+	}
+	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT.
+	if t.landsInThePersonsRepository() {
+		return t.keptLandingSentence()
+	}
+	return ""
 }
 
 // landMirror brings a mirrored folder home: the files the node wrote, laid over

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,10 +28,11 @@ func testPrograms(name string) []delegate.Delegate {
 // The whole road from the door to the branch: `/fake <brief>` starts a run
 // whose spec names the delegate, the program's own commits in the copy are
 // squashed into ONE commit whose subject is the task's title and whose body is
-// the run's result, and that commit comes home to the folder the copy was cut
-// from. The engine is a double whose `work` hook plays the program: two files,
-// two commits, the way senior-dev commits every edit.
-func TestADelegatedRunSquashesTheProgramsCommitsIntoOneAndLandsIt(t *testing.T) {
+// the run's result, and that commit lands AS ITS BRANCH in the repository the
+// copy was cut from — never merged into the person's checkout. The engine is a
+// double whose `work` hook plays the program: two files, two commits, the way
+// senior-dev commits every edit.
+func TestADelegatedRunSquashesTheProgramsCommitsAndLandsThemAsABranch(t *testing.T) {
 	// The double answers the run's result off the completer it is handed, so
 	// the result is scripted there: the sentence the landing commit must carry.
 	const result = "submitted and verified. fake's model said: tests pass"
@@ -74,34 +76,46 @@ func TestADelegatedRunSquashesTheProgramsCommitsIntoOneAndLandsIt(t *testing.T) 
 	if spec.Brief != "add two files to the project" {
 		t.Fatalf("brief = %q", spec.Brief)
 	}
+	// The folder the task was proposed on is handed over in its spellings, so
+	// the program's brief names its copy wherever it named the folder.
+	if !slices.Contains(spec.Ground, canonicalPath(conversation)) || canonicalPath(spec.Workspace) == canonicalPath(conversation) {
+		t.Fatalf("spec.Ground = %q for a copy at %q, want the proposed folder's spellings", spec.Ground, spec.Workspace)
+	}
 	endBeltRun(t, agent, double)
 
-	// ONE COMMIT ABOVE THE BASE, and it is codeaf's landing commit, not the
-	// program's two.
-	log := gitOut(t, conversation, "log", "--format=%s%n%b", base+"..HEAD")
-	if strings.Contains(log, "wip(edit)") {
-		t.Fatalf("the program's own commits reached the branch:\n%s", log)
+	// THE CHECKOUT IS UNTOUCHED: nothing was merged into it.
+	if head := strings.TrimSpace(gitOut(t, conversation, "rev-parse", "HEAD")); head != base {
+		t.Fatalf("the person's checkout moved from %s to %s; a program's work lands as its branch", base, head)
 	}
-	subjects := strings.TrimSpace(gitOut(t, conversation, "log", "--format=%s", base+"..HEAD"))
-	lines := strings.Split(subjects, "\n")
-	// A merge may add its own commit above the squash; the squash itself is
-	// exactly one, and it is the task's title.
-	found := 0
-	for _, line := range lines {
-		if strings.HasPrefix(line, "task: ") {
-			found++
+	for _, name := range []string{"one.txt", "two.txt"} {
+		if _, err := os.Stat(filepath.Join(conversation, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s was written into the person's checkout: %v", name, err)
 		}
 	}
-	if found != 1 {
-		t.Fatalf("want exactly one `task:` commit above the base, got %d in:\n%s", found, subjects)
+	// ONE COMMIT ON THE TASK'S BRANCH ABOVE THE BASE, and it is codeaf's
+	// landing commit, not the program's two.
+	branches := strings.Fields(gitOut(t, conversation, "branch", "--format=%(refname:short)", "--list", "task/*"))
+	if len(branches) != 1 {
+		t.Fatalf("want the task's one branch in the repository, got %q", branches)
+	}
+	log := gitOut(t, conversation, "log", "--format=%s%n%b", base+".."+branches[0])
+	subjects := strings.Fields(gitOut(t, conversation, "rev-list", base+".."+branches[0]))
+	if len(subjects) != 1 || strings.Contains(log, "wip(edit)") || !strings.HasPrefix(log, "task: ") {
+		t.Fatalf("the branch holds %d commits above the base, want one `task:` commit:\n%s", len(subjects), log)
 	}
 	if !strings.Contains(log, "fake's model said: tests pass") {
 		t.Fatalf("the landing commit's body does not carry the run's result:\n%s", log)
 	}
-	for _, name := range []string{"one.txt", "two.txt"} {
-		if _, err := os.Stat(filepath.Join(conversation, name)); err != nil {
-			t.Fatalf("%s did not come home: %v", name, err)
-		}
+	// AND THE PAGE SAYS WHERE IT IS.
+	store := beltRunStoreAt(t, filepath.Dir(spec.Store.Path()))
+	defer store.Close()
+	var said []string
+	for _, n := range store.Notes(store.RootID(), 0) {
+		said = append(said, n.Body)
+	}
+	if joined := strings.Join(said, "\n"); !strings.Contains(joined, "its work is on the branch "+branches[0]) ||
+		!strings.Contains(joined, "nothing was merged into your checkout") {
+		t.Fatalf("the run's notes = %q, want the branch it landed on", said)
 	}
 }
 
@@ -136,8 +150,8 @@ func TestADelegatedRunOnAPlainFolderIsToldSoAndLandsWhereItWorked(t *testing.T) 
 	double.mu.Lock()
 	spec := double.spec
 	double.mu.Unlock()
-	if !spec.PlainFolder || canonicalPath(spec.Workspace) != canonicalPath(folder) {
-		t.Fatalf("spec = plain %v in %q, want the plain folder itself, said to be one", spec.PlainFolder, spec.Workspace)
+	if !spec.PlainFolder || canonicalPath(spec.Workspace) != canonicalPath(folder) || len(spec.Ground) != 0 {
+		t.Fatalf("spec = plain %v in %q, ground %q, want the plain folder itself, said to be one, and nothing to rewrite", spec.PlainFolder, spec.Workspace, spec.Ground)
 	}
 	endBeltRun(t, agent, double)
 
@@ -179,6 +193,38 @@ func TestADelegatedRunOnARepositoryIsNotToldItIsPlain(t *testing.T) {
 	endBeltRun(t, agent, double)
 	if plain {
 		t.Fatal("a repository with a commit was called a plain folder")
+	}
+}
+
+// A program that ended without finishing is drawn from its own words: the row
+// names what it said, with no fault in front of it, and a crash is the fault
+// it is. The row that read "a fault: ran and did not finish" over an hour of
+// work that had said exactly why it would not stand told a person nothing.
+func TestAProgramsOwnEndingIsTheRowsReasonAndNotAFault(t *testing.T) {
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {})
+	program := testPrograms("fake")[0]
+	run := &beltRun{row: 3, title: "the task", delegate: &program}
+	summary := RunSummary{Outcome: "ran and did not finish", Program: &ProgramEnding{
+		Status: delegate.StatusFail,
+		Reason: "fake did not finish: submitted a change the project's own tests do not pass",
+		Result: "submitted a change the project's own tests do not pass. fake's model said: done",
+	}}
+	notice := agent.beltRunNotice(run, summary, RunLanding{})
+	if notice.State != TaskFailed || notice.Ending != TaskEndingProgram {
+		t.Fatalf("notice = %s / %q, want failed on the program's own ending", notice.State, notice.Ending)
+	}
+	if reason := TaskReasonOf(notice.Ending, notice.Report); reason != summary.Program.Reason {
+		t.Fatalf("reason = %q, want the program's sentence %q", reason, summary.Program.Reason)
+	}
+	if taskEndingIsFault(notice.Ending) {
+		t.Fatal("a program judging its own work unfinished was drawn as a fault")
+	}
+	if note := beltRunOutcomeNote(nil, "", summary, RunLanding{}); !strings.HasPrefix(note, summary.Program.Reason) || strings.Contains(note, "ran and did not finish") {
+		t.Fatalf("the outcome note = %q, want the program's own words and not the run's generic one", note)
+	}
+	summary.Program.Status = delegate.StatusCrashed
+	if notice := agent.beltRunNotice(run, summary, RunLanding{}); notice.Ending != TaskEndingError {
+		t.Fatalf("a crash ended %q, want the fault it is", notice.Ending)
 	}
 }
 

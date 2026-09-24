@@ -6,7 +6,7 @@ codeaf carries programs of its own that take one whole coding task and do it alo
 long as an hour or more. People call them delegates. You hand one a task the way codeaf
 hands a task to its own worker: it works in a copy of your folder, under this
 conversation's dollar and time limits, shows on the rail while it runs, can be stopped,
-and lands on your branch when it ends.
+and leaves its work on a branch of its own when it ends.
 
 Each one is **built into codeaf**. There is nothing to install and nothing to set up, and
 none of them runs on its own outside codeaf. Each is a command in the chat, `/<name>
@@ -49,6 +49,10 @@ A program that edits code works in a copy of one folder: the one this conversati
 in, or the one the task names. **Only what it changes inside that copy lands.** Anything it
 changed anywhere else is not part of the task, and the task's ending does not see it.
 
+**The brief it reads names its copy.** Wherever the brief names the task's folder, codeaf
+rewrites that path to the copy's before the program reads it, so it is never pointed at
+your checkout.
+
 So when the work belongs in a repository that is not on this machine (a benchmark task
 that names a repository and a commit, or a project you have not cloned), the model clones
 it first, into a new folder, onto a branch at the commit the work names, and hands the
@@ -85,14 +89,21 @@ program itself checked is reported in its result, kept apart from what its model
 A name your build does not carry is refused with the ones it does:
 `this codeaf carries no program called <name>; it carries …`.
 
-## Where its work goes — squashed into one commit, landed on my branch, the wip commits, what it costs
+## Where its work goes — its own branch, not merged into mine, squashed into one commit, the wip commits, what it costs
 
 A program that edits code works in a copy cut from your folder. When it ends, every commit
 it made in that copy is squashed into **one commit**. The commit's subject is the task's
-title, and its body is the program's own account of the ending. That commit is merged into
-your folder the way every task's work comes home, so a program that commits after every
-edit leaves no trail of bookkeeping commits on your branch. When there is nothing to land,
-it says `nothing to land: the run's working copy holds no change`.
+title, and its body is the program's own account of the ending.
+
+**That commit stays on the task's own branch** (`task/<title>-<id>`) in your repository,
+and **codeaf does not merge it into your checkout**. Your files and your branch are exactly
+as you left them. The task's page says `its work is on the branch <branch> in <folder>;
+nothing was merged into your checkout`. Ask the chat to merge it, or merge it yourself
+(`git merge <branch>`), when you are ready. Nothing can conflict when the run ends,
+because the landing writes nothing of yours; a conflict only appears when you merge.
+
+When there is nothing to land, it says `nothing to land: the run's working copy holds no
+change`. A folder with no git history is the exception: the program works in it directly.
 
 A program that only answers works in your folder in place and changes nothing. Its answer
 arrives in the conversation the way a task's landing does.

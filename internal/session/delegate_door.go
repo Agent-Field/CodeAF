@@ -148,6 +148,27 @@ func (c Config) delegateGuides() string {
 	return strings.Join(items, "\n")
 }
 
+// delegateKeepsBranch says how a tree program's work comes home: ON ITS
+// BRANCH, and never merged into the person's checkout by codeaf.
+//
+// A PROGRAM'S HOUR OF WORK IS NOT MERGED BEHIND ANYBODY'S BACK. A merge at the
+// end of an hour meets whatever happened to the checkout in that hour — the
+// person's own edits, another task's landing, a conversation that kept working
+// — and a clash then turned a finished run into one that read as failed, with
+// its work parked on a branch anyway. So the branch is the landing: one
+// squashed commit, reachable from the folder the task was proposed on, and the
+// conversation or the person merges it when they choose. Nothing can conflict
+// at the landing, because the landing writes nothing of anybody's.
+func delegateKeepsBranch(via *delegate.Delegate, plain bool) bool {
+	return via != nil && via.LandsTree() && !plain
+}
+
+// branchOnlySentence is what a person is told about work that landed as its
+// branch: where it is, and that it is theirs to bring in.
+func branchOnlySentence(branch, root string) string {
+	return "its work is on the branch " + branch + " in " + root + "; nothing was merged into your checkout"
+}
+
 // DelegateUnknownError is the refusal for a `via` or a command naming no
 // program this build carries. It names the ones it does, sorted, so the next
 // attempt has the words in front of it.

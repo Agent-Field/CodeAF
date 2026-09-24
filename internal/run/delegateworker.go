@@ -102,6 +102,12 @@ type DelegateSetup struct {
 	// (session.RunSpec.PlainFolder), so the program's line carries its own
 	// flags for one (delegate.Delegate.PlainFolder).
 	PlainFolder bool
+	// Ground is every spelling of the folder the task was proposed on, when the
+	// program works in a copy of it (session.RunSpec.Ground). The brief is
+	// rewritten to name the copy wherever it named that folder
+	// (delegate.RehomeBrief), so the program is never told a path it must not
+	// work in. Empty for a program working in the folder itself.
+	Ground []string
 }
 
 // NewDelegateWorker builds the worker. cost and elapsed are the run's
@@ -299,6 +305,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
 	}
+	brief = delegate.RehomeBrief(brief, w.setup.Ground, w.workspace)
 	result, err := delegate.Run(launchCtx, delegate.Launch{
 		Name: w.program.Name,
 		Bin:  exe,
@@ -369,26 +376,43 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	}
 	t := *result.Reading.Terminal
 	report.Result = delegateResult(w.program, t)
+	var reason string
 	switch t.Status {
 	case delegate.StatusPass:
 		end(sink.steps, "finished: "+t.Message, report.Result)
 		return report, nil
 	case delegate.StatusBudget:
-		reason := w.program.Name + " stopped on its own ceiling: " + t.Message
-		end(sink.steps, reason, report.Result)
-		return report, errors.New(reason)
+		reason = w.program.Name + " stopped on its own ceiling: " + t.Message
 	case delegate.StatusCrashed:
-		reason := w.program.Name + " crashed: " + t.Message
-		end(sink.steps, reason, report.Result)
-		return report, errors.New(reason)
+		reason = w.program.Name + " crashed: " + t.Message
 	default:
 		// `fail`, and any word this build does not know, is work that does not
 		// stand: the run reads it as incomplete.
-		reason := w.program.Name + " did not finish: " + t.Message
-		end(sink.steps, reason, report.Result)
-		return report, errors.New(reason)
+		reason = w.program.Name + " did not finish: " + t.Message
 	}
+	end(sink.steps, reason, report.Result)
+	return report, &ProgramEndedError{Status: t.Status, Reason: reason, Result: report.Result}
 }
+
+// ProgramEndedError is a program's own ending when it did not finish: the
+// status word its terminal record carried, the sentence the task keeps, and
+// its account in full. The run carries it to the session whole
+// ([Summary.Program]), which draws the row from the fact rather than from the
+// generic "ran and did not finish" — the row that said only that, over an hour
+// of work that had submitted a change and said exactly why it would not
+// stand, told a person nothing they could act on.
+type ProgramEndedError struct {
+	// Status is the terminal record's word: fail, budget, crashed, or one
+	// this build does not know.
+	Status string
+	// Reason is the one sentence: `senior-dev did not finish: …`.
+	Reason string
+	// Result is the program's account: its message, what its model claimed
+	// and what it observed ([delegateResult]).
+	Result string
+}
+
+func (e *ProgramEndedError) Error() string { return e.Reason }
 
 // completerFor is the setup's completer factory in the model API's own
 // words, each completer marked so a call keeps the program's own cache

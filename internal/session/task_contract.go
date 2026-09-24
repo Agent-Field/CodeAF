@@ -307,6 +307,13 @@ const (
 	// Its reason names the dollar limit ([taskReasonCostLimit]), and the two
 	// endings exist apart so a person who set both is told which one fired.
 	TaskEndingCostLimit TaskEnding = "cost-limit"
+	// TaskEndingProgram says the program a task was handed to
+	// (delegate_door.go) ended it without finishing, and said why: its own
+	// check did not pass what it made, or it stopped on its own ceiling. The
+	// program's sentence is the reason ([TaskReasonOf]), and it is not a fault:
+	// nothing broke, a program judged its own work and said so, and what it
+	// made is on its branch. A program that crashed is [TaskEndingError].
+	TaskEndingProgram TaskEnding = "program"
 	// TaskEndingError is everything else: a working copy that could not be
 	// made, a worker that would not start, an error nobody classified.
 	TaskEndingError TaskEnding = "error"

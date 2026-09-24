@@ -145,6 +145,10 @@ type Supervisor struct {
 	steps      int
 	rootResult string
 	rootFailed bool
+	// rootProgram is how the program a delegated run's root was handed to
+	// ended, when it ended without finishing ([ProgramEndedError]); nil for
+	// every other run.
+	rootProgram *ProgramEndedError
 	// limitHit is which limit a person set ended this run, and empty while none
 	// has. It is set the moment the run decides a limit was reached (the
 	// elapsed signal in Run, the spend counters in countLiveSpend and
@@ -690,6 +694,13 @@ func (s *Supervisor) absorb(ret workerReturn) {
 				s.addReviewCheck(ret.task, root.Result)
 			} else {
 				s.rootFailed = true
+				// A PROGRAM THAT ENDED WITHOUT FINISHING SAID WHY, and its words
+				// are the run's to carry, never to drop: the session draws the
+				// row out of them ([Summary.Program]).
+				var ended *ProgramEndedError
+				if errors.As(ret.err, &ended) {
+					s.rootProgram = ended
+				}
 			}
 		} else {
 			s.rootResult = ret.report.Result
@@ -1545,6 +1556,10 @@ type Summary struct {
 	// run that did not end on one. The outcome word is the same sentence for
 	// both limits; this is what tells them apart.
 	Limit Limit
+	// Program is how a delegated run's program ended when it ended without
+	// finishing: its status word and its own account ([ProgramEndedError]).
+	// Nil for a run that finished, and for every run no program worked.
+	Program *ProgramEndedError
 	// Cut is every task the run's own ending cut mid-flight, by store id: its
 	// wall, its spend ceiling, or a person's stop ended the context their
 	// workers ran under. A task that failed on its own before the ending is
@@ -1600,6 +1615,7 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 		Outcome: outcome,
 		Result:  result,
 		Limit:   supervisor.limitHit,
+		Program: supervisor.rootProgram,
 		Cut:     supervisor.cutIDs(),
 		Nodes:   supervisor.nodes,
 		Steps:   supervisor.steps,

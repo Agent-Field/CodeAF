@@ -52,6 +52,26 @@ commits nothing, because the work is already there, and the run's page says so.
 codeaf never learns a program's flag by name, and a flag the default command
 does not take fails `Validate`, so the build's own test catches it.
 
+**The brief names the copy.** Where the program works in a copy, every spelling
+of the proposed folder in the brief (as proposed, resolved, under `~`) is
+rewritten to the copy's path before the child is started
+(`delegate.RehomeBrief`), whole paths only. A senior-dev run briefed on "the
+checkout at /Users/…/happy-dom-task" ran its git commands there, in the
+person's checkout, because that is what it was told.
+
+**A tree program's work lands as its branch.** Its commits are squashed into
+one `task:` commit on the copy's branch, the branch is put where the person's
+repository can reach it, the copy is given back, and nothing is merged into the
+person's checkout: the page says `its work is on the branch <branch> in
+<folder>; nothing was merged into your checkout`. An hour-long run meeting the
+checkout's hour of changes at a merge was a finished run reading as failed.
+
+**A program's own ending names the row.** A terminal that is not `pass`
+reaches the session typed (`run.ProgramEndedError` → `session.ProgramEnding`):
+`fail` and `budget` end the row on `TaskEndingProgram`, whose reason is the
+program's sentence (`senior-dev did not finish: …`) and which is not a fault;
+`crashed` is `TaskEndingError`, the fault it is.
+
 - **From the chat,** the engine's run (`internal/run`'s `DelegateWorker`) starts
   that line in the run's working copy, which is cut from the folder the proposal
   names (`propose_task`'s `ground`) or else the conversation's own.
