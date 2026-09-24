@@ -100,10 +100,7 @@ func (a *app) refreshCreditWarnings() {
 	// first conversation from the record as it stood — low — a moment before the
 	// launch read says otherwise. A conversation that has sent anything keeps its
 	// model either way, and nothing here writes a talk row.
-	want := config.DefaultModel
-	if a.creditsLow {
-		want = config.FreeChatModel
-	}
+	want := config.ChatDefaultAt(a.profileDir)
 	if a.readCredits != nil && !a.creditSwitching && a.implicitTalk && a.model != want &&
 		(a.model == config.DefaultModel || a.model == config.FreeChatModel) &&
 		a.freshAndEmpty() && config.ChatModelAt(a.profileDir) == "" {
