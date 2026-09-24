@@ -2669,6 +2669,11 @@ func (a *Agent) landVolatileLocked() {
 	// the card had, on a faster beat. See [memoryNoteOpening].
 	a.landNoteLocked(memoryNoteOpening, strings.TrimSpace(a.memoryText))
 	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
+	// AND A MANAGER'S TEAM, in a note of its own for the reason the memory block
+	// has one: a team moves whenever a member does, and riding the card's note
+	// would re-send the card each time (team.go's [teamNoteOpening]). A
+	// conversation that manages nothing has an empty block and lands nothing.
+	a.landNoteLocked(teamNoteOpening, a.teamBlockLocked())
 }
 
 // landNoteLocked appends one of the session's own notes when what it says has
@@ -2732,7 +2737,8 @@ func (a *Agent) lastNoteLocked(opening string) string {
 func isVolatileNote(text string) bool {
 	return strings.HasPrefix(text, volatileNoteOpening) ||
 		strings.HasPrefix(text, memoryNoteOpening) ||
-		strings.HasPrefix(text, bashBeltFrameOpening)
+		strings.HasPrefix(text, bashBeltFrameOpening) ||
+		strings.HasPrefix(text, teamNoteOpening)
 }
 
 // mayBashBelt is [Config.mayBashBelt] asked of a live agent, so that the
@@ -2968,6 +2974,17 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// the first thing it reads, and an agent that is not on the experiment
 	// composes nothing and lands nothing.
 	frame := a.bashBeltFrame(hub)
+	// AND WHAT THIS CONVERSATION'S TEAMS SAID TO IT, read on the same side of
+	// the lock for the same reason: it is a stat of the teams file and of each
+	// Traffic log, and a read only when one of them moved (team.go's
+	// [Agent.teamBoundary]). What comes back is one marked note on the steering
+	// queue, so the drain below puts it in front of this very request: at the
+	// turn's opening and at every step after it, which is what makes a line the
+	// manager sends mid-turn land mid-turn. A conversation in no team pays one
+	// stat, and one with no profile or a task node pays nothing.
+	if news := a.teamBoundary(); news != "" {
+		a.enqueueNote(userText(news))
+	}
 	a.mu.Lock()
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
