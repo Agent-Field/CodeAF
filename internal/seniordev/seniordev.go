@@ -50,10 +50,14 @@ var Program = delegate.Delegate{
 	// checkpoints outside the folder and commits nothing; a folder with no git
 	// history has nothing else it can run on.
 	PlainFolder: []string{"--in-place"},
-	CrewFlags:   crewFlags,
-	Default:     "run",
-	Page:        "senior-dev",
-	Commands:    []delegate.Command{runCommand},
+	// Where it keeps its records in the folder it works in: the brief, the
+	// checklist, the pinned command, its session database and its model
+	// conversation (app's seniorDevDataDirectory, which git never sees).
+	Notes:     ".senior-dev",
+	CrewFlags: crewFlags,
+	Default:   "run",
+	Page:      "senior-dev",
+	Commands:  []delegate.Command{runCommand},
 }
 
 // crewFlags is the conversation's crew as senior-dev's own flags: the working

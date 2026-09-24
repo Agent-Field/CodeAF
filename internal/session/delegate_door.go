@@ -23,10 +23,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // DelegateRow is one program as a surface lists it: the command word, the
@@ -296,8 +299,12 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 	if run.plain {
 		// A PLAIN FOLDER HAS NO HISTORY TO COMMIT TO, and the program worked in
 		// it where it stands: its changes are already the person's, and the
-		// landing is only the note that says where they are.
+		// landing is only the note that says where they are — and where the
+		// program's own records went, which are not the person's.
 		note := "its work is in " + run.ground + ", which has no git history, so nothing was committed"
+		if kept := a.keepPlainFolderNotes(run); kept != "" {
+			note += "; " + kept
+		}
 		if _, err := run.store.AddNote(run.root, run.root, note); err != nil {
 			if g := a.graph(); g != nil {
 				g.planNote("the run's landing note failed: " + err.Error())
@@ -401,4 +408,49 @@ func delegateHeadHome(dir, branch, startSha, name string) string {
 		}
 	}
 	return said
+}
+
+// keepPlainFolderNotes moves a program's notes folder ([delegate.Delegate.Notes])
+// out of the plain folder it worked in and into the task's own record folder,
+// beside its conversation with codeaf, and answers the sentence that says
+// where they went ("" when nothing moved).
+//
+// THE PERSON'S FOLDER GETS BACK ONLY THE WORK. A senior-dev run left 46 files
+// in `.senior-dev/` there — its session database and its whole conversation
+// with its model among them — and the manual's own advice for isolation next
+// time, `git init` then `git add -A`, would have committed every one. A notes
+// folder that was already there when the run began is left alone, because it
+// is not this run's alone. A move across disks falls back to a copy and then a
+// removal, and a move that fails leaves the folder where it was, whole.
+func (a *Agent) keepPlainFolderNotes(run *beltRun) string {
+	m := run.delegate
+	if m == nil || m.Notes == "" || run.notesWereThere || run.tree.dir == "" {
+		return ""
+	}
+	from := filepath.Join(run.tree.dir, m.Notes)
+	if info, err := os.Lstat(from); err != nil || !info.IsDir() {
+		return ""
+	}
+	taskDir := plandb.TaskDir(filepath.Dir(run.store.Path()), run.root)
+	if err := os.MkdirAll(taskDir, 0o700); err != nil {
+		return ""
+	}
+	to := filepath.Join(taskDir, m.Name)
+	for n := 1; ; n++ {
+		if _, err := os.Lstat(to); os.IsNotExist(err) {
+			break
+		}
+		to = filepath.Join(taskDir, fmt.Sprintf("%s.%d", m.Name, n))
+	}
+	if err := os.Rename(from, to); err != nil {
+		if err := copyPath(from, to); err != nil {
+			_ = os.RemoveAll(to)
+			if g := a.graph(); g != nil {
+				g.planNote(m.Name + "'s notes could not be moved out of " + run.ground + ": " + err.Error())
+			}
+			return ""
+		}
+		_ = os.RemoveAll(from)
+	}
+	return "its notes (" + m.Notes + "/) are kept in " + to
 }

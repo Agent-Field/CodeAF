@@ -89,6 +89,19 @@ type Delegate struct {
 	// where it is, and the program is told so on its line. The program says
 	// only how it is told, so codeaf never has to learn its flag's name.
 	PlainFolder []string
+	// Notes is the folder, relative to the folder it works in, where the
+	// program keeps its own records while it works: its copy of the brief, its
+	// checklist, its session's database and its whole conversation with its
+	// model. Empty is a program that keeps nothing there.
+	//
+	// A PLAIN FOLDER'S NOTES ARE MOVED OUT OF IT. A program handed a folder with
+	// no git history works in the person's folder itself, so its records were
+	// left there when it ended — 46 files for one senior-dev run, a database and
+	// the full conversation among them — where a `git add -A` would commit them.
+	// codeaf moves the folder this names into the task's own record folder when
+	// such a run ends. In a copy they stay in the copy, which the person's
+	// folder never sees.
+	Notes string
 	// CrewFlags is the flags the default command takes to use the models of
 	// the conversation's crew ([Crew]), which codeaf puts on the line of every
 	// run it starts from a conversation. Nil is a program that picks its own

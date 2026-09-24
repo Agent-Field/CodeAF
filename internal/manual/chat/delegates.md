@@ -66,7 +66,8 @@ another folder, because nothing the program did there could land.
 A folder with no git history (a plain folder, or a repository with no commit yet) has
 nothing to copy from, so the program works in that folder itself, and codeaf tells it so
 on the line it starts it with (senior-dev is given `--in-place`). Nothing is committed: its
-changes are already in the folder when it ends.
+changes are already in the folder when it ends. Its own records (senior-dev's
+`.senior-dev/`) are moved out of the folder into the task's record folder when it ends.
 
 At a shell nobody does that for you: clone the repository, then run `codeaf <name>` inside
 it, or name the folder with `--dir`.

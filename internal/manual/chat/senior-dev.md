@@ -97,15 +97,24 @@ nothing, and keeps its checkpoints outside the folder.
 
 When it ends there is nothing to commit, because its changes are already in the folder.
 The task's page says `its work is in <folder>, which has no git history, so nothing was
-committed`. Its `.senior-dev/` notes (the brief, its checklist) stay in the folder
-afterwards; delete them when you are done with them.
+committed`. **Its own records are moved out of your folder** when the run ends or you
+stop it: `.senior-dev/` (the brief, its checklist, the command it pinned, its session
+database and its whole conversation with its model) goes into the task's record folder,
+beside `delegate-conversation.jsonl`, and the page adds `its notes (.senior-dev/) are kept
+in <path>`. A `.senior-dev/` already in the folder when the run began is left where it is.
+
+It works in your folder itself, so leave that folder alone while it runs: once it has
+submitted, anything changed there is put back to what it submitted, and a file added
+there is removed.
 
 At a shell, pass `--in-place` yourself. Without it senior-dev stops at once with
 `workspace is not a git repository: <folder>; run with --in-place to work in a plain
-folder`.
+folder`. A shell run moves nothing: delete its `.senior-dev/` when you are done with it.
 
 To have its work isolated and left on a branch as one commit instead, make the folder a
 repository with a first commit (`git init`, `git add -A`, `git commit`) before you ask.
+Delete any `.senior-dev/` a shell run left there first, or `git add -A` commits its
+database and its conversation.
 
 ## Where senior-dev's work lands — its own branch, not merged, one squashed commit
 

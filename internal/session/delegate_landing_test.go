@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // delegatedRunThatDid runs one program whose work is play, in a repository
@@ -279,4 +280,89 @@ func TestAProgramHandedASubfoldersTaskReadsPathsThatExistInItsCopy(t *testing.T)
 		t.Fatalf("the path the program reads is not in its copy: %v", err)
 	}
 	endBeltRun(t, agent, double)
+}
+
+// plainFolderRun runs a program that keeps notes in `.fake` on a folder with
+// no git history, playing a run that writes its work and its notes there, and
+// answers the folder and the task's record folder.
+func plainFolderRun(t *testing.T, before func(folder string)) (string, string, []string) {
+	t.Helper()
+	double := newBeltRunDouble("done")
+	double.work = func(workspace string) {
+		if err := os.MkdirAll(filepath.Join(workspace, ".fake", "storage"), 0o755); err != nil {
+			t.Error(err)
+			return
+		}
+		for name, body := range map[string]string{
+			"made.txt":                   "made\n",
+			".fake/spec.md":              "the brief\n",
+			".fake/storage/session.json": "{}\n",
+		} {
+			if err := os.WriteFile(filepath.Join(workspace, name), []byte(body), 0o644); err != nil {
+				t.Error(err)
+			}
+		}
+	}
+	registerBeltRunEngine(t, double)
+	folder := t.TempDir()
+	if before != nil {
+		before(folder)
+	}
+	programs := testPrograms("fake")
+	programs[0].Notes = ".fake"
+	place := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = folder
+		config.Place = Place{Dir: place}
+		config.AskConsent = false
+		config.Delegates = programs
+	})
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", "make a file in this folder"); err != nil {
+		t.Fatalf("StartDelegate: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	endBeltRun(t, agent, double)
+	root := spec.Store.RootID()
+	return folder, plandb.TaskDir(place, root), beltRunNotes(t, place, root)
+}
+
+// A PROGRAM THAT WORKED IN A PLAIN FOLDER LEAVES ONLY ITS WORK THERE. Its own
+// records (a session database and its whole model conversation, for
+// senior-dev) are moved into the task's record folder, where the page says
+// they are, instead of waiting in the person's folder for a `git add -A`.
+func TestAPlainFolderRunsNotesAreMovedIntoTheTasksRecordFolder(t *testing.T) {
+	folder, taskDir, notes := plainFolderRun(t, nil)
+	if _, err := os.Stat(filepath.Join(folder, "made.txt")); err != nil {
+		t.Fatalf("the work is not in the folder: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, ".fake")); !os.IsNotExist(err) {
+		t.Fatalf("the program's notes were left in the person's folder: %v", err)
+	}
+	for _, name := range []string{"spec.md", filepath.Join("storage", "session.json")} {
+		if _, err := os.Stat(filepath.Join(taskDir, "fake", name)); err != nil {
+			t.Fatalf("the program's %s is not in the task's record folder: %v", name, err)
+		}
+	}
+	if !strings.Contains(strings.Join(notes, "\n"), "its notes (.fake/) are kept in "+filepath.Join(taskDir, "fake")) {
+		t.Fatalf("the page does not say where the notes went: %q", notes)
+	}
+}
+
+// NOTES THAT WERE THERE BEFORE THE RUN ARE NOT THIS RUN'S TO TAKE.
+func TestAPlainFolderRunLeavesNotesThatWereThereBeforeIt(t *testing.T) {
+	folder, taskDir, _ := plainFolderRun(t, func(folder string) {
+		if err := os.MkdirAll(filepath.Join(folder, ".fake"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(folder, ".fake", "old.md"), "an earlier run's\n")
+	})
+	if _, err := os.Stat(filepath.Join(folder, ".fake", "old.md")); err != nil {
+		t.Fatalf("notes that were there before the run were taken: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(taskDir, "fake")); !os.IsNotExist(err) {
+		t.Fatalf("notes that were not this run's alone were moved: %v", err)
+	}
 }

@@ -307,6 +307,11 @@ type beltRun struct {
 	// ([delegateOnPlainFolder]): it is told so on its line, and its landing
 	// commits nothing, because the work is already where it belongs.
 	plain bool
+	// notesWereThere says the program's notes folder ([delegate.Delegate.Notes])
+	// was already in a plain folder when the run began — left by a run started
+	// at a shell, say — so its landing leaves it where it is rather than take
+	// records that are not this run's alone.
+	notesWereThere bool
 	// groundMoves is every spelling of the folder a tree program's task was
 	// proposed on and of the repository around it, each paired with where it
 	// stands in the copy, when the program works in a copy of it
@@ -418,6 +423,10 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 	}
 	if via != nil && via.LandsTree() && !run.plain {
 		run.groundMoves = delegateGroundMoves(stand.dir, tree.root, tree.dir)
+	}
+	if run.plain && via.Notes != "" {
+		_, err := os.Lstat(filepath.Join(tree.dir, via.Notes))
+		run.notesWereThere = err == nil
 	}
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because

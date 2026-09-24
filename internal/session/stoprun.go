@@ -228,6 +228,13 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	if merge != mergeInPlace {
 		report += " · " + beltStoppedWhere(run.tree.branch, run.ground, changed)
 	}
+	// A PROGRAM STOPPED IN A PLAIN FOLDER leaves the person's folder its work
+	// and nothing of its own, exactly as one that ended does.
+	if run.plain {
+		if kept := a.keepPlainFolderNotes(run); kept != "" {
+			report += " · " + kept
+		}
+	}
 	if _, err := run.store.AddNote(run.root, run.root, report); err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's outcome note failed: " + err.Error())
