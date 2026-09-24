@@ -108,10 +108,14 @@ func TestDelegateWorkerBanksTheReceiptThatArrivesAfterTheProgramExited(t *testin
 	setup.CompleterFor = owing.completerFor
 	var mu sync.Mutex
 	var folded float64
+	var liveWhilePriced int
 	setup.OnCharge = func(charge session.RunCharge) {
 		mu.Lock()
 		defer mu.Unlock()
 		folded += charge.USD
+		// The receipt lands while the API's close waits for it: the program is
+		// gone, so its live step must be too.
+		liveWhilePriced = len(store.LiveSteps())
 	}
 	worker := run.NewDelegateWorker(store, t.TempDir(), program, setup, 0, 0)
 	report, err := worker.Run(runContext(t), *store.Task(store.RootID()))
@@ -126,9 +130,9 @@ func TestDelegateWorkerBanksTheReceiptThatArrivesAfterTheProgramExited(t *testin
 		t.Fatalf("spend rows = %+v, want the late receipt's row", store.SpendSummary().ByModel)
 	}
 	mu.Lock()
-	if folded != 0.058188488 {
+	if folded != 0.058188488 || liveWhilePriced != 0 {
 		mu.Unlock()
-		t.Fatalf("folded %v before the worker reported, want the late receipt", folded)
+		t.Fatalf("folded %v with %d live steps while the receipt was owed, want the late receipt and none", folded, liveWhilePriced)
 	}
 	mu.Unlock()
 	if rows := ledgerRows(t, ledger); len(rows) != 1 || !rows[0].Reconciled || rows[0].USD != 0.058188488 {

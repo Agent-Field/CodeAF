@@ -375,6 +375,11 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		Ceiling:      w.cost,
 		Bank:         meter.bank,
 		Unbilled:     meter.unbilled,
+		// THE LIVE STEP GOES WITH THE PROCESS, EVEN WHILE ITS LAST PRICE IS
+		// OWED. The API's close waits for a cut call's receipt after the program
+		// has exited, and a row reading "implement · running" through that wait
+		// would claim a present that is over.
+		Settling: func(int) { _ = w.store.ClearLive(task.ID) },
 		// NOBODY IS READING THE PROGRAM'S CALLS AS THEY ARRIVE: it is a task's
 		// worker, and the person is in their conversation or away from it.
 		Role:      lanes.RoleLeafUnattended,
