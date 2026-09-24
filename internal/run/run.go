@@ -152,6 +152,10 @@ type Supervisor struct {
 	// rootFailure is the root worker's error when it failed, which the run's
 	// ending writes onto the root ([plandb.Store.FailRoot]).
 	rootFailure string
+	// rootCut says the root worker came home with a context's ending as its
+	// error: the run was cut, and its own task did not fail. The store is not
+	// ended for it ([Supervisor.pass] says why).
+	rootCut bool
 	// limitHit is which limit a person set ended this run, and empty while none
 	// has. It is set the moment the run decides a limit was reached (the
 	// elapsed signal in Run, the spend counters in countLiveSpend and
@@ -256,6 +260,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.steps = 0
 	s.rootResult = ""
 	s.rootFailed = false
+	s.rootCut = false
 	s.limitHit = ""
 	s.cut = make(map[string]bool)
 	s.dispatchedRoot = false
@@ -390,12 +395,22 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	}
 
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit != "") {
-		if s.rootFailed && s.limitHit == "" {
+		if s.rootFailed && s.limitHit == "" && !s.rootCut && ctx.Err() == nil {
 			// THE RUN'S OWN TASK FAILED, SO THE RUN IS OVER, and the store says
 			// so: left open it read as running for ever, and the next hand-off
 			// would adopt it as live work ([plandb.Store.FailRoot]). A run a
 			// limit ended keeps its open work, which is what lets it be taken
 			// up again under a wider bound.
+			//
+			// AND A RUN THE CALLER CUT IS NOT A RUN THAT FAILED. When the
+			// caller's context ends, the root worker comes home with the
+			// context's own error, and that return and the context's end are
+			// both ready at the loop's select at once; Go picks either. Picked
+			// first, the return reached this line and wrote `context canceled`
+			// over the root as though the work had failed, on a run the caller's
+			// wall below deliberately leaves open for a later pass. Whichever
+			// the select picks, a cut root now ends the same way: incomplete,
+			// with the store as the run left it.
 			_ = s.store.FailRoot(s.rootFailure)
 		}
 		// Nothing of ours is running and the run cannot complete itself: the
@@ -713,6 +728,7 @@ func (s *Supervisor) absorb(ret workerReturn) {
 			} else {
 				s.rootFailed = true
 				s.rootFailure = ret.err.Error()
+				s.rootCut = errors.Is(ret.err, context.Canceled) || errors.Is(ret.err, context.DeadlineExceeded)
 				// A PROGRAM THAT ENDED WITHOUT FINISHING SAID WHY, and its words
 				// are the run's to carry, never to drop: the session draws the
 				// row out of them ([Summary.Program]).
