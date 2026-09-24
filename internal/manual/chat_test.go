@@ -44,6 +44,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens when auto-wake is off and the manager starts a member", "team-manager"},
 		{"why is a member still asking after it crashed", "team-manager"},
 		{"does it ask again if the handle model times out", "team-manager"},
+		{"how does a member reply to a thread", "team-manager"},
+		{"why is the traffic rail drawn as threads", "team-manager"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
