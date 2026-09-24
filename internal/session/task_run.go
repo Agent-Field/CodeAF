@@ -7411,13 +7411,20 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 	// THE FOLD DOOR, not the ordinary auxiliary one: the node journaled these
 	// same tokens into the machine's usage ledger as it spent them, and folding
 	// the total in again would count them twice ([Agent.addFoldedUsage]).
-	a.spendLedger(node).addFoldedUsage(&ai.Response{Usage: &ai.Usage{
+	ledger := a.spendLedger(node)
+	ledger.addFoldedUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,
 		CacheCreationInputTokens: used.CacheWrite,
 		Cost:                     &cost,
 	}}, child.Model(), used.Calls)
+	// The books on disk are told as the node's tally reaches them, for the
+	// reason [Agent.driveBeltRun] stamps a run's: home takes the larger of the
+	// stamped books and the index rows, and that is exact only while meta.json
+	// already holds every closed node the index names. A worker that folds a part
+	// has no place of its own, and its stamp writes nothing.
+	ledger.stampSpend()
 }
 
 // spendLedger is WHICH SET OF BOOKS this node's spend goes into: the agent that

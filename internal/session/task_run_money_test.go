@@ -89,3 +89,38 @@ func TestARunsCallsAreFoldedWholeAndEachDollarOnce(t *testing.T) {
 		t.Fatalf("the fold wrote %d ledger rows, want none", len(lines))
 	}
 }
+
+// A RUN'S DOLLARS REACH THE CONVERSATION'S meta.json THE MOMENT THEY REACH ITS
+// BOOKS, not at the next turn's seal. Home reads a conversation's bill from two
+// places — the books stamped on meta.json and the run's own row in the
+// project's index — and takes the larger, because the books already hold every
+// run they were told about. That is only exact if the books on disk are told
+// when the run settles: a stamp that waited for the next turn left a card
+// reading the run alone while the conversation's own talking was missing.
+func TestARunsDollarsAreStampedOnTheConversationWhenItSettles(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("the run ended")
+	double.summary.USD = 2.30
+	registerBeltRunEngine(t, double)
+
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "the run ended"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: dir}
+		config.SessionFile = Place{Dir: dir}.Transcript()
+		config.AskConsent = false
+	})
+	if _, _, _, err := agent.StartTask(context.Background(), "account for this run", false); err != nil {
+		t.Fatalf("StartTask: %v", err)
+	}
+	<-double.entered
+	endBeltRun(t, agent, double)
+
+	meta, err := LoadMeta(dir)
+	if err != nil {
+		t.Fatalf("LoadMeta: %v", err)
+	}
+	if meta.SpentUSD != 2.30 {
+		t.Fatalf("meta.json says the conversation spent %v with no turn sealed since the run, want the run's $2.30", meta.SpentUSD)
+	}
+}

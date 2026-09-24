@@ -2215,14 +2215,17 @@ to the cent.
 zero or unknown files, spend and tokens are omitted, and a line with no true fact at all is
 not drawn. The resting panels do not carry it — `spend` is the whole machine's day.
 
-**It counts the talking and the work the talking started, in one figure.** The turns —
-your messages, the answers, and the small calls beside them — are added up by the session
-itself and written to the session folder at the end of every turn, so home can read them
-without opening the transcript. Every task and every unattended run this conversation
-commissioned is added from the project's task index. `spent $1.25` is those two halves
-together.
+**It counts the talking and the work the talking started, in one figure, and each dollar
+once.** The session keeps one set of books: your messages, the answers, the small calls
+beside them, and every task and senior-dev run this conversation started, folded in as each
+one finishes. It writes that total to the session folder at the end of every turn and again
+when a task or run finishes, so home can read it without opening the transcript. The
+project's task index also carries each task's and run's own bill. `spent $1.25` is the larger
+of those two figures, never their sum: the books already hold every finished task and run, so
+adding the index on top would count them twice. While work is still running the index can be
+ahead, and then its figure is the one shown.
 
-`tokens` is input plus output as one sum, over the same two halves. `touched 12 files` is how
+`tokens` is input plus output as one sum, read the same way. `touched 12 files` is how
 many files this conversation's work wrote, summed over its tasks.
 
 `/cost` and `/status` inside the conversation still answer for the live session. A whole

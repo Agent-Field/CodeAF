@@ -1097,6 +1097,12 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	// The final receipt closes any gap between the last live reading and every
 	// ending, before the person-stop road and the ordinary landing road split.
 	fold.total(summary.USD)
+	// AND meta.json IS TOLD NOW, not at the next turn's seal. Home reads this
+	// conversation's bill as the larger of its stamped books and its index rows
+	// (tui3's homeFacts), which is exact only while the books on disk already
+	// hold every run the index names. A stamp that waited for the next turn left
+	// the card reading the run alone, with the conversation's own talking missing.
+	a.stampSpend()
 	if run.cut != nil {
 		defer run.cut()
 	}
