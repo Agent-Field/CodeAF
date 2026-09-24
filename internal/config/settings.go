@@ -1362,6 +1362,15 @@ var OperatorEnvPins = []string{
 	"CODEAF_MODEL_POOL_SUBMIT_URL",
 	"CODEAF_MODEL_POOL_MIRROR_URL",
 	"CODEAF_MODEL_POOL_TTL",
+	// CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL is the opt-in that keeps a provider
+	// credential (OPENROUTER_API_KEY and its siblings) in the environment of a
+	// bash command a model runs (internal/exec's JobShellEnv, issue #1484); unset,
+	// every such key is stripped before the shell ever starts. It is plumbing and
+	// not a row for the reason CODEAF_CALL_LOG_BODIES is: keeping a secret
+	// readable by the model's own commands is not a preference a sheet should
+	// make convenient, it is a decision somebody makes on purpose, in a shell,
+	// for one run that genuinely needs it.
+	"CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
