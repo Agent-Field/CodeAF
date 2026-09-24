@@ -268,8 +268,12 @@ func TestValidateHoldsTheGuideToOneAffordableParagraph(t *testing.T) {
 func TestAChildStopsWhenItsHostIsGone(t *testing.T) {
 	t.Setenv(EnvModelAPI, "http://127.0.0.1:9/v1")
 	t.Setenv(EnvModelToken, "token")
-	previousPID, previousWatch := hostPID, hostWatch
-	t.Cleanup(func() { hostPID, hostWatch = previousPID, previousWatch })
+	previousPID, previousWatch, previousGrace, previousExit := hostPID, hostWatch, hostGrace, hostGoneExit
+	t.Cleanup(func() {
+		hostPID, hostWatch, hostGrace, hostGoneExit = previousPID, previousWatch, previousGrace, previousExit
+	})
+	hostGoneExit = func() { t.Error("a child that stopped within its grace was ended outright") }
+	hostGrace = time.Second
 	var mu sync.Mutex
 	host := 4242
 	hostPID = func() int {
@@ -311,4 +315,50 @@ func TestAChildStopsWhenItsHostIsGone(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the child worked on after its host was gone")
 	}
+}
+
+// AND ONE THAT IGNORES THE STOP IS ENDED WHEN ITS GRACE HAS PASSED, the ladder
+// a host's own stop keeps: nobody is left to send the SIGKILL, and the folder
+// it is working in is free for the next run.
+func TestAChildThatIgnoresItsGoneHostIsEndedAfterTheGrace(t *testing.T) {
+	t.Setenv(EnvModelAPI, "http://127.0.0.1:9/v1")
+	t.Setenv(EnvModelToken, "token")
+	previousPID, previousWatch, previousGrace, previousExit := hostPID, hostWatch, hostGrace, hostGoneExit
+	t.Cleanup(func() {
+		hostPID, hostWatch, hostGrace, hostGoneExit = previousPID, previousWatch, previousGrace, previousExit
+	})
+	var mu sync.Mutex
+	calls := 0
+	hostPID = func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if calls == 1 {
+			return 4242
+		}
+		return 1
+	}
+	hostWatch, hostGrace = 5*time.Millisecond, 20*time.Millisecond
+	ended := make(chan struct{})
+	hostGoneExit = func() { close(ended) }
+	release := make(chan struct{})
+	inv, err := Parse(testProgram(func(ctx context.Context, host Host, args []string) error {
+		<-release
+		return nil
+	}), []string{"b"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		RunChild(context.Background(), inv, &bytes.Buffer{})
+		close(done)
+	}()
+	select {
+	case <-ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a child that ignored its gone host was never ended")
+	}
+	close(release)
+	<-done
 }

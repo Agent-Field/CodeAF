@@ -191,7 +191,9 @@ func commandHelp(program Delegate, command Command, fs *flag.FlagSet, out io.Wri
 func RunChild(ctx context.Context, inv *Invocation, stdout io.Writer) string {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go watchHost(ctx, cancel)
+	finished := make(chan struct{})
+	defer close(finished)
+	go watchHost(ctx, cancel, finished)
 	api, _ := ModelAPIFromEnv()
 	emitter := NewEmitter(stdout)
 	host := &childHost{inv: inv, emitter: emitter, api: api, ending: StatusFail}
@@ -221,8 +223,16 @@ var hostPID = os.Getppid
 // hostWatch is how often a child looks for its host.
 var hostWatch = time.Second
 
+// hostGrace is how long a child whose host has gone is given to end on its
+// own, and hostGoneExit what ends it after that; variables so a test can
+// play a program that ignores its stop without ending the test binary.
+var (
+	hostGrace    = DefaultGrace
+	hostGoneExit = func() { os.Exit(1) }
+)
+
 // watchHost ends a child's context when the process that started it is gone,
-// and returns when the context ends either way.
+// and returns when the context ends, or the child has finished, either way.
 //
 // A HOST KILLED OUTRIGHT SENDS NOTHING. A child runs in a process group of its
 // own ([Run]), so a closed terminal's hangup never reaches it, and a host that
@@ -232,7 +242,13 @@ var hostWatch = time.Second
 // here instead — the parent it was started by is no longer its parent — and
 // stops exactly as a stop would have stopped it, its terminal written on the
 // way out; a record written to the dead host's pipe after that ends it anyway.
-func watchHost(ctx context.Context, cancel context.CancelFunc) {
+//
+// AND THE LADDER A HOST'S OWN STOP KEEPS IS KEPT ([Run]): the stop, the grace,
+// then the end. A program still at work when the grace has passed — a restore,
+// a last test run — is ended outright, because nobody is left to do it and the
+// folder it is working in is free for the next run. One that finished within
+// the grace (finished closed) is left to leave on its own.
+func watchHost(ctx context.Context, cancel context.CancelFunc, finished <-chan struct{}) {
 	host := hostPID()
 	tick := time.NewTicker(hostWatch)
 	defer tick.Stop()
@@ -241,10 +257,18 @@ func watchHost(ctx context.Context, cancel context.CancelFunc) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			if hostPID() != host {
-				cancel()
-				return
+			if hostPID() == host {
+				continue
 			}
+			cancel()
+			grace := time.NewTimer(hostGrace)
+			defer grace.Stop()
+			select {
+			case <-finished:
+			case <-grace.C:
+				hostGoneExit()
+			}
+			return
 		}
 	}
 }

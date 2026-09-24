@@ -179,7 +179,8 @@ returns without writing a terminal gets one written for it (`delegate.RunChild`)
 A host that dies without a word — killed, or taken by a closed terminal's
 hangup, which never reaches a child in a process group of its own — sends no
 SIGTERM. The child looks for its parent once a second and, when the process that
-started it is no longer its parent, stops exactly as a SIGTERM would stop it
+started it is no longer its parent, stops exactly as a SIGTERM would stop it, and
+is ended outright if it is still at work when the grace has passed
 (`delegate.RunChild`'s `watchHost`). A shell run's host itself treats SIGHUP as
 its first ctrl-c.
 
