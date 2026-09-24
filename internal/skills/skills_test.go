@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -220,5 +221,42 @@ func TestDiscoverFirstRootWinsWithinScope(t *testing.T) {
 func TestDiscoverNeedsAtLeastOneBase(t *testing.T) {
 	if _, err := Discover(Options{}); err == nil {
 		t.Fatal("Discover with no directories at all did not error")
+	}
+}
+
+// TestDiscoverReadsOpenCodeAndGooseFolders pins the two folders #1277 adds to
+// the day-one list after Gemini's, in both scopes, and their rank: a name kept
+// in an earlier folder of the same scope owns it over theirs.
+func TestDiscoverReadsOpenCodeAndGooseFolders(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	writeSkill(t, filepath.Join(project, ".opencode", "skills", "open-helper"), "open-helper")
+	writeSkill(t, filepath.Join(home, ".goose", "skills", "goose-helper"), "goose-helper")
+	writeSkill(t, filepath.Join(home, ".gemini", "skills", "shared"), "shared")
+	writeSkill(t, filepath.Join(home, ".goose", "skills", "shared"), "shared")
+
+	found := discover(t, project, home)
+	open, ok := byDir(found, filepath.Join(".opencode", "skills", "open-helper"))
+	if !ok || open.Scope != ScopeProject || open.Shadowed || open.Root != ".opencode/skills" {
+		t.Fatalf("the .opencode project skill is missing or wrong: %+v", found)
+	}
+	goose, ok := byDir(found, filepath.Join(".goose", "skills", "goose-helper"))
+	if !ok || goose.Scope != ScopeUser || goose.Shadowed || goose.Root != ".goose/skills" {
+		t.Fatalf("the .goose user skill is missing or wrong: %+v", found)
+	}
+	loser, ok := byDir(found, filepath.Join(".goose", "skills", "shared"))
+	if !ok || !loser.Shadowed {
+		t.Fatalf("the .goose copy of a name .gemini holds is not shadowed: %+v", found)
+	}
+}
+
+func writeSkill(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nname: " + name + "\ndescription: A skill for the discovery test.\n---\nBody.\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
