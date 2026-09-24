@@ -204,7 +204,7 @@ func (a *app) wallPopPress(hit wallHit, tiles []wallTile) tea.Cmd {
 }
 
 // wallPopKey is a key while a popover is up. The teams popover walks its rows
-// with the arrows and presses one with team or enter; the settings popover
+// with the arrows and presses one with space or enter; the settings popover
 // takes typing into the name, the arrows through the colours, and enter to
 // keep the name. esc puts either away.
 func (a *app) wallPopKey(msg tea.KeyPressMsg, tiles []wallTile) tea.Cmd {

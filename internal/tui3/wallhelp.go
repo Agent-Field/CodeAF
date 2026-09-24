@@ -67,6 +67,7 @@ func wallHelpList(ascii bool) []wallHelpGroup {
 		{name: "Organize", rows: []wallHelpRow{
 			row("Select", k.pick, "space", "Select the focused conversation"),
 			row("New team", "s", "s", "Make a team"),
+			row("Organize", "o", "o", "Suggest teams for your conversations"),
 			row("Add to teams", "m", "m", "Add the focused conversation to teams"),
 			row("Team settings", "e", "e", "Rename, recolour or delete the shown team"),
 			row("Switch team", "tab / "+span, "tab", "Show the next team"),

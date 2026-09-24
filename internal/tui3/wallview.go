@@ -21,10 +21,11 @@ import (
 // says which set is shown; a rule and a blank row close the head. Then the
 // grid, and last the foot, the head mirrored: a blank row, a rule, and the
 // toolbar (wallbar.go), whose free middle says what the control under the
-// pointer does. The head and the foot end where the grid ends. Two cards can
-// float over the grid: the selection tray while conversations are picked, and
-// the new-team card while one is named; and the help sheet (wallhelp.go)
-// floats over everything while it is up.
+// pointer does. The head and the foot end where the grid ends. Three cards can
+// float over the grid: the selection tray while conversations are picked, the
+// new-team card while one is named, and the Organize card while suggestions
+// are up (teamorganize.go); and the help sheet (wallhelp.go) floats over
+// everything while it is up.
 //
 // The words on screen are the person's words: a Conversation is a tile, a
 // Team is a named set of them. "wall" and "tab" are this code's names and are
@@ -354,12 +355,14 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 	// pointer, so a press lands on the card and never on the tile under it.
 	// A popover floats over everything, the tray included.
 	switch {
+	case v.org.on:
+		hits = wallOverlay(rows, hits, wallOrgCard(pal, g, v, width, height), width)
 	case v.naming:
 		hits = wallOverlay(rows, hits, wallNameCard(pal, g, v, width, height), width)
 	case wallMarked(v) > 0:
 		hits = wallOverlay(rows, hits, wallTray(pal, g, v, width, height), width)
 	}
-	if v.pop.kind != wallPopNone && !v.naming {
+	if v.pop.kind != wallPopNone && !v.naming && !v.org.on {
 		hits = wallOverlay(rows, hits, wallPopCard(pal, g, v, width, height), width)
 	}
 	if v.help {
