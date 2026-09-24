@@ -47,6 +47,10 @@ const (
 	placeTrees        = "trees"
 	placeWork         = "work"
 	placeArtifacts    = "artifacts"
+	// placeTeamCursors is how far into each of its teams' Traffic this
+	// conversation has read (team.go). It is .json, so neither conversation
+	// scan can take it for a transcript.
+	placeTeamCursors = "team.json"
 )
 
 // Place names every location one v3 session may touch on disk.
