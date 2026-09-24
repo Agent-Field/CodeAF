@@ -133,7 +133,7 @@ func (a *app) consentQuestion(ev session.Event) session.Question {
 		Ask:      session.AskPermission,
 		Form:     session.FormLine,
 		Asker:    session.Asker{Kind: session.AskerEngine},
-		Head:     consentHead(ev.Tool),
+		Head:     consentHead(ev.Tool, ev.Args),
 		Reason:   reason,
 		Subject:  session.SubjectRef{Kind: session.SubjectCall, CallID: ev.CallID, Name: ev.Tool},
 		Options:  options,
@@ -145,8 +145,11 @@ func (a *app) consentQuestion(ev session.Event) session.Question {
 
 // consentHead is the question's own sentence, and it is the line another window
 // already answers from (session's [Agent.ask] writes the same one).
-func consentHead(tool string) string {
-	return "needs your ok to run " + strings.TrimSpace(tool)
+func consentHead(tool, args string) string {
+	// THE SESSION'S ONE BUILDER, so the card here and the question home answers
+	// are the same sentence: `◆ manager wants to start @lexer` for a manager's
+	// start, and the ordinary line for everything else.
+	return session.ConsentHead(tool, args)
 }
 
 // consentShown is that question dressed with the three things the object cannot

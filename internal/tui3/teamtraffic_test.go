@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -454,5 +455,18 @@ func TestTrafficReadTitlesAMemberThatJoinedUntitled(t *testing.T) {
 	disk, _ := loadTeams(a.profileDir, nil)
 	if m, _ := disk[0].Member("/tmp/lab/late.jsonl"); m.Handle != "benchmark" {
 		t.Fatalf("the title did not reach the disk: %+v", m)
+	}
+}
+
+// A REPLAYED BRIEF IS THE MANAGER'S CARD. The session hands the lines it
+// delivered on the aside ([session.TeamLine]); the start's reads
+// `◆ manager → @lexer` over the quoted brief, never the person's `›`.
+func TestAReplayedBriefIsTheManagersCard(t *testing.T) {
+	a, _, _, _ := trafficApp(t)
+	text := "Team traffic in \"harbor\" for you (@lexer). These are the team's messages, not the person's words:\n◆ brief from manager: rewrite the lexer"
+	e := entry{kind: entryTeam, text: text, team: []session.TeamLine{{Team: "harbor", From: teamstore.FromManager, Kind: teamstore.KindStart, Text: "rewrite the lexer"}}}
+	rows := ansi.Strip(strings.Join(a.teamCardRows(e, 60), "\n"))
+	if !strings.Contains(rows, teamManagerGlyph+" manager → @lexer") || !strings.Contains(rows, "│ rewrite the lexer") || strings.Contains(rows, "›") {
+		t.Fatalf("the brief draws as:\n%s", rows)
 	}
 }

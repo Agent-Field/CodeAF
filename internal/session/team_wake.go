@@ -51,8 +51,11 @@ func (a *Agent) watchTeamStart() {
 	}
 	// FRESH IS MEASURED FROM HERE: whatever the transcript holds at open, a
 	// turn begun some other way grows it, and that ends the watch.
+	// ONLY A CONVERSATION WITH NOTHING IN IT YET. One reopened with a history
+	// is not being started, and a team's later lines wait for its next turn as
+	// they always have: v1 wakes nobody on team traffic but a start.
 	base, busy := a.teamWakeState()
-	if busy {
+	if busy || base > 0 {
 		return
 	}
 	guard.Go("team start wake", func() { a.awaitTeamStart(profile, base) })
@@ -75,12 +78,19 @@ func teamsHaveManager(profile string) bool {
 	return false
 }
 
-// teamWakeState is how long the transcript is, and whether a turn is running
-// or the session has closed, which both end the watch.
+// teamWakeState is how many messages the transcript holds past its system
+// prompt, and whether a turn is running or the session has closed, which both
+// end the watch.
 func (a *Agent) teamWakeState() (int, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return len(a.messages), a.running || a.closed
+	said := 0
+	for _, message := range a.messages {
+		if message.Role != "system" {
+			said++
+		}
+	}
+	return said, a.running || a.closed
 }
 
 // awaitTeamStart is the watch's body, off every lock but for the moments it

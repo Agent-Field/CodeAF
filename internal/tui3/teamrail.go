@@ -211,6 +211,9 @@ func trafficAsking(e teamstore.Entry) bool {
 	if e.Kind != teamstore.KindEvent {
 		return false
 	}
+	if e.State != "" {
+		return e.State == teamstore.StateAsking
+	}
 	text := strings.ToLower(strings.TrimSpace(e.Text))
 	return strings.HasPrefix(text, "ask") || strings.HasPrefix(text, "needs you")
 }
@@ -253,6 +256,9 @@ func (a *app) trafficLine(t team, e teamstore.Entry, width int) (string, string,
 		head = pal.muted(plainHead)
 		target = trafficMemberKey(t, e.To, e.Member)
 	case teamstore.KindEvent:
+		if text == "" {
+			text = e.State
+		}
 		plainHead = a.trafficAddr(e.From)
 		head = pal.ink(plainHead)
 		target = trafficMemberKey(t, e.From, e.Member)
