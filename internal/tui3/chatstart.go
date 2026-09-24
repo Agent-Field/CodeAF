@@ -178,6 +178,7 @@ func (a *app) startSay(word string) {
 // building a second one — a person leaning on a control is not asking for two of
 // what it makes.
 func (a *app) openChatStart() tea.Cmd {
+	a.noticeEvent(eventChatStarted)
 	if a.startingChat() {
 		// The page is already up. It keeps its words and its selection.
 		a.touch()

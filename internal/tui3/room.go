@@ -1913,8 +1913,13 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	switch msg.String() {
 	case "esc":
-		// Escape backs out without stopping work, as it does in the main
-		// conversation. Stopping a task remains an explicit x and confirmation.
+		// ESC IN HERE IS THE DOOR AND IT IS NEVER A STOP — stop.go's standing law,
+		// restated at the keystroke it is about. Out in the conversation esc
+		// interrupts the running turn; the analogous act in a room is ending the
+		// node, which is not reversible and is therefore always asked first (`x`,
+		// and the card). So the two surfaces do NOT converge on this key, and the
+		// legend says which of the two meanings is live: while a room is open the
+		// hint slot never reads "esc interrupt" (render.go's [app.hintWord]).
 		//
 		// A recall walk is left first, for the reason input.go leaves it first: a
 		// state that could not be dismissed by the dismiss key is a trap, and the
@@ -2012,7 +2017,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // roomHint is the hint slot while a room is open (render.go's [app.hintWord]),
 // and it exists because that slot used to LIE in here: with a turn running out
-// in the conversation it drew "ctrl+c interrupt" over a page where esc leaves the
+// in the conversation it drew "esc interrupt" over a page where esc leaves the
 // room and interrupts nothing. A hint naming a key that does something else is
 // the one failure the slot exists to prevent.
 //
@@ -2043,7 +2048,7 @@ func (a *app) roomHint() string {
 			return "/model · /stop · esc main"
 		}
 		// THE ROOM'S ANSWER TO "HOW DO I STOP THIS". It is the honest counterpart
-		// to the conversation's "ctrl+c interrupt": the work in here ends through a
+		// to the conversation's "esc interrupt": the work in here ends through a
 		// card and never through the dismiss key (stop.go), so this is the key a
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
@@ -2082,7 +2087,8 @@ func (a *app) freezeRoom() {
 	width := a.bodyWidth()
 	height := a.viewHeight()
 	// COPY OWNS THE PAGE BEFORE IT IS LAID OUT, so the room's transient
-	// activity and the blank belonging only to it never enter the snapshot.
+	// activity and the blank belonging only to it never enter the snapshot
+	// (worklogo.go, #1384).
 	a.copy.on = true
 	a.room.dirty = true
 	rows := a.roomRows(width)

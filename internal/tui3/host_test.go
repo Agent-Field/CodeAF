@@ -73,8 +73,13 @@ func TestTheLegendNamesTheMachineAsItsOwnSegment(t *testing.T) {
 	if strings.Contains(line, "devbox:vendor/model") {
 		t.Fatalf("the machine is spelled with the path's colon: %q", line)
 	}
-	if !strings.Contains(line, "project: devbox:/srv/code/app") {
-		t.Fatalf("the legend lost the remote project path: %q", line)
+	// The project is on the keys row since 2026-09-22 (footswap.go), and it
+	// carries the machine there the way the seam did.
+	if strings.Contains(line, targetProjectLead) {
+		t.Fatalf("the legend still carries the project: %q", line)
+	}
+	if keys := plain(a.hintRow(a.width)); !strings.Contains(keys, "project: devbox:/srv/code/app") {
+		t.Fatalf("the keys row lost the remote project path: %q", keys)
 	}
 	// AND THE MACHINE IS NAMED ONCE. An unnamed conversation draws the same
 	// line: nothing stands in for a name the seam does not carry, and
@@ -311,7 +316,7 @@ func TestAPictureIsFoundOnTheMachineThePersonIsSittingAt(t *testing.T) {
 	if got := a.resolvePath("shot.png"); got != path {
 		t.Fatalf("resolvePath = %q, want the local file — not %q joined onto a path on another machine", got, "shot.png")
 	}
-	a.attachPath("shot.png")
+	a.attachFilePath("shot.png")
 	if len(a.chips) != 1 {
 		t.Fatalf("the picture did not attach: %s", strings.Join(plainRows(a), "\n"))
 	}

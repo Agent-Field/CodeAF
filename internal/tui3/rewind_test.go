@@ -102,6 +102,90 @@ func rewindRowY(a *app, want string) (int, bool) {
 
 // ── 1. the door ─────────────────────────────────────────────────────────────
 
+// The first esc arms and says so; the second one inside the window opens the
+// mode over the conversation.
+func TestEscTwiceInsideTheWindowEntersRewind(t *testing.T) {
+	a, _ := newRewindApp(t, rewindPast())
+
+	drive(t, a, key("esc"))
+	if !a.rewindArmed() {
+		t.Fatal("the first esc did not arm the rewind")
+	}
+	if a.rew.on {
+		t.Fatal("one esc entered the mode")
+	}
+	if got := a.hintWord(); got != rewindArmWord {
+		t.Fatalf("hint slot = %q, want %q", got, rewindArmWord)
+	}
+	if got := plain(frame(a)); !strings.Contains(got, rewindArmWord) {
+		t.Fatalf("the armed frame does not say so:\n%s", got)
+	}
+
+	drive(t, a, key("esc"))
+	if !a.rew.on {
+		t.Fatal("the second esc did not enter the mode")
+	}
+}
+
+// A window that lapses takes the meaning with it: the next esc is an ordinary
+// esc, and the mode stays shut.
+func TestTheArmLapsesAndAStrayEscChangesNothing(t *testing.T) {
+	a, _ := newRewindApp(t, rewindPast())
+	now := time.Now()
+	a.clock = func() time.Time { return now }
+
+	drive(t, a, key("esc"))
+	if !a.rewindArmed() {
+		t.Fatal("the first esc did not arm the rewind")
+	}
+
+	now = now.Add(rewindArmWindow + time.Millisecond)
+	// The frame clock is what runs the window down — no goroutine of its own.
+	drive(t, a, frameMsg{})
+	if a.rewindArmed() || !a.escArm.IsZero() {
+		t.Fatal("the arm survived its window")
+	}
+	if got := a.hintWord(); got == rewindArmWord {
+		t.Fatal("the hint slot still offers a rewind after the window lapsed")
+	}
+
+	drive(t, a, key("esc"))
+	if a.rew.on {
+		t.Fatal("a stray esc after the window entered the mode")
+	}
+}
+
+// Mid-turn the first esc keeps its own meaning — it stops the model — and the
+// second one inside the window still opens the mode. Interrupt first, then
+// rewind, which is the order the engine's refusal asks for.
+func TestEscMidTurnInterruptsFirstAndThenRewinds(t *testing.T) {
+	a, agent := newRewindApp(t, rewindPast())
+	drive(t, a, submittedMsg{ch: make(chan session.Event)})
+	a.state = stateWorking
+
+	drive(t, a, key("esc"))
+	if agent.stops != 1 {
+		t.Fatalf("the first esc mid-turn did not interrupt (%d)", agent.stops)
+	}
+	if !a.rewindArmed() {
+		t.Fatal("the first esc mid-turn did not arm the rewind")
+	}
+	drive(t, a, key("esc"))
+	if !a.rew.on {
+		t.Fatal("the second esc mid-turn did not enter the mode")
+	}
+}
+
+// A backend that cannot rewind simply has no rewind: esc means what it always
+// meant, twice.
+func TestASurfaceWithoutARewinderNeverArms(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	drive(t, a, key("esc"), key("esc"))
+	if a.rewindArmed() || a.rew.on {
+		t.Fatal("a surface with no rewind door opened one")
+	}
+}
+
 // ── 2. the mode ─────────────────────────────────────────────────────────────
 
 // The door a /rewind command calls opens the same mode the keys do: a cut line

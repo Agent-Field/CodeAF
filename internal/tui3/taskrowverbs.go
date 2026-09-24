@@ -78,6 +78,15 @@ func (a *app) putTaskAway(dir string, entry session.TaskIndexEntry, archived boo
 		a.refreshHome()
 	} else {
 		p := &a.taskSheet
+		if archived {
+			if p.closed == nil {
+				p.closed = make(map[tasksKey]bool)
+			}
+			p.closed[tasksKeyOf(entry)] = true
+			p.closedQuery = p.query.String()
+		} else {
+			delete(p.closed, tasksKeyOf(entry))
+		}
 		p.world = a.readWorld()
 		p.mine = a.taskSheetMine()
 		p.reading = readTasks(p.world, p.mine, p.reading.win, p.order, p.reading.seen, a.now())
