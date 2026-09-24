@@ -103,6 +103,39 @@ func (g *TaskGraph) planIfArmed() *planState {
 	return g.plan
 }
 
+// planForPages is the plan the surface's task pages are read from: the armed
+// plan under the switch, and otherwise the store this conversation's session
+// folder already holds, read and never armed.
+//
+// A PROGRAM'S RUN WRITES ITS STORE WHATEVER THE SWITCH SAYS, and its page was
+// read only under it. `/senior-dev` and `propose_task`'s `via` take the run
+// road with the switch off (task.go's run-road gate), so the run's rows, its
+// conversation with codeaf and its stage were all on disk while every reader
+// here answered nil: the rail drew no stage, and every door into the task
+// opened a room that said it would fill in and never did. Arming the plan
+// instead would hand the switch's other roads — the worker's bash prefix, the
+// seed, the pulse — to every ordinary task of a conversation that once ran a
+// program, so the readers get a state of their own and nothing else moves.
+// No store is ever made here; a conversation that never ran one answers nil.
+func (g *TaskGraph) planForPages() *planState {
+	if plan := g.planIfArmed(); plan != nil {
+		return plan
+	}
+	path := g.planPath()
+	if path == "" {
+		return nil
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return nil
+	}
+	g.planMu.Lock()
+	defer g.planMu.Unlock()
+	if g.pagePlan == nil || g.pagePlan.path != path {
+		g.pagePlan = &planState{path: path, chat: g.planChat()}
+	}
+	return g.pagePlan
+}
+
 // planPath resolves where this run's store lives: the session folder, or —
 // for the legacy flat layout, whose Place is zero — the workspace's .codeaf
 // folder. The CLI finds the same file by walking up from the worker's own

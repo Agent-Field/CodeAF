@@ -343,7 +343,7 @@ func (a *Agent) openPlanReadHandles() ([]*plandb.Store, *planState, func()) {
 	if g == nil {
 		return nil, nil, func() {}
 	}
-	plan := g.planIfArmed()
+	plan := g.planForPages()
 	if plan == nil {
 		return nil, nil, func() {}
 	}
@@ -422,7 +422,7 @@ func (a *Agent) openPlanHandle() (*plandb.Store, *planState, func()) {
 	if g == nil {
 		return nil, nil, func() {}
 	}
-	plan := g.planIfArmed()
+	plan := g.planForPages()
 	if plan == nil {
 		return nil, nil, func() {}
 	}

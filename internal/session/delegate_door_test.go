@@ -229,3 +229,46 @@ func TestEachProgramIsListedWithItsOwnGuideInNameOrder(t *testing.T) {
 		t.Fatalf("the page does not list both programs with their own guides in order; want %q in:\n%s", want, page)
 	}
 }
+
+// A PROGRAM'S PAGE IS READ WITH THE SWITCH OFF. `/senior-dev` takes the run
+// road whatever CODEAF_TASK_BELT says, and its store is written either way, so
+// the pages that read that store must answer either way: with the readers
+// gated on the switch, a person on the default belt clicked into senior-dev's
+// task and got a room that said it would fill in, for the whole run.
+func TestAProgramsRunIsReadableWithTheSwitchOff(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "")
+	if bashBeltAsked() {
+		t.Fatal("the switch is still on, so this test would prove nothing")
+	}
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", "add a file"); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	var program PlanTaskRow
+	for _, row := range agent.PlanTasks() {
+		if row.Program == "fake" {
+			program = row
+		}
+	}
+	if program.ID == "" {
+		t.Fatalf("the program's run has no row with the switch off: %+v", agent.PlanTasks())
+	}
+	page, found := agent.PlanTaskPage(program.ID)
+	if !found || page.Program == nil || page.Program.Name != "fake" {
+		t.Fatalf("the program's page is not readable with the switch off: found %v, program %+v", found, page.Program)
+	}
+	// AND NOTHING WAS ARMED: the switch's own roads stay closed to every
+	// ordinary task of this conversation.
+	if g := agent.graph(); g != nil && g.planIfArmed() != nil {
+		t.Fatal("reading the program's page armed the plan for the switch's other roads")
+	}
+	endBeltRun(t, agent, double)
+}

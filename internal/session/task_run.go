@@ -1018,6 +1018,9 @@ type TaskGraph struct {
 	// other way round.
 	plan   *planState
 	planMu sync.Mutex
+	// pagePlan is the store as the task pages read it when the switch is off
+	// ([TaskGraph.planForPages]); it is never the plan any worker runs on.
+	pagePlan *planState
 	// order is admission order, and it is what makes the frontier
 	// DETERMINISTIC: with a cap in play, which of two ready nodes starts first
 	// must not be Go's map iteration.
