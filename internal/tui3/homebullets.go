@@ -2,19 +2,25 @@ package tui3
 
 import "github.com/Agent-Field/codeaf/internal/tui2/tokens"
 
-// homeChatState shares the tab's live reading so tasks that outlast an answer
-// keep their conversation working. Owned conversations use cached events;
+// homeChatState shares the tab's live reading of work so tasks that outlast an
+// answer keep their conversation working. Owned conversations use cached events;
 // another window's tasks use Home's latest presence reading.
+//
+// IT READS THE WORK, NOT THE TAB'S RANKED SIGNAL. On a tab a question outranks
+// work; on Home the question has its own mark, [cellMarkNeeds], which already
+// outranks working in [conversationBullet], and a landed task's question sits on
+// the task's row. A conversation waiting on one task's decision while another
+// runs is still working.
 func (a *app) homeChatState(cell *homeCell) (working, unread bool) {
 	if cell == nil || cell.closed {
 		return false, false
 	}
 	key := cell.chatKey
 	if key != "" && key == a.frontTabKey() {
-		return a.frontSignal() == tabWorking, a.unreadChats[key]
+		return a.frontWorking(), a.unreadChats[key]
 	}
 	if held := a.behind[key]; held != nil && held.watch != nil {
-		return held.watch.signal() == tabWorking, a.unreadChats[key] || held.watch.landedSince() > 0
+		return held.watch.working(), a.unreadChats[key] || held.watch.landedSince() > 0
 	}
 	if cell.row != nil {
 		_, working = homeMovingAt(homeLine{kind: homeSession, row: cell.row.session})

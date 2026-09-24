@@ -186,3 +186,53 @@ func TestHomeConversationReadsAnotherWindowsRunningTasks(t *testing.T) {
 		t.Fatalf("a closed conversation kept a working mark: %q", got)
 	}
 }
+
+// A task's decision is drawn on the task's own row, so the conversation that
+// owns it keeps its working mark while other work of its own is still going.
+func TestHomeConversationKeepsWorkingWhileOneOfItsTasksWaitsForADecision(t *testing.T) {
+	t.Run("background", func(t *testing.T) {
+		a, files := homeTabsFixture(t)
+		a.linear = true
+		key := a.convKey(files[1])
+		watch := &behindWatch{}
+		if a.behind == nil {
+			a.behind = make(map[string]*kept)
+		}
+		a.behind[key] = &kept{watch: watch}
+		cell := &homeCell{chatKey: key}
+		watch.noteTask(&session.TaskNotice{ID: 41, State: session.TaskRunning})
+		watch.waits.Store(true)
+		if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GWorking) {
+			t.Fatalf("a decision on one task hid the conversation's running task: %q", got)
+		}
+		watch.noteTask(&session.TaskNotice{ID: 41, State: session.TaskDone})
+		watch.turning.Store(true)
+		if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GWorking) {
+			t.Fatalf("a decision on one task hid the conversation's answer: %q", got)
+		}
+		watch.turning.Store(false)
+		if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GProseBullet) {
+			t.Fatalf("a waiting conversation with no work left still shows work: %q", got)
+		}
+		cell.mark = cellMarkNeeds
+		if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GNeedsHuman) {
+			t.Fatalf("the conversation's own question lost its mark: %q", got)
+		}
+	})
+	t.Run("foreground", func(t *testing.T) {
+		a, _ := homeTabsFixture(t)
+		open, _ := homeConversationLines(a)
+		cell := open[0].cell
+		a.linear = true
+		a.state = stateIdle
+		a.taskUpdate(signalSettled(42, session.TaskRunning))
+		a.questions = append(a.questions, questionShown{question: session.Question{Kind: session.QuestionConsent}})
+		if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GWorking) {
+			t.Fatalf("an open question hid the conversation's running task: %q", got)
+		}
+		cell.mark = cellMarkNeeds
+		if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GNeedsHuman) {
+			t.Fatalf("the conversation's own question lost its mark: %q", got)
+		}
+	})
+}
