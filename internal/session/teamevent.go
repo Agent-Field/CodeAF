@@ -165,7 +165,7 @@ func (a *Agent) rouseManager(profile string, role teamRole) {
 		return
 	}
 	if manager, ok := team.Member(team.Manager); ok {
-		a.teamRouse(profile, team, []teams.Member{manager})
+		a.teamRouse(profile, team, role.wakes, []teams.Member{manager})
 	}
 }
 

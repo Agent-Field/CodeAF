@@ -615,8 +615,8 @@ func SetTeamResume(open func(file, workspace string) error) {
 // teamRouse opens every one of targets that nothing holds, off the path, and
 // says in the Traffic when one could not be. A conversation that is open
 // somewhere watches for itself and is left alone.
-func (a *Agent) teamRouse(profile string, team teams.Team, targets []teams.Member) {
-	if profile == "" || !team.Wakes() || len(targets) == 0 {
+func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member) {
+	if profile == "" || !wakes || len(targets) == 0 {
 		return
 	}
 	a.team.mu.Lock()
