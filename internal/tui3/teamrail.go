@@ -151,7 +151,7 @@ func (a *app) trafficFits() bool {
 // trafficHoldsRail reports whether the Traffic has the right-hand column now,
 // which is what folds the task column to its edge.
 func (a *app) trafficHoldsRail() bool {
-	return a.trafficOn() && !a.traffic.hidden && a.trafficFits()
+	return a.trafficOn() && !a.trafficHidden() && a.trafficFits()
 }
 
 // trafficWidth is what the rail costs the conversation, in columns: its column
@@ -161,7 +161,7 @@ func (a *app) trafficWidth() int {
 	if !a.trafficOn() {
 		return 0
 	}
-	if !a.traffic.hidden {
+	if !a.trafficHidden() {
 		width, _ := a.size()
 		if cols := trafficColsFor(width - a.trafficTaskEdge(width)); cols > 0 {
 			return cols

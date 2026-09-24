@@ -634,3 +634,27 @@ func teamsSameWorld(was, now map[string]session.SessionRow) bool {
 	}
 	return true
 }
+
+// wallTeams is the teams the wall, its popovers and the strip's switcher list:
+// every open team but the `All teams` root, which is the switcher's own `All`
+// row and not a team a conversation is put in. A closed team is on the teams
+// page's `Closed` fold and nowhere else. It is the loaded list itself, with
+// nothing allocated, while no team is closed and there is no root.
+func (a *app) wallTeams() []team {
+	hidden := 0
+	for _, t := range a.wall.teams {
+		if t.Root || t.Closed() {
+			hidden++
+		}
+	}
+	if hidden == 0 {
+		return a.wall.teams
+	}
+	out := make([]team, 0, len(a.wall.teams)-hidden)
+	for _, t := range a.wall.teams {
+		if !t.Root && !t.Closed() {
+			out = append(out, t)
+		}
+	}
+	return out
+}

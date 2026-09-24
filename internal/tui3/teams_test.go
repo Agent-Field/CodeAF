@@ -374,10 +374,10 @@ func TestTeamDeleteOrReorderNeverRetargetsAnother(t *testing.T) {
 		t.Fatalf("the hover followed the place, not the team:\n%s", frame)
 	}
 	wallKeyPress(a, "D")
-	if _, ok := a.teamByID(second); ok || a.wall.activeID != "" {
-		t.Fatalf("D deleted the wrong team: %v active %q", a.teamNames(), a.wall.activeID)
+	if got, ok := a.teamByID(second); !ok || !got.Closed() || a.wall.activeID != "" {
+		t.Fatalf("D closed the wrong team: %v active %q", a.teamNames(), a.wall.activeID)
 	}
-	if _, ok := a.teamByID(third); !ok {
+	if got, ok := a.teamByID(third); !ok || got.Closed() {
 		t.Fatal("D took a neighbour with it")
 	}
 }

@@ -108,7 +108,8 @@ func TeamDefaultsAt(profileDir string) TeamDefaults {
 
 // teamRows are the Teams group, in the order a person reaches for them: who
 // answers a question and whether messages wake, then money, then the shape of
-// the tree.
+// the tree (how deep it may go, then what a new branch of it is given), which
+// is the order a team's own card lists its overrides in (DESIGN.md section 8).
 func teamRows(dir string) []Setting {
 	return []Setting{
 		{
@@ -138,6 +139,16 @@ func teamRows(dir string) []Setting {
 			write: func(raw string) error { return writeDollars(dir, KeyTeamsCapUSDDay, raw) },
 		},
 		{
+			Key: KeyTeamsDepthLimit, Category: CategoryTeams, Kind: SettingCount,
+			Label: "team depth", Unit: "levels", UnitOne: "level",
+			Hint: "how many levels of teams a manager may build by starting sub-teams, " +
+				"the top team counting as one. 1 means no sub-teams.",
+			read: func() string { return strconv.Itoa(TeamDefaultsAt(dir).DepthLimit) },
+			write: func(raw string) error {
+				return writeTeamsBand(dir, KeyTeamsDepthLimit, raw, teamsDepthMin, teamsDepthMax)
+			},
+		},
+		{
 			Key: KeyTeamsSubSharePct, Category: CategoryTeams, Kind: SettingCount,
 			Label: "sub-team share", Unit: "%",
 			Hint: "the share of its parent's daily cap a new sub-team starts with. It is " +
@@ -146,16 +157,6 @@ func teamRows(dir string) []Setting {
 			read: func() string { return strconv.Itoa(TeamDefaultsAt(dir).SubSharePct) },
 			write: func(raw string) error {
 				return writeTeamsBand(dir, KeyTeamsSubSharePct, raw, teamsShareMin, teamsShareMax)
-			},
-		},
-		{
-			Key: KeyTeamsDepthLimit, Category: CategoryTeams, Kind: SettingCount,
-			Label: "team depth", Unit: "levels", UnitOne: "level",
-			Hint: "how many levels of teams a manager may build by starting sub-teams, " +
-				"the top team counting as one. 1 means no sub-teams.",
-			read: func() string { return strconv.Itoa(TeamDefaultsAt(dir).DepthLimit) },
-			write: func(raw string) error {
-				return writeTeamsBand(dir, KeyTeamsDepthLimit, raw, teamsDepthMin, teamsDepthMax)
 			},
 		},
 	}

@@ -38,10 +38,10 @@ import (
 //	x                  close its view, or the picked'  Close on a tile, Close views
 //	m                  its teams, or the picked'    Teams on a tile, Add to…
 //	s                  new team of the picked       + New team, Make team
-//	e                  the shown team's settings    a segment's dot or ⋯
+//	e                  the shown team's card        a segment's dot or ⋯
 //	tab, shift+tab     next or previous team        a Teams segment
 //	1 to 9             that team, again for All     a Teams segment
-//	D                  delete the shown team        settings, Delete
+//	D                  close the shown team         Close… on its card
 //	o                  suggest teams, on All        ✦ Organize on the Teams row
 //	u                  undo the last Organize       Undo, while the Teams row offers it
 //	/                  filter                        Filter /
@@ -262,7 +262,7 @@ func (a *app) wallFrame(width, height int) []string {
 	}
 	view.org = a.wallOrganizeFrame(tiles, tabs)
 	view.total = len(open)
-	for _, t := range a.wall.teams {
+	for _, t := range a.wallTeams() {
 		n := 0
 		for _, m := range t.Members {
 			if open[m.Key] {
@@ -476,18 +476,18 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 	case "e":
 		// The shown team's settings, where its dot or ⋯ opens them.
 		if id := a.wall.activeID; id != "" {
-			a.wallOpenSettings(id, a.wallAnchorTeam(wallHitChipMenu, id))
+			return a.teamSheetOpen(id, teamSheetSettings)
 		}
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		// A team by its place on the Teams row; the digit of the team that
 		// is shown goes back to All, so the same key undoes itself.
 		i := int(key[0] - '1')
 		switch {
-		case i >= len(a.wall.teams):
-		case a.wall.teams[i].ID == a.wall.activeID:
+		case i >= len(a.wallTeams()):
+		case a.wallTeams()[i].ID == a.wall.activeID:
 			a.wallSetTeam("")
 		default:
-			a.wallSetTeam(a.wall.teams[i].ID)
+			a.wallSetTeam(a.wallTeams()[i].ID)
 		}
 	case "/":
 		a.wall.filterOn = true
@@ -505,10 +505,11 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 		a.wall.cols = 0
 		a.wallMove(a.wall.focus, n)
 	case "D":
-		// Delete the active team. The conversations in it are untouched: a
-		// team is a view, and so is its going.
+		// CLOSE the shown team (ruling c-9): at once with Undo when nothing
+		// in it runs, and the close card when something does. A team is
+		// deleted only from the teams page's Closed fold, once it is closed.
 		if id := a.wall.activeID; id != "" {
-			a.wallDeleteTeam(id)
+			return a.teamsCloseAsk(id)
 		}
 	case "o":
 		return a.wallOrganizeOpen()
@@ -844,11 +845,12 @@ func (a *app) wallDeleteTeam(id string) {
 // and the strip show; it never switches the conversation in front, so a person
 // can look through their teams without leaving the one they are in.
 func (a *app) wallCycleTeam(forward bool) {
-	n := len(a.wall.teams)
+	shown := a.wallTeams()
+	n := len(shown)
 	if n == 0 {
 		return
 	}
-	at := teamIndex(a.wall.teams, a.wall.activeID) // -1 is All
+	at := teamIndex(shown, a.wall.activeID) // -1 is All
 	next := at + 1
 	if !forward {
 		next = at - 1
@@ -863,7 +865,7 @@ func (a *app) wallCycleTeam(forward bool) {
 		a.wallSetTeam("")
 		return
 	}
-	a.wallSetTeam(a.wall.teams[next].ID)
+	a.wallSetTeam(shown[next].ID)
 }
 
 // ── THE POINTER ─────────────────────────────────────────────────────────────
@@ -1061,7 +1063,8 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 	case wallHitChip:
 		a.wallSetTeam(hit.id)
 	case wallHitChipMenu:
-		a.wallOpenSettings(hit.id, a.wallLocal(hit))
+		// The team's card (teamsheet.go), over the wall.
+		return a.teamSheetOpen(hit.id, teamSheetSettings)
 	case wallHitAddTeam:
 		return a.wallStartNaming(tiles)
 	case wallHitMini:
