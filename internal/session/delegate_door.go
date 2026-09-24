@@ -314,7 +314,7 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 	}
 	dir := run.workspace
 	// THE SQUASH LANDS ON CODEAF'S BRANCH, WHEREVER THE PROGRAM LEFT HEAD.
-	moved := delegateHeadHome(dir, run.tree.branch, run.startSha, m.Name)
+	moved := delegateHeadHome(dir, run.tree.branch, run.startSha)
 	if run.startSha != "" {
 		head, err := git(dir, "rev-parse", "--verify", "-q", "HEAD")
 		if err != nil || strings.TrimSpace(head) != run.startSha {
@@ -343,8 +343,8 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 	if note == "" {
 		note = fmt.Sprintf("landed on %s: %s", landing.Branch, fileCount(len(landing.Changed)))
 	}
-	if moved != "" {
-		note += " · " + moved
+	if said := moved.sentence(m.Name, run.tree.branch, landing.Refused == ""); said != "" {
+		note += " · " + said
 	}
 	if _, err := run.store.AddNote(run.root, run.root, note); err != nil {
 		if g := a.graph(); g != nil {
@@ -354,11 +354,20 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 	return a.bringBeltRunHome(run, landing)
 }
 
+// headMove is what a tree program had done with its copy's HEAD by the time
+// it ended, as [delegateHeadHome] found it: the branch it had moved to (empty
+// with detached set for no branch at all), and whether its work stood on the
+// commit the copy started from. The zero value is a HEAD that never left the
+// task's branch.
+type headMove struct {
+	moved     bool
+	from      string
+	detached  bool
+	unrelated bool
+}
+
 // delegateHeadHome puts a tree program's copy back on the task's own branch
-// before its work is squashed, and answers the sentence the landing note adds
-// when it had to: which branch the program had moved the copy to, and whether
-// its work stood on the commit the copy started from. It answers "" for the
-// ordinary run, whose HEAD never left the task's branch.
+// before its work is squashed, and answers what it found ([headMove]).
 //
 // A PROGRAM'S SHELL CAN MOVE HEAD, AND ONE DID. A brief said "work on a new
 // branch", and senior-dev ran `git checkout -b` four times in one run. The
@@ -380,32 +389,51 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 // so work the program built on some other commit (a branch cut from `main`,
 // say) also undoes whatever the copy's first commit had and that one did not,
 // and the diff is the only place that would show.
-func delegateHeadHome(dir, branch, startSha, name string) string {
+func delegateHeadHome(dir, branch, startSha string) headMove {
 	branch = strings.TrimSpace(branch)
 	if branch == "" {
-		return ""
+		return headMove{}
 	}
 	current := currentBranch(dir)
 	if current == branch {
-		return ""
+		return headMove{}
 	}
 	head, _ := git(dir, "rev-parse", "--verify", "-q", "HEAD")
 	head = strings.TrimSpace(head)
 	if _, err := git(dir, "symbolic-ref", "HEAD", "refs/heads/"+branch); err != nil {
+		return headMove{}
+	}
+	move := headMove{moved: true, from: current, detached: current == ""}
+	if startSha != "" && head != "" {
+		_, err := git(dir, "merge-base", "--is-ancestor", startSha, head)
+		move.unrelated = err != nil
+	}
+	return move
+}
+
+// sentence is what the landing note adds about a HEAD the program had moved:
+// where it had left the copy, where its work was committed when anything was,
+// and the warning about work built on another commit. Empty for a HEAD that
+// never moved. A landing that committed nothing says only where HEAD had been,
+// because "its work was committed" would be a claim about a commit that does
+// not exist.
+func (move headMove) sentence(name, branch string, landed bool) string {
+	if !move.moved {
 		return ""
 	}
-	var said string
-	if current == "" {
-		said = name + " had left its copy on no branch; its work was committed on " + branch
-	} else {
-		said = name + " had moved its copy to the branch " + current + "; its work was committed on " + branch +
-			", and any commit it made on " + current + " is still on that branch"
+	said := name + " had moved its copy to the branch " + move.from
+	if move.detached {
+		said = name + " had left its copy on no branch"
 	}
-	if startSha != "" && head != "" {
-		if _, err := git(dir, "merge-base", "--is-ancestor", startSha, head); err != nil {
-			said += " · its work was not built on the commit its copy started from, so the commit on " + branch +
-				" may also undo changes that commit had; read its diff before you merge it"
-		}
+	if landed {
+		said += "; its work was committed on " + branch
+	}
+	if !move.detached {
+		said += ", and any commit it made on " + move.from + " is still on that branch"
+	}
+	if landed && move.unrelated {
+		said += " · its work was not built on the commit its copy started from, so the commit on " + branch +
+			" may also undo changes that commit had; read its diff before you merge it"
 	}
 	return said
 }

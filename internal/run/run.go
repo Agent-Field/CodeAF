@@ -397,10 +397,10 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit != "") {
 		if s.rootFailed && s.limitHit == "" && !s.rootCut && ctx.Err() == nil {
 			// THE RUN'S OWN TASK FAILED, SO THE RUN IS OVER, and the store says
-			// so: left open it read as running for ever, and the next hand-off
-			// would adopt it as live work ([plandb.Store.FailRoot]). A run a
-			// limit ended keeps its open work, which is what lets it be taken
-			// up again under a wider bound.
+			// so: left open it read as running for ever, and a door that
+			// adopts open stores would take it up as live work
+			// ([plandb.Store.FailRoot]). A run a limit ended keeps its open
+			// work, which is what lets it be taken up again under a wider bound.
 			//
 			// AND A RUN THE CALLER CUT IS NOT A RUN THAT FAILED. When the
 			// caller's context ends, the root worker comes home with the
