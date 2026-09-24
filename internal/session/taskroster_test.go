@@ -1,6 +1,7 @@
 package session
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -82,5 +83,47 @@ func TestANewTaskLaneOnAnEmptyGraphStaysSilent(t *testing.T) {
 	case event := <-lane:
 		t.Fatalf("an empty graph sent %v", event.Kind)
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// A real deletion must agree with the roster on a live engine and a new engine
+// restored from the same checkpoint. The untouched last row is a stream barrier.
+func TestDeletedTaskNeverReturnsThroughLiveOrRestoredRoster(t *testing.T) {
+	dir, _ := deletionFixture(t)
+	file := filepath.Join(dir, "transcript.jsonl")
+	document := taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: 3, Nodes: []taskRecord{
+		{ID: 1, Title: "Delete parent", State: TaskDone, PlanID: "one"},
+		{ID: 2, Title: "Delete child", State: TaskDone, Parent: 1},
+		{ID: 3, Title: "Keep sibling", State: TaskDone},
+	}}
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = file })
+	agent.graph().rehydrate(document, workspace, TaskSettleAsk)
+	live := agent.liveTaskRows()
+	for i := range live {
+		live[i].SessionID = "one"
+	}
+	if _, err := DeleteTaskTree(dir, "one", "1", live); err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt == 1 {
+			agent.Close()
+			agent, workspace = newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = file })
+			agent.graph().rehydrate(document, workspace, TaskSettleAsk)
+		}
+		lane, stop := agent.WatchTaskUpdates()
+		if got := takeTaskUpdates(t, lane, 1)[0].ID; got != 3 {
+			stop()
+			t.Fatalf("replayed deleted task %d", got)
+		}
+		agent.emitTaskUpdate(TaskNotice{ID: 1, State: TaskDone})
+		agent.emitTaskUpdate(TaskNotice{ID: 2, Parent: 1, State: TaskDone})
+		agent.emitTaskUpdate(TaskNotice{ID: 99, PlanID: "t-one", State: TaskDone})
+		agent.emitTaskUpdate(TaskNotice{ID: 3, State: TaskDone})
+		if got := takeTaskUpdates(t, lane, 1)[0].ID; got != 3 {
+			stop()
+			t.Fatalf("emitted deleted task %d", got)
+		}
+		stop()
 	}
 }

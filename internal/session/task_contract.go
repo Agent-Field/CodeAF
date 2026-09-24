@@ -447,6 +447,8 @@ type TaskNotice struct {
 	// ID is the proposal's token: a surface hands it back to
 	// [Agent.ResolveTask]. On updates it names the node the update is about.
 	ID uint64
+	// PlanID links this graph row to its saved plan task for permanent deletion.
+	PlanID string
 	// Run names the adaptive run this row belongs to. Empty means ordinary work.
 	Run string
 	// Node names the adaptive node inside Run. THE RUN'S OWN ROW HAS NO NODE.

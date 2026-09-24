@@ -4460,6 +4460,8 @@ Queued or waiting work also offers Stop. This menu action acts directly and keep
 records visible; it never closes the conversation. Once the whole subtree has stopped,
 `x delete` asks `delete is permanent, are you sure?`. `y` deletes the task and all its
 descendants; `n` or Escape returns to the four actions. Enter never confirms Delete.
+Deleted tasks disappear immediately from Home, Sessions, the conversation task column
+and task mentions. Switching away and reopening the conversation does not restore them.
 The remaining actions are New in project, Open folder and Copy project. Tasks have no
 Close action. A Stop press cannot become Delete if work finishes while the menu is open.
 The conversation and unrelated sibling records survive task deletion.
