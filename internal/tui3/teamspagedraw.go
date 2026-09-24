@@ -255,6 +255,7 @@ type teamsTopKey struct {
 	answer        string
 	expand        string
 	ascii, linear bool
+	undoing       bool
 }
 
 // teamsTopSig is a digest of the members' states this window can see change
@@ -278,7 +279,9 @@ func (a *app) teamsTopSig(t team) uint64 {
 func (a *app) teamsTop(d *teamsDraw, width int) []string {
 	pal := a.pal
 	t, ok := a.teamsSelected()
-	var out []string
+	// A CLOSE JUST MADE offers its Undo first, over whichever team is shown
+	// now (teamclose.go).
+	out := a.teamsUndoRow(d, width, 0)
 	if !ok {
 		if a.tp.sel == teamsAllRow {
 			out = append(out, " "+pal.bold(pal.ink(teamstore.RootName)))
@@ -286,7 +289,7 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 		}
 		return out
 	}
-	out = append(out, a.teamsHeader(d, t, width, 0))
+	out = append(out, a.teamsHeader(d, t, width, len(out)))
 	if t.Closed() {
 		return out
 	}

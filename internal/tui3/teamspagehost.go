@@ -103,14 +103,13 @@ func (a *app) teamsHostTop(width int) []string {
 		width: width, edits: a.traffic.edits, stamp: a.traffic.stamp, sel: a.tp.sel,
 		cur: a.tp.cur, hot: a.tp.hot, focus: a.tp.focus, sig: a.teamsTopSig(t),
 		minute: a.now().Unix() / 60, answering: a.tp.answering, answer: string(a.tp.answer.value),
-		expand: a.tp.expand, ascii: a.pal.ascii, linear: a.linear,
+		expand: a.tp.expand, ascii: a.pal.ascii, linear: a.linear, undoing: a.teamsUndoing(),
 	}
 	if c := &a.tp.top; c.ok && c.key == key {
 		return c.rows
 	}
 	d := &teamsDraw{a: a}
 	rows := a.teamsTop(d, width)
-	rows = append(rows, a.teamsUndoRow(d, width, len(rows))...)
 	rows = append(rows, a.pal.dim(rule(width)))
 	for i := range rows {
 		rows[i] = teamsPad(rows[i], width)
